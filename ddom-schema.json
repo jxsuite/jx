@@ -1,0 +1,879 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://declarative-dom.org/schema/v1",
+  "title": "DDOM Document",
+  "description": "Schema for Declarative Document Object Model (DDOM) component files. A DDOM document is a JSON object that declaratively describes a reactive web component: its structure (DOM tree), styling, reactive state ($defs), and a reference to its companion JavaScript handler file.",
+  "type": "object",
+  "required": [
+    "tagName"
+  ],
+  "properties": {
+    "$schema": {
+      "description": "URI identifying the DDOM dialect version. Enables schema-aware IDE tooling.",
+      "type": "string",
+      "examples": [
+        "https://declarative-dom.org/schema/v1"
+      ]
+    },
+    "$id": {
+      "description": "Component identifier string. Used by tooling and the builder.",
+      "type": "string",
+      "examples": [
+        "Counter",
+        "TodoApp",
+        "UserCard"
+      ]
+    },
+    "$handlers": {
+      "description": "Relative path or URL to the companion .js ES module file that exports event handlers. Follows ES module specifier rules — IDE CTRL-click navigation works natively.",
+      "type": "string",
+      "examples": [
+        "./counter.js",
+        "./components/my-widget.js"
+      ]
+    },
+    "$defs": {
+      "description": "Signal and handler declarations for this component. $-prefixed keys are signals; plain keys are handler declarations.",
+      "$ref": "#/$defs/DefsMap"
+    },
+    "tagName": {
+      "$ref": "#/$defs/TagName"
+    },
+    "children": {
+      "$ref": "#/$defs/ChildrenValue"
+    },
+    "style": {
+      "$ref": "#/$defs/StyleObject"
+    },
+    "attributes": {
+      "$ref": "#/$defs/AttributesObject"
+    }
+  },
+  "additionalProperties": {
+    "$ref": "#/$defs/ElementPropertyValue"
+  },
+  "$defs": {
+    "DefsMap": {
+      "description": "Map of signal declarations, computed signals, handler declarations, and prototype namespaces.",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/DefEntry"
+      },
+      "propertyNames": {
+        "description": "Signal names conventionally use the $ prefix; handler names do not.",
+        "type": "string"
+      }
+    },
+    "DefEntry": {
+      "description": "A single $defs entry: a signal, computed signal, handler declaration, or prototype namespace.",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/StateSignalDef"
+        },
+        {
+          "$ref": "#/$defs/ComputedSignalDef"
+        },
+        {
+          "$ref": "#/$defs/HandlerDef"
+        },
+        {
+          "$ref": "#/$defs/PrototypeDef"
+        }
+      ]
+    },
+    "StateSignalDef": {
+      "description": "A reactive state signal. Wraps the default value in a Signal.State at runtime.",
+      "type": "object",
+      "required": [
+        "signal"
+      ],
+      "properties": {
+        "signal": {
+          "type": "boolean",
+          "const": true
+        },
+        "type": {
+          "$ref": "#/$defs/JsonSchemaType"
+        },
+        "default": {
+          "description": "Initial value for the signal."
+        },
+        "description": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "examples": [
+        {
+          "type": "integer",
+          "default": 0,
+          "signal": true
+        },
+        {
+          "type": "string",
+          "default": "World",
+          "signal": true
+        },
+        {
+          "type": "boolean",
+          "default": false,
+          "signal": true
+        },
+        {
+          "type": "array",
+          "default": [],
+          "signal": true
+        }
+      ]
+    },
+    "ComputedSignalDef": {
+      "description": "A read-only computed signal. Evaluated as a JSONata expression. Re-evaluates whenever any declared $dep changes.",
+      "type": "object",
+      "required": [
+        "$compute",
+        "signal"
+      ],
+      "properties": {
+        "$compute": {
+          "description": "JSONata expression string. Has access to dep signal values by their key name (without #/$defs/ prefix).",
+          "type": "string",
+          "examples": [
+            "$count * 2",
+            "$count > 10 ? 'high' : 'low'",
+            "$firstName & ' ' & $lastName",
+            "count($items[done = false])"
+          ]
+        },
+        "$deps": {
+          "description": "Explicit dependency list. Each entry is a $ref string pointing to a $defs signal.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/InternalRef"
+          },
+          "examples": [
+            [
+              "#/$defs/$count"
+            ],
+            [
+              "#/$defs/$firstName",
+              "#/$defs/$lastName"
+            ]
+          ]
+        },
+        "signal": {
+          "type": "boolean",
+          "const": true
+        },
+        "type": {
+          "$ref": "#/$defs/JsonSchemaType"
+        },
+        "description": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "HandlerDef": {
+      "description": "Declares that a function with this key must be exported from the $handlers module. The compiler validates that the export exists.",
+      "type": "object",
+      "required": [
+        "$handler"
+      ],
+      "properties": {
+        "$handler": {
+          "type": "boolean",
+          "const": true
+        },
+        "description": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "examples": [
+        {
+          "$handler": true
+        },
+        {
+          "$handler": true,
+          "description": "Fires when element connects to the DOM"
+        }
+      ]
+    },
+    "PrototypeDef": {
+      "description": "A Web API namespace signal. The $prototype key identifies which Web API to wrap.",
+      "type": "object",
+      "required": [
+        "$prototype"
+      ],
+      "properties": {
+        "$prototype": {
+          "description": "Web API constructor name identifying the namespace handler.",
+          "type": "string",
+          "enum": [
+            "Request",
+            "URLSearchParams",
+            "FormData",
+            "LocalStorage",
+            "SessionStorage",
+            "Cookie",
+            "IndexedDB",
+            "Array",
+            "Set",
+            "Map",
+            "Blob",
+            "ReadableStream"
+          ]
+        },
+        "signal": {
+          "type": "boolean"
+        },
+        "timing": {
+          "description": "Execution timing for Request prototypes. \"server\" bakes the response at build time; \"client\" (default) fetches at runtime.",
+          "type": "string",
+          "enum": [
+            "server",
+            "client"
+          ]
+        },
+        "manual": {
+          "description": "If true, the Request will not auto-fetch. Call .fetch() manually.",
+          "type": "boolean"
+        },
+        "debounce": {
+          "description": "Debounce interval in milliseconds for auto-fetching Request prototypes.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "url": {
+          "description": "Request URL (string or $ref).",
+          "$ref": "#/$defs/StringOrRef"
+        },
+        "method": {
+          "type": "string",
+          "enum": [
+            "GET",
+            "POST",
+            "PUT",
+            "PATCH",
+            "DELETE",
+            "HEAD",
+            "OPTIONS"
+          ]
+        },
+        "headers": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "body": {
+          "description": "Request body. Objects are JSON-serialized automatically."
+        },
+        "responseType": {
+          "type": "string",
+          "enum": [
+            "json",
+            "text",
+            "blob",
+            "arraybuffer",
+            "document",
+            ""
+          ]
+        },
+        "key": {
+          "description": "Storage key for LocalStorage/SessionStorage/Cookie prototypes.",
+          "type": "string"
+        },
+        "name": {
+          "description": "Cookie name.",
+          "type": "string"
+        },
+        "maxAge": {
+          "type": "integer"
+        },
+        "expires": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "domain": {
+          "type": "string"
+        },
+        "secure": {
+          "type": "boolean"
+        },
+        "sameSite": {
+          "type": "string",
+          "enum": [
+            "strict",
+            "lax",
+            "none"
+          ]
+        },
+        "database": {
+          "type": "string",
+          "description": "IndexedDB database name."
+        },
+        "store": {
+          "type": "string",
+          "description": "IndexedDB object store name."
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "keyPath": {
+          "type": "string"
+        },
+        "autoIncrement": {
+          "type": "boolean"
+        },
+        "indexes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "keyPath"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "keyPath": {
+                "oneOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                ]
+              },
+              "unique": {
+                "type": "boolean"
+              }
+            }
+          }
+        },
+        "default": {},
+        "description": {
+          "type": "string"
+        },
+        "items": {},
+        "map": {
+          "$ref": "#/$defs/ElementDef"
+        },
+        "filter": {
+          "$ref": "#/$defs/RefObject"
+        },
+        "sort": {
+          "$ref": "#/$defs/RefObject"
+        }
+      }
+    },
+    "ElementDef": {
+      "description": "A DDOM element definition. Maps directly to a DOM element.",
+      "type": "object",
+      "required": [
+        "tagName"
+      ],
+      "properties": {
+        "onclick": {
+          "description": "Event handler for the \"click\" event. Must be a $ref to a declared handler.",
+          "$ref": "#/$defs/RefObject"
+        },
+        "ondblclick": {
+          "description": "Event handler for the \"dblclick\" event. Must be a $ref to a declared handler.",
+          "$ref": "#/$defs/RefObject"
+        },
+        "onmousedown": {
+          "description": "Event handler for the \"mousedown\" event. Must be a $ref to a declared handler.",
+          "$ref": "#/$defs/RefObject"
+        },
+        "onmouseup": {
+          "description": "Event handler for the \"mouseup\" event. Must be a $ref to a declared handler.",
+          "$ref": "#/$defs/RefObject"
+        },
+        "onmouseover": {
+          "description": "Event handler for the \"mouseover\" event. Must be a $ref to a declared handler.",
+          "$ref": "#/$defs/RefObject"
+        },
+        "onmouseout": {
+          "description": "Event handler for the \"mouseout\" event. Must be a $ref to a declared handler.",
+          "$ref": "#/$defs/RefObject"
+        },
+        "onmousemove": {
+          "description": "Event handler for the \"mousemove\" event. Must be a $ref to a declared handler.",
+          "$ref": "#/$defs/RefObject"
+        },
+        "onkeydown": {
+          "description": "Event handler for the \"keydown\" event. Must be a $ref to a declared handler.",
+          "$ref": "#/$defs/RefObject"
+        },
+        "onkeyup": {
+          "description": "Event handler for the \"keyup\" event. Must be a $ref to a declared handler.",
+          "$ref": "#/$defs/RefObject"
+        },
+        "onkeypress": {
+          "description": "Event handler for the \"keypress\" event. Must be a $ref to a declared handler.",
+          "$ref": "#/$defs/RefObject"
+        },
+        "oninput": {
+          "description": "Event handler for the \"input\" event. Must be a $ref to a declared handler.",
+          "$ref": "#/$defs/RefObject"
+        },
+        "onchange": {
+          "description": "Event handler for the \"change\" event. Must be a $ref to a declared handler.",
+          "$ref": "#/$defs/RefObject"
+        },
+        "onsubmit": {
+          "description": "Event handler for the \"submit\" event. Must be a $ref to a declared handler.",
+          "$ref": "#/$defs/RefObject"
+        },
+        "onreset": {
+          "description": "Event handler for the \"reset\" event. Must be a $ref to a declared handler.",
+          "$ref": "#/$defs/RefObject"
+        },
+        "onfocus": {
+          "description": "Event handler for the \"focus\" event. Must be a $ref to a declared handler.",
+          "$ref": "#/$defs/RefObject"
+        },
+        "onblur": {
+          "description": "Event handler for the \"blur\" event. Must be a $ref to a declared handler.",
+          "$ref": "#/$defs/RefObject"
+        },
+        "onscroll": {
+          "description": "Event handler for the \"scroll\" event. Must be a $ref to a declared handler.",
+          "$ref": "#/$defs/RefObject"
+        },
+        "onresize": {
+          "description": "Event handler for the \"resize\" event. Must be a $ref to a declared handler.",
+          "$ref": "#/$defs/RefObject"
+        },
+        "onload": {
+          "description": "Event handler for the \"load\" event. Must be a $ref to a declared handler.",
+          "$ref": "#/$defs/RefObject"
+        },
+        "onunload": {
+          "description": "Event handler for the \"unload\" event. Must be a $ref to a declared handler.",
+          "$ref": "#/$defs/RefObject"
+        },
+        "onerror": {
+          "description": "Event handler for the \"error\" event. Must be a $ref to a declared handler.",
+          "$ref": "#/$defs/RefObject"
+        },
+        "oncontextmenu": {
+          "description": "Event handler for the \"contextmenu\" event. Must be a $ref to a declared handler.",
+          "$ref": "#/$defs/RefObject"
+        },
+        "onwheel": {
+          "description": "Event handler for the \"wheel\" event. Must be a $ref to a declared handler.",
+          "$ref": "#/$defs/RefObject"
+        },
+        "ondrag": {
+          "description": "Event handler for the \"drag\" event. Must be a $ref to a declared handler.",
+          "$ref": "#/$defs/RefObject"
+        },
+        "ondragstart": {
+          "description": "Event handler for the \"dragstart\" event. Must be a $ref to a declared handler.",
+          "$ref": "#/$defs/RefObject"
+        },
+        "ondragend": {
+          "description": "Event handler for the \"dragend\" event. Must be a $ref to a declared handler.",
+          "$ref": "#/$defs/RefObject"
+        },
+        "ondragover": {
+          "description": "Event handler for the \"dragover\" event. Must be a $ref to a declared handler.",
+          "$ref": "#/$defs/RefObject"
+        },
+        "ondrop": {
+          "description": "Event handler for the \"drop\" event. Must be a $ref to a declared handler.",
+          "$ref": "#/$defs/RefObject"
+        },
+        "ontouchstart": {
+          "description": "Event handler for the \"touchstart\" event. Must be a $ref to a declared handler.",
+          "$ref": "#/$defs/RefObject"
+        },
+        "ontouchmove": {
+          "description": "Event handler for the \"touchmove\" event. Must be a $ref to a declared handler.",
+          "$ref": "#/$defs/RefObject"
+        },
+        "ontouchend": {
+          "description": "Event handler for the \"touchend\" event. Must be a $ref to a declared handler.",
+          "$ref": "#/$defs/RefObject"
+        },
+        "onpointerdown": {
+          "description": "Event handler for the \"pointerdown\" event. Must be a $ref to a declared handler.",
+          "$ref": "#/$defs/RefObject"
+        },
+        "onpointermove": {
+          "description": "Event handler for the \"pointermove\" event. Must be a $ref to a declared handler.",
+          "$ref": "#/$defs/RefObject"
+        },
+        "onpointerup": {
+          "description": "Event handler for the \"pointerup\" event. Must be a $ref to a declared handler.",
+          "$ref": "#/$defs/RefObject"
+        },
+        "onpointercancel": {
+          "description": "Event handler for the \"pointercancel\" event. Must be a $ref to a declared handler.",
+          "$ref": "#/$defs/RefObject"
+        }
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/ElementPropertyValue"
+      }
+    },
+    "ChildrenValue": {
+      "description": "Children of an element. Either a static array of element definitions, or an Array namespace configuration for dynamic mapped lists.",
+      "oneOf": [
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ElementDef"
+          },
+          "description": "Static array of child element definitions."
+        },
+        {
+          "$ref": "#/$defs/ArrayNamespace"
+        }
+      ]
+    },
+    "ArrayNamespace": {
+      "description": "Dynamic mapped list. Renders one child per item from the source array. Re-renders when the items signal changes.",
+      "type": "object",
+      "required": [
+        "$prototype",
+        "items",
+        "map"
+      ],
+      "properties": {
+        "$prototype": {
+          "type": "string",
+          "const": "Array"
+        },
+        "items": {
+          "description": "Data source. A $ref to a signal or a static array.",
+          "oneOf": [
+            {
+              "$ref": "#/$defs/RefObject"
+            },
+            {
+              "type": "array"
+            }
+          ]
+        },
+        "map": {
+          "description": "Element template rendered for each item. May reference $map/item and $map/index.",
+          "$ref": "#/$defs/ElementDef"
+        },
+        "filter": {
+          "description": "$ref to a handler function used to filter items.",
+          "$ref": "#/$defs/RefObject"
+        },
+        "sort": {
+          "description": "$ref to a handler function used to sort items.",
+          "$ref": "#/$defs/RefObject"
+        }
+      },
+      "additionalProperties": false
+    },
+    "SwitchDef": {
+      "description": "Dynamic component switching. The cases object maps signal values to element definitions. The rendered case is replaced whenever the signal changes.",
+      "type": "object",
+      "required": [
+        "$ref"
+      ],
+      "properties": {
+        "$ref": {
+          "$ref": "#/$defs/InternalRef"
+        }
+      },
+      "additionalProperties": false
+    },
+    "SwitchNode": {
+      "description": "An element that renders one of several case components based on a signal value.",
+      "type": "object",
+      "required": [
+        "$switch",
+        "cases"
+      ],
+      "properties": {
+        "tagName": {
+          "$ref": "#/$defs/TagName"
+        },
+        "$switch": {
+          "$ref": "#/$defs/SwitchDef"
+        },
+        "cases": {
+          "description": "Map of signal value strings to element definitions or external $ref components.",
+          "type": "object",
+          "additionalProperties": {
+            "oneOf": [
+              {
+                "$ref": "#/$defs/ElementDef"
+              },
+              {
+                "$ref": "#/$defs/ExternalComponentRef"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "StyleObject": {
+      "description": "CSS style definition. camelCase property names follow CSSOM convention. Keys starting with :, ., &, or [ are treated as nested CSS selectors.",
+      "type": "object",
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "number"
+          },
+          {
+            "type": "object",
+            "description": "Nested CSS selector rules.",
+            "additionalProperties": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "examples": [
+        {
+          "fontFamily": "system-ui",
+          "maxWidth": "480px",
+          ":hover": {
+            "backgroundColor": "blue"
+          },
+          "&.active": {
+            "outline": "2px solid white"
+          }
+        }
+      ]
+    },
+    "AttributesObject": {
+      "description": "Non-standard HTML attributes and ARIA attributes. Rendered as element.setAttribute(k,v).",
+      "type": "object",
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "number"
+          },
+          {
+            "type": "boolean"
+          },
+          {
+            "$ref": "#/$defs/RefObject"
+          }
+        ]
+      },
+      "examples": [
+        {
+          "data-component": "my-widget",
+          "aria-label": "Interactive counter"
+        }
+      ]
+    },
+    "PropsObject": {
+      "description": "Explicit prop passing at a component boundary. Keys must correspond to $defs entries in the referenced component. Values may be static literals or $ref bindings.",
+      "type": "object",
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "number"
+          },
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "array"
+          },
+          {
+            "type": "object"
+          },
+          {
+            "$ref": "#/$defs/RefObject"
+          }
+        ]
+      }
+    },
+    "RefObject": {
+      "description": "A $ref binding. Resolves to a signal (reactive) or plain value (static).",
+      "type": "object",
+      "required": [
+        "$ref"
+      ],
+      "properties": {
+        "$ref": {
+          "$ref": "#/$defs/AnyRef"
+        }
+      },
+      "additionalProperties": false
+    },
+    "AnyRef": {
+      "description": "A $ref URI string. May be internal, external file, or global namespace.",
+      "type": "string",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/InternalRef"
+        },
+        {
+          "$ref": "#/$defs/ExternalRef"
+        },
+        {
+          "$ref": "#/$defs/GlobalRef"
+        },
+        {
+          "$ref": "#/$defs/MapRef"
+        }
+      ]
+    },
+    "InternalRef": {
+      "description": "Reference to a signal or handler in the current component's $defs.",
+      "type": "string",
+      "pattern": "^#/\\$defs/",
+      "examples": [
+        "#/$defs/$count",
+        "#/$defs/increment",
+        "#/$defs/$items"
+      ]
+    },
+    "ExternalRef": {
+      "description": "Reference to an external DDOM component file.",
+      "type": "string",
+      "pattern": "^(\\./|\\.\\./).*\\.json$|^https?://",
+      "examples": [
+        "./components/card.json",
+        "https://cdn.example.com/components/button.json"
+      ]
+    },
+    "ExternalComponentRef": {
+      "description": "Object form of an external component reference, with optional $props.",
+      "type": "object",
+      "required": [
+        "$ref"
+      ],
+      "properties": {
+        "$ref": {
+          "$ref": "#/$defs/ExternalRef"
+        },
+        "$props": {
+          "$ref": "#/$defs/PropsObject"
+        }
+      }
+    },
+    "GlobalRef": {
+      "description": "Reference to a window or document global property.",
+      "type": "string",
+      "pattern": "^(window|document)#/",
+      "examples": [
+        "window#/currentUser",
+        "document#/appConfig"
+      ]
+    },
+    "MapRef": {
+      "description": "Reference to the current Array map iteration context.",
+      "type": "string",
+      "enum": [
+        "$map/item",
+        "$map/index"
+      ]
+    },
+    "ElementPropertyValue": {
+      "description": "Any valid value for a DOM element property.",
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/RefObject"
+        }
+      ]
+    },
+    "StringOrRef": {
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "$ref": "#/$defs/RefObject"
+        }
+      ]
+    },
+    "BoolOrRef": {
+      "oneOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "$ref": "#/$defs/RefObject"
+        }
+      ]
+    },
+    "NumberOrRef": {
+      "oneOf": [
+        {
+          "type": "number"
+        },
+        {
+          "$ref": "#/$defs/RefObject"
+        }
+      ]
+    },
+    "TagName": {
+      "description": "HTML tag name. Custom elements (containing a hyphen) are registered as autonomous custom elements per the Web Components specification.",
+      "type": "string",
+      "minLength": 1,
+      "examples": [
+        "div",
+        "span",
+        "button",
+        "my-counter",
+        "todo-app",
+        "user-card"
+      ]
+    },
+    "JsonSchemaType": {
+      "description": "JSON Schema primitive type vocabulary.",
+      "type": "string",
+      "enum": [
+        "string",
+        "number",
+        "integer",
+        "boolean",
+        "array",
+        "object",
+        "null"
+      ]
+    }
+  }
+}

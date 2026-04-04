@@ -1,46 +1,78 @@
 {
-  "$schema": "https://declarative-dom.org/schema/v1",
+  "$schema": "../../ddom-schema.json",
   "$id": "ContactForm",
   "$handlers": "./contact-form.js",
-
   "$defs": {
-    "$name":    { "type": "string", "default": "", "signal": true },
-    "$email":   { "type": "string", "default": "", "signal": true },
-    "$message": { "type": "string", "default": "", "signal": true },
-    "$submitted": { "type": "boolean", "default": false, "signal": true },
-
+    "$name": {
+      "type": "string",
+      "default": "",
+      "signal": true
+    },
+    "$email": {
+      "type": "string",
+      "default": "",
+      "signal": true
+    },
+    "$message": {
+      "type": "string",
+      "default": "",
+      "signal": true
+    },
+    "$submitted": {
+      "type": "boolean",
+      "default": false,
+      "signal": true
+    },
     "$nameValid": {
       "$compute": "$length($trim($name)) >= 2",
-      "$deps": ["#/$defs/$name"],
+      "$deps": [
+        "#/$defs/$name"
+      ],
       "type": "boolean",
       "signal": true
     },
     "$emailValid": {
       "$compute": "$contains($email, '@') and $contains($email, '.') and $length($email) > 5",
-      "$deps": ["#/$defs/$email"],
+      "$deps": [
+        "#/$defs/$email"
+      ],
       "type": "boolean",
       "signal": true
     },
     "$messageValid": {
       "$compute": "$length($trim($message)) >= 10",
-      "$deps": ["#/$defs/$message"],
+      "$deps": [
+        "#/$defs/$message"
+      ],
       "type": "boolean",
       "signal": true
     },
     "$formValid": {
       "$compute": "$nameValid and $emailValid and $messageValid",
-      "$deps": ["#/$defs/$nameValid", "#/$defs/$emailValid", "#/$defs/$messageValid"],
+      "$deps": [
+        "#/$defs/$nameValid",
+        "#/$defs/$emailValid",
+        "#/$defs/$messageValid"
+      ],
       "type": "boolean",
       "signal": true
     },
-
-    "setName":    { "$handler": true },
-    "setEmail":   { "$handler": true },
-    "setMessage": { "$handler": true },
-    "submit":     { "$handler": true },
-    "reset":      { "$handler": true }
+    "setName": {
+      "$handler": true
+    },
+    "setEmail": {
+      "$handler": true
+    },
+    "setMessage": {
+      "$handler": true
+    },
+    "submit": {
+      "$handler": true
+    },
+    "reset": {
+      "$handler": true
+    }
   },
-
   "tagName": "contact-form",
   "style": {
     "display": "block",
@@ -52,28 +84,45 @@
     "boxShadow": "0 4px 16px rgba(0,0,0,0.1)",
     "fontFamily": "system-ui, sans-serif"
   },
-
   "children": [
     {
       "tagName": "h2",
       "textContent": "Contact Us",
-      "style": { "margin": "0 0 1.5em", "color": "#333", "fontSize": "1.5em" }
+      "style": {
+        "margin": "0 0 1.5em",
+        "color": "#333",
+        "fontSize": "1.5em"
+      }
     },
-
     {
       "tagName": "div",
-      "style": { "marginBottom": "1.25em" },
+      "style": {
+        "marginBottom": "1.25em"
+      },
       "children": [
         {
           "tagName": "label",
           "textContent": "Name",
-          "style": { "display": "block", "fontWeight": "600", "marginBottom": "0.35em", "color": "#555", "fontSize": "0.9em" }
+          "style": {
+            "display": "block",
+            "fontWeight": "600",
+            "marginBottom": "0.35em",
+            "color": "#555",
+            "fontSize": "0.9em"
+          }
         },
         {
           "tagName": "input",
-          "value": { "$ref": "#/$defs/$name" },
-          "oninput": { "$ref": "#/$defs/setName" },
-          "attributes": { "type": "text", "placeholder": "Your full name" },
+          "value": {
+            "$ref": "#/$defs/$name"
+          },
+          "oninput": {
+            "$ref": "#/$defs/setName"
+          },
+          "attributes": {
+            "type": "text",
+            "placeholder": "Your full name"
+          },
           "style": {
             "width": "100%",
             "boxSizing": "border-box",
@@ -82,32 +131,53 @@
             "border": "1.5px solid #ced4da",
             "borderRadius": "5px",
             "outline": "none",
-            ":focus": { "borderColor": "#007bff" }
+            ":focus": {
+              "borderColor": "#007bff"
+            }
           }
         },
         {
           "tagName": "small",
           "textContent": "Name must be at least 2 characters.",
-          "hidden": { "$ref": "#/$defs/$nameValid" },
-          "style": { "color": "#dc3545", "fontSize": "0.8em" }
+          "hidden": {
+            "$ref": "#/$defs/$nameValid"
+          },
+          "style": {
+            "color": "#dc3545",
+            "fontSize": "0.8em"
+          }
         }
       ]
     },
-
     {
       "tagName": "div",
-      "style": { "marginBottom": "1.25em" },
+      "style": {
+        "marginBottom": "1.25em"
+      },
       "children": [
         {
           "tagName": "label",
           "textContent": "Email",
-          "style": { "display": "block", "fontWeight": "600", "marginBottom": "0.35em", "color": "#555", "fontSize": "0.9em" }
+          "style": {
+            "display": "block",
+            "fontWeight": "600",
+            "marginBottom": "0.35em",
+            "color": "#555",
+            "fontSize": "0.9em"
+          }
         },
         {
           "tagName": "input",
-          "value": { "$ref": "#/$defs/$email" },
-          "oninput": { "$ref": "#/$defs/setEmail" },
-          "attributes": { "type": "email", "placeholder": "you@example.com" },
+          "value": {
+            "$ref": "#/$defs/$email"
+          },
+          "oninput": {
+            "$ref": "#/$defs/setEmail"
+          },
+          "attributes": {
+            "type": "email",
+            "placeholder": "you@example.com"
+          },
           "style": {
             "width": "100%",
             "boxSizing": "border-box",
@@ -116,32 +186,53 @@
             "border": "1.5px solid #ced4da",
             "borderRadius": "5px",
             "outline": "none",
-            ":focus": { "borderColor": "#007bff" }
+            ":focus": {
+              "borderColor": "#007bff"
+            }
           }
         },
         {
           "tagName": "small",
           "textContent": "Enter a valid email address.",
-          "hidden": { "$ref": "#/$defs/$emailValid" },
-          "style": { "color": "#dc3545", "fontSize": "0.8em" }
+          "hidden": {
+            "$ref": "#/$defs/$emailValid"
+          },
+          "style": {
+            "color": "#dc3545",
+            "fontSize": "0.8em"
+          }
         }
       ]
     },
-
     {
       "tagName": "div",
-      "style": { "marginBottom": "1.5em" },
+      "style": {
+        "marginBottom": "1.5em"
+      },
       "children": [
         {
           "tagName": "label",
           "textContent": "Message",
-          "style": { "display": "block", "fontWeight": "600", "marginBottom": "0.35em", "color": "#555", "fontSize": "0.9em" }
+          "style": {
+            "display": "block",
+            "fontWeight": "600",
+            "marginBottom": "0.35em",
+            "color": "#555",
+            "fontSize": "0.9em"
+          }
         },
         {
           "tagName": "textarea",
-          "textContent": { "$ref": "#/$defs/$message" },
-          "oninput": { "$ref": "#/$defs/setMessage" },
-          "attributes": { "rows": "4", "placeholder": "Your message (min 10 characters)…" },
+          "textContent": {
+            "$ref": "#/$defs/$message"
+          },
+          "oninput": {
+            "$ref": "#/$defs/setMessage"
+          },
+          "attributes": {
+            "rows": "4",
+            "placeholder": "Your message (min 10 characters)…"
+          },
           "style": {
             "width": "100%",
             "boxSizing": "border-box",
@@ -151,26 +242,37 @@
             "borderRadius": "5px",
             "outline": "none",
             "resize": "vertical",
-            ":focus": { "borderColor": "#007bff" }
+            ":focus": {
+              "borderColor": "#007bff"
+            }
           }
         },
         {
           "tagName": "small",
           "textContent": "Message must be at least 10 characters.",
-          "hidden": { "$ref": "#/$defs/$messageValid" },
-          "style": { "color": "#dc3545", "fontSize": "0.8em" }
+          "hidden": {
+            "$ref": "#/$defs/$messageValid"
+          },
+          "style": {
+            "color": "#dc3545",
+            "fontSize": "0.8em"
+          }
         }
       ]
     },
-
     {
       "tagName": "div",
-      "style": { "display": "flex", "gap": "0.75em" },
+      "style": {
+        "display": "flex",
+        "gap": "0.75em"
+      },
       "children": [
         {
           "tagName": "button",
           "textContent": "Send Message",
-          "onclick": { "$ref": "#/$defs/submit" },
+          "onclick": {
+            "$ref": "#/$defs/submit"
+          },
           "style": {
             "flex": "1",
             "padding": "0.7em 1em",
@@ -181,14 +283,21 @@
             "borderRadius": "5px",
             "cursor": "pointer",
             "fontWeight": "600",
-            ":hover": { "backgroundColor": "#218838" },
-            ":disabled": { "backgroundColor": "#adb5bd", "cursor": "not-allowed" }
+            ":hover": {
+              "backgroundColor": "#218838"
+            },
+            ":disabled": {
+              "backgroundColor": "#adb5bd",
+              "cursor": "not-allowed"
+            }
           }
         },
         {
           "tagName": "button",
           "textContent": "Reset",
-          "onclick": { "$ref": "#/$defs/reset" },
+          "onclick": {
+            "$ref": "#/$defs/reset"
+          },
           "style": {
             "padding": "0.7em 1.25em",
             "fontSize": "1em",
@@ -197,15 +306,18 @@
             "border": "1px solid #ced4da",
             "borderRadius": "5px",
             "cursor": "pointer",
-            ":hover": { "backgroundColor": "#f8f9fa" }
+            ":hover": {
+              "backgroundColor": "#f8f9fa"
+            }
           }
         }
       ]
     },
-
     {
       "tagName": "div",
-      "hidden": { "$ref": "#/$defs/$submitted" },
+      "hidden": {
+        "$ref": "#/$defs/$submitted"
+      },
       "style": {
         "marginTop": "1.25em",
         "padding": "0.85em 1em",
@@ -217,7 +329,6 @@
       },
       "textContent": "Awaiting submission…"
     },
-
     {
       "tagName": "details",
       "style": {
@@ -232,23 +343,60 @@
         {
           "tagName": "summary",
           "textContent": "Live form state",
-          "style": { "cursor": "pointer", "fontWeight": "600", "marginBottom": "0.5em" }
+          "style": {
+            "cursor": "pointer",
+            "fontWeight": "600",
+            "marginBottom": "0.5em"
+          }
         },
         {
           "tagName": "div",
           "children": [
-            { "tagName": "div", "children": [
-              { "tagName": "strong", "textContent": "name: " },
-              { "tagName": "span", "textContent": { "$ref": "#/$defs/$name" } }
-            ]},
-            { "tagName": "div", "children": [
-              { "tagName": "strong", "textContent": "email: " },
-              { "tagName": "span", "textContent": { "$ref": "#/$defs/$email" } }
-            ]},
-            { "tagName": "div", "children": [
-              { "tagName": "strong", "textContent": "valid: " },
-              { "tagName": "span", "textContent": { "$ref": "#/$defs/$formValid" } }
-            ]}
+            {
+              "tagName": "div",
+              "children": [
+                {
+                  "tagName": "strong",
+                  "textContent": "name: "
+                },
+                {
+                  "tagName": "span",
+                  "textContent": {
+                    "$ref": "#/$defs/$name"
+                  }
+                }
+              ]
+            },
+            {
+              "tagName": "div",
+              "children": [
+                {
+                  "tagName": "strong",
+                  "textContent": "email: "
+                },
+                {
+                  "tagName": "span",
+                  "textContent": {
+                    "$ref": "#/$defs/$email"
+                  }
+                }
+              ]
+            },
+            {
+              "tagName": "div",
+              "children": [
+                {
+                  "tagName": "strong",
+                  "textContent": "valid: "
+                },
+                {
+                  "tagName": "span",
+                  "textContent": {
+                    "$ref": "#/$defs/$formValid"
+                  }
+                }
+              ]
+            }
           ]
         }
       ]

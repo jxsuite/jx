@@ -4,7 +4,7 @@
  * @license MIT
  *
  * Four-step pipeline:
- *   1. resolve    — $RefParser.dereference all $ref pointers
+ *   1. resolve    — fetch JSON source (or accept raw object)
  *   2. buildScope — Signal.State / Signal.Computed / Web API namespaces + handlers
  *   3. render     — walk resolved tree, build DOM, wire reactive effects
  *   4. output     — append to target
@@ -12,7 +12,6 @@
  * @module ddom
  */
 
-import $RefParser from '@apidevtools/json-schema-ref-parser';
 import { Signal } from 'signal-polyfill';
 import jsonata from 'jsonata';
 import { effect } from './effect.js';
@@ -31,8 +30,11 @@ import { effect } from './effect.js';
  * const scope = await DDOM('./counter.json', document.getElementById('app'));
  */
 export async function DDOM(source, target = document.body) {
+  const base  = typeof source === 'string'
+    ? new URL(source, location.href).href
+    : location.href;
   const doc   = await resolve(source);
-  const scope = await buildScope(doc);
+  const scope = await buildScope(doc, {}, base);
   target.appendChild(renderNode(doc, scope));
   return scope;
 }
@@ -40,13 +42,17 @@ export async function DDOM(source, target = document.body) {
 // ─── Step 1: Resolve ──────────────────────────────────────────────────────────
 
 /**
- * Dereference all $ref pointers in a DDOM document.
+ * Fetch and parse a DDOM JSON source.
+ * Accepts a URL string, absolute URL, or a pre-parsed object.
  *
  * @param {string | object} source
  * @returns {Promise<object>}
  */
 export async function resolve(source) {
-  return $RefParser.dereference(source);
+  if (typeof source !== 'string') return source;
+  const res = await fetch(source);
+  if (!res.ok) throw new Error(`DDOM: failed to fetch ${source} (${res.status})`);
+  return res.json();
 }
 
 // ─── Step 2: Build scope ──────────────────────────────────────────────────────
@@ -56,9 +62,10 @@ export async function resolve(source) {
  *
  * @param {object} doc
  * @param {object} [parentScope={}]
+ * @param {string} [base=location.href]  Base URL for resolving $handlers import
  * @returns {Promise<object>}
  */
-export async function buildScope(doc, parentScope = {}) {
+export async function buildScope(doc, parentScope = {}, base = location.href) {
   const scope = { ...parentScope };
 
   for (const [key, def] of Object.entries(doc.$defs ?? {})) {
@@ -78,9 +85,10 @@ export async function buildScope(doc, parentScope = {}) {
   }
 
   if (doc.$handlers) {
-    const mod = await import(doc.$handlers);
+    const handlersUrl = new URL(doc.$handlers, base).href;
+    const mod = await import(handlersUrl);
     for (const [key, fn] of Object.entries(mod.default ?? mod)) {
-      scope[key] = typeof fn === 'function' ? fn.bind(scope) : fn;
+      scope[key] = fn;
     }
   }
 
@@ -102,13 +110,14 @@ function makeComputedSignal(expression, depKeys, scope) {
   const state = new Signal.State(null);
 
   effect(() => {
-    const ctx = {};
+    const bindings = {};
     for (const ref of depKeys) {
-      const key = ref.split('/').pop();
-      const sig = scope[key];
-      ctx[key] = isSignal(sig) ? sig.get() : sig;
+      const key  = ref.split('/').pop();                       // e.g. '$name'
+      const sig  = scope[key];
+      const bKey = key.startsWith('$') ? key.slice(1) : key;  // JSONata bindings omit the $
+      bindings[bKey] = isSignal(sig) ? sig.get() : sig;
     }
-    expr.evaluate(ctx).then(v => state.set(v ?? null)).catch(() => {});
+    expr.evaluate(undefined, bindings).then(v => state.set(v ?? null)).catch(() => {});
   });
 
   return state;
@@ -136,18 +145,28 @@ export const RESERVED_KEYS = new Set([
  * @returns {HTMLElement}
  */
 export function renderNode(def, scope) {
-  if (def.$props)                          return renderNode(def, mergeProps(def, scope));
-  if (def.$switch)                         return renderSwitch(def, scope);
-  if (def.children?.$prototype === 'Array') return renderMappedArray(def, scope);
+  // Extend scope with any $-prefixed local bindings declared on this node
+  // (e.g. "$todoIndex": { "$ref": "$map/index" } in a map template)
+  let localScope = scope;
+  for (const [key, val] of Object.entries(def)) {
+    if (key.startsWith('$') && !RESERVED_KEYS.has(key)) {
+      if (localScope === scope) localScope = { ...scope };
+      localScope[key] = isRefObj(val) ? resolveRef(val.$ref, scope) : val;
+    }
+  }
+
+  if (def.$props)                           return renderNode(def, mergeProps(def, localScope));
+  if (def.$switch)                          return renderSwitch(def, localScope);
+  if (def.children?.$prototype === 'Array') return renderMappedArray(def, localScope);
 
   const el = document.createElement(def.tagName ?? 'div');
 
-  applyProperties(el, def, scope);
+  applyProperties(el, def, localScope);
   applyStyle(el, def.style ?? {});
-  applyAttributes(el, def.attributes ?? {}, scope);
+  applyAttributes(el, def.attributes ?? {}, localScope);
 
   for (const child of (Array.isArray(def.children) ? def.children : [])) {
-    el.appendChild(renderNode(child, scope));
+    el.appendChild(renderNode(child, localScope));
   }
 
   return el;
@@ -158,10 +177,11 @@ export function renderNode(def, scope) {
 function applyProperties(el, def, scope) {
   for (const [key, val] of Object.entries(def)) {
     if (RESERVED_KEYS.has(key)) continue;
+    if (key.startsWith('$')) continue;   // scope bindings — handled in renderNode
 
     if (key.startsWith('on') && isRefObj(val)) {
       const handler = resolveRef(val.$ref, scope);
-      if (typeof handler === 'function') el.addEventListener(key.slice(2), handler);
+      if (typeof handler === 'function') el.addEventListener(key.slice(2), handler.bind(scope));
       continue;
     }
 
@@ -411,7 +431,14 @@ export function resolvePrototype(def, scope, key) {
  */
 export function resolveRef(ref, scope) {
   if (typeof ref !== 'string') return ref;
-  if (ref.startsWith('$map/'))       return scope[ref];
+  if (ref.startsWith('$map/')) {
+    // '$map/item' or '$map/index' → direct scope lookup
+    // '$map/item/text' → scope['$map/item'].text
+    const parts = ref.split('/');
+    const baseKey = parts[0] + '/' + parts[1];   // '$map/item' | '$map/index'
+    const base = scope[baseKey];
+    return parts.length > 2 ? getPath(base, parts.slice(2).join('/')) : base;
+  }
   if (ref.startsWith('#/$defs/'))    return scope[ref.slice('#/$defs/'.length)];
   if (ref.startsWith('parent#/'))    return scope[ref.slice('parent#/'.length)];
   if (ref.startsWith('window#/'))    return getPath(globalThis.window,   ref.slice('window#/'.length));

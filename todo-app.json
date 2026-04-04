@@ -2,36 +2,51 @@
   "$schema": "https://declarative-dom.org/schema/v1",
   "$id": "TodoApp",
   "$handlers": "./todo-app.js",
-
   "$defs": {
     "$items": {
       "type": "array",
       "default": [
-        { "id": 1, "text": "Learn DDOM", "done": false },
-        { "id": 2, "text": "Build something reactive", "done": false }
+        {
+          "id": 1,
+          "text": "Learn DDOM",
+          "done": false
+        },
+        {
+          "id": 2,
+          "text": "Build something reactive",
+          "done": false
+        }
       ],
       "signal": true,
       "description": "Array of todo items: { id, text, done }"
     },
     "$remaining": {
       "$compute": "count($items[done = false])",
-      "$deps": ["#/$defs/$items"],
+      "$deps": [
+        "#/$defs/$items"
+      ],
       "type": "integer",
       "signal": true,
       "description": "Number of incomplete items"
     },
     "$remainingLabel": {
       "$compute": "$string($remaining) & ' item' & ($remaining = 1 ? '' : 's') & ' left'",
-      "$deps": ["#/$defs/$remaining"],
+      "$deps": [
+        "#/$defs/$remaining"
+      ],
       "type": "string",
       "signal": true
     },
-
-    "addItem":    { "$handler": true },
-    "toggleItem": { "$handler": true },
-    "clearDone":  { "$handler": true }
+    "addItem": {
+      "$handler": true
+    },
+    "toggleItem": {
+      "$handler": true
+    },
+    "clearDone": {
+      "$handler": true
+    }
   },
-
   "tagName": "todo-app",
   "style": {
     "display": "block",
@@ -40,7 +55,6 @@
     "margin": "2rem auto",
     "padding": "0"
   },
-
   "children": [
     {
       "tagName": "header",
@@ -84,13 +98,14 @@
                 "borderRadius": "5px",
                 "outline": "none"
               },
-              "onkeydown": { "$ref": "#/$defs/addItem" }
+              "onkeydown": {
+                "$ref": "#/$defs/addItem"
+              }
             }
           ]
         }
       ]
     },
-
     {
       "tagName": "ul",
       "style": {
@@ -103,24 +118,38 @@
       },
       "children": {
         "$prototype": "Array",
-        "items": { "$ref": "#/$defs/$items" },
+        "items": {
+          "$ref": "#/$defs/$items"
+        },
         "map": {
           "tagName": "li",
-          "$todoItem":   { "$ref": "$map/item" },
-          "$todoIndex":  { "$ref": "$map/index" },
-          "$toggleItem": { "$ref": "#/$defs/toggleItem" },
+          "$todoItem": {
+            "$ref": "$map/item"
+          },
+          "$todoIndex": {
+            "$ref": "$map/index"
+          },
+          "$toggleItem": {
+            "$ref": "#/$defs/toggleItem"
+          },
           "style": {
             "display": "flex",
             "alignItems": "center",
             "padding": "0.85rem 1.25rem",
             "borderBottom": "1px solid #ededed",
-            ":last-child": { "borderBottom": "none" }
+            ":last-child": {
+              "borderBottom": "none"
+            }
           },
           "children": [
             {
               "tagName": "input",
-              "attributes": { "type": "checkbox" },
-              "onclick": { "$ref": "#/$defs/toggleItem" },
+              "attributes": {
+                "type": "checkbox"
+              },
+              "onclick": {
+                "$ref": "#/$defs/toggleItem"
+              },
               "style": {
                 "width": "1.1rem",
                 "height": "1.1rem",
@@ -131,14 +160,19 @@
             },
             {
               "tagName": "span",
-              "textContent": { "$ref": "$map/item" },
-              "style": { "flex": "1", "fontSize": "1.1rem", "color": "#4d4d4d" }
+              "textContent": {
+                "$ref": "$map/item/text"
+              },
+              "style": {
+                "flex": "1",
+                "fontSize": "1.1rem",
+                "color": "#4d4d4d"
+              }
             }
           ]
         }
       }
     },
-
     {
       "tagName": "footer",
       "style": {
@@ -156,12 +190,16 @@
       "children": [
         {
           "tagName": "span",
-          "textContent": { "$ref": "#/$defs/$remainingLabel" }
+          "textContent": {
+            "$ref": "#/$defs/$remainingLabel"
+          }
         },
         {
           "tagName": "button",
           "textContent": "Clear completed",
-          "onclick": { "$ref": "#/$defs/clearDone" },
+          "onclick": {
+            "$ref": "#/$defs/clearDone"
+          },
           "style": {
             "padding": "0.25em 0.6em",
             "border": "1px solid #adb5bd",
@@ -170,7 +208,9 @@
             "cursor": "pointer",
             "fontSize": "0.8rem",
             "color": "#6c757d",
-            ":hover": { "backgroundColor": "#f8f9fa" }
+            ":hover": {
+              "backgroundColor": "#f8f9fa"
+            }
           }
         }
       ]

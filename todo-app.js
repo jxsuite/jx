@@ -33,7 +33,7 @@ export default {
    * @param {MouseEvent} _event
    */
   toggleItem(_event) {
-    const index = this.$todoIndex?.get?.() ?? -1;
+    const index = this.$todoIndex ?? -1;
     if (index < 0) return;
 
     this.$items.set(

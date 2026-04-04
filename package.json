@@ -4,17 +4,18 @@
   "description": "Declarative Document Object Model — JSON-native reactive web component runtime",
   "type": "module",
   "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/declarative-dom/ddom.git"
-  },
   "exports": {
-    ".": "./ddom.js",
-    "./effect": "./effect.js",
+    ".":          "./ddom.js",
+    "./effect":   "./effect.js",
     "./compiler": "./ddom-compiler.js",
-    "./schema": "./ddom-schema.js"
+    "./schema":   "./ddom-schema.js"
   },
-  "main": "./ddom.js",
+  "scripts": {
+    "dev":     "bun run server.js",
+    "build":   "bun build ddom.js --outdir dist --target browser --sourcemap linked",
+    "schema":  "bun run ddom-schema.js ddom-schema.json",
+    "compile": "bun run ddom-compiler.js"
+  },
   "files": [
     "ddom.js",
     "effect.js",
@@ -22,26 +23,9 @@
     "ddom-schema.js",
     "examples/"
   ],
-  "scripts": {
-    "schema": "node ddom-schema.js ddom-schema.json",
-    "compile": "node ddom-compiler.js"
-  },
   "dependencies": {
     "@apidevtools/json-schema-ref-parser": "^15.3.5",
     "jsonata": "^2.1.0",
     "signal-polyfill": "^0.2.2"
-  },
-  "devDependencies": {
-    "ajv": "^8.17.1",
-    "ajv-formats": "^3.0.1"
-  },
-  "keywords": [
-    "ddom",
-    "declarative-dom",
-    "reactive",
-    "signals",
-    "json",
-    "web-components",
-    "json-schema"
-  ]
+  }
 }
