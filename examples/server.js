@@ -72,7 +72,9 @@ const server = Bun.serve({
 
   async fetch(req) {
     const url  = new URL(req.url);
-    const path = url.pathname === '/' ? '/index.html' : url.pathname;
+    let path = url.pathname;
+    if (path.endsWith('/')) path += 'index.html';
+    else if (path === '') path = '/index.html';
 
     // SSE endpoint — each browser tab connects here
     if (path === '/__reload') {
@@ -112,6 +114,7 @@ const server = Bun.serve({
 });
 
 console.log(`\nhttp://localhost:${server.port}  (live reload active)`);
+console.log('  /studio/              ← JSONsx Studio');
 console.log('  /examples/todo/');
 console.log('  /examples/counter/');
 console.log('  /examples/computed/');
