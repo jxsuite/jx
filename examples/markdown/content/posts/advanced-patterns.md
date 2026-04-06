@@ -36,7 +36,7 @@ Glob a directory of markdown files and render them as a list:
   "$src": "@jsonsx/md",
   "src": "./content/posts/*.md",
   "sortBy": "frontmatter.date",
-  "timing": "server",
+  "timing": "compiler",
   "signal": true
 }
 ```
@@ -45,7 +45,7 @@ Glob a directory of markdown files and render them as a list:
 
 Embed custom elements directly in your markdown content using directive syntax.
 
-## Server-Side Compilation
+## Compile-Time Processing
 
 The JSONsx compiler produces five output tiers depending on how dynamic your component is:
 
@@ -56,4 +56,4 @@ The JSONsx compiler produces five output tiers depending on how dynamic your com
 | Signals + handlers | HTML + module script |
 | Server-timed Request | HTML with baked data |
 
-This means a blog built with `MarkdownCollection` and `timing: "server"` ships **zero JavaScript** for the index page.
+This means a blog built with `MarkdownCollection` and `timing: "compiler"` ships **zero JavaScript** for the index page.

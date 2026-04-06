@@ -33,7 +33,7 @@ Use `MarkdownCollection` to load all posts as a sorted array:
       "src": "./content/posts/*.md",
       "sortBy": "frontmatter.date",
       "sortOrder": "desc",
-      "timing": "server",
+      "timing": "compiler",
       "signal": true
     }
   }
@@ -51,7 +51,7 @@ Use `MarkdownFile` to parse a single post and inject its HTML body into your lay
       "$prototype": "MarkdownFile",
       "$src": "@jsonsx/md",
       "src": "./content/posts/first-post.md",
-      "timing": "server",
+      "timing": "compiler",
       "signal": true
     }
   }
@@ -71,4 +71,4 @@ Every markdown file's YAML frontmatter is parsed and available as `frontmatter.*
 
 ## Result
 
-With `timing: "server"`, the entire blog compiles to static HTML with zero client-side JavaScript. Progressive enhancement is automatic.
+With `timing: "compiler"`, the entire blog compiles to static HTML with zero client-side JavaScript. Progressive enhancement is automatic.

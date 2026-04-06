@@ -3,17 +3,11 @@
   "$id": "ExamplesIndex",
   "$defs": {
     "activeTab": { "type": "string", "default": "counter" },
-    "iframeSrc": { "type": "string", "default": "./counter/index.html" },
-    "sourceText": { "type": "string", "default": "Loading..." },
     "selectTab": {
       "$prototype": "Function",
-      "$src": "./index.js",
+      "arguments": ["event"],
+      "body": "const id = event.currentTarget.dataset.tab; if (id) $defs.activeTab = id;",
       "description": "Switch active example tab"
-    },
-    "onMount": {
-      "$prototype": "Function",
-      "$src": "./index.js",
-      "description": "Load initial source on mount"
     }
   },
   "tagName": "div",
@@ -40,14 +34,14 @@
       "children": {
         "$prototype": "Array",
         "items": [
-          { "id": "counter",   "label": "Counter"   },
-          { "id": "computed",  "label": "Computed"  },
-          { "id": "list",      "label": "List"      },
-          { "id": "fetch",     "label": "Fetch"     },
-          { "id": "switch",    "label": "Switch"    },
-          { "id": "form",      "label": "Form"      },
-          { "id": "responsive","label": "Responsive"},
-          { "id": "todo",      "label": "Todo"      }
+          { "id": "counter",    "label": "Counter"    },
+          { "id": "computed",   "label": "Computed"   },
+          { "id": "list",       "label": "List"       },
+          { "id": "fetch",      "label": "Fetch"      },
+          { "id": "switch",     "label": "Switch"     },
+          { "id": "form",       "label": "Form"       },
+          { "id": "responsive", "label": "Responsive" },
+          { "id": "todo",       "label": "Todo"       }
         ],
         "map": {
           "tagName": "button",
@@ -75,103 +69,23 @@
     {
       "tagName": "div",
       "style": {
-        "display": "flex",
         "flex": "1",
-        "overflow": "hidden",
+        "overflow": "auto",
         "minHeight": "0"
       },
-      "children": [
-        {
-          "tagName": "div",
-          "style": {
-            "flex": "1",
-            "borderRight": "1px solid #e0e0e0",
-            "overflow": "hidden",
-            "display": "flex",
-            "flexDirection": "column"
-          },
-          "children": [
-            {
-              "tagName": "div",
-              "style": {
-                "padding": "0.375rem 0.75rem",
-                "fontSize": "0.6875rem",
-                "fontWeight": "600",
-                "textTransform": "uppercase",
-                "letterSpacing": "0.05em",
-                "color": "#999",
-                "borderBottom": "1px solid #e0e0e0",
-                "background": "#fafafa",
-                "flexShrink": "0"
-              },
-              "textContent": "Preview"
-            },
-            {
-              "tagName": "iframe",
-              "src": { "$ref": "#/$defs/iframeSrc" },
-              "style": {
-                "flex": "1",
-                "border": "none",
-                "width": "100%"
-              }
-            }
-          ]
-        },
-        {
-          "tagName": "div",
-          "style": {
-            "flex": "1",
-            "overflow": "hidden",
-            "display": "flex",
-            "flexDirection": "column",
-            "background": "#1e1e1e"
-          },
-          "children": [
-            {
-              "tagName": "div",
-              "style": {
-                "padding": "0.375rem 0.75rem",
-                "fontSize": "0.6875rem",
-                "fontWeight": "600",
-                "textTransform": "uppercase",
-                "letterSpacing": "0.05em",
-                "color": "#888",
-                "borderBottom": "1px solid #333",
-                "background": "#252526",
-                "flexShrink": "0"
-              },
-              "textContent": "Source"
-            },
-            {
-              "tagName": "div",
-              "style": {
-                "flex": "1",
-                "overflow": "auto"
-              },
-              "children": [
-                {
-                  "tagName": "pre",
-                  "style": {
-                    "margin": "0",
-                    "padding": "1rem",
-                    "fontSize": "0.75rem",
-                    "lineHeight": "1.6",
-                    "color": "#d4d4d4",
-                    "fontFamily": "'Cascadia Code', 'Fira Code', 'Consolas', monospace",
-                    "tabSize": "2"
-                  },
-                  "children": [
-                    {
-                      "tagName": "code",
-                      "textContent": { "$ref": "#/$defs/sourceText" }
-                    }
-                  ]
-                }
-              ]
-            }
-          ]
+      "children": [{
+        "$switch": { "$ref": "#/$defs/activeTab" },
+        "cases": {
+          "counter":    { "$ref": "./counter/counter.json" },
+          "computed":   { "$ref": "./computed/user-card.json" },
+          "list":       { "$ref": "./list/dynamic-list.json" },
+          "fetch":      { "$ref": "./fetch/fetch-demo.json" },
+          "switch":     { "$ref": "./switch/router.json" },
+          "form":       { "$ref": "./form/contact-form.json" },
+          "responsive": { "$ref": "./responsive/responsive-card.json" },
+          "todo":       { "$ref": "./todo/todo-app.json" }
         }
-      ]
+      }]
     }
   ]
 }

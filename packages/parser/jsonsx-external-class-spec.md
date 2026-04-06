@@ -80,7 +80,7 @@ The answer is already present in the spec. `$handlers` already uses `$src` to lo
       "$prototype": "MarkdownCollection",
       "$src": "./lib/markdown-collection.js",
       "src": "./content/posts/*.md",
-      "timing": "server",
+      "timing": "compiler",
       "signal": true
     }
   }
@@ -272,7 +272,7 @@ Signal wrapping behavior for external classes is identical to built-in prototype
 | `true` | `"client"` | Yes | `Signal.State`, updated via `subscribe()` |
 | `false` / absent | — | — | Resolved once, not wrapped |
 
-The `timing` property determines *when* resolution occurs. For `timing: "server"`, the compiler calls `resolve()` at build time and replaces the `$defs` entry with a static value in the output. This is the mechanism by which content collections produce zero-JS static HTML.
+The `timing` property determines *when* resolution occurs. For `timing: "compiler"`, the compiler calls `resolve()` at build time and replaces the `$defs` entry with a static value in the output. This is the mechanism by which content collections produce zero-JS static HTML.
 
 ---
 
@@ -325,7 +325,7 @@ Render a single markdown file's content inside a JSONsx layout component. The ma
       "$prototype": "MarkdownFile",
       "$src": "@jsonsx/md",
       "src": "./content/about.md",
-      "timing": "server",
+      "timing": "compiler",
       "signal": true
     }
   }
@@ -377,7 +377,7 @@ Individual frontmatter values can be referenced directly via JSON Pointer fragme
 { "$ref": "#/$defs/$page/frontmatter/tags" }
 ```
 
-When the parent signal is `timing: "server"`, these references are resolved statically at compile time — the resulting HTML contains no JavaScript for reading frontmatter values.
+When the parent signal is `timing: "compiler"`, these references are resolved statically at compile time — the resulting HTML contains no JavaScript for reading frontmatter values.
 
 ### 9.5 Frontmatter-driven signals
 
@@ -390,7 +390,7 @@ Frontmatter values can also seed component signals for client-side reactivity:
       "$prototype": "MarkdownFile",
       "$src": "@jsonsx/md",
       "src": "./content/post.md",
-      "timing": "server",
+      "timing": "compiler",
       "signal": true
     },
     "$title": {
@@ -423,7 +423,7 @@ Glob a directory of markdown files and expose them as a reactive array for rende
       "sortBy": "frontmatter.date",
       "sortOrder": "desc",
       "limit": 10,
-      "timing": "server",
+      "timing": "compiler",
       "signal": true
     }
   }
@@ -441,7 +441,7 @@ Glob a directory of markdown files and expose them as a reactive array for rende
 | `sortOrder` | `"asc" \| "desc"` | `"desc"` | Sort direction |
 | `limit` | `integer` | No limit | Maximum items to return |
 | `filter` | `string` | No filter | JSONata expression evaluated against each item |
-| `timing` | `"server" \| "client"` | `"server"` | When to resolve the collection |
+| `timing` | `"compiler" \| "client"` | `"compiler"` | When to resolve the collection |
 
 ### 10.4 Rendering a post list
 
@@ -456,7 +456,7 @@ Glob a directory of markdown files and expose them as a reactive array for rende
       "src": "./content/posts/*.md",
       "sortBy": "frontmatter.date",
       "sortOrder": "desc",
-      "timing": "server",
+      "timing": "compiler",
       "signal": true
     }
   },
@@ -498,7 +498,7 @@ Glob a directory of markdown files and expose them as a reactive array for rende
 }
 ```
 
-With `timing: "server"`, the compiler resolves `$posts` at build time and renders this entire structure as static HTML. Zero JavaScript ships for this component.
+With `timing: "compiler"`, the compiler resolves `$posts` at build time and renders this entire structure as static HTML. Zero JavaScript ships for this component.
 
 ### 10.5 Filtering with JSONata
 
@@ -511,7 +511,7 @@ The `filter` property accepts a JSONata expression evaluated against each `Markd
   "src": "./content/posts/*.md",
   "filter": "frontmatter.published = true and 'web' in frontmatter.tags",
   "sortBy": "frontmatter.date",
-  "timing": "server",
+  "timing": "compiler",
   "signal": true
 }
 ```
@@ -619,7 +619,7 @@ When the JSONsx runtime loads and registers the custom element, it hydrates in p
       "$src": "@jsonsx/md",
       "src": "./content/posts/my-post.md",
       "directives": true,
-      "timing": "server",
+      "timing": "compiler",
       "signal": true
     }
   }
@@ -653,7 +653,7 @@ A complete blog post page demonstrating all three markdown integration modes tog
       "$src": "@jsonsx/md",
       "src": { "$ref": "#/$defs/$slug" },
       "directives": true,
-      "timing": "server",
+      "timing": "compiler",
       "signal": true
     },
     "$relatedPosts": {
@@ -663,7 +663,7 @@ A complete blog post page demonstrating all three markdown integration modes tog
       "filter": "slug != $slug and frontmatter.published = true",
       "sortBy": "frontmatter.date",
       "limit": 3,
-      "timing": "server",
+      "timing": "compiler",
       "signal": true
     },
     "onLoad": { "$handler": true }
@@ -819,7 +819,7 @@ When authoring a class for use as a JSONsx `$prototype` via `$src`:
 - [ ] Constructor accepts a single config object
 - [ ] Constructor config uses property names that are valid JSON keys and don't conflict with JSONsx reserved keywords
 - [ ] `resolve()` is async if the value requires I/O or network access
-- [ ] `resolve()` returns a JSON-serializable value (required for `timing: "server"`)
+- [ ] `resolve()` returns a JSON-serializable value (required for `timing: "compiler"`)
 - [ ] If reactive updates are needed, `subscribe(callback)` and `unsubscribe()` are implemented
 - [ ] The module exports are tree-shakable (don't bundle unneeded dependencies)
 - [ ] The class is documented with which config properties it accepts and what `resolve()` returns
