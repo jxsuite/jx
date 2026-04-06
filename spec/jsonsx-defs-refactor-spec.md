@@ -375,7 +375,7 @@ const $titleClass = new Signal.Computed(function $titleClass() {
       "$prototype": "MarkdownCollection",
       "$src": "@jsonsx/md",
       "src": "./content/posts/*.md",
-      "timing": "server",
+      "timing": "compiler",
       "signal": true
     },
     "$catalog": {
@@ -562,7 +562,7 @@ The flag is now unambiguous: it appears only where its presence changes behavior
 | `$switch` | Dynamic component switching |
 | `$map` | Iteration context namespace (read-only, inside Array children) |
 | `signal` | Reactive wrapping: required on `$prototype: "Function"` computed and external class entries |
-| `timing` | Execution timing: `"server"` or `"client"` |
+| `timing` | Execution timing: `"compiler"`, `"server"`, or `"client"` |
 | `default` | Initial value — discriminator for expanded signal shape (Shape 2) |
 | `body` | Inline function body |
 | `arguments` | Inline function parameter names |
@@ -632,7 +632,7 @@ All JSON Schema keywords on `$defs` entries are stripped before runtime emission
 | Naked value with `${}` references in document | Effect only |
 | Template string signal | Yes |
 | `$prototype: "Function"` | Yes |
-| External class with `timing: "server"` | No |
+| External class with `timing: "compiler"` | No |
 | External class with `timing: "client"` | Yes |
 | Pure type definition | No |
 
@@ -868,7 +868,7 @@ When creating a new JSONsx component:
 - **Update:** `isDynamic()`:
   - String with `${}` anywhere → dynamic
   - `$prototype: "Function"` → dynamic
-  - External class with `timing: "server"` → static
+  - External class with `timing: "compiler"` → static
   - Naked value with no `${}` references in document → static
 - **Update:** bundle manifest — collect unique `$src` values across all `Function` entries; emit one import per unique path
 

@@ -1,6 +1,6 @@
 /**
  * jsonsx-schema.js — JSONsx JSON Schema 2020-12 meta-schema generator
- * @version 0.1.0
+ * @version 1.0.0
  * @license MIT
  *
  * Generates a comprehensive JSON Schema 2020-12 document that validates JSONsx
@@ -12,12 +12,12 @@
  *   @webref/idl      — DOM EventHandler attribute names
  *
  * Usage:
- *   import { generateSchema } from './jsonsx-schema.js';
+ *   import { generateSchema } from './schema.js';
  *   const schema = await generateSchema();
- *   fs.writeFileSync('jsonsx-schema.json', JSON.stringify(schema, null, 2));
+ *   fs.writeFileSync('schema.json', JSON.stringify(schema, null, 2));
  *
  * CLI:
- *   bun run jsonsx-schema.js [output-path]
+ *   bun run schema.js [output-path]
  *
  * @module jsonsx-schema
  */
@@ -26,9 +26,10 @@ import { listAll as listElements } from '@webref/elements';
 import css                         from '@webref/css';
 import idl                         from '@webref/idl';
 
-// ─── $prototype values (JSONsx-specific, not from web standards) ──────────────
+// ─── Built-in $prototype values (JSONsx-specific, not from web standards) ─────
 
-const PROTOTYPES = [
+const BUILT_IN_PROTOTYPES = [
+  'Function',
   'Request', 'URLSearchParams', 'FormData',
   'LocalStorage', 'SessionStorage', 'Cookie',
   'IndexedDB', 'Array', 'Set', 'Map',
@@ -109,7 +110,7 @@ export async function generateSchema() {
       'Schema for JSONsx component files. ' +
       'A JSONsx document is a JSON object that declaratively describes a reactive ' +
       'web component: its structure (DOM tree), styling, reactive state ($defs), ' +
-      'and a reference to its companion JavaScript handler file.',
+      'and inline or external functions. Reactivity is powered by @vue/reactivity.',
     'type':     'object',
     'required': ['tagName'],
 
@@ -125,18 +126,20 @@ export async function generateSchema() {
         'type': 'string',
         'examples': ['Counter', 'TodoApp', 'UserCard'],
       },
-      '$handlers': {
-        'description':
-          'Relative path to the companion .js ES module that exports event handlers. ' +
-          'IDE CTRL-click navigation works natively.',
-        'type': 'string',
-        'examples': ['./counter.js', './components/my-widget.js'],
-      },
       '$defs': {
         'description':
-          'Signal and handler declarations for this component. ' +
-          '$-prefixed keys are signals; plain keys are handler declarations.',
+          'Signal, function, type, and data source declarations for this component. ' +
+          'All entries use plain camelCase names (no $ prefix). ' +
+          'Entry shape is determined by value type and reserved keywords.',
         '$ref': '#/$defs/DefsMap',
+      },
+      '$media': {
+        'description':
+          'Named media breakpoints following CSS @custom-media convention. ' +
+          'Keys use the CSS custom property -- prefix.',
+        'type': 'object',
+        'additionalProperties': { 'type': 'string' },
+        'examples': [{ '--sm': '(min-width: 640px)', '--md': '(min-width: 768px)', '--dark': '(prefers-color-scheme: dark)' }],
       },
       'tagName':    { '$ref': '#/$defs/TagName' },
       'children':   { '$ref': '#/$defs/ChildrenValue' },
@@ -150,84 +153,186 @@ export async function generateSchema() {
 
       // ── $defs map ──────────────────────────────────────────────────────────
       'DefsMap': {
-        'description': 'Map of signal, computed signal, handler, and prototype namespace declarations.',
+        'description':
+          'Map of signal, computed, function, type definition, and data source declarations. ' +
+          'Keys are plain camelCase (signals, functions) or PascalCase (type definitions).',
         'type': 'object',
         'additionalProperties': { '$ref': '#/$defs/DefEntry' },
       },
 
       'DefEntry': {
-        'description': 'A single $defs entry.',
+        'description':
+          'A single $defs entry. Shape is determined by value type: ' +
+          'scalar/array → naked signal, string with ${} → computed, ' +
+          'object with $prototype: "Function" → function, ' +
+          'object with $prototype: <other> → external class, ' +
+          'object with default → expanded signal, ' +
+          'object with schema keywords only → pure type definition, ' +
+          'plain object → naked object signal.',
         'oneOf': [
-          { '$ref': '#/$defs/StateSignalDef' },
-          { '$ref': '#/$defs/ComputedSignalDef' },
-          { '$ref': '#/$defs/HandlerDef' },
-          { '$ref': '#/$defs/PrototypeDef' },
+          // Shape 1: Naked value signal (scalar)
+          { 'type': 'number' },
+          { 'type': 'boolean' },
+          { 'type': 'null' },
+          { 'type': 'string' },
+          { 'type': 'array' },
+          // Shape 2: Expanded signal (object with default, no $prototype)
+          { '$ref': '#/$defs/ExpandedSignalDef' },
+          // Shape 2b: Pure type definition (schema keywords only)
+          { '$ref': '#/$defs/PureTypeDef' },
+          // Shape 4: Function ($prototype: "Function")
+          { '$ref': '#/$defs/FunctionDef' },
+          // Shape 5: External class ($prototype: <other>)
+          { '$ref': '#/$defs/ExternalClassDef' },
+          // Shape 1: Naked object signal (plain object, no reserved keys)
+          {
+            'type': 'object',
+            'not': {
+              'anyOf': [
+                { 'required': ['$prototype'] },
+                { 'required': ['default'] },
+                { 'required': ['type'] },
+                { 'required': ['properties'] },
+                { 'required': ['items'] },
+                { 'required': ['enum'] },
+              ],
+            },
+          },
         ],
       },
 
-      'StateSignalDef': {
-        'description': 'A reactive state signal. Wraps the default value in a Signal.State at runtime.',
+      // ── Shape 2: Expanded Signal ─────────────────────────────────────────
+      'ExpandedSignalDef': {
+        'description':
+          'A reactive state signal with JSON Schema type annotations. ' +
+          'The default keyword is the required discriminator — its value is the initial state. ' +
+          'signal: true must not be declared — it is implied by default.',
         'type': 'object',
-        'required': ['signal'],
+        'required': ['default'],
         'properties': {
-          'signal':      { 'type': 'boolean', 'const': true },
-          'type':        { '$ref': '#/$defs/JsonSchemaType' },
           'default':     { 'description': 'Initial signal value.' },
+          'type':        { '$ref': '#/$defs/JsonSchemaType' },
           'description': { 'type': 'string' },
+          'enum':        { 'type': 'array' },
+          'minimum':     { 'type': 'number' },
+          'maximum':     { 'type': 'number' },
+          'minLength':   { 'type': 'integer', 'minimum': 0 },
+          'maxLength':   { 'type': 'integer', 'minimum': 0 },
+          'pattern':     { 'type': 'string' },
+          'items':       {},
+          'properties':  { 'type': 'object' },
+          'required':    { 'type': 'array', 'items': { 'type': 'string' } },
+          'examples':    { 'type': 'array' },
+          '$ref':        { 'description': 'Reference to a shared type definition.', 'type': 'string' },
         },
-        'additionalProperties': false,
+        'not': { 'required': ['$prototype'] },
       },
 
-      'ComputedSignalDef': {
+      // ── Shape 2b: Pure Type Definition ───────────────────────────────────
+      'PureTypeDef': {
         'description':
-          'A read-only computed signal. Evaluated as a JSONata expression whenever any $dep changes.',
+          'A reusable JSON Schema type definition for tooling only. ' +
+          'No signal, no function, no runtime artifact. ' +
+          'Referenced by other $defs entries via $ref. ' +
+          'Naming convention: PascalCase.',
         'type': 'object',
-        'required': ['$compute', 'signal'],
+        'required': ['type'],
         'properties': {
-          '$compute': {
-            'description': 'JSONata expression. Dep signal values are available by their key name.',
+          'type':        { '$ref': '#/$defs/JsonSchemaType' },
+          'description': { 'type': 'string' },
+          'enum':        { 'type': 'array' },
+          'minimum':     { 'type': 'number' },
+          'maximum':     { 'type': 'number' },
+          'minLength':   { 'type': 'integer', 'minimum': 0 },
+          'maxLength':   { 'type': 'integer', 'minimum': 0 },
+          'pattern':     { 'type': 'string' },
+          'items':       {},
+          'properties':  { 'type': 'object' },
+          'required':    { 'type': 'array', 'items': { 'type': 'string' } },
+          'examples':    { 'type': 'array' },
+        },
+        'not': {
+          'anyOf': [
+            { 'required': ['default'] },
+            { 'required': ['$prototype'] },
+          ],
+        },
+      },
+
+      // ── Shape 4: Function ────────────────────────────────────────────────
+      'FunctionDef': {
+        'description':
+          'A function declaration. $prototype must be "Function". ' +
+          'body (inline) and $src (external) are mutually exclusive. ' +
+          'When signal: true, wraps in computed(). ' +
+          'First parameter is always $defs (the reactive scope).',
+        'type': 'object',
+        'required': ['$prototype'],
+        'properties': {
+          '$prototype': { 'type': 'string', 'const': 'Function' },
+          'body': {
+            'description': 'Inline function body string. First implicit parameter is $defs.',
             'type': 'string',
             'examples': [
-              '$count * 2',
-              '$firstName & \' \' & $lastName',
-              'count($items[done = false])',
+              '$defs.count++',
+              '$defs.items.push({ id: Date.now(), text: "", done: false })',
+              'return $defs.score >= 90 ? "gold" : "silver"',
             ],
           },
-          '$deps': {
-            'description': 'Explicit dependencies. Each entry is an #/$defs/ ref string.',
+          'arguments': {
+            'description': 'Additional parameter names after $defs.',
             'type': 'array',
-            'items': { '$ref': '#/$defs/InternalRef' },
+            'items': { 'type': 'string' },
+            'examples': [['event'], ['id'], ['event', 'index']],
           },
-          'signal':      { 'type': 'boolean', 'const': true },
-          'type':        { '$ref': '#/$defs/JsonSchemaType' },
+          'name': {
+            'description': 'Explicit function name. Defaults to the $defs key name.',
+            'type': 'string',
+          },
+          '$src': {
+            'description': 'External module specifier. Mutually exclusive with body.',
+            'type': 'string',
+            'examples': ['./counter.js', 'npm:@myorg/validators'],
+          },
+          '$export': {
+            'description': 'Named export in $src module. Defaults to the $defs key name.',
+            'type': 'string',
+          },
+          'signal': {
+            'description': 'When true, wraps the function in computed() — making it a reactive computed signal.',
+            'type': 'boolean',
+          },
           'description': { 'type': 'string' },
         },
         'additionalProperties': false,
       },
 
-      'HandlerDef': {
-        'description': 'Declares that this key must be exported from the $handlers module.',
-        'type': 'object',
-        'required': ['$handler'],
-        'properties': {
-          '$handler':    { 'type': 'boolean', 'const': true },
-          'description': { 'type': 'string' },
-        },
-        'additionalProperties': false,
-      },
-
-      'PrototypeDef': {
-        'description': 'A Web API namespace signal.',
+      // ── Shape 5: External Class ──────────────────────────────────────────
+      'ExternalClassDef': {
+        'description':
+          'An external class / data source. $prototype is a constructor name (not "Function"). ' +
+          'When $prototype is not in the built-in registry, $src is required. ' +
+          'When signal: true, the resolved value is wrapped in ref().',
         'type': 'object',
         'required': ['$prototype'],
         'properties': {
           '$prototype': {
-            'description': 'Web API constructor name identifying the namespace handler.',
+            'description': 'Constructor name — built-in Web API class or external class name.',
             'type': 'string',
-            'enum': PROTOTYPES,
+            'not': { 'const': 'Function' },
+            'examples': [...BUILT_IN_PROTOTYPES.filter(p => p !== 'Function'), 'MarkdownCollection', 'MyParser'],
+          },
+          '$src': {
+            'description': 'External module specifier. Required when $prototype is not a built-in.',
+            'type': 'string',
+            'examples': ['@jsonsx/md', './lib/my-parser.js', 'npm:@myorg/data'],
+          },
+          '$export': {
+            'description': 'Named export in $src module. Defaults to the $prototype value.',
+            'type': 'string',
           },
           'signal':       { 'type': 'boolean' },
-          'timing':       { 'type': 'string', 'enum': ['server', 'client'] },
+          'timing':       { 'type': 'string', 'enum': ['compiler', 'server', 'client'] },
           'manual':       { 'type': 'boolean' },
           'debounce':     { 'type': 'integer', 'minimum': 0 },
           'url':          { '$ref': '#/$defs/StringOrRef' },
@@ -266,6 +371,7 @@ export async function generateSchema() {
           'map':         { '$ref': '#/$defs/ElementDef' },
           'filter':      { '$ref': '#/$defs/RefObject' },
           'sort':        { '$ref': '#/$defs/RefObject' },
+          'src':         { 'description': 'Configuration property passed to external class constructor.', 'type': 'string' },
         },
       },
 
@@ -369,17 +475,18 @@ export async function generateSchema() {
       'StyleObject': {
         'description':
           'CSS style definition. camelCase property names follow CSSOM convention. ' +
-          'Keys starting with :, ., &, or [ are treated as nested CSS selectors.',
+          'Keys starting with :, ., &, or [ are treated as nested CSS selectors. ' +
+          'Keys matching $media breakpoint names are treated as responsive rules.',
         'type': 'object',
         // Known camelCase CSS properties give IDE autocompletion
         'properties': buildCssProperties(cssProps),
-        // Nested selectors and custom / unknown properties are still allowed
+        // Nested selectors, media breakpoints, and custom / unknown properties
         'additionalProperties': {
           'oneOf': [
             { 'type': 'string' },
             { 'type': 'number' },
             {
-              'description': 'Nested CSS selector rules.',
+              'description': 'Nested CSS selector or media breakpoint rules.',
               'type': 'object',
               'additionalProperties': { 'oneOf': [{ 'type': 'string' }, { 'type': 'number' }] },
             },
@@ -430,6 +537,7 @@ export async function generateSchema() {
           { '$ref': '#/$defs/InternalRef' },
           { '$ref': '#/$defs/ExternalRef' },
           { '$ref': '#/$defs/GlobalRef' },
+          { '$ref': '#/$defs/ParentRef' },
           { '$ref': '#/$defs/MapRef' },
         ],
       },
@@ -438,7 +546,7 @@ export async function generateSchema() {
         'description': 'Reference to a $defs entry in the current component.',
         'type': 'string',
         'pattern': '^#/\\$defs/',
-        'examples': ['#/$defs/$count', '#/$defs/increment'],
+        'examples': ['#/$defs/count', '#/$defs/increment', '#/$defs/items'],
       },
 
       'ExternalRef': {
@@ -462,6 +570,13 @@ export async function generateSchema() {
         'type': 'string',
         'pattern': '^(window|document)#/',
         'examples': ['window#/currentUser', 'document#/appConfig'],
+      },
+
+      'ParentRef': {
+        'description': 'Reference to a named signal passed via $props from a parent component.',
+        'type': 'string',
+        'pattern': '^parent#/',
+        'examples': ['parent#/sharedState', 'parent#/theme'],
       },
 
       'MapRef': {
@@ -588,7 +703,7 @@ export async function validateDocument(doc) {
 
 // ─── CLI ──────────────────────────────────────────────────────────────────────
 
-if (process.argv[1] && process.argv[1].endsWith('jsonsx-schema.js')) {
+if (process.argv[1] && process.argv[1].endsWith('schema.js')) {
   const [,, out] = process.argv;
   const schemaStr = await generateSchemaString();
 

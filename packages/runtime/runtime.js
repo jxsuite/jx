@@ -105,6 +105,7 @@ export async function buildScope(doc, parentScope = {}, base = location.href) {
     // 4. Object
     if (typeof def === 'object') {
       if (def.$prototype) continue; // handled in later passes
+      if (def.timing === 'server' && def.$src && def.$export) continue; // handled in fifth pass
       if ('default' in def) { raw[key] = def.default; continue; } // Shape 2: expanded signal
       if (hasSchemaKeywords(def)) continue; // Shape 2b: pure type def
       raw[key] = def; // Shape 1: plain object
@@ -132,6 +133,13 @@ export async function buildScope(doc, parentScope = {}, base = location.href) {
   for (const [key, def] of Object.entries(defs)) {
     if (typeof def === 'object' && def?.$prototype && def.$prototype !== 'Function') {
       $defs[key] = await resolvePrototype(def, $defs, key, base);
+    }
+  }
+
+  // Fifth pass: timing: "server" entries (dev mode — execute client-side, boundary unenforced)
+  for (const [key, def] of Object.entries(defs)) {
+    if (typeof def === 'object' && def.timing === 'server' && def.$src && def.$export && !def.$prototype) {
+      $defs[key] = await resolveServerFunction(def, $defs, key, base);
     }
   }
 
@@ -433,12 +441,29 @@ function renderMappedArray(def, $defs) {
 
 function renderSwitch(def, $defs) {
   const container = document.createElement(def.tagName ?? 'div');
+  let generation = 0;
 
   effect(() => {
     container.innerHTML = '';
     const key = resolveRef(def.$switch.$ref, $defs);
     const caseDef = def.cases?.[key];
-    if (caseDef) container.appendChild(renderNode(caseDef, $defs));
+    if (!caseDef) return;
+
+    if (isRefObj(caseDef)) {
+      // External $ref — fetch and render asynchronously
+      const gen = ++generation;
+      const href = new URL(caseDef.$ref, location.href).href;
+      resolve(href).then(async doc => {
+        if (gen !== generation) return;
+        const childScope = await buildScope(doc, {}, href);
+        if (gen !== generation) return;
+        container.innerHTML = '';
+        container.appendChild(renderNode(doc, childScope));
+      }).catch(e => console.error('JSONsx $switch: failed to load external case', caseDef.$ref, e));
+      return;
+    }
+
+    container.appendChild(renderNode(caseDef, $defs));
   });
 
   return container;
@@ -693,7 +718,63 @@ async function resolveExternalPrototype(def, $defs, key, base) {
   return value;
 }
 
-// ─── $ref resolution ─────────────────────────────────────────────────────────
+// ─── Server function resolution (dev mode) ────────────────────────────────────
+
+/**
+ * Resolve a timing: "server" entry in dev mode by executing the function client-side.
+ * In production, the compiler replaces this with a fetch to the generated server handler.
+ */
+async function resolveServerFunction(def, $defs, key, base) {
+  const src = def.$src;
+  const exportName = def.$export;
+
+  let mod;
+  if (_moduleCache.has(src)) {
+    mod = _moduleCache.get(src);
+  } else {
+    try {
+      mod = await import(src);
+    } catch {
+      if (base) {
+        const resolvedSrc = new URL(src, base).href;
+        mod = await import(resolvedSrc);
+      } else {
+        throw new Error(`JSONsx: failed to import '$src' "${src}" for "${key}"`);
+      }
+    }
+    _moduleCache.set(src, mod);
+  }
+
+  const fn = mod[exportName] ?? mod.default?.[exportName];
+  if (!fn) throw new Error(`JSONsx: export "${exportName}" not found in "${src}" for "${key}"`);
+  if (typeof fn !== 'function') throw new Error(`JSONsx: "${exportName}" from "${src}" is not a function`);
+
+  const rawArgs = def.arguments ?? {};
+  const hasReactiveArg = Object.values(rawArgs).some(v => isRefObj(v));
+  const resolveArgs = () => {
+    const args = {};
+    for (const [k, v] of Object.entries(rawArgs)) {
+      args[k] = isRefObj(v) ? resolveRef(v.$ref, $defs) : v;
+    }
+    return args;
+  };
+
+  if (def.signal) {
+    const state = ref(null);
+    if (hasReactiveArg) {
+      effect(() => {
+        const args = resolveArgs();
+        onEffectCleanup(() => {});
+        fn(args).then(result => { state.value = result; }).catch(() => {});
+      });
+    } else {
+      state.value = await fn(resolveArgs());
+    }
+    return state;
+  }
+
+  return await fn(resolveArgs());
+}
 
 /**
  * Resolve a $ref string to a value in scope.

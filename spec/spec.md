@@ -838,16 +838,24 @@ Web APIs are accessed via the `$prototype` keyword in a `$defs` entry:
 | `Blob` | Blob API | Reactive binary data |
 | `ReadableStream` | Streams API | Reactive stream creation |
 
-### 11.3 Server vs Client Timing
+### 11.3 Timing Values
 
-The `timing` field controls when a `Request` prototype executes:
+The `timing` field controls when a `$defs` entry is resolved. Three values are defined:
+
+| Value | When | Requires |
+|---|---|---|
+| `"compiler"` | Resolved at build time; result baked into emitted HTML | Static URL and all dependencies |
+| `"server"` | Resolved at runtime on the server via RPC; result stored in signal | `$src` + `$export`; no `$prototype` |
+| `"client"` | Resolved at runtime in the browser (default) | — |
+
+`timing: "compiler"` and `timing: "client"` apply to `$prototype`-based entries (`Request`, external classes). `timing: "server"` applies to entries with no `$prototype` — it designates a server function boundary (see §11.4).
 
 ```json
 {
   "$defs": {
     "posts": {
       "$prototype": "Request",
-      "timing": "server",
+      "timing": "compiler",
       "url": "/api/posts",
       "signal": true
     },
@@ -862,7 +870,84 @@ The `timing` field controls when a `Request` prototype executes:
 }
 ```
 
-`timing: "server"` is only valid when the URL and all dependencies are statically resolvable at build time. The compiler validates this constraint and bakes the response into the emitted HTML. `timing: "client"` (the default) executes at runtime in the browser.
+`timing: "compiler"` is only valid when the URL and all dependencies are statically resolvable at build time. The compiler validates this constraint and bakes the response into the emitted HTML. `timing: "client"` (the default) executes at runtime in the browser.
+
+---
+
+### 11.4 Server Timing — RPC Function Boundary
+
+`timing: "server"` designates a cross-process function call. Rather than referencing a built-in prototype constructor, the entry points to a named export in a server-side module via `$src` and `$export`. No `$prototype` is used — the presence of `timing: "server"` with `$src`/`$export` (and no `$prototype`) is the compiler's signal that this entry crosses a process boundary.
+
+```json
+{
+  "$defs": {
+    "$metrics": {
+      "$src": "./dashboard.server.js",
+      "$export": "fetchMetrics",
+      "timing": "server",
+      "signal": true
+    }
+  }
+}
+```
+
+The referenced function must be an async export in the `$src` module. It lives server-side and may safely access private credentials, environment variables, and server-only APIs:
+
+```js
+// dashboard.server.js
+import { createClient } from '@supabase/supabase-js'
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
+
+export async function fetchMetrics() {
+  const { data } = await supabase.from('metrics').select('*')
+  return data
+}
+```
+
+#### Arguments
+
+An optional `arguments` field passes named parameters to the server function as a JSON object. Keys map directly to the function's destructured parameter names. Values may be static literals or reactive `$ref` signal references:
+
+```json
+"$metrics": {
+  "$src": "./dashboard.server.js",
+  "$export": "fetchMetrics",
+  "timing": "server",
+  "signal": true,
+  "arguments": {
+    "userId": { "$ref": "#/$defs/$userId" },
+    "filter": "active"
+  }
+}
+```
+
+```js
+export async function fetchMetrics({ userId, filter }) {
+  const { data } = await supabase.from('metrics').select('*')
+    .eq('user_id', userId)
+    .eq('status', filter)
+  return data
+}
+```
+
+When any `arguments` value is a signal `$ref`, the call becomes reactive: the runtime re-invokes the server endpoint whenever the referenced signal changes, mirroring the behavior of `subscribe` on `timing: "client"` requests.
+
+#### Compiler Output
+
+For each `timing: "server"` entry, the compiler emits two artifacts:
+
+1. **Client-side** — a `POST /_jsonsx/server/$export` fetch call that stores the JSON response in the signal. If any `arguments` value is reactive, the fetch is wrapped in a signal effect.
+2. **Server-side** — a generated handler file (using Hono) that imports the `$export` from `$src` and exposes it at `/_jsonsx/server/$export`. Arguments are received as the parsed POST body.
+
+The user is responsible for deploying and running the generated server handler. The client code is emitted alongside the regular HTML/JS output.
+
+#### Security Boundary
+
+Private environment variables and server-only credentials remain in the server process. The browser receives only the function's serialized return value. The generated handler restricts the `/_jsonsx/server/` route to same-origin requests by default.
+
+#### Development Mode
+
+In the runtime (used during development), `timing: "server"` entries are executed client-side as if they were `timing: "client"`. The server process boundary is not enforced during development, allowing the full JSONsx runtime to operate without a separate server process.
 
 ---
 
@@ -879,7 +964,7 @@ The `timing` field controls when a `Request` prototype executes:
       "$prototype": "MarkdownCollection",
       "$src": "@jsonsx/md",
       "src": "./content/posts/*.md",
-      "timing": "server",
+      "timing": "compiler",
       "signal": true
     }
   }
@@ -1126,8 +1211,9 @@ Static detection is performed by a single recursive tree walk — no code execut
 | Naked value with `${}` references in document | HTML + effect only |
 | Template string signal | HTML + signal + effect |
 | `$prototype: "Function"` | HTML + function + handler wiring |
-| External class with `timing: "server"` | HTML with baked response data |
+| External class with `timing: "compiler"` | HTML with baked response data |
 | External class with `timing: "client"` | HTML + runtime hydration |
+| Server function (`timing: "server"`) | HTML + client fetch + generated server handler |
 | Pure type definition | No output |
 
 ### 16.3 Island Serialization
@@ -1221,7 +1307,7 @@ The following keys have special meaning in JSONsx and may not be used as element
 | `$map` | Iteration context namespace (read-only, inside Array children) |
 | `$media` | Named media breakpoint declarations (root-level) |
 | `signal` | Reactive wrapping: required on `$prototype: "Function"` computed and external class entries |
-| `timing` | Execution timing: `"server"` or `"client"` |
+| `timing` | Execution timing: `"compiler"`, `"server"`, or `"client"` |
 | `default` | Initial value — discriminator for expanded signal shape (Shape 2) |
 | `body` | Inline function body |
 | `arguments` | Inline function parameter names |

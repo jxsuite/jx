@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://jsonsx.dev/schema/v1",
   "title": "JSONsx Document",
-  "description": "Schema for JSONsx component files. A JSONsx document is a JSON object that declaratively describes a reactive web component: its structure (DOM tree), styling, reactive state ($defs), and a reference to its companion JavaScript handler file.",
+  "description": "Schema for JSONsx component files. A JSONsx document is a JSON object that declaratively describes a reactive web component: its structure (DOM tree), styling, reactive state ($defs), and inline or external functions. Reactivity is powered by @vue/reactivity.",
   "type": "object",
   "required": [
     "tagName"
@@ -24,17 +24,23 @@
         "UserCard"
       ]
     },
-    "$handlers": {
-      "description": "Relative path to the companion .js ES module that exports event handlers. IDE CTRL-click navigation works natively.",
-      "type": "string",
-      "examples": [
-        "./counter.js",
-        "./components/my-widget.js"
-      ]
-    },
     "$defs": {
-      "description": "Signal and handler declarations for this component. $-prefixed keys are signals; plain keys are handler declarations.",
+      "description": "Signal, function, type, and data source declarations for this component. All entries use plain camelCase names (no $ prefix). Entry shape is determined by value type and reserved keywords.",
       "$ref": "#/$defs/DefsMap"
+    },
+    "$media": {
+      "description": "Named media breakpoints following CSS @custom-media convention. Keys use the CSS custom property -- prefix.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      },
+      "examples": [
+        {
+          "--sm": "(min-width: 640px)",
+          "--md": "(min-width: 768px)",
+          "--dark": "(prefers-color-scheme: dark)"
+        }
+      ]
     },
     "tagName": {
       "$ref": "#/$defs/TagName"
@@ -54,117 +60,282 @@
   },
   "$defs": {
     "DefsMap": {
-      "description": "Map of signal, computed signal, handler, and prototype namespace declarations.",
+      "description": "Map of signal, computed, function, type definition, and data source declarations. Keys are plain camelCase (signals, functions) or PascalCase (type definitions).",
       "type": "object",
       "additionalProperties": {
         "$ref": "#/$defs/DefEntry"
       }
     },
     "DefEntry": {
-      "description": "A single $defs entry.",
+      "description": "A single $defs entry. Shape is determined by value type: scalar/array → naked signal, string with ${} → computed, object with $prototype: \"Function\" → function, object with $prototype: <other> → external class, object with default → expanded signal, object with schema keywords only → pure type definition, plain object → naked object signal.",
       "oneOf": [
         {
-          "$ref": "#/$defs/StateSignalDef"
+          "type": "number"
         },
         {
-          "$ref": "#/$defs/ComputedSignalDef"
+          "type": "boolean"
         },
         {
-          "$ref": "#/$defs/HandlerDef"
+          "type": "null"
         },
         {
-          "$ref": "#/$defs/PrototypeDef"
+          "type": "string"
+        },
+        {
+          "type": "array"
+        },
+        {
+          "$ref": "#/$defs/ExpandedSignalDef"
+        },
+        {
+          "$ref": "#/$defs/PureTypeDef"
+        },
+        {
+          "$ref": "#/$defs/FunctionDef"
+        },
+        {
+          "$ref": "#/$defs/ExternalClassDef"
+        },
+        {
+          "type": "object",
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "$prototype"
+                ]
+              },
+              {
+                "required": [
+                  "default"
+                ]
+              },
+              {
+                "required": [
+                  "type"
+                ]
+              },
+              {
+                "required": [
+                  "properties"
+                ]
+              },
+              {
+                "required": [
+                  "items"
+                ]
+              },
+              {
+                "required": [
+                  "enum"
+                ]
+              }
+            ]
+          }
         }
       ]
     },
-    "StateSignalDef": {
-      "description": "A reactive state signal. Wraps the default value in a Signal.State at runtime.",
+    "ExpandedSignalDef": {
+      "description": "A reactive state signal with JSON Schema type annotations. The default keyword is the required discriminator — its value is the initial state. signal: true must not be declared — it is implied by default.",
       "type": "object",
       "required": [
-        "signal"
+        "default"
       ],
       "properties": {
-        "signal": {
-          "type": "boolean",
-          "const": true
-        },
-        "type": {
-          "$ref": "#/$defs/JsonSchemaType"
-        },
         "default": {
           "description": "Initial signal value."
         },
-        "description": {
-          "type": "string"
-        }
-      },
-      "additionalProperties": false
-    },
-    "ComputedSignalDef": {
-      "description": "A read-only computed signal. Evaluated as a JSONata expression whenever any $dep changes.",
-      "type": "object",
-      "required": [
-        "$compute",
-        "signal"
-      ],
-      "properties": {
-        "$compute": {
-          "description": "JSONata expression. Dep signal values are available by their key name.",
-          "type": "string",
-          "examples": [
-            "$count * 2",
-            "$firstName & ' ' & $lastName",
-            "count($items[done = false])"
-          ]
-        },
-        "$deps": {
-          "description": "Explicit dependencies. Each entry is an #/$defs/ ref string.",
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/InternalRef"
-          }
-        },
-        "signal": {
-          "type": "boolean",
-          "const": true
-        },
         "type": {
           "$ref": "#/$defs/JsonSchemaType"
         },
         "description": {
           "type": "string"
-        }
-      },
-      "additionalProperties": false
-    },
-    "HandlerDef": {
-      "description": "Declares that this key must be exported from the $handlers module.",
-      "type": "object",
-      "required": [
-        "$handler"
-      ],
-      "properties": {
-        "$handler": {
-          "type": "boolean",
-          "const": true
         },
-        "description": {
+        "enum": {
+          "type": "array"
+        },
+        "minimum": {
+          "type": "number"
+        },
+        "maximum": {
+          "type": "number"
+        },
+        "minLength": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maxLength": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "pattern": {
+          "type": "string"
+        },
+        "items": {},
+        "properties": {
+          "type": "object"
+        },
+        "required": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "examples": {
+          "type": "array"
+        },
+        "$ref": {
+          "description": "Reference to a shared type definition.",
           "type": "string"
         }
       },
-      "additionalProperties": false
+      "not": {
+        "required": [
+          "$prototype"
+        ]
+      }
     },
-    "PrototypeDef": {
-      "description": "A Web API namespace signal.",
+    "PureTypeDef": {
+      "description": "A reusable JSON Schema type definition for tooling only. No signal, no function, no runtime artifact. Referenced by other $defs entries via $ref. Naming convention: PascalCase.",
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "$ref": "#/$defs/JsonSchemaType"
+        },
+        "description": {
+          "type": "string"
+        },
+        "enum": {
+          "type": "array"
+        },
+        "minimum": {
+          "type": "number"
+        },
+        "maximum": {
+          "type": "number"
+        },
+        "minLength": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maxLength": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "pattern": {
+          "type": "string"
+        },
+        "items": {},
+        "properties": {
+          "type": "object"
+        },
+        "required": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "examples": {
+          "type": "array"
+        }
+      },
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "default"
+            ]
+          },
+          {
+            "required": [
+              "$prototype"
+            ]
+          }
+        ]
+      }
+    },
+    "FunctionDef": {
+      "description": "A function declaration. $prototype must be \"Function\". body (inline) and $src (external) are mutually exclusive. When signal: true, wraps in computed(). First parameter is always $defs (the reactive scope).",
       "type": "object",
       "required": [
         "$prototype"
       ],
       "properties": {
         "$prototype": {
-          "description": "Web API constructor name identifying the namespace handler.",
           "type": "string",
-          "enum": [
+          "const": "Function"
+        },
+        "body": {
+          "description": "Inline function body string. First implicit parameter is $defs.",
+          "type": "string",
+          "examples": [
+            "$defs.count++",
+            "$defs.items.push({ id: Date.now(), text: \"\", done: false })",
+            "return $defs.score >= 90 ? \"gold\" : \"silver\""
+          ]
+        },
+        "arguments": {
+          "description": "Additional parameter names after $defs.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "examples": [
+            [
+              "event"
+            ],
+            [
+              "id"
+            ],
+            [
+              "event",
+              "index"
+            ]
+          ]
+        },
+        "name": {
+          "description": "Explicit function name. Defaults to the $defs key name.",
+          "type": "string"
+        },
+        "$src": {
+          "description": "External module specifier. Mutually exclusive with body.",
+          "type": "string",
+          "examples": [
+            "./counter.js",
+            "npm:@myorg/validators"
+          ]
+        },
+        "$export": {
+          "description": "Named export in $src module. Defaults to the $defs key name.",
+          "type": "string"
+        },
+        "signal": {
+          "description": "When true, wraps the function in computed() — making it a reactive computed signal.",
+          "type": "boolean"
+        },
+        "description": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ExternalClassDef": {
+      "description": "An external class / data source. $prototype is a constructor name (not \"Function\"). When $prototype is not in the built-in registry, $src is required. When signal: true, the resolved value is wrapped in ref().",
+      "type": "object",
+      "required": [
+        "$prototype"
+      ],
+      "properties": {
+        "$prototype": {
+          "description": "Constructor name — built-in Web API class or external class name.",
+          "type": "string",
+          "not": {
+            "const": "Function"
+          },
+          "examples": [
             "Request",
             "URLSearchParams",
             "FormData",
@@ -176,8 +347,23 @@
             "Set",
             "Map",
             "Blob",
-            "ReadableStream"
+            "ReadableStream",
+            "MarkdownCollection",
+            "MyParser"
           ]
+        },
+        "$src": {
+          "description": "External module specifier. Required when $prototype is not a built-in.",
+          "type": "string",
+          "examples": [
+            "@jsonsx/md",
+            "./lib/my-parser.js",
+            "npm:@myorg/data"
+          ]
+        },
+        "$export": {
+          "description": "Named export in $src module. Defaults to the $prototype value.",
+          "type": "string"
         },
         "signal": {
           "type": "boolean"
@@ -318,6 +504,10 @@
         },
         "sort": {
           "$ref": "#/$defs/RefObject"
+        },
+        "src": {
+          "description": "Configuration property passed to external class constructor.",
+          "type": "string"
         }
       }
     },
@@ -1696,7 +1886,7 @@
       }
     },
     "StyleObject": {
-      "description": "CSS style definition. camelCase property names follow CSSOM convention. Keys starting with :, ., &, or [ are treated as nested CSS selectors.",
+      "description": "CSS style definition. camelCase property names follow CSSOM convention. Keys starting with :, ., &, or [ are treated as nested CSS selectors. Keys matching $media breakpoint names are treated as responsive rules.",
       "type": "object",
       "properties": {
         "-webkit-align-content": {
@@ -17919,7 +18109,7 @@
             "type": "number"
           },
           {
-            "description": "Nested CSS selector rules.",
+            "description": "Nested CSS selector or media breakpoint rules.",
             "type": "object",
             "additionalProperties": {
               "oneOf": [
@@ -18007,6 +18197,9 @@
           "$ref": "#/$defs/GlobalRef"
         },
         {
+          "$ref": "#/$defs/ParentRef"
+        },
+        {
           "$ref": "#/$defs/MapRef"
         }
       ]
@@ -18016,8 +18209,9 @@
       "type": "string",
       "pattern": "^#/\\$defs/",
       "examples": [
-        "#/$defs/$count",
-        "#/$defs/increment"
+        "#/$defs/count",
+        "#/$defs/increment",
+        "#/$defs/items"
       ]
     },
     "ExternalRef": {
@@ -18050,6 +18244,15 @@
       "examples": [
         "window#/currentUser",
         "document#/appConfig"
+      ]
+    },
+    "ParentRef": {
+      "description": "Reference to a named signal passed via $props from a parent component.",
+      "type": "string",
+      "pattern": "^parent#/",
+      "examples": [
+        "parent#/sharedState",
+        "parent#/theme"
       ]
     },
     "MapRef": {
