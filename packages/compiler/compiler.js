@@ -1080,6 +1080,484 @@ function escapeHtml(str) {
     .replace(/'/g, '&#39;');
 }
 
+// ─── Custom Element compilation (§20.8) ───────────────────────────────────────
+
+/**
+ * Compile a JSONsx custom element document to a JS module string.
+ * The output is a self-registering ES module that:
+ *   - imports @vue/reactivity (reactive, computed, effect)
+ *   - imports lit-html (render, html)
+ *   - imports side-effect registrations for $elements dependencies
+ *   - defines class extends HTMLElement with reactive state
+ *   - calls customElements.define()
+ *
+ * @param {string | object} sourcePath - Path to .json file or raw object
+ * @param {object}          [opts]
+ * @param {string}          [opts.basePath]   - Base directory for resolving $elements refs
+ * @param {Function}        [opts.resolveElementPath] - Custom resolver for $elements paths
+ *   Receives (refPath, basePath) and returns the output .js path to import.
+ *   Default: replaces .json with .js and keeps relative structure.
+ * @returns {Promise<{ files: Array<{ path: string, content: string, tagName: string }> }>}
+ *   Array of files to write. First entry is always the root element.
+ */
+export async function compileElement(sourcePath, opts = {}) {
+  const { resolveElementPath } = opts;
+  const files = [];
+  const visited = new Set();
+
+  async function processElement(srcPath, parentDir) {
+    let doc, filePath;
+    if (typeof srcPath === 'string') {
+      const { readFileSync } = await import('node:fs');
+      const { resolve, dirname, basename } = await import('node:path');
+      filePath = parentDir ? resolve(parentDir, srcPath) : resolve(srcPath);
+      if (visited.has(filePath)) return;
+      visited.add(filePath);
+      doc = JSON.parse(readFileSync(filePath, 'utf8'));
+    } else {
+      doc = srcPath;
+      filePath = null;
+      if (visited.has(doc.tagName)) return;
+      visited.add(doc.tagName);
+    }
+
+    const tagName = doc.tagName;
+    if (!tagName || !tagName.includes('-')) {
+      throw new Error(`compileElement: tagName "${tagName}" must contain a hyphen`);
+    }
+
+    const { dirname: dn, basename: bn } = await import('node:path');
+    const currentDir = filePath ? dn(filePath) : null;
+
+    // Process $elements dependencies depth-first
+    const elementImports = [];
+    if (Array.isArray(doc.$elements)) {
+      for (const elRef of doc.$elements) {
+        const refPath = elRef.$ref ?? elRef;
+        if (typeof refPath !== 'string') continue;
+
+        if (currentDir) {
+          await processElement(refPath, currentDir);
+        }
+
+        // Determine the import path for this dependency
+        let importPath;
+        if (resolveElementPath) {
+          importPath = resolveElementPath(refPath, currentDir);
+        } else {
+          importPath = refPath.replace(/\.json$/, '.js');
+        }
+        elementImports.push(importPath);
+      }
+    }
+
+    // Generate the JS module
+    const className = tagNameToClassName(tagName);
+    const jsContent = emitElementModule(doc, className, elementImports);
+
+    const outputPath = filePath
+      ? filePath.replace(/\.json$/, '.js')
+      : `${tagName}.js`;
+
+    files.push({ path: outputPath, content: jsContent, tagName });
+  }
+
+  await processElement(sourcePath, opts.basePath ?? null);
+  return { files };
+}
+
+/**
+ * Compile a JSONsx custom element document to a complete HTML page
+ * with an import map for CDN dependencies.
+ *
+ * @param {string | object} sourcePath
+ * @param {object} [opts]
+ * @param {string} [opts.title]
+ * @param {string} [opts.reactivitySrc]
+ * @param {string} [opts.litHtmlSrc]
+ * @returns {Promise<{ html: string, files: Array<{ path: string, content: string, tagName: string }> }>}
+ */
+export async function compileElementPage(sourcePath, opts = {}) {
+  const {
+    title = 'JSONsx App',
+    reactivitySrc = 'https://esm.sh/@vue/reactivity@3.5.13',
+    litHtmlSrc = 'https://esm.sh/lit-html@3.3.0',
+  } = opts;
+
+  const result = await compileElement(sourcePath, opts);
+
+  // Root element is the last one processed (depth-first, root last)
+  const root = result.files[result.files.length - 1];
+
+  const { basename } = await import('node:path');
+  const rootScript = basename(root.path);
+
+  const htmlContent = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${escapeHtml(title)}</title>
+  <script type="importmap">
+  {
+    "imports": {
+      "@vue/reactivity": "${reactivitySrc}",
+      "lit-html": "${litHtmlSrc}"
+    }
+  }
+  </script>
+</head>
+<body>
+  <${root.tagName}></${root.tagName}>
+  <script type="module" src="./${rootScript}"></script>
+</body>
+</html>`;
+
+  return { html: htmlContent, files: result.files };
+}
+
+// ─── Element code generation helpers ──────────────────────────────────────────
+
+function tagNameToClassName(tagName) {
+  return tagName
+    .split('-')
+    .map(s => s.charAt(0).toUpperCase() + s.slice(1))
+    .join('');
+}
+
+/**
+ * Generate a complete ES module string for a custom element.
+ */
+function emitElementModule(doc, className, elementImports) {
+  const lines = [];
+
+  lines.push('// Generated by @jsonsx/compiler — do not edit manually');
+  if (doc.$id) lines.push(`// Source: ${doc.$id}`);
+
+  // Side-effect imports for sub-elements
+  for (const imp of elementImports) {
+    lines.push(`import '${imp}';`);
+  }
+
+  lines.push(`import { reactive, computed, effect } from '@vue/reactivity';`);
+  lines.push(`import { render, html } from 'lit-html';`);
+  lines.push('');
+  lines.push(`class ${className} extends HTMLElement {`);
+  lines.push('  #dispose = null;');
+  lines.push('');
+
+  // Constructor: build reactive state
+  lines.push('  constructor() {');
+  lines.push('    super();');
+
+  const defs = doc.$defs ?? {};
+  const stateEntries = [];
+  const computedEntries = [];
+  const functionEntries = [];
+
+  for (const [key, def] of Object.entries(defs)) {
+    if (def && typeof def === 'object' && !Array.isArray(def) && def.$prototype === 'Function') {
+      if (def.signal) {
+        computedEntries.push([key, def]);
+      } else {
+        functionEntries.push([key, def]);
+      }
+    } else {
+      stateEntries.push([key, def]);
+    }
+  }
+
+  // Emit reactive({...}) with initial state values
+  lines.push('    this.state = reactive({');
+  for (const [key, def] of stateEntries) {
+    lines.push(`      ${key}: ${JSON.stringify(def)},`);
+  }
+  lines.push('    });');
+
+  // Emit functions: this.state.fnName = ($defs) => { body }
+  for (const [key, def] of functionEntries) {
+    lines.push('');
+    const args = def.arguments ?? ['$defs'];
+    // If body references $defs but first arg is named differently, keep as-is
+    const paramList = args.join(', ');
+    lines.push(`    this.state.${key} = (${paramList}) => {`);
+    lines.push(`      ${def.body}`);
+    lines.push('    };');
+  }
+
+  // Emit computed signals
+  for (const [key, def] of computedEntries) {
+    lines.push('');
+    lines.push(`    this.state.${key} = computed(() => {`);
+    // Replace $defs references with this.state references
+    const body = def.body.replace(/\$defs\./g, 'this.state.');
+    lines.push(`      ${body}`);
+    lines.push('    });');
+  }
+
+  lines.push('  }'); // end constructor
+  lines.push('');
+
+  // Template method
+  lines.push('  template() {');
+  lines.push('    const s = this.state;');
+  lines.push('    return html`');
+  lines.push(emitLitChildren(doc.children, doc.style, '      '));
+  lines.push('    `;');
+  lines.push('  }');
+  lines.push('');
+
+  // connectedCallback
+  lines.push('  connectedCallback() {');
+  lines.push('    for (const key of Object.keys(this.state)) {');
+  lines.push('      if (key in this && this[key] !== undefined) {');
+  lines.push('        this.state[key] = this[key];');
+  lines.push('      }');
+  lines.push('    }');
+  lines.push('    this.#dispose = effect(() => render(this.template(), this));');
+  lines.push('  }');
+  lines.push('');
+
+  // disconnectedCallback
+  lines.push('  disconnectedCallback() {');
+  lines.push('    if (this.#dispose) { this.#dispose(); this.#dispose = null; }');
+  lines.push('  }');
+
+  lines.push('}');
+  lines.push('');
+  lines.push(`customElements.define('${doc.tagName}', ${className});`);
+  lines.push('');
+
+  return lines.join('\n');
+}
+
+/**
+ * Convert JSONsx children to lit-html template content.
+ */
+function emitLitChildren(children, parentStyle, indent) {
+  if (!children) return '';
+
+  // Mapped array: children.$prototype === 'Array'
+  if (children.$prototype === 'Array') {
+    return emitMappedArray(children, indent);
+  }
+
+  if (!Array.isArray(children)) return '';
+
+  return children.map(child => emitLitNode(child, indent)).join('\n');
+}
+
+function emitLitNode(def, indent) {
+  const tag = def.tagName ?? 'div';
+  const isCustom = tag.includes('-');
+
+  // Collect attribute/property/event strings
+  const parts = [];
+
+  // Static attributes
+  if (def.attributes) {
+    for (const [key, val] of Object.entries(def.attributes)) {
+      if (typeof val === 'string' && val.includes('${')) {
+        // Dynamic attribute — skip at compile time (use lit expression)
+        parts.push(`${key}="${toLitExpr(val)}"`);
+      } else {
+        parts.push(`${key}="${val}"`);
+      }
+    }
+  }
+
+  if (def.id) parts.push(`id="${def.id}"`);
+  if (def.className) parts.push(`class="${def.className}"`);
+
+  // Properties via $ref or literal
+  for (const [key, val] of Object.entries(def)) {
+    if (RESERVED_KEYS.has(key) || key.startsWith('$') || key.startsWith('on') ||
+        key === 'tagName' || key === 'id' || key === 'className' ||
+        key === 'style' || key === 'children' || key === 'textContent' ||
+        key === 'innerHTML' || key === 'attributes') continue;
+
+    if (val && typeof val === 'object' && val.$ref) {
+      parts.push(`.${key}="\${${refToExpr(val.$ref)}}"`);
+    } else if (typeof val === 'string' && val.includes('${')) {
+      parts.push(`.${key}="${toLitExpr(val)}"`);
+    }
+  }
+
+  // $props for custom elements
+  if (def.$props) {
+    for (const [key, val] of Object.entries(def.$props)) {
+      if (val && typeof val === 'object' && val.$ref) {
+        parts.push(`.${key}="\${${refToExpr(val.$ref)}}"`);
+      } else {
+        parts.push(`.${key}="\${${JSON.stringify(val)}}"`);
+      }
+    }
+  }
+
+  // Events
+  for (const [key, val] of Object.entries(def)) {
+    if (!key.startsWith('on') || key === 'observedAttributes') continue;
+    const eventName = key.slice(2).toLowerCase();
+    if (val && typeof val === 'object' && val.$ref) {
+      // $ref to a function in $defs
+      parts.push(`@${eventName}="\${(e) => ${refToExpr(val.$ref)}(s, e)}"`);
+    } else if (val && typeof val === 'object' && val.$prototype === 'Function') {
+      // Inline function
+      parts.push(`@${eventName}="\${(e) => { ${inlineHandlerBody(val)} }}"`);
+    }
+  }
+
+  // Style
+  const styleStr = emitStyleString(def.style);
+  if (styleStr) parts.push(`style="${styleStr}"`);
+
+  const attrsStr = parts.length > 0 ? '\n' + indent + '  ' + parts.join('\n' + indent + '  ') : '';
+
+  // Self-closing tags
+  const selfClosing = new Set(['input', 'br', 'hr', 'img', 'meta', 'link']);
+  if (selfClosing.has(tag)) {
+    return `${indent}<${tag}${attrsStr}\n${indent}>`;
+  }
+
+  // Inner content
+  let inner = '';
+  if (def.textContent !== undefined) {
+    inner = toLitTextContent(def.textContent);
+  } else if (def.innerHTML !== undefined) {
+    inner = def.innerHTML;
+  } else if (def.children) {
+    inner = '\n' + emitLitChildren(def.children, def.style, indent + '  ') + '\n' + indent;
+  }
+
+  return `${indent}<${tag}${attrsStr}\n${indent}>${inner}</${tag}>`;
+}
+
+function emitMappedArray(arrayDef, indent) {
+  const itemsExpr = arrayDef.items?.$ref ? refToExpr(arrayDef.items.$ref) : 'ITEMS';
+  const mapDef = arrayDef.map;
+
+  if (!mapDef) return '';
+
+  // Generate the map expression
+  const tag = mapDef.tagName ?? 'div';
+  const isCustom = tag.includes('-');
+
+  const parts = [];
+
+  // $props
+  if (mapDef.$props) {
+    for (const [key, val] of Object.entries(mapDef.$props)) {
+      if (val && typeof val === 'object' && val.$ref) {
+        parts.push(`.${key}="\${${mapRefToExpr(val.$ref)}}"`);
+      } else {
+        parts.push(`.${key}="\${${JSON.stringify(val)}}"`);
+      }
+    }
+  }
+
+  // Style
+  const styleStr = emitStyleString(mapDef.style);
+  if (styleStr) parts.push(`style="${styleStr}"`);
+
+  // Events
+  for (const [key, val] of Object.entries(mapDef)) {
+    if (!key.startsWith('on')) continue;
+    const eventName = key.slice(2).toLowerCase();
+    if (val && typeof val === 'object' && val.$ref) {
+      parts.push(`@${eventName}="\${(e) => ${refToExpr(val.$ref)}(s, e)}"`);
+    }
+  }
+
+  const attrsStr = parts.length > 0 ? '\n' + indent + '    ' + parts.join('\n' + indent + '    ') : '';
+
+  let inner = '';
+  if (mapDef.textContent !== undefined) {
+    inner = toLitTextContent(mapDef.textContent);
+  } else if (mapDef.children) {
+    inner = '\n' + emitLitChildren(mapDef.children, null, indent + '      ') + '\n' + indent + '    ';
+  }
+
+  return `${indent}\${${itemsExpr}.map((item, index) => html\`\n${indent}  <${tag}${attrsStr}\n${indent}  >${inner}</${tag}>\n${indent}\`)}`;
+}
+
+/**
+ * Convert a $ref string to a JS expression using `s` (this.state alias).
+ */
+function refToExpr(ref) {
+  if (ref.startsWith('#/$defs/')) {
+    const path = ref.slice('#/$defs/'.length);
+    return 's.' + path.replace(/\//g, '.');
+  }
+  if (ref.startsWith('$map/')) {
+    const path = ref.slice('$map/'.length);
+    return path.replace(/\//g, '.');
+  }
+  return 's.' + ref;
+}
+
+/**
+ * Convert a $ref inside a mapped array context.
+ * $map/item → item, $map/index → index, #/$defs/x → s.x
+ */
+function mapRefToExpr(ref) {
+  if (ref.startsWith('$map/')) {
+    return ref.slice('$map/'.length).replace(/\//g, '.');
+  }
+  return refToExpr(ref);
+}
+
+/**
+ * Convert a JSONsx template string "${$defs.xxx}" to a lit-html expression.
+ * Replaces $defs. references with s. references.
+ */
+function toLitExpr(str) {
+  return str.replace(/\$defs\./g, 's.');
+}
+
+function toLitTextContent(value) {
+  if (typeof value === 'string' && value.includes('${')) {
+    return toLitExpr(value);
+  }
+  return String(value);
+}
+
+/**
+ * Convert an inline $prototype: "Function" handler to a JS body string.
+ * Replaces $defs references with s references.
+ */
+function inlineHandlerBody(def) {
+  const body = def.body ?? '';
+  // Map $defs to s, and event arg
+  return body.replace(/\$defs\./g, 's.').replace(/\$defs/g, 's');
+}
+
+/**
+ * Convert a JSONsx style object to an inline style string for lit-html.
+ * Handles both static values and ${} template expressions.
+ */
+function emitStyleString(styleDef) {
+  if (!styleDef || typeof styleDef !== 'object') return '';
+
+  const parts = [];
+  for (const [prop, value] of Object.entries(styleDef)) {
+    // Skip nested selectors (:hover, .class, &, @media)
+    if (prop.startsWith(':') || prop.startsWith('.') ||
+        prop.startsWith('&') || prop.startsWith('[') ||
+        prop.startsWith('@')) continue;
+
+    if (value === null || typeof value === 'object') continue;
+
+    const cssProp = camelToKebab(prop);
+    if (typeof value === 'string' && value.includes('${')) {
+      parts.push(`${cssProp}: ${toLitExpr(value)}`);
+    } else {
+      parts.push(`${cssProp}: ${value}`);
+    }
+  }
+
+  return parts.join('; ');
+}
+
 // ─── CLI ──────────────────────────────────────────────────────────────────────
 
 if (process.argv[2]) {

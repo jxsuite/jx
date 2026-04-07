@@ -10,9 +10,9 @@
  *   node compile.js
  */
 
-import { compile, compileServer } from '@jsonsx/compiler';
+import { compile, compileServer, compileElement, compileElementPage } from '@jsonsx/compiler';
 import { readFileSync, writeFileSync, mkdirSync, copyFileSync, rmSync } from 'node:fs';
-import { resolve, dirname, relative } from 'node:path';
+import { resolve, dirname, relative, basename } from 'node:path';
 
 const __dir = import.meta.dir ?? dirname(new URL(import.meta.url).pathname);
 const DIST_DIR = resolve(__dir, 'dist');
@@ -180,4 +180,46 @@ for (const ex of examples) {
 }
 
 console.log(`\nCompiled ${ok} example(s)${fail ? `, ${fail} failed` : ''}.`);
-if (fail) process.exit(1);
+
+// ─── Custom Element compilation ───────────────────────────────────────────────
+
+const elementExamples = [
+  {
+    name: 'custom-elements',
+    src: resolve(__dir, 'custom-elements/task-manager.json'),
+    outDir: resolve(__dir, 'dist/custom-elements'),
+    title: 'Task Manager — Compiled Output (No JSONsx Runtime)',
+  },
+];
+
+let elOk = 0;
+let elFail = 0;
+
+for (const ex of elementExamples) {
+  try {
+    const { html, files } = await compileElementPage(ex.src, { title: ex.title });
+
+    mkdirSync(ex.outDir, { recursive: true });
+
+    // Write component JS files
+    for (const file of files) {
+      const relPath = relative(dirname(ex.src), file.path).replace(/\.json$/, '.js');
+      const outPath = resolve(ex.outDir, relPath);
+      mkdirSync(dirname(outPath), { recursive: true });
+      writeFileSync(outPath, file.content, 'utf8');
+      console.log(`   ${''.padEnd(12)}   ${relative(__dir, outPath)}  (${file.tagName})`);
+    }
+
+    // Write index.html
+    const htmlPath = resolve(ex.outDir, 'index.html');
+    writeFileSync(htmlPath, html, 'utf8');
+    console.log(`✓  ${ex.name.padEnd(12)} → ${relative(__dir, htmlPath)}`);
+    elOk++;
+  } catch (err) {
+    console.error(`✗  ${ex.name}: ${err.message}`);
+    elFail++;
+  }
+}
+
+if (elOk) console.log(`Compiled ${elOk} custom element example(s)${elFail ? `, ${elFail} failed` : ''}.`);
+if (fail || elFail) process.exit(1);
