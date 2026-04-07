@@ -1,4 +1,6 @@
-node_modules/
-dist/
-*.local
+.devenv
+.direnv
 .DS_Store
+*.local
+dist/
+node_modules/

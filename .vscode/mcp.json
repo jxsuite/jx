@@ -1,0 +1,13 @@
+{
+	"servers": {
+		"chrome-devtools-non-nixos": {
+			"command": "bunx",
+			"args": [
+				"chrome-devtools-mcp",
+			],
+		},
+		"chrome-devtools-nixos": {
+			"command": "chrome-devtools-mcp",
+		}
+	}
+}

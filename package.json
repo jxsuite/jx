@@ -10,5 +10,8 @@
     "generate:schema": "bun run --cwd packages/schema schema",
     "test": "bun test",
     "test:coverage": "bun test --coverage"
+  },
+  "devDependencies": {
+    "chrome-devtools-mcp": "^0.21.0"
   }
 }
