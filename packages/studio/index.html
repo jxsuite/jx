@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>JSONsx Studio</title>
+  <link rel="stylesheet" href="./dist/studio.css">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
@@ -37,6 +38,7 @@
     /* ─── Canvas (multi-panel) ────────────────────── */
     #canvas-wrap { display: flex; gap: 24px; padding: 16px; align-items: flex-start; }
     .canvas-panel { flex-shrink: 0; }
+    .source-editor { width: 100%; height: 100%; }
     .canvas-panel-header { padding: 4px 8px; font-size: 11px; color: var(--fg-dim); background: var(--bg-panel); border: 1px solid var(--border); border-bottom: none; border-radius: var(--radius) var(--radius) 0 0; text-align: center; cursor: pointer; user-select: none; font-family: 'SF Mono', 'Fira Code', monospace; }
     .canvas-panel-header.active { color: var(--accent); border-color: var(--accent); }
     .canvas-panel-viewport { position: relative; background: #fff; border: 1px solid var(--border); overflow: hidden; min-height: 200px; }

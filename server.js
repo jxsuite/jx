@@ -13,20 +13,20 @@ await createDevServer({
   builds: [
     {
       entrypoints: ['./packages/runtime/runtime.js'],
-      outdir: './dist',
-      match: /runtime|effect\.js/,
+      outdir: './packages/runtime/dist',
+      match: /runtime\.js/,
       label: 'runtime',
     },
     {
       entrypoints: ['./packages/studio/studio.js'],
-      outdir: './dist/studio',
+      outdir: './packages/studio/dist',
       match: /studio/,
       label: 'studio',
     },
   ],
 });
 
-console.log('  /studio/              ← JSONsx Studio');
+console.log('  /packages/studio/              ← JSONsx Studio');
 console.log('  /examples/todo/');
 console.log('  /examples/counter/');
 console.log('  /examples/computed/');

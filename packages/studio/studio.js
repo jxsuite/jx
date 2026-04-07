@@ -44,6 +44,7 @@ import {
 
 import webdata from './webdata.json';
 import cssMeta from './css-meta.json';
+import * as monaco from 'monaco-editor/esm/vs/editor/editor.api';
 
 // ─── Globals ──────────────────────────────────────────────────────────────────
 
@@ -83,6 +84,12 @@ let canvasPanels = [];
 
 /** Whether the canvas is in preview mode (live interactivity) vs edit mode */
 let previewMode = false;
+
+/** Whether the canvas is replaced by the Monaco source editor */
+let sourceMode = false;
+
+/** Active Monaco editor instance (or null when in canvas mode) */
+let monacoEditor = null;
 
 /** Cached $defs scope from last runtime render */
 let liveScope = null;
@@ -279,11 +286,78 @@ function applyCanvasStyle(el, styleDef, activeBreakpoints, featureToggles) {
 // ─── Canvas ───────────────────────────────────────────────────────────────────
 
 function renderCanvas() {
+  // Source mode: update existing Monaco editor without recreating
+  if (sourceMode && monacoEditor) {
+    const jsonStr = JSON.stringify(S.document, null, 2);
+    const currentVal = monacoEditor.getValue();
+    if (currentVal !== jsonStr) {
+      // Prevent triggering the onChange handler for this programmatic update
+      monacoEditor._ignoreNextChange = true;
+      monacoEditor.setValue(jsonStr);
+    }
+    return;
+  }
+
   // Clean up previous canvas DnD registrations
   for (const fn of canvasDndCleanups) fn();
   canvasDndCleanups = [];
   canvasPanels = [];
+
+  // Dispose Monaco editor if switching away from source mode
+  if (monacoEditor) {
+    monacoEditor.dispose();
+    monacoEditor = null;
+  }
+
   canvasWrap.innerHTML = '';
+
+  // Source mode: create Monaco editor instead of canvas
+  if (sourceMode) {
+    canvasWrap.style.padding = '0';
+    const editorContainer = document.createElement('div');
+    editorContainer.className = 'source-editor';
+    canvasWrap.appendChild(editorContainer);
+
+    const jsonStr = JSON.stringify(S.document, null, 2);
+    monacoEditor = monaco.editor.create(editorContainer, {
+      value: jsonStr,
+      language: 'json',
+      theme: 'vs-dark',
+      automaticLayout: true,
+      minimap: { enabled: false },
+      fontSize: 12,
+      fontFamily: "'SF Mono', 'Fira Code', 'Consolas', monospace",
+      lineNumbers: 'on',
+      scrollBeyondLastLine: false,
+      wordWrap: 'on',
+      tabSize: 2,
+    });
+
+    // Debounced sync back to state
+    let debounce;
+    monacoEditor.onDidChangeModelContent(() => {
+      if (monacoEditor._ignoreNextChange) {
+        monacoEditor._ignoreNextChange = false;
+        return;
+      }
+      clearTimeout(debounce);
+      debounce = setTimeout(() => {
+        try {
+          const parsed = JSON.parse(monacoEditor.getValue());
+          S = { ...S, document: parsed, dirty: true };
+          renderToolbar();
+          renderLeftPanel();
+          renderRightPanel();
+        } catch {
+          // Invalid JSON — don't update state
+        }
+      }, 600);
+    });
+    return;
+  }
+
+  // Normal canvas mode — restore padding
+  canvasWrap.style.padding = '';
 
   const { sizeBreakpoints, featureQueries } = parseMediaEntries(S.document.$media);
   const hasMedia = sizeBreakpoints.length > 0;
@@ -1771,7 +1845,7 @@ function renderRightPanel() {
   // Tabs
   const tabs = document.createElement('div');
   tabs.className = 'panel-tabs';
-  for (const t of ['properties', 'source', 'handlers']) {
+  for (const t of ['properties', 'style', 'handlers']) {
     const btn = document.createElement('div');
     btn.className = `panel-tab${t === tab ? ' active' : ''}`;
     btn.textContent = t;
@@ -1785,7 +1859,7 @@ function renderRightPanel() {
   rightPanel.appendChild(body);
 
   if (tab === 'properties') renderInspector(body);
-  else if (tab === 'source') renderSourceView(body);
+  else if (tab === 'style') renderStylePanel(body);
   else if (tab === 'handlers') renderHandlersView(body);
 }
 
@@ -1830,14 +1904,6 @@ function renderInspector(container) {
     }));
 
     return fields;
-  });
-
-  // Style section (metadata-driven sidebar)
-  renderInspectorSection(container, 'Style', true, () => {
-    const wrapper = document.createElement('div');
-    wrapper.className = 'inspector-fields';
-    renderStyleSidebar(wrapper, node, S.ui.activeMedia);
-    return wrapper;
   });
 
   // Attributes section
@@ -2644,6 +2710,12 @@ function renderStyleSidebar(container, node, activeMediaTab) {
     addBtn.textContent = '+';
     addBtn.onclick = (e) => {
       e.stopPropagation();
+      // Ensure section is open
+      if (body.classList.contains('hidden')) {
+        header.classList.remove('collapsed');
+        body.classList.remove('hidden');
+        S = { ...S, ui: { ...S.ui, styleSections: { ...S.ui.styleSections, [sec.key]: true } } };
+      }
       addControl._show();
     };
     header.appendChild(addBtn);
@@ -2704,6 +2776,20 @@ function renderStyleSidebar(container, node, activeMediaTab) {
   }
 
   container.appendChild(wrapper);
+}
+
+/** Top-level Style panel — renders as its own right-panel tab */
+function renderStylePanel(container) {
+  if (!S.selection) {
+    container.innerHTML = '<div class="empty-state">Select an element to style</div>';
+    return;
+  }
+  const node = getNodeAtPath(S.document, S.selection);
+  if (!node) {
+    container.innerHTML = '<div class="empty-state">Select an element to style</div>';
+    return;
+  }
+  renderStyleSidebar(container, node, S.ui.activeMedia);
 }
 
 /** Collapsible inspector section */
@@ -3024,6 +3110,21 @@ function renderToolbar() {
   };
   modeGroup.appendChild(modeBtn);
   toolbar.appendChild(modeGroup);
+
+  // Source / Canvas toggle
+  const srcGroup = group();
+  const srcBtn = document.createElement('button');
+  srcBtn.className = `tb-toggle${sourceMode ? ' active' : ''}`;
+  srcBtn.textContent = sourceMode ? '{ } Source' : '{ }';
+  srcBtn.title = sourceMode ? 'Switch to canvas view' : 'Edit document source';
+  srcBtn.onclick = () => {
+    sourceMode = !sourceMode;
+    renderCanvas();
+    renderOverlays();
+    renderToolbar();
+  };
+  srcGroup.appendChild(srcBtn);
+  toolbar.appendChild(srcGroup);
 
   // Feature toggles (non-size media queries like --dark)
   const { featureQueries } = parseMediaEntries(S.document.$media);
