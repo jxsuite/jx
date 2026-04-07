@@ -2592,6 +2592,7 @@ function renderTextInput(prop, value, onChange) {
 
 function renderStyleRow(entry, prop, value, onCommit, onDelete, isWarning, gridMode) {
   const type = inferInputType(entry);
+  const hasVal = value !== undefined && value !== "";
   const row = document.createElement("div");
   row.className =
     "style-row" +
@@ -2603,7 +2604,15 @@ function renderStyleRow(entry, prop, value, onCommit, onDelete, isWarning, gridM
 
   const label = document.createElement("span");
   label.className = "style-row-label";
-  label.textContent = prop;
+  if (hasVal) {
+    const dot = document.createElement("span");
+    dot.className = "set-dot";
+    dot.title = `Clear ${prop}`;
+    dot.onclick = (e) => { e.stopPropagation(); onDelete(); };
+    label.appendChild(dot);
+  }
+  const labelText = document.createTextNode(prop);
+  label.appendChild(labelText);
   label.title = prop;
   row.appendChild(label);
 
@@ -2633,15 +2642,6 @@ function renderStyleRow(entry, prop, value, onCommit, onDelete, isWarning, gridM
   }
   row.appendChild(widget);
 
-  const del = document.createElement("span");
-  del.className = "style-row-delete";
-  del.textContent = "✕";
-  del.onclick = (e) => {
-    e.stopPropagation();
-    onDelete();
-  };
-  row.appendChild(del);
-
   return row;
 }
 
@@ -2659,7 +2659,23 @@ function renderShorthandRow(shortProp, entry, style, commitFn, deleteFn) {
 
   const label = document.createElement("span");
   label.className = "style-row-label";
-  label.textContent = shortProp;
+  const hasAnyVal = shortVal !== undefined || longhands.some((l) => style[l.name] !== undefined);
+  if (hasAnyVal) {
+    const dot = document.createElement("span");
+    dot.className = "set-dot";
+    dot.title = `Clear ${shortProp}`;
+    dot.onclick = (e) => {
+      e.stopPropagation();
+      let s = S;
+      if (shortVal !== undefined) s = commitFn(s, shortProp, undefined);
+      for (const l of longhands) {
+        if (style[l.name] !== undefined) s = commitFn(s, l.name, undefined);
+      }
+      update(s);
+    };
+    label.appendChild(dot);
+  }
+  label.appendChild(document.createTextNode(shortProp));
   label.title = shortProp;
   row.appendChild(label);
 
@@ -2705,21 +2721,6 @@ function renderShorthandRow(shortProp, entry, style, commitFn, deleteFn) {
     renderRightPanel();
   };
   row.appendChild(toggle);
-
-  // Delete button
-  const del = document.createElement("span");
-  del.className = "style-row-delete";
-  del.textContent = "✕";
-  del.onclick = (e) => {
-    e.stopPropagation();
-    let s = S;
-    if (shortVal !== undefined) s = commitFn(s, shortProp, undefined);
-    for (const l of longhands) {
-      if (style[l.name] !== undefined) s = commitFn(s, l.name, undefined);
-    }
-    update(s);
-  };
-  row.appendChild(del);
 
   frag.appendChild(row);
 
@@ -2957,6 +2958,34 @@ function renderStyleSidebar(container, node, activeMediaTab) {
     labelEl.textContent = sec.label;
     header.appendChild(collapse);
     header.appendChild(labelEl);
+
+    // Section set-indicator: dot visible when any prop in section has a value
+    const sectionActiveProps = entries.filter(({ prop, entry }) => {
+      if (activeStyle[prop] !== undefined) return true;
+      if (inferInputType(entry) === "shorthand") {
+        return getLonghands(prop).some((l) => activeStyle[l.name] !== undefined);
+      }
+      return false;
+    });
+    if (sectionActiveProps.length > 0) {
+      const dot = document.createElement("span");
+      dot.className = "set-dot set-dot--section";
+      dot.title = `Clear all ${sec.label.toLowerCase()} properties`;
+      dot.onclick = (e) => {
+        e.stopPropagation();
+        let s = S;
+        for (const { prop, entry } of sectionActiveProps) {
+          if (activeStyle[prop] !== undefined) s = commitStyle(s, prop, undefined);
+          if (inferInputType(entry) === "shorthand") {
+            for (const l of getLonghands(prop)) {
+              if (activeStyle[l.name] !== undefined) s = commitStyle(s, l.name, undefined);
+            }
+          }
+        }
+        update(s);
+      };
+      header.appendChild(dot);
+    }
 
     // Add button
     const addBtn = document.createElement("button");
