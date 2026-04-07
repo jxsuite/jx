@@ -8,7 +8,7 @@ import { resolve } from 'node:path';
 import { createDevServer } from '@jsonsx/server';
 
 await createDevServer({
-  root: resolve(import.meta.dir, '..'),
+  root: resolve(import.meta.dir, '.'),
   port: 3000,
   builds: [
     {

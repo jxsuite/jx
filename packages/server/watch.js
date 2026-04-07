@@ -2,10 +2,39 @@
  * watch.js — File watcher + SSE live reload
  */
 
-import { watch } from 'fs';
+import chokidar from 'chokidar';
+import { relative } from 'node:path';
 import { rebuild } from './build.js';
 
-const DEFAULT_IGNORE = ['/node_modules/', '/dist/', '/.git/', 'bun.lockb', 'bun.lock'];
+const DEFAULT_IGNORE = [
+  '**/node_modules/**',
+  '**/dist/**',
+  '**/.git/**',
+  '**/.devenv/**',
+  '**/.direnv/**',
+  '**/bun.lockb',
+  '**/bun.lock',
+];
+
+function normalizePath(value) {
+  return value.replaceAll('\\', '/');
+}
+
+function shouldIgnore(pathname, ignore) {
+  const normalizedPath = normalizePath(pathname);
+  return ignore.some((pattern) => {
+    const normalizedPattern = normalizePath(pattern);
+    if (normalizedPattern.startsWith('**/') && normalizedPattern.endsWith('/**')) {
+      const segment = normalizedPattern.slice(3, -3);
+      return normalizedPath.includes(`/${segment}/`) || normalizedPath.endsWith(`/${segment}`);
+    }
+    if (normalizedPattern.startsWith('**/')) {
+      const suffix = normalizedPattern.slice(3);
+      return normalizedPath.endsWith(`/${suffix}`) || normalizedPath === suffix;
+    }
+    return normalizedPath.includes(normalizedPattern);
+  });
+}
 
 export const SSE_SCRIPT = `\n<script>new EventSource('/__reload').onmessage=()=>location.reload()</script>`;
 
@@ -52,9 +81,19 @@ export function createWatcher(root, builds, opts = {}) {
   }
 
   let timer = null;
-  watch(root, { recursive: true }, (_, filename) => {
-    if (!filename) return;
-    if (ignore.some(p => filename.includes(p.replaceAll('/', '')))) return;
+  const watcher = chokidar.watch(root, {
+    ignored: (watchedPath) => shouldIgnore(watchedPath, ignore),
+    ignoreInitial: true,
+    ignorePermissionErrors: true,
+    awaitWriteFinish: {
+      stabilityThreshold: debounceMs,
+      pollInterval: 10,
+    },
+  });
+
+  watcher.on('all', (_, changedPath) => {
+    const filename = relative(root, changedPath);
+    if (!filename || filename.startsWith('..')) return;
     clearTimeout(timer);
     timer = setTimeout(async () => {
       if (builds.length > 0) {
