@@ -898,6 +898,11 @@ function collectStyles(def, rules, mediaQueries, _parentSel = "") {
           ? (mediaQueries[prop.slice(1)] ?? prop.slice(1))
           : prop.slice(1);
         rules.push(`@media ${query} { ${selector} { ${toCSSText(val)} } }`);
+        for (const [sel, nestedRules] of Object.entries(val)) {
+          if (!(sel.startsWith(":") || sel.startsWith(".") || sel.startsWith("&") || sel.startsWith("["))) continue;
+          const resolved = sel.startsWith("&") ? sel.replace("&", selector) : `${selector}${sel}`;
+          rules.push(`@media ${query} { ${resolved} { ${toCSSText(nestedRules)} } }`);
+        }
       } else if (
         prop.startsWith(":") ||
         prop.startsWith(".") ||

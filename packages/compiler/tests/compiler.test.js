@@ -370,6 +370,21 @@ describe("compile — CSS extraction", () => {
     expect(html).toContain("#para:hover");
     expect(html).toContain("text-decoration: underline");
   });
+
+  test("nested selector inside media block", async () => {
+    const html = await compile({
+      tagName: "div",
+      id: "box",
+      $media: { "--md": "(min-width: 768px)" },
+      style: {
+        "@--md": { fontSize: "2rem", ":hover": { color: "blue" } },
+      },
+    });
+    expect(html).toContain("@media (min-width: 768px)");
+    expect(html).toContain("font-size: 2rem");
+    expect(html).toContain("#box:hover");
+    expect(html).toContain("color: blue");
+  });
 });
 
 // ─── escapeHtml (exercised via compile) ───────────────────────────────────────

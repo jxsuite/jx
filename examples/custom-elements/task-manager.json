@@ -2,12 +2,10 @@
   "$schema": "../../packages/schema/schema.json",
   "$id": "TaskManager",
   "tagName": "task-manager",
-
   "$elements": [
     { "$ref": "./components/task-item.json" },
     { "$ref": "./components/task-stats.json" }
   ],
-
   "$defs": {
     "tasks": [
       { "id": 1, "text": "Read the JSONsx spec", "done": true },

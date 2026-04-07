@@ -241,6 +241,14 @@
     .media-tab:hover { color: var(--fg); }
     .media-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
 
+    /* ─── Selector dropdown ────────────────────────── */
+    .selector-bar { display: flex; align-items: center; padding: 2px 8px 4px; gap: 6px; }
+    .selector-select { flex: 1; min-width: 0; padding: 3px 4px; font: inherit; font-size: 10px; font-family: 'SF Mono', 'Fira Code', monospace; color: var(--fg); background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius); outline: none; cursor: pointer; }
+    .selector-select:focus { border-color: var(--accent); }
+    .selector-select option { background: var(--bg-panel); color: var(--fg); }
+    .selector-select optgroup { color: var(--fg-dim); font-style: normal; }
+    .selector-custom-input { flex: 1; min-width: 0; padding: 3px 6px; font: inherit; font-size: 10px; font-family: 'SF Mono', 'Fira Code', monospace; color: var(--fg); background: var(--bg-input); border: 1px solid var(--accent); border-radius: var(--radius); outline: none; }
+
     /* ─── Feature toggle (toolbar) ────────────────── */
     .tb-toggle { padding: 3px 8px; font: inherit; font-size: 11px; color: var(--fg-dim); background: transparent; border: 1px solid var(--border); border-radius: var(--radius); cursor: pointer; }
     .tb-toggle:hover { background: rgba(255,255,255,0.08); }

@@ -25,6 +25,8 @@ import {
   renameDef,
   updateMediaStyle,
   updateMedia,
+  updateNestedStyle,
+  updateMediaNestedStyle,
   getNodeAtPath,
   flattenTree,
   nodeLabel,
@@ -78,6 +80,15 @@ let statusMsg = "";
 let statusTimeout;
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
+
+const COMMON_SELECTORS = [
+  ":hover", ":focus", ":active", ":focus-within", ":focus-visible",
+  ":disabled", ":first-child", ":last-child", "::before", "::after", "::placeholder",
+];
+
+function isNestedSelector(k) {
+  return k.startsWith(":") || k.startsWith(".") || k.startsWith("&") || k.startsWith("[");
+}
 
 const canvasWrap = $("#canvas-wrap");
 const leftPanel = $("#left-panel");
@@ -2803,7 +2814,7 @@ function renderSectionAddControl(sectionKey, onAdd) {
   return wrap;
 }
 
-function renderStyleSidebar(container, node, activeMediaTab) {
+function renderStyleSidebar(container, node, activeMediaTab, activeSelector) {
   const wrapper = document.createElement("div");
   wrapper.className = "style-sidebar";
   const style = node.style || {};
@@ -2840,20 +2851,121 @@ function renderStyleSidebar(container, node, activeMediaTab) {
     wrapper.appendChild(tabs);
   }
 
-  // Determine the active style object
+  // ── Selector dropdown ──────────────────────────────────────────────────────
+  const contextStyle = activeTab ? (style[`@${activeTab}`] || {}) : style;
+  const existingSelectors = Object.keys(contextStyle).filter(isNestedSelector);
+  const existingSet = new Set(existingSelectors);
+
+  const selectorBar = document.createElement("div");
+  selectorBar.className = "selector-bar";
+
+  const sel = document.createElement("select");
+  sel.className = "selector-select";
+
+  // (base)
+  const baseOpt = document.createElement("option");
+  baseOpt.value = "";
+  baseOpt.textContent = "(base)";
+  baseOpt.selected = !activeSelector;
+  sel.appendChild(baseOpt);
+
+  // Common pseudo-selectors
+  const commonGroup = document.createElement("optgroup");
+  commonGroup.label = "Pseudo-selectors";
+  for (const s of COMMON_SELECTORS) {
+    const opt = document.createElement("option");
+    opt.value = s;
+    opt.textContent = existingSet.has(s) ? `${s}  \u25CF` : s;
+    opt.selected = activeSelector === s;
+    commonGroup.appendChild(opt);
+  }
+  sel.appendChild(commonGroup);
+
+  // Custom selectors already on the node
+  const commonSet = new Set(COMMON_SELECTORS);
+  const extraSelectors = existingSelectors.filter((s) => !commonSet.has(s));
+  if (extraSelectors.length > 0) {
+    const extraGroup = document.createElement("optgroup");
+    extraGroup.label = "Custom";
+    for (const s of extraSelectors) {
+      const opt = document.createElement("option");
+      opt.value = s;
+      opt.textContent = `${s}  \u25CF`;
+      opt.selected = activeSelector === s;
+      extraGroup.appendChild(opt);
+    }
+    sel.appendChild(extraGroup);
+  }
+
+  // + Add custom...
+  const addOpt = document.createElement("option");
+  addOpt.value = "__add_custom__";
+  addOpt.textContent = "+ Add custom\u2026";
+  sel.appendChild(addOpt);
+
+  sel.onchange = () => {
+    const val = sel.value;
+    if (val === "__add_custom__") {
+      sel.value = activeSelector || "";
+      // Show inline input
+      sel.style.display = "none";
+      const inp = document.createElement("input");
+      inp.type = "text";
+      inp.className = "selector-custom-input";
+      inp.placeholder = ":hover, .child, &.active, [attr]";
+      selectorBar.appendChild(inp);
+      inp.focus();
+      const finish = (accept) => {
+        const v = inp.value.trim();
+        inp.remove();
+        sel.style.display = "";
+        if (accept && v && isNestedSelector(v)) {
+          S = { ...S, ui: { ...S.ui, activeSelector: v } };
+          renderRightPanel();
+        }
+      };
+      inp.onkeydown = (e) => {
+        if (e.key === "Enter") finish(true);
+        else if (e.key === "Escape") finish(false);
+      };
+      inp.onblur = () => finish(inp.value.trim().length > 0);
+      return;
+    }
+    const newSelector = val === "" ? null : val;
+    S = { ...S, ui: { ...S.ui, activeSelector: newSelector } };
+    renderRightPanel();
+  };
+
+  selectorBar.appendChild(sel);
+  wrapper.appendChild(selectorBar);
+
+  // ── Determine the active style object ──────────────────────────────────────
   let activeStyle;
   let commitStyle; // (state, prop, val) => newState
-  if (activeTab === null || mediaNames.length === 0) {
+  if (activeSelector && activeTab && mediaNames.length > 0) {
+    // Media + selector: style["@--md"][":hover"]
+    activeStyle = (style[`@${activeTab}`] || {})[activeSelector] || {};
+    commitStyle = (s, prop, val) =>
+      updateMediaNestedStyle(s, S.selection, activeTab, activeSelector, prop, val);
+  } else if (activeSelector) {
+    // Selector only: style[":hover"]
+    activeStyle = style[activeSelector] || {};
+    commitStyle = (s, prop, val) =>
+      updateNestedStyle(s, S.selection, activeSelector, prop, val);
+  } else if (activeTab !== null && mediaNames.length > 0) {
+    // Media only: style["@--md"] flat props
     activeStyle = {};
-    // Collect base styles (non-object values)
+    for (const [p, v] of Object.entries(style[`@${activeTab}`] || {})) {
+      if (typeof v !== "object") activeStyle[p] = v;
+    }
+    commitStyle = (s, prop, val) => updateMediaStyle(s, S.selection, activeTab, prop, val);
+  } else {
+    // Base: flat props
+    activeStyle = {};
     for (const [p, v] of Object.entries(style)) {
       if (typeof v !== "object") activeStyle[p] = v;
     }
     commitStyle = (s, prop, val) => updateStyle(s, S.selection, prop, val);
-  } else {
-    const mediaKey = `@${activeTab}`;
-    activeStyle = style[mediaKey] || {};
-    commitStyle = (s, prop, val) => updateMediaStyle(s, S.selection, activeTab, prop, val);
   }
 
   // Auto-open sections that have properties
@@ -3085,7 +3197,7 @@ function renderStylePanel(container) {
     container.innerHTML = '<div class="empty-state">Select an element to style</div>';
     return;
   }
-  renderStyleSidebar(container, node, S.ui.activeMedia);
+  renderStyleSidebar(container, node, S.ui.activeMedia, S.ui.activeSelector);
 }
 
 /** Collapsible inspector section */

@@ -473,6 +473,32 @@ describe("applyStyle", () => {
     expect(style.textContent).toContain("] :focus");
     expect(style.textContent).toContain("@media (min-width: 640px)");
   });
+
+  test("nested selector inside media block", () => {
+    applyStyle(
+      el,
+      { "@--md": { fontSize: "2rem", ":hover": { color: "blue" } } },
+      { "--md": "(min-width: 768px)" },
+    );
+    const style = document.head.querySelector("style");
+    const css = style.textContent;
+    // Media block flat props
+    expect(css).toContain("@media (min-width: 768px)");
+    expect(css).toContain("font-size: 2rem");
+    // Nested selector within media
+    expect(css).toMatch(/@media \(min-width: 768px\) \{ \[data-jsonsx="[^"]+"\] :hover \{ color: blue \} \}/);
+  });
+
+  test("& compound selector inside media block", () => {
+    applyStyle(
+      el,
+      { "@--sm": { "&.active": { fontWeight: "bold" } } },
+      { "--sm": "(min-width: 640px)" },
+    );
+    const style = document.head.querySelector("style");
+    const css = style.textContent;
+    expect(css).toMatch(/@media \(min-width: 640px\) \{ \[data-jsonsx="[^"]+"\]\.active \{ font-weight: bold \} \}/);
+  });
 });
 
 // ─── resolvePrototype ─────────────────────────────────────────────────────────

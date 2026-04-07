@@ -461,7 +461,17 @@ export function applyStyle(el, styleDef, mediaQueries = {}, $defs = {}) {
     const query = key.startsWith("@--")
       ? (mediaQueries[key.slice(1)] ?? key.slice(1))
       : key.slice(1);
-    css += `@media ${query} { [data-jsonsx="${uid}"] { ${toCSSText(rules)} } }\n`;
+    const scope = `[data-jsonsx="${uid}"]`;
+    css += `@media ${query} { ${scope} { ${toCSSText(rules)} } }\n`;
+    for (const [sel, nestedRules] of Object.entries(rules)) {
+      if (!isNestedSelector(sel)) continue;
+      const resolved = sel.startsWith("&")
+        ? sel.replace("&", scope)
+        : sel.startsWith("[")
+          ? `${scope}${sel}`
+          : `${scope} ${sel}`;
+      css += `@media ${query} { ${resolved} { ${toCSSText(nestedRules)} } }\n`;
+    }
   }
 
   const tag = document.createElement("style");

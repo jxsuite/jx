@@ -102,6 +102,7 @@ export function createState(doc) {
       rightTab: "properties", // 'properties' | 'source' | 'handlers'
       zoom: 1,
       activeMedia: null, // '--md' | null (base) — focused canvas/breakpoint
+      activeSelector: null, // ':hover' | '.child' | null (base) — nested selector context
       featureToggles: {}, // { '--dark': true } — non-size media toggles
       styleSections: {}, // { layout: true, ... } — section open/closed state
       styleShorthands: {}, // { padding: true, ... } — shorthand expand/collapse state
@@ -298,6 +299,41 @@ export function updateMediaStyle(state, path, mediaName, prop, value) {
       if (Object.keys(node.style[key]).length === 0) delete node.style[key];
     } else {
       node.style[key][prop] = value;
+    }
+    if (Object.keys(node.style).length === 0) delete node.style;
+  });
+}
+
+/** Update a style property inside a nested selector block (e.g., :hover). */
+export function updateNestedStyle(state, path, selector, prop, value) {
+  return applyMutation(state, (doc) => {
+    const node = getNodeAtPath(doc, path);
+    if (!node.style) node.style = {};
+    if (!node.style[selector]) node.style[selector] = {};
+    if (value === undefined || value === "") {
+      delete node.style[selector][prop];
+      if (Object.keys(node.style[selector]).length === 0) delete node.style[selector];
+    } else {
+      node.style[selector][prop] = value;
+    }
+    if (Object.keys(node.style).length === 0) delete node.style;
+  });
+}
+
+/** Update a style property inside a nested selector within a media block (e.g., @--md > :hover). */
+export function updateMediaNestedStyle(state, path, mediaName, selector, prop, value) {
+  return applyMutation(state, (doc) => {
+    const node = getNodeAtPath(doc, path);
+    if (!node.style) node.style = {};
+    const key = `@${mediaName}`;
+    if (!node.style[key]) node.style[key] = {};
+    if (!node.style[key][selector]) node.style[key][selector] = {};
+    if (value === undefined || value === "") {
+      delete node.style[key][selector][prop];
+      if (Object.keys(node.style[key][selector]).length === 0) delete node.style[key][selector];
+      if (Object.keys(node.style[key]).length === 0) delete node.style[key];
+    } else {
+      node.style[key][selector][prop] = value;
     }
     if (Object.keys(node.style).length === 0) delete node.style;
   });
