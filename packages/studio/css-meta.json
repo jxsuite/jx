@@ -18,6 +18,8 @@
     "display": {
       "$section": "layout", "$order": 10,
       "type": "string",
+      "$input": "button-group",
+      "$buttonValues": ["flex","grid","block","inline","none"],
       "enum": ["block","inline","inline-block","flex","inline-flex","grid","inline-grid","contents","none","flow-root","table","list-item"]
     },
     "width": {
@@ -85,30 +87,43 @@
     "flexDirection": {
       "$section": "layout", "$order": 70,
       "type": "string",
+      "$input": "button-group",
+      "$icons": { "row": "arrow-right", "row-reverse": "arrow-left", "column": "arrow-down", "column-reverse": "arrow-up" },
       "enum": ["row","row-reverse","column","column-reverse"],
       "$show": [{ "prop": "display", "values": ["flex","inline-flex"] }]
     },
     "flexWrap": {
       "$section": "layout", "$order": 71,
       "type": "string",
+      "$input": "button-group",
+      "$icons": { "wrap": "wrap-text" },
       "enum": ["nowrap","wrap","wrap-reverse"],
       "$show": [{ "prop": "display", "values": ["flex","inline-flex"] }]
     },
     "justifyContent": {
       "$section": "layout", "$order": 72,
       "type": "string",
+      "$input": "button-group",
+      "$buttonValues": ["flex-start","flex-end","center","space-between","space-around","space-evenly"],
+      "$icons": { "flex-start": "justify-start", "flex-end": "justify-end", "center": "justify-center", "space-between": "justify-between", "space-around": "justify-around", "space-evenly": "justify-evenly" },
       "enum": ["flex-start","flex-end","center","space-between","space-around","space-evenly","start","end","normal"],
       "$show": [{ "prop": "display", "values": ["flex","inline-flex","grid","inline-grid"] }]
     },
     "alignItems": {
       "$section": "layout", "$order": 73,
       "type": "string",
+      "$input": "button-group",
+      "$buttonValues": ["stretch","flex-start","flex-end","center","baseline"],
+      "$icons": { "stretch": "align-stretch-v", "flex-start": "align-start-v", "flex-end": "align-end-v", "center": "align-center-v", "baseline": "align-baseline" },
       "enum": ["stretch","flex-start","flex-end","center","baseline","start","end","normal"],
       "$show": [{ "prop": "display", "values": ["flex","inline-flex","grid","inline-grid"] }]
     },
     "alignContent": {
       "$section": "layout", "$order": 74,
       "type": "string",
+      "$input": "button-group",
+      "$buttonValues": ["normal","flex-start","flex-end","center","space-between","stretch"],
+      "$icons": { "flex-start": "justify-start", "flex-end": "justify-end", "center": "justify-center", "space-between": "justify-between", "stretch": "align-stretch-v" },
       "enum": ["normal","flex-start","flex-end","center","space-between","space-around","stretch","start","end"],
       "$show": [{ "prop": "display", "values": ["flex","inline-flex","grid","inline-grid"] }]
     },
@@ -152,6 +167,9 @@
     "alignSelf": {
       "$section": "layout", "$order": 83,
       "type": "string",
+      "$input": "button-group",
+      "$buttonValues": ["auto","flex-start","flex-end","center","baseline","stretch"],
+      "$icons": { "stretch": "align-stretch-v", "flex-start": "align-start-v", "flex-end": "align-end-v", "center": "align-center-v", "baseline": "align-baseline" },
       "enum": ["auto","flex-start","flex-end","center","baseline","stretch","start","end"],
       "$show": [{ "prop": "display", "values": ["flex","inline-flex","grid","inline-grid"] }]
     },
@@ -374,6 +392,9 @@
     "textAlign": {
       "$section": "typography", "$order": 50,
       "type": "string",
+      "$input": "button-group",
+      "$buttonValues": ["left","center","right","justify"],
+      "$icons": { "left": "align-left", "center": "align-center", "right": "align-right", "justify": "align-justify" },
       "enum": ["left","right","center","justify","start","end"]
     },
     "textTransform": {

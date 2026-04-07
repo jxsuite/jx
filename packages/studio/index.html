@@ -165,6 +165,18 @@
     .style-add-input input { flex: 1; min-width: 0; padding: 3px 6px; font: inherit; font-size: 11px; color: var(--fg); background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius); outline: none; }
     .style-add-input input:focus { border-color: var(--accent); }
 
+    /* ─── Button group (icon toggle buttons) ─── */
+    .style-row--button-group { flex-wrap: wrap; }
+    .style-row--button-group .style-row-label { width: auto; flex: 1; }
+    .style-input-button-group { display: flex; gap: 2px; width: 100%; flex-wrap: wrap; }
+    .style-btn-group-item { display: flex; align-items: center; justify-content: center; min-width: 26px; height: 24px; padding: 0; font: inherit; font-size: 10px; color: var(--fg-dim); background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius); cursor: pointer; line-height: 1; }
+    .style-btn-group-item:hover { color: var(--fg); background: rgba(255,255,255,0.08); }
+    .style-btn-group-item.active { color: var(--accent-fg); background: var(--accent); border-color: var(--accent); }
+    .style-btn-group-item.text-only { padding: 0 6px; letter-spacing: -0.02em; }
+    .style-btn-group-item svg { width: 14px; height: 14px; }
+    .style-btn-group-overflow { min-width: 26px; height: 24px; padding: 0 2px; font: inherit; font-size: 11px; color: var(--fg-dim); background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius); cursor: pointer; text-align: center; }
+    .style-btn-group-overflow:hover { color: var(--fg); }
+
     /* ─── Signals tab ────────────────────────────── */
     .signal-row { display: flex; align-items: center; gap: 4px; padding: 4px 8px; cursor: pointer; border-left: 2px solid transparent; user-select: none; }
     .signal-row:hover { background: rgba(255,255,255,0.04); }

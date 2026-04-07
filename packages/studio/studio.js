@@ -44,6 +44,7 @@ import {
 
 import webdata from './webdata.json';
 import cssMeta from './css-meta.json';
+import icons from './icons.js';
 import * as monaco from 'monaco-editor/esm/vs/editor/editor.api';
 
 // ─── Globals ──────────────────────────────────────────────────────────────────
@@ -2069,6 +2070,7 @@ const UNIT_RE = /^(-?[\d.]+)(px|rem|em|%|vw|vh|svw|svh|dvh|ms|s|fr|ch|ex|deg)?$/
 
 function inferInputType(entry) {
   if (entry.$shorthand === true)      return 'shorthand';
+  if (entry.$input === 'button-group') return 'button-group';
   if (entry.format === 'color')       return 'color';
   if (entry.$units !== undefined)     return 'number-unit';
   if (entry.type === 'number')        return 'number';
@@ -2253,6 +2255,72 @@ function renderNumberUnitInput(entry, value, onChange) {
   return wrap;
 }
 
+function abbreviateValue(val) {
+  const map = {
+    'inline': 'inl', 'inline-block': 'i-blk', 'inline-flex': 'i-flx',
+    'inline-grid': 'i-grd', 'contents': 'cnt', 'flow-root': 'flow',
+    'nowrap': 'no-wr', 'wrap-reverse': 'wr-rev',
+    'flex-start': 'start', 'flex-end': 'end',
+    'space-between': 'betw', 'space-around': 'arnd', 'space-evenly': 'even',
+    'stretch': 'str', 'baseline': 'base', 'normal': 'norm',
+    'row-reverse': 'row-r', 'column-reverse': 'col-r',
+    'column': 'col',
+  };
+  return map[val] || val;
+}
+
+function renderButtonGroupInput(entry, value, onChange) {
+  const wrap = document.createElement('div');
+  wrap.className = 'style-input-button-group';
+
+  const values = entry.$buttonValues || entry.enum || [];
+  const iconMap = entry.$icons || {};
+
+  for (const v of values) {
+    const btn = document.createElement('button');
+    btn.className = 'style-btn-group-item' + (v === value ? ' active' : '');
+    btn.type = 'button';
+    btn.title = v;
+    btn.dataset.value = v;
+
+    const iconKey = iconMap[v];
+    if (iconKey && icons[iconKey]) {
+      btn.innerHTML = icons[iconKey];
+    } else {
+      btn.textContent = abbreviateValue(v);
+      btn.classList.add('text-only');
+    }
+
+    btn.onclick = () => onChange(v === value ? '' : v);
+    wrap.appendChild(btn);
+  }
+
+  // Overflow select for enum values not in $buttonValues
+  if (entry.$buttonValues && entry.enum && entry.enum.length > entry.$buttonValues.length) {
+    const extra = entry.enum.filter(v => !entry.$buttonValues.includes(v));
+    const more = document.createElement('select');
+    more.className = 'style-btn-group-overflow';
+    const blank = document.createElement('option');
+    blank.value = '';
+    blank.textContent = '+';
+    more.appendChild(blank);
+    for (const v of extra) {
+      const opt = document.createElement('option');
+      opt.value = v;
+      opt.textContent = v;
+      if (v === value) opt.selected = true;
+      more.appendChild(opt);
+    }
+    more.onchange = () => {
+      if (more.value) onChange(more.value);
+      more.value = '';
+    };
+    wrap.appendChild(more);
+  }
+
+  return wrap;
+}
+
 function renderSelectInput(entry, value, onChange) {
   const select = document.createElement('select');
   select.className = 'field-input';
@@ -2362,8 +2430,11 @@ function renderTextInput(prop, value, onChange) {
 }
 
 function renderStyleRow(entry, prop, value, onCommit, onDelete, isWarning) {
+  const type = inferInputType(entry);
   const row = document.createElement('div');
-  row.className = 'style-row' + (isWarning ? ' style-row--warning' : '');
+  row.className = 'style-row'
+    + (isWarning ? ' style-row--warning' : '')
+    + (type === 'button-group' ? ' style-row--button-group' : '');
   row.dataset.prop = prop;
 
   const label = document.createElement('span');
@@ -2372,9 +2443,11 @@ function renderStyleRow(entry, prop, value, onCommit, onDelete, isWarning) {
   label.title = prop;
   row.appendChild(label);
 
-  const type = inferInputType(entry);
   let widget;
   switch (type) {
+    case 'button-group':
+      widget = renderButtonGroupInput(entry, value, onCommit);
+      break;
     case 'color':
       widget = renderColorInput(value, onCommit);
       break;
