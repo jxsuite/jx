@@ -150,6 +150,32 @@ async function navigateBack() {
   statusMessage("Returned to parent document");
 }
 
+async function closeFunctionEditor() {
+  const editing = S.ui.editingFunction;
+  if (!editing) return;
+  if (functionEditor) {
+    const currentCode = functionEditor.getValue();
+    const minResult = await codeService("minify", { code: currentCode });
+    const bodyToStore = minResult?.code ?? currentCode;
+    if (editing.type === "def") {
+      update(updateDef(S, editing.defName, { body: bodyToStore }));
+    } else if (editing.type === "event") {
+      const node = getNodeAtPath(S.document, editing.path);
+      const current = node?.[editing.eventKey] || {};
+      update(updateProperty(S, editing.path, editing.eventKey, {
+        ...current,
+        $prototype: "Function",
+        body: bodyToStore,
+      }));
+    }
+    functionEditor.dispose();
+    functionEditor = null;
+  }
+  S = { ...S, ui: { ...S.ui, editingFunction: null } };
+  renderCanvas();
+  renderToolbar();
+}
+
 function computeRelativePath(fromDocPath, toCompPath) {
   if (!fromDocPath) return `./${toCompPath}`;
   const fromDir = fromDocPath.substring(0, fromDocPath.lastIndexOf("/"));
@@ -4575,42 +4601,8 @@ function renderFunctionEditor() {
   canvasWrap.innerHTML = "";
   canvasWrap.style.padding = "0";
 
-  // Header bar
-  const header = document.createElement("div");
-  header.className = "function-editor-header";
-  const title = document.createElement("span");
-  title.textContent = editing.type === "def"
-    ? `Function: ${editing.defName}`
-    : `Event: ${editing.eventKey} on ${nodeLabel(getNodeAtPath(S.document, editing.path))}`;
-  header.appendChild(title);
-
-  const closeBtn = document.createElement("button");
-  closeBtn.className = "tb-btn";
-  closeBtn.textContent = "Close";
-  closeBtn.onclick = async () => {
-    if (functionEditor) {
-      const currentCode = functionEditor.getValue();
-      const minResult = await codeService("minify", { code: currentCode });
-      const bodyToStore = minResult?.code ?? currentCode;
-      if (editing.type === "def") {
-        update(updateDef(S, editing.defName, { body: bodyToStore }));
-      } else if (editing.type === "event") {
-        const node = getNodeAtPath(S.document, editing.path);
-        const current = node?.[editing.eventKey] || {};
-        update(updateProperty(S, editing.path, editing.eventKey, {
-          ...current,
-          $prototype: "Function",
-          body: bodyToStore,
-        }));
-      }
-      functionEditor.dispose();
-      functionEditor = null;
-    }
-    S = { ...S, ui: { ...S.ui, editingFunction: null } };
-    renderCanvas();
-  };
-  header.appendChild(closeBtn);
-  canvasWrap.appendChild(header);
+  // Toolbar breadcrumb handles context display — re-render it
+  renderToolbar();
 
   // Editor container
   const editorContainer = document.createElement("div");
@@ -4920,34 +4912,61 @@ function renderToolbar() {
   }
   toolbar.appendChild(fileGroup);
 
-  // Breadcrumb (component navigation stack)
-  if (S.documentStack && S.documentStack.length > 0) {
+  // Breadcrumb (unified context: document stack + function editor)
+  const hasStack = S.documentStack && S.documentStack.length > 0;
+  const hasFunc = !!S.ui.editingFunction;
+  if (hasStack || hasFunc) {
     const breadcrumb = document.createElement("div");
     breadcrumb.className = "breadcrumb";
 
+    // Back button — pops the most recent context layer
     const back = document.createElement("button");
     back.className = "toolbar-btn";
     back.textContent = "← Back";
-    back.title = "Return to parent document";
-    back.onclick = navigateBack;
+    back.title = hasFunc ? "Close function editor" : "Return to parent document";
+    back.onclick = hasFunc ? closeFunctionEditor : navigateBack;
     breadcrumb.appendChild(back);
 
-    for (const frame of S.documentStack) {
-      const crumb = document.createElement("span");
-      crumb.className = "breadcrumb-item";
-      crumb.textContent = frame.documentPath?.split("/").pop() || "untitled";
-      breadcrumb.appendChild(crumb);
+    // Document stack crumbs
+    if (hasStack) {
+      for (const frame of S.documentStack) {
+        const crumb = document.createElement("span");
+        crumb.className = "breadcrumb-item";
+        crumb.textContent = frame.documentPath?.split("/").pop() || "untitled";
+        breadcrumb.appendChild(crumb);
 
+        const sep = document.createElement("span");
+        sep.className = "breadcrumb-sep";
+        sep.textContent = " › ";
+        breadcrumb.appendChild(sep);
+      }
+    }
+
+    // Current document crumb
+    const docName = S.documentPath?.split("/").pop() || S.document.tagName || "document";
+    const docCrumb = document.createElement("span");
+    docCrumb.className = `breadcrumb-item${hasFunc ? " clickable" : " current"}`;
+    docCrumb.textContent = docName;
+    if (hasFunc) {
+      docCrumb.onclick = closeFunctionEditor;
+    }
+    breadcrumb.appendChild(docCrumb);
+
+    // Function editor crumb
+    if (hasFunc) {
       const sep = document.createElement("span");
       sep.className = "breadcrumb-sep";
       sep.textContent = " › ";
       breadcrumb.appendChild(sep);
-    }
 
-    const current = document.createElement("span");
-    current.className = "breadcrumb-item current";
-    current.textContent = S.documentPath?.split("/").pop() || S.document.tagName || "component";
-    breadcrumb.appendChild(current);
+      const editing = S.ui.editingFunction;
+      const funcCrumb = document.createElement("span");
+      funcCrumb.className = "breadcrumb-item current";
+      funcCrumb.textContent = editing.type === "def"
+        ? `ƒ ${editing.defName}`
+        : `ƒ ${editing.eventKey}`;
+      breadcrumb.appendChild(funcCrumb);
+    }
 
     toolbar.appendChild(breadcrumb);
   }

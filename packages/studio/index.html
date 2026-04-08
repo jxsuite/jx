@@ -90,7 +90,9 @@
     .component-tag { font-size: 9px; width: 18px; text-align: center; }
     .components-section { padding: 0 0 2px; }
     .breadcrumb { display: flex; align-items: center; gap: 2px; font-size: 11px; margin-left: 8px; }
-    .breadcrumb-item { color: var(--fg-dim); cursor: default; }
+    .breadcrumb-item { color: var(--fg-dim); cursor: default; white-space: nowrap; }
+    .breadcrumb-item.clickable { cursor: pointer; }
+    .breadcrumb-item.clickable:hover { color: var(--fg); text-decoration: underline; }
     .breadcrumb-item.current { color: var(--fg); font-weight: 600; }
     .breadcrumb-sep { color: var(--fg-dim); }
     .block-row { cursor: grab; display: inline-flex; flex-direction: column; width: calc(50% - 6px); margin: 3px; vertical-align: top; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
