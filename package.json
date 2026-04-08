@@ -1,20 +1,25 @@
 {
-  "name": "jsonsx-workspace",
-  "version": "1.0.0",
-  "private": true,
-  "type": "module",
-  "workspaces": ["packages/*", "examples"],
-  "scripts": {
-    "dev": "bun run server.js",
-    "build": "bun run --cwd packages/runtime build && bun run --cwd packages/studio build && bun run --cwd packages/compiler build",
-    "build:compiler": "bun run --cwd packages/compiler build",
-    "generate:schema": "bun run --cwd packages/schema schema",
-    "test": "bun test",
-    "test:coverage": "bun test --coverage"
-  },
   "devDependencies": {
     "chrome-devtools-mcp": "^0.21.0",
     "oxfmt": "^0.44.0",
     "oxlint": "^1.59.0"
-  }
+  },
+  "name": "jsonsx-workspace",
+  "private": true,
+  "scripts": {
+    "build": "bun run build:compiler && bun run build:runtime && bun run build:studio",
+    "build:compiler": "bun run --cwd packages/compiler build",
+    "build:runtime": "bun run --cwd packages/runtime build",
+    "build:studio": "bun run --cwd packages/studio build",
+    "dev": "bun run server.js",
+    "generate:schema": "bun run --cwd packages/schema schema",
+    "test": "bun test",
+    "test:coverage": "bun test --coverage"
+  },
+  "type": "module",
+  "version": "1.0.0",
+  "workspaces": [
+    "packages/*",
+    "examples"
+  ]
 }

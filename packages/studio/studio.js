@@ -311,6 +311,9 @@ let canvasPanels = [];
 /** Whether the canvas is in preview mode (live interactivity) vs edit mode */
 let previewMode = false;
 
+/** Component-mode inline text editing state: { el, path, originalText } or null */
+let componentInlineEdit = null;
+
 /** Whether the canvas is replaced by the Monaco source editor */
 let sourceMode = false;
 
@@ -1376,9 +1379,33 @@ function registerPanelEvents(panel) {
   }
 
   overlayClk.addEventListener("click", (e) => {
-    // If inline editing is active, treat click outside as blur
+    // If content-mode inline editing is active, treat click outside as blur
     if (isEditing()) {
       stopEditing();
+    }
+
+    // Component-mode inline editing: handle click-within-text vs click-elsewhere
+    if (componentInlineEdit) {
+      const elements = withPanelPointerEvents(() => document.elementsFromPoint(e.clientX, e.clientY));
+      const clickedEditingEl = elements.includes(componentInlineEdit.el);
+
+      if (clickedEditingEl) {
+        // Position cursor within the editing element via caretRangeFromPoint
+        overlayClk.style.display = "none";
+        const range = document.caretRangeFromPoint
+          ? document.caretRangeFromPoint(e.clientX, e.clientY)
+          : null;
+        overlayClk.style.display = "";
+        if (range) {
+          const sel = window.getSelection();
+          sel.removeAllRanges();
+          sel.addRange(range);
+        }
+        return;
+      }
+
+      // Clicked elsewhere — commit the current edit, then fall through to select new element
+      commitComponentInlineEdit();
     }
 
     const elements = withPanelPointerEvents(() => document.elementsFromPoint(e.clientX, e.clientY));
@@ -1393,6 +1420,15 @@ function registerPanelEvents(panel) {
           // In content mode: if clicking an already-selected editable block, enter inline editing
           if (S.mode === "content" && pathsEqual(path, S.selection) && isEditableBlock(el)) {
             enterInlineEdit(el, path);
+            return;
+          }
+
+          // Component mode: select and immediately enter inline editing
+          if (S.mode === "component") {
+            update(selectNode(S, path));
+            // update() rebuilds canvas DOM, so find the fresh element for this path
+            const newEl = findCanvasElement(path, canvas);
+            if (newEl) enterComponentInlineEdit(newEl, path);
             return;
           }
 
@@ -1566,6 +1602,111 @@ function enterInlineEdit(el, path) {
       renderOverlays();
     },
   });
+}
+
+// ─── Component-mode inline text editing ──────────────────────────────────────
+
+function enterComponentInlineEdit(el, path) {
+  // Already editing this element
+  if (componentInlineEdit && componentInlineEdit.el === el) return;
+
+  const node = getNodeAtPath(S.document, path);
+  if (!node) return;
+
+  // Skip nodes that shouldn't be inline-edited
+  const tc = node.textContent;
+  if (Array.isArray(node.children) && node.children.length > 0) return;
+  if (node.children && typeof node.children === "object") return;
+  if (tc && typeof tc === "object") return; // $ref binding
+  const voids = new Set(["img", "input", "br", "hr", "video", "audio", "source", "embed"]);
+  if (voids.has(node.tagName)) return;
+
+  // Keep overlay active — it handles click-to-position-cursor and click-away-to-commit.
+  // Hide the selection/hover overlay rectangles so they don't obscure the editing outline.
+  for (const p of canvasPanels) {
+    p.overlay.style.display = "none";
+  }
+
+  el.contentEditable = "plaintext-only";
+  el.style.pointerEvents = "auto";
+  el.style.cursor = "text";
+  el.style.outline = "1px solid var(--accent, #4f8bc7)";
+  el.style.outlineOffset = "-1px";
+  el.style.minHeight = "1em";
+
+  // Show raw textContent (not the ❮...❯ display transform)
+  const rawText = typeof tc === "string" ? tc : "";
+  el.textContent = rawText;
+
+  componentInlineEdit = { el, path, originalText: rawText };
+
+  // Focus and place cursor at end
+  el.focus();
+  const sel = window.getSelection();
+  const range = document.createRange();
+  range.selectNodeContents(el);
+  range.collapse(false);
+  sel.removeAllRanges();
+  sel.addRange(range);
+
+  el.addEventListener("keydown", componentInlineKeydown);
+  el.addEventListener("blur", componentInlineBlur);
+}
+
+function componentInlineKeydown(e) {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    commitComponentInlineEdit();
+  } else if (e.key === "Escape") {
+    e.preventDefault();
+    cancelComponentInlineEdit();
+  }
+  e.stopPropagation(); // prevent studio keyboard shortcuts
+}
+
+function componentInlineBlur() {
+  setTimeout(() => {
+    if (componentInlineEdit) commitComponentInlineEdit();
+  }, 50);
+}
+
+function commitComponentInlineEdit() {
+  if (!componentInlineEdit) return;
+  const { el, path, originalText } = componentInlineEdit;
+  const newText = el.textContent ?? "";
+
+  cleanupComponentInlineEdit(el);
+
+  if (newText !== originalText) {
+    update(updateProperty(S, path, "textContent", newText || undefined));
+  } else {
+    renderCanvas();
+    renderOverlays();
+  }
+}
+
+function cancelComponentInlineEdit() {
+  if (!componentInlineEdit) return;
+  const { el } = componentInlineEdit;
+  cleanupComponentInlineEdit(el);
+  renderCanvas();
+  renderOverlays();
+}
+
+function cleanupComponentInlineEdit(el) {
+  el.removeEventListener("keydown", componentInlineKeydown);
+  el.removeEventListener("blur", componentInlineBlur);
+  el.contentEditable = "false";
+  el.style.pointerEvents = "none";
+  el.style.cursor = "";
+  el.style.outline = "";
+  el.style.outlineOffset = "";
+  componentInlineEdit = null;
+
+  // Restore selection/hover overlay rectangles
+  for (const p of canvasPanels) {
+    p.overlay.style.display = "";
+  }
 }
 
 // ─── Left panel: Layers ───────────────────────────────────────────────────────
@@ -5362,6 +5503,13 @@ document.addEventListener("keydown", (e) => {
   }
   if (isEditing()) {
     // Let inline editor handle its own keyboard events; only intercept Save
+    if (mod && e.key === "s") {
+      e.preventDefault();
+      saveFile();
+    }
+    return;
+  }
+  if (componentInlineEdit) {
     if (mod && e.key === "s") {
       e.preventDefault();
       saveFile();
