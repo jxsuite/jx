@@ -1378,6 +1378,19 @@ function registerPanelEvents(panel) {
     return result;
   }
 
+  // Prevent blur when clicking within an active component inline edit
+  overlayClk.addEventListener("mousedown", (e) => {
+    if (componentInlineEdit) {
+      const rect = componentInlineEdit.el.getBoundingClientRect();
+      const inBounds =
+        e.clientX >= rect.left && e.clientX <= rect.right &&
+        e.clientY >= rect.top && e.clientY <= rect.bottom;
+      if (inBounds) {
+        e.preventDefault(); // prevent focus change → prevents blur on the editing element
+      }
+    }
+  });
+
   overlayClk.addEventListener("click", (e) => {
     // If content-mode inline editing is active, treat click outside as blur
     if (isEditing()) {
@@ -1386,10 +1399,13 @@ function registerPanelEvents(panel) {
 
     // Component-mode inline editing: handle click-within-text vs click-elsewhere
     if (componentInlineEdit) {
-      const elements = withPanelPointerEvents(() => document.elementsFromPoint(e.clientX, e.clientY));
-      const clickedEditingEl = elements.includes(componentInlineEdit.el);
+      const el = componentInlineEdit.el;
+      const rect = el.getBoundingClientRect();
+      const inBounds =
+        e.clientX >= rect.left && e.clientX <= rect.right &&
+        e.clientY >= rect.top && e.clientY <= rect.bottom;
 
-      if (clickedEditingEl) {
+      if (inBounds) {
         // Position cursor within the editing element via caretRangeFromPoint
         overlayClk.style.display = "none";
         const range = document.caretRangeFromPoint
@@ -1608,7 +1624,9 @@ function enterInlineEdit(el, path) {
 
 function enterComponentInlineEdit(el, path) {
   // Already editing this element
-  if (componentInlineEdit && componentInlineEdit.el === el) return;
+  if (componentInlineEdit && componentInlineEdit.el === el) {
+    return;
+  }
 
   const node = getNodeAtPath(S.document, path);
   if (!node) return;
@@ -1617,7 +1635,7 @@ function enterComponentInlineEdit(el, path) {
   const tc = node.textContent;
   if (Array.isArray(node.children) && node.children.length > 0) return;
   if (node.children && typeof node.children === "object") return;
-  if (tc && typeof tc === "object") return; // $ref binding
+  if (tc && typeof tc === "object") return;
   const voids = new Set(["img", "input", "br", "hr", "video", "audio", "source", "embed"]);
   if (voids.has(node.tagName)) return;
 
@@ -1628,7 +1646,7 @@ function enterComponentInlineEdit(el, path) {
   }
 
   el.contentEditable = "plaintext-only";
-  el.style.pointerEvents = "auto";
+  el.style.pointerEvents = "auto"; // required for caretRangeFromPoint hit-testing
   el.style.cursor = "text";
   el.style.outline = "1px solid var(--accent, #4f8bc7)";
   el.style.outlineOffset = "-1px";
@@ -1666,7 +1684,9 @@ function componentInlineKeydown(e) {
 
 function componentInlineBlur() {
   setTimeout(() => {
-    if (componentInlineEdit) commitComponentInlineEdit();
+    if (componentInlineEdit) {
+      commitComponentInlineEdit();
+    }
   }, 50);
 }
 
@@ -1697,10 +1717,10 @@ function cleanupComponentInlineEdit(el) {
   el.removeEventListener("keydown", componentInlineKeydown);
   el.removeEventListener("blur", componentInlineBlur);
   el.contentEditable = "false";
-  el.style.pointerEvents = "none";
   el.style.cursor = "";
   el.style.outline = "";
   el.style.outlineOffset = "";
+  el.style.pointerEvents = "";
   componentInlineEdit = null;
 
   // Restore selection/hover overlay rectangles
