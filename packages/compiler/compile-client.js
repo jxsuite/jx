@@ -198,12 +198,12 @@ function buildClientNode(def, raw, context, bindings, handlers, counter) {
     const tc = raw?.textContent ?? def.textContent;
     if (isRefObject(tc)) {
       const key = refToBindingKey(tc.$ref);
-      bindAttrs.push(`:textContent="${key}"`);
+      bindAttrs.push(`:text-content="${key}"`);
       addRefBinding(bindings, key, tc.$ref);
       needsBind = true;
     } else if (isTemplateString(tc)) {
       const key = `_t${counter.t++}`;
-      bindAttrs.push(`:textContent="${key}"`);
+      bindAttrs.push(`:text-content="${key}"`);
       bindings.set(key, '() => `' + tc + '`');
       needsBind = true;
     }
@@ -265,12 +265,12 @@ function buildClientNode(def, raw, context, bindings, handlers, counter) {
         prop === "attributes") continue;
     if (isRefObject(val)) {
       const key = refToBindingKey(val.$ref);
-      bindAttrs.push(`:${prop}="${key}"`);
+      bindAttrs.push(`:${camelToKebab(prop)}="${key}"`);
       addRefBinding(bindings, key, val.$ref);
       needsBind = true;
     } else if (isTemplateString(val)) {
       const key = `_t${counter.t++}`;
-      bindAttrs.push(`:${prop}="${key}"`);
+      bindAttrs.push(`:${camelToKebab(prop)}="${key}"`);
       bindings.set(key, '() => `' + val + '`');
       needsBind = true;
     }
@@ -536,7 +536,8 @@ function emitClientModule(stateEntries, computedEntries, bindEntries, onEntries,
   lines.push("        } else if (parts[0] === 'attr' && parts.length > 1) {");
   lines.push("          effect(() => { el.setAttribute(parts[1], bind[key]()); });");
   lines.push("        } else {");
-  lines.push("          effect(() => { el[parts[0]] = bind[key](); });");
+  lines.push("          const prop = parts[0].replace(/-([a-z])/g, (_, c) => c.toUpperCase());");
+  lines.push("          effect(() => { el[prop] = bind[key](); });");
   lines.push("        }");
   lines.push("      } else if (a.name.startsWith('@')) {");
   lines.push("        el.addEventListener(a.name.slice(1), on[a.value]);");

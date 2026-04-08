@@ -353,9 +353,7 @@ export function buildInner(def, raw, context, childCompiler) {
  */
 export function compileStyles(doc, mediaQueries = {}) {
 	const rules = [];
-	if (!isNodeDynamic(doc)) {
-		collectStyles(doc, rules, mediaQueries, "");
-	}
+	collectStyles(doc, rules, mediaQueries, "");
 	if (rules.length === 0) return "";
 	return `<style>\n${rules.join("\n")}\n</style>`;
 }
@@ -395,7 +393,7 @@ export function collectStyles(def, rules, mediaQueries, _parentSel = "") {
 
 	if (Array.isArray(def.children)) {
 		def.children.forEach((c) => {
-			if (!hasAnyIsland(c)) collectStyles(c, rules, mediaQueries, selector);
+			collectStyles(c, rules, mediaQueries, selector);
 		});
 	}
 }
