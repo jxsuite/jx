@@ -63,6 +63,12 @@ export function isAncestor(path, descendant) {
  */
 export function flattenTree(doc, path = [], depth = 0) {
   const rows = [{ node: doc, path, depth, nodeType: "element" }];
+
+  // Custom component instances are atomic in the layer tree — don't recurse into internals
+  if (doc.$props && (doc.tagName || "").includes("-")) {
+    return rows;
+  }
+
   const children = doc.children;
 
   if (Array.isArray(children)) {

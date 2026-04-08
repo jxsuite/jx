@@ -44,7 +44,7 @@ import {
   isAncestor,
 } from "./state.js";
 
-import { renderNode as runtimeRenderNode, buildScope } from "@jsonsx/runtime";
+import { renderNode as runtimeRenderNode, buildScope, defineElement } from "@jsonsx/runtime";
 
 import { unified } from "unified";
 import remarkParse from "remark-parse";
@@ -370,8 +370,8 @@ function prepareForEditMode(node) {
 
   const out = {};
   for (const [k, v] of Object.entries(node)) {
-    if (k === "$defs" || k === "$media") {
-      out[k] = v; // preserve as-is
+    if (k === "$defs" || k === "$media" || k === "$props" || k === "$elements") {
+      out[k] = v; // preserve as-is for runtime resolution
     } else if (k === "children") {
       if (Array.isArray(v)) {
         out.children = v.map(prepareForEditMode);
@@ -382,6 +382,11 @@ function prepareForEditMode(node) {
           out.children = [{
             tagName: "div",
             className: "repeater-perimeter",
+            $defs: {
+              "$map": { item: {}, index: 0 },
+              "$map/item": {},
+              "$map/index": 0,
+            },
             children: [prepareForEditMode(template)],
           }];
         } else {
@@ -483,6 +488,19 @@ async function renderCanvasLive(doc, canvasEl) {
     const docBase = S.documentPath
       ? `${location.origin}/${S.documentPath}`
       : undefined;
+
+    // Register custom elements so the runtime can render them
+    if (renderDoc.$elements) {
+      for (const entry of renderDoc.$elements) {
+        if (entry?.$ref) {
+          const href = new URL(entry.$ref, docBase).href;
+          try { await defineElement(href); } catch (e) {
+            console.warn("Studio: failed to register element", entry.$ref, e);
+          }
+        }
+      }
+    }
+
     const $defs = await buildScope(renderDoc, {}, docBase);
     const el = runtimeRenderNode(renderDoc, $defs, {
       onNodeCreated(el, path) {
@@ -519,6 +537,15 @@ async function renderCanvasLive(doc, canvasEl) {
       }
     }
     canvasEl.appendChild(el);
+    if (!previewMode) {
+      // Custom element connectedCallbacks render children asynchronously —
+      // sweep again after they've had a chance to run
+      requestAnimationFrame(() => {
+        for (const child of canvasEl.querySelectorAll("*")) {
+          child.style.pointerEvents = "none";
+        }
+      });
+    }
     return $defs;
   } catch (err) {
     console.warn("JSONsx Studio: runtime render failed, falling back to structural preview", err);
@@ -3250,6 +3277,14 @@ function renderInspector(container) {
   const isSwitchNode = !!node.$switch;
   const isCustomInstance = (node.tagName || "").includes("-");
 
+  // $map signals available when inside a repeater template
+  const mapSignals = isInsideMapTemplate(S.selection)
+    ? [
+        { value: "$map/item", label: "$map/item" },
+        { value: "$map/index", label: "$map/index" },
+      ]
+    : null;
+
   // ─── $map inspector (when the $map row itself is selected) ───
   if (isMapNode) {
     renderInspectorSection(container, "Repeater", true, () => {
@@ -3344,14 +3379,14 @@ function renderInspector(container) {
       fields.appendChild(
         bindableFieldRow("textContent", "textarea", tcRaw, (v) => {
           update(updateProperty(S, S.selection, "textContent", v || undefined));
-        }),
+        }, null, mapSignals),
       );
     }
 
     fields.appendChild(
       bindableFieldRow("hidden", "checkbox", node.hidden, (v) => {
         update(updateProperty(S, S.selection, "hidden", v || undefined));
-      }),
+      }, null, mapSignals),
     );
 
     // $map parent hint
@@ -3374,7 +3409,7 @@ function renderInspector(container) {
       fields.appendChild(
         bindableFieldRow("$switch", "text", node.$switch, (v) => {
           update(updateProperty(S, S.selection, "$switch", v));
-        }),
+        }, null, mapSignals),
       );
 
       const casesHeader = document.createElement("div");
@@ -3459,7 +3494,7 @@ function renderInspector(container) {
         fields.appendChild(
           bindableFieldRow(prop.name, "text", currentProps[prop.name], (v) => {
             update(updateProp(S, S.selection, prop.name, v));
-          }),
+          }, null, mapSignals),
         );
       }
 
@@ -4620,10 +4655,21 @@ function fieldRow(label, type, value, onChange, datalistId) {
 }
 
 /**
+ * Check if a selection path is inside a $map template (contains [..., "children", "map", ...]).
+ */
+function isInsideMapTemplate(path) {
+  if (!path) return false;
+  for (let i = 0; i < path.length - 1; i++) {
+    if (path[i] === "children" && path[i + 1] === "map") return true;
+  }
+  return false;
+}
+
+/**
  * Field row with binding toggle — allows switching between static value and signal binding.
  * rawValue can be a string/bool (static) or { $ref: "..." } (bound).
  */
-function bindableFieldRow(label, type, rawValue, onChange, filterFn) {
+function bindableFieldRow(label, type, rawValue, onChange, filterFn, extraSignals) {
   const defs = S.document.$defs || {};
   const isBound = typeof rawValue === "object" && rawValue !== null && rawValue.$ref;
   const row = document.createElement("div");
@@ -4682,6 +4728,20 @@ function bindableFieldRow(label, type, rawValue, onChange, filterFn) {
       sel.appendChild(opt);
     }
 
+    if (extraSignals) {
+      const sep = document.createElement("option");
+      sep.disabled = true;
+      sep.textContent = "── map signals ──";
+      sel.appendChild(sep);
+      for (const sig of extraSignals) {
+        const opt = document.createElement("option");
+        opt.value = sig.value;
+        opt.textContent = sig.label;
+        if (isBound && rawValue.$ref === sig.value) opt.selected = true;
+        sel.appendChild(opt);
+      }
+    }
+
     sel.onchange = () => {
       if (sel.value) {
         onChange({ $ref: sel.value });
@@ -4718,6 +4778,8 @@ function bindableFieldRow(label, type, rawValue, onChange, filterFn) {
       );
       if (signalDefs.length > 0) {
         onChange({ $ref: `#/$defs/${signalDefs[0][0]}` });
+      } else if (extraSignals && extraSignals.length > 0) {
+        onChange({ $ref: extraSignals[0].value });
       }
     }
   };
