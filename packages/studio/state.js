@@ -100,10 +100,10 @@ export function flattenTree(doc, path = [], depth = 0) {
 /** Get a display label for a node (for layers + overlays). */
 export function nodeLabel(node) {
   if (!node) return "?";
-  // $map container
+  // $map container (Repeater)
   if (node.$prototype === "Array") {
     const ref = node.items?.$ref || "items";
-    return `$map → ${ref}`;
+    return `Repeater → ${ref}`;
   }
   if (node.$id) return node.$id;
   const tag = node.tagName ?? "div";

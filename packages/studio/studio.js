@@ -373,22 +373,17 @@ function prepareForEditMode(node) {
       if (Array.isArray(v)) {
         out.children = v.map(prepareForEditMode);
       } else if (v && typeof v === "object" && v.$prototype === "Array") {
-        // Replace mapped array with a placeholder node
-        const label = v.items?.$ref || "items";
-        out.children = [{
-          tagName: "div",
-          textContent: `[Array: ${label}]`,
-          style: {
-            fontFamily: "'SF Mono', 'Fira Code', monospace",
-            fontSize: "11px",
-            padding: "6px 10px",
-            background: "rgba(100,100,100,0.08)",
-            border: "1px dashed rgba(150,150,150,0.4)",
-            borderRadius: "4px",
-            color: "#888",
-            fontStyle: "italic",
-          },
-        }];
+        // Wrap the map template in a visual repeater perimeter
+        const template = v.map;
+        if (template && typeof template === "object") {
+          out.children = [{
+            tagName: "div",
+            className: "repeater-perimeter",
+            children: [prepareForEditMode(template)],
+          }];
+        } else {
+          out.children = [];
+        }
       } else {
         out.children = prepareForEditMode(v);
       }
@@ -458,6 +453,29 @@ async function renderCanvasLive(doc, canvasEl) {
   }
 
   const renderDoc = previewMode ? structuredClone(doc) : prepareForEditMode(stripEventHandlers(doc));
+
+  // In edit mode, collect paths where $map templates were inlined as children[0]
+  // so we can remap runtime paths (children,0,...) → (children,map,...)
+  const mapParentPaths = new Set();
+  if (!previewMode) {
+    (function findMapParents(node, path) {
+      if (!node || typeof node !== "object") return;
+      if (node.children && typeof node.children === "object" && node.children.$prototype === "Array") {
+        mapParentPaths.add(path.join("/"));
+      }
+      if (Array.isArray(node.children)) {
+        for (let i = 0; i < node.children.length; i++) {
+          findMapParents(node.children[i], [...path, "children", i]);
+        }
+      }
+      if (node.$switch && node.cases) {
+        for (const [k, v] of Object.entries(node.cases)) {
+          findMapParents(v, [...path, "cases", k]);
+        }
+      }
+    })(doc, []);
+  }
+
   try {
     const docBase = S.documentPath
       ? `${location.origin}/${S.documentPath}`
@@ -465,7 +483,28 @@ async function renderCanvasLive(doc, canvasEl) {
     const $defs = await buildScope(renderDoc, {}, docBase);
     const el = runtimeRenderNode(renderDoc, $defs, {
       onNodeCreated(el, path) {
-        elToPath.set(el, path);
+        // Remap $map paths: wrapper and template children → real document paths
+        // prepareForEditMode wraps $map template in: children[0] (wrapper) > children[0] (template)
+        // Real paths: wrapper → ['children'] ($map container), template → ['children', 'map']
+        let mappedPath = path;
+        if (!previewMode && mapParentPaths.size > 0) {
+          for (let i = 0; i < path.length - 1; i++) {
+            if (path[i] === "children" && path[i + 1] === 0) {
+              const parentKey = path.slice(0, i).join("/");
+              if (mapParentPaths.has(parentKey)) {
+                if (path.length === i + 2) {
+                  // Wrapper div itself → $map container path
+                  mappedPath = path.slice(0, i + 1);
+                } else if (path.length >= i + 4 && path[i + 2] === "children" && path[i + 3] === 0) {
+                  // Template or its descendants → children/map/...rest
+                  mappedPath = [...path.slice(0, i), "children", "map", ...path.slice(i + 4)];
+                }
+                break;
+              }
+            }
+          }
+        }
+        elToPath.set(el, mappedPath);
       },
       _path: [],
     });
@@ -1001,11 +1040,21 @@ function renderCanvasNode(node, path, parent, activeBreakpoints, featureToggles)
       );
     }
   } else if (node.children && typeof node.children === "object" && node.children.$prototype === "Array") {
-    // $map placeholder in structural preview
-    const placeholder = document.createElement("div");
-    placeholder.textContent = `[$map: ${node.children.items?.$ref || "items"}]`;
-    placeholder.style.cssText = "font-family:monospace;font-size:11px;padding:6px 10px;background:rgba(100,100,100,0.08);border:1px dashed rgba(150,150,150,0.4);border-radius:4px;color:#888;font-style:italic";
-    el.appendChild(placeholder);
+    // Wrap the map template in a visual repeater perimeter
+    const template = node.children.map;
+    if (template && typeof template === "object") {
+      const wrapper = document.createElement("div");
+      wrapper.className = "repeater-perimeter";
+      elToPath.set(wrapper, [...path, "children"]);
+      renderCanvasNode(
+        template,
+        [...path, "children", "map"],
+        wrapper,
+        activeBreakpoints,
+        featureToggles,
+      );
+      el.appendChild(wrapper);
+    }
   }
 
   if (node.$switch && node.cases && typeof node.cases === "object") {
@@ -1294,9 +1343,18 @@ function findCanvasElement(path, canvasEl) {
   if (path.length === 0) return el;
 
   for (let i = 0; i < path.length; i += 2) {
-    if (path[i] !== "children") return null;
+    if (path[i] !== "children" && path[i] !== "cases") return null;
     const idx = path[i + 1];
-    el = el.children[idx];
+    if (idx === undefined) {
+      // Odd-length path like ['children', 2, 'children'] — $map container
+      // The wrapper div is children[0] of the current element
+      el = el.children[0];
+    } else if (idx === "map") {
+      // $map template: wrapper is children[0], template is wrapper.children[0]
+      el = el.children[0]?.children[0];
+    } else {
+      el = el.children[idx];
+    }
     if (!el) return null;
   }
   return el;
@@ -1694,8 +1752,8 @@ function renderLayers(container) {
     const badge = document.createElement("span");
     if (nodeType === "map") {
       badge.className = "layer-tag map-tag";
-      badge.textContent = "[ ]";
-      badge.title = "$map (reactive array)";
+      badge.textContent = "↻";
+      badge.title = "Repeater (mapped array)";
     } else if (nodeType === "case" || nodeType === "case-ref") {
       badge.className = "layer-tag case-tag";
       badge.textContent = path[path.length - 1];
@@ -3033,7 +3091,7 @@ function renderInspector(container) {
 
   // ─── $map inspector (when the $map row itself is selected) ───
   if (isMapNode) {
-    renderInspectorSection(container, "$map Configuration", true, () => {
+    renderInspectorSection(container, "Repeater", true, () => {
       const fields = document.createElement("div");
       fields.className = "inspector-fields";
 
@@ -3139,7 +3197,7 @@ function renderInspector(container) {
     if (isMapParent) {
       const hint = document.createElement("div");
       hint.style.cssText = "font-size:10px;color:var(--fg-dim);padding:4px 0;font-style:italic";
-      hint.textContent = "Children: $map (select in layers to edit)";
+      hint.textContent = "Children: Repeater (select in layers to configure)";
       fields.appendChild(hint);
     }
 

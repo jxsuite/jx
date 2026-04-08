@@ -1,4 +1,4 @@
-# JSONsx Builder Specification
+# JSONsx Studio Specification
 ## Visual Builder for the Declarative Document Object Model
 
 **Version:** 0.1.0-draft  
@@ -34,7 +34,7 @@
 
 ## 1. Overview
 
-The JSONsx Builder is a browser-based visual editor for authoring JSONsx JSON component files. It is a developer tool — not an end-user product — intended to accelerate the authoring of `.json` / `.js` component pairs by providing a live WYSIWYG canvas, a layer tree, and a property inspector, all driven by a single immutable JSONsx JSON document as the source of truth.
+The JSONsx Studio is a browser-based visual editor for authoring JSONsx JSON component files. It is a developer tool — not an end-user product — intended to accelerate the authoring of `.json` app and components providing a live WYSIWYG canvas, a layer tree, and a property inspector, all driven by a single immutable JSONsx JSON document as the source of truth.
 
 The builder is itself a web application. Its UI panels are written as JSONsx components where possible, consuming their own runtime. The canvas renders live JSONsx output directly — there is no simulation layer or shadow representation. What the user sees in the canvas is the JSONsx runtime rendering the document, not a builder-specific preview.
 
@@ -889,4 +889,4 @@ The builder must correctly handle all features of the JSONsx spec v1.0.0+:
 
 ---
 
-*JSONsx Builder Specification v0.1.0-draft — subject to revision*
+*JSONsx Studio Specification v0.1.0-draft — subject to revision*

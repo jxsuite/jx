@@ -82,6 +82,8 @@
     .layer-delete { visibility: hidden; cursor: pointer; color: var(--danger); font-size: 11px; flex-shrink: 0; }
     .layer-row:hover .layer-delete { visibility: visible; }
     .map-tag { background: #5b4fc7 !important; color: white !important; font-size: 9px; letter-spacing: 0.5px; }
+    .repeater-perimeter { border: 1px dashed rgba(91,79,199,0.25); border-radius: 4px; padding: 4px; min-height: 24px; position: relative; }
+    .repeater-perimeter::before { content: '↻ Repeater'; position: absolute; top: -9px; left: 6px; font-size: 9px; color: rgba(91,79,199,0.5); background: #fff; padding: 0 3px; font-family: 'SF Mono', 'Fira Code', monospace; pointer-events: none; }
     .switch-tag { background: #c75b4f !important; color: white !important; }
     .case-tag { background: #4f8bc7 !important; color: white !important; font-style: italic; font-size: 9px; max-width: 60px; overflow: hidden; text-overflow: ellipsis; }
     .component-row { opacity: 0.9; cursor: grab; }
