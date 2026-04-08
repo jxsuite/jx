@@ -1253,10 +1253,13 @@ function renderOverlays() {
     }
     return;
   }
-  // Stylebook manages its own overlays — just enable the click interceptor
+  // Stylebook manages its own overlays
   if (canvasMode === "stylebook") {
+    // Elements tab: enable click interceptor for hit-testing
+    // Variables tab: disable it so form inputs are directly interactive
+    const enable = S.ui.stylebookTab === "elements";
     for (const p of canvasPanels) {
-      p.overlayClk.style.pointerEvents = "";
+      p.overlayClk.style.pointerEvents = enable ? "" : "none";
     }
     return;
   }
@@ -1798,7 +1801,10 @@ function renderLeftPanel() {
   body.className = "panel-body";
   leftPanel.appendChild(body);
 
-  if (tab === "layers") renderLayers(body);
+  if (tab === "layers") {
+    if (canvasMode === "stylebook") renderStylebookLayers(body);
+    else renderLayers(body);
+  }
   else if (tab === "blocks") renderBlocks(body);
   else if (tab === "state") renderSignals(body);
   else if (tab === "data") renderDataExplorer(body);
@@ -1857,6 +1863,118 @@ function renderComponentGroup(container, label, components, collapsed, isImporte
     dndCleanups.push(cleanup);
 
     container.appendChild(row);
+  }
+}
+
+function renderStylebookLayers(container) {
+  const rootStyle = S.document?.style || {};
+  const selectedTag = S.ui.stylebookSelection;
+
+  if (S.ui.stylebookTab === "elements") {
+    for (const section of stylebookMeta.$sections) {
+      for (const entry of section.elements) {
+        const row = document.createElement("div");
+        row.className = `layer-row${entry.tag === selectedTag ? " selected" : ""}`;
+
+        const badge = document.createElement("span");
+        badge.className = "layer-tag";
+        badge.textContent = entry.tag;
+        row.appendChild(badge);
+
+        const lbl = document.createElement("span");
+        lbl.className = "layer-label";
+        lbl.textContent = entry.text || `<${entry.tag}>`;
+        lbl.style.cssText = "overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1";
+        row.appendChild(lbl);
+
+        if (hasTagStyle(rootStyle, entry.tag)) {
+          const dot = document.createElement("span");
+          dot.style.cssText = "width:6px;height:6px;border-radius:50%;background:var(--accent);flex-shrink:0";
+          row.appendChild(dot);
+        }
+
+        row.onclick = () => {
+          S = {
+            ...S,
+            selection: [],
+            ui: { ...S.ui, stylebookSelection: entry.tag, rightTab: "style", activeSelector: `& ${entry.tag}` },
+          };
+          renderStylebookOverlays();
+          renderRightPanel();
+          renderLeftPanel();
+          renderToolbar();
+          // Scroll element into view on the canvas
+          if (canvasPanels.length > 0) {
+            const el = findStylebookEl(canvasPanels[0].canvas, entry.tag);
+            if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+          }
+        };
+
+        container.appendChild(row);
+      }
+    }
+    // Custom components
+    for (const comp of componentRegistry) {
+      const row = document.createElement("div");
+      row.className = `layer-row${comp.tagName === selectedTag ? " selected" : ""}`;
+
+      const badge = document.createElement("span");
+      badge.className = "layer-tag component-tag";
+      badge.textContent = "⬡";
+      badge.style.background = "var(--accent)";
+      row.appendChild(badge);
+
+      const lbl = document.createElement("span");
+      lbl.className = "layer-label";
+      lbl.textContent = comp.tagName;
+      row.appendChild(lbl);
+
+      row.onclick = () => {
+        S = {
+          ...S,
+          selection: [],
+          ui: { ...S.ui, stylebookSelection: comp.tagName, rightTab: "style", activeSelector: `& ${comp.tagName}` },
+        };
+        renderStylebookOverlays();
+        renderRightPanel();
+        renderLeftPanel();
+        renderToolbar();
+      };
+
+      container.appendChild(row);
+    }
+  } else {
+    // Variables tab — list variable names
+    const style = rootStyle;
+    for (const [k, v] of Object.entries(style)) {
+      if (!k.startsWith("--")) continue;
+      const row = document.createElement("div");
+      row.className = "layer-row";
+
+      const badge = document.createElement("span");
+      badge.className = "layer-tag";
+      badge.style.cssText = "font-size:10px;font-family:'SF Mono','Fira Code',monospace";
+      badge.textContent = "var";
+      row.appendChild(badge);
+
+      const lbl = document.createElement("span");
+      lbl.className = "layer-label";
+      lbl.textContent = k;
+      row.appendChild(lbl);
+
+      const preview = document.createElement("span");
+      preview.style.cssText = "font-size:11px;color:#888;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:80px";
+      preview.textContent = String(v);
+      row.appendChild(preview);
+
+      container.appendChild(row);
+    }
+    if (Object.keys(style).filter((k) => k.startsWith("--")).length === 0) {
+      const empty = document.createElement("div");
+      empty.style.cssText = "padding:16px;text-align:center;color:#888;font-size:12px";
+      empty.textContent = "No variables defined";
+      container.appendChild(empty);
+    }
   }
 }
 
@@ -2398,6 +2516,7 @@ function renderStylebook() {
       S = { ...S, ui: { ...S.ui, stylebookTab: t } };
       renderCanvas();
       renderOverlays();
+      renderLeftPanel();
     };
     tabBar.appendChild(tab);
   }
@@ -2434,17 +2553,19 @@ function renderStylebook() {
 
   if (S.ui.stylebookTab === "elements") {
     renderStylebookElementsIntoCanvas(canvasEl, rootStyle, filter, customizedOnly);
+
+    // Disable pointer events on all rendered content (same as edit mode)
+    for (const child of canvasEl.querySelectorAll("*")) {
+      child.style.pointerEvents = "none";
+    }
+
+    // Register click-to-select on the panel
+    registerStylebookPanelEvents(panel);
   } else {
     renderStylebookVarsIntoCanvas(canvasEl, rootStyle);
+    // Variables tab: hide the click interceptor so inputs are directly interactive
+    panel.overlayClk.style.pointerEvents = "none";
   }
-
-  // Disable pointer events on all rendered content (same as edit mode)
-  for (const child of canvasEl.querySelectorAll("*")) {
-    child.style.pointerEvents = "none";
-  }
-
-  // Register click-to-select on the panel
-  registerStylebookPanelEvents(panel);
 }
 
 /** Render element sections into the canvas from stylebook-meta.json */
@@ -5814,6 +5935,7 @@ function renderToolbar() {
       renderCanvas();
       renderOverlays();
       renderToolbar();
+      renderLeftPanel();
       if (m.key === "stylebook") {
         S = { ...S, ui: { ...S.ui, rightTab: "style" } };
         renderRightPanel();
