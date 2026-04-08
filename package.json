@@ -6,7 +6,7 @@
   "workspaces": ["packages/*", "examples"],
   "scripts": {
     "dev": "bun run server.js",
-    "build": "bun run --cwd packages/runtime build && bun run --cwd packages/studio build",
+    "build": "bun run --cwd packages/runtime build && bun run --cwd packages/studio build && bun run --cwd packages/compiler build",
     "build:compiler": "bun run --cwd packages/compiler build",
     "generate:schema": "bun run --cwd packages/schema schema",
     "test": "bun test",

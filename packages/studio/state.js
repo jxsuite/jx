@@ -56,30 +56,62 @@ export function isAncestor(path, descendant) {
 // ─── Tree flattening (for layer panel) ────────────────────────────────────────
 
 /**
- * Flatten a JSONsx document into an array of { node, path, depth } rows.
- * Only walks static children arrays, not Array namespace maps.
+ * Flatten a JSONsx document into an array of { node, path, depth, nodeType } rows.
+ * Walks static children arrays, $map templates, and $switch cases.
+ *
+ * nodeType: 'element' (default) | 'map' | 'case' | 'case-ref'
  */
 export function flattenTree(doc, path = [], depth = 0) {
-  const rows = [{ node: doc, path, depth }];
+  const rows = [{ node: doc, path, depth, nodeType: "element" }];
   const children = doc.children;
+
   if (Array.isArray(children)) {
     for (let i = 0; i < children.length; i++) {
       const childPath = [...path, "children", i];
       rows.push(...flattenTree(children[i], childPath, depth + 1));
     }
+  } else if (children && typeof children === "object" && children.$prototype === "Array") {
+    // $map — emit the map container, then recurse into the template
+    rows.push({ node: children, path: [...path, "children"], depth: depth + 1, nodeType: "map" });
+    const mapDef = children.map;
+    if (mapDef && typeof mapDef === "object") {
+      rows.push(...flattenTree(mapDef, [...path, "children", "map"], depth + 2));
+    }
   }
+
+  // $switch — emit each case as a virtual child
+  if (doc.$switch && doc.cases && typeof doc.cases === "object") {
+    for (const [caseName, caseDef] of Object.entries(doc.cases)) {
+      const casePath = [...path, "cases", caseName];
+      if (caseDef && typeof caseDef === "object" && caseDef.$ref) {
+        rows.push({ node: caseDef, path: casePath, depth: depth + 1, nodeType: "case-ref" });
+      } else if (caseDef && typeof caseDef === "object") {
+        rows.push({ node: caseDef, path: casePath, depth: depth + 1, nodeType: "case" });
+        // Recurse into case children (skip the case node itself — already emitted)
+        const caseChildren = flattenTree(caseDef, casePath, depth + 2);
+        rows.push(...caseChildren.slice(1));
+      }
+    }
+  }
+
   return rows;
 }
 
 /** Get a display label for a node (for layers + overlays). */
 export function nodeLabel(node) {
   if (!node) return "?";
+  // $map container
+  if (node.$prototype === "Array") {
+    const ref = node.items?.$ref || "items";
+    return `$map → ${ref}`;
+  }
   if (node.$id) return node.$id;
   const tag = node.tagName ?? "div";
+  const suffix = node.$switch ? " ⇆" : "";
   if (typeof node.textContent === "string" && node.textContent.length > 0) {
-    return `${tag} — ${node.textContent.slice(0, 24)}`;
+    return `${tag} — ${node.textContent.slice(0, 24)}${suffix}`;
   }
-  return tag;
+  return tag + suffix;
 }
 
 // ─── State factory ────────────────────────────────────────────────────────────
@@ -95,6 +127,7 @@ export function createState(doc) {
     dirty: false,
     fileHandle: null,
     documentPath: null, // root-relative path, e.g. "examples/markdown/blog.json"
+    documentStack: [], // frames for component navigation
     handlersSource: null,
     mode: "component", // 'component' | 'content'
     content: { frontmatter: {} }, // frontmatter metadata for .md files
@@ -351,5 +384,80 @@ export function updateMedia(state, name, query) {
     } else {
       doc.$media[name] = query;
     }
+  });
+}
+
+// ─── Document stack (component navigation) ──────────────────────────────────
+
+/** Push current document onto the stack and switch to editing a new document. */
+export function pushDocument(state, doc, documentPath) {
+  const frame = {
+    document: state.document,
+    selection: state.selection,
+    fileHandle: state.fileHandle,
+    documentPath: state.documentPath,
+    dirty: state.dirty,
+    history: state.history,
+    historyIndex: state.historyIndex,
+    mode: state.mode,
+  };
+  const newState = createState(doc);
+  newState.documentStack = [...(state.documentStack || []), frame];
+  newState.documentPath = documentPath;
+  newState.ui = { ...state.ui, leftTab: "layers", activeMedia: null, activeSelector: null };
+  return newState;
+}
+
+/** Pop the document stack and return to the previous document. */
+export function popDocument(state) {
+  if (!state.documentStack || state.documentStack.length === 0) return state;
+  const stack = [...state.documentStack];
+  const frame = stack.pop();
+  return {
+    ...state,
+    ...frame,
+    documentStack: stack,
+    ui: { ...state.ui, leftTab: "layers" },
+  };
+}
+
+// ─── $props mutations ────────────────────────────────────────────────────────
+
+/** Update a $prop on a component instance. */
+export function updateProp(state, path, propName, value) {
+  return applyMutation(state, (doc) => {
+    const node = getNodeAtPath(doc, path);
+    if (!node.$props) node.$props = {};
+    if (value === undefined || value === null || value === "") delete node.$props[propName];
+    else node.$props[propName] = value;
+    if (Object.keys(node.$props).length === 0) delete node.$props;
+  });
+}
+
+// ─── $switch case mutations ──────────────────────────────────────────────────
+
+export function addSwitchCase(state, path, caseName, caseDef) {
+  return applyMutation(state, (doc) => {
+    const node = getNodeAtPath(doc, path);
+    if (!node.cases) node.cases = {};
+    node.cases[caseName] = caseDef || { tagName: "div", textContent: caseName };
+  });
+}
+
+export function removeSwitchCase(state, path, caseName) {
+  return applyMutation(state, (doc) => {
+    const node = getNodeAtPath(doc, path);
+    if (node.cases) {
+      delete node.cases[caseName];
+    }
+  });
+}
+
+export function renameSwitchCase(state, path, oldName, newName) {
+  return applyMutation(state, (doc) => {
+    const node = getNodeAtPath(doc, path);
+    if (!node.cases || !node.cases[oldName]) return;
+    node.cases[newName] = node.cases[oldName];
+    delete node.cases[oldName];
   });
 }

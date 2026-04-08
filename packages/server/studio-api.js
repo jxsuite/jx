@@ -88,6 +88,35 @@ export async function handleStudioApi(req, url, root) {
     }
   }
 
+  // Component discovery — scan project for custom element definitions
+  if (path === "/__studio/components" && req.method === "GET") {
+    try {
+      const glob = new Bun.Glob("**/*.json");
+      const components = [];
+      for await (const match of glob.scan({ cwd: root, dot: false })) {
+        if (match.includes("node_modules") || match.includes("dist/") || match.includes(".claude/")) continue;
+        const fp = resolve(root, match);
+        try {
+          const content = JSON.parse(await readFile(fp, "utf8"));
+          if (content.tagName && content.tagName.includes("-")) {
+            components.push({
+              tagName: content.tagName,
+              $id: content.$id || null,
+              path: match,
+              props: Object.entries(content.$defs || {})
+                .filter(([, d]) => d && typeof d === "object" && !d.$prototype && !d.$handler && !d.$compute)
+                .map(([name, d]) => ({ name, type: d.type, default: d.default })),
+              hasElements: Array.isArray(content.$elements) && content.$elements.length > 0,
+            });
+          }
+        } catch {} // skip non-JSON or parse errors
+      }
+      return Response.json(components);
+    } catch (e) {
+      return Response.json({ error: e.message }, { status: 500 });
+    }
+  }
+
   // Read file
   if (path === "/__studio/file" && req.method === "GET") {
     const fp = url.searchParams.get("path");

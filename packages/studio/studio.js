@@ -27,6 +27,13 @@ import {
   updateMedia,
   updateNestedStyle,
   updateMediaNestedStyle,
+  pushDocument,
+  popDocument,
+  updateProp,
+  addSwitchCase,
+  removeSwitchCase,
+  renameSwitchCase,
+  applyMutation,
   getNodeAtPath,
   flattenTree,
   nodeLabel,
@@ -95,6 +102,67 @@ const leftPanel = $("#left-panel");
 const rightPanel = $("#right-panel");
 const toolbar = $("#toolbar");
 const statusbar = $("#statusbar");
+
+// ─── Component registry ───────────────────────────────────────────────────────
+
+let componentRegistry = []; // cached list from /__studio/components
+let componentRegistryLoaded = false;
+
+async function loadComponentRegistry() {
+  try {
+    const res = await fetch("/__studio/components");
+    if (res.ok) componentRegistry = await res.json();
+    componentRegistryLoaded = true;
+  } catch {
+    componentRegistryLoaded = true;
+  }
+}
+
+async function navigateToComponent(componentPath) {
+  try {
+    const res = await fetch(`/__studio/file?path=${encodeURIComponent(componentPath)}`);
+    const data = await res.json();
+    if (!data.content) return;
+    const doc = JSON.parse(data.content);
+    S = pushDocument(S, doc, data.path);
+    S.dirty = false;
+    render();
+    statusMessage(`Editing component: ${doc.tagName || data.path}`);
+  } catch (e) {
+    statusMessage(`Error: ${e.message}`);
+  }
+}
+
+async function navigateBack() {
+  if (!S.documentStack || S.documentStack.length === 0) return;
+  if (S.dirty && S.documentPath) {
+    try {
+      await fetch(`/__studio/file?path=${encodeURIComponent(S.documentPath)}`, {
+        method: "PUT",
+        body: JSON.stringify(S.document, null, 2),
+      });
+    } catch (e) {
+      statusMessage(`Save error: ${e.message}`);
+    }
+  }
+  S = popDocument(S);
+  render();
+  statusMessage("Returned to parent document");
+}
+
+function computeRelativePath(fromDocPath, toCompPath) {
+  if (!fromDocPath) return `./${toCompPath}`;
+  const fromDir = fromDocPath.substring(0, fromDocPath.lastIndexOf("/"));
+  const fromParts = fromDir.split("/").filter(Boolean);
+  const toParts = toCompPath.split("/").filter(Boolean);
+  let common = 0;
+  while (common < fromParts.length && common < toParts.length && fromParts[common] === toParts[common]) {
+    common++;
+  }
+  const ups = fromParts.length - common;
+  const remaining = toParts.slice(common);
+  return (ups > 0 ? "../".repeat(ups) : "./") + remaining.join("/");
+}
 
 // ─── OXC code services (server-backed) ───────────────────────────────────────
 
@@ -298,6 +366,30 @@ function prepareForEditMode(node) {
       } else {
         out.children = prepareForEditMode(v);
       }
+    } else if (k === "cases" && node.$switch && v && typeof v === "object") {
+      // Replace $switch cases with a placeholder showing the first case or a label
+      const caseKeys = Object.keys(v);
+      if (caseKeys.length > 0) {
+        const firstCase = v[caseKeys[0]];
+        if (firstCase && typeof firstCase === "object" && !firstCase.$ref) {
+          out.children = [prepareForEditMode(firstCase)];
+        } else {
+          out.children = [{
+            tagName: "div",
+            textContent: `[$switch: ${caseKeys.join(" | ")}]`,
+            style: {
+              fontFamily: "'SF Mono', 'Fira Code', monospace",
+              fontSize: "11px",
+              padding: "6px 10px",
+              background: "rgba(199,91,79,0.08)",
+              border: "1px dashed rgba(199,91,79,0.4)",
+              borderRadius: "4px",
+              color: "#c75b4f",
+              fontStyle: "italic",
+            },
+          }];
+        }
+      }
     } else if (k === "style") {
       // Replace template strings in style values with empty strings
       if (v && typeof v === "object") {
@@ -402,6 +494,7 @@ const EMPTY_DOC = {
 
 S = createState(structuredClone(EMPTY_DOC));
 registerFunctionCompletions();
+loadComponentRegistry();
 render();
 
 // Auto-open a document via ?open=path query parameter (server-backed)
@@ -449,7 +542,13 @@ function update(newState) {
     renderLeftPanel();
   }
 
-  renderRightPanel();
+  // Skip right-panel rebuild when an input inside it is focused (user is typing)
+  // unless the selection changed — that always needs a full re-render
+  const rightHasFocus = rightPanel.contains(document.activeElement)
+    && (document.activeElement.tagName === "INPUT" || document.activeElement.tagName === "TEXTAREA");
+  if (!rightHasFocus || !pathsEqual(prevSel, S.selection)) {
+    renderRightPanel();
+  }
   renderOverlays();
   updateForcedPseudoPreview();
   renderStatusbar();
@@ -875,6 +974,21 @@ function renderCanvasNode(node, path, parent, activeBreakpoints, featureToggles)
         featureToggles,
       );
     }
+  } else if (node.children && typeof node.children === "object" && node.children.$prototype === "Array") {
+    // $map placeholder in structural preview
+    const placeholder = document.createElement("div");
+    placeholder.textContent = `[$map: ${node.children.items?.$ref || "items"}]`;
+    placeholder.style.cssText = "font-family:monospace;font-size:11px;padding:6px 10px;background:rgba(100,100,100,0.08);border:1px dashed rgba(150,150,150,0.4);border-radius:4px;color:#888;font-style:italic";
+    el.appendChild(placeholder);
+  }
+
+  if (node.$switch && node.cases && typeof node.cases === "object") {
+    // $switch placeholder in structural preview
+    const keys = Object.keys(node.cases);
+    const placeholder = document.createElement("div");
+    placeholder.textContent = `[$switch: ${keys.join(" | ")}]`;
+    placeholder.style.cssText = "font-family:monospace;font-size:11px;padding:6px 10px;background:rgba(199,91,79,0.08);border:1px dashed rgba(199,91,79,0.4);border-radius:4px;color:#c75b4f;font-style:italic";
+    el.appendChild(placeholder);
   }
 
   el.style.pointerEvents = "none";
@@ -1401,6 +1515,62 @@ function renderLeftPanel() {
   else if (tab === "data") renderDataExplorer(body);
 }
 
+function renderComponentGroup(container, label, components, collapsed, isImported) {
+  const header = document.createElement("div");
+  header.className = `blocks-category${collapsed.has(label) ? " collapsed" : ""}`;
+  header.textContent = `${label} (${components.length})`;
+  header.onclick = () => {
+    if (collapsed.has(label)) collapsed.delete(label);
+    else collapsed.add(label);
+    renderLeftPanel();
+  };
+  container.appendChild(header);
+  if (collapsed.has(label)) return;
+
+  for (const comp of components) {
+    const row = document.createElement("div");
+    row.className = `layer-row component-row${isImported ? "" : " available"}`;
+
+    const icon = document.createElement("span");
+    icon.className = "layer-tag component-tag";
+    icon.textContent = "⬡";
+    icon.style.background = isImported ? "var(--accent)" : "var(--bg-alt)";
+    row.appendChild(icon);
+
+    const lbl = document.createElement("span");
+    lbl.className = "layer-label";
+    lbl.textContent = comp.tagName;
+    lbl.title = comp.path;
+    row.appendChild(lbl);
+
+    if (comp.$id) {
+      const hint = document.createElement("span");
+      hint.className = "signal-hint";
+      hint.textContent = comp.$id;
+      row.appendChild(hint);
+    }
+
+    row.onclick = () => navigateToComponent(comp.path);
+
+    // Make draggable for instance insertion
+    const instanceDef = {
+      tagName: comp.tagName,
+      $props: Object.fromEntries(
+        comp.props.map((p) => [p.name, p.default !== undefined ? p.default : ""]),
+      ),
+    };
+    const cleanup = draggable({
+      element: row,
+      getInitialData() {
+        return { type: "block", fragment: structuredClone(instanceDef) };
+      },
+    });
+    dndCleanups.push(cleanup);
+
+    container.appendChild(row);
+  }
+}
+
 function renderLayers(container) {
   // Clean up previous DnD registrations
   for (const fn of dndCleanups) fn();
@@ -1416,11 +1586,38 @@ function renderLayers(container) {
   dropLine.className = "drop-indicator";
   container.appendChild(dropLine);
 
-  for (const { node, path, depth } of rows) {
+  // ─── Components accordion ──────────────────────────────────────────────
+  if (componentRegistry.length > 0) {
+    const compCollapsed = S._collapsedComponents || (S._collapsedComponents = new Set(["Available"]));
+    const importedRefs = new Set(
+      (S.document.$elements || []).filter((e) => e.$ref).map((e) => e.$ref),
+    );
+
+    const imported = componentRegistry.filter((c) =>
+      importedRefs.has(`./${c.path}`) || importedRefs.has(c.path) ||
+      Array.from(importedRefs).some((ref) => ref.endsWith(c.path.split("/").pop())),
+    );
+    const available = componentRegistry.filter((c) => !imported.includes(c));
+
+    const section = document.createElement("div");
+    section.className = "components-section";
+
+    if (imported.length > 0) renderComponentGroup(section, "Imported", imported, compCollapsed, true);
+    if (available.length > 0) renderComponentGroup(section, "Available", available, compCollapsed, false);
+
+    container.appendChild(section);
+
+    const sep = document.createElement("div");
+    sep.style.cssText = "border-bottom:1px solid var(--border);margin:4px 0";
+    container.appendChild(sep);
+  }
+
+  for (const { node, path, depth, nodeType } of rows) {
     // Check if any ancestor is collapsed
     let hidden = false;
-    for (let d = 2; d <= path.length; d += 2) {
-      if (d < path.length && collapsed.has(pathKey(path.slice(0, d)))) {
+    for (let d = 1; d <= path.length; d++) {
+      const sub = path.slice(0, d);
+      if (d < path.length && collapsed.has(pathKey(sub))) {
         hidden = true;
         break;
       }
@@ -1428,16 +1625,18 @@ function renderLayers(container) {
     if (hidden) continue;
 
     // In content mode, skip inline elements (they're part of the parent text block)
-    if (S.mode === "content" && path.length > 0 && isInlineElement(node)) continue;
+    if (S.mode === "content" && path.length > 0 && nodeType === "element" && isInlineElement(node)) continue;
 
     const row = document.createElement("div");
     row.className = `layer-row${pathsEqual(path, S.selection) ? " selected" : ""}`;
     row.dataset.path = pathKey(path);
 
-    // Drag handle
+    // Drag handle (not for virtual map/case rows)
     const handle = document.createElement("span");
     handle.className = "layer-handle";
-    handle.textContent = "⠿";
+    if (nodeType === "element") {
+      handle.textContent = "⠿";
+    }
     row.appendChild(handle);
 
     // Indent
@@ -1450,9 +1649,11 @@ function renderLayers(container) {
     const toggle = document.createElement("span");
     toggle.className = "layer-toggle";
     const hasChildren = Array.isArray(node.children) && node.children.length > 0;
-    const isVoid = VOID_ELEMENTS.has((node.tagName || "div").toLowerCase());
+    const hasMapChildren = node.children && typeof node.children === "object" && node.children.$prototype === "Array";
+    const hasCases = node.$switch && node.cases && typeof node.cases === "object" && Object.keys(node.cases).length > 0;
+    const isExpandable = hasChildren || hasMapChildren || hasCases || (nodeType === "map" && node.map);
     const key = pathKey(path);
-    if (hasChildren) {
+    if (isExpandable) {
       toggle.textContent = collapsed.has(key) ? "▶" : "▼";
       toggle.onclick = (e) => {
         e.stopPropagation();
@@ -1463,16 +1664,35 @@ function renderLayers(container) {
     }
     row.appendChild(toggle);
 
-    // Tag badge
+    // Tag badge — different per nodeType
     const badge = document.createElement("span");
-    badge.className = "layer-tag";
-    badge.textContent = node.tagName || "div";
+    if (nodeType === "map") {
+      badge.className = "layer-tag map-tag";
+      badge.textContent = "[ ]";
+      badge.title = "$map (reactive array)";
+    } else if (nodeType === "case" || nodeType === "case-ref") {
+      badge.className = "layer-tag case-tag";
+      badge.textContent = path[path.length - 1];
+      badge.title = `$switch case: ${path[path.length - 1]}`;
+    } else if (node.$switch) {
+      badge.className = "layer-tag switch-tag";
+      badge.textContent = "⇄";
+      badge.title = "$switch";
+    } else {
+      badge.className = "layer-tag";
+      badge.textContent = node.tagName || "div";
+    }
     row.appendChild(badge);
 
     // Label
     const label = document.createElement("span");
     label.className = "layer-label";
-    label.textContent = nodeLabel(node);
+    if (nodeType === "case-ref") {
+      label.textContent = node.$ref || "external";
+      label.style.fontStyle = "italic";
+    } else {
+      label.textContent = nodeLabel(node);
+    }
     row.appendChild(label);
 
     // Signal indicator
@@ -1487,8 +1707,8 @@ function renderLayers(container) {
       }
     }
 
-    // Delete button (not for root)
-    if (path.length >= 2) {
+    // Delete button (not for root, and not for virtual map/case rows)
+    if (path.length >= 2 && nodeType === "element") {
       const del = document.createElement("span");
       del.className = "layer-delete";
       del.textContent = "✕";
@@ -1501,10 +1721,11 @@ function renderLayers(container) {
     }
 
     row.onclick = () => update(selectNode(S, path));
-    row.oncontextmenu = (e) => showContextMenu(e, path);
+    if (nodeType === "element") row.oncontextmenu = (e) => showContextMenu(e, path);
     container.appendChild(row);
 
-    // ─── Register draggable + drop target ────────────────────
+    // ─── Register draggable + drop target (element rows only) ────────────────
+    if (nodeType !== "element") continue;
     const rowPath = path; // capture for closures
     const rowDepth = depth;
     const rowNode = node;
@@ -1648,6 +1869,25 @@ function applyDropInstruction(instruction, srcData, targetPath) {
         const len = target?.children?.length || 0;
         update(insertNode(S, targetPath, len, structuredClone(srcData.fragment)));
         break;
+      }
+    }
+
+    // Auto-import to $elements if the dropped block is a custom component
+    const tag = srcData.fragment?.tagName;
+    if (tag && tag.includes("-")) {
+      const comp = componentRegistry.find((c) => c.tagName === tag);
+      if (comp) {
+        const elements = S.document.$elements || [];
+        const alreadyImported = elements.some((e) =>
+          e.$ref && (e.$ref === `./${comp.path}` || e.$ref.endsWith(comp.path.split("/").pop())),
+        );
+        if (!alreadyImported) {
+          const relPath = computeRelativePath(S.documentPath, comp.path);
+          S = applyMutation(S, (doc) => {
+            if (!doc.$elements) doc.$elements = [];
+            doc.$elements.push({ $ref: relPath });
+          });
+        }
       }
     }
   }
@@ -2760,6 +3000,73 @@ function renderInspector(container) {
     return;
   }
 
+  const isMapNode = node.$prototype === "Array"; // selected the $map row itself
+  const isMapParent = node.children && typeof node.children === "object" && node.children.$prototype === "Array";
+  const isSwitchNode = !!node.$switch;
+  const isCustomInstance = (node.tagName || "").includes("-");
+
+  // ─── $map inspector (when the $map row itself is selected) ───
+  if (isMapNode) {
+    renderInspectorSection(container, "$map Configuration", true, () => {
+      const fields = document.createElement("div");
+      fields.className = "inspector-fields";
+
+      fields.appendChild(
+        bindableFieldRow("items", "text", node.items, (v) => {
+          update(updateProperty(S, S.selection, "items", v));
+        }),
+      );
+
+      if (node.filter) {
+        fields.appendChild(
+          bindableFieldRow("filter", "text", node.filter, (v) => {
+            update(updateProperty(S, S.selection, "filter", v || undefined));
+          }),
+        );
+      }
+
+      if (node.sort) {
+        fields.appendChild(
+          bindableFieldRow("sort", "text", node.sort, (v) => {
+            update(updateProperty(S, S.selection, "sort", v || undefined));
+          }),
+        );
+      }
+
+      // Add filter/sort buttons
+      const addRow = document.createElement("div");
+      addRow.style.cssText = "display:flex;gap:8px;margin-top:4px";
+      if (!node.filter) {
+        const addFilter = document.createElement("span");
+        addFilter.className = "kv-add";
+        addFilter.textContent = "+ Add filter";
+        addFilter.onclick = () => update(updateProperty(S, S.selection, "filter", { $ref: "#/$defs/" }));
+        addRow.appendChild(addFilter);
+      }
+      if (!node.sort) {
+        const addSort = document.createElement("span");
+        addSort.className = "kv-add";
+        addSort.textContent = "+ Add sort";
+        addSort.onclick = () => update(updateProperty(S, S.selection, "sort", { $ref: "#/$defs/" }));
+        addRow.appendChild(addSort);
+      }
+      fields.appendChild(addRow);
+
+      // Navigate into template
+      if (node.map) {
+        const navBtn = document.createElement("button");
+        navBtn.className = "toolbar-btn";
+        navBtn.textContent = "Edit template →";
+        navBtn.style.cssText = "margin-top:8px;width:100%";
+        navBtn.onclick = () => update(selectNode(S, [...S.selection, "map"]));
+        fields.appendChild(navBtn);
+      }
+
+      return fields;
+    });
+    return; // $map rows don't have normal element sections
+  }
+
   renderInspectorSection(container, "Element", true, () => {
     const fields = document.createElement("div");
     fields.className = "inspector-fields";
@@ -2802,8 +3109,131 @@ function renderInspector(container) {
       }),
     );
 
+    // $map parent hint
+    if (isMapParent) {
+      const hint = document.createElement("div");
+      hint.style.cssText = "font-size:10px;color:var(--fg-dim);padding:4px 0;font-style:italic";
+      hint.textContent = "Children: $map (select in layers to edit)";
+      fields.appendChild(hint);
+    }
+
     return fields;
   });
+
+  // $switch section
+  if (isSwitchNode) {
+    renderInspectorSection(container, "$switch", true, () => {
+      const fields = document.createElement("div");
+      fields.className = "inspector-fields";
+
+      fields.appendChild(
+        bindableFieldRow("$switch", "text", node.$switch, (v) => {
+          update(updateProperty(S, S.selection, "$switch", v));
+        }),
+      );
+
+      const casesHeader = document.createElement("div");
+      casesHeader.style.cssText = "font-size:11px;font-weight:600;color:var(--fg-dim);margin:8px 0 4px;text-transform:uppercase;letter-spacing:0.05em";
+      casesHeader.textContent = "Cases";
+      fields.appendChild(casesHeader);
+
+      for (const caseName of Object.keys(node.cases || {})) {
+        const caseRow = document.createElement("div");
+        caseRow.className = "field-row";
+        caseRow.style.cssText = "display:flex;align-items:center;gap:4px;margin-bottom:3px";
+
+        const nameInput = document.createElement("input");
+        nameInput.className = "field-input";
+        nameInput.value = caseName;
+        nameInput.style.flex = "1";
+        let debounce;
+        nameInput.oninput = () => {
+          clearTimeout(debounce);
+          debounce = setTimeout(() => {
+            if (nameInput.value && nameInput.value !== caseName) {
+              update(renameSwitchCase(S, S.selection, caseName, nameInput.value));
+            }
+          }, 500);
+        };
+        caseRow.appendChild(nameInput);
+
+        const navBtn = document.createElement("span");
+        navBtn.className = "bind-toggle";
+        navBtn.textContent = "→";
+        navBtn.title = "Edit case";
+        navBtn.style.cursor = "pointer";
+        navBtn.onclick = (e) => {
+          e.stopPropagation();
+          update(selectNode(S, [...S.selection, "cases", caseName]));
+        };
+        caseRow.appendChild(navBtn);
+
+        const del = document.createElement("span");
+        del.style.cssText = "cursor:pointer;color:var(--danger);font-size:11px";
+        del.textContent = "✕";
+        del.onclick = (e) => {
+          e.stopPropagation();
+          update(removeSwitchCase(S, S.selection, caseName));
+        };
+        caseRow.appendChild(del);
+
+        fields.appendChild(caseRow);
+      }
+
+      const addCase = document.createElement("span");
+      addCase.className = "kv-add";
+      addCase.textContent = "+ Add case";
+      addCase.onclick = () => {
+        const existing = Object.keys(node.cases || {});
+        const newName = `case${existing.length + 1}`;
+        update(addSwitchCase(S, S.selection, newName));
+      };
+      fields.appendChild(addCase);
+
+      return fields;
+    });
+  }
+
+  // Component Props section (for custom element instances)
+  if (isCustomInstance) {
+    renderInspectorSection(container, "Component Props", true, () => {
+      const fields = document.createElement("div");
+      fields.className = "inspector-fields";
+
+      const comp = componentRegistry.find((c) => c.tagName === node.tagName);
+      if (!comp) {
+        const hint = document.createElement("div");
+        hint.className = "empty-state";
+        hint.textContent = `Component "${node.tagName}" not found in project`;
+        fields.appendChild(hint);
+        return fields;
+      }
+
+      const currentProps = node.$props || {};
+      for (const prop of comp.props) {
+        fields.appendChild(
+          bindableFieldRow(prop.name, "text", currentProps[prop.name], (v) => {
+            update(updateProp(S, S.selection, prop.name, v));
+          }),
+        );
+      }
+
+      if (comp.props.length === 0) {
+        const hint = document.createElement("div");
+        hint.className = "empty-state";
+        hint.textContent = "No props defined";
+        fields.appendChild(hint);
+      }
+
+      const editLink = document.createElement("span");
+      editLink.className = "kv-add";
+      editLink.textContent = "→ Edit definition";
+      editLink.onclick = () => navigateToComponent(comp.path);
+      fields.appendChild(editLink);
+
+      return fields;
+    });
+  }
 
   // Attributes section
   renderInspectorSection(container, "Attributes", false, () => {
@@ -4489,6 +4919,38 @@ function renderToolbar() {
     fileGroup.appendChild(dot);
   }
   toolbar.appendChild(fileGroup);
+
+  // Breadcrumb (component navigation stack)
+  if (S.documentStack && S.documentStack.length > 0) {
+    const breadcrumb = document.createElement("div");
+    breadcrumb.className = "breadcrumb";
+
+    const back = document.createElement("button");
+    back.className = "toolbar-btn";
+    back.textContent = "← Back";
+    back.title = "Return to parent document";
+    back.onclick = navigateBack;
+    breadcrumb.appendChild(back);
+
+    for (const frame of S.documentStack) {
+      const crumb = document.createElement("span");
+      crumb.className = "breadcrumb-item";
+      crumb.textContent = frame.documentPath?.split("/").pop() || "untitled";
+      breadcrumb.appendChild(crumb);
+
+      const sep = document.createElement("span");
+      sep.className = "breadcrumb-sep";
+      sep.textContent = " › ";
+      breadcrumb.appendChild(sep);
+    }
+
+    const current = document.createElement("span");
+    current.className = "breadcrumb-item current";
+    current.textContent = S.documentPath?.split("/").pop() || S.document.tagName || "component";
+    breadcrumb.appendChild(current);
+
+    toolbar.appendChild(breadcrumb);
+  }
 
   // Edit group
   const editGroup = group();
