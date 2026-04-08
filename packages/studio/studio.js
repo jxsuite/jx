@@ -2974,6 +2974,9 @@ function renderNumberUnitInput(entry, value, onChange) {
   const match = strVal.match(UNIT_RE);
   const isKeyword = !match && strVal !== "" && keywords.includes(strVal);
 
+  let currentUnit = isKeyword ? units[0] || "" : match ? match[2] || "" : units[0] || "";
+  let activeKeyword = isKeyword ? strVal : null;
+
   // Number input (hidden when keyword is active)
   const numInput = document.createElement("input");
   numInput.type = "number";
@@ -2983,31 +2986,17 @@ function renderNumberUnitInput(entry, value, onChange) {
   if (entry.type === "number" || (entry.maximum !== undefined && entry.maximum <= 1)) {
     numInput.step = "0.1";
   }
-  if (isKeyword) numInput.style.display = "none";
 
-  const currentUnit = isKeyword ? units[0] || "" : match ? match[2] || "" : units[0] || "";
+  // Keyword label (shown when keyword is active, hidden otherwise)
+  const kwLabel = document.createElement("span");
+  kwLabel.className = "unit-kw-label";
 
-  // Unified select: units + separator + keywords
-  const sel = document.createElement("select");
-  for (const u of units) {
-    const opt = document.createElement("option");
-    opt.value = u;
-    opt.textContent = u;
-    if (!isKeyword && u === currentUnit) opt.selected = true;
-    sel.appendChild(opt);
-  }
-  if (keywords.length > 0 && units.length > 0) {
-    const sep = document.createElement("option");
-    sep.disabled = true;
-    sep.textContent = "——";
-    sel.appendChild(sep);
-  }
-  for (const kw of keywords) {
-    const opt = document.createElement("option");
-    opt.value = "kw:" + kw;
-    opt.textContent = kw;
-    if (isKeyword && kw === strVal) opt.selected = true;
-    sel.appendChild(opt);
+  if (isKeyword) {
+    numInput.style.display = "none";
+    kwLabel.textContent = strVal;
+    kwLabel.style.display = "";
+  } else {
+    kwLabel.style.display = "none";
   }
 
   let debounce;
@@ -3016,29 +3005,87 @@ function renderNumberUnitInput(entry, value, onChange) {
     debounce = setTimeout(() => {
       const n = numInput.value;
       if (n === "") { onChange(""); return; }
-      const u = sel.value.startsWith("kw:") ? units[0] || "" : sel.value;
-      onChange(units.length > 0 ? n + u : n);
+      onChange(units.length > 0 ? n + currentUnit : n);
     }, 400);
   };
   numInput.oninput = commit;
 
-  sel.onchange = () => {
-    if (sel.value.startsWith("kw:")) {
-      // Keyword selected — hide number, commit keyword
-      numInput.style.display = "none";
-      onChange(sel.value.slice(3));
-    } else {
-      // Unit selected — show number, commit with unit
-      numInput.style.display = "";
-      if (numInput.value !== "") commit();
-    }
-  };
+  // Popover-based unit/keyword picker
+  if (units.length > 0 || keywords.length > 0) {
+    const popId = "unit-pop-" + (++_popoverId);
+    const trigger = document.createElement("button");
+    trigger.type = "button";
+    trigger.className = "unit-trigger";
+    trigger.setAttribute("popovertarget", popId);
+    trigger.textContent = isKeyword ? "⌄" : currentUnit;
 
-  wrap.appendChild(numInput);
-  if (units.length > 0 || keywords.length > 0) wrap.appendChild(sel);
+    const pop = document.createElement("div");
+    pop.id = popId;
+    pop.setAttribute("popover", "auto");
+    pop.className = "unit-popover";
+
+    const pick = (unitOrKw, isKw) => {
+      pop.hidePopover();
+      if (isKw) {
+        activeKeyword = unitOrKw;
+        numInput.style.display = "none";
+        kwLabel.textContent = unitOrKw;
+        kwLabel.style.display = "";
+        trigger.textContent = "⌄";
+        onChange(unitOrKw);
+      } else {
+        activeKeyword = null;
+        currentUnit = unitOrKw;
+        numInput.style.display = "";
+        kwLabel.style.display = "none";
+        trigger.textContent = unitOrKw;
+        if (numInput.value !== "") commit();
+      }
+    };
+
+    for (const u of units) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "unit-option" + (u === currentUnit && !isKeyword ? " active" : "");
+      btn.textContent = u;
+      btn.onclick = () => pick(u, false);
+      pop.appendChild(btn);
+    }
+    if (keywords.length > 0 && units.length > 0) {
+      const sep = document.createElement("hr");
+      sep.className = "unit-sep";
+      pop.appendChild(sep);
+    }
+    for (const kw of keywords) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "unit-option unit-kw" + (isKeyword && kw === strVal ? " active" : "");
+      btn.textContent = kw;
+      btn.onclick = () => pick(kw, true);
+      pop.appendChild(btn);
+    }
+
+    pop.addEventListener("toggle", (e) => {
+      if (e.newState === "open") {
+        const r = trigger.getBoundingClientRect();
+        pop.style.position = "fixed";
+        pop.style.top = r.bottom + 2 + "px";
+        pop.style.left = r.right + "px";
+        pop.style.transform = "translateX(-100%)";
+      }
+    });
+
+    wrap.appendChild(numInput);
+    wrap.appendChild(kwLabel);
+    wrap.appendChild(trigger);
+    wrap.appendChild(pop);
+  } else {
+    wrap.appendChild(numInput);
+  }
 
   return wrap;
 }
+let _popoverId = 0;
 
 function abbreviateValue(val) {
   const map = {

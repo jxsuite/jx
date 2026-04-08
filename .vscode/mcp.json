@@ -1,13 +1,17 @@
 {
 	"servers": {
-		"chrome-devtools-non-nixos": {
+		"chrome-devtools": {
 			"command": "bunx",
 			"args": [
 				"chrome-devtools-mcp",
 			],
 		},
-		"chrome-devtools-nixos": {
-			"command": "mcp-chrome",
+		"chrome-devtools-devenv": {
+			"command": "bunx",
+			"args": [
+				"chrome-devtools-mcp",
+				"--browserUrl=http://127.0.0.1:9222",
+			],
 		}
 	}
 }

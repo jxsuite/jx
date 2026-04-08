@@ -36,32 +36,24 @@
               packages = with pkgs; [
                 bun
                 pre-commit
+                google-chrome
+                procps
               ];
 
-              scripts = {
-                mcp-chrome = {
-                  exec = ''
-                    # Ensure Chrome is running with remote debugging
-                    if ! lsof -Pi :9222 -sTCP:LISTEN -t >/dev/null 2>&1; then
-                      mkdir -p "$DEVENV_STATE/chrome-devtools"
-                      google-chrome \
-                        --remote-debugging-port=9222 \
-                        --user-data-dir="$DEVENV_STATE/chrome-devtools" \
-                        --no-first-run \
-                        --no-default-browser-check \
-                        --headless=new &
-                      sleep 2  # Give Chrome time to start
-                    fi
-
-                    # Start the MCP server
-                    bunx chrome-devtools-mcp --browserUrl=http://127.0.0.1:9222
-                  '';
-                  packages = with pkgs; [
-                    google-chrome
-                    procps
-                  ];
-                  description = "Start a chrome dev";
-                };
+              processes = {
+                chrome-debugging.exec = ''
+                  # Ensure Chrome is running with remote debugging
+                  if ! lsof -Pi :9222 -sTCP:LISTEN -t >/dev/null 2>&1; then
+                    mkdir -p "$DEVENV_STATE/chrome-devtools"
+                    google-chrome \
+                      --remote-debugging-port=9222 \
+                      --user-data-dir="$DEVENV_STATE/chrome-devtools" \
+                      --no-first-run \
+                      --no-default-browser-check \
+                      --headless=new &
+                    sleep 2  # Give Chrome time to start
+                  fi
+                '';
               };
             };
         };
