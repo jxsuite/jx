@@ -172,5 +172,67 @@ export async function handleStudioApi(req, url, root) {
     }
   }
 
+  // Locate a file by name within the project root
+  if (path === "/__studio/locate" && req.method === "POST") {
+    let body;
+    try {
+      body = await req.json();
+    } catch {
+      return new Response("Invalid JSON", { status: 400 });
+    }
+    const { name } = body;
+    if (!name) return new Response("Missing name", { status: 400 });
+
+    try {
+      const glob = new Bun.Glob(`**/${name}`);
+      const matches = [];
+      for await (const match of glob.scan({ cwd: root, dot: false })) {
+        // Skip node_modules / dist / hidden dirs
+        if (match.includes("node_modules") || match.includes("dist/")) continue;
+        matches.push(match.split("\\").join("/"));
+      }
+      if (matches.length === 0) return Response.json({ path: null });
+      return Response.json({
+        path: matches[0],
+        ...(matches.length > 1 ? { alternatives: matches } : {}),
+      });
+    } catch (e) {
+      return Response.json({ error: e.message }, { status: 500 });
+    }
+  }
+
+  // Discover a plugin module's schema for studio form rendering
+  if (path === "/__studio/plugin-schema" && req.method === "GET") {
+    const src = url.searchParams.get("src");
+    const prototype = url.searchParams.get("prototype");
+    const base = url.searchParams.get("base");
+    if (!src) return new Response("Missing src param", { status: 400 });
+
+    let moduleAbsPath;
+    try {
+      if (base) {
+        const docUrlPath = new URL(base).pathname;
+        const docDir = docUrlPath.slice(0, docUrlPath.lastIndexOf("/") + 1);
+        moduleAbsPath = resolve(resolve(root, "." + docDir), src);
+      } else {
+        moduleAbsPath = resolve(root, src);
+      }
+    } catch (e) {
+      return Response.json({ schema: null, error: e.message });
+    }
+
+    try {
+      const mod = await import(moduleAbsPath);
+      const exportName = prototype || src;
+      const ExportedClass = mod[exportName] ?? mod.default?.[exportName];
+      if (typeof ExportedClass !== "function") {
+        return Response.json({ schema: null, error: `Export "${exportName}" not found` });
+      }
+      return Response.json({ schema: ExportedClass.schema ?? null });
+    } catch (e) {
+      return Response.json({ schema: null, error: e.message });
+    }
+  }
+
   return null;
 }

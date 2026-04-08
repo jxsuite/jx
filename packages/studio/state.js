@@ -94,11 +94,12 @@ export function createState(doc) {
     historyIndex: 0,
     dirty: false,
     fileHandle: null,
+    documentPath: null, // root-relative path, e.g. "examples/markdown/blog.json"
     handlersSource: null,
     mode: "component", // 'component' | 'content'
     content: { frontmatter: {} }, // frontmatter metadata for .md files
     ui: {
-      leftTab: "layers", // 'layers' | 'blocks' | 'state'
+      leftTab: "layers", // 'layers' | 'blocks' | 'state' | 'data'
       rightTab: "properties", // 'properties' | 'events' | 'style'
       zoom: 1,
       activeMedia: null, // '--md' | null (base) — focused canvas/breakpoint

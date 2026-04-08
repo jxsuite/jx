@@ -112,6 +112,42 @@ async function codeService(action, payload) {
   }
 }
 
+/** Ask the server to locate a document by filename within the project root. */
+async function locateDocument(name) {
+  try {
+    const res = await fetch("/__studio/locate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    if (res.ok) return (await res.json()).path || null;
+  } catch {}
+  return null;
+}
+
+/** Cache of plugin schemas keyed by "$src::$prototype". */
+const pluginSchemaCache = new Map();
+
+/** Fetch and cache the schema for an external $prototype + $src module via the server. */
+async function fetchPluginSchema(def) {
+  if (!def.$src || !def.$prototype) return null;
+  const cacheKey = `${def.$src}::${def.$prototype}`;
+  if (pluginSchemaCache.has(cacheKey)) return pluginSchemaCache.get(cacheKey);
+
+  try {
+    const params = new URLSearchParams({ src: def.$src, prototype: def.$prototype });
+    if (S.documentPath) params.set("base", `${location.origin}/${S.documentPath}`);
+    const res = await fetch(`/__studio/plugin-schema?${params}`);
+    if (!res.ok) { pluginSchemaCache.set(cacheKey, null); return null; }
+    const { schema } = await res.json();
+    pluginSchemaCache.set(cacheKey, schema);
+    return schema;
+  } catch {
+    pluginSchemaCache.set(cacheKey, null);
+    return null;
+  }
+}
+
 function setLintMarkers(editor, diagnostics) {
   const model = editor.getModel();
   if (!model) return;
@@ -219,6 +255,76 @@ function stripEventHandlers(node) {
 }
 
 /**
+ * Convert a template string to a displayable expression for edit mode.
+ * Replaces ${expr} with ❮ expr ❯ so the runtime renders it as literal text.
+ */
+function templateToEditDisplay(str) {
+  return str.replace(/\$\{([^}]+)\}/g, "\u276A $1 \u276B");
+}
+
+/**
+ * Prepare a document for edit-mode rendering. Replaces template strings with
+ * readable literal text, $prototype:Array with placeholders, and $ref bindings
+ * with display labels. Preserves $defs so the runtime can still initialise scope.
+ */
+function prepareForEditMode(node) {
+  if (!node || typeof node !== "object") return node;
+  if (Array.isArray(node)) return node.map(prepareForEditMode);
+
+  const out = {};
+  for (const [k, v] of Object.entries(node)) {
+    if (k === "$defs" || k === "$media") {
+      out[k] = v; // preserve as-is
+    } else if (k === "children") {
+      if (Array.isArray(v)) {
+        out.children = v.map(prepareForEditMode);
+      } else if (v && typeof v === "object" && v.$prototype === "Array") {
+        // Replace mapped array with a placeholder node
+        const label = v.items?.$ref || "items";
+        out.children = [{
+          tagName: "div",
+          textContent: `[Array: ${label}]`,
+          style: {
+            fontFamily: "'SF Mono', 'Fira Code', monospace",
+            fontSize: "11px",
+            padding: "6px 10px",
+            background: "rgba(100,100,100,0.08)",
+            border: "1px dashed rgba(150,150,150,0.4)",
+            borderRadius: "4px",
+            color: "#888",
+            fontStyle: "italic",
+          },
+        }];
+      } else {
+        out.children = prepareForEditMode(v);
+      }
+    } else if (k === "style") {
+      // Replace template strings in style values with empty strings
+      if (v && typeof v === "object") {
+        const s = {};
+        for (const [sk, sv] of Object.entries(v)) {
+          s[sk] = typeof sv === "string" && sv.includes("${") ? "" : sv;
+        }
+        out.style = s;
+      } else {
+        out.style = v;
+      }
+    } else if (typeof v === "string" && v.includes("${")) {
+      // Template string in a display property → show raw expression
+      out[k] = templateToEditDisplay(v);
+    } else if (v && typeof v === "object" && v.$ref) {
+      // $ref binding → show ref path as literal text
+      const ref = v.$ref;
+      const label = ref.startsWith("#/$defs/") ? ref.slice(8) : ref;
+      out[k] = `{${label}}`;
+    } else {
+      out[k] = prepareForEditMode(v);
+    }
+  }
+  return out;
+}
+
+/**
  * Render a JSONsx document into a canvas element using the real runtime.
  * Populates elToPath for each created element via onNodeCreated callback.
  * Returns the live $defs scope on success, null on failure.
@@ -233,9 +339,12 @@ async function renderCanvasLive(doc, canvasEl) {
     canvasEl.removeAttribute("data-content-mode");
   }
 
-  const renderDoc = previewMode ? structuredClone(doc) : stripEventHandlers(doc);
+  const renderDoc = previewMode ? structuredClone(doc) : prepareForEditMode(stripEventHandlers(doc));
   try {
-    const $defs = await buildScope(renderDoc, {});
+    const docBase = S.documentPath
+      ? `${location.origin}/${S.documentPath}`
+      : undefined;
+    const $defs = await buildScope(renderDoc, {}, docBase);
     const el = runtimeRenderNode(renderDoc, $defs, {
       onNodeCreated(el, path) {
         elToPath.set(el, path);
@@ -294,6 +403,26 @@ const EMPTY_DOC = {
 S = createState(structuredClone(EMPTY_DOC));
 registerFunctionCompletions();
 render();
+
+// Auto-open a document via ?open=path query parameter (server-backed)
+{
+  const openParam = new URLSearchParams(location.search).get("open");
+  if (openParam) {
+    fetch(`/__studio/file?path=${encodeURIComponent(openParam)}`)
+      .then((r) => r.json())
+      .then(async (data) => {
+        if (data.content) {
+          const doc = JSON.parse(data.content);
+          S = createState(doc);
+          S.dirty = false;
+          S.documentPath = data.path;
+          render();
+          statusMessage(`Opened ${data.path}`);
+        }
+      })
+      .catch((e) => statusMessage(`Error: ${e.message}`));
+  }
+}
 
 // ─── Render loop ──────────────────────────────────────────────────────────────
 
@@ -616,6 +745,7 @@ const DEF_TEMPLATES = {
   map: { signal: true, $prototype: "Map", default: {} },
   formData: { signal: true, $prototype: "FormData", fields: {} },
   function: { $prototype: "Function", body: "", arguments: [] },
+  external: { signal: true, $prototype: "", $src: "" },
 };
 
 /** Classify a $defs entry into a category string. */
@@ -1249,7 +1379,7 @@ function renderLeftPanel() {
   // Tabs
   const tabs = document.createElement("div");
   tabs.className = "panel-tabs";
-  for (const t of ["layers", "blocks", "state"]) {
+  for (const t of ["layers", "blocks", "state", "data"]) {
     const btn = document.createElement("div");
     btn.className = `panel-tab${t === tab ? " active" : ""}`;
     btn.textContent = t;
@@ -1268,6 +1398,7 @@ function renderLeftPanel() {
   if (tab === "layers") renderLayers(body);
   else if (tab === "blocks") renderBlocks(body);
   else if (tab === "state") renderSignals(body);
+  else if (tab === "data") renderDataExplorer(body);
 }
 
 function renderLayers(container) {
@@ -1777,6 +1908,7 @@ function renderSignals(container) {
       <option value="set">Set</option>
       <option value="map">Map</option>
       <option value="formData">FormData</option>
+      <option value="external">External Module\u2026</option>
     </optgroup>
     <optgroup label="Logic">
       <option value="function">Function</option>
@@ -2047,6 +2179,9 @@ function renderSignalEditor(container, name, def) {
       };
       defRow.appendChild(defInput);
       container.appendChild(defRow);
+    } else {
+      // ── Schema-driven fallback for external/plugin prototypes ──
+      renderExternalPrototypeEditor(container, name, def);
     }
   } else if (cat === "function") {
     if (def.$src) {
@@ -2150,6 +2285,394 @@ function signalFieldRow(label, value, onChange) {
   };
   row.appendChild(input);
   return row;
+}
+
+// ─── Plugin schema-driven form rendering ────────────────────────────────────
+
+/** Keys handled by the framework — skip when rendering schema fields. */
+const STUDIO_RESERVED_KEYS = new Set([
+  "$prototype", "$src", "$export", "signal", "timing", "default",
+  "description", "body", "arguments", "name",
+]);
+
+/**
+ * Render config form fields from a JSON Schema `properties` object.
+ * Maps schema types to appropriate form controls.
+ */
+function renderSchemaFields(container, schema, def, name) {
+  if (!schema?.properties) return;
+
+  const required = new Set(schema.required ?? []);
+
+  for (const [prop, ps] of Object.entries(schema.properties)) {
+    if (STUDIO_RESERVED_KEYS.has(prop)) continue;
+
+    const currentValue = def[prop];
+    const row = document.createElement("div");
+    row.className = "field-row";
+
+    const label = document.createElement("label");
+    label.className = "field-label";
+    label.textContent = prop + (required.has(prop) ? " *" : "");
+    if (ps.description) label.title = ps.description;
+    row.appendChild(label);
+
+    if (ps.enum) {
+      // Select dropdown
+      const sel = document.createElement("select");
+      sel.className = "field-input";
+      if (!required.has(prop)) {
+        const emptyOpt = document.createElement("option");
+        emptyOpt.value = "";
+        emptyOpt.textContent = "\u2014";
+        sel.appendChild(emptyOpt);
+      }
+      for (const val of ps.enum) {
+        const opt = document.createElement("option");
+        opt.value = val;
+        opt.textContent = val;
+        if (currentValue === val || (currentValue === undefined && ps.default === val)) opt.selected = true;
+        sel.appendChild(opt);
+      }
+      sel.onchange = () => update(updateDef(S, name, { [prop]: sel.value || undefined }));
+      row.appendChild(sel);
+    } else if (ps.type === "boolean") {
+      const check = document.createElement("input");
+      check.type = "checkbox";
+      check.className = "field-check";
+      check.checked = currentValue ?? ps.default ?? false;
+      check.onchange = () => update(updateDef(S, name, { [prop]: check.checked }));
+      row.appendChild(check);
+    } else if (ps.type === "integer" || ps.type === "number") {
+      const input = document.createElement("input");
+      input.type = "number";
+      input.className = "field-input";
+      if (ps.minimum !== undefined) input.min = ps.minimum;
+      if (ps.maximum !== undefined) input.max = ps.maximum;
+      if (ps.type === "integer") input.step = "1";
+      input.value = currentValue ?? "";
+      input.placeholder = ps.default !== undefined ? String(ps.default) : "";
+      let debounce;
+      input.oninput = () => {
+        clearTimeout(debounce);
+        debounce = setTimeout(() => {
+          const parsed = ps.type === "integer" ? parseInt(input.value, 10) : parseFloat(input.value);
+          update(updateDef(S, name, { [prop]: isNaN(parsed) ? undefined : parsed }));
+        }, 400);
+      };
+      row.appendChild(input);
+    } else if (ps.type === "array" || ps.type === "object") {
+      const textarea = document.createElement("textarea");
+      textarea.className = "field-input";
+      textarea.style.minHeight = "40px";
+      textarea.value = currentValue !== undefined ? JSON.stringify(currentValue, null, 2) : "";
+      textarea.placeholder = ps.default !== undefined ? JSON.stringify(ps.default) : "";
+      let debounce;
+      textarea.oninput = () => {
+        clearTimeout(debounce);
+        debounce = setTimeout(() => {
+          try { update(updateDef(S, name, { [prop]: JSON.parse(textarea.value) })); } catch {}
+        }, 500);
+      };
+      row.appendChild(textarea);
+    } else {
+      // Default: text input
+      const input = document.createElement("input");
+      input.className = "field-input";
+      input.value = currentValue ?? "";
+      input.placeholder = ps.default !== undefined
+        ? String(ps.default)
+        : (ps.examples?.[0] ?? "");
+      if (ps.description) input.title = ps.description;
+      let debounce;
+      input.oninput = () => {
+        clearTimeout(debounce);
+        debounce = setTimeout(() => {
+          update(updateDef(S, name, { [prop]: input.value || undefined }));
+        }, 400);
+      };
+      row.appendChild(input);
+    }
+
+    container.appendChild(row);
+  }
+}
+
+/**
+ * Render editor fields for an external $prototype + $src plugin.
+ * Shows $src/$export inputs plus schema-driven config fields.
+ */
+function renderExternalPrototypeEditor(container, name, def) {
+  container.appendChild(
+    signalFieldRow("$src", def.$src || "", (v) => {
+      update(updateDef(S, name, { $src: v || undefined }));
+      pluginSchemaCache.delete(`${v}::${def.$prototype}`);
+    }),
+  );
+  container.appendChild(
+    signalFieldRow("$prototype", def.$prototype || "", (v) => {
+      update(updateDef(S, name, { $prototype: v || undefined }));
+      pluginSchemaCache.delete(`${def.$src}::${v}`);
+    }),
+  );
+  if (def.$export) {
+    container.appendChild(
+      signalFieldRow("$export", def.$export || "", (v) => {
+        update(updateDef(S, name, { $export: v || undefined }));
+      }),
+    );
+  }
+
+  // Schema-driven config fields (async with cache)
+  if (def.$src && def.$prototype) {
+    const schemaContainer = document.createElement("div");
+    container.appendChild(schemaContainer);
+
+    const cacheKey = `${def.$src}::${def.$prototype}`;
+    if (pluginSchemaCache.has(cacheKey)) {
+      const schema = pluginSchemaCache.get(cacheKey);
+      if (schema) {
+        if (schema.description) {
+          const desc = document.createElement("div");
+          desc.className = "signal-hint";
+          desc.style.padding = "4px 0 8px";
+          desc.textContent = schema.description;
+          schemaContainer.appendChild(desc);
+        }
+        renderSchemaFields(schemaContainer, schema, def, name);
+      }
+    } else {
+      schemaContainer.textContent = "Loading schema\u2026";
+      schemaContainer.style.cssText = "padding:4px 0;font-size:11px;color:var(--fg-dim);font-style:italic";
+      fetchPluginSchema(def).then((schema) => {
+        schemaContainer.textContent = "";
+        schemaContainer.style.cssText = "";
+        if (schema) {
+          if (schema.description) {
+            const desc = document.createElement("div");
+            desc.className = "signal-hint";
+            desc.style.padding = "4px 0 8px";
+            desc.textContent = schema.description;
+            schemaContainer.appendChild(desc);
+          }
+          renderSchemaFields(schemaContainer, schema, def, name);
+        }
+      });
+    }
+  }
+}
+
+// ─── Data Explorer ──────────────────────────────────────────────────────────
+
+/** Expanded data entries set — persists across renders. */
+const expandedDataKeys = new Set();
+
+/** Unwrap a Vue ref (has .value and .__v_isRef) to get the underlying value. */
+function unwrapSignal(value) {
+  if (value && typeof value === "object" && value.__v_isRef) return value.value;
+  return value;
+}
+
+/** Type label for a signal value in the data explorer. */
+function dataTypeLabel(value) {
+  const v = unwrapSignal(value);
+  if (v === null) return "null";
+  if (v === undefined) return "pending";
+  if (Array.isArray(v)) return `Array(${v.length})`;
+  if (typeof v === "object") return `{${Object.keys(v).length}}`;
+  return typeof v;
+}
+
+/** Render the data explorer tab showing live resolved values. */
+function renderDataExplorer(container) {
+  if (!liveScope) {
+    const empty = document.createElement("div");
+    empty.className = "empty-state";
+    empty.textContent = "No live data \u2014 render the document in preview mode";
+    container.appendChild(empty);
+    return;
+  }
+
+  // Toolbar with refresh button
+  const bar = document.createElement("div");
+  bar.className = "data-explorer-toolbar";
+  const refreshBtn = document.createElement("button");
+  refreshBtn.className = "data-refresh-btn";
+  refreshBtn.textContent = "\u27F3 Refresh";
+  refreshBtn.onclick = () => {
+    renderCanvas();
+    setTimeout(() => renderLeftPanel(), 200);
+  };
+  bar.appendChild(refreshBtn);
+  container.appendChild(bar);
+
+  // Entries
+  const defs = S.document.$defs || {};
+  for (const [name, def] of Object.entries(defs)) {
+    const value = liveScope[name];
+    const unwrapped = unwrapSignal(value);
+    const isExpanded = expandedDataKeys.has(name);
+
+    const row = document.createElement("div");
+    row.className = "data-row";
+
+    const header = document.createElement("div");
+    header.className = `data-row-header${isExpanded ? " expanded" : ""}`;
+
+    const badge = document.createElement("span");
+    badge.className = `signal-badge ${defCategory(def)}`;
+    badge.textContent = defBadgeLabel(def);
+    header.appendChild(badge);
+
+    const nameEl = document.createElement("span");
+    nameEl.className = "data-name";
+    nameEl.textContent = name;
+    header.appendChild(nameEl);
+
+    const typeEl = document.createElement("span");
+    typeEl.className = "data-type";
+    typeEl.textContent = dataTypeLabel(value);
+    if (def.signal && unwrapped === null) typeEl.classList.add("data-pending");
+    header.appendChild(typeEl);
+
+    header.onclick = () => {
+      if (expandedDataKeys.has(name)) expandedDataKeys.delete(name);
+      else expandedDataKeys.add(name);
+      renderLeftPanel();
+    };
+    row.appendChild(header);
+
+    if (isExpanded) {
+      const tree = document.createElement("div");
+      tree.className = "data-tree";
+      renderDataTree(tree, unwrapped, 0);
+      row.appendChild(tree);
+    }
+
+    container.appendChild(row);
+  }
+
+  if (Object.keys(defs).length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "empty-state";
+    empty.textContent = "No $defs defined";
+    container.appendChild(empty);
+  }
+}
+
+/**
+ * Recursively render a JSON value as a tree view.
+ */
+function renderDataTree(container, value, depth, maxDepth = 5) {
+  const indent = `${(depth + 1) * 12}px`;
+
+  if (depth > maxDepth) {
+    const el = document.createElement("div");
+    el.className = "data-leaf data-ellipsis";
+    el.style.paddingLeft = indent;
+    el.textContent = "\u2026";
+    container.appendChild(el);
+    return;
+  }
+
+  if (value === null || value === undefined) {
+    const el = document.createElement("div");
+    el.className = "data-leaf data-null";
+    el.style.paddingLeft = indent;
+    el.textContent = String(value);
+    container.appendChild(el);
+    return;
+  }
+
+  if (typeof value !== "object") {
+    const el = document.createElement("div");
+    el.className = `data-leaf data-${typeof value}`;
+    el.style.paddingLeft = indent;
+    el.textContent = typeof value === "string" && value.length > 200
+      ? `"${value.slice(0, 200)}\u2026"`
+      : JSON.stringify(value);
+    container.appendChild(el);
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    const cap = 20;
+    for (let i = 0; i < Math.min(value.length, cap); i++) {
+      const itemRow = document.createElement("div");
+      itemRow.className = "data-branch";
+      itemRow.style.paddingLeft = indent;
+
+      const keyEl = document.createElement("span");
+      keyEl.className = "data-key";
+      keyEl.textContent = `[${i}] `;
+      itemRow.appendChild(keyEl);
+
+      const item = value[i];
+      if (item === null || item === undefined || typeof item !== "object") {
+        const valEl = document.createElement("span");
+        valEl.className = `data-value data-${item === null ? "null" : typeof item}`;
+        valEl.textContent = typeof item === "string" && item.length > 80
+          ? `"${item.slice(0, 80)}\u2026"`
+          : JSON.stringify(item);
+        itemRow.appendChild(valEl);
+        container.appendChild(itemRow);
+      } else {
+        const valEl = document.createElement("span");
+        valEl.className = "data-value data-object-label";
+        valEl.textContent = Array.isArray(item) ? `Array(${item.length})` : `{${Object.keys(item).length}}`;
+        itemRow.appendChild(valEl);
+        container.appendChild(itemRow);
+        renderDataTree(container, item, depth + 1, maxDepth);
+      }
+    }
+    if (value.length > cap) {
+      const el = document.createElement("div");
+      el.className = "data-leaf data-ellipsis";
+      el.style.paddingLeft = indent;
+      el.textContent = `\u2026 ${value.length - cap} more`;
+      container.appendChild(el);
+    }
+    return;
+  }
+
+  // Object
+  const keys = Object.keys(value);
+  const cap = 30;
+  for (const key of keys.slice(0, cap)) {
+    const itemRow = document.createElement("div");
+    itemRow.className = "data-branch";
+    itemRow.style.paddingLeft = indent;
+
+    const keyEl = document.createElement("span");
+    keyEl.className = "data-key";
+    keyEl.textContent = key + ": ";
+    itemRow.appendChild(keyEl);
+
+    const v = value[key];
+    if (v === null || v === undefined || typeof v !== "object") {
+      const valEl = document.createElement("span");
+      valEl.className = `data-value data-${v === null ? "null" : typeof v}`;
+      valEl.textContent = typeof v === "string" && v.length > 80
+        ? `"${v.slice(0, 80)}\u2026"`
+        : JSON.stringify(v);
+      itemRow.appendChild(valEl);
+      container.appendChild(itemRow);
+    } else {
+      const valEl = document.createElement("span");
+      valEl.className = "data-value data-object-label";
+      valEl.textContent = Array.isArray(v) ? `Array(${v.length})` : `{${Object.keys(v).length}}`;
+      itemRow.appendChild(valEl);
+      container.appendChild(itemRow);
+      renderDataTree(container, v, depth + 1, maxDepth);
+    }
+  }
+  if (keys.length > cap) {
+    const el = document.createElement("div");
+    el.className = "data-leaf data-ellipsis";
+    el.style.paddingLeft = indent;
+    el.textContent = `\u2026 ${keys.length - cap} more`;
+    container.appendChild(el);
+  }
 }
 
 // ─── Right panel: Inspector ───────────────────────────────────────────────────
@@ -4058,6 +4581,7 @@ async function openFile() {
         S = createState(doc);
         S.fileHandle = handle;
         S.dirty = false;
+        S.documentPath = await locateDocument(handle.name);
         await loadCompanionJS(handle);
       }
 

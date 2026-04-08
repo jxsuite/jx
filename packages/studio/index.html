@@ -206,6 +206,31 @@
     .signals-add select { flex: 1; font: inherit; font-size: 11px; padding: 3px 6px; color: var(--fg); background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius); outline: none; }
     .signals-add select:focus { border-color: var(--accent); }
 
+    /* ─── Data explorer ──────────────────────────── */
+    .data-explorer-toolbar { padding: 4px 8px; border-bottom: 1px solid var(--border); display: flex; justify-content: flex-end; }
+    .data-refresh-btn { font-size: 11px; padding: 2px 8px; background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius); color: var(--fg); cursor: pointer; }
+    .data-refresh-btn:hover { border-color: var(--accent); }
+    .data-row { border-bottom: 1px solid var(--border); }
+    .data-row-header { display: flex; align-items: center; gap: 4px; padding: 4px 8px; cursor: pointer; user-select: none; }
+    .data-row-header:hover { background: rgba(255,255,255,0.04); }
+    .data-row-header::before { content: '\25B6'; font-size: 8px; color: var(--fg-dim); transition: transform 0.15s; }
+    .data-row-header.expanded::before { transform: rotate(90deg); }
+    .data-name { flex: 1; font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .data-type { font-size: 10px; color: var(--fg-dim); flex-shrink: 0; }
+    .data-tree { padding: 2px 0; max-height: 300px; overflow-y: auto; }
+    .data-leaf, .data-branch { font-size: 11px; font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace; padding: 1px 8px; line-height: 1.5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .data-key { color: #9cdcfe; }
+    .data-value { color: var(--fg); }
+    .data-null { color: var(--fg-dim); font-style: italic; }
+    .data-string { color: #ce9178; }
+    .data-number { color: #b5cea8; }
+    .data-boolean { color: #569cd6; }
+    .data-object-label { color: var(--fg-dim); font-style: italic; }
+    .data-ellipsis { color: var(--fg-dim); font-style: italic; }
+    .data-pending { animation: pulse 1.5s ease-in-out infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+    .field-check { width: auto; margin: 0; }
+
     /* ─── Binding toggle ─────────────────────────── */
     .bind-toggle { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; font-size: 11px; cursor: pointer; color: var(--fg-dim); border: 1px solid transparent; border-radius: var(--radius); flex-shrink: 0; }
     .bind-toggle:hover { color: var(--fg); background: rgba(255,255,255,0.06); }

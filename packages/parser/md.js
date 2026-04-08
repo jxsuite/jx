@@ -200,6 +200,17 @@ function getNestedValue(obj, path) {
  * { "$prototype": "MarkdownFile", "$src": "@jsonsx/md", "src": "./content/about.md", "signal": true }
  */
 export class MarkdownFile {
+  /** JSON Schema describing configurable parameters for studio form rendering. */
+  static schema = {
+    description: "Load and parse a single Markdown file",
+    properties: {
+      src: { type: "string", description: "Path to markdown file", examples: ["./content/about.md"] },
+      directives: { type: "boolean", default: false, description: "Enable remark-directive plugin" },
+      basePath: { type: "string", description: "Base path for resolving src" },
+    },
+    required: ["src"],
+  };
+
   /**
    * @param {object} config
    * @param {string} config.src         - File path to markdown file
@@ -234,6 +245,20 @@ export class MarkdownFile {
  * { "$prototype": "MarkdownCollection", "$src": "@jsonsx/md", "src": "./posts/*.md", "signal": true }
  */
 export class MarkdownCollection {
+  /** JSON Schema describing configurable parameters for studio form rendering. */
+  static schema = {
+    description: "Load and parse a collection of Markdown files",
+    properties: {
+      src: { type: "string", description: "Glob pattern for markdown files", examples: ["./content/posts/*.md"] },
+      sortBy: { type: "string", default: "frontmatter.date", description: "Dot-path to sort key" },
+      sortOrder: { type: "string", enum: ["asc", "desc"], default: "desc", description: "Sort direction" },
+      limit: { type: "integer", minimum: 1, description: "Maximum number of results" },
+      directives: { type: "boolean", default: false, description: "Enable remark-directive plugin" },
+      basePath: { type: "string", description: "Base path for resolving src glob" },
+    },
+    required: ["src"],
+  };
+
   /**
    * @param {object}  config
    * @param {string}  config.src          - Glob pattern or directory path
