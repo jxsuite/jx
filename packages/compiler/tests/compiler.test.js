@@ -1,5 +1,28 @@
 import { describe, test, expect } from "bun:test";
 import { compile, isDynamic } from "../compiler.js";
+import { isClassJsonSrc } from "../shared.js";
+
+// ─── isClassJsonSrc ─────────────────────────────────────────────────────────
+
+describe("isClassJsonSrc", () => {
+  test("returns true for .class.json path", () => {
+    expect(isClassJsonSrc("./MyClass.class.json")).toBe(true);
+  });
+  test("returns true for absolute .class.json path", () => {
+    expect(isClassJsonSrc("/path/to/Widget.class.json")).toBe(true);
+  });
+  test("returns false for .json path", () => {
+    expect(isClassJsonSrc("./component.json")).toBe(false);
+  });
+  test("returns false for .js path", () => {
+    expect(isClassJsonSrc("./module.js")).toBe(false);
+  });
+  test("returns false for non-string", () => {
+    expect(isClassJsonSrc(null)).toBe(false);
+    expect(isClassJsonSrc(undefined)).toBe(false);
+    expect(isClassJsonSrc(42)).toBe(false);
+  });
+});
 
 // ─── isDynamic — Five-Shape $defs Grammar ────────────────────────────────────
 
