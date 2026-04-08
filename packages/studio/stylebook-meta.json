@@ -1,0 +1,182 @@
+{
+  "$sections": [
+    {
+      "label": "Headings",
+      "elements": [
+        { "tag": "h1", "text": "Code Is Poetry" },
+        { "tag": "h2", "text": "Code Is Poetry" },
+        { "tag": "h3", "text": "Code Is Poetry" },
+        { "tag": "h4", "text": "Code Is Poetry" },
+        { "tag": "h5", "text": "Code Is Poetry" },
+        { "tag": "h6", "text": "Code Is Poetry" }
+      ]
+    },
+    {
+      "label": "Paragraph",
+      "elements": [
+        {
+          "tag": "p",
+          "text": "In a village of La Mancha, the name of which I have no desire to call to mind, there lived not long since one of those gentlemen that keep a lance in the lance-rack, an old buckler, a lean hack, and a greyhound for coursing."
+        }
+      ]
+    },
+    {
+      "label": "List",
+      "elements": [
+        {
+          "tag": "ul",
+          "children": [
+            { "tag": "li", "text": "Alice." },
+            { "tag": "li", "text": "The White Rabbit." },
+            { "tag": "li", "text": "The Cheshire Cat." },
+            { "tag": "li", "text": "The Mad Hatter." },
+            { "tag": "li", "text": "The Queen of Hearts." }
+          ]
+        },
+        {
+          "tag": "ol",
+          "children": [
+            { "tag": "li", "text": "First item" },
+            { "tag": "li", "text": "Second item" },
+            { "tag": "li", "text": "Third item" }
+          ]
+        }
+      ]
+    },
+    {
+      "label": "Quote",
+      "elements": [
+        {
+          "tag": "blockquote",
+          "children": [
+            { "tag": "p", "text": "In quoting others, we cite ourselves.", "style": "font-size:1.25em;font-style:italic" },
+            { "tag": "p", "text": "\u2014 Julio Cortázar" }
+          ]
+        }
+      ]
+    },
+    {
+      "label": "Code",
+      "elements": [
+        {
+          "tag": "pre",
+          "children": [
+            {
+              "tag": "code",
+              "text": "// A \"block\" is the abstract term used\n// to describe units of markup that\n// when composed together, form the\n// content or layout of a page.\nregisterBlockType( name, settings );"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "label": "Inline",
+      "elements": [
+        { "tag": "a", "text": "Visit the documentation", "attributes": { "href": "#" } },
+        { "tag": "strong", "text": "Bold text emphasis" },
+        { "tag": "em", "text": "Italic text emphasis" },
+        { "tag": "small", "text": "Fine print and legal text" },
+        { "tag": "mark", "text": "Highlighted text" },
+        { "tag": "code", "text": "const x = 42;" },
+        { "tag": "abbr", "text": "HTML", "attributes": { "title": "HyperText Markup Language" } },
+        { "tag": "sub", "text": "subscript" },
+        { "tag": "sup", "text": "superscript" }
+      ]
+    },
+    {
+      "label": "Form",
+      "elements": [
+        { "tag": "input", "attributes": { "type": "text", "placeholder": "Enter text\u2026" } },
+        { "tag": "button", "text": "Click Me" },
+        {
+          "tag": "select",
+          "children": [
+            { "tag": "option", "text": "Option 1" },
+            { "tag": "option", "text": "Option 2" },
+            { "tag": "option", "text": "Option 3" }
+          ]
+        },
+        { "tag": "textarea", "attributes": { "placeholder": "Enter longer text\u2026", "rows": "3" } }
+      ]
+    },
+    {
+      "label": "Table",
+      "elements": [
+        {
+          "tag": "table",
+          "children": [
+            {
+              "tag": "thead",
+              "children": [
+                {
+                  "tag": "tr",
+                  "children": [
+                    { "tag": "th", "text": "Name" },
+                    { "tag": "th", "text": "Role" },
+                    { "tag": "th", "text": "Status" }
+                  ]
+                }
+              ]
+            },
+            {
+              "tag": "tbody",
+              "children": [
+                {
+                  "tag": "tr",
+                  "children": [
+                    { "tag": "td", "text": "Alice" },
+                    { "tag": "td", "text": "Developer" },
+                    { "tag": "td", "text": "Active" }
+                  ]
+                },
+                {
+                  "tag": "tr",
+                  "children": [
+                    { "tag": "td", "text": "Bob" },
+                    { "tag": "td", "text": "Designer" },
+                    { "tag": "td", "text": "Away" }
+                  ]
+                },
+                {
+                  "tag": "tr",
+                  "children": [
+                    { "tag": "td", "text": "Carol" },
+                    { "tag": "td", "text": "Manager" },
+                    { "tag": "td", "text": "Active" }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "label": "Interactive",
+      "elements": [
+        {
+          "tag": "details",
+          "attributes": { "open": "" },
+          "children": [
+            { "tag": "summary", "text": "Click to expand details" },
+            { "tag": "p", "text": "Additional detail content revealed when the disclosure widget is toggled open." }
+          ]
+        }
+      ]
+    },
+    {
+      "label": "Media",
+      "elements": [
+        { "tag": "img", "attributes": { "alt": "Placeholder image" }, "style": "width:100%;max-width:400px;height:200px;background:#e0e0e0;display:block;border-radius:4px" },
+        { "tag": "video", "attributes": { "controls": "" }, "style": "width:100%;max-width:400px;height:200px;background:#e0e0e0;display:block;border-radius:4px" },
+        { "tag": "audio", "attributes": { "controls": "" }, "style": "width:100%" }
+      ]
+    }
+  ],
+  "$variables": {
+    "color": { "label": "Color", "prefix": "--color-", "placeholder": "#007acc" },
+    "font": { "label": "Font", "prefix": "--font-", "placeholder": "system-ui, sans-serif" },
+    "size": { "label": "Size", "prefix": "--size-", "placeholder": "16px" },
+    "other": { "label": "Other", "prefix": "--", "placeholder": "value" }
+  }
+}

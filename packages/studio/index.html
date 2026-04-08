@@ -305,6 +305,38 @@
     .tb-toggle:hover { background: rgba(255,255,255,0.08); }
     .tb-toggle.active { color: var(--accent); border-color: var(--accent); background: rgba(0,122,204,0.15); }
 
+    /* ─── Mode switcher (segmented buttons) ────────── */
+    .tb-mode-btn { padding: 3px 8px; font: inherit; font-size: 11px; color: var(--fg-dim); background: transparent; border: 1px solid var(--border); border-right: none; cursor: pointer; }
+    .tb-mode-btn:first-child { border-radius: var(--radius) 0 0 var(--radius); }
+    .tb-mode-btn:last-child { border-radius: 0 var(--radius) var(--radius) 0; border-right: 1px solid var(--border); }
+    .tb-mode-btn:hover { background: rgba(255,255,255,0.08); }
+    .tb-mode-btn.active { color: var(--accent); border-color: var(--accent); background: rgba(0,122,204,0.15); }
+    .tb-mode-btn.active + .tb-mode-btn { border-left-color: var(--accent); }
+
+    /* ─── Stylebook ─────────────────────────────────── */
+    .stylebook-style-header { padding: 6px 8px; font-size: 11px; font-weight: 600; color: var(--accent); border-bottom: 1px solid var(--border); font-family: 'SF Mono', 'Fira Code', monospace; }
+
+    /* Chrome bar (tabs + filter) above the canvas viewport */
+    .sb-chrome { display: flex; align-items: center; padding: 4px 8px; background: var(--bg-panel); border-bottom: 1px solid var(--border); gap: 4px; flex-shrink: 0; }
+    .sb-tabs { display: flex; gap: 2px; }
+    .sb-tab { padding: 3px 10px; font: inherit; font-size: 11px; color: var(--fg-dim); background: transparent; border: 1px solid transparent; border-radius: var(--radius); cursor: pointer; text-transform: uppercase; letter-spacing: 0.05em; }
+    .sb-tab:hover { color: var(--fg); background: rgba(255,255,255,0.06); }
+    .sb-tab.active { color: var(--accent); border-color: var(--accent); background: rgba(0,122,204,0.15); }
+
+    /* Section layout in canvas */
+    .sb-section { margin-bottom: 24px; }
+    .sb-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #999; padding: 8px 0 4px; border-bottom: 1px solid #eee; margin-bottom: 8px; }
+    .sb-body { padding: 4px 0; }
+
+    /* Variable sections */
+    .sb-var-add { display: flex; gap: 6px; align-items: center; padding: 8px 0; margin-bottom: 16px; border-bottom: 1px solid #eee; }
+    .sb-var-section { margin-bottom: 20px; }
+    .sb-var-header { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #999; padding-bottom: 4px; border-bottom: 1px solid #eee; margin-bottom: 6px; }
+    .sb-var-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid #f5f5f5; }
+    .sb-var-row:last-child { border-bottom: none; }
+    .sb-var-name { flex-shrink: 0; width: 140px; }
+    .sb-var-swatch { width: 28px; height: 28px; border-radius: 4px; border: 1px solid #ddd; flex-shrink: 0; position: relative; overflow: hidden; cursor: pointer; }
+
     /* ─── Context menu ────────────────────────────── */
     .ctx-menu { position: fixed; z-index: 100; min-width: 160px; padding: 4px 0; background: var(--bg-panel); border: 1px solid var(--border); border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.4); }
     .ctx-item { padding: 4px 12px; font-size: 12px; cursor: pointer; color: var(--fg); }

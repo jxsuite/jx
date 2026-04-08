@@ -147,6 +147,10 @@ export function createState(doc) {
       styleSections: {}, // { layout: true, ... } — section open/closed state
       styleShorthands: {}, // { padding: true, ... } — shorthand expand/collapse state
       editingFunction: null, // null | { type: 'def', defName } | { type: 'event', path, eventKey }
+      stylebookSelection: null, // tag name string, e.g. "h1"
+      stylebookTab: "elements", // "elements" | "variables"
+      stylebookFilter: "", // search filter text
+      stylebookCustomizedOnly: false, // show only customized elements
     },
   };
 }

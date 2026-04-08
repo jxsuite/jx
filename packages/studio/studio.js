@@ -77,6 +77,7 @@ import {
 
 import webdata from "./webdata.json";
 import cssMeta from "./css-meta.json";
+import stylebookMeta from "./stylebook-meta.json";
 import icons from "./icons.js";
 import * as monaco from "monaco-editor/esm/vs/editor/editor.api";
 
@@ -308,14 +309,11 @@ const VOID_ELEMENTS = new Set([
  */
 let canvasPanels = [];
 
-/** Whether the canvas is in preview mode (live interactivity) vs edit mode */
-let previewMode = false;
+/** Canvas mode: "edit" | "preview" | "source" | "stylebook" */
+let canvasMode = "edit";
 
 /** Component-mode inline text editing state: { el, path, originalText } or null */
 let componentInlineEdit = null;
-
-/** Whether the canvas is replaced by the Monaco source editor */
-let sourceMode = false;
 
 /** Active Monaco editor instance (or null when in canvas mode) */
 let monacoEditor = null;
@@ -460,12 +458,12 @@ async function renderCanvasLive(doc, canvasEl) {
     canvasEl.removeAttribute("data-content-mode");
   }
 
-  const renderDoc = previewMode ? structuredClone(doc) : prepareForEditMode(stripEventHandlers(doc));
+  const renderDoc = canvasMode === "preview" ? structuredClone(doc) : prepareForEditMode(stripEventHandlers(doc));
 
   // In edit mode, collect paths where $map templates were inlined as children[0]
   // so we can remap runtime paths (children,0,...) → (children,map,...)
   const mapParentPaths = new Set();
-  if (!previewMode) {
+  if (canvasMode === "edit") {
     (function findMapParents(node, path) {
       if (!node || typeof node !== "object") return;
       if (node.children && typeof node.children === "object" && node.children.$prototype === "Array") {
@@ -508,7 +506,7 @@ async function renderCanvasLive(doc, canvasEl) {
         // prepareForEditMode wraps $map template in: children[0] (wrapper) > children[0] (template)
         // Real paths: wrapper → ['children'] ($map container), template → ['children', 'map']
         let mappedPath = path;
-        if (!previewMode && mapParentPaths.size > 0) {
+        if (canvasMode === "edit" && mapParentPaths.size > 0) {
           for (let i = 0; i < path.length - 1; i++) {
             if (path[i] === "children" && path[i + 1] === 0) {
               const parentKey = path.slice(0, i).join("/");
@@ -529,7 +527,7 @@ async function renderCanvasLive(doc, canvasEl) {
       },
       _path: [],
     });
-    if (!previewMode) {
+    if (canvasMode === "edit") {
       // Disable pointer events on all rendered elements for edit mode
       el.style.pointerEvents = "none";
       for (const child of el.querySelectorAll("*")) {
@@ -537,7 +535,7 @@ async function renderCanvasLive(doc, canvasEl) {
       }
     }
     canvasEl.appendChild(el);
-    if (!previewMode) {
+    if (canvasMode === "edit") {
       // Custom element connectedCallbacks render children asynchronously —
       // sweep again after they've had a chance to run
       requestAnimationFrame(() => {
@@ -728,7 +726,7 @@ function renderCanvas() {
   }
 
   // Source mode: update existing Monaco editor without recreating
-  if (sourceMode && monacoEditor) {
+  if (canvasMode === "source" && monacoEditor) {
     const jsonStr = JSON.stringify(S.document, null, 2);
     const currentVal = monacoEditor.getValue();
     if (currentVal !== jsonStr) {
@@ -751,9 +749,20 @@ function renderCanvas() {
   }
 
   canvasWrap.innerHTML = "";
+  // Reset inline style overrides from other modes
+  canvasWrap.style.padding = "";
+  canvasWrap.style.alignItems = "";
+
+  // Stylebook mode: render element catalog
+  if (canvasMode === "stylebook") {
+    canvasWrap.style.padding = "0";
+    canvasWrap.style.alignItems = "stretch";
+    renderStylebook();
+    return;
+  }
 
   // Source mode: create Monaco editor instead of canvas
-  if (sourceMode) {
+  if (canvasMode === "source") {
     canvasWrap.style.padding = "0";
     const editorContainer = document.createElement("div");
     editorContainer.className = "source-editor";
@@ -1233,14 +1242,21 @@ function renderOverlays() {
     p.overlay.appendChild(p.dropLine);
   }
 
-  // In preview mode, hide overlays and click interceptors
-  if (previewMode) {
+  // In non-edit modes (except stylebook), hide overlays and click interceptors
+  if (canvasMode !== "edit" && canvasMode !== "stylebook") {
     for (const p of canvasPanels) {
       p.overlayClk.style.pointerEvents = "none";
     }
     if (selDragCleanup) {
       selDragCleanup();
       selDragCleanup = null;
+    }
+    return;
+  }
+  // Stylebook manages its own overlays — just enable the click interceptor
+  if (canvasMode === "stylebook") {
+    for (const p of canvasPanels) {
+      p.overlayClk.style.pointerEvents = "";
     }
     return;
   }
@@ -2308,6 +2324,470 @@ function renderBlocks(container) {
 
   search.oninput = () => renderList(search.value.toLowerCase());
   renderList("");
+}
+
+// ─── Stylebook ───────────────────────────────────────────────────────────────
+
+/** Map from rendered stylebook DOM elements to their tag names */
+let stylebookElToTag = new WeakMap();
+
+/**
+ * Build a DOM element tree from a stylebook-meta.json entry.
+ * Applies any existing tag-scoped styles from rootStyle["& tag"].
+ */
+function buildStylebookElement(entry, rootStyle) {
+  const el = document.createElement(entry.tag);
+  if (entry.text) el.textContent = entry.text;
+  if (entry.attributes) {
+    for (const [k, v] of Object.entries(entry.attributes)) {
+      try { el.setAttribute(k, v); } catch {}
+    }
+  }
+  if (entry.style) el.style.cssText = entry.style;
+  // Apply custom styles from document root
+  const tagStyle = rootStyle[`& ${entry.tag}`];
+  if (tagStyle) {
+    for (const [prop, val] of Object.entries(tagStyle)) {
+      if (typeof val === "string" || typeof val === "number") {
+        try { el.style[prop] = val; } catch {}
+      }
+    }
+  }
+  if (entry.children) {
+    for (const child of entry.children) {
+      el.appendChild(buildStylebookElement(child, rootStyle));
+    }
+  }
+  return el;
+}
+
+function hasTagStyle(rootStyle, tag) {
+  const s = rootStyle[`& ${tag}`];
+  return s && typeof s === "object" && Object.keys(s).length > 0;
+}
+
+function renderStylebook() {
+  // Use a real canvas panel so overlays/selection work identically to edit mode
+  const panel = createCanvasPanel(null, null, true);
+  // Make the panel flex column so chrome + viewport stack properly
+  panel.element.style.display = "flex";
+  panel.element.style.flexDirection = "column";
+  panel.element.style.height = "100%";
+  panel.viewport.style.flex = "1";
+  panel.viewport.style.overflowY = "auto";
+  canvasWrap.appendChild(panel.element);
+  canvasPanels.push(panel);
+
+  const canvasEl = panel.canvas;
+  stylebookElToTag = new WeakMap();
+  const rootStyle = S.document.style || {};
+  const filter = (S.ui.stylebookFilter || "").toLowerCase();
+  const customizedOnly = S.ui.stylebookCustomizedOnly;
+
+  // Tab bar rendered inside the canvas viewport header area
+  const chrome = document.createElement("div");
+  chrome.className = "sb-chrome";
+
+  const tabBar = document.createElement("div");
+  tabBar.className = "sb-tabs";
+  for (const t of ["elements", "variables"]) {
+    const tab = document.createElement("button");
+    tab.className = `sb-tab${S.ui.stylebookTab === t ? " active" : ""}`;
+    tab.textContent = t.charAt(0).toUpperCase() + t.slice(1);
+    tab.onclick = () => {
+      S = { ...S, ui: { ...S.ui, stylebookTab: t } };
+      renderCanvas();
+      renderOverlays();
+    };
+    tabBar.appendChild(tab);
+  }
+  chrome.appendChild(tabBar);
+
+  // Filter bar (elements tab only)
+  if (S.ui.stylebookTab === "elements") {
+    const search = document.createElement("input");
+    search.className = "field-input";
+    search.style.cssText = "flex:1;max-width:200px;margin-left:8px";
+    search.placeholder = "Filter\u2026";
+    search.value = S.ui.stylebookFilter;
+    search.oninput = () => {
+      S = { ...S, ui: { ...S.ui, stylebookFilter: search.value } };
+      renderCanvas();
+      renderOverlays();
+    };
+    chrome.appendChild(search);
+
+    const customizedBtn = document.createElement("button");
+    customizedBtn.className = `tb-toggle${S.ui.stylebookCustomizedOnly ? " active" : ""}`;
+    customizedBtn.style.marginLeft = "4px";
+    customizedBtn.textContent = "Customized";
+    customizedBtn.onclick = () => {
+      S = { ...S, ui: { ...S.ui, stylebookCustomizedOnly: !S.ui.stylebookCustomizedOnly } };
+      renderCanvas();
+      renderOverlays();
+    };
+    chrome.appendChild(customizedBtn);
+  }
+
+  // Insert chrome before the viewport inside the panel
+  panel.element.insertBefore(chrome, panel.element.firstChild);
+
+  if (S.ui.stylebookTab === "elements") {
+    renderStylebookElementsIntoCanvas(canvasEl, rootStyle, filter, customizedOnly);
+  } else {
+    renderStylebookVarsIntoCanvas(canvasEl, rootStyle);
+  }
+
+  // Disable pointer events on all rendered content (same as edit mode)
+  for (const child of canvasEl.querySelectorAll("*")) {
+    child.style.pointerEvents = "none";
+  }
+
+  // Register click-to-select on the panel
+  registerStylebookPanelEvents(panel);
+}
+
+/** Render element sections into the canvas from stylebook-meta.json */
+function renderStylebookElementsIntoCanvas(canvasEl, rootStyle, filter, customizedOnly) {
+  for (const section of stylebookMeta.$sections) {
+    // Filter elements
+    let entries = section.elements;
+    if (filter) {
+      entries = entries.filter((e) =>
+        e.tag.includes(filter) || section.label.toLowerCase().includes(filter),
+      );
+    }
+    if (customizedOnly) {
+      entries = entries.filter((e) => hasTagStyle(rootStyle, e.tag));
+    }
+    if (entries.length === 0) continue;
+
+    // Section container
+    const sectionEl = document.createElement("div");
+    sectionEl.className = "sb-section";
+
+    // Section label
+    const label = document.createElement("div");
+    label.className = "sb-label";
+    label.textContent = section.label;
+    sectionEl.appendChild(label);
+
+    // Section content
+    const body = document.createElement("div");
+    body.className = "sb-body";
+
+    for (const entry of entries) {
+      const el = buildStylebookElement(entry, rootStyle);
+      el.style.marginBottom = "0.5em";
+
+      // Register for overlay hit-testing
+      stylebookElToTag.set(el, entry.tag);
+      // Also register in the global elToPath so drawOverlayBox label works
+      elToPath.set(el, ["__sb", entry.tag]);
+
+      body.appendChild(el);
+    }
+
+    sectionEl.appendChild(body);
+    canvasEl.appendChild(sectionEl);
+  }
+
+  // Custom components from registry
+  if (componentRegistry.length > 0) {
+    let comps = componentRegistry;
+    if (filter) comps = comps.filter((c) => c.tagName.toLowerCase().includes(filter));
+    if (customizedOnly) comps = comps.filter((c) => hasTagStyle(rootStyle, c.tagName));
+    if (comps.length > 0) {
+      const sectionEl = document.createElement("div");
+      sectionEl.className = "sb-section";
+      const label = document.createElement("div");
+      label.className = "sb-label";
+      label.textContent = "Components";
+      sectionEl.appendChild(label);
+      const body = document.createElement("div");
+      body.className = "sb-body";
+      for (const comp of comps) {
+        const el = document.createElement("div");
+        el.style.cssText = "padding:12px;border:1px dashed #ccc;border-radius:4px;margin-bottom:0.5em;color:#666";
+        el.textContent = `<${comp.tagName}>`;
+        const tagStyle = rootStyle[`& ${comp.tagName}`];
+        if (tagStyle) {
+          for (const [prop, val] of Object.entries(tagStyle)) {
+            if (typeof val === "string" || typeof val === "number") {
+              try { el.style[prop] = val; } catch {}
+            }
+          }
+        }
+        stylebookElToTag.set(el, comp.tagName);
+        elToPath.set(el, ["__sb", comp.tagName]);
+        body.appendChild(el);
+      }
+      sectionEl.appendChild(body);
+      canvasEl.appendChild(sectionEl);
+    }
+  }
+
+  if (canvasEl.children.length === 0) {
+    const empty = document.createElement("div");
+    empty.style.cssText = "padding:48px;text-align:center;color:#999;font-size:13px";
+    empty.textContent = customizedOnly ? "No customized elements" : "No matching elements";
+    canvasEl.appendChild(empty);
+  }
+}
+
+/** Render variables into the canvas */
+function renderStylebookVarsIntoCanvas(canvasEl, rootStyle) {
+  const varCats = stylebookMeta.$variables;
+
+  const groups = {};
+  for (const key of Object.keys(varCats)) groups[key] = [];
+  for (const [k, v] of Object.entries(rootStyle)) {
+    if (!k.startsWith("--")) continue;
+    if (typeof v !== "string" && typeof v !== "number") continue;
+    if (k.startsWith("--color")) groups.color.push([k, v]);
+    else if (k.startsWith("--font")) groups.font.push([k, v]);
+    else if (k.startsWith("--size") || k.startsWith("--spacing") || k.startsWith("--radius"))
+      groups.size.push([k, v]);
+    else groups.other.push([k, v]);
+  }
+
+  // Add-variable bar
+  const addBar = document.createElement("div");
+  addBar.className = "sb-var-add";
+  const addName = document.createElement("input");
+  addName.className = "field-input";
+  addName.placeholder = "--variable-name";
+  addName.style.width = "160px";
+  addBar.appendChild(addName);
+  const addVal = document.createElement("input");
+  addVal.className = "field-input";
+  addVal.placeholder = "value";
+  addVal.style.flex = "1";
+  addBar.appendChild(addVal);
+  const addBtn = document.createElement("button");
+  addBtn.className = "toolbar-btn";
+  addBtn.textContent = "+ Add";
+  addBtn.style.pointerEvents = "auto";
+  addBtn.onclick = () => {
+    const n = addName.value.trim();
+    const v = addVal.value.trim();
+    if (n && v) {
+      update(updateStyle(S, [], n.startsWith("--") ? n : `--${n}`, v));
+    }
+  };
+  addBar.appendChild(addBtn);
+  // Inputs need pointer events
+  addName.style.pointerEvents = "auto";
+  addVal.style.pointerEvents = "auto";
+  canvasEl.appendChild(addBar);
+
+  for (const [catKey, catMeta] of Object.entries(varCats)) {
+    const vars = groups[catKey];
+    if (vars.length === 0) continue;
+
+    const section = document.createElement("div");
+    section.className = "sb-var-section";
+    const header = document.createElement("div");
+    header.className = "sb-var-header";
+    header.textContent = catMeta.label;
+    section.appendChild(header);
+
+    for (const [varName, varVal] of vars) {
+      const row = document.createElement("div");
+      row.className = "sb-var-row";
+
+      // Name column
+      const nameCol = document.createElement("div");
+      nameCol.className = "sb-var-name";
+      const displayName = varName
+        .replace(new RegExp(`^${catMeta.prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`), "")
+        .replace(/^--/, "")
+        .replace(/-/g, " ")
+        .replace(/\b\w/g, (c) => c.toUpperCase()) || varName;
+      const nameLabel = document.createElement("div");
+      nameLabel.style.cssText = "font-weight:600;color:var(--accent)";
+      nameLabel.textContent = displayName;
+      nameCol.appendChild(nameLabel);
+      const refLabel = document.createElement("div");
+      refLabel.style.cssText = "font-size:10px;color:#888;font-family:'SF Mono','Fira Code',monospace";
+      refLabel.textContent = varName;
+      nameCol.appendChild(refLabel);
+      row.appendChild(nameCol);
+
+      // Value input
+      const valInput = document.createElement("input");
+      valInput.className = "field-input";
+      valInput.value = String(varVal);
+      valInput.placeholder = catMeta.placeholder;
+      valInput.style.cssText = "flex:1;pointer-events:auto";
+      let debounce;
+      valInput.oninput = () => {
+        clearTimeout(debounce);
+        debounce = setTimeout(() => {
+          update(updateStyle(S, [], varName, valInput.value));
+        }, 400);
+      };
+      row.appendChild(valInput);
+
+      // Visual preview for color
+      if (catKey === "color") {
+        const swatch = document.createElement("div");
+        swatch.className = "sb-var-swatch";
+        swatch.style.backgroundColor = String(varVal);
+        const picker = document.createElement("input");
+        picker.type = "color";
+        picker.style.cssText = "position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;pointer-events:auto";
+        try { picker.value = String(varVal).startsWith("#") ? String(varVal) : "#000000"; } catch {}
+        picker.oninput = () => {
+          swatch.style.backgroundColor = picker.value;
+          valInput.value = picker.value;
+          update(updateStyle(S, [], varName, picker.value));
+        };
+        swatch.appendChild(picker);
+        row.appendChild(swatch);
+      }
+
+      // Font sample
+      if (catKey === "font") {
+        const sample = document.createElement("div");
+        sample.style.cssText = `font-family:${String(varVal)};font-size:13px;color:#666;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px`;
+        sample.textContent = "The quick brown fox";
+        row.appendChild(sample);
+      }
+
+      // Delete
+      const del = document.createElement("span");
+      del.className = "kv-del";
+      del.style.pointerEvents = "auto";
+      del.textContent = "\u2715";
+      del.onclick = () => update(updateStyle(S, [], varName, undefined));
+      row.appendChild(del);
+
+      section.appendChild(row);
+    }
+
+    canvasEl.appendChild(section);
+  }
+
+  const totalVars = Object.values(groups).reduce((s, g) => s + g.length, 0);
+  if (totalVars === 0) {
+    const empty = document.createElement("div");
+    empty.style.cssText = "padding:48px;text-align:center;color:#999;font-size:13px";
+    empty.textContent = "No variables defined. Add CSS custom properties to create a design token system.";
+    canvasEl.appendChild(empty);
+  }
+}
+
+/** Click handler for stylebook canvas — selects elements via the elToPath/stylebookElToTag mapping */
+function registerStylebookPanelEvents(panel) {
+  const { canvas, overlayClk } = panel;
+
+  overlayClk.addEventListener("click", (e) => {
+    // Temporarily enable pointer events to hit-test
+    const els = canvas.querySelectorAll("*");
+    for (const el of els) el.style.pointerEvents = "auto";
+    overlayClk.style.display = "none";
+    const elements = document.elementsFromPoint(e.clientX, e.clientY);
+    overlayClk.style.display = "";
+    for (const el of els) el.style.pointerEvents = "none";
+
+    // Find the closest element with a stylebook tag mapping
+    for (const el of elements) {
+      if (!canvas.contains(el) || el === canvas) continue;
+      const tag = stylebookElToTag.get(el);
+      if (tag) {
+        S = {
+          ...S,
+          selection: [],
+          ui: { ...S.ui, stylebookSelection: tag, rightTab: "style", activeSelector: `& ${tag}` },
+        };
+        renderStylebookOverlays();
+        renderRightPanel();
+        renderToolbar();
+        return;
+      }
+    }
+    // Clicked empty area — deselect
+    S = { ...S, ui: { ...S.ui, stylebookSelection: null, activeSelector: null } };
+    renderStylebookOverlays();
+    renderRightPanel();
+  });
+
+  overlayClk.addEventListener("mousemove", (e) => {
+    // Hover effect
+    const els = canvas.querySelectorAll("*");
+    for (const el of els) el.style.pointerEvents = "auto";
+    overlayClk.style.display = "none";
+    const elements = document.elementsFromPoint(e.clientX, e.clientY);
+    overlayClk.style.display = "";
+    for (const el of els) el.style.pointerEvents = "none";
+
+    let hoverTag = null;
+    for (const el of elements) {
+      if (!canvas.contains(el) || el === canvas) continue;
+      const tag = stylebookElToTag.get(el);
+      if (tag) { hoverTag = tag; break; }
+    }
+
+    if (hoverTag !== panel._lastHoverTag) {
+      panel._lastHoverTag = hoverTag;
+      renderStylebookOverlays();
+    }
+  });
+}
+
+/** Draw selection + hover overlays for stylebook elements */
+function renderStylebookOverlays() {
+  if (canvasPanels.length === 0) return;
+  const panel = canvasPanels[0];
+  panel.overlay.innerHTML = "";
+  panel.overlay.appendChild(panel.dropLine);
+
+  const selectedTag = S.ui.stylebookSelection;
+  const hoverTag = panel._lastHoverTag;
+
+  // Draw hover
+  if (hoverTag && hoverTag !== selectedTag) {
+    const el = findStylebookEl(panel.canvas, hoverTag);
+    if (el) drawOverlayBoxRaw(el, "hover", panel, `<${hoverTag}>`);
+  }
+
+  // Draw selection
+  if (selectedTag) {
+    const el = findStylebookEl(panel.canvas, selectedTag);
+    if (el) drawOverlayBoxRaw(el, "selection", panel, `<${selectedTag}>`);
+  }
+}
+
+/** Find a stylebook element by tag in the canvas */
+function findStylebookEl(canvasEl, tag) {
+  for (const child of canvasEl.querySelectorAll("*")) {
+    if (stylebookElToTag.get(child) === tag) return child;
+  }
+  return null;
+}
+
+/** Draw an overlay box with a custom label (used by stylebook) */
+function drawOverlayBoxRaw(el, type, panel, labelText) {
+  const vpRect = panel.viewport.getBoundingClientRect();
+  const elRect = el.getBoundingClientRect();
+
+  const box = document.createElement("div");
+  box.className = `overlay-box overlay-${type}`;
+  box.style.top = `${elRect.top - vpRect.top + panel.viewport.scrollTop}px`;
+  box.style.left = `${elRect.left - vpRect.left + panel.viewport.scrollLeft}px`;
+  box.style.width = `${elRect.width}px`;
+  box.style.height = `${elRect.height}px`;
+
+  if (type === "selection" && labelText) {
+    const label = document.createElement("div");
+    label.className = "overlay-label";
+    label.textContent = labelText;
+    box.appendChild(label);
+  }
+
+  panel.overlay.appendChild(box);
+  return box;
 }
 
 // ─── Left panel: Signals ─────────────────────────────────────────────────────
@@ -4579,6 +5059,20 @@ function renderStyleSidebar(container, node, activeMediaTab, activeSelector) {
 
 /** Top-level Style panel — renders as its own right-panel tab */
 function renderStylePanel(container) {
+  // Stylebook mode: style the selected tag on the root node
+  if (canvasMode === "stylebook" && S.ui.stylebookSelection) {
+    const node = S.document;
+    if (!node) {
+      container.innerHTML = '<div class="empty-state">No document loaded</div>';
+      return;
+    }
+    const header = document.createElement("div");
+    header.className = "stylebook-style-header";
+    header.textContent = `Styling: <${S.ui.stylebookSelection}>`;
+    container.appendChild(header);
+    renderStyleSidebar(container, node, S.ui.activeMedia, S.ui.activeSelector);
+    return;
+  }
   if (!S.selection) {
     container.innerHTML = '<div class="empty-state">Select an element to style</div>';
     return;
@@ -5297,40 +5791,37 @@ function renderToolbar() {
   );
   toolbar.appendChild(zoomGroup);
 
-  // Edit / Preview toggle
+  // Mode switcher (segmented button group)
   const modeGroup = group();
-  const modeBtn = document.createElement("button");
-  modeBtn.className = `tb-toggle${previewMode ? " active" : ""}`;
-  modeBtn.textContent = previewMode ? "▶ Preview" : "✎ Edit";
-  modeBtn.title = previewMode ? "Switch to edit mode" : "Switch to live preview";
-  modeBtn.onclick = () => {
-    previewMode = !previewMode;
-    renderCanvas();
-    renderOverlays();
-    renderToolbar();
-  };
-  modeGroup.appendChild(modeBtn);
+  const modes = [
+    { key: "edit",      label: "Edit",      icon: "✎" },
+    { key: "preview",   label: "Preview",   icon: "▶" },
+    { key: "source",    label: "Code",      icon: "{ }" },
+    { key: "stylebook", label: "Stylebook", icon: "◑" },
+  ];
+  for (const m of modes) {
+    const btn = document.createElement("button");
+    btn.className = `tb-mode-btn${canvasMode === m.key ? " active" : ""}`;
+    btn.textContent = `${m.icon} ${m.label}`;
+    btn.onclick = () => {
+      if (canvasMode === m.key) return;
+      // Close function editor if leaving it
+      if (S.ui.editingFunction) {
+        if (functionEditor) { functionEditor.dispose(); functionEditor = null; }
+        S = { ...S, ui: { ...S.ui, editingFunction: null } };
+      }
+      canvasMode = m.key;
+      renderCanvas();
+      renderOverlays();
+      renderToolbar();
+      if (m.key === "stylebook") {
+        S = { ...S, ui: { ...S.ui, rightTab: "style" } };
+        renderRightPanel();
+      }
+    };
+    modeGroup.appendChild(btn);
+  }
   toolbar.appendChild(modeGroup);
-
-  // Source / Canvas toggle
-  const srcGroup = group();
-  const srcBtn = document.createElement("button");
-  srcBtn.className = `tb-toggle${sourceMode ? " active" : ""}`;
-  srcBtn.textContent = sourceMode ? "{ } Source" : "{ }";
-  srcBtn.title = sourceMode ? "Switch to canvas view" : "Edit document source";
-  srcBtn.onclick = () => {
-    // Close function editor if active
-    if (S.ui.editingFunction) {
-      if (functionEditor) { functionEditor.dispose(); functionEditor = null; }
-      S = { ...S, ui: { ...S.ui, editingFunction: null } };
-    }
-    sourceMode = !sourceMode;
-    renderCanvas();
-    renderOverlays();
-    renderToolbar();
-  };
-  srcGroup.appendChild(srcBtn);
-  toolbar.appendChild(srcGroup);
 
   // Feature toggles (non-size media queries like --dark)
   const { featureQueries } = parseMediaEntries(S.document.$media);

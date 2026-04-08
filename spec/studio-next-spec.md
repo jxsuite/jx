@@ -126,8 +126,8 @@ The DDOME spec (~3100 lines) envisions a full-scale visual application builder. 
 The studio evolves from a single-file JSON component editor into a **content authoring platform** in five priorities:
 
 ```
-Priority 1: Runtime Integration          ← foundation: live preview for everything
-Priority 2: Markdown Canvas Mode         ← the key insight: markdown IS a canvas
+Priority 1: Runtime Integration          ✅ COMPLETE
+Priority 2: Markdown Canvas Mode         ✅ COMPLETE
 Priority 3: Content File Management      ← project directory, content tree, frontmatter
 Priority 4: Stylebook / Design Tokens    ← CSS custom properties editor
 Priority 5: Component Management         ← tabs, cross-file navigation
@@ -665,13 +665,15 @@ The following DDOME features are recognized as valuable but deferred beyond the 
 | Concept | Value | Dependency |
 |---|---|---|
 | **Dynamic tiling layout** | Users rearrange studio panels | UX polish; no functionality dependency |
-| **Component editor modes** (Customize vs Modify) | Instance editing vs definition editing | Requires Priority 1 + 5 |
 | **Request builder** | Visual HTTP request composition | Nice-to-have for data-driven apps |
-| **Code editor integration** | Inline editing of `.js` handler functions | Priority 1 enables preview; editing needs CodeMirror or Monaco |
 | **Self-composability** | Studio editable inside itself | Long-term aspirational; depends on near-100% JSONsx self-hosting |
 | **Plugin system** | Third-party studio extensions | Premature until studio API stabilizes |
 | **Variant management** | Visual creation/management of CSS class variants | Depends on Stylebook (Priority 4) |
-| **Inline text editing (rich)** | Full rich-text cursor-based editing in canvas | Phase 2 delivers basic inline `textContent` editing; full rich-text (cursor positioning, selection ranges, IME) is a separate effort |
+
+> **Previously deferred, now complete:**
+> - ~~**Component editor modes** (Customize vs Modify)~~ — Custom component instances render their full template on canvas; layer tree treats them as atomic; `$props` editing in inspector with `$map` signal support.
+> - ~~**Inline text editing (rich)**~~ — Content mode has full rich text editing (paragraph splitting, slash commands). Component mode has plain-text `contenteditable` editing with raw `${...}` expression support.
+> - ~~**Code editor integration**~~ — Monaco-based function code editor with breadcrumb context switching.
 
 ---
 
@@ -682,22 +684,30 @@ The following DDOME features are recognized as valuable but deferred beyond the 
 ```
 packages/
   studio/
-    index.html                ← unchanged (content mode uses same layout)
-    studio.js                 ← add content mode switching, runtime integration
-    state.js                  ← extend state model with mode, content, project
-    md-convert.js             ← NEW: mdToJsonsx() + jsonsxToMd() conversion layer
-    md-allowlist.js           ← NEW: markdown element allowlist + nesting constraints
-    content-tree.js           ← NEW: project directory tree panel
-    stylebook.js              ← NEW: design token editor
-    webdata.json              ← unchanged
-    gen-webdata.js            ← unchanged
-    package.json              ← add @jsonsx/parser and @jsonsx/runtime as dependencies
+    index.html                ← main HTML shell with CSS
+    studio.js                 ← main studio application (~5300+ lines): canvas, inspector,
+                                layers, toolbar, events, inline editing, function editor
+    state.js                  ← state model, mutations, history, tree flattening
+    md-convert.js             ← mdToJsonsx() + jsonsxToMd() conversion layer
+    md-allowlist.js           ← markdown element allowlist + nesting constraints
+    inline-edit.js            ← content-mode rich text inline editing (paragraph splitting,
+                                slash commands, contenteditable management)
+    webdata.json              ← CSS/HTML autocomplete data
+    gen-webdata.js            ← webdata generator script
+    dist/                     ← built output (bun build)
+    package.json              ← depends on @jsonsx/runtime, unified, remark-*
 
-  parser/
-    md.js                     ← extend: `source` constructor option
+  server/
+    server.js                 ← createDevServer() entry point
+    build.js                  ← build pipeline with file-change-aware rebuilds
+    watch.js                  ← file watcher for live reload
+    resolve.js                ← /__jsonsx_resolve__ and /__jsonsx_server__ proxies
+    studio-api.js             ← /__studio/* REST API (file listing, CRUD, components)
 
   runtime/
-    runtime.js                ← extend: `onNodeCreated` callback option in renderNode
+    runtime.js                ← renderNode with onNodeCreated callback, buildScope,
+                                defineElement, registerElements, renderMappedArray,
+                                renderSwitch, renderCustomElementWithProps
 ```
 
 ### 11.2 New Module: `md-convert.js`
@@ -808,22 +818,20 @@ This is the same data flow as component mode — the document is a JSONsx elemen
 - ✅ Unified breadcrumb navigation for document stack and function editor context
 - ✅ Layer tree: repeaters shown as "Repeater → ref" with `↻` badge; custom component instances are atomic (no child recursion)
 
-### Phase 2 — Markdown Canvas Mode (weeks 4-7)
+### Phase 2 — Markdown Canvas Mode ✅ Complete
 
 **Goal:** Author and edit markdown content files using the studio's existing WYSIWYG canvas.
 
-- Implement `md-convert.js`: `mdToJsonsx()` and `jsonsxToMd()`
-- Implement `md-allowlist.js`: element allowlist + nesting constraint validation
-- Wire `.md` file open to: parse → convert → load into studio state as content mode
-- Wire `.md` file save to: convert → serialize → write with frontmatter
-- Adapt block library: content mode shows markdown blocks + project components
-- Adapt inspector: content mode shows contextual fields (href for links, src/alt for images, language for code blocks)
-- Adapt DnD: enforce markdown nesting constraints via `instruction-blocked`
-- Apply default content typography stylesheet to canvas in content mode
-- Implement directive component placeholder rendering (name + attributes badge)
-- Implement basic inline text editing: double-click to edit `textContent` in the canvas
-
-**Exit criterion:** Can open `interactive-post.md`, see it rendered as a visual canvas with headings/paragraphs/directives, drag a heading above a paragraph, add an image block from the library, edit text inline, and save back to a valid `.md` file.
+- ✅ Implemented `md-convert.js`: `mdToJsonsx()` and `jsonsxToMd()`
+- ✅ Implemented `md-allowlist.js`: element allowlist + nesting constraint validation
+- ✅ Wired `.md` file open to: parse → convert → load into studio state as content mode
+- ✅ Wired `.md` file save to: convert → serialize → write with frontmatter
+- ✅ Adapted block library: content mode shows markdown blocks + project components
+- ✅ Adapted inspector: content mode shows contextual fields (href for links, src/alt for images, language for code blocks)
+- ✅ Adapted DnD: enforces markdown nesting constraints
+- ✅ Applied default content typography stylesheet to canvas in content mode
+- ✅ Implemented inline rich text editing: click to edit, Enter splits paragraphs, `/` opens slash command palette
+- ✅ Content mode auto-detected from `.md` file extension
 
 ### Phase 3 — Content File Management (weeks 8-10)
 
@@ -867,4 +875,4 @@ This is the same data flow as component mode — the document is a JSONsx elemen
 
 ---
 
-*JSONsx Studio Next Steps Proposal v0.3.0-draft — subject to revision*
+*JSONsx Studio Next Steps Proposal v0.3.0-draft — Priorities 1-2 complete, Priorities 3-5 pending*
