@@ -2,7 +2,7 @@
 ## From Proof-of-Concept to Content Authoring Platform
 
 **Version:** 0.3.0-draft
-**Status:** Proposal
+**Status:** Proposal (partially implemented)
 **Depends on:** JSONsx Specification v1.0.0+, JSONsx Builder Specification v0.1.0+
 **License:** MIT
 
@@ -33,7 +33,7 @@ The JSONsx project has three relevant predecessors and current assets:
 
 - **DDOM / DDOME spec** — A comprehensive vision for a fully declarative visual application builder. Never built, but defined a rich set of concepts: Stylebook, scoped editing, metadata-driven panels, responsive canvas, component-first architecture, and self-composability.
 - **JSONsx Builder spec** — A focused spec for a developer-tool visual editor for `.json` component files. Defines the layer panel, canvas, inspector, drag-and-drop, undo/redo, and file operations that now form the current studio.
-- **JSONsx Studio (`@jsonsx/studio`)** — The current implementation. A working proof-of-concept (~2850 lines of vanilla JS) that delivers file I/O, a WYSIWYG canvas with multi-breakpoint preview, a layer tree with drag-and-drop, a full inspector, signal/definition management, and a block library. It renders JSONsx documents using its own lightweight preview renderer rather than the `@jsonsx/runtime`.
+- **JSONsx Studio (`@jsonsx/studio`)** — The current implementation. A working visual editor (~5300+ lines of vanilla JS) that delivers file I/O, a WYSIWYG canvas powered by `@jsonsx/runtime` with live reactivity and edit/preview toggle, a layer tree with drag-and-drop, a full inspector, signal/definition management, a block library, markdown content mode with inline rich text editing, component inline text editing, repeater/`$map` template editing, custom element rendering with `defineElement` integration, breadcrumb-based context navigation, and a Monaco-based function code editor.
 
 ### 1.2 Markdown Integration
 
@@ -66,17 +66,25 @@ Markdown is the future of internet content. The studio should treat it as a firs
 | Signal/definition management | Complete | Full CRUD for all five $defs shapes |
 | Block library | Complete | Categorized HTML elements with sensible defaults |
 | Context menu, keyboard shortcuts | Complete | Standard set |
+| Runtime integration (Priority 1) | Complete | Live reactive preview using `@jsonsx/runtime`. `onNodeCreated` callback populates `WeakMap<Element, Path>`. Edit/preview toggle strips/restores `on*` handlers. Fallback to structural `renderCanvasNode()` on error. |
+| Content mode — markdown canvas (Priority 2) | Complete | `.md` files rendered as WYSIWYG canvas via `mdToJsonsx()`/`jsonsxToMd()` with remark pipeline. Allowlist-based nesting constraints, content-mode block library, adapted inspector. Inline rich text editing with paragraph splitting and slash command palette. |
+| Dev server integration | Complete | `@jsonsx/server` with `createDevServer()`: `/__jsonsx_resolve__` proxy, `/__jsonsx_server__` proxy, `/__studio/*` REST API, SSE live reload, build pipeline with file watcher. |
+| Breadcrumb navigation | Complete | Unified toolbar breadcrumb for document stack navigation and function editor context (`ƒ defName` / `ƒ eventKey`). |
+| Function editor | Complete | Monaco-based code editor for `$prototype: "Function"` bodies. Integrated via breadcrumb context switching with async save/minify on close. |
+| `$switch`/`cases` management | Complete | Visual case management in inspector: add/remove/rename cases, first-case preview on canvas, cross-file `$ref` case navigation. |
+| Repeater (`$map`) integration | Complete | `$prototype: "Array"` children displayed as "Repeater" in layers with `↻` badge. Edit mode renders single configurable template instance inside a `repeater-perimeter` wrapper. Path remapping maps runtime paths back to document `children/map` paths. |
+| Custom component rendering | Complete | `defineElement` called for `$elements` entries before canvas render. Custom components render their full internal template on canvas. Layer tree treats component instances as atomic (no recursion into internals). `$map` placeholder scope (`$map/item`, `$map/index`) injected for components inside repeaters. |
+| Inline text editing (component mode) | Complete | Single-click on text-leaf elements enters `contenteditable="plaintext-only"` mode. Raw `${...}` expressions editable as literal text. `mousedown` preventDefault suppresses blur for in-bounds cursor repositioning. Enter commits, Escape cancels, blur commits. Custom elements and container elements excluded. |
+| `$map` signals in inspector | Complete | `$map/item` and `$map/index` available in signal dropdowns when selected node is inside a repeater template. Applies to component props, textContent, hidden, and $switch bindings. |
 
 ### What needs work
 
 | Gap | Impact | Notes |
 |---|---|---|
-| No runtime integration | High | Studio uses its own `renderCanvasNode()` instead of `@jsonsx/runtime`. Computed expressions, event handlers, and data fetching don't execute in preview. |
-| No markdown editing | High | The parser package exists but the studio has no markdown authoring surface. |
-| No component file management | Medium | Studio operates on a single `.json` file. No project-level view of multiple components, pages, or content files. |
-| No live reactivity in preview | Medium | Signal bindings show default values in italic. `${}` template strings are not evaluated. |
-| No companion .js editing | Low | Handler source is displayed read-only. No inline editing or stub generation UX. |
-| Single-file scope | Medium | Cannot navigate between components, follow `$ref` to external files, or manage a project tree. |
+| No component file management | Medium | Studio operates on a single `.json` file at a time (though dev server provides REST API for file listing/CRUD). No tabbed multi-file editing. |
+| No companion .js editing | Low | Handler source is displayed read-only in Monaco. No stub generation UX. |
+| No stylebook / design tokens | Medium | No centralized CSS custom property editor or visual breakpoint manager. |
+| Content file management | Medium | Dev server provides file listing and CRUD, but no project-level tree panel or frontmatter editor in the UI. |
 
 ---
 
@@ -148,11 +156,13 @@ No new UI panels. No new editor framework. The canvas, layer tree, DnD, inspecto
 
 ---
 
-## 5. Priority 1: Runtime Integration
+## 5. Priority 1: Runtime Integration ✅ Complete
 
 ### 5.1 Goal
 
 Replace the studio's custom `renderCanvasNode()` with the actual `@jsonsx/runtime`, enabling live reactivity, computed expression evaluation, and event handler execution in the canvas preview. This is the foundation upon which all subsequent priorities build.
+
+> **Status: COMPLETE.** The runtime integration is fully implemented. `renderCanvasLive()` calls `buildScope()` + `runtimeRenderNode()` with an `onNodeCreated` callback that populates a `WeakMap<Element, Path>`. Edit mode strips `on*` handlers and sets `pointer-events: none`. Preview mode renders the full document with live interactivity. `renderCanvasNode()` is retained as an error fallback. Custom elements are registered via `defineElement()` for `$elements` entries. The `$switch`/`cases` pattern, `$map`/repeater templates, and `$props` custom component instances all render correctly on the canvas.
 
 ### 5.2 Current Gap
 
@@ -223,11 +233,13 @@ During the transition, the studio retains `renderCanvasNode()` as a fast fallbac
 
 ---
 
-## 6. Priority 2: Markdown Canvas Mode
+## 6. Priority 2: Markdown Canvas Mode ✅ Complete
 
 ### 6.1 Goal
 
 Enable authoring and editing `.md` content files using the studio's existing WYSIWYG canvas, layer tree, DnD, inspector, and block library — with no new editor UI.
+
+> **Status: COMPLETE.** Markdown canvas mode is fully implemented. `.md` files are opened via `mdToJsonsx()` and saved via `jsonsxToMd()` + `remark-stringify`. The conversion layer, markdown allowlist, nesting constraints, content-mode block library, content-mode inspector, content typography stylesheet, and inline rich text editing (with paragraph splitting, slash command palette, and Enter to create new blocks) are all working. Content mode is auto-detected from file extension.
 
 ### 6.2 The Bidirectional Conversion Layer
 
@@ -408,7 +420,7 @@ In content mode, the canvas renders the JSONsx element tree the same way it does
 
 - **Typography styles:** The canvas applies a default content stylesheet (readable font, appropriate heading sizes, paragraph spacing) so content looks like a rendered blog post, not unstyled HTML.
 - **Directive placeholders:** Components that don't have a corresponding `.json` file available render as styled placeholder cards showing the component name and attributes. Components with available `.json` files render live (via the runtime).
-- **Inline editing:** Double-clicking a text element in the canvas enters inline text editing mode (cursor in the element, typing modifies `textContent`). This is a natural extension of the existing canvas click-to-select behavior.
+- **Inline editing:** In content mode, clicking a text element enters rich inline editing (paragraph splitting on Enter, `/` slash command palette). In component mode, single-clicking a text-leaf element enters plain-text `contenteditable="plaintext-only"` editing where raw `${...}` template expressions can be typed directly. Custom element instances and container elements are excluded from inline editing.
 
 ### 6.8 File Open/Save in Content Mode
 
@@ -776,19 +788,25 @@ This is the same data flow as component mode — the document is a JSONsx elemen
 
 ## 12. Implementation Phases
 
-### Phase 1 — Runtime Integration (weeks 1-3)
+### Phase 1 — Runtime Integration ✅ Complete
 
 **Goal:** Live reactive preview in the component canvas.
 
-- Add `onNodeCreated` callback to `@jsonsx/runtime`'s `renderNode()`
-- Replace studio's `renderCanvasNode()` with runtime mount
-- Build element-to-path `WeakMap` via the callback
-- Maintain `pointer-events: none` suppression for edit mode
-- Implement edit/preview mode toggle ("Play" button)
-- Ensure overlay system (selection, hover, DnD indicators) works with runtime-rendered DOM
-- Retain `renderCanvasNode()` as error fallback
-
-**Exit criterion:** Opening `counter.json` in the studio shows a live, reactive counter; clicking "Play" enables increment/decrement; all existing DnD, selection, and inspector features work unchanged.
+- ✅ Added `onNodeCreated` callback to `@jsonsx/runtime`'s `renderNode()`
+- ✅ Replaced studio's `renderCanvasNode()` with runtime mount (`renderCanvasLive()` using `buildScope` + `runtimeRenderNode`)
+- ✅ Built element-to-path `WeakMap` via the callback
+- ✅ Maintained `pointer-events: none` suppression for edit mode (with `requestAnimationFrame` deferred sweep for async custom element children)
+- ✅ Implemented edit/preview mode toggle ("Play" button) — strips `on*` handlers in edit mode
+- ✅ Ensured overlay system (selection, hover, DnD indicators) works with runtime-rendered DOM
+- ✅ Retained `renderCanvasNode()` as error fallback
+- ✅ Registered custom elements via `defineElement()` for `$elements` entries
+- ✅ Implemented `$switch`/`cases` visual management (add/remove/rename, first-case preview)
+- ✅ Implemented `$map`/repeater template editing (repeater perimeter wrapper, path remapping, `$map` placeholder scope)
+- ✅ Implemented custom component rendering inside repeaters (`$props` preserved, `$map/item`/`$map/index` scope injection)
+- ✅ Implemented component-mode inline text editing (single-click, `contenteditable="plaintext-only"`, raw `${...}` expressions)
+- ✅ Implemented `$map` signals in inspector dropdowns for nodes inside repeater templates
+- ✅ Unified breadcrumb navigation for document stack and function editor context
+- ✅ Layer tree: repeaters shown as "Repeater → ref" with `↻` badge; custom component instances are atomic (no child recursion)
 
 ### Phase 2 — Markdown Canvas Mode (weeks 4-7)
 

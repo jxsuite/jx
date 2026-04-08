@@ -1660,6 +1660,7 @@ function enterComponentInlineEdit(el, path) {
 
   // Skip nodes that shouldn't be inline-edited
   const tc = node.textContent;
+  if (node.$props && (node.tagName || "").includes("-")) return; // custom element instance
   if (Array.isArray(node.children) && node.children.length > 0) return;
   if (node.children && typeof node.children === "object") return;
   if (tc && typeof tc === "object") return;
