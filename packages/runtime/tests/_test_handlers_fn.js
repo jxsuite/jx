@@ -1,4 +1,4 @@
 // Named export for $src Function resolution test
-export function myFn($defs) {
+export function myFn(state) {
   return 42;
 }

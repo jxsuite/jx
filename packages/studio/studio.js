@@ -266,12 +266,12 @@ function setLintMarkers(editor, diagnostics) {
 
 function getFunctionArgs(editing) {
   if (editing.type === "def") {
-    return S.document.$defs?.[editing.defName]?.arguments || ["$defs", "event"];
+    return S.document.state?.[editing.defName]?.parameters || ["state", "event"];
   } else if (editing.type === "event") {
     const node = getNodeAtPath(S.document, editing.path);
-    return node?.[editing.eventKey]?.arguments || ["$defs", "event"];
+    return node?.[editing.eventKey]?.parameters || ["state", "event"];
   }
-  return ["$defs", "event"];
+  return ["state", "event"];
 }
 
 /** WeakMap<HTMLElement, Array> — maps rendered DOM elements to their JSON paths */
@@ -321,7 +321,7 @@ let monacoEditor = null;
 /** Active function editor Monaco instance (or null) */
 let functionEditor = null;
 
-/** Cached $defs scope from last runtime render */
+/** Cached state scope from last runtime render */
 let liveScope = null;
 
 /**
@@ -340,7 +340,7 @@ function stripEventHandlers(node) {
       const cases = {};
       for (const [ck, cv] of Object.entries(v)) cases[ck] = stripEventHandlers(cv);
       out.cases = cases;
-    } else if (k === "$defs" || k === "style" || k === "attributes" || k === "$media") {
+    } else if (k === "state" || k === "style" || k === "attributes" || k === "$media") {
       out[k] = v; // preserve as-is
     } else {
       out[k] = v;
@@ -360,7 +360,7 @@ function templateToEditDisplay(str) {
 /**
  * Prepare a document for edit-mode rendering. Replaces template strings with
  * readable literal text, $prototype:Array with placeholders, and $ref bindings
- * with display labels. Preserves $defs so the runtime can still initialise scope.
+ * with display labels. Preserves state so the runtime can still initialise scope.
  */
 function prepareForEditMode(node) {
   if (!node || typeof node !== "object") return node;
@@ -368,7 +368,7 @@ function prepareForEditMode(node) {
 
   const out = {};
   for (const [k, v] of Object.entries(node)) {
-    if (k === "$defs" || k === "$media" || k === "$props" || k === "$elements") {
+    if (k === "state" || k === "$media" || k === "$props" || k === "$elements") {
       out[k] = v; // preserve as-is for runtime resolution
     } else if (k === "children") {
       if (Array.isArray(v)) {
@@ -380,7 +380,7 @@ function prepareForEditMode(node) {
           out.children = [{
             tagName: "div",
             className: "repeater-perimeter",
-            $defs: {
+            state: {
               "$map": { item: {}, index: 0 },
               "$map/item": {},
               "$map/index": 0,
@@ -434,7 +434,7 @@ function prepareForEditMode(node) {
     } else if (v && typeof v === "object" && v.$ref) {
       // $ref binding → show ref path as literal text
       const ref = v.$ref;
-      const label = ref.startsWith("#/$defs/") ? ref.slice(8) : ref;
+      const label = ref.startsWith("#/state/") ? ref.slice(8) : ref;
       out[k] = `{${label}}`;
     } else {
       out[k] = prepareForEditMode(v);
@@ -446,7 +446,7 @@ function prepareForEditMode(node) {
 /**
  * Render a JSONsx document into a canvas element using the real runtime.
  * Populates elToPath for each created element via onNodeCreated callback.
- * Returns the live $defs scope on success, null on failure.
+ * Returns the live state scope on success, null on failure.
  */
 async function renderCanvasLive(doc, canvasEl) {
   canvasEl.innerHTML = "";
@@ -937,21 +937,21 @@ function updateActivePanelHeaders() {
 
 /** Default templates for creating new signal definitions. */
 const DEF_TEMPLATES = {
-  state: { signal: true, type: "string", default: "" },
-  computed: { signal: true, $compute: "", $deps: [] },
-  request: { signal: true, $prototype: "Request", url: "", method: "GET", timing: "client" },
-  localStorage: { signal: true, $prototype: "LocalStorage", key: "", default: null },
-  sessionStorage: { signal: true, $prototype: "SessionStorage", key: "", default: null },
-  indexedDB: { signal: true, $prototype: "IndexedDB", database: "", store: "", version: 1 },
-  cookie: { signal: true, $prototype: "Cookie", name: "", default: "" },
-  set: { signal: true, $prototype: "Set", default: [] },
-  map: { signal: true, $prototype: "Map", default: {} },
-  formData: { signal: true, $prototype: "FormData", fields: {} },
-  function: { $prototype: "Function", body: "", arguments: [] },
-  external: { signal: true, $prototype: "", $src: "" },
+  state: { type: "string", default: "" },
+  computed: { $compute: "", $deps: [] },
+  request: { $prototype: "Request", url: "", method: "GET", timing: "client" },
+  localStorage: { $prototype: "LocalStorage", key: "", default: null },
+  sessionStorage: { $prototype: "SessionStorage", key: "", default: null },
+  indexedDB: { $prototype: "IndexedDB", database: "", store: "", version: 1 },
+  cookie: { $prototype: "Cookie", name: "", default: "" },
+  set: { $prototype: "Set", default: [] },
+  map: { $prototype: "Map", default: {} },
+  formData: { $prototype: "FormData", fields: {} },
+  function: { $prototype: "Function", body: "", parameters: [] },
+  external: { $prototype: "", $src: "" },
 };
 
-/** Classify a $defs entry into a category string. */
+/** Classify a state entry into a category string. */
 function defCategory(def) {
   if (!def) return "state";
   if (def.$handler || def.$prototype === "Function") return "function";
@@ -997,7 +997,7 @@ function resolveDefaultForCanvas(value, defs) {
   if (!value || typeof value !== "object" || !value.$ref) return value;
   const ref = value.$ref;
   let defName;
-  if (ref.startsWith("#/$defs/")) defName = ref.slice(8);
+  if (ref.startsWith("#/state/")) defName = ref.slice(8);
   else if (ref.startsWith("$")) defName = ref;
   else return `{${ref}}`;
 
@@ -1005,7 +1005,7 @@ function resolveDefaultForCanvas(value, defs) {
   if (!def) return `{${defName}}`;
 
   // State signal → use default
-  if (def.signal && !def.$compute && !def.$prototype) {
+  if (!def.$compute && !def.$prototype) {
     if (def.default !== undefined && def.default !== null) {
       if (typeof def.default === "object") return JSON.stringify(def.default);
       return String(def.default);
@@ -1043,7 +1043,7 @@ function renderCanvasNode(node, path, parent, activeBreakpoints, featureToggles)
   if (typeof node.textContent === "string") {
     el.textContent = node.textContent;
   } else if (typeof node.textContent === "object" && node.textContent?.$ref) {
-    const resolved = resolveDefaultForCanvas(node.textContent, S.document.$defs);
+    const resolved = resolveDefaultForCanvas(node.textContent, S.document.state);
     el.textContent = resolved;
     el.style.opacity = "0.7";
     el.style.fontStyle = "italic";
@@ -1059,7 +1059,7 @@ function renderCanvasNode(node, path, parent, activeBreakpoints, featureToggles)
     for (const [attr, val] of Object.entries(node.attributes)) {
       try {
         if (typeof val === "object" && val?.$ref) {
-          const resolved = resolveDefaultForCanvas(val, S.document.$defs);
+          const resolved = resolveDefaultForCanvas(val, S.document.state);
           el.setAttribute(attr, resolved);
         } else {
           el.setAttribute(attr, val);
@@ -2103,8 +2103,8 @@ function renderLayers(container) {
     row.appendChild(label);
 
     // Signal indicator
-    if (node.$defs) {
-      const hasSignals = Object.values(node.$defs).some((d) => d.signal);
+    if (node.state) {
+      const hasSignals = Object.values(node.state).some((d) => d.signal);
       if (hasSignals) {
         const dot = document.createElement("span");
         dot.className = "layer-dot";
@@ -2917,7 +2917,7 @@ function drawOverlayBoxRaw(el, type, panel, labelText) {
 let expandedSignal = null;
 
 function renderSignals(container) {
-  const defs = S.document.$defs || {};
+  const defs = S.document.state || {};
   const entries = Object.entries(defs);
 
   // Group by category
@@ -3037,7 +3037,7 @@ function renderSignals(container) {
     let nameBase = isFunction ? "newFunction" : "$newSignal";
     let name = nameBase;
     let i = 1;
-    while (S.document.$defs && S.document.$defs[name]) {
+    while (S.document.state && S.document.state[name]) {
       name = nameBase + i++;
     }
     update(addDef(S, name, structuredClone(template)));
@@ -3055,7 +3055,7 @@ function renderSignalEditor(container, name, def) {
   // Name field (common to all)
   container.appendChild(
     signalFieldRow("name", name, (v) => {
-      if (v && v !== name && !(S.document.$defs && S.document.$defs[v])) {
+      if (v && v !== name && !(S.document.state && S.document.state[v])) {
         expandedSignal = v;
         update(renameDef(S, name, v));
       }
@@ -3132,7 +3132,7 @@ function renderSignalEditor(container, name, def) {
         const expr = exprInput.value;
         // Auto-detect deps from $-prefixed names
         const depMatches = expr.match(/\$[a-zA-Z_]\w*/g) || [];
-        const deps = [...new Set(depMatches)].map((d) => `#/$defs/${d}`);
+        const deps = [...new Set(depMatches)].map((d) => `#/state/${d}`);
         update(updateDef(S, name, { $compute: expr, $deps: deps }));
       }, 500);
     };
@@ -3151,7 +3151,7 @@ function renderSignalEditor(container, name, def) {
       depsText.className = "signal-hint";
       depsText.style.flex = "1";
       depsText.style.maxWidth = "none";
-      depsText.textContent = def.$deps.map((d) => d.replace("#/$defs/", "")).join(", ");
+      depsText.textContent = def.$deps.map((d) => d.replace("#/state/", "")).join(", ");
       depsRow.appendChild(depsText);
       container.appendChild(depsRow);
     }
@@ -3335,12 +3335,12 @@ function renderSignalEditor(container, name, def) {
       container.appendChild(bodyRow);
     }
 
-    // Arguments field (comma-separated)
-    const argsStr = (def.arguments || []).join(", ");
+    // Parameters field (comma-separated)
+    const argsStr = (def.parameters || []).join(", ");
     container.appendChild(
       signalFieldRow("args", argsStr, (v) => {
         const args = v ? v.split(",").map((a) => a.trim()).filter(Boolean) : [];
-        update(updateDef(S, name, { arguments: args.length > 0 ? args : undefined }));
+        update(updateDef(S, name, { parameters: args.length > 0 ? args : undefined }));
       }),
     );
 
@@ -3406,7 +3406,7 @@ function signalFieldRow(label, value, onChange) {
 /** Keys handled by the framework — skip when rendering schema fields. */
 const STUDIO_RESERVED_KEYS = new Set([
   "$prototype", "$src", "$export", "signal", "timing", "default",
-  "description", "body", "arguments", "name",
+  "description", "body", "parameters", "name",
 ]);
 
 /**
@@ -3659,7 +3659,7 @@ function renderDataExplorer(container) {
   container.appendChild(bar);
 
   // Entries
-  const defs = S.document.$defs || {};
+  const defs = S.document.state || {};
   for (const [name, def] of Object.entries(defs)) {
     const value = liveScope[name];
     const unwrapped = unwrapSignal(value);
@@ -3684,7 +3684,7 @@ function renderDataExplorer(container) {
     const typeEl = document.createElement("span");
     typeEl.className = "data-type";
     typeEl.textContent = dataTypeLabel(value);
-    if (def.signal && unwrapped === null) typeEl.classList.add("data-pending");
+    if (unwrapped === null) typeEl.classList.add("data-pending");
     header.appendChild(typeEl);
 
     header.onclick = () => {
@@ -3707,7 +3707,7 @@ function renderDataExplorer(container) {
   if (Object.keys(defs).length === 0) {
     const empty = document.createElement("div");
     empty.className = "empty-state";
-    empty.textContent = "No $defs defined";
+    empty.textContent = "No state defined";
     container.appendChild(empty);
   }
 }
@@ -3922,14 +3922,14 @@ function renderInspector(container) {
         const addFilter = document.createElement("span");
         addFilter.className = "kv-add";
         addFilter.textContent = "+ Add filter";
-        addFilter.onclick = () => update(updateProperty(S, S.selection, "filter", { $ref: "#/$defs/" }));
+        addFilter.onclick = () => update(updateProperty(S, S.selection, "filter", { $ref: "#/state/" }));
         addRow.appendChild(addFilter);
       }
       if (!node.sort) {
         const addSort = document.createElement("span");
         addSort.className = "kv-add";
         addSort.textContent = "+ Add sort";
-        addSort.onclick = () => update(updateProperty(S, S.selection, "sort", { $ref: "#/$defs/" }));
+        addSort.onclick = () => update(updateProperty(S, S.selection, "sort", { $ref: "#/state/" }));
         addRow.appendChild(addSort);
       }
       fields.appendChild(addRow);
@@ -5286,7 +5286,7 @@ function isInsideMapTemplate(path) {
  * rawValue can be a string/bool (static) or { $ref: "..." } (bound).
  */
 function bindableFieldRow(label, type, rawValue, onChange, filterFn, extraSignals) {
-  const defs = S.document.$defs || {};
+  const defs = S.document.state || {};
   const isBound = typeof rawValue === "object" && rawValue !== null && rawValue.$ref;
   const row = document.createElement("div");
   row.className = "field-row";
@@ -5338,9 +5338,9 @@ function bindableFieldRow(label, type, rawValue, onChange, filterFn, extraSignal
     );
     for (const [defName] of signalDefs) {
       const opt = document.createElement("option");
-      opt.value = `#/$defs/${defName}`;
+      opt.value = `#/state/${defName}`;
       opt.textContent = defName;
-      if (isBound && rawValue.$ref === `#/$defs/${defName}`) opt.selected = true;
+      if (isBound && rawValue.$ref === `#/state/${defName}`) opt.selected = true;
       sel.appendChild(opt);
     }
 
@@ -5380,7 +5380,7 @@ function bindableFieldRow(label, type, rawValue, onChange, filterFn, extraSignal
     if (isBound) {
       // Switch to static — use signal's default value
       const ref = rawValue.$ref;
-      const defName = ref.startsWith("#/$defs/") ? ref.slice(8) : ref;
+      const defName = ref.startsWith("#/state/") ? ref.slice(8) : ref;
       const def = defs[defName];
       let staticVal = "";
       if (def && def.default !== undefined)
@@ -5393,7 +5393,7 @@ function bindableFieldRow(label, type, rawValue, onChange, filterFn, extraSignal
         filterFn ? filterFn(d) : !d.$handler && d.$prototype !== "Function",
       );
       if (signalDefs.length > 0) {
-        onChange({ $ref: `#/$defs/${signalDefs[0][0]}` });
+        onChange({ $ref: `#/state/${signalDefs[0][0]}` });
       } else if (extraSignals && extraSignals.length > 0) {
         onChange({ $ref: extraSignals[0].value });
       }
@@ -5574,7 +5574,7 @@ function renderFunctionEditor() {
 
 function getFunctionBody(editing) {
   if (editing.type === "def") {
-    return S.document.$defs?.[editing.defName]?.body || "";
+    return S.document.state?.[editing.defName]?.body || "";
   } else if (editing.type === "event") {
     const node = getNodeAtPath(S.document, editing.path);
     return node?.[editing.eventKey]?.body || "";
@@ -5582,7 +5582,7 @@ function getFunctionBody(editing) {
   return "";
 }
 
-// Register Monaco JS completion provider for $defs scope variables (once)
+// Register Monaco JS completion provider for state scope variables (once)
 let _completionRegistered = false;
 function registerFunctionCompletions() {
   if (_completionRegistered) return;
@@ -5590,7 +5590,7 @@ function registerFunctionCompletions() {
   monaco.languages.registerCompletionItemProvider("javascript", {
     triggerCharacters: ["."],
     provideCompletionItems(model, position) {
-      const defs = S?.document?.$defs || {};
+      const defs = S?.document?.state || {};
       const word = model.getWordUntilPosition(position);
       const range = {
         startLineNumber: position.lineNumber,
@@ -5604,9 +5604,9 @@ function registerFunctionCompletions() {
         if (def?.$prototype === "Function" || def?.$handler) kind = monaco.languages.CompletionItemKind.Function;
         else if (def?.$prototype) kind = monaco.languages.CompletionItemKind.Property;
         return {
-          label: `$defs.${key}`,
+          label: `state.${key}`,
           kind,
-          insertText: `$defs.${key}`,
+          insertText: `state.${key}`,
           range,
         };
       });
@@ -5633,7 +5633,7 @@ function renderEventsPanel(container) {
     return;
   }
 
-  const defs = S.document.$defs || {};
+  const defs = S.document.state || {};
   const functionDefs = Object.entries(defs).filter(
     ([, d]) => d.$prototype === "Function" || d.$handler,
   );
@@ -5687,10 +5687,10 @@ function renderEventsPanel(container) {
     `;
     modeSelect.onchange = () => {
       if (modeSelect.value === "inline") {
-        update(updateProperty(S, S.selection, evKey, { $prototype: "Function", body: "", arguments: [] }));
+        update(updateProperty(S, S.selection, evKey, { $prototype: "Function", body: "", parameters: [] }));
       } else {
         const firstFn = functionDefs[0];
-        update(updateProperty(S, S.selection, evKey, firstFn ? { $ref: `#/$defs/${firstFn[0]}` } : { $ref: "" }));
+        update(updateProperty(S, S.selection, evKey, firstFn ? { $ref: `#/state/${firstFn[0]}` } : { $ref: "" }));
       }
     };
     evRow.appendChild(modeSelect);
@@ -5720,7 +5720,7 @@ function renderEventsPanel(container) {
           update(updateProperty(S, S.selection, evKey, {
             $prototype: "Function",
             body: bodyTA.value,
-            arguments: evVal.arguments || [],
+            parameters: evVal.parameters || [],
           }));
         }, 500);
       };
@@ -5747,9 +5747,9 @@ function renderEventsPanel(container) {
       handlerSel.innerHTML = '<option value="">— none —</option>';
       for (const [fName] of functionDefs) {
         const opt = document.createElement("option");
-        opt.value = `#/$defs/${fName}`;
+        opt.value = `#/state/${fName}`;
         opt.textContent = fName;
-        if (evVal.$ref === `#/$defs/${fName}`) opt.selected = true;
+        if (evVal.$ref === `#/state/${fName}`) opt.selected = true;
         handlerSel.appendChild(opt);
       }
       handlerSel.onchange = () => {
@@ -5776,9 +5776,9 @@ function renderEventsPanel(container) {
       if (!node[name]) { evName = name; break; }
     }
     if (functionDefs.length > 0) {
-      update(updateProperty(S, S.selection, evName, { $ref: `#/$defs/${functionDefs[0][0]}` }));
+      update(updateProperty(S, S.selection, evName, { $ref: `#/state/${functionDefs[0][0]}` }));
     } else {
-      update(updateProperty(S, S.selection, evName, { $prototype: "Function", body: "", arguments: [] }));
+      update(updateProperty(S, S.selection, evName, { $prototype: "Function", body: "", parameters: [] }));
     }
   };
   fields.appendChild(add);

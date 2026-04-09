@@ -27,10 +27,10 @@ describe("isSignal", () => {
 
 describe("resolvePrototype", () => {
   test("Set: default empty", async () => {
-    const $defs = reactive({});
-    const result = await resolvePrototype({ $prototype: "Set" }, $defs, "s");
-    $defs.s = result;
-    expect($defs.s).toBeInstanceOf(Set);
+    const state = reactive({});
+    const result = await resolvePrototype({ $prototype: "Set" }, state, "s");
+    state.s = result;
+    expect(state.s).toBeInstanceOf(Set);
   });
 });
 

@@ -295,28 +295,28 @@ export function updateAttribute(state, path, attr, value) {
 
 export function addDef(state, name, def) {
   return applyMutation(state, (doc) => {
-    if (!doc.$defs) doc.$defs = {};
-    doc.$defs[name] = def;
+    if (!doc.state) doc.state = {};
+    doc.state[name] = def;
   });
 }
 
 export function removeDef(state, name) {
   return applyMutation(state, (doc) => {
-    if (doc.$defs) {
-      delete doc.$defs[name];
-      if (Object.keys(doc.$defs).length === 0) delete doc.$defs;
+    if (doc.state) {
+      delete doc.state[name];
+      if (Object.keys(doc.state).length === 0) delete doc.state;
     }
   });
 }
 
 export function updateDef(state, name, updates) {
   return applyMutation(state, (doc) => {
-    if (!doc.$defs) doc.$defs = {};
-    if (!doc.$defs[name]) doc.$defs[name] = {};
-    Object.assign(doc.$defs[name], updates);
-    for (const k of Object.keys(doc.$defs[name])) {
-      if (doc.$defs[name][k] === undefined || doc.$defs[name][k] === null) {
-        delete doc.$defs[name][k];
+    if (!doc.state) doc.state = {};
+    if (!doc.state[name]) doc.state[name] = {};
+    Object.assign(doc.state[name], updates);
+    for (const k of Object.keys(doc.state[name])) {
+      if (doc.state[name][k] === undefined || doc.state[name][k] === null) {
+        delete doc.state[name][k];
       }
     }
   });
@@ -324,9 +324,9 @@ export function updateDef(state, name, updates) {
 
 export function renameDef(state, oldName, newName) {
   return applyMutation(state, (doc) => {
-    if (!doc.$defs || !doc.$defs[oldName]) return;
-    doc.$defs[newName] = doc.$defs[oldName];
-    delete doc.$defs[oldName];
+    if (!doc.state || !doc.state[oldName]) return;
+    doc.state[newName] = doc.state[oldName];
+    delete doc.state[oldName];
   });
 }
 

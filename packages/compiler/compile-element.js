@@ -126,7 +126,7 @@ export async function compileElementPage(sourcePath, opts = {}) {
 // ─── Element code generation helpers ──────────────────────────────────────────
 
 /**
- * Extract the initial value for a $defs entry to use in reactive({}).
+ * Extract the initial value for a state entry to use in reactive({}).
  * Bug fix: expanded signals like { type, default, description } now
  * correctly extract the `default` value instead of dumping the whole object.
  */
@@ -177,14 +177,14 @@ export function emitElementModule(doc, className, elementImports) {
   lines.push("  constructor() {");
   lines.push("    super();");
 
-  const defs = doc.$defs ?? {};
+  const defs = doc.state ?? {};
   const stateEntries = [];
   const computedEntries = [];
   const functionEntries = [];
 
   for (const [key, def] of Object.entries(defs)) {
     if (def && typeof def === "object" && !Array.isArray(def) && def.$prototype === "Function") {
-      if (def.signal) {
+      if (typeof def.body === "string" && def.body.includes("return")) {
         computedEntries.push([key, def]);
       } else {
         functionEntries.push([key, def]);
@@ -205,10 +205,10 @@ export function emitElementModule(doc, className, elementImports) {
   }
   lines.push("    });");
 
-  // Emit functions: this.state.fnName = ($defs) => { body }
+  // Emit functions: this.state.fnName = (state) => { body }
   for (const [key, def] of functionEntries) {
     lines.push("");
-    const args = def.arguments ?? ["$defs"];
+    const args = def.parameters ?? def.arguments ?? ["state"];
     const paramList = args.join(", ");
     lines.push(`    this.state.${key} = (${paramList}) => {`);
     lines.push(`      ${def.body}`);
@@ -219,7 +219,7 @@ export function emitElementModule(doc, className, elementImports) {
   for (const [key, def] of computedEntries) {
     lines.push("");
     lines.push(`    this.state.${key} = computed(() => {`);
-    const body = def.body.replace(/\$defs\./g, "this.state.");
+    const body = def.body.replace(/state\./g, "this.state.");
     lines.push(`      ${body}`);
     lines.push("    });");
   }
@@ -268,7 +268,7 @@ export function emitElementModule(doc, className, elementImports) {
       lines.push("    effect(() => {");
       for (const [cssProp, value] of dynamicStyles) {
         const expr = value.replace(/\$\{([^}]+)\}/g, (_, e) =>
-          "${" + e.replace(/\$defs\./g, "this.state.") + "}"
+          "${" + e.replace(/state\./g, "this.state.") + "}"
         );
         lines.push(`      this.style['${cssProp}'] = \`${expr}\`;`);
       }
@@ -438,8 +438,8 @@ function emitMappedArray(arrayDef, indent) {
  * Convert a $ref string to a JS expression using `s` (this.state alias).
  */
 function refToExpr(ref) {
-  if (ref.startsWith("#/$defs/")) {
-    const path = ref.slice("#/$defs/".length);
+  if (ref.startsWith("#/state/")) {
+    const path = ref.slice("#/state/".length);
     return "s." + path.replace(/\//g, ".");
   }
   if (ref.startsWith("$map/")) {
@@ -457,7 +457,7 @@ function mapRefToExpr(ref) {
 }
 
 function toLitExpr(str) {
-  return str.replace(/\$defs\./g, "s.");
+  return str.replace(/state\./g, "s.");
 }
 
 /**
@@ -477,7 +477,7 @@ function toLitTextContent(value) {
 
 function inlineHandlerBody(def) {
   const body = def.body ?? "";
-  return body.replace(/\$defs\./g, "s.").replace(/\$defs/g, "s");
+  return body.replace(/(?<!this\.)state\./g, "s.").replace(/(?<!this\.)state(?!\.)/g, "s");
 }
 
 function emitStyleString(styleDef) {

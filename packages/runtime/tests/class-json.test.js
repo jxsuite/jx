@@ -161,7 +161,7 @@ describe("resolveClassJson — self-contained", () => {
     const restore = setupFetchMock({ "Adder.class.json": selfContainedClassDef });
     try {
       const sig = await resolvePrototype(
-        { $prototype: "Adder", $src: "./Adder.class.json", a: 3, b: 7, signal: true },
+        { $prototype: "Adder", $src: "./Adder.class.json", a: 3, b: 7 },
         {},
         "$sum",
       );
@@ -176,7 +176,7 @@ describe("resolveClassJson — self-contained", () => {
     const restore = setupFetchMock({ "Greeter.class.json": classWithValueProp });
     try {
       const sig = await resolvePrototype(
-        { $prototype: "Greeter", $src: "./Greeter.class.json", greeting: "Alice", signal: true },
+        { $prototype: "Greeter", $src: "./Greeter.class.json", greeting: "Alice" },
         {},
         "$greeting",
       );
@@ -191,7 +191,7 @@ describe("resolveClassJson — self-contained", () => {
     const restore = setupFetchMock({ "Adder.class.json": selfContainedClassDef });
     try {
       const sig = await resolvePrototype(
-        { $prototype: "Adder", $src: "./Adder.class.json", signal: true },
+        { $prototype: "Adder", $src: "./Adder.class.json" },
         {},
         "$sum",
       );
@@ -205,7 +205,7 @@ describe("resolveClassJson — self-contained", () => {
     const restore = setupFetchMock({ "Secret.class.json": privateFieldsClassDef });
     try {
       const sig = await resolvePrototype(
-        { $prototype: "Secret", $src: "./Secret.class.json", signal: true },
+        { $prototype: "Secret", $src: "./Secret.class.json" },
         {},
         "$s",
       );
@@ -220,7 +220,7 @@ describe("resolveClassJson — self-contained", () => {
     const restore = setupFetchMock({ "Secret.class.json": privateFieldsClassDef });
     try {
       const sig = await resolvePrototype(
-        { $prototype: "Secret", $src: "./Secret.class.json", data: "custom", signal: true },
+        { $prototype: "Secret", $src: "./Secret.class.json", data: "custom" },
         {},
         "$s",
       );
@@ -230,15 +230,16 @@ describe("resolveClassJson — self-contained", () => {
     }
   });
 
-  test("non-signal mode returns plain value", async () => {
+  test("auto-wraps external prototype in ref", async () => {
     const restore = setupFetchMock({ "Adder.class.json": selfContainedClassDef });
     try {
-      const val = await resolvePrototype(
+      const sig = await resolvePrototype(
         { $prototype: "Adder", $src: "./Adder.class.json", a: 2, b: 3 },
         {},
         "$sum",
       );
-      expect(val).toBe(5);
+      expect(isSignal(sig)).toBe(true);
+      expect(sig.value).toBe(5);
     } finally {
       restore();
     }
@@ -258,9 +259,9 @@ describe("classFromSchema — via resolvePrototype", () => {
         {},
         "$u",
       );
-      // Instance returned as value (no resolve, no value prop)
-      expect(typeof val.add).toBe("function");
-      expect(val.add(2, 3)).toBe(5);
+      // Instance returned as value (no resolve, no value prop) — wrapped in ref
+      expect(typeof val.value.add).toBe("function");
+      expect(val.value.add(2, 3)).toBe(5);
     } finally {
       restore();
     }
@@ -274,7 +275,7 @@ describe("classFromSchema — via resolvePrototype", () => {
         {},
         "$t",
       );
-      expect(val.tag).toBe("test-tagged");
+      expect(val.value.tag).toBe("test-tagged");
     } finally {
       restore();
     }
@@ -288,7 +289,7 @@ describe("classFromSchema — via resolvePrototype", () => {
         {},
         "$i",
       );
-      expect(val).toEqual([]);
+      expect(val.value).toEqual([]);
     } finally {
       restore();
     }
@@ -297,14 +298,14 @@ describe("classFromSchema — via resolvePrototype", () => {
   test("class name is set on constructed class", async () => {
     const restore = setupFetchMock({ "Adder.class.json": selfContainedClassDef });
     try {
-      // Non-signal mode to get raw value
+      // Auto-wrapped as ref; resolve() returns a number, not the instance
       const val = await resolvePrototype(
         { $prototype: "Adder", $src: "./Adder.class.json", a: 1, b: 1 },
         {},
         "$a",
       );
       // resolve() returns a number, not the instance, so we can't check class name directly
-      expect(val).toBe(2);
+      expect(val.value).toBe(2);
     } finally {
       restore();
     }
@@ -329,7 +330,6 @@ describe("resolveClassJson — hybrid $implementation", () => {
           $prototype: "MarkdownFile",
           $src: "http://localhost/MdFile.class.json",
           src: join(fixtureDir, "getting-started.md"),
-          signal: true,
         },
         {},
         "$post",
@@ -367,7 +367,7 @@ describe("resolveClassJson — fallback", () => {
 
     try {
       const sig = await resolvePrototype(
-        { $prototype: "Missing", $src: "./Missing.class.json", signal: true },
+        { $prototype: "Missing", $src: "./Missing.class.json" },
         {},
         "$m",
       );
@@ -386,13 +386,12 @@ describe("buildScope — .class.json $src", () => {
     const restore = setupFetchMock({ "Adder.class.json": selfContainedClassDef });
     try {
       const doc = {
-        $defs: {
+        state: {
           $result: {
             $prototype: "Adder",
             $src: "http://localhost/Adder.class.json",
             a: 10,
             b: 20,
-            signal: true,
           },
         },
       };

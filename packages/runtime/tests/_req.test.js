@@ -17,15 +17,15 @@ describe("resolvePrototype", () => {
         json: () => Promise.resolve({ id: 1 }),
       }),
     );
-    const $defs = reactive({});
+    const state = reactive({});
     const result = await resolvePrototype(
       { $prototype: "Request", url: "/api/test" },
-      $defs,
+      state,
       "data",
     );
     expect(isRef(result)).toBe(true);
-    $defs.data = result;
+    state.data = result;
     await wait();
-    expect($defs.data).toEqual({ id: 1 });
+    expect(state.data).toEqual({ id: 1 });
   });
 });

@@ -1,12 +1,12 @@
 {
   "$schema": "https://declarative-dom.org/schema/v1",
   "$id": "ExamplesIndex",
-  "$defs": {
+  "state": {
     "activeTab": { "type": "string", "default": "counter" },
     "selectTab": {
       "$prototype": "Function",
-      "arguments": ["event"],
-      "body": "const id = event.currentTarget.dataset.tab; if (id) $defs.activeTab = id;",
+      "parameters": ["event"],
+      "body": "const id = event.currentTarget.dataset.tab; if (id) state.activeTab = id;",
       "description": "Switch active example tab"
     }
   },
@@ -62,7 +62,7 @@
             }
           },
           "attributes": { "data-tab": "${$map.item.id}" },
-          "onclick": { "$ref": "#/$defs/selectTab" }
+          "onclick": { "$ref": "#/state/selectTab" }
         }
       }
     },
@@ -74,7 +74,7 @@
         "minHeight": "0"
       },
       "children": [{
-        "$switch": { "$ref": "#/$defs/activeTab" },
+        "$switch": { "$ref": "#/state/activeTab" },
         "cases": {
           "counter":    { "$ref": "./counter/counter.json" },
           "computed":   { "$ref": "./computed/user-card.json" },

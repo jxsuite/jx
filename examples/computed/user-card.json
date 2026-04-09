@@ -2,7 +2,7 @@
   "$schema": "../../packages/schema/schema.json",
   "$id": "UserCard",
 
-  "$defs": {
+  "state": {
     "firstName": { "type": "string",  "default": "John" },
     "lastName":  { "type": "string",  "default": "Doe" },
     "score":     { "type": "integer", "default": 85 },
@@ -10,28 +10,25 @@
 
     "fullName": {
       "$prototype": "Function",
-      "body": "return $defs.firstName + ' ' + $defs.lastName;",
-      "signal": true
+      "body": "return state.firstName + ' ' + state.lastName;"
     },
     "displayTitle": {
       "$prototype": "Function",
-      "body": "const s = $defs.score, l = $defs.level; return s >= 90 ? `Expert (Level ${l})` : s >= 70 ? `Advanced (Level ${l})` : s >= 50 ? `Intermediate (Level ${l})` : `Beginner (Level ${l})`;",
-      "signal": true
+      "body": "const s = state.score, l = state.level; return s >= 90 ? `Expert (Level ${l})` : s >= 70 ? `Advanced (Level ${l})` : s >= 50 ? `Intermediate (Level ${l})` : `Beginner (Level ${l})`;"
     },
     "levelClass": {
       "$prototype": "Function",
-      "body": "const s = $defs.score; return s >= 90 ? 'expert' : s >= 70 ? 'advanced' : s >= 50 ? 'intermediate' : 'beginner';",
-      "signal": true
+      "body": "const s = state.score; return s >= 90 ? 'expert' : s >= 70 ? 'advanced' : s >= 50 ? 'intermediate' : 'beginner';"
     },
-    "scoreLabel": "${$defs.score + '%'}",
+    "scoreLabel": "${state.score + '%'}",
 
     "addScore": {
       "$prototype": "Function",
-      "body": "const next = Math.min(100, $defs.score + 10); $defs.score = next; if (next >= $defs.level * 20) $defs.level++;"
+      "body": "const next = Math.min(100, state.score + 10); state.score = next; if (next >= state.level * 20) state.level++;"
     },
     "subtractScore": {
       "$prototype": "Function",
-      "body": "$defs.score = Math.max(0, $defs.score - 10);"
+      "body": "state.score = Math.max(0, state.score - 10);"
     },
     "changeName": {
       "$prototype": "Function",
@@ -68,7 +65,7 @@
     },
     {
       "tagName": "user-card",
-      "attributes": { "data-level": "${$defs.levelClass}" },
+      "attributes": { "data-level": "${state.levelClass}" },
       "style": {
         "display": "block",
         "maxWidth": "400px",
@@ -120,7 +117,7 @@
                 "fontSize": "1.25rem",
                 "flexShrink": "0"
               },
-              "textContent": "${$defs.level}"
+              "textContent": "${state.level}"
             },
             {
               "tagName": "div",
@@ -128,13 +125,13 @@
               "children": [
                 {
                   "tagName": "h3",
-                  "textContent": { "$ref": "#/$defs/fullName" },
+                  "textContent": { "$ref": "#/state/fullName" },
                   "style": { "margin": "0 0 0.25em", "fontSize": "1.15em", "color": "#222" }
                 },
                 {
                   "tagName": "span",
                   "className": "level-text",
-                  "textContent": { "$ref": "#/$defs/displayTitle" },
+                  "textContent": { "$ref": "#/state/displayTitle" },
                   "style": { "fontSize": "0.875em", "fontWeight": "500" }
                 }
               ]
@@ -157,7 +154,7 @@
               },
               "children": [
                 { "tagName": "span", "textContent": "Progress" },
-                { "tagName": "span", "textContent": { "$ref": "#/$defs/scoreLabel" } }
+                { "tagName": "span", "textContent": { "$ref": "#/state/scoreLabel" } }
               ]
             },
             {
@@ -174,7 +171,7 @@
                   "className": "progress-bar",
                   "style": {
                     "height": "100%",
-                    "width": "${$defs.score + '%'}",
+                    "width": "${state.score + '%'}",
                     "transition": "width 0.3s ease, background-color 0.3s ease"
                   }
                 }
@@ -190,7 +187,7 @@
             {
               "tagName": "button",
               "textContent": "+10 Score",
-              "onclick": { "$ref": "#/$defs/addScore" },
+              "onclick": { "$ref": "#/state/addScore" },
               "style": {
                 "padding": "0.4em 0.9em",
                 "backgroundColor": "#28a745",
@@ -205,7 +202,7 @@
             {
               "tagName": "button",
               "textContent": "\u221210 Score",
-              "onclick": { "$ref": "#/$defs/subtractScore" },
+              "onclick": { "$ref": "#/state/subtractScore" },
               "style": {
                 "padding": "0.4em 0.9em",
                 "backgroundColor": "#dc3545",
@@ -220,7 +217,7 @@
             {
               "tagName": "button",
               "textContent": "Change Name",
-              "onclick": { "$ref": "#/$defs/changeName" },
+              "onclick": { "$ref": "#/state/changeName" },
               "style": {
                 "padding": "0.4em 0.9em",
                 "border": "1px solid #007bff",

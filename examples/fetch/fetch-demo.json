@@ -2,7 +2,7 @@
   "$schema": "../../packages/schema/schema.json",
   "$id": "FetchDemo",
 
-  "$defs": {
+  "state": {
     "searchTerm":     { "type": "string",  "default": "" },
     "selectedUserId": { "type": "string",  "default": "" },
     "currentPage":    { "type": "integer", "default": 1 },
@@ -12,67 +12,60 @@
       "$prototype": "Request",
       "url": "https://jsonplaceholder.typicode.com/posts",
       "timing": "client",
-      "signal": true,
       "description": "All posts — fetched once on mount"
     },
     "allUsers": {
       "$prototype": "Request",
       "url": "https://jsonplaceholder.typicode.com/users",
       "timing": "client",
-      "signal": true,
       "description": "All users — fetched once, used for author names"
     },
 
     "userOptions": {
       "$prototype": "Function",
-      "body": "const u = $defs.allUsers || []; return [{ id: '', name: 'All authors' }, ...u];",
-      "signal": true,
+      "body": "const u = state.allUsers || []; return [{ id: '', name: 'All authors' }, ...u];",
       "description": "Options for the author filter select"
     },
     "filteredPosts": {
       "$prototype": "Function",
       "$src": "./fetch-demo.js",
-      "signal": true,
       "description": "Posts filtered by searchTerm + selectedUserId"
     },
     "paginatedPosts": {
       "$prototype": "Function",
       "$src": "./fetch-demo.js",
-      "signal": true,
       "description": "Current page slice of filteredPosts"
     },
     "totalPages": {
       "$prototype": "Function",
-      "body": "const f = $defs.filteredPosts || []; return Math.max(1, Math.ceil(f.length / $defs.perPage));",
-      "signal": true
+      "body": "const f = state.filteredPosts || []; return Math.max(1, Math.ceil(f.length / state.perPage));"
     },
     "statsText": {
       "$prototype": "Function",
-      "$src": "./fetch-demo.js",
-      "signal": true
+      "$src": "./fetch-demo.js"
     },
 
     "onSearch": {
       "$prototype": "Function",
-      "arguments": ["event"],
-      "body": "$defs.searchTerm = event.target.value; $defs.currentPage = 1;"
+      "parameters": ["event"],
+      "body": "state.searchTerm = event.target.value; state.currentPage = 1;"
     },
     "onUserFilter": {
       "$prototype": "Function",
-      "arguments": ["event"],
-      "body": "$defs.selectedUserId = event.target.value; $defs.currentPage = 1;"
+      "parameters": ["event"],
+      "body": "state.selectedUserId = event.target.value; state.currentPage = 1;"
     },
     "prevPage": {
       "$prototype": "Function",
-      "body": "if ($defs.currentPage > 1) $defs.currentPage--;"
+      "body": "if (state.currentPage > 1) state.currentPage--;"
     },
     "nextPage": {
       "$prototype": "Function",
-      "body": "if ($defs.currentPage < $defs.totalPages) $defs.currentPage++;"
+      "body": "if (state.currentPage < state.totalPages) state.currentPage++;"
     },
     "clearSearch": {
       "$prototype": "Function",
-      "body": "$defs.searchTerm = ''; $defs.selectedUserId = ''; $defs.currentPage = 1;"
+      "body": "state.searchTerm = ''; state.selectedUserId = ''; state.currentPage = 1;"
     }
   },
 
@@ -109,9 +102,9 @@
       "children": [
         {
           "tagName": "input",
-          "value": "${$defs.searchTerm}",
-          "attributes": { "type": "text", "placeholder": "Search titles and content…" },
-          "oninput": { "$ref": "#/$defs/onSearch" },
+          "value": "${state.searchTerm}",
+          "attributes": { "type": "text", "placeholder": "Search titles and content\u2026" },
+          "oninput": { "$ref": "#/state/onSearch" },
           "style": {
             "flex": "1",
             "padding": "0.5em 0.75em",
@@ -124,8 +117,8 @@
         },
         {
           "tagName": "select",
-          "value": "${$defs.selectedUserId}",
-          "onchange": { "$ref": "#/$defs/onUserFilter" },
+          "value": "${state.selectedUserId}",
+          "onchange": { "$ref": "#/state/onUserFilter" },
           "style": {
             "padding": "0.5em 0.5em",
             "border": "1px solid #ced4da",
@@ -136,7 +129,7 @@
           },
           "children": {
             "$prototype": "Array",
-            "items": { "$ref": "#/$defs/userOptions" },
+            "items": { "$ref": "#/state/userOptions" },
             "map": {
               "tagName": "option",
               "textContent": "${$map.item.name}",
@@ -147,7 +140,7 @@
         {
           "tagName": "button",
           "textContent": "Clear",
-          "onclick": { "$ref": "#/$defs/clearSearch" },
+          "onclick": { "$ref": "#/state/clearSearch" },
           "style": {
             "padding": "0.5em 0.9em",
             "border": "1px solid #ced4da",
@@ -163,7 +156,7 @@
 
     {
       "tagName": "div",
-      "textContent": { "$ref": "#/$defs/statsText" },
+      "textContent": { "$ref": "#/state/statsText" },
       "style": {
         "maxWidth": "640px",
         "fontSize": "0.8em",
@@ -177,7 +170,7 @@
       "style": { "maxWidth": "640px", "marginBottom": "1em" },
       "children": {
         "$prototype": "Array",
-        "items": { "$ref": "#/$defs/paginatedPosts" },
+        "items": { "$ref": "#/state/paginatedPosts" },
         "map": {
           "tagName": "div",
           "style": {
@@ -232,7 +225,7 @@
             },
             {
               "tagName": "span",
-              "textContent": "${(($defs.allUsers||[]).find(u=>u.id===$map.item.userId)||{name:'User '+$map.item.userId}).name}",
+              "textContent": "${((state.allUsers||[]).find(u=>u.id===$map.item.userId)||{name:'User '+$map.item.userId}).name}",
               "style": {
                 "fontSize": "0.775em",
                 "color": "#007bff",
@@ -248,7 +241,7 @@
       "tagName": "div",
       "style": {
         "maxWidth": "640px",
-        "display": "${$defs.totalPages > 1 ? 'flex' : 'none'}",
+        "display": "${state.totalPages > 1 ? 'flex' : 'none'}",
         "alignItems": "center",
         "justifyContent": "center",
         "gap": "0.75em"
@@ -257,26 +250,26 @@
         {
           "tagName": "button",
           "textContent": "\u2190 Prev",
-          "onclick": { "$ref": "#/$defs/prevPage" },
+          "onclick": { "$ref": "#/state/prevPage" },
           "style": {
             "padding": "0.4em 0.9em",
             "border": "1px solid #ced4da",
             "borderRadius": "4px",
             "backgroundColor": "white",
             "fontSize": "0.875em",
-            "opacity": "${$defs.currentPage <= 1 ? '0.4' : '1'}",
-            "cursor": "${$defs.currentPage <= 1 ? 'default' : 'pointer'}"
+            "opacity": "${state.currentPage <= 1 ? '0.4' : '1'}",
+            "cursor": "${state.currentPage <= 1 ? 'default' : 'pointer'}"
           }
         },
         {
           "tagName": "span",
-          "textContent": "Page ${$defs.currentPage} of ${$defs.totalPages}",
+          "textContent": "Page ${state.currentPage} of ${state.totalPages}",
           "style": { "fontSize": "0.875em", "color": "#6c757d" }
         },
         {
           "tagName": "button",
           "textContent": "Next \u2192",
-          "onclick": { "$ref": "#/$defs/nextPage" },
+          "onclick": { "$ref": "#/state/nextPage" },
           "style": {
             "padding": "0.4em 0.9em",
             "border": "none",
@@ -284,8 +277,8 @@
             "backgroundColor": "#007bff",
             "color": "white",
             "fontSize": "0.875em",
-            "opacity": "${$defs.currentPage >= $defs.totalPages ? '0.4' : '1'}",
-            "cursor": "${$defs.currentPage >= $defs.totalPages ? 'default' : 'pointer'}"
+            "opacity": "${state.currentPage >= state.totalPages ? '0.4' : '1'}",
+            "cursor": "${state.currentPage >= state.totalPages ? 'default' : 'pointer'}"
           }
         }
       ]

@@ -3,25 +3,22 @@
   "$id": "TaskStats",
   "tagName": "task-stats",
 
-  "$defs": {
+  "state": {
     "tasks": [],
 
     "total": {
       "$prototype": "Function",
-      "signal": true,
-      "body": "return $defs.tasks.length"
+      "body": "return state.tasks.length"
     },
 
     "done": {
       "$prototype": "Function",
-      "signal": true,
-      "body": "return $defs.tasks.filter(t => t.done).length"
+      "body": "return state.tasks.filter(t => t.done).length"
     },
 
     "remaining": {
       "$prototype": "Function",
-      "signal": true,
-      "body": "return $defs.tasks.filter(t => !t.done).length"
+      "body": "return state.tasks.filter(t => !t.done).length"
     }
   },
 
@@ -38,11 +35,11 @@
   "children": [
     {
       "tagName": "span",
-      "textContent": "${$defs.remaining} remaining"
+      "textContent": "${state.remaining} remaining"
     },
     {
       "tagName": "span",
-      "textContent": "${$defs.done} / ${$defs.total} completed"
+      "textContent": "${state.done} / ${state.total} completed"
     }
   ]
 }

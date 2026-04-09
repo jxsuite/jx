@@ -103,7 +103,7 @@ export async function handleStudioApi(req, url, root) {
               tagName: content.tagName,
               $id: content.$id || null,
               path: match,
-              props: Object.entries(content.$defs || {})
+              props: Object.entries(content.state || {})
                 .filter(([, d]) => d && typeof d === "object" && !d.$prototype && !d.$handler && !d.$compute)
                 .map(([name, d]) => ({ name, type: d.type, default: d.default })),
               hasElements: Array.isArray(content.$elements) && content.$elements.length > 0,

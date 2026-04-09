@@ -2,16 +2,15 @@
   "$schema": "../../packages/schema/schema.json",
   "$id": "DynamicList",
 
-  "$defs": {
+  "state": {
     "items": {
       "$prototype": "LocalStorage",
       "key": "jsonsx-list-items",
       "default": ["Apples", "Bananas", "Cherries"],
-      "signal": true,
       "description": "List items — persisted transparently via the LocalStorage prototype"
     },
     "newText": { "type": "string", "default": "" },
-    "itemCount": "${$defs.items.length + ' ' + ($defs.items.length === 1 ? 'item' : 'items')}",
+    "itemCount": "${state.items.length + ' ' + (state.items.length === 1 ? 'item' : 'items')}",
 
     "addItem":     { "$prototype": "Function", "$src": "./dynamic-list.js" },
     "addKeydown":  { "$prototype": "Function", "$src": "./dynamic-list.js" },
@@ -86,9 +85,9 @@
           "children": [
             {
               "tagName": "input",
-              "value": { "$ref": "#/$defs/newText" },
-              "oninput":  { "$ref": "#/$defs/updateText" },
-              "onkeydown": { "$ref": "#/$defs/addKeydown" },
+              "value": { "$ref": "#/state/newText" },
+              "oninput":  { "$ref": "#/state/updateText" },
+              "onkeydown": { "$ref": "#/state/addKeydown" },
               "attributes": { "type": "text", "placeholder": "Add a new item\u2026" },
               "style": {
                 "flex": "1",
@@ -103,7 +102,7 @@
             {
               "tagName": "button",
               "textContent": "Add",
-              "onclick": { "$ref": "#/$defs/addItem" },
+              "onclick": { "$ref": "#/state/addItem" },
               "style": {
                 "padding": "0.6em 1.25em",
                 "fontSize": "1em",
@@ -130,7 +129,7 @@
           "children": [
             {
               "tagName": "span",
-              "textContent": { "$ref": "#/$defs/itemCount" },
+              "textContent": { "$ref": "#/state/itemCount" },
               "style": { "color": "#6c757d" }
             },
             {
@@ -146,7 +145,7 @@
           "style": { "listStyle": "none", "padding": "0", "margin": "0" },
           "children": {
             "$prototype": "Array",
-            "items": { "$ref": "#/$defs/items" },
+            "items": { "$ref": "#/state/items" },
             "map": {
               "tagName": "li",
               "style": {
@@ -164,8 +163,8 @@
                   "tagName": "span",
                   "textContent": "${$map.item}",
                   "contentEditable": "true",
-                  "onblur":   { "$ref": "#/$defs/saveEdit" },
-                  "onkeydown": { "$ref": "#/$defs/editKeydown" },
+                  "onblur":   { "$ref": "#/state/saveEdit" },
+                  "onkeydown": { "$ref": "#/state/editKeydown" },
                   "style": {
                     "flex": "1",
                     "padding": "0.55em 0.35em",
@@ -182,7 +181,7 @@
                 {
                   "tagName": "button",
                   "textContent": "\u00d7",
-                  "onclick": { "$ref": "#/$defs/removeItem" },
+                  "onclick": { "$ref": "#/state/removeItem" },
                   "style": {
                     "marginLeft": "0.5em",
                     "padding": "0.25em 0.5em",

@@ -526,12 +526,11 @@ describe("Runtime external prototype ($src)", () => {
 
   test("buildScope with external $src prototype", async () => {
     const doc = {
-      $defs: {
+      state: {
         $post: {
           $prototype: "MarkdownFile",
           $src: resolvePath(__dirname, "..", "md.js"),
           src: join(FIXTURE_DIR, "getting-started.md"),
-          signal: true,
         },
       },
     };

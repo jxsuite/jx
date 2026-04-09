@@ -22,8 +22,8 @@ describe("Custom Elements", () => {
     const tag = uniqueTag();
     await defineElement({
       tagName: tag,
-      $defs: { greeting: "Hello" },
-      children: [{ tagName: "span", textContent: "${$defs.greeting}" }],
+      state: { greeting: "Hello" },
+      children: [{ tagName: "span", textContent: "${state.greeting}" }],
     });
 
     expect(customElements.get(tag)).toBeDefined();
@@ -38,12 +38,12 @@ describe("Custom Elements", () => {
     document.body.removeChild(el);
   });
 
-  test("$props override $defs defaults", async () => {
+  test("$props override state defaults", async () => {
     const tag = uniqueTag();
     await defineElement({
       tagName: tag,
-      $defs: { label: "default" },
-      children: [{ tagName: "span", textContent: "${$defs.label}" }],
+      state: { label: "default" },
+      children: [{ tagName: "span", textContent: "${state.label}" }],
     });
 
     const el = document.createElement(tag);
@@ -59,9 +59,9 @@ describe("Custom Elements", () => {
     const tag = uniqueTag();
     await defineElement({
       tagName: tag,
-      $defs: {
+      state: {
         mountCalled: false,
-        onMount: { $prototype: "Function", body: "$defs.mountCalled = true" },
+        onMount: { $prototype: "Function", body: "state.mountCalled = true" },
       },
       children: [{ tagName: "div", textContent: "lifecycle" }],
     });
@@ -77,7 +77,7 @@ describe("Custom Elements", () => {
 
   test("throws for non-hyphenated tagName", async () => {
     try {
-      await defineElement({ tagName: "nohyphen", $defs: {} });
+      await defineElement({ tagName: "nohyphen", state: {} });
       expect(true).toBe(false);
     } catch (e) {
       expect(e.message).toContain("must contain a hyphen");
@@ -86,9 +86,9 @@ describe("Custom Elements", () => {
 
   test("skips already-registered elements", async () => {
     const tag = uniqueTag();
-    await defineElement({ tagName: tag, $defs: { x: 1 }, children: [] });
+    await defineElement({ tagName: tag, state: { x: 1 }, children: [] });
     // Second call should not throw
-    await defineElement({ tagName: tag, $defs: { x: 2 }, children: [] });
+    await defineElement({ tagName: tag, state: { x: 2 }, children: [] });
     expect(customElements.get(tag)).toBeDefined();
   });
 
@@ -96,10 +96,10 @@ describe("Custom Elements", () => {
     const tag = uniqueTag();
     await defineElement({
       tagName: tag,
-      $defs: { value: 0, name: "none" },
+      state: { value: 0, name: "none" },
       children: [
-        { tagName: "span", className: "val", textContent: "${$defs.value}" },
-        { tagName: "span", className: "name", textContent: "${$defs.name}" },
+        { tagName: "span", className: "val", textContent: "${state.value}" },
+        { tagName: "span", className: "name", textContent: "${state.name}" },
       ],
     });
 
@@ -112,7 +112,7 @@ describe("Custom Elements", () => {
         },
       ],
     };
-    const scope = await buildScope({ $defs: {} });
+    const scope = await buildScope({ state: {} });
     const el = renderNode(parentDef, scope);
     document.body.appendChild(el);
     await new Promise((r) => setTimeout(r, 150));
@@ -124,13 +124,13 @@ describe("Custom Elements", () => {
     document.body.removeChild(el);
   });
 
-  test("observed attributes sync to $defs", async () => {
+  test("observed attributes sync to state", async () => {
     const tag = uniqueTag();
     await defineElement({
       tagName: tag,
       observedAttributes: ["my-label"],
-      $defs: { myLabel: "initial" },
-      children: [{ tagName: "span", textContent: "${$defs.myLabel}" }],
+      state: { myLabel: "initial" },
+      children: [{ tagName: "span", textContent: "${state.myLabel}" }],
     });
 
     const el = document.createElement(tag);
@@ -138,7 +138,7 @@ describe("Custom Elements", () => {
     await new Promise((r) => setTimeout(r, 100));
     expect(el.querySelector("span").textContent).toBe("initial");
 
-    // Set an observed attribute — should sync to $defs.myLabel
+    // Set an observed attribute — should sync to state.myLabel
     el.setAttribute("my-label", "updated");
     await new Promise((r) => setTimeout(r, 50));
     expect(el.myLabel).toBe("updated");

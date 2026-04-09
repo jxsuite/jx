@@ -70,8 +70,8 @@ export function isTemplateString(val) {
 export function isDynamic(def) {
 	if (!def || typeof def !== "object") return false;
 
-	if (def.$defs) {
-		for (const d of Object.values(def.$defs)) {
+	if (def.state) {
+		for (const d of Object.values(def.state)) {
 			if (typeof d !== "object" || d === null || Array.isArray(d)) return true;
 			if (d.$prototype) return true;
 			if ("default" in d) return true;
@@ -152,8 +152,8 @@ export function hasAnyIsland(def) {
 // ─── Scope / value resolution ─────────────────────────────────────────────────
 
 export function createCompileContext(raw, parentScope = null, scopeDefs = {}, media = {}) {
-	const scope = raw?.$defs
-		? buildInitialScope(raw.$defs, parentScope)
+	const scope = raw?.state
+		? buildInitialScope(raw.state, parentScope)
 		: (parentScope ?? Object.create(null));
 	return { scope, scopeDefs, media };
 }
@@ -183,13 +183,13 @@ export function buildInitialScope(defs = {}, parentScope = null) {
 		if (!def || typeof def !== "object") continue;
 		if (def.$prototype === "Function") {
 			if (def.body) {
-				const fn = new Function("$defs", ...(def.arguments ?? []), def.body);
-				if (def.signal) {
+				const fn = new Function("state", ...(def.parameters ?? def.arguments ?? []), def.body);
+				if (def.body.includes("return")) {
 					defineLazyScopeValue(scope, key, () => fn(scope));
 				} else {
 					setOwnScopeValue(scope, key, fn);
 				}
-			} else if (!def.signal) {
+			} else if (!def.body?.includes("return")) {
 				setOwnScopeValue(scope, key, () => {});
 			}
 			continue;
@@ -237,8 +237,8 @@ export function resolveRefValue(refValue, scope) {
 		const base = scope.$map?.[key] ?? scope["$map/" + key];
 		return parts.length > 2 ? getPathValue(base, parts.slice(2).join("/")) : base;
 	}
-	if (refValue.startsWith("#/$defs/")) {
-		const sub = refValue.slice("#/$defs/".length);
+	if (refValue.startsWith("#/state/")) {
+		const sub = refValue.slice("#/state/".length);
 		const slash = sub.indexOf("/");
 		if (slash < 0) return scope[sub];
 		return getPathValue(scope[sub.slice(0, slash)], sub.slice(slash + 1));
@@ -247,7 +247,7 @@ export function resolveRefValue(refValue, scope) {
 }
 
 export function evaluateStaticTemplate(str, scope) {
-	const fn = new Function("$defs", "$map", `return \`${str}\``);
+	const fn = new Function("state", "$map", `return \`${str}\``);
 	return fn(scope, scope?.$map);
 }
 
@@ -441,8 +441,8 @@ export function collectSrcImports(doc) {
 
 function _walkSrc(def, srcs) {
 	if (!def || typeof def !== "object") return;
-	if (def.$defs) {
-		for (const d of Object.values(def.$defs)) {
+	if (def.state) {
+		for (const d of Object.values(def.state)) {
 			if (d && typeof d === "object" && d.$prototype === "Function" && d.$src) {
 				srcs.add(d.$src);
 			}
@@ -464,8 +464,8 @@ export function collectServerEntries(doc) {
 
 function _walkServerEntries(def, entries) {
 	if (!def || typeof def !== "object") return;
-	if (def.$defs) {
-		for (const [key, d] of Object.entries(def.$defs)) {
+	if (def.state) {
+		for (const [key, d] of Object.entries(def.state)) {
 			if (
 				d &&
 				typeof d === "object" &&

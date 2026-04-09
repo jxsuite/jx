@@ -2,26 +2,24 @@
   "$schema": "../../packages/schema/schema.json",
   "$id": "MarkdownBlog",
 
-  "$defs": {
+  "state": {
     "posts": {
       "$prototype": "MarkdownCollection",
       "$src": "../../packages/parser/md.js",
       "src": "./content/posts/*.md",
       "sortBy": "frontmatter.date",
-      "sortOrder": "desc",
-      "signal": true
+      "sortOrder": "desc"
     },
     "currentSlug": { "type": "string", "default": "getting-started" },
     "currentPost": {
       "$prototype": "MarkdownFile",
       "$src": "../../packages/parser/md.js",
-      "src": "./content/posts/${$defs.currentSlug}.md",
-      "signal": true
+      "src": "./content/posts/${state.currentSlug}.md"
     },
     "selectPost": {
       "$prototype": "Function",
-      "arguments": ["event"],
-      "body": "event.preventDefault(); const slug = event.currentTarget.dataset?.slug; if (slug) $defs.currentSlug = slug;"
+      "parameters": ["event"],
+      "body": "event.preventDefault(); const slug = event.currentTarget.dataset?.slug; if (slug) state.currentSlug = slug;"
     }
   },
 
@@ -51,7 +49,7 @@
           "style": { "listStyle": "none", "padding": "0", "margin": "0" },
           "children": {
             "$prototype": "Array",
-            "items": { "$ref": "#/$defs/posts" },
+            "items": { "$ref": "#/state/posts" },
             "map": {
               "tagName": "li",
               "style": { "marginBottom": "1rem" },
@@ -67,7 +65,7 @@
                   },
                   "textContent": "${$map.item?.frontmatter?.title ?? ''}",
                   "attributes": { "data-slug": "${$map.item?.slug ?? ''}" },
-                  "onclick": { "$ref": "#/$defs/selectPost" }
+                  "onclick": { "$ref": "#/state/selectPost" }
                 },
                 {
                   "tagName": "time",
@@ -94,7 +92,7 @@
             {
               "tagName": "h1",
               "style": { "marginTop": "0" },
-              "textContent": "${$defs.currentPost?.frontmatter?.title ?? 'Loading…'}"
+              "textContent": "${state.currentPost?.frontmatter?.title ?? 'Loading\u2026'}"
             },
             {
               "tagName": "div",
@@ -102,12 +100,12 @@
               "children": [
                 {
                   "tagName": "time",
-                  "textContent": "${$defs.currentPost?.frontmatter?.date ?? ''}"
+                  "textContent": "${state.currentPost?.frontmatter?.date ?? ''}"
                 },
                 { "tagName": "span", "textContent": " \u00b7 " },
                 {
                   "tagName": "span",
-                  "textContent": "${$defs.currentPost?.$readingTime ?? ''}"
+                  "textContent": "${state.currentPost?.$readingTime ?? ''}"
                 },
                 { "tagName": "span", "textContent": " min read" }
               ]
@@ -117,7 +115,7 @@
         {
           "tagName": "article",
           "className": "prose",
-          "innerHTML": "${$defs.currentPost?.$body ?? ''}"
+          "innerHTML": "${state.currentPost?.$body ?? ''}"
         }
       ]
     }

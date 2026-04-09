@@ -1,7 +1,7 @@
 {
   "$schema": "../../packages/schema/schema.json",
   "$id": "TodoApp",
-  "$defs": {
+  "state": {
     "items": {
       "type": "array",
       "default": [
@@ -12,28 +12,26 @@
     },
     "remaining": {
       "$prototype": "Function",
-      "body": "return $defs.items.filter(i => !i.done).length;",
-      "signal": true,
+      "body": "return state.items.filter(i => !i.done).length;",
       "description": "Number of incomplete items"
     },
     "remainingLabel": {
       "$prototype": "Function",
-      "body": "const r = $defs.remaining; return r + ' item' + (r === 1 ? '' : 's') + ' left';",
-      "signal": true
+      "body": "const r = state.remaining; return r + ' item' + (r === 1 ? '' : 's') + ' left';"
     },
     "addItem": {
       "$prototype": "Function",
-      "arguments": ["event"],
-      "body": "if (event.key !== 'Enter') return; const text = event.target.value.trim(); if (!text) return; $defs.items.push({ id: Date.now(), text, done: false }); event.target.value = '';"
+      "parameters": ["event"],
+      "body": "if (event.key !== 'Enter') return; const text = event.target.value.trim(); if (!text) return; state.items.push({ id: Date.now(), text, done: false }); event.target.value = '';"
     },
     "toggleItem": {
       "$prototype": "Function",
-      "arguments": ["_event"],
-      "body": "const index = $defs.$map?.index ?? -1; if (index < 0) return; $defs.items[index].done = !$defs.items[index].done;"
+      "parameters": ["_event"],
+      "body": "const index = state.$map?.index ?? -1; if (index < 0) return; state.items[index].done = !state.items[index].done;"
     },
     "clearDone": {
       "$prototype": "Function",
-      "body": "$defs.items.splice(0, $defs.items.length, ...$defs.items.filter(item => !item.done));"
+      "body": "state.items.splice(0, state.items.length, ...state.items.filter(item => !item.done));"
     }
   },
   "tagName": "todo-app",
@@ -87,7 +85,7 @@
                 "borderRadius": "5px",
                 "outline": "none"
               },
-              "onkeydown": { "$ref": "#/$defs/addItem" }
+              "onkeydown": { "$ref": "#/state/addItem" }
             }
           ]
         }
@@ -105,7 +103,7 @@
       },
       "children": {
         "$prototype": "Array",
-        "items": { "$ref": "#/$defs/items" },
+        "items": { "$ref": "#/state/items" },
         "map": {
           "tagName": "li",
           "style": {
@@ -119,7 +117,7 @@
             {
               "tagName": "input",
               "attributes": { "type": "checkbox" },
-              "onclick": { "$ref": "#/$defs/toggleItem" },
+              "onclick": { "$ref": "#/state/toggleItem" },
               "style": {
                 "width": "1.1rem",
                 "height": "1.1rem",
@@ -158,12 +156,12 @@
       "children": [
         {
           "tagName": "span",
-          "textContent": { "$ref": "#/$defs/remainingLabel" }
+          "textContent": { "$ref": "#/state/remainingLabel" }
         },
         {
           "tagName": "button",
           "textContent": "Clear completed",
-          "onclick": { "$ref": "#/$defs/clearDone" },
+          "onclick": { "$ref": "#/state/clearDone" },
           "style": {
             "padding": "0.25em 0.6em",
             "border": "1px solid #adb5bd",

@@ -24,7 +24,7 @@ describe("isClassJsonSrc", () => {
   });
 });
 
-// ─── isDynamic — Five-Shape $defs Grammar ────────────────────────────────────
+// ─── isDynamic — Five-Shape state Grammar ────────────────────────────────────
 
 describe("isDynamic", () => {
   test("null → false", () => expect(isDynamic(null)).toBe(false));
@@ -33,60 +33,60 @@ describe("isDynamic", () => {
     expect(isDynamic({ tagName: "div", textContent: "hello" })).toBe(false);
   });
 
-  // Shape 1: Naked values in $defs → dynamic
-  test("naked string in $defs → true", () => {
-    expect(isDynamic({ $defs: { $name: "hello" } })).toBe(true);
+  // Shape 1: Naked values in state → dynamic
+  test("naked string in state → true", () => {
+    expect(isDynamic({ state: { $name: "hello" } })).toBe(true);
   });
-  test("naked number in $defs → true", () => {
-    expect(isDynamic({ $defs: { $count: 42 } })).toBe(true);
+  test("naked number in state → true", () => {
+    expect(isDynamic({ state: { $count: 42 } })).toBe(true);
   });
-  test("naked boolean in $defs → true", () => {
-    expect(isDynamic({ $defs: { $flag: false } })).toBe(true);
+  test("naked boolean in state → true", () => {
+    expect(isDynamic({ state: { $flag: false } })).toBe(true);
   });
-  test("naked null in $defs → true", () => {
-    expect(isDynamic({ $defs: { $x: null } })).toBe(true);
+  test("naked null in state → true", () => {
+    expect(isDynamic({ state: { $x: null } })).toBe(true);
   });
-  test("naked array in $defs → true", () => {
-    expect(isDynamic({ $defs: { $items: [1, 2] } })).toBe(true);
+  test("naked array in state → true", () => {
+    expect(isDynamic({ state: { $items: [1, 2] } })).toBe(true);
   });
 
   // Shape 2: Expanded signal with default → dynamic
-  test("object with default in $defs → true", () => {
-    expect(isDynamic({ $defs: { $count: { type: "integer", default: 0 } } })).toBe(true);
+  test("object with default in state → true", () => {
+    expect(isDynamic({ state: { $count: { type: "integer", default: 0 } } })).toBe(true);
   });
 
   // Shape 2b: Pure type def → static
   test("object with only schema keywords (no default) → false", () => {
-    expect(isDynamic({ $defs: { email: { type: "string", format: "email" } } })).toBe(false);
+    expect(isDynamic({ state: { email: { type: "string", format: "email" } } })).toBe(false);
   });
 
-  // Shape 3: Template string in $defs → dynamic (it's a naked string with ${})
-  test("template string in $defs → true", () => {
-    expect(isDynamic({ $defs: { $label: "${$count.get()} items" } })).toBe(true);
+  // Shape 3: Template string in state → dynamic (it's a naked string with ${})
+  test("template string in state → true", () => {
+    expect(isDynamic({ state: { $label: "${$count.get()} items" } })).toBe(true);
   });
 
   // Shape 4 & 5: $prototype → dynamic
-  test("$prototype in $defs → true", () => {
-    expect(isDynamic({ $defs: { $r: { $prototype: "Request" } } })).toBe(true);
+  test("$prototype in state → true", () => {
+    expect(isDynamic({ state: { $r: { $prototype: "Request" } } })).toBe(true);
   });
-  test('$prototype: "Function" in $defs → true', () => {
-    expect(isDynamic({ $defs: { fn: { $prototype: "Function", body: "return 1;" } } })).toBe(true);
+  test('$prototype: "Function" in state → true', () => {
+    expect(isDynamic({ state: { fn: { $prototype: "Function", body: "return 1;" } } })).toBe(true);
   });
 
-  // Plain object in $defs → dynamic (Signal.State)
-  test("plain object in $defs → true", () => {
-    expect(isDynamic({ $defs: { $cfg: { x: 1, y: 2 } } })).toBe(true);
+  // Plain object in state → dynamic (Signal.State)
+  test("plain object in state → true", () => {
+    expect(isDynamic({ state: { $cfg: { x: 1, y: 2 } } })).toBe(true);
   });
 
   // Structural dynamic indicators
   test("$switch on node → true", () => {
-    expect(isDynamic({ $switch: { $ref: "#/$defs/$x" } })).toBe(true);
+    expect(isDynamic({ $switch: { $ref: "#/state/$x" } })).toBe(true);
   });
   test("children.$prototype Array → true", () => {
     expect(isDynamic({ children: { $prototype: "Array" } })).toBe(true);
   });
   test("$ref in non-reserved property → true", () => {
-    expect(isDynamic({ tagName: "span", textContent: { $ref: "#/$defs/$x" } })).toBe(true);
+    expect(isDynamic({ tagName: "span", textContent: { $ref: "#/state/$x" } })).toBe(true);
   });
 
   // Template strings in properties → dynamic
@@ -105,7 +105,7 @@ describe("isDynamic", () => {
     expect(
       isDynamic({
         tagName: "div",
-        children: [{ tagName: "span" }, { tagName: "p", textContent: { $ref: "#/$defs/$x" } }],
+        children: [{ tagName: "span" }, { tagName: "p", textContent: { $ref: "#/state/$x" } }],
       }),
     ).toBe(true);
   });
@@ -120,8 +120,8 @@ describe("isDynamic", () => {
       }),
     ).toBe(false);
   });
-  test("empty $defs (no dynamic entries) → false", () => {
-    expect(isDynamic({ $defs: {} })).toBe(false);
+  test("empty state (no dynamic entries) → false", () => {
+    expect(isDynamic({ state: {} })).toBe(false);
   });
 });
 
@@ -263,10 +263,10 @@ describe("compile — static nodes", () => {
     expect(html).not.toContain('type="module"');
   });
 
-  test("pure type def $defs → static output (no custom element)", async () => {
+  test("pure type def state → static output (no custom element)", async () => {
     const { html, files } = await compile({
       tagName: "div",
-      $defs: { email: { type: "string", format: "email" } },
+      state: { email: { type: "string", format: "email" } },
       textContent: "hello",
     });
     expect(files.length).toBe(0);
@@ -280,7 +280,7 @@ describe("compile — static nodes", () => {
 describe("compile — dynamic documents (standard tagName → client target)", () => {
   test("dynamic root with standard tag emits pre-rendered HTML + JS module", async () => {
     const { html, files } = await compile(
-      { tagName: "div", $defs: { $count: 0 } },
+      { tagName: "div", state: { $count: 0 } },
       { title: "My Counter" },
     );
     expect(html).toContain("importmap");
@@ -290,13 +290,13 @@ describe("compile — dynamic documents (standard tagName → client target)", (
     // Client target: pre-rendered HTML, no custom element tag
     expect(html).not.toContain("<my-counter>");
     expect(html).not.toContain("lit-html");
-    // Should have reactive $defs in JS
-    expect(files[0].content).toContain("const $defs = reactive({");
+    // Should have reactive state in JS
+    expect(files[0].content).toContain("const state = reactive({");
   });
 
   test("dynamic root with expanded signal uses client target", async () => {
     const { html, files } = await compile(
-      { tagName: "div", $defs: { $x: { type: "integer", default: 1 } } },
+      { tagName: "div", state: { $x: { type: "integer", default: 1 } } },
       { title: "My Widget" },
     );
     expect(files.length).toBe(1);
@@ -318,7 +318,7 @@ describe("compile — dynamic documents (standard tagName → client target)", (
       tagName: "main",
       children: [
         { tagName: "p", textContent: "static" },
-        { tagName: "span", $defs: { $v: 0 } },
+        { tagName: "span", state: { $v: 0 } },
       ],
     });
     // isDynamic detects the dynamic child → client target
@@ -344,7 +344,7 @@ describe("compile — dynamic documents (standard tagName → client target)", (
   test("no hydration island markers in output", async () => {
     const { html } = await compile({
       tagName: "div",
-      $defs: { $count: 0 },
+      state: { $count: 0 },
     });
     expect(html).not.toContain("data-jsonsx-island");
     expect(html).not.toContain("application/jsonsx+json");
@@ -354,7 +354,7 @@ describe("compile — dynamic documents (standard tagName → client target)", (
 describe("compile — dynamic documents (custom element tagName → element target)", () => {
   test("hyphenated tagName routes to element target", async () => {
     const { html, files } = await compile(
-      { tagName: "my-counter", $defs: { count: 0 } },
+      { tagName: "my-counter", state: { count: 0 } },
     );
     expect(html).toContain("importmap");
     expect(html).toContain("@vue/reactivity");
@@ -367,7 +367,7 @@ describe("compile — dynamic documents (custom element tagName → element targ
 
   test("custom element module contains class definition", async () => {
     const { files } = await compile(
-      { tagName: "my-widget", $defs: { x: { type: "integer", default: 1 } } },
+      { tagName: "my-widget", state: { x: { type: "integer", default: 1 } } },
     );
     expect(files.length).toBe(1);
     expect(files[0].content).toContain("class MyWidget extends HTMLElement");

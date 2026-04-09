@@ -1,53 +1,49 @@
 {
   "$schema": "../../packages/schema/schema.json",
   "$id": "ContactForm",
-  "$defs": {
+  "state": {
     "name": { "type": "string", "default": "" },
     "email": { "type": "string", "default": "" },
     "message": { "type": "string", "default": "" },
     "submitted": { "type": "boolean", "default": false },
     "nameValid": {
       "$prototype": "Function",
-      "body": "return $defs.name.trim().length >= 2;",
-      "signal": true
+      "body": "return state.name.trim().length >= 2;"
     },
     "emailValid": {
       "$prototype": "Function",
-      "body": "const e = $defs.email; return e.includes('@') && e.includes('.') && e.length > 5;",
-      "signal": true
+      "body": "const e = state.email; return e.includes('@') && e.includes('.') && e.length > 5;"
     },
     "messageValid": {
       "$prototype": "Function",
-      "body": "return $defs.message.trim().length >= 10;",
-      "signal": true
+      "body": "return state.message.trim().length >= 10;"
     },
     "formValid": {
       "$prototype": "Function",
-      "body": "return $defs.nameValid && $defs.emailValid && $defs.messageValid;",
-      "signal": true
+      "body": "return state.nameValid && state.emailValid && state.messageValid;"
     },
     "setName": {
       "$prototype": "Function",
-      "arguments": ["event"],
-      "body": "$defs.name = event.target.value;"
+      "parameters": ["event"],
+      "body": "state.name = event.target.value;"
     },
     "setEmail": {
       "$prototype": "Function",
-      "arguments": ["event"],
-      "body": "$defs.email = event.target.value;"
+      "parameters": ["event"],
+      "body": "state.email = event.target.value;"
     },
     "setMessage": {
       "$prototype": "Function",
-      "arguments": ["event"],
-      "body": "$defs.message = event.target.value;"
+      "parameters": ["event"],
+      "body": "state.message = event.target.value;"
     },
     "submit": {
       "$prototype": "Function",
-      "body": "if (!$defs.formValid) return; console.log('Form submitted:', { name: $defs.name, email: $defs.email, message: $defs.message }); $defs.submitted = true; $defs.reset();"
+      "body": "if (!state.formValid) return; console.log('Form submitted:', { name: state.name, email: state.email, message: state.message }); state.submitted = true; state.reset();"
     },
     "reset": {
       "$prototype": "Function",
-      "body": "$defs.name = ''; $defs.email = ''; $defs.message = ''; $defs.submitted = false;"
+      "body": "state.name = ''; state.email = ''; state.message = ''; state.submitted = false;"
     }
   },
   "tagName": "contact-form",
@@ -78,8 +74,8 @@
         },
         {
           "tagName": "input",
-          "value": { "$ref": "#/$defs/name" },
-          "oninput": { "$ref": "#/$defs/setName" },
+          "value": { "$ref": "#/state/name" },
+          "oninput": { "$ref": "#/state/setName" },
           "attributes": { "type": "text", "placeholder": "Your full name" },
           "style": {
             "width": "100%", "boxSizing": "border-box", "padding": "0.6em 0.75em",
@@ -90,7 +86,7 @@
         {
           "tagName": "small",
           "textContent": "Name must be at least 2 characters.",
-          "hidden": { "$ref": "#/$defs/nameValid" },
+          "hidden": { "$ref": "#/state/nameValid" },
           "style": { "color": "#dc3545", "fontSize": "0.8em" }
         }
       ]
@@ -106,8 +102,8 @@
         },
         {
           "tagName": "input",
-          "value": { "$ref": "#/$defs/email" },
-          "oninput": { "$ref": "#/$defs/setEmail" },
+          "value": { "$ref": "#/state/email" },
+          "oninput": { "$ref": "#/state/setEmail" },
           "attributes": { "type": "email", "placeholder": "you@example.com" },
           "style": {
             "width": "100%", "boxSizing": "border-box", "padding": "0.6em 0.75em",
@@ -118,7 +114,7 @@
         {
           "tagName": "small",
           "textContent": "Enter a valid email address.",
-          "hidden": { "$ref": "#/$defs/emailValid" },
+          "hidden": { "$ref": "#/state/emailValid" },
           "style": { "color": "#dc3545", "fontSize": "0.8em" }
         }
       ]
@@ -134,8 +130,8 @@
         },
         {
           "tagName": "textarea",
-          "textContent": { "$ref": "#/$defs/message" },
-          "oninput": { "$ref": "#/$defs/setMessage" },
+          "textContent": { "$ref": "#/state/message" },
+          "oninput": { "$ref": "#/state/setMessage" },
           "attributes": { "rows": "4", "placeholder": "Your message (min 10 characters)\u2026" },
           "style": {
             "width": "100%", "boxSizing": "border-box", "padding": "0.6em 0.75em",
@@ -147,7 +143,7 @@
         {
           "tagName": "small",
           "textContent": "Message must be at least 10 characters.",
-          "hidden": { "$ref": "#/$defs/messageValid" },
+          "hidden": { "$ref": "#/state/messageValid" },
           "style": { "color": "#dc3545", "fontSize": "0.8em" }
         }
       ]
@@ -159,7 +155,7 @@
         {
           "tagName": "button",
           "textContent": "Send Message",
-          "onclick": { "$ref": "#/$defs/submit" },
+          "onclick": { "$ref": "#/state/submit" },
           "style": {
             "flex": "1", "padding": "0.7em 1em", "fontSize": "1em",
             "backgroundColor": "#28a745", "color": "white", "border": "none",
@@ -171,7 +167,7 @@
         {
           "tagName": "button",
           "textContent": "Reset",
-          "onclick": { "$ref": "#/$defs/reset" },
+          "onclick": { "$ref": "#/state/reset" },
           "style": {
             "padding": "0.7em 1.25em", "fontSize": "1em",
             "backgroundColor": "white", "color": "#6c757d",
@@ -183,7 +179,7 @@
     },
     {
       "tagName": "div",
-      "hidden": { "$ref": "#/$defs/submitted" },
+      "hidden": { "$ref": "#/state/submitted" },
       "style": {
         "marginTop": "1.25em", "padding": "0.85em 1em",
         "backgroundColor": "#d4edda", "border": "1px solid #c3e6cb",
@@ -211,21 +207,21 @@
               "tagName": "div",
               "children": [
                 { "tagName": "strong", "textContent": "name: " },
-                { "tagName": "span", "textContent": { "$ref": "#/$defs/name" } }
+                { "tagName": "span", "textContent": { "$ref": "#/state/name" } }
               ]
             },
             {
               "tagName": "div",
               "children": [
                 { "tagName": "strong", "textContent": "email: " },
-                { "tagName": "span", "textContent": { "$ref": "#/$defs/email" } }
+                { "tagName": "span", "textContent": { "$ref": "#/state/email" } }
               ]
             },
             {
               "tagName": "div",
               "children": [
                 { "tagName": "strong", "textContent": "valid: " },
-                { "tagName": "span", "textContent": { "$ref": "#/$defs/formValid" } }
+                { "tagName": "span", "textContent": { "$ref": "#/state/formValid" } }
               ]
             }
           ]

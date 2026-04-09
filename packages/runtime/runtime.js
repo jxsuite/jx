@@ -1,11 +1,11 @@
 /**
  * JSONsx — JSON-native reactive web component runtime
- * @version 2.0.0
+ * @version 3.0.0
  * @license MIT
  *
  * Four-step pipeline:
  *   1. resolve    — fetch JSON source (or accept raw object)
- *   2. buildScope — five-shape $defs detection + reactive proxy construction
+ *   2. buildScope — state detection + reactive proxy construction
  *   3. render     — walk resolved tree, build DOM, wire reactive effects
  *   4. output     — append to target
  *
@@ -21,11 +21,11 @@ import { reactive, ref, computed, effect, isRef, onEffectCleanup } from "@vue/re
  *
  * @param {string | object} source - Path to .json file, URL, or raw document object
  * @param {HTMLElement} [target=document.body]
- * @returns {Promise<object>} Resolves with the live component scope ($defs reactive proxy)
+ * @returns {Promise<object>} Resolves with the live component scope (state reactive proxy)
  *
  * @example
  * import { JSONsx } from '@jsonsx/runtime';
- * const $defs = await JSONsx('./counter.json', document.getElementById('app'));
+ * const state = await JSONsx('./counter.json', document.getElementById('app'));
  */
 export async function JSONsx(source, target = document.body, options) {
   const base = typeof source === "string" ? new URL(source, location.href).href : location.href;
@@ -36,10 +36,10 @@ export async function JSONsx(source, target = document.body, options) {
     await registerElements(doc.$elements, base);
   }
 
-  const $defs = await buildScope(doc, {}, base);
-  target.appendChild(renderNode(doc, $defs, options));
-  if (typeof $defs.onMount === "function") $defs.onMount($defs);
-  return $defs;
+  const state = await buildScope(doc, {}, base);
+  target.appendChild(renderNode(doc, state, options));
+  if (typeof state.onMount === "function") state.onMount(state);
+  return state;
 }
 
 // ─── Step 1: Resolve ──────────────────────────────────────────────────────────
@@ -78,12 +78,12 @@ const SCHEMA_KEYWORDS = new Set([
 ]);
 
 /**
- * Build the reactive scope ($defs) from the document using the five-shape detection algorithm.
+ * Build the reactive scope (state) from the document using the five-shape detection algorithm.
  *
  * @param {object} doc
  * @param {object} [parentScope={}]
  * @param {string} [base=location.href]  Base URL for resolving $src imports
- * @returns {Promise<object>} Reactive proxy ($defs)
+ * @returns {Promise<object>} Reactive proxy (state)
  */
 export async function buildScope(doc, parentScope = {}, base = location.href) {
   const raw = {};
@@ -93,7 +93,7 @@ export async function buildScope(doc, parentScope = {}, base = location.href) {
     raw[key] = val;
   }
 
-  const defs = doc.$defs ?? {};
+  const defs = doc.state ?? {};
 
   // First pass: collect naked values, expanded defaults, plain objects
   for (const [key, def] of Object.entries(defs)) {
@@ -129,26 +129,26 @@ export async function buildScope(doc, parentScope = {}, base = location.href) {
   }
 
   // Wrap in Vue reactive proxy — deep reactivity from this point on
-  const $defs = reactive(raw);
+  const state = reactive(raw);
 
   // Second pass: template strings → computed
   for (const [key, def] of Object.entries(defs)) {
     if (typeof def === "string" && def.includes("${")) {
-      $defs[key] = computed(() => evaluateTemplate(def, $defs));
+      state[key] = computed(() => evaluateTemplate(def, state));
     }
   }
 
   // Third pass: $prototype: "Function" entries
   for (const [key, def] of Object.entries(defs)) {
     if (typeof def === "object" && def?.$prototype === "Function") {
-      $defs[key] = await resolveFunction(def, $defs, key, base);
+      state[key] = await resolveFunction(def, state, key, base);
     }
   }
 
   // Fourth pass: other $prototype entries (Request, Set, Map, etc.)
   for (const [key, def] of Object.entries(defs)) {
     if (typeof def === "object" && def?.$prototype && def.$prototype !== "Function") {
-      $defs[key] = await resolvePrototype(def, $defs, key, base);
+      state[key] = await resolvePrototype(def, state, key, base);
     }
   }
 
@@ -162,15 +162,15 @@ export async function buildScope(doc, parentScope = {}, base = location.href) {
       def.$export &&
       !def.$prototype
     ) {
-      $defs[key] = await resolveServerFunction(def, $defs, key, base);
+      state[key] = await resolveServerFunction(def, state, key, base);
     }
   }
 
   if (doc.$media) {
-    $defs["$media"] = doc.$media;
+    state["$media"] = doc.$media;
   }
 
-  return $defs;
+  return state;
 }
 
 /**
@@ -186,12 +186,12 @@ function hasSchemaKeywords(obj) {
 export { hasSchemaKeywords };
 
 /**
- * Evaluate a template string in the context of $defs and optional $map.
- * Templates use `$defs.signalName` and `$map.item` syntax.
+ * Evaluate a template string in the context of state and optional $map.
+ * Templates use `state.varName` and `$map.item` syntax.
  */
-function evaluateTemplate(str, $defs) {
-  const fn = new Function("$defs", "$map", `return \`${str}\``);
-  return fn($defs, $defs?.$map);
+function evaluateTemplate(str, state) {
+  const fn = new Function("state", "$map", `return \`${str}\``);
+  return fn(state, state?.$map);
 }
 
 // ─── Step 2b: Function resolution (Shape 4) ─────────────────────────────────
@@ -204,16 +204,16 @@ const _moduleCache = new Map();
 /**
  * Resolve a $prototype: "Function" entry into a function or computed.
  *
- * Functions receive $defs as their first parameter at call time.
- * With signal: true, the function is wrapped in computed() for reactive evaluation.
+ * Functions receive state as their first parameter at call time.
+ * Functions with a return statement in their body are wrapped in computed() for reactive evaluation.
  *
- * @param {object} def   - $defs entry with $prototype: "Function"
- * @param {object} $defs - reactive scope proxy
+ * @param {object} def   - state entry with $prototype: "Function"
+ * @param {object} state - reactive scope proxy
  * @param {string} key   - def key name
  * @param {string} [base] - Base URL for resolving $src imports
  * @returns {Promise<Function|ComputedRef>}
  */
-async function resolveFunction(def, $defs, key, base) {
+async function resolveFunction(def, state, key, base) {
   if (def.body && def.$src) {
     throw new Error(`JSONsx: '${key}' declares both body and $src — these are mutually exclusive`);
   }
@@ -224,9 +224,7 @@ async function resolveFunction(def, $defs, key, base) {
   let fn;
 
   if (def.body) {
-    const args = def.arguments ?? [];
-    // If the caller already listed "$defs" as the first argument, don't prepend it again.
-    const params = args.length > 0 && args[0] === "$defs" ? args : ["$defs", ...args];
+    const params = resolveParamNames(def);
     fn = new Function(...params, def.body);
     Object.defineProperty(fn, "name", { value: def.name ?? key, configurable: true });
   } else {
@@ -255,15 +253,33 @@ async function resolveFunction(def, $defs, key, base) {
     }
   }
 
-  // signal: true → wrap in computed (reactive evaluation)
-  if (def.signal) {
-    return computed(() => fn($defs));
+  // Detect computed: body contains a return statement
+  if (def.body && /\breturn\b/.test(def.body)) {
+    return computed(() => fn(state));
   }
 
   return fn;
 }
 
 // ─── Step 3: Render ───────────────────────────────────────────────────────────
+
+/**
+ * Extract parameter names from a function definition.
+ * Supports both legacy "arguments" (string array) and CEM-compatible "parameters" (object array).
+ * Always ensures "state" is the first parameter.
+ */
+function resolveParamNames(def) {
+  const raw = def.parameters ?? def.arguments ?? [];
+  let names;
+  if (Array.isArray(raw) && raw.length > 0 && typeof raw[0] === "object") {
+    // CEM-style: [{name: "event", type: {...}}, ...]
+    names = raw.map((p) => p.name ?? p.identifier ?? "arg");
+  } else {
+    // Legacy string array: ["state", "event"] or ["event"]
+    names = raw;
+  }
+  return names.length > 0 && names[0] === "state" ? names : ["state", ...names];
+}
 
 /**
  * Reserved JSONsx keys — never set as DOM properties.
@@ -273,6 +289,7 @@ export const RESERVED_KEYS = new Set([
   "$schema",
   "$id",
   "$defs",
+  "state",
   "$ref",
   "$props",
   "$elements",
@@ -282,11 +299,11 @@ export const RESERVED_KEYS = new Set([
   "$export",
   "$media",
   "$map",
-  "signal",
   "timing",
   "default",
   "description",
   "body",
+  "parameters",
   "arguments",
   "name",
   "tagName",
@@ -305,18 +322,18 @@ export const RESERVED_KEYS = new Set([
  * Recursively render a JSONsx element definition into a DOM element.
  *
  * @param {object} def
- * @param {object} $defs - reactive scope proxy (or child scope via Object.create)
+ * @param {object} state - reactive scope proxy (or child scope via Object.create)
  * @returns {HTMLElement}
  */
-export function renderNode(def, $defs, options) {
+export function renderNode(def, state, options) {
   const path = options?._path ?? [];
 
   // Extend scope with any $-prefixed local bindings declared on this node
-  let localDefs = $defs;
+  let localState = state;
   for (const [key, val] of Object.entries(def)) {
     if (key.startsWith("$") && !RESERVED_KEYS.has(key)) {
-      if (localDefs === $defs) localDefs = Object.create($defs);
-      localDefs[key] = isRefObj(val) ? resolveRef(val.$ref, $defs) : val;
+      if (localState === state) localState = Object.create(state);
+      localState[key] = isRefObj(val) ? resolveRef(val.$ref, state) : val;
     }
   }
 
@@ -325,28 +342,28 @@ export function renderNode(def, $defs, options) {
   const isCustomEl = tagName.includes("-") && customElements.get(tagName);
 
   if (def.$props && isCustomEl) {
-    return renderCustomElementWithProps(def, localDefs, options, path);
+    return renderCustomElementWithProps(def, localState, options, path);
   }
 
   if (def.$props) {
     const { $props, ...rest } = def;
-    return renderNode(rest, mergeProps(def, localDefs), options);
+    return renderNode(rest, mergeProps(def, localState), options);
   }
-  if (def.$switch) return renderSwitch(def, localDefs, options);
-  if (def.children?.$prototype === "Array") return renderMappedArray(def, localDefs, options);
+  if (def.$switch) return renderSwitch(def, localState, options);
+  if (def.children?.$prototype === "Array") return renderMappedArray(def, localState, options);
 
   const el = document.createElement(tagName);
 
   if (options?.onNodeCreated) options.onNodeCreated(el, path, def);
 
-  applyProperties(el, def, localDefs);
-  applyStyle(el, def.style ?? {}, localDefs["$media"] ?? {}, localDefs);
-  applyAttributes(el, def.attributes ?? {}, localDefs);
+  applyProperties(el, def, localState);
+  applyStyle(el, def.style ?? {}, localState["$media"] ?? {}, localState);
+  applyAttributes(el, def.attributes ?? {}, localState);
 
   const children = Array.isArray(def.children) ? def.children : [];
   for (let i = 0; i < children.length; i++) {
     const childOpts = options ? { ...options, _path: [...path, "children", i] } : undefined;
-    el.appendChild(renderNode(children[i], localDefs, childOpts));
+    el.appendChild(renderNode(children[i], localState, childOpts));
   }
 
   return el;
@@ -363,7 +380,7 @@ function isTemplateString(val) {
 
 // ─── Property / style / attribute application ─────────────────────────────────
 
-function applyProperties(el, def, $defs) {
+function applyProperties(el, def, state) {
   for (const [key, val] of Object.entries(def)) {
     if (RESERVED_KEYS.has(key)) continue;
     if (key.startsWith("$")) continue; // scope bindings — handled in renderNode
@@ -371,36 +388,35 @@ function applyProperties(el, def, $defs) {
     if (key.startsWith("on")) {
       // Event handler: $ref to a function
       if (isRefObj(val)) {
-        const handler = resolveRef(val.$ref, $defs);
+        const handler = resolveRef(val.$ref, state);
         if (typeof handler === "function") {
-          const scope = $defs;
+          const scope = state;
           el.addEventListener(key.slice(2), (e) => handler(scope, e));
         }
         continue;
       }
       // Event handler: inline $prototype: "Function"
       if (val && typeof val === "object" && val.$prototype === "Function" && val.body) {
-        const args = val.arguments ?? [];
-        const params = args.length > 0 && args[0] === "$defs" ? args : ["$defs", ...args];
+        const params = resolveParamNames(val);
         const fn = new Function(...params, val.body);
-        const scope = $defs;
+        const scope = state;
         el.addEventListener(key.slice(2), (e) => fn(scope, e));
         continue;
       }
     }
 
-    bindProperty(el, key, val, $defs);
+    bindProperty(el, key, val, state);
   }
 }
 
-function bindProperty(el, key, val, $defs) {
+function bindProperty(el, key, val, state) {
   if (isRefObj(val)) {
     if (key === "id") {
-      el[key] = resolveRef(val.$ref, $defs);
+      el[key] = resolveRef(val.$ref, state);
       return;
     }
     effect(() => {
-      el[key] = resolveRef(val.$ref, $defs);
+      el[key] = resolveRef(val.$ref, state);
     });
     return;
   }
@@ -408,7 +424,7 @@ function bindProperty(el, key, val, $defs) {
   // Universal ${} reactivity — template strings in element properties
   if (isTemplateString(val)) {
     effect(() => {
-      el[key] = evaluateTemplate(val, $defs);
+      el[key] = evaluateTemplate(val, state);
     });
     return;
   }
@@ -423,9 +439,9 @@ function bindProperty(el, key, val, $defs) {
  * @param {HTMLElement} el
  * @param {object}      styleDef
  * @param {object}      [mediaQueries={}]  Named breakpoints from root $media
- * @param {object}      [$defs={}]         Component scope for template string evaluation
+ * @param {object}      [state={}]         Component scope for template string evaluation
  */
-export function applyStyle(el, styleDef, mediaQueries = {}, $defs = {}) {
+export function applyStyle(el, styleDef, mediaQueries = {}, state = {}) {
   const nested = {};
   const media = {};
 
@@ -434,7 +450,7 @@ export function applyStyle(el, styleDef, mediaQueries = {}, $defs = {}) {
     else if (isNestedSelector(prop)) nested[prop] = val;
     else if (isTemplateString(val))
       effect(() => {
-        el.style[prop] = evaluateTemplate(val, $defs);
+        el.style[prop] = evaluateTemplate(val, state);
       });
     else el.style[prop] = val;
   }
@@ -479,12 +495,12 @@ export function applyStyle(el, styleDef, mediaQueries = {}, $defs = {}) {
   document.head.appendChild(tag);
 }
 
-function applyAttributes(el, attrs, $defs) {
+function applyAttributes(el, attrs, state) {
   for (const [k, v] of Object.entries(attrs)) {
     if (isRefObj(v)) {
-      effect(() => el.setAttribute(k, String(resolveRef(v.$ref, $defs) ?? "")));
+      effect(() => el.setAttribute(k, String(resolveRef(v.$ref, state) ?? "")));
     } else if (isTemplateString(v)) {
-      effect(() => el.setAttribute(k, String(evaluateTemplate(v, $defs))));
+      effect(() => el.setAttribute(k, String(evaluateTemplate(v, state))));
     } else {
       el.setAttribute(k, String(v));
     }
@@ -493,37 +509,37 @@ function applyAttributes(el, attrs, $defs) {
 
 // ─── Array mapping ────────────────────────────────────────────────────────────
 
-function renderMappedArray(def, $defs, options) {
+function renderMappedArray(def, state, options) {
   const path = options?._path ?? [];
   const container = document.createElement(def.tagName ?? "div");
 
   if (options?.onNodeCreated) options.onNodeCreated(container, path, def);
 
-  applyProperties(container, def, $defs);
-  applyStyle(container, def.style ?? {}, $defs["$media"] ?? {}, $defs);
-  applyAttributes(container, def.attributes ?? {}, $defs);
+  applyProperties(container, def, state);
+  applyStyle(container, def.style ?? {}, state["$media"] ?? {}, state);
+  applyAttributes(container, def.attributes ?? {}, state);
   const { items: itemsSrc, map: mapDef, filter: filterRef, sort: sortRef } = def.children;
 
   effect(() => {
     container.innerHTML = "";
     let items;
     if (isRefObj(itemsSrc)) {
-      items = resolveRef(itemsSrc.$ref, $defs);
+      items = resolveRef(itemsSrc.$ref, state);
     } else {
       items = itemsSrc;
     }
     if (!Array.isArray(items)) return;
     if (filterRef) {
-      const fn = resolveRef(filterRef.$ref, $defs);
+      const fn = resolveRef(filterRef.$ref, state);
       if (typeof fn === "function") items = items.filter(fn);
     }
     if (sortRef) {
-      const fn = resolveRef(sortRef.$ref, $defs);
+      const fn = resolveRef(sortRef.$ref, state);
       if (typeof fn === "function") items = [...items].sort(fn);
     }
 
     items.forEach((item, index) => {
-      const child = Object.create($defs);
+      const child = Object.create(state);
       child.$map = { item, index };
       child["$map/item"] = item;
       child["$map/index"] = index;
@@ -539,20 +555,20 @@ function renderMappedArray(def, $defs, options) {
 
 // ─── $switch ──────────────────────────────────────────────────────────────────
 
-function renderSwitch(def, $defs, options) {
+function renderSwitch(def, state, options) {
   const path = options?._path ?? [];
   const container = document.createElement(def.tagName ?? "div");
 
   if (options?.onNodeCreated) options.onNodeCreated(container, path, def);
 
-  applyProperties(container, def, $defs);
-  applyStyle(container, def.style ?? {}, $defs["$media"] ?? {}, $defs);
-  applyAttributes(container, def.attributes ?? {}, $defs);
+  applyProperties(container, def, state);
+  applyStyle(container, def.style ?? {}, state["$media"] ?? {}, state);
+  applyAttributes(container, def.attributes ?? {}, state);
   let generation = 0;
 
   effect(() => {
     container.innerHTML = "";
-    const key = resolveRef(def.$switch.$ref, $defs);
+    const key = resolveRef(def.$switch.$ref, state);
     const caseDef = def.cases?.[key];
     if (!caseDef) return;
 
@@ -576,7 +592,7 @@ function renderSwitch(def, $defs, options) {
     }
 
     const childOpts = options ? { ...options, _path: [...path, "cases", key] } : undefined;
-    container.appendChild(renderNode(caseDef, $defs, childOpts));
+    container.appendChild(renderNode(caseDef, state, childOpts));
   });
 
   return container;
@@ -590,21 +606,21 @@ function renderSwitch(def, $defs, options) {
  * Returns a ref() for async/persistent entries (Request, Storage, Cookie, IndexedDB),
  * or a plain value for simple entries (Set, Map, FormData, Blob).
  *
- * @param {object} def   - $defs entry with $prototype
- * @param {object} $defs - reactive scope proxy
+ * @param {object} def   - state entry with $prototype
+ * @param {object} state - reactive scope proxy
  * @param {string} key   - def key (for diagnostics)
  * @param {string} [base] - Base URL for resolving $src imports
  * @returns {Promise<*>}
  */
-export async function resolvePrototype(def, $defs, key, base) {
+export async function resolvePrototype(def, state, key, base) {
   // ── External class via $src ─────────────────────────────────────────────────
   if (def.$src) {
-    return resolveExternalPrototype(def, $defs, key, base);
+    return resolveExternalPrototype(def, state, key, base);
   }
 
   switch (def.$prototype) {
     case "Request": {
-      const state = ref(null);
+      const s = ref(null);
       const debounceMs = def.debounce ?? 0;
       let debounceTimer = null;
 
@@ -612,7 +628,7 @@ export async function resolvePrototype(def, $defs, key, base) {
         effect(() => {
           let url;
           if (isTemplateString(def.url)) {
-            url = evaluateTemplate(def.url, $defs);
+            url = evaluateTemplate(def.url, state);
           } else {
             url = def.url;
           }
@@ -635,10 +651,10 @@ export async function resolvePrototype(def, $defs, key, base) {
             })
               .then((r) => (r.ok ? r.json() : Promise.reject(r.statusText)))
               .then((d) => {
-                state.value = d;
+                s.value = d;
               })
               .catch((e) => {
-                if (e.name !== "AbortError") state.value = { error: String(e) };
+                if (e.name !== "AbortError") s.value = { error: String(e) };
               });
 
           if (debounceMs > 0) {
@@ -649,18 +665,18 @@ export async function resolvePrototype(def, $defs, key, base) {
         });
       }
 
-      return state;
+      return s;
     }
 
     case "URLSearchParams":
       return computed(() => {
         const p = {};
         for (const [k, v] of Object.entries(def)) {
-          if (k !== "$prototype" && k !== "signal") {
+          if (k !== "$prototype") {
             p[k] = isRefObj(v)
-              ? resolveRef(v.$ref, $defs)
+              ? resolveRef(v.$ref, state)
               : isTemplateString(v)
-                ? evaluateTemplate(v, $defs)
+                ? evaluateTemplate(v, state)
                 : v;
           }
         }
@@ -791,11 +807,11 @@ const EXTERNAL_RESERVED = new Set([
   "$prototype",
   "$src",
   "$export",
-  "signal",
   "timing",
   "default",
   "description",
   "body",
+  "parameters",
   "arguments",
   "name",
 ]);
@@ -803,12 +819,12 @@ const EXTERNAL_RESERVED = new Set([
 /**
  * Resolve an external class prototype via $src.
  */
-async function resolveExternalPrototype(def, $defs, key, base) {
+async function resolveExternalPrototype(def, state, key, base) {
   const src = def.$src;
 
   // .class.json: schema-defined class
   if (src.endsWith(".class.json")) {
-    return resolveClassJson(def, $defs, key, base);
+    return resolveClassJson(def, state, key, base);
   }
 
   const exportName = def.$export ?? def.$prototype;
@@ -826,10 +842,10 @@ async function resolveExternalPrototype(def, $defs, key, base) {
           mod = await import(resolvedSrc);
         } catch {
           // Module cannot run in the browser — fall back to dev server proxy
-          return resolveViaDevProxy(def, $defs, key, base);
+          return resolveViaDevProxy(def, state, key, base);
         }
       } else {
-        return resolveViaDevProxy(def, $defs, key, base);
+        return resolveViaDevProxy(def, state, key, base);
       }
     }
     _moduleCache.set(src, mod);
@@ -859,25 +875,21 @@ async function resolveExternalPrototype(def, $defs, key, base) {
     value = instance;
   }
 
-  // signal: true → wrap in ref and subscribe to updates
-  if (def.signal) {
-    const state = ref(value);
-    if (typeof instance.subscribe === "function") {
-      instance.subscribe((newVal) => {
-        state.value = newVal;
-      });
-    }
-    return state;
+  // Always wrap in ref for reactivity with external classes
+  const s = ref(value);
+  if (typeof instance.subscribe === "function") {
+    instance.subscribe((newVal) => {
+      s.value = newVal;
+    });
   }
-
-  return value;
+  return s;
 }
 
 /**
  * Resolve a .class.json schema-defined class.
  * Fetches the schema, follows $implementation if hybrid, or constructs dynamically if self-contained.
  */
-async function resolveClassJson(def, $defs, key, base) {
+async function resolveClassJson(def, state, key, base) {
   const src = def.$src;
   let classDef;
 
@@ -889,7 +901,7 @@ async function resolveClassJson(def, $defs, key, base) {
     classDef = await res.json();
   } catch {
     // Fall back to dev proxy (server will handle .class.json resolution)
-    return resolveViaDevProxy(def, $defs, key, base);
+    return resolveViaDevProxy(def, state, key, base);
   }
 
   // Hybrid mode: $implementation points to the real JS module
@@ -899,7 +911,7 @@ async function resolveClassJson(def, $defs, key, base) {
     const implDef = { ...def, $src: implSrc };
     // Use $export from def, or title from schema, or $prototype from def
     if (!implDef.$export) implDef.$export = classDef.title ?? def.$prototype;
-    return resolveExternalPrototype(implDef, $defs, key, base);
+    return resolveExternalPrototype(implDef, state, key, base);
   }
 
   // Self-contained: construct class dynamically from schema
@@ -919,14 +931,12 @@ async function resolveClassJson(def, $defs, key, base) {
     value = instance;
   }
 
-  if (def.signal) {
-    const state = ref(value);
-    if (typeof instance.subscribe === "function") {
-      instance.subscribe((newVal) => { state.value = newVal; });
-    }
-    return state;
+  // Always wrap in ref for reactivity
+  const s = ref(value);
+  if (typeof instance.subscribe === "function") {
+    instance.subscribe((newVal) => { s.value = newVal; });
   }
-  return value;
+  return s;
 }
 
 /**
@@ -987,7 +997,7 @@ function classFromSchema(classDef) {
  * resolve() call through the JSONsx dev server (POST /__jsonsx_resolve__).
  * Supports reactive template strings in config values via Vue effect().
  */
-async function resolveViaDevProxy(def, $defs, key, base) {
+async function resolveViaDevProxy(def, state, key, base) {
   const config = {};
   for (const [k, v] of Object.entries(def)) {
     if (!EXTERNAL_RESERVED.has(k)) config[k] = v;
@@ -1011,31 +1021,28 @@ async function resolveViaDevProxy(def, $defs, key, base) {
       return r.json();
     });
 
-  if (def.signal) {
-    const state = ref(null);
-    if (hasTemplates) {
-      effect(() => {
-        const resolvedConfig = {};
-        for (const [k, v] of Object.entries(config)) {
-          resolvedConfig[k] = isTemplateString(v) ? evaluateTemplate(v, $defs) : v;
-        }
-        doResolve(resolvedConfig)
-          .then((value) => {
-            state.value = value;
-          })
-          .catch((e) => console.error("JSONsx dev proxy:", e));
-      });
-    } else {
-      doResolve(config)
+  // Always wrap in ref for reactivity
+  const s = ref(null);
+  if (hasTemplates) {
+    effect(() => {
+      const resolvedConfig = {};
+      for (const [k, v] of Object.entries(config)) {
+        resolvedConfig[k] = isTemplateString(v) ? evaluateTemplate(v, state) : v;
+      }
+      doResolve(resolvedConfig)
         .then((value) => {
-          state.value = value;
+          s.value = value;
         })
         .catch((e) => console.error("JSONsx dev proxy:", e));
-    }
-    return state;
+    });
+  } else {
+    doResolve(config)
+      .then((value) => {
+        s.value = value;
+      })
+      .catch((e) => console.error("JSONsx dev proxy:", e));
   }
-
-  return doResolve(config);
+  return s;
 }
 
 // ─── Server function resolution (dev mode) ────────────────────────────────────
@@ -1044,7 +1051,7 @@ async function resolveViaDevProxy(def, $defs, key, base) {
  * Resolve a timing: "server" entry in dev mode by executing the function client-side.
  * In production, the compiler replaces this with a fetch to the generated server handler.
  */
-async function resolveServerFunction(def, $defs, key, base) {
+async function resolveServerFunction(def, state, key, base) {
   const src = def.$src;
   const exportName = def.$export;
 
@@ -1061,10 +1068,10 @@ async function resolveServerFunction(def, $defs, key, base) {
           mod = await import(resolvedSrc);
         } catch {
           // Module cannot run in the browser — fall back to dev server proxy
-          return resolveServerFunctionViaProxy(def, $defs, key, base);
+          return resolveServerFunctionViaProxy(def, state, key, base);
         }
       } else {
-        return resolveServerFunctionViaProxy(def, $defs, key, base);
+        return resolveServerFunctionViaProxy(def, state, key, base);
       }
     }
     _moduleCache.set(src, mod);
@@ -1080,30 +1087,27 @@ async function resolveServerFunction(def, $defs, key, base) {
   const resolveArgs = () => {
     const args = {};
     for (const [k, v] of Object.entries(rawArgs)) {
-      args[k] = isRefObj(v) ? resolveRef(v.$ref, $defs) : v;
+      args[k] = isRefObj(v) ? resolveRef(v.$ref, state) : v;
     }
     return args;
   };
 
-  if (def.signal) {
-    const state = ref(null);
-    if (hasReactiveArg) {
-      effect(() => {
-        const args = resolveArgs();
-        onEffectCleanup(() => {});
-        fn(args)
-          .then((result) => {
-            state.value = result;
-          })
-          .catch(() => {});
-      });
-    } else {
-      state.value = await fn(resolveArgs());
-    }
-    return state;
+  // Always wrap in ref for reactivity
+  const s = ref(null);
+  if (hasReactiveArg) {
+    effect(() => {
+      const args = resolveArgs();
+      onEffectCleanup(() => {});
+      fn(args)
+        .then((result) => {
+          s.value = result;
+        })
+        .catch(() => {});
+    });
+  } else {
+    s.value = await fn(resolveArgs());
   }
-
-  return await fn(resolveArgs());
+  return s;
 }
 
 /**
@@ -1111,14 +1115,14 @@ async function resolveServerFunction(def, $defs, key, base) {
  * proxy the function call through the JSONsx dev server (POST /__jsonsx_server__).
  * Supports reactive $ref arguments via Vue effect().
  */
-async function resolveServerFunctionViaProxy(def, $defs, key, base) {
+async function resolveServerFunctionViaProxy(def, state, key, base) {
   const rawArgs = def.arguments ?? {};
   const hasReactiveArg = Object.values(rawArgs).some((v) => isRefObj(v));
 
   const resolveArgs = () => {
     const args = {};
     for (const [k, v] of Object.entries(rawArgs)) {
-      args[k] = isRefObj(v) ? resolveRef(v.$ref, $defs) : v;
+      args[k] = isRefObj(v) ? resolveRef(v.$ref, state) : v;
     }
     return args;
   };
@@ -1138,29 +1142,26 @@ async function resolveServerFunctionViaProxy(def, $defs, key, base) {
       return r.json();
     });
 
-  if (def.signal) {
-    const state = ref(null);
-    if (hasReactiveArg) {
-      effect(() => {
-        const args = resolveArgs();
-        onEffectCleanup(() => {});
-        doResolve(args)
-          .then((result) => {
-            state.value = result;
-          })
-          .catch((e) => console.error("JSONsx server proxy:", e));
-      });
-    } else {
-      doResolve(resolveArgs())
+  // Always wrap in ref for reactivity
+  const s = ref(null);
+  if (hasReactiveArg) {
+    effect(() => {
+      const args = resolveArgs();
+      onEffectCleanup(() => {});
+      doResolve(args)
         .then((result) => {
-          state.value = result;
+          s.value = result;
         })
         .catch((e) => console.error("JSONsx server proxy:", e));
-    }
-    return state;
+    });
+  } else {
+    doResolve(resolveArgs())
+      .then((result) => {
+        s.value = result;
+      })
+      .catch((e) => console.error("JSONsx server proxy:", e));
   }
-
-  return doResolve(resolveArgs());
+  return s;
 }
 
 /**
@@ -1170,28 +1171,28 @@ async function resolveServerFunctionViaProxy(def, $defs, key, base) {
  * When called inside a effect or computed, the read is tracked.
  *
  * @param {string} ref
- * @param {object} $defs - reactive scope proxy (or child scope)
+ * @param {object} state - reactive scope proxy (or child scope)
  * @returns {*}
  */
-export function resolveRef(ref, $defs) {
+export function resolveRef(ref, state) {
   if (typeof ref !== "string") return ref;
   if (ref.startsWith("$map/")) {
     const parts = ref.split("/");
     const key = parts[1]; // 'item' or 'index'
-    const base = $defs.$map?.[key] ?? $defs["$map/" + key];
+    const base = state.$map?.[key] ?? state["$map/" + key];
     return parts.length > 2 ? getPath(base, parts.slice(2).join("/")) : base;
   }
-  if (ref.startsWith("#/$defs/")) {
-    const sub = ref.slice("#/$defs/".length);
+  if (ref.startsWith("#/state/")) {
+    const sub = ref.slice("#/state/".length);
     const slash = sub.indexOf("/");
-    if (slash < 0) return $defs[sub];
-    return getPath($defs[sub.slice(0, slash)], sub.slice(slash + 1));
+    if (slash < 0) return state[sub];
+    return getPath(state[sub.slice(0, slash)], sub.slice(slash + 1));
   }
-  if (ref.startsWith("parent#/")) return $defs[ref.slice("parent#/".length)];
+  if (ref.startsWith("parent#/")) return state[ref.slice("parent#/".length)];
   if (ref.startsWith("window#/")) return getPath(globalThis.window, ref.slice("window#/".length));
   if (ref.startsWith("document#/"))
     return getPath(globalThis.document, ref.slice("document#/".length));
-  return $defs[ref] ?? null;
+  return state[ref] ?? null;
 }
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
@@ -1213,10 +1214,10 @@ function getPath(obj, path) {
   return path.split(/[./]/).reduce((o, k) => o?.[k], obj);
 }
 
-function mergeProps(def, parent$defs) {
-  const child = Object.create(parent$defs);
+function mergeProps(def, parentState) {
+  const child = Object.create(parentState);
   for (const [k, v] of Object.entries(def.$props ?? {})) {
-    child[k] = isRefObj(v) ? resolveRef(v.$ref, parent$defs) : v;
+    child[k] = isRefObj(v) ? resolveRef(v.$ref, parentState) : v;
   }
   return child;
 }
@@ -1302,71 +1303,71 @@ export async function defineElement(source, base) {
     }
 
     async connectedCallback() {
-      const $defs = await buildScope(def, {}, base);
+      const state = await buildScope(def, {}, base);
 
       // Merge $props set as JS properties by parent before connection
-      for (const key of Object.keys(def.$defs ?? {})) {
+      for (const key of Object.keys(def.state ?? {})) {
         if (key in this && this[key] !== undefined) {
-          $defs[key] = this[key];
+          state[key] = this[key];
         }
       }
       // Set up property getters/setters that forward into reactive state
-      for (const key of Object.keys(def.$defs ?? {})) {
+      for (const key of Object.keys(def.state ?? {})) {
         if (!(key in HTMLElement.prototype)) {
           Object.defineProperty(this, key, {
-            get: () => $defs[key],
+            get: () => state[key],
             set: (v) => {
-              $defs[key] = v;
+              state[key] = v;
             },
             configurable: true,
           });
         }
       }
 
-      this._$defs = $defs;
+      this._state = state;
 
       // Capture light DOM children (for slot distribution) before rendering
       const slottedChildren = Array.from(this.childNodes);
       this.innerHTML = "";
 
       // Render template into light DOM (once, not in effect — inner effects handle reactivity)
-      applyStyle(this, def.style ?? {}, $defs["$media"] ?? {}, $defs);
-      applyAttributes(this, def.attributes ?? {}, $defs);
+      applyStyle(this, def.style ?? {}, state["$media"] ?? {}, state);
+      applyAttributes(this, def.attributes ?? {}, state);
 
       const children = Array.isArray(def.children) ? def.children : [];
       for (const childDef of children) {
-        this.appendChild(renderNode(childDef, $defs));
+        this.appendChild(renderNode(childDef, state));
       }
 
       // Slot distribution (light DOM)
       distributeSlots(this, slottedChildren);
 
       // Lifecycle: onMount
-      if (typeof $defs.onMount === "function") {
-        queueMicrotask(() => $defs.onMount($defs));
+      if (typeof state.onMount === "function") {
+        queueMicrotask(() => state.onMount(state));
       }
     }
 
     disconnectedCallback() {
-      if (typeof this._$defs?.onUnmount === "function") {
-        this._$defs.onUnmount(this._$defs);
+      if (typeof this._state?.onUnmount === "function") {
+        this._state.onUnmount(this._state);
       }
     }
 
     adoptedCallback() {
-      if (typeof this._$defs?.onAdopted === "function") {
-        this._$defs.onAdopted(this._$defs);
+      if (typeof this._state?.onAdopted === "function") {
+        this._state.onAdopted(this._state);
       }
     }
 
     attributeChangedCallback(name, oldVal, newVal) {
-      if (!this._$defs || oldVal === newVal) return;
+      if (!this._state || oldVal === newVal) return;
       const camelKey = name.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
-      const current = this._$defs[camelKey];
-      if (typeof current === "number") this._$defs[camelKey] = Number(newVal);
+      const current = this._state[camelKey];
+      if (typeof current === "number") this._state[camelKey] = Number(newVal);
       else if (typeof current === "boolean")
-        this._$defs[camelKey] = newVal !== null && newVal !== "false";
-      else this._$defs[camelKey] = newVal;
+        this._state[camelKey] = newVal !== null && newVal !== "false";
+      else this._state[camelKey] = newVal;
     }
   };
 
@@ -1376,7 +1377,7 @@ export async function defineElement(source, base) {
 /**
  * Render a registered custom element with $props (property-first interface).
  */
-function renderCustomElementWithProps(def, $defs, options, path) {
+function renderCustomElementWithProps(def, state, options, path) {
   const el = document.createElement(def.tagName);
 
   if (options?.onNodeCreated) options.onNodeCreated(el, path, def);
@@ -1384,15 +1385,15 @@ function renderCustomElementWithProps(def, $defs, options, path) {
   // Set JS properties from $props (before connection)
   for (const [key, val] of Object.entries(def.$props ?? {})) {
     if (isRefObj(val)) {
-      const resolved = resolveRef(val.$ref, $defs);
+      const resolved = resolveRef(val.$ref, state);
       el[key] = resolved;
       // Reactive forwarding: re-set the property when the source changes
       effect(() => {
-        el[key] = resolveRef(val.$ref, $defs);
+        el[key] = resolveRef(val.$ref, state);
       });
     } else if (isTemplateString(val)) {
       effect(() => {
-        el[key] = evaluateTemplate(val, $defs);
+        el[key] = evaluateTemplate(val, state);
       });
     } else {
       el[key] = val;
@@ -1400,13 +1401,13 @@ function renderCustomElementWithProps(def, $defs, options, path) {
   }
 
   // Apply host-level style and attributes from the usage site
-  applyStyle(el, def.style ?? {}, $defs["$media"] ?? {}, $defs);
-  applyAttributes(el, def.attributes ?? {}, $defs);
+  applyStyle(el, def.style ?? {}, state["$media"] ?? {}, state);
+  applyAttributes(el, def.attributes ?? {}, state);
 
   // Append slotted children
   const children = Array.isArray(def.children) ? def.children : [];
   for (let i = 0; i < children.length; i++) {
-    el.appendChild(renderNode(children[i], $defs, options));
+    el.appendChild(renderNode(children[i], state, options));
   }
 
   return el;

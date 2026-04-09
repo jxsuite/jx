@@ -11,17 +11,17 @@ const BASE = "http://localhost/";
 
 describe("buildScope", () => {
   test("loads $src Function and resolves export", async () => {
-    const dataUrl = "data:text/javascript,export function myFn($defs) { return 42; }";
-    const $defs = await buildScope(
+    const dataUrl = "data:text/javascript,export function myFn(state) { return 42; }";
+    const state = await buildScope(
       {
-        $defs: {
+        state: {
           myFn: { $prototype: "Function", $src: dataUrl },
         },
       },
       {},
       BASE,
     );
-    expect(typeof $defs.myFn).toBe("function");
+    expect(typeof state.myFn).toBe("function");
   });
 });
 
@@ -32,7 +32,7 @@ describe("JSONsx", () => {
     await JSONsx(
       {
         tagName: "div",
-        $defs: {
+        state: {
           onMount: { $prototype: "Function", $src: srcUrl },
         },
       },

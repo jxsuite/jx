@@ -28,7 +28,7 @@ import { emitElementModule } from "./compile-element.js";
 export function compileStaticPage(raw, opts) {
   const { title, reactivitySrc, litHtmlSrc } = opts;
 
-  const rootContext = createCompileContext(raw, null, raw.$defs ?? {}, raw.$media ?? {});
+  const rootContext = createCompileContext(raw, null, raw.state ?? {}, raw.$media ?? {});
   const styleBlock = compileStyles(raw, raw.$media ?? {});
   const islands = [];
   const bodyContent = compileNode(raw, false, raw, rootContext, islands);
@@ -82,7 +82,7 @@ function compileNode(def, dynamic, raw, context, islands) {
   const nextContext = createCompileContext(
     raw,
     context.scope,
-    raw?.$defs ?? context.scopeDefs,
+    raw?.state ?? context.scopeDefs,
     raw?.$media ?? context.media,
   );
 

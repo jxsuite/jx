@@ -117,8 +117,8 @@ export async function generateSchema() {
     description:
       "Schema for JSONsx component files. " +
       "A JSONsx document is a JSON object that declaratively describes a reactive " +
-      "web component: its structure (DOM tree), styling, reactive state ($defs), " +
-      "and inline or external functions. Reactivity is powered by @vue/reactivity.",
+      "web component: its structure (DOM tree), styling, type definitions ($defs), " +
+      "runtime state, and inline or external functions. Reactivity is powered by @vue/reactivity.",
     type: "object",
     required: ["tagName"],
 
@@ -137,10 +137,19 @@ export async function generateSchema() {
       },
       $defs: {
         description:
-          "Signal, function, type, and data source declarations for this component. " +
-          "All entries use plain camelCase names (no $ prefix). " +
-          "Entry shape is determined by value type and reserved keywords.",
+          "Pure JSON Schema type definitions for this component. " +
+          "All entries are reusable type schemas — no runtime artifacts are produced. " +
+          "Referenced from state entries via $ref. Naming convention: PascalCase.",
         $ref: "#/$defs/DefsMap",
+      },
+      state: {
+        description:
+          "Runtime variables for this component. All entries are reactive by default. " +
+          "Entry shape is determined by value type: " +
+          "scalar/array → reactive property, string with ${} → computed, " +
+          "object with $prototype → function or data source, " +
+          "object with type and default → typed reactive property.",
+        $ref: "#/$defs/StateMap",
       },
       $media: {
         description:
@@ -165,42 +174,56 @@ export async function generateSchema() {
 
     // ── Reusable sub-schemas ────────────────────────────────────────────────
     $defs: {
-      // ── $defs map ──────────────────────────────────────────────────────────
+      // ── $defs map (type definitions only) ────────────────────────────────
       DefsMap: {
         description:
-          "Map of signal, computed, function, type definition, and data source declarations. " +
-          "Keys are plain camelCase (signals, functions) or PascalCase (type definitions).",
+          "Map of reusable JSON Schema type definitions. " +
+          "Keys are PascalCase type names. No runtime artifacts are produced.",
         type: "object",
-        additionalProperties: { $ref: "#/$defs/DefEntry" },
+        additionalProperties: { $ref: "#/$defs/TypeDefEntry" },
       },
 
-      DefEntry: {
+      TypeDefEntry: {
         description:
-          "A single $defs entry. Shape is determined by value type: " +
-          "scalar/array → naked signal, string with ${} → computed, " +
-          'object with $prototype: "Function" → function, ' +
-          "object with $prototype: <other> → external class, " +
-          "object with default → expanded signal, " +
-          "object with schema keywords only → pure type definition, " +
-          "plain object → naked object signal.",
+          "A $defs type definition entry. Must be a pure JSON Schema type " +
+          "definition or a class definition (.class.json format).",
         oneOf: [
-          // Shape 1: Naked value signal (scalar)
+          { $ref: "#/$defs/PureTypeDef" },
+          { $ref: "#/$defs/ClassDef" },
+        ],
+      },
+
+      // ── state map (runtime variables) ───────────────────────────────────
+      StateMap: {
+        description:
+          "Map of runtime variables. Keys are camelCase (public) or #-prefixed (private). " +
+          "All entries are reactive by default.",
+        type: "object",
+        additionalProperties: { $ref: "#/$defs/StateEntry" },
+      },
+
+      StateEntry: {
+        description:
+          "A single state entry. Shape is determined by value type: " +
+          "scalar/array → naked reactive property, string with ${} → computed, " +
+          'object with $prototype: "Function" → function, ' +
+          "object with $prototype: <other> → data source, " +
+          "object with type and default → typed reactive property, " +
+          "plain object → naked object reactive property.",
+        oneOf: [
+          // Shape 1: Naked value (scalar)
           { type: "number" },
           { type: "boolean" },
           { type: "null" },
           { type: "string" },
           { type: "array" },
-          // Shape 2: Expanded signal (object with default, no $prototype)
-          { $ref: "#/$defs/ExpandedSignalDef" },
-          // Shape 2b: Pure type definition (schema keywords only)
-          { $ref: "#/$defs/PureTypeDef" },
-          // Shape 4: Function ($prototype: "Function")
+          // Shape 2: Typed value (object with type and default, no $prototype)
+          { $ref: "#/$defs/TypedStateDef" },
+          // Shape 3: Function ($prototype: "Function")
           { $ref: "#/$defs/FunctionDef" },
-          // Shape 5: External class ($prototype: <other>)
+          // Shape 4: External class / data source ($prototype: <other>)
           { $ref: "#/$defs/ExternalClassDef" },
-          // Shape 6: Class definition ($prototype: "Class")
-          { $ref: "#/$defs/ClassDef" },
-          // Shape 1: Naked object signal (plain object, no reserved keys)
+          // Shape 1: Naked object (plain object, no reserved keys)
           {
             type: "object",
             not: {
@@ -208,36 +231,43 @@ export async function generateSchema() {
                 { required: ["$prototype"] },
                 { required: ["default"] },
                 { required: ["type"] },
-                { required: ["properties"] },
-                { required: ["items"] },
-                { required: ["enum"] },
               ],
             },
           },
         ],
       },
 
-      // ── Shape 2: Expanded Signal ─────────────────────────────────────────
-      ExpandedSignalDef: {
+      // ── Shape 2: Typed State Variable ──────────────────────────────────
+      TypedStateDef: {
         description:
-          "A reactive state signal with JSON Schema type annotations. " +
-          "The default keyword is the required discriminator — its value is the initial state. " +
-          "signal: true must not be declared — it is implied by default.",
+          "A typed reactive state variable with explicit type and default value. " +
+          "The type property is a JSON Schema or $ref to a $defs type definition. " +
+          "The default property is the initial runtime value.",
         type: "object",
         required: ["default"],
         properties: {
-          default: { description: "Initial signal value." },
-          type: { $ref: "#/$defs/JsonSchemaType" },
+          default: { description: "Initial state value." },
+          type: {
+            description:
+              "JSON Schema type definition, $ref to a $defs type, or JSON Schema type string.",
+            oneOf: [
+              { type: "string" },
+              { type: "object" },
+            ],
+          },
           description: { type: "string" },
-          enum: { type: "array" },
-          minimum: { type: "number" },
-          maximum: { type: "number" },
-          minLength: { type: "integer", minimum: 0 },
-          maxLength: { type: "integer", minimum: 0 },
-          pattern: { type: "string" },
-          items: {},
-          properties: { type: "object" },
-          required: { type: "array", items: { type: "string" } },
+          attribute: {
+            description: "Linked HTML attribute name for CEM extraction.",
+            type: "string",
+          },
+          reflects: {
+            description: "Whether property changes reflect back to the HTML attribute.",
+            type: "boolean",
+          },
+          deprecated: {
+            description: "Deprecation notice for CEM extraction.",
+            oneOf: [{ type: "boolean" }, { type: "string" }],
+          },
           examples: { type: "array" },
           $ref: { description: "Reference to a shared type definition.", type: "string" },
         },
@@ -248,8 +278,8 @@ export async function generateSchema() {
       PureTypeDef: {
         description:
           "A reusable JSON Schema type definition for tooling only. " +
-          "No signal, no function, no runtime artifact. " +
-          "Referenced by other $defs entries via $ref. " +
+          "No function, no runtime artifact. " +
+          "Referenced from state entries via $ref. " +
           "Naming convention: PascalCase.",
         type: "object",
         required: ["type"],
@@ -277,29 +307,39 @@ export async function generateSchema() {
         description:
           'A function declaration. $prototype must be "Function". ' +
           "body (inline) and $src (external) are mutually exclusive. " +
-          "When signal: true, wraps in computed(). " +
-          "First parameter is always $defs (the reactive scope).",
+          "First parameter is always state (the reactive scope).",
         type: "object",
         required: ["$prototype"],
         properties: {
           $prototype: { type: "string", const: "Function" },
           body: {
-            description: "Inline function body string. First implicit parameter is $defs.",
+            description: "Inline function body string. First implicit parameter is state.",
             type: "string",
             examples: [
-              "$defs.count++",
-              '$defs.items.push({ id: Date.now(), text: "", done: false })',
-              'return $defs.score >= 90 ? "gold" : "silver"',
+              "state.count++",
+              'state.items.push({ id: Date.now(), text: "", done: false })',
+              'return state.score >= 90 ? "gold" : "silver"',
             ],
           },
-          arguments: {
-            description: "Additional parameter names after $defs.",
+          parameters: {
+            description:
+              "Function parameters (after the implicit state parameter). " +
+              "Accepts CEM-compatible parameter objects or bare string names for backward compatibility.",
             type: "array",
-            items: { type: "string" },
-            examples: [["event"], ["id"], ["event", "index"]],
+            items: {
+              oneOf: [
+                { type: "string" },
+                { $ref: "#/$defs/CemParameter" },
+              ],
+            },
+            examples: [
+              ["event"],
+              [{ name: "event", type: { text: "Event" } }],
+              [{ name: "id", type: { text: "number" }, description: "Item identifier" }],
+            ],
           },
           name: {
-            description: "Explicit function name. Defaults to the $defs key name.",
+            description: "Explicit function name. Defaults to the state key name.",
             type: "string",
           },
           $src: {
@@ -308,13 +348,18 @@ export async function generateSchema() {
             examples: ["./counter.js", "npm:@myorg/validators"],
           },
           $export: {
-            description: "Named export in $src module. Defaults to the $defs key name.",
+            description: "Named export in $src module. Defaults to the state key name.",
             type: "string",
           },
-          signal: {
+          type: {
+            description: "Return type for tooling (JSON Schema or CEM { text } format).",
+          },
+          emits: {
             description:
-              "When true, wraps the function in computed() — making it a reactive computed signal.",
-            type: "boolean",
+              "Array of CEM-compatible Event objects this function dispatches. " +
+              "Used for CEM extraction and studio event discovery.",
+            type: "array",
+            items: { $ref: "#/$defs/CemEvent" },
           },
           description: { type: "string" },
         },
@@ -491,7 +536,7 @@ export async function generateSchema() {
         description:
           'An external class / data source. $prototype is a constructor name (not "Function"). ' +
           "When $prototype is not in the built-in registry, $src is required. " +
-          "When signal: true, the resolved value is wrapped in ref().",
+          "All state entries are reactive by default.",
         type: "object",
         required: ["$prototype"],
         properties: {
@@ -514,7 +559,6 @@ export async function generateSchema() {
             description: "Named export in $src module. Defaults to the $prototype value.",
             type: "string",
           },
-          signal: { type: "boolean" },
           timing: { type: "string", enum: ["compiler", "server", "client"] },
           manual: { type: "boolean" },
           debounce: { type: "integer", minimum: 0 },
@@ -620,7 +664,7 @@ export async function generateSchema() {
       },
 
       ArrayNamespace: {
-        description: "Dynamic mapped list. Re-renders when the items signal changes.",
+        description: "Dynamic mapped list. Re-renders when the items state entry changes.",
         type: "object",
         required: ["$prototype", "items", "map"],
         properties: {
@@ -637,7 +681,7 @@ export async function generateSchema() {
 
       // ── $switch ───────────────────────────────────────────────────────────
       SwitchDef: {
-        description: "Signal-driven $ref that drives which case to render.",
+        description: "Reactive $ref that drives which case to render.",
         type: "object",
         required: ["$ref"],
         properties: { $ref: { $ref: "#/$defs/InternalRef" } },
@@ -712,7 +756,7 @@ export async function generateSchema() {
 
       // ── $ref types ────────────────────────────────────────────────────────
       RefObject: {
-        description: "A $ref binding. Resolves to a signal (reactive) or plain value (static).",
+        description: "A $ref binding. Resolves to a state entry (reactive) or plain value (static).",
         type: "object",
         required: ["$ref"],
         properties: { $ref: { $ref: "#/$defs/AnyRef" } },
@@ -723,6 +767,7 @@ export async function generateSchema() {
         type: "string",
         oneOf: [
           { $ref: "#/$defs/InternalRef" },
+          { $ref: "#/$defs/StateRef" },
           { $ref: "#/$defs/ExternalRef" },
           { $ref: "#/$defs/GlobalRef" },
           { $ref: "#/$defs/ParentRef" },
@@ -731,10 +776,17 @@ export async function generateSchema() {
       },
 
       InternalRef: {
-        description: "Reference to a $defs entry in the current component.",
+        description: "Reference to a $defs type definition in the current component.",
         type: "string",
         pattern: "^#/\\$defs/",
-        examples: ["#/$defs/count", "#/$defs/increment", "#/$defs/items"],
+        examples: ["#/$defs/Count", "#/$defs/TodoItem", "#/$defs/Status"],
+      },
+
+      StateRef: {
+        description: "Reference to a state entry (runtime variable) in the current component.",
+        type: "string",
+        pattern: "^#/state/",
+        examples: ["#/state/count", "#/state/addTask", "#/state/items"],
       },
 
       ExternalRef: {
@@ -761,7 +813,7 @@ export async function generateSchema() {
       },
 
       ParentRef: {
-        description: "Reference to a named signal passed via $props from a parent component.",
+        description: "Reference to a named state entry passed via $props from a parent component.",
         type: "string",
         pattern: "^parent#/",
         examples: ["parent#/sharedState", "parent#/theme"],
@@ -795,6 +847,39 @@ export async function generateSchema() {
 
       NumberOrRef: {
         oneOf: [{ type: "number" }, { $ref: "#/$defs/RefObject" }],
+      },
+
+      // ── CEM-compatible definitions ────────────────────────────────────────
+      CemParameter: {
+        description:
+          "A CEM-compatible parameter definition for a function. " +
+          "Follows the Custom Elements Manifest Parameter shape.",
+        type: "object",
+        required: ["name"],
+        properties: {
+          name: { description: "Parameter name.", type: "string" },
+          type: { description: "Parameter type (JSON Schema or CEM { text } format)." },
+          description: { description: "Parameter documentation.", type: "string" },
+          optional: { description: "Whether the parameter is optional.", type: "boolean" },
+          default: { description: "Default value for the parameter." },
+        },
+      },
+
+      CemEvent: {
+        description:
+          "A CEM-compatible event definition. " +
+          "Describes a CustomEvent the function dispatches.",
+        type: "object",
+        required: ["name"],
+        properties: {
+          name: { description: "Event name (e.g. 'task-toggled').", type: "string" },
+          type: { description: "Event type (e.g. { text: 'CustomEvent' })." },
+          description: { description: "Event documentation.", type: "string" },
+          deprecated: {
+            description: "Deprecation notice.",
+            oneOf: [{ type: "boolean" }, { type: "string" }],
+          },
+        },
       },
 
       // ── Primitives ────────────────────────────────────────────────────────

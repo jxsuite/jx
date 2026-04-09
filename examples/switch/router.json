@@ -2,7 +2,7 @@
   "$schema": "../../packages/schema/schema.json",
   "$id": "RouterDemo",
 
-  "$defs": {
+  "state": {
     "currentRoute": {
       "type": "string",
       "default": "home",
@@ -10,8 +10,8 @@
     },
     "navigate": {
       "$prototype": "Function",
-      "arguments": ["event"],
-      "body": "const route = event.currentTarget?.dataset?.route ?? event.target?.dataset?.route; if (route) $defs.currentRoute = route;",
+      "parameters": ["event"],
+      "body": "const route = event.currentTarget?.dataset?.route ?? event.target?.dataset?.route; if (route) state.currentRoute = route;",
       "description": "Set currentRoute to the given route key"
     }
   },
@@ -38,7 +38,7 @@
         {
           "tagName": "button",
           "textContent": "Home",
-          "onclick": { "$ref": "#/$defs/navigate" },
+          "onclick": { "$ref": "#/state/navigate" },
           "attributes": { "data-route": "home" },
           "style": {
             "padding": "0.4em 1em",
@@ -54,7 +54,7 @@
         {
           "tagName": "button",
           "textContent": "About",
-          "onclick": { "$ref": "#/$defs/navigate" },
+          "onclick": { "$ref": "#/state/navigate" },
           "attributes": { "data-route": "about" },
           "style": {
             "padding": "0.4em 1em",
@@ -70,7 +70,7 @@
         {
           "tagName": "button",
           "textContent": "Contact",
-          "onclick": { "$ref": "#/$defs/navigate" },
+          "onclick": { "$ref": "#/state/navigate" },
           "attributes": { "data-route": "contact" },
           "style": {
             "padding": "0.4em 1em",
@@ -91,7 +91,7 @@
       "children": [
         {
           "tagName": "div",
-          "$switch": { "$ref": "#/$defs/currentRoute" },
+          "$switch": { "$ref": "#/state/currentRoute" },
           "cases": {
             "home": {
               "tagName": "section",

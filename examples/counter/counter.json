@@ -2,7 +2,7 @@
   "$schema": "../../packages/schema/schema.json",
   "$id": "Counter",
 
-  "$defs": {
+  "state": {
     "count": {
       "type": "integer",
       "default": 0,
@@ -10,23 +10,22 @@
     },
     "label": {
       "$prototype": "Function",
-      "body": "const c = $defs.count; return c > 0 ? 'Clicked ' + c + ' time' + (c === 1 ? '' : 's') : 'Click me!';",
-      "signal": true,
+      "body": "const c = state.count; return c > 0 ? 'Clicked ' + c + ' time' + (c === 1 ? '' : 's') : 'Click me!';",
       "description": "Dynamic button label derived from count"
     },
     "increment": {
       "$prototype": "Function",
-      "body": "$defs.count++",
+      "body": "state.count++",
       "description": "Increase count by 1"
     },
     "decrement": {
       "$prototype": "Function",
-      "body": "$defs.count = Math.max(0, $defs.count - 1)",
+      "body": "state.count = Math.max(0, state.count - 1)",
       "description": "Decrease count by 1"
     },
     "reset": {
       "$prototype": "Function",
-      "body": "$defs.count = 0",
+      "body": "state.count = 0",
       "description": "Reset count to 0"
     }
   },
@@ -47,7 +46,7 @@
   "children": [
     {
       "tagName": "h1",
-      "textContent": { "$ref": "#/$defs/label" },
+      "textContent": { "$ref": "#/state/label" },
       "style": {
         "fontSize": "1.5rem",
         "marginBottom": "0.5rem",
@@ -56,7 +55,7 @@
     },
     {
       "tagName": "p",
-      "textContent": "${$defs.count}",
+      "textContent": "${state.count}",
       "style": {
         "fontSize": "3rem",
         "fontWeight": "bold",
@@ -75,7 +74,7 @@
         {
           "tagName": "button",
           "textContent": "\u2212",
-          "onclick": { "$ref": "#/$defs/decrement" },
+          "onclick": { "$ref": "#/state/decrement" },
           "style": {
             "padding": "0.5rem 1.25rem",
             "fontSize": "1.25rem",
@@ -89,7 +88,7 @@
         {
           "tagName": "button",
           "textContent": "+",
-          "onclick": { "$ref": "#/$defs/increment" },
+          "onclick": { "$ref": "#/state/increment" },
           "style": {
             "padding": "0.5rem 1.25rem",
             "fontSize": "1.25rem",
@@ -104,7 +103,7 @@
         {
           "tagName": "button",
           "textContent": "Reset",
-          "onclick": { "$ref": "#/$defs/reset" },
+          "onclick": { "$ref": "#/state/reset" },
           "style": {
             "padding": "0.5rem 1rem",
             "fontSize": "0.9rem",

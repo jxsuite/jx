@@ -4,37 +4,36 @@ import { compileClient } from "../compile-client.js";
 describe("compileClient", () => {
   test("compiles counter example to pre-rendered HTML with bindings", () => {
     const counter = {
-      $defs: {
+      state: {
         count: { type: "integer", default: 0, description: "Current counter value" },
         label: {
           $prototype: "Function",
-          body: "const c = $defs.count; return c > 0 ? 'Clicked ' + c + ' time' + (c === 1 ? '' : 's') : 'Click me!';",
-          signal: true,
+          body: "const c = state.count; return c > 0 ? 'Clicked ' + c + ' time' + (c === 1 ? '' : 's') : 'Click me!';",
         },
-        increment: { $prototype: "Function", body: "$defs.count++" },
-        decrement: { $prototype: "Function", body: "$defs.count = Math.max(0, $defs.count - 1)" },
-        reset: { $prototype: "Function", body: "$defs.count = 0" },
+        increment: { $prototype: "Function", body: "state.count++" },
+        decrement: { $prototype: "Function", body: "state.count = Math.max(0, state.count - 1)" },
+        reset: { $prototype: "Function", body: "state.count = 0" },
       },
       tagName: "div",
       style: { display: "block", fontFamily: "system-ui, sans-serif" },
       children: [
         {
           tagName: "h1",
-          textContent: { $ref: "#/$defs/label" },
+          textContent: { $ref: "#/state/label" },
           style: { fontSize: "1.5rem", color: "#333" },
         },
         {
           tagName: "p",
-          textContent: "${$defs.count}",
+          textContent: "${state.count}",
           style: { fontSize: "3rem", fontWeight: "bold" },
         },
         {
           tagName: "div",
           style: { display: "flex", gap: "0.5rem" },
           children: [
-            { tagName: "button", textContent: "\u2212", onclick: { $ref: "#/$defs/decrement" } },
-            { tagName: "button", textContent: "+", onclick: { $ref: "#/$defs/increment" } },
-            { tagName: "button", textContent: "Reset", onclick: { $ref: "#/$defs/reset" } },
+            { tagName: "button", textContent: "\u2212", onclick: { $ref: "#/state/decrement" } },
+            { tagName: "button", textContent: "+", onclick: { $ref: "#/state/increment" } },
+            { tagName: "button", textContent: "Reset", onclick: { $ref: "#/state/reset" } },
           ],
         },
       ],
@@ -51,7 +50,7 @@ describe("compileClient", () => {
 
     // HTML should contain data-bind markers
     expect(result.html).toContain("data-bind");
-    expect(result.html).toContain(":textContent=");
+    expect(result.html).toContain(":text-content=");
     expect(result.html).toContain("@click=");
 
     // HTML should contain pre-rendered static content
@@ -62,9 +61,9 @@ describe("compileClient", () => {
     expect(result.html).not.toContain("lit-html");
     expect(result.html).not.toContain("customElements.define");
 
-    // JS module should have reactive $defs, bind, on
+    // JS module should have reactive state, bind, on
     const js = result.files[0].content;
-    expect(js).toContain("const $defs = reactive({");
+    expect(js).toContain("const state = reactive({");
     expect(js).toContain("count: 0,");
     expect(js).toContain("const bind = {");
     expect(js).toContain("const on = {");
@@ -76,12 +75,12 @@ describe("compileClient", () => {
 
   test("extracts default from expanded signals", () => {
     const doc = {
-      $defs: {
+      state: {
         name: { type: "string", default: "World", description: "Name to greet" },
       },
       tagName: "div",
       children: [
-        { tagName: "span", textContent: "${$defs.name}" },
+        { tagName: "span", textContent: "${state.name}" },
       ],
     };
 
@@ -95,16 +94,15 @@ describe("compileClient", () => {
 
   test("handles $ref textContent correctly", () => {
     const doc = {
-      $defs: {
+      state: {
         label: {
           $prototype: "Function",
           body: "return 'Hello';",
-          signal: true,
         },
       },
       tagName: "div",
       children: [
-        { tagName: "h1", textContent: { $ref: "#/$defs/label" } },
+        { tagName: "h1", textContent: { $ref: "#/state/label" } },
       ],
     };
 
@@ -112,19 +110,19 @@ describe("compileClient", () => {
 
     // h1 should have data-bind and :textContent binding
     expect(result.html).toContain('data-bind');
-    expect(result.html).toContain(':textContent="label"');
+    expect(result.html).toContain(':text-content="label"');
     // Should NOT contain [object Object]
     expect(result.html).not.toContain("[object Object]");
   });
 
   test("handles event handlers with $ref", () => {
     const doc = {
-      $defs: {
+      state: {
         doSomething: { $prototype: "Function", body: "console.log('clicked')" },
       },
       tagName: "div",
       children: [
-        { tagName: "button", textContent: "Click", onclick: { $ref: "#/$defs/doSomething" } },
+        { tagName: "button", textContent: "Click", onclick: { $ref: "#/state/doSomething" } },
       ],
     };
 
@@ -136,13 +134,13 @@ describe("compileClient", () => {
 
   test("handles inline event handlers", () => {
     const doc = {
-      $defs: { count: 0 },
+      state: { count: 0 },
       tagName: "div",
       children: [
         {
           tagName: "button",
           textContent: "+",
-          onclick: { $prototype: "Function", body: "$defs.count++" },
+          onclick: { $prototype: "Function", body: "state.count++" },
         },
       ],
     };
@@ -153,18 +151,18 @@ describe("compileClient", () => {
     expect(result.html).toContain("data-bind");
     expect(result.html).toContain("@click=");
     const js = result.files[0].content;
-    expect(js).toContain("$defs.count++");
+    expect(js).toContain("state.count++");
   });
 
   test("handles dynamic style properties", () => {
     const doc = {
-      $defs: { color: "red" },
+      state: { color: "red" },
       tagName: "div",
       children: [
         {
           tagName: "span",
           textContent: "Hello",
-          style: { color: "${$defs.color}", fontSize: "1rem" },
+          style: { color: "${state.color}", fontSize: "1rem" },
         },
       ],
     };
@@ -180,13 +178,13 @@ describe("compileClient", () => {
 
   test("skips schema-only type defs", () => {
     const doc = {
-      $defs: {
+      state: {
         nameType: { type: "string", minLength: 1, maxLength: 100 },
         count: 0,
       },
       tagName: "div",
       children: [
-        { tagName: "span", textContent: "${$defs.count}" },
+        { tagName: "span", textContent: "${state.count}" },
       ],
     };
 
@@ -200,11 +198,11 @@ describe("compileClient", () => {
 
   test("static node without dynamic values has no data-bind", () => {
     const doc = {
-      $defs: { count: 0 },
+      state: { count: 0 },
       tagName: "div",
       children: [
         { tagName: "p", textContent: "Static text" },
-        { tagName: "span", textContent: "${$defs.count}" },
+        { tagName: "span", textContent: "${state.count}" },
       ],
     };
 

@@ -4,12 +4,12 @@
  * Produces clean HTML with `data-bind` marker attributes and a small JS
  * bootstrapper using @vue/reactivity's `effect` + `computed`.
  *
- * Signal functions become computed() on $defs for cross-referencing.
+ * Functions whose body contains `return` become computed() on state.
  * Mapped arrays ($prototype: "Array") use lit-html for efficient rendering.
  *
  * Output pattern:
  *   HTML: pre-rendered with data-bind, :prop="key", @event="key"
- *   JS:   $defs (reactive state + computed signals),
+ *   JS:   state (reactive state + computed signals),
  *         bind (DOM getters), on (event handlers), hydrate()
  */
 
@@ -39,7 +39,7 @@ export function compileClient(raw, opts) {
     modulePath = "app.js",
   } = opts;
 
-  const context = createCompileContext(raw, null, raw.$defs ?? {}, raw.$media ?? {});
+  const context = createCompileContext(raw, null, raw.state ?? {}, raw.$media ?? {});
   const styleBlock = compileStyles(raw, raw.$media ?? {});
 
   // Collectors for bindings and handlers
@@ -47,22 +47,22 @@ export function compileClient(raw, opts) {
   const bindings = new Map(); // key → expression string
   const handlers = new Map(); // key → { body, args }
 
-  // Classify $defs into state, computed, bind, on, and init blocks
+  // Classify state entries into reactive state, computed, bind, on, and init blocks
   const stateEntries = [];     // [key, initValue]  → reactive({...})
-  const computedEntries = [];  // [key, bodyExpr]   → $defs.key = computed(...)
+  const computedEntries = [];  // [key, bodyExpr]   → state.key = computed(...)
   const bindEntries = [];      // [key, bodyExpr]   → bind = {...}
   const onEntries = [];        // [key, { args, body }] → on = {...}
-  const initBlocks = [];       // lines emitted after $defs for prototype init
+  const initBlocks = [];       // lines emitted after state for prototype init
 
   // Map $src path → Set of function names to import
   const srcImportMap = new Map();
 
-  const defs = raw.$defs ?? {};
+  const defs = raw.state ?? {};
   for (const [key, def] of Object.entries(defs)) {
     if (def === null || typeof def !== "object" || Array.isArray(def)) {
       // Naked primitive or array → reactive state
       if (typeof def === "string" && isTemplateString(def)) {
-        // Template string → computed on $defs so other computeds can ref it
+        // Template string → computed on state so other computeds can ref it
         computedEntries.push([key, '() => `' + def + '`']);
       } else {
         stateEntries.push([key, def]);
@@ -72,19 +72,19 @@ export function compileClient(raw, opts) {
 
     // $prototype: "Function"
     if (def.$prototype === "Function") {
+      const args = def.parameters ?? def.arguments;
       if (def.$src) {
         if (!srcImportMap.has(def.$src)) srcImportMap.set(def.$src, new Set());
         srcImportMap.get(def.$src).add(key);
 
-        if (def.signal) {
-          computedEntries.push([key, '() => { return ' + key + '($defs); }']);
-        } else {
-          onEntries.push([key, { imported: true, args: def.arguments ?? ["$defs", "event"] }]);
-        }
-      } else if (def.signal) {
+        // $src functions always produce computed entries (they return values)
+        computedEntries.push([key, '() => { return ' + key + '(state); }']);
+      } else if (def.body && def.body.includes("return")) {
+        // Body contains return → computed
         computedEntries.push([key, '() => { ' + def.body + ' }']);
       } else {
-        onEntries.push([key, { args: def.arguments ?? ["$defs"], body: def.body }]);
+        // No return → event handler
+        onEntries.push([key, { args: args ?? ["state"], body: def.body }]);
       }
       continue;
     }
@@ -185,7 +185,7 @@ function buildClientNode(def, raw, context, bindings, handlers, counter) {
   const nextContext = createCompileContext(
     raw,
     context.scope,
-    raw?.$defs ?? context.scopeDefs,
+    raw?.state ?? context.scopeDefs,
     raw?.$media ?? context.media,
   );
 
@@ -220,7 +220,7 @@ function buildClientNode(def, raw, context, bindings, handlers, counter) {
     } else if (val && typeof val === "object" && val.$prototype === "Function") {
       const key = `_h${counter.h++}`;
       bindAttrs.push(`@${eventName}="${key}"`);
-      handlers.set(key, { args: val.arguments ?? ["$defs", "event"], body: val.body });
+      handlers.set(key, { args: val.parameters ?? val.arguments ?? ["state", "event"], body: val.body });
       needsBind = true;
     }
   }
@@ -306,7 +306,7 @@ function buildClientNode(def, raw, context, bindings, handlers, counter) {
     let itemsExpr;
     if (isRefObject(arrayDef.items)) {
       const path = refToBindingKey(arrayDef.items.$ref);
-      itemsExpr = "$defs." + path;
+      itemsExpr = "state." + path;
     } else {
       itemsExpr = JSON.stringify(arrayDef.items);
     }
@@ -394,7 +394,7 @@ function emitLitMapTemplate(def) {
     const eventName = prop.slice(2).toLowerCase();
     if (isRefObject(val)) {
       const key = refToBindingKey(val.$ref);
-      attrs += " @" + eventName + "=${(e) => { $defs.$map = { item, index }; on." + key + "(e); }}";
+      attrs += " @" + eventName + "=${(e) => { state.$map = { item, index }; on." + key + "(e); }}";
     } else if (val && typeof val === "object" && val.$prototype === "Function") {
       const body = mapRefsToLit(val.body);
       attrs += " @" + eventName + "=${(e) => { " + body + " }}";
@@ -414,7 +414,7 @@ function emitLitMapTemplate(def) {
       inner = mapRefsToLit(tc);
     } else if (isRefObject(def.textContent)) {
       const path = refToBindingKey(def.textContent.$ref);
-      inner = "${$defs." + path + "}";
+      inner = "${state." + path + "}";
     } else {
       inner = escapeHtml(tc);
     }
@@ -462,8 +462,8 @@ function emitClientModule(stateEntries, computedEntries, bindEntries, onEntries,
 
   lines.push("");
 
-  // $defs — reactive state
-  lines.push("const $defs = reactive({");
+  // state — reactive state
+  lines.push("const state = reactive({");
   for (const [key, val] of stateEntries) {
     lines.push("  " + key + ": " + JSON.stringify(val) + ",");
   }
@@ -478,10 +478,10 @@ function emitClientModule(stateEntries, computedEntries, bindEntries, onEntries,
     lines.push("");
   }
 
-  // Computed signals on $defs
+  // Computed signals on state
   if (computedEntries.length > 0) {
     for (const [key, expr] of computedEntries) {
-      lines.push("$defs." + key + " = computed(" + expr + ");");
+      lines.push("state." + key + " = computed(" + expr + ");");
     }
     lines.push("");
   }
@@ -503,12 +503,12 @@ function emitClientModule(stateEntries, computedEntries, bindEntries, onEntries,
     lines.push("const on = {");
     for (const [key, def] of onEntries) {
       if (def.imported) {
-        const argNames = def.args ?? ["$defs"];
-        const callArgs = argNames.map(a => a === "$defs" ? "$defs" : "e").join(", ");
+        const argNames = def.args ?? ["state"];
+        const callArgs = argNames.map(a => a === "state" ? "state" : "e").join(", ");
         lines.push("  " + key + ": (e) => { " + key + "(" + callArgs + "); },");
       } else {
-        const argNames = def.args ?? ["$defs"];
-        const callArgs = argNames.map(a => a === "$defs" ? "$defs" : "e").join(", ");
+        const argNames = def.args ?? ["state"];
+        const callArgs = argNames.map(a => a === "state" ? "state" : "e").join(", ");
         lines.push("  " + key + ": (e) => { const fn = (" + argNames.join(", ") + ") => { " + def.body + " }; fn(" + callArgs + "); },");
       }
     }
@@ -585,8 +585,8 @@ function emitRequestInit(key, def) {
   const optsStr = fetchOpts.length > 0 ? ", { " + fetchOpts.join(", ") + " }" : "";
   lines.push("  fetch(url" + optsStr + ")");
   lines.push("    .then(r => r.ok ? r.json() : Promise.reject(r.statusText))");
-  lines.push("    .then(d => { $defs." + key + " = d; })");
-  lines.push("    .catch(e => { $defs." + key + " = { error: String(e) }; });");
+  lines.push("    .then(d => { state." + key + " = d; })");
+  lines.push("    .catch(e => { state." + key + " = { error: String(e) }; });");
   lines.push("});");
 
   return lines.join("\n");
@@ -597,10 +597,10 @@ function emitStorageInit(key, storeName, storageKey, defaultVal) {
   lines.push("// " + key + ": " + storeName + ' (key: "' + storageKey + '")');
   lines.push("try {");
   lines.push("  const _s = " + storeName + ".getItem(" + JSON.stringify(storageKey) + ");");
-  lines.push("  $defs." + key + " = _s !== null ? JSON.parse(_s) : " + JSON.stringify(defaultVal) + ";");
-  lines.push("} catch { $defs." + key + " = " + JSON.stringify(defaultVal) + "; }");
+  lines.push("  state." + key + " = _s !== null ? JSON.parse(_s) : " + JSON.stringify(defaultVal) + ";");
+  lines.push("} catch { state." + key + " = " + JSON.stringify(defaultVal) + "; }");
   lines.push("effect(() => {");
-  lines.push("  const v = $defs." + key + ";");
+  lines.push("  const v = state." + key + ";");
   lines.push("  try {");
   lines.push("    if (v === null) " + storeName + ".removeItem(" + JSON.stringify(storageKey) + ");");
   lines.push("    else " + storeName + ".setItem(" + JSON.stringify(storageKey) + ", JSON.stringify(v));");
@@ -614,8 +614,8 @@ function emitCookieInit(key, cookieName, defaultVal) {
   lines.push("// " + key + ': Cookie (name: "' + cookieName + '")');
   lines.push("{");
   lines.push('  const _m = document.cookie.match(new RegExp("(?:^|; )' + cookieName + '=([^;]*)"));');
-  lines.push("  try { $defs." + key + " = _m ? JSON.parse(decodeURIComponent(_m[1])) : " + JSON.stringify(defaultVal) + "; }");
-  lines.push("  catch { $defs." + key + " = _m ? _m[1] : " + JSON.stringify(defaultVal) + "; }");
+  lines.push("  try { state." + key + " = _m ? JSON.parse(decodeURIComponent(_m[1])) : " + JSON.stringify(defaultVal) + "; }");
+  lines.push("  catch { state." + key + " = _m ? _m[1] : " + JSON.stringify(defaultVal) + "; }");
   lines.push("}");
   return lines.join("\n");
 }
@@ -623,19 +623,19 @@ function emitCookieInit(key, cookieName, defaultVal) {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function refToBindingKey(ref) {
-  if (ref.startsWith("#/$defs/")) {
-    return ref.slice("#/$defs/".length).replace(/\//g, "_");
+  if (ref.startsWith("#/state/")) {
+    return ref.slice("#/state/".length).replace(/\//g, "_");
   }
   return ref.replace(/\//g, "_");
 }
 
 function addRefBinding(bindings, key, ref) {
   if (bindings.has(key)) return;
-  if (ref.startsWith("#/$defs/")) {
-    const path = ref.slice("#/$defs/".length);
+  if (ref.startsWith("#/state/")) {
+    const path = ref.slice("#/state/".length);
     const parts = path.split("/");
-    bindings.set(key, "() => $defs." + parts.join("."));
+    bindings.set(key, "() => state." + parts.join("."));
   } else {
-    bindings.set(key, "() => $defs." + ref);
+    bindings.set(key, "() => state." + ref);
   }
 }

@@ -6,7 +6,7 @@
     { "$ref": "./components/task-item.json" },
     { "$ref": "./components/task-stats.json" }
   ],
-  "$defs": {
+  "state": {
     "tasks": [
       { "id": 1, "text": "Read the JSONsx spec", "done": true },
       { "id": 2, "text": "Build a custom element", "done": false },
@@ -18,24 +18,23 @@
 
     "addTask": {
       "$prototype": "Function",
-      "body": "const text = $defs.newTaskText.trim(); if (!text) return; $defs.tasks.push({ id: $defs.nextId++, text, done: false }); $defs.newTaskText = ''"
+      "body": "const text = state.newTaskText.trim(); if (!text) return; state.tasks.push({ id: state.nextId++, text, done: false }); state.newTaskText = ''"
     },
 
     "handleKeydown": {
       "$prototype": "Function",
-      "arguments": ["$defs", "event"],
-      "body": "if (event.key === 'Enter') $defs.addTask($defs)"
+      "parameters": ["state", "event"],
+      "body": "if (event.key === 'Enter') state.addTask(state)"
     },
 
     "filteredTasks": {
       "$prototype": "Function",
-      "signal": true,
-      "body": "const f = $defs.filter; if (f === 'active') return $defs.tasks.filter(t => !t.done); if (f === 'done') return $defs.tasks.filter(t => t.done); return $defs.tasks"
+      "body": "const f = state.filter; if (f === 'active') return state.tasks.filter(t => !t.done); if (f === 'done') return state.tasks.filter(t => t.done); return state.tasks"
     },
 
     "clearDone": {
       "$prototype": "Function",
-      "body": "$defs.tasks = $defs.tasks.filter(t => !t.done)"
+      "body": "state.tasks = state.tasks.filter(t => !t.done)"
     }
   },
 
@@ -71,13 +70,13 @@
             {
               "tagName": "input",
               "attributes": { "type": "text", "placeholder": "Add a task..." },
-              "value": { "$ref": "#/$defs/newTaskText" },
+              "value": { "$ref": "#/state/newTaskText" },
               "oninput": {
                 "$prototype": "Function",
-                "arguments": ["$defs", "event"],
-                "body": "$defs.newTaskText = event.target.value"
+                "parameters": ["state", "event"],
+                "body": "state.newTaskText = event.target.value"
               },
-              "onkeydown": { "$ref": "#/$defs/handleKeydown" },
+              "onkeydown": { "$ref": "#/state/handleKeydown" },
               "style": {
                 "flex": "1",
                 "padding": "0.5em 0.75em",
@@ -89,7 +88,7 @@
             {
               "tagName": "button",
               "textContent": "Add",
-              "onclick": { "$ref": "#/$defs/addTask" },
+              "onclick": { "$ref": "#/state/addTask" },
               "style": {
                 "padding": "0.5em 1.25em",
                 "border": "none",
@@ -115,13 +114,13 @@
           "textContent": "All",
           "onclick": {
             "$prototype": "Function",
-            "body": "$defs.filter = 'all'"
+            "body": "state.filter = 'all'"
           },
           "style": {
             "flex": "1", "padding": "0.6em", "border": "none", "cursor": "pointer",
-            "fontWeight": "${$defs.filter === 'all' ? 'bold' : 'normal'}",
-            "backgroundColor": "${$defs.filter === 'all' ? '#e7f1ff' : 'white'}",
-            "color": "${$defs.filter === 'all' ? '#007bff' : '#666'}"
+            "fontWeight": "${state.filter === 'all' ? 'bold' : 'normal'}",
+            "backgroundColor": "${state.filter === 'all' ? '#e7f1ff' : 'white'}",
+            "color": "${state.filter === 'all' ? '#007bff' : '#666'}"
           }
         },
         {
@@ -129,13 +128,13 @@
           "textContent": "Active",
           "onclick": {
             "$prototype": "Function",
-            "body": "$defs.filter = 'active'"
+            "body": "state.filter = 'active'"
           },
           "style": {
             "flex": "1", "padding": "0.6em", "border": "none", "borderLeft": "1px solid #eee", "cursor": "pointer",
-            "fontWeight": "${$defs.filter === 'active' ? 'bold' : 'normal'}",
-            "backgroundColor": "${$defs.filter === 'active' ? '#e7f1ff' : 'white'}",
-            "color": "${$defs.filter === 'active' ? '#007bff' : '#666'}"
+            "fontWeight": "${state.filter === 'active' ? 'bold' : 'normal'}",
+            "backgroundColor": "${state.filter === 'active' ? '#e7f1ff' : 'white'}",
+            "color": "${state.filter === 'active' ? '#007bff' : '#666'}"
           }
         },
         {
@@ -143,13 +142,13 @@
           "textContent": "Done",
           "onclick": {
             "$prototype": "Function",
-            "body": "$defs.filter = 'done'"
+            "body": "state.filter = 'done'"
           },
           "style": {
             "flex": "1", "padding": "0.6em", "border": "none", "borderLeft": "1px solid #eee", "cursor": "pointer",
-            "fontWeight": "${$defs.filter === 'done' ? 'bold' : 'normal'}",
-            "backgroundColor": "${$defs.filter === 'done' ? '#e7f1ff' : 'white'}",
-            "color": "${$defs.filter === 'done' ? '#007bff' : '#666'}"
+            "fontWeight": "${state.filter === 'done' ? 'bold' : 'normal'}",
+            "backgroundColor": "${state.filter === 'done' ? '#e7f1ff' : 'white'}",
+            "color": "${state.filter === 'done' ? '#007bff' : '#666'}"
           }
         }
       ]
@@ -160,12 +159,12 @@
       "style": { "backgroundColor": "white" },
       "children": {
         "$prototype": "Array",
-        "items": { "$ref": "#/$defs/filteredTasks" },
+        "items": { "$ref": "#/state/filteredTasks" },
         "map": {
           "tagName": "task-item",
           "$props": {
             "task": { "$ref": "$map/item" },
-            "tasks": { "$ref": "#/$defs/tasks" }
+            "tasks": { "$ref": "#/state/tasks" }
           }
         }
       }
@@ -184,7 +183,7 @@
         {
           "tagName": "button",
           "textContent": "Clear completed",
-          "onclick": { "$ref": "#/$defs/clearDone" },
+          "onclick": { "$ref": "#/state/clearDone" },
           "style": {
             "border": "1px solid #dee2e6",
             "borderRadius": "4px",
@@ -202,7 +201,7 @@
     {
       "tagName": "task-stats",
       "$props": {
-        "tasks": { "$ref": "#/$defs/tasks" }
+        "tasks": { "$ref": "#/state/tasks" }
       }
     }
   ]

@@ -1,25 +1,25 @@
 /**
  * todo-app.js — external functions for todo-app.json
  *
- * With the new $defs grammar, handlers are defined inline as
+ * With the new state grammar, handlers are defined inline as
  * $prototype: "Function" entries with `body`. This sidecar is
  * kept as documentation of the external $src pattern.
  */
 
-export function addItem($defs, event) {
+export function addItem(state, event) {
   if (event.key !== 'Enter') return;
   const text = event.target.value.trim();
   if (!text) return;
-  $defs.items.push({ id: Date.now(), text, done: false });
+  state.items.push({ id: Date.now(), text, done: false });
   event.target.value = '';
 }
 
-export function toggleItem($defs, _event) {
-  const index = $defs.$map?.index ?? -1;
+export function toggleItem(state, _event) {
+  const index = state.$map?.index ?? -1;
   if (index < 0) return;
-  $defs.items[index].done = !$defs.items[index].done;
+  state.items[index].done = !state.items[index].done;
 }
 
-export function clearDone($defs) {
-  $defs.items.splice(0, $defs.items.length, ...$defs.items.filter(item => !item.done));
+export function clearDone(state) {
+  state.items.splice(0, state.items.length, ...state.items.filter(item => !item.done));
 }

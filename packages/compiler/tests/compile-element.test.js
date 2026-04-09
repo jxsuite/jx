@@ -11,8 +11,8 @@ describe("compileElement", () => {
   test("compiles a simple custom element from a raw object", async () => {
     const result = await compileElement({
       tagName: "test-basic",
-      $defs: { count: 0 },
-      children: [{ tagName: "span", textContent: "${$defs.count}" }],
+      state: { count: 0 },
+      children: [{ tagName: "span", textContent: "${state.count}" }],
     });
 
     expect(result.files).toHaveLength(1);
@@ -24,10 +24,10 @@ describe("compileElement", () => {
     expect(file.content).toContain("import { render, html } from 'lit-html'");
   });
 
-  test("reactive state from $defs", async () => {
+  test("reactive state from state", async () => {
     const result = await compileElement({
       tagName: "test-state",
-      $defs: { label: "hello", count: 0, items: [1, 2, 3] },
+      state: { label: "hello", count: 0, items: [1, 2, 3] },
       children: [],
     });
 
@@ -41,30 +41,29 @@ describe("compileElement", () => {
   test("functions become methods on state", async () => {
     const result = await compileElement({
       tagName: "test-fn",
-      $defs: {
+      state: {
         count: 0,
         increment: {
           $prototype: "Function",
-          body: "$defs.count++",
+          body: "state.count++",
         },
       },
       children: [],
     });
 
     const content = result.files[0].content;
-    expect(content).toContain("this.state.increment = ($defs) => {");
-    expect(content).toContain("$defs.count++");
+    expect(content).toContain("this.state.increment = (state) => {");
+    expect(content).toContain("state.count++");
   });
 
   test("signal functions become computed", async () => {
     const result = await compileElement({
       tagName: "test-computed",
-      $defs: {
+      state: {
         items: [],
         total: {
           $prototype: "Function",
-          signal: true,
-          body: "return $defs.items.length",
+          body: "return state.items.length",
         },
       },
       children: [],
@@ -78,7 +77,7 @@ describe("compileElement", () => {
   test("connectedCallback merges properties and starts effect", async () => {
     const result = await compileElement({
       tagName: "test-connect",
-      $defs: { x: 1 },
+      state: { x: 1 },
       children: [],
     });
 
@@ -91,7 +90,7 @@ describe("compileElement", () => {
   test("disconnectedCallback disposes effect", async () => {
     const result = await compileElement({
       tagName: "test-disconnect",
-      $defs: {},
+      state: {},
       children: [],
     });
 
@@ -102,7 +101,7 @@ describe("compileElement", () => {
 
   test("throws for non-hyphenated tagName", async () => {
     try {
-      await compileElement({ tagName: "nohyphen", $defs: {} });
+      await compileElement({ tagName: "nohyphen", state: {} });
       expect(true).toBe(false);
     } catch (e) {
       expect(e.message).toContain("must contain a hyphen");
@@ -112,7 +111,7 @@ describe("compileElement", () => {
   test("tagName converts to PascalCase class name", async () => {
     const result = await compileElement({
       tagName: "my-cool-element",
-      $defs: {},
+      state: {},
       children: [],
     });
 
@@ -126,8 +125,8 @@ describe("compileElement — templates", () => {
   test("textContent with template string", async () => {
     const result = await compileElement({
       tagName: "test-text",
-      $defs: { name: "world" },
-      children: [{ tagName: "span", textContent: "${$defs.name}" }],
+      state: { name: "world" },
+      children: [{ tagName: "span", textContent: "${state.name}" }],
     });
 
     const content = result.files[0].content;
@@ -137,7 +136,7 @@ describe("compileElement — templates", () => {
   test("static textContent", async () => {
     const result = await compileElement({
       tagName: "test-static-text",
-      $defs: {},
+      state: {},
       children: [{ tagName: "span", textContent: "Hello" }],
     });
 
@@ -148,7 +147,7 @@ describe("compileElement — templates", () => {
   test("inline style", async () => {
     const result = await compileElement({
       tagName: "test-style",
-      $defs: {},
+      state: {},
       children: [
         {
           tagName: "div",
@@ -166,11 +165,11 @@ describe("compileElement — templates", () => {
   test("dynamic style with template expression", async () => {
     const result = await compileElement({
       tagName: "test-dyn-style",
-      $defs: { active: true },
+      state: { active: true },
       children: [
         {
           tagName: "div",
-          style: { color: "${$defs.active ? 'red' : 'gray'}" },
+          style: { color: "${state.active ? 'red' : 'gray'}" },
         },
       ],
     });
@@ -182,13 +181,13 @@ describe("compileElement — templates", () => {
   test("event handlers from $ref", async () => {
     const result = await compileElement({
       tagName: "test-event",
-      $defs: {
+      state: {
         handleClick: { $prototype: "Function", body: 'console.log("clicked")' },
       },
       children: [
         {
           tagName: "button",
-          onclick: { $ref: "#/$defs/handleClick" },
+          onclick: { $ref: "#/state/handleClick" },
           textContent: "Click",
         },
       ],
@@ -202,11 +201,11 @@ describe("compileElement — templates", () => {
   test("inline event handler", async () => {
     const result = await compileElement({
       tagName: "test-inline-event",
-      $defs: { count: 0 },
+      state: { count: 0 },
       children: [
         {
           tagName: "button",
-          onclick: { $prototype: "Function", body: "$defs.count++" },
+          onclick: { $prototype: "Function", body: "state.count++" },
           textContent: "Inc",
         },
       ],
@@ -220,12 +219,12 @@ describe("compileElement — templates", () => {
   test("$props on custom element child", async () => {
     const result = await compileElement({
       tagName: "test-props",
-      $defs: { data: [] },
+      state: { data: [] },
       children: [
         {
           tagName: "child-el",
           $props: {
-            items: { $ref: "#/$defs/data" },
+            items: { $ref: "#/state/data" },
             label: "test",
           },
         },
@@ -240,10 +239,10 @@ describe("compileElement — templates", () => {
   test("mapped array", async () => {
     const result = await compileElement({
       tagName: "test-map",
-      $defs: { items: [1, 2, 3] },
+      state: { items: [1, 2, 3] },
       children: {
         $prototype: "Array",
-        items: { $ref: "#/$defs/items" },
+        items: { $ref: "#/state/items" },
         map: {
           tagName: "div",
           textContent: "${$map.item}",
@@ -259,7 +258,7 @@ describe("compileElement — templates", () => {
   test("attributes", async () => {
     const result = await compileElement({
       tagName: "test-attrs",
-      $defs: {},
+      state: {},
       children: [
         {
           tagName: "input",
@@ -330,8 +329,8 @@ describe("compileElementPage", () => {
     const result = await compileElementPage(
       {
         tagName: "test-page",
-        $defs: { x: 1 },
-        children: [{ tagName: "span", textContent: "${$defs.x}" }],
+        state: { x: 1 },
+        children: [{ tagName: "span", textContent: "${state.x}" }],
       },
       { title: "Test Page" },
     );

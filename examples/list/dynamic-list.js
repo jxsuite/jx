@@ -2,48 +2,48 @@
  * dynamic-list.js — handlers for the dynamic list demo.
  *
  * Editable items: click to edit inline, Enter to save, Escape to cancel.
- * All mutations to $defs.items are automatically persisted by the
+ * All mutations to state.items are automatically persisted by the
  * LocalStorage prototype — no explicit save calls required.
  */
 
-export function addItem($defs) {
-  const text = $defs.newText.trim();
+export function addItem(state) {
+  const text = state.newText.trim();
   if (!text) return;
-  $defs.items.push(text);
-  $defs.newText = '';
+  state.items.push(text);
+  state.newText = '';
 }
 
-export function addKeydown($defs, event) {
-  if (event.key === 'Enter') addItem($defs);
+export function addKeydown(state, event) {
+  if (event.key === 'Enter') addItem(state);
 }
 
-export function removeItem($defs) {
-  const index = $defs.$map?.index ?? -1;
+export function removeItem(state) {
+  const index = state.$map?.index ?? -1;
   if (index < 0) return;
-  $defs.items.splice(index, 1);
+  state.items.splice(index, 1);
 }
 
-export function saveEdit($defs, event) {
-  const index = $defs.$map?.index ?? -1;
+export function saveEdit(state, event) {
+  const index = state.$map?.index ?? -1;
   if (index < 0) return;
   const newText = event.target.textContent.trim();
   if (!newText) {
-    event.target.textContent = $defs.$map?.item ?? '';
+    event.target.textContent = state.$map?.item ?? '';
     return;
   }
-  $defs.items[index] = newText;
+  state.items[index] = newText;
 }
 
-export function editKeydown($defs, event) {
+export function editKeydown(state, event) {
   if (event.key === 'Enter') {
     event.preventDefault();
     event.target.blur();
   } else if (event.key === 'Escape') {
-    event.target.textContent = $defs.$map?.item ?? '';
+    event.target.textContent = state.$map?.item ?? '';
     event.target.blur();
   }
 }
 
-export function updateText($defs, event) {
-  $defs.newText = event.target.value;
+export function updateText(state, event) {
+  state.newText = event.target.value;
 }

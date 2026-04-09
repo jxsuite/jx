@@ -18,7 +18,7 @@ const OXLINT_BIN = resolve(
 
 // ─── Wrapper utilities ───────────────────────────────────────────────────────
 
-function wrapBody(body, args = ["$defs", "event"]) {
+function wrapBody(body, args = ["state", "event"]) {
 	const params = args.join(", ");
 	return `function __jsonsx_fn__(${params}) {\n${body}\n}`;
 }

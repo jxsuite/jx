@@ -1,4 +1,4 @@
 // Named export for onMount test
-export function onMount($defs) {
+export function onMount(state) {
   globalThis._testMounted = true;
 }
