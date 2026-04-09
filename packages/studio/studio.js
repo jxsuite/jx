@@ -2812,20 +2812,25 @@ function registerStylebookPanelEvents(panel) {
     overlayClk.style.display = "";
     for (const el of els) el.style.pointerEvents = "none";
 
-    // Find the closest element with a stylebook tag mapping
+    // Find the closest element with a stylebook tag mapping (walk up parents for nested elements)
     for (const el of elements) {
       if (!canvas.contains(el) || el === canvas) continue;
-      const tag = stylebookElToTag.get(el);
-      if (tag) {
-        S = {
-          ...S,
-          selection: [],
-          ui: { ...S.ui, stylebookSelection: tag, rightTab: "style", activeSelector: `& ${tag}` },
-        };
-        renderStylebookOverlays();
-        renderRightPanel();
-        renderToolbar();
-        return;
+      let cur = el;
+      while (cur && cur !== canvas) {
+        const tag = stylebookElToTag.get(cur);
+        if (tag) {
+          S = {
+            ...S,
+            selection: [],
+            ui: { ...S.ui, stylebookSelection: tag, rightTab: "style", activeSelector: `& ${tag}` },
+          };
+          renderStylebookOverlays();
+          renderRightPanel();
+          renderLeftPanel();
+          renderToolbar();
+          return;
+        }
+        cur = cur.parentElement;
       }
     }
     // Clicked empty area — deselect
@@ -2846,8 +2851,13 @@ function registerStylebookPanelEvents(panel) {
     let hoverTag = null;
     for (const el of elements) {
       if (!canvas.contains(el) || el === canvas) continue;
-      const tag = stylebookElToTag.get(el);
-      if (tag) { hoverTag = tag; break; }
+      let cur = el;
+      while (cur && cur !== canvas) {
+        const tag = stylebookElToTag.get(cur);
+        if (tag) { hoverTag = tag; break; }
+        cur = cur.parentElement;
+      }
+      if (hoverTag) break;
     }
 
     if (hoverTag !== panel._lastHoverTag) {
