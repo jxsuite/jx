@@ -43,6 +43,7 @@
               processes = {
                 chrome-debugging.exec = ''
                   # Ensure Chrome is running with remote debugging
+                  rm -rf "$DEVENV_STATE/chrome-devtools"
                   if ! lsof -Pi :9222 -sTCP:LISTEN -t >/dev/null 2>&1; then
                     mkdir -p "$DEVENV_STATE/chrome-devtools"
                     google-chrome \

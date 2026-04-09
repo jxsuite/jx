@@ -359,6 +359,7 @@ let canvasMode = "edit";
 
 /** Component-mode inline text editing state: { el, path, originalText } or null */
 let componentInlineEdit = null;
+let pendingInlineEdit = null; // { path, mediaName } — set when we want to enter edit after next render
 
 /** Active Monaco editor instance (or null when in canvas mode) */
 let monacoEditor = null;
@@ -585,6 +586,8 @@ async function renderCanvasLive(doc, canvasEl) {
       // sweep again after they've had a chance to run
       requestAnimationFrame(() => {
         for (const child of canvasEl.querySelectorAll("*")) {
+          // Preserve pointer-events on the actively-edited element
+          if (componentInlineEdit && child === componentInlineEdit.el) continue;
           child.style.pointerEvents = "none";
         }
       });
@@ -692,6 +695,19 @@ function update(newState) {
   renderOverlays();
   updateForcedPseudoPreview();
   renderStatusbar();
+
+  // Process pending inline edit. If renderCanvas was NOT called (selection-only change),
+  // the canvas DOM is already populated — enter edit synchronously.
+  // If renderCanvas WAS called, the async .then() will handle it instead.
+  if (pendingInlineEdit && prevDoc === S.document) {
+    const { path, mediaName: mn } = pendingInlineEdit;
+    pendingInlineEdit = null;
+    const targetPanel = canvasPanels.find(p => p.mediaName === mn) || canvasPanels[0];
+    if (targetPanel) {
+      const el = findCanvasElement(path, targetPanel.canvas);
+      if (el) enterComponentInlineEdit(el, path);
+    }
+  }
 }
 
 // ─── Media helpers ────────────────────────────────────────────────────────────
@@ -939,6 +955,17 @@ function renderCanvasIntoPanel(panel, activeBreakpoints, featureToggles) {
     registerPanelDnD(panel);
     registerPanelEvents(panel);
     renderOverlays();
+
+    // Process pending inline edit now that the canvas is populated
+    if (pendingInlineEdit) {
+      const { path, mediaName: mn } = pendingInlineEdit;
+      pendingInlineEdit = null;
+      const targetPanel = canvasPanels.find(p => p.mediaName === mn) || canvasPanels[0];
+      if (targetPanel) {
+        const el = findCanvasElement(path, targetPanel.canvas);
+        if (el) enterComponentInlineEdit(el, path);
+      }
+    }
   });
 }
 
@@ -1600,18 +1627,8 @@ function registerPanelEvents(panel) {
     return result;
   }
 
-  // Prevent blur when clicking within an active component inline edit
-  overlayClk.addEventListener("mousedown", (e) => {
-    if (componentInlineEdit) {
-      const rect = componentInlineEdit.el.getBoundingClientRect();
-      const inBounds =
-        e.clientX >= rect.left && e.clientX <= rect.right &&
-        e.clientY >= rect.top && e.clientY <= rect.bottom;
-      if (inBounds) {
-        e.preventDefault(); // prevent focus change → prevents blur on the editing element
-      }
-    }
-  });
+  // During component inline edit, the overlayClk is disabled (see enterComponentInlineEdit).
+  // No mousedown passthrough needed — native events reach the contenteditable directly.
 
   overlayClk.addEventListener("click", (e) => {
     // If content-mode inline editing is active, treat click outside as blur
@@ -1619,32 +1636,8 @@ function registerPanelEvents(panel) {
       stopEditing();
     }
 
-    // Component-mode inline editing: handle click-within-text vs click-elsewhere
-    if (componentInlineEdit) {
-      const el = componentInlineEdit.el;
-      const rect = el.getBoundingClientRect();
-      const inBounds =
-        e.clientX >= rect.left && e.clientX <= rect.right &&
-        e.clientY >= rect.top && e.clientY <= rect.bottom;
-
-      if (inBounds) {
-        // Position cursor within the editing element via caretRangeFromPoint
-        overlayClk.style.display = "none";
-        const range = document.caretRangeFromPoint
-          ? document.caretRangeFromPoint(e.clientX, e.clientY)
-          : null;
-        overlayClk.style.display = "";
-        if (range) {
-          const sel = window.getSelection();
-          sel.removeAllRanges();
-          sel.addRange(range);
-        }
-        return;
-      }
-
-      // Clicked elsewhere — commit the current edit, then fall through to select new element
-      commitComponentInlineEdit();
-    }
+    // Component-mode inline editing is handled by its own document-level listener
+    // (see enterComponentInlineEdit), so nothing to do here — just fall through.
 
     const elements = withPanelPointerEvents(() => document.elementsFromPoint(e.clientX, e.clientY));
 
@@ -1661,12 +1654,10 @@ function registerPanelEvents(panel) {
             return;
           }
 
-          // Component mode: select and immediately enter inline editing
-          if (S.mode === "component") {
+          // Component/JSON mode: select and schedule inline editing after render completes
+          if (S.mode !== "content") {
+            pendingInlineEdit = { path, mediaName };
             update(selectNode(S, path));
-            // update() rebuilds canvas DOM, so find the fresh element for this path
-            const newEl = findCanvasElement(path, canvas);
-            if (newEl) enterComponentInlineEdit(newEl, path);
             return;
           }
 
@@ -1855,7 +1846,7 @@ function enterComponentInlineEdit(el, path) {
 
   // Skip nodes that shouldn't be inline-edited
   const tc = node.textContent;
-  if (node.$props && (node.tagName || "").includes("-")) return; // custom element instance
+  if (node.$props && (node.tagName || "").includes("-")) return;
   if (Array.isArray(node.children) && node.children.length > 0) return;
   if (node.children && typeof node.children === "object") return;
   if (tc && typeof tc === "object") return;
@@ -1863,7 +1854,7 @@ function enterComponentInlineEdit(el, path) {
   if (voids.has(node.tagName)) return;
 
   // Keep overlay visible for the label, but hide selection border to not obscure editing outline.
-  // Disable click interceptor so the native contenteditable handles all mouse interaction.
+  // Disable click interceptor so native contenteditable handles all mouse interaction.
   for (const p of canvasPanels) {
     const boxes = p.overlay.querySelectorAll(".overlay-box");
     for (const box of boxes) {
@@ -1895,7 +1886,62 @@ function enterComponentInlineEdit(el, path) {
   sel.addRange(range);
 
   el.addEventListener("keydown", componentInlineKeydown);
-  el.addEventListener("blur", componentInlineBlur);
+
+  // Document-level mousedown: clicking outside the editing element commits
+  // the edit and selects the new target element for inline editing.
+  const outsideHandler = (evt) => {
+    if (!componentInlineEdit) { document.removeEventListener("mousedown", outsideHandler, true); return; }
+    if (componentInlineEdit.el.contains(evt.target)) return; // click within editing el — let it through
+    document.removeEventListener("mousedown", outsideHandler, true);
+
+    // Hit-test BEFORE commit (while the current canvas DOM + elToPath are still valid)
+    let hitPath = null, hitMedia = null;
+    for (const p of canvasPanels) {
+      const els = p.canvas.querySelectorAll("*");
+      for (const el of els) el.style.pointerEvents = "auto";
+      p.overlayClk.style.display = "none";
+      const found = document.elementsFromPoint(evt.clientX, evt.clientY);
+      p.overlayClk.style.display = "";
+      for (const el of els) el.style.pointerEvents = "none";
+      for (const hit of found) {
+        if (p.canvas.contains(hit) && hit !== p.canvas) {
+          const path = elToPath.get(hit);
+          if (path) {
+            hitPath = path;
+            hitMedia = p.mediaName;
+            break;
+          }
+        }
+      }
+      if (hitPath) break;
+    }
+
+    // Commit + select new element in a single state update if possible
+    const { el: editEl, path: editPath, originalText } = componentInlineEdit;
+    const newText = editEl.textContent ?? "";
+    cleanupComponentInlineEdit(editEl);
+
+    if (hitPath) {
+      const media = hitMedia === "base" ? null : (hitMedia ?? null);
+      pendingInlineEdit = { path: hitPath, mediaName: hitMedia };
+      S = { ...S, ui: { ...S.ui, activeMedia: media } };
+      if (newText !== originalText) {
+        update(selectNode(updateProperty(S, editPath, "textContent", newText || undefined), hitPath));
+      } else {
+        update(selectNode(S, hitPath));
+      }
+    } else {
+      // Clicked on empty space — just commit
+      if (newText !== originalText) {
+        update(updateProperty(S, editPath, "textContent", newText || undefined));
+      } else {
+        renderCanvas();
+        renderOverlays();
+      }
+    }
+  };
+  document.addEventListener("mousedown", outsideHandler, true);
+  componentInlineEdit._outsideHandler = outsideHandler;
 }
 
 function componentInlineKeydown(e) {
@@ -1907,14 +1953,6 @@ function componentInlineKeydown(e) {
     cancelComponentInlineEdit();
   }
   e.stopPropagation(); // prevent studio keyboard shortcuts
-}
-
-function componentInlineBlur() {
-  setTimeout(() => {
-    if (componentInlineEdit) {
-      commitComponentInlineEdit();
-    }
-  }, 50);
 }
 
 function commitComponentInlineEdit() {
@@ -1942,12 +1980,17 @@ function cancelComponentInlineEdit() {
 
 function cleanupComponentInlineEdit(el) {
   el.removeEventListener("keydown", componentInlineKeydown);
-  el.removeEventListener("blur", componentInlineBlur);
-  el.contentEditable = "false";
+  el.removeAttribute("contenteditable");
   el.style.cursor = "";
   el.style.outline = "";
   el.style.outlineOffset = "";
+  el.style.minHeight = "";
   el.style.pointerEvents = "";
+
+  // Remove the document-level outside-click handler
+  if (componentInlineEdit?._outsideHandler) {
+    document.removeEventListener("mousedown", componentInlineEdit._outsideHandler, true);
+  }
   componentInlineEdit = null;
 
   // Restore overlay and click interceptor

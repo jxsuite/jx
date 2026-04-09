@@ -33,14 +33,13 @@
       "$ref": "#/$defs/StateMap"
     },
     "$media": {
-      "description": "Named media breakpoints following CSS @custom-media convention. Keys use the CSS custom property -- prefix. The special key \"--\" defines the default (no-media) canvas width as a bare pixel value (e.g., \"320px\").",
+      "description": "Named media breakpoints following CSS @custom-media convention. Keys use the CSS custom property -- prefix.",
       "type": "object",
       "additionalProperties": {
         "type": "string"
       },
       "examples": [
         {
-          "--": "320px",
           "--sm": "(min-width: 640px)",
           "--md": "(min-width: 768px)",
           "--dark": "(prefers-color-scheme: dark)"
