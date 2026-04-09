@@ -357,9 +357,10 @@ let panzoomWrap = null; // the transform container inside #canvas-wrap
 /** Canvas mode: "edit" | "preview" | "source" | "stylebook" */
 let canvasMode = "edit";
 
-/** Component-mode inline text editing state: { el, path, originalText } or null */
+/** Component-mode inline text editing state: { el, path, originalText, mediaName } or null */
 let componentInlineEdit = null;
 let pendingInlineEdit = null; // { path, mediaName } — set when we want to enter edit after next render
+let componentSlashMenu = null; // the sp-popover element for slash commands
 
 /** Active Monaco editor instance (or null when in canvas mode) */
 let monacoEditor = null;
@@ -1874,7 +1875,10 @@ function enterComponentInlineEdit(el, path) {
   const rawText = typeof tc === "string" ? tc : "";
   el.textContent = rawText;
 
-  componentInlineEdit = { el, path, originalText: rawText };
+  componentInlineEdit = {
+    el, path, originalText: rawText,
+    mediaName: canvasPanels.find(p => p.canvas.contains(el))?.mediaName || null,
+  };
 
   // Focus and place cursor at end
   el.focus();
@@ -1886,12 +1890,15 @@ function enterComponentInlineEdit(el, path) {
   sel.addRange(range);
 
   el.addEventListener("keydown", componentInlineKeydown);
+  el.addEventListener("input", componentInlineInput);
 
   // Document-level mousedown: clicking outside the editing element commits
   // the edit and selects the new target element for inline editing.
   const outsideHandler = (evt) => {
     if (!componentInlineEdit) { document.removeEventListener("mousedown", outsideHandler, true); return; }
     if (componentInlineEdit.el.contains(evt.target)) return; // click within editing el — let it through
+    // Let clicks inside the slash command menu through
+    if (componentSlashMenu && componentSlashMenu.contains(evt.target)) return;
     document.removeEventListener("mousedown", outsideHandler, true);
 
     // Hit-test BEFORE commit (while the current canvas DOM + elToPath are still valid)
@@ -1918,21 +1925,39 @@ function enterComponentInlineEdit(el, path) {
 
     // Commit + select new element in a single state update if possible
     const { el: editEl, path: editPath, originalText } = componentInlineEdit;
-    const newText = editEl.textContent ?? "";
+    const newText = (editEl.textContent ?? "").trim();
     cleanupComponentInlineEdit(editEl);
+
+    // If empty, remove the node entirely
+    const isEmpty = !newText;
+    const pPath = parentElementPath(editPath);
 
     if (hitPath) {
       const media = hitMedia === "base" ? null : (hitMedia ?? null);
       pendingInlineEdit = { path: hitPath, mediaName: hitMedia };
       S = { ...S, ui: { ...S.ui, activeMedia: media } };
-      if (newText !== originalText) {
+      if (isEmpty && pPath) {
+        // Remove empty node; adjust hitPath if it shifts after removal
+        let s = removeNode(S, editPath);
+        // If hit path is a later sibling in the same parent, adjust index
+        const removedIdx = childIndex(editPath);
+        const hitIdx = childIndex(hitPath);
+        const hitParent = parentElementPath(hitPath);
+        if (hitParent && pPath && hitParent.join("/") === pPath.join("/") && hitIdx > removedIdx) {
+          hitPath = [...pPath, "children", hitIdx - 1];
+          pendingInlineEdit = { path: hitPath, mediaName: hitMedia };
+        }
+        update(selectNode(s, hitPath));
+      } else if (newText !== originalText) {
         update(selectNode(updateProperty(S, editPath, "textContent", newText || undefined), hitPath));
       } else {
         update(selectNode(S, hitPath));
       }
     } else {
       // Clicked on empty space — just commit
-      if (newText !== originalText) {
+      if (isEmpty && pPath) {
+        update(removeNode(S, editPath));
+      } else if (newText !== originalText) {
         update(updateProperty(S, editPath, "textContent", newText || undefined));
       } else {
         renderCanvas();
@@ -1945,9 +1970,41 @@ function enterComponentInlineEdit(el, path) {
 }
 
 function componentInlineKeydown(e) {
+  // When slash menu is open, delegate navigation keys
+  if (componentSlashMenu) {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      e.stopPropagation();
+      const items = [...componentSlashMenu.querySelectorAll("sp-menu-item")];
+      if (!items.length) return;
+      let idx = componentSlashMenu._activeIdx ?? 0;
+      if (e.key === "ArrowDown") idx = (idx + 1) % items.length;
+      else idx = (idx - 1 + items.length) % items.length;
+      componentSlashMenu._activeIdx = idx;
+      for (const it of items) it.removeAttribute("focused");
+      items[idx].setAttribute("focused", "");
+      items[idx].scrollIntoView({ block: "nearest" });
+      return;
+    }
+    if (e.key === "Enter") {
+      e.preventDefault();
+      e.stopPropagation();
+      const items = [...componentSlashMenu.querySelectorAll("sp-menu-item")];
+      const idx = componentSlashMenu._activeIdx ?? 0;
+      if (items[idx]?._cmd) selectComponentSlashItem(items[idx]._cmd);
+      return;
+    }
+    if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      dismissComponentSlashMenu();
+      return;
+    }
+  }
+
   if (e.key === "Enter" && !e.shiftKey) {
     e.preventDefault();
-    commitComponentInlineEdit();
+    splitParagraph();
   } else if (e.key === "Escape") {
     e.preventDefault();
     cancelComponentInlineEdit();
@@ -1955,14 +2012,58 @@ function componentInlineKeydown(e) {
   e.stopPropagation(); // prevent studio keyboard shortcuts
 }
 
-function commitComponentInlineEdit() {
+function splitParagraph() {
   if (!componentInlineEdit) return;
-  const { el, path, originalText } = componentInlineEdit;
-  const newText = el.textContent ?? "";
+  const { el, path, mediaName } = componentInlineEdit;
+
+  // Determine cursor offset within text
+  const sel = el.ownerDocument.defaultView.getSelection();
+  const fullText = el.textContent || "";
+  let offset = fullText.length;
+  if (sel.rangeCount) {
+    const range = sel.getRangeAt(0);
+    const preRange = document.createRange();
+    preRange.selectNodeContents(el);
+    preRange.setEnd(range.startContainer, range.startOffset);
+    offset = preRange.toString().length;
+  }
+
+  const textBefore = fullText.slice(0, offset);
+  const textAfter = fullText.slice(offset);
+
+  // Get node info for building the new sibling
+  const node = getNodeAtPath(S.document, path);
+  const tag = node?.tagName || "p";
+  const pPath = parentElementPath(path);
+  const idx = childIndex(path);
+  if (!pPath) return; // can't split root
+
+  const newDef = { tagName: tag, textContent: textAfter };
+  const newPath = [...pPath, "children", idx + 1];
 
   cleanupComponentInlineEdit(el);
 
-  if (newText !== originalText) {
+  // Compound mutation: update current text + insert sibling + select new
+  let s = updateProperty(S, path, "textContent", textBefore || undefined);
+  s = insertNode(s, pPath, idx + 1, newDef);
+  s = selectNode(s, newPath);
+
+  pendingInlineEdit = { path: newPath, mediaName };
+  update(s);
+}
+
+function commitComponentInlineEdit() {
+  if (!componentInlineEdit) return;
+  const { el, path, originalText } = componentInlineEdit;
+  const newText = (el.textContent ?? "").trim();
+
+  cleanupComponentInlineEdit(el);
+
+  // If empty, remove the node entirely
+  const pPath = parentElementPath(path);
+  if (!newText && pPath) {
+    update(removeNode(S, path));
+  } else if (newText !== originalText) {
     update(updateProperty(S, path, "textContent", newText || undefined));
   } else {
     renderCanvas();
@@ -1980,6 +2081,8 @@ function cancelComponentInlineEdit() {
 
 function cleanupComponentInlineEdit(el) {
   el.removeEventListener("keydown", componentInlineKeydown);
+  el.removeEventListener("input", componentInlineInput);
+  dismissComponentSlashMenu();
   el.removeAttribute("contenteditable");
   el.style.cursor = "";
   el.style.outline = "";
@@ -1998,6 +2101,117 @@ function cleanupComponentInlineEdit(el) {
     p.overlay.style.display = "";
     p.overlayClk.style.pointerEvents = "";
   }
+}
+
+// ─── Component-mode slash commands ───────────────────────────────────────────
+
+const COMPONENT_SLASH_COMMANDS = [
+  { label: "Heading 1", tag: "h1", icon: "H1", description: "Large heading" },
+  { label: "Heading 2", tag: "h2", icon: "H2", description: "Medium heading" },
+  { label: "Heading 3", tag: "h3", icon: "H3", description: "Small heading" },
+  { label: "Paragraph", tag: "p", icon: "\u00B6", description: "Plain text" },
+  { label: "Unordered List", tag: "ul", icon: "\u2022", description: "Bulleted list" },
+  { label: "Ordered List", tag: "ol", icon: "1.", description: "Numbered list" },
+  { label: "Blockquote", tag: "blockquote", icon: "\u275D", description: "Quote block" },
+  { label: "Image", tag: "img", icon: "\uD83D\uDDBC", description: "Insert image" },
+  { label: "Horizontal Rule", tag: "hr", icon: "\u2014", description: "Divider line" },
+  { label: "Button", tag: "button", icon: "\u25A2", description: "Button element" },
+  { label: "Link", tag: "a", icon: "\uD83D\uDD17", description: "Anchor link" },
+  { label: "Code Block", tag: "pre", icon: "<>", description: "Preformatted code" },
+  { label: "Div", tag: "div", icon: "\u2610", description: "Container" },
+  { label: "Section", tag: "section", icon: "\u00A7", description: "Section container" },
+];
+
+function componentInlineInput() {
+  if (!componentInlineEdit) return;
+  const { el, originalText } = componentInlineEdit;
+  const text = el.textContent || "";
+
+  // Only trigger slash menu when the paragraph was originally empty and starts with /
+  if (originalText === "" && text.startsWith("/")) {
+    const filter = text.slice(1).toLowerCase();
+    showComponentSlashMenu(el, filter);
+  } else {
+    dismissComponentSlashMenu();
+  }
+}
+
+function showComponentSlashMenu(el, filter) {
+  dismissComponentSlashMenu();
+
+  const items = filter
+    ? COMPONENT_SLASH_COMMANDS.filter(
+        (c) => c.label.toLowerCase().includes(filter) || c.tag.toLowerCase().includes(filter),
+      )
+    : COMPONENT_SLASH_COMMANDS;
+
+  if (!items.length) return;
+
+  const rect = el.getBoundingClientRect();
+
+  const popover = document.createElement("sp-popover");
+  popover.open = true;
+  popover.placement = "bottom-start";
+  popover.style.position = "fixed";
+  popover.style.left = `${rect.left}px`;
+  popover.style.top = `${rect.bottom + 4}px`;
+  popover.style.zIndex = "9999";
+  popover.style.maxHeight = "280px";
+  popover.style.overflowY = "auto";
+
+  const menu = document.createElement("sp-menu");
+  menu.style.minWidth = "220px";
+
+  for (let i = 0; i < items.length; i++) {
+    const cmd = items[i];
+    const mi = document.createElement("sp-menu-item");
+    mi.textContent = cmd.label;
+    mi._cmd = cmd;
+    if (cmd.description) {
+      const desc = document.createElement("span");
+      desc.slot = "description";
+      desc.textContent = cmd.description;
+      mi.appendChild(desc);
+    }
+    if (i === 0) mi.setAttribute("focused", "");
+    mi.addEventListener("click", () => selectComponentSlashItem(cmd));
+    menu.appendChild(mi);
+  }
+
+  popover.appendChild(menu);
+  (document.querySelector("sp-theme") || document.body).appendChild(popover);
+  popover._activeIdx = 0;
+  componentSlashMenu = popover;
+}
+
+function dismissComponentSlashMenu() {
+  if (!componentSlashMenu) return;
+  componentSlashMenu.remove();
+  componentSlashMenu = null;
+}
+
+function selectComponentSlashItem(cmd) {
+  if (!componentInlineEdit) return;
+  const { el, path, mediaName } = componentInlineEdit;
+  const pPath = parentElementPath(path);
+  const idx = childIndex(path);
+  if (!pPath) return;
+
+  dismissComponentSlashMenu();
+  cleanupComponentInlineEdit(el);
+
+  const newDef = defaultDef(cmd.tag);
+  const newPath = [...pPath, "children", idx];
+
+  // Replace current empty paragraph with the chosen element
+  let s = removeNode(S, path);
+  s = insertNode(s, pPath, idx, newDef);
+  s = selectNode(s, newPath);
+
+  // If the new element has textContent, enter inline edit on it
+  const hasText = newDef.textContent != null;
+  if (hasText) pendingInlineEdit = { path: newPath, mediaName };
+  update(s);
 }
 
 // ─── Activity bar ────────────────────────────────────────────────────────────
