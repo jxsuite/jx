@@ -27,9 +27,10 @@
       --panel-w-right: 280px;
     }
     html, body { height: 100%; overflow: hidden; font: 12px/1.5 -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; color: var(--fg); background: var(--bg); }
+    sp-theme { display: block; height: 100%; }
 
     /* ─── Layout ─────────────────────────────────── */
-    #app { display: grid; grid-template-rows: 36px 1fr 24px; grid-template-columns: 48px var(--panel-w-left) 1fr var(--panel-w-right); height: 100%; }
+    #app { display: grid; grid-template-rows: 36px minmax(0, 1fr) 24px; grid-template-columns: 48px var(--panel-w-left) 1fr var(--panel-w-right); height: 100%; }
     #toolbar   { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; padding: 0 8px; background: var(--bg-panel); border-bottom: 1px solid var(--border); }
     #activity-bar { grid-row: 2; display: flex; flex-direction: column; background: #333333; border-right: 1px solid var(--border); }
     #left-panel  { grid-row: 2; overflow-y: auto; background: var(--bg-panel); border-right: 1px solid var(--border); }
@@ -363,14 +364,42 @@
     .sb-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #999; padding: 8px 0 4px; border-bottom: 1px solid #eee; margin-bottom: 8px; }
     .sb-body { padding: 4px 0; }
 
-    /* Variable sections */
-    .sb-var-add { display: flex; gap: 6px; align-items: center; padding: 8px 0; margin-bottom: 16px; border-bottom: 1px solid #eee; }
-    .sb-var-section { margin-bottom: 20px; }
-    .sb-var-header { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #999; padding-bottom: 4px; border-bottom: 1px solid #eee; margin-bottom: 6px; }
-    .sb-var-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid #f5f5f5; }
+    /* Variable rows — unified layout for existing + add-new */
+    .sb-var-row { display: flex; flex-direction: column; gap: 4px; padding: 10px 0; border-bottom: 1px solid #eee; }
     .sb-var-row:last-child { border-bottom: none; }
-    .sb-var-name { flex-shrink: 0; width: 140px; }
-    .sb-var-swatch { width: 28px; height: 28px; border-radius: 4px; border: 1px solid #ddd; flex-shrink: 0; position: relative; overflow: hidden; cursor: pointer; }
+    .sb-var-row-header { display: flex; align-items: baseline; gap: 6px; min-height: 18px; flex-wrap: wrap; }
+    .sb-var-row-title { font-weight: 600; font-size: 12px; color: #333; white-space: nowrap; }
+    .sb-var-row-ref { font-size: 10px; color: #999; font-family: 'SF Mono', 'Fira Code', monospace; overflow: hidden; text-overflow: ellipsis; }
+    .sb-var-row-header .sb-var-del { margin-left: auto; }
+    .sb-var-row sp-textfield { pointer-events: auto; }
+    /* Existing variable: horizontal swatch + value */
+    .sb-var-input-row { display: flex; align-items: flex-end; gap: 8px; }
+    .sb-var-col-name { min-width: 0; }
+    .sb-var-col-value { flex: 1; min-width: 0; }
+    .sb-var-col-name sp-textfield, .sb-var-col-value sp-textfield { width: 100%; }
+    .sb-var-col-label { font-size: 10px; color: #888; margin-bottom: 2px; font-weight: 500; }
+    /* Add-new form: horizontal layout matching existing rows */
+    .sb-var-row.is-new .sb-var-input-row { flex-wrap: nowrap; align-items: flex-end; }
+    .sb-var-row.is-new .sb-var-col-name { flex: 2; min-width: 0; }
+    .sb-var-row.is-new .sb-var-col-value { flex: 3; min-width: 0; }
+    .sb-var-row.is-new .sb-var-swatch { align-self: flex-end; margin-bottom: 2px; }
+    .sb-var-swatch { width: 28px; height: 28px; border-radius: 4px; border: 1px solid #ddd; cursor: pointer; position: relative; flex-shrink: 0; align-self: flex-end; margin-bottom: 2px; }
+    .sb-var-swatch input[type="color"] { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; pointer-events: auto; }
+    .sb-var-preview { margin-top: 2px; padding: 8px; background: #f5f5f5; border-radius: 4px; border: 1px solid #eee; }
+    .sb-var-font-preview { font-size: 14px; line-height: 1.4; color: #333; }
+    .sb-var-size-track { background: #e0e0e0; height: 8px; border-radius: 4px; width: 100%; overflow: hidden; }
+    .sb-var-size-bar { height: 100%; background: var(--accent, #007acc); transition: width 0.3s; border-radius: 4px; }
+    .sb-var-del { opacity: 0; transition: opacity 0.15s; flex-shrink: 0; }
+    .sb-var-row:hover .sb-var-del { opacity: 1; }
+    .sb-var-empty { padding: 16px 8px; text-align: center; color: #bbb; font-size: 12px; font-style: italic; }
+    .sb-var-add-btn { margin-top: 6px; pointer-events: auto; background: none; border: 1px dashed #ccc; border-radius: 4px; padding: 5px 10px; font-size: 12px; color: #555; cursor: pointer; display: flex; align-items: center; gap: 4px; transition: all 0.15s; }
+    .sb-var-add-btn:hover { border-color: #999; color: #333; background: #f5f5f5; }
+    .sb-var-add-icon { font-size: 14px; font-weight: 600; }
+    .sb-var-add-actions { display: flex; gap: 4px; align-items: center; flex-shrink: 0; align-self: flex-end; margin-bottom: 2px; }
+    .sb-unit-input { position: relative; display: flex; align-items: center; width: 100%; }
+    .sb-unit-input sp-textfield { width: 100%; }
+    .sb-unit-input sp-picker { position: absolute; right: 2px; --mod-picker-border-width: 0; --mod-picker-min-width: 56px; }
+    .sb-var-add-preview { font-size: 10px; color: #999; font-family: 'SF Mono', 'Fira Code', monospace; min-height: 14px; }
 
     /* ─── Context menu ────────────────────────────── */
     .ctx-menu { position: fixed; z-index: 100; min-width: 160px; padding: 4px 0; background: var(--bg-panel); border: 1px solid var(--border); border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.4); }
