@@ -7,7 +7,7 @@
   "name": "jsonsx-workspace",
   "private": true,
   "scripts": {
-    "build": "bun run build:compiler && bun run build:runtime && bun run build:studio",
+    "build": "bun run build:compiler && bun run build:runtime && bun run build:studio && bun run generate:schema",
     "build:compiler": "bun run --cwd packages/compiler build",
     "build:runtime": "bun run --cwd packages/runtime build",
     "build:studio": "bun run --cwd packages/studio build",

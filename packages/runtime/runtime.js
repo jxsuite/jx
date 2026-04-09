@@ -474,6 +474,7 @@ export function applyStyle(el, styleDef, mediaQueries = {}, state = {}) {
   }
 
   for (const [key, rules] of Object.entries(media)) {
+    if (key === "@--") continue; // base canvas width, not a real media query
     const query = key.startsWith("@--")
       ? (mediaQueries[key.slice(1)] ?? key.slice(1))
       : key.slice(1);

@@ -350,6 +350,10 @@ const VOID_ELEMENTS = new Set([
  */
 let canvasPanels = [];
 
+/** Pan/zoom state (module-level, not serialized) */
+let panX = 0, panY = 0;
+let panzoomWrap = null; // the transform container inside #canvas-wrap
+
 /** Canvas mode: "edit" | "preview" | "source" | "stylebook" */
 let canvasMode = "edit";
 
@@ -697,10 +701,16 @@ function update(newState) {
  * and feature queries (rendered as toolbar toggles).
  */
 function parseMediaEntries(mediaDef) {
-  if (!mediaDef) return { sizeBreakpoints: [], featureQueries: [] };
+  if (!mediaDef) return { sizeBreakpoints: [], featureQueries: [], baseWidth: 320 };
   const sizes = [],
     features = [];
+  let baseWidth = 320;
   for (const [name, query] of Object.entries(mediaDef)) {
+    if (name === "--") {
+      const wm = String(query).match(/^(\d+)\s*px$/);
+      baseWidth = wm ? parseFloat(wm[1]) : 320;
+      continue;
+    }
     const minMatch = query.match(/min-width:\s*([\d.]+)px/);
     const maxMatch = query.match(/max-width:\s*([\d.]+)px/);
     if (minMatch) sizes.push({ name, query, width: parseFloat(minMatch[1]), type: "min" });
@@ -708,7 +718,7 @@ function parseMediaEntries(mediaDef) {
     else features.push({ name, query });
   }
   sizes.sort((a, b) => (a.type === "min" ? a.width - b.width : b.width - a.width));
-  return { sizeBreakpoints: sizes, featureQueries: features };
+  return { sizeBreakpoints: sizes, featureQueries: features, baseWidth };
 }
 
 /**
@@ -741,6 +751,7 @@ function applyCanvasStyle(el, styleDef, activeBreakpoints, featureToggles) {
   for (const [key, val] of Object.entries(styleDef)) {
     if (!key.startsWith("@") || typeof val !== "object") continue;
     const mediaName = key.slice(1);
+    if (mediaName === "--") continue; // skip base canvas width key
     if (activeBreakpoints.has(mediaName) || featureToggles[mediaName]) {
       for (const [prop, v] of Object.entries(val)) {
         if (typeof v === "string" || typeof v === "number") {
@@ -792,9 +803,11 @@ function renderCanvas() {
   }
 
   canvasWrap.innerHTML = "";
+  panzoomWrap = null;
   // Reset inline style overrides from other modes
   canvasWrap.style.padding = "";
   canvasWrap.style.alignItems = "";
+  canvasWrap.style.overflow = "";
 
   // Stylebook mode: render element catalog
   if (canvasMode === "stylebook") {
@@ -849,42 +862,60 @@ function renderCanvas() {
     return;
   }
 
-  // Normal canvas mode — restore padding
-  canvasWrap.style.padding = "";
+  // Normal canvas mode — set up panzoom surface
+  canvasWrap.style.padding = "0";
+  canvasWrap.style.overflow = "hidden";
 
-  const { sizeBreakpoints, featureQueries } = parseMediaEntries(S.document.$media);
+  const { sizeBreakpoints, featureQueries, baseWidth } = parseMediaEntries(S.document.$media);
   const hasMedia = sizeBreakpoints.length > 0;
   const featureToggles = S.ui.featureToggles;
 
+  // Create panzoom wrapper (the element that gets transformed)
+  panzoomWrap = document.createElement("div");
+  panzoomWrap.className = "panzoom-wrap";
+  panzoomWrap.style.transformOrigin = "0 0";
+  canvasWrap.appendChild(panzoomWrap);
+
   if (!hasMedia) {
-    // Single full-width canvas (backward-compatible)
+    // Single panel — use a sensible default width
     const panel = createCanvasPanel(null, null, true);
-    canvasWrap.appendChild(panel.element);
+    panzoomWrap.appendChild(panel.element);
     canvasPanels.push(panel);
     renderCanvasIntoPanel(panel, new Set(), featureToggles);
+    applyTransform();
+    renderZoomIndicator();
     return;
   }
 
-  // Base canvas (mobile-first default: 320px)
-  const baseWidth = sizeBreakpoints[0].type === "min" ? 320 : sizeBreakpoints[0].width;
-  const baseActive = activeBreakpointsForWidth(sizeBreakpoints, baseWidth);
-  const basePanel = createCanvasPanel("base", `Base (${baseWidth}px)`, false, baseWidth);
-  canvasWrap.appendChild(basePanel.element);
-  canvasPanels.push(basePanel);
-  renderCanvasIntoPanel(basePanel, baseActive, featureToggles);
-
-  // One panel per size breakpoint
+  // Build all panels (base + breakpoints), sorted widest-first (left to right)
+  const allPanelDefs = [
+    { name: "base", displayName: mediaDisplayName("--"), width: baseWidth,
+      activeSet: activeBreakpointsForWidth(sizeBreakpoints, baseWidth) },
+  ];
   for (const bp of sizeBreakpoints) {
-    const active = activeBreakpointsForWidth(sizeBreakpoints, bp.width);
-    const label = `${bp.name} (${bp.width}px)`;
-    const panel = createCanvasPanel(bp.name, label, false, bp.width);
-    canvasWrap.appendChild(panel.element);
+    allPanelDefs.push({
+      name: bp.name, displayName: mediaDisplayName(bp.name), width: bp.width,
+      activeSet: activeBreakpointsForWidth(sizeBreakpoints, bp.width),
+    });
+  }
+  allPanelDefs.sort((a, b) => b.width - a.width);
+
+  for (const def of allPanelDefs) {
+    const label = `${def.displayName} (${def.width}px)`;
+    const panel = createCanvasPanel(def.name, label, false, def.width);
+    panzoomWrap.appendChild(panel.element);
     canvasPanels.push(panel);
-    renderCanvasIntoPanel(panel, active, featureToggles);
+    renderCanvasIntoPanel(panel, def.activeSet, featureToggles);
   }
 
   // Highlight active panel header
   updateActivePanelHeaders();
+
+  // Apply current zoom + pan transform
+  applyTransform();
+
+  // Floating zoom indicator
+  renderZoomIndicator();
 }
 
 /**
@@ -929,11 +960,12 @@ function createCanvasPanel(mediaName, label, fullWidth, width) {
 
   const viewport = document.createElement("div");
   viewport.className = "canvas-panel-viewport";
-  if (width && !fullWidth) viewport.style.width = `${width * S.ui.zoom}px`;
+  // No overflow:hidden on viewport — full content height visible for pan/zoom
+  if (width && !fullWidth) viewport.style.width = `${width}px`;
 
   const canvasDiv = document.createElement("div");
   canvasDiv.className = "canvas-panel-canvas";
-  canvasDiv.style.zoom = S.ui.zoom;
+  // No CSS zoom — zoom is handled by transform on the panzoom wrapper
   canvasDiv.style.width = width ? `${width}px` : "";
 
   const overlayDiv = document.createElement("div");
@@ -960,7 +992,97 @@ function createCanvasPanel(mediaName, label, fullWidth, width) {
     overlayClk: clickDiv,
     viewport,
     dropLine,
+    _width: width || null,
   };
+}
+
+/**
+ * Apply the current zoom + pan transform to the panzoom wrapper.
+ */
+function applyTransform() {
+  if (!panzoomWrap) return;
+  panzoomWrap.style.transform = `translate(${panX}px, ${panY}px) scale(${S.ui.zoom})`;
+  const label = document.querySelector(".zoom-indicator-label");
+  if (label) label.textContent = `${Math.round(S.ui.zoom * 100)}%`;
+  renderOverlays();
+}
+
+/**
+ * Lightweight in-place zoom update — no full re-render.
+ */
+function applyZoom() {
+  applyTransform();
+}
+
+/**
+ * Calculate zoom + pan to fit all panels within the viewport.
+ */
+function fitToScreen() {
+  if (!panzoomWrap) return;
+  const wrapWidth = canvasWrap.clientWidth;
+  const wrapHeight = canvasWrap.clientHeight;
+  const gap = 24;
+  const padding = 32;
+  let totalPanelWidth = 0;
+  let maxPanelHeight = 0;
+  for (const p of canvasPanels) {
+    totalPanelWidth += p._width || 800;
+  }
+  totalPanelWidth += gap * Math.max(0, canvasPanels.length - 1) + padding;
+
+  // Get actual content height from rendered panels
+  const wrapRect = panzoomWrap.getBoundingClientRect();
+  const unscaledHeight = wrapRect.height / S.ui.zoom;
+  maxPanelHeight = unscaledHeight + padding;
+
+  const fitZoomW = wrapWidth / totalPanelWidth;
+  const fitZoomH = wrapHeight / maxPanelHeight;
+  const fitZoom = Math.min(5.0, Math.max(0.05, Math.min(fitZoomW, fitZoomH)));
+
+  S = { ...S, ui: { ...S.ui, zoom: fitZoom } };
+  // Center the content
+  const scaledWidth = totalPanelWidth * fitZoom;
+  const scaledHeight = maxPanelHeight * fitZoom;
+  panX = Math.max(0, (wrapWidth - scaledWidth) / 2);
+  panY = Math.max(0, (wrapHeight - scaledHeight) / 2);
+  applyTransform();
+}
+
+/**
+ * Render the floating zoom indicator at the bottom center of canvas-wrap.
+ * Uses position: fixed, computed from canvas-wrap bounds.
+ */
+function renderZoomIndicator() {
+  // Remove existing indicator if any
+  let indicator = document.querySelector(".zoom-indicator");
+  if (indicator) indicator.remove();
+
+  indicator = document.createElement("div");
+  indicator.className = "zoom-indicator";
+
+  const label = document.createElement("span");
+  label.className = "zoom-indicator-label";
+  label.textContent = `${Math.round(S.ui.zoom * 100)}%`;
+  indicator.appendChild(label);
+
+  const fitBtn = document.createElement("button");
+  fitBtn.className = "zoom-fit-btn";
+  fitBtn.title = "Fit to screen";
+  fitBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="12" height="12" rx="1"/><path d="M2 6h12M6 2v12"/></svg>`;
+  fitBtn.onclick = fitToScreen;
+  indicator.appendChild(fitBtn);
+
+  document.body.appendChild(indicator);
+  positionZoomIndicator();
+}
+
+function positionZoomIndicator() {
+  const indicator = document.querySelector(".zoom-indicator");
+  if (!indicator) return;
+  const rect = canvasWrap.getBoundingClientRect();
+  indicator.style.left = `${rect.left + rect.width / 2}px`;
+  indicator.style.top = `${rect.bottom - 32}px`;
+  indicator.style.transform = "translateX(-50%)";
 }
 
 function updateActivePanelHeaders() {
@@ -1409,13 +1531,14 @@ function updateForcedPseudoPreview() {
 function drawOverlayBox(el, type, panel) {
   const vpRect = panel.viewport.getBoundingClientRect();
   const elRect = el.getBoundingClientRect();
+  const scale = S.ui.zoom;
 
   const box = document.createElement("div");
   box.className = `overlay-box overlay-${type}`;
-  box.style.top = `${elRect.top - vpRect.top + panel.viewport.scrollTop}px`;
-  box.style.left = `${elRect.left - vpRect.left + panel.viewport.scrollLeft}px`;
-  box.style.width = `${elRect.width}px`;
-  box.style.height = `${elRect.height}px`;
+  box.style.top = `${(elRect.top - vpRect.top + panel.viewport.scrollTop) / scale}px`;
+  box.style.left = `${(elRect.left - vpRect.left + panel.viewport.scrollLeft) / scale}px`;
+  box.style.width = `${elRect.width / scale}px`;
+  box.style.height = `${elRect.height / scale}px`;
 
   if (type === "selection") {
     const node = getNodeAtPath(S.document, S.selection);
@@ -3026,6 +3149,17 @@ function friendlyNameToVar(name, prefix) {
   return `${prefix}${slug}`;
 }
 
+/** Convert a $media key like "--tablet" to a friendly display name "Tablet". "--" returns "Base". */
+function mediaDisplayName(name) {
+  if (name === "--") return "Base";
+  return name.replace(/^--/, "").replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) || name;
+}
+
+/** Convert a human-friendly name like "Tablet" to a $media key "--tablet" */
+function friendlyNameToMedia(name) {
+  return friendlyNameToVar(name, "--");
+}
+
 /**
  * Creates a combined textfield + quiet sp-picker for CSS values with units.
  * Returns { wrap, textfield, picker, getValue, setValue }.
@@ -3217,13 +3351,14 @@ function findStylebookEl(canvasEl, tag) {
 function drawOverlayBoxRaw(el, type, panel, labelText) {
   const vpRect = panel.viewport.getBoundingClientRect();
   const elRect = el.getBoundingClientRect();
+  const scale = S.ui.zoom;
 
   const box = document.createElement("div");
   box.className = `overlay-box overlay-${type}`;
-  box.style.top = `${elRect.top - vpRect.top + panel.viewport.scrollTop}px`;
-  box.style.left = `${elRect.left - vpRect.left + panel.viewport.scrollLeft}px`;
-  box.style.width = `${elRect.width}px`;
-  box.style.height = `${elRect.height}px`;
+  box.style.top = `${(elRect.top - vpRect.top + panel.viewport.scrollTop) / scale}px`;
+  box.style.left = `${(elRect.left - vpRect.left + panel.viewport.scrollLeft) / scale}px`;
+  box.style.width = `${elRect.width / scale}px`;
+  box.style.height = `${elRect.height / scale}px`;
 
   if (type === "selection" && labelText) {
     const label = document.createElement("div");
@@ -4969,33 +5104,192 @@ function renderInspector(container) {
       fields.className = "inspector-fields";
       const media = node.$media || {};
 
+      // ── Default canvas width ("--" key) ──
+      const baseRow = document.createElement("div");
+      baseRow.className = "kv-row";
+      baseRow.style.alignItems = "center";
+
+      const baseLabel = document.createElement("span");
+      baseLabel.className = "field-label";
+      baseLabel.style.width = "auto";
+      baseLabel.style.marginRight = "4px";
+      baseLabel.textContent = "Base width";
+      baseRow.appendChild(baseLabel);
+
+      const baseInput = document.createElement("input");
+      baseInput.className = "field-input";
+      baseInput.style.width = "70px";
+      baseInput.style.flex = "none";
+      baseInput.placeholder = "320px";
+      baseInput.value = media["--"] || "";
+      let baseDebounce;
+      baseInput.oninput = () => {
+        clearTimeout(baseDebounce);
+        baseDebounce = setTimeout(() => {
+          const val = baseInput.value.trim();
+          if (val) update(updateMedia(S, "--", val));
+          else update(updateMedia(S, "--", undefined));
+        }, 400);
+      };
+      baseRow.appendChild(baseInput);
+
+      if (media["--"]) {
+        const del = document.createElement("span");
+        del.className = "kv-del";
+        del.textContent = "\u2715";
+        del.onclick = () => update(updateMedia(S, "--", undefined));
+        baseRow.appendChild(del);
+      }
+      fields.appendChild(baseRow);
+
+      // ── Breakpoint rows (excluding "--") ──
       for (const [name, query] of Object.entries(media)) {
-        fields.appendChild(
-          kvRow(
-            name,
-            query,
-            (newName, newQuery) => {
-              if (newName !== name) {
-                let s = updateMedia(S, name, undefined);
-                s = updateMedia(s, newName, newQuery);
-                update(s);
-              } else {
-                update(updateMedia(S, name, newQuery));
-              }
-            },
-            () => update(updateMedia(S, name, undefined)),
-          ),
-        );
+        if (name === "--") continue;
+        fields.appendChild(mediaBreakpointRow(name, query));
       }
 
-      const add = document.createElement("span");
-      add.className = "kv-add";
-      add.textContent = "+ Add breakpoint";
-      add.onclick = () => update(updateMedia(S, "--bp", "(min-width: 768px)"));
-      fields.appendChild(add);
+      // ── Add breakpoint flow ──
+      const addWrap = document.createElement("div");
+
+      const addLink = document.createElement("span");
+      addLink.className = "kv-add";
+      addLink.textContent = "+ Add breakpoint";
+      addLink.onclick = () => {
+        addLink.style.display = "none";
+        addForm.style.display = "";
+        nameInput.focus();
+      };
+      addWrap.appendChild(addLink);
+
+      const addForm = document.createElement("div");
+      addForm.style.display = "none";
+      addForm.style.marginTop = "4px";
+
+      const nameRow = document.createElement("div");
+      nameRow.style.cssText = "display:flex;gap:4px;margin-bottom:3px;align-items:center";
+      const nameInput = document.createElement("input");
+      nameInput.className = "field-input";
+      nameInput.placeholder = "Name (e.g. Tablet)";
+      nameInput.style.flex = "1";
+      const namePreview = document.createElement("span");
+      namePreview.style.cssText = "font-size:10px;color:var(--fg-dim);font-family:'SF Mono','Fira Code',monospace;white-space:nowrap";
+      nameInput.oninput = () => {
+        const gen = friendlyNameToMedia(nameInput.value);
+        namePreview.textContent = gen || "";
+      };
+      nameRow.appendChild(nameInput);
+      nameRow.appendChild(namePreview);
+      addForm.appendChild(nameRow);
+
+      const queryRow = document.createElement("div");
+      queryRow.style.cssText = "display:flex;gap:4px;margin-bottom:3px;align-items:center";
+      const queryInput = document.createElement("input");
+      queryInput.className = "field-input";
+      queryInput.value = "(min-width: 768px)";
+      queryInput.style.flex = "1";
+      queryRow.appendChild(queryInput);
+      addForm.appendChild(queryRow);
+
+      const btnRow = document.createElement("div");
+      btnRow.style.cssText = "display:flex;gap:4px";
+      const addBtn = document.createElement("button");
+      addBtn.className = "kv-add";
+      addBtn.style.cssText = "padding:2px 10px;cursor:pointer";
+      addBtn.textContent = "Add";
+      addBtn.onclick = () => {
+        const key = friendlyNameToMedia(nameInput.value);
+        const q = queryInput.value.trim();
+        if (key && q) {
+          update(updateMedia(S, key, q));
+        }
+      };
+      const cancelBtn = document.createElement("button");
+      cancelBtn.className = "kv-add";
+      cancelBtn.style.cssText = "padding:2px 10px;cursor:pointer;color:var(--fg-dim)";
+      cancelBtn.textContent = "Cancel";
+      cancelBtn.onclick = () => {
+        addForm.style.display = "none";
+        addLink.style.display = "";
+        nameInput.value = "";
+        namePreview.textContent = "";
+        queryInput.value = "(min-width: 768px)";
+      };
+      btnRow.appendChild(addBtn);
+      btnRow.appendChild(cancelBtn);
+      addForm.appendChild(btnRow);
+
+      addWrap.appendChild(addForm);
+      fields.appendChild(addWrap);
       return fields;
     });
   }
+}
+
+/**
+ * Render a single media breakpoint row with friendly name label, subtitle, and editable query.
+ */
+function mediaBreakpointRow(name, query) {
+  const row = document.createElement("div");
+  row.style.cssText = "margin-bottom:6px;padding:4px 0;border-bottom:1px solid var(--border)";
+
+  // Header: friendly name (editable) + raw key
+  const header = document.createElement("div");
+  header.style.cssText = "display:flex;align-items:center;gap:4px;margin-bottom:2px";
+
+  const friendlyInput = document.createElement("input");
+  friendlyInput.className = "field-input";
+  friendlyInput.value = mediaDisplayName(name);
+  friendlyInput.style.cssText = "flex:1;font-weight:600;font-size:12px";
+
+  const rawLabel = document.createElement("span");
+  rawLabel.style.cssText = "font-size:10px;color:var(--fg-dim);font-family:'SF Mono','Fira Code',monospace;white-space:nowrap";
+  rawLabel.textContent = name;
+
+  const del = document.createElement("span");
+  del.className = "kv-del";
+  del.textContent = "\u2715";
+  del.onclick = () => update(updateMedia(S, name, undefined));
+
+  header.appendChild(friendlyInput);
+  header.appendChild(rawLabel);
+  header.appendChild(del);
+  row.appendChild(header);
+
+  // Query value row
+  const valRow = document.createElement("div");
+  valRow.style.cssText = "display:flex;gap:4px;align-items:center";
+  const valInput = document.createElement("input");
+  valInput.className = "field-input";
+  valInput.value = query;
+  valInput.style.flex = "1";
+
+  let debounceTimer;
+
+  // Rename on friendly name change
+  friendlyInput.oninput = () => {
+    const newKey = friendlyNameToMedia(friendlyInput.value);
+    rawLabel.textContent = newKey || "";
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+      if (newKey && newKey !== name) {
+        let s = updateMedia(S, name, undefined);
+        s = updateMedia(s, newKey, valInput.value);
+        update(s);
+      }
+    }, 600);
+  };
+
+  // Query change
+  valInput.oninput = () => {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+      update(updateMedia(S, name, valInput.value));
+    }, 400);
+  };
+
+  valRow.appendChild(valInput);
+  row.appendChild(valRow);
+  return row;
 }
 
 // ─── Style Sidebar (metadata-driven) ───────────────────────────────────────────
@@ -5636,7 +5930,7 @@ function renderStyleSidebar(container, node, activeMediaTab, activeSelector) {
     for (const name of mediaNames) {
       const tab = document.createElement("div");
       tab.className = `media-tab${activeTab === name ? " active" : ""}`;
-      tab.textContent = name;
+      tab.textContent = mediaDisplayName(name);
       tab.onclick = () => {
         S = { ...S, ui: { ...S.ui, activeMedia: name } };
         updateActivePanelHeaders();
@@ -6698,30 +6992,6 @@ function renderToolbar() {
   );
   toolbar.appendChild(insertGroup);
 
-  // Zoom group
-  const zoomGroup = group();
-  zoomGroup.appendChild(
-    tbBtn("−", () => {
-      S = { ...S, ui: { ...S.ui, zoom: Math.max(0.25, S.ui.zoom - 0.25) } };
-      renderCanvas();
-      renderOverlays();
-      renderToolbar();
-    }),
-  );
-  const zoomLabel = document.createElement("span");
-  zoomLabel.className = "tb-filename";
-  zoomLabel.textContent = `${Math.round(S.ui.zoom * 100)}%`;
-  zoomGroup.appendChild(zoomLabel);
-  zoomGroup.appendChild(
-    tbBtn("+", () => {
-      S = { ...S, ui: { ...S.ui, zoom: Math.min(4, S.ui.zoom + 0.25) } };
-      renderCanvas();
-      renderOverlays();
-      renderToolbar();
-    }),
-  );
-  toolbar.appendChild(zoomGroup);
-
   // Mode switcher (segmented button group)
   const modeGroup = group();
   const modes = [
@@ -6762,7 +7032,7 @@ function renderToolbar() {
     for (const { name, query } of featureQueries) {
       const btn = document.createElement("button");
       btn.className = `tb-toggle${S.ui.featureToggles[name] ? " active" : ""}`;
-      btn.textContent = name;
+      btn.textContent = mediaDisplayName(name);
       btn.title = query;
       btn.onclick = () => {
         const newToggles = { ...S.ui.featureToggles, [name]: !S.ui.featureToggles[name] };
@@ -6996,6 +7266,55 @@ async function saveFile() {
 
 // ─── Keyboard shortcuts ───────────────────────────────────────────────────────
 
+// Wheel handler: Ctrl+Scroll = zoom (cursor-centered), plain scroll = pan
+canvasWrap.addEventListener("wheel", (e) => {
+  e.preventDefault();
+  if (e.ctrlKey || e.metaKey) {
+    // Zoom towards cursor
+    const rect = canvasWrap.getBoundingClientRect();
+    const cursorX = e.clientX - rect.left;
+    const cursorY = e.clientY - rect.top;
+    const oldZoom = S.ui.zoom;
+    const delta = -e.deltaY * 0.005;
+    const newZoom = Math.min(5.0, Math.max(0.05, oldZoom * (1 + delta)));
+    const ratio = newZoom / oldZoom;
+    // Adjust pan so the point under cursor stays stationary
+    panX = cursorX - (cursorX - panX) * ratio;
+    panY = cursorY - (cursorY - panY) * ratio;
+    S = { ...S, ui: { ...S.ui, zoom: newZoom } };
+  } else {
+    // Pan
+    panX -= e.deltaX;
+    panY -= e.deltaY;
+  }
+  applyTransform();
+}, { passive: false });
+
+// Middle-mouse drag panning
+canvasWrap.addEventListener("pointerdown", (e) => {
+  if (e.button !== 1) return; // middle button only
+  e.preventDefault();
+  canvasWrap.setPointerCapture(e.pointerId);
+  let lastX = e.clientX, lastY = e.clientY;
+  const onMove = (ev) => {
+    panX += ev.clientX - lastX;
+    panY += ev.clientY - lastY;
+    lastX = ev.clientX;
+    lastY = ev.clientY;
+    applyTransform();
+  };
+  const onUp = () => {
+    canvasWrap.releasePointerCapture(e.pointerId);
+    canvasWrap.removeEventListener("pointermove", onMove);
+    canvasWrap.removeEventListener("pointerup", onUp);
+  };
+  canvasWrap.addEventListener("pointermove", onMove);
+  canvasWrap.addEventListener("pointerup", onUp);
+});
+
+// Reposition zoom indicator on resize
+window.addEventListener("resize", positionZoomIndicator);
+
 document.addEventListener("keydown", (e) => {
   const mod = e.ctrlKey || e.metaKey;
 
@@ -7056,21 +7375,19 @@ document.addEventListener("keydown", (e) => {
       case "0":
         e.preventDefault();
         S = { ...S, ui: { ...S.ui, zoom: 1 } };
-        renderCanvas();
-        renderOverlays();
+        panX = 16; panY = 16;
+        applyTransform();
         break;
       case "=":
       case "+":
         e.preventDefault();
-        S = { ...S, ui: { ...S.ui, zoom: Math.min(4, S.ui.zoom + 0.25) } };
-        renderCanvas();
-        renderOverlays();
+        S = { ...S, ui: { ...S.ui, zoom: Math.min(5.0, S.ui.zoom * 1.2) } };
+        applyTransform();
         break;
       case "-":
         e.preventDefault();
-        S = { ...S, ui: { ...S.ui, zoom: Math.max(0.25, S.ui.zoom - 0.25) } };
-        renderCanvas();
-        renderOverlays();
+        S = { ...S, ui: { ...S.ui, zoom: Math.max(0.05, S.ui.zoom / 1.2) } };
+        applyTransform();
         break;
     }
     return;
