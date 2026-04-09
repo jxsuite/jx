@@ -809,10 +809,8 @@ function renderCanvas() {
   canvasWrap.style.alignItems = "";
   canvasWrap.style.overflow = "";
 
-  // Stylebook mode: render element catalog
+  // Stylebook mode: render element catalog with panzoom surface
   if (canvasMode === "stylebook") {
-    canvasWrap.style.padding = "0";
-    canvasWrap.style.alignItems = "stretch";
     renderStylebook();
     return;
   }
@@ -877,8 +875,15 @@ function renderCanvas() {
   canvasWrap.appendChild(panzoomWrap);
 
   if (!hasMedia) {
-    // Single panel — use a sensible default width
-    const panel = createCanvasPanel(null, null, true);
+    // Single panel — use baseWidth if a custom one is defined, otherwise full-width
+    const hasBaseWidth = S.document.$media && S.document.$media["--"];
+    const label = hasBaseWidth ? `${mediaDisplayName("--")} (${baseWidth}px)` : null;
+    const panel = createCanvasPanel(
+      hasBaseWidth ? "base" : null,
+      label,
+      !hasBaseWidth,
+      hasBaseWidth ? baseWidth : undefined,
+    );
     panzoomWrap.appendChild(panel.element);
     canvasPanels.push(panel);
     renderCanvasIntoPanel(panel, new Set(), featureToggles);
@@ -1005,6 +1010,7 @@ function applyTransform() {
   const label = document.querySelector(".zoom-indicator-label");
   if (label) label.textContent = `${Math.round(S.ui.zoom * 100)}%`;
   renderOverlays();
+  if (canvasMode === "stylebook") renderStylebookOverlays();
 }
 
 /**
@@ -1429,7 +1435,7 @@ function renderOverlays() {
     return;
   }
   for (const p of canvasPanels) {
-    p.overlayClk.style.pointerEvents = "";
+    p.overlayClk.style.pointerEvents = componentInlineEdit ? "none" : "";
   }
 
   if (selDragCleanup) {
@@ -1452,12 +1458,16 @@ function renderOverlays() {
       const el = findCanvasElement(S.selection, activePanel.canvas);
       if (el) {
         const box = drawOverlayBox(el, "selection", activePanel);
-        if (S.selection.length >= 2) {
+        // During inline edit: show label only, hide selection border
+        if (componentInlineEdit) {
+          box.style.border = "none";
+        }
+        if (S.selection.length >= 2 && !componentInlineEdit) {
           const label = box.querySelector(".overlay-label");
           if (label) {
             const handle = document.createElement("span");
             handle.className = "overlay-drag-handle";
-            handle.textContent = "⠿";
+            handle.textContent = "\u2847";
             label.prepend(handle);
 
             const path = S.selection;
@@ -1852,10 +1862,14 @@ function enterComponentInlineEdit(el, path) {
   const voids = new Set(["img", "input", "br", "hr", "video", "audio", "source", "embed"]);
   if (voids.has(node.tagName)) return;
 
-  // Keep overlay active — it handles click-to-position-cursor and click-away-to-commit.
-  // Hide the selection/hover overlay rectangles so they don't obscure the editing outline.
+  // Keep overlay visible for the label, but hide selection border to not obscure editing outline.
+  // Disable click interceptor so the native contenteditable handles all mouse interaction.
   for (const p of canvasPanels) {
-    p.overlay.style.display = "none";
+    const boxes = p.overlay.querySelectorAll(".overlay-box");
+    for (const box of boxes) {
+      box.style.border = "none";
+    }
+    p.overlayClk.style.pointerEvents = "none";
   }
 
   el.contentEditable = "plaintext-only";
@@ -1936,9 +1950,10 @@ function cleanupComponentInlineEdit(el) {
   el.style.pointerEvents = "";
   componentInlineEdit = null;
 
-  // Restore selection/hover overlay rectangles
+  // Restore overlay and click interceptor
   for (const p of canvasPanels) {
     p.overlay.style.display = "";
+    p.overlayClk.style.pointerEvents = "";
   }
 }
 
@@ -2639,7 +2654,7 @@ let stylebookElToTag = new WeakMap();
  * Build a DOM element tree from a stylebook-meta.json entry.
  * Applies any existing tag-scoped styles from rootStyle["& tag"].
  */
-function buildStylebookElement(entry, rootStyle) {
+function buildStylebookElement(entry, rootStyle, activeBreakpoints) {
   const el = document.createElement(entry.tag);
   if (entry.text) el.textContent = entry.text;
   if (entry.attributes) {
@@ -2656,10 +2671,25 @@ function buildStylebookElement(entry, rootStyle) {
         try { el.style[prop] = val; } catch {}
       }
     }
+    // Apply media overrides for active breakpoints
+    if (activeBreakpoints) {
+      for (const [key, val] of Object.entries(tagStyle)) {
+        if (!key.startsWith("@") || typeof val !== "object") continue;
+        const mediaName = key.slice(1);
+        if (mediaName === "--") continue;
+        if (activeBreakpoints.has(mediaName)) {
+          for (const [prop, v] of Object.entries(val)) {
+            if (typeof v === "string" || typeof v === "number") {
+              try { el.style[prop] = v; } catch {}
+            }
+          }
+        }
+      }
+    }
   }
   if (entry.children) {
     for (const child of entry.children) {
-      el.appendChild(buildStylebookElement(child, rootStyle));
+      el.appendChild(buildStylebookElement(child, rootStyle, activeBreakpoints));
     }
   }
   return el;
@@ -2671,26 +2701,18 @@ function hasTagStyle(rootStyle, tag) {
 }
 
 function renderStylebook() {
-  // Use a real canvas panel so overlays/selection work identically to edit mode
-  const panel = createCanvasPanel(null, null, true);
-  // Make the panel flex column so chrome + viewport stack properly
-  panel.element.style.display = "flex";
-  panel.element.style.flexDirection = "column";
-  panel.element.style.height = "100%";
-  panel.viewport.style.flex = "1";
-  panel.viewport.style.overflowY = "auto";
-  canvasWrap.appendChild(panel.element);
-  canvasPanels.push(panel);
-
-  const canvasEl = panel.canvas;
   stylebookElToTag = new WeakMap();
   const rootStyle = S.document.style || {};
   const filter = (S.ui.stylebookFilter || "").toLowerCase();
   const customizedOnly = S.ui.stylebookCustomizedOnly;
 
-  // Tab bar rendered inside the canvas viewport header area
+  const { sizeBreakpoints, baseWidth } = parseMediaEntries(S.document.$media);
+  const hasMedia = sizeBreakpoints.length > 0;
+
+  // Chrome bar (tabs + filter) — positioned absolutely above the panzoom surface
   const chrome = document.createElement("div");
   chrome.className = "sb-chrome";
+  chrome.style.cssText = "position:absolute;top:0;left:0;right:0;z-index:15;background:var(--bg-panel);border-bottom:1px solid var(--border)";
 
   const tabBar = document.createElement("div");
   tabBar.className = "sb-tabs";
@@ -2734,28 +2756,78 @@ function renderStylebook() {
     chrome.appendChild(customizedBtn);
   }
 
-  // Insert chrome before the viewport inside the panel
-  panel.element.insertBefore(chrome, panel.element.firstChild);
+  canvasWrap.appendChild(chrome);
 
-  if (S.ui.stylebookTab === "elements") {
-    renderStylebookElementsIntoCanvas(canvasEl, rootStyle, filter, customizedOnly);
+  // Set up panzoom surface — same as normal canvas mode
+  canvasWrap.style.overflow = "hidden";
+  panzoomWrap = document.createElement("div");
+  panzoomWrap.className = "panzoom-wrap";
+  panzoomWrap.style.transformOrigin = "0 0";
+  panzoomWrap.style.paddingTop = "36px"; // space for chrome bar
+  canvasWrap.appendChild(panzoomWrap);
 
-    // Disable pointer events on all rendered content (same as edit mode)
-    for (const child of canvasEl.querySelectorAll("*")) {
-      child.style.pointerEvents = "none";
+  // Build panel definitions
+  const allPanelDefs = [];
+  if (hasMedia) {
+    allPanelDefs.push({
+      name: "base", displayName: mediaDisplayName("--"), width: baseWidth,
+      activeSet: activeBreakpointsForWidth(sizeBreakpoints, baseWidth),
+    });
+    for (const bp of sizeBreakpoints) {
+      allPanelDefs.push({
+        name: bp.name, displayName: mediaDisplayName(bp.name), width: bp.width,
+        activeSet: activeBreakpointsForWidth(sizeBreakpoints, bp.width),
+      });
     }
-
-    // Register click-to-select on the panel
-    registerStylebookPanelEvents(panel);
-  } else {
-    renderStylebookVarsIntoCanvas(canvasEl, rootStyle);
-    // Variables tab: hide the click interceptor so inputs are directly interactive
-    panel.overlayClk.style.pointerEvents = "none";
+    allPanelDefs.sort((a, b) => b.width - a.width);
   }
+
+  // Render content into panels
+  const renderIntoPanel = (panel, activeBreakpoints) => {
+    panel.canvas.classList.add("sb-canvas");
+    if (S.ui.stylebookTab === "elements") {
+      renderStylebookElementsIntoCanvas(panel.canvas, rootStyle, filter, customizedOnly, activeBreakpoints);
+      for (const child of panel.canvas.querySelectorAll("*")) {
+        child.style.pointerEvents = "none";
+      }
+      registerStylebookPanelEvents(panel);
+    } else {
+      renderStylebookVarsIntoCanvas(panel.canvas, rootStyle);
+      panel.overlayClk.style.pointerEvents = "none";
+    }
+  };
+
+  if (!hasMedia) {
+    // Single panel
+    const hasBaseWidth = S.document.$media && S.document.$media["--"];
+    const label = hasBaseWidth ? `${mediaDisplayName("--")} (${baseWidth}px)` : null;
+    const panel = createCanvasPanel(
+      hasBaseWidth ? "base" : null,
+      label,
+      !hasBaseWidth,
+      hasBaseWidth ? baseWidth : undefined,
+    );
+    panzoomWrap.appendChild(panel.element);
+    canvasPanels.push(panel);
+    renderIntoPanel(panel, new Set());
+  } else {
+    // Multi-panel: one per breakpoint, sorted widest first
+    for (const def of allPanelDefs) {
+      const label = `${def.displayName} (${def.width}px)`;
+      const panel = createCanvasPanel(def.name, label, false, def.width);
+      panzoomWrap.appendChild(panel.element);
+      canvasPanels.push(panel);
+      renderIntoPanel(panel, def.activeSet);
+    }
+    updateActivePanelHeaders();
+  }
+
+  applyTransform();
+  renderZoomIndicator();
 }
 
 /** Render element sections into the canvas from stylebook-meta.json */
-function renderStylebookElementsIntoCanvas(canvasEl, rootStyle, filter, customizedOnly) {
+function renderStylebookElementsIntoCanvas(canvasEl, rootStyle, filter, customizedOnly, activeBreakpoints) {
   for (const section of stylebookMeta.$sections) {
     // Filter elements
     let entries = section.elements;
@@ -2784,7 +2856,7 @@ function renderStylebookElementsIntoCanvas(canvasEl, rootStyle, filter, customiz
     body.className = "sb-body";
 
     for (const entry of entries) {
-      const el = buildStylebookElement(entry, rootStyle);
+      const el = buildStylebookElement(entry, rootStyle, activeBreakpoints);
       el.style.marginBottom = "0.5em";
 
       // Register for overlay hit-testing
@@ -2822,6 +2894,21 @@ function renderStylebookElementsIntoCanvas(canvasEl, rootStyle, filter, customiz
           for (const [prop, val] of Object.entries(tagStyle)) {
             if (typeof val === "string" || typeof val === "number") {
               try { el.style[prop] = val; } catch {}
+            }
+          }
+          // Apply media overrides for active breakpoints
+          if (activeBreakpoints) {
+            for (const [key, val] of Object.entries(tagStyle)) {
+              if (!key.startsWith("@") || typeof val !== "object") continue;
+              const mediaName = key.slice(1);
+              if (mediaName === "--") continue;
+              if (activeBreakpoints.has(mediaName)) {
+                for (const [prop, v] of Object.entries(val)) {
+                  if (typeof v === "string" || typeof v === "number") {
+                    try { el.style[prop] = v; } catch {}
+                  }
+                }
+              }
             }
           }
         }
@@ -3268,12 +3355,14 @@ function registerStylebookPanelEvents(panel) {
       while (cur && cur !== canvas) {
         const tag = stylebookElToTag.get(cur);
         if (tag) {
+          const newMedia = panel.mediaName === "base" ? null : (panel.mediaName ?? null);
           S = {
             ...S,
             selection: [],
-            ui: { ...S.ui, stylebookSelection: tag, rightTab: "style", activeSelector: `& ${tag}` },
+            ui: { ...S.ui, stylebookSelection: tag, rightTab: "style", activeSelector: `& ${tag}`, activeMedia: newMedia },
           };
           renderStylebookOverlays();
+          updateActivePanelHeaders();
           renderRightPanel();
           renderLeftPanel();
           renderToolbar();
@@ -3319,23 +3408,26 @@ function registerStylebookPanelEvents(panel) {
 /** Draw selection + hover overlays for stylebook elements */
 function renderStylebookOverlays() {
   if (canvasPanels.length === 0) return;
-  const panel = canvasPanels[0];
-  panel.overlay.innerHTML = "";
-  panel.overlay.appendChild(panel.dropLine);
 
   const selectedTag = S.ui.stylebookSelection;
-  const hoverTag = panel._lastHoverTag;
 
-  // Draw hover
-  if (hoverTag && hoverTag !== selectedTag) {
-    const el = findStylebookEl(panel.canvas, hoverTag);
-    if (el) drawOverlayBoxRaw(el, "hover", panel, `<${hoverTag}>`);
-  }
+  for (const panel of canvasPanels) {
+    panel.overlay.innerHTML = "";
+    panel.overlay.appendChild(panel.dropLine);
 
-  // Draw selection
-  if (selectedTag) {
-    const el = findStylebookEl(panel.canvas, selectedTag);
-    if (el) drawOverlayBoxRaw(el, "selection", panel, `<${selectedTag}>`);
+    const hoverTag = panel._lastHoverTag;
+
+    // Draw hover
+    if (hoverTag && hoverTag !== selectedTag) {
+      const el = findStylebookEl(panel.canvas, hoverTag);
+      if (el) drawOverlayBoxRaw(el, "hover", panel, `<${hoverTag}>`);
+    }
+
+    // Draw selection
+    if (selectedTag) {
+      const el = findStylebookEl(panel.canvas, selectedTag);
+      if (el) drawOverlayBoxRaw(el, "selection", panel, `<${selectedTag}>`);
+    }
   }
 }
 
