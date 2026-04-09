@@ -106,6 +106,18 @@ import "@spectrum-web-components/icons-workflow/icons/sp-icon-layers.js";
 import "@spectrum-web-components/icons-workflow/icons/sp-icon-view-grid.js";
 import "@spectrum-web-components/icons-workflow/icons/sp-icon-brackets.js";
 import "@spectrum-web-components/icons-workflow/icons/sp-icon-data.js";
+import "@spectrum-web-components/textfield/sp-textfield.js";
+import "@spectrum-web-components/swatch/sp-swatch.js";
+import "@spectrum-web-components/color-area/sp-color-area.js";
+import "@spectrum-web-components/color-slider/sp-color-slider.js";
+import "@spectrum-web-components/color-handle/sp-color-handle.js";
+import "@spectrum-web-components/number-field/sp-number-field.js";
+import "@spectrum-web-components/icons-workflow/icons/sp-icon-chevron-down.js";
+import "@spectrum-web-components/icons-workflow/icons/sp-icon-delete.js";
+import "@spectrum-web-components/icons-workflow/icons/sp-icon-close.js";
+import "@spectrum-web-components/icons-workflow/icons/sp-icon-add.js";
+import "@spectrum-web-components/picker/sp-picker.js";
+import "@spectrum-web-components/field-label/sp-field-label.js";
 import icons from "./icons.js";
 import * as monaco from "monaco-editor/esm/vs/editor/editor.api";
 
@@ -2707,7 +2719,7 @@ function renderStylebookElementsIntoCanvas(canvasEl, rootStyle, filter, customiz
   }
 }
 
-/** Render variables into the canvas */
+/** Render variables into the canvas (card-based layout matching Elements tab) */
 function renderStylebookVarsIntoCanvas(canvasEl, rootStyle) {
   const varCats = stylebookMeta.$variables;
 
@@ -2723,131 +2735,383 @@ function renderStylebookVarsIntoCanvas(canvasEl, rootStyle) {
     else groups.other.push([k, v]);
   }
 
-  // Add-variable bar
-  const addBar = document.createElement("div");
-  addBar.className = "sb-var-add";
-  const addName = document.createElement("input");
-  addName.className = "field-input";
-  addName.placeholder = "--variable-name";
-  addName.style.width = "160px";
-  addBar.appendChild(addName);
-  const addVal = document.createElement("input");
-  addVal.className = "field-input";
-  addVal.placeholder = "value";
-  addVal.style.flex = "1";
-  addBar.appendChild(addVal);
-  const addBtn = document.createElement("button");
-  addBtn.className = "toolbar-btn";
-  addBtn.textContent = "+ Add";
-  addBtn.style.pointerEvents = "auto";
-  addBtn.onclick = () => {
-    const n = addName.value.trim();
-    const v = addVal.value.trim();
-    if (n && v) {
-      update(updateStyle(S, [], n.startsWith("--") ? n : `--${n}`, v));
-    }
-  };
-  addBar.appendChild(addBtn);
-  // Inputs need pointer events
-  addName.style.pointerEvents = "auto";
-  addVal.style.pointerEvents = "auto";
-  canvasEl.appendChild(addBar);
-
   for (const [catKey, catMeta] of Object.entries(varCats)) {
     const vars = groups[catKey];
-    if (vars.length === 0) continue;
 
-    const section = document.createElement("div");
-    section.className = "sb-var-section";
-    const header = document.createElement("div");
-    header.className = "sb-var-header";
-    header.textContent = catMeta.label;
-    section.appendChild(header);
+    const sectionEl = document.createElement("div");
+    sectionEl.className = "sb-section";
+    const label = document.createElement("div");
+    label.className = "sb-label";
+    label.textContent = catMeta.label;
+    sectionEl.appendChild(label);
 
-    for (const [varName, varVal] of vars) {
-      const row = document.createElement("div");
-      row.className = "sb-var-row";
+    const body = document.createElement("div");
+    body.className = "sb-body";
 
-      // Name column
-      const nameCol = document.createElement("div");
-      nameCol.className = "sb-var-name";
-      const displayName = varName
-        .replace(new RegExp(`^${catMeta.prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`), "")
-        .replace(/^--/, "")
-        .replace(/-/g, " ")
-        .replace(/\b\w/g, (c) => c.toUpperCase()) || varName;
-      const nameLabel = document.createElement("div");
-      nameLabel.style.cssText = "font-weight:600;color:var(--accent)";
-      nameLabel.textContent = displayName;
-      nameCol.appendChild(nameLabel);
-      const refLabel = document.createElement("div");
-      refLabel.style.cssText = "font-size:10px;color:#888;font-family:'SF Mono','Fira Code',monospace";
-      refLabel.textContent = varName;
-      nameCol.appendChild(refLabel);
-      row.appendChild(nameCol);
-
-      // Value input
-      const valInput = document.createElement("input");
-      valInput.className = "field-input";
-      valInput.value = String(varVal);
-      valInput.placeholder = catMeta.placeholder;
-      valInput.style.cssText = "flex:1;pointer-events:auto";
-      let debounce;
-      valInput.oninput = () => {
-        clearTimeout(debounce);
-        debounce = setTimeout(() => {
-          update(updateStyle(S, [], varName, valInput.value));
-        }, 400);
-      };
-      row.appendChild(valInput);
-
-      // Visual preview for color
-      if (catKey === "color") {
-        const swatch = document.createElement("div");
-        swatch.className = "sb-var-swatch";
-        swatch.style.backgroundColor = String(varVal);
-        const picker = document.createElement("input");
-        picker.type = "color";
-        picker.style.cssText = "position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;pointer-events:auto";
-        try { picker.value = String(varVal).startsWith("#") ? String(varVal) : "#000000"; } catch {}
-        picker.oninput = () => {
-          swatch.style.backgroundColor = picker.value;
-          valInput.value = picker.value;
-          update(updateStyle(S, [], varName, picker.value));
-        };
-        swatch.appendChild(picker);
-        row.appendChild(swatch);
+    // Existing variable rows
+    if (vars.length > 0) {
+      for (const [varName, varVal] of vars) {
+        body.appendChild(renderVarRow(catKey, catMeta, varName, String(varVal), false));
       }
-
-      // Font sample
-      if (catKey === "font") {
-        const sample = document.createElement("div");
-        sample.style.cssText = `font-family:${String(varVal)};font-size:13px;color:#666;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px`;
-        sample.textContent = "The quick brown fox";
-        row.appendChild(sample);
-      }
-
-      // Delete
-      const del = document.createElement("span");
-      del.className = "kv-del";
-      del.style.pointerEvents = "auto";
-      del.textContent = "\u2715";
-      del.onclick = () => update(updateStyle(S, [], varName, undefined));
-      row.appendChild(del);
-
-      section.appendChild(row);
+    } else {
+      const empty = document.createElement("div");
+      empty.className = "sb-var-empty";
+      empty.textContent = `No ${catMeta.label.toLowerCase()} variables yet.`;
+      body.appendChild(empty);
     }
 
-    canvasEl.appendChild(section);
+    // "Add" button at bottom of each section
+    const addBtn = document.createElement("button");
+    addBtn.className = "sb-var-add-btn";
+    addBtn.innerHTML = `<span class="sb-var-add-icon">+</span> Add ${catMeta.label}`;
+    addBtn.onclick = () => {
+      // Insert new empty row just before the add button
+      const row = renderVarRow(catKey, catMeta, null, "", true);
+      body.insertBefore(row, addBtn);
+      addBtn.style.display = "none";
+      // Focus the name field
+      const nameField = row.querySelector("sp-textfield");
+      if (nameField) requestAnimationFrame(() => nameField.focus());
+    };
+    body.appendChild(addBtn);
+
+    sectionEl.appendChild(body);
+    canvasEl.appendChild(sectionEl);
+  }
+}
+
+/**
+ * Render a single variable row — used for both existing and add-new.
+ * @param {string} catKey - "color"|"font"|"size"|"other"
+ * @param {object} catMeta - { label, prefix, placeholder }
+ * @param {string|null} varName - existing var name, or null for add-new
+ * @param {string} varVal - current value, or "" for add-new
+ * @param {boolean} isNew - true if this is an add-new row
+ */
+function renderVarRow(catKey, catMeta, varName, varVal, isNew) {
+  const row = document.createElement("div");
+  row.className = isNew ? "sb-var-row is-new" : "sb-var-row";
+
+  // ─── Header: friendly name + dash name + delete ───
+  const header = document.createElement("div");
+  header.className = "sb-var-row-header";
+
+  if (!isNew && varName) {
+    const title = document.createElement("span");
+    title.className = "sb-var-row-title";
+    title.textContent = varDisplayName(varName, catMeta.prefix);
+    header.appendChild(title);
+    const ref = document.createElement("span");
+    ref.className = "sb-var-row-ref";
+    ref.textContent = varName;
+    header.appendChild(ref);
+
+    const del = document.createElement("sp-action-button");
+    del.size = "s";
+    del.quiet = true;
+    del.className = "sb-var-del";
+    del.style.pointerEvents = "auto";
+    const delIcon = document.createElement("sp-icon-delete");
+    delIcon.slot = "icon";
+    del.appendChild(delIcon);
+    del.onclick = () => update(updateStyle(S, [], varName, undefined));
+    header.appendChild(del);
   }
 
-  const totalVars = Object.values(groups).reduce((s, g) => s + g.length, 0);
-  if (totalVars === 0) {
-    const empty = document.createElement("div");
-    empty.style.cssText = "padding:48px;text-align:center;color:#999;font-size:13px";
-    empty.textContent = "No variables defined. Add CSS custom properties to create a design token system.";
-    canvasEl.appendChild(empty);
+  if (header.childNodes.length) row.appendChild(header);
+
+  // ─── Horizontal input row: [swatch] + name(flex:2) + value(flex:3) + [actions] ───
+  const inputRow = document.createElement("div");
+  inputRow.className = "sb-var-input-row";
+
+  // Color swatch
+  let colorPicker = null;
+  if (catKey === "color") {
+    const swatch = document.createElement("div");
+    swatch.className = "sb-var-swatch";
+    swatch.style.backgroundColor = varVal || "#007acc";
+    colorPicker = document.createElement("input");
+    colorPicker.type = "color";
+    try { colorPicker.value = (varVal && varVal.startsWith("#")) ? varVal : "#007acc"; } catch {}
+    swatch.appendChild(colorPicker);
+    inputRow.appendChild(swatch);
   }
+
+  // Name column
+  let nameField = null;
+  if (isNew) {
+    const nameCol = document.createElement("div");
+    nameCol.className = "sb-var-col-name";
+    const lbl = document.createElement("div");
+    lbl.className = "sb-var-col-label";
+    lbl.textContent = "Name";
+    nameCol.appendChild(lbl);
+    nameField = document.createElement("sp-textfield");
+    nameField.size = "s";
+    nameField.placeholder = catKey === "color" ? "Primary Blue" : catKey === "font" ? "Body Serif" : catKey === "size" ? "Spacing Large" : "Border Radius";
+    nameField.style.pointerEvents = "auto";
+    nameCol.appendChild(nameField);
+    inputRow.appendChild(nameCol);
+  }
+
+  // Value column
+  const valCol = document.createElement("div");
+  valCol.className = "sb-var-col-value";
+  if (isNew) {
+    const lbl = document.createElement("div");
+    lbl.className = "sb-var-col-label";
+    lbl.textContent = "Value";
+    valCol.appendChild(lbl);
+  }
+
+  let getValueFn;
+
+  if (catKey === "color") {
+    const hexField = document.createElement("sp-textfield");
+    hexField.size = "s";
+    hexField.value = varVal || "#007acc";
+    hexField.placeholder = "#007acc";
+    hexField.style.pointerEvents = "auto";
+    valCol.appendChild(hexField);
+    getValueFn = () => hexField.value.trim();
+
+    if (colorPicker) {
+      colorPicker.oninput = () => {
+        hexField.value = colorPicker.value;
+        const swatch = row.querySelector(".sb-var-swatch");
+        if (swatch) swatch.style.backgroundColor = colorPicker.value;
+        if (!isNew && varName) update(updateStyle(S, [], varName, colorPicker.value));
+      };
+      let debounce;
+      hexField.addEventListener("input", () => {
+        clearTimeout(debounce);
+        debounce = setTimeout(() => {
+          const v = hexField.value;
+          try { colorPicker.value = v.startsWith("#") ? v : colorPicker.value; } catch {}
+          const swatch = row.querySelector(".sb-var-swatch");
+          if (swatch) swatch.style.backgroundColor = v;
+          if (!isNew && varName) update(updateStyle(S, [], varName, v));
+        }, 400);
+      });
+    }
+  } else if (catKey === "size") {
+    const ui = createUnitInput(varVal || "16px", {
+      onChange: (newVal) => {
+        const bar = row.querySelector(".sb-var-size-bar");
+        if (bar) bar.style.width = newVal;
+        if (!isNew && varName) update(updateStyle(S, [], varName, newVal));
+      },
+    });
+    if (isNew) ui.textfield.value = "";
+    valCol.appendChild(ui.wrap);
+    getValueFn = () => ui.getValue();
+  } else {
+    const textField = document.createElement("sp-textfield");
+    textField.size = "s";
+    textField.value = varVal;
+    textField.placeholder = catMeta.placeholder;
+    textField.style.pointerEvents = "auto";
+    valCol.appendChild(textField);
+    getValueFn = () => textField.value.trim();
+
+    if (!isNew && varName) {
+      let debounce;
+      textField.addEventListener("input", () => {
+        clearTimeout(debounce);
+        debounce = setTimeout(() => {
+          const v = textField.value;
+          const fontPrev = row.querySelector(".sb-var-font-preview");
+          if (fontPrev) fontPrev.style.fontFamily = v;
+          update(updateStyle(S, [], varName, v));
+        }, 400);
+      });
+    }
+  }
+
+  inputRow.appendChild(valCol);
+
+  // Action buttons for add-new (inline at end of input row)
+  if (isNew) {
+    const actions = document.createElement("div");
+    actions.className = "sb-var-add-actions";
+
+    const confirmBtn = document.createElement("sp-action-button");
+    confirmBtn.size = "s";
+    confirmBtn.style.pointerEvents = "auto";
+    confirmBtn.textContent = "Add";
+    confirmBtn.onclick = () => {
+      const name = (nameField.value || "").trim();
+      const val = getValueFn();
+      const generatedVar = friendlyNameToVar(name, catMeta.prefix);
+      if (!generatedVar || !val) return;
+      update(updateStyle(S, [], generatedVar, val));
+    };
+    actions.appendChild(confirmBtn);
+
+    const cancelBtn = document.createElement("sp-action-button");
+    cancelBtn.size = "s";
+    cancelBtn.quiet = true;
+    cancelBtn.style.pointerEvents = "auto";
+    const closeIcon = document.createElement("sp-icon-close");
+    closeIcon.slot = "icon";
+    cancelBtn.appendChild(closeIcon);
+    cancelBtn.onclick = () => {
+      const body = row.parentElement;
+      row.remove();
+      const addBtn = body?.querySelector(".sb-var-add-btn");
+      if (addBtn) addBtn.style.display = "";
+    };
+    actions.appendChild(cancelBtn);
+
+    inputRow.appendChild(actions);
+  }
+
+  row.appendChild(inputRow);
+
+  // Live preview of generated var name (add-new only)
+  if (isNew && nameField) {
+    const preview = document.createElement("div");
+    preview.className = "sb-var-add-preview";
+    nameField.addEventListener("input", () => {
+      preview.textContent = friendlyNameToVar(nameField.value || "", catMeta.prefix);
+    });
+    row.appendChild(preview);
+  }
+
+  // ─── Type-specific preview ───
+  if (catKey === "font" && varVal) {
+    const preview = document.createElement("div");
+    preview.className = "sb-var-preview";
+    const fontPrev = document.createElement("div");
+    fontPrev.className = "sb-var-font-preview";
+    fontPrev.style.fontFamily = varVal;
+    fontPrev.textContent = "The quick brown fox jumps over the lazy dog";
+    preview.appendChild(fontPrev);
+    row.appendChild(preview);
+  }
+
+  if (catKey === "size" && varVal) {
+    const preview = document.createElement("div");
+    preview.className = "sb-var-preview";
+    const track = document.createElement("div");
+    track.className = "sb-var-size-track";
+    const bar = document.createElement("div");
+    bar.className = "sb-var-size-bar";
+    bar.style.width = varVal;
+    track.appendChild(bar);
+    preview.appendChild(track);
+    row.appendChild(preview);
+  }
+
+  return row;
+}
+
+function varDisplayName(varName, prefix) {
+  return varName
+    .replace(new RegExp(`^${prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`), "")
+    .replace(/^--/, "")
+    .replace(/-/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase()) || varName;
+}
+
+/** Convert a human-friendly name like "Primary Blue" to "--color-primary-blue" */
+function friendlyNameToVar(name, prefix) {
+  const slug = name.trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+  if (!slug) return "";
+  return `${prefix}${slug}`;
+}
+
+/**
+ * Creates a combined textfield + quiet sp-picker for CSS values with units.
+ * Returns { wrap, textfield, picker, getValue, setValue }.
+ * The picker hides automatically when the textfield value is non-numeric (e.g. "auto", "inherit").
+ */
+function createUnitInput(initialValue, { onChange, size = "s" } = {}) {
+  const match = String(initialValue).match(/^(-?[\d.]+)\s*(px|em|rem|vw|vh|%|ch|ex|vmin|vmax|pt|cm|mm|in)?$/);
+  let numVal = match ? match[1] : initialValue;
+  let unitVal = match ? (match[2] || "px") : "";
+  const isNumeric = !!match;
+
+  const wrap = document.createElement("div");
+  wrap.className = "sb-unit-input";
+  wrap.style.pointerEvents = "auto";
+
+  const textfield = document.createElement("sp-textfield");
+  textfield.value = numVal;
+  textfield.size = size;
+  wrap.appendChild(textfield);
+
+  const picker = document.createElement("sp-picker");
+  picker.quiet = true;
+  picker.size = size;
+  picker.value = unitVal || "px";
+  picker.label = "unit";
+  if (!isNumeric) picker.style.display = "none";
+
+  const units = [
+    { value: "px", label: "px" },
+    { value: "rem", label: "rem" },
+    { value: "em", label: "em" },
+    { value: "%", label: "%" },
+    { value: "vw", label: "vw" },
+    { value: "vh", label: "vh" },
+    { value: "ch", label: "ch" },
+    { value: "pt", label: "pt" },
+    { divider: true },
+    { value: "auto", label: "auto" },
+    { value: "fit-content", label: "fit-content" },
+  ];
+  for (const u of units) {
+    if (u.divider) {
+      picker.appendChild(document.createElement("sp-menu-divider"));
+    } else {
+      const item = document.createElement("sp-menu-item");
+      item.value = u.value;
+      item.textContent = u.label;
+      picker.appendChild(item);
+    }
+  }
+  wrap.appendChild(picker);
+
+  function getValue() {
+    const num = textfield.value;
+    const unit = picker.value;
+    // Keyword units like "auto" replace the whole value
+    if (unit === "auto" || unit === "fit-content") return unit;
+    return num ? `${num}${unit}` : "";
+  }
+
+  // Textfield typing — show/hide picker based on numeric content
+  let debounce;
+  textfield.addEventListener("input", () => {
+    clearTimeout(debounce);
+    const raw = textfield.value.trim();
+    const looksNumeric = /^-?[\d.]+$/.test(raw);
+    picker.style.display = looksNumeric ? "" : "none";
+    debounce = setTimeout(() => {
+      if (onChange) onChange(looksNumeric ? `${raw}${picker.value}` : raw);
+    }, 400);
+  });
+
+  // Picker change — keyword replaces input, numeric unit appends
+  picker.addEventListener("change", () => {
+    const unit = picker.value;
+    if (unit === "auto" || unit === "fit-content") {
+      textfield.value = unit;
+      picker.style.display = "none";
+      if (onChange) onChange(unit);
+    } else {
+      unitVal = unit;
+      if (onChange) onChange(getValue());
+    }
+  });
+
+  return { wrap, textfield, picker, getValue };
 }
 
 /** Click handler for stylebook canvas — selects elements via the elToPath/stylebookElToTag mapping */
