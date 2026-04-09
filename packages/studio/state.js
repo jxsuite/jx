@@ -138,7 +138,7 @@ export function createState(doc) {
     mode: "component", // 'component' | 'content'
     content: { frontmatter: {} }, // frontmatter metadata for .md files
     ui: {
-      leftTab: "layers", // 'layers' | 'blocks' | 'state' | 'data'
+      leftTab: "layers", // 'files' | 'layers' | 'blocks' | 'state' | 'data'
       rightTab: "properties", // 'properties' | 'events' | 'style'
       zoom: 1,
       activeMedia: null, // '--md' | null (base) — focused canvas/breakpoint
@@ -154,6 +154,16 @@ export function createState(doc) {
     },
   };
 }
+
+// ─── Project state (persists across document switches) ────────────────────────
+//
+// Shape: { root, name, dirs: Map<string, DirEntry[]>, expanded: Set<string>,
+//          selectedPath: string|null, searchQuery: string }
+// DirEntry: { name, path, type: "file"|"directory", size, modified }
+
+export let projectState = null;
+
+export function setProjectState(ps) { projectState = ps; }
 
 // ─── Core mutation ────────────────────────────────────────────────────────────
 

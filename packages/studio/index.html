@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="./dist/studio.css">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    sp-tab:not(:first-of-type) { margin-inline-start: var(--mod-tabs-item-horizontal-spacing, 8px); }
     :root {
       --bg:       #1e1e1e;
       --bg-panel: #252526;
@@ -28,8 +29,9 @@
     html, body { height: 100%; overflow: hidden; font: 12px/1.5 -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; color: var(--fg); background: var(--bg); }
 
     /* ─── Layout ─────────────────────────────────── */
-    #app { display: grid; grid-template-rows: 36px 1fr 24px; grid-template-columns: var(--panel-w-left) 1fr var(--panel-w-right); height: 100%; }
+    #app { display: grid; grid-template-rows: 36px 1fr 24px; grid-template-columns: 48px var(--panel-w-left) 1fr var(--panel-w-right); height: 100%; }
     #toolbar   { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; padding: 0 8px; background: var(--bg-panel); border-bottom: 1px solid var(--border); }
+    #activity-bar { grid-row: 2; display: flex; flex-direction: column; background: #333333; border-right: 1px solid var(--border); }
     #left-panel  { grid-row: 2; overflow-y: auto; background: var(--bg-panel); border-right: 1px solid var(--border); }
     #canvas-wrap { grid-row: 2; position: relative; overflow: auto; background: #f5f5f5; }
     #right-panel { grid-row: 2; overflow-y: auto; background: var(--bg-panel); border-left: 1px solid var(--border); }
@@ -59,12 +61,45 @@
     .overlay-drag-handle:hover { opacity: 1; }
     .overlay-drag-handle:active { cursor: grabbing; }
 
-    /* ─── Panel tabs ─────────────────────────────── */
-    .panel-tabs { display: flex; border-bottom: 1px solid var(--border); }
-    .panel-tab { flex: 1; padding: 6px 0; text-align: center; cursor: pointer; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--fg-dim); border-bottom: 2px solid transparent; }
-    .panel-tab:hover { color: var(--fg); }
-    .panel-tab.active { color: var(--fg); border-bottom-color: var(--accent); }
+    /* ─── Activity bar (vertical icon tabs) ──────── */
+    #activity-bar sp-tabs {
+      --mod-tabs-item-horizontal-spacing: 0px;
+      --mod-tabs-start-to-tab-item: 0px;
+      --mod-tabs-color: var(--fg-dim);
+      --mod-tabs-color-selected: var(--fg);
+    }
+    #activity-bar sp-tab {
+      width: 48px; height: 48px;
+      display: flex; align-items: center; justify-content: center;
+      color: var(--fg-dim); opacity: 0.6;
+      margin: 0;
+    }
+    #activity-bar sp-tab:hover { opacity: 1; }
+    #activity-bar sp-tab[selected] { color: var(--fg); opacity: 1; }
+
+    /* ─── Panel tabs (Spectrum sp-tabs) ──────────── */
+    #right-panel sp-tabs {
+      font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em;
+      --mod-tabs-item-horizontal-spacing: 8px;
+    }
     .panel-body { padding: 0; }
+
+    /* ─── File tree ──────────────────────────────── */
+    .files-toolbar { display: flex; gap: 4px; padding: 4px 8px; border-bottom: 1px solid var(--border); align-items: center; }
+    .files-toolbar sp-search { flex: 1; --spectrum-textfield-height: 24px; }
+    .file-tree { overflow-y: auto; }
+    .file-tree-item { display: flex; align-items: center; gap: 6px; padding: 3px 8px; cursor: pointer; font-size: 12px; color: var(--fg); user-select: none; }
+    .file-tree-item:hover { background: rgba(255,255,255,0.04); }
+    .file-tree-item.selected { background: rgba(0,122,204,0.2); }
+    .file-tree-toggle { width: 14px; text-align: center; font-size: 8px; color: var(--fg-dim); flex-shrink: 0; cursor: pointer; }
+    .file-tree-toggle.empty { visibility: hidden; }
+    .file-tree-icon { flex-shrink: 0; display: flex; align-items: center; }
+    .file-tree-icon sp-icon-folder, .file-tree-icon sp-icon-folder-open,
+    .file-tree-icon sp-icon-document, .file-tree-icon sp-icon-file-code,
+    .file-tree-icon sp-icon-file-txt, .file-tree-icon sp-icon-file-css,
+    .file-tree-icon sp-icon-image { --spectrum-icon-size-100: 16px; }
+    .file-tree-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+    .file-tree-empty { padding: 24px; text-align: center; color: var(--fg-dim); font-size: 12px; }
 
     /* ─── Layers ─────────────────────────────────── */
     .layer-row { display: flex; align-items: center; gap: 4px; padding: 3px 8px; cursor: pointer; white-space: nowrap; user-select: none; border-left: 2px solid transparent; }
@@ -381,13 +416,16 @@
   </style>
 </head>
 <body>
-  <div id="app">
-    <div id="toolbar"></div>
-    <div id="left-panel"></div>
-    <div id="canvas-wrap"></div>
-    <div id="right-panel"></div>
-    <div id="statusbar"></div>
-  </div>
+  <sp-theme color="dark" scale="medium" system="spectrum">
+    <div id="app">
+      <div id="toolbar"></div>
+      <div id="activity-bar"></div>
+      <div id="left-panel"></div>
+      <div id="canvas-wrap"></div>
+      <div id="right-panel"></div>
+      <div id="statusbar"></div>
+    </div>
+  </sp-theme>
   <script type="module" src="./dist/studio.js"></script>
 </body>
 </html>

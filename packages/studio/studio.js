@@ -42,6 +42,8 @@ import {
   parentElementPath,
   childIndex,
   isAncestor,
+  projectState,
+  setProjectState,
 } from "./state.js";
 
 import { renderNode as runtimeRenderNode, buildScope, defineElement } from "@jsonsx/runtime";
@@ -78,6 +80,32 @@ import {
 import webdata from "./webdata.json";
 import cssMeta from "./css-meta.json";
 import stylebookMeta from "./stylebook-meta.json";
+
+// ─── Spectrum Web Components ──────────────────────────────────────────────────
+import "@spectrum-web-components/theme/sp-theme.js";
+import "@spectrum-web-components/theme/theme-dark.js";
+import "@spectrum-web-components/theme/scale-medium.js";
+import "@spectrum-web-components/tabs/sp-tabs.js";
+import "@spectrum-web-components/tabs/sp-tab.js";
+import "@spectrum-web-components/action-button/sp-action-button.js";
+import "@spectrum-web-components/action-group/sp-action-group.js";
+import "@spectrum-web-components/search/sp-search.js";
+import "@spectrum-web-components/popover/sp-popover.js";
+import "@spectrum-web-components/menu/sp-menu.js";
+import "@spectrum-web-components/menu/sp-menu-item.js";
+import "@spectrum-web-components/menu/sp-menu-divider.js";
+import "@spectrum-web-components/icons-workflow/icons/sp-icon-folder.js";
+import "@spectrum-web-components/icons-workflow/icons/sp-icon-folder-open.js";
+import "@spectrum-web-components/icons-workflow/icons/sp-icon-document.js";
+import "@spectrum-web-components/icons-workflow/icons/sp-icon-file-code.js";
+import "@spectrum-web-components/icons-workflow/icons/sp-icon-file-txt.js";
+import "@spectrum-web-components/icons-workflow/icons/sp-icon-image.js";
+import "@spectrum-web-components/icons-workflow/icons/sp-icon-refresh.js";
+import "@spectrum-web-components/icons-workflow/icons/sp-icon-add.js";
+import "@spectrum-web-components/icons-workflow/icons/sp-icon-layers.js";
+import "@spectrum-web-components/icons-workflow/icons/sp-icon-view-grid.js";
+import "@spectrum-web-components/icons-workflow/icons/sp-icon-brackets.js";
+import "@spectrum-web-components/icons-workflow/icons/sp-icon-data.js";
 import icons from "./icons.js";
 import * as monaco from "monaco-editor/esm/vs/editor/editor.api";
 
@@ -99,6 +127,7 @@ function isNestedSelector(k) {
 }
 
 const canvasWrap = $("#canvas-wrap");
+const activityBar = $("#activity-bar");
 const leftPanel = $("#left-panel");
 const rightPanel = $("#right-panel");
 const toolbar = $("#toolbar");
@@ -588,6 +617,7 @@ const EMPTY_DOC = {
 S = createState(structuredClone(EMPTY_DOC));
 registerFunctionCompletions();
 loadComponentRegistry();
+loadProject();
 render();
 
 // Auto-open a document via ?open=path query parameter (server-backed)
@@ -614,6 +644,7 @@ render();
 
 function render() {
   renderToolbar();
+  renderActivityBar();
   renderLeftPanel();
   renderCanvas();
   renderRightPanel();
@@ -1776,32 +1807,51 @@ function cleanupComponentInlineEdit(el) {
   }
 }
 
+// ─── Activity bar ────────────────────────────────────────────────────────────
+
+function renderActivityBar() {
+  const tabs_def = [
+    { value: "files",  icon: "sp-icon-folder" },
+    { value: "layers", icon: "sp-icon-layers" },
+    { value: "blocks", icon: "sp-icon-view-grid" },
+    { value: "state",  icon: "sp-icon-brackets" },
+    { value: "data",   icon: "sp-icon-data" },
+  ];
+  activityBar.innerHTML = "";
+  const tabs = document.createElement("sp-tabs");
+  tabs.selected = S.ui.leftTab;
+  tabs.direction = "vertical";
+  tabs.quiet = true;
+  for (const { value, icon } of tabs_def) {
+    const spTab = document.createElement("sp-tab");
+    spTab.value = value;
+    spTab.setAttribute("aria-label", value);
+    const iconEl = document.createElement(icon);
+    iconEl.slot = "icon";
+    iconEl.setAttribute("size", "s");
+    spTab.appendChild(iconEl);
+    tabs.appendChild(spTab);
+  }
+  tabs.addEventListener("change", (e) => {
+    S = { ...S, ui: { ...S.ui, leftTab: e.target.selected } };
+    renderActivityBar();
+    renderLeftPanel();
+  });
+  activityBar.appendChild(tabs);
+}
+
 // ─── Left panel: Layers ───────────────────────────────────────────────────────
 
 function renderLeftPanel() {
   const tab = S.ui.leftTab;
   leftPanel.innerHTML = "";
 
-  // Tabs
-  const tabs = document.createElement("div");
-  tabs.className = "panel-tabs";
-  for (const t of ["layers", "blocks", "state", "data"]) {
-    const btn = document.createElement("div");
-    btn.className = `panel-tab${t === tab ? " active" : ""}`;
-    btn.textContent = t;
-    btn.onclick = () => {
-      S = { ...S, ui: { ...S.ui, leftTab: t } };
-      renderLeftPanel();
-    };
-    tabs.appendChild(btn);
-  }
-  leftPanel.appendChild(tabs);
-
   const body = document.createElement("div");
   body.className = "panel-body";
   leftPanel.appendChild(body);
 
-  if (tab === "layers") {
+  if (tab === "files") renderFiles(body);
+  else if (tab === "layers") {
     if (canvasMode === "stylebook") renderStylebookLayers(body);
     else renderLayers(body);
   }
@@ -2408,7 +2458,8 @@ function renderBlocks(container) {
         // Live preview of the element
         const preview = document.createElement("div");
         preview.className = "block-preview";
-        const el = document.createElement(tag);
+        const unsafeTags = new Set(["script", "style", "link", "iframe", "object", "embed"]);
+        const el = document.createElement(unsafeTags.has(tag) ? "span" : tag);
         el.textContent = tag;
         preview.appendChild(el);
         row.appendChild(preview);
@@ -3837,26 +3888,511 @@ function renderDataTree(container, value, depth, maxDepth = 5) {
   }
 }
 
+// ─── File management ──────────────────────────────────────────────────────────
+
+async function loadProject() {
+  try {
+    const res = await fetch("/__studio/project");
+    if (!res.ok) return;
+    const meta = await res.json();
+    setProjectState({
+      root: meta.root,
+      name: meta.name,
+      dirs: new Map(),
+      expanded: new Set(),
+      selectedPath: null,
+      searchQuery: "",
+    });
+    await loadDirectory(".");
+  } catch {
+    // Not on dev server — project features disabled
+  }
+}
+
+async function loadDirectory(dirPath) {
+  if (!projectState) return;
+  try {
+    const res = await fetch(`/__studio/files?dir=${encodeURIComponent(dirPath)}`);
+    if (!res.ok) return;
+    const entries = await res.json();
+    projectState.dirs.set(dirPath, entries);
+  } catch {
+    projectState.dirs.set(dirPath, []);
+  }
+}
+
+function fileTypeIcon(name, type) {
+  let tag;
+  if (type === "directory") {
+    tag = projectState?.expanded?.has(name) ? "sp-icon-folder-open" : "sp-icon-folder";
+  } else {
+    const ext = name.split(".").pop()?.toLowerCase();
+    switch (ext) {
+      case "json": tag = "sp-icon-file-code"; break;
+      case "md": tag = "sp-icon-file-txt"; break;
+      case "js": case "ts": tag = "sp-icon-file-code"; break;
+      case "css": tag = "sp-icon-file-code"; break;
+      case "png": case "jpg": case "jpeg": case "svg": case "webp": case "gif":
+        tag = "sp-icon-image"; break;
+      default: tag = "sp-icon-document"; break;
+    }
+  }
+  return document.createElement(tag);
+}
+
+function renderFiles(container) {
+  if (!projectState) {
+    const empty = document.createElement("div");
+    empty.className = "file-tree-empty";
+    empty.textContent = "No project loaded";
+    container.appendChild(empty);
+    return;
+  }
+
+  // ─── Toolbar ────────────────────────────────────
+  const toolbar = document.createElement("div");
+  toolbar.className = "files-toolbar";
+
+  const actionGroup = document.createElement("sp-action-group");
+  actionGroup.size = "xs";
+  actionGroup.compact = true;
+  actionGroup.quiet = true;
+
+  const btnNewFile = document.createElement("sp-action-button");
+  btnNewFile.size = "xs";
+  btnNewFile.label = "New File";
+  const iconAdd = document.createElement("sp-icon-add");
+  iconAdd.slot = "icon";
+  btnNewFile.appendChild(iconAdd);
+  btnNewFile.addEventListener("click", () => createNewFile());
+  actionGroup.appendChild(btnNewFile);
+
+  const btnRefresh = document.createElement("sp-action-button");
+  btnRefresh.size = "xs";
+  btnRefresh.label = "Refresh";
+  const iconRefresh = document.createElement("sp-icon-refresh");
+  iconRefresh.slot = "icon";
+  btnRefresh.appendChild(iconRefresh);
+  btnRefresh.addEventListener("click", async () => {
+    projectState.dirs.clear();
+    await loadDirectory(".");
+    for (const dir of projectState.expanded) await loadDirectory(dir);
+    renderLeftPanel();
+  });
+  actionGroup.appendChild(btnRefresh);
+  toolbar.appendChild(actionGroup);
+
+  const search = document.createElement("sp-search");
+  search.size = "s";
+  search.quiet = true;
+  search.placeholder = "Filter files…";
+  search.value = projectState.searchQuery;
+  search.addEventListener("input", (e) => {
+    projectState.searchQuery = e.target.value;
+    renderLeftPanel();
+  });
+  search.addEventListener("submit", (e) => e.preventDefault());
+  toolbar.appendChild(search);
+
+  container.appendChild(toolbar);
+
+  // ─── File tree ──────────────────────────────────
+  const tree = document.createElement("div");
+  tree.className = "file-tree";
+  tree.setAttribute("role", "tree");
+  tree.setAttribute("aria-label", "Project files");
+
+  renderTreeLevel(tree, ".", 0);
+
+  container.appendChild(tree);
+
+  // ─── Keyboard navigation (roving tabindex) ──────
+  setupTreeKeyboard(tree);
+}
+
+function renderTreeLevel(container, dirPath, depth) {
+  const entries = projectState.dirs.get(dirPath);
+  if (!entries) {
+    // Lazy load: fetch this directory then re-render
+    loadDirectory(dirPath).then(() => renderLeftPanel());
+    const placeholder = document.createElement("div");
+    placeholder.className = "file-tree-item";
+    placeholder.style.paddingLeft = `${8 + depth * 16}px`;
+    placeholder.textContent = "Loading…";
+    placeholder.style.color = "var(--fg-dim)";
+    placeholder.style.fontStyle = "italic";
+    container.appendChild(placeholder);
+    return;
+  }
+
+  // Sort: directories first, then files, alphabetical within each group
+  const sorted = [...entries].sort((a, b) => {
+    if (a.type === "directory" && b.type !== "directory") return -1;
+    if (a.type !== "directory" && b.type === "directory") return 1;
+    return a.name.localeCompare(b.name);
+  });
+
+  // Filter by search query
+  const query = projectState.searchQuery.toLowerCase();
+  const filtered = query
+    ? sorted.filter((e) => {
+        if (e.type === "directory") return true; // always show dirs so children can match
+        return e.name.toLowerCase().includes(query);
+      })
+    : sorted;
+
+  for (const entry of filtered) {
+    const isDir = entry.type === "directory";
+    const isExpanded = projectState.expanded.has(entry.path);
+    const isSelected = projectState.selectedPath === entry.path;
+
+    const item = document.createElement("div");
+    item.className = `file-tree-item${isSelected ? " selected" : ""}`;
+    item.style.paddingLeft = `${8 + depth * 16}px`;
+    item.setAttribute("role", "treeitem");
+    item.setAttribute("aria-level", String(depth + 1));
+    item.setAttribute("tabindex", "-1");
+    item.dataset.path = entry.path;
+    item.dataset.type = entry.type;
+
+    if (isDir) {
+      item.setAttribute("aria-expanded", String(isExpanded));
+
+      // Expand/collapse toggle
+      const toggle = document.createElement("span");
+      toggle.className = "file-tree-toggle";
+      toggle.textContent = isExpanded ? "▼" : "▶";
+      item.appendChild(toggle);
+    } else {
+      // Empty spacer for alignment
+      const spacer = document.createElement("span");
+      spacer.className = "file-tree-toggle empty";
+      spacer.textContent = " ";
+      item.appendChild(spacer);
+    }
+
+    // Icon
+    const iconWrap = document.createElement("span");
+    iconWrap.className = "file-tree-icon";
+    iconWrap.appendChild(fileTypeIcon(entry.path, entry.type));
+    item.appendChild(iconWrap);
+
+    // Name
+    const nameEl = document.createElement("span");
+    nameEl.className = "file-tree-name";
+    nameEl.textContent = entry.name;
+    item.appendChild(nameEl);
+
+    // Click handler
+    item.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      if (isDir) {
+        // Toggle expand/collapse
+        if (isExpanded) {
+          projectState.expanded.delete(entry.path);
+        } else {
+          projectState.expanded.add(entry.path);
+          if (!projectState.dirs.has(entry.path)) {
+            await loadDirectory(entry.path);
+          }
+        }
+        renderLeftPanel();
+      } else {
+        openFileFromTree(entry.path);
+      }
+    });
+
+    // Context menu
+    item.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      showFileContextMenu(e, entry);
+    });
+
+    container.appendChild(item);
+
+    // Render children if directory is expanded
+    if (isDir && isExpanded) {
+      const group = document.createElement("div");
+      group.setAttribute("role", "group");
+      renderTreeLevel(group, entry.path, depth + 1);
+      container.appendChild(group);
+    }
+  }
+}
+
+function setupTreeKeyboard(tree) {
+  tree.addEventListener("keydown", (e) => {
+    const items = [...tree.querySelectorAll('.file-tree-item')];
+    const focused = tree.querySelector('.file-tree-item:focus');
+    if (!focused || items.length === 0) return;
+
+    const idx = items.indexOf(focused);
+    let handled = true;
+
+    switch (e.key) {
+      case "ArrowDown":
+        if (idx < items.length - 1) items[idx + 1].focus();
+        break;
+      case "ArrowUp":
+        if (idx > 0) items[idx - 1].focus();
+        break;
+      case "ArrowRight":
+        if (focused.dataset.type === "directory") {
+          const path = focused.dataset.path;
+          if (!projectState.expanded.has(path)) {
+            projectState.expanded.add(path);
+            loadDirectory(path).then(() => renderLeftPanel());
+          }
+        }
+        break;
+      case "ArrowLeft":
+        if (focused.dataset.type === "directory") {
+          const path = focused.dataset.path;
+          if (projectState.expanded.has(path)) {
+            projectState.expanded.delete(path);
+            renderLeftPanel();
+          }
+        }
+        break;
+      case "Enter":
+        focused.click();
+        break;
+      default:
+        handled = false;
+    }
+    if (handled) e.preventDefault();
+  });
+
+  // Set first item focusable
+  const first = tree.querySelector('.file-tree-item');
+  if (first) first.setAttribute("tabindex", "0");
+}
+
+/** Context menu for file tree items using Spectrum popover + menu */
+let fileContextPopover = null;
+
+function showFileContextMenu(e, entry) {
+  // Remove any existing popover
+  if (fileContextPopover) {
+    fileContextPopover.remove();
+    fileContextPopover = null;
+  }
+
+  const isDir = entry.type === "directory";
+
+  const popover = document.createElement("sp-popover");
+  popover.placement = "right-start";
+  popover.open = true;
+  popover.style.position = "fixed";
+  popover.style.left = `${e.clientX}px`;
+  popover.style.top = `${e.clientY}px`;
+  popover.style.zIndex = "9999";
+
+  const menu = document.createElement("sp-menu");
+  menu.style.minWidth = "160px";
+
+  if (!isDir) {
+    const openItem = document.createElement("sp-menu-item");
+    openItem.textContent = "Open";
+    openItem.addEventListener("click", () => {
+      closeFileContextMenu();
+      openFileFromTree(entry.path);
+    });
+    menu.appendChild(openItem);
+  }
+
+  if (isDir) {
+    const newFileItem = document.createElement("sp-menu-item");
+    newFileItem.textContent = "New File…";
+    newFileItem.addEventListener("click", () => {
+      closeFileContextMenu();
+      createNewFile(entry.path);
+    });
+    menu.appendChild(newFileItem);
+  }
+
+  const divider = document.createElement("sp-menu-divider");
+  menu.appendChild(divider);
+
+  const renameItem = document.createElement("sp-menu-item");
+  renameItem.textContent = "Rename…";
+  renameItem.addEventListener("click", () => {
+    closeFileContextMenu();
+    renameFile(entry);
+  });
+  menu.appendChild(renameItem);
+
+  const deleteItem = document.createElement("sp-menu-item");
+  deleteItem.textContent = "Delete";
+  deleteItem.style.color = "var(--danger)";
+  deleteItem.addEventListener("click", () => {
+    closeFileContextMenu();
+    deleteFile(entry);
+  });
+  menu.appendChild(deleteItem);
+
+  popover.appendChild(menu);
+  document.body.appendChild(popover);
+  fileContextPopover = popover;
+
+  // Close on click outside
+  const closeHandler = (ev) => {
+    if (!popover.contains(ev.target)) {
+      closeFileContextMenu();
+      document.removeEventListener("mousedown", closeHandler, true);
+    }
+  };
+  setTimeout(() => document.addEventListener("mousedown", closeHandler, true), 0);
+}
+
+function closeFileContextMenu() {
+  if (fileContextPopover) {
+    fileContextPopover.remove();
+    fileContextPopover = null;
+  }
+}
+
+async function createNewFile(dirPath = ".") {
+  const name = prompt("File name:", "untitled.json");
+  if (!name) return;
+  const path = dirPath === "." ? name : `${dirPath}/${name}`;
+  const content = name.endsWith(".md")
+    ? "---\ntitle: Untitled\n---\n\n"
+    : JSON.stringify({ tagName: "div", children: [] }, null, 2);
+  try {
+    await fetch(`/__studio/file?path=${encodeURIComponent(path)}`, {
+      method: "PUT",
+      body: content,
+    });
+    // Refresh the directory
+    await loadDirectory(dirPath);
+    renderLeftPanel();
+    statusMessage(`Created ${path}`);
+  } catch (e) {
+    statusMessage(`Error: ${e.message}`);
+  }
+}
+
+async function renameFile(entry) {
+  const newName = prompt("New name:", entry.name);
+  if (!newName || newName === entry.name) return;
+  const parentDir = entry.path.includes("/")
+    ? entry.path.substring(0, entry.path.lastIndexOf("/"))
+    : ".";
+  const newPath = parentDir === "." ? newName : `${parentDir}/${newName}`;
+  try {
+    await fetch("/__studio/file/rename", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ from: entry.path, to: newPath }),
+    });
+    await loadDirectory(parentDir);
+    if (projectState.selectedPath === entry.path) {
+      projectState.selectedPath = newPath;
+    }
+    renderLeftPanel();
+    statusMessage(`Renamed to ${newName}`);
+  } catch (e) {
+    statusMessage(`Error: ${e.message}`);
+  }
+}
+
+async function deleteFile(entry) {
+  if (!confirm(`Delete "${entry.name}"?`)) return;
+  try {
+    await fetch(`/__studio/file?path=${encodeURIComponent(entry.path)}`, {
+      method: "DELETE",
+    });
+    const parentDir = entry.path.includes("/")
+      ? entry.path.substring(0, entry.path.lastIndexOf("/"))
+      : ".";
+    await loadDirectory(parentDir);
+    if (projectState.selectedPath === entry.path) {
+      projectState.selectedPath = null;
+    }
+    renderLeftPanel();
+    statusMessage(`Deleted ${entry.name}`);
+  } catch (e) {
+    statusMessage(`Error: ${e.message}`);
+  }
+}
+
+async function openFileFromTree(path) {
+  // Auto-save current dirty document if on dev server
+  if (S.dirty && S.documentPath) {
+    try {
+      const isContent = S.mode === "content";
+      let output;
+      if (isContent) {
+        const mdast = jsonsxToMd(S.document);
+        const md = unified()
+          .use(remarkStringify, { bullet: "-", emphasis: "*", strong: "*" })
+          .stringify(mdast);
+        const fm = S.content?.frontmatter;
+        const hasFrontmatter = fm && Object.keys(fm).length > 0;
+        output = hasFrontmatter ? `---\n${stringifyYaml(fm).trim()}\n---\n\n${md}` : md;
+      } else {
+        output = JSON.stringify(S.document, null, 2);
+      }
+      await fetch(`/__studio/file?path=${encodeURIComponent(S.documentPath)}`, {
+        method: "PUT",
+        body: output,
+      });
+    } catch (e) {
+      statusMessage(`Save error: ${e.message}`);
+    }
+  }
+
+  // Fetch the file
+  try {
+    const res = await fetch(`/__studio/file?path=${encodeURIComponent(path)}`);
+    const data = await res.json();
+    if (!data.content) return;
+
+    if (path.endsWith(".md")) {
+      loadMarkdown(data.content, null);
+      S.documentPath = data.path;
+    } else {
+      const doc = JSON.parse(data.content);
+      S = createState(doc);
+      S.documentPath = data.path;
+      S.dirty = false;
+    }
+
+    // Update tree selection
+    projectState.selectedPath = path;
+
+    render();
+    statusMessage(`Opened ${data.path}`);
+  } catch (e) {
+    statusMessage(`Error: ${e.message}`);
+  }
+}
+
 // ─── Right panel: Inspector ───────────────────────────────────────────────────
 
 function renderRightPanel() {
   const tab = S.ui.rightTab;
   rightPanel.innerHTML = "";
 
-  // Tabs
-  const tabs = document.createElement("div");
-  tabs.className = "panel-tabs";
+  // Tabs — Spectrum sp-tabs
+  const tabs = document.createElement("sp-tabs");
+  tabs.selected = tab;
+  tabs.compact = true;
+  tabs.size = "s";
+  tabs.quiet = true;
   for (const t of ["properties", "events", "style"]) {
-    const btn = document.createElement("div");
-    btn.className = `panel-tab${t === tab ? " active" : ""}`;
-    btn.textContent = t;
-    btn.onclick = () => {
-      S = { ...S, ui: { ...S.ui, rightTab: t } };
-      renderRightPanel();
-      renderOverlays();
-    };
-    tabs.appendChild(btn);
+    const spTab = document.createElement("sp-tab");
+    spTab.label = t;
+    spTab.value = t;
+    tabs.appendChild(spTab);
   }
+  tabs.addEventListener("change", (e) => {
+    S = { ...S, ui: { ...S.ui, rightTab: e.target.selected } };
+    renderRightPanel();
+    renderOverlays();
+  });
   rightPanel.appendChild(tabs);
 
   const body = document.createElement("div");
