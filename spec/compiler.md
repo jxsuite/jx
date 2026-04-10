@@ -354,6 +354,16 @@ For dynamic documents that are not custom elements, the compiler emits:
 | `timing: "compiler"` | Bake fetch responses into HTML at build time | **Not implemented** |
 | Island serialization | `<script type="application/JSONsx+json">` hydration islands | **Not implemented** |
 | Bundle manifest | Exact dependency manifest from JSON analysis | **Partially implemented** (imports collected but no standalone manifest file) |
+| Multi-page build | Orchestrate compilation across all pages in a site project | **Not implemented** |
+| Layout resolution | Resolve `$layout`, `$slot`, `$slotTarget` during compilation | **Not implemented** |
+| `$head` merge | Merge site + layout + page `<head>` entries with deduplication | **Not implemented** |
+| `$paths` expansion | Generate one page per content entry for dynamic routes | **Not implemented** |
+| `ContentCollection` / `ContentEntry` | New `$prototype` values for querying content at build time | **Not implemented** |
+| Sitemap generation | Auto-generate `sitemap.xml` from route table | **Not implemented** |
+| Image optimization | Format conversion, responsive sizes, lazy loading | **Not implemented** |
+| Platform adapters | Emit `_redirects` (Netlify), `vercel.json`, etc. | **Not implemented** |
+
+See the [Site Architecture Specification](site-architecture.md) for the full multi-page compilation and routing design.
 
 ---
 

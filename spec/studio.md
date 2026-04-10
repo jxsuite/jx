@@ -9,7 +9,9 @@
 
 ## 1. Overview
 
-JSONsx Studio is a visual builder for creating and editing JSONsx component files. It renders a live canvas via the JSONsx runtime, provides a layer tree for structural editing, an inspector for property/style/state management, and a code editor for function bodies. The UI is built with Adobe Spectrum Web Components.
+JSONsx Studio is a visual IDE for the development and management of local-first, statically compiled applications and websites which are composed and deployed via the JSONsx schema and pipeline. It renders a live canvas via the JSONsx runtime, provides a layer tree for structural editing, an inspector for property/style/state management, and a code editor for function bodies. The UI is built with Adobe Spectrum Web Components.
+
+At the component level, Studio is a visual builder for individual JSONsx files. At the site level, it is a content management system — providing a project explorer, content collection browser, schema-driven entry editors, media management, SEO tooling, and redirect management. The full site-level architecture is specified in the companion [Site Architecture Specification](site-architecture.md).
 
 ---
 
@@ -273,6 +275,14 @@ All file operations go through the `@jsonsx/server` Studio API:
 | Full CEM document export | Generate complete Custom Elements Manifest JSON | **Pending** |
 | Stylebook mode | Design token management and component gallery | **Pending** |
 | Component library management | Browse, install, and manage component packages | **Pending** |
+| Project explorer | File tree for site projects (pages, layouts, content, public) | **Pending** |
+| Content collection browser | Table/card/calendar views for content entries | **Pending** |
+| Content entry editor | Schema-driven forms for Markdown frontmatter, JSON, CSV | **Pending** |
+| Media browser | Grid/list view of project media with upload and usage tracking | **Pending** |
+| SEO panel | Title/description/OG preview with schema.org editor | **Pending** |
+| Redirect editor | CRUD table for site redirect rules | **Pending** |
+
+See the [Site Architecture Specification](site-architecture.md) §7 for full design details on content management UI.
 
 ---
 
