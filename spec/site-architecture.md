@@ -271,7 +271,7 @@ A dynamic page must declare which paths it generates. This is done via a top-lev
       "id": { "$ref": "#/$params/slug" }
     }
   },
-  "childNodes": [
+  "children": [
     {
       "tagName": "h1",
       "textContent": "${state.post.data.title}"
@@ -328,31 +328,29 @@ Layouts are JSONsx documents that provide a shared page shell — the `<html>`, 
 
 ### 5.1 Layout Documents
 
-A layout is a standard JSONsx file with a `$slot` directive indicating where page content is injected:
+A layout is a standard JSONsx file that uses HTML `<slot>` elements — the same mechanism already implemented for custom elements — to indicate where page content is injected:
 
 ```json
 {
   "tagName": "html",
   "lang": "${$page.lang ?? 'en'}",
-  "childNodes": [
+  "children": [
     {
       "tagName": "head",
-      "childNodes": [
+      "children": [
         { "tagName": "meta", "charset": "utf-8" },
         { "tagName": "meta", "name": "viewport", "content": "width=device-width, initial-scale=1" },
-        { "tagName": "title", "textContent": "${$page.title ?? $site.name}" },
-        { "$spread": "$page.$head" },
-        { "$spread": "$site.$head" }
+        { "tagName": "title", "textContent": "${$page.title ?? $site.name}" }
       ]
     },
     {
       "tagName": "body",
-      "childNodes": [
+      "children": [
         { "$ref": "../components/header.json" },
         {
           "tagName": "main",
-          "childNodes": [
-            { "$slot": "default" }
+          "children": [
+            { "tagName": "slot" }
           ]
         },
         { "$ref": "../components/footer.json" }
@@ -373,10 +371,10 @@ Pages declare their layout via `$layout`:
     { "tagName": "title", "textContent": "About Us" },
     { "tagName": "meta", "name": "description", "content": "Learn about our company" }
   ],
-  "childNodes": [
+  "children": [
     {
       "tagName": "section",
-      "childNodes": [
+      "children": [
         { "tagName": "h1", "textContent": "About Us" },
         { "tagName": "p", "textContent": "We build things." }
       ]
@@ -385,46 +383,50 @@ Pages declare their layout via `$layout`:
 }
 ```
 
-The page's `childNodes` are injected at the layout's `$slot` position. The page's `$head` entries merge with the layout's and site's head entries.
+The page's `children` are injected at the layout's `<slot>` position via the same `distributeSlots()` algorithm already implemented for custom elements — just run at compile time instead of DOM time. The page's `$head` entries merge with the layout's and site's head entries.
 
 If a page omits `$layout`, it uses the default layout from `site.json`. If `$layout` is explicitly set to `false`, no layout wraps the page (useful for standalone pages like landing pages or embeds).
 
 ### 5.3 Named Slots
 
-Layouts may define multiple named slots for structured page regions:
+Layouts may define multiple named slots for structured page regions, using the standard HTML `<slot>` element with `name` attribute — identical to how custom element slots already work:
 
 ```json
 {
   "tagName": "body",
-  "childNodes": [
+  "children": [
     { "$ref": "../components/header.json" },
     {
       "tagName": "aside",
-      "childNodes": [{ "$slot": "sidebar" }]
+      "children": [
+        { "tagName": "slot", "attributes": { "name": "sidebar" } }
+      ]
     },
     {
       "tagName": "main",
-      "childNodes": [{ "$slot": "default" }]
+      "children": [
+        { "tagName": "slot" }
+      ]
     },
     { "$ref": "../components/footer.json" }
   ]
 }
 ```
 
-Pages fill named slots with `$slotTarget`:
+Pages target named slots via the standard `slot` attribute — the same mechanism consumers already use with custom elements:
 
 ```json
 {
   "$layout": "../layouts/docs.json",
-  "childNodes": [
+  "children": [
     {
-      "$slotTarget": "sidebar",
       "tagName": "nav",
-      "childNodes": [{ "tagName": "a", "href": "/docs/intro", "textContent": "Intro" }]
+      "attributes": { "slot": "sidebar" },
+      "children": [{ "tagName": "a", "href": "/docs/intro", "textContent": "Intro" }]
     },
     {
       "tagName": "article",
-      "childNodes": [
+      "children": [
         { "tagName": "h1", "textContent": "Documentation" }
       ]
     }
@@ -432,7 +434,7 @@ Pages fill named slots with `$slotTarget`:
 }
 ```
 
-Children without `$slotTarget` go into the `"default"` slot.
+Children without a `slot` attribute go into the default (unnamed) slot. Fallback content is supported: children of the `<slot>` element are displayed when no matching content is provided — per the HTML spec.
 
 ### 5.4 Layout Nesting
 
@@ -441,18 +443,22 @@ Layouts can reference other layouts, enabling composition:
 ```json
 {
   "$layout": "./base.json",
-  "childNodes": [
+  "children": [
     {
       "tagName": "div",
       "className": "blog-wrapper",
-      "childNodes": [
+      "children": [
         {
           "tagName": "aside",
-          "childNodes": [{ "$slot": "sidebar" }]
+          "children": [
+            { "tagName": "slot", "attributes": { "name": "sidebar" } }
+          ]
         },
         {
           "tagName": "article",
-          "childNodes": [{ "$slot": "default" }]
+          "children": [
+            { "tagName": "slot" }
+          ]
         }
       ]
     }
@@ -597,15 +603,15 @@ Pages access collection data via state entries with `$prototype: "ContentCollect
       "limit": 10
     }
   },
-  "childNodes": [
+  "children": [
     {
       "tagName": "ul",
-      "childNodes": {
+      "children": {
         "$prototype": "Array",
         "of": { "$ref": "#/state/posts" },
         "map": {
           "tagName": "li",
-          "childNodes": [
+          "children": [
             {
               "tagName": "a",
               "href": "/blog/${item.id}",
@@ -824,7 +830,7 @@ For content-driven pages, metadata comes directly from the content entry's front
 The compiler assembles `<head>` content from three sources, in order:
 
 1. **Site-level** (`site.json` `$head`) — global meta tags, fonts, icons
-2. **Layout-level** (layout's `<head>` childNodes) — charset, viewport, structural tags
+2. **Layout-level** (layout's `<head>` children) — charset, viewport, structural tags
 3. **Page-level** (page's `$head`) — page-specific title, description, OG tags
 
 Later entries can override earlier entries. If both site and page define a `<title>`, the page's wins. Deduplication is by `tagName` + identifying attribute (`name`, `property`, `rel`).
@@ -1241,9 +1247,6 @@ This spec introduces the following new reserved keywords:
 | Keyword | Context | Purpose |
 |---|---|---|
 | `$layout` | Page root | Specifies the layout wrapping this page |
-| `$slot` | Layout element | Marks content injection point |
-| `$slotTarget` | Page child element | Names the slot this element fills |
-| `$spread` | Head element | Spreads an array of elements inline |
 | `$paths` | Page root | Dynamic route parameter generation |
 | `$params` | Template string | Route parameters (read-only) |
 | `$page` | Template string | Page metadata context |
@@ -1252,13 +1255,22 @@ This spec introduces the following new reserved keywords:
 | `ContentCollection` | `$prototype` value | Collection query |
 | `ContentEntry` | `$prototype` value | Single entry access |
 
+**Reused existing primitives (no new keywords needed):**
+
+| Mechanism | Existing Primitive | Site-Level Use |
+|---|---|---|
+| Layout slot injection | `{ "tagName": "slot" }` | Marks where page content goes in a layout |
+| Named slot targeting | `{ "attributes": { "slot": "name" } }` | Pages target specific layout regions |
+| Slot fallback content | Children of `<slot>` element | Default content when no page content is provided |
+
 ## Appendix B: Mapping to Existing Primitives
 
 This spec builds on existing JSONsx primitives wherever possible:
 
 | New Concept | Built On |
 |---|---|
-| Layouts | Standard JSONsx documents + `$slot` |
+| Layouts | Standard JSONsx documents + HTML `<slot>` element (already implemented for custom elements) |
+| Named layout slots | Standard `slot` attribute targeting (already implemented) |
 | Content query | `$prototype` (same pattern as `Array`, `URL`, etc.) |
 | Dynamic routes | `$ref` + compiler-time resolution |
 | Site state | Standard `state` with scope prefix |
@@ -1272,7 +1284,7 @@ This spec builds on existing JSONsx primitives wherever possible:
 ### Phase 1: Foundation
 - [ ] `site.json` schema and loader
 - [ ] File-based routing discovery (`pages/` scanner)
-- [ ] Layout system (`$layout`, `$slot`, `$slotTarget`)
+- [ ] Layout system (`$layout`, `<slot>` distribution at compile time)
 - [ ] `$head` merge pipeline (site + layout + page)
 - [ ] Multi-page build orchestration
 - [ ] `$page` and `$site` context injection
