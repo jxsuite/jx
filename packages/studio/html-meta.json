@@ -1,0 +1,341 @@
+{
+  "$id": "html-meta",
+  "title": "HTML Attribute Metadata",
+  "description": "Section assignment, order, and input inference metadata for the properties sidebar.",
+  "$sections": [
+    { "key": "identity", "label": "Identity" },
+    { "key": "link", "label": "Link" },
+    { "key": "media", "label": "Media" },
+    { "key": "form", "label": "Form" },
+    { "key": "table", "label": "Table" },
+    { "key": "accessibility", "label": "Accessibility" }
+  ],
+  "$defs": {
+    "id": {
+      "$section": "identity",
+      "$order": 10,
+      "type": "string",
+      "$label": "ID"
+    },
+    "class": {
+      "$section": "identity",
+      "$order": 20,
+      "type": "string",
+      "$label": "Class"
+    },
+    "title": {
+      "$section": "identity",
+      "$order": 30,
+      "type": "string"
+    },
+    "hidden": {
+      "$section": "identity",
+      "$order": 40,
+      "type": "boolean"
+    },
+    "lang": {
+      "$section": "identity",
+      "$order": 50,
+      "type": "string"
+    },
+    "dir": {
+      "$section": "identity",
+      "$order": 60,
+      "type": "string",
+      "enum": ["ltr", "rtl", "auto"]
+    },
+    "slot": {
+      "$section": "identity",
+      "$order": 70,
+      "type": "string"
+    },
+    "part": {
+      "$section": "identity",
+      "$order": 80,
+      "type": "string"
+    },
+    "href": {
+      "$section": "link",
+      "$order": 10,
+      "type": "string",
+      "$elements": ["a", "area", "link"]
+    },
+    "target": {
+      "$section": "link",
+      "$order": 20,
+      "type": "string",
+      "$elements": ["a", "area", "form"],
+      "enum": ["_self", "_blank", "_parent", "_top"]
+    },
+    "rel": {
+      "$section": "link",
+      "$order": 30,
+      "type": "string",
+      "$elements": ["a", "area", "link"]
+    },
+    "download": {
+      "$section": "link",
+      "$order": 40,
+      "type": "string",
+      "$elements": ["a", "area"]
+    },
+    "src": {
+      "$section": "media",
+      "$order": 10,
+      "type": "string",
+      "$elements": ["img", "script", "iframe", "video", "audio", "source", "embed", "input"]
+    },
+    "alt": {
+      "$section": "media",
+      "$order": 20,
+      "type": "string",
+      "$elements": ["img", "input", "area"]
+    },
+    "width": {
+      "$section": "media",
+      "$order": 30,
+      "type": "string",
+      "$elements": ["img", "video", "iframe", "canvas", "embed", "object"]
+    },
+    "height": {
+      "$section": "media",
+      "$order": 40,
+      "type": "string",
+      "$elements": ["img", "video", "iframe", "canvas", "embed", "object"]
+    },
+    "loading": {
+      "$section": "media",
+      "$order": 50,
+      "type": "string",
+      "$elements": ["img", "iframe"],
+      "enum": ["lazy", "eager"]
+    },
+    "srcset": {
+      "$section": "media",
+      "$order": 60,
+      "type": "string",
+      "$elements": ["img", "source"]
+    },
+    "sizes": {
+      "$section": "media",
+      "$order": 70,
+      "type": "string",
+      "$elements": ["img", "source"]
+    },
+    "poster": {
+      "$section": "media",
+      "$order": 80,
+      "type": "string",
+      "$elements": ["video"]
+    },
+    "controls": {
+      "$section": "media",
+      "$order": 90,
+      "type": "boolean",
+      "$elements": ["video", "audio"]
+    },
+    "autoplay": {
+      "$section": "media",
+      "$order": 100,
+      "type": "boolean",
+      "$elements": ["video", "audio"]
+    },
+    "loop": {
+      "$section": "media",
+      "$order": 110,
+      "type": "boolean",
+      "$elements": ["video", "audio"]
+    },
+    "muted": {
+      "$section": "media",
+      "$order": 120,
+      "type": "boolean",
+      "$elements": ["video", "audio"]
+    },
+    "type": {
+      "$section": "form",
+      "$order": 5,
+      "type": "string",
+      "$elements": ["input", "button"],
+      "enum": [
+        "text", "password", "email", "number", "tel", "url", "search",
+        "date", "time", "datetime-local", "month", "week",
+        "color", "range", "file",
+        "checkbox", "radio",
+        "hidden", "submit", "reset", "button"
+      ]
+    },
+    "name": {
+      "$section": "form",
+      "$order": 10,
+      "type": "string",
+      "$elements": ["input", "button", "select", "textarea", "fieldset", "output", "form"]
+    },
+    "value": {
+      "$section": "form",
+      "$order": 20,
+      "type": "string",
+      "$elements": ["input", "button", "option", "li", "meter", "progress"]
+    },
+    "placeholder": {
+      "$section": "form",
+      "$order": 30,
+      "type": "string",
+      "$elements": ["input", "textarea"]
+    },
+    "disabled": {
+      "$section": "form",
+      "$order": 40,
+      "type": "boolean",
+      "$elements": ["input", "button", "select", "textarea", "fieldset"]
+    },
+    "required": {
+      "$section": "form",
+      "$order": 50,
+      "type": "boolean",
+      "$elements": ["input", "select", "textarea"]
+    },
+    "readonly": {
+      "$section": "form",
+      "$order": 60,
+      "type": "boolean",
+      "$elements": ["input", "textarea"]
+    },
+    "checked": {
+      "$section": "form",
+      "$order": 70,
+      "type": "boolean",
+      "$elements": ["input"]
+    },
+    "multiple": {
+      "$section": "form",
+      "$order": 80,
+      "type": "boolean",
+      "$elements": ["input", "select"]
+    },
+    "min": {
+      "$section": "form",
+      "$order": 90,
+      "type": "string",
+      "$elements": ["input", "meter"]
+    },
+    "max": {
+      "$section": "form",
+      "$order": 100,
+      "type": "string",
+      "$elements": ["input", "meter"]
+    },
+    "step": {
+      "$section": "form",
+      "$order": 110,
+      "type": "string",
+      "$elements": ["input"]
+    },
+    "pattern": {
+      "$section": "form",
+      "$order": 120,
+      "type": "string",
+      "$elements": ["input"]
+    },
+    "maxlength": {
+      "$section": "form",
+      "$order": 130,
+      "type": "string",
+      "$elements": ["input", "textarea"]
+    },
+    "minlength": {
+      "$section": "form",
+      "$order": 140,
+      "type": "string",
+      "$elements": ["input", "textarea"]
+    },
+    "autocomplete": {
+      "$section": "form",
+      "$order": 150,
+      "type": "string",
+      "$elements": ["input", "select", "textarea", "form"],
+      "enum": ["on", "off"]
+    },
+    "action": {
+      "$section": "form",
+      "$order": 160,
+      "type": "string",
+      "$elements": ["form"]
+    },
+    "method": {
+      "$section": "form",
+      "$order": 170,
+      "type": "string",
+      "$elements": ["form"],
+      "enum": ["get", "post", "dialog"]
+    },
+    "for": {
+      "$section": "form",
+      "$order": 180,
+      "type": "string",
+      "$elements": ["label", "output"]
+    },
+    "open": {
+      "$section": "form",
+      "$order": 190,
+      "type": "boolean",
+      "$elements": ["details", "dialog"]
+    },
+    "colspan": {
+      "$section": "table",
+      "$order": 10,
+      "type": "string",
+      "$elements": ["td", "th"]
+    },
+    "rowspan": {
+      "$section": "table",
+      "$order": 20,
+      "type": "string",
+      "$elements": ["td", "th"]
+    },
+    "scope": {
+      "$section": "table",
+      "$order": 30,
+      "type": "string",
+      "$elements": ["th"],
+      "enum": ["row", "col", "rowgroup", "colgroup"]
+    },
+    "role": {
+      "$section": "accessibility",
+      "$order": 10,
+      "type": "string"
+    },
+    "aria-label": {
+      "$section": "accessibility",
+      "$order": 20,
+      "type": "string"
+    },
+    "aria-hidden": {
+      "$section": "accessibility",
+      "$order": 30,
+      "type": "string",
+      "enum": ["true", "false"]
+    },
+    "aria-describedby": {
+      "$section": "accessibility",
+      "$order": 40,
+      "type": "string"
+    },
+    "aria-labelledby": {
+      "$section": "accessibility",
+      "$order": 50,
+      "type": "string"
+    },
+    "aria-live": {
+      "$section": "accessibility",
+      "$order": 60,
+      "type": "string",
+      "enum": ["off", "polite", "assertive"]
+    },
+    "tabindex": {
+      "$section": "accessibility",
+      "$order": 70,
+      "type": "string"
+    }
+  }
+}

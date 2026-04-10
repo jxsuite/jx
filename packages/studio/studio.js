@@ -77,8 +77,16 @@ import {
   extractInstruction,
 } from "@atlaskit/pragmatic-drag-and-drop-hitbox/tree-item";
 
+import { html, render as litRender, nothing } from "lit-html";
+import { live } from "lit-html/directives/live.js";
+import { classMap } from "lit-html/directives/class-map.js";
+import { repeat } from "lit-html/directives/repeat.js";
+import { unsafeHTML } from "lit-html/directives/unsafe-html.js";
+import { ifDefined } from "lit-html/directives/if-defined.js";
+
 import webdata from "./webdata.json";
 import cssMeta from "./css-meta.json";
+import htmlMeta from "./html-meta.json";
 import stylebookMeta from "./stylebook-meta.json";
 
 // ─── Spectrum Web Components ──────────────────────────────────────────────────
@@ -113,6 +121,18 @@ const toolbar = $("#toolbar");
 const statusbar = $("#statusbar");
 
 // ─── Component registry ───────────────────────────────────────────────────────
+
+// Module-level debounce map for lit-html style inputs — survives re-renders
+const _styleDebounceTimers = new Map();
+function debouncedStyleCommit(prop, ms, fn) {
+  return (...args) => {
+    clearTimeout(_styleDebounceTimers.get(prop));
+    _styleDebounceTimers.set(prop, setTimeout(() => {
+      _styleDebounceTimers.delete(prop);
+      fn(...args);
+    }, ms));
+  };
+}
 
 let componentRegistry = []; // cached list from /__studio/components
 let componentRegistryLoaded = false;
@@ -422,10 +442,10 @@ function prepareForEditMode(node) {
               fontFamily: "'SF Mono', 'Fira Code', monospace",
               fontSize: "11px",
               padding: "6px 10px",
-              background: "rgba(199,91,79,0.08)",
-              border: "1px dashed rgba(199,91,79,0.4)",
+              background: "color-mix(in srgb, var(--danger) 8%, transparent)",
+              border: "1px dashed color-mix(in srgb, var(--danger) 40%, transparent)",
               borderRadius: "4px",
-              color: "#c75b4f",
+              color: "var(--danger)",
               fontStyle: "italic",
             },
           }];
@@ -655,8 +675,11 @@ function update(newState) {
 
   // Skip right-panel rebuild when an input inside it is focused (user is typing)
   // unless the selection changed — that always needs a full re-render
+  const activeTag = document.activeElement?.tagName;
   const rightHasFocus = rightPanel.contains(document.activeElement)
-    && (document.activeElement.tagName === "INPUT" || document.activeElement.tagName === "TEXTAREA");
+    && (activeTag === "INPUT" || activeTag === "TEXTAREA"
+      || activeTag === "SP-TEXTFIELD" || activeTag === "SP-NUMBER-FIELD"
+      || activeTag === "SP-PICKER" || activeTag === "SP-COMBOBOX" || activeTag === "SP-SEARCH");
   if (!rightHasFocus || !pathsEqual(prevSel, S.selection)) {
     renderRightPanel();
   }
@@ -1066,11 +1089,13 @@ function renderZoomIndicator() {
   label.textContent = `${Math.round(S.ui.zoom * 100)}%`;
   indicator.appendChild(label);
 
-  const fitBtn = document.createElement("button");
+  const fitBtn = document.createElement("sp-action-button");
+  fitBtn.setAttribute("quiet", "");
+  fitBtn.setAttribute("size", "s");
   fitBtn.className = "zoom-fit-btn";
   fitBtn.title = "Fit to screen";
   fitBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="12" height="12" rx="1"/><path d="M2 6h12M6 2v12"/></svg>`;
-  fitBtn.onclick = fitToScreen;
+  fitBtn.addEventListener("click", fitToScreen);
   indicator.appendChild(fitBtn);
 
   document.body.appendChild(indicator);
@@ -1280,7 +1305,7 @@ function renderCanvasNode(node, path, parent, activeBreakpoints, featureToggles)
     const keys = Object.keys(node.cases);
     const placeholder = document.createElement("div");
     placeholder.textContent = `[$switch: ${keys.join(" | ")}]`;
-    placeholder.style.cssText = "font-family:monospace;font-size:11px;padding:6px 10px;background:rgba(199,91,79,0.08);border:1px dashed rgba(199,91,79,0.4);border-radius:4px;color:#c75b4f;font-style:italic";
+    placeholder.style.cssText = "font-family:monospace;font-size:11px;padding:6px 10px;background:color-mix(in srgb, var(--danger) 8%, transparent);border:1px dashed color-mix(in srgb, var(--danger) 40%, transparent);border-radius:4px;color:var(--danger);font-style:italic";
     el.appendChild(placeholder);
   }
 
@@ -2400,7 +2425,7 @@ function renderStylebookLayers(container) {
       row.appendChild(lbl);
 
       const preview = document.createElement("span");
-      preview.style.cssText = "font-size:11px;color:#888;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:80px";
+      preview.style.cssText = "font-size:11px;color:var(--fg-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:80px";
       preview.textContent = String(v);
       row.appendChild(preview);
 
@@ -2408,7 +2433,7 @@ function renderStylebookLayers(container) {
     }
     if (Object.keys(style).filter((k) => k.startsWith("--")).length === 0) {
       const empty = document.createElement("div");
-      empty.style.cssText = "padding:16px;text-align:center;color:#888;font-size:12px";
+      empty.style.cssText = "padding:16px;text-align:center;color:var(--fg-dim);font-size:12px";
       empty.textContent = "No variables defined";
       container.appendChild(empty);
     }
@@ -2498,13 +2523,16 @@ function renderLayers(container) {
     const isExpandable = hasChildren || hasMapChildren || hasCases || (nodeType === "map" && node.map);
     const key = pathKey(path);
     if (isExpandable) {
-      toggle.textContent = collapsed.has(key) ? "▶" : "▼";
-      toggle.onclick = (e) => {
+      const chevron = collapsed.has(key)
+        ? document.createElement("sp-icon-chevron-right")
+        : document.createElement("sp-icon-chevron-down");
+      toggle.appendChild(chevron);
+      toggle.addEventListener("click", (e) => {
         e.stopPropagation();
         if (collapsed.has(key)) collapsed.delete(key);
         else collapsed.add(key);
         renderLeftPanel();
-      };
+      });
     }
     row.appendChild(toggle);
 
@@ -2541,14 +2569,18 @@ function renderLayers(container) {
 
     // Delete button (not for root, and not for virtual map/case rows)
     if (path.length >= 2 && nodeType === "element") {
-      const del = document.createElement("span");
+      const del = document.createElement("sp-action-button");
+      del.setAttribute("quiet", "");
+      del.setAttribute("size", "xs");
       del.className = "layer-delete";
-      del.textContent = "✕";
       del.title = "Delete";
-      del.onclick = (e) => {
+      const delIcon = document.createElement("sp-icon-close");
+      delIcon.setAttribute("slot", "icon");
+      del.appendChild(delIcon);
+      del.addEventListener("click", (e) => {
         e.stopPropagation();
         update(removeNode(S, path));
-      };
+      });
       row.appendChild(del);
     }
 
@@ -2794,9 +2826,9 @@ function defaultDef(tag) {
 
 function renderBlocks(container) {
   // Search filter
-  const search = document.createElement("input");
-  search.className = "field-input blocks-search";
-  search.placeholder = "Filter elements…";
+  const search = document.createElement("sp-search");
+  search.setAttribute("size", "s");
+  search.setAttribute("placeholder", "Filter elements…");
   container.appendChild(search);
 
   const list = document.createElement("div");
@@ -2866,7 +2898,7 @@ function renderBlocks(container) {
     }
   }
 
-  search.oninput = () => renderList(search.value.toLowerCase());
+  search.addEventListener("input", () => renderList(search.value.toLowerCase()));
   renderList("");
 }
 
@@ -2939,18 +2971,19 @@ function renderStylebook() {
   chrome.className = "sb-chrome";
   chrome.style.cssText = "position:absolute;top:0;left:0;right:0;z-index:15;background:var(--bg-panel);border-bottom:1px solid var(--border)";
 
-  const tabBar = document.createElement("div");
-  tabBar.className = "sb-tabs";
+  const tabBar = document.createElement("sp-tabs");
+  tabBar.setAttribute("size", "s");
   for (const t of ["elements", "variables"]) {
-    const tab = document.createElement("button");
-    tab.className = `sb-tab${S.ui.stylebookTab === t ? " active" : ""}`;
-    tab.textContent = t.charAt(0).toUpperCase() + t.slice(1);
-    tab.onclick = () => {
+    const tab = document.createElement("sp-tab");
+    tab.setAttribute("label", t.charAt(0).toUpperCase() + t.slice(1));
+    tab.setAttribute("value", t);
+    if (S.ui.stylebookTab === t) tab.setAttribute("selected", "");
+    tab.addEventListener("click", () => {
       S = { ...S, ui: { ...S.ui, stylebookTab: t } };
       renderCanvas();
       renderOverlays();
       renderLeftPanel();
-    };
+    });
     tabBar.appendChild(tab);
   }
   chrome.appendChild(tabBar);
@@ -3112,7 +3145,7 @@ function renderStylebookElementsIntoCanvas(canvasEl, rootStyle, filter, customiz
       body.className = "sb-body";
       for (const comp of comps) {
         const el = document.createElement("div");
-        el.style.cssText = "padding:12px;border:1px dashed #ccc;border-radius:4px;margin-bottom:0.5em;color:#666";
+        el.style.cssText = "padding:12px;border:1px dashed var(--border);border-radius:4px;margin-bottom:0.5em;color:var(--fg-dim)";
         el.textContent = `<${comp.tagName}>`;
         const tagStyle = rootStyle[`& ${comp.tagName}`];
         if (tagStyle) {
@@ -3148,7 +3181,7 @@ function renderStylebookElementsIntoCanvas(canvasEl, rootStyle, filter, customiz
 
   if (canvasEl.children.length === 0) {
     const empty = document.createElement("div");
-    empty.style.cssText = "padding:48px;text-align:center;color:#999;font-size:13px";
+    empty.style.cssText = "padding:48px;text-align:center;color:var(--fg-dim);font-size:13px";
     empty.textContent = customizedOnly ? "No customized elements" : "No matching elements";
     canvasEl.appendChild(empty);
   }
@@ -3264,7 +3297,7 @@ function renderVarRow(catKey, catMeta, varName, varVal, isNew) {
   if (catKey === "color") {
     const swatch = document.createElement("div");
     swatch.className = "sb-var-swatch";
-    swatch.style.backgroundColor = varVal || "#007acc";
+    swatch.style.backgroundColor = varVal || "var(--accent)";
     colorPicker = document.createElement("input");
     colorPicker.type = "color";
     try { colorPicker.value = (varVal && varVal.startsWith("#")) ? varVal : "#007acc"; } catch {}
@@ -3495,8 +3528,6 @@ function createUnitInput(initialValue, { onChange, size = "s" } = {}) {
   const picker = document.createElement("sp-picker");
   picker.quiet = true;
   picker.size = size;
-  picker.value = unitVal || "px";
-  picker.label = "unit";
   if (!isNumeric) picker.style.display = "none";
 
   const units = [
@@ -3522,6 +3553,7 @@ function createUnitInput(initialValue, { onChange, size = "s" } = {}) {
       picker.appendChild(item);
     }
   }
+  requestAnimationFrame(() => { picker.value = unitVal || "px"; });
   wrap.appendChild(picker);
 
   function getValue() {
@@ -3747,13 +3779,17 @@ function renderSignals(container) {
       hint.textContent = defHint(name, def);
       row.appendChild(hint);
 
-      const del = document.createElement("span");
+      const del = document.createElement("sp-action-button");
+      del.setAttribute("quiet", "");
+      del.setAttribute("size", "xs");
       del.className = "signal-del";
-      del.textContent = "\u2715";
-      del.onclick = (e) => {
+      const delIcon = document.createElement("sp-icon-delete");
+      delIcon.setAttribute("slot", "icon");
+      del.appendChild(delIcon);
+      del.addEventListener("click", (e) => {
         e.stopPropagation();
         update(removeDef(S, name));
-      };
+      });
       row.appendChild(del);
 
       row.onclick = () => {
@@ -3783,29 +3819,49 @@ function renderSignals(container) {
   const addArea = document.createElement("div");
   addArea.className = "signals-add";
 
-  const addSelect = document.createElement("select");
-  addSelect.innerHTML = `
-    <option value="">+ Add…</option>
-    <optgroup label="Signals">
-      <option value="state">State Signal</option>
-      <option value="computed">Computed</option>
-    </optgroup>
-    <optgroup label="Data Sources">
-      <option value="request">Fetch (Request)</option>
-      <option value="localStorage">LocalStorage</option>
-      <option value="sessionStorage">SessionStorage</option>
-      <option value="indexedDB">IndexedDB</option>
-      <option value="cookie">Cookie</option>
-      <option value="set">Set</option>
-      <option value="map">Map</option>
-      <option value="formData">FormData</option>
-      <option value="external">External Module\u2026</option>
-    </optgroup>
-    <optgroup label="Logic">
-      <option value="function">Function</option>
-    </optgroup>
-  `;
-  addSelect.onchange = () => {
+  const addSelect = document.createElement("sp-picker");
+  addSelect.setAttribute("size", "s");
+  addSelect.setAttribute("label", "+ Add\u2026");
+  addSelect.setAttribute("placeholder", "+ Add\u2026");
+
+  // Signals group
+  for (const [value, label] of [["state", "State Signal"], ["computed", "Computed"]]) {
+    const item = document.createElement("sp-menu-item");
+    item.setAttribute("value", value);
+    item.textContent = label;
+    addSelect.appendChild(item);
+  }
+
+  const div1 = document.createElement("sp-menu-divider");
+  addSelect.appendChild(div1);
+
+  // Data Sources group
+  for (const [value, label] of [
+    ["request", "Fetch (Request)"],
+    ["localStorage", "LocalStorage"],
+    ["sessionStorage", "SessionStorage"],
+    ["indexedDB", "IndexedDB"],
+    ["cookie", "Cookie"],
+    ["set", "Set"],
+    ["map", "Map"],
+    ["formData", "FormData"],
+    ["external", "External Module\u2026"],
+  ]) {
+    const item = document.createElement("sp-menu-item");
+    item.setAttribute("value", value);
+    item.textContent = label;
+    addSelect.appendChild(item);
+  }
+
+  const div2 = document.createElement("sp-menu-divider");
+  addSelect.appendChild(div2);
+
+  // Logic group
+  const fnItem = document.createElement("sp-menu-item");
+  fnItem.setAttribute("value", "function");
+  fnItem.textContent = "Function";
+  addSelect.appendChild(fnItem);
+  addSelect.addEventListener("change", () => {
     const type = addSelect.value;
     if (!type) return;
     const template = DEF_TEMPLATES[type];
@@ -3820,7 +3876,7 @@ function renderSignals(container) {
     update(addDef(S, name, structuredClone(template)));
     expandedSignal = name;
     renderLeftPanel();
-  };
+  });
   addArea.appendChild(addSelect);
   container.appendChild(addArea);
 }
@@ -3847,16 +3903,18 @@ function renderSignalEditor(container, name, def) {
     typeLabel.className = "field-label";
     typeLabel.textContent = "type";
     typeSelect.appendChild(typeLabel);
-    const sel = document.createElement("select");
+    const sel = document.createElement("sp-picker");
+    sel.setAttribute("size", "s");
     sel.className = "field-input";
     for (const t of ["string", "integer", "number", "boolean", "array", "object"]) {
-      const opt = document.createElement("option");
-      opt.value = t;
-      opt.textContent = t;
-      if (def.type === t) opt.selected = true;
-      sel.appendChild(opt);
+      const item = document.createElement("sp-menu-item");
+      item.setAttribute("value", t);
+      item.textContent = t;
+      sel.appendChild(item);
     }
-    sel.onchange = () => update(updateDef(S, name, { type: sel.value }));
+    const _selType = def.type || "string";
+    requestAnimationFrame(() => { sel.value = _selType; });
+    sel.addEventListener("change", () => update(updateDef(S, name, { type: sel.value })));
     typeSelect.appendChild(sel);
     container.appendChild(typeSelect);
 
@@ -3906,13 +3964,12 @@ function renderSignalEditor(container, name, def) {
       reflLabel.className = "field-label";
       reflLabel.textContent = "reflects";
       reflRow.appendChild(reflLabel);
-      const reflCheck = document.createElement("input");
-      reflCheck.type = "checkbox";
+      const reflCheck = document.createElement("sp-checkbox");
       reflCheck.className = "field-check";
       reflCheck.checked = !!def.reflects;
-      reflCheck.onchange = () => {
+      reflCheck.addEventListener("change", () => {
         update(updateDef(S, name, { reflects: reflCheck.checked || undefined }));
-      };
+      });
       reflRow.appendChild(reflCheck);
       container.appendChild(reflRow);
 
@@ -3980,16 +4037,18 @@ function renderSignalEditor(container, name, def) {
       methodLabel.className = "field-label";
       methodLabel.textContent = "method";
       methodRow.appendChild(methodLabel);
-      const methodSel = document.createElement("select");
+      const methodSel = document.createElement("sp-picker");
+      methodSel.setAttribute("size", "s");
       methodSel.className = "field-input";
       for (const m of ["GET", "POST", "PUT", "DELETE", "PATCH"]) {
-        const opt = document.createElement("option");
-        opt.value = m;
-        opt.textContent = m;
-        if (def.method === m) opt.selected = true;
-        methodSel.appendChild(opt);
+        const item = document.createElement("sp-menu-item");
+        item.setAttribute("value", m);
+        item.textContent = m;
+        methodSel.appendChild(item);
       }
-      methodSel.onchange = () => update(updateDef(S, name, { method: methodSel.value }));
+      const _mVal = def.method || "GET";
+      requestAnimationFrame(() => { methodSel.value = _mVal; });
+      methodSel.addEventListener("change", () => update(updateDef(S, name, { method: methodSel.value })));
       methodRow.appendChild(methodSel);
       container.appendChild(methodRow);
       // Timing
@@ -3999,16 +4058,18 @@ function renderSignalEditor(container, name, def) {
       timingLabel.className = "field-label";
       timingLabel.textContent = "timing";
       timingRow.appendChild(timingLabel);
-      const timingSel = document.createElement("select");
+      const timingSel = document.createElement("sp-picker");
+      timingSel.setAttribute("size", "s");
       timingSel.className = "field-input";
       for (const t of ["client", "server"]) {
-        const opt = document.createElement("option");
-        opt.value = t;
-        opt.textContent = t;
-        if (def.timing === t) opt.selected = true;
-        timingSel.appendChild(opt);
+        const item = document.createElement("sp-menu-item");
+        item.setAttribute("value", t);
+        item.textContent = t;
+        timingSel.appendChild(item);
       }
-      timingSel.onchange = () => update(updateDef(S, name, { timing: timingSel.value }));
+      const _tVal = def.timing || "client";
+      requestAnimationFrame(() => { timingSel.value = _tVal; });
+      timingSel.addEventListener("change", () => update(updateDef(S, name, { timing: timingSel.value })));
       timingRow.appendChild(timingSel);
       container.appendChild(timingRow);
     } else if (proto === "LocalStorage" || proto === "SessionStorage") {
@@ -4403,18 +4464,18 @@ function renderEmitsEditor(container, name, def) {
 function signalFieldRow(label, value, onChange) {
   const row = document.createElement("div");
   row.className = "field-row";
-  const lbl = document.createElement("label");
-  lbl.className = "field-label";
+  const lbl = document.createElement("sp-field-label");
+  lbl.setAttribute("size", "s");
   lbl.textContent = label;
   row.appendChild(lbl);
-  const input = document.createElement("input");
-  input.className = "field-input";
+  const input = document.createElement("sp-textfield");
+  input.setAttribute("size", "s");
   input.value = value;
   let debounce;
-  input.oninput = () => {
+  input.addEventListener("input", () => {
     clearTimeout(debounce);
     debounce = setTimeout(() => onChange(input.value), 400);
-  };
+  });
   row.appendChild(input);
   return row;
 }
@@ -4444,55 +4505,53 @@ function renderSchemaFields(container, schema, def, name) {
     const row = document.createElement("div");
     row.className = "field-row";
 
-    const label = document.createElement("label");
-    label.className = "field-label";
+    const label = document.createElement("sp-field-label");
+    label.setAttribute("size", "s");
     label.textContent = prop + (required.has(prop) ? " *" : "");
     if (ps.description) label.title = ps.description;
     row.appendChild(label);
 
     if (ps.enum) {
-      // Select dropdown
-      const sel = document.createElement("select");
-      sel.className = "field-input";
+      // Picker dropdown
+      const sel = document.createElement("sp-picker");
+      sel.setAttribute("size", "s");
       if (!required.has(prop)) {
-        const emptyOpt = document.createElement("option");
-        emptyOpt.value = "";
-        emptyOpt.textContent = "\u2014";
-        sel.appendChild(emptyOpt);
+        const blankItem = document.createElement("sp-menu-item");
+        blankItem.setAttribute("value", "__none__");
+        blankItem.textContent = "\u2014";
+        sel.appendChild(blankItem);
       }
       for (const val of ps.enum) {
-        const opt = document.createElement("option");
-        opt.value = val;
-        opt.textContent = val;
-        if (currentValue === val || (currentValue === undefined && ps.default === val)) opt.selected = true;
-        sel.appendChild(opt);
+        const item = document.createElement("sp-menu-item");
+        item.value = val;
+        item.textContent = val;
+        sel.appendChild(item);
       }
-      sel.onchange = () => update(updateDef(S, name, { [prop]: sel.value || undefined }));
+      const _schemaVal = currentValue !== undefined ? String(currentValue) : ps.default !== undefined ? String(ps.default) : "__none__";
+      requestAnimationFrame(() => { sel.value = _schemaVal; });
+      sel.addEventListener("change", () => update(updateDef(S, name, { [prop]: sel.value === "__none__" ? undefined : sel.value })));
       row.appendChild(sel);
     } else if (ps.type === "boolean") {
-      const check = document.createElement("input");
-      check.type = "checkbox";
-      check.className = "field-check";
+      const check = document.createElement("sp-checkbox");
       check.checked = currentValue ?? ps.default ?? false;
-      check.onchange = () => update(updateDef(S, name, { [prop]: check.checked }));
+      check.addEventListener("change", () => update(updateDef(S, name, { [prop]: check.checked })));
       row.appendChild(check);
     } else if (ps.type === "integer" || ps.type === "number") {
-      const input = document.createElement("input");
-      input.type = "number";
-      input.className = "field-input";
-      if (ps.minimum !== undefined) input.min = ps.minimum;
-      if (ps.maximum !== undefined) input.max = ps.maximum;
-      if (ps.type === "integer") input.step = "1";
-      input.value = currentValue ?? "";
-      input.placeholder = ps.default !== undefined ? String(ps.default) : "";
+      const input = document.createElement("sp-number-field");
+      input.setAttribute("size", "s");
+      if (ps.minimum !== undefined) input.setAttribute("min", ps.minimum);
+      if (ps.maximum !== undefined) input.setAttribute("max", ps.maximum);
+      if (ps.type === "integer") input.setAttribute("step", "1");
+      if (currentValue !== undefined) input.value = currentValue;
+      if (ps.default !== undefined) input.setAttribute("placeholder", String(ps.default));
       let debounce;
-      input.oninput = () => {
+      input.addEventListener("change", () => {
         clearTimeout(debounce);
         debounce = setTimeout(() => {
           const parsed = ps.type === "integer" ? parseInt(input.value, 10) : parseFloat(input.value);
           update(updateDef(S, name, { [prop]: isNaN(parsed) ? undefined : parsed }));
         }, 400);
-      };
+      });
       row.appendChild(input);
     } else if (ps.format === "json-schema") {
       // Schema parameter — render as collapsible schema editor
@@ -4516,52 +4575,55 @@ function renderSchemaFields(container, schema, def, name) {
         wrapper.appendChild(preview);
       }
 
-      const textarea = document.createElement("textarea");
-      textarea.className = "field-input";
+      const textarea = document.createElement("sp-textfield");
+      textarea.setAttribute("multiline", "");
+      textarea.setAttribute("size", "s");
       textarea.style.minHeight = hasValue ? "80px" : "40px";
       textarea.style.fontFamily = "monospace";
       textarea.style.fontSize = "11px";
       textarea.value = currentValue !== undefined ? JSON.stringify(currentValue, null, 2) : "";
-      textarea.placeholder = ps.description ?? "JSON Schema defining the data shape\u2026";
+      textarea.setAttribute("placeholder", ps.description ?? "JSON Schema defining the data shape\u2026");
       let debounce;
-      textarea.oninput = () => {
+      textarea.addEventListener("input", () => {
         clearTimeout(debounce);
         debounce = setTimeout(() => {
           try { update(updateDef(S, name, { [prop]: JSON.parse(textarea.value) })); } catch {}
         }, 500);
-      };
+      });
       wrapper.appendChild(textarea);
       row.appendChild(wrapper);
     } else if (ps.type === "array" || ps.type === "object") {
-      const textarea = document.createElement("textarea");
-      textarea.className = "field-input";
+      const textarea = document.createElement("sp-textfield");
+      textarea.setAttribute("multiline", "");
+      textarea.setAttribute("size", "s");
       textarea.style.minHeight = "40px";
       textarea.value = currentValue !== undefined ? JSON.stringify(currentValue, null, 2) : "";
-      textarea.placeholder = ps.default !== undefined ? JSON.stringify(ps.default) : "";
+      if (ps.default !== undefined) textarea.setAttribute("placeholder", JSON.stringify(ps.default));
       let debounce;
-      textarea.oninput = () => {
+      textarea.addEventListener("input", () => {
         clearTimeout(debounce);
         debounce = setTimeout(() => {
           try { update(updateDef(S, name, { [prop]: JSON.parse(textarea.value) })); } catch {}
         }, 500);
-      };
+      });
       row.appendChild(textarea);
     } else {
       // Default: text input
-      const input = document.createElement("input");
-      input.className = "field-input";
+      const input = document.createElement("sp-textfield");
+      input.setAttribute("size", "s");
       input.value = currentValue ?? "";
-      input.placeholder = ps.default !== undefined
+      const ph = ps.default !== undefined
         ? String(ps.default)
         : (ps.examples?.[0] ?? "");
+      if (ph) input.setAttribute("placeholder", ph);
       if (ps.description) input.title = ps.description;
       let debounce;
-      input.oninput = () => {
+      input.addEventListener("input", () => {
         clearTimeout(debounce);
         debounce = setTimeout(() => {
           update(updateDef(S, name, { [prop]: input.value || undefined }));
         }, 400);
-      };
+      });
       row.appendChild(input);
     }
 
@@ -4667,13 +4729,18 @@ function renderDataExplorer(container) {
   // Toolbar with refresh button
   const bar = document.createElement("div");
   bar.className = "data-explorer-toolbar";
-  const refreshBtn = document.createElement("button");
+  const refreshBtn = document.createElement("sp-action-button");
+  refreshBtn.setAttribute("quiet", "");
+  refreshBtn.setAttribute("size", "s");
   refreshBtn.className = "data-refresh-btn";
-  refreshBtn.textContent = "\u27F3 Refresh";
-  refreshBtn.onclick = () => {
+  const refreshIcon = document.createElement("sp-icon-refresh");
+  refreshIcon.setAttribute("slot", "icon");
+  refreshBtn.appendChild(refreshIcon);
+  refreshBtn.append("Refresh");
+  refreshBtn.addEventListener("click", () => {
     renderCanvas();
     setTimeout(() => renderLeftPanel(), 200);
-  };
+  });
   bar.appendChild(refreshBtn);
   container.appendChild(bar);
 
@@ -5332,560 +5399,685 @@ async function openFileFromTree(path) {
 
 function renderRightPanel() {
   const tab = S.ui.rightTab;
-  rightPanel.innerHTML = "";
 
-  // Tabs — Spectrum sp-tabs
-  const tabs = document.createElement("sp-tabs");
-  tabs.selected = tab;
-  tabs.compact = true;
-  tabs.size = "s";
-  tabs.quiet = true;
-  for (const t of ["properties", "events", "style"]) {
-    const spTab = document.createElement("sp-tab");
-    spTab.label = t;
-    spTab.value = t;
-    tabs.appendChild(spTab);
+  // ── Action-group tabs ─────────────────────────────────────────────────
+  const panelTabs = [
+    { value: "properties", label: "Properties" },
+    { value: "events", label: "Events" },
+    { value: "style", label: "Style" },
+  ];
+
+  const tabsT = html`
+    <div class="panel-tabs">
+      <sp-action-group selects="single" size="xs" compact quiet
+        @change=${(e) => {
+          const raw = e.target.selected;
+          const sel = Array.isArray(raw) ? raw[0] : raw;
+          if (sel && sel !== tab) {
+            S = { ...S, ui: { ...S.ui, rightTab: sel } };
+            renderRightPanel();
+            renderOverlays();
+          }
+        }}>
+        ${panelTabs.map((t) => html`
+          <sp-action-button value=${t.value} ?selected=${tab === t.value} quiet>
+            ${t.value === "properties" ? html`<sp-icon-properties slot="icon"></sp-icon-properties>` :
+              t.value === "events" ? html`<sp-icon-event slot="icon"></sp-icon-event>` :
+              html`<sp-icon-brush slot="icon"></sp-icon-brush>`}
+            ${t.label}
+          </sp-action-button>
+        `)}
+      </sp-action-group>
+    </div>
+  `;
+
+  // ── Panel body ────────────────────────────────────────────────────────
+  let bodyT = nothing;
+  if (tab === "properties") {
+    bodyT = propertiesSidebarTemplate();
+  } else if (tab === "events") {
+    bodyT = eventsSidebarTemplate();
+  } else if (tab === "style") {
+    try { bodyT = renderStylePanelTemplate(); } catch(e) { console.error("[renderStylePanelTemplate]", e); }
   }
-  tabs.addEventListener("change", (e) => {
-    S = { ...S, ui: { ...S.ui, rightTab: e.target.selected } };
-    renderRightPanel();
-    renderOverlays();
-  });
-  rightPanel.appendChild(tabs);
 
-  const body = document.createElement("div");
-  body.className = "panel-body";
-  rightPanel.appendChild(body);
+  const tpl = html`
+    ${tabsT}
+    <div class="panel-body">${bodyT}</div>
+  `;
 
-  if (tab === "properties") renderInspector(body);
-  else if (tab === "events") renderEventsPanel(body);
-  else if (tab === "style") renderStylePanel(body);
+  litRender(tpl, rightPanel);
 
   updateForcedPseudoPreview();
 }
 
 // ─── Inspector ────────────────────────────────────────────────────────────────
 
-function renderInspector(container) {
-  if (!S.selection) {
-    container.innerHTML = '<div class="empty-state">Select an element to inspect</div>';
-    return;
-  }
-
+/** Properties panel — lit-html template with accordion sections */
+function propertiesSidebarTemplate() {
+  if (!S.selection) return html`<div class="empty-state">Select an element to inspect</div>`;
   const node = getNodeAtPath(S.document, S.selection);
-  if (!node) {
-    container.innerHTML = '<div class="empty-state">Node not found</div>';
-    return;
-  }
+  if (!node) return html`<div class="empty-state">Node not found</div>`;
 
-  const isMapNode = node.$prototype === "Array"; // selected the $map row itself
+  const path = S.selection;
+  const isMapNode = node.$prototype === "Array";
   const isMapParent = node.children && typeof node.children === "object" && node.children.$prototype === "Array";
   const isSwitchNode = !!node.$switch;
   const isCustomInstance = (node.tagName || "").includes("-");
+  const isRoot = path.length === 0;
+  const tagName = node.tagName || "div";
+  const attrs = node.attributes || {};
 
-  // $map signals available when inside a repeater template
-  const mapSignals = isInsideMapTemplate(S.selection)
-    ? [
-        { value: "$map/item", label: "$map/item" },
-        { value: "$map/index", label: "$map/index" },
-      ]
+  const mapSignals = isInsideMapTemplate(path)
+    ? [{ value: "$map/item", label: "$map/item" }, { value: "$map/index", label: "$map/index" }]
     : null;
 
-  // ─── $map inspector (when the $map row itself is selected) ───
-  if (isMapNode) {
-    renderInspectorSection(container, "Repeater", true, () => {
-      const fields = document.createElement("div");
-      fields.className = "inspector-fields";
+  // Helper: render an attribute row using the style-row pattern
+  function renderAttrRow(attr, entry, value) {
+    const type = inferInputType(entry);
+    const hasVal = value !== undefined && value !== "";
 
-      fields.appendChild(
-        bindableFieldRow("items", "text", node.items, (v) => {
-          update(updateProperty(S, S.selection, "items", v));
-        }),
-      );
+    // Boolean attributes render as checkboxes
+    if (entry.type === "boolean") {
+      return html`
+        <div class="style-row" data-prop=${attr}>
+          <div class="style-row-label">
+            ${hasVal ? html`<span class="set-dot" title="Clear ${attr}"
+              @click=${(e) => { e.stopPropagation(); update(updateAttribute(S, path, attr, undefined)); }}></span>` : nothing}
+            <sp-field-label size="s" title=${attr}>${attrLabel(entry, attr)}</sp-field-label>
+          </div>
+          <sp-checkbox size="s" .checked=${live(!!value)}
+            @change=${(e) => update(updateAttribute(S, path, attr, e.target.checked || undefined))}>
+          </sp-checkbox>
+        </div>
+      `;
+    }
 
-      if (node.filter) {
-        fields.appendChild(
-          bindableFieldRow("filter", "text", node.filter, (v) => {
-            update(updateProperty(S, S.selection, "filter", v || undefined));
-          }),
-        );
-      }
-
-      if (node.sort) {
-        fields.appendChild(
-          bindableFieldRow("sort", "text", node.sort, (v) => {
-            update(updateProperty(S, S.selection, "sort", v || undefined));
-          }),
-        );
-      }
-
-      // Add filter/sort buttons
-      const addRow = document.createElement("div");
-      addRow.style.cssText = "display:flex;gap:8px;margin-top:4px";
-      if (!node.filter) {
-        const addFilter = document.createElement("span");
-        addFilter.className = "kv-add";
-        addFilter.textContent = "+ Add filter";
-        addFilter.onclick = () => update(updateProperty(S, S.selection, "filter", { $ref: "#/state/" }));
-        addRow.appendChild(addFilter);
-      }
-      if (!node.sort) {
-        const addSort = document.createElement("span");
-        addSort.className = "kv-add";
-        addSort.textContent = "+ Add sort";
-        addSort.onclick = () => update(updateProperty(S, S.selection, "sort", { $ref: "#/state/" }));
-        addRow.appendChild(addSort);
-      }
-      fields.appendChild(addRow);
-
-      // Navigate into template
-      if (node.map) {
-        const navBtn = document.createElement("button");
-        navBtn.className = "toolbar-btn";
-        navBtn.textContent = "Edit template →";
-        navBtn.style.cssText = "margin-top:8px;width:100%";
-        navBtn.onclick = () => update(selectNode(S, [...S.selection, "map"]));
-        fields.appendChild(navBtn);
-      }
-
-      return fields;
-    });
-    return; // $map rows don't have normal element sections
+    return html`
+      <div class="style-row" data-prop=${attr}>
+        <div class="style-row-label">
+          ${hasVal ? html`<span class="set-dot" title="Clear ${attr}"
+            @click=${(e) => { e.stopPropagation(); update(updateAttribute(S, path, attr, undefined)); }}></span>` : nothing}
+          <sp-field-label size="s" title=${attr}>${attrLabel(entry, attr)}</sp-field-label>
+        </div>
+        ${widgetForType(type, entry, attr, value || "", (v) => update(updateAttribute(S, path, attr, v || undefined)))}
+      </div>
+    `;
   }
 
-  renderInspectorSection(container, "Element", true, () => {
-    const fields = document.createElement("div");
-    fields.className = "inspector-fields";
+  // ── Collect applicable attributes from html-meta ──
+  const applicableAttrs = {};
+  for (const [attr, entry] of Object.entries(htmlMeta.$defs)) {
+    if (!entry.$elements || entry.$elements.includes(tagName)) {
+      applicableAttrs[attr] = entry;
+    }
+  }
 
-    fields.appendChild(
-      fieldRow(
-        "tagName",
-        "text",
-        node.tagName || "div",
-        (v) => {
-          update(updateProperty(S, S.selection, "tagName", v || undefined));
+  // Partition into sections
+  const attrSections = {};
+  for (const sec of htmlMeta.$sections) attrSections[sec.key] = [];
+  for (const [attr, entry] of Object.entries(applicableAttrs)) {
+    const secKey = entry.$section;
+    if (attrSections[secKey]) attrSections[secKey].push({ name: attr, entry });
+  }
+  for (const sec of htmlMeta.$sections) {
+    attrSections[sec.key].sort((a, b) => a.entry.$order - b.entry.$order);
+  }
+
+  // Collect "custom" attributes (not in html-meta)
+  const knownAttrNames = new Set(Object.keys(applicableAttrs));
+  const customAttrs = Object.entries(attrs).filter(([k]) => !knownAttrNames.has(k));
+
+  // Auto-open sections that have set values
+  const autoOpen = new Set();
+  for (const [attr] of Object.entries(attrs)) {
+    const entry = applicableAttrs[attr];
+    if (entry) autoOpen.add(entry.$section);
+  }
+  // Also auto-open if there are custom attrs
+  if (customAttrs.length > 0) autoOpen.add("__custom");
+
+  function isSectionOpen(key) {
+    if (S.ui.inspectorSections[key] !== undefined) return S.ui.inspectorSections[key];
+    return autoOpen.has(key);
+  }
+
+  function toggleSection(key) {
+    const current = isSectionOpen(key);
+    S = { ...S, ui: { ...S.ui, inspectorSections: { ...S.ui.inspectorSections, [key]: !current } } };
+    renderRightPanel();
+  }
+
+  // ── Build section templates ─────────────────────────────────────────
+
+  // "Element" section — tagName, textContent, hidden
+  const elemT = html`
+    <sp-accordion-item label="Element" ?open=${isSectionOpen("__element") !== false}
+      @sp-accordion-item-toggle=${() => toggleSection("__element")}>
+      <div class="style-section-body">
+        <div class="style-row" data-prop="tagName">
+          <div class="style-row-label">
+            <sp-field-label size="s">Tag</sp-field-label>
+          </div>
+          <sp-textfield size="s" .value=${live(tagName)} autocomplete="off" list="tag-names"
+            @input=${debouncedStyleCommit("prop:tagName", 400, (e) => {
+              update(updateProperty(S, path, "tagName", e.target.value || undefined));
+            })}></sp-textfield>
+        </div>
+        <div class="style-row" data-prop="$id">
+          <div class="style-row-label">
+            ${node.$id ? html`<span class="set-dot" title="Clear $id"
+              @click=${(e) => { e.stopPropagation(); update(updateProperty(S, path, "$id", undefined)); }}></span>` : nothing}
+            <sp-field-label size="s">ID</sp-field-label>
+          </div>
+          <sp-textfield size="s" .value=${live(node.$id || "")}
+            @input=${debouncedStyleCommit("prop:$id", 400, (e) => {
+              update(updateProperty(S, path, "$id", e.target.value || undefined));
+            })}></sp-textfield>
+        </div>
+        <div class="style-row" data-prop="className">
+          <div class="style-row-label">
+            ${node.className ? html`<span class="set-dot" title="Clear class"
+              @click=${(e) => { e.stopPropagation(); update(updateProperty(S, path, "className", undefined)); }}></span>` : nothing}
+            <sp-field-label size="s">Class</sp-field-label>
+          </div>
+          <sp-textfield size="s" .value=${live(node.className || "")}
+            @input=${debouncedStyleCommit("prop:className", 400, (e) => {
+              update(updateProperty(S, path, "className", e.target.value || undefined));
+            })}></sp-textfield>
+        </div>
+        ${!Array.isArray(node.children) || node.children.length === 0 ? html`
+          <div class="style-row" data-prop="textContent">
+            <div class="style-row-label">
+              ${node.textContent !== undefined ? html`<span class="set-dot" title="Clear text"
+                @click=${(e) => { e.stopPropagation(); update(updateProperty(S, path, "textContent", undefined)); }}></span>` : nothing}
+              <sp-field-label size="s">Text Content</sp-field-label>
+            </div>
+            <sp-textfield size="s" multiline .value=${live(typeof node.textContent === "string" ? node.textContent : (node.textContent ?? ""))}
+              @input=${debouncedStyleCommit("prop:textContent", 400, (e) => {
+                update(updateProperty(S, path, "textContent", e.target.value || undefined));
+              })}></sp-textfield>
+          </div>
+        ` : nothing}
+        <div class="style-row" data-prop="hidden">
+          <div class="style-row-label">
+            ${node.hidden ? html`<span class="set-dot" title="Clear hidden"
+              @click=${(e) => { e.stopPropagation(); update(updateProperty(S, path, "hidden", undefined)); }}></span>` : nothing}
+            <sp-field-label size="s">Hidden</sp-field-label>
+          </div>
+          <sp-checkbox size="s" .checked=${live(!!node.hidden)}
+            @change=${(e) => update(updateProperty(S, path, "hidden", e.target.checked || undefined))}>
+          </sp-checkbox>
+        </div>
+        ${isMapParent ? html`
+          <div style="font-size:10px;color:var(--fg-dim);padding:4px 0;font-style:italic">
+            Children: Repeater (select in layers to configure)
+          </div>
+        ` : nothing}
+      </div>
+    </sp-accordion-item>
+  `;
+
+  // "Repeater" section (if $map node)
+  const repeaterT = isMapNode ? html`
+    <sp-accordion-item label="Repeater" open>
+      <div class="style-section-body" id="inspector-repeater"></div>
+    </sp-accordion-item>
+  ` : nothing;
+
+  // "$switch" section
+  const switchT = isSwitchNode ? html`
+    <sp-accordion-item label="Switch" open>
+      <div class="style-section-body" id="inspector-switch"></div>
+    </sp-accordion-item>
+  ` : nothing;
+
+  // "Observed Attributes" section (custom element doc root)
+  const observedAttrsT = (isCustomElementDoc() && isRoot) ? (() => {
+    const state = S.document.state || {};
+    const entries = Object.entries(state).filter(([, d]) => d.attribute);
+    return html`
+      <sp-accordion-item label="Observed Attributes" ?open=${isSectionOpen("__observed")}>
+        <div class="style-section-body">
+          ${entries.length === 0
+            ? html`<div class="empty-state">No attributes declared. Set "attribute" on a state entry.</div>`
+            : entries.map(([key, d]) => html`
+              <div style="display:flex;gap:6px;align-items:center;padding:2px 0;font-size:11px">
+                <code style="font-family:monospace;color:var(--accent)">${d.attribute}</code>
+                <span style="color:var(--fg-dim)"> → </span>
+                <span>${key}</span>
+                ${d.type ? html`<span style="margin-left:auto;color:var(--fg-dim);font-size:10px">${d.type}</span>` : nothing}
+                ${d.reflects ? html`<span style="font-size:9px;background:var(--bg-hover);padding:1px 4px;border-radius:3px">reflects</span>` : nothing}
+              </div>
+            `)
+          }
+        </div>
+      </sp-accordion-item>
+    `;
+  })() : nothing;
+
+  // "Component Props" section
+  const compPropsT = isCustomInstance ? (() => {
+    const comp = componentRegistry.find((c) => c.tagName === tagName);
+    if (!comp) return html`
+      <sp-accordion-item label="Component Props" open>
+        <div class="style-section-body">
+          <div class="empty-state">Component "${tagName}" not found in project</div>
+        </div>
+      </sp-accordion-item>
+    `;
+    const currentProps = node.$props || {};
+    return html`
+      <sp-accordion-item label="Component Props" open>
+        <div class="style-section-body" id="inspector-comp-props"></div>
+      </sp-accordion-item>
+    `;
+  })() : nothing;
+
+  // HTML-meta attribute sections
+  const attrSectionTemplates = htmlMeta.$sections
+    .filter((sec) => attrSections[sec.key].length > 0)
+    .map((sec) => {
+      const sectionAttrs = attrSections[sec.key];
+      const hasAnySet = sectionAttrs.some((a) => attrs[a.name] !== undefined);
+      return html`
+        <sp-accordion-item label=${sec.label}
+          ?open=${isSectionOpen(sec.key)}
+          @sp-accordion-item-toggle=${() => toggleSection(sec.key)}>
+          ${hasAnySet ? html`<span slot="heading" class="set-dot set-dot--section"></span>` : nothing}
+          <div class="style-section-body">
+            ${sectionAttrs.map((a) => renderAttrRow(a.name, a.entry, attrs[a.name]))}
+          </div>
+        </sp-accordion-item>
+      `;
+    });
+
+  // "Custom" attributes section (not in html-meta)
+  const customSectionT = customAttrs.length > 0 || Object.keys(attrs).length > 0 ? html`
+    <sp-accordion-item label="Custom"
+      ?open=${isSectionOpen("__custom")}
+      @sp-accordion-item-toggle=${() => toggleSection("__custom")}>
+      ${customAttrs.length > 0 ? html`<span slot="heading" class="set-dot set-dot--section"></span>` : nothing}
+      <div class="style-section-body" id="inspector-custom-attrs"></div>
+    </sp-accordion-item>
+  ` : nothing;
+
+  // Media section (root only)
+  const mediaT = isRoot ? html`
+    <sp-accordion-item label="Media"
+      ?open=${isSectionOpen("__media")}
+      @sp-accordion-item-toggle=${() => toggleSection("__media")}>
+      <div class="style-section-body" id="inspector-media"></div>
+    </sp-accordion-item>
+  ` : nothing;
+
+  // CSS Properties + CSS Parts (custom element doc root)
+  const cssPropsT = (isCustomElementDoc() && isRoot) ? (() => {
+    const style = node.style || {};
+    const cssProps = Object.entries(style).filter(([k]) => k.startsWith("--"));
+    if (cssProps.length === 0) return nothing;
+    return html`
+      <sp-accordion-item label="CSS Properties"
+        ?open=${isSectionOpen("__cssprops")}
+        @sp-accordion-item-toggle=${() => toggleSection("__cssprops")}>
+        <div class="style-section-body">
+          ${cssProps.map(([prop, val]) => html`
+            <div style="display:flex;gap:6px;align-items:center;padding:2px 0;font-size:11px">
+              <code style="font-family:monospace;color:var(--accent)">${prop}</code>
+              <span style="margin-left:auto;color:var(--fg-dim)">${String(val)}</span>
+            </div>
+          `)}
+        </div>
+      </sp-accordion-item>
+    `;
+  })() : nothing;
+
+  const cssPartsT = (isCustomElementDoc() && isRoot) ? (() => {
+    const parts = collectCssParts(S.document);
+    if (parts.length === 0) return nothing;
+    return html`
+      <sp-accordion-item label="CSS Parts"
+        ?open=${isSectionOpen("__cssparts")}
+        @sp-accordion-item-toggle=${() => toggleSection("__cssparts")}>
+        <div class="style-section-body">
+          ${parts.map((p) => html`
+            <div style="display:flex;gap:6px;align-items:center;padding:2px 0;font-size:11px">
+              <code style="font-family:monospace;color:var(--accent)">${p.name}</code>
+              <span style="color:var(--fg-dim)">&lt;${p.tag}&gt;</span>
+            </div>
+          `)}
+        </div>
+      </sp-accordion-item>
+    `;
+  })() : nothing;
+
+  // ── Assemble ──
+  const tpl = html`
+    <div class="style-sidebar">
+      <sp-accordion allow-multiple size="s">
+        ${isMapNode ? repeaterT : elemT}
+        ${isMapNode ? nothing : observedAttrsT}
+        ${isMapNode ? nothing : switchT}
+        ${isMapNode ? nothing : compPropsT}
+        ${isMapNode ? nothing : attrSectionTemplates}
+        ${isMapNode ? nothing : customSectionT}
+        ${isMapNode ? nothing : mediaT}
+        ${isMapNode ? nothing : cssPropsT}
+        ${isMapNode ? nothing : cssPartsT}
+      </sp-accordion>
+    </div>
+  `;
+
+  // Schedule imperative rendering for sections that need it (bind toggles, complex interactions)
+  requestAnimationFrame(() => {
+    // Repeater section
+    if (isMapNode) {
+      const container = rightPanel.querySelector("#inspector-repeater");
+      if (container && !container._rendered) {
+        container._rendered = true;
+        renderRepeaterFields(container, node, path, mapSignals);
+      }
+    }
+    // Switch section
+    if (isSwitchNode) {
+      const container = rightPanel.querySelector("#inspector-switch");
+      if (container && !container._rendered) {
+        container._rendered = true;
+        renderSwitchFields(container, node, path, mapSignals);
+      }
+    }
+    // Component Props (needs bindableFieldRow)
+    if (isCustomInstance) {
+      const container = rightPanel.querySelector("#inspector-comp-props");
+      if (container && !container._rendered) {
+        container._rendered = true;
+        renderComponentPropsFields(container, node, path, mapSignals);
+      }
+    }
+    // Custom attrs (kvRow)
+    const customContainer = rightPanel.querySelector("#inspector-custom-attrs");
+    if (customContainer && !customContainer._rendered) {
+      customContainer._rendered = true;
+      renderCustomAttrsFields(customContainer, node, path, attrs, knownAttrNames);
+    }
+    // Media section
+    if (isRoot) {
+      const mediaContainer = rightPanel.querySelector("#inspector-media");
+      if (mediaContainer && !mediaContainer._rendered) {
+        mediaContainer._rendered = true;
+        renderMediaFields(mediaContainer, node);
+      }
+    }
+  });
+
+  return tpl;
+}
+
+/** Imperative helper: repeater fields */
+function renderRepeaterFields(container, node, path, mapSignals) {
+  container.appendChild(
+    bindableFieldRow("Items", "text", node.items, (v) => update(updateProperty(S, path, "items", v))),
+  );
+  if (node.filter) {
+    container.appendChild(
+      bindableFieldRow("Filter", "text", node.filter, (v) => update(updateProperty(S, path, "filter", v || undefined))),
+    );
+  }
+  if (node.sort) {
+    container.appendChild(
+      bindableFieldRow("Sort", "text", node.sort, (v) => update(updateProperty(S, path, "sort", v || undefined))),
+    );
+  }
+  const addRow = document.createElement("div");
+  addRow.style.cssText = "display:flex;gap:8px;margin-top:4px";
+  if (!node.filter) {
+    const addFilter = document.createElement("span");
+    addFilter.className = "kv-add";
+    addFilter.textContent = "+ Add filter";
+    addFilter.onclick = () => update(updateProperty(S, path, "filter", { $ref: "#/state/" }));
+    addRow.appendChild(addFilter);
+  }
+  if (!node.sort) {
+    const addSort = document.createElement("span");
+    addSort.className = "kv-add";
+    addSort.textContent = "+ Add sort";
+    addSort.onclick = () => update(updateProperty(S, path, "sort", { $ref: "#/state/" }));
+    addRow.appendChild(addSort);
+  }
+  container.appendChild(addRow);
+  if (node.map) {
+    const navBtn = document.createElement("sp-action-button");
+    navBtn.setAttribute("size", "s");
+    navBtn.textContent = "Edit template →";
+    navBtn.style.cssText = "margin-top:8px;width:100%";
+    navBtn.addEventListener("click", () => update(selectNode(S, [...path, "map"])));
+    container.appendChild(navBtn);
+  }
+}
+
+/** Imperative helper: switch fields */
+function renderSwitchFields(container, node, path, mapSignals) {
+  container.appendChild(
+    bindableFieldRow("Expression", "text", node.$switch, (v) => update(updateProperty(S, path, "$switch", v)), null, mapSignals),
+  );
+  const casesHeader = document.createElement("div");
+  casesHeader.style.cssText = "font-size:11px;font-weight:600;color:var(--fg-dim);margin:8px 0 4px;text-transform:uppercase;letter-spacing:0.05em";
+  casesHeader.textContent = "Cases";
+  container.appendChild(casesHeader);
+  for (const caseName of Object.keys(node.cases || {})) {
+    const caseRow = document.createElement("div");
+    caseRow.className = "field-row";
+    caseRow.style.cssText = "display:flex;align-items:center;gap:4px;margin-bottom:3px";
+    const nameInput = document.createElement("input");
+    nameInput.className = "field-input";
+    nameInput.value = caseName;
+    nameInput.style.flex = "1";
+    let debounce;
+    nameInput.oninput = () => {
+      clearTimeout(debounce);
+      debounce = setTimeout(() => {
+        if (nameInput.value && nameInput.value !== caseName) update(renameSwitchCase(S, path, caseName, nameInput.value));
+      }, 500);
+    };
+    caseRow.appendChild(nameInput);
+    const navBtn = document.createElement("span");
+    navBtn.className = "bind-toggle";
+    navBtn.textContent = "→";
+    navBtn.title = "Edit case";
+    navBtn.style.cursor = "pointer";
+    navBtn.onclick = (e) => { e.stopPropagation(); update(selectNode(S, [...path, "cases", caseName])); };
+    caseRow.appendChild(navBtn);
+    const del = document.createElement("span");
+    del.style.cssText = "cursor:pointer;color:var(--danger);font-size:11px";
+    del.textContent = "\u2715";
+    del.onclick = (e) => { e.stopPropagation(); update(removeSwitchCase(S, path, caseName)); };
+    caseRow.appendChild(del);
+    container.appendChild(caseRow);
+  }
+  const addCase = document.createElement("span");
+  addCase.className = "kv-add";
+  addCase.textContent = "+ Add case";
+  addCase.onclick = () => {
+    const existing = Object.keys(node.cases || {});
+    update(addSwitchCase(S, path, `case${existing.length + 1}`));
+  };
+  container.appendChild(addCase);
+}
+
+/** Imperative helper: component props fields */
+function renderComponentPropsFields(container, node, path, mapSignals) {
+  const comp = componentRegistry.find((c) => c.tagName === node.tagName);
+  if (!comp) {
+    container.innerHTML = '<div class="empty-state">Component not found</div>';
+    return;
+  }
+  const currentProps = node.$props || {};
+  for (const prop of comp.props) {
+    container.appendChild(
+      bindableFieldRow(camelToLabel(prop.name), "text", currentProps[prop.name], (v) => update(updateProp(S, path, prop.name, v)), null, mapSignals),
+    );
+  }
+  if (comp.props.length === 0) {
+    const hint = document.createElement("div");
+    hint.className = "empty-state";
+    hint.textContent = "No props defined";
+    container.appendChild(hint);
+  }
+  const editLink = document.createElement("span");
+  editLink.className = "kv-add";
+  editLink.textContent = "→ Edit definition";
+  editLink.onclick = () => navigateToComponent(comp.path);
+  container.appendChild(editLink);
+}
+
+/** Imperative helper: custom (non-meta) attributes */
+function renderCustomAttrsFields(container, node, path, attrs, knownAttrNames) {
+  const customAttrs = Object.entries(attrs).filter(([k]) => !knownAttrNames.has(k));
+  for (const [attr, val] of customAttrs) {
+    container.appendChild(
+      kvRow(
+        attr,
+        String(val),
+        (newAttr, newVal) => {
+          if (newAttr !== attr) {
+            let s = updateAttribute(S, path, attr, undefined);
+            s = updateAttribute(s, path, newAttr, newVal);
+            update(s);
+          } else {
+            update(updateAttribute(S, path, attr, newVal));
+          }
         },
-        "tag-names",
+        () => update(updateAttribute(S, path, attr, undefined)),
       ),
     );
-    fields.appendChild(
-      fieldRow("$id", "text", node.$id || "", (v) => {
-        update(updateProperty(S, S.selection, "$id", v || undefined));
-      }),
-    );
-    fields.appendChild(
-      fieldRow("className", "text", node.className || "", (v) => {
-        update(updateProperty(S, S.selection, "className", v || undefined));
-      }),
-    );
+  }
+  const add = document.createElement("span");
+  add.className = "kv-add";
+  add.textContent = "+ Add attribute";
+  add.onclick = () => update(updateAttribute(S, path, "data-", ""));
+  container.appendChild(add);
+}
 
-    // textContent only when no children
-    if (!Array.isArray(node.children) || node.children.length === 0) {
-      const tcRaw = node.textContent;
-      fields.appendChild(
-        bindableFieldRow("textContent", "textarea", tcRaw, (v) => {
-          update(updateProperty(S, S.selection, "textContent", v || undefined));
-        }, null, mapSignals),
-      );
+/** Imperative helper: media breakpoint fields */
+function renderMediaFields(container, node) {
+  const media = node.$media || {};
+
+  // ── Default canvas width ("--" key) ──
+  const baseRow = document.createElement("div");
+  baseRow.className = "kv-row";
+  baseRow.style.alignItems = "center";
+
+  const baseLabel = document.createElement("span");
+  baseLabel.className = "field-label";
+  baseLabel.style.width = "auto";
+  baseLabel.style.marginRight = "4px";
+  baseLabel.textContent = "Base width";
+  baseRow.appendChild(baseLabel);
+
+  const baseInput = document.createElement("input");
+  baseInput.className = "field-input";
+  baseInput.style.width = "70px";
+  baseInput.style.flex = "none";
+  baseInput.placeholder = "320px";
+  baseInput.value = media["--"] || "";
+  let baseDebounce;
+  baseInput.oninput = () => {
+    clearTimeout(baseDebounce);
+    baseDebounce = setTimeout(() => {
+      const val = baseInput.value.trim();
+      if (val) update(updateMedia(S, "--", val));
+      else update(updateMedia(S, "--", undefined));
+    }, 400);
+  };
+  baseRow.appendChild(baseInput);
+
+  if (media["--"]) {
+    const del = document.createElement("span");
+    del.className = "kv-del";
+    del.textContent = "\u2715";
+    del.onclick = () => update(updateMedia(S, "--", undefined));
+    baseRow.appendChild(del);
+  }
+  container.appendChild(baseRow);
+
+  // ── Breakpoint rows (excluding "--") ──
+  for (const [name, query] of Object.entries(media)) {
+    if (name === "--") continue;
+    container.appendChild(mediaBreakpointRow(name, query));
+  }
+
+  // ── Add breakpoint flow ──
+  const addWrap = document.createElement("div");
+
+  const addLink = document.createElement("span");
+  addLink.className = "kv-add";
+  addLink.textContent = "+ Add breakpoint";
+  addLink.onclick = () => {
+    addLink.style.display = "none";
+    addForm.style.display = "";
+    nameInput.focus();
+  };
+  addWrap.appendChild(addLink);
+
+  const addForm = document.createElement("div");
+  addForm.style.display = "none";
+  addForm.style.marginTop = "4px";
+
+  const nameRow = document.createElement("div");
+  nameRow.style.cssText = "display:flex;gap:4px;margin-bottom:3px;align-items:center";
+  const nameInput = document.createElement("input");
+  nameInput.className = "field-input";
+  nameInput.placeholder = "Name (e.g. Tablet)";
+  nameInput.style.flex = "1";
+  const namePreview = document.createElement("span");
+  namePreview.style.cssText = "font-size:10px;color:var(--fg-dim);font-family:'SF Mono','Fira Code',monospace;white-space:nowrap";
+  nameInput.oninput = () => {
+    const gen = friendlyNameToMedia(nameInput.value);
+    namePreview.textContent = gen || "";
+  };
+  nameRow.appendChild(nameInput);
+  nameRow.appendChild(namePreview);
+  addForm.appendChild(nameRow);
+
+  const queryRow = document.createElement("div");
+  queryRow.style.cssText = "display:flex;gap:4px;margin-bottom:3px;align-items:center";
+  const queryInput = document.createElement("input");
+  queryInput.className = "field-input";
+  queryInput.value = "(min-width: 768px)";
+  queryInput.style.flex = "1";
+  queryRow.appendChild(queryInput);
+  addForm.appendChild(queryRow);
+
+  const btnRow = document.createElement("div");
+  btnRow.style.cssText = "display:flex;gap:4px";
+  const addBtn = document.createElement("button");
+  addBtn.className = "kv-add";
+  addBtn.style.cssText = "padding:2px 10px;cursor:pointer";
+  addBtn.textContent = "Add";
+  addBtn.onclick = () => {
+    const key = friendlyNameToMedia(nameInput.value);
+    const q = queryInput.value.trim();
+    if (key && q) {
+      update(updateMedia(S, key, q));
     }
+  };
+  const cancelBtn = document.createElement("button");
+  cancelBtn.className = "kv-add";
+  cancelBtn.style.cssText = "padding:2px 10px;cursor:pointer;color:var(--fg-dim)";
+  cancelBtn.textContent = "Cancel";
+  cancelBtn.onclick = () => {
+    addForm.style.display = "none";
+    addLink.style.display = "";
+    nameInput.value = "";
+    namePreview.textContent = "";
+    queryInput.value = "(min-width: 768px)";
+  };
+  btnRow.appendChild(addBtn);
+  btnRow.appendChild(cancelBtn);
+  addForm.appendChild(btnRow);
 
-    fields.appendChild(
-      bindableFieldRow("hidden", "checkbox", node.hidden, (v) => {
-        update(updateProperty(S, S.selection, "hidden", v || undefined));
-      }, null, mapSignals),
-    );
-
-    // $map parent hint
-    if (isMapParent) {
-      const hint = document.createElement("div");
-      hint.style.cssText = "font-size:10px;color:var(--fg-dim);padding:4px 0;font-style:italic";
-      hint.textContent = "Children: Repeater (select in layers to configure)";
-      fields.appendChild(hint);
-    }
-
-    return fields;
-  });
-
-  // Observed Attributes (custom element docs, root only)
-  if (isCustomElementDoc() && S.selection.length === 0) {
-    renderInspectorSection(container, "Observed Attributes", false, () => {
-      const fields = document.createElement("div");
-      fields.className = "inspector-fields";
-      const state = S.document.state || {};
-      const entries = Object.entries(state).filter(([, d]) => d.attribute);
-
-      if (entries.length === 0) {
-        const empty = document.createElement("div");
-        empty.className = "empty-state";
-        empty.textContent = "No attributes declared. Set \u201cattribute\u201d on a state entry.";
-        fields.appendChild(empty);
-      } else {
-        for (const [key, d] of entries) {
-          const row = document.createElement("div");
-          row.style.cssText = "display:flex;gap:6px;align-items:center;padding:2px 0;font-size:11px";
-          const attrName = document.createElement("code");
-          attrName.style.cssText = "font-family:monospace;color:var(--accent)";
-          attrName.textContent = d.attribute;
-          row.appendChild(attrName);
-          const arrow = document.createElement("span");
-          arrow.style.color = "var(--fg-dim)";
-          arrow.textContent = " \u2192 ";
-          row.appendChild(arrow);
-          const stateKey = document.createElement("span");
-          stateKey.textContent = key;
-          row.appendChild(stateKey);
-          if (d.type) {
-            const typeBadge = document.createElement("span");
-            typeBadge.style.cssText = "margin-left:auto;color:var(--fg-dim);font-size:10px";
-            typeBadge.textContent = d.type;
-            row.appendChild(typeBadge);
-          }
-          if (d.reflects) {
-            const badge = document.createElement("span");
-            badge.style.cssText = "font-size:9px;background:var(--bg-hover);padding:1px 4px;border-radius:3px";
-            badge.textContent = "reflects";
-            row.appendChild(badge);
-          }
-          fields.appendChild(row);
-        }
-      }
-      return fields;
-    });
-  }
-
-  // $switch section
-  if (isSwitchNode) {
-    renderInspectorSection(container, "$switch", true, () => {
-      const fields = document.createElement("div");
-      fields.className = "inspector-fields";
-
-      fields.appendChild(
-        bindableFieldRow("$switch", "text", node.$switch, (v) => {
-          update(updateProperty(S, S.selection, "$switch", v));
-        }, null, mapSignals),
-      );
-
-      const casesHeader = document.createElement("div");
-      casesHeader.style.cssText = "font-size:11px;font-weight:600;color:var(--fg-dim);margin:8px 0 4px;text-transform:uppercase;letter-spacing:0.05em";
-      casesHeader.textContent = "Cases";
-      fields.appendChild(casesHeader);
-
-      for (const caseName of Object.keys(node.cases || {})) {
-        const caseRow = document.createElement("div");
-        caseRow.className = "field-row";
-        caseRow.style.cssText = "display:flex;align-items:center;gap:4px;margin-bottom:3px";
-
-        const nameInput = document.createElement("input");
-        nameInput.className = "field-input";
-        nameInput.value = caseName;
-        nameInput.style.flex = "1";
-        let debounce;
-        nameInput.oninput = () => {
-          clearTimeout(debounce);
-          debounce = setTimeout(() => {
-            if (nameInput.value && nameInput.value !== caseName) {
-              update(renameSwitchCase(S, S.selection, caseName, nameInput.value));
-            }
-          }, 500);
-        };
-        caseRow.appendChild(nameInput);
-
-        const navBtn = document.createElement("span");
-        navBtn.className = "bind-toggle";
-        navBtn.textContent = "→";
-        navBtn.title = "Edit case";
-        navBtn.style.cursor = "pointer";
-        navBtn.onclick = (e) => {
-          e.stopPropagation();
-          update(selectNode(S, [...S.selection, "cases", caseName]));
-        };
-        caseRow.appendChild(navBtn);
-
-        const del = document.createElement("span");
-        del.style.cssText = "cursor:pointer;color:var(--danger);font-size:11px";
-        del.textContent = "✕";
-        del.onclick = (e) => {
-          e.stopPropagation();
-          update(removeSwitchCase(S, S.selection, caseName));
-        };
-        caseRow.appendChild(del);
-
-        fields.appendChild(caseRow);
-      }
-
-      const addCase = document.createElement("span");
-      addCase.className = "kv-add";
-      addCase.textContent = "+ Add case";
-      addCase.onclick = () => {
-        const existing = Object.keys(node.cases || {});
-        const newName = `case${existing.length + 1}`;
-        update(addSwitchCase(S, S.selection, newName));
-      };
-      fields.appendChild(addCase);
-
-      return fields;
-    });
-  }
-
-  // Component Props section (for custom element instances)
-  if (isCustomInstance) {
-    renderInspectorSection(container, "Component Props", true, () => {
-      const fields = document.createElement("div");
-      fields.className = "inspector-fields";
-
-      const comp = componentRegistry.find((c) => c.tagName === node.tagName);
-      if (!comp) {
-        const hint = document.createElement("div");
-        hint.className = "empty-state";
-        hint.textContent = `Component "${node.tagName}" not found in project`;
-        fields.appendChild(hint);
-        return fields;
-      }
-
-      const currentProps = node.$props || {};
-      for (const prop of comp.props) {
-        fields.appendChild(
-          bindableFieldRow(prop.name, "text", currentProps[prop.name], (v) => {
-            update(updateProp(S, S.selection, prop.name, v));
-          }, null, mapSignals),
-        );
-      }
-
-      if (comp.props.length === 0) {
-        const hint = document.createElement("div");
-        hint.className = "empty-state";
-        hint.textContent = "No props defined";
-        fields.appendChild(hint);
-      }
-
-      const editLink = document.createElement("span");
-      editLink.className = "kv-add";
-      editLink.textContent = "→ Edit definition";
-      editLink.onclick = () => navigateToComponent(comp.path);
-      fields.appendChild(editLink);
-
-      return fields;
-    });
-  }
-
-  // Attributes section
-  renderInspectorSection(container, "Attributes", false, () => {
-    const fields = document.createElement("div");
-    fields.className = "inspector-fields";
-    const attrs = node.attributes || {};
-
-    for (const [attr, val] of Object.entries(attrs)) {
-      fields.appendChild(
-        kvRow(
-          attr,
-          String(val),
-          (newAttr, newVal) => {
-            if (newAttr !== attr) {
-              let s = updateAttribute(S, S.selection, attr, undefined);
-              s = updateAttribute(s, S.selection, newAttr, newVal);
-              update(s);
-            } else {
-              update(updateAttribute(S, S.selection, attr, newVal));
-            }
-          },
-          () => update(updateAttribute(S, S.selection, attr, undefined)),
-        ),
-      );
-    }
-
-    const add = document.createElement("span");
-    add.className = "kv-add";
-    add.textContent = "+ Add attribute";
-    add.onclick = () => {
-      update(updateAttribute(S, S.selection, "data-", ""));
-    };
-    fields.appendChild(add);
-    return fields;
-  });
-
-  // CSS Custom Properties (custom element docs, root only)
-  if (isCustomElementDoc() && S.selection.length === 0) {
-    renderInspectorSection(container, "CSS Properties", false, () => {
-      const fields = document.createElement("div");
-      fields.className = "inspector-fields";
-      const style = node.style || {};
-      const cssProps = Object.entries(style).filter(([k]) => k.startsWith("--"));
-
-      if (cssProps.length === 0) {
-        const empty = document.createElement("div");
-        empty.className = "empty-state";
-        empty.textContent = "No CSS custom properties defined.";
-        fields.appendChild(empty);
-      } else {
-        for (const [prop, val] of cssProps) {
-          const row = document.createElement("div");
-          row.style.cssText = "display:flex;gap:6px;align-items:center;padding:2px 0;font-size:11px";
-          const propName = document.createElement("code");
-          propName.style.cssText = "font-family:monospace;color:var(--accent)";
-          propName.textContent = prop;
-          row.appendChild(propName);
-          const valSpan = document.createElement("span");
-          valSpan.style.cssText = "margin-left:auto;color:var(--fg-dim)";
-          valSpan.textContent = String(val);
-          row.appendChild(valSpan);
-          fields.appendChild(row);
-        }
-      }
-      return fields;
-    });
-  }
-
-  // CSS Parts (custom element docs, root only)
-  if (isCustomElementDoc() && S.selection.length === 0) {
-    const parts = collectCssParts(S.document);
-    if (parts.length > 0) {
-      renderInspectorSection(container, "CSS Parts", false, () => {
-        const fields = document.createElement("div");
-        fields.className = "inspector-fields";
-        for (const p of parts) {
-          const row = document.createElement("div");
-          row.style.cssText = "display:flex;gap:6px;align-items:center;padding:2px 0;font-size:11px";
-          const partName = document.createElement("code");
-          partName.style.cssText = "font-family:monospace;color:var(--accent)";
-          partName.textContent = p.name;
-          row.appendChild(partName);
-          const tagSpan = document.createElement("span");
-          tagSpan.style.cssText = "color:var(--fg-dim)";
-          tagSpan.textContent = `<${p.tag}>`;
-          row.appendChild(tagSpan);
-          fields.appendChild(row);
-        }
-        return fields;
-      });
-    }
-  }
-
-  // Media breakpoints section (root only)
-  if (S.selection.length === 0) {
-    renderInspectorSection(container, "Media", false, () => {
-      const fields = document.createElement("div");
-      fields.className = "inspector-fields";
-      const media = node.$media || {};
-
-      // ── Default canvas width ("--" key) ──
-      const baseRow = document.createElement("div");
-      baseRow.className = "kv-row";
-      baseRow.style.alignItems = "center";
-
-      const baseLabel = document.createElement("span");
-      baseLabel.className = "field-label";
-      baseLabel.style.width = "auto";
-      baseLabel.style.marginRight = "4px";
-      baseLabel.textContent = "Base width";
-      baseRow.appendChild(baseLabel);
-
-      const baseInput = document.createElement("input");
-      baseInput.className = "field-input";
-      baseInput.style.width = "70px";
-      baseInput.style.flex = "none";
-      baseInput.placeholder = "320px";
-      baseInput.value = media["--"] || "";
-      let baseDebounce;
-      baseInput.oninput = () => {
-        clearTimeout(baseDebounce);
-        baseDebounce = setTimeout(() => {
-          const val = baseInput.value.trim();
-          if (val) update(updateMedia(S, "--", val));
-          else update(updateMedia(S, "--", undefined));
-        }, 400);
-      };
-      baseRow.appendChild(baseInput);
-
-      if (media["--"]) {
-        const del = document.createElement("span");
-        del.className = "kv-del";
-        del.textContent = "\u2715";
-        del.onclick = () => update(updateMedia(S, "--", undefined));
-        baseRow.appendChild(del);
-      }
-      fields.appendChild(baseRow);
-
-      // ── Breakpoint rows (excluding "--") ──
-      for (const [name, query] of Object.entries(media)) {
-        if (name === "--") continue;
-        fields.appendChild(mediaBreakpointRow(name, query));
-      }
-
-      // ── Add breakpoint flow ──
-      const addWrap = document.createElement("div");
-
-      const addLink = document.createElement("span");
-      addLink.className = "kv-add";
-      addLink.textContent = "+ Add breakpoint";
-      addLink.onclick = () => {
-        addLink.style.display = "none";
-        addForm.style.display = "";
-        nameInput.focus();
-      };
-      addWrap.appendChild(addLink);
-
-      const addForm = document.createElement("div");
-      addForm.style.display = "none";
-      addForm.style.marginTop = "4px";
-
-      const nameRow = document.createElement("div");
-      nameRow.style.cssText = "display:flex;gap:4px;margin-bottom:3px;align-items:center";
-      const nameInput = document.createElement("input");
-      nameInput.className = "field-input";
-      nameInput.placeholder = "Name (e.g. Tablet)";
-      nameInput.style.flex = "1";
-      const namePreview = document.createElement("span");
-      namePreview.style.cssText = "font-size:10px;color:var(--fg-dim);font-family:'SF Mono','Fira Code',monospace;white-space:nowrap";
-      nameInput.oninput = () => {
-        const gen = friendlyNameToMedia(nameInput.value);
-        namePreview.textContent = gen || "";
-      };
-      nameRow.appendChild(nameInput);
-      nameRow.appendChild(namePreview);
-      addForm.appendChild(nameRow);
-
-      const queryRow = document.createElement("div");
-      queryRow.style.cssText = "display:flex;gap:4px;margin-bottom:3px;align-items:center";
-      const queryInput = document.createElement("input");
-      queryInput.className = "field-input";
-      queryInput.value = "(min-width: 768px)";
-      queryInput.style.flex = "1";
-      queryRow.appendChild(queryInput);
-      addForm.appendChild(queryRow);
-
-      const btnRow = document.createElement("div");
-      btnRow.style.cssText = "display:flex;gap:4px";
-      const addBtn = document.createElement("button");
-      addBtn.className = "kv-add";
-      addBtn.style.cssText = "padding:2px 10px;cursor:pointer";
-      addBtn.textContent = "Add";
-      addBtn.onclick = () => {
-        const key = friendlyNameToMedia(nameInput.value);
-        const q = queryInput.value.trim();
-        if (key && q) {
-          update(updateMedia(S, key, q));
-        }
-      };
-      const cancelBtn = document.createElement("button");
-      cancelBtn.className = "kv-add";
-      cancelBtn.style.cssText = "padding:2px 10px;cursor:pointer;color:var(--fg-dim)";
-      cancelBtn.textContent = "Cancel";
-      cancelBtn.onclick = () => {
-        addForm.style.display = "none";
-        addLink.style.display = "";
-        nameInput.value = "";
-        namePreview.textContent = "";
-        queryInput.value = "(min-width: 768px)";
-      };
-      btnRow.appendChild(addBtn);
-      btnRow.appendChild(cancelBtn);
-      addForm.appendChild(btnRow);
-
-      addWrap.appendChild(addForm);
-      fields.appendChild(addWrap);
-      return fields;
-    });
-  }
+  addWrap.appendChild(addForm);
+  container.appendChild(addWrap);
 }
 
 /**
@@ -5966,7 +6158,7 @@ function inferInputType(entry) {
   if (entry.$units !== undefined) return "number-unit";
   if (entry.type === "number") return "number";
   if (Array.isArray(entry.enum)) return "select";
-  if (Array.isArray(entry.examples)) return "combobox";
+  if (Array.isArray(entry.examples) || Array.isArray(entry.presets)) return "combobox";
   return "text";
 }
 
@@ -6002,356 +6194,470 @@ function getLonghands(shorthandProp) {
   return result;
 }
 
-function renderColorInput(value, onChange) {
-  const wrap = document.createElement("div");
-  wrap.className = "style-input-color";
+// ── Color popover singleton ─────────────────────────────────────────────────
+let _colorPopover = null;
+let _colorCallback = null;
+let _colorDismissHandler = null;
 
-  const swatch = document.createElement("input");
-  swatch.type = "color";
-  try {
-    swatch.value = value || "#000000";
-  } catch {
-    swatch.value = "#000000";
+/** Extract --color-* CSS custom properties from the document root style. */
+function getColorVars() {
+  const style = S.document?.style;
+  if (!style) return [];
+  const vars = [];
+  for (const [k, v] of Object.entries(style)) {
+    if (k.startsWith("--color") && (typeof v === "string" || typeof v === "number")) {
+      vars.push({ name: k, value: String(v) });
+    }
   }
-
-  const text = document.createElement("input");
-  text.type = "text";
-  text.value = value || "";
-  text.placeholder = cssInitialMap.get("color") || "";
-
-  swatch.oninput = () => {
-    text.value = swatch.value;
-    onChange(swatch.value);
-  };
-
-  let debounce;
-  text.oninput = () => {
-    clearTimeout(debounce);
-    debounce = setTimeout(() => {
-      const v = text.value.trim();
-      // Sync swatch if it's a valid hex color
-      if (/^#[0-9a-f]{6}$/i.test(v)) {
-        try {
-          swatch.value = v;
-        } catch {}
-      }
-      onChange(v);
-    }, 400);
-  };
-
-  wrap.appendChild(swatch);
-  wrap.appendChild(text);
-  return wrap;
+  return vars;
 }
 
-function renderNumberUnitInput(entry, value, onChange) {
-  const wrap = document.createElement("div");
-  wrap.className = "style-input-number-unit";
+/** Extract --font-* CSS custom properties from the document root style. */
+function getFontVars() {
+  const style = S.document?.style;
+  if (!style) return [];
+  const vars = [];
+  for (const [k, v] of Object.entries(style)) {
+    if (k.startsWith("--font") && (typeof v === "string" || typeof v === "number")) {
+      vars.push({ name: k, value: String(v) });
+    }
+  }
+  return vars;
+}
+
+/** Resolve a color value for display — if it's a var() reference, look up the actual color. */
+function resolveColorForDisplay(val) {
+  if (!val) return "transparent";
+  const m = val.match(/^var\((--[^)]+)\)$/);
+  if (m) {
+    const style = S.document?.style;
+    const resolved = style?.[m[1]];
+    if (typeof resolved === "string") return resolved;
+    return "transparent";
+  }
+  return val;
+}
+
+function ensureColorPopover() {
+  if (_colorPopover) return;
+  _colorPopover = document.createElement("sp-popover");
+  _colorPopover.setAttribute("tabindex", "-1");
+  _colorPopover.style.cssText = "padding:12px; position:fixed; z-index:9999";
+  (document.querySelector("sp-theme") || document.body).appendChild(_colorPopover);
+}
+
+function closeColorPopover() {
+  if (!_colorPopover) return;
+  _colorPopover.open = false;
+  _colorCallback = null;
+  if (_colorDismissHandler) {
+    document.removeEventListener("pointerdown", _colorDismissHandler, true);
+    document.removeEventListener("keydown", _colorDismissHandler, true);
+    _colorDismissHandler = null;
+  }
+}
+
+function openColorPopover(anchorEl, currentColor, onChange) {
+  ensureColorPopover();
+
+  const colorVars = getColorVars();
+  const resolvedColor = resolveColorForDisplay(currentColor) || "#000000";
+
+  // Render popover content with lit-html
+  const syncFromArea = (e) => {
+    const area = _colorPopover.querySelector("sp-color-area");
+    const slider = _colorPopover.querySelector("sp-color-slider");
+    const tf = _colorPopover.querySelector(".color-popover-hex");
+    if (slider) slider.color = area.color;
+    if (tf) tf.value = area.color;
+    _colorCallback?.(area.color);
+  };
+
+  const syncFromSlider = (e) => {
+    const area = _colorPopover.querySelector("sp-color-area");
+    const slider = _colorPopover.querySelector("sp-color-slider");
+    const tf = _colorPopover.querySelector(".color-popover-hex");
+    if (area) area.color = slider.color;
+    if (tf) tf.value = area.color;
+    _colorCallback?.(area.color);
+  };
+
+  const syncFromText = (e) => {
+    const val = e.target.value.trim();
+    if (!val) return;
+    const area = _colorPopover.querySelector("sp-color-area");
+    const slider = _colorPopover.querySelector("sp-color-slider");
+    try {
+      if (area) area.color = val;
+      if (slider) slider.color = val;
+    } catch {}
+    _colorCallback?.(val);
+  };
+
+  const tpl = html`
+    <div class="color-popover-inner">
+      <sp-color-area style="width:200px; height:150px"
+        color=${resolvedColor}
+        @input=${syncFromArea}
+      ></sp-color-area>
+      <sp-color-slider style="width:200px"
+        color=${resolvedColor}
+        @input=${syncFromSlider}
+      ></sp-color-slider>
+      <sp-textfield size="s" class="color-popover-hex"
+        .value=${live(currentColor || "")}
+        placeholder="#000000"
+        @change=${syncFromText}
+      ></sp-textfield>
+      ${colorVars.length > 0 ? html`
+        <sp-divider size="s"></sp-divider>
+        <span class="color-popover-swatches-label">Color Tokens</span>
+        <sp-swatch-group size="xs" border="light" rounding="none">
+          ${colorVars.map((cv) => html`
+            <sp-swatch
+              color=${cv.value}
+              .value=${cv.name}
+              title=${cv.name}
+              @click=${(e) => {
+                e.stopPropagation();
+                const varRef = `var(${cv.name})`;
+                _colorCallback?.(varRef);
+                // Update the text field to show the var reference
+                const tf = _colorPopover.querySelector(".color-popover-hex");
+                if (tf) tf.value = varRef;
+              }}
+            ></sp-swatch>
+          `)}
+        </sp-swatch-group>
+      ` : nothing}
+    </div>
+  `;
+
+  litRender(tpl, _colorPopover);
+
+  // Position below anchor
+  const r = anchorEl.getBoundingClientRect();
+  _colorPopover.style.left = `${r.left}px`;
+  _colorPopover.style.top = `${r.bottom + 4}px`;
+  _colorCallback = onChange;
+  _colorPopover.open = true;
+
+  // Dismiss on click-outside or Escape
+  if (_colorDismissHandler) {
+    document.removeEventListener("pointerdown", _colorDismissHandler, true);
+    document.removeEventListener("keydown", _colorDismissHandler, true);
+  }
+  _colorDismissHandler = (e) => {
+    if (e.type === "keydown") {
+      if (e.key === "Escape") closeColorPopover();
+      return;
+    }
+    // pointerdown — close if outside popover and outside the anchor swatch
+    if (!_colorPopover.contains(e.target) && !anchorEl.contains(e.target)) {
+      closeColorPopover();
+    }
+  };
+  // Defer so the opening click doesn't immediately dismiss
+  requestAnimationFrame(() => {
+    document.addEventListener("pointerdown", _colorDismissHandler, true);
+    document.addEventListener("keydown", _colorDismissHandler, true);
+  });
+}
+
+function safeColor(val) {
+  if (!val) return "transparent";
+  return resolveColorForDisplay(val);
+}
+
+function renderColorInput(prop, value, onChange) {
+  return html`
+    <div class="style-input-color">
+      <sp-swatch size="s" rounding="none" border="light"
+        color=${safeColor(value)}
+        @click=${(e) => {
+          if (_colorPopover?.open) { closeColorPopover(); return; }
+          openColorPopover(e.currentTarget, value, (c) => {
+            onChange(c);
+          });
+        }}
+      ></sp-swatch>
+      <sp-textfield size="s" style="flex:1; min-width:0"
+        .value=${live(value || "")}
+        @input=${debouncedStyleCommit(`color:${prop}`, 400, (e) => {
+          onChange(e.target.value.trim());
+        })}
+      ></sp-textfield>
+    </div>
+  `;
+}
+
+function renderNumberUnitInput(entry, prop, value, onChange) {
   const units = entry.$units || [];
   const keywords = entry.$keywords || [];
   const strVal = String(value ?? "");
   const match = strVal.match(UNIT_RE);
   const isKeyword = !match && strVal !== "" && keywords.includes(strVal);
+  const isNumericVal = (v) => /^-?\d*\.?\d*$/.test(v);
 
-  let currentUnit = isKeyword ? units[0] || "" : match ? match[2] || "" : units[0] || "";
-  let activeKeyword = isKeyword ? strVal : null;
+  const currentUnit = isKeyword ? units[0] || "" : match ? match[2] || "" : units[0] || "";
+  let displayValue;
+  if (isKeyword) displayValue = strVal;
+  else if (match) displayValue = match[1];
+  else if (strVal !== "") {
+    const num = parseFloat(strVal);
+    displayValue = isNaN(num) ? strVal : String(num);
+  } else displayValue = "";
 
-  // Number input (hidden when keyword is active)
-  const numInput = document.createElement("input");
-  numInput.type = "number";
-  numInput.value = isKeyword ? "" : match ? match[1] : strVal === "" ? "" : strVal;
-  if (entry.minimum !== undefined) numInput.min = entry.minimum;
-  if (entry.maximum !== undefined) numInput.max = entry.maximum;
-  if (entry.type === "number" || (entry.maximum !== undefined && entry.maximum <= 1)) {
-    numInput.step = "0.1";
-  }
+  const isExpression = isKeyword || (displayValue !== "" && !isNumericVal(displayValue));
+  const hasUnits = units.length > 0 || keywords.length > 0;
+  const btnId = `style-unit-${prop}`;
 
-  // Keyword label (shown when keyword is active, hidden otherwise)
-  const kwLabel = document.createElement("span");
-  kwLabel.className = "unit-kw-label";
-
-  if (isKeyword) {
-    numInput.style.display = "none";
-    kwLabel.textContent = strVal;
-    kwLabel.style.display = "";
-  } else {
-    kwLabel.style.display = "none";
-  }
-
-  let debounce;
-  const commit = () => {
-    clearTimeout(debounce);
-    debounce = setTimeout(() => {
-      const n = numInput.value;
-      if (n === "") { onChange(""); return; }
-      onChange(units.length > 0 ? n + currentUnit : n);
-    }, 400);
-  };
-  numInput.oninput = commit;
-
-  // Popover-based unit/keyword picker
-  if (units.length > 0 || keywords.length > 0) {
-    const popId = "unit-pop-" + (++_popoverId);
-    const trigger = document.createElement("button");
-    trigger.type = "button";
-    trigger.className = "unit-trigger";
-    trigger.setAttribute("popovertarget", popId);
-    trigger.textContent = isKeyword ? "⌄" : currentUnit;
-
-    const pop = document.createElement("div");
-    pop.id = popId;
-    pop.setAttribute("popover", "auto");
-    pop.className = "unit-popover";
-
-    const pick = (unitOrKw, isKw) => {
-      pop.hidePopover();
-      if (isKw) {
-        activeKeyword = unitOrKw;
-        numInput.style.display = "none";
-        kwLabel.textContent = unitOrKw;
-        kwLabel.style.display = "";
-        trigger.textContent = "⌄";
-        onChange(unitOrKw);
-      } else {
-        activeKeyword = null;
-        currentUnit = unitOrKw;
-        numInput.style.display = "";
-        kwLabel.style.display = "none";
-        trigger.textContent = unitOrKw;
-        if (numInput.value !== "") commit();
-      }
-    };
-
-    for (const u of units) {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "unit-option" + (u === currentUnit && !isKeyword ? " active" : "");
-      btn.textContent = u;
-      btn.onclick = () => pick(u, false);
-      pop.appendChild(btn);
-    }
-    if (keywords.length > 0 && units.length > 0) {
-      const sep = document.createElement("hr");
-      sep.className = "unit-sep";
-      pop.appendChild(sep);
-    }
-    for (const kw of keywords) {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "unit-option unit-kw" + (isKeyword && kw === strVal ? " active" : "");
-      btn.textContent = kw;
-      btn.onclick = () => pick(kw, true);
-      pop.appendChild(btn);
-    }
-
-    pop.addEventListener("toggle", (e) => {
-      if (e.newState === "open") {
-        const r = trigger.getBoundingClientRect();
-        pop.style.position = "fixed";
-        pop.style.top = r.bottom + 2 + "px";
-        pop.style.left = r.right + "px";
-        pop.style.transform = "translateX(-100%)";
-      }
-    });
-
-    wrap.appendChild(numInput);
-    wrap.appendChild(kwLabel);
-    wrap.appendChild(trigger);
-    wrap.appendChild(pop);
-  } else {
-    wrap.appendChild(numInput);
-  }
-
-  return wrap;
+  return html`
+    <div class="style-input-number-unit">
+      <div class=${classMap({ "input-group": true, "is-expression": isExpression })}>
+        <sp-textfield size="s" placeholder="0"
+          .value=${live(displayValue)}
+          @input=${debouncedStyleCommit(`nui:${prop}`, 400, (e) => {
+            const val = (e.target.value ?? "").trim();
+            if (val === "") { onChange(""); return; }
+            if (isNumericVal(val)) onChange(units.length > 0 ? val + currentUnit : val);
+            else onChange(val);
+          })}
+        ></sp-textfield>
+        ${hasUnits ? html`
+          <sp-picker-button id=${btnId} quiet>
+            <span slot="label">${currentUnit || units[0] || ""}</span>
+          </sp-picker-button>
+          <sp-overlay trigger="${btnId}@click" placement="bottom-end" offset="4">
+            <sp-popover style="min-width: var(--spectrum-component-width-900, 64px)">
+              <sp-menu label="CSS unit" @change=${(e) => {
+                const chosen = e.target.value;
+                if (keywords.includes(chosen)) {
+                  onChange(chosen);
+                } else if (units.includes(chosen)) {
+                  // Re-commit with new unit
+                  const curMatch = String(value ?? "").match(UNIT_RE);
+                  const numPart = curMatch ? curMatch[1] : "";
+                  if (numPart) onChange(numPart + chosen);
+                }
+              }}>
+                ${units.map(u => html`<sp-menu-item value=${u}>${u}</sp-menu-item>`)}
+                ${keywords.length > 0 && units.length > 0 ? html`<sp-menu-divider></sp-menu-divider>` : nothing}
+                ${keywords.map(kw => html`<sp-menu-item value=${kw}>${kw}</sp-menu-item>`)}
+              </sp-menu>
+            </sp-popover>
+          </sp-overlay>
+        ` : nothing}
+      </div>
+    </div>
+  `;
 }
-let _popoverId = 0;
 
 function abbreviateValue(val) {
   const map = {
-    inline: "inl",
-    "inline-block": "i-blk",
-    "inline-flex": "i-flx",
-    "inline-grid": "i-grd",
-    contents: "cnt",
-    "flow-root": "flow",
-    nowrap: "no-wr",
-    "wrap-reverse": "wr-rev",
-    "flex-start": "start",
-    "flex-end": "end",
-    "space-between": "betw",
-    "space-around": "arnd",
-    "space-evenly": "even",
-    stretch: "str",
-    baseline: "base",
-    normal: "norm",
-    "row-reverse": "row-r",
-    "column-reverse": "col-r",
-    column: "col",
+    inline: "inl", "inline-block": "i-blk", "inline-flex": "i-flx", "inline-grid": "i-grd",
+    contents: "cnt", "flow-root": "flow", nowrap: "no-wr", "wrap-reverse": "wr-rev",
+    "flex-start": "start", "flex-end": "end", "space-between": "betw",
+    "space-around": "arnd", "space-evenly": "even", stretch: "str", baseline: "base",
+    normal: "norm", "row-reverse": "row-r", "column-reverse": "col-r", column: "col",
   };
   return map[val] || val;
 }
 
 function renderButtonGroupInput(entry, value, onChange) {
-  const wrap = document.createElement("div");
-  wrap.className = "style-input-button-group";
-
   const values = entry.$buttonValues || entry.enum || [];
   const iconMap = entry.$icons || {};
+  const extra = entry.$buttonValues && entry.enum && entry.enum.length > entry.$buttonValues.length
+    ? entry.enum.filter((v) => !entry.$buttonValues.includes(v)) : [];
 
-  for (const v of values) {
-    const btn = document.createElement("button");
-    btn.className = "style-btn-group-item" + (v === value ? " active" : "");
-    btn.type = "button";
-    btn.title = v;
-    btn.dataset.value = v;
-
-    const iconKey = iconMap[v];
-    if (iconKey && icons[iconKey]) {
-      btn.innerHTML = icons[iconKey];
-    } else {
-      btn.textContent = abbreviateValue(v);
-      btn.classList.add("text-only");
-    }
-
-    btn.onclick = () => onChange(v === value ? "" : v);
-    wrap.appendChild(btn);
-  }
-
-  // Overflow select for enum values not in $buttonValues
-  if (entry.$buttonValues && entry.enum && entry.enum.length > entry.$buttonValues.length) {
-    const extra = entry.enum.filter((v) => !entry.$buttonValues.includes(v));
-    const more = document.createElement("select");
-    more.className = "style-btn-group-overflow";
-    const blank = document.createElement("option");
-    blank.value = "";
-    blank.textContent = "+";
-    more.appendChild(blank);
-    for (const v of extra) {
-      const opt = document.createElement("option");
-      opt.value = v;
-      opt.textContent = v;
-      if (v === value) opt.selected = true;
-      more.appendChild(opt);
-    }
-    more.onchange = () => {
-      if (more.value) onChange(more.value);
-      more.value = "";
-    };
-    wrap.appendChild(more);
-  }
-
-  return wrap;
+  return html`
+    <sp-action-group size="xs" compact>
+      ${values.map(v => html`
+        <sp-action-button size="xs" title=${v} ?selected=${v === value}
+          @click=${() => onChange(v === value ? "" : v)}>
+          ${iconMap[v] && icons[iconMap[v]]
+            ? html`<span slot="icon">${unsafeHTML(icons[iconMap[v]])}</span>`
+            : abbreviateValue(v)}
+        </sp-action-button>
+      `)}
+      ${extra.length > 0 ? html`
+        <sp-picker size="s" quiet placeholder="+"
+          @change=${(e) => { if (e.target.value) onChange(e.target.value); }}>
+          ${extra.map(v => html`<sp-menu-item value=${v}>${v}</sp-menu-item>`)}
+        </sp-picker>
+      ` : nothing}
+    </sp-action-group>
+  `;
 }
 
 function renderSelectInput(entry, value, onChange) {
-  const select = document.createElement("select");
-  select.className = "field-input";
-  select.style.flex = "1";
-  select.style.minWidth = "0";
+  return html`
+    <sp-picker size="s" .value=${live(value || "__none__")}
+      @change=${(e) => onChange(e.target.value === "__none__" ? "" : e.target.value)}>
+      <sp-menu-item value="__none__">\u2014</sp-menu-item>
+      ${(entry.enum || []).map(v => html`<sp-menu-item value=${v}>${v}</sp-menu-item>`)}
+      ${value && !(entry.enum || []).includes(value) ? html`<sp-menu-item value=${value}>${value}</sp-menu-item>` : nothing}
+    </sp-picker>
+  `;
+}
 
-  const blankOpt = document.createElement("option");
-  blankOpt.value = "";
-  blankOpt.textContent = "—";
-  select.appendChild(blankOpt);
-
-  const vals = entry.enum;
-  let found = false;
-  for (const v of vals) {
-    const opt = document.createElement("option");
-    opt.value = v;
-    opt.textContent = v;
-    if (v === value) {
-      opt.selected = true;
-      found = true;
-    }
-    select.appendChild(opt);
+function handleFontPresetSelection(preset, onChange) {
+  const varName = friendlyNameToVar(preset.title, "--font-");
+  if (!S.document?.style?.[varName]) {
+    S = updateStyle(S, [], varName, preset.value);
   }
-  // If current value not in enum, add it
-  if (value && !found) {
-    const opt = document.createElement("option");
-    opt.value = value;
-    opt.textContent = value;
-    opt.selected = true;
-    select.appendChild(opt);
-  }
+  onChange(`var(${varName})`);
+}
 
-  select.onchange = () => onChange(select.value);
-  return select;
+function renderFontOptions(fontVars, presets) {
+  const unaddedPresets = presets.filter((p) => {
+    const varName = friendlyNameToVar(p.title, "--font-");
+    return !fontVars.some((fv) => fv.name === varName);
+  });
+  return html`
+    ${fontVars.map((fv) => html`
+      <sp-menu-item value=${fv.name}
+        style="font-family: ${fv.value}">
+        ${varDisplayName(fv.name, "--font-")}
+      </sp-menu-item>
+    `)}
+    ${unaddedPresets.length > 0 ? html`
+      <sp-menu-divider></sp-menu-divider>
+      ${unaddedPresets.map((p) => html`
+        <sp-menu-item value=${"__preset__:" + p.title}
+          style="font-family: ${p.value}">
+          ${p.title}
+        </sp-menu-item>
+      `)}
+    ` : nothing}
+  `;
+}
+
+function handleFontSelection(val, presets, onChange) {
+  if (!val) return;
+  if (val.startsWith("__preset__:")) {
+    const title = val.slice("__preset__:".length);
+    const preset = presets.find((p) => p.title === title);
+    if (preset) handleFontPresetSelection(preset, onChange);
+    return;
+  }
+  // Existing font var selected
+  onChange("var(" + val + ")");
+}
+
+function renderFontVarPicker(fontVars, presets, value, onChange) {
+  const varMatch = value.match(/^var\((--[^)]+)\)$/);
+  const currentVarName = varMatch ? varMatch[1] : "";
+
+  return html`
+    <sp-picker size="s" class="font-var-picker"
+      .value=${live(currentVarName || "__none__")}
+      @change=${(e) => handleFontSelection(e.target.value, presets, onChange)}>
+      ${renderFontOptions(fontVars, presets)}
+    </sp-picker>
+  `;
+}
+
+function renderFontCombobox(fontVars, presets, value, onChange) {
+  const menuId = "style-combo-fontFamily";
+  return html`
+    <div class="input-group">
+      <sp-textfield size="s" class="font-combo-field"
+        placeholder=${cssInitialMap.get("fontFamily") || ""}
+        .value=${live(value || "")}
+        @input=${debouncedStyleCommit("combo:fontFamily", 400, (e) => onChange(e.target.value))}
+      ></sp-textfield>
+      <sp-picker-button size="s" id=${menuId}></sp-picker-button>
+      <sp-overlay trigger=${menuId}@click placement="bottom-end" type="auto">
+        <sp-popover>
+          <sp-menu @change=${(e) => {
+            handleFontSelection(e.target.value, presets, onChange);
+          }}>
+            ${renderFontOptions(fontVars, presets)}
+          </sp-menu>
+        </sp-popover>
+      </sp-overlay>
+    </div>
+  `;
 }
 
 function renderComboboxInput(entry, prop, value, onChange) {
-  const id = `style-dl-${prop}`;
-  const input = document.createElement("input");
-  input.type = "text";
-  input.className = "field-input";
-  input.style.flex = "1";
-  input.style.minWidth = "0";
-  input.value = value || "";
-  input.placeholder = cssInitialMap.get(prop) || "";
-  input.setAttribute("list", id);
+  const fontVars = (prop === "fontFamily") ? getFontVars() : [];
+  const presets = entry.presets || [];
+  const examples = entry.examples || [];
+  const isVarRef = typeof value === "string" && value.startsWith("var(");
 
-  const dl = document.createElement("datalist");
-  dl.id = id;
-  for (const ex of entry.examples) {
-    const opt = document.createElement("option");
-    opt.value = ex;
-    dl.appendChild(opt);
+  // fontFamily: dual-mode control
+  if (prop === "fontFamily") {
+    if (isVarRef) {
+      return renderFontVarPicker(fontVars, presets, value, onChange);
+    }
+    return renderFontCombobox(fontVars, presets, value, onChange);
   }
 
-  let debounce;
-  input.oninput = () => {
-    clearTimeout(debounce);
-    debounce = setTimeout(() => onChange(input.value), 400);
-  };
+  // Non-fontFamily comboboxes: simple textfield with optional examples dropdown
+  const hasMenu = examples.length > 0;
+  const menuId = `style-combo-${prop}`;
 
-  const frag = document.createDocumentFragment();
-  frag.appendChild(dl);
-  frag.appendChild(input);
-  // Wrap in a span to return single element
-  const wrap = document.createElement("span");
-  wrap.style.display = "contents";
-  wrap.appendChild(dl);
-  wrap.appendChild(input);
-  return wrap;
+  if (!hasMenu) {
+    return html`
+      <sp-textfield size="s"
+        placeholder=${cssInitialMap.get(prop) || ""}
+        .value=${live(value || "")}
+        @input=${debouncedStyleCommit(`combo:${prop}`, 400, (e) => onChange(e.target.value))}
+      ></sp-textfield>
+    `;
+  }
+
+  return html`
+    <div class="input-group ${isVarRef ? "is-expression" : ""}">
+      <sp-textfield size="s"
+        placeholder=${cssInitialMap.get(prop) || ""}
+        .value=${live(value || "")}
+        @input=${debouncedStyleCommit(`combo:${prop}`, 400, (e) => onChange(e.target.value))}
+      ></sp-textfield>
+      <sp-picker-button size="s" id=${menuId}></sp-picker-button>
+      <sp-overlay trigger=${menuId}@click placement="bottom-end" type="auto">
+        <sp-popover>
+          <sp-menu @change=${(e) => {
+            const val = e.target.value;
+            if (val) onChange(val);
+          }}>
+            ${examples.map((ex) => html`
+              <sp-menu-item value=${ex}>
+                <span style="font-family: ${ex}">${ex}</span>
+              </sp-menu-item>
+            `)}
+          </sp-menu>
+        </sp-popover>
+      </sp-overlay>
+    </div>
+  `;
 }
 
-function renderNumberInput(entry, value, onChange) {
-  const input = document.createElement("input");
-  input.type = "number";
-  input.className = "field-input";
-  input.style.flex = "1";
-  input.style.minWidth = "0";
-  input.value = value ?? "";
-  if (entry.minimum !== undefined) input.min = entry.minimum;
-  if (entry.maximum !== undefined) input.max = entry.maximum;
-  if (entry.maximum !== undefined && entry.maximum <= 1) input.step = "0.1";
-
-  let debounce;
-  input.oninput = () => {
-    clearTimeout(debounce);
-    debounce = setTimeout(() => {
-      if (input.value === "") onChange("");
-      else onChange(Number(input.value));
-    }, 400);
-  };
-  return input;
+function renderNumberInput(entry, prop, value, onChange) {
+  return html`
+    <sp-number-field size="s" hide-stepper
+      .value=${live(value !== undefined && value !== "" ? Number(value) : undefined)}
+      min=${ifDefined(entry.minimum)} max=${ifDefined(entry.maximum)}
+      step=${ifDefined(entry.maximum !== undefined && entry.maximum <= 1 ? 0.1 : undefined)}
+      @change=${debouncedStyleCommit(`num:${prop}`, 400, (e) => {
+        const v = e.target.value;
+        if (v === undefined || isNaN(v)) onChange("");
+        else onChange(Number(v));
+      })}
+    ></sp-number-field>
+  `;
 }
 
 function renderTextInput(prop, value, onChange) {
-  const input = document.createElement("input");
-  input.type = "text";
-  input.className = "field-input";
-  input.style.flex = "1";
-  input.style.minWidth = "0";
-  input.value = value || "";
-  input.placeholder = cssInitialMap.get(prop) || "";
-
-  let debounce;
-  input.oninput = () => {
-    clearTimeout(debounce);
-    debounce = setTimeout(() => onChange(input.value), 400);
-  };
-  return input;
+  return html`
+    <sp-textfield size="s"
+      placeholder=${cssInitialMap.get(prop) || ""}
+      .value=${live(value || "")}
+      @input=${debouncedStyleCommit(`text:${prop}`, 400, (e) => onChange(e.target.value))}
+    ></sp-textfield>
+  `;
 }
 
 function camelToLabel(prop) {
@@ -6362,364 +6668,219 @@ function propLabel(entry, prop) {
   return entry?.$label || camelToLabel(prop);
 }
 
+/** Label for HTML attributes — handles kebab-case (aria-label → "Aria Label") */
+function attrLabel(entry, attr) {
+  if (entry?.$label) return entry.$label;
+  if (attr.includes("-")) return attr.replace(/(^|-)(\w)/g, (_, sep, c) => (sep ? " " : "") + c.toUpperCase());
+  return camelToLabel(attr);
+}
+
+function widgetForType(type, entry, prop, value, onCommit) {
+  switch (type) {
+    case "button-group": return renderButtonGroupInput(entry, value, onCommit);
+    case "color": return renderColorInput(prop, value, onCommit);
+    case "number-unit": return renderNumberUnitInput(entry, prop, value, onCommit);
+    case "number": return renderNumberInput(entry, prop, value, onCommit);
+    case "select": return renderSelectInput(entry, value, onCommit);
+    case "combobox": return renderComboboxInput(entry, prop, value, onCommit);
+    default: return renderTextInput(prop, value, onCommit);
+  }
+}
+
 function renderStyleRow(entry, prop, value, onCommit, onDelete, isWarning, gridMode) {
   const type = inferInputType(entry);
   const hasVal = value !== undefined && value !== "";
-  const row = document.createElement("div");
-  row.className =
-    "style-row" +
-    (isWarning ? " style-row--warning" : "") +
-    (type === "button-group" ? " style-row--button-group" : "") +
-    (gridMode ? " style-row--stacked" : "");
-  row.dataset.prop = prop;
-  if (gridMode && entry.$span === 2) row.style.gridColumn = "1 / -1";
-
-  const label = document.createElement("span");
-  label.className = "style-row-label";
-  if (hasVal) {
-    const dot = document.createElement("span");
-    dot.className = "set-dot";
-    dot.title = `Clear ${prop}`;
-    dot.onclick = (e) => { e.stopPropagation(); onDelete(); };
-    label.appendChild(dot);
-  }
-  const labelText = document.createTextNode(propLabel(entry, prop));
-  label.appendChild(labelText);
-  label.title = prop;
-  row.appendChild(label);
-
-  let widget;
-  switch (type) {
-    case "button-group":
-      widget = renderButtonGroupInput(entry, value, onCommit);
-      break;
-    case "color":
-      widget = renderColorInput(value, onCommit);
-      break;
-    case "number-unit":
-      widget = renderNumberUnitInput(entry, value, onCommit);
-      break;
-    case "number":
-      widget = renderNumberInput(entry, value, onCommit);
-      break;
-    case "select":
-      widget = renderSelectInput(entry, value, onCommit);
-      break;
-    case "combobox":
-      widget = renderComboboxInput(entry, prop, value, onCommit);
-      break;
-    default:
-      widget = renderTextInput(prop, value, onCommit);
-      break;
-  }
-  row.appendChild(widget);
-
-  return row;
+  return html`
+    <div class=${classMap({ "style-row": true, "style-row--warning": isWarning })}
+         data-prop=${prop}
+         style=${gridMode && entry.$span === 2 ? "grid-column: 1 / -1" : ""}>
+      <div class="style-row-label">
+        ${hasVal ? html`<span class="set-dot" title="Clear ${prop}"
+          @click=${(e) => { e.stopPropagation(); onDelete(); }}></span>` : nothing}
+        <sp-field-label size="s" title=${prop}>${propLabel(entry, prop)}</sp-field-label>
+      </div>
+      ${widgetForType(type, entry, prop, value, onCommit)}
+    </div>
+  `;
 }
 
 function renderShorthandRow(shortProp, entry, style, commitFn, deleteFn) {
-  const frag = document.createDocumentFragment();
   const longhands = getLonghands(shortProp);
   const shortVal = style[shortProp];
   const hasLonghands = longhands.some((l) => style[l.name] !== undefined);
   const isExpanded = S.ui.styleShorthands[shortProp] ?? hasLonghands;
-
-  // Shorthand header row
-  const row = document.createElement("div");
-  row.className = "style-row";
-  row.dataset.prop = shortProp;
-
-  const label = document.createElement("span");
-  label.className = "style-row-label";
   const hasAnyVal = shortVal !== undefined || longhands.some((l) => style[l.name] !== undefined);
-  if (hasAnyVal) {
-    const dot = document.createElement("span");
-    dot.className = "set-dot";
-    dot.title = `Clear ${shortProp}`;
-    dot.onclick = (e) => {
-      e.stopPropagation();
-      let s = S;
-      if (shortVal !== undefined) s = commitFn(s, shortProp, undefined);
-      for (const l of longhands) {
-        if (style[l.name] !== undefined) s = commitFn(s, l.name, undefined);
-      }
-      update(s);
-    };
-    label.appendChild(dot);
-  }
-  label.appendChild(document.createTextNode(propLabel(entry, shortProp)));
-  label.title = shortProp;
-  row.appendChild(label);
 
-  // Shorthand value — plain text input
-  const input = document.createElement("input");
-  input.type = "text";
-  input.className = "field-input";
-  input.style.flex = "1";
-  input.style.minWidth = "0";
-  input.value = shortVal || "";
-  if (!shortVal && hasLonghands) {
-    // Synthetic placeholder from longhands
-    input.placeholder = longhands.map((l) => style[l.name] || "0").join(" ");
-  }
-
-  let debounce;
-  input.oninput = () => {
-    clearTimeout(debounce);
-    debounce = setTimeout(() => {
-      // Writing shorthand clears all longhands
-      let s = S;
-      for (const l of longhands) {
-        if (style[l.name] !== undefined) {
-          s = commitFn(s, l.name, undefined);
-        }
-      }
-      s = commitFn(s, shortProp, input.value || undefined);
-      update(s);
-    }, 400);
-  };
-  row.appendChild(input);
-
-  // Expand toggle
-  const toggle = document.createElement("span");
-  toggle.className = "style-shorthand-toggle";
-  toggle.textContent = isExpanded ? "⌃" : "⌄";
-  toggle.onclick = (e) => {
-    e.stopPropagation();
-    S = {
-      ...S,
-      ui: { ...S.ui, styleShorthands: { ...S.ui.styleShorthands, [shortProp]: !isExpanded } },
-    };
-    renderRightPanel();
-  };
-  row.appendChild(toggle);
-
-  frag.appendChild(row);
-
-  // Expanded longhand rows
-  if (isExpanded) {
-    for (const { name, entry: lEntry } of longhands) {
+  return html`
+    <div class="style-row" data-prop=${shortProp}>
+      <div class="style-row-label">
+        ${hasAnyVal ? html`<span class="set-dot" title="Clear ${shortProp}" @click=${(e) => {
+          e.stopPropagation();
+          let s = S;
+          if (shortVal !== undefined) s = commitFn(s, shortProp, undefined);
+          for (const l of longhands) {
+            if (style[l.name] !== undefined) s = commitFn(s, l.name, undefined);
+          }
+          update(s);
+        }}></span>` : nothing}
+        <sp-field-label size="s" title=${shortProp}>${propLabel(entry, shortProp)}</sp-field-label>
+      </div>
+      <div class="style-shorthand-header">
+        <sp-textfield size="s"
+          .value=${live(shortVal || "")}
+          placeholder=${!shortVal && hasLonghands ? longhands.map((l) => style[l.name] || "0").join(" ") : ""}
+          @input=${debouncedStyleCommit(`short:${shortProp}`, 400, (e) => {
+            let s = S;
+            for (const l of longhands) {
+              if (style[l.name] !== undefined) s = commitFn(s, l.name, undefined);
+            }
+            s = commitFn(s, shortProp, e.target.value || undefined);
+            update(s);
+          })}
+        ></sp-textfield>
+        <sp-action-button size="xs" quiet @click=${(e) => {
+          e.stopPropagation();
+          S = { ...S, ui: { ...S.ui, styleShorthands: { ...S.ui.styleShorthands, [shortProp]: !isExpanded } } };
+          renderStylePanel(rightPanel._body);
+        }}>
+          ${isExpanded
+            ? html`<sp-icon-chevron-down slot="icon"></sp-icon-chevron-down>`
+            : html`<sp-icon-chevron-right slot="icon"></sp-icon-chevron-right>`}
+        </sp-action-button>
+      </div>
+    </div>
+    ${isExpanded ? longhands.map(({ name, entry: lEntry }) => {
       const lVal = style[name] ?? "";
-      const lRow = renderStyleRow(
-        lEntry,
-        name,
-        lVal,
-        (newVal) => {
-          update(commitFn(S, name, newVal || undefined));
-        },
-        () => update(commitFn(S, name, undefined)),
-      );
-      lRow.classList.add("style-row--child");
-      frag.appendChild(lRow);
-    }
-  }
-
-  return frag;
+      return html`
+        <div class="style-row style-row--child" data-prop=${name}>
+          <div class="style-row-label">
+            ${lVal !== undefined && lVal !== "" ? html`<span class="set-dot" title="Clear ${name}"
+              @click=${(e) => { e.stopPropagation(); update(commitFn(S, name, undefined)); }}></span>` : nothing}
+            <sp-field-label size="s" title=${name}>${propLabel(lEntry, name)}</sp-field-label>
+          </div>
+          ${widgetForType(inferInputType(lEntry), lEntry, name, lVal, (newVal) => update(commitFn(S, name, newVal || undefined)))}
+        </div>
+      `;
+    }) : nothing}
+  `;
 }
 
-function renderSectionAddControl(sectionKey, onAdd) {
-  const wrap = document.createElement("div");
-  wrap.className = "style-add-input";
-  wrap.style.display = "none";
 
-  const dlId = `style-add-dl-${sectionKey}`;
-  const dl = document.createElement("datalist");
-  dl.id = dlId;
-  for (const [name, entry] of Object.entries(cssMeta.$defs)) {
-    if ((entry.$section || "other") === sectionKey && typeof entry.$shorthand !== "string") {
-      const opt = document.createElement("option");
-      opt.value = name;
-      dl.appendChild(opt);
-    }
-  }
-  wrap.appendChild(dl);
-
-  const input = document.createElement("input");
-  input.type = "text";
-  input.placeholder = "Property name…";
-  input.setAttribute("list", dlId);
-  input.onkeydown = (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      const prop = input.value.trim();
-      if (prop) {
-        onAdd(prop);
-        input.value = "";
-        wrap.style.display = "none";
-      }
-    } else if (e.key === "Escape") {
-      input.value = "";
-      wrap.style.display = "none";
-    }
-  };
-  input.onblur = () => {
-    setTimeout(() => {
-      wrap.style.display = "none";
-    }, 150);
-  };
-  wrap.appendChild(input);
-
-  // Return wrap and a show function
-  wrap._show = () => {
-    wrap.style.display = "flex";
-    input.focus();
-  };
-  return wrap;
-}
-
-function renderStyleSidebar(container, node, activeMediaTab, activeSelector) {
-  const wrapper = document.createElement("div");
-  wrapper.className = "style-sidebar";
+function styleSidebarTemplate(node, activeMediaTab, activeSelector) {
   const style = node.style || {};
   const { sizeBreakpoints } = parseMediaEntries(S.document.$media);
   const mediaNames = sizeBreakpoints.map((bp) => bp.name);
   const activeTab = activeMediaTab;
 
-  // Media tabs (only if there are breakpoints)
-  if (mediaNames.length > 0) {
-    const tabs = document.createElement("div");
-    tabs.className = "media-tabs";
-
-    const baseTab = document.createElement("div");
-    baseTab.className = `media-tab${activeTab === null ? " active" : ""}`;
-    baseTab.textContent = "Base";
-    baseTab.onclick = () => {
-      S = { ...S, ui: { ...S.ui, activeMedia: null } };
-      updateActivePanelHeaders();
-      renderRightPanel();
-    };
-    tabs.appendChild(baseTab);
-
-    for (const name of mediaNames) {
-      const tab = document.createElement("div");
-      tab.className = `media-tab${activeTab === name ? " active" : ""}`;
-      tab.textContent = mediaDisplayName(name);
-      tab.onclick = () => {
-        S = { ...S, ui: { ...S.ui, activeMedia: name } };
-        updateActivePanelHeaders();
-        renderRightPanel();
-      };
-      tabs.appendChild(tab);
-    }
-    wrapper.appendChild(tabs);
-  }
+  // ── Media tabs template ──────────────────────────────────────────────────
+  const mediaTabsT = mediaNames.length > 0 ? html`
+    <sp-tabs size="s">
+      <sp-tab label="Base" value="base"
+        ?selected=${activeTab === null}
+        @click=${() => {
+          S = { ...S, ui: { ...S.ui, activeMedia: null } };
+          updateActivePanelHeaders();
+          renderStylePanel(rightPanel._body);
+        }}></sp-tab>
+      ${mediaNames.map((name) => html`
+        <sp-tab label=${mediaDisplayName(name)} value=${name}
+          ?selected=${activeTab === name}
+          @click=${() => {
+            S = { ...S, ui: { ...S.ui, activeMedia: name } };
+            updateActivePanelHeaders();
+            renderStylePanel(rightPanel._body);
+          }}></sp-tab>
+      `)}
+    </sp-tabs>
+  ` : nothing;
 
   // ── Selector dropdown ──────────────────────────────────────────────────────
   const contextStyle = activeTab ? (style[`@${activeTab}`] || {}) : style;
   const existingSelectors = Object.keys(contextStyle).filter(isNestedSelector);
   const existingSet = new Set(existingSelectors);
-
-  const selectorBar = document.createElement("div");
-  selectorBar.className = "selector-bar";
-
-  const sel = document.createElement("select");
-  sel.className = "selector-select";
-
-  // (base)
-  const baseOpt = document.createElement("option");
-  baseOpt.value = "";
-  baseOpt.textContent = "(base)";
-  baseOpt.selected = !activeSelector;
-  sel.appendChild(baseOpt);
-
-  // Common pseudo-selectors
-  const commonGroup = document.createElement("optgroup");
-  commonGroup.label = "Pseudo-selectors";
-  for (const s of COMMON_SELECTORS) {
-    const opt = document.createElement("option");
-    opt.value = s;
-    opt.textContent = existingSet.has(s) ? `${s}  \u25CF` : s;
-    opt.selected = activeSelector === s;
-    commonGroup.appendChild(opt);
-  }
-  sel.appendChild(commonGroup);
-
-  // Custom selectors already on the node (+ activeSelector if not yet in any list)
   const commonSet = new Set(COMMON_SELECTORS);
   const extraSelectors = existingSelectors.filter((s) => !commonSet.has(s));
   if (activeSelector && !commonSet.has(activeSelector) && !existingSet.has(activeSelector)) {
     extraSelectors.unshift(activeSelector);
   }
-  if (extraSelectors.length > 0) {
-    const extraGroup = document.createElement("optgroup");
-    extraGroup.label = "Custom";
-    for (const s of extraSelectors) {
-      const opt = document.createElement("option");
-      opt.value = s;
-      opt.textContent = `${s}  \u25CF`;
-      opt.selected = activeSelector === s;
-      extraGroup.appendChild(opt);
-    }
-    sel.appendChild(extraGroup);
-  }
 
-  // + Add custom...
-  const addOpt = document.createElement("option");
-  addOpt.value = "__add_custom__";
-  addOpt.textContent = "+ Add custom\u2026";
-  sel.appendChild(addOpt);
-
-  sel.onchange = () => {
-    const val = sel.value;
-    if (val === "__add_custom__") {
-      sel.value = activeSelector || "";
-      // Show inline input
-      sel.style.display = "none";
-      const inp = document.createElement("input");
-      inp.type = "text";
-      inp.className = "selector-custom-input";
-      inp.placeholder = ":hover, .child, &.active, [attr]";
-      selectorBar.appendChild(inp);
-      inp.focus();
-      let done = false;
-      const finish = (accept) => {
-        if (done) return;
-        done = true;
-        const v = inp.value.trim();
-        inp.remove();
-        sel.style.display = "";
-        if (accept && v && isNestedSelector(v)) {
-          S = { ...S, ui: { ...S.ui, activeSelector: v } };
-          renderRightPanel();
-        }
-      };
-      inp.onkeydown = (e) => {
-        if (e.key === "Enter") finish(true);
-        else if (e.key === "Escape") finish(false);
-      };
-      inp.onblur = () => finish(inp.value.trim().length > 0);
-      return;
-    }
-    const newSelector = val === "" ? null : val;
-    S = { ...S, ui: { ...S.ui, activeSelector: newSelector } };
-    renderRightPanel();
-  };
-
-  selectorBar.appendChild(sel);
-  wrapper.appendChild(selectorBar);
+  const _selectorVal = activeSelector || "__base__";
+  const selectorT = html`
+    <div class="selector-bar">
+      <sp-picker class="selector-select"
+        .value=${live(_selectorVal)}
+        @change=${(e) => {
+          const val = e.target.value;
+          if (val === "__add_custom__") {
+            requestAnimationFrame(() => { e.target.value = activeSelector || "__base__"; });
+            // Show inline input — imperative since it's a one-off interaction
+            const picker = e.target;
+            const bar = picker.closest(".selector-bar");
+            picker.style.display = "none";
+            const inp = document.createElement("input");
+            inp.type = "text";
+            inp.className = "selector-custom-input";
+            inp.placeholder = ":hover, .child, &.active, [attr]";
+            bar.appendChild(inp);
+            inp.focus();
+            let done = false;
+            const finish = (accept) => {
+              if (done) return;
+              done = true;
+              const v = inp.value.trim();
+              inp.remove();
+              picker.style.display = "";
+              if (accept && v && isNestedSelector(v)) {
+                S = { ...S, ui: { ...S.ui, activeSelector: v } };
+                renderStylePanel(rightPanel._body);
+              }
+            };
+            inp.addEventListener("keydown", (ev) => {
+              if (ev.key === "Enter") finish(true);
+              else if (ev.key === "Escape") finish(false);
+            });
+            inp.addEventListener("blur", () => finish(inp.value.trim().length > 0));
+            return;
+          }
+          const newSelector = val === "__base__" ? null : val;
+          S = { ...S, ui: { ...S.ui, activeSelector: newSelector } };
+          renderStylePanel(rightPanel._body);
+        }}>
+        <sp-menu-item value="__base__">(base)</sp-menu-item>
+        <sp-menu-divider></sp-menu-divider>
+        ${COMMON_SELECTORS.map((s) => html`
+          <sp-menu-item value=${s}>${existingSet.has(s) ? `${s}  \u25CF` : s}</sp-menu-item>
+        `)}
+        ${extraSelectors.length > 0 ? html`
+          <sp-menu-divider></sp-menu-divider>
+          ${extraSelectors.map((s) => html`
+            <sp-menu-item value=${s}>${s}  \u25CF</sp-menu-item>
+          `)}
+        ` : nothing}
+        <sp-menu-divider></sp-menu-divider>
+        <sp-menu-item value="__add_custom__">+ Add custom\u2026</sp-menu-item>
+      </sp-picker>
+    </div>
+  `;
 
   // ── Determine the active style object ──────────────────────────────────────
   let activeStyle;
-  let commitStyle; // (state, prop, val) => newState
+  let commitStyle;
   if (activeSelector && activeTab && mediaNames.length > 0) {
-    // Media + selector: style["@--md"][":hover"]
     activeStyle = (style[`@${activeTab}`] || {})[activeSelector] || {};
     commitStyle = (s, prop, val) =>
       updateMediaNestedStyle(s, S.selection, activeTab, activeSelector, prop, val);
   } else if (activeSelector) {
-    // Selector only: style[":hover"]
     activeStyle = style[activeSelector] || {};
     commitStyle = (s, prop, val) =>
       updateNestedStyle(s, S.selection, activeSelector, prop, val);
   } else if (activeTab !== null && mediaNames.length > 0) {
-    // Media only: style["@--md"] flat props
     activeStyle = {};
     for (const [p, v] of Object.entries(style[`@${activeTab}`] || {})) {
       if (typeof v !== "object") activeStyle[p] = v;
     }
     commitStyle = (s, prop, val) => updateMediaStyle(s, S.selection, activeTab, prop, val);
   } else {
-    // Base: flat props
     activeStyle = {};
     for (const [p, v] of Object.entries(style)) {
       if (typeof v !== "object") activeStyle[p] = v;
@@ -6736,263 +6897,179 @@ function renderStyleSidebar(container, node, activeMediaTab, activeSelector) {
   // Partition properties into sections
   const sectionProps = {};
   for (const sec of cssMeta.$sections) sectionProps[sec.key] = [];
-  const assigned = new Set();
 
-  // Sort known properties into sections
   for (const [prop, entry] of Object.entries(cssMeta.$defs)) {
-    // Skip longhands (rendered inside their shorthand)
     if (typeof entry.$shorthand === "string") continue;
     const sec = entry.$section || "other";
     sectionProps[sec].push({ prop, entry });
   }
-  // Sort each section by $order
   for (const sec of cssMeta.$sections) {
     sectionProps[sec.key].sort((a, b) => a.entry.$order - b.entry.$order);
   }
 
-  // Collect leftover "other" properties (on node but not in meta, or with string $shorthand that are standalone)
   const otherProps = [];
   for (const prop of Object.keys(activeStyle)) {
-    if (!cssMeta.$defs[prop]) {
-      otherProps.push(prop);
-      assigned.add(prop);
-    }
+    if (!cssMeta.$defs[prop]) otherProps.push(prop);
   }
 
-  // Render sections
-  for (const sec of cssMeta.$sections) {
-    // Determine which props in this section are active (have values or meet conditions)
-    const entries = sectionProps[sec.key];
-    if (sec.key === "other") {
-      // "Other" section: only render if there are unrecognized properties
-      if (otherProps.length === 0) continue;
+  // ── Section templates ────────────────────────────────────────────────────
+  const sectionTemplates = cssMeta.$sections
+    .filter((sec) => sec.key !== "other")
+    .map((sec) => {
+      const entries = sectionProps[sec.key];
 
-      const section = document.createElement("div");
-      section.className = "style-section";
-      const isOpen = S.ui.styleSections[sec.key] ?? false;
-
-      const header = document.createElement("div");
-      header.className = `style-section-header${isOpen ? "" : " collapsed"}`;
-      const collapse = document.createElement("span");
-      collapse.className = "style-section-collapse";
-      collapse.textContent = "▼";
-      const labelEl = document.createElement("span");
-      labelEl.className = "style-section-label";
-      labelEl.textContent = sec.label;
-      header.appendChild(collapse);
-      header.appendChild(labelEl);
-
-      const body = document.createElement("div");
-      body.className = `style-section-body${isOpen ? "" : " hidden"}`;
-
-      header.onclick = () => {
-        const nowOpen = !header.classList.contains("collapsed");
-        header.classList.toggle("collapsed");
-        body.classList.toggle("hidden");
-        S = {
-          ...S,
-          ui: { ...S.ui, styleSections: { ...S.ui.styleSections, [sec.key]: !nowOpen } },
-        };
-      };
-
-      for (const prop of otherProps) {
-        body.appendChild(
-          kvRow(
-            prop,
-            String(activeStyle[prop]),
-            (newProp, newVal) => {
-              if (newProp !== prop) {
-                let s = commitStyle(S, prop, undefined);
-                s = commitStyle(s, newProp, newVal);
-                update(s);
-              } else {
-                update(commitStyle(S, prop, newVal));
-              }
-            },
-            () => update(commitStyle(S, prop, undefined)),
-            "css-props",
-          ),
-        );
-      }
-
-      section.appendChild(header);
-      section.appendChild(body);
-      wrapper.appendChild(section);
-      continue;
-    }
-
-    // Normal section
-    const section = document.createElement("div");
-    section.className = "style-section";
-    section.dataset.key = sec.key;
-    const isOpen = S.ui.styleSections[sec.key] ?? false;
-
-    const header = document.createElement("div");
-    header.className = `style-section-header${isOpen ? "" : " collapsed"}`;
-    const collapse = document.createElement("span");
-    collapse.className = "style-section-collapse";
-    collapse.textContent = "▼";
-    const labelEl = document.createElement("span");
-    labelEl.className = "style-section-label";
-    labelEl.textContent = sec.label;
-    header.appendChild(collapse);
-    header.appendChild(labelEl);
-
-    // Section set-indicator: dot visible when any prop in section has a value
-    const sectionActiveProps = entries.filter(({ prop, entry }) => {
-      if (activeStyle[prop] !== undefined) return true;
-      if (inferInputType(entry) === "shorthand") {
-        return getLonghands(prop).some((l) => activeStyle[l.name] !== undefined);
-      }
-      return false;
-    });
-    if (sectionActiveProps.length > 0) {
-      const dot = document.createElement("span");
-      dot.className = "set-dot set-dot--section";
-      dot.title = `Clear all ${sec.label.toLowerCase()} properties`;
-      dot.onclick = (e) => {
-        e.stopPropagation();
-        let s = S;
-        for (const { prop, entry } of sectionActiveProps) {
-          if (activeStyle[prop] !== undefined) s = commitStyle(s, prop, undefined);
-          if (inferInputType(entry) === "shorthand") {
-            for (const l of getLonghands(prop)) {
-              if (activeStyle[l.name] !== undefined) s = commitStyle(s, l.name, undefined);
-            }
-          }
+      const sectionActiveProps = entries.filter(({ prop, entry }) => {
+        if (activeStyle[prop] !== undefined) return true;
+        if (inferInputType(entry) === "shorthand") {
+          return getLonghands(prop).some((l) => activeStyle[l.name] !== undefined);
         }
-        update(s);
-      };
-      header.appendChild(dot);
-    }
+        return false;
+      });
 
-    // Add button
-    const addBtn = document.createElement("button");
-    addBtn.className = "style-section-add";
-    addBtn.textContent = "+";
-    addBtn.onclick = (e) => {
-      e.stopPropagation();
-      // Ensure section is open
-      if (body.classList.contains("hidden")) {
-        header.classList.remove("collapsed");
-        body.classList.remove("hidden");
-        S = { ...S, ui: { ...S.ui, styleSections: { ...S.ui.styleSections, [sec.key]: true } } };
-      }
-      addControl._show();
-    };
-    header.appendChild(addBtn);
+      const rows = [];
+      for (const { prop, entry } of entries) {
+        const val = activeStyle[prop];
+        const hasVal = val !== undefined;
+        const condMet = allConditionsPass(entry, activeStyle);
+        const type = inferInputType(entry);
+        if (!hasVal && !condMet) continue;
 
-    const body = document.createElement("div");
-    body.className = `style-section-body${isOpen ? "" : " hidden"}${sec.$layout === "grid" ? " style-section-body--grid" : ""}`;
-
-    header.onclick = (e) => {
-      if (e.target === addBtn) return;
-      const nowOpen = !header.classList.contains("collapsed");
-      header.classList.toggle("collapsed");
-      body.classList.toggle("hidden");
-      S = { ...S, ui: { ...S.ui, styleSections: { ...S.ui.styleSections, [sec.key]: !nowOpen } } };
-    };
-
-    // Render property rows
-    for (const { prop, entry } of entries) {
-      const val = activeStyle[prop];
-      const hasVal = val !== undefined;
-      const condMet = allConditionsPass(entry, activeStyle);
-      const type = inferInputType(entry);
-
-      // Skip if no value and conditions not met
-      if (!hasVal && !condMet) continue;
-
-      if (type === "shorthand") {
-        // Shorthand row: render if shorthand or any longhands exist, or conditions met
-        const longhands = getLonghands(prop);
-        const hasAny = hasVal || longhands.some((l) => activeStyle[l.name] !== undefined);
-        if (!hasAny && !condMet) continue;
-
-        body.appendChild(renderShorthandRow(prop, entry, activeStyle, commitStyle, () => {}));
-      } else {
-        // Warning if has value but conditions not met
-        const isWarning = hasVal && !condMet;
-
-        if (hasVal || condMet) {
-          body.appendChild(
-            renderStyleRow(
-              entry,
-              prop,
-              val ?? "",
+        if (type === "shorthand") {
+          const longhands = getLonghands(prop);
+          const hasAny = hasVal || longhands.some((l) => activeStyle[l.name] !== undefined);
+          if (!hasAny && !condMet) continue;
+          rows.push(renderShorthandRow(prop, entry, activeStyle, commitStyle, () => {}));
+        } else {
+          const isWarning = hasVal && !condMet;
+          if (hasVal || condMet) {
+            rows.push(renderStyleRow(
+              entry, prop, val ?? "",
               (newVal) => update(commitStyle(S, prop, newVal || undefined)),
               () => update(commitStyle(S, prop, undefined)),
-              isWarning,
-              sec.$layout === "grid",
-            ),
-          );
+              isWarning, sec.$layout === "grid",
+            ));
+          }
         }
       }
-    }
 
-    // Add control for this section
-    const addControl = renderSectionAddControl(sec.key, (prop) => {
-      const initial = cssInitialMap.get(prop) || "";
-      update(commitStyle(S, prop, initial || ""));
+      const isOpen = S.ui.styleSections[sec.key] ?? false;
+
+      return html`
+        <sp-accordion-item
+          label=${sec.label}
+          .open=${isOpen}
+          @sp-accordion-item-toggle=${(e) => {
+            S = { ...S, ui: { ...S.ui, styleSections: { ...S.ui.styleSections, [sec.key]: e.target.open } } };
+          }}>
+          ${sectionActiveProps.length > 0 ? html`
+            <span slot="heading" style="display:flex;align-items:center;gap:6px">
+              ${sec.label}
+              <span class="set-dot set-dot--section"
+                title="Clear all ${sec.label.toLowerCase()} properties"
+                @click=${(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  let s = S;
+                  for (const { prop, entry } of sectionActiveProps) {
+                    if (activeStyle[prop] !== undefined) s = commitStyle(s, prop, undefined);
+                    if (inferInputType(entry) === "shorthand") {
+                      for (const l of getLonghands(prop)) {
+                        if (activeStyle[l.name] !== undefined) s = commitStyle(s, l.name, undefined);
+                      }
+                    }
+                  }
+                  update(s);
+                }}></span>
+            </span>
+          ` : nothing}
+          <div class=${sec.$layout === "grid" ? "style-section-body--grid" : ""}>
+            ${rows}
+          </div>
+        </sp-accordion-item>
+      `;
     });
-    body.appendChild(addControl);
 
-    section.appendChild(header);
-    section.appendChild(body);
-    wrapper.appendChild(section);
-  }
+  // ── Custom section ─────────────────────────────────────────────────────────
+  const customIsOpen = S.ui.styleSections.other ?? (otherProps.length > 0);
+  const customSectionT = html`
+    <sp-accordion-item
+      label="Custom"
+      .open=${customIsOpen}
+      @sp-accordion-item-toggle=${(e) => {
+        S = { ...S, ui: { ...S.ui, styleSections: { ...S.ui.styleSections, other: e.target.open } } };
+      }}>
+      <div>
+        ${otherProps.map((prop) => html`
+          <div class="kv-row">
+            <sp-textfield size="s" class="kv-key" .value=${live(prop)}
+              @change=${(e) => {
+                const newProp = e.target.value.trim();
+                if (newProp && newProp !== prop) {
+                  let s = commitStyle(S, prop, undefined);
+                  s = commitStyle(s, newProp, String(activeStyle[prop]));
+                  update(s);
+                }
+              }}></sp-textfield>
+            <sp-textfield size="s" class="kv-val"
+              .value=${live(String(activeStyle[prop]))}
+              placeholder=${ifDefined(cssInitialMap.get(prop))}
+              @input=${debouncedStyleCommit(`custom:${prop}`, 400, (e) => {
+                update(commitStyle(S, prop, e.target.value));
+              })}></sp-textfield>
+            <sp-action-button size="xs" quiet @click=${() => update(commitStyle(S, prop, undefined))}>
+              <sp-icon-close slot="icon"></sp-icon-close>
+            </sp-action-button>
+          </div>
+        `)}
+        <div style="display:flex;gap:4px;padding-top:4px">
+          <sp-textfield size="s" placeholder="Property name\u2026" style="flex:1"
+            @keydown=${(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                const prop = e.target.value.trim();
+                if (prop) {
+                  const initial = cssInitialMap.get(prop) || "";
+                  update(commitStyle(S, prop, initial || ""));
+                  e.target.value = "";
+                }
+              }
+            }}></sp-textfield>
+        </div>
+      </div>
+    </sp-accordion-item>
+  `;
 
-  container.appendChild(wrapper);
+  return html`
+    <div class="style-sidebar">
+      ${mediaTabsT}
+      ${selectorT}
+      <sp-accordion allow-multiple size="s">
+        ${sectionTemplates}
+        ${customSectionT}
+      </sp-accordion>
+    </div>
+  `;
 }
 
-/** Top-level Style panel — renders as its own right-panel tab */
-function renderStylePanel(container) {
-  // Stylebook mode: style the selected tag on the root node
+/** Top-level Style panel — returns a lit-html template */
+function renderStylePanelTemplate() {
   if (canvasMode === "stylebook" && S.ui.stylebookSelection) {
     const node = S.document;
-    if (!node) {
-      container.innerHTML = '<div class="empty-state">No document loaded</div>';
-      return;
-    }
-    const header = document.createElement("div");
-    header.className = "stylebook-style-header";
-    header.textContent = `Styling: <${S.ui.stylebookSelection}>`;
-    container.appendChild(header);
-    renderStyleSidebar(container, node, S.ui.activeMedia, S.ui.activeSelector);
-    return;
+    if (!node) return html`<div class="empty-state">No document loaded</div>`;
+    return html`
+      <div class="stylebook-style-header">Styling: &lt;${S.ui.stylebookSelection}&gt;</div>
+      ${styleSidebarTemplate(node, S.ui.activeMedia, S.ui.activeSelector)}
+    `;
   }
-  if (!S.selection) {
-    container.innerHTML = '<div class="empty-state">Select an element to style</div>';
-    return;
-  }
+  if (!S.selection) return html`<div class="empty-state">Select an element to style</div>`;
   const node = getNodeAtPath(S.document, S.selection);
-  if (!node) {
-    container.innerHTML = '<div class="empty-state">Select an element to style</div>';
-    return;
-  }
-  renderStyleSidebar(container, node, S.ui.activeMedia, S.ui.activeSelector);
+  if (!node) return html`<div class="empty-state">Select an element to style</div>`;
+  return styleSidebarTemplate(node, S.ui.activeMedia, S.ui.activeSelector);
 }
 
-/** Collapsible inspector section */
-function renderInspectorSection(container, title, defaultOpen, contentFn) {
-  const section = document.createElement("div");
-  section.className = "inspector-section";
-
-  const header = document.createElement("div");
-  header.className = `inspector-header${defaultOpen ? "" : " collapsed"}`;
-  header.textContent = title;
-
-  const content = contentFn();
-  if (!defaultOpen) content.classList.add("hidden");
-
-  header.onclick = () => {
-    header.classList.toggle("collapsed");
-    content.classList.toggle("hidden");
-  };
-
-  section.appendChild(header);
-  section.appendChild(content);
-  container.appendChild(section);
+/** @deprecated — use renderStylePanelTemplate() for lit-html integration */
+function renderStylePanel(container) {
+  litRender(renderStylePanelTemplate(), container);
 }
 
 /** Single property input row */
@@ -7000,38 +7077,35 @@ function fieldRow(label, type, value, onChange, datalistId) {
   const row = document.createElement("div");
   row.className = "field-row";
 
-  const lbl = document.createElement("label");
-  lbl.className = "field-label";
+  const lbl = document.createElement("sp-field-label");
+  lbl.setAttribute("size", "s");
   lbl.textContent = label;
   row.appendChild(lbl);
 
   let input;
   if (type === "textarea") {
-    input = document.createElement("textarea");
-    input.className = "field-input";
+    input = document.createElement("sp-textfield");
+    input.setAttribute("multiline", "");
+    input.setAttribute("size", "s");
     input.value = value;
     let debounceTimer;
-    input.oninput = () => {
+    input.addEventListener("input", () => {
       clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => onChange(input.value), 400);
-    };
+    });
   } else if (type === "checkbox") {
-    input = document.createElement("input");
-    input.className = "field-input";
-    input.type = "checkbox";
+    input = document.createElement("sp-checkbox");
     input.checked = !!value;
-    input.onchange = () => onChange(input.checked);
+    input.addEventListener("change", () => onChange(input.checked));
   } else {
-    input = document.createElement("input");
-    input.className = "field-input";
-    input.type = type;
+    input = document.createElement("sp-textfield");
+    input.setAttribute("size", "s");
     input.value = value;
-    if (datalistId) input.setAttribute("list", datalistId);
     let debounceTimer;
-    input.oninput = () => {
+    input.addEventListener("input", () => {
       clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => onChange(input.value), 400);
-    };
+    });
   }
   row.appendChild(input);
   return row;
@@ -7058,8 +7132,8 @@ function bindableFieldRow(label, type, rawValue, onChange, filterFn, extraSignal
   const row = document.createElement("div");
   row.className = "field-row";
 
-  const lbl = document.createElement("label");
-  lbl.className = "field-label";
+  const lbl = document.createElement("sp-field-label");
+  lbl.setAttribute("size", "s");
   lbl.textContent = label;
   row.appendChild(lbl);
 
@@ -7067,71 +7141,69 @@ function bindableFieldRow(label, type, rawValue, onChange, filterFn, extraSignal
     const val = isBound ? "" : (rawValue ?? "");
     let input;
     if (type === "textarea") {
-      input = document.createElement("textarea");
-      input.className = "field-input";
+      input = document.createElement("sp-textfield");
+      input.setAttribute("multiline", "");
+      input.setAttribute("size", "s");
       input.value = val;
       let debounce;
-      input.oninput = () => {
+      input.addEventListener("input", () => {
         clearTimeout(debounce);
         debounce = setTimeout(() => onChange(input.value), 400);
-      };
+      });
     } else if (type === "checkbox") {
-      input = document.createElement("input");
-      input.className = "field-input";
-      input.type = "checkbox";
+      input = document.createElement("sp-checkbox");
       input.checked = !!val;
-      input.onchange = () => onChange(input.checked);
+      input.addEventListener("change", () => onChange(input.checked));
     } else {
-      input = document.createElement("input");
-      input.className = "field-input";
-      input.type = type;
+      input = document.createElement("sp-textfield");
+      input.setAttribute("size", "s");
       input.value = val;
       let debounce;
-      input.oninput = () => {
+      input.addEventListener("input", () => {
         clearTimeout(debounce);
         debounce = setTimeout(() => onChange(input.value), 400);
-      };
+      });
     }
     return input;
   }
 
   function renderBound() {
-    const sel = document.createElement("select");
-    sel.className = "bind-select";
-    sel.innerHTML = '<option value="">— select signal —</option>';
+    const sel = document.createElement("sp-picker");
+    sel.setAttribute("size", "s");
+    sel.setAttribute("quiet", "");
+    sel.setAttribute("placeholder", "\u2014 select signal \u2014");
 
     const signalDefs = Object.entries(defs).filter(([, d]) =>
       filterFn ? filterFn(d) : !d.$handler && d.$prototype !== "Function",
     );
     for (const [defName] of signalDefs) {
-      const opt = document.createElement("option");
-      opt.value = `#/state/${defName}`;
-      opt.textContent = defName;
-      if (isBound && rawValue.$ref === `#/state/${defName}`) opt.selected = true;
-      sel.appendChild(opt);
+      const item = document.createElement("sp-menu-item");
+      item.value = `#/state/${defName}`;
+      item.textContent = defName;
+      sel.appendChild(item);
     }
 
     if (extraSignals) {
-      const sep = document.createElement("option");
-      sep.disabled = true;
-      sep.textContent = "── map signals ──";
-      sel.appendChild(sep);
+      sel.appendChild(document.createElement("sp-menu-divider"));
       for (const sig of extraSignals) {
-        const opt = document.createElement("option");
-        opt.value = sig.value;
-        opt.textContent = sig.label;
-        if (isBound && rawValue.$ref === sig.value) opt.selected = true;
-        sel.appendChild(opt);
+        const item = document.createElement("sp-menu-item");
+        item.value = sig.value;
+        item.textContent = sig.label;
+        sel.appendChild(item);
       }
     }
+    if (isBound && rawValue.$ref) {
+      const _bindVal = rawValue.$ref;
+      requestAnimationFrame(() => { sel.value = _bindVal; });
+    }
 
-    sel.onchange = () => {
+    sel.addEventListener("change", () => {
       if (sel.value) {
         onChange({ $ref: sel.value });
       } else {
         onChange(undefined);
       }
-    };
+    });
     return sel;
   }
 
@@ -7139,8 +7211,9 @@ function bindableFieldRow(label, type, rawValue, onChange, filterFn, extraSignal
   row.appendChild(inputEl);
 
   // Toggle button
-  const toggle = document.createElement("span");
-  toggle.className = `bind-toggle${isBound ? " bound" : ""}`;
+  const toggle = document.createElement("sp-action-button");
+  toggle.setAttribute("size", "xs");
+  toggle.setAttribute("quiet", "");
   toggle.textContent = isBound ? "\u26A1" : "\u2194";
   toggle.title = isBound ? "Unbind (switch to static)" : "Bind to signal";
   toggle.onclick = () => {
@@ -7176,19 +7249,19 @@ function kvRow(key, value, onChange, onDelete, datalistId) {
   const row = document.createElement("div");
   row.className = "kv-row";
 
-  const keyInput = document.createElement("input");
-  keyInput.className = "field-input kv-key";
+  const keyInput = document.createElement("sp-textfield");
+  keyInput.setAttribute("size", "s");
+  keyInput.className = "kv-key";
   keyInput.value = key;
-  if (datalistId) keyInput.setAttribute("list", datalistId);
 
-  const valInput = document.createElement("input");
-  valInput.className = "field-input kv-val";
+  const valInput = document.createElement("sp-textfield");
+  valInput.setAttribute("size", "s");
+  valInput.className = "kv-val";
   valInput.value = value;
-  // Show CSS initial value as placeholder hint
   if (datalistId === "css-props") {
-    valInput.placeholder = cssInitialMap.get(key) || "";
+    valInput.setAttribute("placeholder", cssInitialMap.get(key) || "");
     keyInput.addEventListener("change", () => {
-      valInput.placeholder = cssInitialMap.get(keyInput.value) || "";
+      valInput.setAttribute("placeholder", cssInitialMap.get(keyInput.value) || "");
     });
   }
 
@@ -7197,13 +7270,16 @@ function kvRow(key, value, onChange, onDelete, datalistId) {
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => onChange(keyInput.value, valInput.value), 400);
   };
-  keyInput.oninput = commit;
-  valInput.oninput = commit;
+  keyInput.addEventListener("input", commit);
+  valInput.addEventListener("input", commit);
 
-  const del = document.createElement("span");
-  del.className = "kv-del";
-  del.textContent = "✕";
-  del.onclick = onDelete;
+  const del = document.createElement("sp-action-button");
+  del.setAttribute("size", "xs");
+  del.setAttribute("quiet", "");
+  const delIcon = document.createElement("sp-icon-close");
+  delIcon.setAttribute("slot", "icon");
+  del.appendChild(delIcon);
+  del.addEventListener("click", onDelete);
 
   row.appendChild(keyInput);
   row.appendChild(valInput);
@@ -7389,26 +7465,18 @@ const EVENT_NAMES = [
   "onkeyup", "onfocus", "onblur", "onmouseenter", "onmouseleave",
 ];
 
-function renderEventsPanel(container) {
-  if (!S.selection) {
-    container.innerHTML = '<div class="empty-state">Select an element to edit events</div>';
-    return;
-  }
+function eventsSidebarTemplate() {
+  if (!S.selection) return html`<div class="empty-state">Select an element to edit events</div>`;
   const node = getNodeAtPath(S.document, S.selection);
-  if (!node) {
-    container.innerHTML = '<div class="empty-state">Node not found</div>';
-    return;
-  }
+  if (!node) return html`<div class="empty-state">Node not found</div>`;
 
   const defs = S.document.state || {};
   const functionDefs = Object.entries(defs).filter(
     ([, d]) => d.$prototype === "Function" || d.$handler,
   );
 
-  const fields = document.createElement("div");
-  fields.className = "inspector-fields";
-
   // Declared CEM events (custom element docs)
+  let declaredEventsT = nothing;
   if (isCustomElementDoc()) {
     const allEmits = [];
     for (const [fnName, d] of Object.entries(defs)) {
@@ -7417,37 +7485,23 @@ function renderEventsPanel(container) {
       }
     }
     if (allEmits.length > 0) {
-      const header = document.createElement("div");
-      header.style.cssText = "font-size:11px;font-weight:600;color:var(--fg-dim);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.05em";
-      header.textContent = "Declared Events";
-      fields.appendChild(header);
-      for (const ev of allEmits) {
-        const row = document.createElement("div");
-        row.style.cssText = "display:flex;gap:6px;align-items:center;padding:2px 0;font-size:11px";
-        const evName = document.createElement("code");
-        evName.style.cssText = "font-family:monospace;color:var(--accent)";
-        evName.textContent = ev.name || "(unnamed)";
-        row.appendChild(evName);
-        const src = document.createElement("span");
-        src.style.cssText = "color:var(--fg-dim);font-size:10px";
-        src.textContent = `\u2190 ${ev._fn}`;
-        row.appendChild(src);
-        if (ev.type?.text) {
-          const typeBadge = document.createElement("span");
-          typeBadge.style.cssText = "margin-left:auto;color:var(--fg-dim);font-size:10px";
-          typeBadge.textContent = ev.type.text;
-          row.appendChild(typeBadge);
-        }
-        if (ev.description) row.title = ev.description;
-        fields.appendChild(row);
-      }
-      const sep = document.createElement("hr");
-      sep.style.cssText = "border:none;border-top:1px solid var(--border);margin:6px 0";
-      fields.appendChild(sep);
+      declaredEventsT = html`
+        <div class="events-section">
+          <sp-field-label size="s">Declared Events</sp-field-label>
+          ${allEmits.map((ev) => html`
+            <div class="declared-event-row" title=${ev.description || ""}>
+              <code class="event-code">${ev.name || "(unnamed)"}</code>
+              <span class="event-source">\u2190 ${ev._fn}</span>
+              ${ev.type?.text ? html`<span class="event-type">${ev.type.text}</span>` : nothing}
+            </div>
+          `)}
+        </div>
+        <sp-divider size="s"></sp-divider>
+      `;
     }
   }
 
-  // Find existing event bindings (both $ref and inline Function)
+  // Find existing event bindings
   const eventKeys = Object.keys(node).filter((k) => {
     if (!k.startsWith("on")) return false;
     const v = node[k];
@@ -7455,141 +7509,105 @@ function renderEventsPanel(container) {
     return v.$ref || v.$prototype === "Function";
   });
 
-  for (const evKey of eventKeys) {
-    const evVal = node[evKey];
-    const isInline = evVal.$prototype === "Function";
-
-    const evRow = document.createElement("div");
-    evRow.className = "event-row";
-    evRow.style.flexWrap = "wrap";
-
-    // Event name select
-    const nameInput = document.createElement("select");
-    nameInput.className = "field-input event-name";
-    nameInput.innerHTML = `<option value="${evKey}">${evKey}</option>`;
-    for (const evName of EVENT_NAMES) {
-      if (evName !== evKey) {
-        const opt = document.createElement("option");
-        opt.value = evName;
-        opt.textContent = evName;
-        nameInput.appendChild(opt);
-      }
-    }
-    nameInput.onchange = () => {
-      let s = updateProperty(S, S.selection, evKey, undefined);
-      s = updateProperty(s, S.selection, nameInput.value, node[evKey]);
-      update(s);
-    };
-    evRow.appendChild(nameInput);
-
-    // Mode select (inline / $ref)
-    const modeSelect = document.createElement("select");
-    modeSelect.className = "field-input";
-    modeSelect.style.width = "60px";
-    modeSelect.style.flexShrink = "0";
-    modeSelect.innerHTML = `
-      <option value="inline"${isInline ? " selected" : ""}>inline</option>
-      <option value="ref"${!isInline ? " selected" : ""}>$ref</option>
-    `;
-    modeSelect.onchange = () => {
-      if (modeSelect.value === "inline") {
-        update(updateProperty(S, S.selection, evKey, { $prototype: "Function", body: "", parameters: [] }));
-      } else {
-        const firstFn = functionDefs[0];
-        update(updateProperty(S, S.selection, evKey, firstFn ? { $ref: `#/state/${firstFn[0]}` } : { $ref: "" }));
-      }
-    };
-    evRow.appendChild(modeSelect);
-
-    // Delete button
-    const del = document.createElement("span");
-    del.className = "kv-del";
-    del.textContent = "\u2715";
-    del.onclick = () => update(updateProperty(S, S.selection, evKey, undefined));
-    evRow.appendChild(del);
-
-    if (isInline) {
-      // Inline mode: body textarea
-      const bodyWrap = document.createElement("div");
-      bodyWrap.style.cssText = "width: 100%; display: flex; gap: 4px; align-items: start; margin-top: 3px;";
-      const bodyTA = document.createElement("textarea");
-      bodyTA.className = "field-input";
-      bodyTA.style.minHeight = "36px";
-      bodyTA.style.fontFamily = "'SF Mono', 'Fira Code', 'Consolas', monospace";
-      bodyTA.style.fontSize = "11px";
-      bodyTA.style.flex = "1";
-      bodyTA.value = evVal.body || "";
-      let debounce;
-      bodyTA.oninput = () => {
-        clearTimeout(debounce);
-        debounce = setTimeout(() => {
-          update(updateProperty(S, S.selection, evKey, {
-            $prototype: "Function",
-            body: bodyTA.value,
-            parameters: evVal.parameters || [],
-          }));
-        }, 500);
-      };
-      bodyWrap.appendChild(bodyTA);
-
-      // Expand to editor button
-      const expandBtn = document.createElement("button");
-      expandBtn.className = "kv-add";
-      expandBtn.textContent = "↗";
-      expandBtn.title = "Open in editor";
-      expandBtn.style.padding = "2px 6px";
-      expandBtn.onclick = () => {
-        S = { ...S, ui: { ...S.ui, editingFunction: { type: "event", path: S.selection, eventKey: evKey } } };
-        renderCanvas();
-      };
-      bodyWrap.appendChild(expandBtn);
-
-      evRow.appendChild(bodyWrap);
-    } else {
-      // $ref mode: handler select
-      const handlerSel = document.createElement("select");
-      handlerSel.className = "field-input event-handler";
-      handlerSel.style.flex = "1";
-      handlerSel.innerHTML = '<option value="">— none —</option>';
-      for (const [fName] of functionDefs) {
-        const opt = document.createElement("option");
-        opt.value = `#/state/${fName}`;
-        opt.textContent = fName;
-        if (evVal.$ref === `#/state/${fName}`) opt.selected = true;
-        handlerSel.appendChild(opt);
-      }
-      handlerSel.onchange = () => {
-        if (handlerSel.value) {
-          update(updateProperty(S, S.selection, evKey, { $ref: handlerSel.value }));
-        } else {
-          update(updateProperty(S, S.selection, evKey, undefined));
-        }
-      };
-      // Insert before the delete button
-      evRow.insertBefore(handlerSel, del);
-    }
-
-    fields.appendChild(evRow);
-  }
-
-  // Add event button
-  const add = document.createElement("span");
-  add.className = "kv-add";
-  add.textContent = "+ Add event";
-  add.onclick = () => {
-    let evName = "onclick";
-    for (const name of EVENT_NAMES) {
-      if (!node[name]) { evName = name; break; }
-    }
-    if (functionDefs.length > 0) {
-      update(updateProperty(S, S.selection, evName, { $ref: `#/state/${functionDefs[0][0]}` }));
-    } else {
-      update(updateProperty(S, S.selection, evName, { $prototype: "Function", body: "", parameters: [] }));
-    }
-  };
-  fields.appendChild(add);
-
-  container.appendChild(fields);
+  return html`
+    <div class="events-panel">
+      ${declaredEventsT}
+      <div class="events-section">
+        ${eventKeys.length > 0 ? html`
+          <sp-field-label size="s">Event Bindings</sp-field-label>
+        ` : nothing}
+        ${eventKeys.map((evKey) => {
+          const evVal = node[evKey];
+          const isInline = evVal.$prototype === "Function";
+          return html`
+            <div class="event-binding">
+              <div class="event-row">
+                <sp-picker size="s" class="event-name" .value=${live(evKey)}
+                  @change=${(e) => {
+                    const newKey = e.target.value;
+                    if (newKey && newKey !== evKey) {
+                      let s = updateProperty(S, S.selection, evKey, undefined);
+                      s = updateProperty(s, S.selection, newKey, node[evKey]);
+                      update(s);
+                    }
+                  }}>
+                  ${[evKey, ...EVENT_NAMES.filter((n) => n !== evKey)].map((n) =>
+                    html`<sp-menu-item value=${n}>${n}</sp-menu-item>`
+                  )}
+                </sp-picker>
+                <sp-picker size="s" class="event-mode" .value=${live(isInline ? "inline" : "ref")}
+                  @change=${(e) => {
+                    if (e.target.value === "inline") {
+                      update(updateProperty(S, S.selection, evKey, { $prototype: "Function", body: "", parameters: [] }));
+                    } else {
+                      const firstFn = functionDefs[0];
+                      update(updateProperty(S, S.selection, evKey, firstFn ? { $ref: `#/state/${firstFn[0]}` } : { $ref: "" }));
+                    }
+                  }}>
+                  <sp-menu-item value="inline">inline</sp-menu-item>
+                  <sp-menu-item value="ref">$ref</sp-menu-item>
+                </sp-picker>
+                <sp-action-button size="xs" quiet
+                  @click=${() => update(updateProperty(S, S.selection, evKey, undefined))}>
+                  <sp-icon-delete slot="icon"></sp-icon-delete>
+                </sp-action-button>
+              </div>
+              ${isInline ? html`
+                <div class="event-body-row">
+                  <sp-textfield size="s" multiline grows placeholder="// handler body"
+                    .value=${live(evVal.body || "")}
+                    @input=${(e) => {
+                      update(updateProperty(S, S.selection, evKey, {
+                        $prototype: "Function",
+                        body: e.target.value,
+                        parameters: evVal.parameters || [],
+                      }));
+                    }}>
+                  </sp-textfield>
+                  <sp-action-button size="xs" quiet title="Open in editor"
+                    @click=${() => {
+                      S = { ...S, ui: { ...S.ui, editingFunction: { type: "event", path: S.selection, eventKey: evKey } } };
+                      renderCanvas();
+                    }}>
+                    <sp-icon-code slot="icon"></sp-icon-code>
+                  </sp-action-button>
+                </div>
+              ` : html`
+                <sp-picker size="s" class="event-handler" .value=${live(evVal.$ref || "__none__")}
+                  @change=${(e) => {
+                    if (e.target.value && e.target.value !== "__none__") {
+                      update(updateProperty(S, S.selection, evKey, { $ref: e.target.value }));
+                    } else {
+                      update(updateProperty(S, S.selection, evKey, undefined));
+                    }
+                  }}>
+                  <sp-menu-item value="__none__">\u2014 none \u2014</sp-menu-item>
+                  ${functionDefs.map(([fName]) =>
+                    html`<sp-menu-item value=${`#/state/${fName}`}>${fName}</sp-menu-item>`
+                  )}
+                </sp-picker>
+              `}
+            </div>
+          `;
+        })}
+        <sp-action-button size="s" quiet
+          @click=${() => {
+            let evName = "onclick";
+            for (const name of EVENT_NAMES) {
+              if (!node[name]) { evName = name; break; }
+            }
+            if (functionDefs.length > 0) {
+              update(updateProperty(S, S.selection, evName, { $ref: `#/state/${functionDefs[0][0]}` }));
+            } else {
+              update(updateProperty(S, S.selection, evName, { $prototype: "Function", body: "", parameters: [] }));
+            }
+          }}>
+          <sp-icon-add slot="icon"></sp-icon-add>
+          Add Event
+        </sp-action-button>
+      </div>
+    </div>
+  `;
 }
 
 // ─── CEM Export ──────────────────────────────────────────────────────────────
@@ -7710,8 +7728,8 @@ function renderToolbar() {
 
   // File group
   const fileGroup = group();
-  fileGroup.appendChild(tbBtn("Open", openFile));
-  fileGroup.appendChild(tbBtn("Save", saveFile));
+  fileGroup.appendChild(tbBtn("Open", openFile, "sp-icon-folder-open"));
+  fileGroup.appendChild(tbBtn("Save", saveFile, "sp-icon-save-floppy"));
   if (S.fileHandle) {
     const fname = document.createElement("span");
     fname.className = "tb-filename";
@@ -7734,11 +7752,14 @@ function renderToolbar() {
     breadcrumb.className = "breadcrumb";
 
     // Back button — pops the most recent context layer
-    const back = document.createElement("button");
-    back.className = "toolbar-btn";
-    back.textContent = "← Back";
+    const back = document.createElement("sp-action-button");
+    back.setAttribute("size", "s");
+    const backIcon = document.createElement("sp-icon-back");
+    backIcon.setAttribute("slot", "icon");
+    back.appendChild(backIcon);
+    back.append("Back");
     back.title = hasFunc ? "Close function editor" : "Return to parent document";
-    back.onclick = hasFunc ? closeFunctionEditor : navigateBack;
+    back.addEventListener("click", hasFunc ? closeFunctionEditor : navigateBack);
     breadcrumb.appendChild(back);
 
     // Document stack crumbs
@@ -7787,8 +7808,8 @@ function renderToolbar() {
 
   // Edit group
   const editGroup = group();
-  editGroup.appendChild(tbBtn("Undo", () => update(undo(S))));
-  editGroup.appendChild(tbBtn("Redo", () => update(redo(S))));
+  editGroup.appendChild(tbBtn("Undo", () => update(undo(S)), "sp-icon-undo"));
+  editGroup.appendChild(tbBtn("Redo", () => update(redo(S)), "sp-icon-redo"));
   toolbar.appendChild(editGroup);
 
   // Insert group
@@ -7796,35 +7817,41 @@ function renderToolbar() {
   insertGroup.appendChild(
     tbBtn("Duplicate", () => {
       if (S.selection) update(duplicateNode(S, S.selection));
-    }),
+    }, "sp-icon-duplicate"),
   );
   insertGroup.appendChild(
     tbBtn("Delete", () => {
       if (S.selection) update(removeNode(S, S.selection));
-    }),
+    }, "sp-icon-delete"),
   );
   toolbar.appendChild(insertGroup);
 
   // CEM Export (custom element docs only)
   if (isCustomElementDoc()) {
     const cemGroup = group();
-    cemGroup.appendChild(tbBtn("CEM", exportCemManifest));
+    cemGroup.appendChild(tbBtn("CEM", exportCemManifest, "sp-icon-export"));
     toolbar.appendChild(cemGroup);
   }
 
   // Mode switcher (segmented button group)
-  const modeGroup = group();
+  const modeGroup = document.createElement("sp-action-group");
+  modeGroup.setAttribute("selects", "single");
+  modeGroup.setAttribute("size", "s");
   const modes = [
-    { key: "edit",      label: "Edit",      icon: "✎" },
-    { key: "preview",   label: "Preview",   icon: "▶" },
-    { key: "source",    label: "Code",      icon: "{ }" },
-    { key: "stylebook", label: "Stylebook", icon: "◑" },
+    { key: "edit",      label: "Edit",      iconTag: "sp-icon-edit" },
+    { key: "preview",   label: "Preview",   iconTag: "sp-icon-preview" },
+    { key: "source",    label: "Code",      iconTag: "sp-icon-code" },
+    { key: "stylebook", label: "Stylebook", iconTag: "sp-icon-brush" },
   ];
   for (const m of modes) {
-    const btn = document.createElement("button");
-    btn.className = `tb-mode-btn${canvasMode === m.key ? " active" : ""}`;
-    btn.textContent = `${m.icon} ${m.label}`;
-    btn.onclick = () => {
+    const btn = document.createElement("sp-action-button");
+    btn.setAttribute("size", "s");
+    if (canvasMode === m.key) btn.setAttribute("selected", "");
+    const icon = document.createElement(m.iconTag);
+    icon.setAttribute("slot", "icon");
+    btn.appendChild(icon);
+    btn.append(m.label);
+    btn.addEventListener("click", () => {
       if (canvasMode === m.key) return;
       // Close function editor if leaving it
       if (S.ui.editingFunction) {
@@ -7840,7 +7867,7 @@ function renderToolbar() {
         S = { ...S, ui: { ...S.ui, rightTab: "style" } };
         renderRightPanel();
       }
-    };
+    });
     modeGroup.appendChild(btn);
   }
   toolbar.appendChild(modeGroup);
@@ -7850,17 +7877,19 @@ function renderToolbar() {
   if (featureQueries.length > 0) {
     const toggleGroup = group();
     for (const { name, query } of featureQueries) {
-      const btn = document.createElement("button");
-      btn.className = `tb-toggle${S.ui.featureToggles[name] ? " active" : ""}`;
+      const btn = document.createElement("sp-action-button");
+      btn.setAttribute("toggles", "");
+      btn.setAttribute("size", "s");
+      if (S.ui.featureToggles[name]) btn.setAttribute("selected", "");
       btn.textContent = mediaDisplayName(name);
       btn.title = query;
-      btn.onclick = () => {
-        const newToggles = { ...S.ui.featureToggles, [name]: !S.ui.featureToggles[name] };
+      btn.addEventListener("click", () => {
+        const newToggles = { ...S.ui.featureToggles, [name]: !btn.selected };
         S = { ...S, ui: { ...S.ui, featureToggles: newToggles } };
         renderCanvas();
         renderOverlays();
         renderToolbar();
-      };
+      });
       toggleGroup.appendChild(btn);
     }
     toolbar.appendChild(toggleGroup);
@@ -7877,22 +7906,28 @@ function renderToolbar() {
     tbBtn("Copy JSON", async () => {
       await navigator.clipboard.writeText(JSON.stringify(S.document, null, 2));
       statusMessage("Copied to clipboard");
-    }),
+    }, "sp-icon-copy"),
   );
   toolbar.appendChild(exportGroup);
 }
 
 function group() {
-  const g = document.createElement("div");
-  g.className = "tb-group";
+  const g = document.createElement("sp-action-group");
+  g.setAttribute("compact", "");
+  g.setAttribute("size", "s");
   return g;
 }
 
-function tbBtn(label, onClick) {
-  const btn = document.createElement("button");
-  btn.className = "tb-btn";
-  btn.textContent = label;
-  btn.onclick = onClick;
+function tbBtn(label, onClick, iconTag) {
+  const btn = document.createElement("sp-action-button");
+  btn.setAttribute("size", "s");
+  if (iconTag) {
+    const icon = document.createElement(iconTag);
+    icon.setAttribute("slot", "icon");
+    btn.appendChild(icon);
+  }
+  btn.append(label);
+  btn.addEventListener("click", onClick);
   return btn;
 }
 
@@ -8309,18 +8344,20 @@ function pasteNode() {
 
 // ─── Context menu ─────────────────────────────────────────────────────────────
 
-const ctxMenu = document.createElement("div");
-ctxMenu.className = "ctx-menu";
-ctxMenu.style.display = "none";
+const ctxMenu = document.createElement("sp-popover");
+const ctxMenuInner = document.createElement("sp-menu");
+ctxMenu.appendChild(ctxMenuInner);
+ctxMenu.style.position = "fixed";
+ctxMenu.style.zIndex = "10000";
 document.body.appendChild(ctxMenu);
 
 document.addEventListener("click", () => {
-  ctxMenu.style.display = "none";
+  ctxMenu.removeAttribute("open");
 });
 
 function showContextMenu(e, path) {
   e.preventDefault();
-  ctxMenu.style.display = "none";
+  ctxMenu.removeAttribute("open");
 
   const node = getNodeAtPath(S.document, path);
   if (!node) return;
@@ -8328,7 +8365,7 @@ function showContextMenu(e, path) {
   // Select the node
   update(selectNode(S, path));
 
-  ctxMenu.innerHTML = "";
+  ctxMenuInner.innerHTML = "";
   const items = [];
 
   items.push({ label: "Copy", action: copyNode });
@@ -8361,23 +8398,22 @@ function showContextMenu(e, path) {
 
   for (const item of items) {
     if (item.label === "—") {
-      const sep = document.createElement("div");
-      sep.className = "ctx-sep";
-      ctxMenu.appendChild(sep);
+      const sep = document.createElement("sp-menu-divider");
+      ctxMenuInner.appendChild(sep);
       continue;
     }
-    const el = document.createElement("div");
-    el.className = `ctx-item${item.danger ? " danger" : ""}`;
+    const el = document.createElement("sp-menu-item");
     el.textContent = item.label;
-    el.onclick = () => {
-      ctxMenu.style.display = "none";
+    if (item.danger) el.style.color = "var(--danger)";
+    el.addEventListener("click", () => {
+      ctxMenu.removeAttribute("open");
       item.action();
-    };
-    ctxMenu.appendChild(el);
+    });
+    ctxMenuInner.appendChild(el);
   }
 
   // Position the menu
-  ctxMenu.style.display = "block";
+  ctxMenu.setAttribute("open", "");
   const menuRect = ctxMenu.getBoundingClientRect();
   let x = e.clientX,
     y = e.clientY;
