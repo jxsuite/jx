@@ -35,6 +35,10 @@ import { Checkbox } from "@spectrum-web-components/checkbox/src/Checkbox.js";
 import { Switch as SpSwitch } from "@spectrum-web-components/switch/src/Switch.js";
 import { Divider } from "@spectrum-web-components/divider/src/Divider.js";
 import { Tooltip } from "@spectrum-web-components/tooltip/src/Tooltip.js";
+import { Overlay } from "@spectrum-web-components/overlay/src/Overlay.js";
+import { PickerButton } from "@spectrum-web-components/picker-button/src/PickerButton.js";
+import { Accordion } from "@spectrum-web-components/accordion/src/Accordion.js";
+import { AccordionItem } from "@spectrum-web-components/accordion/src/AccordionItem.js";
 
 // Icons
 import { IconFolder } from "@spectrum-web-components/icons-workflow/src/elements/IconFolder.js";
@@ -94,6 +98,10 @@ const components = [
   ["sp-switch", SpSwitch],
   ["sp-divider", Divider],
   ["sp-tooltip", Tooltip],
+  ["sp-overlay", Overlay],
+  ["sp-picker-button", PickerButton],
+  ["sp-accordion", Accordion],
+  ["sp-accordion-item", AccordionItem],
   ["sp-icon-folder", IconFolder],
   ["sp-icon-folder-open", IconFolderOpen],
   ["sp-icon-document", IconDocument],

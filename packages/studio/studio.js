@@ -77,6 +77,13 @@ import {
   extractInstruction,
 } from "@atlaskit/pragmatic-drag-and-drop-hitbox/tree-item";
 
+import { html, render as litRender, nothing } from "lit-html";
+import { live } from "lit-html/directives/live.js";
+import { classMap } from "lit-html/directives/class-map.js";
+import { repeat } from "lit-html/directives/repeat.js";
+import { unsafeHTML } from "lit-html/directives/unsafe-html.js";
+import { ifDefined } from "lit-html/directives/if-defined.js";
+
 import webdata from "./webdata.json";
 import cssMeta from "./css-meta.json";
 import stylebookMeta from "./stylebook-meta.json";
@@ -113,6 +120,18 @@ const toolbar = $("#toolbar");
 const statusbar = $("#statusbar");
 
 // ─── Component registry ───────────────────────────────────────────────────────
+
+// Module-level debounce map for lit-html style inputs — survives re-renders
+const _styleDebounceTimers = new Map();
+function debouncedStyleCommit(prop, ms, fn) {
+  return (...args) => {
+    clearTimeout(_styleDebounceTimers.get(prop));
+    _styleDebounceTimers.set(prop, setTimeout(() => {
+      _styleDebounceTimers.delete(prop);
+      fn(...args);
+    }, ms));
+  };
+}
 
 let componentRegistry = []; // cached list from /__studio/components
 let componentRegistryLoaded = false;
@@ -655,8 +674,11 @@ function update(newState) {
 
   // Skip right-panel rebuild when an input inside it is focused (user is typing)
   // unless the selection changed — that always needs a full re-render
+  const activeTag = document.activeElement?.tagName;
   const rightHasFocus = rightPanel.contains(document.activeElement)
-    && (document.activeElement.tagName === "INPUT" || document.activeElement.tagName === "TEXTAREA");
+    && (activeTag === "INPUT" || activeTag === "TEXTAREA"
+      || activeTag === "SP-TEXTFIELD" || activeTag === "SP-NUMBER-FIELD"
+      || activeTag === "SP-PICKER" || activeTag === "SP-SEARCH");
   if (!rightHasFocus || !pathsEqual(prevSel, S.selection)) {
     renderRightPanel();
   }
@@ -5376,33 +5398,39 @@ async function openFileFromTree(path) {
 
 function renderRightPanel() {
   const tab = S.ui.rightTab;
-  rightPanel.innerHTML = "";
 
-  // Tabs — Spectrum sp-tabs
-  const tabs = document.createElement("sp-tabs");
-  tabs.selected = tab;
-  tabs.compact = true;
-  tabs.size = "s";
-  tabs.quiet = true;
-  for (const t of ["properties", "events", "style"]) {
-    const spTab = document.createElement("sp-tab");
-    spTab.label = t;
-    spTab.value = t;
-    tabs.appendChild(spTab);
+  // Only rebuild tabs when the tab selection changes (or first render)
+  if (rightPanel._prevTab !== tab) {
+    rightPanel.innerHTML = "";
+
+    const tabs = document.createElement("sp-tabs");
+    tabs.selected = tab;
+    tabs.compact = true;
+    tabs.size = "s";
+    tabs.quiet = true;
+    for (const t of ["properties", "events", "style"]) {
+      const spTab = document.createElement("sp-tab");
+      spTab.label = t;
+      spTab.value = t;
+      tabs.appendChild(spTab);
+    }
+    tabs.addEventListener("change", (e) => {
+      S = { ...S, ui: { ...S.ui, rightTab: e.target.selected } };
+      renderRightPanel();
+      renderOverlays();
+    });
+    rightPanel.appendChild(tabs);
+
+    const body = document.createElement("div");
+    body.className = "panel-body";
+    rightPanel.appendChild(body);
+    rightPanel._body = body;
+    rightPanel._prevTab = tab;
   }
-  tabs.addEventListener("change", (e) => {
-    S = { ...S, ui: { ...S.ui, rightTab: e.target.selected } };
-    renderRightPanel();
-    renderOverlays();
-  });
-  rightPanel.appendChild(tabs);
 
-  const body = document.createElement("div");
-  body.className = "panel-body";
-  rightPanel.appendChild(body);
-
-  if (tab === "properties") renderInspector(body);
-  else if (tab === "events") renderEventsPanel(body);
+  const body = rightPanel._body;
+  if (tab === "properties") { body.innerHTML = ""; renderInspector(body); }
+  else if (tab === "events") { body.innerHTML = ""; renderEventsPanel(body); }
   else if (tab === "style") renderStylePanel(body);
 
   updateForcedPseudoPreview();
@@ -6046,351 +6074,213 @@ function getLonghands(shorthandProp) {
   return result;
 }
 
-function renderColorInput(value, onChange) {
-  const wrap = document.createElement("div");
-  wrap.className = "style-input-color";
+// ── Color popover singleton ─────────────────────────────────────────────────
+let _colorPopover = null;
+let _colorCallback = null;
 
-  const swatch = document.createElement("input");
-  swatch.type = "color";
-  try {
-    swatch.value = value || "#000000";
-  } catch {
-    swatch.value = "#000000";
-  }
+function ensureColorPopover() {
+  if (_colorPopover) return;
+  _colorPopover = document.createElement("sp-popover");
+  _colorPopover.style.cssText = "padding:12px; position:fixed; z-index:9999";
 
-  const text = document.createElement("input");
-  text.type = "text";
-  text.value = value || "";
-  text.placeholder = cssInitialMap.get("color") || "";
+  const area = document.createElement("sp-color-area");
+  area.style.cssText = "width:160px; height:120px";
+  const slider = document.createElement("sp-color-slider");
+  slider.style.cssText = "width:160px; margin-top:8px";
 
-  swatch.oninput = () => {
-    text.value = swatch.value;
-    onChange(swatch.value);
+  const sync = () => {
+    slider.color = area.color;
+    _colorCallback?.(area.color);
   };
+  area.addEventListener("input", sync);
+  slider.addEventListener("input", () => { area.color = slider.color; sync(); });
 
-  let debounce;
-  text.oninput = () => {
-    clearTimeout(debounce);
-    debounce = setTimeout(() => {
-      const v = text.value.trim();
-      // Sync swatch if it's a valid hex color
-      if (/^#[0-9a-f]{6}$/i.test(v)) {
-        try {
-          swatch.value = v;
-        } catch {}
-      }
-      onChange(v);
-    }, 400);
-  };
-
-  wrap.appendChild(swatch);
-  wrap.appendChild(text);
-  return wrap;
+  _colorPopover.append(area, slider);
+  (document.querySelector("sp-theme") || document.body).appendChild(_colorPopover);
 }
 
-function renderNumberUnitInput(entry, value, onChange) {
-  const wrap = document.createElement("div");
-  wrap.className = "style-input-number-unit";
+function openColorPopover(anchorEl, currentColor, onChange) {
+  ensureColorPopover();
+  const area = _colorPopover.querySelector("sp-color-area");
+  const slider = _colorPopover.querySelector("sp-color-slider");
+  try { area.color = currentColor || "#000000"; slider.color = currentColor || "#000000"; } catch {}
+  const r = anchorEl.getBoundingClientRect();
+  _colorPopover.style.left = `${r.left}px`;
+  _colorPopover.style.top = `${r.bottom + 4}px`;
+  _colorCallback = onChange;
+  _colorPopover.open = true;
+}
+
+function safeColor(val) {
+  if (!val) return "transparent";
+  try { return val; } catch { return "transparent"; }
+}
+
+function renderColorInput(prop, value, onChange) {
+  return html`
+    <div class="style-input-color">
+      <sp-swatch size="s" rounding="none" border="light"
+        color=${safeColor(value)}
+        @click=${(e) => {
+          if (_colorPopover?.open) { _colorPopover.open = false; return; }
+          openColorPopover(e.currentTarget, value, (c) => {
+            onChange(c);
+          });
+        }}
+      ></sp-swatch>
+      <sp-textfield size="s" style="flex:1; min-width:0"
+        .value=${live(value || "")}
+        @input=${debouncedStyleCommit(`color:${prop}`, 400, (e) => {
+          onChange(e.target.value.trim());
+        })}
+      ></sp-textfield>
+    </div>
+  `;
+}
+
+function renderNumberUnitInput(entry, prop, value, onChange) {
   const units = entry.$units || [];
   const keywords = entry.$keywords || [];
   const strVal = String(value ?? "");
   const match = strVal.match(UNIT_RE);
   const isKeyword = !match && strVal !== "" && keywords.includes(strVal);
+  const isNumericVal = (v) => /^-?\d*\.?\d*$/.test(v);
 
-  let currentUnit = isKeyword ? units[0] || "" : match ? match[2] || "" : units[0] || "";
-  let activeKeyword = isKeyword ? strVal : null;
+  const currentUnit = isKeyword ? units[0] || "" : match ? match[2] || "" : units[0] || "";
+  let displayValue;
+  if (isKeyword) displayValue = strVal;
+  else if (match) displayValue = match[1];
+  else if (strVal !== "") {
+    const num = parseFloat(strVal);
+    displayValue = isNaN(num) ? strVal : String(num);
+  } else displayValue = "";
 
-  // Number input (hidden when keyword is active)
-  const numInput = document.createElement("input");
-  numInput.type = "number";
-  numInput.value = isKeyword ? "" : match ? match[1] : strVal === "" ? "" : strVal;
-  if (entry.minimum !== undefined) numInput.min = entry.minimum;
-  if (entry.maximum !== undefined) numInput.max = entry.maximum;
-  if (entry.type === "number" || (entry.maximum !== undefined && entry.maximum <= 1)) {
-    numInput.step = "0.1";
-  }
+  const isExpression = isKeyword || (displayValue !== "" && !isNumericVal(displayValue));
+  const hasUnits = units.length > 0 || keywords.length > 0;
+  const btnId = `style-unit-${prop}`;
 
-  // Keyword label (shown when keyword is active, hidden otherwise)
-  const kwLabel = document.createElement("span");
-  kwLabel.className = "unit-kw-label";
-
-  if (isKeyword) {
-    numInput.style.display = "none";
-    kwLabel.textContent = strVal;
-    kwLabel.style.display = "";
-  } else {
-    kwLabel.style.display = "none";
-  }
-
-  let debounce;
-  const commit = () => {
-    clearTimeout(debounce);
-    debounce = setTimeout(() => {
-      const n = numInput.value;
-      if (n === "") { onChange(""); return; }
-      onChange(units.length > 0 ? n + currentUnit : n);
-    }, 400);
-  };
-  numInput.oninput = commit;
-
-  // Popover-based unit/keyword picker
-  if (units.length > 0 || keywords.length > 0) {
-    const popId = "unit-pop-" + (++_popoverId);
-    const trigger = document.createElement("button");
-    trigger.type = "button";
-    trigger.className = "unit-trigger";
-    trigger.setAttribute("popovertarget", popId);
-    trigger.textContent = isKeyword ? "⌄" : currentUnit;
-
-    const pop = document.createElement("div");
-    pop.id = popId;
-    pop.setAttribute("popover", "auto");
-    pop.className = "unit-popover";
-
-    const pick = (unitOrKw, isKw) => {
-      pop.hidePopover();
-      if (isKw) {
-        activeKeyword = unitOrKw;
-        numInput.style.display = "none";
-        kwLabel.textContent = unitOrKw;
-        kwLabel.style.display = "";
-        trigger.textContent = "⌄";
-        onChange(unitOrKw);
-      } else {
-        activeKeyword = null;
-        currentUnit = unitOrKw;
-        numInput.style.display = "";
-        kwLabel.style.display = "none";
-        trigger.textContent = unitOrKw;
-        if (numInput.value !== "") commit();
-      }
-    };
-
-    for (const u of units) {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "unit-option" + (u === currentUnit && !isKeyword ? " active" : "");
-      btn.textContent = u;
-      btn.onclick = () => pick(u, false);
-      pop.appendChild(btn);
-    }
-    if (keywords.length > 0 && units.length > 0) {
-      const sep = document.createElement("hr");
-      sep.className = "unit-sep";
-      pop.appendChild(sep);
-    }
-    for (const kw of keywords) {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "unit-option unit-kw" + (isKeyword && kw === strVal ? " active" : "");
-      btn.textContent = kw;
-      btn.onclick = () => pick(kw, true);
-      pop.appendChild(btn);
-    }
-
-    pop.addEventListener("toggle", (e) => {
-      if (e.newState === "open") {
-        const r = trigger.getBoundingClientRect();
-        pop.style.position = "fixed";
-        pop.style.top = r.bottom + 2 + "px";
-        pop.style.left = r.right + "px";
-        pop.style.transform = "translateX(-100%)";
-      }
-    });
-
-    wrap.appendChild(numInput);
-    wrap.appendChild(kwLabel);
-    wrap.appendChild(trigger);
-    wrap.appendChild(pop);
-  } else {
-    wrap.appendChild(numInput);
-  }
-
-  return wrap;
+  return html`
+    <div class="style-input-number-unit">
+      <div class=${classMap({ "input-group": true, "is-expression": isExpression })}>
+        <sp-textfield size="s" placeholder="0"
+          .value=${live(displayValue)}
+          @input=${debouncedStyleCommit(`nui:${prop}`, 400, (e) => {
+            const val = (e.target.value ?? "").trim();
+            if (val === "") { onChange(""); return; }
+            if (isNumericVal(val)) onChange(units.length > 0 ? val + currentUnit : val);
+            else onChange(val);
+          })}
+        ></sp-textfield>
+        ${hasUnits ? html`
+          <sp-picker-button id=${btnId} quiet>
+            <span slot="label">${currentUnit || units[0] || ""}</span>
+          </sp-picker-button>
+          <sp-overlay trigger="${btnId}@click" placement="bottom-end" offset="4">
+            <sp-popover style="min-width: var(--spectrum-component-width-900, 64px)">
+              <sp-menu label="CSS unit" @change=${(e) => {
+                const chosen = e.target.value;
+                if (keywords.includes(chosen)) {
+                  onChange(chosen);
+                } else if (units.includes(chosen)) {
+                  // Re-commit with new unit
+                  const curMatch = String(value ?? "").match(UNIT_RE);
+                  const numPart = curMatch ? curMatch[1] : "";
+                  if (numPart) onChange(numPart + chosen);
+                }
+              }}>
+                ${units.map(u => html`<sp-menu-item value=${u}>${u}</sp-menu-item>`)}
+                ${keywords.length > 0 && units.length > 0 ? html`<sp-menu-divider></sp-menu-divider>` : nothing}
+                ${keywords.map(kw => html`<sp-menu-item value=${kw}>${kw}</sp-menu-item>`)}
+              </sp-menu>
+            </sp-popover>
+          </sp-overlay>
+        ` : nothing}
+      </div>
+    </div>
+  `;
 }
-let _popoverId = 0;
 
 function abbreviateValue(val) {
   const map = {
-    inline: "inl",
-    "inline-block": "i-blk",
-    "inline-flex": "i-flx",
-    "inline-grid": "i-grd",
-    contents: "cnt",
-    "flow-root": "flow",
-    nowrap: "no-wr",
-    "wrap-reverse": "wr-rev",
-    "flex-start": "start",
-    "flex-end": "end",
-    "space-between": "betw",
-    "space-around": "arnd",
-    "space-evenly": "even",
-    stretch: "str",
-    baseline: "base",
-    normal: "norm",
-    "row-reverse": "row-r",
-    "column-reverse": "col-r",
-    column: "col",
+    inline: "inl", "inline-block": "i-blk", "inline-flex": "i-flx", "inline-grid": "i-grd",
+    contents: "cnt", "flow-root": "flow", nowrap: "no-wr", "wrap-reverse": "wr-rev",
+    "flex-start": "start", "flex-end": "end", "space-between": "betw",
+    "space-around": "arnd", "space-evenly": "even", stretch: "str", baseline: "base",
+    normal: "norm", "row-reverse": "row-r", "column-reverse": "col-r", column: "col",
   };
   return map[val] || val;
 }
 
 function renderButtonGroupInput(entry, value, onChange) {
-  const wrap = document.createElement("div");
-  wrap.className = "style-input-button-group";
-
   const values = entry.$buttonValues || entry.enum || [];
   const iconMap = entry.$icons || {};
+  const extra = entry.$buttonValues && entry.enum && entry.enum.length > entry.$buttonValues.length
+    ? entry.enum.filter((v) => !entry.$buttonValues.includes(v)) : [];
 
-  for (const v of values) {
-    const btn = document.createElement("button");
-    btn.className = "style-btn-group-item" + (v === value ? " active" : "");
-    btn.type = "button";
-    btn.title = v;
-    btn.dataset.value = v;
-
-    const iconKey = iconMap[v];
-    if (iconKey && icons[iconKey]) {
-      btn.innerHTML = icons[iconKey];
-    } else {
-      btn.textContent = abbreviateValue(v);
-      btn.classList.add("text-only");
-    }
-
-    btn.onclick = () => onChange(v === value ? "" : v);
-    wrap.appendChild(btn);
-  }
-
-  // Overflow picker for enum values not in $buttonValues
-  if (entry.$buttonValues && entry.enum && entry.enum.length > entry.$buttonValues.length) {
-    const extra = entry.enum.filter((v) => !entry.$buttonValues.includes(v));
-    const more = document.createElement("sp-picker");
-    more.setAttribute("size", "s");
-    more.setAttribute("quiet", "");
-    more.setAttribute("placeholder", "+");
-    for (const v of extra) {
-      const item = document.createElement("sp-menu-item");
-      item.value = v;
-      item.textContent = v;
-      more.appendChild(item);
-    }
-    more.addEventListener("change", () => {
-      if (more.value) onChange(more.value);
-    });
-    wrap.appendChild(more);
-  }
-
-  return wrap;
+  return html`
+    <sp-action-group size="xs" compact>
+      ${values.map(v => html`
+        <sp-action-button size="xs" title=${v} ?selected=${v === value}
+          @click=${() => onChange(v === value ? "" : v)}>
+          ${iconMap[v] && icons[iconMap[v]]
+            ? html`<span slot="icon">${unsafeHTML(icons[iconMap[v]])}</span>`
+            : abbreviateValue(v)}
+        </sp-action-button>
+      `)}
+      ${extra.length > 0 ? html`
+        <sp-picker size="s" quiet placeholder="+"
+          @change=${(e) => { if (e.target.value) onChange(e.target.value); }}>
+          ${extra.map(v => html`<sp-menu-item value=${v}>${v}</sp-menu-item>`)}
+        </sp-picker>
+      ` : nothing}
+    </sp-action-group>
+  `;
 }
 
 function renderSelectInput(entry, value, onChange) {
-  const select = document.createElement("sp-picker");
-  select.setAttribute("size", "s");
-  select.setAttribute("label", entry.prop || "Select");
-  select.className = "field-input";
-  select.style.flex = "1";
-  select.style.minWidth = "0";
-
-  const blankItem = document.createElement("sp-menu-item");
-  blankItem.setAttribute("value", "__none__");
-  blankItem.textContent = "\u2014";
-  select.appendChild(blankItem);
-
-  const vals = entry.enum;
-  let found = false;
-  for (const v of vals) {
-    const mi = document.createElement("sp-menu-item");
-    mi.setAttribute("value", v);
-    mi.textContent = v;
-    if (v === value) found = true;
-    select.appendChild(mi);
-  }
-  // If current value not in enum, add it
-  if (value && !found) {
-    const mi = document.createElement("sp-menu-item");
-    mi.setAttribute("value", value);
-    mi.textContent = value;
-    select.appendChild(mi);
-  }
-  // Set value after items are appended so sp-picker can match
-  requestAnimationFrame(() => { select.value = value || "__none__"; });
-  select.addEventListener("change", () => onChange(select.value === "__none__" ? "" : select.value));
-  return select;
+  return html`
+    <sp-picker size="s" .value=${live(value || "__none__")}
+      @change=${(e) => onChange(e.target.value === "__none__" ? "" : e.target.value)}>
+      <sp-menu-item value="__none__">\u2014</sp-menu-item>
+      ${(entry.enum || []).map(v => html`<sp-menu-item value=${v}>${v}</sp-menu-item>`)}
+      ${value && !(entry.enum || []).includes(value) ? html`<sp-menu-item value=${value}>${value}</sp-menu-item>` : nothing}
+    </sp-picker>
+  `;
 }
 
 function renderComboboxInput(entry, prop, value, onChange) {
-  const id = `style-dl-${prop}`;
-  const input = document.createElement("input");
-  input.type = "text";
-  input.className = "field-input";
-  input.style.flex = "1";
-  input.style.minWidth = "0";
-  input.value = value || "";
-  input.placeholder = cssInitialMap.get(prop) || "";
-  input.setAttribute("list", id);
-
-  const dl = document.createElement("datalist");
-  dl.id = id;
-  for (const ex of entry.examples) {
-    const opt = document.createElement("option");
-    opt.value = ex;
-    dl.appendChild(opt);
-  }
-
-  let debounce;
-  input.oninput = () => {
-    clearTimeout(debounce);
-    debounce = setTimeout(() => onChange(input.value), 400);
-  };
-
-  const frag = document.createDocumentFragment();
-  frag.appendChild(dl);
-  frag.appendChild(input);
-  // Wrap in a span to return single element
-  const wrap = document.createElement("span");
-  wrap.style.display = "contents";
-  wrap.appendChild(dl);
-  wrap.appendChild(input);
-  return wrap;
+  return html`
+    <sp-textfield size="s"
+      placeholder=${cssInitialMap.get(prop) || ""}
+      .value=${live(value || "")}
+      @input=${debouncedStyleCommit(`combo:${prop}`, 400, (e) => onChange(e.target.value))}
+    ></sp-textfield>
+  `;
 }
 
-function renderNumberInput(entry, value, onChange) {
-  const input = document.createElement("input");
-  input.type = "number";
-  input.className = "field-input";
-  input.style.flex = "1";
-  input.style.minWidth = "0";
-  input.value = value ?? "";
-  if (entry.minimum !== undefined) input.min = entry.minimum;
-  if (entry.maximum !== undefined) input.max = entry.maximum;
-  if (entry.maximum !== undefined && entry.maximum <= 1) input.step = "0.1";
-
-  let debounce;
-  input.oninput = () => {
-    clearTimeout(debounce);
-    debounce = setTimeout(() => {
-      if (input.value === "") onChange("");
-      else onChange(Number(input.value));
-    }, 400);
-  };
-  return input;
+function renderNumberInput(entry, prop, value, onChange) {
+  return html`
+    <sp-number-field size="s" hide-stepper
+      .value=${live(value !== undefined && value !== "" ? Number(value) : undefined)}
+      min=${ifDefined(entry.minimum)} max=${ifDefined(entry.maximum)}
+      step=${ifDefined(entry.maximum !== undefined && entry.maximum <= 1 ? 0.1 : undefined)}
+      @change=${debouncedStyleCommit(`num:${prop}`, 400, (e) => {
+        const v = e.target.value;
+        if (v === undefined || isNaN(v)) onChange("");
+        else onChange(Number(v));
+      })}
+    ></sp-number-field>
+  `;
 }
 
 function renderTextInput(prop, value, onChange) {
-  const input = document.createElement("input");
-  input.type = "text";
-  input.className = "field-input";
-  input.style.flex = "1";
-  input.style.minWidth = "0";
-  input.value = value || "";
-  input.placeholder = cssInitialMap.get(prop) || "";
-
-  let debounce;
-  input.oninput = () => {
-    clearTimeout(debounce);
-    debounce = setTimeout(() => onChange(input.value), 400);
-  };
-  return input;
+  return html`
+    <sp-textfield size="s"
+      placeholder=${cssInitialMap.get(prop) || ""}
+      .value=${live(value || "")}
+      @input=${debouncedStyleCommit(`text:${prop}`, 400, (e) => onChange(e.target.value))}
+    ></sp-textfield>
+  `;
 }
 
 function camelToLabel(prop) {
@@ -6401,365 +6291,212 @@ function propLabel(entry, prop) {
   return entry?.$label || camelToLabel(prop);
 }
 
+function widgetForType(type, entry, prop, value, onCommit) {
+  switch (type) {
+    case "button-group": return renderButtonGroupInput(entry, value, onCommit);
+    case "color": return renderColorInput(prop, value, onCommit);
+    case "number-unit": return renderNumberUnitInput(entry, prop, value, onCommit);
+    case "number": return renderNumberInput(entry, prop, value, onCommit);
+    case "select": return renderSelectInput(entry, value, onCommit);
+    case "combobox": return renderComboboxInput(entry, prop, value, onCommit);
+    default: return renderTextInput(prop, value, onCommit);
+  }
+}
+
 function renderStyleRow(entry, prop, value, onCommit, onDelete, isWarning, gridMode) {
   const type = inferInputType(entry);
   const hasVal = value !== undefined && value !== "";
-  const row = document.createElement("div");
-  row.className =
-    "style-row" +
-    (isWarning ? " style-row--warning" : "") +
-    (type === "button-group" ? " style-row--button-group" : "") +
-    (gridMode ? " style-row--stacked" : "");
-  row.dataset.prop = prop;
-  if (gridMode && entry.$span === 2) row.style.gridColumn = "1 / -1";
-
-  const label = document.createElement("span");
-  label.className = "style-row-label";
-  if (hasVal) {
-    const dot = document.createElement("span");
-    dot.className = "set-dot";
-    dot.title = `Clear ${prop}`;
-    dot.onclick = (e) => { e.stopPropagation(); onDelete(); };
-    label.appendChild(dot);
-  }
-  const labelText = document.createTextNode(propLabel(entry, prop));
-  label.appendChild(labelText);
-  label.title = prop;
-  row.appendChild(label);
-
-  let widget;
-  switch (type) {
-    case "button-group":
-      widget = renderButtonGroupInput(entry, value, onCommit);
-      break;
-    case "color":
-      widget = renderColorInput(value, onCommit);
-      break;
-    case "number-unit":
-      widget = renderNumberUnitInput(entry, value, onCommit);
-      break;
-    case "number":
-      widget = renderNumberInput(entry, value, onCommit);
-      break;
-    case "select":
-      widget = renderSelectInput(entry, value, onCommit);
-      break;
-    case "combobox":
-      widget = renderComboboxInput(entry, prop, value, onCommit);
-      break;
-    default:
-      widget = renderTextInput(prop, value, onCommit);
-      break;
-  }
-  row.appendChild(widget);
-
-  return row;
+  return html`
+    <div class=${classMap({ "style-row": true, "style-row--warning": isWarning })}
+         data-prop=${prop}
+         style=${gridMode && entry.$span === 2 ? "grid-column: 1 / -1" : ""}>
+      <div class="style-row-label">
+        ${hasVal ? html`<span class="set-dot" title="Clear ${prop}"
+          @click=${(e) => { e.stopPropagation(); onDelete(); }}></span>` : nothing}
+        <sp-field-label size="s" title=${prop}>${propLabel(entry, prop)}</sp-field-label>
+      </div>
+      ${widgetForType(type, entry, prop, value, onCommit)}
+    </div>
+  `;
 }
 
 function renderShorthandRow(shortProp, entry, style, commitFn, deleteFn) {
-  const frag = document.createDocumentFragment();
   const longhands = getLonghands(shortProp);
   const shortVal = style[shortProp];
   const hasLonghands = longhands.some((l) => style[l.name] !== undefined);
   const isExpanded = S.ui.styleShorthands[shortProp] ?? hasLonghands;
-
-  // Shorthand header row
-  const row = document.createElement("div");
-  row.className = "style-row";
-  row.dataset.prop = shortProp;
-
-  const label = document.createElement("span");
-  label.className = "style-row-label";
   const hasAnyVal = shortVal !== undefined || longhands.some((l) => style[l.name] !== undefined);
-  if (hasAnyVal) {
-    const dot = document.createElement("span");
-    dot.className = "set-dot";
-    dot.title = `Clear ${shortProp}`;
-    dot.onclick = (e) => {
-      e.stopPropagation();
-      let s = S;
-      if (shortVal !== undefined) s = commitFn(s, shortProp, undefined);
-      for (const l of longhands) {
-        if (style[l.name] !== undefined) s = commitFn(s, l.name, undefined);
-      }
-      update(s);
-    };
-    label.appendChild(dot);
-  }
-  label.appendChild(document.createTextNode(propLabel(entry, shortProp)));
-  label.title = shortProp;
-  row.appendChild(label);
 
-  // Shorthand value — plain text input
-  const input = document.createElement("input");
-  input.type = "text";
-  input.className = "field-input";
-  input.style.flex = "1";
-  input.style.minWidth = "0";
-  input.value = shortVal || "";
-  if (!shortVal && hasLonghands) {
-    // Synthetic placeholder from longhands
-    input.placeholder = longhands.map((l) => style[l.name] || "0").join(" ");
-  }
-
-  let debounce;
-  input.oninput = () => {
-    clearTimeout(debounce);
-    debounce = setTimeout(() => {
-      // Writing shorthand clears all longhands
-      let s = S;
-      for (const l of longhands) {
-        if (style[l.name] !== undefined) {
-          s = commitFn(s, l.name, undefined);
-        }
-      }
-      s = commitFn(s, shortProp, input.value || undefined);
-      update(s);
-    }, 400);
-  };
-  row.appendChild(input);
-
-  // Expand toggle
-  const toggle = document.createElement("span");
-  toggle.className = "style-shorthand-toggle";
-  toggle.textContent = isExpanded ? "⌃" : "⌄";
-  toggle.onclick = (e) => {
-    e.stopPropagation();
-    S = {
-      ...S,
-      ui: { ...S.ui, styleShorthands: { ...S.ui.styleShorthands, [shortProp]: !isExpanded } },
-    };
-    renderRightPanel();
-  };
-  row.appendChild(toggle);
-
-  frag.appendChild(row);
-
-  // Expanded longhand rows
-  if (isExpanded) {
-    for (const { name, entry: lEntry } of longhands) {
+  return html`
+    <div class="style-row" data-prop=${shortProp}>
+      <div class="style-row-label">
+        ${hasAnyVal ? html`<span class="set-dot" title="Clear ${shortProp}" @click=${(e) => {
+          e.stopPropagation();
+          let s = S;
+          if (shortVal !== undefined) s = commitFn(s, shortProp, undefined);
+          for (const l of longhands) {
+            if (style[l.name] !== undefined) s = commitFn(s, l.name, undefined);
+          }
+          update(s);
+        }}></span>` : nothing}
+        <sp-field-label size="s" title=${shortProp}>${propLabel(entry, shortProp)}</sp-field-label>
+      </div>
+      <div class="style-shorthand-header">
+        <sp-textfield size="s"
+          .value=${live(shortVal || "")}
+          placeholder=${!shortVal && hasLonghands ? longhands.map((l) => style[l.name] || "0").join(" ") : ""}
+          @input=${debouncedStyleCommit(`short:${shortProp}`, 400, (e) => {
+            let s = S;
+            for (const l of longhands) {
+              if (style[l.name] !== undefined) s = commitFn(s, l.name, undefined);
+            }
+            s = commitFn(s, shortProp, e.target.value || undefined);
+            update(s);
+          })}
+        ></sp-textfield>
+        <sp-action-button size="xs" quiet @click=${(e) => {
+          e.stopPropagation();
+          S = { ...S, ui: { ...S.ui, styleShorthands: { ...S.ui.styleShorthands, [shortProp]: !isExpanded } } };
+          renderStylePanel(rightPanel._body);
+        }}>
+          ${isExpanded
+            ? html`<sp-icon-chevron-down slot="icon"></sp-icon-chevron-down>`
+            : html`<sp-icon-chevron-right slot="icon"></sp-icon-chevron-right>`}
+        </sp-action-button>
+      </div>
+    </div>
+    ${isExpanded ? longhands.map(({ name, entry: lEntry }) => {
       const lVal = style[name] ?? "";
-      const lRow = renderStyleRow(
-        lEntry,
-        name,
-        lVal,
-        (newVal) => {
-          update(commitFn(S, name, newVal || undefined));
-        },
-        () => update(commitFn(S, name, undefined)),
-      );
-      lRow.classList.add("style-row--child");
-      frag.appendChild(lRow);
-    }
-  }
-
-  return frag;
+      return html`
+        <div class="style-row style-row--child" data-prop=${name}>
+          <div class="style-row-label">
+            ${lVal !== undefined && lVal !== "" ? html`<span class="set-dot" title="Clear ${name}"
+              @click=${(e) => { e.stopPropagation(); update(commitFn(S, name, undefined)); }}></span>` : nothing}
+            <sp-field-label size="s" title=${name}>${propLabel(lEntry, name)}</sp-field-label>
+          </div>
+          ${widgetForType(inferInputType(lEntry), lEntry, name, lVal, (newVal) => update(commitFn(S, name, newVal || undefined)))}
+        </div>
+      `;
+    }) : nothing}
+  `;
 }
 
-function renderSectionAddControl(sectionKey, onAdd) {
-  const wrap = document.createElement("div");
-  wrap.className = "style-add-input";
-  wrap.style.display = "none";
 
-  const dlId = `style-add-dl-${sectionKey}`;
-  const dl = document.createElement("datalist");
-  dl.id = dlId;
-  for (const [name, entry] of Object.entries(cssMeta.$defs)) {
-    if ((entry.$section || "other") === sectionKey && typeof entry.$shorthand !== "string") {
-      const opt = document.createElement("option");
-      opt.value = name;
-      dl.appendChild(opt);
-    }
-  }
-  wrap.appendChild(dl);
-
-  const input = document.createElement("input");
-  input.type = "text";
-  input.placeholder = "Property name…";
-  input.setAttribute("list", dlId);
-  input.onkeydown = (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      const prop = input.value.trim();
-      if (prop) {
-        onAdd(prop);
-        input.value = "";
-        wrap.style.display = "none";
-      }
-    } else if (e.key === "Escape") {
-      input.value = "";
-      wrap.style.display = "none";
-    }
-  };
-  input.onblur = () => {
-    setTimeout(() => {
-      wrap.style.display = "none";
-    }, 150);
-  };
-  wrap.appendChild(input);
-
-  // Return wrap and a show function
-  wrap._show = () => {
-    wrap.style.display = "flex";
-    input.focus();
-  };
-  return wrap;
-}
-
-function renderStyleSidebar(container, node, activeMediaTab, activeSelector) {
-  const wrapper = document.createElement("div");
-  wrapper.className = "style-sidebar";
+function styleSidebarTemplate(node, activeMediaTab, activeSelector) {
   const style = node.style || {};
   const { sizeBreakpoints } = parseMediaEntries(S.document.$media);
   const mediaNames = sizeBreakpoints.map((bp) => bp.name);
   const activeTab = activeMediaTab;
 
-  // Media tabs (only if there are breakpoints)
-  if (mediaNames.length > 0) {
-    const tabs = document.createElement("sp-tabs");
-    tabs.setAttribute("size", "s");
-
-    const baseTab = document.createElement("sp-tab");
-    baseTab.setAttribute("label", "Base");
-    baseTab.setAttribute("value", "base");
-    if (activeTab === null) baseTab.setAttribute("selected", "");
-    baseTab.addEventListener("click", () => {
-      S = { ...S, ui: { ...S.ui, activeMedia: null } };
-      updateActivePanelHeaders();
-      renderRightPanel();
-    });
-    tabs.appendChild(baseTab);
-
-    for (const name of mediaNames) {
-      const tab = document.createElement("sp-tab");
-      tab.setAttribute("label", mediaDisplayName(name));
-      tab.setAttribute("value", name);
-      if (activeTab === name) tab.setAttribute("selected", "");
-      tab.addEventListener("click", () => {
-        S = { ...S, ui: { ...S.ui, activeMedia: name } };
-        updateActivePanelHeaders();
-        renderRightPanel();
-      });
-      tabs.appendChild(tab);
-    }
-    wrapper.appendChild(tabs);
-  }
+  // ── Media tabs template ──────────────────────────────────────────────────
+  const mediaTabsT = mediaNames.length > 0 ? html`
+    <sp-tabs size="s">
+      <sp-tab label="Base" value="base"
+        ?selected=${activeTab === null}
+        @click=${() => {
+          S = { ...S, ui: { ...S.ui, activeMedia: null } };
+          updateActivePanelHeaders();
+          renderStylePanel(rightPanel._body);
+        }}></sp-tab>
+      ${mediaNames.map((name) => html`
+        <sp-tab label=${mediaDisplayName(name)} value=${name}
+          ?selected=${activeTab === name}
+          @click=${() => {
+            S = { ...S, ui: { ...S.ui, activeMedia: name } };
+            updateActivePanelHeaders();
+            renderStylePanel(rightPanel._body);
+          }}></sp-tab>
+      `)}
+    </sp-tabs>
+  ` : nothing;
 
   // ── Selector dropdown ──────────────────────────────────────────────────────
   const contextStyle = activeTab ? (style[`@${activeTab}`] || {}) : style;
   const existingSelectors = Object.keys(contextStyle).filter(isNestedSelector);
   const existingSet = new Set(existingSelectors);
-
-  const selectorBar = document.createElement("div");
-  selectorBar.className = "selector-bar";
-
-  const sel = document.createElement("sp-picker");
-  sel.className = "selector-select";
-  // (base)
-  const baseItem = document.createElement("sp-menu-item");
-  baseItem.setAttribute("value", "__base__");
-  baseItem.textContent = "(base)";
-  sel.appendChild(baseItem);
-
-  // Common pseudo-selectors
-  const pseudoDivider = document.createElement("sp-menu-divider");
-  sel.appendChild(pseudoDivider);
-  for (const s of COMMON_SELECTORS) {
-    const mi = document.createElement("sp-menu-item");
-    mi.setAttribute("value", s);
-    mi.textContent = existingSet.has(s) ? `${s}  \u25CF` : s;
-    sel.appendChild(mi);
-  }
-
-  // Custom selectors already on the node (+ activeSelector if not yet in any list)
   const commonSet = new Set(COMMON_SELECTORS);
   const extraSelectors = existingSelectors.filter((s) => !commonSet.has(s));
   if (activeSelector && !commonSet.has(activeSelector) && !existingSet.has(activeSelector)) {
     extraSelectors.unshift(activeSelector);
   }
-  if (extraSelectors.length > 0) {
-    const customDivider = document.createElement("sp-menu-divider");
-    sel.appendChild(customDivider);
-    for (const s of extraSelectors) {
-      const mi = document.createElement("sp-menu-item");
-      mi.setAttribute("value", s);
-      mi.textContent = `${s}  \u25CF`;
-      sel.appendChild(mi);
-    }
-  }
-
-  // + Add custom...
-  const addDivider = document.createElement("sp-menu-divider");
-  sel.appendChild(addDivider);
-  const addItem = document.createElement("sp-menu-item");
-  addItem.setAttribute("value", "__add_custom__");
-  addItem.textContent = "+ Add custom\u2026";
-  sel.appendChild(addItem);
 
   const _selectorVal = activeSelector || "__base__";
-  requestAnimationFrame(() => { sel.value = _selectorVal; });
-
-  sel.addEventListener("change", () => {
-    const val = sel.value;
-    if (val === "__add_custom__") {
-      requestAnimationFrame(() => { sel.value = activeSelector || "__base__"; });
-      // Show inline input
-      sel.style.display = "none";
-      const inp = document.createElement("input");
-      inp.type = "text";
-      inp.className = "selector-custom-input";
-      inp.placeholder = ":hover, .child, &.active, [attr]";
-      selectorBar.appendChild(inp);
-      inp.focus();
-      let done = false;
-      const finish = (accept) => {
-        if (done) return;
-        done = true;
-        const v = inp.value.trim();
-        inp.remove();
-        sel.style.display = "";
-        if (accept && v && isNestedSelector(v)) {
-          S = { ...S, ui: { ...S.ui, activeSelector: v } };
-          renderRightPanel();
-        }
-      };
-      inp.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") finish(true);
-        else if (e.key === "Escape") finish(false);
-      });
-      inp.addEventListener("blur", () => finish(inp.value.trim().length > 0));
-      return;
-    }
-    const newSelector = val === "__base__" ? null : val;
-    S = { ...S, ui: { ...S.ui, activeSelector: newSelector } };
-    renderRightPanel();
-  });
-
-  selectorBar.appendChild(sel);
-  wrapper.appendChild(selectorBar);
+  const selectorT = html`
+    <div class="selector-bar">
+      <sp-picker class="selector-select"
+        .value=${live(_selectorVal)}
+        @change=${(e) => {
+          const val = e.target.value;
+          if (val === "__add_custom__") {
+            requestAnimationFrame(() => { e.target.value = activeSelector || "__base__"; });
+            // Show inline input — imperative since it's a one-off interaction
+            const picker = e.target;
+            const bar = picker.closest(".selector-bar");
+            picker.style.display = "none";
+            const inp = document.createElement("input");
+            inp.type = "text";
+            inp.className = "selector-custom-input";
+            inp.placeholder = ":hover, .child, &.active, [attr]";
+            bar.appendChild(inp);
+            inp.focus();
+            let done = false;
+            const finish = (accept) => {
+              if (done) return;
+              done = true;
+              const v = inp.value.trim();
+              inp.remove();
+              picker.style.display = "";
+              if (accept && v && isNestedSelector(v)) {
+                S = { ...S, ui: { ...S.ui, activeSelector: v } };
+                renderStylePanel(rightPanel._body);
+              }
+            };
+            inp.addEventListener("keydown", (ev) => {
+              if (ev.key === "Enter") finish(true);
+              else if (ev.key === "Escape") finish(false);
+            });
+            inp.addEventListener("blur", () => finish(inp.value.trim().length > 0));
+            return;
+          }
+          const newSelector = val === "__base__" ? null : val;
+          S = { ...S, ui: { ...S.ui, activeSelector: newSelector } };
+          renderStylePanel(rightPanel._body);
+        }}>
+        <sp-menu-item value="__base__">(base)</sp-menu-item>
+        <sp-menu-divider></sp-menu-divider>
+        ${COMMON_SELECTORS.map((s) => html`
+          <sp-menu-item value=${s}>${existingSet.has(s) ? `${s}  \u25CF` : s}</sp-menu-item>
+        `)}
+        ${extraSelectors.length > 0 ? html`
+          <sp-menu-divider></sp-menu-divider>
+          ${extraSelectors.map((s) => html`
+            <sp-menu-item value=${s}>${s}  \u25CF</sp-menu-item>
+          `)}
+        ` : nothing}
+        <sp-menu-divider></sp-menu-divider>
+        <sp-menu-item value="__add_custom__">+ Add custom\u2026</sp-menu-item>
+      </sp-picker>
+    </div>
+  `;
 
   // ── Determine the active style object ──────────────────────────────────────
   let activeStyle;
-  let commitStyle; // (state, prop, val) => newState
+  let commitStyle;
   if (activeSelector && activeTab && mediaNames.length > 0) {
-    // Media + selector: style["@--md"][":hover"]
     activeStyle = (style[`@${activeTab}`] || {})[activeSelector] || {};
     commitStyle = (s, prop, val) =>
       updateMediaNestedStyle(s, S.selection, activeTab, activeSelector, prop, val);
   } else if (activeSelector) {
-    // Selector only: style[":hover"]
     activeStyle = style[activeSelector] || {};
     commitStyle = (s, prop, val) =>
       updateNestedStyle(s, S.selection, activeSelector, prop, val);
   } else if (activeTab !== null && mediaNames.length > 0) {
-    // Media only: style["@--md"] flat props
     activeStyle = {};
     for (const [p, v] of Object.entries(style[`@${activeTab}`] || {})) {
       if (typeof v !== "object") activeStyle[p] = v;
     }
     commitStyle = (s, prop, val) => updateMediaStyle(s, S.selection, activeTab, prop, val);
   } else {
-    // Base: flat props
     activeStyle = {};
     for (const [p, v] of Object.entries(style)) {
       if (typeof v !== "object") activeStyle[p] = v;
@@ -6776,241 +6513,186 @@ function renderStyleSidebar(container, node, activeMediaTab, activeSelector) {
   // Partition properties into sections
   const sectionProps = {};
   for (const sec of cssMeta.$sections) sectionProps[sec.key] = [];
-  const assigned = new Set();
 
-  // Sort known properties into sections
   for (const [prop, entry] of Object.entries(cssMeta.$defs)) {
-    // Skip longhands (rendered inside their shorthand)
     if (typeof entry.$shorthand === "string") continue;
     const sec = entry.$section || "other";
     sectionProps[sec].push({ prop, entry });
   }
-  // Sort each section by $order
   for (const sec of cssMeta.$sections) {
     sectionProps[sec.key].sort((a, b) => a.entry.$order - b.entry.$order);
   }
 
-  // Collect leftover "other" properties (on node but not in meta, or with string $shorthand that are standalone)
   const otherProps = [];
   for (const prop of Object.keys(activeStyle)) {
-    if (!cssMeta.$defs[prop]) {
-      otherProps.push(prop);
-      assigned.add(prop);
-    }
+    if (!cssMeta.$defs[prop]) otherProps.push(prop);
   }
 
-  // Render sections
-  for (const sec of cssMeta.$sections) {
-    // Determine which props in this section are active (have values or meet conditions)
-    const entries = sectionProps[sec.key];
-    if (sec.key === "other") {
-      // "Other" section: only render if there are unrecognized properties
-      if (otherProps.length === 0) continue;
+  // ── Section templates ────────────────────────────────────────────────────
+  const sectionTemplates = cssMeta.$sections
+    .filter((sec) => sec.key !== "other")
+    .map((sec) => {
+      const entries = sectionProps[sec.key];
 
-      const section = document.createElement("div");
-      section.className = "style-section";
-      const isOpen = S.ui.styleSections[sec.key] ?? false;
-
-      const header = document.createElement("div");
-      header.className = `style-section-header${isOpen ? "" : " collapsed"}`;
-      const collapse = document.createElement("span");
-      collapse.className = "style-section-collapse";
-      collapse.textContent = "▼";
-      const labelEl = document.createElement("span");
-      labelEl.className = "style-section-label";
-      labelEl.textContent = sec.label;
-      header.appendChild(collapse);
-      header.appendChild(labelEl);
-
-      const body = document.createElement("div");
-      body.className = `style-section-body${isOpen ? "" : " hidden"}`;
-
-      header.onclick = () => {
-        const nowOpen = !header.classList.contains("collapsed");
-        header.classList.toggle("collapsed");
-        body.classList.toggle("hidden");
-        S = {
-          ...S,
-          ui: { ...S.ui, styleSections: { ...S.ui.styleSections, [sec.key]: !nowOpen } },
-        };
-      };
-
-      for (const prop of otherProps) {
-        body.appendChild(
-          kvRow(
-            prop,
-            String(activeStyle[prop]),
-            (newProp, newVal) => {
-              if (newProp !== prop) {
-                let s = commitStyle(S, prop, undefined);
-                s = commitStyle(s, newProp, newVal);
-                update(s);
-              } else {
-                update(commitStyle(S, prop, newVal));
-              }
-            },
-            () => update(commitStyle(S, prop, undefined)),
-            "css-props",
-          ),
-        );
-      }
-
-      section.appendChild(header);
-      section.appendChild(body);
-      wrapper.appendChild(section);
-      continue;
-    }
-
-    // Normal section
-    const section = document.createElement("div");
-    section.className = "style-section";
-    section.dataset.key = sec.key;
-    const isOpen = S.ui.styleSections[sec.key] ?? false;
-
-    const header = document.createElement("div");
-    header.className = `style-section-header${isOpen ? "" : " collapsed"}`;
-    const collapse = document.createElement("span");
-    collapse.className = "style-section-collapse";
-    collapse.textContent = "▼";
-    const labelEl = document.createElement("span");
-    labelEl.className = "style-section-label";
-    labelEl.textContent = sec.label;
-    header.appendChild(collapse);
-    header.appendChild(labelEl);
-
-    // Section set-indicator: dot visible when any prop in section has a value
-    const sectionActiveProps = entries.filter(({ prop, entry }) => {
-      if (activeStyle[prop] !== undefined) return true;
-      if (inferInputType(entry) === "shorthand") {
-        return getLonghands(prop).some((l) => activeStyle[l.name] !== undefined);
-      }
-      return false;
-    });
-    if (sectionActiveProps.length > 0) {
-      const dot = document.createElement("span");
-      dot.className = "set-dot set-dot--section";
-      dot.title = `Clear all ${sec.label.toLowerCase()} properties`;
-      dot.onclick = (e) => {
-        e.stopPropagation();
-        let s = S;
-        for (const { prop, entry } of sectionActiveProps) {
-          if (activeStyle[prop] !== undefined) s = commitStyle(s, prop, undefined);
-          if (inferInputType(entry) === "shorthand") {
-            for (const l of getLonghands(prop)) {
-              if (activeStyle[l.name] !== undefined) s = commitStyle(s, l.name, undefined);
-            }
-          }
+      const sectionActiveProps = entries.filter(({ prop, entry }) => {
+        if (activeStyle[prop] !== undefined) return true;
+        if (inferInputType(entry) === "shorthand") {
+          return getLonghands(prop).some((l) => activeStyle[l.name] !== undefined);
         }
-        update(s);
-      };
-      header.appendChild(dot);
-    }
+        return false;
+      });
 
-    // Add button
-    const addBtn = document.createElement("button");
-    addBtn.className = "style-section-add";
-    addBtn.textContent = "+";
-    addBtn.onclick = (e) => {
-      e.stopPropagation();
-      // Ensure section is open
-      if (body.classList.contains("hidden")) {
-        header.classList.remove("collapsed");
-        body.classList.remove("hidden");
-        S = { ...S, ui: { ...S.ui, styleSections: { ...S.ui.styleSections, [sec.key]: true } } };
-      }
-      addControl._show();
-    };
-    header.appendChild(addBtn);
+      const rows = [];
+      for (const { prop, entry } of entries) {
+        const val = activeStyle[prop];
+        const hasVal = val !== undefined;
+        const condMet = allConditionsPass(entry, activeStyle);
+        const type = inferInputType(entry);
+        if (!hasVal && !condMet) continue;
 
-    const body = document.createElement("div");
-    body.className = `style-section-body${isOpen ? "" : " hidden"}${sec.$layout === "grid" ? " style-section-body--grid" : ""}`;
-
-    header.onclick = (e) => {
-      if (e.target === addBtn) return;
-      const nowOpen = !header.classList.contains("collapsed");
-      header.classList.toggle("collapsed");
-      body.classList.toggle("hidden");
-      S = { ...S, ui: { ...S.ui, styleSections: { ...S.ui.styleSections, [sec.key]: !nowOpen } } };
-    };
-
-    // Render property rows
-    for (const { prop, entry } of entries) {
-      const val = activeStyle[prop];
-      const hasVal = val !== undefined;
-      const condMet = allConditionsPass(entry, activeStyle);
-      const type = inferInputType(entry);
-
-      // Skip if no value and conditions not met
-      if (!hasVal && !condMet) continue;
-
-      if (type === "shorthand") {
-        // Shorthand row: render if shorthand or any longhands exist, or conditions met
-        const longhands = getLonghands(prop);
-        const hasAny = hasVal || longhands.some((l) => activeStyle[l.name] !== undefined);
-        if (!hasAny && !condMet) continue;
-
-        body.appendChild(renderShorthandRow(prop, entry, activeStyle, commitStyle, () => {}));
-      } else {
-        // Warning if has value but conditions not met
-        const isWarning = hasVal && !condMet;
-
-        if (hasVal || condMet) {
-          body.appendChild(
-            renderStyleRow(
-              entry,
-              prop,
-              val ?? "",
+        if (type === "shorthand") {
+          const longhands = getLonghands(prop);
+          const hasAny = hasVal || longhands.some((l) => activeStyle[l.name] !== undefined);
+          if (!hasAny && !condMet) continue;
+          rows.push(renderShorthandRow(prop, entry, activeStyle, commitStyle, () => {}));
+        } else {
+          const isWarning = hasVal && !condMet;
+          if (hasVal || condMet) {
+            rows.push(renderStyleRow(
+              entry, prop, val ?? "",
               (newVal) => update(commitStyle(S, prop, newVal || undefined)),
               () => update(commitStyle(S, prop, undefined)),
-              isWarning,
-              sec.$layout === "grid",
-            ),
-          );
+              isWarning, sec.$layout === "grid",
+            ));
+          }
         }
       }
-    }
 
-    // Add control for this section
-    const addControl = renderSectionAddControl(sec.key, (prop) => {
-      const initial = cssInitialMap.get(prop) || "";
-      update(commitStyle(S, prop, initial || ""));
+      const isOpen = S.ui.styleSections[sec.key] ?? false;
+
+      return html`
+        <sp-accordion-item
+          label=${sec.label}
+          .open=${isOpen}
+          @sp-accordion-item-toggle=${(e) => {
+            S = { ...S, ui: { ...S.ui, styleSections: { ...S.ui.styleSections, [sec.key]: e.target.open } } };
+          }}>
+          ${sectionActiveProps.length > 0 ? html`
+            <span slot="heading" style="display:flex;align-items:center;gap:6px">
+              ${sec.label}
+              <span class="set-dot set-dot--section"
+                title="Clear all ${sec.label.toLowerCase()} properties"
+                @click=${(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  let s = S;
+                  for (const { prop, entry } of sectionActiveProps) {
+                    if (activeStyle[prop] !== undefined) s = commitStyle(s, prop, undefined);
+                    if (inferInputType(entry) === "shorthand") {
+                      for (const l of getLonghands(prop)) {
+                        if (activeStyle[l.name] !== undefined) s = commitStyle(s, l.name, undefined);
+                      }
+                    }
+                  }
+                  update(s);
+                }}></span>
+            </span>
+          ` : nothing}
+          <div class=${sec.$layout === "grid" ? "style-section-body--grid" : ""}>
+            ${rows}
+          </div>
+        </sp-accordion-item>
+      `;
     });
-    body.appendChild(addControl);
 
-    section.appendChild(header);
-    section.appendChild(body);
-    wrapper.appendChild(section);
-  }
+  // ── Custom section ─────────────────────────────────────────────────────────
+  const customIsOpen = S.ui.styleSections.other ?? (otherProps.length > 0);
+  const customSectionT = html`
+    <sp-accordion-item
+      label="Custom"
+      .open=${customIsOpen}
+      @sp-accordion-item-toggle=${(e) => {
+        S = { ...S, ui: { ...S.ui, styleSections: { ...S.ui.styleSections, other: e.target.open } } };
+      }}>
+      <div>
+        ${otherProps.map((prop) => html`
+          <div class="kv-row">
+            <sp-textfield size="s" class="kv-key" .value=${live(prop)}
+              @change=${(e) => {
+                const newProp = e.target.value.trim();
+                if (newProp && newProp !== prop) {
+                  let s = commitStyle(S, prop, undefined);
+                  s = commitStyle(s, newProp, String(activeStyle[prop]));
+                  update(s);
+                }
+              }}></sp-textfield>
+            <sp-textfield size="s" class="kv-val"
+              .value=${live(String(activeStyle[prop]))}
+              placeholder=${ifDefined(cssInitialMap.get(prop))}
+              @input=${debouncedStyleCommit(`custom:${prop}`, 400, (e) => {
+                update(commitStyle(S, prop, e.target.value));
+              })}></sp-textfield>
+            <sp-action-button size="xs" quiet @click=${() => update(commitStyle(S, prop, undefined))}>
+              <sp-icon-close slot="icon"></sp-icon-close>
+            </sp-action-button>
+          </div>
+        `)}
+        <div style="display:flex;gap:4px;padding-top:4px">
+          <sp-textfield size="s" placeholder="Property name\u2026" style="flex:1"
+            @keydown=${(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                const prop = e.target.value.trim();
+                if (prop) {
+                  const initial = cssInitialMap.get(prop) || "";
+                  update(commitStyle(S, prop, initial || ""));
+                  e.target.value = "";
+                }
+              }
+            }}></sp-textfield>
+        </div>
+      </div>
+    </sp-accordion-item>
+  `;
 
-  container.appendChild(wrapper);
+  return html`
+    <div class="style-sidebar">
+      ${mediaTabsT}
+      ${selectorT}
+      <sp-accordion allow-multiple size="s">
+        ${sectionTemplates}
+        ${customSectionT}
+      </sp-accordion>
+    </div>
+  `;
 }
 
 /** Top-level Style panel — renders as its own right-panel tab */
 function renderStylePanel(container) {
-  // Stylebook mode: style the selected tag on the root node
+  let tpl;
+
   if (canvasMode === "stylebook" && S.ui.stylebookSelection) {
     const node = S.document;
     if (!node) {
-      container.innerHTML = '<div class="empty-state">No document loaded</div>';
-      return;
+      tpl = html`<div class="empty-state">No document loaded</div>`;
+    } else {
+      tpl = html`
+        <div class="stylebook-style-header">Styling: &lt;${S.ui.stylebookSelection}&gt;</div>
+        ${styleSidebarTemplate(node, S.ui.activeMedia, S.ui.activeSelector)}
+      `;
     }
-    const header = document.createElement("div");
-    header.className = "stylebook-style-header";
-    header.textContent = `Styling: <${S.ui.stylebookSelection}>`;
-    container.appendChild(header);
-    renderStyleSidebar(container, node, S.ui.activeMedia, S.ui.activeSelector);
-    return;
+  } else if (!S.selection) {
+    tpl = html`<div class="empty-state">Select an element to style</div>`;
+  } else {
+    const node = getNodeAtPath(S.document, S.selection);
+    if (!node) {
+      tpl = html`<div class="empty-state">Select an element to style</div>`;
+    } else {
+      tpl = styleSidebarTemplate(node, S.ui.activeMedia, S.ui.activeSelector);
+    }
   }
-  if (!S.selection) {
-    container.innerHTML = '<div class="empty-state">Select an element to style</div>';
-    return;
-  }
-  const node = getNodeAtPath(S.document, S.selection);
-  if (!node) {
-    container.innerHTML = '<div class="empty-state">Select an element to style</div>';
-    return;
-  }
-  renderStyleSidebar(container, node, S.ui.activeMedia, S.ui.activeSelector);
+
+  litRender(tpl, container);
 }
 
 /** Collapsible inspector section */
@@ -7212,19 +6894,19 @@ function kvRow(key, value, onChange, onDelete, datalistId) {
   const row = document.createElement("div");
   row.className = "kv-row";
 
-  const keyInput = document.createElement("input");
-  keyInput.className = "field-input kv-key";
+  const keyInput = document.createElement("sp-textfield");
+  keyInput.setAttribute("size", "s");
+  keyInput.className = "kv-key";
   keyInput.value = key;
-  if (datalistId) keyInput.setAttribute("list", datalistId);
 
-  const valInput = document.createElement("input");
-  valInput.className = "field-input kv-val";
+  const valInput = document.createElement("sp-textfield");
+  valInput.setAttribute("size", "s");
+  valInput.className = "kv-val";
   valInput.value = value;
-  // Show CSS initial value as placeholder hint
   if (datalistId === "css-props") {
-    valInput.placeholder = cssInitialMap.get(key) || "";
+    valInput.setAttribute("placeholder", cssInitialMap.get(key) || "");
     keyInput.addEventListener("change", () => {
-      valInput.placeholder = cssInitialMap.get(keyInput.value) || "";
+      valInput.setAttribute("placeholder", cssInitialMap.get(keyInput.value) || "");
     });
   }
 
@@ -7233,13 +6915,16 @@ function kvRow(key, value, onChange, onDelete, datalistId) {
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => onChange(keyInput.value, valInput.value), 400);
   };
-  keyInput.oninput = commit;
-  valInput.oninput = commit;
+  keyInput.addEventListener("input", commit);
+  valInput.addEventListener("input", commit);
 
-  const del = document.createElement("span");
-  del.className = "kv-del";
-  del.textContent = "✕";
-  del.onclick = onDelete;
+  const del = document.createElement("sp-action-button");
+  del.setAttribute("size", "xs");
+  del.setAttribute("quiet", "");
+  const delIcon = document.createElement("sp-icon-close");
+  delIcon.setAttribute("slot", "icon");
+  del.appendChild(delIcon);
+  del.addEventListener("click", onDelete);
 
   row.appendChild(keyInput);
   row.appendChild(valInput);
