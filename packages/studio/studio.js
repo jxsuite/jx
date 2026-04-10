@@ -422,10 +422,10 @@ function prepareForEditMode(node) {
               fontFamily: "'SF Mono', 'Fira Code', monospace",
               fontSize: "11px",
               padding: "6px 10px",
-              background: "rgba(199,91,79,0.08)",
-              border: "1px dashed rgba(199,91,79,0.4)",
+              background: "color-mix(in srgb, var(--danger) 8%, transparent)",
+              border: "1px dashed color-mix(in srgb, var(--danger) 40%, transparent)",
               borderRadius: "4px",
-              color: "#c75b4f",
+              color: "var(--danger)",
               fontStyle: "italic",
             },
           }];
@@ -1066,11 +1066,13 @@ function renderZoomIndicator() {
   label.textContent = `${Math.round(S.ui.zoom * 100)}%`;
   indicator.appendChild(label);
 
-  const fitBtn = document.createElement("button");
+  const fitBtn = document.createElement("sp-action-button");
+  fitBtn.setAttribute("quiet", "");
+  fitBtn.setAttribute("size", "s");
   fitBtn.className = "zoom-fit-btn";
   fitBtn.title = "Fit to screen";
   fitBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="12" height="12" rx="1"/><path d="M2 6h12M6 2v12"/></svg>`;
-  fitBtn.onclick = fitToScreen;
+  fitBtn.addEventListener("click", fitToScreen);
   indicator.appendChild(fitBtn);
 
   document.body.appendChild(indicator);
@@ -1280,7 +1282,7 @@ function renderCanvasNode(node, path, parent, activeBreakpoints, featureToggles)
     const keys = Object.keys(node.cases);
     const placeholder = document.createElement("div");
     placeholder.textContent = `[$switch: ${keys.join(" | ")}]`;
-    placeholder.style.cssText = "font-family:monospace;font-size:11px;padding:6px 10px;background:rgba(199,91,79,0.08);border:1px dashed rgba(199,91,79,0.4);border-radius:4px;color:#c75b4f;font-style:italic";
+    placeholder.style.cssText = "font-family:monospace;font-size:11px;padding:6px 10px;background:color-mix(in srgb, var(--danger) 8%, transparent);border:1px dashed color-mix(in srgb, var(--danger) 40%, transparent);border-radius:4px;color:var(--danger);font-style:italic";
     el.appendChild(placeholder);
   }
 
@@ -2400,7 +2402,7 @@ function renderStylebookLayers(container) {
       row.appendChild(lbl);
 
       const preview = document.createElement("span");
-      preview.style.cssText = "font-size:11px;color:#888;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:80px";
+      preview.style.cssText = "font-size:11px;color:var(--fg-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:80px";
       preview.textContent = String(v);
       row.appendChild(preview);
 
@@ -2408,7 +2410,7 @@ function renderStylebookLayers(container) {
     }
     if (Object.keys(style).filter((k) => k.startsWith("--")).length === 0) {
       const empty = document.createElement("div");
-      empty.style.cssText = "padding:16px;text-align:center;color:#888;font-size:12px";
+      empty.style.cssText = "padding:16px;text-align:center;color:var(--fg-dim);font-size:12px";
       empty.textContent = "No variables defined";
       container.appendChild(empty);
     }
@@ -2498,13 +2500,16 @@ function renderLayers(container) {
     const isExpandable = hasChildren || hasMapChildren || hasCases || (nodeType === "map" && node.map);
     const key = pathKey(path);
     if (isExpandable) {
-      toggle.textContent = collapsed.has(key) ? "▶" : "▼";
-      toggle.onclick = (e) => {
+      const chevron = collapsed.has(key)
+        ? document.createElement("sp-icon-chevron-right")
+        : document.createElement("sp-icon-chevron-down");
+      toggle.appendChild(chevron);
+      toggle.addEventListener("click", (e) => {
         e.stopPropagation();
         if (collapsed.has(key)) collapsed.delete(key);
         else collapsed.add(key);
         renderLeftPanel();
-      };
+      });
     }
     row.appendChild(toggle);
 
@@ -2541,14 +2546,18 @@ function renderLayers(container) {
 
     // Delete button (not for root, and not for virtual map/case rows)
     if (path.length >= 2 && nodeType === "element") {
-      const del = document.createElement("span");
+      const del = document.createElement("sp-action-button");
+      del.setAttribute("quiet", "");
+      del.setAttribute("size", "xs");
       del.className = "layer-delete";
-      del.textContent = "✕";
       del.title = "Delete";
-      del.onclick = (e) => {
+      const delIcon = document.createElement("sp-icon-close");
+      delIcon.setAttribute("slot", "icon");
+      del.appendChild(delIcon);
+      del.addEventListener("click", (e) => {
         e.stopPropagation();
         update(removeNode(S, path));
-      };
+      });
       row.appendChild(del);
     }
 
@@ -2794,9 +2803,9 @@ function defaultDef(tag) {
 
 function renderBlocks(container) {
   // Search filter
-  const search = document.createElement("input");
-  search.className = "field-input blocks-search";
-  search.placeholder = "Filter elements…";
+  const search = document.createElement("sp-search");
+  search.setAttribute("size", "s");
+  search.setAttribute("placeholder", "Filter elements…");
   container.appendChild(search);
 
   const list = document.createElement("div");
@@ -2866,7 +2875,7 @@ function renderBlocks(container) {
     }
   }
 
-  search.oninput = () => renderList(search.value.toLowerCase());
+  search.addEventListener("input", () => renderList(search.value.toLowerCase()));
   renderList("");
 }
 
@@ -2939,18 +2948,19 @@ function renderStylebook() {
   chrome.className = "sb-chrome";
   chrome.style.cssText = "position:absolute;top:0;left:0;right:0;z-index:15;background:var(--bg-panel);border-bottom:1px solid var(--border)";
 
-  const tabBar = document.createElement("div");
-  tabBar.className = "sb-tabs";
+  const tabBar = document.createElement("sp-tabs");
+  tabBar.setAttribute("size", "s");
   for (const t of ["elements", "variables"]) {
-    const tab = document.createElement("button");
-    tab.className = `sb-tab${S.ui.stylebookTab === t ? " active" : ""}`;
-    tab.textContent = t.charAt(0).toUpperCase() + t.slice(1);
-    tab.onclick = () => {
+    const tab = document.createElement("sp-tab");
+    tab.setAttribute("label", t.charAt(0).toUpperCase() + t.slice(1));
+    tab.setAttribute("value", t);
+    if (S.ui.stylebookTab === t) tab.setAttribute("selected", "");
+    tab.addEventListener("click", () => {
       S = { ...S, ui: { ...S.ui, stylebookTab: t } };
       renderCanvas();
       renderOverlays();
       renderLeftPanel();
-    };
+    });
     tabBar.appendChild(tab);
   }
   chrome.appendChild(tabBar);
@@ -3112,7 +3122,7 @@ function renderStylebookElementsIntoCanvas(canvasEl, rootStyle, filter, customiz
       body.className = "sb-body";
       for (const comp of comps) {
         const el = document.createElement("div");
-        el.style.cssText = "padding:12px;border:1px dashed #ccc;border-radius:4px;margin-bottom:0.5em;color:#666";
+        el.style.cssText = "padding:12px;border:1px dashed var(--border);border-radius:4px;margin-bottom:0.5em;color:var(--fg-dim)";
         el.textContent = `<${comp.tagName}>`;
         const tagStyle = rootStyle[`& ${comp.tagName}`];
         if (tagStyle) {
@@ -3148,7 +3158,7 @@ function renderStylebookElementsIntoCanvas(canvasEl, rootStyle, filter, customiz
 
   if (canvasEl.children.length === 0) {
     const empty = document.createElement("div");
-    empty.style.cssText = "padding:48px;text-align:center;color:#999;font-size:13px";
+    empty.style.cssText = "padding:48px;text-align:center;color:var(--fg-dim);font-size:13px";
     empty.textContent = customizedOnly ? "No customized elements" : "No matching elements";
     canvasEl.appendChild(empty);
   }
@@ -3264,7 +3274,7 @@ function renderVarRow(catKey, catMeta, varName, varVal, isNew) {
   if (catKey === "color") {
     const swatch = document.createElement("div");
     swatch.className = "sb-var-swatch";
-    swatch.style.backgroundColor = varVal || "#007acc";
+    swatch.style.backgroundColor = varVal || "var(--accent)";
     colorPicker = document.createElement("input");
     colorPicker.type = "color";
     try { colorPicker.value = (varVal && varVal.startsWith("#")) ? varVal : "#007acc"; } catch {}
@@ -3495,8 +3505,6 @@ function createUnitInput(initialValue, { onChange, size = "s" } = {}) {
   const picker = document.createElement("sp-picker");
   picker.quiet = true;
   picker.size = size;
-  picker.value = unitVal || "px";
-  picker.label = "unit";
   if (!isNumeric) picker.style.display = "none";
 
   const units = [
@@ -3522,6 +3530,7 @@ function createUnitInput(initialValue, { onChange, size = "s" } = {}) {
       picker.appendChild(item);
     }
   }
+  requestAnimationFrame(() => { picker.value = unitVal || "px"; });
   wrap.appendChild(picker);
 
   function getValue() {
@@ -3747,13 +3756,17 @@ function renderSignals(container) {
       hint.textContent = defHint(name, def);
       row.appendChild(hint);
 
-      const del = document.createElement("span");
+      const del = document.createElement("sp-action-button");
+      del.setAttribute("quiet", "");
+      del.setAttribute("size", "xs");
       del.className = "signal-del";
-      del.textContent = "\u2715";
-      del.onclick = (e) => {
+      const delIcon = document.createElement("sp-icon-delete");
+      delIcon.setAttribute("slot", "icon");
+      del.appendChild(delIcon);
+      del.addEventListener("click", (e) => {
         e.stopPropagation();
         update(removeDef(S, name));
-      };
+      });
       row.appendChild(del);
 
       row.onclick = () => {
@@ -3783,29 +3796,49 @@ function renderSignals(container) {
   const addArea = document.createElement("div");
   addArea.className = "signals-add";
 
-  const addSelect = document.createElement("select");
-  addSelect.innerHTML = `
-    <option value="">+ Add…</option>
-    <optgroup label="Signals">
-      <option value="state">State Signal</option>
-      <option value="computed">Computed</option>
-    </optgroup>
-    <optgroup label="Data Sources">
-      <option value="request">Fetch (Request)</option>
-      <option value="localStorage">LocalStorage</option>
-      <option value="sessionStorage">SessionStorage</option>
-      <option value="indexedDB">IndexedDB</option>
-      <option value="cookie">Cookie</option>
-      <option value="set">Set</option>
-      <option value="map">Map</option>
-      <option value="formData">FormData</option>
-      <option value="external">External Module\u2026</option>
-    </optgroup>
-    <optgroup label="Logic">
-      <option value="function">Function</option>
-    </optgroup>
-  `;
-  addSelect.onchange = () => {
+  const addSelect = document.createElement("sp-picker");
+  addSelect.setAttribute("size", "s");
+  addSelect.setAttribute("label", "+ Add\u2026");
+  addSelect.setAttribute("placeholder", "+ Add\u2026");
+
+  // Signals group
+  for (const [value, label] of [["state", "State Signal"], ["computed", "Computed"]]) {
+    const item = document.createElement("sp-menu-item");
+    item.setAttribute("value", value);
+    item.textContent = label;
+    addSelect.appendChild(item);
+  }
+
+  const div1 = document.createElement("sp-menu-divider");
+  addSelect.appendChild(div1);
+
+  // Data Sources group
+  for (const [value, label] of [
+    ["request", "Fetch (Request)"],
+    ["localStorage", "LocalStorage"],
+    ["sessionStorage", "SessionStorage"],
+    ["indexedDB", "IndexedDB"],
+    ["cookie", "Cookie"],
+    ["set", "Set"],
+    ["map", "Map"],
+    ["formData", "FormData"],
+    ["external", "External Module\u2026"],
+  ]) {
+    const item = document.createElement("sp-menu-item");
+    item.setAttribute("value", value);
+    item.textContent = label;
+    addSelect.appendChild(item);
+  }
+
+  const div2 = document.createElement("sp-menu-divider");
+  addSelect.appendChild(div2);
+
+  // Logic group
+  const fnItem = document.createElement("sp-menu-item");
+  fnItem.setAttribute("value", "function");
+  fnItem.textContent = "Function";
+  addSelect.appendChild(fnItem);
+  addSelect.addEventListener("change", () => {
     const type = addSelect.value;
     if (!type) return;
     const template = DEF_TEMPLATES[type];
@@ -3820,7 +3853,7 @@ function renderSignals(container) {
     update(addDef(S, name, structuredClone(template)));
     expandedSignal = name;
     renderLeftPanel();
-  };
+  });
   addArea.appendChild(addSelect);
   container.appendChild(addArea);
 }
@@ -3847,16 +3880,18 @@ function renderSignalEditor(container, name, def) {
     typeLabel.className = "field-label";
     typeLabel.textContent = "type";
     typeSelect.appendChild(typeLabel);
-    const sel = document.createElement("select");
+    const sel = document.createElement("sp-picker");
+    sel.setAttribute("size", "s");
     sel.className = "field-input";
     for (const t of ["string", "integer", "number", "boolean", "array", "object"]) {
-      const opt = document.createElement("option");
-      opt.value = t;
-      opt.textContent = t;
-      if (def.type === t) opt.selected = true;
-      sel.appendChild(opt);
+      const item = document.createElement("sp-menu-item");
+      item.setAttribute("value", t);
+      item.textContent = t;
+      sel.appendChild(item);
     }
-    sel.onchange = () => update(updateDef(S, name, { type: sel.value }));
+    const _selType = def.type || "string";
+    requestAnimationFrame(() => { sel.value = _selType; });
+    sel.addEventListener("change", () => update(updateDef(S, name, { type: sel.value })));
     typeSelect.appendChild(sel);
     container.appendChild(typeSelect);
 
@@ -3906,13 +3941,12 @@ function renderSignalEditor(container, name, def) {
       reflLabel.className = "field-label";
       reflLabel.textContent = "reflects";
       reflRow.appendChild(reflLabel);
-      const reflCheck = document.createElement("input");
-      reflCheck.type = "checkbox";
+      const reflCheck = document.createElement("sp-checkbox");
       reflCheck.className = "field-check";
       reflCheck.checked = !!def.reflects;
-      reflCheck.onchange = () => {
+      reflCheck.addEventListener("change", () => {
         update(updateDef(S, name, { reflects: reflCheck.checked || undefined }));
-      };
+      });
       reflRow.appendChild(reflCheck);
       container.appendChild(reflRow);
 
@@ -3980,16 +4014,18 @@ function renderSignalEditor(container, name, def) {
       methodLabel.className = "field-label";
       methodLabel.textContent = "method";
       methodRow.appendChild(methodLabel);
-      const methodSel = document.createElement("select");
+      const methodSel = document.createElement("sp-picker");
+      methodSel.setAttribute("size", "s");
       methodSel.className = "field-input";
       for (const m of ["GET", "POST", "PUT", "DELETE", "PATCH"]) {
-        const opt = document.createElement("option");
-        opt.value = m;
-        opt.textContent = m;
-        if (def.method === m) opt.selected = true;
-        methodSel.appendChild(opt);
+        const item = document.createElement("sp-menu-item");
+        item.setAttribute("value", m);
+        item.textContent = m;
+        methodSel.appendChild(item);
       }
-      methodSel.onchange = () => update(updateDef(S, name, { method: methodSel.value }));
+      const _mVal = def.method || "GET";
+      requestAnimationFrame(() => { methodSel.value = _mVal; });
+      methodSel.addEventListener("change", () => update(updateDef(S, name, { method: methodSel.value })));
       methodRow.appendChild(methodSel);
       container.appendChild(methodRow);
       // Timing
@@ -3999,16 +4035,18 @@ function renderSignalEditor(container, name, def) {
       timingLabel.className = "field-label";
       timingLabel.textContent = "timing";
       timingRow.appendChild(timingLabel);
-      const timingSel = document.createElement("select");
+      const timingSel = document.createElement("sp-picker");
+      timingSel.setAttribute("size", "s");
       timingSel.className = "field-input";
       for (const t of ["client", "server"]) {
-        const opt = document.createElement("option");
-        opt.value = t;
-        opt.textContent = t;
-        if (def.timing === t) opt.selected = true;
-        timingSel.appendChild(opt);
+        const item = document.createElement("sp-menu-item");
+        item.setAttribute("value", t);
+        item.textContent = t;
+        timingSel.appendChild(item);
       }
-      timingSel.onchange = () => update(updateDef(S, name, { timing: timingSel.value }));
+      const _tVal = def.timing || "client";
+      requestAnimationFrame(() => { timingSel.value = _tVal; });
+      timingSel.addEventListener("change", () => update(updateDef(S, name, { timing: timingSel.value })));
       timingRow.appendChild(timingSel);
       container.appendChild(timingRow);
     } else if (proto === "LocalStorage" || proto === "SessionStorage") {
@@ -4403,18 +4441,18 @@ function renderEmitsEditor(container, name, def) {
 function signalFieldRow(label, value, onChange) {
   const row = document.createElement("div");
   row.className = "field-row";
-  const lbl = document.createElement("label");
-  lbl.className = "field-label";
+  const lbl = document.createElement("sp-field-label");
+  lbl.setAttribute("size", "s");
   lbl.textContent = label;
   row.appendChild(lbl);
-  const input = document.createElement("input");
-  input.className = "field-input";
+  const input = document.createElement("sp-textfield");
+  input.setAttribute("size", "s");
   input.value = value;
   let debounce;
-  input.oninput = () => {
+  input.addEventListener("input", () => {
     clearTimeout(debounce);
     debounce = setTimeout(() => onChange(input.value), 400);
-  };
+  });
   row.appendChild(input);
   return row;
 }
@@ -4444,55 +4482,53 @@ function renderSchemaFields(container, schema, def, name) {
     const row = document.createElement("div");
     row.className = "field-row";
 
-    const label = document.createElement("label");
-    label.className = "field-label";
+    const label = document.createElement("sp-field-label");
+    label.setAttribute("size", "s");
     label.textContent = prop + (required.has(prop) ? " *" : "");
     if (ps.description) label.title = ps.description;
     row.appendChild(label);
 
     if (ps.enum) {
-      // Select dropdown
-      const sel = document.createElement("select");
-      sel.className = "field-input";
+      // Picker dropdown
+      const sel = document.createElement("sp-picker");
+      sel.setAttribute("size", "s");
       if (!required.has(prop)) {
-        const emptyOpt = document.createElement("option");
-        emptyOpt.value = "";
-        emptyOpt.textContent = "\u2014";
-        sel.appendChild(emptyOpt);
+        const blankItem = document.createElement("sp-menu-item");
+        blankItem.setAttribute("value", "__none__");
+        blankItem.textContent = "\u2014";
+        sel.appendChild(blankItem);
       }
       for (const val of ps.enum) {
-        const opt = document.createElement("option");
-        opt.value = val;
-        opt.textContent = val;
-        if (currentValue === val || (currentValue === undefined && ps.default === val)) opt.selected = true;
-        sel.appendChild(opt);
+        const item = document.createElement("sp-menu-item");
+        item.value = val;
+        item.textContent = val;
+        sel.appendChild(item);
       }
-      sel.onchange = () => update(updateDef(S, name, { [prop]: sel.value || undefined }));
+      const _schemaVal = currentValue !== undefined ? String(currentValue) : ps.default !== undefined ? String(ps.default) : "__none__";
+      requestAnimationFrame(() => { sel.value = _schemaVal; });
+      sel.addEventListener("change", () => update(updateDef(S, name, { [prop]: sel.value === "__none__" ? undefined : sel.value })));
       row.appendChild(sel);
     } else if (ps.type === "boolean") {
-      const check = document.createElement("input");
-      check.type = "checkbox";
-      check.className = "field-check";
+      const check = document.createElement("sp-checkbox");
       check.checked = currentValue ?? ps.default ?? false;
-      check.onchange = () => update(updateDef(S, name, { [prop]: check.checked }));
+      check.addEventListener("change", () => update(updateDef(S, name, { [prop]: check.checked })));
       row.appendChild(check);
     } else if (ps.type === "integer" || ps.type === "number") {
-      const input = document.createElement("input");
-      input.type = "number";
-      input.className = "field-input";
-      if (ps.minimum !== undefined) input.min = ps.minimum;
-      if (ps.maximum !== undefined) input.max = ps.maximum;
-      if (ps.type === "integer") input.step = "1";
-      input.value = currentValue ?? "";
-      input.placeholder = ps.default !== undefined ? String(ps.default) : "";
+      const input = document.createElement("sp-number-field");
+      input.setAttribute("size", "s");
+      if (ps.minimum !== undefined) input.setAttribute("min", ps.minimum);
+      if (ps.maximum !== undefined) input.setAttribute("max", ps.maximum);
+      if (ps.type === "integer") input.setAttribute("step", "1");
+      if (currentValue !== undefined) input.value = currentValue;
+      if (ps.default !== undefined) input.setAttribute("placeholder", String(ps.default));
       let debounce;
-      input.oninput = () => {
+      input.addEventListener("change", () => {
         clearTimeout(debounce);
         debounce = setTimeout(() => {
           const parsed = ps.type === "integer" ? parseInt(input.value, 10) : parseFloat(input.value);
           update(updateDef(S, name, { [prop]: isNaN(parsed) ? undefined : parsed }));
         }, 400);
-      };
+      });
       row.appendChild(input);
     } else if (ps.format === "json-schema") {
       // Schema parameter — render as collapsible schema editor
@@ -4516,52 +4552,55 @@ function renderSchemaFields(container, schema, def, name) {
         wrapper.appendChild(preview);
       }
 
-      const textarea = document.createElement("textarea");
-      textarea.className = "field-input";
+      const textarea = document.createElement("sp-textfield");
+      textarea.setAttribute("multiline", "");
+      textarea.setAttribute("size", "s");
       textarea.style.minHeight = hasValue ? "80px" : "40px";
       textarea.style.fontFamily = "monospace";
       textarea.style.fontSize = "11px";
       textarea.value = currentValue !== undefined ? JSON.stringify(currentValue, null, 2) : "";
-      textarea.placeholder = ps.description ?? "JSON Schema defining the data shape\u2026";
+      textarea.setAttribute("placeholder", ps.description ?? "JSON Schema defining the data shape\u2026");
       let debounce;
-      textarea.oninput = () => {
+      textarea.addEventListener("input", () => {
         clearTimeout(debounce);
         debounce = setTimeout(() => {
           try { update(updateDef(S, name, { [prop]: JSON.parse(textarea.value) })); } catch {}
         }, 500);
-      };
+      });
       wrapper.appendChild(textarea);
       row.appendChild(wrapper);
     } else if (ps.type === "array" || ps.type === "object") {
-      const textarea = document.createElement("textarea");
-      textarea.className = "field-input";
+      const textarea = document.createElement("sp-textfield");
+      textarea.setAttribute("multiline", "");
+      textarea.setAttribute("size", "s");
       textarea.style.minHeight = "40px";
       textarea.value = currentValue !== undefined ? JSON.stringify(currentValue, null, 2) : "";
-      textarea.placeholder = ps.default !== undefined ? JSON.stringify(ps.default) : "";
+      if (ps.default !== undefined) textarea.setAttribute("placeholder", JSON.stringify(ps.default));
       let debounce;
-      textarea.oninput = () => {
+      textarea.addEventListener("input", () => {
         clearTimeout(debounce);
         debounce = setTimeout(() => {
           try { update(updateDef(S, name, { [prop]: JSON.parse(textarea.value) })); } catch {}
         }, 500);
-      };
+      });
       row.appendChild(textarea);
     } else {
       // Default: text input
-      const input = document.createElement("input");
-      input.className = "field-input";
+      const input = document.createElement("sp-textfield");
+      input.setAttribute("size", "s");
       input.value = currentValue ?? "";
-      input.placeholder = ps.default !== undefined
+      const ph = ps.default !== undefined
         ? String(ps.default)
         : (ps.examples?.[0] ?? "");
+      if (ph) input.setAttribute("placeholder", ph);
       if (ps.description) input.title = ps.description;
       let debounce;
-      input.oninput = () => {
+      input.addEventListener("input", () => {
         clearTimeout(debounce);
         debounce = setTimeout(() => {
           update(updateDef(S, name, { [prop]: input.value || undefined }));
         }, 400);
-      };
+      });
       row.appendChild(input);
     }
 
@@ -4667,13 +4706,18 @@ function renderDataExplorer(container) {
   // Toolbar with refresh button
   const bar = document.createElement("div");
   bar.className = "data-explorer-toolbar";
-  const refreshBtn = document.createElement("button");
+  const refreshBtn = document.createElement("sp-action-button");
+  refreshBtn.setAttribute("quiet", "");
+  refreshBtn.setAttribute("size", "s");
   refreshBtn.className = "data-refresh-btn";
-  refreshBtn.textContent = "\u27F3 Refresh";
-  refreshBtn.onclick = () => {
+  const refreshIcon = document.createElement("sp-icon-refresh");
+  refreshIcon.setAttribute("slot", "icon");
+  refreshBtn.appendChild(refreshIcon);
+  refreshBtn.append("Refresh");
+  refreshBtn.addEventListener("click", () => {
     renderCanvas();
     setTimeout(() => renderLeftPanel(), 200);
-  };
+  });
   bar.appendChild(refreshBtn);
   container.appendChild(bar);
 
@@ -5440,11 +5484,11 @@ function renderInspector(container) {
 
       // Navigate into template
       if (node.map) {
-        const navBtn = document.createElement("button");
-        navBtn.className = "toolbar-btn";
+        const navBtn = document.createElement("sp-action-button");
+        navBtn.setAttribute("size", "s");
         navBtn.textContent = "Edit template →";
         navBtn.style.cssText = "margin-top:8px;width:100%";
-        navBtn.onclick = () => update(selectNode(S, [...S.selection, "map"]));
+        navBtn.addEventListener("click", () => update(selectNode(S, [...S.selection, "map"])));
         fields.appendChild(navBtn);
       }
 
@@ -6217,26 +6261,22 @@ function renderButtonGroupInput(entry, value, onChange) {
     wrap.appendChild(btn);
   }
 
-  // Overflow select for enum values not in $buttonValues
+  // Overflow picker for enum values not in $buttonValues
   if (entry.$buttonValues && entry.enum && entry.enum.length > entry.$buttonValues.length) {
     const extra = entry.enum.filter((v) => !entry.$buttonValues.includes(v));
-    const more = document.createElement("select");
-    more.className = "style-btn-group-overflow";
-    const blank = document.createElement("option");
-    blank.value = "";
-    blank.textContent = "+";
-    more.appendChild(blank);
+    const more = document.createElement("sp-picker");
+    more.setAttribute("size", "s");
+    more.setAttribute("quiet", "");
+    more.setAttribute("placeholder", "+");
     for (const v of extra) {
-      const opt = document.createElement("option");
-      opt.value = v;
-      opt.textContent = v;
-      if (v === value) opt.selected = true;
-      more.appendChild(opt);
+      const item = document.createElement("sp-menu-item");
+      item.value = v;
+      item.textContent = v;
+      more.appendChild(item);
     }
-    more.onchange = () => {
+    more.addEventListener("change", () => {
       if (more.value) onChange(more.value);
-      more.value = "";
-    };
+    });
     wrap.appendChild(more);
   }
 
@@ -6244,38 +6284,37 @@ function renderButtonGroupInput(entry, value, onChange) {
 }
 
 function renderSelectInput(entry, value, onChange) {
-  const select = document.createElement("select");
+  const select = document.createElement("sp-picker");
+  select.setAttribute("size", "s");
+  select.setAttribute("label", entry.prop || "Select");
   select.className = "field-input";
   select.style.flex = "1";
   select.style.minWidth = "0";
 
-  const blankOpt = document.createElement("option");
-  blankOpt.value = "";
-  blankOpt.textContent = "—";
-  select.appendChild(blankOpt);
+  const blankItem = document.createElement("sp-menu-item");
+  blankItem.setAttribute("value", "__none__");
+  blankItem.textContent = "\u2014";
+  select.appendChild(blankItem);
 
   const vals = entry.enum;
   let found = false;
   for (const v of vals) {
-    const opt = document.createElement("option");
-    opt.value = v;
-    opt.textContent = v;
-    if (v === value) {
-      opt.selected = true;
-      found = true;
-    }
-    select.appendChild(opt);
+    const mi = document.createElement("sp-menu-item");
+    mi.setAttribute("value", v);
+    mi.textContent = v;
+    if (v === value) found = true;
+    select.appendChild(mi);
   }
   // If current value not in enum, add it
   if (value && !found) {
-    const opt = document.createElement("option");
-    opt.value = value;
-    opt.textContent = value;
-    opt.selected = true;
-    select.appendChild(opt);
+    const mi = document.createElement("sp-menu-item");
+    mi.setAttribute("value", value);
+    mi.textContent = value;
+    select.appendChild(mi);
   }
-
-  select.onchange = () => onChange(select.value);
+  // Set value after items are appended so sp-picker can match
+  requestAnimationFrame(() => { select.value = value || "__none__"; });
+  select.addEventListener("change", () => onChange(select.value === "__none__" ? "" : select.value));
   return select;
 }
 
@@ -6577,28 +6616,30 @@ function renderStyleSidebar(container, node, activeMediaTab, activeSelector) {
 
   // Media tabs (only if there are breakpoints)
   if (mediaNames.length > 0) {
-    const tabs = document.createElement("div");
-    tabs.className = "media-tabs";
+    const tabs = document.createElement("sp-tabs");
+    tabs.setAttribute("size", "s");
 
-    const baseTab = document.createElement("div");
-    baseTab.className = `media-tab${activeTab === null ? " active" : ""}`;
-    baseTab.textContent = "Base";
-    baseTab.onclick = () => {
+    const baseTab = document.createElement("sp-tab");
+    baseTab.setAttribute("label", "Base");
+    baseTab.setAttribute("value", "base");
+    if (activeTab === null) baseTab.setAttribute("selected", "");
+    baseTab.addEventListener("click", () => {
       S = { ...S, ui: { ...S.ui, activeMedia: null } };
       updateActivePanelHeaders();
       renderRightPanel();
-    };
+    });
     tabs.appendChild(baseTab);
 
     for (const name of mediaNames) {
-      const tab = document.createElement("div");
-      tab.className = `media-tab${activeTab === name ? " active" : ""}`;
-      tab.textContent = mediaDisplayName(name);
-      tab.onclick = () => {
+      const tab = document.createElement("sp-tab");
+      tab.setAttribute("label", mediaDisplayName(name));
+      tab.setAttribute("value", name);
+      if (activeTab === name) tab.setAttribute("selected", "");
+      tab.addEventListener("click", () => {
         S = { ...S, ui: { ...S.ui, activeMedia: name } };
         updateActivePanelHeaders();
         renderRightPanel();
-      };
+      });
       tabs.appendChild(tab);
     }
     wrapper.appendChild(tabs);
@@ -6612,27 +6653,23 @@ function renderStyleSidebar(container, node, activeMediaTab, activeSelector) {
   const selectorBar = document.createElement("div");
   selectorBar.className = "selector-bar";
 
-  const sel = document.createElement("select");
+  const sel = document.createElement("sp-picker");
   sel.className = "selector-select";
-
   // (base)
-  const baseOpt = document.createElement("option");
-  baseOpt.value = "";
-  baseOpt.textContent = "(base)";
-  baseOpt.selected = !activeSelector;
-  sel.appendChild(baseOpt);
+  const baseItem = document.createElement("sp-menu-item");
+  baseItem.setAttribute("value", "__base__");
+  baseItem.textContent = "(base)";
+  sel.appendChild(baseItem);
 
   // Common pseudo-selectors
-  const commonGroup = document.createElement("optgroup");
-  commonGroup.label = "Pseudo-selectors";
+  const pseudoDivider = document.createElement("sp-menu-divider");
+  sel.appendChild(pseudoDivider);
   for (const s of COMMON_SELECTORS) {
-    const opt = document.createElement("option");
-    opt.value = s;
-    opt.textContent = existingSet.has(s) ? `${s}  \u25CF` : s;
-    opt.selected = activeSelector === s;
-    commonGroup.appendChild(opt);
+    const mi = document.createElement("sp-menu-item");
+    mi.setAttribute("value", s);
+    mi.textContent = existingSet.has(s) ? `${s}  \u25CF` : s;
+    sel.appendChild(mi);
   }
-  sel.appendChild(commonGroup);
 
   // Custom selectors already on the node (+ activeSelector if not yet in any list)
   const commonSet = new Set(COMMON_SELECTORS);
@@ -6641,28 +6678,31 @@ function renderStyleSidebar(container, node, activeMediaTab, activeSelector) {
     extraSelectors.unshift(activeSelector);
   }
   if (extraSelectors.length > 0) {
-    const extraGroup = document.createElement("optgroup");
-    extraGroup.label = "Custom";
+    const customDivider = document.createElement("sp-menu-divider");
+    sel.appendChild(customDivider);
     for (const s of extraSelectors) {
-      const opt = document.createElement("option");
-      opt.value = s;
-      opt.textContent = `${s}  \u25CF`;
-      opt.selected = activeSelector === s;
-      extraGroup.appendChild(opt);
+      const mi = document.createElement("sp-menu-item");
+      mi.setAttribute("value", s);
+      mi.textContent = `${s}  \u25CF`;
+      sel.appendChild(mi);
     }
-    sel.appendChild(extraGroup);
   }
 
   // + Add custom...
-  const addOpt = document.createElement("option");
-  addOpt.value = "__add_custom__";
-  addOpt.textContent = "+ Add custom\u2026";
-  sel.appendChild(addOpt);
+  const addDivider = document.createElement("sp-menu-divider");
+  sel.appendChild(addDivider);
+  const addItem = document.createElement("sp-menu-item");
+  addItem.setAttribute("value", "__add_custom__");
+  addItem.textContent = "+ Add custom\u2026";
+  sel.appendChild(addItem);
 
-  sel.onchange = () => {
+  const _selectorVal = activeSelector || "__base__";
+  requestAnimationFrame(() => { sel.value = _selectorVal; });
+
+  sel.addEventListener("change", () => {
     const val = sel.value;
     if (val === "__add_custom__") {
-      sel.value = activeSelector || "";
+      requestAnimationFrame(() => { sel.value = activeSelector || "__base__"; });
       // Show inline input
       sel.style.display = "none";
       const inp = document.createElement("input");
@@ -6683,17 +6723,17 @@ function renderStyleSidebar(container, node, activeMediaTab, activeSelector) {
           renderRightPanel();
         }
       };
-      inp.onkeydown = (e) => {
+      inp.addEventListener("keydown", (e) => {
         if (e.key === "Enter") finish(true);
         else if (e.key === "Escape") finish(false);
-      };
-      inp.onblur = () => finish(inp.value.trim().length > 0);
+      });
+      inp.addEventListener("blur", () => finish(inp.value.trim().length > 0));
       return;
     }
-    const newSelector = val === "" ? null : val;
+    const newSelector = val === "__base__" ? null : val;
     S = { ...S, ui: { ...S.ui, activeSelector: newSelector } };
     renderRightPanel();
-  };
+  });
 
   selectorBar.appendChild(sel);
   wrapper.appendChild(selectorBar);
@@ -7000,38 +7040,35 @@ function fieldRow(label, type, value, onChange, datalistId) {
   const row = document.createElement("div");
   row.className = "field-row";
 
-  const lbl = document.createElement("label");
-  lbl.className = "field-label";
+  const lbl = document.createElement("sp-field-label");
+  lbl.setAttribute("size", "s");
   lbl.textContent = label;
   row.appendChild(lbl);
 
   let input;
   if (type === "textarea") {
-    input = document.createElement("textarea");
-    input.className = "field-input";
+    input = document.createElement("sp-textfield");
+    input.setAttribute("multiline", "");
+    input.setAttribute("size", "s");
     input.value = value;
     let debounceTimer;
-    input.oninput = () => {
+    input.addEventListener("input", () => {
       clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => onChange(input.value), 400);
-    };
+    });
   } else if (type === "checkbox") {
-    input = document.createElement("input");
-    input.className = "field-input";
-    input.type = "checkbox";
+    input = document.createElement("sp-checkbox");
     input.checked = !!value;
-    input.onchange = () => onChange(input.checked);
+    input.addEventListener("change", () => onChange(input.checked));
   } else {
-    input = document.createElement("input");
-    input.className = "field-input";
-    input.type = type;
+    input = document.createElement("sp-textfield");
+    input.setAttribute("size", "s");
     input.value = value;
-    if (datalistId) input.setAttribute("list", datalistId);
     let debounceTimer;
-    input.oninput = () => {
+    input.addEventListener("input", () => {
       clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => onChange(input.value), 400);
-    };
+    });
   }
   row.appendChild(input);
   return row;
@@ -7058,8 +7095,8 @@ function bindableFieldRow(label, type, rawValue, onChange, filterFn, extraSignal
   const row = document.createElement("div");
   row.className = "field-row";
 
-  const lbl = document.createElement("label");
-  lbl.className = "field-label";
+  const lbl = document.createElement("sp-field-label");
+  lbl.setAttribute("size", "s");
   lbl.textContent = label;
   row.appendChild(lbl);
 
@@ -7067,71 +7104,69 @@ function bindableFieldRow(label, type, rawValue, onChange, filterFn, extraSignal
     const val = isBound ? "" : (rawValue ?? "");
     let input;
     if (type === "textarea") {
-      input = document.createElement("textarea");
-      input.className = "field-input";
+      input = document.createElement("sp-textfield");
+      input.setAttribute("multiline", "");
+      input.setAttribute("size", "s");
       input.value = val;
       let debounce;
-      input.oninput = () => {
+      input.addEventListener("input", () => {
         clearTimeout(debounce);
         debounce = setTimeout(() => onChange(input.value), 400);
-      };
+      });
     } else if (type === "checkbox") {
-      input = document.createElement("input");
-      input.className = "field-input";
-      input.type = "checkbox";
+      input = document.createElement("sp-checkbox");
       input.checked = !!val;
-      input.onchange = () => onChange(input.checked);
+      input.addEventListener("change", () => onChange(input.checked));
     } else {
-      input = document.createElement("input");
-      input.className = "field-input";
-      input.type = type;
+      input = document.createElement("sp-textfield");
+      input.setAttribute("size", "s");
       input.value = val;
       let debounce;
-      input.oninput = () => {
+      input.addEventListener("input", () => {
         clearTimeout(debounce);
         debounce = setTimeout(() => onChange(input.value), 400);
-      };
+      });
     }
     return input;
   }
 
   function renderBound() {
-    const sel = document.createElement("select");
-    sel.className = "bind-select";
-    sel.innerHTML = '<option value="">— select signal —</option>';
+    const sel = document.createElement("sp-picker");
+    sel.setAttribute("size", "s");
+    sel.setAttribute("quiet", "");
+    sel.setAttribute("placeholder", "\u2014 select signal \u2014");
 
     const signalDefs = Object.entries(defs).filter(([, d]) =>
       filterFn ? filterFn(d) : !d.$handler && d.$prototype !== "Function",
     );
     for (const [defName] of signalDefs) {
-      const opt = document.createElement("option");
-      opt.value = `#/state/${defName}`;
-      opt.textContent = defName;
-      if (isBound && rawValue.$ref === `#/state/${defName}`) opt.selected = true;
-      sel.appendChild(opt);
+      const item = document.createElement("sp-menu-item");
+      item.value = `#/state/${defName}`;
+      item.textContent = defName;
+      sel.appendChild(item);
     }
 
     if (extraSignals) {
-      const sep = document.createElement("option");
-      sep.disabled = true;
-      sep.textContent = "── map signals ──";
-      sel.appendChild(sep);
+      sel.appendChild(document.createElement("sp-menu-divider"));
       for (const sig of extraSignals) {
-        const opt = document.createElement("option");
-        opt.value = sig.value;
-        opt.textContent = sig.label;
-        if (isBound && rawValue.$ref === sig.value) opt.selected = true;
-        sel.appendChild(opt);
+        const item = document.createElement("sp-menu-item");
+        item.value = sig.value;
+        item.textContent = sig.label;
+        sel.appendChild(item);
       }
     }
+    if (isBound && rawValue.$ref) {
+      const _bindVal = rawValue.$ref;
+      requestAnimationFrame(() => { sel.value = _bindVal; });
+    }
 
-    sel.onchange = () => {
+    sel.addEventListener("change", () => {
       if (sel.value) {
         onChange({ $ref: sel.value });
       } else {
         onChange(undefined);
       }
-    };
+    });
     return sel;
   }
 
@@ -7139,8 +7174,9 @@ function bindableFieldRow(label, type, rawValue, onChange, filterFn, extraSignal
   row.appendChild(inputEl);
 
   // Toggle button
-  const toggle = document.createElement("span");
-  toggle.className = `bind-toggle${isBound ? " bound" : ""}`;
+  const toggle = document.createElement("sp-action-button");
+  toggle.setAttribute("size", "xs");
+  toggle.setAttribute("quiet", "");
   toggle.textContent = isBound ? "\u26A1" : "\u2194";
   toggle.title = isBound ? "Unbind (switch to static)" : "Bind to signal";
   toggle.onclick = () => {
@@ -7464,41 +7500,53 @@ function renderEventsPanel(container) {
     evRow.style.flexWrap = "wrap";
 
     // Event name select
-    const nameInput = document.createElement("select");
+    const nameInput = document.createElement("sp-picker");
+    nameInput.setAttribute("size", "s");
     nameInput.className = "field-input event-name";
-    nameInput.innerHTML = `<option value="${evKey}">${evKey}</option>`;
+    const currentItem = document.createElement("sp-menu-item");
+    currentItem.setAttribute("value", evKey);
+    currentItem.textContent = evKey;
+    nameInput.appendChild(currentItem);
     for (const evName of EVENT_NAMES) {
       if (evName !== evKey) {
-        const opt = document.createElement("option");
-        opt.value = evName;
-        opt.textContent = evName;
-        nameInput.appendChild(opt);
+        const mi = document.createElement("sp-menu-item");
+        mi.setAttribute("value", evName);
+        mi.textContent = evName;
+        nameInput.appendChild(mi);
       }
     }
-    nameInput.onchange = () => {
+    requestAnimationFrame(() => { nameInput.value = evKey; });
+    nameInput.addEventListener("change", () => {
       let s = updateProperty(S, S.selection, evKey, undefined);
       s = updateProperty(s, S.selection, nameInput.value, node[evKey]);
       update(s);
-    };
+    });
     evRow.appendChild(nameInput);
 
     // Mode select (inline / $ref)
-    const modeSelect = document.createElement("select");
+    const modeSelect = document.createElement("sp-picker");
+    modeSelect.setAttribute("size", "s");
     modeSelect.className = "field-input";
     modeSelect.style.width = "60px";
     modeSelect.style.flexShrink = "0";
-    modeSelect.innerHTML = `
-      <option value="inline"${isInline ? " selected" : ""}>inline</option>
-      <option value="ref"${!isInline ? " selected" : ""}>$ref</option>
-    `;
-    modeSelect.onchange = () => {
+    const inlineItem = document.createElement("sp-menu-item");
+    inlineItem.setAttribute("value", "inline");
+    inlineItem.textContent = "inline";
+    modeSelect.appendChild(inlineItem);
+    const refItem = document.createElement("sp-menu-item");
+    refItem.setAttribute("value", "ref");
+    refItem.textContent = "$ref";
+    modeSelect.appendChild(refItem);
+    const _modeVal = isInline ? "inline" : "ref";
+    requestAnimationFrame(() => { modeSelect.value = _modeVal; });
+    modeSelect.addEventListener("change", () => {
       if (modeSelect.value === "inline") {
         update(updateProperty(S, S.selection, evKey, { $prototype: "Function", body: "", parameters: [] }));
       } else {
         const firstFn = functionDefs[0];
         update(updateProperty(S, S.selection, evKey, firstFn ? { $ref: `#/state/${firstFn[0]}` } : { $ref: "" }));
       }
-    };
+    });
     evRow.appendChild(modeSelect);
 
     // Delete button
@@ -7547,24 +7595,29 @@ function renderEventsPanel(container) {
       evRow.appendChild(bodyWrap);
     } else {
       // $ref mode: handler select
-      const handlerSel = document.createElement("select");
+      const handlerSel = document.createElement("sp-picker");
+      handlerSel.setAttribute("size", "s");
       handlerSel.className = "field-input event-handler";
       handlerSel.style.flex = "1";
-      handlerSel.innerHTML = '<option value="">— none —</option>';
+      const noneItem = document.createElement("sp-menu-item");
+      noneItem.setAttribute("value", "__none__");
+      noneItem.textContent = "\u2014 none \u2014";
+      handlerSel.appendChild(noneItem);
       for (const [fName] of functionDefs) {
-        const opt = document.createElement("option");
-        opt.value = `#/state/${fName}`;
-        opt.textContent = fName;
-        if (evVal.$ref === `#/state/${fName}`) opt.selected = true;
-        handlerSel.appendChild(opt);
+        const mi = document.createElement("sp-menu-item");
+        mi.setAttribute("value", `#/state/${fName}`);
+        mi.textContent = fName;
+        handlerSel.appendChild(mi);
       }
-      handlerSel.onchange = () => {
-        if (handlerSel.value) {
+      const _handlerVal = evVal.$ref || "__none__";
+      requestAnimationFrame(() => { handlerSel.value = _handlerVal; });
+      handlerSel.addEventListener("change", () => {
+        if (handlerSel.value && handlerSel.value !== "__none__") {
           update(updateProperty(S, S.selection, evKey, { $ref: handlerSel.value }));
         } else {
           update(updateProperty(S, S.selection, evKey, undefined));
         }
-      };
+      });
       // Insert before the delete button
       evRow.insertBefore(handlerSel, del);
     }
@@ -7710,8 +7763,8 @@ function renderToolbar() {
 
   // File group
   const fileGroup = group();
-  fileGroup.appendChild(tbBtn("Open", openFile));
-  fileGroup.appendChild(tbBtn("Save", saveFile));
+  fileGroup.appendChild(tbBtn("Open", openFile, "sp-icon-folder-open"));
+  fileGroup.appendChild(tbBtn("Save", saveFile, "sp-icon-save-floppy"));
   if (S.fileHandle) {
     const fname = document.createElement("span");
     fname.className = "tb-filename";
@@ -7734,11 +7787,14 @@ function renderToolbar() {
     breadcrumb.className = "breadcrumb";
 
     // Back button — pops the most recent context layer
-    const back = document.createElement("button");
-    back.className = "toolbar-btn";
-    back.textContent = "← Back";
+    const back = document.createElement("sp-action-button");
+    back.setAttribute("size", "s");
+    const backIcon = document.createElement("sp-icon-back");
+    backIcon.setAttribute("slot", "icon");
+    back.appendChild(backIcon);
+    back.append("Back");
     back.title = hasFunc ? "Close function editor" : "Return to parent document";
-    back.onclick = hasFunc ? closeFunctionEditor : navigateBack;
+    back.addEventListener("click", hasFunc ? closeFunctionEditor : navigateBack);
     breadcrumb.appendChild(back);
 
     // Document stack crumbs
@@ -7787,8 +7843,8 @@ function renderToolbar() {
 
   // Edit group
   const editGroup = group();
-  editGroup.appendChild(tbBtn("Undo", () => update(undo(S))));
-  editGroup.appendChild(tbBtn("Redo", () => update(redo(S))));
+  editGroup.appendChild(tbBtn("Undo", () => update(undo(S)), "sp-icon-undo"));
+  editGroup.appendChild(tbBtn("Redo", () => update(redo(S)), "sp-icon-redo"));
   toolbar.appendChild(editGroup);
 
   // Insert group
@@ -7796,35 +7852,41 @@ function renderToolbar() {
   insertGroup.appendChild(
     tbBtn("Duplicate", () => {
       if (S.selection) update(duplicateNode(S, S.selection));
-    }),
+    }, "sp-icon-duplicate"),
   );
   insertGroup.appendChild(
     tbBtn("Delete", () => {
       if (S.selection) update(removeNode(S, S.selection));
-    }),
+    }, "sp-icon-delete"),
   );
   toolbar.appendChild(insertGroup);
 
   // CEM Export (custom element docs only)
   if (isCustomElementDoc()) {
     const cemGroup = group();
-    cemGroup.appendChild(tbBtn("CEM", exportCemManifest));
+    cemGroup.appendChild(tbBtn("CEM", exportCemManifest, "sp-icon-export"));
     toolbar.appendChild(cemGroup);
   }
 
   // Mode switcher (segmented button group)
-  const modeGroup = group();
+  const modeGroup = document.createElement("sp-action-group");
+  modeGroup.setAttribute("selects", "single");
+  modeGroup.setAttribute("size", "s");
   const modes = [
-    { key: "edit",      label: "Edit",      icon: "✎" },
-    { key: "preview",   label: "Preview",   icon: "▶" },
-    { key: "source",    label: "Code",      icon: "{ }" },
-    { key: "stylebook", label: "Stylebook", icon: "◑" },
+    { key: "edit",      label: "Edit",      iconTag: "sp-icon-edit" },
+    { key: "preview",   label: "Preview",   iconTag: "sp-icon-preview" },
+    { key: "source",    label: "Code",      iconTag: "sp-icon-code" },
+    { key: "stylebook", label: "Stylebook", iconTag: "sp-icon-brush" },
   ];
   for (const m of modes) {
-    const btn = document.createElement("button");
-    btn.className = `tb-mode-btn${canvasMode === m.key ? " active" : ""}`;
-    btn.textContent = `${m.icon} ${m.label}`;
-    btn.onclick = () => {
+    const btn = document.createElement("sp-action-button");
+    btn.setAttribute("size", "s");
+    if (canvasMode === m.key) btn.setAttribute("selected", "");
+    const icon = document.createElement(m.iconTag);
+    icon.setAttribute("slot", "icon");
+    btn.appendChild(icon);
+    btn.append(m.label);
+    btn.addEventListener("click", () => {
       if (canvasMode === m.key) return;
       // Close function editor if leaving it
       if (S.ui.editingFunction) {
@@ -7840,7 +7902,7 @@ function renderToolbar() {
         S = { ...S, ui: { ...S.ui, rightTab: "style" } };
         renderRightPanel();
       }
-    };
+    });
     modeGroup.appendChild(btn);
   }
   toolbar.appendChild(modeGroup);
@@ -7850,17 +7912,19 @@ function renderToolbar() {
   if (featureQueries.length > 0) {
     const toggleGroup = group();
     for (const { name, query } of featureQueries) {
-      const btn = document.createElement("button");
-      btn.className = `tb-toggle${S.ui.featureToggles[name] ? " active" : ""}`;
+      const btn = document.createElement("sp-action-button");
+      btn.setAttribute("toggles", "");
+      btn.setAttribute("size", "s");
+      if (S.ui.featureToggles[name]) btn.setAttribute("selected", "");
       btn.textContent = mediaDisplayName(name);
       btn.title = query;
-      btn.onclick = () => {
-        const newToggles = { ...S.ui.featureToggles, [name]: !S.ui.featureToggles[name] };
+      btn.addEventListener("click", () => {
+        const newToggles = { ...S.ui.featureToggles, [name]: !btn.selected };
         S = { ...S, ui: { ...S.ui, featureToggles: newToggles } };
         renderCanvas();
         renderOverlays();
         renderToolbar();
-      };
+      });
       toggleGroup.appendChild(btn);
     }
     toolbar.appendChild(toggleGroup);
@@ -7877,22 +7941,28 @@ function renderToolbar() {
     tbBtn("Copy JSON", async () => {
       await navigator.clipboard.writeText(JSON.stringify(S.document, null, 2));
       statusMessage("Copied to clipboard");
-    }),
+    }, "sp-icon-copy"),
   );
   toolbar.appendChild(exportGroup);
 }
 
 function group() {
-  const g = document.createElement("div");
-  g.className = "tb-group";
+  const g = document.createElement("sp-action-group");
+  g.setAttribute("compact", "");
+  g.setAttribute("size", "s");
   return g;
 }
 
-function tbBtn(label, onClick) {
-  const btn = document.createElement("button");
-  btn.className = "tb-btn";
-  btn.textContent = label;
-  btn.onclick = onClick;
+function tbBtn(label, onClick, iconTag) {
+  const btn = document.createElement("sp-action-button");
+  btn.setAttribute("size", "s");
+  if (iconTag) {
+    const icon = document.createElement(iconTag);
+    icon.setAttribute("slot", "icon");
+    btn.appendChild(icon);
+  }
+  btn.append(label);
+  btn.addEventListener("click", onClick);
   return btn;
 }
 
@@ -8309,18 +8379,20 @@ function pasteNode() {
 
 // ─── Context menu ─────────────────────────────────────────────────────────────
 
-const ctxMenu = document.createElement("div");
-ctxMenu.className = "ctx-menu";
-ctxMenu.style.display = "none";
+const ctxMenu = document.createElement("sp-popover");
+const ctxMenuInner = document.createElement("sp-menu");
+ctxMenu.appendChild(ctxMenuInner);
+ctxMenu.style.position = "fixed";
+ctxMenu.style.zIndex = "10000";
 document.body.appendChild(ctxMenu);
 
 document.addEventListener("click", () => {
-  ctxMenu.style.display = "none";
+  ctxMenu.removeAttribute("open");
 });
 
 function showContextMenu(e, path) {
   e.preventDefault();
-  ctxMenu.style.display = "none";
+  ctxMenu.removeAttribute("open");
 
   const node = getNodeAtPath(S.document, path);
   if (!node) return;
@@ -8328,7 +8400,7 @@ function showContextMenu(e, path) {
   // Select the node
   update(selectNode(S, path));
 
-  ctxMenu.innerHTML = "";
+  ctxMenuInner.innerHTML = "";
   const items = [];
 
   items.push({ label: "Copy", action: copyNode });
@@ -8361,23 +8433,22 @@ function showContextMenu(e, path) {
 
   for (const item of items) {
     if (item.label === "—") {
-      const sep = document.createElement("div");
-      sep.className = "ctx-sep";
-      ctxMenu.appendChild(sep);
+      const sep = document.createElement("sp-menu-divider");
+      ctxMenuInner.appendChild(sep);
       continue;
     }
-    const el = document.createElement("div");
-    el.className = `ctx-item${item.danger ? " danger" : ""}`;
+    const el = document.createElement("sp-menu-item");
     el.textContent = item.label;
-    el.onclick = () => {
-      ctxMenu.style.display = "none";
+    if (item.danger) el.style.color = "var(--danger)";
+    el.addEventListener("click", () => {
+      ctxMenu.removeAttribute("open");
       item.action();
-    };
-    ctxMenu.appendChild(el);
+    });
+    ctxMenuInner.appendChild(el);
   }
 
   // Position the menu
-  ctxMenu.style.display = "block";
+  ctxMenu.setAttribute("open", "");
   const menuRect = ctxMenu.getBoundingClientRect();
   let x = e.clientX,
     y = e.clientY;

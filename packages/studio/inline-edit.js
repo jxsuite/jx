@@ -425,8 +425,10 @@ function showSlashMenu() {
   const range = sel.getRangeAt(0);
   const rect = range.getBoundingClientRect();
 
-  slashMenuEl = document.createElement("div");
-  slashMenuEl.className = "slash-menu";
+  slashMenuEl = document.createElement("sp-popover");
+  const slashMenuInner = document.createElement("sp-menu");
+  slashMenuEl.appendChild(slashMenuInner);
+  slashMenuEl._menuInner = slashMenuInner;
   slashMenuEl.style.position = "fixed";
   slashMenuEl.style.left = `${rect.left}px`;
   slashMenuEl.style.top = `${rect.bottom + 4}px`;
@@ -434,6 +436,7 @@ function showSlashMenu() {
 
   renderSlashItems("");
   document.body.appendChild(slashMenuEl);
+  slashMenuEl.setAttribute("open", "");
 
   // Track filter text after the /
   slashMenuEl._filterStart = getTextBeforeCursor(range).length;
@@ -469,14 +472,15 @@ function updateSlashMenu() {
   renderSlashItems(filter);
 
   // If no items match, dismiss
-  if (slashMenuEl.children.length === 0) {
+  if (slashMenuEl._menuInner.children.length === 0) {
     dismissSlashMenu();
   }
 }
 
 function renderSlashItems(filter) {
   if (!slashMenuEl) return;
-  slashMenuEl.innerHTML = "";
+  const menuInner = slashMenuEl._menuInner;
+  menuInner.innerHTML = "";
 
   const allItems = [
     ...SLASH_COMMANDS,
@@ -497,61 +501,57 @@ function renderSlashItems(filter) {
 
   for (let i = 0; i < items.length; i++) {
     const item = items[i];
-    const row = document.createElement("div");
-    row.className = `slash-item${i === 0 ? " active" : ""}`;
+    const row = document.createElement("sp-menu-item");
+    if (i === 0) row.setAttribute("selected", "");
 
     const icon = document.createElement("span");
-    icon.className = "slash-icon";
+    icon.slot = "icon";
     icon.textContent = item.icon;
     row.appendChild(icon);
 
-    const info = document.createElement("span");
-    info.className = "slash-info";
-    const label = document.createElement("span");
-    label.className = "slash-label";
-    label.textContent = item.label;
-    info.appendChild(label);
+    row.textContent = item.label;
+    // Re-append icon since textContent cleared it
+    row.prepend(icon);
     if (item.description) {
       const desc = document.createElement("span");
-      desc.className = "slash-desc";
+      desc.slot = "description";
       desc.textContent = item.description;
-      info.appendChild(desc);
+      row.appendChild(desc);
     }
-    row.appendChild(info);
 
-    row.onmouseenter = () => {
-      for (const r of slashMenuEl.children) r.classList.remove("active");
-      row.classList.add("active");
+    row.addEventListener("mouseenter", () => {
+      for (const r of menuInner.querySelectorAll("sp-menu-item")) r.removeAttribute("selected");
+      row.setAttribute("selected", "");
       activeIdx = i;
-    };
+    });
 
-    row.onclick = (e) => {
+    row.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
       selectSlashItem(item);
-    };
+    });
 
-    slashMenuEl.appendChild(row);
+    menuInner.appendChild(row);
   }
 
   // Keyboard navigation within the menu
   if (!slashMenuEl._keyHandler) {
     slashMenuEl._keyHandler = (e) => {
       if (!slashMenuEl) return;
-      const rows = slashMenuEl.querySelectorAll(".slash-item");
+      const rows = menuInner.querySelectorAll("sp-menu-item");
       if (!rows.length) return;
 
       if (e.key === "ArrowDown") {
         e.preventDefault();
-        rows[activeIdx]?.classList.remove("active");
+        rows[activeIdx]?.removeAttribute("selected");
         activeIdx = (activeIdx + 1) % rows.length;
-        rows[activeIdx]?.classList.add("active");
+        rows[activeIdx]?.setAttribute("selected", "");
         rows[activeIdx]?.scrollIntoView({ block: "nearest" });
       } else if (e.key === "ArrowUp") {
         e.preventDefault();
-        rows[activeIdx]?.classList.remove("active");
+        rows[activeIdx]?.removeAttribute("selected");
         activeIdx = (activeIdx - 1 + rows.length) % rows.length;
-        rows[activeIdx]?.classList.add("active");
+        rows[activeIdx]?.setAttribute("selected", "");
         rows[activeIdx]?.scrollIntoView({ block: "nearest" });
       } else if (e.key === "Enter") {
         e.preventDefault();
