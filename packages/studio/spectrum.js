@@ -25,6 +25,7 @@ import { MenuDivider } from "@spectrum-web-components/menu/src/MenuDivider.js";
 import { MenuGroup } from "@spectrum-web-components/menu/src/MenuGroup.js";
 import { Textfield } from "@spectrum-web-components/textfield/src/Textfield.js";
 import { Swatch } from "@spectrum-web-components/swatch/src/Swatch.js";
+import { SwatchGroup } from "@spectrum-web-components/swatch/src/SwatchGroup.js";
 import { ColorArea } from "@spectrum-web-components/color-area/src/ColorArea.js";
 import { ColorSlider } from "@spectrum-web-components/color-slider/src/ColorSlider.js";
 import { ColorHandle } from "@spectrum-web-components/color-handle/src/ColorHandle.js";
@@ -88,6 +89,7 @@ const components = [
   ["sp-menu-group", MenuGroup],
   ["sp-textfield", Textfield],
   ["sp-swatch", Swatch],
+  ["sp-swatch-group", SwatchGroup],
   ["sp-color-area", ColorArea],
   ["sp-color-slider", ColorSlider],
   ["sp-color-handle", ColorHandle],

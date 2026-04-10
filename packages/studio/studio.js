@@ -6077,43 +6077,163 @@ function getLonghands(shorthandProp) {
 // ── Color popover singleton ─────────────────────────────────────────────────
 let _colorPopover = null;
 let _colorCallback = null;
+let _colorDismissHandler = null;
+
+/** Extract --color-* CSS custom properties from the document root style. */
+function getColorVars() {
+  const style = S.document?.style;
+  if (!style) return [];
+  const vars = [];
+  for (const [k, v] of Object.entries(style)) {
+    if (k.startsWith("--color") && (typeof v === "string" || typeof v === "number")) {
+      vars.push({ name: k, value: String(v) });
+    }
+  }
+  return vars;
+}
+
+/** Resolve a color value for display — if it's a var() reference, look up the actual color. */
+function resolveColorForDisplay(val) {
+  if (!val) return "transparent";
+  const m = val.match(/^var\((--[^)]+)\)$/);
+  if (m) {
+    const style = S.document?.style;
+    const resolved = style?.[m[1]];
+    if (typeof resolved === "string") return resolved;
+    return "transparent";
+  }
+  return val;
+}
 
 function ensureColorPopover() {
   if (_colorPopover) return;
   _colorPopover = document.createElement("sp-popover");
+  _colorPopover.setAttribute("tabindex", "-1");
   _colorPopover.style.cssText = "padding:12px; position:fixed; z-index:9999";
-
-  const area = document.createElement("sp-color-area");
-  area.style.cssText = "width:160px; height:120px";
-  const slider = document.createElement("sp-color-slider");
-  slider.style.cssText = "width:160px; margin-top:8px";
-
-  const sync = () => {
-    slider.color = area.color;
-    _colorCallback?.(area.color);
-  };
-  area.addEventListener("input", sync);
-  slider.addEventListener("input", () => { area.color = slider.color; sync(); });
-
-  _colorPopover.append(area, slider);
   (document.querySelector("sp-theme") || document.body).appendChild(_colorPopover);
+}
+
+function closeColorPopover() {
+  if (!_colorPopover) return;
+  _colorPopover.open = false;
+  _colorCallback = null;
+  if (_colorDismissHandler) {
+    document.removeEventListener("pointerdown", _colorDismissHandler, true);
+    document.removeEventListener("keydown", _colorDismissHandler, true);
+    _colorDismissHandler = null;
+  }
 }
 
 function openColorPopover(anchorEl, currentColor, onChange) {
   ensureColorPopover();
-  const area = _colorPopover.querySelector("sp-color-area");
-  const slider = _colorPopover.querySelector("sp-color-slider");
-  try { area.color = currentColor || "#000000"; slider.color = currentColor || "#000000"; } catch {}
+
+  const colorVars = getColorVars();
+  const resolvedColor = resolveColorForDisplay(currentColor) || "#000000";
+
+  // Render popover content with lit-html
+  const syncFromArea = (e) => {
+    const area = _colorPopover.querySelector("sp-color-area");
+    const slider = _colorPopover.querySelector("sp-color-slider");
+    const tf = _colorPopover.querySelector(".color-popover-hex");
+    if (slider) slider.color = area.color;
+    if (tf) tf.value = area.color;
+    _colorCallback?.(area.color);
+  };
+
+  const syncFromSlider = (e) => {
+    const area = _colorPopover.querySelector("sp-color-area");
+    const slider = _colorPopover.querySelector("sp-color-slider");
+    const tf = _colorPopover.querySelector(".color-popover-hex");
+    if (area) area.color = slider.color;
+    if (tf) tf.value = area.color;
+    _colorCallback?.(area.color);
+  };
+
+  const syncFromText = (e) => {
+    const val = e.target.value.trim();
+    if (!val) return;
+    const area = _colorPopover.querySelector("sp-color-area");
+    const slider = _colorPopover.querySelector("sp-color-slider");
+    try {
+      if (area) area.color = val;
+      if (slider) slider.color = val;
+    } catch {}
+    _colorCallback?.(val);
+  };
+
+  const tpl = html`
+    <div class="color-popover-inner">
+      <sp-color-area style="width:200px; height:150px"
+        color=${resolvedColor}
+        @input=${syncFromArea}
+      ></sp-color-area>
+      <sp-color-slider style="width:200px"
+        color=${resolvedColor}
+        @input=${syncFromSlider}
+      ></sp-color-slider>
+      <sp-textfield size="s" class="color-popover-hex"
+        .value=${live(currentColor || "")}
+        placeholder="#000000"
+        @change=${syncFromText}
+      ></sp-textfield>
+      ${colorVars.length > 0 ? html`
+        <sp-divider size="s"></sp-divider>
+        <span class="color-popover-swatches-label">Color Tokens</span>
+        <sp-swatch-group size="xs" border="light" rounding="none">
+          ${colorVars.map((cv) => html`
+            <sp-swatch
+              color=${cv.value}
+              .value=${cv.name}
+              title=${cv.name}
+              @click=${(e) => {
+                e.stopPropagation();
+                const varRef = `var(${cv.name})`;
+                _colorCallback?.(varRef);
+                // Update the text field to show the var reference
+                const tf = _colorPopover.querySelector(".color-popover-hex");
+                if (tf) tf.value = varRef;
+              }}
+            ></sp-swatch>
+          `)}
+        </sp-swatch-group>
+      ` : nothing}
+    </div>
+  `;
+
+  litRender(tpl, _colorPopover);
+
+  // Position below anchor
   const r = anchorEl.getBoundingClientRect();
   _colorPopover.style.left = `${r.left}px`;
   _colorPopover.style.top = `${r.bottom + 4}px`;
   _colorCallback = onChange;
   _colorPopover.open = true;
+
+  // Dismiss on click-outside or Escape
+  if (_colorDismissHandler) {
+    document.removeEventListener("pointerdown", _colorDismissHandler, true);
+    document.removeEventListener("keydown", _colorDismissHandler, true);
+  }
+  _colorDismissHandler = (e) => {
+    if (e.type === "keydown") {
+      if (e.key === "Escape") closeColorPopover();
+      return;
+    }
+    // pointerdown — close if outside popover and outside the anchor swatch
+    if (!_colorPopover.contains(e.target) && !anchorEl.contains(e.target)) {
+      closeColorPopover();
+    }
+  };
+  // Defer so the opening click doesn't immediately dismiss
+  requestAnimationFrame(() => {
+    document.addEventListener("pointerdown", _colorDismissHandler, true);
+    document.addEventListener("keydown", _colorDismissHandler, true);
+  });
 }
 
 function safeColor(val) {
   if (!val) return "transparent";
-  try { return val; } catch { return "transparent"; }
+  return resolveColorForDisplay(val);
 }
 
 function renderColorInput(prop, value, onChange) {
@@ -6122,7 +6242,7 @@ function renderColorInput(prop, value, onChange) {
       <sp-swatch size="s" rounding="none" border="light"
         color=${safeColor(value)}
         @click=${(e) => {
-          if (_colorPopover?.open) { _colorPopover.open = false; return; }
+          if (_colorPopover?.open) { closeColorPopover(); return; }
           openColorPopover(e.currentTarget, value, (c) => {
             onChange(c);
           });
