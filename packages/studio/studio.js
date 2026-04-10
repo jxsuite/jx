@@ -1152,7 +1152,20 @@ function defHint(name, def) {
   if (def.$prototype === "IndexedDB") return def.database || "";
   if (def.$prototype === "Cookie") return def.name || "";
   if (def.$prototype) return def.$prototype;
+  if (def.attribute) return `[${def.attribute}] ${def.type || ""}`;
   return def.type || "";
+}
+
+/** Whether the current document defines a custom element (hyphenated tagName). */
+function isCustomElementDoc() {
+  return (S.document.tagName || "").includes("-");
+}
+
+/** Recursively collect CSS `part` attributes from the document tree. */
+function collectCssParts(node, parts = []) {
+  if (node?.attributes?.part) parts.push({ name: node.attributes.part, tag: node.tagName || "div" });
+  if (Array.isArray(node?.children)) node.children.forEach((c) => collectCssParts(c, parts));
+  return parts;
 }
 
 /**
@@ -2526,18 +2539,6 @@ function renderLayers(container) {
     }
     row.appendChild(label);
 
-    // Signal indicator
-    if (node.state) {
-      const hasSignals = Object.values(node.state).some((d) => d.signal);
-      if (hasSignals) {
-        const dot = document.createElement("span");
-        dot.className = "layer-dot";
-        dot.textContent = "⚡";
-        dot.title = "Has signals";
-        row.appendChild(dot);
-      }
-    }
-
     // Delete button (not for root, and not for virtual map/case rows)
     if (path.length >= 2 && nodeType === "element") {
       const del = document.createElement("span");
@@ -3889,6 +3890,38 @@ function renderSignalEditor(container, name, def) {
         update(updateDef(S, name, { description: v || undefined }));
       }),
     );
+
+    // CEM annotations (custom element docs only)
+    if (isCustomElementDoc()) {
+      container.appendChild(
+        signalFieldRow("attribute", def.attribute || "", (v) => {
+          update(updateDef(S, name, { attribute: v || undefined }));
+        }),
+      );
+
+      // reflects checkbox
+      const reflRow = document.createElement("div");
+      reflRow.className = "field-row";
+      const reflLabel = document.createElement("label");
+      reflLabel.className = "field-label";
+      reflLabel.textContent = "reflects";
+      reflRow.appendChild(reflLabel);
+      const reflCheck = document.createElement("input");
+      reflCheck.type = "checkbox";
+      reflCheck.className = "field-check";
+      reflCheck.checked = !!def.reflects;
+      reflCheck.onchange = () => {
+        update(updateDef(S, name, { reflects: reflCheck.checked || undefined }));
+      };
+      reflRow.appendChild(reflCheck);
+      container.appendChild(reflRow);
+
+      container.appendChild(
+        signalFieldRow("deprecated", typeof def.deprecated === "string" ? def.deprecated : "", (v) => {
+          update(updateDef(S, name, { deprecated: v || undefined }));
+        }),
+      );
+    }
   } else if (cat === "computed") {
     // Expression
     const exprRow = document.createElement("div");
@@ -4111,31 +4144,13 @@ function renderSignalEditor(container, name, def) {
       container.appendChild(bodyRow);
     }
 
-    // Parameters field (comma-separated)
-    const argsStr = (def.parameters || []).join(", ");
-    container.appendChild(
-      signalFieldRow("args", argsStr, (v) => {
-        const args = v ? v.split(",").map((a) => a.trim()).filter(Boolean) : [];
-        update(updateDef(S, name, { parameters: args.length > 0 ? args : undefined }));
-      }),
-    );
+    // Parameters editor (CEM objects)
+    renderParameterEditor(container, name, def);
 
-    // Signal checkbox (reactive computed wrapper)
-    const sigRow = document.createElement("div");
-    sigRow.className = "field-row";
-    const sigLabel = document.createElement("label");
-    sigLabel.className = "field-label";
-    sigLabel.textContent = "signal";
-    sigRow.appendChild(sigLabel);
-    const sigCheck = document.createElement("input");
-    sigCheck.type = "checkbox";
-    sigCheck.className = "field-input";
-    sigCheck.checked = !!def.signal;
-    sigCheck.onchange = () => {
-      update(updateDef(S, name, { signal: sigCheck.checked || undefined }));
-    };
-    sigRow.appendChild(sigCheck);
-    container.appendChild(sigRow);
+    // Emits editor (custom elements only)
+    if (isCustomElementDoc()) {
+      renderEmitsEditor(container, name, def);
+    }
 
     // Open in editor button
     const expandBtn = document.createElement("button");
@@ -4155,6 +4170,233 @@ function renderSignalEditor(container, name, def) {
       }),
     );
   }
+}
+
+// ─── CEM Editors ─────────────────────────────────────────────────────────────
+
+/** Normalize a parameter entry to a CEM object. */
+function normParam(p) {
+  return typeof p === "string" ? { name: p } : p;
+}
+
+/** Track which functions have the advanced param editor open. */
+const advancedParamOpen = new Set();
+
+/** Render CEM parameter editor with basic/advanced toggle. */
+function renderParameterEditor(container, name, def) {
+  const params = (def.parameters || []).map(normParam);
+  const isAdvanced = advancedParamOpen.has(name);
+
+  const wrapper = document.createElement("div");
+  wrapper.className = "field-row";
+  wrapper.style.flexWrap = "wrap";
+
+  const lbl = document.createElement("label");
+  lbl.className = "field-label";
+  lbl.textContent = "params";
+  wrapper.appendChild(lbl);
+
+  if (!isAdvanced) {
+    // ── Basic mode: name chips ──
+    const chipWrap = document.createElement("div");
+    chipWrap.style.cssText = "display:flex;flex-wrap:wrap;gap:4px;flex:1;align-items:center";
+
+    for (let i = 0; i < params.length; i++) {
+      const chip = document.createElement("span");
+      chip.style.cssText = "display:inline-flex;align-items:center;gap:2px;padding:1px 6px;border-radius:3px;background:var(--bg-hover);font-size:11px;font-family:monospace";
+      chip.textContent = params[i].name || "?";
+      const del = document.createElement("span");
+      del.textContent = "\u00d7";
+      del.style.cssText = "cursor:pointer;opacity:0.5;margin-left:2px";
+      del.onclick = () => {
+        const next = params.filter((_, j) => j !== i);
+        update(updateDef(S, name, { parameters: next.length ? next : undefined }));
+      };
+      chip.appendChild(del);
+      chipWrap.appendChild(chip);
+    }
+
+    // Inline add input
+    const addInput = document.createElement("input");
+    addInput.className = "field-input";
+    addInput.style.cssText = "width:60px;flex:0 0 auto;font-size:11px";
+    addInput.placeholder = "+";
+    addInput.onkeydown = (e) => {
+      if (e.key === "Enter" && addInput.value.trim()) {
+        const next = [...params, { name: addInput.value.trim() }];
+        update(updateDef(S, name, { parameters: next }));
+      }
+    };
+    chipWrap.appendChild(addInput);
+    wrapper.appendChild(chipWrap);
+
+    // Advanced toggle
+    const toggle = document.createElement("span");
+    toggle.textContent = "\u25b8 Advanced";
+    toggle.style.cssText = "font-size:10px;color:var(--fg-dim);cursor:pointer;width:100%;margin-top:2px";
+    toggle.onclick = () => { advancedParamOpen.add(name); renderLeftPanel(); };
+    wrapper.appendChild(toggle);
+  } else {
+    // ── Advanced mode: full rows ──
+    const list = document.createElement("div");
+    list.style.cssText = "flex:1;display:flex;flex-direction:column;gap:4px";
+
+    for (let i = 0; i < params.length; i++) {
+      const p = params[i];
+      const row = document.createElement("div");
+      row.style.cssText = "display:flex;gap:4px;align-items:center";
+
+      const nameIn = document.createElement("input");
+      nameIn.className = "field-input";
+      nameIn.value = p.name || "";
+      nameIn.placeholder = "name";
+      nameIn.style.flex = "1";
+      nameIn.onchange = () => {
+        const next = [...params];
+        next[i] = { ...next[i], name: nameIn.value };
+        update(updateDef(S, name, { parameters: next }));
+      };
+      row.appendChild(nameIn);
+
+      const typeIn = document.createElement("input");
+      typeIn.className = "field-input";
+      typeIn.value = p.type?.text || "";
+      typeIn.placeholder = "type";
+      typeIn.style.flex = "1";
+      typeIn.onchange = () => {
+        const next = [...params];
+        next[i] = { ...next[i], type: typeIn.value ? { text: typeIn.value } : undefined };
+        update(updateDef(S, name, { parameters: next }));
+      };
+      row.appendChild(typeIn);
+
+      const descIn = document.createElement("input");
+      descIn.className = "field-input";
+      descIn.value = p.description || "";
+      descIn.placeholder = "desc";
+      descIn.style.flex = "2";
+      descIn.onchange = () => {
+        const next = [...params];
+        next[i] = { ...next[i], description: descIn.value || undefined };
+        update(updateDef(S, name, { parameters: next }));
+      };
+      row.appendChild(descIn);
+
+      const optCheck = document.createElement("input");
+      optCheck.type = "checkbox";
+      optCheck.title = "optional";
+      optCheck.checked = !!p.optional;
+      optCheck.onchange = () => {
+        const next = [...params];
+        next[i] = { ...next[i], optional: optCheck.checked || undefined };
+        update(updateDef(S, name, { parameters: next }));
+      };
+      row.appendChild(optCheck);
+
+      const del = document.createElement("span");
+      del.textContent = "\u00d7";
+      del.style.cssText = "cursor:pointer;opacity:0.5";
+      del.onclick = () => {
+        const next = params.filter((_, j) => j !== i);
+        update(updateDef(S, name, { parameters: next.length ? next : undefined }));
+      };
+      row.appendChild(del);
+
+      list.appendChild(row);
+    }
+
+    // Add button
+    const addBtn = document.createElement("button");
+    addBtn.className = "kv-add";
+    addBtn.textContent = "+ Add parameter";
+    addBtn.onclick = () => {
+      update(updateDef(S, name, { parameters: [...params, { name: "" }] }));
+    };
+    list.appendChild(addBtn);
+
+    wrapper.appendChild(list);
+
+    // Basic toggle
+    const toggle = document.createElement("span");
+    toggle.textContent = "\u25be Basic";
+    toggle.style.cssText = "font-size:10px;color:var(--fg-dim);cursor:pointer;width:100%;margin-top:2px";
+    toggle.onclick = () => { advancedParamOpen.delete(name); renderLeftPanel(); };
+    wrapper.appendChild(toggle);
+  }
+
+  container.appendChild(wrapper);
+}
+
+/** Render CEM emits editor for function state entries. */
+function renderEmitsEditor(container, name, def) {
+  const emits = def.emits || [];
+  if (emits.length === 0 && !isCustomElementDoc()) return;
+
+  const header = document.createElement("div");
+  header.style.cssText = "font-size:11px;font-weight:600;color:var(--fg-dim);margin:8px 0 4px;text-transform:uppercase;letter-spacing:0.05em";
+  header.textContent = "Emits";
+  container.appendChild(header);
+
+  for (let i = 0; i < emits.length; i++) {
+    const ev = emits[i];
+    const row = document.createElement("div");
+    row.style.cssText = "display:flex;gap:4px;align-items:center;margin-bottom:4px";
+
+    const nameIn = document.createElement("input");
+    nameIn.className = "field-input";
+    nameIn.value = ev.name || "";
+    nameIn.placeholder = "event name";
+    nameIn.style.flex = "1";
+    nameIn.onchange = () => {
+      const next = [...emits];
+      next[i] = { ...next[i], name: nameIn.value };
+      update(updateDef(S, name, { emits: next }));
+    };
+    row.appendChild(nameIn);
+
+    const typeIn = document.createElement("input");
+    typeIn.className = "field-input";
+    typeIn.value = ev.type?.text || "";
+    typeIn.placeholder = "type";
+    typeIn.style.flex = "1";
+    typeIn.onchange = () => {
+      const next = [...emits];
+      next[i] = { ...next[i], type: typeIn.value ? { text: typeIn.value } : undefined };
+      update(updateDef(S, name, { emits: next }));
+    };
+    row.appendChild(typeIn);
+
+    const descIn = document.createElement("input");
+    descIn.className = "field-input";
+    descIn.value = ev.description || "";
+    descIn.placeholder = "description";
+    descIn.style.flex = "2";
+    descIn.onchange = () => {
+      const next = [...emits];
+      next[i] = { ...next[i], description: descIn.value || undefined };
+      update(updateDef(S, name, { emits: next }));
+    };
+    row.appendChild(descIn);
+
+    const del = document.createElement("span");
+    del.textContent = "\u00d7";
+    del.style.cssText = "cursor:pointer;opacity:0.5";
+    del.onclick = () => {
+      const next = emits.filter((_, j) => j !== i);
+      update(updateDef(S, name, { emits: next.length ? next : undefined }));
+    };
+    row.appendChild(del);
+
+    container.appendChild(row);
+  }
+
+  const addBtn = document.createElement("button");
+  addBtn.className = "kv-add";
+  addBtn.textContent = "+ Add event";
+  addBtn.onclick = () => {
+    update(updateDef(S, name, { emits: [...emits, { name: "" }] }));
+  };
+  container.appendChild(addBtn);
 }
 
 /** Simple field row for signal editors. */
@@ -4183,6 +4425,7 @@ function signalFieldRow(label, value, onChange) {
 const STUDIO_RESERVED_KEYS = new Set([
   "$prototype", "$src", "$export", "signal", "timing", "default",
   "description", "body", "parameters", "name",
+  "attribute", "reflects", "deprecated", "emits",
 ]);
 
 /**
@@ -5263,6 +5506,53 @@ function renderInspector(container) {
     return fields;
   });
 
+  // Observed Attributes (custom element docs, root only)
+  if (isCustomElementDoc() && S.selection.length === 0) {
+    renderInspectorSection(container, "Observed Attributes", false, () => {
+      const fields = document.createElement("div");
+      fields.className = "inspector-fields";
+      const state = S.document.state || {};
+      const entries = Object.entries(state).filter(([, d]) => d.attribute);
+
+      if (entries.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "empty-state";
+        empty.textContent = "No attributes declared. Set \u201cattribute\u201d on a state entry.";
+        fields.appendChild(empty);
+      } else {
+        for (const [key, d] of entries) {
+          const row = document.createElement("div");
+          row.style.cssText = "display:flex;gap:6px;align-items:center;padding:2px 0;font-size:11px";
+          const attrName = document.createElement("code");
+          attrName.style.cssText = "font-family:monospace;color:var(--accent)";
+          attrName.textContent = d.attribute;
+          row.appendChild(attrName);
+          const arrow = document.createElement("span");
+          arrow.style.color = "var(--fg-dim)";
+          arrow.textContent = " \u2192 ";
+          row.appendChild(arrow);
+          const stateKey = document.createElement("span");
+          stateKey.textContent = key;
+          row.appendChild(stateKey);
+          if (d.type) {
+            const typeBadge = document.createElement("span");
+            typeBadge.style.cssText = "margin-left:auto;color:var(--fg-dim);font-size:10px";
+            typeBadge.textContent = d.type;
+            row.appendChild(typeBadge);
+          }
+          if (d.reflects) {
+            const badge = document.createElement("span");
+            badge.style.cssText = "font-size:9px;background:var(--bg-hover);padding:1px 4px;border-radius:3px";
+            badge.textContent = "reflects";
+            row.appendChild(badge);
+          }
+          fields.appendChild(row);
+        }
+      }
+      return fields;
+    });
+  }
+
   // $switch section
   if (isSwitchNode) {
     renderInspectorSection(container, "$switch", true, () => {
@@ -5412,6 +5702,63 @@ function renderInspector(container) {
     fields.appendChild(add);
     return fields;
   });
+
+  // CSS Custom Properties (custom element docs, root only)
+  if (isCustomElementDoc() && S.selection.length === 0) {
+    renderInspectorSection(container, "CSS Properties", false, () => {
+      const fields = document.createElement("div");
+      fields.className = "inspector-fields";
+      const style = node.style || {};
+      const cssProps = Object.entries(style).filter(([k]) => k.startsWith("--"));
+
+      if (cssProps.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "empty-state";
+        empty.textContent = "No CSS custom properties defined.";
+        fields.appendChild(empty);
+      } else {
+        for (const [prop, val] of cssProps) {
+          const row = document.createElement("div");
+          row.style.cssText = "display:flex;gap:6px;align-items:center;padding:2px 0;font-size:11px";
+          const propName = document.createElement("code");
+          propName.style.cssText = "font-family:monospace;color:var(--accent)";
+          propName.textContent = prop;
+          row.appendChild(propName);
+          const valSpan = document.createElement("span");
+          valSpan.style.cssText = "margin-left:auto;color:var(--fg-dim)";
+          valSpan.textContent = String(val);
+          row.appendChild(valSpan);
+          fields.appendChild(row);
+        }
+      }
+      return fields;
+    });
+  }
+
+  // CSS Parts (custom element docs, root only)
+  if (isCustomElementDoc() && S.selection.length === 0) {
+    const parts = collectCssParts(S.document);
+    if (parts.length > 0) {
+      renderInspectorSection(container, "CSS Parts", false, () => {
+        const fields = document.createElement("div");
+        fields.className = "inspector-fields";
+        for (const p of parts) {
+          const row = document.createElement("div");
+          row.style.cssText = "display:flex;gap:6px;align-items:center;padding:2px 0;font-size:11px";
+          const partName = document.createElement("code");
+          partName.style.cssText = "font-family:monospace;color:var(--accent)";
+          partName.textContent = p.name;
+          row.appendChild(partName);
+          const tagSpan = document.createElement("span");
+          tagSpan.style.cssText = "color:var(--fg-dim)";
+          tagSpan.textContent = `<${p.tag}>`;
+          row.appendChild(tagSpan);
+          fields.appendChild(row);
+        }
+        return fields;
+      });
+    }
+  }
 
   // Media breakpoints section (root only)
   if (S.selection.length === 0) {
@@ -7061,6 +7408,45 @@ function renderEventsPanel(container) {
   const fields = document.createElement("div");
   fields.className = "inspector-fields";
 
+  // Declared CEM events (custom element docs)
+  if (isCustomElementDoc()) {
+    const allEmits = [];
+    for (const [fnName, d] of Object.entries(defs)) {
+      if (Array.isArray(d.emits)) {
+        for (const ev of d.emits) allEmits.push({ ...ev, _fn: fnName });
+      }
+    }
+    if (allEmits.length > 0) {
+      const header = document.createElement("div");
+      header.style.cssText = "font-size:11px;font-weight:600;color:var(--fg-dim);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.05em";
+      header.textContent = "Declared Events";
+      fields.appendChild(header);
+      for (const ev of allEmits) {
+        const row = document.createElement("div");
+        row.style.cssText = "display:flex;gap:6px;align-items:center;padding:2px 0;font-size:11px";
+        const evName = document.createElement("code");
+        evName.style.cssText = "font-family:monospace;color:var(--accent)";
+        evName.textContent = ev.name || "(unnamed)";
+        row.appendChild(evName);
+        const src = document.createElement("span");
+        src.style.cssText = "color:var(--fg-dim);font-size:10px";
+        src.textContent = `\u2190 ${ev._fn}`;
+        row.appendChild(src);
+        if (ev.type?.text) {
+          const typeBadge = document.createElement("span");
+          typeBadge.style.cssText = "margin-left:auto;color:var(--fg-dim);font-size:10px";
+          typeBadge.textContent = ev.type.text;
+          row.appendChild(typeBadge);
+        }
+        if (ev.description) row.title = ev.description;
+        fields.appendChild(row);
+      }
+      const sep = document.createElement("hr");
+      sep.style.cssText = "border:none;border-top:1px solid var(--border);margin:6px 0";
+      fields.appendChild(sep);
+    }
+  }
+
   // Find existing event bindings (both $ref and inline Function)
   const eventKeys = Object.keys(node).filter((k) => {
     if (!k.startsWith("on")) return false;
@@ -7206,6 +7592,117 @@ function renderEventsPanel(container) {
   container.appendChild(fields);
 }
 
+// ─── CEM Export ──────────────────────────────────────────────────────────────
+
+/** Collect slot elements from the document tree. */
+function collectSlots(node, slots = []) {
+  if (node?.tagName === "slot") {
+    slots.push(node.attributes?.name || "");
+  }
+  if (Array.isArray(node?.children)) node.children.forEach((c) => collectSlots(c, slots));
+  return slots;
+}
+
+/** Generate and download a CEM 2.1.0 manifest for the current document. */
+function exportCemManifest() {
+  const doc = S.document;
+  const tagName = doc.tagName;
+  if (!tagName || !tagName.includes("-")) return;
+
+  const state = doc.state || {};
+  const members = [];
+  const attributes = [];
+  const events = [];
+  const seenEvents = new Set();
+
+  for (const [key, d] of Object.entries(state)) {
+    if (key.startsWith("#")) continue; // private
+
+    const cat = defCategory(d);
+
+    if (cat === "function") {
+      members.push({
+        kind: "method",
+        name: key,
+        ...(d.description ? { description: d.description } : {}),
+        ...(d.parameters ? { parameters: d.parameters.map(normParam) } : {}),
+        ...(d.deprecated ? { deprecated: typeof d.deprecated === "string" ? d.deprecated : true } : {}),
+      });
+      // Collect emits
+      if (Array.isArray(d.emits)) {
+        for (const ev of d.emits) {
+          if (ev.name && !seenEvents.has(ev.name)) {
+            seenEvents.add(ev.name);
+            events.push({
+              name: ev.name,
+              ...(ev.type ? { type: ev.type } : {}),
+              ...(ev.description ? { description: ev.description } : {}),
+            });
+          }
+        }
+      }
+    } else if (cat === "state") {
+      members.push({
+        kind: "field",
+        name: key,
+        ...(d.type ? { type: { text: d.type } } : {}),
+        ...(d.default !== undefined ? { default: String(d.default) } : {}),
+        ...(d.description ? { description: d.description } : {}),
+        ...(d.attribute ? { attribute: d.attribute } : {}),
+        ...(d.reflects ? { reflects: true } : {}),
+        ...(d.deprecated ? { deprecated: typeof d.deprecated === "string" ? d.deprecated : true } : {}),
+      });
+      if (d.attribute) {
+        attributes.push({
+          name: d.attribute,
+          ...(d.type ? { type: { text: d.type } } : {}),
+          fieldName: key,
+        });
+      }
+    }
+  }
+
+  // Slots
+  const slotNames = collectSlots(doc);
+  const slots = slotNames.map((name) => ({ name: name || "", ...(name ? {} : { description: "Default slot" }) }));
+
+  // CSS custom properties
+  const style = doc.style || {};
+  const cssProperties = Object.entries(style)
+    .filter(([k]) => k.startsWith("--"))
+    .map(([name, val]) => ({ name, default: String(val) }));
+
+  // CSS parts
+  const cssParts = collectCssParts(doc).map((p) => ({ name: p.name }));
+
+  const manifest = {
+    schemaVersion: "2.1.0",
+    modules: [{
+      kind: "javascript-module",
+      path: "",
+      declarations: [{
+        kind: "class",
+        name: tagName,
+        tagName,
+        members,
+        ...(attributes.length ? { attributes } : {}),
+        ...(events.length ? { events } : {}),
+        ...(slots.length ? { slots } : {}),
+        ...(cssProperties.length ? { cssProperties } : {}),
+        ...(cssParts.length ? { cssParts } : {}),
+      }],
+    }],
+  };
+
+  const blob = new Blob([JSON.stringify(manifest, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${tagName}.cem.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 // ─── Toolbar ──────────────────────────────────────────────────────────────────
 
 function renderToolbar() {
@@ -7307,6 +7804,13 @@ function renderToolbar() {
     }),
   );
   toolbar.appendChild(insertGroup);
+
+  // CEM Export (custom element docs only)
+  if (isCustomElementDoc()) {
+    const cemGroup = group();
+    cemGroup.appendChild(tbBtn("CEM", exportCemManifest));
+    toolbar.appendChild(cemGroup);
+  }
 
   // Mode switcher (segmented button group)
   const modeGroup = group();
