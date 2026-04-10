@@ -7486,21 +7486,22 @@ function eventsSidebarTemplate() {
     }
     if (allEmits.length > 0) {
       declaredEventsT = html`
-        <sp-accordion-item label="Declared Events" open>
+        <div class="events-section">
+          <sp-field-label size="s">Declared Events</sp-field-label>
           ${allEmits.map((ev) => html`
-            <div style="display:flex;gap:6px;align-items:center;padding:2px 0;font-size:11px"
-              title=${ev.description || ""}>
-              <code style="font-family:monospace;color:var(--accent)">${ev.name || "(unnamed)"}</code>
-              <span style="color:var(--fg-dim);font-size:10px">\u2190 ${ev._fn}</span>
-              ${ev.type?.text ? html`<span style="margin-left:auto;color:var(--fg-dim);font-size:10px">${ev.type.text}</span>` : nothing}
+            <div class="declared-event-row" title=${ev.description || ""}>
+              <code class="event-code">${ev.name || "(unnamed)"}</code>
+              <span class="event-source">\u2190 ${ev._fn}</span>
+              ${ev.type?.text ? html`<span class="event-type">${ev.type.text}</span>` : nothing}
             </div>
           `)}
-        </sp-accordion-item>
+        </div>
+        <sp-divider size="s"></sp-divider>
       `;
     }
   }
 
-  // Find existing event bindings (both $ref and inline Function)
+  // Find existing event bindings
   const eventKeys = Object.keys(node).filter((k) => {
     if (!k.startsWith("on")) return false;
     const v = node[k];
@@ -7508,174 +7509,105 @@ function eventsSidebarTemplate() {
     return v.$ref || v.$prototype === "Function";
   });
 
-  const bindingsT = html`
-    <sp-accordion-item label="Event Bindings${eventKeys.length ? ` (${eventKeys.length})` : ""}" open>
-      <div id="events-bindings-container"></div>
-      <span class="kv-add" @click=${() => {
-        let evName = "onclick";
-        for (const name of EVENT_NAMES) {
-          if (!node[name]) { evName = name; break; }
-        }
-        if (functionDefs.length > 0) {
-          update(updateProperty(S, S.selection, evName, { $ref: `#/state/${functionDefs[0][0]}` }));
-        } else {
-          update(updateProperty(S, S.selection, evName, { $prototype: "Function", body: "", parameters: [] }));
-        }
-      }}>+ Add event</span>
-    </sp-accordion-item>
-  `;
-
-  // Imperative event rows rendered after lit-html pass
-  requestAnimationFrame(() => {
-    const container = rightPanel.querySelector("#events-bindings-container");
-    if (!container || container._rendered) return;
-    container._rendered = true;
-    renderEventBindingRows(container, node, eventKeys, functionDefs);
-  });
-
   return html`
-    <sp-accordion allow-multiple>
+    <div class="events-panel">
       ${declaredEventsT}
-      ${bindingsT}
-    </sp-accordion>
+      <div class="events-section">
+        ${eventKeys.length > 0 ? html`
+          <sp-field-label size="s">Event Bindings</sp-field-label>
+        ` : nothing}
+        ${eventKeys.map((evKey) => {
+          const evVal = node[evKey];
+          const isInline = evVal.$prototype === "Function";
+          return html`
+            <div class="event-binding">
+              <div class="event-row">
+                <sp-picker size="s" class="event-name" .value=${live(evKey)}
+                  @change=${(e) => {
+                    const newKey = e.target.value;
+                    if (newKey && newKey !== evKey) {
+                      let s = updateProperty(S, S.selection, evKey, undefined);
+                      s = updateProperty(s, S.selection, newKey, node[evKey]);
+                      update(s);
+                    }
+                  }}>
+                  ${[evKey, ...EVENT_NAMES.filter((n) => n !== evKey)].map((n) =>
+                    html`<sp-menu-item value=${n}>${n}</sp-menu-item>`
+                  )}
+                </sp-picker>
+                <sp-picker size="s" class="event-mode" .value=${live(isInline ? "inline" : "ref")}
+                  @change=${(e) => {
+                    if (e.target.value === "inline") {
+                      update(updateProperty(S, S.selection, evKey, { $prototype: "Function", body: "", parameters: [] }));
+                    } else {
+                      const firstFn = functionDefs[0];
+                      update(updateProperty(S, S.selection, evKey, firstFn ? { $ref: `#/state/${firstFn[0]}` } : { $ref: "" }));
+                    }
+                  }}>
+                  <sp-menu-item value="inline">inline</sp-menu-item>
+                  <sp-menu-item value="ref">$ref</sp-menu-item>
+                </sp-picker>
+                <sp-action-button size="xs" quiet
+                  @click=${() => update(updateProperty(S, S.selection, evKey, undefined))}>
+                  <sp-icon-delete slot="icon"></sp-icon-delete>
+                </sp-action-button>
+              </div>
+              ${isInline ? html`
+                <div class="event-body-row">
+                  <sp-textfield size="s" multiline grows placeholder="// handler body"
+                    .value=${live(evVal.body || "")}
+                    @input=${(e) => {
+                      update(updateProperty(S, S.selection, evKey, {
+                        $prototype: "Function",
+                        body: e.target.value,
+                        parameters: evVal.parameters || [],
+                      }));
+                    }}>
+                  </sp-textfield>
+                  <sp-action-button size="xs" quiet title="Open in editor"
+                    @click=${() => {
+                      S = { ...S, ui: { ...S.ui, editingFunction: { type: "event", path: S.selection, eventKey: evKey } } };
+                      renderCanvas();
+                    }}>
+                    <sp-icon-code slot="icon"></sp-icon-code>
+                  </sp-action-button>
+                </div>
+              ` : html`
+                <sp-picker size="s" class="event-handler" .value=${live(evVal.$ref || "__none__")}
+                  @change=${(e) => {
+                    if (e.target.value && e.target.value !== "__none__") {
+                      update(updateProperty(S, S.selection, evKey, { $ref: e.target.value }));
+                    } else {
+                      update(updateProperty(S, S.selection, evKey, undefined));
+                    }
+                  }}>
+                  <sp-menu-item value="__none__">\u2014 none \u2014</sp-menu-item>
+                  ${functionDefs.map(([fName]) =>
+                    html`<sp-menu-item value=${`#/state/${fName}`}>${fName}</sp-menu-item>`
+                  )}
+                </sp-picker>
+              `}
+            </div>
+          `;
+        })}
+        <sp-action-button size="s" quiet
+          @click=${() => {
+            let evName = "onclick";
+            for (const name of EVENT_NAMES) {
+              if (!node[name]) { evName = name; break; }
+            }
+            if (functionDefs.length > 0) {
+              update(updateProperty(S, S.selection, evName, { $ref: `#/state/${functionDefs[0][0]}` }));
+            } else {
+              update(updateProperty(S, S.selection, evName, { $prototype: "Function", body: "", parameters: [] }));
+            }
+          }}>
+          <sp-icon-add slot="icon"></sp-icon-add>
+          Add Event
+        </sp-action-button>
+      </div>
+    </div>
   `;
-}
-
-/** Imperative event binding rows (sp-picker needs rAF value-setting) */
-function renderEventBindingRows(container, node, eventKeys, functionDefs) {
-  for (const evKey of eventKeys) {
-    const evVal = node[evKey];
-    const isInline = evVal.$prototype === "Function";
-
-    const evRow = document.createElement("div");
-    evRow.className = "event-row";
-    evRow.style.flexWrap = "wrap";
-
-    // Event name select
-    const nameInput = document.createElement("sp-picker");
-    nameInput.setAttribute("size", "s");
-    nameInput.className = "field-input event-name";
-    const currentItem = document.createElement("sp-menu-item");
-    currentItem.setAttribute("value", evKey);
-    currentItem.textContent = evKey;
-    nameInput.appendChild(currentItem);
-    for (const evName of EVENT_NAMES) {
-      if (evName !== evKey) {
-        const mi = document.createElement("sp-menu-item");
-        mi.setAttribute("value", evName);
-        mi.textContent = evName;
-        nameInput.appendChild(mi);
-      }
-    }
-    requestAnimationFrame(() => { nameInput.value = evKey; });
-    nameInput.addEventListener("change", () => {
-      let s = updateProperty(S, S.selection, evKey, undefined);
-      s = updateProperty(s, S.selection, nameInput.value, node[evKey]);
-      update(s);
-    });
-    evRow.appendChild(nameInput);
-
-    // Mode select (inline / $ref)
-    const modeSelect = document.createElement("sp-picker");
-    modeSelect.setAttribute("size", "s");
-    modeSelect.className = "field-input";
-    modeSelect.style.width = "60px";
-    modeSelect.style.flexShrink = "0";
-    const inlineItem = document.createElement("sp-menu-item");
-    inlineItem.setAttribute("value", "inline");
-    inlineItem.textContent = "inline";
-    modeSelect.appendChild(inlineItem);
-    const refItem = document.createElement("sp-menu-item");
-    refItem.setAttribute("value", "ref");
-    refItem.textContent = "$ref";
-    modeSelect.appendChild(refItem);
-    const _modeVal = isInline ? "inline" : "ref";
-    requestAnimationFrame(() => { modeSelect.value = _modeVal; });
-    modeSelect.addEventListener("change", () => {
-      if (modeSelect.value === "inline") {
-        update(updateProperty(S, S.selection, evKey, { $prototype: "Function", body: "", parameters: [] }));
-      } else {
-        const firstFn = functionDefs[0];
-        update(updateProperty(S, S.selection, evKey, firstFn ? { $ref: `#/state/${firstFn[0]}` } : { $ref: "" }));
-      }
-    });
-    evRow.appendChild(modeSelect);
-
-    // Delete button
-    const del = document.createElement("span");
-    del.className = "kv-del";
-    del.textContent = "\u2715";
-    del.onclick = () => update(updateProperty(S, S.selection, evKey, undefined));
-    evRow.appendChild(del);
-
-    if (isInline) {
-      // Inline mode: body textarea
-      const bodyWrap = document.createElement("div");
-      bodyWrap.style.cssText = "width: 100%; display: flex; gap: 4px; align-items: start; margin-top: 3px;";
-      const bodyTA = document.createElement("textarea");
-      bodyTA.className = "field-input";
-      bodyTA.style.minHeight = "36px";
-      bodyTA.style.fontFamily = "'SF Mono', 'Fira Code', 'Consolas', monospace";
-      bodyTA.style.fontSize = "11px";
-      bodyTA.style.flex = "1";
-      bodyTA.value = evVal.body || "";
-      let debounce;
-      bodyTA.oninput = () => {
-        clearTimeout(debounce);
-        debounce = setTimeout(() => {
-          update(updateProperty(S, S.selection, evKey, {
-            $prototype: "Function",
-            body: bodyTA.value,
-            parameters: evVal.parameters || [],
-          }));
-        }, 500);
-      };
-      bodyWrap.appendChild(bodyTA);
-
-      // Expand to editor button
-      const expandBtn = document.createElement("button");
-      expandBtn.className = "kv-add";
-      expandBtn.textContent = "\u2197";
-      expandBtn.title = "Open in editor";
-      expandBtn.style.padding = "2px 6px";
-      expandBtn.onclick = () => {
-        S = { ...S, ui: { ...S.ui, editingFunction: { type: "event", path: S.selection, eventKey: evKey } } };
-        renderCanvas();
-      };
-      bodyWrap.appendChild(expandBtn);
-
-      evRow.appendChild(bodyWrap);
-    } else {
-      // $ref mode: handler select
-      const handlerSel = document.createElement("sp-picker");
-      handlerSel.setAttribute("size", "s");
-      handlerSel.className = "field-input event-handler";
-      handlerSel.style.flex = "1";
-      const noneItem = document.createElement("sp-menu-item");
-      noneItem.setAttribute("value", "__none__");
-      noneItem.textContent = "\u2014 none \u2014";
-      handlerSel.appendChild(noneItem);
-      for (const [fName] of functionDefs) {
-        const mi = document.createElement("sp-menu-item");
-        mi.setAttribute("value", `#/state/${fName}`);
-        mi.textContent = fName;
-        handlerSel.appendChild(mi);
-      }
-      const _handlerVal = evVal.$ref || "__none__";
-      requestAnimationFrame(() => { handlerSel.value = _handlerVal; });
-      handlerSel.addEventListener("change", () => {
-        if (handlerSel.value && handlerSel.value !== "__none__") {
-          update(updateProperty(S, S.selection, evKey, { $ref: handlerSel.value }));
-        } else {
-          update(updateProperty(S, S.selection, evKey, undefined));
-        }
-      });
-      // Insert before the delete button
-      evRow.insertBefore(handlerSel, del);
-    }
-
-    container.appendChild(evRow);
-  }
 }
 
 // ─── CEM Export ──────────────────────────────────────────────────────────────

@@ -227,6 +227,8 @@ Pages may override any inherited value. A page declaring its own `$head` entries
 
 Inspired by Astro and Next.js, every `.json` file in the `pages/` directory automatically becomes a route. No routing configuration is needed.
 
+> **Standards note:** All URL pattern syntax in this specification (`:param`, `*`, optional `?`, regexp groups) conforms to the [WHATWG URLPattern Standard](https://urlpattern.spec.whatwg.org/), which is included in the [WinterTC Minimum Common API](https://min-common-api.proposal.wintertc.org/). Compilers SHOULD validate patterns using `new URLPattern({ pathname: pattern })` at build time.
+
 ### 4.1 Static Routes
 
 The file path determines the URL path:
@@ -1011,6 +1013,8 @@ This follows the natural CSS cascade — more specific sources override less spe
 ---
 
 ## 11. Redirect & Rewrite Management
+
+> **Standards note:** Redirect pattern strings use [URLPattern pathname syntax](https://urlpattern.spec.whatwg.org/#pattern-strings) (`:param` named groups, `*` wildcards, `?` optional modifiers). The compiler validates all patterns via `new URLPattern({ pathname: source })` at build time.
 
 ### 11.1 Static Redirects
 

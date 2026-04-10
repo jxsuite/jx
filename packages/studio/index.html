@@ -312,9 +312,19 @@
     .bind-toggle.bound { color: var(--accent); }
 
     /* ─── Events section ─────────────────────────── */
-    .event-row { display: flex; gap: 4px; margin-bottom: 3px; align-items: center; }
-    .event-name { width: 80px; flex-shrink: 0; }
-    .event-handler { flex: 1; min-width: 0; }
+    .events-panel { padding: 8px; }
+    .events-section { margin-bottom: 8px; }
+    .declared-event-row { display: flex; gap: 6px; align-items: center; padding: 2px 0; font-size: 11px; }
+    .event-code { font-family: monospace; color: var(--accent); }
+    .event-source { color: var(--fg-dim); font-size: 10px; }
+    .event-type { margin-left: auto; color: var(--fg-dim); font-size: 10px; }
+    .event-binding { margin-bottom: 8px; }
+    .event-row { display: flex; gap: 4px; align-items: center; }
+    .event-name { flex: 1; min-width: 0; }
+    .event-mode { width: 72px; flex-shrink: 0; }
+    .event-handler { width: 100%; }
+    .event-body-row { display: flex; gap: 4px; align-items: start; margin-top: 3px; }
+    .event-body-row sp-textfield { flex: 1; font-size: 11px; }
 
     /* ─── Toolbar ────────────────────────────────── */
     .tb-filename { font-size: 11px; color: var(--fg-dim); max-width: 200px; overflow: hidden; text-overflow: ellipsis; }

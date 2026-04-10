@@ -319,6 +319,7 @@ Beyond Astro conventions, these established standards could inform the site-leve
 | **URI Reference (RFC 3986)** | `$layout`, `$src`, media paths | Already used for `$src` and `$ref` |
 | **HTTP `Link` header / `<link>` element** | `$head` entries for SEO, preload, icons | Proposed in site-architecture |
 | **Schema.org / JSON-LD** | Structured data in `$head` | Proposed in site-architecture §8.5 |
+| **WHATWG URLPattern** | Route matching syntax for redirects and dynamic routes | Adopted — `:param` and `*` syntax already conforms (see [wintertc-evaluation.md](wintertc-evaluation.md)) |
 | **Sitemap Protocol** | `sitemap.xml` generation | Proposed in site-architecture |
 | **`robots.txt` standard** | SEO | Convention (in `public/`) |
 
@@ -331,9 +332,10 @@ Beyond Astro conventions, these established standards could inform the site-leve
 | **Open Graph Protocol** | Social media metadata | Already in `$head` proposal |
 | **RSS 2.0 / Atom** | Feed generation from content collections | Worth adding to build pipeline |
 | **HTTP Redirects (301/302)** | Redirect semantics | Already in `site.json` proposal |
+| **WinterTC Minimum Common API** | Server-side runtime API surface for `$prototype` portability | Validated — existing prototypes align (see [wintertc-evaluation.md](wintertc-evaluation.md)) |
 
 ### Key Principle
 
-The site-architecture layer introduces concepts that don't have direct DOM API equivalents (routing, layouts, content collections, redirects). Where no web standard exists, Astro conventions serve as reasonable prior art. Where web standards **do** exist (HTML `<slot>`, JSON Schema, JSON Pointer, URI Reference), they should take absolute precedence.
+The site-architecture layer introduces concepts that don't have direct DOM API equivalents (routing, layouts, content collections). Where no web standard exists, Astro conventions serve as reasonable prior art. Where web standards **do** exist (HTML `<slot>`, JSON Schema, JSON Pointer, URI Reference, URLPattern), they should take absolute precedence.
 
-The `<slot>` unification is the single biggest win here — it eliminates two novel keywords (`$slot`, `$slotTarget`) in favor of an existing W3C standard that JSONsx already implements.
+The `<slot>` unification and URLPattern adoption are the two biggest wins — `<slot>` eliminates two novel keywords in favor of a W3C standard, and URLPattern grounds the redirect/routing syntax in a WHATWG standard at zero migration cost.
