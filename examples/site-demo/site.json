@@ -1,0 +1,25 @@
+{
+  "name": "JSONsx Example Site",
+  "url": "https://example.com",
+  "defaults": {
+    "layout": "./layouts/base.json",
+    "lang": "en"
+  },
+  "$head": [
+    { "tagName": "link", "attributes": { "rel": "icon", "href": "/favicon.svg" } },
+    { "tagName": "meta", "attributes": { "name": "generator", "content": "JSONsx" } }
+  ],
+  "style": {
+    "fontFamily": "system-ui, sans-serif",
+    "margin": "0",
+    "padding": "0"
+  },
+  "redirects": {
+    "/old-about": "/about"
+  },
+  "build": {
+    "outDir": "./dist",
+    "format": "directory",
+    "trailingSlash": "always"
+  }
+}

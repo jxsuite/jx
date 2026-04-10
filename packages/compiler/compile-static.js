@@ -79,6 +79,15 @@ export function compileStaticPage(raw, opts) {
  * Dynamic nodes become hydration islands; static nodes become plain HTML.
  */
 function compileNode(def, dynamic, raw, context, islands) {
+  // String children are text nodes
+  if (typeof def === "string") {
+    return escapeHtml(def);
+  }
+  if (typeof def === "number" || typeof def === "boolean") {
+    return escapeHtml(String(def));
+  }
+  if (!def || typeof def !== "object") return "";
+
   const nextContext = createCompileContext(
     raw,
     context.scope,

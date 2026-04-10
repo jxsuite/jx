@@ -1,0 +1,27 @@
+{
+  "title": "Home — JSONsx Demo",
+  "$head": [
+    { "tagName": "meta", "attributes": { "name": "description", "content": "A JSONsx site demo showing multi-page builds." } }
+  ],
+  "children": [
+    {
+      "tagName": "h1",
+      "children": ["Welcome to JSONsx"]
+    },
+    {
+      "tagName": "p",
+      "children": ["This is a statically compiled multi-page site built with the JSONsx site builder."]
+    },
+    {
+      "tagName": "ul",
+      "children": [
+        {
+          "tagName": "li",
+          "children": [
+            { "tagName": "a", "attributes": { "href": "/about" }, "children": ["About this project"] }
+          ]
+        }
+      ]
+    }
+  ]
+}

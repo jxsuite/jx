@@ -71,7 +71,9 @@ export function isDynamic(def) {
 	if (!def || typeof def !== "object") return false;
 
 	if (def.state) {
-		for (const d of Object.values(def.state)) {
+		for (const [k, d] of Object.entries(def.state)) {
+			// Skip injected context (read-only, not reactive)
+			if (k === "$site" || k === "$page") continue;
 			if (typeof d !== "object" || d === null || Array.isArray(d)) return true;
 			if (d.$prototype) return true;
 			if ("default" in d) return true;

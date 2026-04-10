@@ -1,15 +1,25 @@
 {
   "name": "@jsonsx/compiler",
   "version": "1.0.0",
-  "description": "JSONsx static HTML compiler and island detector",
+  "description": "JSONsx static HTML compiler, island detector, and site builder",
   "license": "MIT",
   "type": "module",
   "exports": {
-    ".": "./compiler.js"
+    ".": "./compiler.js",
+    "./site": "./site-build.js",
+    "./site-loader": "./site-loader.js",
+    "./pages-discovery": "./pages-discovery.js",
+    "./layout-resolver": "./layout-resolver.js",
+    "./head-merger": "./head-merger.js",
+    "./context-injection": "./context-injection.js"
+  },
+  "bin": {
+    "jsonsx-build": "./cli-build.js"
   },
   "scripts": {
     "test": "bun test",
-    "build": "bun build compiler.js --outdir=dist --format=esm --minify"
+    "build": "bun build compiler.js --outdir=dist --format=esm --minify",
+    "build:site": "bun cli-build.js"
   },
   "dependencies": {
     "@apidevtools/json-schema-ref-parser": "^15.3.5",

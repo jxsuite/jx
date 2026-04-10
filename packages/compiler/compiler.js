@@ -112,7 +112,8 @@ export async function compile(sourcePath, opts = {}) {
 
 // ─── CLI ──────────────────────────────────────────────────────────────────────
 
-if (process.argv[2]) {
+const isMainModule = process.argv[1]?.endsWith("compiler.js");
+if (isMainModule && process.argv[2]) {
   const [, , src, out] = process.argv;
 
   Promise.all([compile(src), compileServer(src)])
