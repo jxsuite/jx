@@ -82,42 +82,9 @@ import cssMeta from "./css-meta.json";
 import stylebookMeta from "./stylebook-meta.json";
 
 // ─── Spectrum Web Components ──────────────────────────────────────────────────
-import "@spectrum-web-components/theme/sp-theme.js";
-import "@spectrum-web-components/theme/theme-dark.js";
-import "@spectrum-web-components/theme/scale-medium.js";
-import "@spectrum-web-components/tabs/sp-tabs.js";
-import "@spectrum-web-components/tabs/sp-tab.js";
-import "@spectrum-web-components/action-button/sp-action-button.js";
-import "@spectrum-web-components/action-group/sp-action-group.js";
-import "@spectrum-web-components/search/sp-search.js";
-import "@spectrum-web-components/popover/sp-popover.js";
-import "@spectrum-web-components/menu/sp-menu.js";
-import "@spectrum-web-components/menu/sp-menu-item.js";
-import "@spectrum-web-components/menu/sp-menu-divider.js";
-import "@spectrum-web-components/icons-workflow/icons/sp-icon-folder.js";
-import "@spectrum-web-components/icons-workflow/icons/sp-icon-folder-open.js";
-import "@spectrum-web-components/icons-workflow/icons/sp-icon-document.js";
-import "@spectrum-web-components/icons-workflow/icons/sp-icon-file-code.js";
-import "@spectrum-web-components/icons-workflow/icons/sp-icon-file-txt.js";
-import "@spectrum-web-components/icons-workflow/icons/sp-icon-image.js";
-import "@spectrum-web-components/icons-workflow/icons/sp-icon-refresh.js";
-import "@spectrum-web-components/icons-workflow/icons/sp-icon-add.js";
-import "@spectrum-web-components/icons-workflow/icons/sp-icon-layers.js";
-import "@spectrum-web-components/icons-workflow/icons/sp-icon-view-grid.js";
-import "@spectrum-web-components/icons-workflow/icons/sp-icon-brackets.js";
-import "@spectrum-web-components/icons-workflow/icons/sp-icon-data.js";
-import "@spectrum-web-components/textfield/sp-textfield.js";
-import "@spectrum-web-components/swatch/sp-swatch.js";
-import "@spectrum-web-components/color-area/sp-color-area.js";
-import "@spectrum-web-components/color-slider/sp-color-slider.js";
-import "@spectrum-web-components/color-handle/sp-color-handle.js";
-import "@spectrum-web-components/number-field/sp-number-field.js";
-import "@spectrum-web-components/icons-workflow/icons/sp-icon-chevron-down.js";
-import "@spectrum-web-components/icons-workflow/icons/sp-icon-delete.js";
-import "@spectrum-web-components/icons-workflow/icons/sp-icon-close.js";
-import "@spectrum-web-components/icons-workflow/icons/sp-icon-add.js";
-import "@spectrum-web-components/picker/sp-picker.js";
-import "@spectrum-web-components/field-label/sp-field-label.js";
+// Explicit class imports + registration — bare side-effect imports are tree-shaken
+// by Bun's bundler despite sideEffects declarations in Spectrum's package.json.
+import { components as _swc } from "./spectrum.js"; // eslint-disable-line no-unused-vars
 import icons from "./icons.js";
 import * as monaco from "monaco-editor/esm/vs/editor/editor.api";
 
