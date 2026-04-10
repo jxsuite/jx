@@ -145,6 +145,7 @@ export function createState(doc) {
       activeSelector: null, // ':hover' | '.child' | null (base) — nested selector context
       featureToggles: {}, // { '--dark': true } — non-size media toggles
       styleSections: {}, // { layout: true, ... } — section open/closed state
+      inspectorSections: {}, // { identity: true, ... } — properties panel section open/closed state
       styleShorthands: {}, // { padding: true, ... } — shorthand expand/collapse state
       editingFunction: null, // null | { type: 'def', defName } | { type: 'event', path, eventKey }
       stylebookSelection: null, // tag name string, e.g. "h1"

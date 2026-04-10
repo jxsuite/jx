@@ -109,11 +109,10 @@
     #activity-bar sp-tab:hover { opacity: 1; }
     #activity-bar sp-tab[selected] { color: var(--fg); opacity: 1; }
 
-    /* ─── Panel tabs (Spectrum sp-tabs) ──────────── */
-    #right-panel sp-tabs {
-      font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em;
-      --mod-tabs-item-horizontal-spacing: 8px;
-    }
+    /* ─── Panel tabs (action-group) ──────────────── */
+    .panel-tabs { padding: 4px 8px; border-bottom: 1px solid var(--border); }
+    .panel-tabs sp-action-group { width: 100%; }
+    .panel-tabs sp-action-button { flex: 1; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
     .panel-body { padding: 0; }
 
     /* ─── File tree ──────────────────────────────── */
@@ -190,10 +189,6 @@
     .canvas-drop-indicator.inside { border: 2px dashed var(--accent); background: var(--accent-8); }
 
     /* ─── Inspector ──────────────────────────────── */
-    .inspector-section { border-bottom: 1px solid var(--border); }
-    .inspector-header { display: flex; align-items: center; padding: 8px; cursor: pointer; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--fg-dim); user-select: none; }
-    .inspector-header::before { content: '▼'; margin-right: 6px; font-size: 8px; transition: transform 0.15s; }
-    .inspector-header.collapsed::before { transform: rotate(-90deg); }
     .inspector-fields { padding: 4px 8px 8px; }
     .inspector-fields.hidden { display: none; }
     .field-row { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }

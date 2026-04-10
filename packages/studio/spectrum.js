@@ -70,6 +70,8 @@ import { IconPreview } from "@spectrum-web-components/icons-workflow/src/element
 import { IconCode } from "@spectrum-web-components/icons-workflow/src/elements/IconCode.js";
 import { IconBrush } from "@spectrum-web-components/icons-workflow/src/elements/IconBrush.js";
 import { IconBack } from "@spectrum-web-components/icons-workflow/src/elements/IconBack.js";
+import { IconProperties } from "@spectrum-web-components/icons-workflow/src/elements/IconProperties.js";
+import { IconEvent } from "@spectrum-web-components/icons-workflow/src/elements/IconEvent.js";
 
 // Register all components. Using defineElement from Spectrum's base package
 // ensures duplicate registration is handled gracefully.
@@ -133,6 +135,8 @@ const components = [
   ["sp-icon-code", IconCode],
   ["sp-icon-brush", IconBrush],
   ["sp-icon-back", IconBack],
+  ["sp-icon-properties", IconProperties],
+  ["sp-icon-event", IconEvent],
 ];
 
 for (const [tag, ctor] of components) {

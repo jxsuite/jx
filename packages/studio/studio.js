@@ -86,6 +86,7 @@ import { ifDefined } from "lit-html/directives/if-defined.js";
 
 import webdata from "./webdata.json";
 import cssMeta from "./css-meta.json";
+import htmlMeta from "./html-meta.json";
 import stylebookMeta from "./stylebook-meta.json";
 
 // ─── Spectrum Web Components ──────────────────────────────────────────────────
@@ -678,7 +679,7 @@ function update(newState) {
   const rightHasFocus = rightPanel.contains(document.activeElement)
     && (activeTag === "INPUT" || activeTag === "TEXTAREA"
       || activeTag === "SP-TEXTFIELD" || activeTag === "SP-NUMBER-FIELD"
-      || activeTag === "SP-PICKER" || activeTag === "SP-SEARCH");
+      || activeTag === "SP-PICKER" || activeTag === "SP-COMBOBOX" || activeTag === "SP-SEARCH");
   if (!rightHasFocus || !pathsEqual(prevSel, S.selection)) {
     renderRightPanel();
   }
@@ -5399,565 +5400,684 @@ async function openFileFromTree(path) {
 function renderRightPanel() {
   const tab = S.ui.rightTab;
 
-  // Only rebuild tabs when the tab selection changes (or first render)
-  if (rightPanel._prevTab !== tab) {
-    rightPanel.innerHTML = "";
+  // ── Action-group tabs ─────────────────────────────────────────────────
+  const panelTabs = [
+    { value: "properties", label: "Properties" },
+    { value: "events", label: "Events" },
+    { value: "style", label: "Style" },
+  ];
 
-    const tabs = document.createElement("sp-tabs");
-    tabs.selected = tab;
-    tabs.compact = true;
-    tabs.size = "s";
-    tabs.quiet = true;
-    for (const t of ["properties", "events", "style"]) {
-      const spTab = document.createElement("sp-tab");
-      spTab.label = t;
-      spTab.value = t;
-      tabs.appendChild(spTab);
-    }
-    tabs.addEventListener("change", (e) => {
-      S = { ...S, ui: { ...S.ui, rightTab: e.target.selected } };
-      renderRightPanel();
-      renderOverlays();
-    });
-    rightPanel.appendChild(tabs);
+  const tabsT = html`
+    <div class="panel-tabs">
+      <sp-action-group selects="single" size="xs" compact quiet
+        @change=${(e) => {
+          const raw = e.target.selected;
+          const sel = Array.isArray(raw) ? raw[0] : raw;
+          if (sel && sel !== tab) {
+            S = { ...S, ui: { ...S.ui, rightTab: sel } };
+            renderRightPanel();
+            renderOverlays();
+          }
+        }}>
+        ${panelTabs.map((t) => html`
+          <sp-action-button value=${t.value} ?selected=${tab === t.value} quiet>
+            ${t.value === "properties" ? html`<sp-icon-properties slot="icon"></sp-icon-properties>` :
+              t.value === "events" ? html`<sp-icon-event slot="icon"></sp-icon-event>` :
+              html`<sp-icon-brush slot="icon"></sp-icon-brush>`}
+            ${t.label}
+          </sp-action-button>
+        `)}
+      </sp-action-group>
+    </div>
+  `;
 
-    const body = document.createElement("div");
-    body.className = "panel-body";
-    rightPanel.appendChild(body);
-    rightPanel._body = body;
-    rightPanel._prevTab = tab;
+  // ── Panel body ────────────────────────────────────────────────────────
+  let bodyT = nothing;
+  if (tab === "properties") {
+    bodyT = propertiesSidebarTemplate();
+  } else if (tab === "events") {
+    bodyT = eventsSidebarTemplate();
+  } else if (tab === "style") {
+    try { bodyT = renderStylePanelTemplate(); } catch(e) { console.error("[renderStylePanelTemplate]", e); }
   }
 
-  const body = rightPanel._body;
-  if (tab === "properties") { body.innerHTML = ""; renderInspector(body); }
-  else if (tab === "events") { body.innerHTML = ""; renderEventsPanel(body); }
-  else if (tab === "style") renderStylePanel(body);
+  const tpl = html`
+    ${tabsT}
+    <div class="panel-body">${bodyT}</div>
+  `;
+
+  litRender(tpl, rightPanel);
 
   updateForcedPseudoPreview();
 }
 
 // ─── Inspector ────────────────────────────────────────────────────────────────
 
-function renderInspector(container) {
-  if (!S.selection) {
-    container.innerHTML = '<div class="empty-state">Select an element to inspect</div>';
-    return;
-  }
-
+/** Properties panel — lit-html template with accordion sections */
+function propertiesSidebarTemplate() {
+  if (!S.selection) return html`<div class="empty-state">Select an element to inspect</div>`;
   const node = getNodeAtPath(S.document, S.selection);
-  if (!node) {
-    container.innerHTML = '<div class="empty-state">Node not found</div>';
-    return;
-  }
+  if (!node) return html`<div class="empty-state">Node not found</div>`;
 
-  const isMapNode = node.$prototype === "Array"; // selected the $map row itself
+  const path = S.selection;
+  const isMapNode = node.$prototype === "Array";
   const isMapParent = node.children && typeof node.children === "object" && node.children.$prototype === "Array";
   const isSwitchNode = !!node.$switch;
   const isCustomInstance = (node.tagName || "").includes("-");
+  const isRoot = path.length === 0;
+  const tagName = node.tagName || "div";
+  const attrs = node.attributes || {};
 
-  // $map signals available when inside a repeater template
-  const mapSignals = isInsideMapTemplate(S.selection)
-    ? [
-        { value: "$map/item", label: "$map/item" },
-        { value: "$map/index", label: "$map/index" },
-      ]
+  const mapSignals = isInsideMapTemplate(path)
+    ? [{ value: "$map/item", label: "$map/item" }, { value: "$map/index", label: "$map/index" }]
     : null;
 
-  // ─── $map inspector (when the $map row itself is selected) ───
-  if (isMapNode) {
-    renderInspectorSection(container, "Repeater", true, () => {
-      const fields = document.createElement("div");
-      fields.className = "inspector-fields";
+  // Helper: render an attribute row using the style-row pattern
+  function renderAttrRow(attr, entry, value) {
+    const type = inferInputType(entry);
+    const hasVal = value !== undefined && value !== "";
 
-      fields.appendChild(
-        bindableFieldRow("items", "text", node.items, (v) => {
-          update(updateProperty(S, S.selection, "items", v));
-        }),
-      );
+    // Boolean attributes render as checkboxes
+    if (entry.type === "boolean") {
+      return html`
+        <div class="style-row" data-prop=${attr}>
+          <div class="style-row-label">
+            ${hasVal ? html`<span class="set-dot" title="Clear ${attr}"
+              @click=${(e) => { e.stopPropagation(); update(updateAttribute(S, path, attr, undefined)); }}></span>` : nothing}
+            <sp-field-label size="s" title=${attr}>${attrLabel(entry, attr)}</sp-field-label>
+          </div>
+          <sp-checkbox size="s" .checked=${live(!!value)}
+            @change=${(e) => update(updateAttribute(S, path, attr, e.target.checked || undefined))}>
+          </sp-checkbox>
+        </div>
+      `;
+    }
 
-      if (node.filter) {
-        fields.appendChild(
-          bindableFieldRow("filter", "text", node.filter, (v) => {
-            update(updateProperty(S, S.selection, "filter", v || undefined));
-          }),
-        );
-      }
-
-      if (node.sort) {
-        fields.appendChild(
-          bindableFieldRow("sort", "text", node.sort, (v) => {
-            update(updateProperty(S, S.selection, "sort", v || undefined));
-          }),
-        );
-      }
-
-      // Add filter/sort buttons
-      const addRow = document.createElement("div");
-      addRow.style.cssText = "display:flex;gap:8px;margin-top:4px";
-      if (!node.filter) {
-        const addFilter = document.createElement("span");
-        addFilter.className = "kv-add";
-        addFilter.textContent = "+ Add filter";
-        addFilter.onclick = () => update(updateProperty(S, S.selection, "filter", { $ref: "#/state/" }));
-        addRow.appendChild(addFilter);
-      }
-      if (!node.sort) {
-        const addSort = document.createElement("span");
-        addSort.className = "kv-add";
-        addSort.textContent = "+ Add sort";
-        addSort.onclick = () => update(updateProperty(S, S.selection, "sort", { $ref: "#/state/" }));
-        addRow.appendChild(addSort);
-      }
-      fields.appendChild(addRow);
-
-      // Navigate into template
-      if (node.map) {
-        const navBtn = document.createElement("sp-action-button");
-        navBtn.setAttribute("size", "s");
-        navBtn.textContent = "Edit template →";
-        navBtn.style.cssText = "margin-top:8px;width:100%";
-        navBtn.addEventListener("click", () => update(selectNode(S, [...S.selection, "map"])));
-        fields.appendChild(navBtn);
-      }
-
-      return fields;
-    });
-    return; // $map rows don't have normal element sections
+    return html`
+      <div class="style-row" data-prop=${attr}>
+        <div class="style-row-label">
+          ${hasVal ? html`<span class="set-dot" title="Clear ${attr}"
+            @click=${(e) => { e.stopPropagation(); update(updateAttribute(S, path, attr, undefined)); }}></span>` : nothing}
+          <sp-field-label size="s" title=${attr}>${attrLabel(entry, attr)}</sp-field-label>
+        </div>
+        ${widgetForType(type, entry, attr, value || "", (v) => update(updateAttribute(S, path, attr, v || undefined)))}
+      </div>
+    `;
   }
 
-  renderInspectorSection(container, "Element", true, () => {
-    const fields = document.createElement("div");
-    fields.className = "inspector-fields";
+  // ── Collect applicable attributes from html-meta ──
+  const applicableAttrs = {};
+  for (const [attr, entry] of Object.entries(htmlMeta.$defs)) {
+    if (!entry.$elements || entry.$elements.includes(tagName)) {
+      applicableAttrs[attr] = entry;
+    }
+  }
 
-    fields.appendChild(
-      fieldRow(
-        "tagName",
-        "text",
-        node.tagName || "div",
-        (v) => {
-          update(updateProperty(S, S.selection, "tagName", v || undefined));
+  // Partition into sections
+  const attrSections = {};
+  for (const sec of htmlMeta.$sections) attrSections[sec.key] = [];
+  for (const [attr, entry] of Object.entries(applicableAttrs)) {
+    const secKey = entry.$section;
+    if (attrSections[secKey]) attrSections[secKey].push({ name: attr, entry });
+  }
+  for (const sec of htmlMeta.$sections) {
+    attrSections[sec.key].sort((a, b) => a.entry.$order - b.entry.$order);
+  }
+
+  // Collect "custom" attributes (not in html-meta)
+  const knownAttrNames = new Set(Object.keys(applicableAttrs));
+  const customAttrs = Object.entries(attrs).filter(([k]) => !knownAttrNames.has(k));
+
+  // Auto-open sections that have set values
+  const autoOpen = new Set();
+  for (const [attr] of Object.entries(attrs)) {
+    const entry = applicableAttrs[attr];
+    if (entry) autoOpen.add(entry.$section);
+  }
+  // Also auto-open if there are custom attrs
+  if (customAttrs.length > 0) autoOpen.add("__custom");
+
+  function isSectionOpen(key) {
+    if (S.ui.inspectorSections[key] !== undefined) return S.ui.inspectorSections[key];
+    return autoOpen.has(key);
+  }
+
+  function toggleSection(key) {
+    const current = isSectionOpen(key);
+    S = { ...S, ui: { ...S.ui, inspectorSections: { ...S.ui.inspectorSections, [key]: !current } } };
+    renderRightPanel();
+  }
+
+  // ── Build section templates ─────────────────────────────────────────
+
+  // "Element" section — tagName, textContent, hidden
+  const elemT = html`
+    <sp-accordion-item label="Element" ?open=${isSectionOpen("__element") !== false}
+      @sp-accordion-item-toggle=${() => toggleSection("__element")}>
+      <div class="style-section-body">
+        <div class="style-row" data-prop="tagName">
+          <div class="style-row-label">
+            <sp-field-label size="s">Tag</sp-field-label>
+          </div>
+          <sp-textfield size="s" .value=${live(tagName)} autocomplete="off" list="tag-names"
+            @input=${debouncedStyleCommit("prop:tagName", 400, (e) => {
+              update(updateProperty(S, path, "tagName", e.target.value || undefined));
+            })}></sp-textfield>
+        </div>
+        <div class="style-row" data-prop="$id">
+          <div class="style-row-label">
+            ${node.$id ? html`<span class="set-dot" title="Clear $id"
+              @click=${(e) => { e.stopPropagation(); update(updateProperty(S, path, "$id", undefined)); }}></span>` : nothing}
+            <sp-field-label size="s">ID</sp-field-label>
+          </div>
+          <sp-textfield size="s" .value=${live(node.$id || "")}
+            @input=${debouncedStyleCommit("prop:$id", 400, (e) => {
+              update(updateProperty(S, path, "$id", e.target.value || undefined));
+            })}></sp-textfield>
+        </div>
+        <div class="style-row" data-prop="className">
+          <div class="style-row-label">
+            ${node.className ? html`<span class="set-dot" title="Clear class"
+              @click=${(e) => { e.stopPropagation(); update(updateProperty(S, path, "className", undefined)); }}></span>` : nothing}
+            <sp-field-label size="s">Class</sp-field-label>
+          </div>
+          <sp-textfield size="s" .value=${live(node.className || "")}
+            @input=${debouncedStyleCommit("prop:className", 400, (e) => {
+              update(updateProperty(S, path, "className", e.target.value || undefined));
+            })}></sp-textfield>
+        </div>
+        ${!Array.isArray(node.children) || node.children.length === 0 ? html`
+          <div class="style-row" data-prop="textContent">
+            <div class="style-row-label">
+              ${node.textContent !== undefined ? html`<span class="set-dot" title="Clear text"
+                @click=${(e) => { e.stopPropagation(); update(updateProperty(S, path, "textContent", undefined)); }}></span>` : nothing}
+              <sp-field-label size="s">Text Content</sp-field-label>
+            </div>
+            <sp-textfield size="s" multiline .value=${live(typeof node.textContent === "string" ? node.textContent : (node.textContent ?? ""))}
+              @input=${debouncedStyleCommit("prop:textContent", 400, (e) => {
+                update(updateProperty(S, path, "textContent", e.target.value || undefined));
+              })}></sp-textfield>
+          </div>
+        ` : nothing}
+        <div class="style-row" data-prop="hidden">
+          <div class="style-row-label">
+            ${node.hidden ? html`<span class="set-dot" title="Clear hidden"
+              @click=${(e) => { e.stopPropagation(); update(updateProperty(S, path, "hidden", undefined)); }}></span>` : nothing}
+            <sp-field-label size="s">Hidden</sp-field-label>
+          </div>
+          <sp-checkbox size="s" .checked=${live(!!node.hidden)}
+            @change=${(e) => update(updateProperty(S, path, "hidden", e.target.checked || undefined))}>
+          </sp-checkbox>
+        </div>
+        ${isMapParent ? html`
+          <div style="font-size:10px;color:var(--fg-dim);padding:4px 0;font-style:italic">
+            Children: Repeater (select in layers to configure)
+          </div>
+        ` : nothing}
+      </div>
+    </sp-accordion-item>
+  `;
+
+  // "Repeater" section (if $map node)
+  const repeaterT = isMapNode ? html`
+    <sp-accordion-item label="Repeater" open>
+      <div class="style-section-body" id="inspector-repeater"></div>
+    </sp-accordion-item>
+  ` : nothing;
+
+  // "$switch" section
+  const switchT = isSwitchNode ? html`
+    <sp-accordion-item label="Switch" open>
+      <div class="style-section-body" id="inspector-switch"></div>
+    </sp-accordion-item>
+  ` : nothing;
+
+  // "Observed Attributes" section (custom element doc root)
+  const observedAttrsT = (isCustomElementDoc() && isRoot) ? (() => {
+    const state = S.document.state || {};
+    const entries = Object.entries(state).filter(([, d]) => d.attribute);
+    return html`
+      <sp-accordion-item label="Observed Attributes" ?open=${isSectionOpen("__observed")}>
+        <div class="style-section-body">
+          ${entries.length === 0
+            ? html`<div class="empty-state">No attributes declared. Set "attribute" on a state entry.</div>`
+            : entries.map(([key, d]) => html`
+              <div style="display:flex;gap:6px;align-items:center;padding:2px 0;font-size:11px">
+                <code style="font-family:monospace;color:var(--accent)">${d.attribute}</code>
+                <span style="color:var(--fg-dim)"> → </span>
+                <span>${key}</span>
+                ${d.type ? html`<span style="margin-left:auto;color:var(--fg-dim);font-size:10px">${d.type}</span>` : nothing}
+                ${d.reflects ? html`<span style="font-size:9px;background:var(--bg-hover);padding:1px 4px;border-radius:3px">reflects</span>` : nothing}
+              </div>
+            `)
+          }
+        </div>
+      </sp-accordion-item>
+    `;
+  })() : nothing;
+
+  // "Component Props" section
+  const compPropsT = isCustomInstance ? (() => {
+    const comp = componentRegistry.find((c) => c.tagName === tagName);
+    if (!comp) return html`
+      <sp-accordion-item label="Component Props" open>
+        <div class="style-section-body">
+          <div class="empty-state">Component "${tagName}" not found in project</div>
+        </div>
+      </sp-accordion-item>
+    `;
+    const currentProps = node.$props || {};
+    return html`
+      <sp-accordion-item label="Component Props" open>
+        <div class="style-section-body" id="inspector-comp-props"></div>
+      </sp-accordion-item>
+    `;
+  })() : nothing;
+
+  // HTML-meta attribute sections
+  const attrSectionTemplates = htmlMeta.$sections
+    .filter((sec) => attrSections[sec.key].length > 0)
+    .map((sec) => {
+      const sectionAttrs = attrSections[sec.key];
+      const hasAnySet = sectionAttrs.some((a) => attrs[a.name] !== undefined);
+      return html`
+        <sp-accordion-item label=${sec.label}
+          ?open=${isSectionOpen(sec.key)}
+          @sp-accordion-item-toggle=${() => toggleSection(sec.key)}>
+          ${hasAnySet ? html`<span slot="heading" class="set-dot set-dot--section"></span>` : nothing}
+          <div class="style-section-body">
+            ${sectionAttrs.map((a) => renderAttrRow(a.name, a.entry, attrs[a.name]))}
+          </div>
+        </sp-accordion-item>
+      `;
+    });
+
+  // "Custom" attributes section (not in html-meta)
+  const customSectionT = customAttrs.length > 0 || Object.keys(attrs).length > 0 ? html`
+    <sp-accordion-item label="Custom"
+      ?open=${isSectionOpen("__custom")}
+      @sp-accordion-item-toggle=${() => toggleSection("__custom")}>
+      ${customAttrs.length > 0 ? html`<span slot="heading" class="set-dot set-dot--section"></span>` : nothing}
+      <div class="style-section-body" id="inspector-custom-attrs"></div>
+    </sp-accordion-item>
+  ` : nothing;
+
+  // Media section (root only)
+  const mediaT = isRoot ? html`
+    <sp-accordion-item label="Media"
+      ?open=${isSectionOpen("__media")}
+      @sp-accordion-item-toggle=${() => toggleSection("__media")}>
+      <div class="style-section-body" id="inspector-media"></div>
+    </sp-accordion-item>
+  ` : nothing;
+
+  // CSS Properties + CSS Parts (custom element doc root)
+  const cssPropsT = (isCustomElementDoc() && isRoot) ? (() => {
+    const style = node.style || {};
+    const cssProps = Object.entries(style).filter(([k]) => k.startsWith("--"));
+    if (cssProps.length === 0) return nothing;
+    return html`
+      <sp-accordion-item label="CSS Properties"
+        ?open=${isSectionOpen("__cssprops")}
+        @sp-accordion-item-toggle=${() => toggleSection("__cssprops")}>
+        <div class="style-section-body">
+          ${cssProps.map(([prop, val]) => html`
+            <div style="display:flex;gap:6px;align-items:center;padding:2px 0;font-size:11px">
+              <code style="font-family:monospace;color:var(--accent)">${prop}</code>
+              <span style="margin-left:auto;color:var(--fg-dim)">${String(val)}</span>
+            </div>
+          `)}
+        </div>
+      </sp-accordion-item>
+    `;
+  })() : nothing;
+
+  const cssPartsT = (isCustomElementDoc() && isRoot) ? (() => {
+    const parts = collectCssParts(S.document);
+    if (parts.length === 0) return nothing;
+    return html`
+      <sp-accordion-item label="CSS Parts"
+        ?open=${isSectionOpen("__cssparts")}
+        @sp-accordion-item-toggle=${() => toggleSection("__cssparts")}>
+        <div class="style-section-body">
+          ${parts.map((p) => html`
+            <div style="display:flex;gap:6px;align-items:center;padding:2px 0;font-size:11px">
+              <code style="font-family:monospace;color:var(--accent)">${p.name}</code>
+              <span style="color:var(--fg-dim)">&lt;${p.tag}&gt;</span>
+            </div>
+          `)}
+        </div>
+      </sp-accordion-item>
+    `;
+  })() : nothing;
+
+  // ── Assemble ──
+  const tpl = html`
+    <div class="style-sidebar">
+      <sp-accordion allow-multiple size="s">
+        ${isMapNode ? repeaterT : elemT}
+        ${isMapNode ? nothing : observedAttrsT}
+        ${isMapNode ? nothing : switchT}
+        ${isMapNode ? nothing : compPropsT}
+        ${isMapNode ? nothing : attrSectionTemplates}
+        ${isMapNode ? nothing : customSectionT}
+        ${isMapNode ? nothing : mediaT}
+        ${isMapNode ? nothing : cssPropsT}
+        ${isMapNode ? nothing : cssPartsT}
+      </sp-accordion>
+    </div>
+  `;
+
+  // Schedule imperative rendering for sections that need it (bind toggles, complex interactions)
+  requestAnimationFrame(() => {
+    // Repeater section
+    if (isMapNode) {
+      const container = rightPanel.querySelector("#inspector-repeater");
+      if (container && !container._rendered) {
+        container._rendered = true;
+        renderRepeaterFields(container, node, path, mapSignals);
+      }
+    }
+    // Switch section
+    if (isSwitchNode) {
+      const container = rightPanel.querySelector("#inspector-switch");
+      if (container && !container._rendered) {
+        container._rendered = true;
+        renderSwitchFields(container, node, path, mapSignals);
+      }
+    }
+    // Component Props (needs bindableFieldRow)
+    if (isCustomInstance) {
+      const container = rightPanel.querySelector("#inspector-comp-props");
+      if (container && !container._rendered) {
+        container._rendered = true;
+        renderComponentPropsFields(container, node, path, mapSignals);
+      }
+    }
+    // Custom attrs (kvRow)
+    const customContainer = rightPanel.querySelector("#inspector-custom-attrs");
+    if (customContainer && !customContainer._rendered) {
+      customContainer._rendered = true;
+      renderCustomAttrsFields(customContainer, node, path, attrs, knownAttrNames);
+    }
+    // Media section
+    if (isRoot) {
+      const mediaContainer = rightPanel.querySelector("#inspector-media");
+      if (mediaContainer && !mediaContainer._rendered) {
+        mediaContainer._rendered = true;
+        renderMediaFields(mediaContainer, node);
+      }
+    }
+  });
+
+  return tpl;
+}
+
+/** Imperative helper: repeater fields */
+function renderRepeaterFields(container, node, path, mapSignals) {
+  container.appendChild(
+    bindableFieldRow("Items", "text", node.items, (v) => update(updateProperty(S, path, "items", v))),
+  );
+  if (node.filter) {
+    container.appendChild(
+      bindableFieldRow("Filter", "text", node.filter, (v) => update(updateProperty(S, path, "filter", v || undefined))),
+    );
+  }
+  if (node.sort) {
+    container.appendChild(
+      bindableFieldRow("Sort", "text", node.sort, (v) => update(updateProperty(S, path, "sort", v || undefined))),
+    );
+  }
+  const addRow = document.createElement("div");
+  addRow.style.cssText = "display:flex;gap:8px;margin-top:4px";
+  if (!node.filter) {
+    const addFilter = document.createElement("span");
+    addFilter.className = "kv-add";
+    addFilter.textContent = "+ Add filter";
+    addFilter.onclick = () => update(updateProperty(S, path, "filter", { $ref: "#/state/" }));
+    addRow.appendChild(addFilter);
+  }
+  if (!node.sort) {
+    const addSort = document.createElement("span");
+    addSort.className = "kv-add";
+    addSort.textContent = "+ Add sort";
+    addSort.onclick = () => update(updateProperty(S, path, "sort", { $ref: "#/state/" }));
+    addRow.appendChild(addSort);
+  }
+  container.appendChild(addRow);
+  if (node.map) {
+    const navBtn = document.createElement("sp-action-button");
+    navBtn.setAttribute("size", "s");
+    navBtn.textContent = "Edit template →";
+    navBtn.style.cssText = "margin-top:8px;width:100%";
+    navBtn.addEventListener("click", () => update(selectNode(S, [...path, "map"])));
+    container.appendChild(navBtn);
+  }
+}
+
+/** Imperative helper: switch fields */
+function renderSwitchFields(container, node, path, mapSignals) {
+  container.appendChild(
+    bindableFieldRow("Expression", "text", node.$switch, (v) => update(updateProperty(S, path, "$switch", v)), null, mapSignals),
+  );
+  const casesHeader = document.createElement("div");
+  casesHeader.style.cssText = "font-size:11px;font-weight:600;color:var(--fg-dim);margin:8px 0 4px;text-transform:uppercase;letter-spacing:0.05em";
+  casesHeader.textContent = "Cases";
+  container.appendChild(casesHeader);
+  for (const caseName of Object.keys(node.cases || {})) {
+    const caseRow = document.createElement("div");
+    caseRow.className = "field-row";
+    caseRow.style.cssText = "display:flex;align-items:center;gap:4px;margin-bottom:3px";
+    const nameInput = document.createElement("input");
+    nameInput.className = "field-input";
+    nameInput.value = caseName;
+    nameInput.style.flex = "1";
+    let debounce;
+    nameInput.oninput = () => {
+      clearTimeout(debounce);
+      debounce = setTimeout(() => {
+        if (nameInput.value && nameInput.value !== caseName) update(renameSwitchCase(S, path, caseName, nameInput.value));
+      }, 500);
+    };
+    caseRow.appendChild(nameInput);
+    const navBtn = document.createElement("span");
+    navBtn.className = "bind-toggle";
+    navBtn.textContent = "→";
+    navBtn.title = "Edit case";
+    navBtn.style.cursor = "pointer";
+    navBtn.onclick = (e) => { e.stopPropagation(); update(selectNode(S, [...path, "cases", caseName])); };
+    caseRow.appendChild(navBtn);
+    const del = document.createElement("span");
+    del.style.cssText = "cursor:pointer;color:var(--danger);font-size:11px";
+    del.textContent = "\u2715";
+    del.onclick = (e) => { e.stopPropagation(); update(removeSwitchCase(S, path, caseName)); };
+    caseRow.appendChild(del);
+    container.appendChild(caseRow);
+  }
+  const addCase = document.createElement("span");
+  addCase.className = "kv-add";
+  addCase.textContent = "+ Add case";
+  addCase.onclick = () => {
+    const existing = Object.keys(node.cases || {});
+    update(addSwitchCase(S, path, `case${existing.length + 1}`));
+  };
+  container.appendChild(addCase);
+}
+
+/** Imperative helper: component props fields */
+function renderComponentPropsFields(container, node, path, mapSignals) {
+  const comp = componentRegistry.find((c) => c.tagName === node.tagName);
+  if (!comp) {
+    container.innerHTML = '<div class="empty-state">Component not found</div>';
+    return;
+  }
+  const currentProps = node.$props || {};
+  for (const prop of comp.props) {
+    container.appendChild(
+      bindableFieldRow(camelToLabel(prop.name), "text", currentProps[prop.name], (v) => update(updateProp(S, path, prop.name, v)), null, mapSignals),
+    );
+  }
+  if (comp.props.length === 0) {
+    const hint = document.createElement("div");
+    hint.className = "empty-state";
+    hint.textContent = "No props defined";
+    container.appendChild(hint);
+  }
+  const editLink = document.createElement("span");
+  editLink.className = "kv-add";
+  editLink.textContent = "→ Edit definition";
+  editLink.onclick = () => navigateToComponent(comp.path);
+  container.appendChild(editLink);
+}
+
+/** Imperative helper: custom (non-meta) attributes */
+function renderCustomAttrsFields(container, node, path, attrs, knownAttrNames) {
+  const customAttrs = Object.entries(attrs).filter(([k]) => !knownAttrNames.has(k));
+  for (const [attr, val] of customAttrs) {
+    container.appendChild(
+      kvRow(
+        attr,
+        String(val),
+        (newAttr, newVal) => {
+          if (newAttr !== attr) {
+            let s = updateAttribute(S, path, attr, undefined);
+            s = updateAttribute(s, path, newAttr, newVal);
+            update(s);
+          } else {
+            update(updateAttribute(S, path, attr, newVal));
+          }
         },
-        "tag-names",
+        () => update(updateAttribute(S, path, attr, undefined)),
       ),
     );
-    fields.appendChild(
-      fieldRow("$id", "text", node.$id || "", (v) => {
-        update(updateProperty(S, S.selection, "$id", v || undefined));
-      }),
-    );
-    fields.appendChild(
-      fieldRow("className", "text", node.className || "", (v) => {
-        update(updateProperty(S, S.selection, "className", v || undefined));
-      }),
-    );
+  }
+  const add = document.createElement("span");
+  add.className = "kv-add";
+  add.textContent = "+ Add attribute";
+  add.onclick = () => update(updateAttribute(S, path, "data-", ""));
+  container.appendChild(add);
+}
 
-    // textContent only when no children
-    if (!Array.isArray(node.children) || node.children.length === 0) {
-      const tcRaw = node.textContent;
-      fields.appendChild(
-        bindableFieldRow("textContent", "textarea", tcRaw, (v) => {
-          update(updateProperty(S, S.selection, "textContent", v || undefined));
-        }, null, mapSignals),
-      );
+/** Imperative helper: media breakpoint fields */
+function renderMediaFields(container, node) {
+  const media = node.$media || {};
+
+  // ── Default canvas width ("--" key) ──
+  const baseRow = document.createElement("div");
+  baseRow.className = "kv-row";
+  baseRow.style.alignItems = "center";
+
+  const baseLabel = document.createElement("span");
+  baseLabel.className = "field-label";
+  baseLabel.style.width = "auto";
+  baseLabel.style.marginRight = "4px";
+  baseLabel.textContent = "Base width";
+  baseRow.appendChild(baseLabel);
+
+  const baseInput = document.createElement("input");
+  baseInput.className = "field-input";
+  baseInput.style.width = "70px";
+  baseInput.style.flex = "none";
+  baseInput.placeholder = "320px";
+  baseInput.value = media["--"] || "";
+  let baseDebounce;
+  baseInput.oninput = () => {
+    clearTimeout(baseDebounce);
+    baseDebounce = setTimeout(() => {
+      const val = baseInput.value.trim();
+      if (val) update(updateMedia(S, "--", val));
+      else update(updateMedia(S, "--", undefined));
+    }, 400);
+  };
+  baseRow.appendChild(baseInput);
+
+  if (media["--"]) {
+    const del = document.createElement("span");
+    del.className = "kv-del";
+    del.textContent = "\u2715";
+    del.onclick = () => update(updateMedia(S, "--", undefined));
+    baseRow.appendChild(del);
+  }
+  container.appendChild(baseRow);
+
+  // ── Breakpoint rows (excluding "--") ──
+  for (const [name, query] of Object.entries(media)) {
+    if (name === "--") continue;
+    container.appendChild(mediaBreakpointRow(name, query));
+  }
+
+  // ── Add breakpoint flow ──
+  const addWrap = document.createElement("div");
+
+  const addLink = document.createElement("span");
+  addLink.className = "kv-add";
+  addLink.textContent = "+ Add breakpoint";
+  addLink.onclick = () => {
+    addLink.style.display = "none";
+    addForm.style.display = "";
+    nameInput.focus();
+  };
+  addWrap.appendChild(addLink);
+
+  const addForm = document.createElement("div");
+  addForm.style.display = "none";
+  addForm.style.marginTop = "4px";
+
+  const nameRow = document.createElement("div");
+  nameRow.style.cssText = "display:flex;gap:4px;margin-bottom:3px;align-items:center";
+  const nameInput = document.createElement("input");
+  nameInput.className = "field-input";
+  nameInput.placeholder = "Name (e.g. Tablet)";
+  nameInput.style.flex = "1";
+  const namePreview = document.createElement("span");
+  namePreview.style.cssText = "font-size:10px;color:var(--fg-dim);font-family:'SF Mono','Fira Code',monospace;white-space:nowrap";
+  nameInput.oninput = () => {
+    const gen = friendlyNameToMedia(nameInput.value);
+    namePreview.textContent = gen || "";
+  };
+  nameRow.appendChild(nameInput);
+  nameRow.appendChild(namePreview);
+  addForm.appendChild(nameRow);
+
+  const queryRow = document.createElement("div");
+  queryRow.style.cssText = "display:flex;gap:4px;margin-bottom:3px;align-items:center";
+  const queryInput = document.createElement("input");
+  queryInput.className = "field-input";
+  queryInput.value = "(min-width: 768px)";
+  queryInput.style.flex = "1";
+  queryRow.appendChild(queryInput);
+  addForm.appendChild(queryRow);
+
+  const btnRow = document.createElement("div");
+  btnRow.style.cssText = "display:flex;gap:4px";
+  const addBtn = document.createElement("button");
+  addBtn.className = "kv-add";
+  addBtn.style.cssText = "padding:2px 10px;cursor:pointer";
+  addBtn.textContent = "Add";
+  addBtn.onclick = () => {
+    const key = friendlyNameToMedia(nameInput.value);
+    const q = queryInput.value.trim();
+    if (key && q) {
+      update(updateMedia(S, key, q));
     }
+  };
+  const cancelBtn = document.createElement("button");
+  cancelBtn.className = "kv-add";
+  cancelBtn.style.cssText = "padding:2px 10px;cursor:pointer;color:var(--fg-dim)";
+  cancelBtn.textContent = "Cancel";
+  cancelBtn.onclick = () => {
+    addForm.style.display = "none";
+    addLink.style.display = "";
+    nameInput.value = "";
+    namePreview.textContent = "";
+    queryInput.value = "(min-width: 768px)";
+  };
+  btnRow.appendChild(addBtn);
+  btnRow.appendChild(cancelBtn);
+  addForm.appendChild(btnRow);
 
-    fields.appendChild(
-      bindableFieldRow("hidden", "checkbox", node.hidden, (v) => {
-        update(updateProperty(S, S.selection, "hidden", v || undefined));
-      }, null, mapSignals),
-    );
-
-    // $map parent hint
-    if (isMapParent) {
-      const hint = document.createElement("div");
-      hint.style.cssText = "font-size:10px;color:var(--fg-dim);padding:4px 0;font-style:italic";
-      hint.textContent = "Children: Repeater (select in layers to configure)";
-      fields.appendChild(hint);
-    }
-
-    return fields;
-  });
-
-  // Observed Attributes (custom element docs, root only)
-  if (isCustomElementDoc() && S.selection.length === 0) {
-    renderInspectorSection(container, "Observed Attributes", false, () => {
-      const fields = document.createElement("div");
-      fields.className = "inspector-fields";
-      const state = S.document.state || {};
-      const entries = Object.entries(state).filter(([, d]) => d.attribute);
-
-      if (entries.length === 0) {
-        const empty = document.createElement("div");
-        empty.className = "empty-state";
-        empty.textContent = "No attributes declared. Set \u201cattribute\u201d on a state entry.";
-        fields.appendChild(empty);
-      } else {
-        for (const [key, d] of entries) {
-          const row = document.createElement("div");
-          row.style.cssText = "display:flex;gap:6px;align-items:center;padding:2px 0;font-size:11px";
-          const attrName = document.createElement("code");
-          attrName.style.cssText = "font-family:monospace;color:var(--accent)";
-          attrName.textContent = d.attribute;
-          row.appendChild(attrName);
-          const arrow = document.createElement("span");
-          arrow.style.color = "var(--fg-dim)";
-          arrow.textContent = " \u2192 ";
-          row.appendChild(arrow);
-          const stateKey = document.createElement("span");
-          stateKey.textContent = key;
-          row.appendChild(stateKey);
-          if (d.type) {
-            const typeBadge = document.createElement("span");
-            typeBadge.style.cssText = "margin-left:auto;color:var(--fg-dim);font-size:10px";
-            typeBadge.textContent = d.type;
-            row.appendChild(typeBadge);
-          }
-          if (d.reflects) {
-            const badge = document.createElement("span");
-            badge.style.cssText = "font-size:9px;background:var(--bg-hover);padding:1px 4px;border-radius:3px";
-            badge.textContent = "reflects";
-            row.appendChild(badge);
-          }
-          fields.appendChild(row);
-        }
-      }
-      return fields;
-    });
-  }
-
-  // $switch section
-  if (isSwitchNode) {
-    renderInspectorSection(container, "$switch", true, () => {
-      const fields = document.createElement("div");
-      fields.className = "inspector-fields";
-
-      fields.appendChild(
-        bindableFieldRow("$switch", "text", node.$switch, (v) => {
-          update(updateProperty(S, S.selection, "$switch", v));
-        }, null, mapSignals),
-      );
-
-      const casesHeader = document.createElement("div");
-      casesHeader.style.cssText = "font-size:11px;font-weight:600;color:var(--fg-dim);margin:8px 0 4px;text-transform:uppercase;letter-spacing:0.05em";
-      casesHeader.textContent = "Cases";
-      fields.appendChild(casesHeader);
-
-      for (const caseName of Object.keys(node.cases || {})) {
-        const caseRow = document.createElement("div");
-        caseRow.className = "field-row";
-        caseRow.style.cssText = "display:flex;align-items:center;gap:4px;margin-bottom:3px";
-
-        const nameInput = document.createElement("input");
-        nameInput.className = "field-input";
-        nameInput.value = caseName;
-        nameInput.style.flex = "1";
-        let debounce;
-        nameInput.oninput = () => {
-          clearTimeout(debounce);
-          debounce = setTimeout(() => {
-            if (nameInput.value && nameInput.value !== caseName) {
-              update(renameSwitchCase(S, S.selection, caseName, nameInput.value));
-            }
-          }, 500);
-        };
-        caseRow.appendChild(nameInput);
-
-        const navBtn = document.createElement("span");
-        navBtn.className = "bind-toggle";
-        navBtn.textContent = "→";
-        navBtn.title = "Edit case";
-        navBtn.style.cursor = "pointer";
-        navBtn.onclick = (e) => {
-          e.stopPropagation();
-          update(selectNode(S, [...S.selection, "cases", caseName]));
-        };
-        caseRow.appendChild(navBtn);
-
-        const del = document.createElement("span");
-        del.style.cssText = "cursor:pointer;color:var(--danger);font-size:11px";
-        del.textContent = "✕";
-        del.onclick = (e) => {
-          e.stopPropagation();
-          update(removeSwitchCase(S, S.selection, caseName));
-        };
-        caseRow.appendChild(del);
-
-        fields.appendChild(caseRow);
-      }
-
-      const addCase = document.createElement("span");
-      addCase.className = "kv-add";
-      addCase.textContent = "+ Add case";
-      addCase.onclick = () => {
-        const existing = Object.keys(node.cases || {});
-        const newName = `case${existing.length + 1}`;
-        update(addSwitchCase(S, S.selection, newName));
-      };
-      fields.appendChild(addCase);
-
-      return fields;
-    });
-  }
-
-  // Component Props section (for custom element instances)
-  if (isCustomInstance) {
-    renderInspectorSection(container, "Component Props", true, () => {
-      const fields = document.createElement("div");
-      fields.className = "inspector-fields";
-
-      const comp = componentRegistry.find((c) => c.tagName === node.tagName);
-      if (!comp) {
-        const hint = document.createElement("div");
-        hint.className = "empty-state";
-        hint.textContent = `Component "${node.tagName}" not found in project`;
-        fields.appendChild(hint);
-        return fields;
-      }
-
-      const currentProps = node.$props || {};
-      for (const prop of comp.props) {
-        fields.appendChild(
-          bindableFieldRow(prop.name, "text", currentProps[prop.name], (v) => {
-            update(updateProp(S, S.selection, prop.name, v));
-          }, null, mapSignals),
-        );
-      }
-
-      if (comp.props.length === 0) {
-        const hint = document.createElement("div");
-        hint.className = "empty-state";
-        hint.textContent = "No props defined";
-        fields.appendChild(hint);
-      }
-
-      const editLink = document.createElement("span");
-      editLink.className = "kv-add";
-      editLink.textContent = "→ Edit definition";
-      editLink.onclick = () => navigateToComponent(comp.path);
-      fields.appendChild(editLink);
-
-      return fields;
-    });
-  }
-
-  // Attributes section
-  renderInspectorSection(container, "Attributes", false, () => {
-    const fields = document.createElement("div");
-    fields.className = "inspector-fields";
-    const attrs = node.attributes || {};
-
-    for (const [attr, val] of Object.entries(attrs)) {
-      fields.appendChild(
-        kvRow(
-          attr,
-          String(val),
-          (newAttr, newVal) => {
-            if (newAttr !== attr) {
-              let s = updateAttribute(S, S.selection, attr, undefined);
-              s = updateAttribute(s, S.selection, newAttr, newVal);
-              update(s);
-            } else {
-              update(updateAttribute(S, S.selection, attr, newVal));
-            }
-          },
-          () => update(updateAttribute(S, S.selection, attr, undefined)),
-        ),
-      );
-    }
-
-    const add = document.createElement("span");
-    add.className = "kv-add";
-    add.textContent = "+ Add attribute";
-    add.onclick = () => {
-      update(updateAttribute(S, S.selection, "data-", ""));
-    };
-    fields.appendChild(add);
-    return fields;
-  });
-
-  // CSS Custom Properties (custom element docs, root only)
-  if (isCustomElementDoc() && S.selection.length === 0) {
-    renderInspectorSection(container, "CSS Properties", false, () => {
-      const fields = document.createElement("div");
-      fields.className = "inspector-fields";
-      const style = node.style || {};
-      const cssProps = Object.entries(style).filter(([k]) => k.startsWith("--"));
-
-      if (cssProps.length === 0) {
-        const empty = document.createElement("div");
-        empty.className = "empty-state";
-        empty.textContent = "No CSS custom properties defined.";
-        fields.appendChild(empty);
-      } else {
-        for (const [prop, val] of cssProps) {
-          const row = document.createElement("div");
-          row.style.cssText = "display:flex;gap:6px;align-items:center;padding:2px 0;font-size:11px";
-          const propName = document.createElement("code");
-          propName.style.cssText = "font-family:monospace;color:var(--accent)";
-          propName.textContent = prop;
-          row.appendChild(propName);
-          const valSpan = document.createElement("span");
-          valSpan.style.cssText = "margin-left:auto;color:var(--fg-dim)";
-          valSpan.textContent = String(val);
-          row.appendChild(valSpan);
-          fields.appendChild(row);
-        }
-      }
-      return fields;
-    });
-  }
-
-  // CSS Parts (custom element docs, root only)
-  if (isCustomElementDoc() && S.selection.length === 0) {
-    const parts = collectCssParts(S.document);
-    if (parts.length > 0) {
-      renderInspectorSection(container, "CSS Parts", false, () => {
-        const fields = document.createElement("div");
-        fields.className = "inspector-fields";
-        for (const p of parts) {
-          const row = document.createElement("div");
-          row.style.cssText = "display:flex;gap:6px;align-items:center;padding:2px 0;font-size:11px";
-          const partName = document.createElement("code");
-          partName.style.cssText = "font-family:monospace;color:var(--accent)";
-          partName.textContent = p.name;
-          row.appendChild(partName);
-          const tagSpan = document.createElement("span");
-          tagSpan.style.cssText = "color:var(--fg-dim)";
-          tagSpan.textContent = `<${p.tag}>`;
-          row.appendChild(tagSpan);
-          fields.appendChild(row);
-        }
-        return fields;
-      });
-    }
-  }
-
-  // Media breakpoints section (root only)
-  if (S.selection.length === 0) {
-    renderInspectorSection(container, "Media", false, () => {
-      const fields = document.createElement("div");
-      fields.className = "inspector-fields";
-      const media = node.$media || {};
-
-      // ── Default canvas width ("--" key) ──
-      const baseRow = document.createElement("div");
-      baseRow.className = "kv-row";
-      baseRow.style.alignItems = "center";
-
-      const baseLabel = document.createElement("span");
-      baseLabel.className = "field-label";
-      baseLabel.style.width = "auto";
-      baseLabel.style.marginRight = "4px";
-      baseLabel.textContent = "Base width";
-      baseRow.appendChild(baseLabel);
-
-      const baseInput = document.createElement("input");
-      baseInput.className = "field-input";
-      baseInput.style.width = "70px";
-      baseInput.style.flex = "none";
-      baseInput.placeholder = "320px";
-      baseInput.value = media["--"] || "";
-      let baseDebounce;
-      baseInput.oninput = () => {
-        clearTimeout(baseDebounce);
-        baseDebounce = setTimeout(() => {
-          const val = baseInput.value.trim();
-          if (val) update(updateMedia(S, "--", val));
-          else update(updateMedia(S, "--", undefined));
-        }, 400);
-      };
-      baseRow.appendChild(baseInput);
-
-      if (media["--"]) {
-        const del = document.createElement("span");
-        del.className = "kv-del";
-        del.textContent = "\u2715";
-        del.onclick = () => update(updateMedia(S, "--", undefined));
-        baseRow.appendChild(del);
-      }
-      fields.appendChild(baseRow);
-
-      // ── Breakpoint rows (excluding "--") ──
-      for (const [name, query] of Object.entries(media)) {
-        if (name === "--") continue;
-        fields.appendChild(mediaBreakpointRow(name, query));
-      }
-
-      // ── Add breakpoint flow ──
-      const addWrap = document.createElement("div");
-
-      const addLink = document.createElement("span");
-      addLink.className = "kv-add";
-      addLink.textContent = "+ Add breakpoint";
-      addLink.onclick = () => {
-        addLink.style.display = "none";
-        addForm.style.display = "";
-        nameInput.focus();
-      };
-      addWrap.appendChild(addLink);
-
-      const addForm = document.createElement("div");
-      addForm.style.display = "none";
-      addForm.style.marginTop = "4px";
-
-      const nameRow = document.createElement("div");
-      nameRow.style.cssText = "display:flex;gap:4px;margin-bottom:3px;align-items:center";
-      const nameInput = document.createElement("input");
-      nameInput.className = "field-input";
-      nameInput.placeholder = "Name (e.g. Tablet)";
-      nameInput.style.flex = "1";
-      const namePreview = document.createElement("span");
-      namePreview.style.cssText = "font-size:10px;color:var(--fg-dim);font-family:'SF Mono','Fira Code',monospace;white-space:nowrap";
-      nameInput.oninput = () => {
-        const gen = friendlyNameToMedia(nameInput.value);
-        namePreview.textContent = gen || "";
-      };
-      nameRow.appendChild(nameInput);
-      nameRow.appendChild(namePreview);
-      addForm.appendChild(nameRow);
-
-      const queryRow = document.createElement("div");
-      queryRow.style.cssText = "display:flex;gap:4px;margin-bottom:3px;align-items:center";
-      const queryInput = document.createElement("input");
-      queryInput.className = "field-input";
-      queryInput.value = "(min-width: 768px)";
-      queryInput.style.flex = "1";
-      queryRow.appendChild(queryInput);
-      addForm.appendChild(queryRow);
-
-      const btnRow = document.createElement("div");
-      btnRow.style.cssText = "display:flex;gap:4px";
-      const addBtn = document.createElement("button");
-      addBtn.className = "kv-add";
-      addBtn.style.cssText = "padding:2px 10px;cursor:pointer";
-      addBtn.textContent = "Add";
-      addBtn.onclick = () => {
-        const key = friendlyNameToMedia(nameInput.value);
-        const q = queryInput.value.trim();
-        if (key && q) {
-          update(updateMedia(S, key, q));
-        }
-      };
-      const cancelBtn = document.createElement("button");
-      cancelBtn.className = "kv-add";
-      cancelBtn.style.cssText = "padding:2px 10px;cursor:pointer;color:var(--fg-dim)";
-      cancelBtn.textContent = "Cancel";
-      cancelBtn.onclick = () => {
-        addForm.style.display = "none";
-        addLink.style.display = "";
-        nameInput.value = "";
-        namePreview.textContent = "";
-        queryInput.value = "(min-width: 768px)";
-      };
-      btnRow.appendChild(addBtn);
-      btnRow.appendChild(cancelBtn);
-      addForm.appendChild(btnRow);
-
-      addWrap.appendChild(addForm);
-      fields.appendChild(addWrap);
-      return fields;
-    });
-  }
+  addWrap.appendChild(addForm);
+  container.appendChild(addWrap);
 }
 
 /**
@@ -6548,6 +6668,13 @@ function propLabel(entry, prop) {
   return entry?.$label || camelToLabel(prop);
 }
 
+/** Label for HTML attributes — handles kebab-case (aria-label → "Aria Label") */
+function attrLabel(entry, attr) {
+  if (entry?.$label) return entry.$label;
+  if (attr.includes("-")) return attr.replace(/(^|-)(\w)/g, (_, sep, c) => (sep ? " " : "") + c.toUpperCase());
+  return camelToLabel(attr);
+}
+
 function widgetForType(type, entry, prop, value, onCommit) {
   switch (type) {
     case "button-group": return renderButtonGroupInput(entry, value, onCommit);
@@ -6924,54 +7051,25 @@ function styleSidebarTemplate(node, activeMediaTab, activeSelector) {
   `;
 }
 
-/** Top-level Style panel — renders as its own right-panel tab */
-function renderStylePanel(container) {
-  let tpl;
-
+/** Top-level Style panel — returns a lit-html template */
+function renderStylePanelTemplate() {
   if (canvasMode === "stylebook" && S.ui.stylebookSelection) {
     const node = S.document;
-    if (!node) {
-      tpl = html`<div class="empty-state">No document loaded</div>`;
-    } else {
-      tpl = html`
-        <div class="stylebook-style-header">Styling: &lt;${S.ui.stylebookSelection}&gt;</div>
-        ${styleSidebarTemplate(node, S.ui.activeMedia, S.ui.activeSelector)}
-      `;
-    }
-  } else if (!S.selection) {
-    tpl = html`<div class="empty-state">Select an element to style</div>`;
-  } else {
-    const node = getNodeAtPath(S.document, S.selection);
-    if (!node) {
-      tpl = html`<div class="empty-state">Select an element to style</div>`;
-    } else {
-      tpl = styleSidebarTemplate(node, S.ui.activeMedia, S.ui.activeSelector);
-    }
+    if (!node) return html`<div class="empty-state">No document loaded</div>`;
+    return html`
+      <div class="stylebook-style-header">Styling: &lt;${S.ui.stylebookSelection}&gt;</div>
+      ${styleSidebarTemplate(node, S.ui.activeMedia, S.ui.activeSelector)}
+    `;
   }
-
-  litRender(tpl, container);
+  if (!S.selection) return html`<div class="empty-state">Select an element to style</div>`;
+  const node = getNodeAtPath(S.document, S.selection);
+  if (!node) return html`<div class="empty-state">Select an element to style</div>`;
+  return styleSidebarTemplate(node, S.ui.activeMedia, S.ui.activeSelector);
 }
 
-/** Collapsible inspector section */
-function renderInspectorSection(container, title, defaultOpen, contentFn) {
-  const section = document.createElement("div");
-  section.className = "inspector-section";
-
-  const header = document.createElement("div");
-  header.className = `inspector-header${defaultOpen ? "" : " collapsed"}`;
-  header.textContent = title;
-
-  const content = contentFn();
-  if (!defaultOpen) content.classList.add("hidden");
-
-  header.onclick = () => {
-    header.classList.toggle("collapsed");
-    content.classList.toggle("hidden");
-  };
-
-  section.appendChild(header);
-  section.appendChild(content);
-  container.appendChild(section);
+/** @deprecated — use renderStylePanelTemplate() for lit-html integration */
+function renderStylePanel(container) {
+  litRender(renderStylePanelTemplate(), container);
 }
 
 /** Single property input row */
@@ -7367,26 +7465,18 @@ const EVENT_NAMES = [
   "onkeyup", "onfocus", "onblur", "onmouseenter", "onmouseleave",
 ];
 
-function renderEventsPanel(container) {
-  if (!S.selection) {
-    container.innerHTML = '<div class="empty-state">Select an element to edit events</div>';
-    return;
-  }
+function eventsSidebarTemplate() {
+  if (!S.selection) return html`<div class="empty-state">Select an element to edit events</div>`;
   const node = getNodeAtPath(S.document, S.selection);
-  if (!node) {
-    container.innerHTML = '<div class="empty-state">Node not found</div>';
-    return;
-  }
+  if (!node) return html`<div class="empty-state">Node not found</div>`;
 
   const defs = S.document.state || {};
   const functionDefs = Object.entries(defs).filter(
     ([, d]) => d.$prototype === "Function" || d.$handler,
   );
 
-  const fields = document.createElement("div");
-  fields.className = "inspector-fields";
-
   // Declared CEM events (custom element docs)
+  let declaredEventsT = nothing;
   if (isCustomElementDoc()) {
     const allEmits = [];
     for (const [fnName, d] of Object.entries(defs)) {
@@ -7395,33 +7485,18 @@ function renderEventsPanel(container) {
       }
     }
     if (allEmits.length > 0) {
-      const header = document.createElement("div");
-      header.style.cssText = "font-size:11px;font-weight:600;color:var(--fg-dim);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.05em";
-      header.textContent = "Declared Events";
-      fields.appendChild(header);
-      for (const ev of allEmits) {
-        const row = document.createElement("div");
-        row.style.cssText = "display:flex;gap:6px;align-items:center;padding:2px 0;font-size:11px";
-        const evName = document.createElement("code");
-        evName.style.cssText = "font-family:monospace;color:var(--accent)";
-        evName.textContent = ev.name || "(unnamed)";
-        row.appendChild(evName);
-        const src = document.createElement("span");
-        src.style.cssText = "color:var(--fg-dim);font-size:10px";
-        src.textContent = `\u2190 ${ev._fn}`;
-        row.appendChild(src);
-        if (ev.type?.text) {
-          const typeBadge = document.createElement("span");
-          typeBadge.style.cssText = "margin-left:auto;color:var(--fg-dim);font-size:10px";
-          typeBadge.textContent = ev.type.text;
-          row.appendChild(typeBadge);
-        }
-        if (ev.description) row.title = ev.description;
-        fields.appendChild(row);
-      }
-      const sep = document.createElement("hr");
-      sep.style.cssText = "border:none;border-top:1px solid var(--border);margin:6px 0";
-      fields.appendChild(sep);
+      declaredEventsT = html`
+        <sp-accordion-item label="Declared Events" open>
+          ${allEmits.map((ev) => html`
+            <div style="display:flex;gap:6px;align-items:center;padding:2px 0;font-size:11px"
+              title=${ev.description || ""}>
+              <code style="font-family:monospace;color:var(--accent)">${ev.name || "(unnamed)"}</code>
+              <span style="color:var(--fg-dim);font-size:10px">\u2190 ${ev._fn}</span>
+              ${ev.type?.text ? html`<span style="margin-left:auto;color:var(--fg-dim);font-size:10px">${ev.type.text}</span>` : nothing}
+            </div>
+          `)}
+        </sp-accordion-item>
+      `;
     }
   }
 
@@ -7433,6 +7508,41 @@ function renderEventsPanel(container) {
     return v.$ref || v.$prototype === "Function";
   });
 
+  const bindingsT = html`
+    <sp-accordion-item label="Event Bindings${eventKeys.length ? ` (${eventKeys.length})` : ""}" open>
+      <div id="events-bindings-container"></div>
+      <span class="kv-add" @click=${() => {
+        let evName = "onclick";
+        for (const name of EVENT_NAMES) {
+          if (!node[name]) { evName = name; break; }
+        }
+        if (functionDefs.length > 0) {
+          update(updateProperty(S, S.selection, evName, { $ref: `#/state/${functionDefs[0][0]}` }));
+        } else {
+          update(updateProperty(S, S.selection, evName, { $prototype: "Function", body: "", parameters: [] }));
+        }
+      }}>+ Add event</span>
+    </sp-accordion-item>
+  `;
+
+  // Imperative event rows rendered after lit-html pass
+  requestAnimationFrame(() => {
+    const container = rightPanel.querySelector("#events-bindings-container");
+    if (!container || container._rendered) return;
+    container._rendered = true;
+    renderEventBindingRows(container, node, eventKeys, functionDefs);
+  });
+
+  return html`
+    <sp-accordion allow-multiple>
+      ${declaredEventsT}
+      ${bindingsT}
+    </sp-accordion>
+  `;
+}
+
+/** Imperative event binding rows (sp-picker needs rAF value-setting) */
+function renderEventBindingRows(container, node, eventKeys, functionDefs) {
   for (const evKey of eventKeys) {
     const evVal = node[evKey];
     const isInline = evVal.$prototype === "Function";
@@ -7525,7 +7635,7 @@ function renderEventsPanel(container) {
       // Expand to editor button
       const expandBtn = document.createElement("button");
       expandBtn.className = "kv-add";
-      expandBtn.textContent = "↗";
+      expandBtn.textContent = "\u2197";
       expandBtn.title = "Open in editor";
       expandBtn.style.padding = "2px 6px";
       expandBtn.onclick = () => {
@@ -7564,27 +7674,8 @@ function renderEventsPanel(container) {
       evRow.insertBefore(handlerSel, del);
     }
 
-    fields.appendChild(evRow);
+    container.appendChild(evRow);
   }
-
-  // Add event button
-  const add = document.createElement("span");
-  add.className = "kv-add";
-  add.textContent = "+ Add event";
-  add.onclick = () => {
-    let evName = "onclick";
-    for (const name of EVENT_NAMES) {
-      if (!node[name]) { evName = name; break; }
-    }
-    if (functionDefs.length > 0) {
-      update(updateProperty(S, S.selection, evName, { $ref: `#/state/${functionDefs[0][0]}` }));
-    } else {
-      update(updateProperty(S, S.selection, evName, { $prototype: "Function", body: "", parameters: [] }));
-    }
-  };
-  fields.appendChild(add);
-
-  container.appendChild(fields);
 }
 
 // ─── CEM Export ──────────────────────────────────────────────────────────────
