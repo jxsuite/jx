@@ -6092,6 +6092,19 @@ function getColorVars() {
   return vars;
 }
 
+/** Extract --font-* CSS custom properties from the document root style. */
+function getFontVars() {
+  const style = S.document?.style;
+  if (!style) return [];
+  const vars = [];
+  for (const [k, v] of Object.entries(style)) {
+    if (k.startsWith("--font") && (typeof v === "string" || typeof v === "number")) {
+      vars.push({ name: k, value: String(v) });
+    }
+  }
+  return vars;
+}
+
 /** Resolve a color value for display — if it's a var() reference, look up the actual color. */
 function resolveColorForDisplay(val) {
   if (!val) return "transparent";
@@ -6369,12 +6382,75 @@ function renderSelectInput(entry, value, onChange) {
 }
 
 function renderComboboxInput(entry, prop, value, onChange) {
+  const fontVars = (prop === "fontFamily") ? getFontVars() : [];
+  const examples = entry.examples || [];
+  const hasMenu = fontVars.length > 0 || examples.length > 0;
+  const isVarRef = typeof value === "string" && value.startsWith("var(");
+
+  // Resolve display value for var() references
+  const displayValue = isVarRef ? (() => {
+    const m = value.match(/^var\((--[^)]+)\)$/);
+    if (m) {
+      const resolved = S.document?.style?.[m[1]];
+      return typeof resolved === "string" ? resolved : value;
+    }
+    return value;
+  })() : value;
+
+  const menuId = `style-combo-${prop}`;
+
+  if (!hasMenu) {
+    return html`
+      <sp-textfield size="s"
+        placeholder=${cssInitialMap.get(prop) || ""}
+        .value=${live(value || "")}
+        @input=${debouncedStyleCommit(`combo:${prop}`, 400, (e) => onChange(e.target.value))}
+      ></sp-textfield>
+    `;
+  }
+
   return html`
-    <sp-textfield size="s"
-      placeholder=${cssInitialMap.get(prop) || ""}
-      .value=${live(value || "")}
-      @input=${debouncedStyleCommit(`combo:${prop}`, 400, (e) => onChange(e.target.value))}
-    ></sp-textfield>
+    <div class="input-group ${isVarRef ? "is-expression" : ""}">
+      <sp-textfield size="s"
+        placeholder=${cssInitialMap.get(prop) || ""}
+        .value=${live(value || "")}
+        style=${prop === "fontFamily" && displayValue ? `font-family: ${displayValue}` : ""}
+        @input=${debouncedStyleCommit(`combo:${prop}`, 400, (e) => onChange(e.target.value))}
+      ></sp-textfield>
+      <sp-picker-button size="s" id=${menuId}></sp-picker-button>
+      <sp-overlay trigger=${menuId}@click placement="bottom-end" type="auto">
+        <sp-popover>
+          <sp-menu @change=${(e) => {
+            const val = e.target.value;
+            if (val) onChange(val);
+          }}>
+            ${fontVars.length > 0 ? html`
+              <sp-menu-group>
+                <span slot="header">Font Tokens</span>
+                ${fontVars.map((fv) => html`
+                  <sp-menu-item value=${"var(" + fv.name + ")"}>
+                    <span class="font-token-item">
+                      <span class="font-token-preview" style="font-family: ${fv.value}">${fv.value}</span>
+                      <span class="font-token-name">${fv.name}</span>
+                    </span>
+                  </sp-menu-item>
+                `)}
+              </sp-menu-group>
+            ` : nothing}
+            ${examples.length > 0 ? html`
+              <sp-menu-group>
+                <span slot="header">Presets</span>
+                ${examples.map((ex) => html`
+                  <sp-menu-item value=${ex}>
+                    <span style="font-family: ${ex}">${ex}</span>
+                  </sp-menu-item>
+                `)}
+              </sp-menu-group>
+            ` : nothing}
+          </sp-menu>
+        </sp-popover>
+      </sp-overlay>
+    </div>
   `;
 }
 
