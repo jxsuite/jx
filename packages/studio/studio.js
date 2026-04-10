@@ -6038,7 +6038,7 @@ function inferInputType(entry) {
   if (entry.$units !== undefined) return "number-unit";
   if (entry.type === "number") return "number";
   if (Array.isArray(entry.enum)) return "select";
-  if (Array.isArray(entry.examples)) return "combobox";
+  if (Array.isArray(entry.examples) || Array.isArray(entry.presets)) return "combobox";
   return "text";
 }
 
@@ -6381,22 +6381,102 @@ function renderSelectInput(entry, value, onChange) {
   `;
 }
 
+function handleFontPresetSelection(preset, onChange) {
+  const varName = friendlyNameToVar(preset.title, "--font-");
+  if (!S.document?.style?.[varName]) {
+    S = updateStyle(S, [], varName, preset.value);
+  }
+  onChange(`var(${varName})`);
+}
+
+function renderFontOptions(fontVars, presets) {
+  const unaddedPresets = presets.filter((p) => {
+    const varName = friendlyNameToVar(p.title, "--font-");
+    return !fontVars.some((fv) => fv.name === varName);
+  });
+  return html`
+    ${fontVars.map((fv) => html`
+      <sp-menu-item value=${fv.name}
+        style="font-family: ${fv.value}">
+        ${varDisplayName(fv.name, "--font-")}
+      </sp-menu-item>
+    `)}
+    ${unaddedPresets.length > 0 ? html`
+      <sp-menu-divider></sp-menu-divider>
+      ${unaddedPresets.map((p) => html`
+        <sp-menu-item value=${"__preset__:" + p.title}
+          style="font-family: ${p.value}">
+          ${p.title}
+        </sp-menu-item>
+      `)}
+    ` : nothing}
+  `;
+}
+
+function handleFontSelection(val, presets, onChange) {
+  if (!val) return;
+  if (val.startsWith("__preset__:")) {
+    const title = val.slice("__preset__:".length);
+    const preset = presets.find((p) => p.title === title);
+    if (preset) handleFontPresetSelection(preset, onChange);
+    return;
+  }
+  // Existing font var selected
+  onChange("var(" + val + ")");
+}
+
+function renderFontVarPicker(fontVars, presets, value, onChange) {
+  const varMatch = value.match(/^var\((--[^)]+)\)$/);
+  const currentVarName = varMatch ? varMatch[1] : "";
+
+  return html`
+    <sp-picker size="s" class="font-var-picker"
+      .value=${live(currentVarName || "__none__")}
+      @change=${(e) => handleFontSelection(e.target.value, presets, onChange)}>
+      ${renderFontOptions(fontVars, presets)}
+    </sp-picker>
+  `;
+}
+
+function renderFontCombobox(fontVars, presets, value, onChange) {
+  const menuId = "style-combo-fontFamily";
+  return html`
+    <div class="input-group">
+      <sp-textfield size="s" class="font-combo-field"
+        placeholder=${cssInitialMap.get("fontFamily") || ""}
+        .value=${live(value || "")}
+        @input=${debouncedStyleCommit("combo:fontFamily", 400, (e) => onChange(e.target.value))}
+      ></sp-textfield>
+      <sp-picker-button size="s" id=${menuId}></sp-picker-button>
+      <sp-overlay trigger=${menuId}@click placement="bottom-end" type="auto">
+        <sp-popover>
+          <sp-menu @change=${(e) => {
+            handleFontSelection(e.target.value, presets, onChange);
+          }}>
+            ${renderFontOptions(fontVars, presets)}
+          </sp-menu>
+        </sp-popover>
+      </sp-overlay>
+    </div>
+  `;
+}
+
 function renderComboboxInput(entry, prop, value, onChange) {
   const fontVars = (prop === "fontFamily") ? getFontVars() : [];
+  const presets = entry.presets || [];
   const examples = entry.examples || [];
-  const hasMenu = fontVars.length > 0 || examples.length > 0;
   const isVarRef = typeof value === "string" && value.startsWith("var(");
 
-  // Resolve display value for var() references
-  const displayValue = isVarRef ? (() => {
-    const m = value.match(/^var\((--[^)]+)\)$/);
-    if (m) {
-      const resolved = S.document?.style?.[m[1]];
-      return typeof resolved === "string" ? resolved : value;
+  // fontFamily: dual-mode control
+  if (prop === "fontFamily") {
+    if (isVarRef) {
+      return renderFontVarPicker(fontVars, presets, value, onChange);
     }
-    return value;
-  })() : value;
+    return renderFontCombobox(fontVars, presets, value, onChange);
+  }
 
+  // Non-fontFamily comboboxes: simple textfield with optional examples dropdown
+  const hasMenu = examples.length > 0;
   const menuId = `style-combo-${prop}`;
 
   if (!hasMenu) {
@@ -6414,7 +6494,6 @@ function renderComboboxInput(entry, prop, value, onChange) {
       <sp-textfield size="s"
         placeholder=${cssInitialMap.get(prop) || ""}
         .value=${live(value || "")}
-        style=${prop === "fontFamily" && displayValue ? `font-family: ${displayValue}` : ""}
         @input=${debouncedStyleCommit(`combo:${prop}`, 400, (e) => onChange(e.target.value))}
       ></sp-textfield>
       <sp-picker-button size="s" id=${menuId}></sp-picker-button>
@@ -6424,29 +6503,11 @@ function renderComboboxInput(entry, prop, value, onChange) {
             const val = e.target.value;
             if (val) onChange(val);
           }}>
-            ${fontVars.length > 0 ? html`
-              <sp-menu-group>
-                <span slot="header">Font Tokens</span>
-                ${fontVars.map((fv) => html`
-                  <sp-menu-item value=${"var(" + fv.name + ")"}>
-                    <span class="font-token-item">
-                      <span class="font-token-preview" style="font-family: ${fv.value}">${fv.value}</span>
-                      <span class="font-token-name">${fv.name}</span>
-                    </span>
-                  </sp-menu-item>
-                `)}
-              </sp-menu-group>
-            ` : nothing}
-            ${examples.length > 0 ? html`
-              <sp-menu-group>
-                <span slot="header">Presets</span>
-                ${examples.map((ex) => html`
-                  <sp-menu-item value=${ex}>
-                    <span style="font-family: ${ex}">${ex}</span>
-                  </sp-menu-item>
-                `)}
-              </sp-menu-group>
-            ` : nothing}
+            ${examples.map((ex) => html`
+              <sp-menu-item value=${ex}>
+                <span style="font-family: ${ex}">${ex}</span>
+              </sp-menu-item>
+            `)}
           </sp-menu>
         </sp-popover>
       </sp-overlay>

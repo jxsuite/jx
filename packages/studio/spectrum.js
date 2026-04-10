@@ -31,6 +31,7 @@ import { ColorSlider } from "@spectrum-web-components/color-slider/src/ColorSlid
 import { ColorHandle } from "@spectrum-web-components/color-handle/src/ColorHandle.js";
 import { NumberField } from "@spectrum-web-components/number-field/src/NumberField.js";
 import { Picker } from "@spectrum-web-components/picker/src/Picker.js";
+import { Combobox } from "@spectrum-web-components/combobox/src/Combobox.js";
 import { FieldLabel } from "@spectrum-web-components/field-label/src/FieldLabel.js";
 import { Checkbox } from "@spectrum-web-components/checkbox/src/Checkbox.js";
 import { Switch as SpSwitch } from "@spectrum-web-components/switch/src/Switch.js";
@@ -95,6 +96,7 @@ const components = [
   ["sp-color-handle", ColorHandle],
   ["sp-number-field", NumberField],
   ["sp-picker", Picker],
+  ["sp-combobox", Combobox],
   ["sp-field-label", FieldLabel],
   ["sp-checkbox", Checkbox],
   ["sp-switch", SpSwitch],
