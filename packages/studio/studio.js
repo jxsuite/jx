@@ -6490,15 +6490,84 @@ function renderButtonGroupInput(entry, value, onChange) {
   `;
 }
 
-function renderSelectInput(entry, value, onChange) {
+/** Typography CSS properties that should preview their values in-menu */
+const TYPO_PREVIEW_PROPS = new Set([
+  "fontStyle", "fontVariant", "textTransform", "textDecoration",
+]);
+
+/** camelCase → kebab-case for inline style attributes */
+function camelToKebab(str) {
+  return str.replace(/[A-Z]/g, (c) => "-" + c.toLowerCase());
+}
+
+/** Resolve the current font family for typography preview (handles var() references) */
+function currentFontFamily() {
+  const node = S.selection ? getNodeAtPath(S.document, S.selection) : null;
+  const raw = node?.style?.fontFamily;
+  if (!raw) return "";
+  const m = typeof raw === "string" && raw.match(/^var\((--[^)]+)\)$/);
+  if (m) return S.document?.style?.[m[1]] || "";
+  return raw;
+}
+
+/**
+ * Dual-mode keyword input — shared by select (enum) and combobox (examples) widgets.
+ *
+ * If the current value is one of the predefined options → renders as sp-picker
+ * with Title Case labels (and typography preview when applicable).
+ * Selecting "—" clears the value, which flips to textfield mode.
+ *
+ * If the value is empty or a custom string → renders as sp-textfield + sp-picker-button
+ * with a dropdown of predefined options.  Selecting one flips to picker mode.
+ */
+function renderKeywordInput(options, prop, value, onChange) {
+  const isTypoPreview = TYPO_PREVIEW_PROPS.has(prop) || prop === "fontWeight";
+  const font = isTypoPreview ? currentFontFamily() : "";
+  const cssProp = isTypoPreview ? camelToKebab(prop) : "";
+  const isPredefined = value && options.includes(value);
+
+  const menuItemsT = options.map((v) => {
+    const label = v.includes("-") ? kebabToLabel(v) : v.replace(/^./, (c) => c.toUpperCase());
+    const previewStyle = isTypoPreview
+      ? `${cssProp}: ${v};${font ? ` font-family: ${font}` : ""}`
+      : "";
+    return html`<sp-menu-item value=${v} style=${previewStyle}>${label}</sp-menu-item>`;
+  });
+
+  // Picker mode — value matches a predefined keyword
+  if (isPredefined) {
+    return html`
+      <sp-picker size="s" .value=${live(value)}
+        @change=${(e) => onChange(e.target.value === "__none__" ? "" : e.target.value)}>
+        <sp-menu-item value="__none__">\u2014</sp-menu-item>
+        ${menuItemsT}
+      </sp-picker>
+    `;
+  }
+
+  // Textfield mode — empty or custom value
+  const menuId = `style-kw-${prop}`;
   return html`
-    <sp-picker size="s" .value=${live(value || "__none__")}
-      @change=${(e) => onChange(e.target.value === "__none__" ? "" : e.target.value)}>
-      <sp-menu-item value="__none__">\u2014</sp-menu-item>
-      ${(entry.enum || []).map(v => html`<sp-menu-item value=${v}>${v}</sp-menu-item>`)}
-      ${value && !(entry.enum || []).includes(value) ? html`<sp-menu-item value=${value}>${value}</sp-menu-item>` : nothing}
-    </sp-picker>
+    <div class="input-group">
+      <sp-textfield size="s"
+        placeholder=${cssInitialMap.get(prop) || ""}
+        .value=${live(value || "")}
+        @input=${debouncedStyleCommit(`kw:${prop}`, 400, (e) => onChange(e.target.value))}
+      ></sp-textfield>
+      <sp-picker-button size="s" id=${menuId}></sp-picker-button>
+      <sp-overlay trigger=${menuId}@click placement="bottom-end" type="auto">
+        <sp-popover>
+          <sp-menu @change=${(e) => { if (e.target.value) onChange(e.target.value); }}>
+            ${menuItemsT}
+          </sp-menu>
+        </sp-popover>
+      </sp-overlay>
+    </div>
   `;
+}
+
+function renderSelectInput(entry, prop, value, onChange) {
+  return renderKeywordInput(entry.enum || [], prop, value, onChange);
 }
 
 function handleFontPresetSelection(preset, onChange) {
@@ -6587,7 +6656,7 @@ function renderComboboxInput(entry, prop, value, onChange) {
   const examples = entry.examples || [];
   const isVarRef = typeof value === "string" && value.startsWith("var(");
 
-  // fontFamily: dual-mode control
+  // fontFamily: dual-mode control (var-picker / combobox)
   if (prop === "fontFamily") {
     if (isVarRef) {
       return renderFontVarPicker(fontVars, presets, value, onChange);
@@ -6595,43 +6664,18 @@ function renderComboboxInput(entry, prop, value, onChange) {
     return renderFontCombobox(fontVars, presets, value, onChange);
   }
 
-  // Non-fontFamily comboboxes: simple textfield with optional examples dropdown
-  const hasMenu = examples.length > 0;
-  const menuId = `style-combo-${prop}`;
-
-  if (!hasMenu) {
-    return html`
-      <sp-textfield size="s"
-        placeholder=${cssInitialMap.get(prop) || ""}
-        .value=${live(value || "")}
-        @input=${debouncedStyleCommit(`combo:${prop}`, 400, (e) => onChange(e.target.value))}
-      ></sp-textfield>
-    `;
+  // All other comboboxes: use the shared keyword dual-mode input
+  if (examples.length > 0) {
+    return renderKeywordInput(examples, prop, value, onChange);
   }
 
+  // Fallback: plain textfield (no predefined options)
   return html`
-    <div class="input-group ${isVarRef ? "is-expression" : ""}">
-      <sp-textfield size="s"
-        placeholder=${cssInitialMap.get(prop) || ""}
-        .value=${live(value || "")}
-        @input=${debouncedStyleCommit(`combo:${prop}`, 400, (e) => onChange(e.target.value))}
-      ></sp-textfield>
-      <sp-picker-button size="s" id=${menuId}></sp-picker-button>
-      <sp-overlay trigger=${menuId}@click placement="bottom-end" type="auto">
-        <sp-popover>
-          <sp-menu @change=${(e) => {
-            const val = e.target.value;
-            if (val) onChange(val);
-          }}>
-            ${examples.map((ex) => html`
-              <sp-menu-item value=${ex}>
-                <span style="font-family: ${ex}">${ex}</span>
-              </sp-menu-item>
-            `)}
-          </sp-menu>
-        </sp-popover>
-      </sp-overlay>
-    </div>
+    <sp-textfield size="s"
+      placeholder=${cssInitialMap.get(prop) || ""}
+      .value=${live(value || "")}
+      @input=${debouncedStyleCommit(`combo:${prop}`, 400, (e) => onChange(e.target.value))}
+    ></sp-textfield>
   `;
 }
 
@@ -6664,6 +6708,11 @@ function camelToLabel(prop) {
   return prop.replace(/([A-Z])/g, " $1").replace(/^./, (c) => c.toUpperCase());
 }
 
+/** Convert a kebab-case CSS value to Title Case for picker display (e.g. "border-box" → "Border Box") */
+function kebabToLabel(val) {
+  return val.replace(/(^|-)(\w)/g, (_, sep, c) => (sep ? " " : "") + c.toUpperCase());
+}
+
 function propLabel(entry, prop) {
   return entry?.$label || camelToLabel(prop);
 }
@@ -6681,7 +6730,7 @@ function widgetForType(type, entry, prop, value, onCommit) {
     case "color": return renderColorInput(prop, value, onCommit);
     case "number-unit": return renderNumberUnitInput(entry, prop, value, onCommit);
     case "number": return renderNumberInput(entry, prop, value, onCommit);
-    case "select": return renderSelectInput(entry, value, onCommit);
+    case "select": return renderSelectInput(entry, prop, value, onCommit);
     case "combobox": return renderComboboxInput(entry, prop, value, onCommit);
     default: return renderTextInput(prop, value, onCommit);
   }
