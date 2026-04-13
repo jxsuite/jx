@@ -6425,7 +6425,7 @@ function renderNumberUnitInput(entry, prop, value, onChange) {
           })}
         ></sp-textfield>
         ${hasUnits ? html`
-          <sp-picker-button id=${btnId} quiet>
+          <sp-picker-button id=${btnId} size="s">
             <span slot="label">${currentUnit || units[0] || ""}</span>
           </sp-picker-button>
           <sp-overlay trigger="${btnId}@click" placement="bottom-end" offset="4">
@@ -6515,10 +6515,13 @@ function currentFontFamily() {
  *
  * If the current value is one of the predefined options → renders as sp-picker
  * with Title Case labels (and typography preview when applicable).
- * Selecting "—" clears the value, which flips to textfield mode.
+ * Selecting "—" clears the value, which flips to combobox mode.
  *
- * If the value is empty or a custom string → renders as sp-textfield + sp-picker-button
- * with a dropdown of predefined options.  Selecting one flips to picker mode.
+ * If the value is empty or a custom string → renders as sp-combobox with
+ * predefined options in its dropdown.  Selecting one flips to picker mode.
+ *
+ * Note: sp-combobox recreates items in shadow DOM as plain text, so typography
+ * preview props use a manual sp-textfield + sp-overlay + sp-menu instead.
  */
 function renderKeywordInput(options, prop, value, onChange) {
   const isTypoPreview = TYPO_PREVIEW_PROPS.has(prop) || prop === "fontWeight";
@@ -6528,16 +6531,20 @@ function renderKeywordInput(options, prop, value, onChange) {
 
   const menuItemsT = options.map((v) => {
     const label = v.includes("-") ? kebabToLabel(v) : v.replace(/^./, (c) => c.toUpperCase());
-    const previewStyle = isTypoPreview
-      ? `${cssProp}: ${v};${font ? ` font-family: ${font}` : ""}`
-      : "";
-    return html`<sp-menu-item value=${v} style=${previewStyle}>${label}</sp-menu-item>`;
+    if (isTypoPreview) {
+      const previewStyle = `${cssProp}: ${v};${font ? ` font-family: ${font}` : ""}`;
+      return html`<sp-menu-item value=${v} style=${previewStyle}>${label}</sp-menu-item>`;
+    }
+    return html`<sp-menu-item value=${v}>${label}</sp-menu-item>`;
   });
 
   // Picker mode — value matches a predefined keyword
   if (isPredefined) {
+    const pickerStyle = isTypoPreview
+      ? `${cssProp}: ${value};${font ? ` font-family: ${font}` : ""}`
+      : "";
     return html`
-      <sp-picker size="s" .value=${live(value)}
+      <sp-picker size="s" style=${pickerStyle} .value=${live(value)}
         @change=${(e) => onChange(e.target.value === "__none__" ? "" : e.target.value)}>
         <sp-menu-item value="__none__">\u2014</sp-menu-item>
         ${menuItemsT}
@@ -6545,24 +6552,38 @@ function renderKeywordInput(options, prop, value, onChange) {
     `;
   }
 
-  // Textfield mode — empty or custom value
-  const menuId = `style-kw-${prop}`;
+  // Combobox mode — empty or custom value
+  // Typography props need manual overlay for styled menu items;
+  // sp-combobox discards all item styling in its shadow DOM.
+  if (isTypoPreview) {
+    const menuId = `style-kw-${prop}`;
+    return html`
+      <div class="input-group">
+        <sp-textfield size="s"
+          placeholder=${cssInitialMap.get(prop) || ""}
+          .value=${live(value || "")}
+          @input=${debouncedStyleCommit(`kw:${prop}`, 400, (e) => onChange(e.target.value))}
+        ></sp-textfield>
+        <sp-picker-button size="s" id=${menuId}></sp-picker-button>
+        <sp-overlay trigger=${menuId}@click placement="bottom-end" type="auto">
+          <sp-popover>
+            <sp-menu @change=${(e) => { if (e.target.value) onChange(e.target.value); }}>
+              ${menuItemsT}
+            </sp-menu>
+          </sp-popover>
+        </sp-overlay>
+      </div>
+    `;
+  }
+
   return html`
-    <div class="input-group">
-      <sp-textfield size="s"
-        placeholder=${cssInitialMap.get(prop) || ""}
-        .value=${live(value || "")}
-        @input=${debouncedStyleCommit(`kw:${prop}`, 400, (e) => onChange(e.target.value))}
-      ></sp-textfield>
-      <sp-picker-button size="s" id=${menuId}></sp-picker-button>
-      <sp-overlay trigger=${menuId}@click placement="bottom-end" type="auto">
-        <sp-popover>
-          <sp-menu @change=${(e) => { if (e.target.value) onChange(e.target.value); }}>
-            ${menuItemsT}
-          </sp-menu>
-        </sp-popover>
-      </sp-overlay>
-    </div>
+    <sp-combobox size="s"
+      placeholder=${cssInitialMap.get(prop) || ""}
+      .value=${live(value || "")}
+      @input=${debouncedStyleCommit(`kw:${prop}`, 400, (e) => onChange(e.target.value))}
+      @change=${(e) => onChange(e.target.value)}>
+      ${menuItemsT}
+    </sp-combobox>
   `;
 }
 
@@ -6628,25 +6649,16 @@ function renderFontVarPicker(fontVars, presets, value, onChange) {
 }
 
 function renderFontCombobox(fontVars, presets, value, onChange) {
-  const menuId = "style-combo-fontFamily";
   return html`
-    <div class="input-group">
-      <sp-textfield size="s" class="font-combo-field"
-        placeholder=${cssInitialMap.get("fontFamily") || ""}
-        .value=${live(value || "")}
-        @input=${debouncedStyleCommit("combo:fontFamily", 400, (e) => onChange(e.target.value))}
-      ></sp-textfield>
-      <sp-picker-button size="s" id=${menuId}></sp-picker-button>
-      <sp-overlay trigger=${menuId}@click placement="bottom-end" type="auto">
-        <sp-popover>
-          <sp-menu @change=${(e) => {
-            handleFontSelection(e.target.value, presets, onChange);
-          }}>
-            ${renderFontOptions(fontVars, presets)}
-          </sp-menu>
-        </sp-popover>
-      </sp-overlay>
-    </div>
+    <sp-combobox size="s" class="font-combo-field"
+      placeholder=${cssInitialMap.get("fontFamily") || ""}
+      .value=${live(value || "")}
+      @input=${debouncedStyleCommit("combo:fontFamily", 400, (e) => onChange(e.target.value))}
+      @change=${(e) => {
+        handleFontSelection(e.target.value, presets, onChange);
+      }}>
+      ${renderFontOptions(fontVars, presets)}
+    </sp-combobox>
   `;
 }
 
