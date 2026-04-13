@@ -1,0 +1,21 @@
+{
+  "title": "Blog",
+  "state": {
+    "posts": {
+      "$prototype": "ContentCollection",
+      "collection": "blog",
+      "filter": { "draft": false },
+      "sort": { "field": "pubDate", "order": "desc" }
+    }
+  },
+  "children": [
+    {
+      "tagName": "h1",
+      "children": ["Blog"]
+    },
+    {
+      "tagName": "p",
+      "children": ["Latest posts from the JSONsx blog."]
+    }
+  ]
+}

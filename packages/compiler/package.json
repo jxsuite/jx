@@ -11,7 +11,8 @@
     "./pages-discovery": "./pages-discovery.js",
     "./layout-resolver": "./layout-resolver.js",
     "./head-merger": "./head-merger.js",
-    "./context-injection": "./context-injection.js"
+    "./context-injection": "./context-injection.js",
+    "./content-loader": "./content-loader.js"
   },
   "bin": {
     "jsonsx-build": "./cli-build.js"

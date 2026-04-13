@@ -20,6 +20,7 @@ import { resolveLayout } from "./layout-resolver.js";
 import { mergeHead, renderHead } from "./head-merger.js";
 import { injectContext } from "./context-injection.js";
 import { compile, compileServer } from "./compiler.js";
+import { loadCollections, loadContentConfig, resolveCollectionRefs } from "./content-loader.js";
 
 /**
  * Build an entire JSONsx site from a project directory.
@@ -59,8 +60,20 @@ export async function buildSite(projectRoot, options = {}) {
   const staticRoutes = discoverPages(pagesDir);
   log(`  Found ${staticRoutes.length} page(s)`);
 
+  // ── 3b. Load content collections ──────────────────────────────────────
+  log("Loading content collections...");
+  const collections = await loadCollections(projectRoot);
+  if (collections.size > 0) {
+    log(`  Loaded ${collections.size} collection(s): ${[...collections.keys()].join(", ")}`);
+    // Resolve cross-collection $ref references
+    const contentConfig = loadContentConfig(projectRoot);
+    if (contentConfig) {
+      resolveCollectionRefs(collections, contentConfig.config);
+    }
+  }
+
   // ── 4. Expand dynamic routes ────────────────────────────────────────────
-  const routes = await expandDynamicRoutes(staticRoutes, projectRoot);
+  const routes = await expandDynamicRoutes(staticRoutes, projectRoot, collections);
   log(`  ${routes.length} route(s) after expansion`);
 
   // ── 5. Compile each route ───────────────────────────────────────────────
@@ -69,7 +82,7 @@ export async function buildSite(projectRoot, options = {}) {
   for (const route of routes) {
     try {
       log(`  Compiling ${route.urlPattern} ...`);
-      const result = await compilePage(route, siteConfig, projectRoot);
+      const result = await compilePage(route, siteConfig, projectRoot, collections);
 
       // Determine output path
       const outPath = routeToOutputPath(route.urlPattern, outDir, trailingSlash);
@@ -125,7 +138,7 @@ export async function buildSite(projectRoot, options = {}) {
  *
  * Pipeline: load JSON → resolve layout → inject context → merge head → compile
  */
-async function compilePage(route, siteConfig, projectRoot) {
+async function compilePage(route, siteConfig, projectRoot, collections = new Map()) {
   // Load the raw page document
   let pageDoc = JSON.parse(readFileSync(route.sourcePath, "utf8"));
 
@@ -141,8 +154,8 @@ async function compilePage(route, siteConfig, projectRoot) {
   delete layoutDoc._pageHead;
   delete layoutDoc._pageTitle;
 
-  // Inject $site and $page context
-  injectContext(layoutDoc, siteConfig, route);
+  // Inject $site and $page context, resolve ContentCollection/ContentEntry
+  injectContext(layoutDoc, siteConfig, route, collections);
 
   // Determine the page title
   const title = pageTitle ?? siteConfig.name ?? "JSONsx Site";

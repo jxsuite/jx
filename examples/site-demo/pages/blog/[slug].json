@@ -1,0 +1,31 @@
+{
+  "title": "Blog Post",
+  "$paths": {
+    "collection": "blog",
+    "param": "slug",
+    "field": "id"
+  },
+  "state": {
+    "post": {
+      "$prototype": "ContentEntry",
+      "collection": "blog",
+      "id": { "$ref": "#/$params/slug" }
+    }
+  },
+  "children": [
+    {
+      "tagName": "article",
+      "children": [
+        {
+          "tagName": "h1",
+          "children": ["Blog Post"]
+        },
+        {
+          "tagName": "div",
+          "className": "post-body",
+          "children": ["Post content rendered here"]
+        }
+      ]
+    }
+  ]
+}

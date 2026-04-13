@@ -142,11 +142,18 @@ function fileToRoute(relativePath, absolutePath) {
 /**
  * Expand dynamic routes by resolving $paths from each dynamic page.
  *
+ * Supports three $paths shapes (per spec §4.3):
+ *   1. Collection-based: { collection: "blog", param: "slug", field: "id" }
+ *   2. Explicit values:  { values: ["en", "fr"], param: "lang" }
+ *   3. Data file ref:    { "$ref": "./data/products.json", param: "id", field: "sku" }
+ *   4. Legacy array:     [{ slug: "hello" }, { slug: "world" }]
+ *
  * @param {Route[]} routes - Discovered route table
  * @param {string} projectRoot - Project root for resolving $ref paths
+ * @param {Map<string, object[]>} [collections] - Loaded content collections (from content-loader)
  * @returns {Promise<Route[]>} Expanded routes with concrete paths
  */
-export async function expandDynamicRoutes(routes, projectRoot) {
+export async function expandDynamicRoutes(routes, projectRoot, collections = new Map()) {
   const expanded = [];
 
   for (const route of routes) {
@@ -164,16 +171,16 @@ export async function expandDynamicRoutes(routes, projectRoot) {
       continue;
     }
 
-    if (!raw.$paths || !Array.isArray(raw.$paths)) {
-      // No $paths — skip this dynamic route (will be logged as warning)
+    if (!raw.$paths) {
       console.warn(
         `Warning: dynamic route ${route.urlPattern} has no $paths — skipping`
       );
       continue;
     }
 
-    // Each $paths entry is an object mapping param names to values
-    for (const pathEntry of raw.$paths) {
+    const pathEntries = resolvePathEntries(raw.$paths, projectRoot, collections);
+
+    for (const pathEntry of pathEntries) {
       let concreteUrl = route.urlPattern;
       for (const [param, value] of Object.entries(pathEntry)) {
         concreteUrl = concreteUrl.replace(`:${param}`, value);
@@ -186,10 +193,71 @@ export async function expandDynamicRoutes(routes, projectRoot) {
         isDynamic: false,
         isCatchAll: false,
         params: [],
-        _pathParams: pathEntry, // Preserve original params for context injection
+        _pathParams: pathEntry,
       });
     }
   }
 
   return expanded;
+}
+
+/**
+ * Resolve $paths into an array of param objects.
+ *
+ * @param {object|Array} $paths - The $paths declaration
+ * @param {string} projectRoot
+ * @param {Map<string, object[]>} collections
+ * @returns {object[]} Array of { paramName: value } objects
+ */
+function resolvePathEntries($paths, projectRoot, collections) {
+  // Legacy: array of param objects
+  if (Array.isArray($paths)) {
+    return $paths;
+  }
+
+  // Collection-based: { collection: "blog", param: "slug", field: "id" }
+  if ($paths.collection) {
+    const entries = collections.get($paths.collection);
+    if (!entries || entries.length === 0) {
+      console.warn(
+        `Warning: $paths references collection "${$paths.collection}" but it has no entries`
+      );
+      return [];
+    }
+    const param = $paths.param ?? "slug";
+    const field = $paths.field ?? "id";
+    return entries.map((entry) => ({
+      [param]: field === "id" ? entry.id : (entry.data[field] ?? entry.id),
+    }));
+  }
+
+  // Explicit values: { values: ["en", "fr"], param: "lang" }
+  if (Array.isArray($paths.values)) {
+    const param = $paths.param ?? "value";
+    return $paths.values.map((v) => ({ [param]: v }));
+  }
+
+  // Data file ref: { "$ref": "./data/products.json", param: "id", field: "sku" }
+  if ($paths.$ref) {
+    const filePath = resolve(projectRoot, $paths.$ref);
+    let data;
+    try {
+      data = JSON.parse(readFileSync(filePath, "utf8"));
+    } catch (err) {
+      console.warn(`Warning: $paths.$ref could not load "${$paths.$ref}": ${err.message}`);
+      return [];
+    }
+    if (!Array.isArray(data)) {
+      console.warn(`Warning: $paths.$ref "${$paths.$ref}" must be a JSON array`);
+      return [];
+    }
+    const param = $paths.param ?? "id";
+    const field = $paths.field ?? "id";
+    return data.map((item) => ({
+      [param]: item[field] ?? item.id ?? String(item),
+    }));
+  }
+
+  console.warn(`Warning: unrecognized $paths shape — skipping`);
+  return [];
 }
