@@ -55,6 +55,10 @@
                     sleep 2  # Give Chrome time to start
                   fi
                 '';
+                dev-server.exec = ''
+                  # run the bun dev server
+                  bun run dev
+                '';
               };
             };
         };
