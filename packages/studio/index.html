@@ -228,7 +228,7 @@
     .set-dot--section { width: 7px; height: 7px; }
     .style-row--warning .style-row-label { color: var(--warning); }
     .style-row--warning .style-row-label::before { content: '⚠ '; }
-    .style-row > sp-textfield, .style-row > sp-number-field, .style-row > sp-picker { width: 100%; }
+    .style-row > sp-textfield, .style-row > sp-number-field, .style-row > sp-picker, .style-row > sp-combobox { width: 100%; }
     .style-input-color { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; }
     .style-input-color sp-swatch { flex-shrink: 0; cursor: pointer; }
     .style-input-color sp-textfield { flex: 1; min-width: 0; }
@@ -241,18 +241,35 @@
     .font-var-picker { width: 100%; }
     /* Number-unit compound input: textfield + picker-button */
     .style-input-number-unit { flex: 1; min-width: 0; }
-    .input-group { display: flex; align-items: stretch; }
-    .input-group sp-textfield { flex: 1 1 auto; min-width: 0; }
+    /* Combobox-like composite: textfield + picker-button, matching sp-combobox visually */
+    .input-group {
+      display: inline-flex;
+      position: relative;
+      width: 100%;
+    }
+    .input-group sp-textfield {
+      flex: 1 1 auto;
+      min-width: 0;
+      /* Zero out the inline-end corners so the textfield abuts the picker-button */
+      --mod-textfield-border-start-end-radius: 0;
+      --mod-textfield-border-end-end-radius: 0;
+      /* Pull textfield's border into the picker-button so they share one line */
+      margin-inline-end: calc(-1 * var(--spectrum-border-width-100, 1px));
+    }
     .input-group sp-picker-button {
       flex: 0 0 auto;
-      --mod-picker-button-border-radius-sided: var(--spectrum-corner-radius-100);
-      --mod-picker-button-border-color-quiet: transparent;
-      margin-inline-start: calc(-1 * var(--spectrum-border-width-100, 1px));
-      transition: opacity 130ms ease, max-width 130ms ease;
-      max-width: 80px; overflow: hidden;
+      /* Zero out the inline-start corners to abut the textfield */
+      --mod-picker-button-border-start-start-radius: 0;
+      --mod-picker-button-border-end-start-radius: 0;
+      --mod-picker-button-border-color: var(--spectrum-global-color-gray-400, var(--spectrum-gray-400));
     }
-    .input-group.is-expression sp-picker-button { max-width: 0; opacity: 0; pointer-events: none; }
-    .input-group.is-expression sp-textfield { --mod-textfield-text-color-default: var(--spectrum-accent-color-800); }
+    .input-group.is-expression sp-picker-button { display: none; }
+    .input-group.is-expression sp-textfield {
+      --mod-textfield-text-color-default: var(--spectrum-accent-color-800);
+      --mod-textfield-border-start-end-radius: var(--spectrum-corner-radius-100);
+      --mod-textfield-border-end-end-radius: var(--spectrum-corner-radius-100);
+      margin-inline-end: 0;
+    }
     .style-shorthand-header { display: flex; align-items: center; gap: 4px; }
     .style-shorthand-header sp-textfield { flex: 1; min-width: 0; }
 
