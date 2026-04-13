@@ -65,6 +65,15 @@ import {
   isEditableBlock,
   isInlineElement,
 } from "./inline-edit.js";
+import {
+  camelToKebab,
+  camelToLabel,
+  kebabToLabel,
+  propLabel,
+  attrLabel,
+  abbreviateValue,
+  inferInputType,
+} from "./studio-utils.js";
 
 import {
   draggable,
@@ -6151,16 +6160,7 @@ function mediaBreakpointRow(name, query) {
 
 const UNIT_RE = /^(-?[\d.]+)(px|rem|em|%|vw|vh|svw|svh|dvh|ms|s|fr|ch|ex|deg)?$/;
 
-function inferInputType(entry) {
-  if (entry.$shorthand === true) return "shorthand";
-  if (entry.$input === "button-group") return "button-group";
-  if (entry.format === "color") return "color";
-  if (entry.$units !== undefined) return "number-unit";
-  if (entry.type === "number") return "number";
-  if (Array.isArray(entry.enum)) return "select";
-  if (Array.isArray(entry.examples) || Array.isArray(entry.presets)) return "combobox";
-  return "text";
-}
+// inferInputType — imported from studio-utils.js
 
 function conditionPasses(cond, styles) {
   const val = styles[cond.prop] ?? "";
@@ -6453,16 +6453,7 @@ function renderNumberUnitInput(entry, prop, value, onChange) {
   `;
 }
 
-function abbreviateValue(val) {
-  const map = {
-    inline: "inl", "inline-block": "i-blk", "inline-flex": "i-flx", "inline-grid": "i-grd",
-    contents: "cnt", "flow-root": "flow", nowrap: "no-wr", "wrap-reverse": "wr-rev",
-    "flex-start": "start", "flex-end": "end", "space-between": "betw",
-    "space-around": "arnd", "space-evenly": "even", stretch: "str", baseline: "base",
-    normal: "norm", "row-reverse": "row-r", "column-reverse": "col-r", column: "col",
-  };
-  return map[val] || val;
-}
+// abbreviateValue — imported from studio-utils.js
 
 function renderButtonGroupInput(entry, prop, value, onChange) {
   const values = entry.$buttonValues || entry.enum || [];
@@ -6512,10 +6503,7 @@ const TYPO_PREVIEW_PROPS = new Set([
   "fontStyle", "fontVariant", "textTransform", "textDecoration",
 ]);
 
-/** camelCase → kebab-case for inline style attributes */
-function camelToKebab(str) {
-  return str.replace(/[A-Z]/g, (c) => "-" + c.toLowerCase());
-}
+// camelToKebab — imported from studio-utils.js
 
 /** Resolve the current font family for typography preview (handles var() references) */
 function currentFontFamily() {
@@ -6733,25 +6721,7 @@ function renderTextInput(prop, value, onChange) {
   `;
 }
 
-function camelToLabel(prop) {
-  return prop.replace(/([A-Z])/g, " $1").replace(/^./, (c) => c.toUpperCase());
-}
-
-/** Convert a kebab-case CSS value to Title Case for picker display (e.g. "border-box" → "Border Box") */
-function kebabToLabel(val) {
-  return val.replace(/(^|-)(\w)/g, (_, sep, c) => (sep ? " " : "") + c.toUpperCase());
-}
-
-function propLabel(entry, prop) {
-  return entry?.$label || camelToLabel(prop);
-}
-
-/** Label for HTML attributes — handles kebab-case (aria-label → "Aria Label") */
-function attrLabel(entry, attr) {
-  if (entry?.$label) return entry.$label;
-  if (attr.includes("-")) return attr.replace(/(^|-)(\w)/g, (_, sep, c) => (sep ? " " : "") + c.toUpperCase());
-  return camelToLabel(attr);
-}
+// camelToLabel, kebabToLabel, propLabel, attrLabel — imported from studio-utils.js
 
 function widgetForType(type, entry, prop, value, onCommit) {
   switch (type) {
