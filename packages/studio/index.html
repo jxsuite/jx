@@ -116,13 +116,15 @@
       --mod-tabs-start-to-tab-item: 0px;
       --mod-tabs-color: var(--fg-dim);
       --mod-tabs-color-selected: var(--fg);
-      --spectrum-tabs-top-to-text: 4px;
-      --spectrum-tabs-bottom-to-text: 4px;
+      --spectrum-tabs-top-to-text: 0px;
+      --spectrum-tabs-bottom-to-text: 0px;
     }
     .panel-tabs sp-tab {
       padding: 4px 10px;
       color: var(--fg-dim); opacity: 0.7;
       min-block-size: unset;
+      block-size: 36px;
+      box-sizing: border-box;
     }
     .panel-tabs sp-tab:hover { opacity: 1; }
     .panel-tabs sp-tab[selected] { color: var(--fg); opacity: 1; }
