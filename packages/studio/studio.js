@@ -349,8 +349,8 @@ let canvasPanels = [];
 let panX = 0, panY = 0;
 let panzoomWrap = null; // the transform container inside #canvas-wrap
 
-/** Canvas mode: "edit" | "preview" | "source" | "stylebook" */
-let canvasMode = "edit";
+/** Canvas mode: "edit" | "design" | "preview" | "source" | "stylebook" */
+let canvasMode = "design";
 
 /** Component-mode inline text editing state: { el, path, originalText, mediaName } or null */
 let componentInlineEdit = null;
@@ -505,7 +505,7 @@ async function renderCanvasLive(doc, canvasEl) {
   // In edit mode, collect paths where $map templates were inlined as children[0]
   // so we can remap runtime paths (children,0,...) → (children,map,...)
   const mapParentPaths = new Set();
-  if (canvasMode === "edit") {
+  if (canvasMode === "design" || canvasMode === "edit") {
     (function findMapParents(node, path) {
       if (!node || typeof node !== "object") return;
       if (node.children && typeof node.children === "object" && node.children.$prototype === "Array") {
@@ -548,7 +548,7 @@ async function renderCanvasLive(doc, canvasEl) {
         // prepareForEditMode wraps $map template in: children[0] (wrapper) > children[0] (template)
         // Real paths: wrapper → ['children'] ($map container), template → ['children', 'map']
         let mappedPath = path;
-        if (canvasMode === "edit" && mapParentPaths.size > 0) {
+        if ((canvasMode === "design" || canvasMode === "edit") && mapParentPaths.size > 0) {
           for (let i = 0; i < path.length - 1; i++) {
             if (path[i] === "children" && path[i + 1] === 0) {
               const parentKey = path.slice(0, i).join("/");
@@ -569,7 +569,7 @@ async function renderCanvasLive(doc, canvasEl) {
       },
       _path: [],
     });
-    if (canvasMode === "edit") {
+    if (canvasMode === "design" || canvasMode === "edit") {
       // Disable pointer events on all rendered elements for edit mode
       el.style.pointerEvents = "none";
       for (const child of el.querySelectorAll("*")) {
@@ -577,7 +577,7 @@ async function renderCanvasLive(doc, canvasEl) {
       }
     }
     canvasEl.appendChild(el);
-    if (canvasMode === "edit") {
+    if (canvasMode === "design" || canvasMode === "edit") {
       // Custom element connectedCallbacks render children asynchronously —
       // sweep again after they've had a chance to run
       requestAnimationFrame(() => {
@@ -875,7 +875,32 @@ function renderCanvas() {
     return;
   }
 
-  // Normal canvas mode — set up panzoom surface
+  // Edit (content) mode — centered column, no panzoom, always 100%
+  if (canvasMode === "edit") {
+    canvasWrap.style.padding = "0";
+    canvasWrap.style.overflow = "hidden";
+
+    // Remove zoom indicator left over from design/preview mode
+    const oldIndicator = document.querySelector(".zoom-indicator");
+    if (oldIndicator) oldIndicator.remove();
+
+    const scrollContainer = document.createElement("div");
+    scrollContainer.className = "content-edit-canvas";
+
+    const column = document.createElement("div");
+    column.className = "content-edit-column";
+    scrollContainer.appendChild(column);
+    canvasWrap.appendChild(scrollContainer);
+
+    // Create a canvas panel inside the column so overlays and selection work
+    const panel = createCanvasPanel(null, null, true);
+    column.appendChild(panel.element);
+    canvasPanels.push(panel);
+    renderCanvasIntoPanel(panel, new Set(), S.ui.featureToggles);
+    return;
+  }
+
+  // Normal canvas mode (design / preview) — set up panzoom surface
   canvasWrap.style.padding = "0";
   canvasWrap.style.overflow = "hidden";
 
@@ -1454,8 +1479,8 @@ function renderOverlays() {
     p.overlay.appendChild(p.dropLine);
   }
 
-  // In non-edit modes (except stylebook), hide overlays and click interceptors
-  if (canvasMode !== "edit" && canvasMode !== "stylebook") {
+  // In non-interactive modes (except stylebook), hide overlays and click interceptors
+  if (canvasMode !== "design" && canvasMode !== "edit" && canvasMode !== "stylebook") {
     for (const p of canvasPanels) {
       p.overlayClk.style.pointerEvents = "none";
     }
@@ -1579,10 +1604,15 @@ function updateForcedPseudoPreview() {
   _forcedStyleTag = tag;
 }
 
+/** Effective zoom scale — always 1 in edit (content) mode, S.ui.zoom otherwise. */
+function effectiveZoom() {
+  return canvasMode === "edit" ? 1 : S.ui.zoom;
+}
+
 function drawOverlayBox(el, type, panel) {
   const vpRect = panel.viewport.getBoundingClientRect();
   const elRect = el.getBoundingClientRect();
-  const scale = S.ui.zoom;
+  const scale = effectiveZoom();
 
   const box = document.createElement("div");
   box.className = `overlay-box overlay-${type}`;
@@ -2239,6 +2269,7 @@ function tabIcon(tag, size) {
     "sp-icon-properties": (s) => html`<sp-icon-properties slot="icon" size=${s}></sp-icon-properties>`,
     "sp-icon-event": (s) => html`<sp-icon-event slot="icon" size=${s}></sp-icon-event>`,
     "sp-icon-brush": (s) => html`<sp-icon-brush slot="icon" size=${s}></sp-icon-brush>`,
+    "sp-icon-artboard": (s) => html`<sp-icon-artboard slot="icon" size=${s}></sp-icon-artboard>`,
   };
   const fn = m[tag];
   return fn ? fn(size || "s") : nothing;
@@ -3717,7 +3748,7 @@ function findStylebookEl(canvasEl, tag) {
 function drawOverlayBoxRaw(el, type, panel, labelText) {
   const vpRect = panel.viewport.getBoundingClientRect();
   const elRect = el.getBoundingClientRect();
-  const scale = S.ui.zoom;
+  const scale = effectiveZoom();
 
   const box = document.createElement("div");
   box.className = `overlay-box overlay-${type}`;
@@ -7878,19 +7909,42 @@ function renderToolbar() {
   );
   toolbar.appendChild(insertGroup);
 
-  // CEM Export (custom element docs only)
-  if (isCustomElementDoc()) {
-    const cemGroup = group();
-    cemGroup.appendChild(tbBtn("CEM", exportCemManifest, "sp-icon-export"));
-    toolbar.appendChild(cemGroup);
+  // Feature toggles (non-size media queries like --dark)
+  const { featureQueries } = parseMediaEntries(S.document.$media);
+  if (featureQueries.length > 0) {
+    const toggleGroup = group();
+    for (const { name, query } of featureQueries) {
+      const btn = document.createElement("sp-action-button");
+      btn.setAttribute("toggles", "");
+      btn.setAttribute("size", "s");
+      if (S.ui.featureToggles[name]) btn.setAttribute("selected", "");
+      btn.textContent = mediaDisplayName(name);
+      btn.title = query;
+      btn.addEventListener("click", () => {
+        const newToggles = { ...S.ui.featureToggles, [name]: !btn.selected };
+        S = { ...S, ui: { ...S.ui, featureToggles: newToggles } };
+        renderCanvas();
+        renderOverlays();
+        renderToolbar();
+      });
+      toggleGroup.appendChild(btn);
+    }
+    toolbar.appendChild(toggleGroup);
   }
+
+  // Spacer — pushes mode switcher to the right
+  const spacer = document.createElement("div");
+  spacer.className = "tb-spacer";
+  toolbar.appendChild(spacer);
 
   // Mode switcher (segmented button group)
   const modeGroup = document.createElement("sp-action-group");
   modeGroup.setAttribute("selects", "single");
   modeGroup.setAttribute("size", "s");
+  modeGroup.setAttribute("compact", "");
   const modes = [
     { key: "edit",      label: "Edit",      iconTag: "sp-icon-edit" },
+    { key: "design",    label: "Design",    iconTag: "sp-icon-artboard" },
     { key: "preview",   label: "Preview",   iconTag: "sp-icon-preview" },
     { key: "source",    label: "Code",      iconTag: "sp-icon-code" },
     { key: "stylebook", label: "Stylebook", iconTag: "sp-icon-brush" },
@@ -7923,44 +7977,6 @@ function renderToolbar() {
     modeGroup.appendChild(btn);
   }
   toolbar.appendChild(modeGroup);
-
-  // Feature toggles (non-size media queries like --dark)
-  const { featureQueries } = parseMediaEntries(S.document.$media);
-  if (featureQueries.length > 0) {
-    const toggleGroup = group();
-    for (const { name, query } of featureQueries) {
-      const btn = document.createElement("sp-action-button");
-      btn.setAttribute("toggles", "");
-      btn.setAttribute("size", "s");
-      if (S.ui.featureToggles[name]) btn.setAttribute("selected", "");
-      btn.textContent = mediaDisplayName(name);
-      btn.title = query;
-      btn.addEventListener("click", () => {
-        const newToggles = { ...S.ui.featureToggles, [name]: !btn.selected };
-        S = { ...S, ui: { ...S.ui, featureToggles: newToggles } };
-        renderCanvas();
-        renderOverlays();
-        renderToolbar();
-      });
-      toggleGroup.appendChild(btn);
-    }
-    toolbar.appendChild(toggleGroup);
-  }
-
-  // Spacer
-  const spacer = document.createElement("div");
-  spacer.className = "tb-spacer";
-  toolbar.appendChild(spacer);
-
-  // Export group
-  const exportGroup = group();
-  exportGroup.appendChild(
-    tbBtn("Copy JSON", async () => {
-      await navigator.clipboard.writeText(JSON.stringify(S.document, null, 2));
-      statusMessage("Copied to clipboard");
-    }, "sp-icon-copy"),
-  );
-  toolbar.appendChild(exportGroup);
 }
 
 function group() {
@@ -8175,6 +8191,8 @@ async function saveFile() {
 
 // Wheel handler: Ctrl+Scroll = zoom (cursor-centered), plain scroll = pan
 canvasWrap.addEventListener("wheel", (e) => {
+  // Edit (content) mode: let the scroll container handle scrolling natively
+  if (canvasMode === "edit") return;
   e.preventDefault();
   if (e.ctrlKey || e.metaKey) {
     // Zoom towards cursor
@@ -8199,6 +8217,7 @@ canvasWrap.addEventListener("wheel", (e) => {
 
 // Middle-mouse drag panning
 canvasWrap.addEventListener("pointerdown", (e) => {
+  if (canvasMode === "edit") return; // no panning in edit mode
   if (e.button !== 1) return; // middle button only
   e.preventDefault();
   canvasWrap.setPointerCapture(e.pointerId);
@@ -8280,6 +8299,7 @@ document.addEventListener("keydown", (e) => {
         pasteNode();
         break;
       case "0":
+        if (canvasMode === "edit") break;
         e.preventDefault();
         S = { ...S, ui: { ...S.ui, zoom: 1 } };
         panX = 16; panY = 16;
@@ -8287,11 +8307,13 @@ document.addEventListener("keydown", (e) => {
         break;
       case "=":
       case "+":
+        if (canvasMode === "edit") break;
         e.preventDefault();
         S = { ...S, ui: { ...S.ui, zoom: Math.min(5.0, S.ui.zoom * 1.2) } };
         applyTransform();
         break;
       case "-":
+        if (canvasMode === "edit") break;
         e.preventDefault();
         S = { ...S, ui: { ...S.ui, zoom: Math.max(0.05, S.ui.zoom / 1.2) } };
         applyTransform();

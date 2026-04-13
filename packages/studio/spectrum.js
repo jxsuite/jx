@@ -102,6 +102,7 @@ import { IconViewColumn } from "@spectrum-web-components/icons-workflow/src/elem
 import { IconBox } from "@spectrum-web-components/icons-workflow/src/elements/IconBox.js";
 import { IconVisibility } from "@spectrum-web-components/icons-workflow/src/elements/IconVisibility.js";
 import { IconVisibilityOff } from "@spectrum-web-components/icons-workflow/src/elements/IconVisibilityOff.js";
+import { IconArtboard } from "@spectrum-web-components/icons-workflow/src/elements/IconArtboard.js";
 
 // Register all components. Using defineElement from Spectrum's base package
 // ensures duplicate registration is handled gracefully.
@@ -195,6 +196,7 @@ const components = [
   ["sp-icon-box", IconBox],
   ["sp-icon-visibility", IconVisibility],
   ["sp-icon-visibility-off", IconVisibilityOff],
+  ["sp-icon-artboard", IconArtboard],
 ];
 
 for (const [tag, ctor] of components) {
