@@ -2230,35 +2230,44 @@ function selectComponentSlashItem(cmd) {
 
 // ─── Activity bar ────────────────────────────────────────────────────────────
 
+function tabIcon(tag, size) {
+  const m = {
+    "sp-icon-folder": (s) => html`<sp-icon-folder slot="icon" size=${s}></sp-icon-folder>`,
+    "sp-icon-layers": (s) => html`<sp-icon-layers slot="icon" size=${s}></sp-icon-layers>`,
+    "sp-icon-view-grid": (s) => html`<sp-icon-view-grid slot="icon" size=${s}></sp-icon-view-grid>`,
+    "sp-icon-brackets": (s) => html`<sp-icon-brackets slot="icon" size=${s}></sp-icon-brackets>`,
+    "sp-icon-data": (s) => html`<sp-icon-data slot="icon" size=${s}></sp-icon-data>`,
+    "sp-icon-properties": (s) => html`<sp-icon-properties slot="icon" size=${s}></sp-icon-properties>`,
+    "sp-icon-event": (s) => html`<sp-icon-event slot="icon" size=${s}></sp-icon-event>`,
+    "sp-icon-brush": (s) => html`<sp-icon-brush slot="icon" size=${s}></sp-icon-brush>`,
+  };
+  const fn = m[tag];
+  return fn ? fn(size || "s") : nothing;
+}
+
 function renderActivityBar() {
-  const tabs_def = [
-    { value: "files",  icon: "sp-icon-folder" },
-    { value: "layers", icon: "sp-icon-layers" },
-    { value: "blocks", icon: "sp-icon-view-grid" },
-    { value: "state",  icon: "sp-icon-brackets" },
-    { value: "data",   icon: "sp-icon-data" },
+  const tabs = [
+    { value: "files",  icon: "sp-icon-folder",    label: "Files" },
+    { value: "layers", icon: "sp-icon-layers",     label: "Layers" },
+    { value: "blocks", icon: "sp-icon-view-grid",  label: "Blocks" },
+    { value: "state",  icon: "sp-icon-brackets",   label: "State" },
+    { value: "data",   icon: "sp-icon-data",       label: "Data" },
   ];
-  activityBar.innerHTML = "";
-  const tabs = document.createElement("sp-tabs");
-  tabs.selected = S.ui.leftTab;
-  tabs.direction = "vertical";
-  tabs.quiet = true;
-  for (const { value, icon } of tabs_def) {
-    const spTab = document.createElement("sp-tab");
-    spTab.value = value;
-    spTab.setAttribute("aria-label", value);
-    const iconEl = document.createElement(icon);
-    iconEl.slot = "icon";
-    iconEl.setAttribute("size", "s");
-    spTab.appendChild(iconEl);
-    tabs.appendChild(spTab);
-  }
-  tabs.addEventListener("change", (e) => {
-    S = { ...S, ui: { ...S.ui, leftTab: e.target.selected } };
-    renderActivityBar();
-    renderLeftPanel();
-  });
-  activityBar.appendChild(tabs);
+  const tpl = html`
+    <sp-tabs selected=${S.ui.leftTab} direction="vertical" quiet
+      @change=${(e) => {
+        S = { ...S, ui: { ...S.ui, leftTab: e.target.selected } };
+        renderActivityBar();
+        renderLeftPanel();
+      }}>
+      ${tabs.map((t) => html`
+        <sp-tab value=${t.value} title=${t.label} aria-label=${t.label}>
+          ${tabIcon(t.icon, "m")}
+        </sp-tab>
+      `)}
+    </sp-tabs>
+  `;
+  litRender(tpl, activityBar);
 }
 
 // ─── Left panel: Layers ───────────────────────────────────────────────────────
@@ -5409,19 +5418,18 @@ async function openFileFromTree(path) {
 function renderRightPanel() {
   const tab = S.ui.rightTab;
 
-  // ── Action-group tabs ─────────────────────────────────────────────────
+  // ── Icon tabs ──────────────────────────────────────────────────────────
   const panelTabs = [
-    { value: "properties", label: "Properties" },
-    { value: "events", label: "Events" },
-    { value: "style", label: "Style" },
+    { value: "properties", icon: "sp-icon-properties", label: "Properties" },
+    { value: "events",     icon: "sp-icon-event",      label: "Events" },
+    { value: "style",      icon: "sp-icon-brush",       label: "Style" },
   ];
 
   const tabsT = html`
     <div class="panel-tabs">
-      <sp-action-group selects="single" size="s" compact quiet
+      <sp-tabs selected=${tab} quiet
         @change=${(e) => {
-          const raw = e.target.selected;
-          const sel = Array.isArray(raw) ? raw[0] : raw;
+          const sel = e.target.selected;
           if (sel && sel !== tab) {
             S = { ...S, ui: { ...S.ui, rightTab: sel } };
             renderRightPanel();
@@ -5429,14 +5437,11 @@ function renderRightPanel() {
           }
         }}>
         ${panelTabs.map((t) => html`
-          <sp-action-button value=${t.value} ?selected=${tab === t.value} quiet>
-            ${t.value === "properties" ? html`<sp-icon-properties slot="icon"></sp-icon-properties>` :
-              t.value === "events" ? html`<sp-icon-event slot="icon"></sp-icon-event>` :
-              html`<sp-icon-brush slot="icon"></sp-icon-brush>`}
-            ${t.label}
-          </sp-action-button>
+          <sp-tab value=${t.value} title=${t.label} aria-label=${t.label}>
+            ${tabIcon(t.icon, "xs")}
+          </sp-tab>
         `)}
-      </sp-action-group>
+      </sp-tabs>
     </div>
   `;
 

@@ -109,10 +109,23 @@
     #activity-bar sp-tab:hover { opacity: 1; }
     #activity-bar sp-tab[selected] { color: var(--fg); opacity: 1; }
 
-    /* ─── Panel tabs (action-group) ──────────────── */
-    .panel-tabs { padding: 4px 8px; border-bottom: 1px solid var(--border); }
-    .panel-tabs sp-action-group { width: 100%; }
-    .panel-tabs sp-action-button { flex: 1; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
+    /* ─── Panel tabs (right: horizontal icon tabs) ── */
+    .panel-tabs { border-bottom: 1px solid var(--border); }
+    .panel-tabs sp-tabs {
+      --mod-tabs-item-horizontal-spacing: 0px;
+      --mod-tabs-start-to-tab-item: 0px;
+      --mod-tabs-color: var(--fg-dim);
+      --mod-tabs-color-selected: var(--fg);
+      --spectrum-tabs-top-to-text: 4px;
+      --spectrum-tabs-bottom-to-text: 4px;
+    }
+    .panel-tabs sp-tab {
+      padding: 4px 10px;
+      color: var(--fg-dim); opacity: 0.7;
+      min-block-size: unset;
+    }
+    .panel-tabs sp-tab:hover { opacity: 1; }
+    .panel-tabs sp-tab[selected] { color: var(--fg); opacity: 1; }
     .panel-body { padding: 0; }
 
     /* ─── File tree ──────────────────────────────── */
