@@ -49,6 +49,13 @@
       "type": "string",
       "$input": "button-group",
       "$buttonValues": ["flex", "grid", "block", "inline", "none"],
+      "$icons": {
+        "flex": "display-flex",
+        "grid": "display-grid",
+        "block": "display-block",
+        "inline": "display-inline",
+        "none": "display-none"
+      },
       "enum": [
         "block",
         "inline",
@@ -714,10 +721,10 @@
       "$input": "button-group",
       "$buttonValues": ["left", "center", "right", "justify"],
       "$icons": {
-        "left": "align-left",
-        "center": "align-center",
-        "right": "align-right",
-        "justify": "align-justify"
+        "left": "text-align-left",
+        "center": "text-align-center",
+        "right": "text-align-right",
+        "justify": "text-align-justify"
       },
       "enum": ["left", "right", "center", "justify", "start", "end"]
     },

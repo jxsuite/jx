@@ -90,7 +90,6 @@ import { html, render as litRender, nothing } from "lit-html";
 import { live } from "lit-html/directives/live.js";
 import { classMap } from "lit-html/directives/class-map.js";
 import { repeat } from "lit-html/directives/repeat.js";
-import { unsafeHTML } from "lit-html/directives/unsafe-html.js";
 import { ifDefined } from "lit-html/directives/if-defined.js";
 
 import webdata from "./webdata.json";
@@ -6478,7 +6477,7 @@ function renderButtonGroupInput(entry, prop, value, onChange) {
           <sp-action-button size="s" title=${v} ?selected=${v === value}
             @click=${() => onChange(v === value ? "" : v)}>
             ${iconMap[v] && icons[iconMap[v]]
-              ? html`<span slot="icon">${unsafeHTML(icons[iconMap[v]])}</span>`
+              ? icons[iconMap[v]]
               : abbreviateValue(v)}
           </sp-action-button>
         `)}
