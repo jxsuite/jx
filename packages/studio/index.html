@@ -273,6 +273,22 @@
     .style-shorthand-header { display: flex; align-items: center; gap: 4px; }
     .style-shorthand-header sp-textfield { flex: 1; min-width: 0; }
 
+    /* Button-group + overflow picker-button combo */
+    .button-group-combo { display: inline-flex; align-items: stretch; }
+    .button-group-combo.has-overflow sp-action-group {
+      --mod-actionbutton-border-radius: 0;
+    }
+    .button-group-combo sp-picker-button {
+      flex: 0 0 auto;
+      --mod-picker-button-border-start-start-radius: 0;
+      --mod-picker-button-border-end-start-radius: 0;
+      --mod-picker-button-border-color: var(--spectrum-global-color-gray-400, var(--spectrum-gray-400));
+      margin-inline-start: calc(-1 * var(--spectrum-border-width-100, 1px));
+    }
+    .button-group-combo sp-picker-button.has-selection {
+      --mod-picker-button-background-color: var(--spectrum-accent-background-color-default);
+    }
+
     /* ─── Grid section layout (Size panel) ─── */
     .style-section-body--grid { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 6px 8px; }
     .style-section-body--grid .style-row { min-width: 0; overflow: hidden; }

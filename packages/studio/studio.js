@@ -5409,7 +5409,7 @@ function renderRightPanel() {
 
   const tabsT = html`
     <div class="panel-tabs">
-      <sp-action-group selects="single" size="xs" compact quiet
+      <sp-action-group selects="single" size="s" compact quiet
         @change=${(e) => {
           const raw = e.target.selected;
           const sel = Array.isArray(raw) ? raw[0] : raw;
@@ -6464,29 +6464,46 @@ function abbreviateValue(val) {
   return map[val] || val;
 }
 
-function renderButtonGroupInput(entry, value, onChange) {
+function renderButtonGroupInput(entry, prop, value, onChange) {
   const values = entry.$buttonValues || entry.enum || [];
   const iconMap = entry.$icons || {};
   const extra = entry.$buttonValues && entry.enum && entry.enum.length > entry.$buttonValues.length
     ? entry.enum.filter((v) => !entry.$buttonValues.includes(v)) : [];
 
+  const menuId = `style-btngrp-${prop}`;
+  const hasExtra = extra.length > 0;
+  // If the current value is one of the extra (non-button) options, show it selected in the picker
+  const extraSelected = hasExtra && extra.includes(value);
+
   return html`
-    <sp-action-group size="xs" compact>
-      ${values.map(v => html`
-        <sp-action-button size="xs" title=${v} ?selected=${v === value}
-          @click=${() => onChange(v === value ? "" : v)}>
-          ${iconMap[v] && icons[iconMap[v]]
-            ? html`<span slot="icon">${unsafeHTML(icons[iconMap[v]])}</span>`
-            : abbreviateValue(v)}
-        </sp-action-button>
-      `)}
-      ${extra.length > 0 ? html`
-        <sp-picker size="s" quiet placeholder="+"
-          @change=${(e) => { if (e.target.value) onChange(e.target.value); }}>
-          ${extra.map(v => html`<sp-menu-item value=${v}>${v}</sp-menu-item>`)}
-        </sp-picker>
+    <div class="button-group-combo ${hasExtra ? "has-overflow" : ""}">
+      <sp-action-group size="s" compact>
+        ${values.map(v => html`
+          <sp-action-button size="s" title=${v} ?selected=${v === value}
+            @click=${() => onChange(v === value ? "" : v)}>
+            ${iconMap[v] && icons[iconMap[v]]
+              ? html`<span slot="icon">${unsafeHTML(icons[iconMap[v]])}</span>`
+              : abbreviateValue(v)}
+          </sp-action-button>
+        `)}
+      </sp-action-group>
+      ${hasExtra ? html`
+        <sp-picker-button size="s" id=${menuId}
+          class=${extraSelected ? "has-selection" : ""}
+        ></sp-picker-button>
+        <sp-overlay trigger=${menuId}@click placement="bottom-end" type="auto">
+          <sp-popover>
+            <sp-menu @change=${(e) => { if (e.target.value) onChange(e.target.value); }}>
+              <sp-menu-item value="__none__">\u2014</sp-menu-item>
+              ${extra.map(v => {
+                const label = v.includes("-") ? kebabToLabel(v) : v.replace(/^./, (c) => c.toUpperCase());
+                return html`<sp-menu-item value=${v} ?selected=${v === value}>${label}</sp-menu-item>`;
+              })}
+            </sp-menu>
+          </sp-popover>
+        </sp-overlay>
       ` : nothing}
-    </sp-action-group>
+    </div>
   `;
 }
 
@@ -6738,7 +6755,7 @@ function attrLabel(entry, attr) {
 
 function widgetForType(type, entry, prop, value, onCommit) {
   switch (type) {
-    case "button-group": return renderButtonGroupInput(entry, value, onCommit);
+    case "button-group": return renderButtonGroupInput(entry, prop, value, onCommit);
     case "color": return renderColorInput(prop, value, onCommit);
     case "number-unit": return renderNumberUnitInput(entry, prop, value, onCommit);
     case "number": return renderNumberInput(entry, prop, value, onCommit);
@@ -6802,7 +6819,7 @@ function renderShorthandRow(shortProp, entry, style, commitFn, deleteFn) {
         <sp-action-button size="xs" quiet @click=${(e) => {
           e.stopPropagation();
           S = { ...S, ui: { ...S.ui, styleShorthands: { ...S.ui.styleShorthands, [shortProp]: !isExpanded } } };
-          renderStylePanel(rightPanel._body);
+          renderRightPanel();
         }}>
           ${isExpanded
             ? html`<sp-icon-chevron-down slot="icon"></sp-icon-chevron-down>`
@@ -6841,7 +6858,7 @@ function styleSidebarTemplate(node, activeMediaTab, activeSelector) {
         @click=${() => {
           S = { ...S, ui: { ...S.ui, activeMedia: null } };
           updateActivePanelHeaders();
-          renderStylePanel(rightPanel._body);
+          renderRightPanel();
         }}></sp-tab>
       ${mediaNames.map((name) => html`
         <sp-tab label=${mediaDisplayName(name)} value=${name}
@@ -6849,7 +6866,7 @@ function styleSidebarTemplate(node, activeMediaTab, activeSelector) {
           @click=${() => {
             S = { ...S, ui: { ...S.ui, activeMedia: name } };
             updateActivePanelHeaders();
-            renderStylePanel(rightPanel._body);
+            renderRightPanel();
           }}></sp-tab>
       `)}
     </sp-tabs>
@@ -6893,7 +6910,7 @@ function styleSidebarTemplate(node, activeMediaTab, activeSelector) {
               picker.style.display = "";
               if (accept && v && isNestedSelector(v)) {
                 S = { ...S, ui: { ...S.ui, activeSelector: v } };
-                renderStylePanel(rightPanel._body);
+                renderRightPanel();
               }
             };
             inp.addEventListener("keydown", (ev) => {
@@ -6905,7 +6922,7 @@ function styleSidebarTemplate(node, activeMediaTab, activeSelector) {
           }
           const newSelector = val === "__base__" ? null : val;
           S = { ...S, ui: { ...S.ui, activeSelector: newSelector } };
-          renderStylePanel(rightPanel._body);
+          renderRightPanel();
         }}>
         <sp-menu-item value="__base__">(base)</sp-menu-item>
         <sp-menu-divider></sp-menu-divider>
