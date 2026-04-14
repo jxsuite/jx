@@ -1571,6 +1571,81 @@ function getActivePanel() {
 
 // ── Floating inline toolbar ────────────────────────────────────────────────
 
+/** Pre-built icon templates for inline format buttons (avoids unsafeStatic) */
+const formatIconMap = {
+  "sp-icon-text-bold": html`<sp-icon-text-bold slot="icon"></sp-icon-text-bold>`,
+  "sp-icon-text-italic": html`<sp-icon-text-italic slot="icon"></sp-icon-text-italic>`,
+  "sp-icon-text-underline": html`<sp-icon-text-underline slot="icon"></sp-icon-text-underline>`,
+  "sp-icon-text-strikethrough": html`<sp-icon-text-strikethrough slot="icon"></sp-icon-text-strikethrough>`,
+  "sp-icon-text-superscript": html`<sp-icon-text-superscript slot="icon"></sp-icon-text-superscript>`,
+  "sp-icon-text-subscript": html`<sp-icon-text-subscript slot="icon"></sp-icon-text-subscript>`,
+  "sp-icon-code": html`<sp-icon-code slot="icon"></sp-icon-code>`,
+  "sp-icon-link": html`<sp-icon-link slot="icon"></sp-icon-link>`,
+};
+
+/** Prevent the bar from stealing focus from contenteditable */
+function onBarMousedown(e) {
+  if (e.target.closest("sp-textfield")) return;
+  if (e.target.closest(".bar-drag-handle")) return;
+  e.preventDefault();
+}
+
+/** Saved selection range for format button mousedown→click flow */
+let savedRange = null;
+function captureSelectionRange() {
+  const sel = window.getSelection();
+  if (sel.rangeCount) savedRange = sel.getRangeAt(0).cloneRange();
+}
+
+function onFormatClick(e, action) {
+  e.stopPropagation();
+  if (action.command === "link") {
+    showLinkPopover(e.target.closest("sp-action-button"));
+  } else if (savedRange) {
+    const sel = window.getSelection();
+    const anchor = savedRange.startContainer;
+    const editableRoot = (anchor?.nodeType === Node.ELEMENT_NODE ? anchor : anchor?.parentElement)
+      ?.closest("[contenteditable]");
+    if (editableRoot) {
+      editableRoot.focus();
+      sel.removeAllRanges();
+      sel.addRange(savedRange);
+      applyInlineFormat(action);
+    }
+  }
+}
+
+function renderParentSelector() {
+  const pPath = parentElementPath(S.selection);
+  if (!pPath) return nothing;
+  const parentNode = getNodeAtPath(S.document, pPath);
+  return html`
+    <sp-action-button size="xs" quiet title="Select parent: ${nodeLabel(parentNode)}"
+      @click=${(e) => { e.stopPropagation(); update(selectNode(S, pPath)); }}>
+      <sp-icon-back slot="icon"></sp-icon-back>
+    </sp-action-button>
+  `;
+}
+
+function renderMoveArrows() {
+  const idx = childIndex(S.selection);
+  const pPath = parentElementPath(S.selection);
+  const parentNode = getNodeAtPath(S.document, pPath);
+  const siblings = parentNode?.children;
+  return html`
+    <sp-action-button size="xs" quiet title="Move up"
+      ?disabled=${idx <= 0}
+      @click=${(e) => { e.stopPropagation(); moveSelectionUp(); }}>
+      <sp-icon-arrow-up slot="icon"></sp-icon-arrow-up>
+    </sp-action-button>
+    <sp-action-button size="xs" quiet title="Move down"
+      ?disabled=${!siblings || idx >= siblings.length - 1}
+      @click=${(e) => { e.stopPropagation(); moveSelectionDown(); }}>
+      <sp-icon-arrow-down slot="icon"></sp-icon-arrow-down>
+    </sp-action-button>
+  `;
+}
+
 /**
  * Apply an inline format action.
  */
@@ -1597,11 +1672,14 @@ function applyInlineFormat(action) {
 /**
  * Show a link URL popover anchored to a toolbar button.
  */
+let linkPopoverEl = null;
+
 function showLinkPopover(anchorBtn) {
-  // Find existing link at cursor
+  if (linkPopoverEl) { linkPopoverEl.remove(); linkPopoverEl = null; }
+
   const sel = window.getSelection();
   let existingLink = null;
-  if (sel && sel.rangeCount) {
+  if (sel?.rangeCount) {
     let node = sel.anchorNode;
     while (node && node !== document.body) {
       if (node.nodeType === Node.ELEMENT_NODE && node.tagName.toLowerCase() === "a") {
@@ -1612,62 +1690,51 @@ function showLinkPopover(anchorBtn) {
     }
   }
 
-  const popover = document.createElement("sp-popover");
-  popover.className = "link-popover";
-  popover.setAttribute("open", "");
+  const rect = anchorBtn.getBoundingClientRect();
+  linkPopoverEl = document.createElement("div");
 
-  const field = document.createElement("sp-textfield");
-  field.setAttribute("placeholder", "https://...");
-  field.setAttribute("size", "s");
-  field.style.width = "200px";
-  if (existingLink) field.value = existingLink.getAttribute("href") || "";
-
-  const applyBtn = document.createElement("sp-action-button");
-  applyBtn.setAttribute("size", "xs");
-  applyBtn.textContent = existingLink ? "Update" : "Apply";
-
-  applyBtn.addEventListener("click", () => {
-    const url = field.value;
+  const onApply = () => {
+    const field = linkPopoverEl.querySelector("sp-textfield");
+    const url = field?.value;
     if (existingLink) {
       existingLink.setAttribute("href", url);
     } else if (url) {
       document.execCommand("createLink", false, url);
     }
-    popover.remove();
+    linkPopoverEl.remove(); linkPopoverEl = null;
     renderBlockActionBar();
-  });
+  };
 
-  field.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") { applyBtn.click(); }
-    else if (e.key === "Escape") { popover.remove(); }
-  });
+  const onRemove = () => {
+    const frag = document.createDocumentFragment();
+    while (existingLink.firstChild) frag.appendChild(existingLink.firstChild);
+    existingLink.parentNode.replaceChild(frag, existingLink);
+    linkPopoverEl.remove(); linkPopoverEl = null;
+    renderBlockActionBar();
+  };
 
-  popover.appendChild(field);
-  popover.appendChild(applyBtn);
+  const onKeydown = (e) => {
+    if (e.key === "Enter") onApply();
+    else if (e.key === "Escape") { linkPopoverEl.remove(); linkPopoverEl = null; }
+  };
 
-  if (existingLink) {
-    const removeBtn = document.createElement("sp-action-button");
-    removeBtn.setAttribute("size", "xs");
-    removeBtn.textContent = "Remove";
-    removeBtn.addEventListener("click", () => {
-      const frag = document.createDocumentFragment();
-      while (existingLink.firstChild) frag.appendChild(existingLink.firstChild);
-      existingLink.parentNode.replaceChild(frag, existingLink);
-      popover.remove();
-      renderBlockActionBar();
-    });
-    popover.appendChild(removeBtn);
-  }
+  litRender(html`
+    <sp-popover class="link-popover" open
+      style="position:fixed; left:${rect.left}px; top:${rect.bottom + 4}px; z-index:30">
+      <sp-textfield placeholder="https://..." size="s" style="width:200px"
+        value=${existingLink?.getAttribute("href") || ""}
+        @keydown=${onKeydown}></sp-textfield>
+      <sp-action-button size="xs" @click=${onApply}>
+        ${existingLink ? "Update" : "Apply"}
+      </sp-action-button>
+      ${existingLink ? html`
+        <sp-action-button size="xs" @click=${onRemove}>Remove</sp-action-button>
+      ` : nothing}
+    </sp-popover>
+  `, linkPopoverEl);
 
-  // Position below the toolbar button
-  const rect = anchorBtn.getBoundingClientRect();
-  popover.style.position = "fixed";
-  popover.style.left = `${rect.left}px`;
-  popover.style.top = `${rect.bottom + 4}px`;
-  popover.style.zIndex = "30";
-
-  (document.querySelector("sp-theme") || document.body).appendChild(popover);
-  requestAnimationFrame(() => field.focus());
+  (document.querySelector("sp-theme") || document.body).appendChild(linkPopoverEl);
+  requestAnimationFrame(() => linkPopoverEl?.querySelector("sp-textfield")?.focus());
 }
 
 /**
@@ -1703,197 +1770,88 @@ function moveSelectionDown() {
  * Combines tag indicator, drag handle, move arrows, and inline formatting.
  */
 function renderBlockActionBar() {
-  if (blockActionBarEl) {
-    blockActionBarEl.remove();
-    blockActionBarEl = null;
-  }
-  if (selDragCleanup) {
-    selDragCleanup();
-    selDragCleanup = null;
+  // Ensure persistent render container exists
+  if (!blockActionBarEl) {
+    blockActionBarEl = document.createElement("div");
+    (document.querySelector("sp-theme") || document.body).appendChild(blockActionBarEl);
   }
 
-  if (!S.selection) return;
-  if (canvasMode !== "design" && canvasMode !== "edit") return;
+  // Tear down drag if it was active
+  if (selDragCleanup) { selDragCleanup(); selDragCleanup = null; }
+
+  if (!S.selection || (canvasMode !== "design" && canvasMode !== "edit")) {
+    litRender(nothing, blockActionBarEl);
+    return;
+  }
 
   const activePanel = getActivePanel();
-  if (!activePanel) return;
+  if (!activePanel) { litRender(nothing, blockActionBarEl); return; }
   const el = findCanvasElement(S.selection, activePanel.canvas);
-  if (!el) return;
+  const node = el && getNodeAtPath(S.document, S.selection);
+  if (!el || !node) { litRender(nothing, blockActionBarEl); return; }
 
-  const node = getNodeAtPath(S.document, S.selection);
-  if (!node) return;
   const tag = (node.tagName ?? "div").toLowerCase();
-
   const elRect = el.getBoundingClientRect();
+  const topPos = elRect.top < 80 ? elRect.bottom + 4 : elRect.top - 38;
 
-  const bar = document.createElement("div");
-  bar.className = "block-action-bar";
-  bar.style.left = `${elRect.left}px`;
-
-  // Prevent focus steal from contenteditable
-  bar.addEventListener("mousedown", (e) => {
-    // Allow clicks on inputs (like link popover textfield)
-    if (e.target.closest("sp-textfield")) return;
-    // Allow drag handle to initiate native drag
-    if (e.target.closest(".bar-drag-handle")) return;
-    e.preventDefault();
-  });
-
-  // ── Parent selector button ──
-  if (S.selection.length >= 2) {
-    const pPath = parentElementPath(S.selection);
-    if (pPath) {
-      const parentNode = getNodeAtPath(S.document, pPath);
-      const parentBtn = document.createElement("sp-action-button");
-      parentBtn.setAttribute("size", "xs");
-      parentBtn.setAttribute("quiet", "");
-      parentBtn.title = `Select parent: ${nodeLabel(parentNode)}`;
-      const backIcon = document.createElement("sp-icon-back");
-      backIcon.setAttribute("slot", "icon");
-      parentBtn.appendChild(backIcon);
-      parentBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        update(selectNode(S, pPath));
-      });
-      bar.appendChild(parentBtn);
-    }
-  }
-
-  // ── Tag indicator ──
-  const tagLabel = document.createElement("span");
-  tagLabel.className = "bar-tag";
-  tagLabel.textContent = node.$id || (node.tagName ?? "div");
-  bar.appendChild(tagLabel);
-
-  // ── Drag handle ──
-  if (S.selection.length >= 2 && !componentInlineEdit) {
-    const handle = document.createElement("span");
-    handle.className = "bar-drag-handle";
-    handle.title = "Drag to reorder";
-    handle.textContent = "\u2847";
-    bar.appendChild(handle);
-
-    const path = S.selection;
-    selDragCleanup = draggable({
-      element: handle,
-      getInitialData() {
-        return { type: "tree-node", path };
-      },
-    });
-  }
-
-  // ── Move up/down arrows ──
-  if (S.selection.length >= 2) {
-    const idx = childIndex(S.selection);
-    const pPath = parentElementPath(S.selection);
-    const parentNode = getNodeAtPath(S.document, pPath);
-    const siblings = parentNode?.children;
-
-    const upBtn = document.createElement("sp-action-button");
-    upBtn.setAttribute("size", "xs");
-    upBtn.setAttribute("quiet", "");
-    upBtn.title = "Move up";
-    if (idx <= 0) upBtn.setAttribute("disabled", "");
-    const upIcon = document.createElement("sp-icon-arrow-up");
-    upIcon.setAttribute("slot", "icon");
-    upBtn.appendChild(upIcon);
-    upBtn.addEventListener("click", (e) => { e.stopPropagation(); moveSelectionUp(); });
-    bar.appendChild(upBtn);
-
-    const downBtn = document.createElement("sp-action-button");
-    downBtn.setAttribute("size", "xs");
-    downBtn.setAttribute("quiet", "");
-    downBtn.title = "Move down";
-    if (!siblings || idx >= siblings.length - 1) downBtn.setAttribute("disabled", "");
-    const downIcon = document.createElement("sp-icon-arrow-down");
-    downIcon.setAttribute("slot", "icon");
-    downBtn.appendChild(downIcon);
-    downBtn.addEventListener("click", (e) => { e.stopPropagation(); moveSelectionDown(); });
-    bar.appendChild(downBtn);
-  }
-
-  // ── Inline formatting actions (only during content-mode rich text editing) ──
+  // Inline format state
   const inlineEditing = isEditing() || el.contentEditable === "true";
   const actions = getInlineActions(tag);
-  if (inlineEditing && actions && actions.length > 0) {
-    const divider = document.createElement("sp-divider");
-    divider.setAttribute("size", "s");
-    divider.setAttribute("vertical", "");
-    bar.appendChild(divider);
+  const showFormat = inlineEditing && actions?.length > 0;
+  const activeValues = showFormat
+    ? actions.filter(a => isTagActiveInSelection(a.tag, el)).map(a => a.tag)
+    : [];
 
-    const fmtGroup = document.createElement("sp-action-group");
-    fmtGroup.setAttribute("size", "xs");
-    fmtGroup.setAttribute("compact", "");
-    fmtGroup.setAttribute("emphasized", "");
-    fmtGroup.setAttribute("selects", "multiple");
+  litRender(html`
+    <div class="block-action-bar"
+         style="left:${elRect.left}px; top:${topPos}px"
+         @mousedown=${onBarMousedown}>
 
-    // Compute which tags are active in the current selection
-    const activeValues = actions
-      .filter(a => isTagActiveInSelection(a.tag, el))
-      .map(a => a.tag);
-    if (activeValues.length > 0) {
-      fmtGroup.setAttribute("selected", JSON.stringify(activeValues));
-    }
+      ${S.selection.length >= 2 ? renderParentSelector() : nothing}
 
-    for (const action of actions) {
-      const btn = document.createElement("sp-action-button");
-      btn.setAttribute("size", "xs");
-      btn.setAttribute("value", action.tag);
-      btn.title = action.label + (action.shortcut ? ` (${action.shortcut})` : "");
+      <span class="bar-tag">${node.$id || (node.tagName ?? "div")}</span>
 
-      const icon = document.createElement(action.icon);
-      icon.setAttribute("slot", "icon");
-      btn.appendChild(icon);
+      ${S.selection.length >= 2 && !componentInlineEdit
+        ? html`<span class="bar-drag-handle" title="Drag to reorder">\u2847</span>`
+        : nothing}
 
-      // Capture selection on mousedown (before focus is lost)
-      let savedRange = null;
-      btn.addEventListener("mousedown", (e) => {
-        const sel = window.getSelection();
-        if (sel.rangeCount) {
-          savedRange = sel.getRangeAt(0).cloneRange();
-        }
-      });
+      ${S.selection.length >= 2 ? renderMoveArrows() : nothing}
 
-      btn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        if (action.command === "link") {
-          showLinkPopover(btn);
-        } else {
-          // Restore selection and apply format
-          if (savedRange) {
-            const sel = window.getSelection();
-            const anchor = savedRange.startContainer;
-            const editableRoot = (anchor?.nodeType === Node.ELEMENT_NODE ? anchor : anchor?.parentElement)?.closest("[contenteditable]");
-            if (editableRoot) {
-              editableRoot.focus();
-              sel.removeAllRanges();
-              sel.addRange(savedRange);
-              applyInlineFormat(action);
-            }
-          }
-        }
-      });
+      ${showFormat ? html`
+        <sp-divider size="s" vertical></sp-divider>
+        <sp-action-group size="xs" compact emphasized selects="multiple"
+          selected=${activeValues.length ? JSON.stringify(activeValues) : nothing}>
+          ${actions.map(action => html`
+            <sp-action-button size="xs" value=${action.tag}
+              title="${action.label}${action.shortcut ? ` (${action.shortcut})` : ""}"
+              @mousedown=${captureSelectionRange}
+              @click=${(e) => onFormatClick(e, action)}>
+              ${formatIconMap[action.icon] ?? nothing}
+            </sp-action-button>
+          `)}
+        </sp-action-group>
+      ` : nothing}
+    </div>
+  `, blockActionBarEl);
 
-      fmtGroup.appendChild(btn);
-    }
-
-    bar.appendChild(fmtGroup);
-  }
-
-  // Position above or below the element (using fixed/screen coords)
-  bar.style.top = `${elRect.top < 80 ? elRect.bottom + 4 : elRect.top - 38}px`;
-
-  // Append to sp-theme so Spectrum tokens are available
-  const themeEl = document.querySelector("sp-theme") || document.body;
-  themeEl.appendChild(bar);
-  blockActionBarEl = bar;
-
-  // Clamp so bar stays within the window
+  // Post-render side effects
   requestAnimationFrame(() => {
-    if (!blockActionBarEl) return;
+    const bar = blockActionBarEl?.firstElementChild;
+    if (!bar) return;
+    // Clamp to window
     const barRect = bar.getBoundingClientRect();
     if (barRect.right > window.innerWidth) {
       bar.style.left = `${Math.max(0, window.innerWidth - barRect.width)}px`;
+    }
+    // Attach drag handle
+    if (S.selection.length >= 2 && !componentInlineEdit) {
+      const handle = bar.querySelector(".bar-drag-handle");
+      if (handle) {
+        selDragCleanup = draggable({
+          element: handle,
+          getInitialData: () => ({ type: "tree-node", path: S.selection }),
+        });
+      }
     }
   });
 }
@@ -2027,8 +1985,9 @@ function registerPanelEvents(panel) {
 
   overlayClk.addEventListener("click", (e) => {
     // Don't intercept clicks meant for the block action bar
-    if (blockActionBarEl) {
-      const r = blockActionBarEl.getBoundingClientRect();
+    const barInner = blockActionBarEl?.firstElementChild;
+    if (barInner) {
+      const r = barInner.getBoundingClientRect();
       if (e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) return;
     }
     // If content-mode inline editing is active, treat click outside as blur
@@ -2077,8 +2036,9 @@ function registerPanelEvents(panel) {
 
   // Double-click shortcut for immediate inline editing
   overlayClk.addEventListener("dblclick", (e) => {
-    if (blockActionBarEl) {
-      const r = blockActionBarEl.getBoundingClientRect();
+    const barInner = blockActionBarEl?.firstElementChild;
+    if (barInner) {
+      const r = barInner.getBoundingClientRect();
       if (e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) return;
     }
     if (canvasMode !== "edit" && canvasMode !== "design") return;
@@ -2104,8 +2064,9 @@ function registerPanelEvents(panel) {
   });
 
   overlayClk.addEventListener("contextmenu", (e) => {
-    if (blockActionBarEl) {
-      const r = blockActionBarEl.getBoundingClientRect();
+    const barInner = blockActionBarEl?.firstElementChild;
+    if (barInner) {
+      const r = barInner.getBoundingClientRect();
       if (e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) return;
     }
     const elements = withPanelPointerEvents(() => document.elementsFromPoint(e.clientX, e.clientY));
@@ -2123,8 +2084,9 @@ function registerPanelEvents(panel) {
   });
 
   overlayClk.addEventListener("mousemove", (e) => {
-    if (blockActionBarEl) {
-      const r = blockActionBarEl.getBoundingClientRect();
+    const barInner = blockActionBarEl?.firstElementChild;
+    if (barInner) {
+      const r = barInner.getBoundingClientRect();
       if (e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) return;
     }
     const el = withPanelPointerEvents(() => document.elementFromPoint(e.clientX, e.clientY));
