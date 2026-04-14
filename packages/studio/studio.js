@@ -96,6 +96,14 @@ import {
 import { html, render as litRender, nothing } from "lit-html";
 import { live } from "lit-html/directives/live.js";
 import { classMap } from "lit-html/directives/class-map.js";
+
+/** Render a Lit TemplateResult into a fresh DOM container and return it. Bridge for imperative callers. */
+function tplToDom(tpl) {
+  const el = document.createElement("div");
+  el.style.display = "contents";
+  litRender(tpl, el);
+  return el;
+}
 import { repeat } from "lit-html/directives/repeat.js";
 import { ifDefined } from "lit-html/directives/if-defined.js";
 
@@ -642,6 +650,44 @@ document.body.appendChild(cssPropList);
 
 /** Map<camelCaseName, initialValue> for placeholder hints */
 const cssInitialMap = new Map(webdata.cssProps);
+
+// ─── Icon maps & module-level UI state (must be before render() call) ─────────
+
+const toolbarIconMap = {
+  "sp-icon-folder-open": html`<sp-icon-folder-open slot="icon"></sp-icon-folder-open>`,
+  "sp-icon-save-floppy": html`<sp-icon-save-floppy slot="icon"></sp-icon-save-floppy>`,
+  "sp-icon-back": html`<sp-icon-back slot="icon"></sp-icon-back>`,
+  "sp-icon-undo": html`<sp-icon-undo slot="icon"></sp-icon-undo>`,
+  "sp-icon-redo": html`<sp-icon-redo slot="icon"></sp-icon-redo>`,
+  "sp-icon-duplicate": html`<sp-icon-duplicate slot="icon"></sp-icon-duplicate>`,
+  "sp-icon-delete": html`<sp-icon-delete slot="icon"></sp-icon-delete>`,
+  "sp-icon-edit": html`<sp-icon-edit slot="icon"></sp-icon-edit>`,
+  "sp-icon-artboard": html`<sp-icon-artboard slot="icon"></sp-icon-artboard>`,
+  "sp-icon-preview": html`<sp-icon-preview slot="icon"></sp-icon-preview>`,
+  "sp-icon-code": html`<sp-icon-code slot="icon"></sp-icon-code>`,
+  "sp-icon-brush": html`<sp-icon-brush slot="icon"></sp-icon-brush>`,
+};
+
+function tbBtnTpl(label, onClick, iconTag) {
+  return html`
+    <sp-action-button size="s" @click=${onClick}>
+      ${iconTag ? toolbarIconMap[iconTag] : nothing}
+      ${label}
+    </sp-action-button>
+  `;
+}
+
+const fileIconMap = {
+  "sp-icon-folder-open": html`<sp-icon-folder-open></sp-icon-folder-open>`,
+  "sp-icon-folder": html`<sp-icon-folder></sp-icon-folder>`,
+  "sp-icon-file-code": html`<sp-icon-file-code></sp-icon-file-code>`,
+  "sp-icon-file-txt": html`<sp-icon-file-txt></sp-icon-file-txt>`,
+  "sp-icon-image": html`<sp-icon-image></sp-icon-image>`,
+  "sp-icon-document": html`<sp-icon-document></sp-icon-document>`,
+};
+
+let blocksCollapsed = new Set();
+let blocksFilter = "";
 
 // ─── Bootstrap ────────────────────────────────────────────────────────────────
 
@@ -2681,231 +2727,57 @@ function renderActivityBar() {
 
 function renderLeftPanel() {
   const tab = S.ui.leftTab;
-  leftPanel.innerHTML = "";
 
+  // Tabs that return Lit TemplateResult
+  if (tab === "layers") {
+    const content = canvasMode === "stylebook" ? renderStylebookLayersTemplate() : renderLayersTemplate();
+    litRender(html`<div class="panel-body">${content}</div>`, leftPanel);
+    if (canvasMode !== "stylebook") registerLayersDnD();
+    return;
+  }
+
+  // Imperative tabs — fall back to innerHTML + container pattern
+  leftPanel.innerHTML = "";
   const body = document.createElement("div");
   body.className = "panel-body";
   leftPanel.appendChild(body);
 
   if (tab === "files") renderFiles(body);
-  else if (tab === "layers") {
-    if (canvasMode === "stylebook") renderStylebookLayers(body);
-    else renderLayers(body);
-  }
   else if (tab === "blocks") renderBlocks(body);
   else if (tab === "state") renderSignals(body);
   else if (tab === "data") renderDataExplorer(body);
 }
 
-function renderComponentGroup(container, label, components, collapsed, isImported) {
-  const header = document.createElement("div");
-  header.className = `blocks-category${collapsed.has(label) ? " collapsed" : ""}`;
-  header.textContent = `${label} (${components.length})`;
-  header.onclick = () => {
-    if (collapsed.has(label)) collapsed.delete(label);
-    else collapsed.add(label);
-    renderLeftPanel();
-  };
-  container.appendChild(header);
-  if (collapsed.has(label)) return;
-
-  for (const comp of components) {
-    const row = document.createElement("div");
-    row.className = `layer-row component-row${isImported ? "" : " available"}`;
-
-    const icon = document.createElement("span");
-    icon.className = "layer-tag component-tag";
-    icon.textContent = "⬡";
-    icon.style.background = isImported ? "var(--accent)" : "var(--bg-alt)";
-    row.appendChild(icon);
-
-    const lbl = document.createElement("span");
-    lbl.className = "layer-label";
-    lbl.textContent = comp.tagName;
-    lbl.title = comp.path;
-    row.appendChild(lbl);
-
-    if (comp.$id) {
-      const hint = document.createElement("span");
-      hint.className = "signal-hint";
-      hint.textContent = comp.$id;
-      row.appendChild(hint);
-    }
-
-    row.onclick = () => navigateToComponent(comp.path);
-
-    // Make draggable for instance insertion
-    const instanceDef = {
-      tagName: comp.tagName,
-      $props: Object.fromEntries(
-        comp.props.map((p) => [p.name, p.default !== undefined ? p.default : ""]),
-      ),
-    };
-    const cleanup = draggable({
-      element: row,
-      getInitialData() {
-        return { type: "block", fragment: structuredClone(instanceDef) };
-      },
-    });
-    dndCleanups.push(cleanup);
-
-    container.appendChild(row);
-  }
-}
-
-function renderStylebookLayers(container) {
-  const rootStyle = S.document?.style || {};
-  const selectedTag = S.ui.stylebookSelection;
-
-  if (S.ui.stylebookTab === "elements") {
-    for (const section of stylebookMeta.$sections) {
-      for (const entry of section.elements) {
-        const row = document.createElement("div");
-        row.className = `layer-row${entry.tag === selectedTag ? " selected" : ""}`;
-
-        const badge = document.createElement("span");
-        badge.className = "layer-tag";
-        badge.textContent = entry.tag;
-        row.appendChild(badge);
-
-        const lbl = document.createElement("span");
-        lbl.className = "layer-label";
-        lbl.textContent = entry.text || `<${entry.tag}>`;
-        lbl.style.cssText = "overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1";
-        row.appendChild(lbl);
-
-        if (hasTagStyle(rootStyle, entry.tag)) {
-          const dot = document.createElement("span");
-          dot.style.cssText = "width:6px;height:6px;border-radius:50%;background:var(--accent);flex-shrink:0";
-          row.appendChild(dot);
-        }
-
-        row.onclick = () => {
-          S = {
-            ...S,
-            selection: [],
-            ui: { ...S.ui, stylebookSelection: entry.tag, rightTab: "style", activeSelector: `& ${entry.tag}` },
-          };
-          renderStylebookOverlays();
-          renderRightPanel();
-          renderLeftPanel();
-          renderToolbar();
-          // Scroll element into view on the canvas
-          if (canvasPanels.length > 0) {
-            const el = findStylebookEl(canvasPanels[0].canvas, entry.tag);
-            if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
-          }
-        };
-
-        container.appendChild(row);
-      }
-    }
-    // Custom components
-    for (const comp of componentRegistry) {
-      const row = document.createElement("div");
-      row.className = `layer-row${comp.tagName === selectedTag ? " selected" : ""}`;
-
-      const badge = document.createElement("span");
-      badge.className = "layer-tag component-tag";
-      badge.textContent = "⬡";
-      badge.style.background = "var(--accent)";
-      row.appendChild(badge);
-
-      const lbl = document.createElement("span");
-      lbl.className = "layer-label";
-      lbl.textContent = comp.tagName;
-      row.appendChild(lbl);
-
-      row.onclick = () => {
-        S = {
-          ...S,
-          selection: [],
-          ui: { ...S.ui, stylebookSelection: comp.tagName, rightTab: "style", activeSelector: `& ${comp.tagName}` },
-        };
-        renderStylebookOverlays();
-        renderRightPanel();
-        renderLeftPanel();
-        renderToolbar();
-      };
-
-      container.appendChild(row);
-    }
-  } else {
-    // Variables tab — list variable names
-    const style = rootStyle;
-    for (const [k, v] of Object.entries(style)) {
-      if (!k.startsWith("--")) continue;
-      const row = document.createElement("div");
-      row.className = "layer-row";
-
-      const badge = document.createElement("span");
-      badge.className = "layer-tag";
-      badge.style.cssText = "font-size:10px;font-family:'SF Mono','Fira Code',monospace";
-      badge.textContent = "var";
-      row.appendChild(badge);
-
-      const lbl = document.createElement("span");
-      lbl.className = "layer-label";
-      lbl.textContent = k;
-      row.appendChild(lbl);
-
-      const preview = document.createElement("span");
-      preview.style.cssText = "font-size:11px;color:var(--fg-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:80px";
-      preview.textContent = String(v);
-      row.appendChild(preview);
-
-      container.appendChild(row);
-    }
-    if (Object.keys(style).filter((k) => k.startsWith("--")).length === 0) {
-      const empty = document.createElement("div");
-      empty.style.cssText = "padding:16px;text-align:center;color:var(--fg-dim);font-size:12px";
-      empty.textContent = "No variables defined";
-      container.appendChild(empty);
-    }
-  }
-}
-
-function renderLayers(container) {
+/** Returns a TemplateResult — called from renderLeftPanel only when tab=layers & not stylebook */
+function renderLayersTemplate() {
   // Clean up previous DnD registrations
   for (const fn of dndCleanups) fn();
   dndCleanups = [];
 
   const rows = flattenTree(S.document);
-  /** @type {Set<string>} */
   const collapsed = S._collapsed || (S._collapsed = new Set());
 
-  // Drop indicator line (positioned absolutely within container)
-  container.style.position = "relative";
-  const dropLine = document.createElement("div");
-  dropLine.className = "drop-indicator";
-  container.appendChild(dropLine);
+  // Components accordion
+  const compCollapsed = S._collapsedComponents || (S._collapsedComponents = new Set(["Available"]));
+  const importedRefs = new Set(
+    (S.document.$elements || []).filter((e) => e.$ref).map((e) => e.$ref),
+  );
+  const imported = componentRegistry.filter((c) =>
+    importedRefs.has(`./${c.path}`) || importedRefs.has(c.path) ||
+    Array.from(importedRefs).some((ref) => ref.endsWith(c.path.split("/").pop())),
+  );
+  const available = componentRegistry.filter((c) => !imported.includes(c));
 
-  // ─── Components accordion ──────────────────────────────────────────────
-  if (componentRegistry.length > 0) {
-    const compCollapsed = S._collapsedComponents || (S._collapsedComponents = new Set(["Available"]));
-    const importedRefs = new Set(
-      (S.document.$elements || []).filter((e) => e.$ref).map((e) => e.$ref),
-    );
+  const componentsSectionTpl = componentRegistry.length > 0 ? html`
+    <div class="components-section">
+      ${imported.length > 0 ? renderComponentGroupTemplate("Imported", imported, compCollapsed, true) : nothing}
+      ${available.length > 0 ? renderComponentGroupTemplate("Available", available, compCollapsed, false) : nothing}
+    </div>
+    <div style="border-bottom:1px solid var(--border);margin:4px 0"></div>
+  ` : nothing;
 
-    const imported = componentRegistry.filter((c) =>
-      importedRefs.has(`./${c.path}`) || importedRefs.has(c.path) ||
-      Array.from(importedRefs).some((ref) => ref.endsWith(c.path.split("/").pop())),
-    );
-    const available = componentRegistry.filter((c) => !imported.includes(c));
-
-    const section = document.createElement("div");
-    section.className = "components-section";
-
-    if (imported.length > 0) renderComponentGroup(section, "Imported", imported, compCollapsed, true);
-    if (available.length > 0) renderComponentGroup(section, "Available", available, compCollapsed, false);
-
-    container.appendChild(section);
-
-    const sep = document.createElement("div");
-    sep.style.cssText = "border-bottom:1px solid var(--border);margin:4px 0";
-    container.appendChild(sep);
-  }
-
+  // Build layer rows
+  const layerRows = [];
   for (const { node, path, depth, nodeType } of rows) {
     // Check if any ancestor is collapsed
     let hidden = false;
@@ -2918,210 +2790,311 @@ function renderLayers(container) {
     }
     if (hidden) continue;
 
-    // Skip inline elements — context-aware via parent's $inlineChildren metadata
+    // Skip inline elements
     if (path.length >= 2 && nodeType === "element") {
       const pPath = parentElementPath(path);
       const parentNode = pPath ? getNodeAtPath(S.document, pPath) : null;
       if (parentNode && isInlineElement(node, parentNode)) continue;
     }
 
-    const row = document.createElement("div");
-    row.className = `layer-row${pathsEqual(path, S.selection) ? " selected" : ""}`;
-    row.dataset.path = pathKey(path);
-
-    // Drag handle (not for virtual map/case rows)
-    const handle = document.createElement("span");
-    handle.className = "layer-handle";
-    if (nodeType === "element") {
-      handle.textContent = "⠿";
-    }
-    row.appendChild(handle);
-
-    // Indent
-    const indent = document.createElement("span");
-    indent.className = "layer-indent";
-    indent.style.width = `${depth * 16}px`;
-    row.appendChild(indent);
-
-    // Collapse toggle
-    const toggle = document.createElement("span");
-    toggle.className = "layer-toggle";
+    const key = pathKey(path);
+    const isSelected = pathsEqual(path, S.selection);
     const hasChildren = Array.isArray(node.children) && node.children.length > 0;
     const hasMapChildren = node.children && typeof node.children === "object" && node.children.$prototype === "Array";
     const hasCases = node.$switch && node.cases && typeof node.cases === "object" && Object.keys(node.cases).length > 0;
     const isExpandable = hasChildren || hasMapChildren || hasCases || (nodeType === "map" && node.map);
-    const key = pathKey(path);
-    if (isExpandable) {
-      const chevron = collapsed.has(key)
-        ? document.createElement("sp-icon-chevron-right")
-        : document.createElement("sp-icon-chevron-down");
-      toggle.appendChild(chevron);
-      toggle.addEventListener("click", (e) => {
-        e.stopPropagation();
-        if (collapsed.has(key)) collapsed.delete(key);
-        else collapsed.add(key);
-        renderLeftPanel();
-      });
-    }
-    row.appendChild(toggle);
+    const isVoidEl = VOID_ELEMENTS.has((node.tagName || "div").toLowerCase());
 
-    // Tag badge — different per nodeType
-    const badge = document.createElement("span");
+    // Badge
+    let badgeClass, badgeText, badgeTitle;
     if (nodeType === "map") {
-      badge.className = "layer-tag map-tag";
-      badge.textContent = "↻";
-      badge.title = "Repeater (mapped array)";
+      badgeClass = "layer-tag map-tag"; badgeText = "↻"; badgeTitle = "Repeater (mapped array)";
     } else if (nodeType === "case" || nodeType === "case-ref") {
-      badge.className = "layer-tag case-tag";
-      badge.textContent = path[path.length - 1];
-      badge.title = `$switch case: ${path[path.length - 1]}`;
+      badgeClass = "layer-tag case-tag"; badgeText = path[path.length - 1]; badgeTitle = `$switch case: ${path[path.length - 1]}`;
     } else if (node.$switch) {
-      badge.className = "layer-tag switch-tag";
-      badge.textContent = "⇄";
-      badge.title = "$switch";
+      badgeClass = "layer-tag switch-tag"; badgeText = "⇄"; badgeTitle = "$switch";
     } else {
-      badge.className = "layer-tag";
-      badge.textContent = node.tagName || "div";
+      badgeClass = "layer-tag"; badgeText = node.tagName || "div"; badgeTitle = undefined;
     }
-    row.appendChild(badge);
 
     // Label
-    const label = document.createElement("span");
-    label.className = "layer-label";
+    let labelText, labelItalic;
     if (nodeType === "case-ref") {
-      label.textContent = node.$ref || "external";
-      label.style.fontStyle = "italic";
+      labelText = node.$ref || "external"; labelItalic = true;
     } else {
-      label.textContent = nodeLabel(node);
-    }
-    row.appendChild(label);
-
-    // Delete button (not for root, and not for virtual map/case rows)
-    if (path.length >= 2 && nodeType === "element") {
-      const del = document.createElement("sp-action-button");
-      del.setAttribute("quiet", "");
-      del.setAttribute("size", "xs");
-      del.className = "layer-delete";
-      del.title = "Delete";
-      const delIcon = document.createElement("sp-icon-close");
-      delIcon.setAttribute("slot", "icon");
-      del.appendChild(delIcon);
-      del.addEventListener("click", (e) => {
-        e.stopPropagation();
-        update(removeNode(S, path));
-      });
-      row.appendChild(del);
+      labelText = nodeLabel(node); labelItalic = false;
     }
 
-    row.onclick = () => update(selectNode(S, path));
-    if (nodeType === "element") row.oncontextmenu = (e) => showContextMenu(e, path);
-    container.appendChild(row);
+    layerRows.push(html`
+      <div class="layer-row${isSelected ? " selected" : ""}"
+        data-path=${key}
+        data-dnd-row=${nodeType === "element" ? key : nothing}
+        data-dnd-depth=${nodeType === "element" ? depth : nothing}
+        data-dnd-void=${nodeType === "element" && isVoidEl ? "" : nothing}
+        @click=${() => update(selectNode(S, path))}
+        @contextmenu=${nodeType === "element" ? (e) => showContextMenu(e, path) : nothing}>
+        <span class="layer-handle">${nodeType === "element" ? "⠿" : ""}</span>
+        <span class="layer-indent" style="width:${depth * 16}px"></span>
+        <span class="layer-toggle">${isExpandable ? html`
+          ${collapsed.has(key) ? html`<sp-icon-chevron-right></sp-icon-chevron-right>` : html`<sp-icon-chevron-down></sp-icon-chevron-down>`}
+        ` : nothing}</span>
+        <span class=${badgeClass} title=${badgeTitle ?? nothing}>${badgeText}</span>
+        <span class="layer-label" style=${labelItalic ? "font-style:italic" : nothing}>${labelText}</span>
+        ${path.length >= 2 && nodeType === "element" ? html`
+          <sp-action-button quiet size="xs" class="layer-delete" title="Delete"
+            @click=${(e) => { e.stopPropagation(); update(removeNode(S, path)); }}>
+            <sp-icon-close slot="icon"></sp-icon-close>
+          </sp-action-button>
+        ` : nothing}
+      </div>
+    `);
 
-    // ─── Register draggable + drop target (element rows only) ────────────────
-    if (nodeType !== "element") continue;
-    const rowPath = path; // capture for closures
-    const rowDepth = depth;
-    const rowNode = node;
-
-    const cleanup = combine(
-      draggable({
-        element: row,
-        dragHandle: handle,
-        getInitialData() {
-          return { type: "tree-node", path: rowPath };
-        },
-        onDragStart() {
-          row.classList.add("dragging");
-        },
-        onDrop() {
-          row.classList.remove("dragging");
-        },
-      }),
-      dropTargetForElements({
-        element: row,
-        canDrop({ source }) {
-          const srcPath = source.data.path;
-          // Can't drop onto self or descendant
-          if (srcPath && isAncestor(srcPath, rowPath)) return false;
-          return true;
-        },
-        getData({ input, element }) {
-          return attachInstruction(
-            { path: rowPath },
-            {
-              input,
-              element,
-              currentLevel: rowDepth,
-              indentPerLevel: 16,
-              block: isVoid ? ["make-child"] : [],
-            },
-          );
-        },
-        onDragEnter({ self }) {
-          showDropIndicator(row, self.data, rowDepth, container);
-        },
-        onDrag({ self }) {
-          showDropIndicator(row, self.data, rowDepth, container);
-        },
-        onDragLeave() {
-          dropLine.style.display = "none";
-          row.classList.remove("drop-target");
-        },
-        onDrop() {
-          dropLine.style.display = "none";
-          row.classList.remove("drop-target");
-        },
-      }),
-    );
-    dndCleanups.push(cleanup);
+    // Collapse toggle click handler — we add it via event delegation on the layer-toggle span
+    // It's already in the template above as the toggle span, but we need the click handler
   }
 
-  // ─── Global monitor: apply the drop ────────────────────────
-  const monitorCleanup = monitorForElements({
-    onDrop({ source, location }) {
-      dropLine.style.display = "none";
-      const target = location.current.dropTargets[0];
-      if (!target) return;
+  return html`
+    <div class="layers-container" style="position:relative">
+      <div class="drop-indicator"></div>
+      ${componentsSectionTpl}
+      <div class="layers-tree"
+        @click=${(e) => {
+          const toggle = e.target.closest(".layer-toggle");
+          if (!toggle) return;
+          e.stopPropagation();
+          const row = toggle.closest(".layer-row");
+          if (!row) return;
+          const key = row.dataset.path;
+          if (!key) return;
+          if (collapsed.has(key)) collapsed.delete(key);
+          else collapsed.add(key);
+          renderLeftPanel();
+        }}>
+        ${layerRows}
+      </div>
+    </div>
+  `;
+}
 
-      const instruction = extractInstruction(target.data);
-      if (!instruction || instruction.type === "instruction-blocked") return;
+/** Register DnD on layer rows after litRender — called from renderLeftPanel */
+function registerLayersDnD() {
+  requestAnimationFrame(() => {
+    const container = leftPanel.querySelector(".layers-container");
+    if (!container) return;
+    const dropLine = container.querySelector(".drop-indicator");
 
-      const srcData = source.data;
-      const targetPath = target.data.path;
+    container.querySelectorAll("[data-dnd-row]").forEach(row => {
+      const rowPath = row.dataset.path.split("/").map((s) => (/^\d+$/.test(s) ? parseInt(s) : s));
+      const rowDepth = parseInt(row.dataset.dndDepth) || 0;
+      const isVoid = row.hasAttribute("data-dnd-void");
+      const handle = row.querySelector(".layer-handle");
 
-      applyDropInstruction(instruction, srcData, targetPath);
-    },
+      const cleanup = combine(
+        draggable({
+          element: row,
+          dragHandle: handle,
+          getInitialData() {
+            return { type: "tree-node", path: rowPath };
+          },
+          onDragStart() {
+            row.classList.add("dragging");
+          },
+          onDrop() {
+            row.classList.remove("dragging");
+          },
+        }),
+        dropTargetForElements({
+          element: row,
+          canDrop({ source }) {
+            const srcPath = source.data.path;
+            if (srcPath && isAncestor(srcPath, rowPath)) return false;
+            return true;
+          },
+          getData({ input, element }) {
+            return attachInstruction(
+              { path: rowPath },
+              {
+                input,
+                element,
+                currentLevel: rowDepth,
+                indentPerLevel: 16,
+                block: isVoid ? ["make-child"] : [],
+              },
+            );
+          },
+          onDragEnter({ self }) {
+            showDropIndicator(row, self.data, rowDepth, container, dropLine);
+          },
+          onDrag({ self }) {
+            showDropIndicator(row, self.data, rowDepth, container, dropLine);
+          },
+          onDragLeave() {
+            dropLine.style.display = "none";
+            row.classList.remove("drop-target");
+          },
+          onDrop() {
+            dropLine.style.display = "none";
+            row.classList.remove("drop-target");
+          },
+        }),
+      );
+      dndCleanups.push(cleanup);
+    });
+
+    // Global monitor
+    const monitorCleanup = monitorForElements({
+      onDrop({ source, location }) {
+        dropLine.style.display = "none";
+        const target = location.current.dropTargets[0];
+        if (!target) return;
+        const instruction = extractInstruction(target.data);
+        if (!instruction || instruction.type === "instruction-blocked") return;
+        const srcData = source.data;
+        const targetPath = target.data.path;
+        applyDropInstruction(instruction, srcData, targetPath);
+      },
+    });
+    dndCleanups.push(monitorCleanup);
+
+    // DnD on component rows
+    container.querySelectorAll(".component-row").forEach(row => {
+      const tagName = row.querySelector(".layer-label")?.textContent;
+      if (!tagName) return;
+      const comp = componentRegistry.find(c => c.tagName === tagName);
+      if (!comp) return;
+      const instanceDef = {
+        tagName: comp.tagName,
+        $props: Object.fromEntries(
+          comp.props.map((p) => [p.name, p.default !== undefined ? p.default : ""]),
+        ),
+      };
+      const cleanup = draggable({
+        element: row,
+        getInitialData() {
+          return { type: "block", fragment: structuredClone(instanceDef) };
+        },
+      });
+      dndCleanups.push(cleanup);
+    });
   });
-  dndCleanups.push(monitorCleanup);
+}
 
-  function showDropIndicator(rowEl, data, depth, container) {
-    const instruction = extractInstruction(data);
-    if (!instruction || instruction.type === "instruction-blocked") {
-      dropLine.style.display = "none";
-      rowEl.classList.remove("drop-target");
-      return;
-    }
-
-    if (instruction.type === "make-child") {
-      dropLine.style.display = "none";
-      rowEl.classList.add("drop-target");
-      return;
-    }
-
+function showDropIndicator(rowEl, data, depth, container, dropLine) {
+  const instruction = extractInstruction(data);
+  if (!instruction || instruction.type === "instruction-blocked") {
+    dropLine.style.display = "none";
     rowEl.classList.remove("drop-target");
-    const rowRect = rowEl.getBoundingClientRect();
-    const containerRect = container.getBoundingClientRect();
+    return;
+  }
 
-    const indent = (instruction.type === "reorder-above" ? depth : depth) * 16 + 28;
-    const top =
-      instruction.type === "reorder-above"
-        ? rowRect.top - containerRect.top + container.scrollTop
-        : rowRect.bottom - containerRect.top + container.scrollTop;
+  if (instruction.type === "make-child") {
+    dropLine.style.display = "none";
+    rowEl.classList.add("drop-target");
+    return;
+  }
 
-    dropLine.style.display = "block";
-    dropLine.style.top = `${top}px`;
-    dropLine.style.left = `${indent}px`;
-    dropLine.style.right = "8px";
+  rowEl.classList.remove("drop-target");
+  const rowRect = rowEl.getBoundingClientRect();
+  const containerRect = container.getBoundingClientRect();
+
+  const indent = depth * 16 + 28;
+  const top =
+    instruction.type === "reorder-above"
+      ? rowRect.top - containerRect.top + container.scrollTop
+      : rowRect.bottom - containerRect.top + container.scrollTop;
+
+  dropLine.style.display = "block";
+  dropLine.style.top = `${top}px`;
+  dropLine.style.left = `${indent}px`;
+  dropLine.style.right = "8px";
+}
+
+function renderComponentGroupTemplate(label, components, collapsed, isImported) {
+  return html`
+    <div class="blocks-category${collapsed.has(label) ? " collapsed" : ""}"
+      @click=${() => {
+        if (collapsed.has(label)) collapsed.delete(label);
+        else collapsed.add(label);
+        renderLeftPanel();
+      }}>${label} (${components.length})</div>
+    ${collapsed.has(label) ? nothing : components.map(comp => html`
+      <div class="layer-row component-row${isImported ? "" : " available"}"
+        @click=${() => navigateToComponent(comp.path)}>
+        <span class="layer-tag component-tag" style="background:${isImported ? "var(--accent)" : "var(--bg-alt)"}">⬡</span>
+        <span class="layer-label" title=${comp.path}>${comp.tagName}</span>
+        ${comp.$id ? html`<span class="signal-hint">${comp.$id}</span>` : nothing}
+      </div>
+    `)}
+  `;
+}
+
+function renderStylebookLayersTemplate() {
+  const rootStyle = S.document?.style || {};
+  const selectedTag = S.ui.stylebookSelection;
+
+  if (S.ui.stylebookTab === "elements") {
+    const elementRows = [];
+    for (const section of stylebookMeta.$sections) {
+      for (const entry of section.elements) {
+        elementRows.push(html`
+          <div class="layer-row${entry.tag === selectedTag ? " selected" : ""}"
+            @click=${() => {
+              S = {
+                ...S,
+                selection: [],
+                ui: { ...S.ui, stylebookSelection: entry.tag, rightTab: "style", activeSelector: `& ${entry.tag}` },
+              };
+              renderStylebookOverlays();
+              renderRightPanel();
+              renderLeftPanel();
+              renderToolbar();
+              if (canvasPanels.length > 0) {
+                const el = findStylebookEl(canvasPanels[0].canvas, entry.tag);
+                if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+              }
+            }}>
+            <span class="layer-tag">${entry.tag}</span>
+            <span class="layer-label" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">${entry.text || `<${entry.tag}>`}</span>
+            ${hasTagStyle(rootStyle, entry.tag)
+              ? html`<span style="width:6px;height:6px;border-radius:50%;background:var(--accent);flex-shrink:0"></span>`
+              : nothing}
+          </div>
+        `);
+      }
+    }
+    // Custom components
+    const compRows = componentRegistry.map(comp => html`
+      <div class="layer-row${comp.tagName === selectedTag ? " selected" : ""}"
+        @click=${() => {
+          S = {
+            ...S,
+            selection: [],
+            ui: { ...S.ui, stylebookSelection: comp.tagName, rightTab: "style", activeSelector: `& ${comp.tagName}` },
+          };
+          renderStylebookOverlays();
+          renderRightPanel();
+          renderLeftPanel();
+          renderToolbar();
+        }}>
+        <span class="layer-tag component-tag" style="background:var(--accent)">⬡</span>
+        <span class="layer-label">${comp.tagName}</span>
+      </div>
+    `);
+    return html`${elementRows}${compRows}`;
+  } else {
+    // Variables tab
+    const style = rootStyle;
+    const vars = Object.entries(style).filter(([k]) => k.startsWith("--"));
+    if (vars.length === 0) {
+      return html`<div style="padding:16px;text-align:center;color:var(--fg-dim);font-size:12px">No variables defined</div>`;
+    }
+    return html`${vars.map(([k, v]) => html`
+      <div class="layer-row">
+        <span class="layer-tag" style="font-size:10px;font-family:'SF Mono','Fira Code',monospace">var</span>
+        <span class="layer-label">${k}</span>
+        <span style="font-size:11px;color:var(--fg-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:80px">${String(v)}</span>
+      </div>
+    `)}`;
   }
 }
 
@@ -3254,81 +3227,65 @@ function defaultDef(tag) {
 }
 
 function renderBlocks(container) {
-  // Search filter
-  const search = document.createElement("sp-search");
-  search.setAttribute("size", "s");
-  search.setAttribute("placeholder", "Filter elements…");
-  container.appendChild(search);
+  const unsafeTags = new Set(["script", "style", "link", "iframe", "object", "embed"]);
 
-  const list = document.createElement("div");
-  container.appendChild(list);
+  const categories = Object.entries(webdata.elements).map(([category, elements]) => {
+    const filtered = blocksFilter ? elements.filter((e) => e.tag.includes(blocksFilter)) : elements;
+    if (filtered.length === 0) return nothing;
 
-  /** Collapsed category state (persists across re-renders via closure) */
-  const collapsed = new Set();
-
-  function renderList(filter) {
-    list.innerHTML = "";
-
-    for (const [category, elements] of Object.entries(webdata.elements)) {
-      const filtered = filter ? elements.filter((e) => e.tag.includes(filter)) : elements;
-      if (filtered.length === 0) continue;
-
-      // Category header
-      const header = document.createElement("div");
-      header.className = `blocks-category${collapsed.has(category) ? " collapsed" : ""}`;
-      header.textContent = category;
-      header.onclick = () => {
-        if (collapsed.has(category)) collapsed.delete(category);
-        else collapsed.add(category);
-        renderList(search.value.toLowerCase());
-      };
-      list.appendChild(header);
-
-      if (collapsed.has(category)) continue;
-
-      for (const { tag } of filtered) {
+    return html`
+      <div class="blocks-category${blocksCollapsed.has(category) ? " collapsed" : ""}"
+        @click=${() => {
+          if (blocksCollapsed.has(category)) blocksCollapsed.delete(category);
+          else blocksCollapsed.add(category);
+          renderLeftPanel();
+        }}>${category}</div>
+      ${blocksCollapsed.has(category) ? nothing : filtered.map(({ tag }) => {
         const def = defaultDef(tag);
-        const row = document.createElement("div");
-        row.className = "block-row";
+        return html`
+          <div class="block-row" data-block-tag=${tag}
+            @click=${() => {
+              const parentPath = S.selection || [];
+              const parent = getNodeAtPath(S.document, parentPath);
+              const idx = parent?.children ? parent.children.length : 0;
+              update(insertNode(S, parentPath, idx, structuredClone(def)));
+            }}>
+            <div class="block-preview"></div>
+            <div class="block-label">&lt;${tag}&gt;</div>
+          </div>
+        `;
+      })}
+    `;
+  });
 
-        // Live preview of the element
-        const preview = document.createElement("div");
-        preview.className = "block-preview";
-        const unsafeTags = new Set(["script", "style", "link", "iframe", "object", "embed"]);
+  const tpl = html`
+    <sp-search size="s" placeholder="Filter elements…" value=${blocksFilter}
+      @input=${(e) => { blocksFilter = e.target.value.toLowerCase(); renderLeftPanel(); }}></sp-search>
+    <div class="blocks-list">${categories}</div>
+  `;
+
+  litRender(tpl, container);
+
+  // Post-render: create live preview elements and register DnD
+  requestAnimationFrame(() => {
+    container.querySelectorAll("[data-block-tag]").forEach(row => {
+      const tag = row.dataset.blockTag;
+      const preview = row.querySelector(".block-preview");
+      if (preview && !preview.firstChild) {
         const el = document.createElement(unsafeTags.has(tag) ? "span" : tag);
         el.textContent = tag;
         preview.appendChild(el);
-        row.appendChild(preview);
-
-        // Tag label below preview
-        const lbl = document.createElement("div");
-        lbl.className = "block-label";
-        lbl.textContent = `<${tag}>`;
-        row.appendChild(lbl);
-
-        row.onclick = () => {
-          const parentPath = S.selection || [];
-          const parent = getNodeAtPath(S.document, parentPath);
-          const idx = parent?.children ? parent.children.length : 0;
-          update(insertNode(S, parentPath, idx, structuredClone(def)));
-        };
-
-        const blockDef = def;
-        const cleanup = draggable({
-          element: row,
-          getInitialData() {
-            return { type: "block", fragment: structuredClone(blockDef) };
-          },
-        });
-        dndCleanups.push(cleanup);
-
-        list.appendChild(row);
       }
-    }
-  }
-
-  search.addEventListener("input", () => renderList(search.value.toLowerCase()));
-  renderList("");
+      const def = defaultDef(tag);
+      const cleanup = draggable({
+        element: row,
+        getInitialData() {
+          return { type: "block", fragment: structuredClone(def) };
+        },
+      });
+      dndCleanups.push(cleanup);
+    });
+  });
 }
 
 // ─── Stylebook ───────────────────────────────────────────────────────────────
@@ -4315,14 +4272,14 @@ function renderSignalEditor(container, name, def) {
   const cat = defCategory(def);
 
   // Name field (common to all)
-  container.appendChild(
+  container.appendChild(tplToDom(
     signalFieldRow("name", name, (v) => {
       if (v && v !== name && !(S.document.state && S.document.state[v])) {
         expandedSignal = v;
         update(renameDef(S, name, v));
       }
     }),
-  );
+  ));
 
   if (cat === "state") {
     // Type selector
@@ -4354,7 +4311,7 @@ function renderSignalEditor(container, name, def) {
           ? JSON.stringify(def.default)
           : String(def.default)
         : "";
-    container.appendChild(
+    container.appendChild(tplToDom(
       signalFieldRow("default", defaultVal, (v) => {
         let parsed = v;
         if (def.type === "integer") parsed = parseInt(v, 10) || 0;
@@ -4369,22 +4326,22 @@ function renderSignalEditor(container, name, def) {
         }
         update(updateDef(S, name, { default: parsed }));
       }),
-    );
+    ));
 
     // Description
-    container.appendChild(
+    container.appendChild(tplToDom(
       signalFieldRow("desc", def.description || "", (v) => {
         update(updateDef(S, name, { description: v || undefined }));
       }),
-    );
+    ));
 
     // CEM annotations (custom element docs only)
     if (isCustomElementDoc()) {
-      container.appendChild(
+      container.appendChild(tplToDom(
         signalFieldRow("attribute", def.attribute || "", (v) => {
           update(updateDef(S, name, { attribute: v || undefined }));
         }),
-      );
+      ));
 
       // reflects checkbox
       const reflRow = document.createElement("div");
@@ -4402,11 +4359,11 @@ function renderSignalEditor(container, name, def) {
       reflRow.appendChild(reflCheck);
       container.appendChild(reflRow);
 
-      container.appendChild(
+      container.appendChild(tplToDom(
         signalFieldRow("deprecated", typeof def.deprecated === "string" ? def.deprecated : "", (v) => {
           update(updateDef(S, name, { deprecated: v || undefined }));
         }),
-      );
+      ));
     }
   } else if (cat === "computed") {
     // Expression
@@ -4454,11 +4411,11 @@ function renderSignalEditor(container, name, def) {
     const proto = def.$prototype;
 
     if (proto === "Request") {
-      container.appendChild(
+      container.appendChild(tplToDom(
         signalFieldRow("url", def.url || "", (v) => {
           update(updateDef(S, name, { url: v }));
         }),
-      );
+      ));
       // Method selector
       const methodRow = document.createElement("div");
       methodRow.className = "field-row";
@@ -4502,11 +4459,11 @@ function renderSignalEditor(container, name, def) {
       timingRow.appendChild(timingSel);
       container.appendChild(timingRow);
     } else if (proto === "LocalStorage" || proto === "SessionStorage") {
-      container.appendChild(
+      container.appendChild(tplToDom(
         signalFieldRow("key", def.key || "", (v) => {
           update(updateDef(S, name, { key: v }));
         }),
-      );
+      ));
       const defaultStr =
         def.default !== undefined && def.default !== null
           ? typeof def.default === "object"
@@ -4537,32 +4494,32 @@ function renderSignalEditor(container, name, def) {
       defRow.appendChild(defInput);
       container.appendChild(defRow);
     } else if (proto === "IndexedDB") {
-      container.appendChild(
+      container.appendChild(tplToDom(
         signalFieldRow("database", def.database || "", (v) => {
           update(updateDef(S, name, { database: v }));
         }),
-      );
-      container.appendChild(
+      ));
+      container.appendChild(tplToDom(
         signalFieldRow("store", def.store || "", (v) => {
           update(updateDef(S, name, { store: v }));
         }),
-      );
-      container.appendChild(
+      ));
+      container.appendChild(tplToDom(
         signalFieldRow("version", String(def.version || 1), (v) => {
           update(updateDef(S, name, { version: parseInt(v, 10) || 1 }));
         }),
-      );
+      ));
     } else if (proto === "Cookie") {
-      container.appendChild(
+      container.appendChild(tplToDom(
         signalFieldRow("cookie", def.name || "", (v) => {
           update(updateDef(S, name, { name: v }));
         }),
-      );
-      container.appendChild(
+      ));
+      container.appendChild(tplToDom(
         signalFieldRow("default", def.default || "", (v) => {
           update(updateDef(S, name, { default: v }));
         }),
-      );
+      ));
     } else if (proto === "Set" || proto === "Map" || proto === "FormData") {
       const defaultStr =
         def.default !== undefined && def.default !== null
@@ -4599,16 +4556,16 @@ function renderSignalEditor(container, name, def) {
   } else if (cat === "function") {
     if (def.$src) {
       // External function source
-      container.appendChild(
+      container.appendChild(tplToDom(
         signalFieldRow("$src", def.$src || "", (v) => {
           update(updateDef(S, name, { $src: v || undefined }));
         }),
-      );
-      container.appendChild(
+      ));
+      container.appendChild(tplToDom(
         signalFieldRow("$export", def.$export || "", (v) => {
           update(updateDef(S, name, { $export: v || undefined }));
         }),
-      );
+      ));
     } else {
       // Inline function body
       const bodyRow = document.createElement("div");
@@ -4654,11 +4611,11 @@ function renderSignalEditor(container, name, def) {
     if (!def.$src) container.appendChild(expandBtn);
 
     // Description
-    container.appendChild(
+    container.appendChild(tplToDom(
       signalFieldRow("desc", def.description || "", (v) => {
         update(updateDef(S, name, { description: v || undefined }));
       }),
-    );
+    ));
   }
 }
 
@@ -4891,22 +4848,16 @@ function renderEmitsEditor(container, name, def) {
 
 /** Simple field row for signal editors. */
 function signalFieldRow(label, value, onChange) {
-  const row = document.createElement("div");
-  row.className = "field-row";
-  const lbl = document.createElement("sp-field-label");
-  lbl.setAttribute("size", "s");
-  lbl.textContent = label;
-  row.appendChild(lbl);
-  const input = document.createElement("sp-textfield");
-  input.setAttribute("size", "s");
-  input.value = value;
   let debounce;
-  input.addEventListener("input", () => {
-    clearTimeout(debounce);
-    debounce = setTimeout(() => onChange(input.value), 400);
-  });
-  row.appendChild(input);
-  return row;
+  return html`
+    <div class="field-row">
+      <sp-field-label size="s">${label}</sp-field-label>
+      <sp-textfield size="s" value=${value} @input=${(e) => {
+        clearTimeout(debounce);
+        debounce = setTimeout(() => onChange(e.target.value), 400);
+      }}></sp-textfield>
+    </div>
+  `;
 }
 
 // ─── Plugin schema-driven form rendering ────────────────────────────────────
@@ -5065,24 +5016,24 @@ function renderSchemaFields(container, schema, def, name) {
  * Shows $src/$export inputs plus schema-driven config fields.
  */
 function renderExternalPrototypeEditor(container, name, def) {
-  container.appendChild(
+  container.appendChild(tplToDom(
     signalFieldRow("$src", def.$src || "", (v) => {
       update(updateDef(S, name, { $src: v || undefined }));
       pluginSchemaCache.delete(`${v}::${def.$prototype}`);
     }),
-  );
-  container.appendChild(
+  ));
+  container.appendChild(tplToDom(
     signalFieldRow("$prototype", def.$prototype || "", (v) => {
       update(updateDef(S, name, { $prototype: v || undefined }));
       pluginSchemaCache.delete(`${def.$src}::${v}`);
     }),
-  );
+  ));
   if (def.$export) {
-    container.appendChild(
+    container.appendChild(tplToDom(
       signalFieldRow("$export", def.$export || "", (v) => {
         update(updateDef(S, name, { $export: v || undefined }));
       }),
-    );
+    ));
   }
 
   // Schema-driven config fields (async with cache)
@@ -5375,7 +5326,7 @@ async function loadDirectory(dirPath) {
   }
 }
 
-function fileTypeIcon(name, type) {
+function fileTypeIconTpl(name, type) {
   let tag;
   if (type === "directory") {
     tag = projectState?.expanded?.has(name) ? "sp-icon-folder-open" : "sp-icon-folder";
@@ -5391,189 +5342,102 @@ function fileTypeIcon(name, type) {
       default: tag = "sp-icon-document"; break;
     }
   }
-  return document.createElement(tag);
+  return fileIconMap[tag] || fileIconMap["sp-icon-document"];
 }
+
 
 function renderFiles(container) {
   if (!projectState) {
-    const empty = document.createElement("div");
-    empty.className = "file-tree-empty";
-    empty.textContent = "No project loaded";
-    container.appendChild(empty);
+    litRender(html`<div class="file-tree-empty">No project loaded</div>`, container);
     return;
   }
 
-  // ─── Toolbar ────────────────────────────────────
-  const toolbar = document.createElement("div");
-  toolbar.className = "files-toolbar";
+  const tpl = html`
+    <div class="files-toolbar">
+      <sp-action-group size="xs" compact quiet>
+        <sp-action-button size="xs" label="New File" @click=${() => createNewFile()}>
+          <sp-icon-add slot="icon"></sp-icon-add>
+        </sp-action-button>
+        <sp-action-button size="xs" label="Refresh" @click=${async () => {
+          projectState.dirs.clear();
+          await loadDirectory(".");
+          for (const dir of projectState.expanded) await loadDirectory(dir);
+          renderLeftPanel();
+        }}>
+          <sp-icon-refresh slot="icon"></sp-icon-refresh>
+        </sp-action-button>
+      </sp-action-group>
+      <sp-search size="s" quiet placeholder="Filter files\u2026" value=${projectState.searchQuery}
+        @input=${(e) => { projectState.searchQuery = e.target.value; renderLeftPanel(); }}
+        @submit=${(e) => e.preventDefault()}></sp-search>
+    </div>
+    <div class="file-tree" role="tree" aria-label="Project files">
+      ${renderTreeLevelTemplate(".", 0)}
+    </div>
+  `;
 
-  const actionGroup = document.createElement("sp-action-group");
-  actionGroup.size = "xs";
-  actionGroup.compact = true;
-  actionGroup.quiet = true;
+  litRender(tpl, container);
 
-  const btnNewFile = document.createElement("sp-action-button");
-  btnNewFile.size = "xs";
-  btnNewFile.label = "New File";
-  const iconAdd = document.createElement("sp-icon-add");
-  iconAdd.slot = "icon";
-  btnNewFile.appendChild(iconAdd);
-  btnNewFile.addEventListener("click", () => createNewFile());
-  actionGroup.appendChild(btnNewFile);
-
-  const btnRefresh = document.createElement("sp-action-button");
-  btnRefresh.size = "xs";
-  btnRefresh.label = "Refresh";
-  const iconRefresh = document.createElement("sp-icon-refresh");
-  iconRefresh.slot = "icon";
-  btnRefresh.appendChild(iconRefresh);
-  btnRefresh.addEventListener("click", async () => {
-    projectState.dirs.clear();
-    await loadDirectory(".");
-    for (const dir of projectState.expanded) await loadDirectory(dir);
-    renderLeftPanel();
-  });
-  actionGroup.appendChild(btnRefresh);
-  toolbar.appendChild(actionGroup);
-
-  const search = document.createElement("sp-search");
-  search.size = "s";
-  search.quiet = true;
-  search.placeholder = "Filter files…";
-  search.value = projectState.searchQuery;
-  search.addEventListener("input", (e) => {
-    projectState.searchQuery = e.target.value;
-    renderLeftPanel();
-  });
-  search.addEventListener("submit", (e) => e.preventDefault());
-  toolbar.appendChild(search);
-
-  container.appendChild(toolbar);
-
-  // ─── File tree ──────────────────────────────────
-  const tree = document.createElement("div");
-  tree.className = "file-tree";
-  tree.setAttribute("role", "tree");
-  tree.setAttribute("aria-label", "Project files");
-
-  renderTreeLevel(tree, ".", 0);
-
-  container.appendChild(tree);
-
-  // ─── Keyboard navigation (roving tabindex) ──────
-  setupTreeKeyboard(tree);
+  // Keyboard navigation
+  const tree = container.querySelector(".file-tree");
+  if (tree) setupTreeKeyboard(tree);
 }
 
-function renderTreeLevel(container, dirPath, depth) {
+
+function renderTreeLevelTemplate(dirPath, depth) {
   const entries = projectState.dirs.get(dirPath);
   if (!entries) {
-    // Lazy load: fetch this directory then re-render
     loadDirectory(dirPath).then(() => renderLeftPanel());
-    const placeholder = document.createElement("div");
-    placeholder.className = "file-tree-item";
-    placeholder.style.paddingLeft = `${8 + depth * 16}px`;
-    placeholder.textContent = "Loading…";
-    placeholder.style.color = "var(--fg-dim)";
-    placeholder.style.fontStyle = "italic";
-    container.appendChild(placeholder);
-    return;
+    return html`<div class="file-tree-item" style="padding-left:${8 + depth * 16}px;color:var(--fg-dim);font-style:italic">Loading\u2026</div>`;
   }
 
-  // Sort: directories first, then files, alphabetical within each group
   const sorted = [...entries].sort((a, b) => {
     if (a.type === "directory" && b.type !== "directory") return -1;
     if (a.type !== "directory" && b.type === "directory") return 1;
     return a.name.localeCompare(b.name);
   });
 
-  // Filter by search query
   const query = projectState.searchQuery.toLowerCase();
   const filtered = query
-    ? sorted.filter((e) => {
-        if (e.type === "directory") return true; // always show dirs so children can match
-        return e.name.toLowerCase().includes(query);
-      })
+    ? sorted.filter((e) => e.type === "directory" || e.name.toLowerCase().includes(query))
     : sorted;
 
-  for (const entry of filtered) {
+  return filtered.map(entry => {
     const isDir = entry.type === "directory";
     const isExpanded = projectState.expanded.has(entry.path);
     const isSelected = projectState.selectedPath === entry.path;
 
-    const item = document.createElement("div");
-    item.className = `file-tree-item${isSelected ? " selected" : ""}`;
-    item.style.paddingLeft = `${8 + depth * 16}px`;
-    item.setAttribute("role", "treeitem");
-    item.setAttribute("aria-level", String(depth + 1));
-    item.setAttribute("tabindex", "-1");
-    item.dataset.path = entry.path;
-    item.dataset.type = entry.type;
-
-    if (isDir) {
-      item.setAttribute("aria-expanded", String(isExpanded));
-
-      // Expand/collapse toggle
-      const toggle = document.createElement("span");
-      toggle.className = "file-tree-toggle";
-      toggle.textContent = isExpanded ? "▼" : "▶";
-      item.appendChild(toggle);
-    } else {
-      // Empty spacer for alignment
-      const spacer = document.createElement("span");
-      spacer.className = "file-tree-toggle empty";
-      spacer.textContent = " ";
-      item.appendChild(spacer);
-    }
-
-    // Icon
-    const iconWrap = document.createElement("span");
-    iconWrap.className = "file-tree-icon";
-    iconWrap.appendChild(fileTypeIcon(entry.path, entry.type));
-    item.appendChild(iconWrap);
-
-    // Name
-    const nameEl = document.createElement("span");
-    nameEl.className = "file-tree-name";
-    nameEl.textContent = entry.name;
-    item.appendChild(nameEl);
-
-    // Click handler
-    item.addEventListener("click", async (e) => {
-      e.stopPropagation();
-      if (isDir) {
-        // Toggle expand/collapse
-        if (isExpanded) {
-          projectState.expanded.delete(entry.path);
-        } else {
-          projectState.expanded.add(entry.path);
-          if (!projectState.dirs.has(entry.path)) {
-            await loadDirectory(entry.path);
+    return html`
+      <div class="file-tree-item${isSelected ? " selected" : ""}"
+        style="padding-left:${8 + depth * 16}px"
+        role="treeitem" aria-level=${depth + 1} tabindex="-1"
+        data-path=${entry.path} data-type=${entry.type}
+        aria-expanded=${isDir ? String(isExpanded) : nothing}
+        @click=${async (e) => {
+          e.stopPropagation();
+          if (isDir) {
+            if (isExpanded) projectState.expanded.delete(entry.path);
+            else {
+              projectState.expanded.add(entry.path);
+              if (!projectState.dirs.has(entry.path)) await loadDirectory(entry.path);
+            }
+            renderLeftPanel();
+          } else {
+            openFileFromTree(entry.path);
           }
-        }
-        renderLeftPanel();
-      } else {
-        openFileFromTree(entry.path);
-      }
-    });
-
-    // Context menu
-    item.addEventListener("contextmenu", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      showFileContextMenu(e, entry);
-    });
-
-    container.appendChild(item);
-
-    // Render children if directory is expanded
-    if (isDir && isExpanded) {
-      const group = document.createElement("div");
-      group.setAttribute("role", "group");
-      renderTreeLevel(group, entry.path, depth + 1);
-      container.appendChild(group);
-    }
-  }
+        }}
+        @contextmenu=${(e) => { e.preventDefault(); e.stopPropagation(); showFileContextMenu(e, entry); }}>
+        ${isDir
+          ? html`<span class="file-tree-toggle">${isExpanded ? "\u25bc" : "\u25b6"}</span>`
+          : html`<span class="file-tree-toggle empty"> </span>`}
+        <span class="file-tree-icon">${fileTypeIconTpl(entry.path, entry.type)}</span>
+        <span class="file-tree-name">${entry.name}</span>
+      </div>
+      ${isDir && isExpanded ? html`<div role="group">${renderTreeLevelTemplate(entry.path, depth + 1)}</div>` : nothing}
+    `;
+  });
 }
+
 
 function setupTreeKeyboard(tree) {
   tree.addEventListener("keydown", (e) => {
@@ -5627,78 +5491,36 @@ function setupTreeKeyboard(tree) {
 let fileContextPopover = null;
 
 function showFileContextMenu(e, entry) {
-  // Remove any existing popover
-  if (fileContextPopover) {
-    fileContextPopover.remove();
-    fileContextPopover = null;
-  }
+  if (fileContextPopover) { fileContextPopover.remove(); fileContextPopover = null; }
 
   const isDir = entry.type === "directory";
+  fileContextPopover = document.createElement("div");
 
-  const popover = document.createElement("sp-popover");
-  popover.placement = "right-start";
-  popover.open = true;
-  popover.style.position = "fixed";
-  popover.style.left = `${e.clientX}px`;
-  popover.style.top = `${e.clientY}px`;
-  popover.style.zIndex = "9999";
+  const tpl = html`
+    <sp-popover placement="right-start" open
+      style="position:fixed;left:${e.clientX}px;top:${e.clientY}px;z-index:9999">
+      <sp-menu style="min-width:160px">
+        ${!isDir ? html`<sp-menu-item @click=${() => { closeFileContextMenu(); openFileFromTree(entry.path); }}>Open</sp-menu-item>` : nothing}
+        ${isDir ? html`<sp-menu-item @click=${() => { closeFileContextMenu(); createNewFile(entry.path); }}>New File\u2026</sp-menu-item>` : nothing}
+        <sp-menu-divider></sp-menu-divider>
+        <sp-menu-item @click=${() => { closeFileContextMenu(); renameFile(entry); }}>Rename\u2026</sp-menu-item>
+        <sp-menu-item style="color:var(--danger)" @click=${() => { closeFileContextMenu(); deleteFile(entry); }}>Delete</sp-menu-item>
+      </sp-menu>
+    </sp-popover>
+  `;
 
-  const menu = document.createElement("sp-menu");
-  menu.style.minWidth = "160px";
+  litRender(tpl, fileContextPopover);
+  document.body.appendChild(fileContextPopover);
 
-  if (!isDir) {
-    const openItem = document.createElement("sp-menu-item");
-    openItem.textContent = "Open";
-    openItem.addEventListener("click", () => {
-      closeFileContextMenu();
-      openFileFromTree(entry.path);
-    });
-    menu.appendChild(openItem);
-  }
-
-  if (isDir) {
-    const newFileItem = document.createElement("sp-menu-item");
-    newFileItem.textContent = "New File…";
-    newFileItem.addEventListener("click", () => {
-      closeFileContextMenu();
-      createNewFile(entry.path);
-    });
-    menu.appendChild(newFileItem);
-  }
-
-  const divider = document.createElement("sp-menu-divider");
-  menu.appendChild(divider);
-
-  const renameItem = document.createElement("sp-menu-item");
-  renameItem.textContent = "Rename…";
-  renameItem.addEventListener("click", () => {
-    closeFileContextMenu();
-    renameFile(entry);
-  });
-  menu.appendChild(renameItem);
-
-  const deleteItem = document.createElement("sp-menu-item");
-  deleteItem.textContent = "Delete";
-  deleteItem.style.color = "var(--danger)";
-  deleteItem.addEventListener("click", () => {
-    closeFileContextMenu();
-    deleteFile(entry);
-  });
-  menu.appendChild(deleteItem);
-
-  popover.appendChild(menu);
-  document.body.appendChild(popover);
-  fileContextPopover = popover;
-
-  // Close on click outside
   const closeHandler = (ev) => {
-    if (!popover.contains(ev.target)) {
+    if (!fileContextPopover?.contains(ev.target)) {
       closeFileContextMenu();
       document.removeEventListener("mousedown", closeHandler, true);
     }
   };
   setTimeout(() => document.addEventListener("mousedown", closeHandler, true), 0);
 }
+
 
 function closeFileContextMenu() {
   if (fileContextPopover) {
@@ -6046,14 +5868,14 @@ function propertiesSidebarTemplate() {
   // "Repeater" section (if $map node)
   const repeaterT = isMapNode ? html`
     <sp-accordion-item label="Repeater" open>
-      <div class="style-section-body" id="inspector-repeater"></div>
+      <div class="style-section-body">${renderRepeaterFieldsTemplate(node, path, mapSignals)}</div>
     </sp-accordion-item>
   ` : nothing;
 
   // "$switch" section
   const switchT = isSwitchNode ? html`
     <sp-accordion-item label="Switch" open>
-      <div class="style-section-body" id="inspector-switch"></div>
+      <div class="style-section-body">${renderSwitchFieldsTemplate(node, path, mapSignals)}</div>
     </sp-accordion-item>
   ` : nothing;
 
@@ -6082,22 +5904,11 @@ function propertiesSidebarTemplate() {
   })() : nothing;
 
   // "Component Props" section
-  const compPropsT = isCustomInstance ? (() => {
-    const comp = componentRegistry.find((c) => c.tagName === tagName);
-    if (!comp) return html`
-      <sp-accordion-item label="Component Props" open>
-        <div class="style-section-body">
-          <div class="empty-state">Component "${tagName}" not found in project</div>
-        </div>
-      </sp-accordion-item>
-    `;
-    const currentProps = node.$props || {};
-    return html`
-      <sp-accordion-item label="Component Props" open>
-        <div class="style-section-body" id="inspector-comp-props"></div>
-      </sp-accordion-item>
-    `;
-  })() : nothing;
+  const compPropsT = isCustomInstance ? html`
+    <sp-accordion-item label="Component Props" open>
+      <div class="style-section-body">${renderComponentPropsFieldsTemplate(node, path, mapSignals)}</div>
+    </sp-accordion-item>
+  ` : nothing;
 
   // HTML-meta attribute sections
   const attrSectionTemplates = htmlMeta.$sections
@@ -6123,7 +5934,7 @@ function propertiesSidebarTemplate() {
       ?open=${isSectionOpen("__custom")}
       @sp-accordion-item-toggle=${() => toggleSection("__custom")}>
       ${customAttrs.length > 0 ? html`<span slot="heading" class="set-dot set-dot--section"></span>` : nothing}
-      <div class="style-section-body" id="inspector-custom-attrs"></div>
+      <div class="style-section-body">${renderCustomAttrsFieldsTemplate(node, path, attrs, knownAttrNames)}</div>
     </sp-accordion-item>
   ` : nothing;
 
@@ -6132,7 +5943,7 @@ function propertiesSidebarTemplate() {
     <sp-accordion-item label="Media"
       ?open=${isSectionOpen("__media")}
       @sp-accordion-item-toggle=${() => toggleSection("__media")}>
-      <div class="style-section-body" id="inspector-media"></div>
+      <div class="style-section-body">${renderMediaFieldsTemplate(node)}</div>
     </sp-accordion-item>
   ` : nothing;
 
@@ -6193,173 +6004,75 @@ function propertiesSidebarTemplate() {
     </div>
   `;
 
-  // Schedule imperative rendering for sections that need it (bind toggles, complex interactions)
-  requestAnimationFrame(() => {
-    // Repeater section
-    if (isMapNode) {
-      const container = rightPanel.querySelector("#inspector-repeater");
-      if (container && !container._rendered) {
-        container._rendered = true;
-        renderRepeaterFields(container, node, path, mapSignals);
-      }
-    }
-    // Switch section
-    if (isSwitchNode) {
-      const container = rightPanel.querySelector("#inspector-switch");
-      if (container && !container._rendered) {
-        container._rendered = true;
-        renderSwitchFields(container, node, path, mapSignals);
-      }
-    }
-    // Component Props (needs bindableFieldRow)
-    if (isCustomInstance) {
-      const container = rightPanel.querySelector("#inspector-comp-props");
-      if (container && !container._rendered) {
-        container._rendered = true;
-        renderComponentPropsFields(container, node, path, mapSignals);
-      }
-    }
-    // Custom attrs (kvRow)
-    const customContainer = rightPanel.querySelector("#inspector-custom-attrs");
-    if (customContainer && !customContainer._rendered) {
-      customContainer._rendered = true;
-      renderCustomAttrsFields(customContainer, node, path, attrs, knownAttrNames);
-    }
-    // Media section
-    if (isRoot) {
-      const mediaContainer = rightPanel.querySelector("#inspector-media");
-      if (mediaContainer && !mediaContainer._rendered) {
-        mediaContainer._rendered = true;
-        renderMediaFields(mediaContainer, node);
-      }
-    }
-  });
-
   return tpl;
 }
 
-/** Imperative helper: repeater fields */
-function renderRepeaterFields(container, node, path, mapSignals) {
-  container.appendChild(
-    bindableFieldRow("Items", "text", node.items, (v) => update(updateProperty(S, path, "items", v))),
-  );
-  if (node.filter) {
-    container.appendChild(
-      bindableFieldRow("Filter", "text", node.filter, (v) => update(updateProperty(S, path, "filter", v || undefined))),
-    );
-  }
-  if (node.sort) {
-    container.appendChild(
-      bindableFieldRow("Sort", "text", node.sort, (v) => update(updateProperty(S, path, "sort", v || undefined))),
-    );
-  }
-  const addRow = document.createElement("div");
-  addRow.style.cssText = "display:flex;gap:8px;margin-top:4px";
-  if (!node.filter) {
-    const addFilter = document.createElement("span");
-    addFilter.className = "kv-add";
-    addFilter.textContent = "+ Add filter";
-    addFilter.onclick = () => update(updateProperty(S, path, "filter", { $ref: "#/state/" }));
-    addRow.appendChild(addFilter);
-  }
-  if (!node.sort) {
-    const addSort = document.createElement("span");
-    addSort.className = "kv-add";
-    addSort.textContent = "+ Add sort";
-    addSort.onclick = () => update(updateProperty(S, path, "sort", { $ref: "#/state/" }));
-    addRow.appendChild(addSort);
-  }
-  container.appendChild(addRow);
-  if (node.map) {
-    const navBtn = document.createElement("sp-action-button");
-    navBtn.setAttribute("size", "s");
-    navBtn.textContent = "Edit template →";
-    navBtn.style.cssText = "margin-top:8px;width:100%";
-    navBtn.addEventListener("click", () => update(selectNode(S, [...path, "map"])));
-    container.appendChild(navBtn);
-  }
+/** Repeater fields template */
+function renderRepeaterFieldsTemplate(node, path, mapSignals) {
+  return html`
+    ${bindableFieldRow("Items", "text", node.items, (v) => update(updateProperty(S, path, "items", v)))}
+    ${node.filter ? bindableFieldRow("Filter", "text", node.filter, (v) => update(updateProperty(S, path, "filter", v || undefined))) : nothing}
+    ${node.sort ? bindableFieldRow("Sort", "text", node.sort, (v) => update(updateProperty(S, path, "sort", v || undefined))) : nothing}
+    <div style="display:flex;gap:8px;margin-top:4px">
+      ${!node.filter ? html`<span class="kv-add" @click=${() => update(updateProperty(S, path, "filter", { $ref: "#/state/" }))}>+ Add filter</span>` : nothing}
+      ${!node.sort ? html`<span class="kv-add" @click=${() => update(updateProperty(S, path, "sort", { $ref: "#/state/" }))}>+ Add sort</span>` : nothing}
+    </div>
+    ${node.map ? html`
+      <sp-action-button size="s" style="margin-top:8px;width:100%"
+        @click=${() => update(selectNode(S, [...path, "map"]))}>Edit template \u2192</sp-action-button>
+    ` : nothing}
+  `;
 }
 
-/** Imperative helper: switch fields */
-function renderSwitchFields(container, node, path, mapSignals) {
-  container.appendChild(
-    bindableFieldRow("Expression", "text", node.$switch, (v) => update(updateProperty(S, path, "$switch", v)), null, mapSignals),
-  );
-  const casesHeader = document.createElement("div");
-  casesHeader.style.cssText = "font-size:11px;font-weight:600;color:var(--fg-dim);margin:8px 0 4px;text-transform:uppercase;letter-spacing:0.05em";
-  casesHeader.textContent = "Cases";
-  container.appendChild(casesHeader);
-  for (const caseName of Object.keys(node.cases || {})) {
-    const caseRow = document.createElement("div");
-    caseRow.className = "field-row";
-    caseRow.style.cssText = "display:flex;align-items:center;gap:4px;margin-bottom:3px";
-    const nameInput = document.createElement("input");
-    nameInput.className = "field-input";
-    nameInput.value = caseName;
-    nameInput.style.flex = "1";
-    let debounce;
-    nameInput.oninput = () => {
-      clearTimeout(debounce);
-      debounce = setTimeout(() => {
-        if (nameInput.value && nameInput.value !== caseName) update(renameSwitchCase(S, path, caseName, nameInput.value));
-      }, 500);
-    };
-    caseRow.appendChild(nameInput);
-    const navBtn = document.createElement("span");
-    navBtn.className = "bind-toggle";
-    navBtn.textContent = "→";
-    navBtn.title = "Edit case";
-    navBtn.style.cursor = "pointer";
-    navBtn.onclick = (e) => { e.stopPropagation(); update(selectNode(S, [...path, "cases", caseName])); };
-    caseRow.appendChild(navBtn);
-    const del = document.createElement("span");
-    del.style.cssText = "cursor:pointer;color:var(--danger);font-size:11px";
-    del.textContent = "\u2715";
-    del.onclick = (e) => { e.stopPropagation(); update(removeSwitchCase(S, path, caseName)); };
-    caseRow.appendChild(del);
-    container.appendChild(caseRow);
-  }
-  const addCase = document.createElement("span");
-  addCase.className = "kv-add";
-  addCase.textContent = "+ Add case";
-  addCase.onclick = () => {
-    const existing = Object.keys(node.cases || {});
-    update(addSwitchCase(S, path, `case${existing.length + 1}`));
-  };
-  container.appendChild(addCase);
+/** Switch fields template */
+function renderSwitchFieldsTemplate(node, path, mapSignals) {
+  const caseNames = Object.keys(node.cases || {});
+  return html`
+    ${bindableFieldRow("Expression", "text", node.$switch, (v) => update(updateProperty(S, path, "$switch", v)), null, mapSignals)}
+    <div style="font-size:11px;font-weight:600;color:var(--fg-dim);margin:8px 0 4px;text-transform:uppercase;letter-spacing:0.05em">Cases</div>
+    ${caseNames.map(caseName => {
+      let debounce;
+      return html`
+        <div class="field-row" style="display:flex;align-items:center;gap:4px;margin-bottom:3px">
+          <input class="field-input" value=${caseName} style="flex:1"
+            @input=${(e) => {
+              clearTimeout(debounce);
+              debounce = setTimeout(() => {
+                if (e.target.value && e.target.value !== caseName) update(renameSwitchCase(S, path, caseName, e.target.value));
+              }, 500);
+            }}>
+          <span class="bind-toggle" title="Edit case" style="cursor:pointer"
+            @click=${(e) => { e.stopPropagation(); update(selectNode(S, [...path, "cases", caseName])); }}>\u2192</span>
+          <span style="cursor:pointer;color:var(--danger);font-size:11px"
+            @click=${(e) => { e.stopPropagation(); update(removeSwitchCase(S, path, caseName)); }}>\u2715</span>
+        </div>
+      `;
+    })}
+    <span class="kv-add" @click=${() => {
+      update(addSwitchCase(S, path, `case${caseNames.length + 1}`));
+    }}>+ Add case</span>
+  `;
 }
 
-/** Imperative helper: component props fields */
-function renderComponentPropsFields(container, node, path, mapSignals) {
+/** Component props fields template */
+function renderComponentPropsFieldsTemplate(node, path, mapSignals) {
   const comp = componentRegistry.find((c) => c.tagName === node.tagName);
-  if (!comp) {
-    container.innerHTML = '<div class="empty-state">Component not found</div>';
-    return;
-  }
+  if (!comp) return html`<div class="empty-state">Component not found</div>`;
   const currentProps = node.$props || {};
-  for (const prop of comp.props) {
-    container.appendChild(
-      bindableFieldRow(camelToLabel(prop.name), "text", currentProps[prop.name], (v) => update(updateProp(S, path, prop.name, v)), null, mapSignals),
-    );
-  }
-  if (comp.props.length === 0) {
-    const hint = document.createElement("div");
-    hint.className = "empty-state";
-    hint.textContent = "No props defined";
-    container.appendChild(hint);
-  }
-  const editLink = document.createElement("span");
-  editLink.className = "kv-add";
-  editLink.textContent = "→ Edit definition";
-  editLink.onclick = () => navigateToComponent(comp.path);
-  container.appendChild(editLink);
+  return html`
+    ${comp.props.map(prop =>
+      bindableFieldRow(camelToLabel(prop.name), "text", currentProps[prop.name], (v) => update(updateProp(S, path, prop.name, v)), null, mapSignals)
+    )}
+    ${comp.props.length === 0 ? html`<div class="empty-state">No props defined</div>` : nothing}
+    <span class="kv-add" @click=${() => navigateToComponent(comp.path)}>\u2192 Edit definition</span>
+  `;
 }
 
-/** Imperative helper: custom (non-meta) attributes */
-function renderCustomAttrsFields(container, node, path, attrs, knownAttrNames) {
+/** Custom attrs fields template */
+function renderCustomAttrsFieldsTemplate(node, path, attrs, knownAttrNames) {
   const customAttrs = Object.entries(attrs).filter(([k]) => !knownAttrNames.has(k));
-  for (const [attr, val] of customAttrs) {
-    container.appendChild(
+  return html`
+    ${customAttrs.map(([attr, val]) =>
       kvRow(
         attr,
         String(val),
@@ -6373,203 +6086,114 @@ function renderCustomAttrsFields(container, node, path, attrs, knownAttrNames) {
           }
         },
         () => update(updateAttribute(S, path, attr, undefined)),
-      ),
-    );
-  }
-  const add = document.createElement("span");
-  add.className = "kv-add";
-  add.textContent = "+ Add attribute";
-  add.onclick = () => update(updateAttribute(S, path, "data-", ""));
-  container.appendChild(add);
+      )
+    )}
+    <span class="kv-add" @click=${() => update(updateAttribute(S, path, "data-", ""))}>+ Add attribute</span>
+  `;
 }
 
-/** Imperative helper: media breakpoint fields */
-function renderMediaFields(container, node) {
+/** Media breakpoint fields template */
+let showAddBreakpointForm = false;
+let addBreakpointPreview = "";
+
+function renderMediaFieldsTemplate(node) {
   const media = node.$media || {};
-
-  // ── Default canvas width ("--" key) ──
-  const baseRow = document.createElement("div");
-  baseRow.className = "kv-row";
-  baseRow.style.alignItems = "center";
-
-  const baseLabel = document.createElement("span");
-  baseLabel.className = "field-label";
-  baseLabel.style.width = "auto";
-  baseLabel.style.marginRight = "4px";
-  baseLabel.textContent = "Base width";
-  baseRow.appendChild(baseLabel);
-
-  const baseInput = document.createElement("input");
-  baseInput.className = "field-input";
-  baseInput.style.width = "70px";
-  baseInput.style.flex = "none";
-  baseInput.placeholder = "320px";
-  baseInput.value = media["--"] || "";
   let baseDebounce;
-  baseInput.oninput = () => {
-    clearTimeout(baseDebounce);
-    baseDebounce = setTimeout(() => {
-      const val = baseInput.value.trim();
-      if (val) update(updateMedia(S, "--", val));
-      else update(updateMedia(S, "--", undefined));
-    }, 400);
-  };
-  baseRow.appendChild(baseInput);
+  const breakpoints = Object.entries(media).filter(([k]) => k !== "--");
 
-  if (media["--"]) {
-    const del = document.createElement("span");
-    del.className = "kv-del";
-    del.textContent = "\u2715";
-    del.onclick = () => update(updateMedia(S, "--", undefined));
-    baseRow.appendChild(del);
-  }
-  container.appendChild(baseRow);
+  return html`
+    <div class="kv-row" style="align-items:center">
+      <span class="field-label" style="width:auto;margin-right:4px">Base width</span>
+      <input class="field-input" style="width:70px;flex:none" placeholder="320px"
+        value=${media["--"] || ""}
+        @input=${(e) => {
+          clearTimeout(baseDebounce);
+          baseDebounce = setTimeout(() => {
+            const val = e.target.value.trim();
+            update(updateMedia(S, "--", val || undefined));
+          }, 400);
+        }}>
+      ${media["--"] ? html`<span class="kv-del" @click=${() => update(updateMedia(S, "--", undefined))}>\u2715</span>` : nothing}
+    </div>
 
-  // ── Breakpoint rows (excluding "--") ──
-  for (const [name, query] of Object.entries(media)) {
-    if (name === "--") continue;
-    container.appendChild(mediaBreakpointRow(name, query));
-  }
+    ${breakpoints.map(([name, query]) => mediaBreakpointRowTemplate(name, query))}
 
-  // ── Add breakpoint flow ──
-  const addWrap = document.createElement("div");
-
-  const addLink = document.createElement("span");
-  addLink.className = "kv-add";
-  addLink.textContent = "+ Add breakpoint";
-  addLink.onclick = () => {
-    addLink.style.display = "none";
-    addForm.style.display = "";
-    nameInput.focus();
-  };
-  addWrap.appendChild(addLink);
-
-  const addForm = document.createElement("div");
-  addForm.style.display = "none";
-  addForm.style.marginTop = "4px";
-
-  const nameRow = document.createElement("div");
-  nameRow.style.cssText = "display:flex;gap:4px;margin-bottom:3px;align-items:center";
-  const nameInput = document.createElement("input");
-  nameInput.className = "field-input";
-  nameInput.placeholder = "Name (e.g. Tablet)";
-  nameInput.style.flex = "1";
-  const namePreview = document.createElement("span");
-  namePreview.style.cssText = "font-size:10px;color:var(--fg-dim);font-family:'SF Mono','Fira Code',monospace;white-space:nowrap";
-  nameInput.oninput = () => {
-    const gen = friendlyNameToMedia(nameInput.value);
-    namePreview.textContent = gen || "";
-  };
-  nameRow.appendChild(nameInput);
-  nameRow.appendChild(namePreview);
-  addForm.appendChild(nameRow);
-
-  const queryRow = document.createElement("div");
-  queryRow.style.cssText = "display:flex;gap:4px;margin-bottom:3px;align-items:center";
-  const queryInput = document.createElement("input");
-  queryInput.className = "field-input";
-  queryInput.value = "(min-width: 768px)";
-  queryInput.style.flex = "1";
-  queryRow.appendChild(queryInput);
-  addForm.appendChild(queryRow);
-
-  const btnRow = document.createElement("div");
-  btnRow.style.cssText = "display:flex;gap:4px";
-  const addBtn = document.createElement("button");
-  addBtn.className = "kv-add";
-  addBtn.style.cssText = "padding:2px 10px;cursor:pointer";
-  addBtn.textContent = "Add";
-  addBtn.onclick = () => {
-    const key = friendlyNameToMedia(nameInput.value);
-    const q = queryInput.value.trim();
-    if (key && q) {
-      update(updateMedia(S, key, q));
-    }
-  };
-  const cancelBtn = document.createElement("button");
-  cancelBtn.className = "kv-add";
-  cancelBtn.style.cssText = "padding:2px 10px;cursor:pointer;color:var(--fg-dim)";
-  cancelBtn.textContent = "Cancel";
-  cancelBtn.onclick = () => {
-    addForm.style.display = "none";
-    addLink.style.display = "";
-    nameInput.value = "";
-    namePreview.textContent = "";
-    queryInput.value = "(min-width: 768px)";
-  };
-  btnRow.appendChild(addBtn);
-  btnRow.appendChild(cancelBtn);
-  addForm.appendChild(btnRow);
-
-  addWrap.appendChild(addForm);
-  container.appendChild(addWrap);
+    <div>
+      <span class="kv-add" style=${showAddBreakpointForm ? "display:none" : ""}
+        @click=${(e) => {
+          showAddBreakpointForm = true;
+          renderRightPanel();
+        }}>+ Add breakpoint</span>
+      ${showAddBreakpointForm ? html`
+        <div style="margin-top:4px">
+          <div style="display:flex;gap:4px;margin-bottom:3px;align-items:center">
+            <input class="field-input" placeholder="Name (e.g. Tablet)" style="flex:1"
+              @input=${(e) => { addBreakpointPreview = friendlyNameToMedia(e.target.value) || ""; renderRightPanel(); }}>
+            <span style="font-size:10px;color:var(--fg-dim);font-family:'SF Mono','Fira Code',monospace;white-space:nowrap">${addBreakpointPreview}</span>
+          </div>
+          <div style="display:flex;gap:4px;margin-bottom:3px;align-items:center">
+            <input class="field-input add-bp-query" value="(min-width: 768px)" style="flex:1">
+          </div>
+          <div style="display:flex;gap:4px">
+            <button class="kv-add" style="padding:2px 10px;cursor:pointer" @click=${(e) => {
+              const wrap = e.target.closest("div").parentElement;
+              const nameVal = wrap.querySelector("input")?.value;
+              const queryVal = wrap.querySelector(".add-bp-query")?.value?.trim();
+              const key = friendlyNameToMedia(nameVal);
+              if (key && queryVal) {
+                showAddBreakpointForm = false;
+                addBreakpointPreview = "";
+                update(updateMedia(S, key, queryVal));
+              }
+            }}>Add</button>
+            <button class="kv-add" style="padding:2px 10px;cursor:pointer;color:var(--fg-dim)" @click=${() => {
+              showAddBreakpointForm = false;
+              addBreakpointPreview = "";
+              renderRightPanel();
+            }}>Cancel</button>
+          </div>
+        </div>
+      ` : nothing}
+    </div>
+  `;
 }
 
-/**
- * Render a single media breakpoint row with friendly name label, subtitle, and editable query.
- */
-function mediaBreakpointRow(name, query) {
-  const row = document.createElement("div");
-  row.style.cssText = "margin-bottom:6px;padding:4px 0;border-bottom:1px solid var(--border)";
-
-  // Header: friendly name (editable) + raw key
-  const header = document.createElement("div");
-  header.style.cssText = "display:flex;align-items:center;gap:4px;margin-bottom:2px";
-
-  const friendlyInput = document.createElement("input");
-  friendlyInput.className = "field-input";
-  friendlyInput.value = mediaDisplayName(name);
-  friendlyInput.style.cssText = "flex:1;font-weight:600;font-size:12px";
-
-  const rawLabel = document.createElement("span");
-  rawLabel.style.cssText = "font-size:10px;color:var(--fg-dim);font-family:'SF Mono','Fira Code',monospace;white-space:nowrap";
-  rawLabel.textContent = name;
-
-  const del = document.createElement("span");
-  del.className = "kv-del";
-  del.textContent = "\u2715";
-  del.onclick = () => update(updateMedia(S, name, undefined));
-
-  header.appendChild(friendlyInput);
-  header.appendChild(rawLabel);
-  header.appendChild(del);
-  row.appendChild(header);
-
-  // Query value row
-  const valRow = document.createElement("div");
-  valRow.style.cssText = "display:flex;gap:4px;align-items:center";
-  const valInput = document.createElement("input");
-  valInput.className = "field-input";
-  valInput.value = query;
-  valInput.style.flex = "1";
-
+/** Single media breakpoint row template */
+function mediaBreakpointRowTemplate(name, query) {
   let debounceTimer;
-
-  // Rename on friendly name change
-  friendlyInput.oninput = () => {
-    const newKey = friendlyNameToMedia(friendlyInput.value);
-    rawLabel.textContent = newKey || "";
-    clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(() => {
-      if (newKey && newKey !== name) {
-        let s = updateMedia(S, name, undefined);
-        s = updateMedia(s, newKey, valInput.value);
-        update(s);
-      }
-    }, 600);
-  };
-
-  // Query change
-  valInput.oninput = () => {
-    clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(() => {
-      update(updateMedia(S, name, valInput.value));
-    }, 400);
-  };
-
-  valRow.appendChild(valInput);
-  row.appendChild(valRow);
-  return row;
+  let currentRawLabel = name;
+  return html`
+    <div style="margin-bottom:6px;padding:4px 0;border-bottom:1px solid var(--border)">
+      <div style="display:flex;align-items:center;gap:4px;margin-bottom:2px">
+        <input class="field-input" value=${mediaDisplayName(name)}
+          style="flex:1;font-weight:600;font-size:12px"
+          @input=${(e) => {
+            const newKey = friendlyNameToMedia(e.target.value);
+            currentRawLabel = newKey || "";
+            const rawEl = e.target.parentElement?.querySelector(".bp-raw-label");
+            if (rawEl) rawEl.textContent = currentRawLabel;
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(() => {
+              if (newKey && newKey !== name) {
+                const queryEl = e.target.closest("div[style]")?.parentElement?.querySelector(".bp-query-input");
+                let s = updateMedia(S, name, undefined);
+                s = updateMedia(s, newKey, queryEl?.value || query);
+                update(s);
+              }
+            }, 600);
+          }}>
+        <span class="bp-raw-label" style="font-size:10px;color:var(--fg-dim);font-family:'SF Mono','Fira Code',monospace;white-space:nowrap">${name}</span>
+        <span class="kv-del" @click=${() => update(updateMedia(S, name, undefined))}>\u2715</span>
+      </div>
+      <div style="display:flex;gap:4px;align-items:center">
+        <input class="field-input bp-query-input" value=${query} style="flex:1"
+          @input=${(e) => {
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(() => update(updateMedia(S, name, e.target.value)), 400);
+          }}>
+      </div>
+    </div>
+  `;
 }
 
 // ─── Style Sidebar (metadata-driven) ───────────────────────────────────────────
@@ -7538,41 +7162,22 @@ function renderStylePanel(container) {
 
 /** Single property input row */
 function fieldRow(label, type, value, onChange, datalistId) {
-  const row = document.createElement("div");
-  row.className = "field-row";
-
-  const lbl = document.createElement("sp-field-label");
-  lbl.setAttribute("size", "s");
-  lbl.textContent = label;
-  row.appendChild(lbl);
-
-  let input;
-  if (type === "textarea") {
-    input = document.createElement("sp-textfield");
-    input.setAttribute("multiline", "");
-    input.setAttribute("size", "s");
-    input.value = value;
-    let debounceTimer;
-    input.addEventListener("input", () => {
-      clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => onChange(input.value), 400);
-    });
-  } else if (type === "checkbox") {
-    input = document.createElement("sp-checkbox");
-    input.checked = !!value;
-    input.addEventListener("change", () => onChange(input.checked));
-  } else {
-    input = document.createElement("sp-textfield");
-    input.setAttribute("size", "s");
-    input.value = value;
-    let debounceTimer;
-    input.addEventListener("input", () => {
-      clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => onChange(input.value), 400);
-    });
-  }
-  row.appendChild(input);
-  return row;
+  let debounceTimer;
+  const onInput = (e) => {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => onChange(e.target.value), 400);
+  };
+  const inputTpl = type === "textarea"
+    ? html`<sp-textfield multiline size="s" value=${value ?? ""} @input=${onInput}></sp-textfield>`
+    : type === "checkbox"
+    ? html`<sp-checkbox ?checked=${!!value} @change=${(e) => onChange(e.target.checked)}></sp-checkbox>`
+    : html`<sp-textfield size="s" value=${value ?? ""} @input=${onInput}></sp-textfield>`;
+  return html`
+    <div class="field-row">
+      <sp-field-label size="s">${label}</sp-field-label>
+      ${inputTpl}
+    </div>
+  `;
 }
 
 /**
@@ -7593,162 +7198,97 @@ function isInsideMapTemplate(path) {
 function bindableFieldRow(label, type, rawValue, onChange, filterFn, extraSignals) {
   const defs = S.document.state || {};
   const isBound = typeof rawValue === "object" && rawValue !== null && rawValue.$ref;
-  const row = document.createElement("div");
-  row.className = "field-row";
 
-  const lbl = document.createElement("sp-field-label");
-  lbl.setAttribute("size", "s");
-  lbl.textContent = label;
-  row.appendChild(lbl);
+  const signalDefs = Object.entries(defs).filter(([, d]) =>
+    filterFn ? filterFn(d) : !d.$handler && d.$prototype !== "Function",
+  );
 
-  function renderStatic() {
-    const val = isBound ? "" : (rawValue ?? "");
-    let input;
-    if (type === "textarea") {
-      input = document.createElement("sp-textfield");
-      input.setAttribute("multiline", "");
-      input.setAttribute("size", "s");
-      input.value = val;
-      let debounce;
-      input.addEventListener("input", () => {
-        clearTimeout(debounce);
-        debounce = setTimeout(() => onChange(input.value), 400);
-      });
-    } else if (type === "checkbox") {
-      input = document.createElement("sp-checkbox");
-      input.checked = !!val;
-      input.addEventListener("change", () => onChange(input.checked));
-    } else {
-      input = document.createElement("sp-textfield");
-      input.setAttribute("size", "s");
-      input.value = val;
-      let debounce;
-      input.addEventListener("input", () => {
-        clearTimeout(debounce);
-        debounce = setTimeout(() => onChange(input.value), 400);
-      });
-    }
-    return input;
-  }
+  let debounce;
+  const onInput = (e) => {
+    clearTimeout(debounce);
+    debounce = setTimeout(() => onChange(e.target.value), 400);
+  };
 
-  function renderBound() {
-    const sel = document.createElement("sp-picker");
-    sel.setAttribute("size", "s");
-    sel.setAttribute("quiet", "");
-    sel.setAttribute("placeholder", "\u2014 select signal \u2014");
+  const staticVal = isBound ? "" : (rawValue ?? "");
+  const staticTpl = type === "textarea"
+    ? html`<sp-textfield multiline size="s" value=${staticVal} @input=${onInput}></sp-textfield>`
+    : type === "checkbox"
+    ? html`<sp-checkbox ?checked=${!!staticVal} @change=${(e) => onChange(e.target.checked)}></sp-checkbox>`
+    : html`<sp-textfield size="s" value=${staticVal} @input=${onInput}></sp-textfield>`;
 
-    const signalDefs = Object.entries(defs).filter(([, d]) =>
-      filterFn ? filterFn(d) : !d.$handler && d.$prototype !== "Function",
-    );
-    for (const [defName] of signalDefs) {
-      const item = document.createElement("sp-menu-item");
-      item.value = `#/state/${defName}`;
-      item.textContent = defName;
-      sel.appendChild(item);
-    }
+  const boundTpl = html`
+    <sp-picker size="s" quiet placeholder="\u2014 select signal \u2014"
+      value=${isBound && rawValue.$ref ? rawValue.$ref : nothing}
+      @change=${(e) => {
+        if (e.target.value) onChange({ $ref: e.target.value });
+        else onChange(undefined);
+      }}>
+      ${signalDefs.map(([defName]) =>
+        html`<sp-menu-item value=${`#/state/${defName}`}>${defName}</sp-menu-item>`
+      )}
+      ${extraSignals ? html`
+        <sp-menu-divider></sp-menu-divider>
+        ${extraSignals.map(sig =>
+          html`<sp-menu-item value=${sig.value}>${sig.label}</sp-menu-item>`
+        )}
+      ` : nothing}
+    </sp-picker>
+  `;
 
-    if (extraSignals) {
-      sel.appendChild(document.createElement("sp-menu-divider"));
-      for (const sig of extraSignals) {
-        const item = document.createElement("sp-menu-item");
-        item.value = sig.value;
-        item.textContent = sig.label;
-        sel.appendChild(item);
-      }
-    }
-    if (isBound && rawValue.$ref) {
-      const _bindVal = rawValue.$ref;
-      requestAnimationFrame(() => { sel.value = _bindVal; });
-    }
-
-    sel.addEventListener("change", () => {
-      if (sel.value) {
-        onChange({ $ref: sel.value });
-      } else {
-        onChange(undefined);
-      }
-    });
-    return sel;
-  }
-
-  let inputEl = isBound ? renderBound() : renderStatic();
-  row.appendChild(inputEl);
-
-  // Toggle button
-  const toggle = document.createElement("sp-action-button");
-  toggle.setAttribute("size", "xs");
-  toggle.setAttribute("quiet", "");
-  toggle.textContent = isBound ? "\u26A1" : "\u2194";
-  toggle.title = isBound ? "Unbind (switch to static)" : "Bind to signal";
-  toggle.onclick = () => {
+  const onToggle = () => {
     if (isBound) {
-      // Switch to static — use signal's default value
       const ref = rawValue.$ref;
       const defName = ref.startsWith("#/state/") ? ref.slice(8) : ref;
       const def = defs[defName];
       let staticVal = "";
       if (def && def.default !== undefined)
-        staticVal =
-          typeof def.default === "object" ? JSON.stringify(def.default) : String(def.default);
+        staticVal = typeof def.default === "object" ? JSON.stringify(def.default) : String(def.default);
       onChange(staticVal || undefined);
     } else {
-      // Switch to bound — pick first available signal
-      const signalDefs = Object.entries(defs).filter(([, d]) =>
-        filterFn ? filterFn(d) : !d.$handler && d.$prototype !== "Function",
-      );
       if (signalDefs.length > 0) {
         onChange({ $ref: `#/state/${signalDefs[0][0]}` });
-      } else if (extraSignals && extraSignals.length > 0) {
+      } else if (extraSignals?.length > 0) {
         onChange({ $ref: extraSignals[0].value });
       }
     }
   };
-  row.appendChild(toggle);
 
-  return row;
+  return html`
+    <div class="field-row">
+      <sp-field-label size="s">${label}</sp-field-label>
+      ${isBound ? boundTpl : staticTpl}
+      <sp-action-button size="xs" quiet title=${isBound ? "Unbind (switch to static)" : "Bind to signal"}
+        @click=${onToggle}>${isBound ? "\u26A1" : "\u2194"}</sp-action-button>
+    </div>
+  `;
 }
 
 /** Key-value pair row for styles / attributes */
 function kvRow(key, value, onChange, onDelete, datalistId) {
-  const row = document.createElement("div");
-  row.className = "kv-row";
-
-  const keyInput = document.createElement("sp-textfield");
-  keyInput.setAttribute("size", "s");
-  keyInput.className = "kv-key";
-  keyInput.value = key;
-
-  const valInput = document.createElement("sp-textfield");
-  valInput.setAttribute("size", "s");
-  valInput.className = "kv-val";
-  valInput.value = value;
-  if (datalistId === "css-props") {
-    valInput.setAttribute("placeholder", cssInitialMap.get(key) || "");
-    keyInput.addEventListener("change", () => {
-      valInput.setAttribute("placeholder", cssInitialMap.get(keyInput.value) || "");
-    });
-  }
-
   let debounceTimer;
+  let currentKey = key;
+  let currentVal = value;
   const commit = () => {
     clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(() => onChange(keyInput.value, valInput.value), 400);
+    debounceTimer = setTimeout(() => onChange(currentKey, currentVal), 400);
   };
-  keyInput.addEventListener("input", commit);
-  valInput.addEventListener("input", commit);
-
-  const del = document.createElement("sp-action-button");
-  del.setAttribute("size", "xs");
-  del.setAttribute("quiet", "");
-  const delIcon = document.createElement("sp-icon-close");
-  delIcon.setAttribute("slot", "icon");
-  del.appendChild(delIcon);
-  del.addEventListener("click", onDelete);
-
-  row.appendChild(keyInput);
-  row.appendChild(valInput);
-  row.appendChild(del);
-  return row;
+  const placeholder = datalistId === "css-props" ? (cssInitialMap.get(key) || "") : "";
+  return html`
+    <div class="kv-row">
+      <sp-textfield size="s" class="kv-key" value=${key}
+        @input=${(e) => { currentKey = e.target.value; commit(); }}
+        @change=${datalistId === "css-props" ? (e) => {
+          const el = e.target.closest(".kv-row")?.querySelector(".kv-val");
+          if (el) el.setAttribute("placeholder", cssInitialMap.get(e.target.value) || "");
+        } : nothing}></sp-textfield>
+      <sp-textfield size="s" class="kv-val" value=${value}
+        placeholder=${placeholder}
+        @input=${(e) => { currentVal = e.target.value; commit(); }}></sp-textfield>
+      <sp-action-button size="xs" quiet @click=${onDelete}>
+        <sp-icon-close slot="icon"></sp-icon-close>
+      </sp-action-button>
+    </div>
+  `;
 }
 
 // ─── Source view ──────────────────────────────────────────────────────────────
@@ -8188,141 +7728,56 @@ function exportCemManifest() {
 // ─── Toolbar ──────────────────────────────────────────────────────────────────
 
 function renderToolbar() {
-  toolbar.innerHTML = "";
-
-  // File group
-  const fileGroup = group();
-  fileGroup.appendChild(tbBtn("Open", openFile, "sp-icon-folder-open"));
-  fileGroup.appendChild(tbBtn("Save", saveFile, "sp-icon-save-floppy"));
-  if (S.fileHandle) {
-    const fname = document.createElement("span");
-    fname.className = "tb-filename";
-    fname.textContent = S.fileHandle.name;
-    fileGroup.appendChild(fname);
-  }
-  if (S.dirty) {
-    const dot = document.createElement("span");
-    dot.className = "tb-dirty";
-    dot.textContent = "●";
-    fileGroup.appendChild(dot);
-  }
-  toolbar.appendChild(fileGroup);
-
-  // Breadcrumb (unified context: document stack + function editor)
   const hasStack = S.documentStack && S.documentStack.length > 0;
   const hasFunc = !!S.ui.editingFunction;
-  if (hasStack || hasFunc) {
-    const breadcrumb = document.createElement("div");
-    breadcrumb.className = "breadcrumb";
 
-    // Back button — pops the most recent context layer
-    const back = document.createElement("sp-action-button");
-    back.setAttribute("size", "s");
-    const backIcon = document.createElement("sp-icon-back");
-    backIcon.setAttribute("slot", "icon");
-    back.appendChild(backIcon);
-    back.append("Back");
-    back.title = hasFunc ? "Close function editor" : "Return to parent document";
-    back.addEventListener("click", hasFunc ? closeFunctionEditor : navigateBack);
-    breadcrumb.appendChild(back);
+  // Breadcrumb template
+  const breadcrumbTpl = (hasStack || hasFunc) ? html`
+    <div class="breadcrumb">
+      <sp-action-button size="s" title=${hasFunc ? "Close function editor" : "Return to parent document"}
+        @click=${hasFunc ? closeFunctionEditor : navigateBack}>
+        ${toolbarIconMap["sp-icon-back"]}Back
+      </sp-action-button>
+      ${hasStack ? S.documentStack.map(frame => html`
+        <span class="breadcrumb-item">${frame.documentPath?.split("/").pop() || "untitled"}</span>
+        <span class="breadcrumb-sep"> › </span>
+      `) : nothing}
+      <span class="breadcrumb-item${hasFunc ? " clickable" : " current"}"
+        @click=${hasFunc ? closeFunctionEditor : nothing}>
+        ${S.documentPath?.split("/").pop() || S.document.tagName || "document"}
+      </span>
+      ${hasFunc ? html`
+        <span class="breadcrumb-sep"> › </span>
+        <span class="breadcrumb-item current">${
+          S.ui.editingFunction.type === "def"
+            ? `ƒ ${S.ui.editingFunction.defName}`
+            : `ƒ ${S.ui.editingFunction.eventKey}`
+        }</span>
+      ` : nothing}
+    </div>
+  ` : nothing;
 
-    // Document stack crumbs
-    if (hasStack) {
-      for (const frame of S.documentStack) {
-        const crumb = document.createElement("span");
-        crumb.className = "breadcrumb-item";
-        crumb.textContent = frame.documentPath?.split("/").pop() || "untitled";
-        breadcrumb.appendChild(crumb);
-
-        const sep = document.createElement("span");
-        sep.className = "breadcrumb-sep";
-        sep.textContent = " › ";
-        breadcrumb.appendChild(sep);
-      }
-    }
-
-    // Current document crumb
-    const docName = S.documentPath?.split("/").pop() || S.document.tagName || "document";
-    const docCrumb = document.createElement("span");
-    docCrumb.className = `breadcrumb-item${hasFunc ? " clickable" : " current"}`;
-    docCrumb.textContent = docName;
-    if (hasFunc) {
-      docCrumb.onclick = closeFunctionEditor;
-    }
-    breadcrumb.appendChild(docCrumb);
-
-    // Function editor crumb
-    if (hasFunc) {
-      const sep = document.createElement("span");
-      sep.className = "breadcrumb-sep";
-      sep.textContent = " › ";
-      breadcrumb.appendChild(sep);
-
-      const editing = S.ui.editingFunction;
-      const funcCrumb = document.createElement("span");
-      funcCrumb.className = "breadcrumb-item current";
-      funcCrumb.textContent = editing.type === "def"
-        ? `ƒ ${editing.defName}`
-        : `ƒ ${editing.eventKey}`;
-      breadcrumb.appendChild(funcCrumb);
-    }
-
-    toolbar.appendChild(breadcrumb);
-  }
-
-  // Edit group
-  const editGroup = group();
-  editGroup.appendChild(tbBtn("Undo", () => update(undo(S)), "sp-icon-undo"));
-  editGroup.appendChild(tbBtn("Redo", () => update(redo(S)), "sp-icon-redo"));
-  toolbar.appendChild(editGroup);
-
-  // Insert group
-  const insertGroup = group();
-  insertGroup.appendChild(
-    tbBtn("Duplicate", () => {
-      if (S.selection) update(duplicateNode(S, S.selection));
-    }, "sp-icon-duplicate"),
-  );
-  insertGroup.appendChild(
-    tbBtn("Delete", () => {
-      if (S.selection) update(removeNode(S, S.selection));
-    }, "sp-icon-delete"),
-  );
-  toolbar.appendChild(insertGroup);
-
-  // Feature toggles (non-size media queries like --dark)
+  // Feature toggles
   const { featureQueries } = parseMediaEntries(S.document.$media);
-  if (featureQueries.length > 0) {
-    const toggleGroup = group();
-    for (const { name, query } of featureQueries) {
-      const btn = document.createElement("sp-action-button");
-      btn.setAttribute("toggles", "");
-      btn.setAttribute("size", "s");
-      if (S.ui.featureToggles[name]) btn.setAttribute("selected", "");
-      btn.textContent = mediaDisplayName(name);
-      btn.title = query;
-      btn.addEventListener("click", () => {
-        const newToggles = { ...S.ui.featureToggles, [name]: !btn.selected };
-        S = { ...S, ui: { ...S.ui, featureToggles: newToggles } };
-        renderCanvas();
-        renderOverlays();
-        renderToolbar();
-      });
-      toggleGroup.appendChild(btn);
-    }
-    toolbar.appendChild(toggleGroup);
-  }
+  const togglesTpl = featureQueries.length > 0 ? html`
+    <sp-action-group compact size="s">
+      ${featureQueries.map(({ name, query }) => html`
+        <sp-action-button toggles size="s" title=${query}
+          ?selected=${!!S.ui.featureToggles[name]}
+          @click=${() => {
+            const newToggles = { ...S.ui.featureToggles, [name]: !S.ui.featureToggles[name] };
+            S = { ...S, ui: { ...S.ui, featureToggles: newToggles } };
+            renderCanvas();
+            renderOverlays();
+            renderToolbar();
+          }}>
+          ${mediaDisplayName(name)}
+        </sp-action-button>
+      `)}
+    </sp-action-group>
+  ` : nothing;
 
-  // Spacer — pushes mode switcher to the right
-  const spacer = document.createElement("div");
-  spacer.className = "tb-spacer";
-  toolbar.appendChild(spacer);
-
-  // Mode switcher (segmented button group)
-  const modeGroup = document.createElement("sp-action-group");
-  modeGroup.setAttribute("selects", "single");
-  modeGroup.setAttribute("size", "s");
-  modeGroup.setAttribute("compact", "");
+  // Mode switcher
   const modes = [
     { key: "edit",      label: "Edit",      iconTag: "sp-icon-edit" },
     { key: "design",    label: "Design",    iconTag: "sp-icon-artboard" },
@@ -8330,55 +7785,57 @@ function renderToolbar() {
     { key: "source",    label: "Code",      iconTag: "sp-icon-code" },
     { key: "stylebook", label: "Stylebook", iconTag: "sp-icon-brush" },
   ];
-  for (const m of modes) {
-    const btn = document.createElement("sp-action-button");
-    btn.setAttribute("size", "s");
-    if (canvasMode === m.key) btn.setAttribute("selected", "");
-    const icon = document.createElement(m.iconTag);
-    icon.setAttribute("slot", "icon");
-    btn.appendChild(icon);
-    btn.append(m.label);
-    btn.addEventListener("click", () => {
-      if (canvasMode === m.key) return;
-      // Close function editor if leaving it
-      if (S.ui.editingFunction) {
-        if (functionEditor) { functionEditor.dispose(); functionEditor = null; }
-        S = { ...S, ui: { ...S.ui, editingFunction: null } };
-      }
-      canvasMode = m.key;
-      renderCanvas();
-      renderOverlays();
-      renderToolbar();
-      renderLeftPanel();
-      if (m.key === "stylebook") {
-        S = { ...S, ui: { ...S.ui, rightTab: "style" } };
-        renderRightPanel();
-      }
-    });
-    modeGroup.appendChild(btn);
-  }
-  toolbar.appendChild(modeGroup);
+
+  const modeSwitcherTpl = html`
+    <sp-action-group selects="single" size="s" compact>
+      ${modes.map(m => html`
+        <sp-action-button size="s" ?selected=${canvasMode === m.key}
+          @click=${() => {
+            if (canvasMode === m.key) return;
+            if (S.ui.editingFunction) {
+              if (functionEditor) { functionEditor.dispose(); functionEditor = null; }
+              S = { ...S, ui: { ...S.ui, editingFunction: null } };
+            }
+            canvasMode = m.key;
+            renderCanvas();
+            renderOverlays();
+            renderToolbar();
+            renderLeftPanel();
+            if (m.key === "stylebook") {
+              S = { ...S, ui: { ...S.ui, rightTab: "style" } };
+              renderRightPanel();
+            }
+          }}>
+          ${toolbarIconMap[m.iconTag]}${m.label}
+        </sp-action-button>
+      `)}
+    </sp-action-group>
+  `;
+
+  const tpl = html`
+    <sp-action-group compact size="s">
+      ${tbBtnTpl("Open", openFile, "sp-icon-folder-open")}
+      ${tbBtnTpl("Save", saveFile, "sp-icon-save-floppy")}
+      ${S.fileHandle ? html`<span class="tb-filename">${S.fileHandle.name}</span>` : nothing}
+      ${S.dirty ? html`<span class="tb-dirty">●</span>` : nothing}
+    </sp-action-group>
+    ${breadcrumbTpl}
+    <sp-action-group compact size="s">
+      ${tbBtnTpl("Undo", () => update(undo(S)), "sp-icon-undo")}
+      ${tbBtnTpl("Redo", () => update(redo(S)), "sp-icon-redo")}
+    </sp-action-group>
+    <sp-action-group compact size="s">
+      ${tbBtnTpl("Duplicate", () => { if (S.selection) update(duplicateNode(S, S.selection)); }, "sp-icon-duplicate")}
+      ${tbBtnTpl("Delete", () => { if (S.selection) update(removeNode(S, S.selection)); }, "sp-icon-delete")}
+    </sp-action-group>
+    ${togglesTpl}
+    <div class="tb-spacer"></div>
+    ${modeSwitcherTpl}
+  `;
+
+  litRender(tpl, toolbar);
 }
 
-function group() {
-  const g = document.createElement("sp-action-group");
-  g.setAttribute("compact", "");
-  g.setAttribute("size", "s");
-  return g;
-}
-
-function tbBtn(label, onClick, iconTag) {
-  const btn = document.createElement("sp-action-button");
-  btn.setAttribute("size", "s");
-  if (iconTag) {
-    const icon = document.createElement(iconTag);
-    icon.setAttribute("slot", "icon");
-    btn.appendChild(icon);
-  }
-  btn.append(label);
-  btn.addEventListener("click", onClick);
-  return btn;
-}
 
 // ─── Statusbar ────────────────────────────────────────────────────────────────
 
