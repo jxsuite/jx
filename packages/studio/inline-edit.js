@@ -330,9 +330,13 @@ function elementToJsonsx(el) {
     if (jsx) children.push(jsx);
   }
 
-  // If all children are just text spans, simplify to textContent
-  if (children.length === 1 && children[0].tagName === "span" && children[0].textContent != null) {
-    return { textContent: children[0].textContent };
+  // If all children are plain text spans (no formatting, no attributes),
+  // collapse them into a single textContent
+  const allPlainText = children.every(
+    c => c.tagName === "span" && c.textContent != null && !c.children && !c.attributes && !c.style
+  );
+  if (allPlainText) {
+    return { textContent: children.map(c => c.textContent).join("") };
   }
 
   return { children };

@@ -217,6 +217,9 @@ export function normalizeInlineContent(root) {
 
     // 5. Lift edge whitespace out of inline wrappers
     if (liftEdgeWhitespace(root)) changed = true;
+
+    // 6. Unwrap bare <span> elements (no class, style, or attributes)
+    if (unwrapBareSpans(root)) changed = true;
   }
 }
 
@@ -355,6 +358,31 @@ function liftEdgeWhitespace(root) {
       op.el.parentNode.insertBefore(document.createTextNode(op.ws), op.el.nextSibling);
       changed = true;
     }
+  }
+  return changed;
+}
+
+/**
+ * Unwrap bare <span> elements that have no class, style, or meaningful attributes.
+ * These are semantically empty wrappers left over from formatting operations.
+ */
+function unwrapBareSpans(root) {
+  let changed = false;
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
+  const toUnwrap = [];
+
+  while (walker.nextNode()) {
+    const el = walker.currentNode;
+    if (el.tagName.toLowerCase() !== "span") continue;
+    if (el === root) continue;
+    // Keep spans with class, style, or any attributes
+    if (el.attributes.length > 0) continue;
+    toUnwrap.push(el);
+  }
+
+  for (const el of toUnwrap) {
+    unwrapElement(el);
+    changed = true;
   }
   return changed;
 }
