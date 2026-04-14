@@ -1511,17 +1511,18 @@ function showCanvasDropIndicator(el, elPath, isVoid, panel) {
     return;
   }
 
+  const scale = effectiveZoom();
   const wrapRect = viewport.getBoundingClientRect();
   const elRect = el.getBoundingClientRect();
-  const left = elRect.left - wrapRect.left + viewport.scrollLeft;
-  const width = elRect.width;
+  const left = (elRect.left - wrapRect.left + viewport.scrollLeft) / scale;
+  const width = elRect.width / scale;
 
   if (instruction.type === "make-child") {
     dropLine.style.display = "block";
-    dropLine.style.top = `${elRect.top - wrapRect.top + viewport.scrollTop}px`;
+    dropLine.style.top = `${(elRect.top - wrapRect.top + viewport.scrollTop) / scale}px`;
     dropLine.style.left = `${left}px`;
     dropLine.style.width = `${width}px`;
-    dropLine.style.height = `${elRect.height}px`;
+    dropLine.style.height = `${elRect.height / scale}px`;
     dropLine.className = "canvas-drop-indicator inside";
     el.classList.add("canvas-drop-target");
     return;
@@ -1530,8 +1531,8 @@ function showCanvasDropIndicator(el, elPath, isVoid, panel) {
   el.classList.remove("canvas-drop-target");
   const top =
     instruction.type === "reorder-above"
-      ? elRect.top - wrapRect.top + viewport.scrollTop
-      : elRect.bottom - wrapRect.top + viewport.scrollTop;
+      ? (elRect.top - wrapRect.top + viewport.scrollTop) / scale
+      : (elRect.bottom - wrapRect.top + viewport.scrollTop) / scale;
 
   dropLine.style.display = "block";
   dropLine.style.top = `${top}px`;
@@ -1857,7 +1858,7 @@ function renderBlockActionBar() {
 
       <span class="bar-tag">${node.$id || (node.tagName ?? "div")}</span>
 
-      ${S.selection.length >= 2 && !componentInlineEdit
+      ${S.selection.length >= 2
         ? html`<span class="bar-drag-handle" title="Drag to reorder">\u2847</span>`
         : nothing}
 
@@ -1890,7 +1891,7 @@ function renderBlockActionBar() {
       bar.style.left = `${Math.max(0, window.innerWidth - barRect.width)}px`;
     }
     // Attach drag handle
-    if (S.selection.length >= 2 && !componentInlineEdit) {
+    if (S.selection.length >= 2) {
       const handle = bar.querySelector(".bar-drag-handle");
       if (handle) {
         selDragCleanup = draggable({
@@ -2855,7 +2856,6 @@ function renderLayersTemplate() {
 
   return html`
     <div class="layers-container" style="position:relative">
-      <div class="drop-indicator"></div>
       ${componentsSectionTpl}
       <div class="layers-tree"
         @click=${(e) => {
@@ -2881,7 +2881,6 @@ function registerLayersDnD() {
   requestAnimationFrame(() => {
     const container = leftPanel.querySelector(".layers-container");
     if (!container) return;
-    const dropLine = container.querySelector(".drop-indicator");
 
     container.querySelectorAll("[data-dnd-row]").forEach(row => {
       const rowPath = row.dataset.path.split("/").map((s) => (/^\d+$/.test(s) ? parseInt(s) : s));
@@ -2898,6 +2897,7 @@ function registerLayersDnD() {
           },
           onDragStart() {
             row.classList.add("dragging");
+            layerDragSourceHeight = row.offsetHeight;
           },
           onDrop() {
             row.classList.remove("dragging");
@@ -2923,18 +2923,16 @@ function registerLayersDnD() {
             );
           },
           onDragEnter({ self }) {
-            showDropIndicator(row, self.data, rowDepth, container, dropLine);
+            showLayerDropGap(row, self.data, container);
           },
           onDrag({ self }) {
-            showDropIndicator(row, self.data, rowDepth, container, dropLine);
+            showLayerDropGap(row, self.data, container);
           },
           onDragLeave() {
-            dropLine.style.display = "none";
-            row.classList.remove("drop-target");
+            clearLayerDropGap(container);
           },
           onDrop() {
-            dropLine.style.display = "none";
-            row.classList.remove("drop-target");
+            clearLayerDropGap(container);
           },
         }),
       );
@@ -2944,7 +2942,7 @@ function registerLayersDnD() {
     // Global monitor
     const monitorCleanup = monitorForElements({
       onDrop({ source, location }) {
-        dropLine.style.display = "none";
+        clearLayerDropGap(container);
         const target = location.current.dropTargets[0];
         if (!target) return;
         const instruction = extractInstruction(target.data);
@@ -2979,34 +2977,54 @@ function registerLayersDnD() {
   });
 }
 
-function showDropIndicator(rowEl, data, depth, container, dropLine) {
+let _currentDropTargetRow = null;
+let layerDragSourceHeight = 0;
+
+function showLayerDropGap(rowEl, data, container) {
   const instruction = extractInstruction(data);
+
+  // Clear previous drop-target highlight
+  if (_currentDropTargetRow && _currentDropTargetRow !== rowEl) {
+    _currentDropTargetRow.classList.remove("drop-target");
+  }
+
   if (!instruction || instruction.type === "instruction-blocked") {
-    dropLine.style.display = "none";
-    rowEl.classList.remove("drop-target");
+    clearLayerDropGap(container);
     return;
   }
 
   if (instruction.type === "make-child") {
-    dropLine.style.display = "none";
+    clearLayerDropGap(container);
     rowEl.classList.add("drop-target");
+    _currentDropTargetRow = rowEl;
     return;
   }
 
   rowEl.classList.remove("drop-target");
-  const rowRect = rowEl.getBoundingClientRect();
-  const containerRect = container.getBoundingClientRect();
+  _currentDropTargetRow = rowEl;
 
-  const indent = depth * 16 + 28;
-  const top =
-    instruction.type === "reorder-above"
-      ? rowRect.top - containerRect.top + container.scrollTop
-      : rowRect.bottom - containerRect.top + container.scrollTop;
+  // Shift rows to create gap
+  const rows = Array.from(container.querySelectorAll(".layers-tree .layer-row"));
+  const targetIdx = rows.indexOf(rowEl);
+  const gap = layerDragSourceHeight;
 
-  dropLine.style.display = "block";
-  dropLine.style.top = `${top}px`;
-  dropLine.style.left = `${indent}px`;
-  dropLine.style.right = "8px";
+  for (let i = 0; i < rows.length; i++) {
+    if (rows[i].classList.contains("dragging")) continue;
+    if (instruction.type === "reorder-above") {
+      rows[i].style.transform = i >= targetIdx ? `translateY(${gap}px)` : "";
+    } else {
+      rows[i].style.transform = i > targetIdx ? `translateY(${gap}px)` : "";
+    }
+  }
+}
+
+function clearLayerDropGap(container) {
+  if (_currentDropTargetRow) {
+    _currentDropTargetRow.classList.remove("drop-target");
+    _currentDropTargetRow = null;
+  }
+  const rows = container.querySelectorAll(".layers-tree .layer-row");
+  for (const r of rows) r.style.transform = "";
 }
 
 function renderComponentGroupTemplate(label, components, collapsed, isImported) {

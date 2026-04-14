@@ -159,10 +159,10 @@
     .file-tree-empty { padding: 24px; text-align: center; color: var(--fg-dim); font-size: 12px; }
 
     /* ─── Layers ─────────────────────────────────── */
-    .layer-row { display: flex; align-items: center; gap: 4px; padding: 3px 8px; cursor: pointer; white-space: nowrap; user-select: none; border-left: 2px solid transparent; }
+    .layer-row { display: flex; align-items: center; gap: 4px; padding: 3px 8px; cursor: pointer; white-space: nowrap; user-select: none; border-left: 2px solid transparent; transition: transform 150ms ease; }
     .layer-row:hover { background: var(--hover-bg); }
     .layer-row.selected { background: var(--accent-20); border-left-color: var(--accent); }
-    .layer-row.dragging { opacity: 0.4; }
+    .layer-row.dragging { opacity: 0.4; transition: none; }
     .layer-row.drop-target { background: var(--accent-15); outline: 1px dashed var(--accent); outline-offset: -1px; }
     .layer-indent { flex-shrink: 0; }
     .layer-handle { cursor: grab; color: var(--fg-dim); font-size: 11px; flex-shrink: 0; width: 14px; text-align: center; opacity: 0; transition: opacity 0.1s; }
