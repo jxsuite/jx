@@ -23,6 +23,7 @@
     "examples"
   ],
   "dependencies": {
+    "@spectrum-web-components/action-bar": "1.11.2",
     "@spectrum-web-components/color-area": "^1.11.2",
     "@spectrum-web-components/color-handle": "^1.11.2",
     "@spectrum-web-components/color-slider": "^1.11.2",

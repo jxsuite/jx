@@ -9,6 +9,7 @@ const studioDir = join(__dirname, "..");
 const cssMeta = JSON.parse(readFileSync(join(studioDir, "css-meta.json"), "utf8"));
 const htmlMeta = JSON.parse(readFileSync(join(studioDir, "html-meta.json"), "utf8"));
 const stylebookMeta = JSON.parse(readFileSync(join(studioDir, "stylebook-meta.json"), "utf8"));
+const elementsMeta = JSON.parse(readFileSync(join(studioDir, "elements-meta.json"), "utf8"));
 
 // ─── Shared metadata helpers ─────────────────────────────────────────────────
 
@@ -229,5 +230,76 @@ describe("stylebook-meta.json", () => {
   test("section labels are unique", () => {
     const labels = stylebookMeta.$sections.map((s) => s.label);
     expect(new Set(labels).size).toBe(labels.length);
+  });
+});
+
+// ─── elements-meta.json ─────────────────────────────────────────────────────
+
+describe("elements-meta.json", () => {
+  test("has $id and title", () => {
+    expect(elementsMeta.$id).toBe("elements-meta");
+    expect(typeof elementsMeta.title).toBe("string");
+  });
+
+  test("every element def has $inlineChildren array", () => {
+    for (const [tag, def] of Object.entries(elementsMeta.$defs)) {
+      expect(Array.isArray(def.$inlineChildren)).toBe(true);
+    }
+  });
+
+  test("$inlineChildren contain only lowercase tag names", () => {
+    for (const [tag, def] of Object.entries(elementsMeta.$defs)) {
+      for (const child of def.$inlineChildren) {
+        expect(child).toBe(child.toLowerCase());
+        expect(child).toMatch(/^[a-z][a-z0-9]*$/);
+      }
+    }
+  });
+
+  test("<a> is inline within <p> but not within <div>", () => {
+    expect(elementsMeta.$defs.p.$inlineChildren).toContain("a");
+    expect(elementsMeta.$defs.div.$inlineChildren).not.toContain("a");
+  });
+
+  test("$inlineActions string references resolve to valid arrays", () => {
+    for (const [tag, def] of Object.entries(elementsMeta.$defs)) {
+      if (typeof def.$inlineActions === "string") {
+        const ref = elementsMeta.$defs[def.$inlineActions];
+        expect(ref).toBeDefined();
+        expect(Array.isArray(ref.$inlineActions)).toBe(true);
+      }
+    }
+  });
+
+  test("$inlineActions entries have required fields", () => {
+    for (const [tag, def] of Object.entries(elementsMeta.$defs)) {
+      let actions = def.$inlineActions;
+      if (typeof actions === "string") actions = elementsMeta.$defs[actions]?.$inlineActions;
+      if (!Array.isArray(actions)) continue;
+      for (const action of actions) {
+        expect(typeof action.tag).toBe("string");
+        expect(typeof action.label).toBe("string");
+        expect(typeof action.icon).toBe("string");
+        expect(typeof action.command).toBe("string");
+      }
+    }
+  });
+
+  test("text-bearing elements have non-empty $inlineChildren", () => {
+    const textBearing = ["p", "h1", "h2", "h3", "h4", "h5", "h6", "li", "td", "th"];
+    for (const tag of textBearing) {
+      const def = elementsMeta.$defs[tag];
+      expect(def).toBeDefined();
+      expect(def.$inlineChildren.length).toBeGreaterThan(0);
+    }
+  });
+
+  test("container elements have empty $inlineChildren", () => {
+    const containers = ["div", "section", "article", "nav", "main"];
+    for (const tag of containers) {
+      const def = elementsMeta.$defs[tag];
+      expect(def).toBeDefined();
+      expect(def.$inlineChildren).toEqual([]);
+    }
   });
 });

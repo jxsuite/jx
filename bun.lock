@@ -4,6 +4,7 @@
   "workspaces": {
     "": {
       "dependencies": {
+        "@spectrum-web-components/action-bar": "1.11.2",
         "@spectrum-web-components/color-area": "^1.11.2",
         "@spectrum-web-components/color-handle": "^1.11.2",
         "@spectrum-web-components/color-slider": "^1.11.2",
@@ -243,6 +244,8 @@
     "@oxlint/binding-win32-x64-msvc": ["@oxlint/binding-win32-x64-msvc@1.59.0", "", { "os": "win32", "cpu": "x64" }, "sha512-xkE7puteDS/vUyRngLXW0t8WgdWoS/tfxXjhP/P7SMqPDx+hs44SpssO3h3qmTqECYEuXBUPzcAw5257Ka+ofA=="],
 
     "@spectrum-web-components/accordion": ["@spectrum-web-components/accordion@1.11.2", "", { "dependencies": { "@spectrum-web-components/base": "1.11.2", "@spectrum-web-components/icon": "1.11.2", "@spectrum-web-components/icons-ui": "1.11.2", "@spectrum-web-components/reactive-controllers": "1.11.2", "@spectrum-web-components/shared": "1.11.2" } }, "sha512-WJR2QG9da5lMc6Xp8wOhu8QTA+0Ii2fDmBj4lGqFEEOodYzeklceIptR9+uVx3kyp6ftcCSTeCe7bxklwc863g=="],
+
+    "@spectrum-web-components/action-bar": ["@spectrum-web-components/action-bar@1.11.2", "", { "dependencies": { "@spectrum-web-components/action-group": "1.11.2", "@spectrum-web-components/base": "1.11.2", "@spectrum-web-components/button": "1.11.2", "@spectrum-web-components/field-label": "1.11.2", "@spectrum-web-components/popover": "1.11.2", "@spectrum-web-components/shared": "1.11.2" } }, "sha512-Ue60pl9UKkdaGGi8eC8Hg24U0A0PY1gG/sBNbDoOU1HMtqUjgEOCtTNBputynyT1lgE2yWghmGNFHQ8gzgx7eg=="],
 
     "@spectrum-web-components/action-button": ["@spectrum-web-components/action-button@1.11.2", "", { "dependencies": { "@spectrum-web-components/base": "1.11.2", "@spectrum-web-components/button": "1.11.2", "@spectrum-web-components/icon": "1.11.2", "@spectrum-web-components/icons-ui": "1.11.2", "@spectrum-web-components/shared": "1.11.2" } }, "sha512-c3f0T3WKmTWGMmDQa5wyt0t9MEbx9p8w5VC++q1Cw8gGdh5P6zJR958gP/vOKFyPQm/opbAe1nKrSqwVRcs8NQ=="],
 

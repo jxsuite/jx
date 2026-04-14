@@ -7,11 +7,13 @@
  */
 
 import { MD_BLOCK, MD_INLINE } from "./md-allowlist.js";
+import elementsMeta from "./elements-meta.json";
+import { toggleInlineFormat, normalizeInlineContent } from "./inline-format.js";
 
 // ─── Inline tag set (tags that represent rich text formatting) ─────────────
 
-/** Tags that are inline formatting inside a text block */
-const INLINE_TAGS = new Set(["em", "strong", "del", "code", "a", "span", "br", "img"]);
+/** Fallback set — used when parent context is unknown */
+const INLINE_TAGS = new Set(["em", "strong", "del", "code", "a", "span", "br", "img", "b", "i", "u", "sub", "sup", "s"]);
 
 /** Tags that can be edited inline (text-bearing block elements) */
 const EDITABLE_BLOCKS = new Set([
@@ -27,6 +29,35 @@ const EDITABLE_BLOCKS = new Set([
   "th",
   "blockquote",
 ]);
+
+// ─── Context-aware inline scoping ─────────────────────────────────────────
+
+/**
+ * Check if a child tag is inline within the context of a given parent tag.
+ * Uses $inlineChildren from elements-meta.json.
+ */
+export function isInlineInContext(childTag, parentTag) {
+  if (!parentTag) return INLINE_TAGS.has(childTag);
+  const parentDef = elementsMeta.$defs[parentTag];
+  if (!parentDef || !parentDef.$inlineChildren) return false;
+  return parentDef.$inlineChildren.includes(childTag);
+}
+
+/**
+ * Get the resolved $inlineActions for a given element tag.
+ * Follows string references (e.g., "h1" → look up h1's actions).
+ */
+export function getInlineActions(tag) {
+  const def = elementsMeta.$defs[tag];
+  if (!def) return null;
+  let actions = def.$inlineActions;
+  if (typeof actions === "string") {
+    const refDef = elementsMeta.$defs[actions];
+    actions = refDef?.$inlineActions ?? null;
+  }
+  if (!Array.isArray(actions)) return null;
+  return actions;
+}
 
 // ─── Editing state ─────────────────────────────────────────────────────────
 
@@ -47,11 +78,18 @@ export function isEditableBlock(el) {
 }
 
 /**
- * Check if an element path points to an inline child (should be hidden in layer tree).
+ * Check if a node is an inline child.
+ * When parentNode is provided, uses context-aware scoping from metadata.
+ * Without parent, uses the fallback INLINE_TAGS set.
  */
-export function isInlineElement(node) {
+export function isInlineElement(node, parentNode) {
   if (!node || typeof node !== "object") return false;
-  return INLINE_TAGS.has((node.tagName ?? "div").toLowerCase());
+  const childTag = (node.tagName ?? "div").toLowerCase();
+  if (parentNode) {
+    const parentTag = (parentNode.tagName ?? "div").toLowerCase();
+    return isInlineInContext(childTag, parentTag);
+  }
+  return INLINE_TAGS.has(childTag);
 }
 
 /**
@@ -179,15 +217,15 @@ function handleKeydown(e) {
     switch (e.key) {
       case "b":
         e.preventDefault();
-        document.execCommand("bold", false);
+        toggleInlineFormat("strong", activeEl);
         break;
       case "i":
         e.preventDefault();
-        document.execCommand("italic", false);
+        toggleInlineFormat("em", activeEl);
         break;
       case "`":
         e.preventDefault();
-        wrapSelectionInCode();
+        toggleInlineFormat("code", activeEl);
         break;
     }
   }
@@ -267,6 +305,7 @@ function handleEnterKey() {
 function commitChanges() {
   if (!commitFn || !activeEl || !activePath) return;
 
+  normalizeInlineContent(activeEl);
   const result = elementToJsonsx(activeEl);
   commitFn(activePath, result.children ?? null, result.textContent ?? null);
 }
@@ -370,16 +409,6 @@ function fragmentToJsonsx(frag) {
 }
 
 // ─── Rich text helpers ─────────────────────────────────────────────────────
-
-function wrapSelectionInCode() {
-  const sel = window.getSelection();
-  if (!sel.rangeCount || sel.isCollapsed) return;
-
-  const range = sel.getRangeAt(0);
-  const code = document.createElement("code");
-  range.surroundContents(code);
-  sel.removeAllRanges();
-}
 
 function getTextBeforeCursor(range) {
   const preRange = document.createRange();

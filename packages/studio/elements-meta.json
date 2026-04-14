@@ -1,0 +1,76 @@
+{
+  "$id": "elements-meta",
+  "title": "HTML Element Metadata",
+  "description": "Inline scoping and inline toolbar action metadata for HTML elements.",
+  "$defs": {
+    "p": {
+      "$inlineChildren": ["em", "strong", "del", "code", "a", "span", "br", "img", "b", "i", "u", "sub", "sup", "s"],
+      "$inlineActions": [
+        { "tag": "strong", "label": "Bold", "icon": "sp-icon-text-bold", "command": "bold", "shortcut": "Cmd+B" },
+        { "tag": "em", "label": "Italic", "icon": "sp-icon-text-italic", "command": "italic", "shortcut": "Cmd+I" },
+        { "tag": "u", "label": "Underline", "icon": "sp-icon-text-underline", "command": "underline" },
+        { "tag": "del", "label": "Strikethrough", "icon": "sp-icon-text-strikethrough", "command": "strikethrough" },
+        { "tag": "sup", "label": "Superscript", "icon": "sp-icon-text-superscript", "command": "superscript" },
+        { "tag": "sub", "label": "Subscript", "icon": "sp-icon-text-subscript", "command": "subscript" },
+        { "tag": "code", "label": "Code", "icon": "sp-icon-code", "command": "code" },
+        { "tag": "a", "label": "Link", "icon": "sp-icon-link", "command": "link" }
+      ]
+    },
+    "h1": {
+      "$inlineChildren": ["em", "strong", "code", "a", "span", "br", "b", "i", "u", "sub", "sup"],
+      "$inlineActions": [
+        { "tag": "strong", "label": "Bold", "icon": "sp-icon-text-bold", "command": "bold", "shortcut": "Cmd+B" },
+        { "tag": "em", "label": "Italic", "icon": "sp-icon-text-italic", "command": "italic", "shortcut": "Cmd+I" },
+        { "tag": "code", "label": "Code", "icon": "sp-icon-code", "command": "code" },
+        { "tag": "a", "label": "Link", "icon": "sp-icon-link", "command": "link" }
+      ]
+    },
+    "h2": { "$inlineChildren": ["em", "strong", "code", "a", "span", "br", "b", "i", "u", "sub", "sup"], "$inlineActions": "h1" },
+    "h3": { "$inlineChildren": ["em", "strong", "code", "a", "span", "br", "b", "i", "u", "sub", "sup"], "$inlineActions": "h1" },
+    "h4": { "$inlineChildren": ["em", "strong", "code", "a", "span", "br", "b", "i", "u", "sub", "sup"], "$inlineActions": "h1" },
+    "h5": { "$inlineChildren": ["em", "strong", "code", "a", "span", "br", "b", "i", "u", "sub", "sup"], "$inlineActions": "h1" },
+    "h6": { "$inlineChildren": ["em", "strong", "code", "a", "span", "br", "b", "i", "u", "sub", "sup"], "$inlineActions": "h1" },
+    "li": {
+      "$inlineChildren": ["em", "strong", "del", "code", "a", "span", "br", "img", "b", "i", "u", "sub", "sup", "s"],
+      "$inlineActions": "p"
+    },
+    "td": {
+      "$inlineChildren": ["em", "strong", "del", "code", "a", "span", "br", "b", "i", "u", "sub", "sup", "s"],
+      "$inlineActions": "p"
+    },
+    "th": {
+      "$inlineChildren": ["em", "strong", "del", "code", "a", "span", "br", "b", "i", "u", "sub", "sup", "s"],
+      "$inlineActions": "p"
+    },
+    "blockquote": {
+      "$inlineChildren": []
+    },
+    "a": {
+      "$inlineChildren": ["em", "strong", "code", "span", "br", "b", "i", "u", "sub", "sup"],
+      "$inlineActions": [
+        { "tag": "strong", "label": "Bold", "icon": "sp-icon-text-bold", "command": "bold", "shortcut": "Cmd+B" },
+        { "tag": "em", "label": "Italic", "icon": "sp-icon-text-italic", "command": "italic", "shortcut": "Cmd+I" },
+        { "tag": "code", "label": "Code", "icon": "sp-icon-code", "command": "code" }
+      ]
+    },
+    "span": {
+      "$inlineChildren": ["em", "strong", "del", "code", "a", "br", "b", "i", "u", "sub", "sup", "s"],
+      "$inlineActions": "p"
+    },
+    "div": { "$inlineChildren": [] },
+    "section": { "$inlineChildren": [] },
+    "article": { "$inlineChildren": [] },
+    "nav": { "$inlineChildren": [] },
+    "main": { "$inlineChildren": [] },
+    "header": { "$inlineChildren": [] },
+    "footer": { "$inlineChildren": [] },
+    "aside": { "$inlineChildren": [] },
+    "ul": { "$inlineChildren": [] },
+    "ol": { "$inlineChildren": [] },
+    "pre": { "$inlineChildren": ["code"] },
+    "table": { "$inlineChildren": [] },
+    "thead": { "$inlineChildren": [] },
+    "tbody": { "$inlineChildren": [] },
+    "tr": { "$inlineChildren": [] }
+  }
+}

@@ -64,7 +64,14 @@ import {
   getActiveElement,
   isEditableBlock,
   isInlineElement,
+  isInlineInContext,
+  getInlineActions,
 } from "./inline-edit.js";
+import {
+  toggleInlineFormat,
+  normalizeInlineContent,
+  isTagActiveInSelection,
+} from "./inline-format.js";
 import {
   camelToKebab,
   camelToLabel,
@@ -320,6 +327,8 @@ let canvasDndCleanups = [];
 
 /** Cleanup function for the current selection drag registration */
 let selDragCleanup = null;
+let blockActionBarEl = null;
+let _inlineEditCleanup = null;
 
 /** Void elements that cannot accept children */
 const VOID_ELEMENTS = new Set([
@@ -581,9 +590,11 @@ async function renderCanvasLive(doc, canvasEl) {
       // Custom element connectedCallbacks render children asynchronously —
       // sweep again after they've had a chance to run
       requestAnimationFrame(() => {
+        const editingEl = getActiveElement();
         for (const child of canvasEl.querySelectorAll("*")) {
           // Preserve pointer-events on the actively-edited element
           if (componentInlineEdit && child === componentInlineEdit.el) continue;
+          if (editingEl && child === editingEl) continue;
           child.style.pointerEvents = "none";
         }
       });
@@ -1501,7 +1512,7 @@ function renderOverlays() {
     return;
   }
   for (const p of canvasPanels) {
-    p.overlayClk.style.pointerEvents = componentInlineEdit ? "none" : "";
+    p.overlayClk.style.pointerEvents = (componentInlineEdit || isEditing()) ? "none" : "";
   }
 
   if (selDragCleanup) {
@@ -1524,30 +1535,14 @@ function renderOverlays() {
       const el = findCanvasElement(S.selection, activePanel.canvas);
       if (el) {
         const box = drawOverlayBox(el, "selection", activePanel);
-        // During inline edit: show label only, hide selection border
-        if (componentInlineEdit) {
+        // During inline edit: hide selection border
+        if (componentInlineEdit || isEditing()) {
           box.style.border = "none";
-        }
-        if (S.selection.length >= 2 && !componentInlineEdit) {
-          const label = box.querySelector(".overlay-label");
-          if (label) {
-            const handle = document.createElement("span");
-            handle.className = "overlay-drag-handle";
-            handle.textContent = "\u2847";
-            label.prepend(handle);
-
-            const path = S.selection;
-            selDragCleanup = draggable({
-              element: handle,
-              getInitialData() {
-                return { type: "tree-node", path };
-              },
-            });
-          }
         }
       }
     }
   }
+  renderBlockActionBar();
 }
 
 function getActivePanel() {
@@ -1558,6 +1553,335 @@ function getActivePanel() {
     if (p.mediaName === S.ui.activeMedia) return p;
   }
   return canvasPanels[0];
+}
+
+// ── Floating inline toolbar ────────────────────────────────────────────────
+
+/**
+ * Apply an inline format action.
+ */
+function applyInlineFormat(action) {
+  // Map commands to semantic tags
+  const cmdToTag = {
+    bold: "strong",
+    italic: "em",
+    underline: "u",
+    strikethrough: "del",
+    superscript: "sup",
+    subscript: "sub",
+    code: "code",
+  };
+
+  const tag = cmdToTag[action.command];
+  if (tag) {
+    const editableRoot = getActiveElement();
+    toggleInlineFormat(tag, editableRoot);
+  }
+  requestAnimationFrame(() => renderBlockActionBar());
+}
+
+/**
+ * Show a link URL popover anchored to a toolbar button.
+ */
+function showLinkPopover(anchorBtn) {
+  // Find existing link at cursor
+  const sel = window.getSelection();
+  let existingLink = null;
+  if (sel && sel.rangeCount) {
+    let node = sel.anchorNode;
+    while (node && node !== document.body) {
+      if (node.nodeType === Node.ELEMENT_NODE && node.tagName.toLowerCase() === "a") {
+        existingLink = node;
+        break;
+      }
+      node = node.parentNode;
+    }
+  }
+
+  const popover = document.createElement("sp-popover");
+  popover.className = "link-popover";
+  popover.setAttribute("open", "");
+
+  const field = document.createElement("sp-textfield");
+  field.setAttribute("placeholder", "https://...");
+  field.setAttribute("size", "s");
+  field.style.width = "200px";
+  if (existingLink) field.value = existingLink.getAttribute("href") || "";
+
+  const applyBtn = document.createElement("sp-action-button");
+  applyBtn.setAttribute("size", "xs");
+  applyBtn.textContent = existingLink ? "Update" : "Apply";
+
+  applyBtn.addEventListener("click", () => {
+    const url = field.value;
+    if (existingLink) {
+      existingLink.setAttribute("href", url);
+    } else if (url) {
+      document.execCommand("createLink", false, url);
+    }
+    popover.remove();
+    renderBlockActionBar();
+  });
+
+  field.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { applyBtn.click(); }
+    else if (e.key === "Escape") { popover.remove(); }
+  });
+
+  popover.appendChild(field);
+  popover.appendChild(applyBtn);
+
+  if (existingLink) {
+    const removeBtn = document.createElement("sp-action-button");
+    removeBtn.setAttribute("size", "xs");
+    removeBtn.textContent = "Remove";
+    removeBtn.addEventListener("click", () => {
+      const frag = document.createDocumentFragment();
+      while (existingLink.firstChild) frag.appendChild(existingLink.firstChild);
+      existingLink.parentNode.replaceChild(frag, existingLink);
+      popover.remove();
+      renderBlockActionBar();
+    });
+    popover.appendChild(removeBtn);
+  }
+
+  // Position below the toolbar button
+  const rect = anchorBtn.getBoundingClientRect();
+  popover.style.position = "fixed";
+  popover.style.left = `${rect.left}px`;
+  popover.style.top = `${rect.bottom + 4}px`;
+  popover.style.zIndex = "30";
+
+  (document.querySelector("sp-theme") || document.body).appendChild(popover);
+  requestAnimationFrame(() => field.focus());
+}
+
+/**
+ * Move the selected node up (swap with previous sibling).
+ */
+function moveSelectionUp() {
+  if (!S.selection || S.selection.length < 2) return;
+  const idx = childIndex(S.selection);
+  if (idx <= 0) return;
+  const pPath = parentElementPath(S.selection);
+  update(moveNode(S, S.selection, pPath, idx - 1));
+  S = { ...S, selection: [...pPath, "children", idx - 1] };
+  renderOverlays();
+}
+
+/**
+ * Move the selected node down (swap with next sibling).
+ */
+function moveSelectionDown() {
+  if (!S.selection || S.selection.length < 2) return;
+  const idx = childIndex(S.selection);
+  const pPath = parentElementPath(S.selection);
+  const parentNode = getNodeAtPath(S.document, pPath);
+  const siblings = parentNode?.children;
+  if (!siblings || idx >= siblings.length - 1) return;
+  update(moveNode(S, S.selection, pPath, idx + 2));
+  S = { ...S, selection: [...pPath, "children", idx + 1] };
+  renderOverlays();
+}
+
+/**
+ * Render the unified block action bar above the selected element.
+ * Combines tag indicator, drag handle, move arrows, and inline formatting.
+ */
+function renderBlockActionBar() {
+  if (blockActionBarEl) {
+    blockActionBarEl.remove();
+    blockActionBarEl = null;
+  }
+  if (selDragCleanup) {
+    selDragCleanup();
+    selDragCleanup = null;
+  }
+
+  if (!S.selection) return;
+  if (canvasMode !== "design" && canvasMode !== "edit") return;
+
+  const activePanel = getActivePanel();
+  if (!activePanel) return;
+  const el = findCanvasElement(S.selection, activePanel.canvas);
+  if (!el) return;
+
+  const node = getNodeAtPath(S.document, S.selection);
+  if (!node) return;
+  const tag = (node.tagName ?? "div").toLowerCase();
+
+  const elRect = el.getBoundingClientRect();
+
+  const bar = document.createElement("div");
+  bar.className = "block-action-bar";
+  bar.style.left = `${elRect.left}px`;
+
+  // Prevent focus steal from contenteditable
+  bar.addEventListener("mousedown", (e) => {
+    // Allow clicks on inputs (like link popover textfield)
+    if (e.target.closest("sp-textfield")) return;
+    // Allow drag handle to initiate native drag
+    if (e.target.closest(".bar-drag-handle")) return;
+    e.preventDefault();
+  });
+
+  // ── Parent selector button ──
+  if (S.selection.length >= 2) {
+    const pPath = parentElementPath(S.selection);
+    if (pPath) {
+      const parentNode = getNodeAtPath(S.document, pPath);
+      const parentBtn = document.createElement("sp-action-button");
+      parentBtn.setAttribute("size", "xs");
+      parentBtn.setAttribute("quiet", "");
+      parentBtn.title = `Select parent: ${nodeLabel(parentNode)}`;
+      const backIcon = document.createElement("sp-icon-back");
+      backIcon.setAttribute("slot", "icon");
+      parentBtn.appendChild(backIcon);
+      parentBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        update(selectNode(S, pPath));
+      });
+      bar.appendChild(parentBtn);
+    }
+  }
+
+  // ── Tag indicator ──
+  const tagLabel = document.createElement("span");
+  tagLabel.className = "bar-tag";
+  tagLabel.textContent = node.$id || (node.tagName ?? "div");
+  bar.appendChild(tagLabel);
+
+  // ── Drag handle ──
+  if (S.selection.length >= 2 && !componentInlineEdit) {
+    const handle = document.createElement("span");
+    handle.className = "bar-drag-handle";
+    handle.title = "Drag to reorder";
+    handle.textContent = "\u2847";
+    bar.appendChild(handle);
+
+    const path = S.selection;
+    selDragCleanup = draggable({
+      element: handle,
+      getInitialData() {
+        return { type: "tree-node", path };
+      },
+    });
+  }
+
+  // ── Move up/down arrows ──
+  if (S.selection.length >= 2) {
+    const idx = childIndex(S.selection);
+    const pPath = parentElementPath(S.selection);
+    const parentNode = getNodeAtPath(S.document, pPath);
+    const siblings = parentNode?.children;
+
+    const upBtn = document.createElement("sp-action-button");
+    upBtn.setAttribute("size", "xs");
+    upBtn.setAttribute("quiet", "");
+    upBtn.title = "Move up";
+    if (idx <= 0) upBtn.setAttribute("disabled", "");
+    const upIcon = document.createElement("sp-icon-arrow-up");
+    upIcon.setAttribute("slot", "icon");
+    upBtn.appendChild(upIcon);
+    upBtn.addEventListener("click", (e) => { e.stopPropagation(); moveSelectionUp(); });
+    bar.appendChild(upBtn);
+
+    const downBtn = document.createElement("sp-action-button");
+    downBtn.setAttribute("size", "xs");
+    downBtn.setAttribute("quiet", "");
+    downBtn.title = "Move down";
+    if (!siblings || idx >= siblings.length - 1) downBtn.setAttribute("disabled", "");
+    const downIcon = document.createElement("sp-icon-arrow-down");
+    downIcon.setAttribute("slot", "icon");
+    downBtn.appendChild(downIcon);
+    downBtn.addEventListener("click", (e) => { e.stopPropagation(); moveSelectionDown(); });
+    bar.appendChild(downBtn);
+  }
+
+  // ── Inline formatting actions (only during content-mode rich text editing) ──
+  const inlineEditing = isEditing() || el.contentEditable === "true";
+  const actions = getInlineActions(tag);
+  if (inlineEditing && actions && actions.length > 0) {
+    const divider = document.createElement("sp-divider");
+    divider.setAttribute("size", "s");
+    divider.setAttribute("vertical", "");
+    bar.appendChild(divider);
+
+    const fmtGroup = document.createElement("sp-action-group");
+    fmtGroup.setAttribute("size", "xs");
+    fmtGroup.setAttribute("compact", "");
+    fmtGroup.setAttribute("emphasized", "");
+    fmtGroup.setAttribute("selects", "multiple");
+
+    // Compute which tags are active in the current selection
+    const activeValues = actions
+      .filter(a => isTagActiveInSelection(a.tag, el))
+      .map(a => a.tag);
+    if (activeValues.length > 0) {
+      fmtGroup.setAttribute("selected", JSON.stringify(activeValues));
+    }
+
+    for (const action of actions) {
+      const btn = document.createElement("sp-action-button");
+      btn.setAttribute("size", "xs");
+      btn.setAttribute("value", action.tag);
+      btn.title = action.label + (action.shortcut ? ` (${action.shortcut})` : "");
+
+      const icon = document.createElement(action.icon);
+      icon.setAttribute("slot", "icon");
+      btn.appendChild(icon);
+
+      // Capture selection on mousedown (before focus is lost)
+      let savedRange = null;
+      btn.addEventListener("mousedown", (e) => {
+        const sel = window.getSelection();
+        if (sel.rangeCount) {
+          savedRange = sel.getRangeAt(0).cloneRange();
+        }
+      });
+
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (action.command === "link") {
+          showLinkPopover(btn);
+        } else {
+          // Restore selection and apply format
+          if (savedRange) {
+            const sel = window.getSelection();
+            const anchor = savedRange.startContainer;
+            const editableRoot = (anchor?.nodeType === Node.ELEMENT_NODE ? anchor : anchor?.parentElement)?.closest("[contenteditable]");
+            if (editableRoot) {
+              editableRoot.focus();
+              sel.removeAllRanges();
+              sel.addRange(savedRange);
+              applyInlineFormat(action);
+            }
+          }
+        }
+      });
+
+      fmtGroup.appendChild(btn);
+    }
+
+    bar.appendChild(fmtGroup);
+  }
+
+  // Position above or below the element (using fixed/screen coords)
+  bar.style.top = `${elRect.top < 80 ? elRect.bottom + 4 : elRect.top - 38}px`;
+
+  // Append to sp-theme so Spectrum tokens are available
+  const themeEl = document.querySelector("sp-theme") || document.body;
+  themeEl.appendChild(bar);
+  blockActionBarEl = bar;
+
+  // Clamp so bar stays within the window
+  requestAnimationFrame(() => {
+    if (!blockActionBarEl) return;
+    const barRect = bar.getBoundingClientRect();
+    if (barRect.right > window.innerWidth) {
+      bar.style.left = `${Math.max(0, window.innerWidth - barRect.width)}px`;
+    }
+  });
 }
 
 // ── Pseudo-state preview ──────────────────────────────────────────────────────
@@ -1604,6 +1928,25 @@ function updateForcedPseudoPreview() {
   _forcedStyleTag = tag;
 }
 
+/**
+ * Walk up the tree from a path, bubbling past inline elements until we find
+ * the nearest non-inline ancestor. Returns the original path if already non-inline.
+ */
+function bubbleInlinePath(doc, path) {
+  let currentPath = path;
+  while (currentPath.length >= 2) {
+    const node = getNodeAtPath(doc, currentPath);
+    const pPath = parentElementPath(currentPath);
+    const parentNode = pPath ? getNodeAtPath(doc, pPath) : null;
+    if (!node || !parentNode) break;
+    const childTag = (node.tagName ?? "div").toLowerCase();
+    const parentTag = (parentNode.tagName ?? "div").toLowerCase();
+    if (!isInlineInContext(childTag, parentTag)) break;
+    currentPath = pPath;
+  }
+  return currentPath;
+}
+
 /** Effective zoom scale — always 1 in edit (content) mode, S.ui.zoom otherwise. */
 function effectiveZoom() {
   return canvasMode === "edit" ? 1 : S.ui.zoom;
@@ -1621,13 +1964,7 @@ function drawOverlayBox(el, type, panel) {
   box.style.width = `${elRect.width / scale}px`;
   box.style.height = `${elRect.height / scale}px`;
 
-  if (type === "selection") {
-    const node = getNodeAtPath(S.document, S.selection);
-    const label = document.createElement("div");
-    label.className = "overlay-label";
-    label.textContent = nodeLabel(node);
-    box.appendChild(label);
-  }
+  // Selection label is now handled by the unified block action bar
 
   panel.overlay.appendChild(box);
   return box;
@@ -1675,6 +2012,11 @@ function registerPanelEvents(panel) {
   // No mousedown passthrough needed — native events reach the contenteditable directly.
 
   overlayClk.addEventListener("click", (e) => {
+    // Don't intercept clicks meant for the block action bar
+    if (blockActionBarEl) {
+      const r = blockActionBarEl.getBoundingClientRect();
+      if (e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) return;
+    }
     // If content-mode inline editing is active, treat click outside as blur
     if (isEditing()) {
       stopEditing();
@@ -1687,19 +2029,25 @@ function registerPanelEvents(panel) {
 
     for (const el of elements) {
       if (canvas.contains(el) && el !== canvas) {
-        const path = elToPath.get(el);
+        let path = elToPath.get(el);
         if (path) {
+          path = bubbleInlinePath(S.document, path);
           const newMedia = mediaName === "base" ? null : (mediaName ?? null);
           S = { ...S, ui: { ...S.ui, activeMedia: newMedia } };
 
-          // In content mode: if clicking an already-selected editable block, enter inline editing
-          if (S.mode === "content" && pathsEqual(path, S.selection) && isEditableBlock(el)) {
-            enterInlineEdit(el, path);
+          // Find the DOM element for the bubbled path (may differ from hit element)
+          const resolvedEl = findCanvasElement(path, canvas) || el;
+
+          // Re-click on selected editable block: enter inline editing
+          // Edit mode / content mode → rich text editing (enterInlineEdit)
+          // Design mode → plaintext component editing (enterComponentInlineEdit via pendingInlineEdit)
+          if (pathsEqual(path, S.selection) && isEditableBlock(resolvedEl) && (canvasMode === "edit" || S.mode === "content")) {
+            enterInlineEdit(resolvedEl, path);
             return;
           }
 
-          // Component/JSON mode: select and schedule inline editing after render completes
-          if (S.mode !== "content") {
+          // Design mode or first click: select and schedule component inline editing
+          if (canvasMode === "design" && S.mode !== "content") {
             pendingInlineEdit = { path, mediaName };
             update(selectNode(S, path));
             return;
@@ -1713,32 +2061,45 @@ function registerPanelEvents(panel) {
     update(selectNode(S, null));
   });
 
-  // Double-click shortcut for immediate inline editing in content mode
+  // Double-click shortcut for immediate inline editing
   overlayClk.addEventListener("dblclick", (e) => {
-    if (S.mode !== "content") return;
+    if (blockActionBarEl) {
+      const r = blockActionBarEl.getBoundingClientRect();
+      if (e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) return;
+    }
+    if (canvasMode !== "edit" && canvasMode !== "design") return;
 
     const elements = withPanelPointerEvents(() => document.elementsFromPoint(e.clientX, e.clientY));
 
     for (const el of elements) {
       if (canvas.contains(el) && el !== canvas) {
-        const path = elToPath.get(el);
-        if (path && isEditableBlock(el)) {
-          const newMedia = mediaName === "base" ? null : (mediaName ?? null);
-          S = { ...S, ui: { ...S.ui, activeMedia: newMedia } };
-          update(selectNode(S, path));
-          enterInlineEdit(el, path);
-          return;
+        let path = elToPath.get(el);
+        if (path) {
+          path = bubbleInlinePath(S.document, path);
+          const resolvedEl = findCanvasElement(path, canvas) || el;
+          if (isEditableBlock(resolvedEl)) {
+            const newMedia = mediaName === "base" ? null : (mediaName ?? null);
+            S = { ...S, ui: { ...S.ui, activeMedia: newMedia } };
+            update(selectNode(S, path));
+            enterInlineEdit(resolvedEl, path);
+            return;
+          }
         }
       }
     }
   });
 
   overlayClk.addEventListener("contextmenu", (e) => {
+    if (blockActionBarEl) {
+      const r = blockActionBarEl.getBoundingClientRect();
+      if (e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) return;
+    }
     const elements = withPanelPointerEvents(() => document.elementsFromPoint(e.clientX, e.clientY));
     for (const el of elements) {
       if (canvas.contains(el) && el !== canvas) {
-        const path = elToPath.get(el);
+        let path = elToPath.get(el);
         if (path) {
+          path = bubbleInlinePath(S.document, path);
           showContextMenu(e, path);
           return;
         }
@@ -1748,12 +2109,19 @@ function registerPanelEvents(panel) {
   });
 
   overlayClk.addEventListener("mousemove", (e) => {
+    if (blockActionBarEl) {
+      const r = blockActionBarEl.getBoundingClientRect();
+      if (e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) return;
+    }
     const el = withPanelPointerEvents(() => document.elementFromPoint(e.clientX, e.clientY));
     if (el && canvas.contains(el) && el !== canvas) {
-      const path = elToPath.get(el);
-      if (path && !pathsEqual(path, S.hover)) {
-        S = hoverNode(S, path);
-        renderOverlays();
+      let path = elToPath.get(el);
+      if (path) {
+        path = bubbleInlinePath(S.document, path);
+        if (!pathsEqual(path, S.hover)) {
+          S = hoverNode(S, path);
+          renderOverlays();
+        }
       }
     } else if (S.hover) {
       S = hoverNode(S, null);
@@ -1867,6 +2235,11 @@ function enterInlineEdit(el, path) {
     },
 
     onEnd() {
+      // Cleanup inline edit listeners
+      if (_inlineEditCleanup) {
+        _inlineEditCleanup();
+        _inlineEditCleanup = null;
+      }
       // Restore overlays after inline editing ends
       for (const p of canvasPanels) {
         p.overlay.style.display = "";
@@ -1875,6 +2248,24 @@ function enterInlineEdit(el, path) {
       renderOverlays();
     },
   });
+
+  // Show the block action bar (with inline formatting buttons) on the viewport
+  // Defer to ensure this runs after any synchronous renderOverlays() from update()
+  requestAnimationFrame(() => renderBlockActionBar());
+
+  // Re-render action bar when selection changes inside contenteditable
+  const selectionHandler = () => renderBlockActionBar();
+  document.addEventListener("selectionchange", selectionHandler);
+  el.addEventListener("mouseup", selectionHandler);
+  el.addEventListener("keyup", selectionHandler);
+
+  // Store listeners for cleanup
+  const inlineEditCleanup = () => {
+    document.removeEventListener("selectionchange", selectionHandler);
+    el.removeEventListener("mouseup", selectionHandler);
+    el.removeEventListener("keyup", selectionHandler);
+  };
+  _inlineEditCleanup = inlineEditCleanup;
 }
 
 // ─── Component-mode inline text editing ──────────────────────────────────────
@@ -1942,6 +2333,8 @@ function enterComponentInlineEdit(el, path) {
     if (componentInlineEdit.el.contains(evt.target)) return; // click within editing el — let it through
     // Let clicks inside the slash command menu through
     if (componentSlashMenu && componentSlashMenu.contains(evt.target)) return;
+    // Let clicks inside the block action bar through
+    if (blockActionBarEl && blockActionBarEl.contains(evt.target)) return;
     document.removeEventListener("mousedown", outsideHandler, true);
 
     // Hit-test BEFORE commit (while the current canvas DOM + elToPath are still valid)
@@ -2010,6 +2403,9 @@ function enterComponentInlineEdit(el, path) {
   };
   document.addEventListener("mousedown", outsideHandler, true);
   componentInlineEdit._outsideHandler = outsideHandler;
+
+  // Re-render block action bar to show inline formatting buttons
+  renderBlockActionBar();
 }
 
 function componentInlineKeydown(e) {
@@ -2541,8 +2937,12 @@ function renderLayers(container) {
     }
     if (hidden) continue;
 
-    // In content mode, skip inline elements (they're part of the parent text block)
-    if (S.mode === "content" && path.length > 0 && nodeType === "element" && isInlineElement(node)) continue;
+    // Skip inline elements — context-aware via parent's $inlineChildren metadata
+    if (path.length >= 2 && nodeType === "element") {
+      const pPath = parentElementPath(path);
+      const parentNode = pPath ? getNodeAtPath(S.document, pPath) : null;
+      if (parentNode && isInlineElement(node, parentNode)) continue;
+    }
 
     const row = document.createElement("div");
     row.className = `layer-row${pathsEqual(path, S.selection) ? " selected" : ""}`;
@@ -8525,3 +8925,4 @@ update = function (newState) {
   _origUpdate(newState);
   if (S.dirty) scheduleAutosave();
 };
+// trigger rebuild

@@ -92,10 +92,17 @@
     .overlay-box { position: absolute; pointer-events: none; }
     .overlay-selection { border: 2px solid var(--accent); }
     .overlay-hover { border: 1px solid var(--accent-50); }
-    .overlay-label { position: absolute; top: -20px; left: -2px; display: flex; align-items: center; padding: 1px 5px; font-size: 10px; background: var(--accent); color: var(--accent-fg); border-radius: 2px 2px 0 0; white-space: nowrap; pointer-events: none; }
-    .overlay-drag-handle { pointer-events: auto; cursor: grab; margin-right: 4px; font-size: 11px; opacity: 0.7; }
-    .overlay-drag-handle:hover { opacity: 1; }
-    .overlay-drag-handle:active { cursor: grabbing; }
+    .overlay-label { position: absolute; top: -20px; left: -2px; padding: 1px 5px; font-size: 10px; background: var(--accent); color: var(--accent-fg); border-radius: 2px 2px 0 0; white-space: nowrap; pointer-events: none; }
+
+    /* ─── Unified block action bar ─────────────── */
+    .block-action-bar { position: fixed; pointer-events: auto; display: flex; align-items: center; gap: 2px; background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 2px 8px rgba(0,0,0,0.25); padding: 2px 4px; white-space: nowrap; z-index: 100; }
+    .block-action-bar .bar-tag { font-size: 10px; padding: 0 4px; color: var(--fg-dim); font-family: var(--mono); max-width: 140px; overflow: hidden; text-overflow: ellipsis; }
+    .block-action-bar .bar-drag-handle { cursor: grab; font-size: 14px; padding: 0 4px; opacity: 0.7; user-select: none; }
+    .block-action-bar .bar-drag-handle:hover { opacity: 1; }
+    .block-action-bar .bar-drag-handle:active { cursor: grabbing; }
+    .block-action-bar sp-divider { height: 20px; margin: 0 2px; }
+
+    .link-popover { display: flex; gap: 4px; align-items: center; padding: 8px; background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 2px 8px rgba(0,0,0,0.25); }
 
     /* ─── Activity bar (vertical icon tabs) ──────── */
     #activity-bar sp-tabs {

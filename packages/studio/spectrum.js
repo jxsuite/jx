@@ -41,6 +41,7 @@ import { Overlay } from "@spectrum-web-components/overlay/src/Overlay.js";
 import { PickerButton } from "@spectrum-web-components/picker-button/src/PickerButton.js";
 import { Accordion } from "@spectrum-web-components/accordion/src/Accordion.js";
 import { AccordionItem } from "@spectrum-web-components/accordion/src/AccordionItem.js";
+import { ActionBar } from "@spectrum-web-components/action-bar/src/ActionBar.js";
 
 // Icons
 import { IconFolder } from "@spectrum-web-components/icons-workflow/src/elements/IconFolder.js";
@@ -104,6 +105,15 @@ import { IconVisibility } from "@spectrum-web-components/icons-workflow/src/elem
 import { IconVisibilityOff } from "@spectrum-web-components/icons-workflow/src/elements/IconVisibilityOff.js";
 import { IconArtboard } from "@spectrum-web-components/icons-workflow/src/elements/IconArtboard.js";
 
+// Inline formatting icons
+import { IconTextBold } from "@spectrum-web-components/icons-workflow/src/elements/IconTextBold.js";
+import { IconTextItalic } from "@spectrum-web-components/icons-workflow/src/elements/IconTextItalic.js";
+import { IconTextUnderline } from "@spectrum-web-components/icons-workflow/src/elements/IconTextUnderline.js";
+import { IconTextStrikethrough } from "@spectrum-web-components/icons-workflow/src/elements/IconTextStrikethrough.js";
+import { IconTextSuperscript } from "@spectrum-web-components/icons-workflow/src/elements/IconTextSuperscript.js";
+import { IconTextSubscript } from "@spectrum-web-components/icons-workflow/src/elements/IconTextSubscript.js";
+import { IconLink } from "@spectrum-web-components/icons-workflow/src/elements/IconLink.js";
+
 // Register all components. Using defineElement from Spectrum's base package
 // ensures duplicate registration is handled gracefully.
 import { defineElement } from "@spectrum-web-components/base/src/define-element.js";
@@ -139,6 +149,7 @@ const components = [
   ["sp-picker-button", PickerButton],
   ["sp-accordion", Accordion],
   ["sp-accordion-item", AccordionItem],
+  ["sp-action-bar", ActionBar],
   ["sp-icon-folder", IconFolder],
   ["sp-icon-folder-open", IconFolderOpen],
   ["sp-icon-document", IconDocument],
@@ -197,6 +208,13 @@ const components = [
   ["sp-icon-visibility", IconVisibility],
   ["sp-icon-visibility-off", IconVisibilityOff],
   ["sp-icon-artboard", IconArtboard],
+  ["sp-icon-text-bold", IconTextBold],
+  ["sp-icon-text-italic", IconTextItalic],
+  ["sp-icon-text-underline", IconTextUnderline],
+  ["sp-icon-text-strikethrough", IconTextStrikethrough],
+  ["sp-icon-text-superscript", IconTextSuperscript],
+  ["sp-icon-text-subscript", IconTextSubscript],
+  ["sp-icon-link", IconLink],
 ];
 
 for (const [tag, ctor] of components) {
