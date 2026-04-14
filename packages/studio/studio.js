@@ -2729,24 +2729,23 @@ function renderActivityBar() {
 function renderLeftPanel() {
   const tab = S.ui.leftTab;
 
-  // Tabs that return Lit TemplateResult
-  if (tab === "layers") {
-    const content = canvasMode === "stylebook" ? renderStylebookLayersTemplate() : renderLayersTemplate();
-    litRender(html`<div class="panel-body">${content}</div>`, leftPanel);
-    if (canvasMode !== "stylebook") registerLayersDnD();
-    return;
+  let content;
+  if (tab === "layers") content = canvasMode === "stylebook" ? renderStylebookLayersTemplate() : renderLayersTemplate();
+  else if (tab === "files") content = renderFilesTemplate();
+  else if (tab === "blocks") content = renderBlocksTemplate();
+  else if (tab === "state") content = renderSignalsTemplate();
+  else if (tab === "data") content = renderDataExplorerTemplate();
+  else content = nothing;
+
+  litRender(html`<div class="panel-body">${content}</div>`, leftPanel);
+
+  // Post-render side effects
+  if (tab === "layers" && canvasMode !== "stylebook") registerLayersDnD();
+  else if (tab === "blocks") registerBlocksDnD();
+  else if (tab === "files") {
+    const tree = leftPanel.querySelector(".file-tree");
+    if (tree) setupTreeKeyboard(tree);
   }
-
-  // Imperative tabs — fall back to innerHTML + container pattern
-  leftPanel.innerHTML = "";
-  const body = document.createElement("div");
-  body.className = "panel-body";
-  leftPanel.appendChild(body);
-
-  if (tab === "files") renderFiles(body);
-  else if (tab === "blocks") renderBlocks(body);
-  else if (tab === "state") renderSignals(body);
-  else if (tab === "data") renderDataExplorer(body);
 }
 
 /** Returns a TemplateResult — called from renderLeftPanel only when tab=layers & not stylebook */
@@ -3244,9 +3243,9 @@ function defaultDef(tag) {
   return def;
 }
 
-function renderBlocks(container) {
-  const unsafeTags = new Set(["script", "style", "link", "iframe", "object", "embed"]);
+const blocksUnsafeTags = new Set(["script", "style", "link", "iframe", "object", "embed"]);
 
+function renderBlocksTemplate() {
   const categories = Object.entries(webdata.elements).map(([category, elements]) => {
     const filtered = blocksFilter ? elements.filter((e) => e.tag.includes(blocksFilter)) : elements;
     if (filtered.length === 0) return nothing;
@@ -3276,21 +3275,22 @@ function renderBlocks(container) {
     `;
   });
 
-  const tpl = html`
+  return html`
     <sp-search size="s" placeholder="Filter elements…" value=${blocksFilter}
       @input=${(e) => { blocksFilter = e.target.value.toLowerCase(); renderLeftPanel(); }}></sp-search>
     <div class="blocks-list">${categories}</div>
   `;
+}
 
-  litRender(tpl, container);
-
-  // Post-render: create live preview elements and register DnD
+function registerBlocksDnD() {
   requestAnimationFrame(() => {
+    const container = leftPanel.querySelector(".panel-body");
+    if (!container) return;
     container.querySelectorAll("[data-block-tag]").forEach(row => {
       const tag = row.dataset.blockTag;
       const preview = row.querySelector(".block-preview");
       if (preview && !preview.firstChild) {
-        const el = document.createElement(unsafeTags.has(tag) ? "span" : tag);
+        const el = document.createElement(blocksUnsafeTags.has(tag) ? "span" : tag);
         el.textContent = tag;
         preview.appendChild(el);
       }
@@ -4129,7 +4129,7 @@ function drawOverlayBoxRaw(el, type, panel, labelText) {
 /** Expanded signal editor state (persists across renders). */
 let expandedSignal = null;
 
-function renderSignals(container) {
+function renderSignalsTemplate() {
   const defs = S.document.state || {};
   const entries = Object.entries(defs);
 
@@ -4148,493 +4148,235 @@ function renderSignals(container) {
 
   const collapsedCats = S._collapsedSignalCats || (S._collapsedSignalCats = new Set());
 
-  for (const { key, label, items } of categories) {
-    if (items.length === 0) continue;
-
-    const header = document.createElement("div");
-    header.className = `signal-category${collapsedCats.has(key) ? " collapsed" : ""}`;
-    header.textContent = `${label} (${items.length})`;
-    header.onclick = () => {
-      if (collapsedCats.has(key)) collapsedCats.delete(key);
-      else collapsedCats.add(key);
-      renderLeftPanel();
-    };
-    container.appendChild(header);
-
-    if (collapsedCats.has(key)) continue;
-
-    for (const [name, def] of items) {
+  const catTemplates = categories.filter(c => c.items.length > 0).map(({ key, label, items }) => html`
+    <div class="signal-category${collapsedCats.has(key) ? " collapsed" : ""}"
+      @click=${() => { if (collapsedCats.has(key)) collapsedCats.delete(key); else collapsedCats.add(key); renderLeftPanel(); }}>
+      ${label} (${items.length})
+    </div>
+    ${collapsedCats.has(key) ? nothing : items.map(([name, def]) => {
       const isExpanded = expandedSignal === name;
-      const row = document.createElement("div");
-      row.className = `signal-row${isExpanded ? " expanded" : ""}`;
+      return html`
+        <div class="signal-row${isExpanded ? " expanded" : ""}" @click=${() => { expandedSignal = isExpanded ? null : name; renderLeftPanel(); }}>
+          <span class="signal-badge ${defCategory(def)}">${defBadgeLabel(def)}</span>
+          <span class="signal-name">${name}</span>
+          <span class="signal-hint">${defHint(name, def)}</span>
+          <sp-action-button quiet size="xs" class="signal-del" @click=${(e) => { e.stopPropagation(); update(removeDef(S, name)); }}>
+            <sp-icon-delete slot="icon"></sp-icon-delete>
+          </sp-action-button>
+        </div>
+        ${isExpanded ? html`<div class="signal-editor">${renderSignalEditorTemplate(name, def)}</div>` : nothing}
+      `;
+    })}
+  `);
 
-      const badge = document.createElement("span");
-      badge.className = `signal-badge ${defCategory(def)}`;
-      badge.textContent = defBadgeLabel(def);
-      row.appendChild(badge);
-
-      const nameEl = document.createElement("span");
-      nameEl.className = "signal-name";
-      nameEl.textContent = name;
-      row.appendChild(nameEl);
-
-      const hint = document.createElement("span");
-      hint.className = "signal-hint";
-      hint.textContent = defHint(name, def);
-      row.appendChild(hint);
-
-      const del = document.createElement("sp-action-button");
-      del.setAttribute("quiet", "");
-      del.setAttribute("size", "xs");
-      del.className = "signal-del";
-      const delIcon = document.createElement("sp-icon-delete");
-      delIcon.setAttribute("slot", "icon");
-      del.appendChild(delIcon);
-      del.addEventListener("click", (e) => {
-        e.stopPropagation();
-        update(removeDef(S, name));
-      });
-      row.appendChild(del);
-
-      row.onclick = () => {
-        expandedSignal = isExpanded ? null : name;
+  return html`
+    ${catTemplates}
+    ${entries.length === 0 ? html`<div class="empty-state">No state defined</div>` : nothing}
+    <div class="signals-add">
+      <sp-picker size="s" label="+ Add\u2026" placeholder="+ Add\u2026" @change=${(e) => {
+        const type = e.target.value;
+        if (!type) return;
+        const template = DEF_TEMPLATES[type];
+        if (!template) return;
+        const isFunction = type === "function";
+        let nameBase = isFunction ? "newFunction" : "$newSignal";
+        let n = nameBase;
+        let i = 1;
+        while (S.document.state && S.document.state[n]) { n = nameBase + i++; }
+        update(addDef(S, n, structuredClone(template)));
+        expandedSignal = n;
         renderLeftPanel();
-      };
-      container.appendChild(row);
-
-      // Expanded inline editor
-      if (isExpanded) {
-        const editor = document.createElement("div");
-        editor.className = "signal-editor";
-        renderSignalEditor(editor, name, def);
-        container.appendChild(editor);
-      }
-    }
-  }
-
-  if (entries.length === 0) {
-    const empty = document.createElement("div");
-    empty.className = "empty-state";
-    empty.textContent = "No state defined";
-    container.appendChild(empty);
-  }
-
-  // Add signal button
-  const addArea = document.createElement("div");
-  addArea.className = "signals-add";
-
-  const addSelect = document.createElement("sp-picker");
-  addSelect.setAttribute("size", "s");
-  addSelect.setAttribute("label", "+ Add\u2026");
-  addSelect.setAttribute("placeholder", "+ Add\u2026");
-
-  // Signals group
-  for (const [value, label] of [["state", "State Signal"], ["computed", "Computed"]]) {
-    const item = document.createElement("sp-menu-item");
-    item.setAttribute("value", value);
-    item.textContent = label;
-    addSelect.appendChild(item);
-  }
-
-  const div1 = document.createElement("sp-menu-divider");
-  addSelect.appendChild(div1);
-
-  // Data Sources group
-  for (const [value, label] of [
-    ["request", "Fetch (Request)"],
-    ["localStorage", "LocalStorage"],
-    ["sessionStorage", "SessionStorage"],
-    ["indexedDB", "IndexedDB"],
-    ["cookie", "Cookie"],
-    ["set", "Set"],
-    ["map", "Map"],
-    ["formData", "FormData"],
-    ["external", "External Module\u2026"],
-  ]) {
-    const item = document.createElement("sp-menu-item");
-    item.setAttribute("value", value);
-    item.textContent = label;
-    addSelect.appendChild(item);
-  }
-
-  const div2 = document.createElement("sp-menu-divider");
-  addSelect.appendChild(div2);
-
-  // Logic group
-  const fnItem = document.createElement("sp-menu-item");
-  fnItem.setAttribute("value", "function");
-  fnItem.textContent = "Function";
-  addSelect.appendChild(fnItem);
-  addSelect.addEventListener("change", () => {
-    const type = addSelect.value;
-    if (!type) return;
-    const template = DEF_TEMPLATES[type];
-    if (!template) return;
-    const isFunction = type === "function";
-    let nameBase = isFunction ? "newFunction" : "$newSignal";
-    let name = nameBase;
-    let i = 1;
-    while (S.document.state && S.document.state[name]) {
-      name = nameBase + i++;
-    }
-    update(addDef(S, name, structuredClone(template)));
-    expandedSignal = name;
-    renderLeftPanel();
-  });
-  addArea.appendChild(addSelect);
-  container.appendChild(addArea);
+      }}>
+        <sp-menu-item value="state">State Signal</sp-menu-item>
+        <sp-menu-item value="computed">Computed</sp-menu-item>
+        <sp-menu-divider></sp-menu-divider>
+        <sp-menu-item value="request">Fetch (Request)</sp-menu-item>
+        <sp-menu-item value="localStorage">LocalStorage</sp-menu-item>
+        <sp-menu-item value="sessionStorage">SessionStorage</sp-menu-item>
+        <sp-menu-item value="indexedDB">IndexedDB</sp-menu-item>
+        <sp-menu-item value="cookie">Cookie</sp-menu-item>
+        <sp-menu-item value="set">Set</sp-menu-item>
+        <sp-menu-item value="map">Map</sp-menu-item>
+        <sp-menu-item value="formData">FormData</sp-menu-item>
+        <sp-menu-item value="external">External Module\u2026</sp-menu-item>
+        <sp-menu-divider></sp-menu-divider>
+        <sp-menu-item value="function">Function</sp-menu-item>
+      </sp-picker>
+    </div>
+  `;
 }
 
 /** Render inline editor fields for a specific signal/def type. */
-function renderSignalEditor(container, name, def) {
+function renderSignalEditorTemplate(name, def) {
   const cat = defCategory(def);
 
+  // Helper for picker rows
+  const pickerRow = (label, options, currentVal, onChange) => {
+    return html`
+      <div class="field-row">
+        <label class="field-label">${label}</label>
+        <sp-picker size="s" class="field-input" value=${currentVal} @change=${(e) => onChange(e.target.value)}>
+          ${options.map(opt => html`<sp-menu-item value=${opt}>${opt}</sp-menu-item>`)}
+        </sp-picker>
+      </div>
+    `;
+  };
+
+  // Helper for textarea rows
+  const textareaRow = (label, value, onChange, opts = {}) => {
+    let debounce;
+    return html`
+      <div class="field-row">
+        <label class="field-label">${label}</label>
+        <textarea class="field-input"
+          style="min-height:${opts.minHeight || "40px"};${opts.mono ? "font-family:'SF Mono','Fira Code','Consolas',monospace;font-size:11px;" : ""}"
+          .value=${value}
+          @input=${(e) => { clearTimeout(debounce); debounce = setTimeout(() => onChange(e.target.value), 500); }}></textarea>
+      </div>
+    `;
+  };
+
   // Name field (common to all)
-  container.appendChild(tplToDom(
-    signalFieldRow("name", name, (v) => {
-      if (v && v !== name && !(S.document.state && S.document.state[v])) {
-        expandedSignal = v;
-        update(renameDef(S, name, v));
-      }
-    }),
-  ));
+  const nameField = signalFieldRow("name", name, (v) => {
+    if (v && v !== name && !(S.document.state && S.document.state[v])) {
+      expandedSignal = v;
+      update(renameDef(S, name, v));
+    }
+  });
+
+  let fields = nothing;
 
   if (cat === "state") {
-    // Type selector
-    const typeSelect = document.createElement("div");
-    typeSelect.className = "field-row";
-    const typeLabel = document.createElement("label");
-    typeLabel.className = "field-label";
-    typeLabel.textContent = "type";
-    typeSelect.appendChild(typeLabel);
-    const sel = document.createElement("sp-picker");
-    sel.setAttribute("size", "s");
-    sel.className = "field-input";
-    for (const t of ["string", "integer", "number", "boolean", "array", "object"]) {
-      const item = document.createElement("sp-menu-item");
-      item.setAttribute("value", t);
-      item.textContent = t;
-      sel.appendChild(item);
-    }
-    const _selType = def.type || "string";
-    requestAnimationFrame(() => { sel.value = _selType; });
-    sel.addEventListener("change", () => update(updateDef(S, name, { type: sel.value })));
-    typeSelect.appendChild(sel);
-    container.appendChild(typeSelect);
-
-    // Default value
     const defaultVal =
       def.default !== undefined && def.default !== null
         ? typeof def.default === "object"
           ? JSON.stringify(def.default)
           : String(def.default)
         : "";
-    container.appendChild(tplToDom(
-      signalFieldRow("default", defaultVal, (v) => {
+
+    const cemFields = isCustomElementDoc() ? html`
+      ${signalFieldRow("attribute", def.attribute || "", (v) => update(updateDef(S, name, { attribute: v || undefined })))}
+      <div class="field-row">
+        <label class="field-label">reflects</label>
+        <sp-checkbox class="field-check" ?checked=${!!def.reflects}
+          @change=${(e) => update(updateDef(S, name, { reflects: e.target.checked || undefined }))}></sp-checkbox>
+      </div>
+      ${signalFieldRow("deprecated", typeof def.deprecated === "string" ? def.deprecated : "", (v) => update(updateDef(S, name, { deprecated: v || undefined })))}
+    ` : nothing;
+
+    fields = html`
+      ${pickerRow("type", ["string", "integer", "number", "boolean", "array", "object"], def.type || "string",
+        (v) => update(updateDef(S, name, { type: v })))}
+      ${signalFieldRow("default", defaultVal, (v) => {
         let parsed = v;
         if (def.type === "integer") parsed = parseInt(v, 10) || 0;
         else if (def.type === "number") parsed = parseFloat(v) || 0;
         else if (def.type === "boolean") parsed = v === "true";
-        else if (def.type === "array" || def.type === "object") {
-          try {
-            parsed = JSON.parse(v);
-          } catch {
-            parsed = v;
-          }
-        }
+        else if (def.type === "array" || def.type === "object") { try { parsed = JSON.parse(v); } catch { parsed = v; } }
         update(updateDef(S, name, { default: parsed }));
-      }),
-    ));
-
-    // Description
-    container.appendChild(tplToDom(
-      signalFieldRow("desc", def.description || "", (v) => {
-        update(updateDef(S, name, { description: v || undefined }));
-      }),
-    ));
-
-    // CEM annotations (custom element docs only)
-    if (isCustomElementDoc()) {
-      container.appendChild(tplToDom(
-        signalFieldRow("attribute", def.attribute || "", (v) => {
-          update(updateDef(S, name, { attribute: v || undefined }));
-        }),
-      ));
-
-      // reflects checkbox
-      const reflRow = document.createElement("div");
-      reflRow.className = "field-row";
-      const reflLabel = document.createElement("label");
-      reflLabel.className = "field-label";
-      reflLabel.textContent = "reflects";
-      reflRow.appendChild(reflLabel);
-      const reflCheck = document.createElement("sp-checkbox");
-      reflCheck.className = "field-check";
-      reflCheck.checked = !!def.reflects;
-      reflCheck.addEventListener("change", () => {
-        update(updateDef(S, name, { reflects: reflCheck.checked || undefined }));
-      });
-      reflRow.appendChild(reflCheck);
-      container.appendChild(reflRow);
-
-      container.appendChild(tplToDom(
-        signalFieldRow("deprecated", typeof def.deprecated === "string" ? def.deprecated : "", (v) => {
-          update(updateDef(S, name, { deprecated: v || undefined }));
-        }),
-      ));
-    }
+      })}
+      ${signalFieldRow("desc", def.description || "", (v) => update(updateDef(S, name, { description: v || undefined })))}
+      ${cemFields}
+    `;
   } else if (cat === "computed") {
-    // Expression
-    const exprRow = document.createElement("div");
-    exprRow.className = "field-row";
-    const exprLabel = document.createElement("label");
-    exprLabel.className = "field-label";
-    exprLabel.textContent = "expr";
-    exprRow.appendChild(exprLabel);
-    const exprInput = document.createElement("textarea");
-    exprInput.className = "field-input";
-    exprInput.style.minHeight = "40px";
-    exprInput.value = def.$compute || "";
     let debounce;
-    exprInput.oninput = () => {
-      clearTimeout(debounce);
-      debounce = setTimeout(() => {
-        const expr = exprInput.value;
-        // Auto-detect deps from $-prefixed names
-        const depMatches = expr.match(/\$[a-zA-Z_]\w*/g) || [];
-        const deps = [...new Set(depMatches)].map((d) => `#/state/${d}`);
-        update(updateDef(S, name, { $compute: expr, $deps: deps }));
-      }, 500);
-    };
-    exprRow.appendChild(exprInput);
-    container.appendChild(exprRow);
-
-    // Show detected deps
-    if (def.$deps && def.$deps.length > 0) {
-      const depsRow = document.createElement("div");
-      depsRow.className = "field-row";
-      const depsLabel = document.createElement("label");
-      depsLabel.className = "field-label";
-      depsLabel.textContent = "deps";
-      depsRow.appendChild(depsLabel);
-      const depsText = document.createElement("span");
-      depsText.className = "signal-hint";
-      depsText.style.flex = "1";
-      depsText.style.maxWidth = "none";
-      depsText.textContent = def.$deps.map((d) => d.replace("#/state/", "")).join(", ");
-      depsRow.appendChild(depsText);
-      container.appendChild(depsRow);
-    }
+    fields = html`
+      <div class="field-row">
+        <label class="field-label">expr</label>
+        <textarea class="field-input" style="min-height:40px" .value=${def.$compute || ""}
+          @input=${(e) => { clearTimeout(debounce); debounce = setTimeout(() => {
+            const expr = e.target.value;
+            const depMatches = expr.match(/\$[a-zA-Z_]\w*/g) || [];
+            const deps = [...new Set(depMatches)].map(d => `#/state/${d}`);
+            update(updateDef(S, name, { $compute: expr, $deps: deps }));
+          }, 500); }}></textarea>
+      </div>
+      ${def.$deps && def.$deps.length > 0 ? html`
+        <div class="field-row">
+          <label class="field-label">deps</label>
+          <span class="signal-hint" style="flex:1;max-width:none">${def.$deps.map(d => d.replace("#/state/", "")).join(", ")}</span>
+        </div>
+      ` : nothing}
+    `;
   } else if (cat === "data") {
-    const proto = def.$prototype;
-
-    if (proto === "Request") {
-      container.appendChild(tplToDom(
-        signalFieldRow("url", def.url || "", (v) => {
-          update(updateDef(S, name, { url: v }));
-        }),
-      ));
-      // Method selector
-      const methodRow = document.createElement("div");
-      methodRow.className = "field-row";
-      const methodLabel = document.createElement("label");
-      methodLabel.className = "field-label";
-      methodLabel.textContent = "method";
-      methodRow.appendChild(methodLabel);
-      const methodSel = document.createElement("sp-picker");
-      methodSel.setAttribute("size", "s");
-      methodSel.className = "field-input";
-      for (const m of ["GET", "POST", "PUT", "DELETE", "PATCH"]) {
-        const item = document.createElement("sp-menu-item");
-        item.setAttribute("value", m);
-        item.textContent = m;
-        methodSel.appendChild(item);
-      }
-      const _mVal = def.method || "GET";
-      requestAnimationFrame(() => { methodSel.value = _mVal; });
-      methodSel.addEventListener("change", () => update(updateDef(S, name, { method: methodSel.value })));
-      methodRow.appendChild(methodSel);
-      container.appendChild(methodRow);
-      // Timing
-      const timingRow = document.createElement("div");
-      timingRow.className = "field-row";
-      const timingLabel = document.createElement("label");
-      timingLabel.className = "field-label";
-      timingLabel.textContent = "timing";
-      timingRow.appendChild(timingLabel);
-      const timingSel = document.createElement("sp-picker");
-      timingSel.setAttribute("size", "s");
-      timingSel.className = "field-input";
-      for (const t of ["client", "server"]) {
-        const item = document.createElement("sp-menu-item");
-        item.setAttribute("value", t);
-        item.textContent = t;
-        timingSel.appendChild(item);
-      }
-      const _tVal = def.timing || "client";
-      requestAnimationFrame(() => { timingSel.value = _tVal; });
-      timingSel.addEventListener("change", () => update(updateDef(S, name, { timing: timingSel.value })));
-      timingRow.appendChild(timingSel);
-      container.appendChild(timingRow);
-    } else if (proto === "LocalStorage" || proto === "SessionStorage") {
-      container.appendChild(tplToDom(
-        signalFieldRow("key", def.key || "", (v) => {
-          update(updateDef(S, name, { key: v }));
-        }),
-      ));
-      const defaultStr =
-        def.default !== undefined && def.default !== null
-          ? typeof def.default === "object"
-            ? JSON.stringify(def.default, null, 2)
-            : String(def.default)
-          : "";
-      const defRow = document.createElement("div");
-      defRow.className = "field-row";
-      const defLabel = document.createElement("label");
-      defLabel.className = "field-label";
-      defLabel.textContent = "default";
-      defRow.appendChild(defLabel);
-      const defInput = document.createElement("textarea");
-      defInput.className = "field-input";
-      defInput.style.minHeight = "40px";
-      defInput.value = defaultStr;
-      let debounce;
-      defInput.oninput = () => {
-        clearTimeout(debounce);
-        debounce = setTimeout(() => {
-          try {
-            update(updateDef(S, name, { default: JSON.parse(defInput.value) }));
-          } catch {
-            update(updateDef(S, name, { default: defInput.value }));
-          }
-        }, 500);
-      };
-      defRow.appendChild(defInput);
-      container.appendChild(defRow);
-    } else if (proto === "IndexedDB") {
-      container.appendChild(tplToDom(
-        signalFieldRow("database", def.database || "", (v) => {
-          update(updateDef(S, name, { database: v }));
-        }),
-      ));
-      container.appendChild(tplToDom(
-        signalFieldRow("store", def.store || "", (v) => {
-          update(updateDef(S, name, { store: v }));
-        }),
-      ));
-      container.appendChild(tplToDom(
-        signalFieldRow("version", String(def.version || 1), (v) => {
-          update(updateDef(S, name, { version: parseInt(v, 10) || 1 }));
-        }),
-      ));
-    } else if (proto === "Cookie") {
-      container.appendChild(tplToDom(
-        signalFieldRow("cookie", def.name || "", (v) => {
-          update(updateDef(S, name, { name: v }));
-        }),
-      ));
-      container.appendChild(tplToDom(
-        signalFieldRow("default", def.default || "", (v) => {
-          update(updateDef(S, name, { default: v }));
-        }),
-      ));
-    } else if (proto === "Set" || proto === "Map" || proto === "FormData") {
-      const defaultStr =
-        def.default !== undefined && def.default !== null
-          ? JSON.stringify(def.default, null, 2)
-          : proto === "FormData"
-            ? JSON.stringify(def.fields || {}, null, 2)
-            : "";
-      const fieldName = proto === "FormData" ? "fields" : "default";
-      const defRow = document.createElement("div");
-      defRow.className = "field-row";
-      const defLabel = document.createElement("label");
-      defLabel.className = "field-label";
-      defLabel.textContent = fieldName;
-      defRow.appendChild(defLabel);
-      const defInput = document.createElement("textarea");
-      defInput.className = "field-input";
-      defInput.style.minHeight = "40px";
-      defInput.value = defaultStr;
-      let debounce;
-      defInput.oninput = () => {
-        clearTimeout(debounce);
-        debounce = setTimeout(() => {
-          try {
-            update(updateDef(S, name, { [fieldName]: JSON.parse(defInput.value) }));
-          } catch {}
-        }, 500);
-      };
-      defRow.appendChild(defInput);
-      container.appendChild(defRow);
-    } else {
-      // ── Schema-driven fallback for external/plugin prototypes ──
-      renderExternalPrototypeEditor(container, name, def);
-    }
+    fields = renderDataSourceFields(name, def, textareaRow, pickerRow);
   } else if (cat === "function") {
-    if (def.$src) {
-      // External function source
-      container.appendChild(tplToDom(
-        signalFieldRow("$src", def.$src || "", (v) => {
-          update(updateDef(S, name, { $src: v || undefined }));
-        }),
-      ));
-      container.appendChild(tplToDom(
-        signalFieldRow("$export", def.$export || "", (v) => {
-          update(updateDef(S, name, { $export: v || undefined }));
-        }),
-      ));
-    } else {
-      // Inline function body
-      const bodyRow = document.createElement("div");
-      bodyRow.className = "field-row";
-      const bodyLabel = document.createElement("label");
-      bodyLabel.className = "field-label";
-      bodyLabel.textContent = "body";
-      bodyRow.appendChild(bodyLabel);
-      const bodyInput = document.createElement("textarea");
-      bodyInput.className = "field-input";
-      bodyInput.style.minHeight = "60px";
-      bodyInput.style.fontFamily = "'SF Mono', 'Fira Code', 'Consolas', monospace";
-      bodyInput.style.fontSize = "11px";
-      bodyInput.value = def.body || "";
-      let debounce;
-      bodyInput.oninput = () => {
-        clearTimeout(debounce);
-        debounce = setTimeout(() => {
-          update(updateDef(S, name, { body: bodyInput.value }));
-        }, 500);
-      };
-      bodyRow.appendChild(bodyInput);
-      container.appendChild(bodyRow);
-    }
-
-    // Parameters editor (CEM objects)
-    renderParameterEditor(container, name, def);
-
-    // Emits editor (custom elements only)
-    if (isCustomElementDoc()) {
-      renderEmitsEditor(container, name, def);
-    }
-
-    // Open in editor button
-    const expandBtn = document.createElement("button");
-    expandBtn.className = "kv-add";
-    expandBtn.textContent = "Open in editor";
-    expandBtn.style.marginTop = "4px";
-    expandBtn.onclick = () => {
-      S = { ...S, ui: { ...S.ui, editingFunction: { type: "def", defName: name } } };
-      renderCanvas();
-    };
-    if (!def.$src) container.appendChild(expandBtn);
-
-    // Description
-    container.appendChild(tplToDom(
-      signalFieldRow("desc", def.description || "", (v) => {
-        update(updateDef(S, name, { description: v || undefined }));
-      }),
-    ));
+    fields = renderFunctionFields(name, def, textareaRow);
   }
+
+  return html`${nameField}${fields}`;
+}
+
+/** Data source fields for signal editor */
+function renderDataSourceFields(name, def, textareaRow, pickerRow) {
+  const proto = def.$prototype;
+
+  if (proto === "Request") {
+    return html`
+      ${signalFieldRow("url", def.url || "", (v) => update(updateDef(S, name, { url: v })))}
+      ${pickerRow("method", ["GET", "POST", "PUT", "DELETE", "PATCH"], def.method || "GET",
+        (v) => update(updateDef(S, name, { method: v })))}
+      ${pickerRow("timing", ["client", "server"], def.timing || "client",
+        (v) => update(updateDef(S, name, { timing: v })))}
+    `;
+  }
+  if (proto === "LocalStorage" || proto === "SessionStorage") {
+    const defaultStr = def.default !== undefined && def.default !== null
+      ? typeof def.default === "object" ? JSON.stringify(def.default, null, 2) : String(def.default)
+      : "";
+    return html`
+      ${signalFieldRow("key", def.key || "", (v) => update(updateDef(S, name, { key: v })))}
+      ${textareaRow("default", defaultStr, (v) => {
+        try { update(updateDef(S, name, { default: JSON.parse(v) })); }
+        catch { update(updateDef(S, name, { default: v })); }
+      })}
+    `;
+  }
+  if (proto === "IndexedDB") {
+    return html`
+      ${signalFieldRow("database", def.database || "", (v) => update(updateDef(S, name, { database: v })))}
+      ${signalFieldRow("store", def.store || "", (v) => update(updateDef(S, name, { store: v })))}
+      ${signalFieldRow("version", String(def.version || 1), (v) => update(updateDef(S, name, { version: parseInt(v, 10) || 1 })))}
+    `;
+  }
+  if (proto === "Cookie") {
+    return html`
+      ${signalFieldRow("cookie", def.name || "", (v) => update(updateDef(S, name, { name: v })))}
+      ${signalFieldRow("default", def.default || "", (v) => update(updateDef(S, name, { default: v })))}
+    `;
+  }
+  if (proto === "Set" || proto === "Map" || proto === "FormData") {
+    const fieldName = proto === "FormData" ? "fields" : "default";
+    const defaultStr = def.default !== undefined && def.default !== null
+      ? JSON.stringify(def.default, null, 2)
+      : proto === "FormData" ? JSON.stringify(def.fields || {}, null, 2) : "";
+    return textareaRow(fieldName, defaultStr, (v) => {
+      try { update(updateDef(S, name, { [fieldName]: JSON.parse(v) })); } catch {}
+    });
+  }
+  // Schema-driven fallback
+  return renderExternalPrototypeEditorTemplate(name, def);
+}
+
+/** Function fields for signal editor */
+function renderFunctionFields(name, def, textareaRow) {
+  const srcFields = def.$src ? html`
+    ${signalFieldRow("$src", def.$src || "", (v) => update(updateDef(S, name, { $src: v || undefined })))}
+    ${signalFieldRow("$export", def.$export || "", (v) => update(updateDef(S, name, { $export: v || undefined })))}
+  ` : textareaRow("body", def.body || "", (v) => update(updateDef(S, name, { body: v })), { minHeight: "60px", mono: true });
+
+  return html`
+    ${srcFields}
+    ${renderParameterEditorTemplate(name, def)}
+    ${isCustomElementDoc() ? renderEmitsEditorTemplate(name, def) : nothing}
+    ${!def.$src ? html`
+      <button class="kv-add" style="margin-top:4px" @click=${() => {
+        S = { ...S, ui: { ...S.ui, editingFunction: { type: "def", defName: name } } };
+        renderCanvas();
+      }}>Open in editor</button>
+    ` : nothing}
+    ${signalFieldRow("desc", def.description || "", (v) => update(updateDef(S, name, { description: v || undefined })))}
+  `;
 }
 
 // ─── CEM Editors ─────────────────────────────────────────────────────────────
@@ -4648,220 +4390,88 @@ function normParam(p) {
 const advancedParamOpen = new Set();
 
 /** Render CEM parameter editor with basic/advanced toggle. */
-function renderParameterEditor(container, name, def) {
+function renderParameterEditorTemplate(name, def) {
   const params = (def.parameters || []).map(normParam);
   const isAdvanced = advancedParamOpen.has(name);
 
-  const wrapper = document.createElement("div");
-  wrapper.className = "field-row";
-  wrapper.style.flexWrap = "wrap";
-
-  const lbl = document.createElement("label");
-  lbl.className = "field-label";
-  lbl.textContent = "params";
-  wrapper.appendChild(lbl);
-
   if (!isAdvanced) {
-    // ── Basic mode: name chips ──
-    const chipWrap = document.createElement("div");
-    chipWrap.style.cssText = "display:flex;flex-wrap:wrap;gap:4px;flex:1;align-items:center";
-
-    for (let i = 0; i < params.length; i++) {
-      const chip = document.createElement("span");
-      chip.style.cssText = "display:inline-flex;align-items:center;gap:2px;padding:1px 6px;border-radius:3px;background:var(--bg-hover);font-size:11px;font-family:monospace";
-      chip.textContent = params[i].name || "?";
-      const del = document.createElement("span");
-      del.textContent = "\u00d7";
-      del.style.cssText = "cursor:pointer;opacity:0.5;margin-left:2px";
-      del.onclick = () => {
-        const next = params.filter((_, j) => j !== i);
-        update(updateDef(S, name, { parameters: next.length ? next : undefined }));
-      };
-      chip.appendChild(del);
-      chipWrap.appendChild(chip);
-    }
-
-    // Inline add input
-    const addInput = document.createElement("input");
-    addInput.className = "field-input";
-    addInput.style.cssText = "width:60px;flex:0 0 auto;font-size:11px";
-    addInput.placeholder = "+";
-    addInput.onkeydown = (e) => {
-      if (e.key === "Enter" && addInput.value.trim()) {
-        const next = [...params, { name: addInput.value.trim() }];
-        update(updateDef(S, name, { parameters: next }));
-      }
-    };
-    chipWrap.appendChild(addInput);
-    wrapper.appendChild(chipWrap);
-
-    // Advanced toggle
-    const toggle = document.createElement("span");
-    toggle.textContent = "\u25b8 Advanced";
-    toggle.style.cssText = "font-size:10px;color:var(--fg-dim);cursor:pointer;width:100%;margin-top:2px";
-    toggle.onclick = () => { advancedParamOpen.add(name); renderLeftPanel(); };
-    wrapper.appendChild(toggle);
-  } else {
-    // ── Advanced mode: full rows ──
-    const list = document.createElement("div");
-    list.style.cssText = "flex:1;display:flex;flex-direction:column;gap:4px";
-
-    for (let i = 0; i < params.length; i++) {
-      const p = params[i];
-      const row = document.createElement("div");
-      row.style.cssText = "display:flex;gap:4px;align-items:center";
-
-      const nameIn = document.createElement("input");
-      nameIn.className = "field-input";
-      nameIn.value = p.name || "";
-      nameIn.placeholder = "name";
-      nameIn.style.flex = "1";
-      nameIn.onchange = () => {
-        const next = [...params];
-        next[i] = { ...next[i], name: nameIn.value };
-        update(updateDef(S, name, { parameters: next }));
-      };
-      row.appendChild(nameIn);
-
-      const typeIn = document.createElement("input");
-      typeIn.className = "field-input";
-      typeIn.value = p.type?.text || "";
-      typeIn.placeholder = "type";
-      typeIn.style.flex = "1";
-      typeIn.onchange = () => {
-        const next = [...params];
-        next[i] = { ...next[i], type: typeIn.value ? { text: typeIn.value } : undefined };
-        update(updateDef(S, name, { parameters: next }));
-      };
-      row.appendChild(typeIn);
-
-      const descIn = document.createElement("input");
-      descIn.className = "field-input";
-      descIn.value = p.description || "";
-      descIn.placeholder = "desc";
-      descIn.style.flex = "2";
-      descIn.onchange = () => {
-        const next = [...params];
-        next[i] = { ...next[i], description: descIn.value || undefined };
-        update(updateDef(S, name, { parameters: next }));
-      };
-      row.appendChild(descIn);
-
-      const optCheck = document.createElement("input");
-      optCheck.type = "checkbox";
-      optCheck.title = "optional";
-      optCheck.checked = !!p.optional;
-      optCheck.onchange = () => {
-        const next = [...params];
-        next[i] = { ...next[i], optional: optCheck.checked || undefined };
-        update(updateDef(S, name, { parameters: next }));
-      };
-      row.appendChild(optCheck);
-
-      const del = document.createElement("span");
-      del.textContent = "\u00d7";
-      del.style.cssText = "cursor:pointer;opacity:0.5";
-      del.onclick = () => {
-        const next = params.filter((_, j) => j !== i);
-        update(updateDef(S, name, { parameters: next.length ? next : undefined }));
-      };
-      row.appendChild(del);
-
-      list.appendChild(row);
-    }
-
-    // Add button
-    const addBtn = document.createElement("button");
-    addBtn.className = "kv-add";
-    addBtn.textContent = "+ Add parameter";
-    addBtn.onclick = () => {
-      update(updateDef(S, name, { parameters: [...params, { name: "" }] }));
-    };
-    list.appendChild(addBtn);
-
-    wrapper.appendChild(list);
-
-    // Basic toggle
-    const toggle = document.createElement("span");
-    toggle.textContent = "\u25be Basic";
-    toggle.style.cssText = "font-size:10px;color:var(--fg-dim);cursor:pointer;width:100%;margin-top:2px";
-    toggle.onclick = () => { advancedParamOpen.delete(name); renderLeftPanel(); };
-    wrapper.appendChild(toggle);
+    // Basic mode: name chips
+    return html`
+      <div class="field-row" style="flex-wrap:wrap">
+        <label class="field-label">params</label>
+        <div style="display:flex;flex-wrap:wrap;gap:4px;flex:1;align-items:center">
+          ${params.map((p, i) => html`
+            <span style="display:inline-flex;align-items:center;gap:2px;padding:1px 6px;border-radius:3px;background:var(--bg-hover);font-size:11px;font-family:monospace">
+              ${p.name || "?"}
+              <span style="cursor:pointer;opacity:0.5;margin-left:2px" @click=${() => {
+                update(updateDef(S, name, { parameters: params.filter((_, j) => j !== i).length ? params.filter((_, j) => j !== i) : undefined }));
+              }}>\u00d7</span>
+            </span>
+          `)}
+          <input class="field-input" style="width:60px;flex:0 0 auto;font-size:11px" placeholder="+"
+            @keydown=${(e) => {
+              if (e.key === "Enter" && e.target.value.trim()) {
+                update(updateDef(S, name, { parameters: [...params, { name: e.target.value.trim() }] }));
+              }
+            }}>
+        </div>
+        <span style="font-size:10px;color:var(--fg-dim);cursor:pointer;width:100%;margin-top:2px"
+          @click=${() => { advancedParamOpen.add(name); renderLeftPanel(); }}>\u25b8 Advanced</span>
+      </div>
+    `;
   }
 
-  container.appendChild(wrapper);
+  // Advanced mode: full rows
+  return html`
+    <div class="field-row" style="flex-wrap:wrap">
+      <label class="field-label">params</label>
+      <div style="flex:1;display:flex;flex-direction:column;gap:4px">
+        ${params.map((p, i) => html`
+          <div style="display:flex;gap:4px;align-items:center">
+            <input class="field-input" .value=${p.name || ""} placeholder="name" style="flex:1"
+              @change=${(e) => { const next = [...params]; next[i] = { ...next[i], name: e.target.value }; update(updateDef(S, name, { parameters: next })); }}>
+            <input class="field-input" .value=${p.type?.text || ""} placeholder="type" style="flex:1"
+              @change=${(e) => { const next = [...params]; next[i] = { ...next[i], type: e.target.value ? { text: e.target.value } : undefined }; update(updateDef(S, name, { parameters: next })); }}>
+            <input class="field-input" .value=${p.description || ""} placeholder="desc" style="flex:2"
+              @change=${(e) => { const next = [...params]; next[i] = { ...next[i], description: e.target.value || undefined }; update(updateDef(S, name, { parameters: next })); }}>
+            <input type="checkbox" title="optional" .checked=${!!p.optional}
+              @change=${(e) => { const next = [...params]; next[i] = { ...next[i], optional: e.target.checked || undefined }; update(updateDef(S, name, { parameters: next })); }}>
+            <span style="cursor:pointer;opacity:0.5" @click=${() => {
+              const next = params.filter((_, j) => j !== i);
+              update(updateDef(S, name, { parameters: next.length ? next : undefined }));
+            }}>\u00d7</span>
+          </div>
+        `)}
+        <button class="kv-add" @click=${() => update(updateDef(S, name, { parameters: [...params, { name: "" }] }))}>+ Add parameter</button>
+      </div>
+      <span style="font-size:10px;color:var(--fg-dim);cursor:pointer;width:100%;margin-top:2px"
+        @click=${() => { advancedParamOpen.delete(name); renderLeftPanel(); }}>\u25be Basic</span>
+    </div>
+  `;
 }
 
 /** Render CEM emits editor for function state entries. */
-function renderEmitsEditor(container, name, def) {
+function renderEmitsEditorTemplate(name, def) {
   const emits = def.emits || [];
-  if (emits.length === 0 && !isCustomElementDoc()) return;
+  if (emits.length === 0 && !isCustomElementDoc()) return nothing;
 
-  const header = document.createElement("div");
-  header.style.cssText = "font-size:11px;font-weight:600;color:var(--fg-dim);margin:8px 0 4px;text-transform:uppercase;letter-spacing:0.05em";
-  header.textContent = "Emits";
-  container.appendChild(header);
-
-  for (let i = 0; i < emits.length; i++) {
-    const ev = emits[i];
-    const row = document.createElement("div");
-    row.style.cssText = "display:flex;gap:4px;align-items:center;margin-bottom:4px";
-
-    const nameIn = document.createElement("input");
-    nameIn.className = "field-input";
-    nameIn.value = ev.name || "";
-    nameIn.placeholder = "event name";
-    nameIn.style.flex = "1";
-    nameIn.onchange = () => {
-      const next = [...emits];
-      next[i] = { ...next[i], name: nameIn.value };
-      update(updateDef(S, name, { emits: next }));
-    };
-    row.appendChild(nameIn);
-
-    const typeIn = document.createElement("input");
-    typeIn.className = "field-input";
-    typeIn.value = ev.type?.text || "";
-    typeIn.placeholder = "type";
-    typeIn.style.flex = "1";
-    typeIn.onchange = () => {
-      const next = [...emits];
-      next[i] = { ...next[i], type: typeIn.value ? { text: typeIn.value } : undefined };
-      update(updateDef(S, name, { emits: next }));
-    };
-    row.appendChild(typeIn);
-
-    const descIn = document.createElement("input");
-    descIn.className = "field-input";
-    descIn.value = ev.description || "";
-    descIn.placeholder = "description";
-    descIn.style.flex = "2";
-    descIn.onchange = () => {
-      const next = [...emits];
-      next[i] = { ...next[i], description: descIn.value || undefined };
-      update(updateDef(S, name, { emits: next }));
-    };
-    row.appendChild(descIn);
-
-    const del = document.createElement("span");
-    del.textContent = "\u00d7";
-    del.style.cssText = "cursor:pointer;opacity:0.5";
-    del.onclick = () => {
-      const next = emits.filter((_, j) => j !== i);
-      update(updateDef(S, name, { emits: next.length ? next : undefined }));
-    };
-    row.appendChild(del);
-
-    container.appendChild(row);
-  }
-
-  const addBtn = document.createElement("button");
-  addBtn.className = "kv-add";
-  addBtn.textContent = "+ Add event";
-  addBtn.onclick = () => {
-    update(updateDef(S, name, { emits: [...emits, { name: "" }] }));
-  };
-  container.appendChild(addBtn);
+  return html`
+    <div style="font-size:11px;font-weight:600;color:var(--fg-dim);margin:8px 0 4px;text-transform:uppercase;letter-spacing:0.05em">Emits</div>
+    ${emits.map((ev, i) => html`
+      <div style="display:flex;gap:4px;align-items:center;margin-bottom:4px">
+        <input class="field-input" .value=${ev.name || ""} placeholder="event name" style="flex:1"
+          @change=${(e) => { const next = [...emits]; next[i] = { ...next[i], name: e.target.value }; update(updateDef(S, name, { emits: next })); }}>
+        <input class="field-input" .value=${ev.type?.text || ""} placeholder="type" style="flex:1"
+          @change=${(e) => { const next = [...emits]; next[i] = { ...next[i], type: e.target.value ? { text: e.target.value } : undefined }; update(updateDef(S, name, { emits: next })); }}>
+        <input class="field-input" .value=${ev.description || ""} placeholder="description" style="flex:2"
+          @change=${(e) => { const next = [...emits]; next[i] = { ...next[i], description: e.target.value || undefined }; update(updateDef(S, name, { emits: next })); }}>
+        <span style="cursor:pointer;opacity:0.5" @click=${() => {
+          update(updateDef(S, name, { emits: emits.filter((_, j) => j !== i).length ? emits.filter((_, j) => j !== i) : undefined }));
+        }}>\u00d7</span>
+      </div>
+    `)}
+    <button class="kv-add" @click=${() => update(updateDef(S, name, { emits: [...emits, { name: "" }] }))}>+ Add event</button>
+  `;
 }
 
 /** Simple field row for signal editors. */
@@ -4891,206 +4501,118 @@ const STUDIO_RESERVED_KEYS = new Set([
  * Render config form fields from a JSON Schema `properties` object.
  * Maps schema types to appropriate form controls.
  */
-function renderSchemaFields(container, schema, def, name) {
-  if (!schema?.properties) return;
+function renderSchemaFieldsTemplate(schema, def, name) {
+  if (!schema?.properties) return nothing;
 
   const required = new Set(schema.required ?? []);
 
-  for (const [prop, ps] of Object.entries(schema.properties)) {
-    if (STUDIO_RESERVED_KEYS.has(prop)) continue;
-
+  return Object.entries(schema.properties).filter(([prop]) => !STUDIO_RESERVED_KEYS.has(prop)).map(([prop, ps]) => {
     const currentValue = def[prop];
-    const row = document.createElement("div");
-    row.className = "field-row";
+    const labelText = prop + (required.has(prop) ? " *" : "");
 
-    const label = document.createElement("sp-field-label");
-    label.setAttribute("size", "s");
-    label.textContent = prop + (required.has(prop) ? " *" : "");
-    if (ps.description) label.title = ps.description;
-    row.appendChild(label);
-
+    let control;
     if (ps.enum) {
-      // Picker dropdown
-      const sel = document.createElement("sp-picker");
-      sel.setAttribute("size", "s");
-      if (!required.has(prop)) {
-        const blankItem = document.createElement("sp-menu-item");
-        blankItem.setAttribute("value", "__none__");
-        blankItem.textContent = "\u2014";
-        sel.appendChild(blankItem);
-      }
-      for (const val of ps.enum) {
-        const item = document.createElement("sp-menu-item");
-        item.value = val;
-        item.textContent = val;
-        sel.appendChild(item);
-      }
-      const _schemaVal = currentValue !== undefined ? String(currentValue) : ps.default !== undefined ? String(ps.default) : "__none__";
-      requestAnimationFrame(() => { sel.value = _schemaVal; });
-      sel.addEventListener("change", () => update(updateDef(S, name, { [prop]: sel.value === "__none__" ? undefined : sel.value })));
-      row.appendChild(sel);
+      control = html`
+        <sp-picker size="s" value=${currentValue !== undefined ? String(currentValue) : ps.default !== undefined ? String(ps.default) : "__none__"}
+          @change=${(e) => update(updateDef(S, name, { [prop]: e.target.value === "__none__" ? undefined : e.target.value }))}>
+          ${!required.has(prop) ? html`<sp-menu-item value="__none__">\u2014</sp-menu-item>` : nothing}
+          ${ps.enum.map(val => html`<sp-menu-item value=${val}>${val}</sp-menu-item>`)}
+        </sp-picker>
+      `;
     } else if (ps.type === "boolean") {
-      const check = document.createElement("sp-checkbox");
-      check.checked = currentValue ?? ps.default ?? false;
-      check.addEventListener("change", () => update(updateDef(S, name, { [prop]: check.checked })));
-      row.appendChild(check);
+      control = html`<sp-checkbox ?checked=${currentValue ?? ps.default ?? false}
+        @change=${(e) => update(updateDef(S, name, { [prop]: e.target.checked }))}></sp-checkbox>`;
     } else if (ps.type === "integer" || ps.type === "number") {
-      const input = document.createElement("sp-number-field");
-      input.setAttribute("size", "s");
-      if (ps.minimum !== undefined) input.setAttribute("min", ps.minimum);
-      if (ps.maximum !== undefined) input.setAttribute("max", ps.maximum);
-      if (ps.type === "integer") input.setAttribute("step", "1");
-      if (currentValue !== undefined) input.value = currentValue;
-      if (ps.default !== undefined) input.setAttribute("placeholder", String(ps.default));
       let debounce;
-      input.addEventListener("change", () => {
-        clearTimeout(debounce);
-        debounce = setTimeout(() => {
-          const parsed = ps.type === "integer" ? parseInt(input.value, 10) : parseFloat(input.value);
+      control = html`<sp-number-field size="s"
+        min=${ps.minimum !== undefined ? ps.minimum : nothing}
+        max=${ps.maximum !== undefined ? ps.maximum : nothing}
+        step=${ps.type === "integer" ? "1" : nothing}
+        .value=${currentValue !== undefined ? currentValue : nothing}
+        placeholder=${ps.default !== undefined ? String(ps.default) : nothing}
+        @change=${(e) => { clearTimeout(debounce); debounce = setTimeout(() => {
+          const parsed = ps.type === "integer" ? parseInt(e.target.value, 10) : parseFloat(e.target.value);
           update(updateDef(S, name, { [prop]: isNaN(parsed) ? undefined : parsed }));
-        }, 400);
-      });
-      row.appendChild(input);
+        }, 400); }}></sp-number-field>`;
     } else if (ps.format === "json-schema") {
-      // Schema parameter — render as collapsible schema editor
-      const wrapper = document.createElement("div");
-      wrapper.className = "schema-param-editor";
-
       const hasValue = currentValue && typeof currentValue === "object" && Object.keys(currentValue).length > 0;
       const isRef = currentValue && typeof currentValue === "object" && currentValue.$ref;
-
-      if (hasValue && !isRef && currentValue.properties) {
-        // Render a preview of the schema's properties as chips
-        const preview = document.createElement("div");
-        preview.style.cssText = "display:flex;flex-wrap:wrap;gap:3px;margin-bottom:4px";
-        for (const k of Object.keys(currentValue.properties)) {
-          const chip = document.createElement("span");
-          chip.style.cssText = "background:var(--bg-alt);padding:1px 6px;border-radius:3px;font-size:10px;color:var(--fg-dim)";
-          const t = currentValue.properties[k].type ?? "any";
-          chip.textContent = `${k}: ${t}`;
-          preview.appendChild(chip);
-        }
-        wrapper.appendChild(preview);
-      }
-
-      const textarea = document.createElement("sp-textfield");
-      textarea.setAttribute("multiline", "");
-      textarea.setAttribute("size", "s");
-      textarea.style.minHeight = hasValue ? "80px" : "40px";
-      textarea.style.fontFamily = "monospace";
-      textarea.style.fontSize = "11px";
-      textarea.value = currentValue !== undefined ? JSON.stringify(currentValue, null, 2) : "";
-      textarea.setAttribute("placeholder", ps.description ?? "JSON Schema defining the data shape\u2026");
       let debounce;
-      textarea.addEventListener("input", () => {
-        clearTimeout(debounce);
-        debounce = setTimeout(() => {
-          try { update(updateDef(S, name, { [prop]: JSON.parse(textarea.value) })); } catch {}
-        }, 500);
-      });
-      wrapper.appendChild(textarea);
-      row.appendChild(wrapper);
+      control = html`
+        <div class="schema-param-editor">
+          ${hasValue && !isRef && currentValue.properties ? html`
+            <div style="display:flex;flex-wrap:wrap;gap:3px;margin-bottom:4px">
+              ${Object.entries(currentValue.properties).map(([k, v]) => html`
+                <span style="background:var(--bg-alt);padding:1px 6px;border-radius:3px;font-size:10px;color:var(--fg-dim)">${k}: ${v.type ?? "any"}</span>
+              `)}
+            </div>
+          ` : nothing}
+          <sp-textfield multiline size="s" style="min-height:${hasValue ? "80px" : "40px"};font-family:monospace;font-size:11px"
+            .value=${currentValue !== undefined ? JSON.stringify(currentValue, null, 2) : ""}
+            placeholder=${ps.description ?? "JSON Schema defining the data shape\u2026"}
+            @input=${(e) => { clearTimeout(debounce); debounce = setTimeout(() => { try { update(updateDef(S, name, { [prop]: JSON.parse(e.target.value) })); } catch {} }, 500); }}></sp-textfield>
+        </div>
+      `;
     } else if (ps.type === "array" || ps.type === "object") {
-      const textarea = document.createElement("sp-textfield");
-      textarea.setAttribute("multiline", "");
-      textarea.setAttribute("size", "s");
-      textarea.style.minHeight = "40px";
-      textarea.value = currentValue !== undefined ? JSON.stringify(currentValue, null, 2) : "";
-      if (ps.default !== undefined) textarea.setAttribute("placeholder", JSON.stringify(ps.default));
       let debounce;
-      textarea.addEventListener("input", () => {
-        clearTimeout(debounce);
-        debounce = setTimeout(() => {
-          try { update(updateDef(S, name, { [prop]: JSON.parse(textarea.value) })); } catch {}
-        }, 500);
-      });
-      row.appendChild(textarea);
+      control = html`<sp-textfield multiline size="s" style="min-height:40px"
+        .value=${currentValue !== undefined ? JSON.stringify(currentValue, null, 2) : ""}
+        placeholder=${ps.default !== undefined ? JSON.stringify(ps.default) : nothing}
+        @input=${(e) => { clearTimeout(debounce); debounce = setTimeout(() => { try { update(updateDef(S, name, { [prop]: JSON.parse(e.target.value) })); } catch {} }, 500); }}></sp-textfield>`;
     } else {
-      // Default: text input
-      const input = document.createElement("sp-textfield");
-      input.setAttribute("size", "s");
-      input.value = currentValue ?? "";
-      const ph = ps.default !== undefined
-        ? String(ps.default)
-        : (ps.examples?.[0] ?? "");
-      if (ph) input.setAttribute("placeholder", ph);
-      if (ps.description) input.title = ps.description;
       let debounce;
-      input.addEventListener("input", () => {
-        clearTimeout(debounce);
-        debounce = setTimeout(() => {
-          update(updateDef(S, name, { [prop]: input.value || undefined }));
-        }, 400);
-      });
-      row.appendChild(input);
+      const ph = ps.default !== undefined ? String(ps.default) : (ps.examples?.[0] ?? "");
+      control = html`<sp-textfield size="s" .value=${currentValue ?? ""} placeholder=${ph || nothing} title=${ps.description || nothing}
+        @input=${(e) => { clearTimeout(debounce); debounce = setTimeout(() => update(updateDef(S, name, { [prop]: e.target.value || undefined })), 400); }}></sp-textfield>`;
     }
 
-    container.appendChild(row);
-  }
+    return html`
+      <div class="field-row">
+        <sp-field-label size="s" title=${ps.description || nothing}>${labelText}</sp-field-label>
+        ${control}
+      </div>
+    `;
+  });
 }
 
 /**
  * Render editor fields for an external $prototype + $src plugin.
  * Shows $src/$export inputs plus schema-driven config fields.
  */
-function renderExternalPrototypeEditor(container, name, def) {
-  container.appendChild(tplToDom(
-    signalFieldRow("$src", def.$src || "", (v) => {
-      update(updateDef(S, name, { $src: v || undefined }));
-      pluginSchemaCache.delete(`${v}::${def.$prototype}`);
-    }),
-  ));
-  container.appendChild(tplToDom(
-    signalFieldRow("$prototype", def.$prototype || "", (v) => {
-      update(updateDef(S, name, { $prototype: v || undefined }));
-      pluginSchemaCache.delete(`${def.$src}::${v}`);
-    }),
-  ));
-  if (def.$export) {
-    container.appendChild(tplToDom(
-      signalFieldRow("$export", def.$export || "", (v) => {
-        update(updateDef(S, name, { $export: v || undefined }));
-      }),
-    ));
-  }
-
+function renderExternalPrototypeEditorTemplate(name, def) {
   // Schema-driven config fields (async with cache)
+  let schemaContent = nothing;
   if (def.$src && def.$prototype) {
-    const schemaContainer = document.createElement("div");
-    container.appendChild(schemaContainer);
-
     const cacheKey = `${def.$src}::${def.$prototype}`;
     if (pluginSchemaCache.has(cacheKey)) {
       const schema = pluginSchemaCache.get(cacheKey);
       if (schema) {
-        if (schema.description) {
-          const desc = document.createElement("div");
-          desc.className = "signal-hint";
-          desc.style.padding = "4px 0 8px";
-          desc.textContent = schema.description;
-          schemaContainer.appendChild(desc);
-        }
-        renderSchemaFields(schemaContainer, schema, def, name);
+        schemaContent = html`
+          ${schema.description ? html`<div class="signal-hint" style="padding:4px 0 8px">${schema.description}</div>` : nothing}
+          ${renderSchemaFieldsTemplate(schema, def, name)}
+        `;
       }
     } else {
-      schemaContainer.textContent = "Loading schema\u2026";
-      schemaContainer.style.cssText = "padding:4px 0;font-size:11px;color:var(--fg-dim);font-style:italic";
+      // Trigger async load — will re-render when cached
+      schemaContent = html`<div style="padding:4px 0;font-size:11px;color:var(--fg-dim);font-style:italic">Loading schema\u2026</div>`;
       fetchPluginSchema(def).then((schema) => {
-        schemaContainer.textContent = "";
-        schemaContainer.style.cssText = "";
-        if (schema) {
-          if (schema.description) {
-            const desc = document.createElement("div");
-            desc.className = "signal-hint";
-            desc.style.padding = "4px 0 8px";
-            desc.textContent = schema.description;
-            schemaContainer.appendChild(desc);
-          }
-          renderSchemaFields(schemaContainer, schema, def, name);
-        }
+        if (schema) renderLeftPanel();
       });
     }
   }
+
+  return html`
+    ${signalFieldRow("$src", def.$src || "", (v) => {
+      update(updateDef(S, name, { $src: v || undefined }));
+      pluginSchemaCache.delete(`${v}::${def.$prototype}`);
+    })}
+    ${signalFieldRow("$prototype", def.$prototype || "", (v) => {
+      update(updateDef(S, name, { $prototype: v || undefined }));
+      pluginSchemaCache.delete(`${def.$src}::${v}`);
+    })}
+    ${def.$export ? signalFieldRow("$export", def.$export || "", (v) => update(updateDef(S, name, { $export: v || undefined }))) : nothing}
+    ${schemaContent}
+  `;
 }
 
 // ─── Data Explorer ──────────────────────────────────────────────────────────
@@ -5115,200 +4637,105 @@ function dataTypeLabel(value) {
 }
 
 /** Render the data explorer tab showing live resolved values. */
-function renderDataExplorer(container) {
+function renderDataExplorerTemplate() {
   if (!liveScope) {
-    const empty = document.createElement("div");
-    empty.className = "empty-state";
-    empty.textContent = "No live data \u2014 render the document in preview mode";
-    container.appendChild(empty);
-    return;
+    return html`<div class="empty-state">No live data \u2014 render the document in preview mode</div>`;
   }
 
-  // Toolbar with refresh button
-  const bar = document.createElement("div");
-  bar.className = "data-explorer-toolbar";
-  const refreshBtn = document.createElement("sp-action-button");
-  refreshBtn.setAttribute("quiet", "");
-  refreshBtn.setAttribute("size", "s");
-  refreshBtn.className = "data-refresh-btn";
-  const refreshIcon = document.createElement("sp-icon-refresh");
-  refreshIcon.setAttribute("slot", "icon");
-  refreshBtn.appendChild(refreshIcon);
-  refreshBtn.append("Refresh");
-  refreshBtn.addEventListener("click", () => {
-    renderCanvas();
-    setTimeout(() => renderLeftPanel(), 200);
-  });
-  bar.appendChild(refreshBtn);
-  container.appendChild(bar);
-
-  // Entries
   const defs = S.document.state || {};
-  for (const [name, def] of Object.entries(defs)) {
-    const value = liveScope[name];
-    const unwrapped = unwrapSignal(value);
-    const isExpanded = expandedDataKeys.has(name);
+  const entries = Object.entries(defs);
 
-    const row = document.createElement("div");
-    row.className = "data-row";
-
-    const header = document.createElement("div");
-    header.className = `data-row-header${isExpanded ? " expanded" : ""}`;
-
-    const badge = document.createElement("span");
-    badge.className = `signal-badge ${defCategory(def)}`;
-    badge.textContent = defBadgeLabel(def);
-    header.appendChild(badge);
-
-    const nameEl = document.createElement("span");
-    nameEl.className = "data-name";
-    nameEl.textContent = name;
-    header.appendChild(nameEl);
-
-    const typeEl = document.createElement("span");
-    typeEl.className = "data-type";
-    typeEl.textContent = dataTypeLabel(value);
-    if (unwrapped === null) typeEl.classList.add("data-pending");
-    header.appendChild(typeEl);
-
-    header.onclick = () => {
-      if (expandedDataKeys.has(name)) expandedDataKeys.delete(name);
-      else expandedDataKeys.add(name);
-      renderLeftPanel();
-    };
-    row.appendChild(header);
-
-    if (isExpanded) {
-      const tree = document.createElement("div");
-      tree.className = "data-tree";
-      renderDataTree(tree, unwrapped, 0);
-      row.appendChild(tree);
-    }
-
-    container.appendChild(row);
-  }
-
-  if (Object.keys(defs).length === 0) {
-    const empty = document.createElement("div");
-    empty.className = "empty-state";
-    empty.textContent = "No state defined";
-    container.appendChild(empty);
-  }
+  return html`
+    <div class="data-explorer-toolbar">
+      <sp-action-button quiet size="s" class="data-refresh-btn" @click=${() => {
+        renderCanvas();
+        setTimeout(() => renderLeftPanel(), 200);
+      }}>
+        <sp-icon-refresh slot="icon"></sp-icon-refresh>
+        Refresh
+      </sp-action-button>
+    </div>
+    ${entries.length === 0
+      ? html`<div class="empty-state">No state defined</div>`
+      : entries.map(([name, def]) => {
+          const value = liveScope[name];
+          const unwrapped = unwrapSignal(value);
+          const isExpanded = expandedDataKeys.has(name);
+          return html`
+            <div class="data-row">
+              <div class="data-row-header${isExpanded ? " expanded" : ""}" @click=${() => {
+                if (expandedDataKeys.has(name)) expandedDataKeys.delete(name);
+                else expandedDataKeys.add(name);
+                renderLeftPanel();
+              }}>
+                <span class="signal-badge ${defCategory(def)}">${defBadgeLabel(def)}</span>
+                <span class="data-name">${name}</span>
+                <span class="data-type${unwrapped === null ? " data-pending" : ""}">${dataTypeLabel(value)}</span>
+              </div>
+              ${isExpanded ? html`<div class="data-tree">${renderDataTreeTemplate(unwrapped, 0)}</div>` : nothing}
+            </div>
+          `;
+        })}
+  `;
 }
 
 /**
- * Recursively render a JSON value as a tree view.
+ * Recursively render a JSON value as a tree view (Lit template).
  */
-function renderDataTree(container, value, depth, maxDepth = 5) {
+function renderDataTreeTemplate(value, depth, maxDepth = 5) {
   const indent = `${(depth + 1) * 12}px`;
 
   if (depth > maxDepth) {
-    const el = document.createElement("div");
-    el.className = "data-leaf data-ellipsis";
-    el.style.paddingLeft = indent;
-    el.textContent = "\u2026";
-    container.appendChild(el);
-    return;
+    return html`<div class="data-leaf data-ellipsis" style="padding-left:${indent}">\u2026</div>`;
   }
 
   if (value === null || value === undefined) {
-    const el = document.createElement("div");
-    el.className = "data-leaf data-null";
-    el.style.paddingLeft = indent;
-    el.textContent = String(value);
-    container.appendChild(el);
-    return;
+    return html`<div class="data-leaf data-null" style="padding-left:${indent}">${String(value)}</div>`;
   }
 
   if (typeof value !== "object") {
-    const el = document.createElement("div");
-    el.className = `data-leaf data-${typeof value}`;
-    el.style.paddingLeft = indent;
-    el.textContent = typeof value === "string" && value.length > 200
+    const text = typeof value === "string" && value.length > 200
       ? `"${value.slice(0, 200)}\u2026"`
       : JSON.stringify(value);
-    container.appendChild(el);
-    return;
+    return html`<div class="data-leaf data-${typeof value}" style="padding-left:${indent}">${text}</div>`;
   }
 
   if (Array.isArray(value)) {
     const cap = 20;
-    for (let i = 0; i < Math.min(value.length, cap); i++) {
-      const itemRow = document.createElement("div");
-      itemRow.className = "data-branch";
-      itemRow.style.paddingLeft = indent;
-
-      const keyEl = document.createElement("span");
-      keyEl.className = "data-key";
-      keyEl.textContent = `[${i}] `;
-      itemRow.appendChild(keyEl);
-
-      const item = value[i];
+    const items = value.slice(0, cap).map((item, i) => {
       if (item === null || item === undefined || typeof item !== "object") {
-        const valEl = document.createElement("span");
-        valEl.className = `data-value data-${item === null ? "null" : typeof item}`;
-        valEl.textContent = typeof item === "string" && item.length > 80
+        const valText = typeof item === "string" && item.length > 80
           ? `"${item.slice(0, 80)}\u2026"`
           : JSON.stringify(item);
-        itemRow.appendChild(valEl);
-        container.appendChild(itemRow);
-      } else {
-        const valEl = document.createElement("span");
-        valEl.className = "data-value data-object-label";
-        valEl.textContent = Array.isArray(item) ? `Array(${item.length})` : `{${Object.keys(item).length}}`;
-        itemRow.appendChild(valEl);
-        container.appendChild(itemRow);
-        renderDataTree(container, item, depth + 1, maxDepth);
+        return html`<div class="data-branch" style="padding-left:${indent}"><span class="data-key">[${i}] </span><span class="data-value data-${item === null ? "null" : typeof item}">${valText}</span></div>`;
       }
-    }
-    if (value.length > cap) {
-      const el = document.createElement("div");
-      el.className = "data-leaf data-ellipsis";
-      el.style.paddingLeft = indent;
-      el.textContent = `\u2026 ${value.length - cap} more`;
-      container.appendChild(el);
-    }
-    return;
+      const label = Array.isArray(item) ? `Array(${item.length})` : `{${Object.keys(item).length}}`;
+      return html`
+        <div class="data-branch" style="padding-left:${indent}"><span class="data-key">[${i}] </span><span class="data-value data-object-label">${label}</span></div>
+        ${renderDataTreeTemplate(item, depth + 1, maxDepth)}
+      `;
+    });
+    return html`${items}${value.length > cap ? html`<div class="data-leaf data-ellipsis" style="padding-left:${indent}">\u2026 ${value.length - cap} more</div>` : nothing}`;
   }
 
   // Object
   const keys = Object.keys(value);
   const cap = 30;
-  for (const key of keys.slice(0, cap)) {
-    const itemRow = document.createElement("div");
-    itemRow.className = "data-branch";
-    itemRow.style.paddingLeft = indent;
-
-    const keyEl = document.createElement("span");
-    keyEl.className = "data-key";
-    keyEl.textContent = key + ": ";
-    itemRow.appendChild(keyEl);
-
+  const items = keys.slice(0, cap).map(key => {
     const v = value[key];
     if (v === null || v === undefined || typeof v !== "object") {
-      const valEl = document.createElement("span");
-      valEl.className = `data-value data-${v === null ? "null" : typeof v}`;
-      valEl.textContent = typeof v === "string" && v.length > 80
+      const valText = typeof v === "string" && v.length > 80
         ? `"${v.slice(0, 80)}\u2026"`
         : JSON.stringify(v);
-      itemRow.appendChild(valEl);
-      container.appendChild(itemRow);
-    } else {
-      const valEl = document.createElement("span");
-      valEl.className = "data-value data-object-label";
-      valEl.textContent = Array.isArray(v) ? `Array(${v.length})` : `{${Object.keys(v).length}}`;
-      itemRow.appendChild(valEl);
-      container.appendChild(itemRow);
-      renderDataTree(container, v, depth + 1, maxDepth);
+      return html`<div class="data-branch" style="padding-left:${indent}"><span class="data-key">${key}: </span><span class="data-value data-${v === null ? "null" : typeof v}">${valText}</span></div>`;
     }
-  }
-  if (keys.length > cap) {
-    const el = document.createElement("div");
-    el.className = "data-leaf data-ellipsis";
-    el.style.paddingLeft = indent;
-    el.textContent = `\u2026 ${keys.length - cap} more`;
-    container.appendChild(el);
-  }
+    const label = Array.isArray(v) ? `Array(${v.length})` : `{${Object.keys(v).length}}`;
+    return html`
+      <div class="data-branch" style="padding-left:${indent}"><span class="data-key">${key}: </span><span class="data-value data-object-label">${label}</span></div>
+      ${renderDataTreeTemplate(v, depth + 1, maxDepth)}
+    `;
+  });
+  return html`${items}${keys.length > cap ? html`<div class="data-leaf data-ellipsis" style="padding-left:${indent}">\u2026 ${keys.length - cap} more</div>` : nothing}`;
 }
 
 // ─── File management ──────────────────────────────────────────────────────────
@@ -5364,13 +4791,12 @@ function fileTypeIconTpl(name, type) {
 }
 
 
-function renderFiles(container) {
+function renderFilesTemplate() {
   if (!projectState) {
-    litRender(html`<div class="file-tree-empty">No project loaded</div>`, container);
-    return;
+    return html`<div class="file-tree-empty">No project loaded</div>`;
   }
 
-  const tpl = html`
+  return html`
     <div class="files-toolbar">
       <sp-action-group size="xs" compact quiet>
         <sp-action-button size="xs" label="New File" @click=${() => createNewFile()}>
@@ -5393,12 +4819,6 @@ function renderFiles(container) {
       ${renderTreeLevelTemplate(".", 0)}
     </div>
   `;
-
-  litRender(tpl, container);
-
-  // Keyboard navigation
-  const tree = container.querySelector(".file-tree");
-  if (tree) setupTreeKeyboard(tree);
 }
 
 
