@@ -409,6 +409,20 @@ function templateToEditDisplay(str) {
 }
 
 /**
+ * Reverse templateToEditDisplay: walk all text nodes in `el` and
+ * replace ❪ expr ❫ back to ${expr} so the user edits raw template syntax.
+ */
+function restoreTemplateExpressions(el) {
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  while (walker.nextNode()) {
+    const node = walker.currentNode;
+    if (node.textContent.includes("\u276A")) {
+      node.textContent = node.textContent.replace(/\u276A\s*(.*?)\s*\u276B/g, "${$1}");
+    }
+  }
+}
+
+/**
  * Prepare a document for edit-mode rendering. Replaces template strings with
  * readable literal text, $prototype:Array with placeholders, and $ref bindings
  * with display labels. Preserves state so the runtime can still initialise scope.
@@ -2144,6 +2158,11 @@ function registerPanelEvents(panel) {
  * Hides the overlay for the element and makes it contenteditable.
  */
 function enterInlineEdit(el, path) {
+  // Restore raw template expressions before editing.
+  // prepareForEditMode renders ${expr} as ❪ expr ❫ for display;
+  // revert so the user edits the real syntax and commits it back intact.
+  restoreTemplateExpressions(el);
+
   // Hide overlays while editing
   for (const p of canvasPanels) {
     p.overlay.style.display = "none";

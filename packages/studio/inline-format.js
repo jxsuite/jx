@@ -49,6 +49,9 @@ export function toggleInlineFormat(tag, editableRoot) {
   if (range.collapsed) return;
   if (!editableRoot.contains(range.commonAncestorContainer)) return;
 
+  // Expand selection to fully include any partially-selected ${...} expressions
+  expandRangeToTemplateExpressions(range);
+
   // Find all elements matching `tag` that intersect the selection
   const matches = findIntersectingElements(tag, range, editableRoot);
 
@@ -368,4 +371,78 @@ function attributesMatch(a, b) {
   }
   // For simple format tags, always match
   return true;
+}
+
+// ─── Template expression preservation ─────────────────────────────────────────
+
+/**
+ * Expand a Range so that it fully includes any `${...}` template expressions
+ * that are partially selected. Template expressions are atomic in JSONsx — if
+ * split across inline elements, the template string breaks.
+ *
+ * Scans the text content of the start and end containers for `${...}` patterns
+ * and adjusts the range boundaries outward to include the complete expression.
+ */
+export function expandRangeToTemplateExpressions(range) {
+  expandBoundary(range, true);  // start
+  expandBoundary(range, false); // end
+}
+
+/**
+ * Expand one boundary (start or end) of a range to avoid splitting a ${...}.
+ * `isStart` = true adjusts startContainer/startOffset,
+ * `isStart` = false adjusts endContainer/endOffset.
+ */
+function expandBoundary(range, isStart) {
+  const node = isStart ? range.startContainer : range.endContainer;
+  const offset = isStart ? range.startOffset : range.endOffset;
+  if (node.nodeType !== Node.TEXT_NODE) return;
+
+  const text = node.textContent;
+
+  // Find all ${...} expression spans in this text node (supporting nested braces)
+  const exprs = findTemplateExpressions(text);
+  for (const expr of exprs) {
+    // expr = { start, end } — character indices of "$" and the closing "}" + 1
+    if (isStart) {
+      // If the range starts inside this expression, move it to include the whole expr
+      if (offset > expr.start && offset < expr.end) {
+        range.setStart(node, expr.start);
+      }
+    } else {
+      // If the range ends inside this expression, expand to include the whole expr
+      if (offset > expr.start && offset < expr.end) {
+        range.setEnd(node, expr.end);
+      }
+    }
+  }
+}
+
+/**
+ * Find all `${...}` expression spans in a string, handling nested braces.
+ * Returns array of { start, end } where start is the index of '$' and
+ * end is one past the closing '}'.
+ */
+export function findTemplateExpressions(text) {
+  const results = [];
+  let i = 0;
+  while (i < text.length - 1) {
+    if (text[i] === "$" && text[i + 1] === "{") {
+      const start = i;
+      let depth = 1;
+      let j = i + 2;
+      while (j < text.length && depth > 0) {
+        if (text[j] === "{") depth++;
+        else if (text[j] === "}") depth--;
+        j++;
+      }
+      if (depth === 0) {
+        results.push({ start, end: j });
+        i = j;
+        continue;
+      }
+    }
+    i++;
+  }
+  return results;
 }
