@@ -2694,6 +2694,7 @@ function tabIcon(tag, size) {
     "sp-icon-event": (s) => html`<sp-icon-event slot="icon" size=${s}></sp-icon-event>`,
     "sp-icon-brush": (s) => html`<sp-icon-brush slot="icon" size=${s}></sp-icon-brush>`,
     "sp-icon-artboard": (s) => html`<sp-icon-artboard slot="icon" size=${s}></sp-icon-artboard>`,
+    "sp-icon-box": (s) => html`<sp-icon-box slot="icon" size=${s}></sp-icon-box>`,
   };
   const fn = m[tag];
   return fn ? fn(size || "s") : nothing;
@@ -2701,11 +2702,12 @@ function tabIcon(tag, size) {
 
 function renderActivityBar() {
   const tabs = [
-    { value: "files",  icon: "sp-icon-folder",    label: "Files" },
-    { value: "layers", icon: "sp-icon-layers",     label: "Layers" },
-    { value: "blocks", icon: "sp-icon-view-grid",  label: "Blocks" },
-    { value: "state",  icon: "sp-icon-brackets",   label: "State" },
-    { value: "data",   icon: "sp-icon-data",       label: "Data" },
+    { value: "files",      icon: "sp-icon-folder",    label: "Files" },
+    { value: "layers",     icon: "sp-icon-layers",     label: "Layers" },
+    { value: "components", icon: "sp-icon-box",        label: "Components" },
+    { value: "blocks",     icon: "sp-icon-view-grid",  label: "Blocks" },
+    { value: "state",      icon: "sp-icon-brackets",   label: "State" },
+    { value: "data",       icon: "sp-icon-data",       label: "Data" },
   ];
   const tpl = html`
     <sp-tabs selected=${S.ui.leftTab} direction="vertical" quiet
@@ -2731,6 +2733,7 @@ function renderLeftPanel() {
 
   let content;
   if (tab === "layers") content = canvasMode === "stylebook" ? renderStylebookLayersTemplate() : renderLayersTemplate();
+  else if (tab === "components") content = renderComponentsTemplate();
   else if (tab === "files") content = renderFilesTemplate();
   else if (tab === "blocks") content = renderBlocksTemplate();
   else if (tab === "state") content = renderSignalsTemplate();
@@ -2741,6 +2744,7 @@ function renderLeftPanel() {
 
   // Post-render side effects
   if (tab === "layers" && canvasMode !== "stylebook") registerLayersDnD();
+  else if (tab === "components") registerComponentsDnD();
   else if (tab === "blocks") registerBlocksDnD();
   else if (tab === "files") {
     const tree = leftPanel.querySelector(".file-tree");
@@ -2756,25 +2760,6 @@ function renderLayersTemplate() {
 
   const rows = flattenTree(S.document);
   const collapsed = S._collapsed || (S._collapsed = new Set());
-
-  // Components accordion
-  const compCollapsed = S._collapsedComponents || (S._collapsedComponents = new Set(["Available"]));
-  const importedRefs = new Set(
-    (S.document.$elements || []).filter((e) => e.$ref).map((e) => e.$ref),
-  );
-  const imported = componentRegistry.filter((c) =>
-    importedRefs.has(`./${c.path}`) || importedRefs.has(c.path) ||
-    Array.from(importedRefs).some((ref) => ref.endsWith(c.path.split("/").pop())),
-  );
-  const available = componentRegistry.filter((c) => !imported.includes(c));
-
-  const componentsSectionTpl = componentRegistry.length > 0 ? html`
-    <div class="components-section">
-      ${imported.length > 0 ? renderComponentGroupTemplate("Imported", imported, compCollapsed, true) : nothing}
-      ${available.length > 0 ? renderComponentGroupTemplate("Available", available, compCollapsed, false) : nothing}
-    </div>
-    <div style="border-bottom:1px solid var(--border);margin:4px 0"></div>
-  ` : nothing;
 
   // Build layer rows
   const layerRows = [];
@@ -2855,7 +2840,6 @@ function renderLayersTemplate() {
 
   return html`
     <div class="layers-container" style="position:relative">
-      ${componentsSectionTpl}
       <div class="layers-tree"
         @click=${(e) => {
           const toggle = e.target.closest(".layer-toggle");
@@ -2952,8 +2936,15 @@ function registerLayersDnD() {
       },
     });
     dndCleanups.push(monitorCleanup);
+  });
+}
 
-    // DnD on component rows
+/** Register DnD on component rows — called from renderLeftPanel when tab=components */
+function registerComponentsDnD() {
+  requestAnimationFrame(() => {
+    const container = leftPanel.querySelector(".components-section");
+    if (!container) return;
+
     container.querySelectorAll(".component-row").forEach(row => {
       const tagName = row.querySelector(".layer-label")?.textContent;
       if (!tagName) return;
@@ -3026,22 +3017,32 @@ function clearLayerDropGap(container) {
   for (const r of rows) r.style.transform = "";
 }
 
-function renderComponentGroupTemplate(label, components, collapsed, isImported) {
+/** Returns a TemplateResult — called from renderLeftPanel when tab=components */
+function renderComponentsTemplate() {
+  if (componentRegistry.length === 0) {
+    return html`<div class="empty-state" style="padding:24px;text-align:center;color:var(--text-hint)">
+      No components found in this project.
+    </div>`;
+  }
+
+  const importedRefs = new Set(
+    (S.document.$elements || []).filter((e) => e.$ref).map((e) => e.$ref),
+  );
+  const isImported = (c) =>
+    importedRefs.has(`./${c.path}`) || importedRefs.has(c.path) ||
+    Array.from(importedRefs).some((ref) => ref.endsWith(c.path.split("/").pop()));
+
   return html`
-    <div class="blocks-category${collapsed.has(label) ? " collapsed" : ""}"
-      @click=${() => {
-        if (collapsed.has(label)) collapsed.delete(label);
-        else collapsed.add(label);
-        renderLeftPanel();
-      }}>${label} (${components.length})</div>
-    ${collapsed.has(label) ? nothing : components.map(comp => html`
-      <div class="layer-row component-row${isImported ? "" : " available"}"
-        @click=${() => navigateToComponent(comp.path)}>
-        <span class="layer-tag component-tag" style="background:${isImported ? "var(--accent)" : "var(--bg-alt)"}">⬡</span>
-        <span class="layer-label" title=${comp.path}>${comp.tagName}</span>
-        ${comp.$id ? html`<span class="signal-hint">${comp.$id}</span>` : nothing}
-      </div>
-    `)}
+    <div class="components-section">
+      ${componentRegistry.map(comp => html`
+        <div class="layer-row component-row${isImported(comp) ? "" : " available"}"
+          @click=${() => navigateToComponent(comp.path)}>
+          <span class="layer-tag component-tag" style="background:${isImported(comp) ? "var(--accent)" : "var(--bg-alt)"}">⬡</span>
+          <span class="layer-label" title=${comp.path}>${comp.tagName}</span>
+          ${comp.$id ? html`<span class="signal-hint">${comp.$id}</span>` : nothing}
+        </div>
+      `)}
+    </div>
   `;
 }
 
