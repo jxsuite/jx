@@ -34,7 +34,7 @@ describe("Custom Elements", () => {
 
     const span = el.querySelector("span");
     expect(span).not.toBeNull();
-    expect(span.textContent).toBe("Hello");
+    expect(/** @type {HTMLElement} */ (span).textContent).toBe("Hello");
     document.body.removeChild(el);
   });
 
@@ -47,11 +47,11 @@ describe("Custom Elements", () => {
     });
 
     const el = document.createElement(tag);
-    el.label = "overridden";
+    /** @type {any} */ (el).label = "overridden";
     document.body.appendChild(el);
     await new Promise((r) => setTimeout(r, 100));
 
-    expect(el.querySelector("span").textContent).toBe("overridden");
+    expect(/** @type {HTMLElement} */ (el.querySelector("span")).textContent).toBe("overridden");
     document.body.removeChild(el);
   });
 
@@ -71,7 +71,7 @@ describe("Custom Elements", () => {
     await new Promise((r) => setTimeout(r, 200));
 
     expect(el.querySelector("div")).not.toBeNull();
-    expect(el.mountCalled).toBe(true);
+    expect(/** @type {any} */ (el).mountCalled).toBe(true);
     document.body.removeChild(el);
   });
 
@@ -79,7 +79,7 @@ describe("Custom Elements", () => {
     try {
       await defineElement({ tagName: "nohyphen", state: {} });
       expect(true).toBe(false);
-    } catch (e) {
+    } catch (/** @type {any} */ e) {
       expect(e.message).toContain("must contain a hyphen");
     }
   });
@@ -119,8 +119,8 @@ describe("Custom Elements", () => {
 
     const child = el.querySelector(tag);
     expect(child).not.toBeNull();
-    expect(child.querySelector(".val").textContent).toBe("42");
-    expect(child.querySelector(".name").textContent).toBe("test");
+    expect(/** @type {HTMLElement} */ (/** @type {HTMLElement} */ (child).querySelector(".val")).textContent).toBe("42");
+    expect(/** @type {HTMLElement} */ (/** @type {HTMLElement} */ (child).querySelector(".name")).textContent).toBe("test");
     document.body.removeChild(el);
   });
 
@@ -136,12 +136,12 @@ describe("Custom Elements", () => {
     const el = document.createElement(tag);
     document.body.appendChild(el);
     await new Promise((r) => setTimeout(r, 100));
-    expect(el.querySelector("span").textContent).toBe("initial");
+    expect(/** @type {HTMLElement} */ (el.querySelector("span")).textContent).toBe("initial");
 
     // Set an observed attribute — should sync to state.myLabel
     el.setAttribute("my-label", "updated");
     await new Promise((r) => setTimeout(r, 50));
-    expect(el.myLabel).toBe("updated");
+    expect(/** @type {any} */ (el).myLabel).toBe("updated");
 
     document.body.removeChild(el);
   });

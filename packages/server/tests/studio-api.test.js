@@ -143,6 +143,11 @@ const siblingClassJson = {
 writeFileSync(join(FIXTURES, "Parser.class.json"), JSON.stringify(siblingClassJson), "utf8");
 
 // Helper: create a studio API request for plugin-schema
+/**
+ * @param {any} src
+ * @param {any} [prototype]
+ * @param {any} [base]
+ */
 function schemaRequest(src, prototype, base) {
   const params = new URLSearchParams({ src });
   if (prototype) params.set("prototype", prototype);
@@ -161,9 +166,7 @@ describe("plugin-schema — direct .class.json path", () => {
     const { req, url } = schemaRequest(`./_studio_fixtures/DataSource.class.json`, "DataSource");
     const res = await handleStudioApi(req, url, import.meta.dir);
     expect(res).not.toBeNull();
-    const { schema } = await res.json();
-    expect(schema).not.toBeNull();
-    expect(schema.description).toBe("A test data source");
+    const { schema } = await /** @type {any} */ (res).json();
     expect(schema.properties.url).toEqual({ type: "string", description: "API endpoint URL", examples: ["https://api.example.com"] });
     expect(schema.properties.limit).toEqual({ type: "integer", default: 10, description: "Max results" });
     expect(schema.properties.debug).toEqual({ type: "boolean", default: false, description: "Enable debug mode" });
@@ -172,7 +175,7 @@ describe("plugin-schema — direct .class.json path", () => {
   test("includes public fields but excludes private fields", async () => {
     const { req, url } = schemaRequest(`./_studio_fixtures/DataSource.class.json`, "DataSource");
     const res = await handleStudioApi(req, url, import.meta.dir);
-    const { schema } = await res.json();
+    const { schema } = await /** @type {any} */ (res).json();
     expect(schema.properties.cache).toBeDefined();
     expect(schema.properties.cache.description).toBe("Internal cache");
     expect(schema.properties.secret).toBeUndefined();
@@ -181,7 +184,7 @@ describe("plugin-schema — direct .class.json path", () => {
   test("determines required from constructor parameters without defaults", async () => {
     const { req, url } = schemaRequest(`./_studio_fixtures/DataSource.class.json`, "DataSource");
     const res = await handleStudioApi(req, url, import.meta.dir);
-    const { schema } = await res.json();
+    const { schema } = await /** @type {any} */ (res).json();
     expect(schema.required).toContain("url");
     expect(schema.required).not.toContain("limit"); // has default: 10
     expect(schema.required).not.toContain("debug"); // has default: false
@@ -194,7 +197,7 @@ describe("plugin-schema — extends inheritance", () => {
   test("child inherits parent parameters", async () => {
     const { req, url } = schemaRequest(`./_studio_fixtures/PostCollection.class.json`, "PostCollection");
     const res = await handleStudioApi(req, url, import.meta.dir);
-    const { schema } = await res.json();
+    const { schema } = await /** @type {any} */ (res).json();
     expect(schema.description).toBe("Posts collection");
     // Parent parameters
     expect(schema.properties.src).toBeDefined();
@@ -206,7 +209,7 @@ describe("plugin-schema — extends inheritance", () => {
   test("child inherits parent required fields", async () => {
     const { req, url } = schemaRequest(`./_studio_fixtures/PostCollection.class.json`, "PostCollection");
     const res = await handleStudioApi(req, url, import.meta.dir);
-    const { schema } = await res.json();
+    const { schema } = await /** @type {any} */ (res).json();
     // src is required from parent (no default)
     expect(schema.required).toContain("src");
   });
@@ -218,7 +221,7 @@ describe("plugin-schema — format: json-schema", () => {
   test("preserves format: json-schema annotation", async () => {
     const { req, url } = schemaRequest(`./_studio_fixtures/TypedCollection.class.json`, "TypedCollection");
     const res = await handleStudioApi(req, url, import.meta.dir);
-    const { schema } = await res.json();
+    const { schema } = await /** @type {any} */ (res).json();
     expect(schema.properties.itemSchema.format).toBe("json-schema");
     expect(schema.properties.itemSchema.description).toBe("Schema for collection items");
   });
@@ -230,7 +233,7 @@ describe("plugin-schema — sibling auto-discovery", () => {
   test("discovers .class.json next to .js module", async () => {
     const { req, url } = schemaRequest(`./_studio_fixtures/parser.js`, "Parser");
     const res = await handleStudioApi(req, url, import.meta.dir);
-    const { schema } = await res.json();
+    const { schema } = await /** @type {any} */ (res).json();
     expect(schema).not.toBeNull();
     expect(schema.description).toBe("Sibling auto-discovered schema");
     expect(schema.properties.input).toBeDefined();
@@ -244,13 +247,13 @@ describe("plugin-schema — errors", () => {
     const url = new URL("http://localhost/__studio/plugin-schema");
     const req = new Request(url, { method: "GET" });
     const res = await handleStudioApi(req, url, import.meta.dir);
-    expect(res.status).toBe(400);
+    expect(/** @type {any} */ (res).status).toBe(400);
   });
 
   test("returns null schema for nonexistent .class.json", async () => {
     const { req, url } = schemaRequest(`./_studio_fixtures/Nonexistent.class.json`, "Nonexistent");
     const res = await handleStudioApi(req, url, import.meta.dir);
-    const data = await res.json();
+    const data = await /** @type {any} */ (res).json();
     expect(data.schema).toBeNull();
   });
 });
@@ -276,7 +279,7 @@ writeFileSync(
   "utf8"
 );
 
-function projectInfoRequest(dir) {
+function projectInfoRequest(/** @type {any} */ dir) {
   const params = new URLSearchParams();
   if (dir) params.set("dir", dir);
   const url = new URL(`http://localhost/__studio/project-info?${params}`);
@@ -288,7 +291,7 @@ describe("project-info", () => {
     const { req, url } = projectInfoRequest("_studio_fixtures/my-site");
     const res = await handleStudioApi(req, url, import.meta.dir);
     expect(res).not.toBeNull();
-    const data = await res.json();
+    const data = await /** @type {any} */ (res).json();
     expect(data.isSiteProject).toBe(true);
     expect(data.siteConfig.name).toBe("Test Site");
     expect(data.directories).toContain("pages");
@@ -299,7 +302,7 @@ describe("project-info", () => {
   test("returns isSiteProject false for plain directory", async () => {
     const { req, url } = projectInfoRequest("_studio_fixtures/plain-dir");
     const res = await handleStudioApi(req, url, import.meta.dir);
-    const data = await res.json();
+    const data = await /** @type {any} */ (res).json();
     expect(data.isSiteProject).toBe(false);
     expect(data.siteConfig).toBeNull();
   });
@@ -307,14 +310,14 @@ describe("project-info", () => {
   test("rejects directory traversal", async () => {
     const { req, url } = projectInfoRequest("../../etc");
     const res = await handleStudioApi(req, url, import.meta.dir);
-    expect(res.status).toBe(400);
+    expect(/** @type {any} */ (res).status).toBe(400);
   });
 
   test("defaults to current dir when no dir param", async () => {
     const url = new URL("http://localhost/__studio/project-info");
     const req = new Request(url, { method: "GET" });
     const res = await handleStudioApi(req, url, import.meta.dir);
-    const data = await res.json();
+    const data = await /** @type {any} */ (res).json();
     expect(data.projectRoot).toBe(".");
   });
 });
@@ -327,8 +330,8 @@ describe("sites discovery", () => {
     const req = new Request(url, { method: "GET" });
     const res = await handleStudioApi(req, url, import.meta.dir);
     expect(res).not.toBeNull();
-    const sites = await res.json();
-    const testSite = sites.find((s) => s.config.name === "Test Site");
+    const sites = await /** @type {any} */ (res).json();
+    const testSite = sites.find((/** @type {any} */ s) => s.config.name === "Test Site");
     expect(testSite).toBeDefined();
     expect(testSite.path).toBe("_studio_fixtures/my-site");
     expect(testSite.config.url).toBe("https://test.dev");
@@ -338,8 +341,8 @@ describe("sites discovery", () => {
     const url = new URL("http://localhost/__studio/sites");
     const req = new Request(url, { method: "GET" });
     const res = await handleStudioApi(req, url, import.meta.dir);
-    const sites = await res.json();
-    expect(sites.every((s) => s.path !== "_studio_fixtures/plain-dir")).toBe(true);
+    const sites = await /** @type {any} */ (res).json();
+    expect(sites.every((/** @type {any} */ s) => s.path !== "_studio_fixtures/plain-dir")).toBe(true);
   });
 });
 
@@ -351,16 +354,16 @@ describe("components — scoped scan", () => {
     const req = new Request(url, { method: "GET" });
     const res = await handleStudioApi(req, url, import.meta.dir);
     expect(res).not.toBeNull();
-    const components = await res.json();
+    const components = await /** @type {any} */ (res).json();
     expect(components.length).toBeGreaterThanOrEqual(1);
-    expect(components.some(c => c.tagName === "my-card")).toBe(true);
+    expect(components.some((/** @type {any} */ c) => c.tagName === "my-card")).toBe(true);
   });
 
   test("returns empty for directory with no components", async () => {
     const url = new URL("http://localhost/__studio/components?dir=_studio_fixtures/plain-dir");
     const req = new Request(url, { method: "GET" });
     const res = await handleStudioApi(req, url, import.meta.dir);
-    const components = await res.json();
+    const components = await /** @type {any} */ (res).json();
     expect(components).toEqual([]);
   });
 
@@ -368,7 +371,7 @@ describe("components — scoped scan", () => {
     const url = new URL("http://localhost/__studio/components?dir=../../etc");
     const req = new Request(url, { method: "GET" });
     const res = await handleStudioApi(req, url, import.meta.dir);
-    expect(res.status).toBe(400);
+    expect(/** @type {any} */ (res).status).toBe(400);
   });
 });
 

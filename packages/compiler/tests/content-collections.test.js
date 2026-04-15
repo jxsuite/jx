@@ -18,6 +18,7 @@ import { buildSite } from "../site-build.js";
 
 const TMP = resolve(import.meta.dir, "__test-content__");
 
+/** @param {string} relPath @param {string|object} content */
 function writeFile(relPath, content) {
   const abs = resolve(TMP, relPath);
   mkdirSync(resolve(abs, ".."), { recursive: true });
@@ -203,7 +204,7 @@ afterAll(() => {
 describe("content-loader", () => {
   describe("loadContentConfig", () => {
     it("loads content.config.json", () => {
-      const result = loadContentConfig(TMP);
+      const result = /** @type {any} */ (loadContentConfig(TMP));
       expect(result).not.toBeNull();
       expect(result.config.collections).toBeDefined();
       expect(result.config.collections.blog).toBeDefined();
@@ -220,7 +221,7 @@ describe("content-loader", () => {
   describe("loadCollections", () => {
     it("loads Markdown collection entries", async () => {
       const collections = await loadCollections(TMP);
-      const blog = collections.get("blog");
+      const blog = /** @type {any[]} */ (collections.get("blog"));
       expect(blog).toBeDefined();
       expect(blog.length).toBe(3); // hello-world, second-post, draft-post
 
@@ -234,7 +235,7 @@ describe("content-loader", () => {
 
     it("loads JSON collection entries", async () => {
       const collections = await loadCollections(TMP);
-      const authors = collections.get("authors");
+      const authors = /** @type {any[]} */ (collections.get("authors"));
       expect(authors).toBeDefined();
       expect(authors.length).toBe(1);
       expect(authors[0].id).toBe("jane");
@@ -243,7 +244,7 @@ describe("content-loader", () => {
 
     it("loads CSV collection entries with type coercion", async () => {
       const collections = await loadCollections(TMP);
-      const products = collections.get("products");
+      const products = /** @type {any[]} */ (collections.get("products"));
       expect(products).toBeDefined();
       expect(products.length).toBe(3);
 
@@ -258,7 +259,7 @@ describe("content-loader", () => {
   describe("queryCollection", () => {
     it("filters entries", async () => {
       const collections = await loadCollections(TMP);
-      const blog = collections.get("blog");
+      const blog = /** @type {any[]} */ (collections.get("blog"));
       const published = queryCollection(blog, { filter: { draft: false } });
       expect(published.length).toBe(2);
       expect(published.every((e) => e.data.draft === false)).toBe(true);
@@ -266,7 +267,7 @@ describe("content-loader", () => {
 
     it("sorts entries", async () => {
       const collections = await loadCollections(TMP);
-      const blog = collections.get("blog");
+      const blog = /** @type {any[]} */ (collections.get("blog"));
       const sorted = queryCollection(blog, {
         sort: { field: "pubDate", order: "desc" },
       });
@@ -275,14 +276,14 @@ describe("content-loader", () => {
 
     it("limits entries", async () => {
       const collections = await loadCollections(TMP);
-      const blog = collections.get("blog");
+      const blog = /** @type {any[]} */ (collections.get("blog"));
       const limited = queryCollection(blog, { limit: 1 });
       expect(limited.length).toBe(1);
     });
 
     it("combines filter + sort + limit", async () => {
       const collections = await loadCollections(TMP);
-      const blog = collections.get("blog");
+      const blog = /** @type {any[]} */ (collections.get("blog"));
       const result = queryCollection(blog, {
         filter: { draft: false },
         sort: { field: "pubDate", order: "desc" },
@@ -296,7 +297,7 @@ describe("content-loader", () => {
   describe("findEntry", () => {
     it("finds entry by ID", async () => {
       const collections = await loadCollections(TMP);
-      const blog = collections.get("blog");
+      const blog = /** @type {any[]} */ (collections.get("blog"));
       const entry = findEntry(blog, "hello-world");
       expect(entry).not.toBeNull();
       expect(entry.data.title).toBe("Hello World");
@@ -304,7 +305,7 @@ describe("content-loader", () => {
 
     it("returns null for missing ID", async () => {
       const collections = await loadCollections(TMP);
-      const blog = collections.get("blog");
+      const blog = /** @type {any[]} */ (collections.get("blog"));
       expect(findEntry(blog, "nonexistent")).toBeNull();
     });
   });
@@ -312,10 +313,10 @@ describe("content-loader", () => {
   describe("resolveCollectionRefs", () => {
     it("resolves cross-collection $ref (author → authors)", async () => {
       const collections = await loadCollections(TMP);
-      const contentConfig = loadContentConfig(TMP);
+      const contentConfig = /** @type {any} */ (loadContentConfig(TMP));
       resolveCollectionRefs(collections, contentConfig.config);
 
-      const blog = collections.get("blog");
+      const blog = /** @type {any[]} */ (collections.get("blog"));
       const hello = blog.find((e) => e.id === "hello-world");
       // Author "jane" should be resolved to the full author entry
       expect(hello.data.author).toBeDefined();
@@ -362,7 +363,7 @@ describe("$paths expansion", () => {
     const routes = discoverPages(pagesDir);
     const expanded = await expandDynamicRoutes(routes, TMP, collections);
 
-    const hello = expanded.find((r) => r.urlPattern === "/blog/hello-world");
+    const hello = /** @type {any} */ (expanded.find((r) => r.urlPattern === "/blog/hello-world"));
     expect(hello._pathParams).toEqual({ slug: "hello-world" });
   });
 });
@@ -372,6 +373,7 @@ describe("$paths expansion", () => {
 describe("$prototype resolution in context-injection", () => {
   it("resolves ContentCollection $prototype in state", async () => {
     const collections = await loadCollections(TMP);
+    /** @type {any} */
     const doc = {
       state: {
         posts: {
@@ -394,6 +396,7 @@ describe("$prototype resolution in context-injection", () => {
 
   it("resolves ContentEntry $prototype with $params ref", async () => {
     const collections = await loadCollections(TMP);
+    /** @type {any} */
     const doc = {
       state: {
         post: {
@@ -438,6 +441,7 @@ describe("$prototype resolution in context-injection", () => {
 
   it("returns empty array for missing collection", async () => {
     const collections = await loadCollections(TMP);
+    /** @type {any} */
     const doc = {
       state: {
         items: {

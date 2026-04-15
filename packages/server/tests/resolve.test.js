@@ -68,7 +68,7 @@ writeFileSync(join(FIXTURES, "Point.class.json"), JSON.stringify(plainClass), "u
 // Hybrid .class.json with $implementation
 const hybridImpl = `
 export class Calculator {
-  constructor(config) { this.a = config.a ?? 0; this.b = config.b ?? 0; }
+  constructor(/** @type {any} */ config) { this.a = config.a ?? 0; this.b = config.b ?? 0; }
   async resolve() { return this.a * this.b; }
 }
 `;
@@ -115,7 +115,7 @@ const privateFieldsClass = {
 writeFileSync(join(FIXTURES, "Secret.class.json"), JSON.stringify(privateFieldsClass), "utf8");
 
 // Helper: create a mock Request
-function mockRequest(body) {
+function mockRequest(/** @type {any} */ body) {
   return new Request("http://localhost/__jsonsx_resolve__", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

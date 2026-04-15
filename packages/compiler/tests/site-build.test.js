@@ -14,11 +14,13 @@ import { buildSite } from "../site-build.js";
 
 const TMP = resolve(import.meta.dir, "__test-site__");
 
+/** @param {string} path @param {any} obj */
 function writeJSON(path, obj) {
   mkdirSync(resolve(TMP, ...path.split("/").slice(0, -1)), { recursive: true });
   writeFileSync(resolve(TMP, path), JSON.stringify(obj, null, 2), "utf8");
 }
 
+/** @param {string} path @param {string} content */
 function writePlain(path, content) {
   mkdirSync(resolve(TMP, ...path.split("/").slice(0, -1)), { recursive: true });
   writeFileSync(resolve(TMP, path), content, "utf8");
@@ -211,6 +213,7 @@ describe("head-merger", () => {
 
 describe("context-injection", () => {
   it("injects $site and $page into state", () => {
+    /** @type {any} */
     const doc = {};
     const siteConfig = { name: "Test", url: "https://test.com" };
     const route = { urlPattern: "/about", _pathParams: {} };

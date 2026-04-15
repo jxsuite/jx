@@ -39,18 +39,18 @@ describe("JSONsx", () => {
       target,
     );
     await wait();
-    expect(globalThis._testMounted).toBe(true);
-    delete globalThis._testMounted;
+    expect(/** @type {any} */ (globalThis)._testMounted).toBe(true);
+    delete /** @type {any} */ (globalThis)._testMounted;
   });
 
   test("fetches string source", async () => {
     const doc = { tagName: "article" };
-    global.fetch = mock(() =>
+    global.fetch = /** @type {any} */ (mock(() =>
       Promise.resolve({
         ok: true,
         json: () => Promise.resolve(doc),
       }),
-    );
+    ));
     const target = document.createElement("div");
     await JSONsx("http://example.com/test.json", target);
     expect(target.children[0].tagName.toLowerCase()).toBe("article");

@@ -13,8 +13,9 @@ const elementsMeta = JSON.parse(readFileSync(join(studioDir, "elements-meta.json
 
 // ─── Shared metadata helpers ─────────────────────────────────────────────────
 
+/** @param {any} meta */
 function sectionKeys(meta) {
-  return new Set(meta.$sections.map((s) => s.key));
+  return new Set(meta.$sections.map((/** @type {any} */ s) => s.key));
 }
 
 // ─── css-meta.json ───────────────────────────────────────────────────────────
@@ -40,7 +41,7 @@ describe("css-meta.json", () => {
   });
 
   test("section keys are unique", () => {
-    const keys = cssMeta.$sections.map((s) => s.key);
+    const keys = cssMeta.$sections.map((/** @type {any} */ s) => s.key);
     expect(new Set(keys).size).toBe(keys.length);
   });
 
@@ -95,6 +96,7 @@ describe("css-meta.json", () => {
   });
 
   test("no duplicate $order within a section", () => {
+    /** @type {Record<string, Record<string, any>>} */
     const ordersBySection = {};
     for (const [prop, entry] of defs) {
       const sec = entry.$section;
@@ -228,7 +230,7 @@ describe("stylebook-meta.json", () => {
   });
 
   test("section labels are unique", () => {
-    const labels = stylebookMeta.$sections.map((s) => s.label);
+    const labels = stylebookMeta.$sections.map((/** @type {any} */ s) => s.label);
     expect(new Set(labels).size).toBe(labels.length);
   });
 });

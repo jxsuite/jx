@@ -26,7 +26,7 @@ const FIXTURE_DIR = join(__dirname, "..", "..", "..", "examples", "markdown", "c
 // ─── MarkdownFile ─────────────────────────────────────────────────────────────
 
 describe("MarkdownFile", () => {
-  let result;
+  /** @type {any} */ let result;
 
   beforeAll(async () => {
     const mf = new MarkdownFile({
@@ -119,7 +119,7 @@ describe("MarkdownFile", () => {
   });
 
   test('$toc contains "Installation" heading', () => {
-    const found = result.$toc.some((e) => e.text === "Installation");
+    const found = result.$toc.some((/** @type {any} */ e) => e.text === "Installation");
     expect(found).toBe(true);
   });
 
@@ -138,7 +138,7 @@ describe("MarkdownFile", () => {
       src: "getting-started.md",
       basePath: FIXTURE_DIR,
     });
-    const r = await mf.resolve();
+    const r = /** @type {any} */ (await mf.resolve());
     expect(r.slug).toBe("getting-started");
   });
 });
@@ -146,7 +146,7 @@ describe("MarkdownFile", () => {
 // ─── MarkdownFile with directives ─────────────────────────────────────────────
 
 describe("MarkdownFile with directives", () => {
-  let result;
+  /** @type {any} */ let result;
 
   beforeAll(async () => {
     const mf = new MarkdownFile({
@@ -228,7 +228,7 @@ describe("MarkdownCollection", () => {
       src: join(FIXTURE_DIR, "*.md"),
     });
     const results = await mc.resolve();
-    const dates = results.map((r) => r.frontmatter.date);
+    const dates = results.map((/** @type {any} */ r) => r.frontmatter.date);
     for (let i = 1; i < dates.length; i++) {
       expect(dates[i - 1] >= dates[i]).toBe(true);
     }
@@ -240,7 +240,7 @@ describe("MarkdownCollection", () => {
       sortOrder: "asc",
     });
     const results = await mc.resolve();
-    const dates = results.map((r) => r.frontmatter.date);
+    const dates = results.map((/** @type {any} */ r) => r.frontmatter.date);
     for (let i = 1; i < dates.length; i++) {
       expect(dates[i - 1] <= dates[i]).toBe(true);
     }
@@ -253,7 +253,7 @@ describe("MarkdownCollection", () => {
       sortOrder: "asc",
     });
     const results = await mc.resolve();
-    const titles = results.map((r) => r.frontmatter.title);
+    const titles = results.map((/** @type {any} */ r) => r.frontmatter.title);
     for (let i = 1; i < titles.length; i++) {
       expect(titles[i - 1] <= titles[i]).toBe(true);
     }
@@ -271,11 +271,11 @@ describe("MarkdownCollection", () => {
   test("filter function removes items", async () => {
     const mc = new MarkdownCollection({
       src: join(FIXTURE_DIR, "*.md"),
-      filter: (item) => item.frontmatter.author === "Jane Smith",
+      filter: (/** @type {any} */ item) => item.frontmatter.author === "Jane Smith",
     });
     const results = await mc.resolve();
     for (const item of results) {
-      expect(item.frontmatter.author).toBe("Jane Smith");
+      expect(/** @type {any} */ (item).frontmatter.author).toBe("Jane Smith");
     }
     expect(results.length).toBe(2);
   });
@@ -292,14 +292,14 @@ describe("MarkdownCollection", () => {
   test("combined filter, sort, and limit", async () => {
     const mc = new MarkdownCollection({
       src: join(FIXTURE_DIR, "*.md"),
-      filter: (item) => item.frontmatter.published === true,
+      filter: (/** @type {any} */ item) => item.frontmatter.published === true,
       sortBy: "frontmatter.date",
       sortOrder: "desc",
       limit: 2,
     });
     const results = await mc.resolve();
     expect(results.length).toBe(2);
-    expect(results[0].frontmatter.date >= results[1].frontmatter.date).toBe(true);
+    expect(/** @type {any} */ (results[0]).frontmatter.date >= /** @type {any} */ (results[1]).frontmatter.date).toBe(true);
   });
 
   test("directives option applies to all files", async () => {
@@ -309,18 +309,19 @@ describe("MarkdownCollection", () => {
     });
     const results = await mc.resolve();
     expect(results.length).toBe(1);
-    expect(results[0].$body).toContain("<info-box");
+    expect(/** @type {any} */ (results[0]).$body).toContain("<info-box");
   });
 });
 
 // ─── MarkdownDirective (remark plugin) ────────────────────────────────────────
 
 describe("MarkdownDirective", () => {
+  /** @param {any} md @param {any} [opts] */
   async function processWithDirectives(md, opts = {}) {
     const result = await unified()
       .use(remarkParse)
       .use(remarkDirective)
-      .use(MarkdownDirective, opts)
+      .use(/** @type {any} */ (MarkdownDirective), opts)
       .use(remarkRehype)
       .use(rehypeStringify)
       .process(md);
@@ -417,7 +418,7 @@ describe("External class contract", () => {
     const mf = new MarkdownFile({
       src: join(FIXTURE_DIR, "getting-started.md"),
     });
-    const result = await mf.resolve();
+    const result = /** @type {any} */ (await mf.resolve());
     const serialized = JSON.stringify(result);
     const deserialized = JSON.parse(serialized);
     expect(deserialized.slug).toBe(result.slug);
@@ -433,7 +434,7 @@ describe("External class contract", () => {
     const results = await mc.resolve();
     const serialized = JSON.stringify(results);
     const deserialized = JSON.parse(serialized);
-    expect(deserialized[0].slug).toBe(results[0].slug);
+    expect(deserialized[0].slug).toBe(/** @type {any} */ (results[0]).slug);
   });
 
   test("MarkdownDirective is a function (remark plugin)", () => {

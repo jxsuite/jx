@@ -27,7 +27,7 @@ describe("isSignal", () => {
 
 describe("resolvePrototype", () => {
   test("Set: default empty", async () => {
-    const state = reactive({});
+    const state = reactive(/** @type {Record<string, any>} */ ({}));
     const result = await resolvePrototype({ $prototype: "Set" }, state, "s");
     state.s = result;
     expect(state.s).toBeInstanceOf(Set);
