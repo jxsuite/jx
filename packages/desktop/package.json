@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "electrobun": "latest",
-    "@jsonsx/server": "workspace:*"
+    "@jsonsx/server": "workspace:*",
+    "@jsonsx/studio": "workspace:*"
   }
 }

@@ -18,3 +18,7 @@ export function getPlatform() {
   if (!_platform) throw new Error("No platform registered. Call registerPlatform() before starting Studio.");
   return _platform;
 }
+
+export function hasPlatform() {
+  return _platform !== null;
+}

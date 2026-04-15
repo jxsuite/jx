@@ -5,7 +5,8 @@
   "license": "MIT",
   "type": "module",
   "exports": {
-    ".": "./studio.js"
+    ".": "./studio.js",
+    "./platform.js": "./platform.js"
   },
   "scripts": {
     "build": "bun build ./studio.js --outdir dist --target browser --sourcemap=linked",
