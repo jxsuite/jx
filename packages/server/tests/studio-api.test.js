@@ -255,6 +255,99 @@ describe("plugin-schema — errors", () => {
   });
 });
 
+// ─── project-info endpoint ───────────────────────────────────────────────────
+
+// Set up a fake site-project fixture
+const SITE_PROJECT = join(FIXTURES, "my-site");
+mkdirSync(join(SITE_PROJECT, "pages"), { recursive: true });
+mkdirSync(join(SITE_PROJECT, "layouts"), { recursive: true });
+mkdirSync(join(SITE_PROJECT, "components"), { recursive: true });
+writeFileSync(join(SITE_PROJECT, "site.json"), JSON.stringify({ name: "Test Site", url: "https://test.dev" }), "utf8");
+
+// Non-site project fixture (just a plain directory)
+const PLAIN_DIR = join(FIXTURES, "plain-dir");
+mkdirSync(PLAIN_DIR, { recursive: true });
+writeFileSync(join(PLAIN_DIR, "readme.txt"), "hello", "utf8");
+
+// Component fixture inside site project
+writeFileSync(
+  join(SITE_PROJECT, "components", "my-card.json"),
+  JSON.stringify({ tagName: "my-card", state: { title: { type: "string", default: "" } } }),
+  "utf8"
+);
+
+function projectInfoRequest(dir) {
+  const params = new URLSearchParams();
+  if (dir) params.set("dir", dir);
+  const url = new URL(`http://localhost/__studio/project-info?${params}`);
+  return { req: new Request(url, { method: "GET" }), url };
+}
+
+describe("project-info", () => {
+  test("detects a site project with site.json", async () => {
+    const { req, url } = projectInfoRequest("_studio_fixtures/my-site");
+    const res = await handleStudioApi(req, url, import.meta.dir);
+    expect(res).not.toBeNull();
+    const data = await res.json();
+    expect(data.isSiteProject).toBe(true);
+    expect(data.siteConfig.name).toBe("Test Site");
+    expect(data.directories).toContain("pages");
+    expect(data.directories).toContain("layouts");
+    expect(data.directories).toContain("components");
+  });
+
+  test("returns isSiteProject false for plain directory", async () => {
+    const { req, url } = projectInfoRequest("_studio_fixtures/plain-dir");
+    const res = await handleStudioApi(req, url, import.meta.dir);
+    const data = await res.json();
+    expect(data.isSiteProject).toBe(false);
+    expect(data.siteConfig).toBeNull();
+  });
+
+  test("rejects directory traversal", async () => {
+    const { req, url } = projectInfoRequest("../../etc");
+    const res = await handleStudioApi(req, url, import.meta.dir);
+    expect(res.status).toBe(400);
+  });
+
+  test("defaults to current dir when no dir param", async () => {
+    const url = new URL("http://localhost/__studio/project-info");
+    const req = new Request(url, { method: "GET" });
+    const res = await handleStudioApi(req, url, import.meta.dir);
+    const data = await res.json();
+    expect(data.projectRoot).toBe(".");
+  });
+});
+
+// ─── components?dir= scoped scan ─────────────────────────────────────────────
+
+describe("components — scoped scan", () => {
+  test("finds components under a specific directory", async () => {
+    const url = new URL("http://localhost/__studio/components?dir=_studio_fixtures/my-site");
+    const req = new Request(url, { method: "GET" });
+    const res = await handleStudioApi(req, url, import.meta.dir);
+    expect(res).not.toBeNull();
+    const components = await res.json();
+    expect(components.length).toBeGreaterThanOrEqual(1);
+    expect(components.some(c => c.tagName === "my-card")).toBe(true);
+  });
+
+  test("returns empty for directory with no components", async () => {
+    const url = new URL("http://localhost/__studio/components?dir=_studio_fixtures/plain-dir");
+    const req = new Request(url, { method: "GET" });
+    const res = await handleStudioApi(req, url, import.meta.dir);
+    const components = await res.json();
+    expect(components).toEqual([]);
+  });
+
+  test("rejects directory traversal on dir param", async () => {
+    const url = new URL("http://localhost/__studio/components?dir=../../etc");
+    const req = new Request(url, { method: "GET" });
+    const res = await handleStudioApi(req, url, import.meta.dir);
+    expect(res.status).toBe(400);
+  });
+});
+
 // Cleanup
 process.on("exit", () => {
   try { rmSync(FIXTURES, { recursive: true }); } catch {}
