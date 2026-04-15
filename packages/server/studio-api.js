@@ -36,6 +36,42 @@ export async function handleStudioApi(req, url, root) {
     }
   }
 
+  // Project info — probe a directory for site-project characteristics
+  if (path === "/__studio/project-info" && req.method === "GET") {
+    const dir = url.searchParams.get("dir") ?? ".";
+    const absDir = resolve(root, dir);
+    try {
+      assertUnderRoot(absDir, root);
+    } catch (e) {
+      return Response.json({ error: e.message }, { status: 400 });
+    }
+    try {
+      const projectRoot = relative(root, absDir) || ".";
+      const conventionalDirs = ["pages", "layouts", "components", "content", "data", "public", "styles"];
+      const directories = [];
+      for (const d of conventionalDirs) {
+        try {
+          const s = await stat(resolve(absDir, d));
+          if (s.isDirectory()) directories.push(d);
+        } catch {}
+      }
+
+      let isSiteProject = false;
+      let siteConfig = null;
+      try {
+        const raw = JSON.parse(await readFile(resolve(absDir, "site.json"), "utf8"));
+        if (typeof raw === "object" && raw !== null && !Array.isArray(raw)) {
+          isSiteProject = true;
+          siteConfig = raw;
+        }
+      } catch {}
+
+      return Response.json({ isSiteProject, siteConfig, directories, projectRoot });
+    } catch (e) {
+      return Response.json({ error: e.message }, { status: 500 });
+    }
+  }
+
   // List files
   if (path === "/__studio/files" && req.method === "GET") {
     const dir = url.searchParams.get("dir") ?? ".";
@@ -90,12 +126,19 @@ export async function handleStudioApi(req, url, root) {
 
   // Component discovery — scan project for custom element definitions
   if (path === "/__studio/components" && req.method === "GET") {
+    const dir = url.searchParams.get("dir");
+    const scanRoot = dir ? resolve(root, dir) : root;
+    if (dir) {
+      try { assertUnderRoot(scanRoot, root); } catch (e) {
+        return Response.json({ error: e.message }, { status: 400 });
+      }
+    }
     try {
       const glob = new Bun.Glob("**/*.json");
       const components = [];
-      for await (const match of glob.scan({ cwd: root, dot: false })) {
+      for await (const match of glob.scan({ cwd: scanRoot, dot: false })) {
         if (match.includes("node_modules") || match.includes("dist/") || match.includes(".claude/")) continue;
-        const fp = resolve(root, match);
+        const fp = resolve(scanRoot, match);
         try {
           const content = JSON.parse(await readFile(fp, "utf8"));
           if (content.tagName && content.tagName.includes("-")) {

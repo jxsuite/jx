@@ -162,7 +162,9 @@ let componentRegistryLoaded = false;
 
 async function loadComponentRegistry() {
   try {
-    const res = await fetch("/__studio/components");
+    const dir = projectState?.projectRoot || ".";
+    const url = dir === "." ? "/__studio/components" : `/__studio/components?dir=${encodeURIComponent(dir)}`;
+    const res = await fetch(url);
     if (res.ok) componentRegistry = await res.json();
     componentRegistryLoaded = true;
   } catch {
@@ -172,7 +174,7 @@ async function loadComponentRegistry() {
 
 async function navigateToComponent(componentPath) {
   try {
-    const res = await fetch(`/__studio/file?path=${encodeURIComponent(componentPath)}`);
+    const res = await fetch(`/__studio/file?path=${encodeURIComponent(projectPath(componentPath))}`);
     const data = await res.json();
     if (!data.content) return;
     const doc = JSON.parse(data.content);
@@ -666,6 +668,7 @@ const toolbarIconMap = {
   "sp-icon-preview": html`<sp-icon-preview slot="icon"></sp-icon-preview>`,
   "sp-icon-code": html`<sp-icon-code slot="icon"></sp-icon-code>`,
   "sp-icon-brush": html`<sp-icon-brush slot="icon"></sp-icon-brush>`,
+  "sp-icon-document": html`<sp-icon-document slot="icon"></sp-icon-document>`,
 };
 
 function tbBtnTpl(label, onClick, iconTag) {
@@ -4741,20 +4744,50 @@ function renderDataTreeTemplate(value, depth, maxDepth = 5) {
 
 // ─── File management ──────────────────────────────────────────────────────────
 
+/** Prefix a project-relative path with the active project root for server API calls */
+function projectPath(rel) {
+  const root = projectState?.projectRoot;
+  if (!root || root === ".") return rel;
+  return rel === "." ? root : `${root}/${rel}`;
+}
+
+/** Strip the project root prefix from a server-root-relative path for display */
+function stripProjectRoot(serverPath) {
+  const root = projectState?.projectRoot;
+  if (!root || root === ".") return serverPath;
+  return serverPath.startsWith(root + "/") ? serverPath.slice(root.length + 1) : serverPath;
+}
+
 async function loadProject() {
   try {
     const res = await fetch("/__studio/project");
     if (!res.ok) return;
     const meta = await res.json();
+
+    // Probe root for site project
+    let info = { isSiteProject: false, siteConfig: null, directories: [] };
+    try {
+      const infoRes = await fetch("/__studio/project-info?dir=.");
+      if (infoRes.ok) info = await infoRes.json();
+    } catch {}
+
     setProjectState({
       root: meta.root,
-      name: meta.name,
+      name: info.isSiteProject ? (info.siteConfig?.name || meta.name) : meta.name,
+      projectRoot: ".",
+      isSiteProject: info.isSiteProject,
+      siteConfig: info.isSiteProject ? info.siteConfig : null,
+      projectDirs: info.directories || [],
       dirs: new Map(),
       expanded: new Set(),
       selectedPath: null,
       searchQuery: "",
     });
-    await loadDirectory(".");
+
+    if (info.isSiteProject) {
+      await loadDirectory(".");
+    }
+    // If not a site project (monorepo) — show welcome prompt, don't load tree
   } catch {
     // Not on dev server — project features disabled
   }
@@ -4763,13 +4796,176 @@ async function loadProject() {
 async function loadDirectory(dirPath) {
   if (!projectState) return;
   try {
-    const res = await fetch(`/__studio/files?dir=${encodeURIComponent(dirPath)}`);
+    const res = await fetch(`/__studio/files?dir=${encodeURIComponent(projectPath(dirPath))}`);
     if (!res.ok) return;
     const entries = await res.json();
+    // Strip project root prefix so tree operates in project-relative paths
+    for (const e of entries) e.path = stripProjectRoot(e.path);
     projectState.dirs.set(dirPath, entries);
   } catch {
     projectState.dirs.set(dirPath, []);
   }
+}
+
+// ─── Open Project dialog ─────────────────────────────────────────────────────
+
+let _folderPickerState = null; // { dirs: Map, expanded: Set, selected: string|null, siteProjects: Set }
+
+async function openProject() {
+  // Initialize folder picker state
+  _folderPickerState = {
+    dirs: new Map(),
+    expanded: new Set(),
+    selected: null,
+    siteProjects: new Set(), // paths that have site.json
+  };
+
+  // Load root directory listing for the picker
+  try {
+    const res = await fetch("/__studio/files?dir=.");
+    if (res.ok) {
+      const entries = await res.json();
+      _folderPickerState.dirs.set(".", entries.filter((e) => e.type === "directory"));
+
+      // Check which immediate subdirectories are site projects
+      for (const e of entries) {
+        if (e.type === "directory") {
+          try {
+            const infoRes = await fetch(`/__studio/project-info?dir=${encodeURIComponent(e.path)}`);
+            if (infoRes.ok) {
+              const info = await infoRes.json();
+              if (info.isSiteProject) _folderPickerState.siteProjects.add(e.path);
+            }
+          } catch {}
+        }
+      }
+    }
+  } catch {}
+
+  renderFolderPickerDialog();
+}
+
+function renderFolderPickerDialog() {
+  const overlay = document.getElementById("folder-picker-overlay") || (() => {
+    const el = document.createElement("div");
+    el.id = "folder-picker-overlay";
+    document.body.appendChild(el);
+    return el;
+  })();
+
+  const state = _folderPickerState;
+  if (!state) { litRender(nothing, overlay); return; }
+
+  const closePicker = () => {
+    _folderPickerState = null;
+    litRender(nothing, overlay);
+  };
+
+  const confirmSelection = async () => {
+    if (!state.selected) return;
+    try {
+      const infoRes = await fetch(`/__studio/project-info?dir=${encodeURIComponent(state.selected)}`);
+      const info = infoRes.ok ? await infoRes.json() : { isSiteProject: false, directories: [] };
+      setProjectState({
+        ...projectState,
+        projectRoot: state.selected,
+        isSiteProject: info.isSiteProject,
+        siteConfig: info.isSiteProject ? info.siteConfig : null,
+        projectDirs: info.directories || [],
+        name: info.siteConfig?.name || state.selected.split("/").pop(),
+        dirs: new Map(),
+        expanded: new Set(),
+        selectedPath: null,
+        searchQuery: "",
+      });
+      closePicker();
+      await loadDirectory(".");
+      await loadComponentRegistry();
+      // Auto-expand key directories
+      for (const d of (info.directories || [])) {
+        if (["pages", "components", "layouts"].includes(d)) {
+          projectState.expanded.add(d);
+          await loadDirectory(d);
+        }
+      }
+      S = { ...S, ui: { ...S.ui, leftTab: "files" } };
+      renderActivityBar();
+      renderLeftPanel();
+      statusMessage(`Opened project: ${projectState.name}`);
+    } catch (e) {
+      statusMessage(`Error: ${e.message}`);
+    }
+  };
+
+  const renderPickerTree = (dirPath, depth) => {
+    const entries = state.dirs.get(dirPath);
+    if (!entries) {
+      // Lazy-load
+      fetch(`/__studio/files?dir=${encodeURIComponent(dirPath)}`)
+        .then((r) => r.ok ? r.json() : [])
+        .then((all) => {
+          state.dirs.set(dirPath, all.filter((e) => e.type === "directory"));
+          // Check site projects
+          for (const e of all) {
+            if (e.type === "directory") {
+              fetch(`/__studio/project-info?dir=${encodeURIComponent(e.path)}`)
+                .then((r) => r.ok ? r.json() : null)
+                .then((info) => {
+                  if (info?.isSiteProject) {
+                    state.siteProjects.add(e.path);
+                    renderFolderPickerDialog(); // refresh
+                  }
+                }).catch(() => {});
+            }
+          }
+          renderFolderPickerDialog();
+        }).catch(() => { state.dirs.set(dirPath, []); renderFolderPickerDialog(); });
+      return html`<div class="folder-picker-item" style="padding-left:${depth * 16 + 8}px">Loading\u2026</div>`;
+    }
+
+    const filtered = entries.filter((e) => !e.name.startsWith(".") && e.name !== "node_modules" && e.name !== "dist" && e.name !== ".claude");
+
+    return filtered.map((e) => {
+      const isExpanded = state.expanded.has(e.path);
+      const isSelected = state.selected === e.path;
+      const isSite = state.siteProjects.has(e.path);
+      return html`
+        <div class="folder-picker-item${isSelected ? " selected" : ""}${isSite ? " site-project" : ""}"
+          style="padding-left:${depth * 16 + 8}px"
+          @click=${(ev) => {
+            ev.stopPropagation();
+            state.selected = e.path;
+            if (isExpanded) state.expanded.delete(e.path);
+            else state.expanded.add(e.path);
+            renderFolderPickerDialog();
+          }}
+          @dblclick=${(ev) => { ev.stopPropagation(); state.selected = e.path; confirmSelection(); }}>
+          <span class="folder-picker-toggle">${isExpanded ? "\u25BC" : "\u25B6"}</span>
+          <sp-icon-folder slot="icon" size="s"></sp-icon-folder>
+          <span class="folder-picker-name">${e.name}</span>
+          ${isSite ? html`<span class="site-indicator">site</span>` : nothing}
+        </div>
+        ${isExpanded ? renderPickerTree(e.path, depth + 1) : nothing}
+      `;
+    });
+  };
+
+  litRender(html`
+    <div class="open-project-dialog" @click=${closePicker}>
+      <div class="open-project-dialog-inner" @click=${(e) => e.stopPropagation()}>
+        <div class="open-project-dialog-header">Open Project Folder</div>
+        <div class="folder-picker-tree">
+          ${renderPickerTree(".", 0)}
+        </div>
+        <div class="open-project-dialog-footer">
+          <sp-button variant="secondary" size="s" @click=${closePicker}>Cancel</sp-button>
+          <sp-button variant="accent" size="s" ?disabled=${!state.selected} @click=${confirmSelection}>
+            Open${state.selected && state.siteProjects.has(state.selected) ? " Project" : ""}
+          </sp-button>
+        </div>
+      </div>
+    </div>
+  `, overlay);
 }
 
 function fileTypeIconTpl(name, type) {
@@ -4797,7 +4993,20 @@ function renderFilesTemplate() {
     return html`<div class="file-tree-empty">No project loaded</div>`;
   }
 
+  // No project selected in a monorepo — show welcome prompt
+  if (!projectState.isSiteProject && projectState.projectRoot === ".") {
+    return html`<div class="file-tree-empty">
+      <p style="margin:0 0 12px">Open a project folder to get started.</p>
+      <sp-button variant="accent" size="s" @click=${openProject}>Open Folder</sp-button>
+    </div>`;
+  }
+
   return html`
+    ${projectState.isSiteProject ? html`
+      <div class="project-header">
+        <span class="project-name">${projectState.siteConfig?.name || projectState.name}</span>
+      </div>
+    ` : nothing}
     <div class="files-toolbar">
       <sp-action-group size="xs" compact quiet>
         <sp-action-button size="xs" label="New File" @click=${() => createNewFile()}>
@@ -4976,7 +5185,7 @@ async function createNewFile(dirPath = ".") {
     ? "---\ntitle: Untitled\n---\n\n"
     : JSON.stringify({ tagName: "div", children: [] }, null, 2);
   try {
-    await fetch(`/__studio/file?path=${encodeURIComponent(path)}`, {
+    await fetch(`/__studio/file?path=${encodeURIComponent(projectPath(path))}`, {
       method: "PUT",
       body: content,
     });
@@ -5000,7 +5209,7 @@ async function renameFile(entry) {
     await fetch("/__studio/file/rename", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ from: entry.path, to: newPath }),
+      body: JSON.stringify({ from: projectPath(entry.path), to: projectPath(newPath) }),
     });
     await loadDirectory(parentDir);
     if (projectState.selectedPath === entry.path) {
@@ -5016,7 +5225,7 @@ async function renameFile(entry) {
 async function deleteFile(entry) {
   if (!confirm(`Delete "${entry.name}"?`)) return;
   try {
-    await fetch(`/__studio/file?path=${encodeURIComponent(entry.path)}`, {
+    await fetch(`/__studio/file?path=${encodeURIComponent(projectPath(entry.path))}`, {
       method: "DELETE",
     });
     const parentDir = entry.path.includes("/")
@@ -5061,7 +5270,8 @@ async function openFileFromTree(path) {
 
   // Fetch the file
   try {
-    const res = await fetch(`/__studio/file?path=${encodeURIComponent(path)}`);
+    const serverPath = projectPath(path);
+    const res = await fetch(`/__studio/file?path=${encodeURIComponent(serverPath)}`);
     const data = await res.json();
     if (!data.content) return;
 
@@ -7253,7 +7463,8 @@ function renderToolbar() {
 
   const tpl = html`
     <sp-action-group compact size="s">
-      ${tbBtnTpl("Open", openFile, "sp-icon-folder-open")}
+      ${tbBtnTpl("Open Folder", openProject, "sp-icon-folder-open")}
+      ${tbBtnTpl("Open File", openFile, "sp-icon-document")}
       ${tbBtnTpl("Save", saveFile, "sp-icon-save-floppy")}
       ${S.fileHandle ? html`<span class="tb-filename">${S.fileHandle.name}</span>` : nothing}
       ${S.dirty ? html`<span class="tb-dirty">●</span>` : nothing}
@@ -7549,7 +7760,7 @@ document.addEventListener("keydown", (e) => {
     switch (e.key) {
       case "o":
         e.preventDefault();
-        openFile();
+        openProject();
         break;
       case "s":
         e.preventDefault();
