@@ -5,7 +5,7 @@ try {
   /* already registered */
 }
 
-import { describe, test, expect, mock } from "bun:test";
+import { describe, test, expect, mock, spyOn } from "bun:test";
 import { buildScope, resolvePrototype, isSignal } from "@jsonsx/runtime";
 import { resolve as resolvePath, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -428,6 +428,127 @@ describe("resolveExternalPrototype — .class.json enforcement", () => {
       );
       expect(isSignal(sig)).toBe(true);
       expect(/** @type {any} */ (sig).value).toBe(3);
+    } finally {
+      restore();
+    }
+  });
+});
+
+// ─── Import map resolution ──────────────────────────────────────────────────
+
+describe("buildScope — import map", () => {
+  test("bare $prototype resolved via doc.imports", async () => {
+    const restore = setupFetchMock({ "Adder.class.json": selfContainedClassDef });
+    try {
+      const doc = {
+        imports: { Adder: "http://localhost/Adder.class.json" },
+        state: {
+          $sum: { $prototype: "Adder", a: 5, b: 3 },
+        },
+      };
+      const scope = await buildScope(doc, {}, BASE);
+      expect(scope.$sum).toBe(8);
+    } finally {
+      restore();
+    }
+  });
+
+  test("explicit $src takes precedence over import map", async () => {
+    const restore = setupFetchMock({
+      "Adder.class.json": selfContainedClassDef,
+      "Greeter.class.json": classWithValueProp,
+    });
+    try {
+      const doc = {
+        imports: { Adder: "http://localhost/Greeter.class.json" },
+        state: {
+          $sum: {
+            $prototype: "Adder",
+            $src: "http://localhost/Adder.class.json",
+            a: 2,
+            b: 3,
+          },
+        },
+      };
+      const scope = await buildScope(doc, {}, BASE);
+      // Should use the explicit $src (Adder), not the import map (Greeter)
+      expect(scope.$sum).toBe(5);
+    } finally {
+      restore();
+    }
+  });
+
+  test("$prototype: 'Function' unaffected by import map", async () => {
+    const doc = {
+      imports: { Function: "http://localhost/DoesNotExist.class.json" },
+      state: {
+        increment: {
+          $prototype: "Function",
+          body: "state.counter++;",
+        },
+      },
+    };
+    const scope = await buildScope(doc, {}, BASE);
+    // Function should still resolve normally — not redirected via import map
+    expect(typeof scope.increment).toBe("function");
+  });
+
+  test("non-.class.json import value warns and skips", async () => {
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const doc = {
+        imports: { BadClass: "./bad.js" },
+        state: {
+          $x: { $prototype: "BadClass" },
+        },
+      };
+      const scope = await buildScope(doc, {}, BASE);
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining('must map to a .class.json path'),
+      );
+      // $x should remain null (no $src injected, falls through to unknown prototype warning)
+      expect(scope.$x).toBeNull();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  test("unknown $prototype with no import and no $src warns", async () => {
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const doc = {
+        imports: {},
+        state: {
+          $missing: { $prototype: "NothingHere" },
+        },
+      };
+      const scope = await buildScope(doc, {}, BASE);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining("Did you mean to add '$src'?"));
+      expect(scope.$missing).toBeNull();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  test("multiple imports resolved in same document", async () => {
+    const restore = setupFetchMock({
+      "Adder.class.json": selfContainedClassDef,
+      "Greeter.class.json": classWithValueProp,
+    });
+    try {
+      const doc = {
+        imports: {
+          Adder: "http://localhost/Adder.class.json",
+          Greeter: "http://localhost/Greeter.class.json",
+        },
+        state: {
+          $sum: { $prototype: "Adder", a: 10, b: 20 },
+          $greeting: { $prototype: "Greeter", greeting: "World" },
+        },
+      };
+      const scope = await buildScope(doc, {}, BASE);
+      expect(scope.$sum).toBe(30);
+      expect(scope.$greeting).toBe("Hello World");
     } finally {
       restore();
     }

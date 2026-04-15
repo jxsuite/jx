@@ -21,6 +21,7 @@ const DEFAULTS = {
     charset: "utf-8",
   },
   $head: [],
+  imports: {},
   $media: {},
   style: {},
   state: {},
@@ -72,6 +73,7 @@ export function loadSiteConfig(projectRoot) {
   if (raw.style) config.style = raw.style;
   if (raw.state) config.state = raw.state;
   if (raw.redirects) config.redirects = raw.redirects;
+  if (raw.imports) config.imports = raw.imports;
 
   return {
     config,

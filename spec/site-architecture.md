@@ -181,6 +181,11 @@ The `site.json` file at the project root defines site-wide settings. It is the o
     ]
   },
 
+  "imports": {
+    "MarkdownCollection": "./lib/MarkdownCollection.class.json",
+    "MarkdownFile": "./lib/MarkdownFile.class.json"
+  },
+
   "redirects": {
     "/old-blog": "/blog",
     "/legacy/post/:slug": { "destination": "/blog/:slug", "status": 301 }
@@ -208,6 +213,7 @@ The `site.json` file at the project root defines site-wide settings. It is the o
 | `style` | `object` | Root-level CSS custom properties and global styles |
 | `state` | `object` | Site-wide state accessible to all pages and components |
 | `redirects` | `object` | Static redirect rules (see §11) |
+| `imports` | `object` | Import map: `$prototype` name → `.class.json` path (see spec §12.4) |
 | `build` | `object` | Build output configuration |
 
 ### 3.2 Inheritance
@@ -218,6 +224,7 @@ Site-level declarations cascade to all pages:
 - `$media` breakpoints are available in every component's style objects
 - `style` rules on the root (`:root` selectors) produce global CSS custom properties
 - `state` entries are available to every page (read-only from the page's perspective)
+- `imports` entries cascade to all pages; page-level entries take precedence on collision
 
 Pages may override any inherited value. A page declaring its own `$head` entries appends to (does not replace) the site-level `$head`. A page may shadow a site-level `state` entry with its own.
 

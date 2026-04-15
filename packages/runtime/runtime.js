@@ -97,6 +97,22 @@ export async function buildScope(doc, parentScope = {}, base = location.href) {
 
   const defs = doc.state ?? {};
 
+  // Pass 0: resolve bare $prototype names via import map
+  const imports = doc.imports ?? {};
+  for (const [, def] of Object.entries(defs)) {
+    if (def && typeof def === "object" && !Array.isArray(def)
+        && def.$prototype && def.$prototype !== "Function" && !def.$src) {
+      const mapped = imports[def.$prototype];
+      if (mapped) {
+        if (typeof mapped !== "string" || !mapped.endsWith(".class.json")) {
+          console.warn(`JSONsx: import "${def.$prototype}" must map to a .class.json path, got "${mapped}"`);
+          continue;
+        }
+        def.$src = mapped;
+      }
+    }
+  }
+
   // First pass: collect naked values, expanded defaults, plain objects
   for (const [key, def] of Object.entries(defs)) {
     // 1. String value

@@ -163,7 +163,7 @@ async function compilePage(route, siteConfig, projectRoot, collections = new Map
   delete layoutDoc._pageTitle;
 
   // Inject $site and $page context, resolve ContentCollection/ContentEntry
-  injectContext(layoutDoc, siteConfig, route, collections);
+  injectContext(layoutDoc, siteConfig, route, collections, projectRoot);
 
   // Determine the page title
   const title = pageTitle ?? siteConfig.name ?? "JSONsx Site";

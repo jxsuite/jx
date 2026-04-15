@@ -952,6 +952,39 @@ When `$src` points to a `.class.json` file, the runtime reads the schema and fol
 
 > **Status: Implemented.** Runtime enforces `.class.json` entrypoint for all non-Function external prototypes. `$implementation` in the schema optionally redirects to a JS module. Dev server handles resolution via proxy. Compiler emits `.class.json` → ES class.
 
+### 12.4 Import Maps
+
+To avoid repeating `$src` paths across every state entry, a document may declare a top-level `imports` key that maps `$prototype` names to `.class.json` paths:
+
+```json
+{
+  "imports": {
+    "MarkdownCollection": "../../packages/parser/MarkdownCollection.class.json",
+    "MarkdownFile": "../../packages/parser/MarkdownFile.class.json"
+  },
+  "state": {
+    "posts": { "$prototype": "MarkdownCollection", "src": "./content/posts/*.md" },
+    "currentPost": { "$prototype": "MarkdownFile", "src": "./content/posts/${state.currentSlug}.md" }
+  }
+}
+```
+
+**Rules:**
+
+| Rule | Description |
+|---|---|
+| Values must end in `.class.json` | Non-`.class.json` values emit a console warning and are skipped |
+| Explicit `$src` wins | If a state entry already has `$src`, the import map is not consulted |
+| `$prototype: "Function"` excluded | Function prototypes are never resolved via import map |
+| Built-in prototypes unchanged | `Request`, `Set`, `Map`, `LocalStorage`, etc. are unaffected |
+| Site-level cascading | `imports` in `site.json` cascade to all pages; page-level entries win on collision |
+
+**Resolution order:** explicit `$src` → page `imports` → site `imports` → built-in prototypes → unknown prototype warning.
+
+At runtime, `buildScope` injects the mapped `$src` into each bare `$prototype` entry before any resolution pass executes, so all downstream resolution (`resolvePrototype` → `resolveExternalPrototype` → `resolveClassJson`) works unchanged.
+
+> **Status: Implemented.** Runtime pre-processes `doc.imports` in `buildScope`. Compiler merges site-level imports into page documents via `injectContext`. Site-loader defaults include `imports: {}`.
+
 ---
 
 ## 13. Component Encapsulation
