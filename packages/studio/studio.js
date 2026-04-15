@@ -100,7 +100,9 @@ import { html, render as litRender, nothing } from "lit-html";
 import { live } from "lit-html/directives/live.js";
 import { classMap } from "lit-html/directives/class-map.js";
 
-/** Render a Lit TemplateResult into a fresh DOM container and return it. Bridge for imperative callers. */
+/** Render a Lit TemplateResult into a fresh DOM container and return it. Bridge for imperative callers.
+ * @param {any} tpl
+ */
 function tplToDom(tpl) {
   const el = document.createElement("div");
   el.style.display = "contents";
@@ -124,17 +126,20 @@ import * as monaco from "monaco-editor/esm/vs/editor/editor.api";
 
 // ─── Globals ──────────────────────────────────────────────────────────────────
 
+/** @type {any} */
 let S; // current state
 let statusMsg = "";
+/** @type {any} */
 let statusTimeout;
-const $ = (sel) => document.querySelector(sel);
-const $$ = (sel) => document.querySelectorAll(sel);
+const $ = (/** @type {string} */ sel) => document.querySelector(sel);
+const $$ = (/** @type {string} */ sel) => document.querySelectorAll(sel);
 
 const COMMON_SELECTORS = [
   ":hover", ":focus", ":active", ":focus-within", ":focus-visible",
   ":disabled", ":first-child", ":last-child", "::before", "::after", "::placeholder",
 ];
 
+/** @param {any} k */
 function isNestedSelector(k) {
   return k.startsWith(":") || k.startsWith(".") || k.startsWith("&") || k.startsWith("[");
 }
@@ -150,8 +155,13 @@ const statusbar = $("#statusbar");
 
 // Module-level debounce map for lit-html style inputs — survives re-renders
 const _styleDebounceTimers = new Map();
+/**
+ * @param {any} prop
+ * @param {any} ms
+ * @param {any} fn
+ */
 function debouncedStyleCommit(prop, ms, fn) {
-  return (...args) => {
+  return (/** @type {any[]} */ ...args) => {
     clearTimeout(_styleDebounceTimers.get(prop));
     _styleDebounceTimers.set(prop, setTimeout(() => {
       _styleDebounceTimers.delete(prop);
@@ -160,6 +170,7 @@ function debouncedStyleCommit(prop, ms, fn) {
   };
 }
 
+/** @type {any[]} */
 let componentRegistry = []; // cached list from /__studio/components
 let componentRegistryLoaded = false;
 
@@ -173,6 +184,7 @@ async function loadComponentRegistry() {
   }
 }
 
+/** @param {any} componentPath */
 async function navigateToComponent(componentPath) {
   try {
     const platform = getPlatform();
@@ -184,7 +196,8 @@ async function navigateToComponent(componentPath) {
     render();
     statusMessage(`Editing component: ${doc.tagName || componentPath}`);
   } catch (e) {
-    statusMessage(`Error: ${e.message}`);
+    const err = /** @type {any} */ (e);
+    statusMessage(`Error: ${err.message}`);
   }
 }
 
@@ -195,7 +208,8 @@ async function navigateBack() {
       const platform = getPlatform();
       await platform.writeFile(S.documentPath, JSON.stringify(S.document, null, 2));
     } catch (e) {
-      statusMessage(`Save error: ${e.message}`);
+      const err = /** @type {any} */ (e);
+      statusMessage(`Save error: ${err.message}`);
     }
   }
   S = popDocument(S);
@@ -229,6 +243,10 @@ async function closeFunctionEditor() {
   renderToolbar();
 }
 
+/**
+ * @param {any} fromDocPath
+ * @param {any} toCompPath
+ */
 function computeRelativePath(fromDocPath, toCompPath) {
   if (!fromDocPath) return `./${toCompPath}`;
   const fromDir = fromDocPath.substring(0, fromDocPath.lastIndexOf("/"));
@@ -245,13 +263,19 @@ function computeRelativePath(fromDocPath, toCompPath) {
 
 // ─── OXC code services (server-backed) ───────────────────────────────────────
 
+/**
+ * @param {any} action
+ * @param {any} payload
+ */
 async function codeService(action, payload) {
   const platform = getPlatform();
   if (!platform.codeService) return null;
   return platform.codeService(action, payload);
 }
 
-/** Ask the server to locate a document by filename within the project root. */
+/** Ask the server to locate a document by filename within the project root.
+ * @param {any} name
+ */
 async function locateDocument(name) {
   const platform = getPlatform();
   if (!platform.locateFile) return null;
@@ -261,7 +285,9 @@ async function locateDocument(name) {
 /** Cache of plugin schemas keyed by "$src::$prototype". */
 const pluginSchemaCache = new Map();
 
-/** Fetch and cache the schema for an external $prototype + $src module via the server. */
+/** Fetch and cache the schema for an external $prototype + $src module via the server.
+ * @param {any} def
+ */
 async function fetchPluginSchema(def) {
   if (!def.$src || !def.$prototype) return null;
   const cacheKey = `${def.$src}::${def.$prototype}`;
@@ -280,6 +306,10 @@ async function fetchPluginSchema(def) {
   }
 }
 
+/**
+ * @param {any} editor
+ * @param {any[]} diagnostics
+ */
 function setLintMarkers(editor, diagnostics) {
   const model = editor.getModel();
   if (!model) return;
@@ -301,6 +331,7 @@ function setLintMarkers(editor, diagnostics) {
   monaco.editor.setModelMarkers(model, "oxlint", markers);
 }
 
+/** @param {any} editing */
 function getFunctionArgs(editing) {
   if (editing.type === "def") {
     return S.document.state?.[editing.defName]?.parameters || ["state", "event"];
@@ -314,14 +345,19 @@ function getFunctionArgs(editing) {
 /** WeakMap<HTMLElement, Array> — maps rendered DOM elements to their JSON paths */
 const elToPath = new WeakMap();
 
-/** DnD cleanup functions from previous render — called on re-render */
+/** DnD cleanup functions from previous render — called on re-render
+ * @type {any[]} */
 let dndCleanups = [];
-/** Canvas DnD cleanup functions — separate from layer panel */
+/** Canvas DnD cleanup functions — separate from layer panel
+ * @type {any[]} */
 let canvasDndCleanups = [];
 
-/** Cleanup function for the current selection drag registration */
+/** Cleanup function for the current selection drag registration
+ * @type {any} */
 let selDragCleanup = null;
+/** @type {any} */
 let blockActionBarEl = null;
+/** @type {any} */
 let _inlineEditCleanup = null;
 
 /** Void elements that cannot accept children */
@@ -345,43 +381,55 @@ const VOID_ELEMENTS = new Set([
 /**
  * Canvas panels: Array<{ mediaName, canvas, overlay, overlayClk, viewport, dropLine }>
  * Built dynamically in renderCanvas() based on $media definitions.
+ * @type {any[]}
  */
 let canvasPanels = [];
 
 /** Pan/zoom state (module-level, not serialized) */
 let panX = 0, panY = 0;
+/** @type {any} */
 let panzoomWrap = null; // the transform container inside #canvas-wrap
 
 /** Canvas mode: "edit" | "design" | "preview" | "source" | "stylebook" */
 let canvasMode = "design";
 
 /** Component-mode inline text editing state: { el, path, originalText, mediaName } or null */
+/** @type {any} */
 let componentInlineEdit = null;
-let pendingInlineEdit = null; // { path, mediaName } — set when we want to enter edit after next render
-let componentSlashMenu = null; // the sp-popover element for slash commands
+/** @type {any} */
+let pendingInlineEdit = null;
+/** @type {any} */
+let componentSlashMenu = null;
 
-/** Active Monaco editor instance (or null when in canvas mode) */
+/** Active Monaco editor instance (or null when in canvas mode)
+ * @type {any} */
 let monacoEditor = null;
 
-/** Active function editor Monaco instance (or null) */
+/** Active function editor Monaco instance (or null)
+ * @type {any} */
 let functionEditor = null;
 
-/** Cached state scope from last runtime render */
+/** Cached state scope from last runtime render
+ * @type {any} */
 let liveScope = null;
 
 /**
  * Strip all on* event handler properties from a JSONsx document tree (deep clone).
  * Returns a new object safe for edit-mode rendering where clicks should be intercepted.
+ * @param {any} node
+ * @returns {any}
  */
 function stripEventHandlers(node) {
   if (!node || typeof node !== "object") return node;
   if (Array.isArray(node)) return node.map(stripEventHandlers);
+  /** @type {Record<string, any>} */
   const out = {};
   for (const [k, v] of Object.entries(node)) {
     if (k.startsWith("on") && typeof v === "object" && (v?.$ref || v?.$prototype === "Function")) continue;
     if (k === "children") {
       out.children = Array.isArray(v) ? v.map(stripEventHandlers) : stripEventHandlers(v);
     } else if (k === "cases" && typeof v === "object") {
+      /** @type {Record<string, any>} */
       const cases = {};
       for (const [ck, cv] of Object.entries(v)) cases[ck] = stripEventHandlers(cv);
       out.cases = cases;
@@ -397,6 +445,7 @@ function stripEventHandlers(node) {
 /**
  * Convert a template string to a displayable expression for edit mode.
  * Replaces ${expr} with ❮ expr ❯ so the runtime renders it as literal text.
+ * @param {any} str
  */
 function templateToEditDisplay(str) {
   return str.replace(/\$\{([^}]+)\}/g, "\u276A $1 \u276B");
@@ -405,11 +454,12 @@ function templateToEditDisplay(str) {
 /**
  * Reverse templateToEditDisplay: walk all text nodes in `el` and
  * replace ❪ expr ❫ back to ${expr} so the user edits raw template syntax.
+ * @param {any} el
  */
 function restoreTemplateExpressions(el) {
   const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
   while (walker.nextNode()) {
-    const node = walker.currentNode;
+    const node = /** @type {any} */ (walker.currentNode);
     if (node.textContent.includes("\u276A")) {
       node.textContent = node.textContent.replace(/\u276A\s*(.*?)\s*\u276B/g, "${$1}");
     }
@@ -420,11 +470,14 @@ function restoreTemplateExpressions(el) {
  * Prepare a document for edit-mode rendering. Replaces template strings with
  * readable literal text, $prototype:Array with placeholders, and $ref bindings
  * with display labels. Preserves state so the runtime can still initialise scope.
+ * @param {any} node
+ * @returns {any}
  */
 function prepareForEditMode(node) {
   if (!node || typeof node !== "object") return node;
   if (Array.isArray(node)) return node.map(prepareForEditMode);
 
+  /** @type {Record<string, any>} */
   const out = {};
   for (const [k, v] of Object.entries(node)) {
     if (k === "state" || k === "$media" || k === "$props" || k === "$elements") {
@@ -479,6 +532,7 @@ function prepareForEditMode(node) {
     } else if (k === "style") {
       // Replace template strings in style values with empty strings
       if (v && typeof v === "object") {
+        /** @type {Record<string, any>} */
         const s = {};
         for (const [sk, sv] of Object.entries(v)) {
           s[sk] = typeof sv === "string" && sv.includes("${") ? "" : sv;
@@ -506,6 +560,8 @@ function prepareForEditMode(node) {
  * Render a JSONsx document into a canvas element using the real runtime.
  * Populates elToPath for each created element via onNodeCreated callback.
  * Returns the live state scope on success, null on failure.
+ * @param {any} doc
+ * @param {any} canvasEl
  */
 async function renderCanvasLive(doc, canvasEl) {
   canvasEl.innerHTML = "";
@@ -523,7 +579,7 @@ async function renderCanvasLive(doc, canvasEl) {
   // so we can remap runtime paths (children,0,...) → (children,map,...)
   const mapParentPaths = new Set();
   if (canvasMode === "design" || canvasMode === "edit") {
-    (function findMapParents(node, path) {
+    (function findMapParents(/** @type {any} */ node, /** @type {any[]} */ path) {
       if (!node || typeof node !== "object") return;
       if (node.children && typeof node.children === "object" && node.children.$prototype === "Array") {
         mapParentPaths.add(path.join("/"));
@@ -560,7 +616,7 @@ async function renderCanvasLive(doc, canvasEl) {
 
     const $defs = await buildScope(renderDoc, {}, docBase);
     const el = runtimeRenderNode(renderDoc, $defs, {
-      onNodeCreated(el, path) {
+      onNodeCreated(/** @type {any} */ el, /** @type {any} */ path) {
         // Remap $map paths: wrapper and template children → real document paths
         // prepareForEditMode wraps $map template in: children[0] (wrapper) > children[0] (template)
         // Real paths: wrapper → ['children'] ($map container), template → ['children', 'map']
@@ -655,6 +711,11 @@ const toolbarIconMap = {
   "sp-icon-document": html`<sp-icon-document slot="icon"></sp-icon-document>`,
 };
 
+/**
+ * @param {any} label
+ * @param {any} onClick
+ * @param {any} iconTag
+ */
 function tbBtnTpl(label, onClick, iconTag) {
   return html`
     <sp-action-button size="s" @click=${onClick}>
@@ -713,7 +774,7 @@ render();
           statusMessage(`Opened ${openParam}`);
         }
       })
-      .catch((e) => statusMessage(`Error: ${e.message}`));
+      .catch((/** @type {any} */ e) => statusMessage(`Error: ${e.message}`));
   }
 }
 
@@ -729,6 +790,7 @@ function render() {
   renderStatusbar();
 }
 
+/** @param {any} newState */
 function update(newState) {
   const prevDoc = S.document;
   const prevSel = S.selection;
@@ -776,6 +838,7 @@ function update(newState) {
 /**
  * Classify $media entries into size breakpoints (get a canvas each)
  * and feature queries (rendered as toolbar toggles).
+ * @param {any} mediaDef
  */
 function parseMediaEntries(mediaDef) {
   if (!mediaDef) return { sizeBreakpoints: [], featureQueries: [], baseWidth: 320 };
@@ -802,6 +865,8 @@ function parseMediaEntries(mediaDef) {
  * Compute which named breakpoints are active at a given canvas width.
  * For min-width canvases: all breakpoints with min-width <= canvasWidth are active.
  * For max-width canvases: all breakpoints with max-width >= canvasWidth are active.
+ * @param {any} sizeBreakpoints
+ * @param {any} canvasWidth
  */
 function activeBreakpointsForWidth(sizeBreakpoints, canvasWidth) {
   const active = new Set();
@@ -815,13 +880,17 @@ function activeBreakpointsForWidth(sizeBreakpoints, canvasWidth) {
 /**
  * Apply styles to a canvas element, including active media overrides.
  * Base (flat) styles applied first, then matching media overrides in source order.
+ * @param {any} el
+ * @param {any} styleDef
+ * @param {any} activeBreakpoints
+ * @param {any} featureToggles
  */
 function applyCanvasStyle(el, styleDef, activeBreakpoints, featureToggles) {
   if (!styleDef || typeof styleDef !== "object") return;
   for (const [prop, val] of Object.entries(styleDef)) {
     if (typeof val === "string" || typeof val === "number") {
       try {
-        el.style[prop] = val;
+        /** @type {any} */ (el.style)[prop] = val;
       } catch {}
     }
   }
@@ -830,10 +899,10 @@ function applyCanvasStyle(el, styleDef, activeBreakpoints, featureToggles) {
     const mediaName = key.slice(1);
     if (mediaName === "--") continue; // skip base canvas width key
     if (activeBreakpoints.has(mediaName) || featureToggles[mediaName]) {
-      for (const [prop, v] of Object.entries(val)) {
+      for (const [prop, v] of Object.entries(/** @type {any} */ (val))) {
         if (typeof v === "string" || typeof v === "number") {
           try {
-            el.style[prop] = v;
+            /** @type {any} */ (el.style)[prop] = v;
           } catch {}
         }
       }
@@ -915,6 +984,7 @@ function renderCanvas() {
     });
 
     // Debounced sync back to state
+    /** @type {any} */
     let debounce;
     monacoEditor.onDidChangeModelContent(() => {
       if (monacoEditor._ignoreNextChange) {
@@ -1028,6 +1098,9 @@ function renderCanvas() {
 /**
  * Render document into a single canvas panel.
  * Tries runtime rendering first, falls back to structural preview.
+ * @param {any} panel
+ * @param {any} activeBreakpoints
+ * @param {any} featureToggles
  */
 function renderCanvasIntoPanel(panel, activeBreakpoints, featureToggles) {
   renderCanvasLive(S.document, panel.canvas).then((scope) => {
@@ -1058,6 +1131,10 @@ function renderCanvasIntoPanel(panel, activeBreakpoints, featureToggles) {
 /**
  * Create a canvas panel DOM structure.
  * Returns { mediaName, element, canvas, overlay, overlayClk, viewport, dropLine }
+ * @param {any} mediaName
+ * @param {any} label
+ * @param {any} fullWidth
+ * @param {any} [width]
  */
 function createCanvasPanel(mediaName, label, fullWidth, width) {
   const panel = document.createElement("div");
@@ -1237,7 +1314,9 @@ const DEF_TEMPLATES = {
   external: { $prototype: "", $src: "" },
 };
 
-/** Classify a state entry into a category string. */
+/** Classify a state entry into a category string.
+ * @param {any} def
+ */
 function defCategory(def) {
   if (!def) return "state";
   if (def.$handler || def.$prototype === "Function") return "function";
@@ -1246,7 +1325,9 @@ function defCategory(def) {
   return "state";
 }
 
-/** Badge label for a def category. */
+/** Badge label for a def category.
+ * @param {any} def
+ */
 function defBadgeLabel(def) {
   if (!def) return "S";
   if (def.$handler || def.$prototype === "Function") return "F";
@@ -1255,7 +1336,10 @@ function defBadgeLabel(def) {
   return "S";
 }
 
-/** Hint text for a signal row. */
+/** Hint text for a signal row.
+ * @param {any} name
+ * @param {any} def
+ */
 function defHint(name, def) {
   if (!def) return "";
   if (def.$prototype === "Function") {
@@ -1281,7 +1365,10 @@ function isCustomElementDoc() {
   return (S.document.tagName || "").includes("-");
 }
 
-/** Recursively collect CSS `part` attributes from the document tree. */
+/** Recursively collect CSS `part` attributes from the document tree.
+ * @param {any} node
+ * @param {any[]} [parts]
+ */
 function collectCssParts(node, parts = []) {
   if (node?.attributes?.part) parts.push({ name: node.attributes.part, tag: node.tagName || "div" });
   if (Array.isArray(node?.children)) node.children.forEach((c) => collectCssParts(c, parts));
@@ -1291,6 +1378,8 @@ function collectCssParts(node, parts = []) {
 /**
  * Resolve a $ref value to a display string using signal defaults.
  * Used by the canvas to show real values instead of raw refs.
+ * @param {any} value
+ * @param {any} defs
  */
 function resolveDefaultForCanvas(value, defs) {
   if (!value || typeof value !== "object" || !value.$ref) return value;
@@ -1330,6 +1419,11 @@ function resolveDefaultForCanvas(value, defs) {
 /**
  * Recursively render a JSONsx node to the canvas DOM.
  * Media-aware: applies base styles + active breakpoint/feature overrides.
+ * @param {any} node
+ * @param {any} path
+ * @param {any} parent
+ * @param {any} activeBreakpoints
+ * @param {any} featureToggles
  */
 function renderCanvasNode(node, path, parent, activeBreakpoints, featureToggles) {
   if (!node || typeof node !== "object") return;
@@ -1409,11 +1503,14 @@ function renderCanvasNode(node, path, parent, activeBreakpoints, featureToggles)
   return el;
 }
 
-/** Track the last drag pointer position for canvas drop calculations */
+/** Track the last drag pointer position for canvas drop calculations
+ * @type {any}
+ */
 let lastDragInput = null;
 
 /**
  * Register all canvas elements in a panel as DnD drop targets.
+ * @param {any} panel
  */
 function registerPanelDnD(panel) {
   const { canvas, overlayClk, dropLine } = panel;
@@ -1481,6 +1578,11 @@ function registerPanelDnD(panel) {
   }
 }
 
+/**
+ * @param {any} el
+ * @param {any} elPath
+ * @param {any} isVoid
+ */
 function getCanvasDropInstruction(el, elPath, isVoid) {
   const rect = el.getBoundingClientRect();
   if (!lastDragInput) return null;
@@ -1494,6 +1596,12 @@ function getCanvasDropInstruction(el, elPath, isVoid) {
   return { type: "make-child" };
 }
 
+/**
+ * @param {any} el
+ * @param {any} elPath
+ * @param {any} isVoid
+ * @param {any} panel
+ */
 function showCanvasDropIndicator(el, elPath, isVoid, panel) {
   const instruction = getCanvasDropInstruction(el, elPath, isVoid);
   const { dropLine, viewport } = panel;
@@ -1941,6 +2049,8 @@ function updateForcedPseudoPreview() {
 /**
  * Walk up the tree from a path, bubbling past inline elements until we find
  * the nearest non-inline ancestor. Returns the original path if already non-inline.
+ * @param {any} doc
+ * @param {any} path
  */
 function bubbleInlinePath(doc, path) {
   let currentPath = path;
@@ -2005,9 +2115,11 @@ function findCanvasElement(path, canvasEl) {
 
 // ─── Per-panel click-to-select ────────────────────────────────────────────────
 
+/** @param {any} panel */
 function registerPanelEvents(panel) {
   const { canvas, overlayClk, mediaName } = panel;
 
+  /** @param {any} fn */
   function withPanelPointerEvents(fn) {
     const els = canvas.querySelectorAll("*");
     for (const el of els) el.style.pointerEvents = "auto";
@@ -2021,7 +2133,7 @@ function registerPanelEvents(panel) {
   // During component inline edit, the overlayClk is disabled (see enterComponentInlineEdit).
   // No mousedown passthrough needed — native events reach the contenteditable directly.
 
-  overlayClk.addEventListener("click", (e) => {
+  overlayClk.addEventListener("click", (/** @type {any} */ e) => {
     // Don't intercept clicks meant for the block action bar
     const barInner = blockActionBarEl?.firstElementChild;
     if (barInner) {
@@ -2073,7 +2185,7 @@ function registerPanelEvents(panel) {
   });
 
   // Double-click shortcut for immediate inline editing
-  overlayClk.addEventListener("dblclick", (e) => {
+  overlayClk.addEventListener("dblclick", (/** @type {any} */ e) => {
     const barInner = blockActionBarEl?.firstElementChild;
     if (barInner) {
       const r = barInner.getBoundingClientRect();
@@ -2101,7 +2213,7 @@ function registerPanelEvents(panel) {
     }
   });
 
-  overlayClk.addEventListener("contextmenu", (e) => {
+  overlayClk.addEventListener("contextmenu", (/** @type {any} */ e) => {
     const barInner = blockActionBarEl?.firstElementChild;
     if (barInner) {
       const r = barInner.getBoundingClientRect();
@@ -2121,7 +2233,7 @@ function registerPanelEvents(panel) {
     e.preventDefault();
   });
 
-  overlayClk.addEventListener("mousemove", (e) => {
+  overlayClk.addEventListener("mousemove", (/** @type {any} */ e) => {
     const barInner = blockActionBarEl?.firstElementChild;
     if (barInner) {
       const r = barInner.getBoundingClientRect();
@@ -2156,6 +2268,8 @@ function registerPanelEvents(panel) {
 /**
  * Enter inline editing mode on a canvas element.
  * Hides the overlay for the element and makes it contenteditable.
+ * @param {any} el
+ * @param {any} path
  */
 function enterInlineEdit(el, path) {
   // Restore raw template expressions before editing.
@@ -2170,7 +2284,7 @@ function enterInlineEdit(el, path) {
   }
 
   startEditing(el, path, {
-    onCommit(commitPath, children, textContent) {
+    onCommit(/** @type {any} */ commitPath, /** @type {any} */ children, /** @type {any} */ textContent) {
       // Update the JSONsx node with the edited content
       if (children) {
         let s = updateProperty(S, commitPath, "textContent", undefined);
@@ -2183,7 +2297,7 @@ function enterInlineEdit(el, path) {
       }
     },
 
-    onSplit(splitPath, before, after) {
+    onSplit(/** @type {any} */ splitPath, /** @type {any} */ before, /** @type {any} */ after) {
       // Update current element with "before" content
       const tag = getNodeAtPath(S.document, splitPath)?.tagName ?? "p";
       let s = S;
@@ -2199,6 +2313,7 @@ function enterInlineEdit(el, path) {
       // Insert new element after with "after" content
       const parentPath = parentElementPath(splitPath);
       const idx = childIndex(splitPath);
+      /** @type {any} */
       const newNode = { tagName: tag };
       if (after.textContent != null) {
         newNode.textContent = after.textContent;
@@ -2226,14 +2341,14 @@ function enterInlineEdit(el, path) {
             const range = document.createRange();
             range.selectNodeContents(newEl);
             range.collapse(true); // collapse to start
-            sel.removeAllRanges();
-            sel.addRange(range);
+            sel?.removeAllRanges();
+            sel?.addRange(range);
           }
         }
       });
     },
 
-    onInsert(afterPath, elementDef) {
+    onInsert(/** @type {any} */ afterPath, /** @type {any} */ elementDef) {
       const parentPath = parentElementPath(afterPath);
       const idx = childIndex(afterPath);
       let s = insertNode(S, parentPath, idx + 1, structuredClone(elementDef));
@@ -2289,6 +2404,10 @@ function enterInlineEdit(el, path) {
 
 // ─── Component-mode inline text editing ──────────────────────────────────────
 
+/**
+ * @param {any} el
+ * @param {any} path
+ */
 function enterComponentInlineEdit(el, path) {
   // Already editing this element
   if (componentInlineEdit && componentInlineEdit.el === el) {
@@ -2339,15 +2458,15 @@ function enterComponentInlineEdit(el, path) {
   const range = document.createRange();
   range.selectNodeContents(el);
   range.collapse(false);
-  sel.removeAllRanges();
-  sel.addRange(range);
+  sel?.removeAllRanges();
+  sel?.addRange(range);
 
   el.addEventListener("keydown", componentInlineKeydown);
   el.addEventListener("input", componentInlineInput);
 
   // Document-level mousedown: clicking outside the editing element commits
   // the edit and selects the new target element for inline editing.
-  const outsideHandler = (evt) => {
+  const outsideHandler = (/** @type {any} */ evt) => {
     if (!componentInlineEdit) { document.removeEventListener("mousedown", outsideHandler, true); return; }
     if (componentInlineEdit.el.contains(evt.target)) return; // click within editing el — let it through
     // Let clicks inside the slash command menu through
@@ -2427,6 +2546,7 @@ function enterComponentInlineEdit(el, path) {
   renderBlockActionBar();
 }
 
+/** @param {any} e */
 function componentInlineKeydown(e) {
   // When slash menu is open, delegate navigation keys
   if (componentSlashMenu) {
@@ -2475,7 +2595,7 @@ function splitParagraph() {
   const { el, path, mediaName } = componentInlineEdit;
 
   // Determine cursor offset within text
-  const sel = el.ownerDocument.defaultView.getSelection();
+  const sel = /** @type {any} */ (el.ownerDocument.defaultView?.getSelection());
   const fullText = el.textContent || "";
   let offset = fullText.length;
   if (sel.rangeCount) {
@@ -2537,6 +2657,7 @@ function cancelComponentInlineEdit() {
   renderOverlays();
 }
 
+/** @param {any} el */
 function cleanupComponentInlineEdit(el) {
   el.removeEventListener("keydown", componentInlineKeydown);
   el.removeEventListener("input", componentInlineInput);
@@ -2594,6 +2715,10 @@ function componentInlineInput() {
   }
 }
 
+/**
+ * @param {any} el
+ * @param {any} filter
+ */
 function showComponentSlashMenu(el, filter) {
   dismissComponentSlashMenu();
 
@@ -2607,7 +2732,7 @@ function showComponentSlashMenu(el, filter) {
 
   const rect = el.getBoundingClientRect();
 
-  const popover = document.createElement("sp-popover");
+  const popover = /** @type {any} */ (document.createElement("sp-popover"));
   popover.open = true;
   popover.placement = "bottom-start";
   popover.style.position = "fixed";
@@ -2622,7 +2747,7 @@ function showComponentSlashMenu(el, filter) {
 
   for (let i = 0; i < items.length; i++) {
     const cmd = items[i];
-    const mi = document.createElement("sp-menu-item");
+    const mi = /** @type {any} */ (document.createElement("sp-menu-item"));
     mi.textContent = cmd.label;
     mi._cmd = cmd;
     if (cmd.description) {
@@ -2648,6 +2773,7 @@ function dismissComponentSlashMenu() {
   componentSlashMenu = null;
 }
 
+/** @param {any} cmd */
 function selectComponentSlashItem(cmd) {
   if (!componentInlineEdit) return;
   const { el, path, mediaName } = componentInlineEdit;
@@ -2674,7 +2800,12 @@ function selectComponentSlashItem(cmd) {
 
 // ─── Activity bar ────────────────────────────────────────────────────────────
 
+/**
+ * @param {any} tag
+ * @param {any} size
+ */
 function tabIcon(tag, size) {
+  /** @type {Record<string, any>} */
   const m = {
     "sp-icon-folder": (s) => html`<sp-icon-folder slot="icon" size=${s}></sp-icon-folder>`,
     "sp-icon-layers": (s) => html`<sp-icon-layers slot="icon" size=${s}></sp-icon-layers>`,
@@ -2702,7 +2833,7 @@ function renderActivityBar() {
   ];
   const tpl = html`
     <sp-tabs selected=${S.ui.leftTab} direction="vertical" quiet
-      @change=${(e) => {
+      @change=${(/** @type {any} */ e) => {
         S = { ...S, ui: { ...S.ui, leftTab: e.target.selected } };
         renderActivityBar();
         renderLeftPanel();
@@ -2722,6 +2853,7 @@ function renderActivityBar() {
 function renderLeftPanel() {
   const tab = S.ui.leftTab;
 
+  /** @type {any} */
   let content;
   if (tab === "layers") content = canvasMode === "stylebook" ? renderStylebookLayersTemplate() : renderLayersTemplate();
   else if (tab === "components") content = renderComponentsTemplate();
@@ -2753,6 +2885,7 @@ function renderLayersTemplate() {
   const collapsed = S._collapsed || (S._collapsed = new Set());
 
   // Build layer rows
+  /** @type {any[]} */
   const layerRows = [];
   for (const { node, path, depth, nodeType } of rows) {
     // Check if any ancestor is collapsed
@@ -2782,6 +2915,7 @@ function renderLayersTemplate() {
     const isVoidEl = VOID_ELEMENTS.has((node.tagName || "div").toLowerCase());
 
     // Badge
+    /** @type {any} */
     let badgeClass, badgeText, badgeTitle;
     if (nodeType === "map") {
       badgeClass = "layer-tag map-tag"; badgeText = "↻"; badgeTitle = "Repeater (mapped array)";
@@ -2794,6 +2928,7 @@ function renderLayersTemplate() {
     }
 
     // Label
+    /** @type {any} */
     let labelText, labelItalic;
     if (nodeType === "case-ref") {
       labelText = node.$ref || "external"; labelItalic = true;
@@ -2808,7 +2943,7 @@ function renderLayersTemplate() {
         data-dnd-depth=${nodeType === "element" ? depth : nothing}
         data-dnd-void=${nodeType === "element" && isVoidEl ? "" : nothing}
         @click=${() => update(selectNode(S, path))}
-        @contextmenu=${nodeType === "element" ? (e) => showContextMenu(e, path) : nothing}>
+        @contextmenu=${nodeType === "element" ? (/** @type {any} */ e) => showContextMenu(e, path) : nothing}>
         <span class="layer-handle">${nodeType === "element" ? "⠿" : ""}</span>
         <span class="layer-indent" style="width:${depth * 16}px"></span>
         <span class="layer-toggle">${isExpandable ? html`
@@ -2818,7 +2953,7 @@ function renderLayersTemplate() {
         <span class="layer-label" style=${labelItalic ? "font-style:italic" : nothing}>${labelText}</span>
         ${path.length >= 2 && nodeType === "element" ? html`
           <sp-action-button quiet size="xs" class="layer-delete" title="Delete"
-            @click=${(e) => { e.stopPropagation(); update(removeNode(S, path)); }}>
+            @click=${(/** @type {any} */ e) => { e.stopPropagation(); update(removeNode(S, path)); }}>
             <sp-icon-close slot="icon"></sp-icon-close>
           </sp-action-button>
         ` : nothing}
@@ -2832,7 +2967,7 @@ function renderLayersTemplate() {
   return html`
     <div class="layers-container" style="position:relative">
       <div class="layers-tree"
-        @click=${(e) => {
+        @click=${(/** @type {any} */ e) => {
           const toggle = e.target.closest(".layer-toggle");
           if (!toggle) return;
           e.stopPropagation();
@@ -2856,9 +2991,9 @@ function registerLayersDnD() {
     const container = leftPanel.querySelector(".layers-container");
     if (!container) return;
 
-    container.querySelectorAll("[data-dnd-row]").forEach(row => {
-      const rowPath = row.dataset.path.split("/").map((s) => (/^\d+$/.test(s) ? parseInt(s) : s));
-      const rowDepth = parseInt(row.dataset.dndDepth) || 0;
+    container.querySelectorAll("[data-dnd-row]").forEach(/** @param {any} row */ row => {
+      const rowPath = /** @type {string} */ (row.dataset.path).split("/").map((/** @type {any} */ s) => (/^\d+$/.test(s) ? parseInt(s) : s));
+      const rowDepth = parseInt(/** @type {string} */ (row.dataset.dndDepth)) || 0;
       const isVoid = row.hasAttribute("data-dnd-void");
       const handle = row.querySelector(".layer-handle");
 
@@ -2879,12 +3014,12 @@ function registerLayersDnD() {
         }),
         dropTargetForElements({
           element: row,
-          canDrop({ source }) {
+          canDrop(/** @type {any} */ { source }) {
             const srcPath = source.data.path;
             if (srcPath && isAncestor(srcPath, rowPath)) return false;
             return true;
           },
-          getData({ input, element }) {
+          getData(/** @type {any} */ { input, element }) {
             return attachInstruction(
               { path: rowPath },
               {
@@ -2896,10 +3031,10 @@ function registerLayersDnD() {
               },
             );
           },
-          onDragEnter({ self }) {
+          onDragEnter(/** @type {any} */ { self }) {
             showLayerDropGap(row, self.data, container);
           },
-          onDrag({ self }) {
+          onDrag(/** @type {any} */ { self }) {
             showLayerDropGap(row, self.data, container);
           },
           onDragLeave() {
@@ -2915,7 +3050,7 @@ function registerLayersDnD() {
 
     // Global monitor
     const monitorCleanup = monitorForElements({
-      onDrop({ source, location }) {
+      onDrop(/** @type {any} */ { source, location }) {
         clearLayerDropGap(container);
         const target = location.current.dropTargets[0];
         if (!target) return;
@@ -2936,15 +3071,15 @@ function registerComponentsDnD() {
     const container = leftPanel.querySelector(".components-section");
     if (!container) return;
 
-    container.querySelectorAll(".component-row").forEach(row => {
+    container.querySelectorAll(".component-row").forEach(/** @param {any} row */ row => {
       const tagName = row.querySelector(".layer-label")?.textContent;
       if (!tagName) return;
-      const comp = componentRegistry.find(c => c.tagName === tagName);
+      const comp = componentRegistry.find(/** @param {any} c */ c => c.tagName === tagName);
       if (!comp) return;
       const instanceDef = {
         tagName: comp.tagName,
         $props: Object.fromEntries(
-          comp.props.map((p) => [p.name, p.default !== undefined ? p.default : ""]),
+          comp.props.map((/** @type {any} */ p) => [p.name, p.default !== undefined ? p.default : ""]),
         ),
       };
       const cleanup = draggable({
@@ -2958,9 +3093,15 @@ function registerComponentsDnD() {
   });
 }
 
+/** @type {any} */
 let _currentDropTargetRow = null;
 let layerDragSourceHeight = 0;
 
+/**
+ * @param {any} rowEl
+ * @param {any} data
+ * @param {any} container
+ */
 function showLayerDropGap(rowEl, data, container) {
   const instruction = extractInstruction(data);
 
@@ -2999,6 +3140,7 @@ function showLayerDropGap(rowEl, data, container) {
   }
 }
 
+/** @param {any} container */
 function clearLayerDropGap(container) {
   if (_currentDropTargetRow) {
     _currentDropTargetRow.classList.remove("drop-target");
@@ -3017,15 +3159,15 @@ function renderComponentsTemplate() {
   }
 
   const importedRefs = new Set(
-    (S.document.$elements || []).filter((e) => e.$ref).map((e) => e.$ref),
+    (S.document.$elements || []).filter((/** @type {any} */ e) => e.$ref).map((/** @type {any} */ e) => e.$ref),
   );
-  const isImported = (c) =>
+  const isImported = (/** @type {any} */ c) =>
     importedRefs.has(`./${c.path}`) || importedRefs.has(c.path) ||
-    Array.from(importedRefs).some((ref) => ref.endsWith(c.path.split("/").pop()));
+    Array.from(importedRefs).some((/** @type {any} */ ref) => ref.endsWith(c.path.split("/").pop()));
 
   return html`
     <div class="components-section">
-      ${componentRegistry.map(comp => html`
+      ${componentRegistry.map(/** @param {any} comp */ comp => html`
         <div class="layer-row component-row${isImported(comp) ? "" : " available"}"
           @click=${() => navigateToComponent(comp.path)}>
           <span class="layer-tag component-tag" style="background:${isImported(comp) ? "var(--accent)" : "var(--bg-alt)"}">⬡</span>
@@ -3042,6 +3184,7 @@ function renderStylebookLayersTemplate() {
   const selectedTag = S.ui.stylebookSelection;
 
   if (S.ui.stylebookTab === "elements") {
+    /** @type {any[]} */
     const elementRows = [];
     for (const section of stylebookMeta.$sections) {
       for (const entry of section.elements) {
@@ -3072,7 +3215,7 @@ function renderStylebookLayersTemplate() {
       }
     }
     // Custom components
-    const compRows = componentRegistry.map(comp => html`
+    const compRows = componentRegistry.map(/** @param {any} comp */ comp => html`
       <div class="layer-row${comp.tagName === selectedTag ? " selected" : ""}"
         @click=${() => {
           S = {
@@ -3107,7 +3250,12 @@ function renderStylebookLayersTemplate() {
   }
 }
 
-/** Apply a DnD instruction to the state */
+/**
+ * Apply a DnD instruction to the state
+ * @param {any} instruction
+ * @param {any} srcData
+ * @param {any} targetPath
+ */
 function applyDropInstruction(instruction, srcData, targetPath) {
   if (srcData.type === "tree-node") {
     const fromPath = srcData.path;
@@ -3150,15 +3298,15 @@ function applyDropInstruction(instruction, srcData, targetPath) {
     // Auto-import to $elements if the dropped block is a custom component
     const tag = srcData.fragment?.tagName;
     if (tag && tag.includes("-")) {
-      const comp = componentRegistry.find((c) => c.tagName === tag);
+      const comp = componentRegistry.find((/** @type {any} */ c) => c.tagName === tag);
       if (comp) {
         const elements = S.document.$elements || [];
-        const alreadyImported = elements.some((e) =>
+        const alreadyImported = elements.some((/** @type {any} */ e) =>
           e.$ref && (e.$ref === `./${comp.path}` || e.$ref.endsWith(comp.path.split("/").pop())),
         );
         if (!alreadyImported) {
           const relPath = computeRelativePath(S.documentPath, comp.path);
-          S = applyMutation(S, (doc) => {
+          S = applyMutation(S, (/** @type {any} */ doc) => {
             if (!doc.$elements) doc.$elements = [];
             doc.$elements.push({ $ref: relPath });
           });
@@ -3168,8 +3316,12 @@ function applyDropInstruction(instruction, srcData, targetPath) {
   }
 }
 
-/** Generate a sensible default JSONsx node for a given tag name */
+/**
+ * Generate a sensible default JSONsx node for a given tag name
+ * @param {any} tag
+ */
 function defaultDef(tag) {
+  /** @type {any} */
   const def = { tagName: tag };
   if (/^h[1-6]$/.test(tag)) def.textContent = "Heading";
   else if (tag === "p") def.textContent = "Paragraph text";
@@ -3238,8 +3390,8 @@ function defaultDef(tag) {
 const blocksUnsafeTags = new Set(["script", "style", "link", "iframe", "object", "embed"]);
 
 function renderBlocksTemplate() {
-  const categories = Object.entries(webdata.elements).map(([category, elements]) => {
-    const filtered = blocksFilter ? elements.filter((e) => e.tag.includes(blocksFilter)) : elements;
+  const categories = Object.entries(webdata.elements).map((/** @type {any} */ [category, elements]) => {
+    const filtered = blocksFilter ? elements.filter((/** @type {any} */ e) => e.tag.includes(blocksFilter)) : elements;
     if (filtered.length === 0) return nothing;
 
     return html`
@@ -3269,7 +3421,7 @@ function renderBlocksTemplate() {
 
   return html`
     <sp-search size="s" placeholder="Filter elements…" value=${blocksFilter}
-      @input=${(e) => { blocksFilter = e.target.value.toLowerCase(); renderLeftPanel(); }}></sp-search>
+      @input=${(/** @type {any} */ e) => { blocksFilter = e.target.value.toLowerCase(); renderLeftPanel(); }}></sp-search>
     <div class="blocks-list">${categories}</div>
   `;
 }
@@ -3278,7 +3430,7 @@ function registerBlocksDnD() {
   requestAnimationFrame(() => {
     const container = leftPanel.querySelector(".panel-body");
     if (!container) return;
-    container.querySelectorAll("[data-block-tag]").forEach(row => {
+    container.querySelectorAll("[data-block-tag]").forEach(/** @param {any} row */ row => {
       const tag = row.dataset.blockTag;
       const preview = row.querySelector(".block-preview");
       if (preview && !preview.firstChild) {
@@ -3306,13 +3458,16 @@ let stylebookElToTag = new WeakMap();
 /**
  * Build a DOM element tree from a stylebook-meta.json entry.
  * Applies any existing tag-scoped styles from rootStyle["& tag"].
+ * @param {any} entry
+ * @param {any} rootStyle
+ * @param {any} activeBreakpoints
  */
 function buildStylebookElement(entry, rootStyle, activeBreakpoints) {
   const el = document.createElement(entry.tag);
   if (entry.text) el.textContent = entry.text;
   if (entry.attributes) {
     for (const [k, v] of Object.entries(entry.attributes)) {
-      try { el.setAttribute(k, v); } catch {}
+      try { el.setAttribute(k, /** @type {string} */ (v)); } catch {}
     }
   }
   if (entry.style) el.style.cssText = entry.style;
@@ -3321,7 +3476,7 @@ function buildStylebookElement(entry, rootStyle, activeBreakpoints) {
   if (tagStyle) {
     for (const [prop, val] of Object.entries(tagStyle)) {
       if (typeof val === "string" || typeof val === "number") {
-        try { el.style[prop] = val; } catch {}
+        try { /** @type {any} */ (el.style)[prop] = val; } catch {}
       }
     }
     // Apply media overrides for active breakpoints
@@ -3331,9 +3486,9 @@ function buildStylebookElement(entry, rootStyle, activeBreakpoints) {
         const mediaName = key.slice(1);
         if (mediaName === "--") continue;
         if (activeBreakpoints.has(mediaName)) {
-          for (const [prop, v] of Object.entries(val)) {
+          for (const [prop, v] of Object.entries(/** @type {any} */ (val))) {
             if (typeof v === "string" || typeof v === "number") {
-              try { el.style[prop] = v; } catch {}
+              try { /** @type {any} */ (el.style)[prop] = v; } catch {}
             }
           }
         }
@@ -3348,6 +3503,10 @@ function buildStylebookElement(entry, rootStyle, activeBreakpoints) {
   return el;
 }
 
+/**
+ * @param {any} rootStyle
+ * @param {any} tag
+ */
 function hasTagStyle(rootStyle, tag) {
   const s = rootStyle[`& ${tag}`];
   return s && typeof s === "object" && Object.keys(s).length > 0;
@@ -3421,6 +3580,7 @@ function renderStylebook() {
   canvasWrap.appendChild(panzoomWrap);
 
   // Build panel definitions
+  /** @type {any[]} */
   const allPanelDefs = [];
   if (hasMedia) {
     allPanelDefs.push({
@@ -3437,7 +3597,7 @@ function renderStylebook() {
   }
 
   // Render content into panels
-  const renderIntoPanel = (panel, activeBreakpoints) => {
+  const renderIntoPanel = (/** @type {any} */ panel, /** @type {any} */ activeBreakpoints) => {
     panel.canvas.classList.add("sb-canvas");
     if (S.ui.stylebookTab === "elements") {
       renderStylebookElementsIntoCanvas(panel.canvas, rootStyle, filter, customizedOnly, activeBreakpoints);
@@ -3480,18 +3640,25 @@ function renderStylebook() {
   renderZoomIndicator();
 }
 
-/** Render element sections into the canvas from stylebook-meta.json */
+/**
+ * Render element sections into the canvas from stylebook-meta.json
+ * @param {any} canvasEl
+ * @param {any} rootStyle
+ * @param {any} filter
+ * @param {any} customizedOnly
+ * @param {any} activeBreakpoints
+ */
 function renderStylebookElementsIntoCanvas(canvasEl, rootStyle, filter, customizedOnly, activeBreakpoints) {
   for (const section of stylebookMeta.$sections) {
     // Filter elements
     let entries = section.elements;
     if (filter) {
-      entries = entries.filter((e) =>
+      entries = entries.filter((/** @type {any} */ e) =>
         e.tag.includes(filter) || section.label.toLowerCase().includes(filter),
       );
     }
     if (customizedOnly) {
-      entries = entries.filter((e) => hasTagStyle(rootStyle, e.tag));
+      entries = entries.filter((/** @type {any} */ e) => hasTagStyle(rootStyle, e.tag));
     }
     if (entries.length === 0) continue;
 
@@ -3528,8 +3695,8 @@ function renderStylebookElementsIntoCanvas(canvasEl, rootStyle, filter, customiz
   // Custom components from registry
   if (componentRegistry.length > 0) {
     let comps = componentRegistry;
-    if (filter) comps = comps.filter((c) => c.tagName.toLowerCase().includes(filter));
-    if (customizedOnly) comps = comps.filter((c) => hasTagStyle(rootStyle, c.tagName));
+    if (filter) comps = comps.filter((/** @type {any} */ c) => c.tagName.toLowerCase().includes(filter));
+    if (customizedOnly) comps = comps.filter((/** @type {any} */ c) => hasTagStyle(rootStyle, c.tagName));
     if (comps.length > 0) {
       const sectionEl = document.createElement("div");
       sectionEl.className = "sb-section";
@@ -3547,7 +3714,7 @@ function renderStylebookElementsIntoCanvas(canvasEl, rootStyle, filter, customiz
         if (tagStyle) {
           for (const [prop, val] of Object.entries(tagStyle)) {
             if (typeof val === "string" || typeof val === "number") {
-              try { el.style[prop] = val; } catch {}
+              try { /** @type {any} */ (el.style)[prop] = val; } catch {}
             }
           }
           // Apply media overrides for active breakpoints
@@ -3557,9 +3724,9 @@ function renderStylebookElementsIntoCanvas(canvasEl, rootStyle, filter, customiz
               const mediaName = key.slice(1);
               if (mediaName === "--") continue;
               if (activeBreakpoints.has(mediaName)) {
-                for (const [prop, v] of Object.entries(val)) {
+                for (const [prop, v] of Object.entries(/** @type {any} */ (val))) {
                   if (typeof v === "string" || typeof v === "number") {
-                    try { el.style[prop] = v; } catch {}
+                    try { /** @type {any} */ (el.style)[prop] = v; } catch {}
                   }
                 }
               }
@@ -3583,10 +3750,15 @@ function renderStylebookElementsIntoCanvas(canvasEl, rootStyle, filter, customiz
   }
 }
 
-/** Render variables into the canvas (card-based layout matching Elements tab) */
+/**
+ * Render variables into the canvas (card-based layout matching Elements tab)
+ * @param {any} canvasEl
+ * @param {any} rootStyle
+ */
 function renderStylebookVarsIntoCanvas(canvasEl, rootStyle) {
   const varCats = stylebookMeta.$variables;
 
+  /** @type {Record<string, any>} */
   const groups = {};
   for (const key of Object.keys(varCats)) groups[key] = [];
   for (const [k, v] of Object.entries(rootStyle)) {
@@ -3634,7 +3806,7 @@ function renderStylebookVarsIntoCanvas(canvasEl, rootStyle) {
       body.insertBefore(row, addBtn);
       addBtn.style.display = "none";
       // Focus the name field
-      const nameField = row.querySelector("sp-textfield");
+      const nameField = /** @type {any} */ (row.querySelector("sp-textfield"));
       if (nameField) requestAnimationFrame(() => nameField.focus());
     };
     body.appendChild(addBtn);
@@ -3647,7 +3819,7 @@ function renderStylebookVarsIntoCanvas(canvasEl, rootStyle) {
 /**
  * Render a single variable row — used for both existing and add-new.
  * @param {string} catKey - "color"|"font"|"size"|"other"
- * @param {object} catMeta - { label, prefix, placeholder }
+ * @param {any} catMeta - { label, prefix, placeholder }
  * @param {string|null} varName - existing var name, or null for add-new
  * @param {string} varVal - current value, or "" for add-new
  * @param {boolean} isNew - true if this is an add-new row
@@ -3670,7 +3842,7 @@ function renderVarRow(catKey, catMeta, varName, varVal, isNew) {
     ref.textContent = varName;
     header.appendChild(ref);
 
-    const del = document.createElement("sp-action-button");
+    const del = /** @type {any} */ (document.createElement("sp-action-button"));
     del.size = "s";
     del.quiet = true;
     del.className = "sb-var-del";
@@ -3702,6 +3874,7 @@ function renderVarRow(catKey, catMeta, varName, varVal, isNew) {
   }
 
   // Name column
+  /** @type {any} */
   let nameField = null;
   if (isNew) {
     const nameCol = document.createElement("div");
@@ -3710,7 +3883,7 @@ function renderVarRow(catKey, catMeta, varName, varVal, isNew) {
     lbl.className = "sb-var-col-label";
     lbl.textContent = "Name";
     nameCol.appendChild(lbl);
-    nameField = document.createElement("sp-textfield");
+    nameField = /** @type {any} */ (document.createElement("sp-textfield"));
     nameField.size = "s";
     nameField.placeholder = catKey === "color" ? "Primary Blue" : catKey === "font" ? "Body Serif" : catKey === "size" ? "Spacing Large" : "Border Radius";
     nameField.style.pointerEvents = "auto";
@@ -3728,10 +3901,11 @@ function renderVarRow(catKey, catMeta, varName, varVal, isNew) {
     valCol.appendChild(lbl);
   }
 
+  /** @type {any} */
   let getValueFn;
 
   if (catKey === "color") {
-    const hexField = document.createElement("sp-textfield");
+    const hexField = /** @type {any} */ (document.createElement("sp-textfield"));
     hexField.size = "s";
     hexField.value = varVal || "#007acc";
     hexField.placeholder = "#007acc";
@@ -3746,6 +3920,7 @@ function renderVarRow(catKey, catMeta, varName, varVal, isNew) {
         if (swatch) swatch.style.backgroundColor = colorPicker.value;
         if (!isNew && varName) update(updateStyle(S, [], varName, colorPicker.value));
       };
+      /** @type {any} */
       let debounce;
       hexField.addEventListener("input", () => {
         clearTimeout(debounce);
@@ -3760,8 +3935,8 @@ function renderVarRow(catKey, catMeta, varName, varVal, isNew) {
     }
   } else if (catKey === "size") {
     const ui = createUnitInput(varVal || "16px", {
-      onChange: (newVal) => {
-        const bar = row.querySelector(".sb-var-size-bar");
+      onChange: (/** @type {any} */ newVal) => {
+        const bar = /** @type {any} */ (row.querySelector(".sb-var-size-bar"));
         if (bar) bar.style.width = newVal;
         if (!isNew && varName) update(updateStyle(S, [], varName, newVal));
       },
@@ -3770,7 +3945,7 @@ function renderVarRow(catKey, catMeta, varName, varVal, isNew) {
     valCol.appendChild(ui.wrap);
     getValueFn = () => ui.getValue();
   } else {
-    const textField = document.createElement("sp-textfield");
+    const textField = /** @type {any} */ (document.createElement("sp-textfield"));
     textField.size = "s";
     textField.value = varVal;
     textField.placeholder = catMeta.placeholder;
@@ -3779,12 +3954,13 @@ function renderVarRow(catKey, catMeta, varName, varVal, isNew) {
     getValueFn = () => textField.value.trim();
 
     if (!isNew && varName) {
+      /** @type {any} */
       let debounce;
       textField.addEventListener("input", () => {
         clearTimeout(debounce);
         debounce = setTimeout(() => {
           const v = textField.value;
-          const fontPrev = row.querySelector(".sb-var-font-preview");
+          const fontPrev = /** @type {any} */ (row.querySelector(".sb-var-font-preview"));
           if (fontPrev) fontPrev.style.fontFamily = v;
           update(updateStyle(S, [], varName, v));
         }, 400);
@@ -3799,7 +3975,7 @@ function renderVarRow(catKey, catMeta, varName, varVal, isNew) {
     const actions = document.createElement("div");
     actions.className = "sb-var-add-actions";
 
-    const confirmBtn = document.createElement("sp-action-button");
+    const confirmBtn = /** @type {any} */ (document.createElement("sp-action-button"));
     confirmBtn.size = "s";
     confirmBtn.style.pointerEvents = "auto";
     confirmBtn.textContent = "Add";
@@ -3812,7 +3988,7 @@ function renderVarRow(catKey, catMeta, varName, varVal, isNew) {
     };
     actions.appendChild(confirmBtn);
 
-    const cancelBtn = document.createElement("sp-action-button");
+    const cancelBtn = /** @type {any} */ (document.createElement("sp-action-button"));
     cancelBtn.size = "s";
     cancelBtn.quiet = true;
     cancelBtn.style.pointerEvents = "auto";
@@ -3822,7 +3998,7 @@ function renderVarRow(catKey, catMeta, varName, varVal, isNew) {
     cancelBtn.onclick = () => {
       const body = row.parentElement;
       row.remove();
-      const addBtn = body?.querySelector(".sb-var-add-btn");
+      const addBtn = /** @type {any} */ (body?.querySelector(".sb-var-add-btn"));
       if (addBtn) addBtn.style.display = "";
     };
     actions.appendChild(cancelBtn);
@@ -3870,15 +4046,23 @@ function renderVarRow(catKey, catMeta, varName, varVal, isNew) {
   return row;
 }
 
+/**
+ * @param {any} varName
+ * @param {any} prefix
+ */
 function varDisplayName(varName, prefix) {
   return varName
     .replace(new RegExp(`^${prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`), "")
     .replace(/^--/, "")
     .replace(/-/g, " ")
-    .replace(/\b\w/g, (c) => c.toUpperCase()) || varName;
+    .replace(/\b\w/g, (/** @type {any} */ c) => c.toUpperCase()) || varName;
 }
 
-/** Convert a human-friendly name like "Primary Blue" to "--color-primary-blue" */
+/**
+ * Convert a human-friendly name like "Primary Blue" to "--color-primary-blue"
+ * @param {any} name
+ * @param {any} prefix
+ */
 function friendlyNameToVar(name, prefix) {
   const slug = name.trim()
     .toLowerCase()
@@ -3890,13 +4074,19 @@ function friendlyNameToVar(name, prefix) {
   return `${prefix}${slug}`;
 }
 
-/** Convert a $media key like "--tablet" to a friendly display name "Tablet". "--" returns "Base". */
+/**
+ * Convert a $media key like "--tablet" to a friendly display name "Tablet". "--" returns "Base".
+ * @param {any} name
+ */
 function mediaDisplayName(name) {
   if (name === "--") return "Base";
-  return name.replace(/^--/, "").replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) || name;
+  return name.replace(/^--/, "").replace(/-/g, " ").replace(/\b\w/g, (/** @type {any} */ c) => c.toUpperCase()) || name;
 }
 
-/** Convert a human-friendly name like "Tablet" to a $media key "--tablet" */
+/**
+ * Convert a human-friendly name like "Tablet" to a $media key "--tablet"
+ * @param {any} name
+ */
 function friendlyNameToMedia(name) {
   return friendlyNameToVar(name, "--");
 }
@@ -3905,6 +4095,8 @@ function friendlyNameToMedia(name) {
  * Creates a combined textfield + quiet sp-picker for CSS values with units.
  * Returns { wrap, textfield, picker, getValue, setValue }.
  * The picker hides automatically when the textfield value is non-numeric (e.g. "auto", "inherit").
+ * @param {any} initialValue
+ * @param {any} [options]
  */
 function createUnitInput(initialValue, { onChange, size = "s" } = {}) {
   const match = String(initialValue).match(/^(-?[\d.]+)\s*(px|em|rem|vw|vh|%|ch|ex|vmin|vmax|pt|cm|mm|in)?$/);
@@ -3916,12 +4108,12 @@ function createUnitInput(initialValue, { onChange, size = "s" } = {}) {
   wrap.className = "sb-unit-input";
   wrap.style.pointerEvents = "auto";
 
-  const textfield = document.createElement("sp-textfield");
+  const textfield = /** @type {any} */ (document.createElement("sp-textfield"));
   textfield.value = numVal;
   textfield.size = size;
   wrap.appendChild(textfield);
 
-  const picker = document.createElement("sp-picker");
+  const picker = /** @type {any} */ (document.createElement("sp-picker"));
   picker.quiet = true;
   picker.size = size;
   if (!isNumeric) picker.style.display = "none";
@@ -3943,7 +4135,7 @@ function createUnitInput(initialValue, { onChange, size = "s" } = {}) {
     if (u.divider) {
       picker.appendChild(document.createElement("sp-menu-divider"));
     } else {
-      const item = document.createElement("sp-menu-item");
+      const item = /** @type {any} */ (document.createElement("sp-menu-item"));
       item.value = u.value;
       item.textContent = u.label;
       picker.appendChild(item);
@@ -3961,6 +4153,7 @@ function createUnitInput(initialValue, { onChange, size = "s" } = {}) {
   }
 
   // Textfield typing — show/hide picker based on numeric content
+  /** @type {any} */
   let debounce;
   textfield.addEventListener("input", () => {
     clearTimeout(debounce);
@@ -3988,11 +4181,14 @@ function createUnitInput(initialValue, { onChange, size = "s" } = {}) {
   return { wrap, textfield, picker, getValue };
 }
 
-/** Click handler for stylebook canvas — selects elements via the elToPath/stylebookElToTag mapping */
+/**
+ * Click handler for stylebook canvas — selects elements via the elToPath/stylebookElToTag mapping
+ * @param {any} panel
+ */
 function registerStylebookPanelEvents(panel) {
   const { canvas, overlayClk } = panel;
 
-  overlayClk.addEventListener("click", (e) => {
+  overlayClk.addEventListener("click", (/** @type {any} */ e) => {
     // Temporarily enable pointer events to hit-test
     const els = canvas.querySelectorAll("*");
     for (const el of els) el.style.pointerEvents = "auto";
@@ -4030,8 +4226,7 @@ function registerStylebookPanelEvents(panel) {
     renderRightPanel();
   });
 
-  overlayClk.addEventListener("mousemove", (e) => {
-    // Hover effect
+  overlayClk.addEventListener("mousemove", (/** @type {any} */ e) => {
     const els = canvas.querySelectorAll("*");
     for (const el of els) el.style.pointerEvents = "auto";
     overlayClk.style.display = "none";
@@ -5980,8 +6175,10 @@ function renderNumberUnitInput(entry, prop, value, onChange) {
 
 // abbreviateValue — imported from studio-utils.js
 
+/** @param {any} entry @param {any} prop @param {any} value @param {any} onChange */
 function renderButtonGroupInput(entry, prop, value, onChange) {
   const values = entry.$buttonValues || entry.enum || [];
+  /** @type {Record<string, any>} */
   const iconMap = entry.$icons || {};
   const extra = entry.$buttonValues && entry.enum && entry.enum.length > entry.$buttonValues.length
     ? entry.enum.filter((v) => !entry.$buttonValues.includes(v)) : [];
@@ -5994,7 +6191,7 @@ function renderButtonGroupInput(entry, prop, value, onChange) {
   return html`
     <div class="button-group-combo ${hasExtra ? "has-overflow" : ""}">
       <sp-action-group size="s" compact>
-        ${values.map(v => html`
+        ${values.map((/** @type {any} */ v) => html`
           <sp-action-button size="s" title=${v} ?selected=${v === value}
             @click=${() => onChange(v === value ? "" : v)}>
             ${iconMap[v] && icons[iconMap[v]]
@@ -6009,10 +6206,10 @@ function renderButtonGroupInput(entry, prop, value, onChange) {
         ></sp-picker-button>
         <sp-overlay trigger=${menuId}@click placement="bottom-end" type="auto">
           <sp-popover>
-            <sp-menu @change=${(e) => { if (e.target.value) onChange(e.target.value); }}>
+            <sp-menu @change=${(/** @type {any} */ e) => { if (e.target.value) onChange(e.target.value); }}>
               <sp-menu-item value="__none__">\u2014</sp-menu-item>
-              ${extra.map(v => {
-                const label = v.includes("-") ? kebabToLabel(v) : v.replace(/^./, (c) => c.toUpperCase());
+              ${extra.map((/** @type {any} */ v) => {
+                const label = v.includes("-") ? kebabToLabel(v) : v.replace(/^./, (/** @type {any} */ c) => c.toUpperCase());
                 return html`<sp-menu-item value=${v} ?selected=${v === value}>${label}</sp-menu-item>`;
               })}
             </sp-menu>
@@ -6052,6 +6249,7 @@ function currentFontFamily() {
  *
  * Note: sp-combobox recreates items in shadow DOM as plain text, so typography
  * preview props use a manual sp-textfield + sp-overlay + sp-menu instead.
+ * @param {any} options @param {any} prop @param {any} value @param {any} onChange
  */
 function renderKeywordInput(options, prop, value, onChange) {
   const isTypoPreview = TYPO_PREVIEW_PROPS.has(prop) || prop === "fontWeight";
@@ -6059,8 +6257,8 @@ function renderKeywordInput(options, prop, value, onChange) {
   const cssProp = isTypoPreview ? camelToKebab(prop) : "";
   const isPredefined = value && options.includes(value);
 
-  const menuItemsT = options.map((v) => {
-    const label = v.includes("-") ? kebabToLabel(v) : v.replace(/^./, (c) => c.toUpperCase());
+  const menuItemsT = options.map((/** @type {any} */ v) => {
+    const label = v.includes("-") ? kebabToLabel(v) : v.replace(/^./, (/** @type {any} */ c) => c.toUpperCase());
     if (isTypoPreview) {
       const previewStyle = `${cssProp}: ${v};${font ? ` font-family: ${font}` : ""}`;
       return html`<sp-menu-item value=${v} style=${previewStyle}>${label}</sp-menu-item>`;
@@ -6075,7 +6273,7 @@ function renderKeywordInput(options, prop, value, onChange) {
       : "";
     return html`
       <sp-picker size="s" style=${pickerStyle} .value=${live(value)}
-        @change=${(e) => onChange(e.target.value === "__none__" ? "" : e.target.value)}>
+        @change=${(/** @type {any} */ e) => onChange(e.target.value === "__none__" ? "" : e.target.value)}>
         <sp-menu-item value="__none__">\u2014</sp-menu-item>
         ${menuItemsT}
       </sp-picker>
@@ -6097,7 +6295,7 @@ function renderKeywordInput(options, prop, value, onChange) {
         <sp-picker-button size="s" id=${menuId}></sp-picker-button>
         <sp-overlay trigger=${menuId}@click placement="bottom-end" type="auto">
           <sp-popover>
-            <sp-menu @change=${(e) => { if (e.target.value) onChange(e.target.value); }}>
+            <sp-menu @change=${(/** @type {any} */ e) => { if (e.target.value) onChange(e.target.value); }}>
               ${menuItemsT}
             </sp-menu>
           </sp-popover>

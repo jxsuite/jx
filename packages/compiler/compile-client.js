@@ -30,6 +30,9 @@ import {
 
 /**
  * Compile a JSONsx document to pre-rendered HTML + reactive JS module.
+ * @param {any} raw
+ * @param {any} opts
+ * @returns {{ html: string, files: { path: string, content: string }[] }}
  */
 export function compileClient(raw, opts) {
   const {
@@ -44,17 +47,25 @@ export function compileClient(raw, opts) {
 
   // Collectors for bindings and handlers
   const counter = { t: 0, s: 0, h: 0, m: 0, sw: 0, l: 0, needsLit: false };
+  /** @type {Map<string, string>} */
   const bindings = new Map(); // key → expression string
+  /** @type {Map<string, any>} */
   const handlers = new Map(); // key → { body, args }
 
   // Classify state entries into reactive state, computed, bind, on, and init blocks
+  /** @type {[string, any][]} */
   const stateEntries = [];     // [key, initValue]  → reactive({...})
+  /** @type {[string, string][]} */
   const computedEntries = [];  // [key, bodyExpr]   → state.key = computed(...)
+  /** @type {[string, string][]} */
   const bindEntries = [];      // [key, bodyExpr]   → bind = {...}
+  /** @type {[string, any][]} */
   const onEntries = [];        // [key, { args, body }] → on = {...}
+  /** @type {string[]} */
   const initBlocks = [];       // lines emitted after state for prototype init
 
   // Map $src path → Set of function names to import
+  /** @type {Map<string, Set<string>>} */
   const srcImportMap = new Map();
 
   const defs = raw.state ?? {};
@@ -70,60 +81,62 @@ export function compileClient(raw, opts) {
       continue;
     }
 
+    const d = /** @type {any} */ (def);
+
     // $prototype: "Function"
-    if (def.$prototype === "Function") {
-      const args = def.parameters ?? def.arguments;
-      if (def.$src) {
-        if (!srcImportMap.has(def.$src)) srcImportMap.set(def.$src, new Set());
-        srcImportMap.get(def.$src).add(key);
+    if (d.$prototype === "Function") {
+      const args = d.parameters ?? d.arguments;
+      if (d.$src) {
+        if (!srcImportMap.has(d.$src)) srcImportMap.set(d.$src, new Set());
+        /** @type {Set<string>} */ (srcImportMap.get(d.$src)).add(key);
 
         // $src functions always produce computed entries (they return values)
         computedEntries.push([key, '() => { return ' + key + '(state); }']);
-      } else if (def.body && def.body.includes("return")) {
+      } else if (d.body && d.body.includes("return")) {
         // Body contains return → computed
-        computedEntries.push([key, '() => { ' + def.body + ' }']);
+        computedEntries.push([key, '() => { ' + d.body + ' }']);
       } else {
         // No return → event handler
-        onEntries.push([key, { args: args ?? ["state"], body: def.body }]);
+        onEntries.push([key, { args: args ?? ["state"], body: d.body }]);
       }
       continue;
     }
 
     // Pure schema-only type def → skip
-    if (isSchemaOnly(def)) continue;
+    if (isSchemaOnly(d)) continue;
 
     // Expanded signal with default
-    if ("default" in def && !def.$prototype) {
-      stateEntries.push([key, def.default]);
+    if ("default" in d && !d.$prototype) {
+      stateEntries.push([key, d.default]);
       continue;
     }
 
     // $prototype: "LocalStorage" / "SessionStorage"
-    if (def.$prototype === "LocalStorage" || def.$prototype === "SessionStorage") {
-      const storeName = def.$prototype === "LocalStorage" ? "localStorage" : "sessionStorage";
-      const storageKey = def.key ?? key;
-      const defaultVal = def.default ?? null;
+    if (d.$prototype === "LocalStorage" || d.$prototype === "SessionStorage") {
+      const storeName = d.$prototype === "LocalStorage" ? "localStorage" : "sessionStorage";
+      const storageKey = d.key ?? key;
+      const defaultVal = d.default ?? null;
       stateEntries.push([key, null]);
       initBlocks.push(emitStorageInit(key, storeName, storageKey, defaultVal));
       continue;
     }
 
     // $prototype: "Request"
-    if (def.$prototype === "Request") {
+    if (d.$prototype === "Request") {
       stateEntries.push([key, null]);
-      initBlocks.push(emitRequestInit(key, def));
+      initBlocks.push(emitRequestInit(key, d));
       continue;
     }
 
     // $prototype: "Cookie"
-    if (def.$prototype === "Cookie") {
+    if (d.$prototype === "Cookie") {
       stateEntries.push([key, null]);
-      initBlocks.push(emitCookieInit(key, def.name ?? key, def.default ?? null));
+      initBlocks.push(emitCookieInit(key, d.name ?? key, d.default ?? null));
       continue;
     }
 
     // Plain object → reactive state
-    stateEntries.push([key, def]);
+    stateEntries.push([key, d]);
   }
 
   // Build HTML tree with data-bind markers
@@ -181,6 +194,15 @@ ${importmapEntries.join(",\n")}
 
 // ─── HTML tree walker ─────────────────────────────────────────────────────────
 
+/**
+ * @param {any} def
+ * @param {any} raw
+ * @param {any} context
+ * @param {Map<string, string>} bindings
+ * @param {Map<string, any>} handlers
+ * @param {any} counter
+ * @returns {string}
+ */
 function buildClientNode(def, raw, context, bindings, handlers, counter) {
   const nextContext = createCompileContext(
     raw,
@@ -214,13 +236,14 @@ function buildClientNode(def, raw, context, bindings, handlers, counter) {
     if (!prop.startsWith("on") || prop === "observedAttributes") continue;
     const eventName = prop.slice(2).toLowerCase();
     if (isRefObject(val)) {
-      const key = refToBindingKey(val.$ref);
+      const key = refToBindingKey(/** @type {any} */ (val).$ref);
       bindAttrs.push(`@${eventName}="${key}"`);
       needsBind = true;
-    } else if (val && typeof val === "object" && val.$prototype === "Function") {
+    } else if (val && typeof val === "object" && /** @type {any} */ (val).$prototype === "Function") {
+      const v = /** @type {any} */ (val);
       const key = `_h${counter.h++}`;
       bindAttrs.push(`@${eventName}="${key}"`);
-      handlers.set(key, { args: val.parameters ?? val.arguments ?? ["state", "event"], body: val.body });
+      handlers.set(key, { args: v.parameters ?? v.arguments ?? ["state", "event"], body: v.body });
       needsBind = true;
     }
   }
@@ -244,9 +267,9 @@ function buildClientNode(def, raw, context, bindings, handlers, counter) {
   if (def.attributes && typeof def.attributes === "object") {
     for (const [attr, val] of Object.entries(def.attributes)) {
       if (isRefObject(val)) {
-        const key = refToBindingKey(val.$ref);
+        const key = refToBindingKey(/** @type {any} */ (val).$ref);
         bindAttrs.push(`:attr.${attr}="${key}"`);
-        addRefBinding(bindings, key, val.$ref);
+        addRefBinding(bindings, key, /** @type {any} */ (val).$ref);
         needsBind = true;
       } else if (isTemplateString(val)) {
         const key = `_t${counter.t++}`;
@@ -264,9 +287,9 @@ function buildClientNode(def, raw, context, bindings, handlers, counter) {
         prop === "children" || prop === "textContent" || prop === "innerHTML" ||
         prop === "attributes") continue;
     if (isRefObject(val)) {
-      const key = refToBindingKey(val.$ref);
+      const key = refToBindingKey(/** @type {any} */ (val).$ref);
       bindAttrs.push(`:${camelToKebab(prop)}="${key}"`);
-      addRefBinding(bindings, key, val.$ref);
+      addRefBinding(bindings, key, /** @type {any} */ (val).$ref);
       needsBind = true;
     } else if (isTemplateString(val)) {
       const key = `_t${counter.t++}`;
@@ -328,7 +351,7 @@ function buildClientNode(def, raw, context, bindings, handlers, counter) {
   } else if (Array.isArray(source.children)) {
     const rawChildren = raw?.children;
     inner = source.children
-      .map((c, i) => {
+      .map((/** @type {any} */ c, /** @type {number} */ i) => {
         const childRaw = rawChildren?.[i] ?? c;
         return buildClientNode(c, childRaw, nextContext, bindings, handlers, counter);
       })
@@ -349,6 +372,8 @@ function buildClientNode(def, raw, context, bindings, handlers, counter) {
 /**
  * Compile a map definition to a lit-html template string.
  * Converts $map.item → item, $map.index → index.
+ * @param {any} def
+ * @returns {string}
  */
 function emitLitMapTemplate(def) {
   if (!def) return "";
@@ -371,6 +396,7 @@ function emitLitMapTemplate(def) {
 
   // style → inline CSS
   if (def.style && typeof def.style === "object") {
+    /** @type {string[]} */
     const parts = [];
     for (const [k, v] of Object.entries(def.style)) {
       if (k.startsWith(":") || k.startsWith(".") || k.startsWith("&") ||
@@ -393,10 +419,10 @@ function emitLitMapTemplate(def) {
     if (!prop.startsWith("on") || prop === "observedAttributes") continue;
     const eventName = prop.slice(2).toLowerCase();
     if (isRefObject(val)) {
-      const key = refToBindingKey(val.$ref);
+      const key = refToBindingKey(/** @type {any} */ (val).$ref);
       attrs += " @" + eventName + "=${(e) => { state.$map = { item, index }; on." + key + "(e); }}";
-    } else if (val && typeof val === "object" && val.$prototype === "Function") {
-      const body = mapRefsToLit(val.body);
+    } else if (val && typeof val === "object" && /** @type {any} */ (val).$prototype === "Function") {
+      const body = mapRefsToLit(/** @type {any} */ (val).body);
       attrs += " @" + eventName + "=${(e) => { " + body + " }}";
     }
   }
@@ -421,7 +447,7 @@ function emitLitMapTemplate(def) {
   } else if (def.innerHTML) {
     inner = mapRefsToLit(String(def.innerHTML));
   } else if (Array.isArray(def.children)) {
-    inner = "\n      " + def.children.map(c => emitLitMapTemplate(c)).join("\n      ") + "\n    ";
+    inner = "\n      " + def.children.map((/** @type {any} */ c) => emitLitMapTemplate(c)).join("\n      ") + "\n    ";
   }
 
   const voidTags = new Set(["input", "br", "hr", "img", "meta", "link"]);
@@ -431,6 +457,8 @@ function emitLitMapTemplate(def) {
 
 /**
  * Replace $map references: $map.item → item, $map.index → index
+ * @param {string} str
+ * @returns {string}
  */
 function mapRefsToLit(str) {
   return str.replace(/\$map\./g, "");
@@ -438,7 +466,19 @@ function mapRefsToLit(str) {
 
 // ─── JS module generation ─────────────────────────────────────────────────────
 
+/**
+ * @param {[string, any][]} stateEntries
+ * @param {[string, string][]} computedEntries
+ * @param {[string, string][]} bindEntries
+ * @param {[string, any][]} onEntries
+ * @param {string[]} initBlocks
+ * @param {Map<string, Set<string>>} srcImportMap
+ * @param {any} counter
+ * @param {string} reactivitySrc
+ * @returns {string}
+ */
 function emitClientModule(stateEntries, computedEntries, bindEntries, onEntries, initBlocks, srcImportMap, counter, reactivitySrc) {
+  /** @type {string[]} */
   const lines = [];
   const needsLit = counter.needsLit;
   const needsComputed = computedEntries.length > 0;
@@ -504,11 +544,11 @@ function emitClientModule(stateEntries, computedEntries, bindEntries, onEntries,
     for (const [key, def] of onEntries) {
       if (def.imported) {
         const argNames = def.args ?? ["state"];
-        const callArgs = argNames.map(a => a === "state" ? "state" : "e").join(", ");
+        const callArgs = argNames.map((/** @type {string} */ a) => a === "state" ? "state" : "e").join(", ");
         lines.push("  " + key + ": (e) => { " + key + "(" + callArgs + "); },");
       } else {
         const argNames = def.args ?? ["state"];
-        const callArgs = argNames.map(a => a === "state" ? "state" : "e").join(", ");
+        const callArgs = argNames.map((/** @type {string} */ a) => a === "state" ? "state" : "e").join(", ");
         lines.push("  " + key + ": (e) => { const fn = (" + argNames.join(", ") + ") => { " + def.body + " }; fn(" + callArgs + "); },");
       }
     }
@@ -554,6 +594,11 @@ function emitClientModule(stateEntries, computedEntries, bindEntries, onEntries,
 
 // ─── Prototype init emitters ─────────────────────────────────────────────────
 
+/**
+ * @param {string} key
+ * @param {any} def
+ * @returns {string}
+ */
 function emitRequestInit(key, def) {
   const url = def.url;
   const method = def.method ?? "GET";
@@ -563,6 +608,7 @@ function emitRequestInit(key, def) {
     return "// " + key + ": manual Request — fetch triggered by user action";
   }
 
+  /** @type {string[]} */
   const lines = [];
   lines.push("// " + key + ": auto-fetch from " + (isTemplateUrl ? "(dynamic URL)" : url));
   lines.push("effect(() => {");
@@ -574,6 +620,7 @@ function emitRequestInit(key, def) {
     lines.push("  const url = " + JSON.stringify(url) + ";");
   }
 
+  /** @type {string[]} */
   const fetchOpts = [];
   if (method !== "GET") fetchOpts.push("method: " + JSON.stringify(method));
   if (def.headers) fetchOpts.push("headers: " + JSON.stringify(def.headers));
@@ -592,7 +639,15 @@ function emitRequestInit(key, def) {
   return lines.join("\n");
 }
 
+/**
+ * @param {string} key
+ * @param {string} storeName
+ * @param {string} storageKey
+ * @param {any} defaultVal
+ * @returns {string}
+ */
 function emitStorageInit(key, storeName, storageKey, defaultVal) {
+  /** @type {string[]} */
   const lines = [];
   lines.push("// " + key + ": " + storeName + ' (key: "' + storageKey + '")');
   lines.push("try {");
@@ -609,7 +664,14 @@ function emitStorageInit(key, storeName, storageKey, defaultVal) {
   return lines.join("\n");
 }
 
+/**
+ * @param {string} key
+ * @param {string} cookieName
+ * @param {any} defaultVal
+ * @returns {string}
+ */
 function emitCookieInit(key, cookieName, defaultVal) {
+  /** @type {string[]} */
   const lines = [];
   lines.push("// " + key + ': Cookie (name: "' + cookieName + '")');
   lines.push("{");
@@ -622,6 +684,10 @@ function emitCookieInit(key, cookieName, defaultVal) {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+/**
+ * @param {string} ref
+ * @returns {string}
+ */
 function refToBindingKey(ref) {
   if (ref.startsWith("#/state/")) {
     return ref.slice("#/state/".length).replace(/\//g, "_");
@@ -629,6 +695,11 @@ function refToBindingKey(ref) {
   return ref.replace(/\//g, "_");
 }
 
+/**
+ * @param {Map<string, string>} bindings
+ * @param {string} key
+ * @param {string} ref
+ */
 function addRefBinding(bindings, key, ref) {
   if (bindings.has(key)) return;
   if (ref.startsWith("#/state/")) {

@@ -36,7 +36,8 @@ try {
   }
 
   console.log(`\nDone: ${result.routes} routes → ${result.files} files`);
-} catch (err) {
+} catch (e) {
+  const err = /** @type {any} */ (e);
   console.error(`Build failed: ${err.message}`);
   process.exit(1);
 }

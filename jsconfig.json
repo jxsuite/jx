@@ -2,7 +2,14 @@
   "compilerOptions": {
     "checkJs": true,
     "noEmit": true,
-    "strict": true 
+    "strict": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "moduleResolution": "bundler",
+    "module": "esnext",
+    "target": "esnext",
+    "allowJs": true
   },
-  "include": ["packages/**/*"]
+  "include": ["packages/**/*"],
+  "exclude": ["node_modules", "**/node_modules", "**/dist", "**/assets"]
 }

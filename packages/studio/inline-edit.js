@@ -35,10 +35,13 @@ const EDITABLE_BLOCKS = new Set([
 /**
  * Check if a child tag is inline within the context of a given parent tag.
  * Uses $inlineChildren from elements-meta.json.
+ * @param {string} childTag
+ * @param {string} parentTag
+ * @returns {boolean}
  */
 export function isInlineInContext(childTag, parentTag) {
   if (!parentTag) return INLINE_TAGS.has(childTag);
-  const parentDef = elementsMeta.$defs[parentTag];
+  const parentDef = /** @type {Record<string, any>} */ (elementsMeta.$defs)[parentTag];
   if (!parentDef || !parentDef.$inlineChildren) return false;
   return parentDef.$inlineChildren.includes(childTag);
 }
@@ -46,13 +49,15 @@ export function isInlineInContext(childTag, parentTag) {
 /**
  * Get the resolved $inlineActions for a given element tag.
  * Follows string references (e.g., "h1" → look up h1's actions).
+ * @param {string} tag
+ * @returns {any[] | null}
  */
 export function getInlineActions(tag) {
-  const def = elementsMeta.$defs[tag];
+  const def = /** @type {Record<string, any>} */ (elementsMeta.$defs)[tag];
   if (!def) return null;
   let actions = def.$inlineActions;
   if (typeof actions === "string") {
-    const refDef = elementsMeta.$defs[actions];
+    const refDef = /** @type {Record<string, any>} */ (elementsMeta.$defs)[actions];
     actions = refDef?.$inlineActions ?? null;
   }
   if (!Array.isArray(actions)) return null;
@@ -61,17 +66,27 @@ export function getInlineActions(tag) {
 
 // ─── Editing state ─────────────────────────────────────────────────────────
 
+/** @type {HTMLElement | null} */
 let activeEl = null; // currently contenteditable element
+/** @type {any[] | null} */
 let activePath = null; // JSON path to the active element
+/** @type {((path: any[], children: any, textContent: any) => void) | null} */
 let commitFn = null; // function(path, newChildren, newTextContent) to commit changes
+/** @type {((path: any[], beforeChildren: any, afterChildren: any) => void) | null} */
 let splitFn = null; // function(path, beforeChildren, afterChildren) to split paragraph
+/** @type {((path: any[], elementDef: any) => void) | null} */
 let insertFn = null; // function(path, elementDef) to insert after current block
+/** @type {(() => void) | null} */
 let endFn = null; // function() called when editing stops
+/** @type {any} */
 let slashMenuEl = null; // slash command menu element
+/** @type {any} */
 let slashMenuCleanup = null;
 
 /**
  * Check if an element is a text-bearing editable block.
+ * @param {HTMLElement} el
+ * @returns {boolean}
  */
 export function isEditableBlock(el) {
   return EDITABLE_BLOCKS.has(el.tagName.toLowerCase());
@@ -81,6 +96,9 @@ export function isEditableBlock(el) {
  * Check if a node is an inline child.
  * When parentNode is provided, uses context-aware scoping from metadata.
  * Without parent, uses the fallback INLINE_TAGS set.
+ * @param {any} node
+ * @param {any} [parentNode]
+ * @returns {boolean}
  */
 export function isInlineElement(node, parentNode) {
   if (!node || typeof node !== "object") return false;
@@ -96,7 +114,7 @@ export function isInlineElement(node, parentNode) {
  * Start inline editing on a canvas element.
  *
  * @param {HTMLElement} el - The canvas DOM element to edit
- * @param {Array} path - JSON path to the element
+ * @param {Array<any>} path - JSON path to the element
  * @param {object} callbacks - { onCommit, onSplit, onInsert, onEnd }
  *   onCommit(path, children|null, textContent|null) — save inline content
  *   onSplit(path, beforeChildren, afterChildren) — Enter key: split block
@@ -126,8 +144,10 @@ export function startEditing(el, path, callbacks) {
   const range = document.createRange();
   range.selectNodeContents(el);
   range.collapse(false);
-  sel.removeAllRanges();
-  sel.addRange(range);
+  if (sel) {
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
 
   el.addEventListener("keydown", handleKeydown);
   el.addEventListener("input", handleInput);
@@ -170,6 +190,7 @@ export function stopEditing() {
 
 /**
  * Whether inline editing is currently active.
+ * @returns {boolean}
  */
 export function isEditing() {
   return activeEl !== null;
@@ -177,6 +198,7 @@ export function isEditing() {
 
 /**
  * Get the currently editing element.
+ * @returns {HTMLElement | null}
  */
 export function getActiveElement() {
   return activeEl;
@@ -184,6 +206,9 @@ export function getActiveElement() {
 
 // ─── Event handlers ────────────────────────────────────────────────────────
 
+/**
+ * @param {KeyboardEvent} e
+ */
 function handleKeydown(e) {
   if (e.key === "Escape") {
     e.preventDefault();
@@ -201,7 +226,7 @@ function handleKeydown(e) {
   if (e.key === "/" && !e.ctrlKey && !e.metaKey) {
     // Check if at start of empty block or after a space/newline
     const sel = window.getSelection();
-    if (sel.rangeCount > 0) {
+    if (sel && sel.rangeCount > 0) {
       const range = sel.getRangeAt(0);
       const textBefore = getTextBeforeCursor(range);
       if (textBefore === "" || textBefore.endsWith(" ") || textBefore.endsWith("\n")) {
@@ -243,9 +268,12 @@ function handleInput() {
   }
 }
 
+/**
+ * @param {FocusEvent} e
+ */
 function handleBlur(e) {
   // Don't close if clicking the slash menu
-  if (slashMenuEl && slashMenuEl.contains(e.relatedTarget)) return;
+  if (slashMenuEl && slashMenuEl.contains(/** @type {Node | null} */ (e.relatedTarget))) return;
 
   // Delay to allow click events to fire
   setTimeout(() => {
@@ -255,10 +283,13 @@ function handleBlur(e) {
   }, 150);
 }
 
+/**
+ * @param {ClipboardEvent} e
+ */
 function handlePaste(e) {
   e.preventDefault();
   // Paste as plain text to avoid foreign HTML
-  const text = e.clipboardData.getData("text/plain");
+  const text = e.clipboardData?.getData("text/plain") ?? "";
   document.execCommand("insertText", false, text);
 }
 
@@ -268,7 +299,7 @@ function handleEnterKey() {
   if (!splitFn || !activeEl || !activePath) return;
 
   const sel = window.getSelection();
-  if (!sel.rangeCount) return;
+  if (!sel || !sel.rangeCount) return;
 
   const range = sel.getRangeAt(0);
 
@@ -313,6 +344,8 @@ function commitChanges() {
 /**
  * Convert a contenteditable element's content to JSONsx children/textContent.
  * Returns { textContent } for plain text or { children } for rich content.
+ * @param {HTMLElement} el
+ * @returns {{ textContent?: string | null, children?: any[] }}
  */
 function elementToJsonsx(el) {
   const nodes = el.childNodes;
@@ -324,6 +357,7 @@ function elementToJsonsx(el) {
   }
 
   // Mixed content → children array
+  /** @type {any[]} */
   const children = [];
   for (const child of nodes) {
     const jsx = domNodeToJsonsx(child);
@@ -333,10 +367,10 @@ function elementToJsonsx(el) {
   // If all children are plain text spans (no formatting, no attributes),
   // collapse them into a single textContent
   const allPlainText = children.every(
-    c => c.tagName === "span" && c.textContent != null && !c.children && !c.attributes && !c.style
+    (/** @type {any} */ c) => c.tagName === "span" && c.textContent != null && !c.children && !c.attributes && !c.style
   );
   if (allPlainText) {
-    return { textContent: children.map(c => c.textContent).join("") };
+    return { textContent: children.map((/** @type {any} */ c) => c.textContent).join("") };
   }
 
   return { children };
@@ -344,6 +378,8 @@ function elementToJsonsx(el) {
 
 /**
  * Convert a DOM node to a JSONsx element definition.
+ * @param {Node} node
+ * @returns {any}
  */
 function domNodeToJsonsx(node) {
   if (node.nodeType === Node.TEXT_NODE) {
@@ -354,43 +390,48 @@ function domNodeToJsonsx(node) {
 
   if (node.nodeType !== Node.ELEMENT_NODE) return null;
 
-  const tag = node.tagName.toLowerCase();
-  const el = { tagName: tag };
+  const el = /** @type {HTMLElement} */ (node);
+  const tag = el.tagName.toLowerCase();
+  /** @type {Record<string, any>} */
+  const result = { tagName: tag };
 
   // Map browser execCommand output to our tag conventions
+  /** @type {Record<string, string>} */
   const tagMap = { b: "strong", i: "em", s: "del", strike: "del" };
-  if (tagMap[tag]) el.tagName = tagMap[tag];
+  if (tagMap[tag]) result.tagName = tagMap[tag];
 
   // Attributes
-  if (tag === "a" && node.href) {
-    el.attributes = { href: node.getAttribute("href") };
-    if (node.title) el.attributes.title = node.title;
+  if (tag === "a" && /** @type {HTMLAnchorElement} */ (el).href) {
+    result.attributes = { href: el.getAttribute("href") };
+    if (/** @type {HTMLAnchorElement} */ (el).title) result.attributes.title = /** @type {HTMLAnchorElement} */ (el).title;
   }
   if (tag === "code") {
-    el.textContent = node.textContent;
-    return el;
+    result.textContent = el.textContent;
+    return result;
   }
 
   // Recurse children
-  const childNodes = node.childNodes;
+  const childNodes = el.childNodes;
   if (childNodes.length === 0) {
-    el.textContent = "";
+    result.textContent = "";
   } else if (childNodes.length === 1 && childNodes[0].nodeType === Node.TEXT_NODE) {
-    el.textContent = childNodes[0].textContent;
+    result.textContent = childNodes[0].textContent;
   } else {
-    el.children = [];
+    result.children = [];
     for (const child of childNodes) {
       const jsx = domNodeToJsonsx(child);
-      if (jsx) el.children.push(jsx);
+      if (jsx) result.children.push(jsx);
     }
   }
 
-  return el;
+  return result;
 }
 
 /**
  * Convert a DocumentFragment to a JSONsx-compatible structure.
  * Returns { textContent } or { children }.
+ * @param {DocumentFragment} frag
+ * @returns {{ textContent?: string | null, children?: any[] }}
  */
 function fragmentToJsonsx(frag) {
   const nodes = frag.childNodes;
@@ -399,6 +440,7 @@ function fragmentToJsonsx(frag) {
     return { textContent: nodes[0].textContent };
   }
 
+  /** @type {any[]} */
   const children = [];
   for (const child of nodes) {
     const jsx = domNodeToJsonsx(child);
@@ -414,9 +456,13 @@ function fragmentToJsonsx(frag) {
 
 // ─── Rich text helpers ─────────────────────────────────────────────────────
 
+/**
+ * @param {Range} range
+ * @returns {string}
+ */
 function getTextBeforeCursor(range) {
   const preRange = document.createRange();
-  preRange.setStart(activeEl, 0);
+  preRange.setStart(/** @type {Node} */ (activeEl), 0);
   preRange.setEnd(range.startContainer, range.startOffset);
   return preRange.toString();
 }
@@ -429,21 +475,23 @@ const SLASH_COMMANDS = [
   { label: "Heading 2", tag: "h2", icon: "H2", description: "Medium heading" },
   { label: "Heading 3", tag: "h3", icon: "H3", description: "Small heading" },
   { label: "Paragraph", tag: "p", icon: "P", description: "Plain text" },
-  { label: "Bulleted List", tag: "ul", icon: "•", description: "Unordered list" },
+  { label: "Bulleted List", tag: "ul", icon: "\u2022", description: "Unordered list" },
   { label: "Numbered List", tag: "ol", icon: "1.", description: "Ordered list" },
   { label: "Blockquote", tag: "blockquote", icon: '"', description: "Quote block" },
   { label: "Code Block", tag: "pre", icon: "<>", description: "Fenced code" },
-  { label: "Image", tag: "img", icon: "🖼", description: "Insert image" },
-  { label: "Horizontal Rule", tag: "hr", icon: "—", description: "Divider line" },
-  { label: "Table", tag: "table", icon: "⊞", description: "Insert table" },
+  { label: "Image", tag: "img", icon: "\uD83D\uDDBC", description: "Insert image" },
+  { label: "Horizontal Rule", tag: "hr", icon: "\u2014", description: "Divider line" },
+  { label: "Table", tag: "table", icon: "\u229E", description: "Insert table" },
 ];
 
-/** Project-level component commands — populated externally */
+/** Project-level component commands — populated externally
+ * @type {Array<{ label: string, tag: string, description: string }>}
+ */
 let projectComponents = [];
 
 /**
  * Set available project components for the slash menu.
- * @param {Array<{ label, tag, description }>} components
+ * @param {Array<{ label: string, tag: string, description: string }>} components
  */
 export function setProjectComponents(components) {
   projectComponents = components;
@@ -453,7 +501,7 @@ function showSlashMenu() {
   dismissSlashMenu();
 
   const sel = window.getSelection();
-  if (!sel.rangeCount) return;
+  if (!sel || !sel.rangeCount) return;
 
   const range = sel.getRangeAt(0);
   const rect = range.getBoundingClientRect();
@@ -479,7 +527,7 @@ function updateSlashMenu() {
   if (!slashMenuEl || !activeEl) return;
 
   const sel = window.getSelection();
-  if (!sel.rangeCount) {
+  if (!sel || !sel.rangeCount) {
     dismissSlashMenu();
     return;
   }
@@ -510,6 +558,9 @@ function updateSlashMenu() {
   }
 }
 
+/**
+ * @param {string} filter
+ */
 function renderSlashItems(filter) {
   if (!slashMenuEl) return;
   const menuInner = slashMenuEl._menuInner;
@@ -517,16 +568,16 @@ function renderSlashItems(filter) {
 
   const allItems = [
     ...SLASH_COMMANDS,
-    ...projectComponents.map((c) => ({
+    ...projectComponents.map((/** @type {any} */ c) => ({
       ...c,
-      icon: "◆",
+      icon: "\u25C6",
       isComponent: true,
     })),
   ];
 
   const items = filter
     ? allItems.filter(
-        (i) => i.label.toLowerCase().includes(filter) || i.tag.toLowerCase().includes(filter),
+        (/** @type {any} */ i) => i.label.toLowerCase().includes(filter) || i.tag.toLowerCase().includes(filter),
       )
     : allItems;
 
@@ -558,7 +609,7 @@ function renderSlashItems(filter) {
       activeIdx = i;
     });
 
-    row.addEventListener("click", (e) => {
+    row.addEventListener("click", (/** @type {Event} */ e) => {
       e.preventDefault();
       e.stopPropagation();
       selectSlashItem(item);
@@ -569,7 +620,7 @@ function renderSlashItems(filter) {
 
   // Keyboard navigation within the menu
   if (!slashMenuEl._keyHandler) {
-    slashMenuEl._keyHandler = (e) => {
+    slashMenuEl._keyHandler = (/** @type {KeyboardEvent} */ e) => {
       if (!slashMenuEl) return;
       const rows = menuInner.querySelectorAll("sp-menu-item");
       if (!rows.length) return;
@@ -595,16 +646,19 @@ function renderSlashItems(filter) {
         dismissSlashMenu();
       }
     };
-    activeEl.addEventListener("keydown", slashMenuEl._keyHandler);
+    activeEl?.addEventListener("keydown", slashMenuEl._keyHandler);
   }
 }
 
+/**
+ * @param {any} item
+ */
 function selectSlashItem(item) {
   if (!activeEl || !insertFn || !activePath) return;
 
   // Remove the /command text from the element
   const sel = window.getSelection();
-  if (sel.rangeCount) {
+  if (sel && sel.rangeCount) {
     const range = sel.getRangeAt(0);
     const fullText = getTextBeforeCursor(range);
     const slashIdx = fullText.lastIndexOf("/");
@@ -617,10 +671,11 @@ function selectSlashItem(item) {
       // Walk to find the text node and offset of the slash
       const walker = document.createTreeWalker(activeEl, NodeFilter.SHOW_TEXT);
       let charCount = 0;
-      let slashNode = null,
-        slashOffset = 0;
+      /** @type {Text | null} */
+      let slashNode = null;
+      let slashOffset = 0;
       while (walker.nextNode()) {
-        const node = walker.currentNode;
+        const node = /** @type {Text} */ (walker.currentNode);
         if (charCount + node.length > slashIdx) {
           slashNode = node;
           slashOffset = slashIdx - charCount;
@@ -667,6 +722,8 @@ function dismissSlashMenu() {
 
 /**
  * Build a default JSONsx element definition for a given tag.
+ * @param {string} tag
+ * @returns {any}
  */
 function buildDefaultForTag(tag) {
   switch (tag) {

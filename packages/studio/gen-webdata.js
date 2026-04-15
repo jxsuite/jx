@@ -17,6 +17,7 @@ import { writeFileSync } from "node:fs";
 
 // ─── Element categories for the blocks panel ─────────────────────────────────
 
+/** @type {Record<string, string[]>} */
 const CATEGORIES = {
   Structure: [
     "div",
@@ -115,8 +116,9 @@ async function main() {
   ]);
 
   // 1. Collect all non-obsolete tags
+  /** @type {Set<string>} */
   const tagSet = new Set();
-  for (const { elements } of Object.values(elementsData)) {
+  for (const { elements } of Object.values(/** @type {Record<string, any>} */ (elementsData))) {
     for (const el of elements) {
       if (!el.obsolete) tagSet.add(el.name);
     }
@@ -124,7 +126,9 @@ async function main() {
   const allTags = [...tagSet].sort();
 
   // 2. Build categorized elements — only include tags that actually exist in @webref
+  /** @type {Set<string>} */
   const categorized = new Set();
+  /** @type {Record<string, Array<{ tag: string }>>} */
   const elements = {};
   for (const [category, tags] of Object.entries(CATEGORIES)) {
     const valid = tags.filter((t) => tagSet.has(t));
@@ -135,9 +139,11 @@ async function main() {
   }
 
   // Collect uncategorized HTML elements into "Other"
+  /** @type {Set<string>} */
   const htmlTags = new Set();
-  if (elementsData.html) {
-    for (const el of elementsData.html.elements) {
+  const elementsDataAny = /** @type {Record<string, any>} */ (elementsData);
+  if (elementsDataAny.html) {
+    for (const el of elementsDataAny.html.elements) {
       if (!el.obsolete) htmlTags.add(el.name);
     }
   }
@@ -147,21 +153,23 @@ async function main() {
   }
 
   // 3. Extract CSS properties (non-legacy, with camelCase name)
+  /** @type {Array<[string, string]>} */
   const cssProps = [];
-  for (const prop of cssData.properties) {
+  for (const prop of /** @type {any} */ (cssData).properties) {
     if (prop.legacyAliasOf) continue;
     // Find the lowerCamelCase styleDeclaration entry
     const decls = prop.styleDeclaration ?? [];
-    const camel = decls.find((n) => !n.includes("-") && !/^[A-Z]/.test(n));
+    const camel = decls.find((/** @type {string} */ n) => !n.includes("-") && !/^[A-Z]/.test(n));
     if (!camel) continue;
     cssProps.push([camel, prop.initial || ""]);
   }
   cssProps.sort((a, b) => a[0].localeCompare(b[0]));
 
   // 4. Extract event handlers from IDL
+  /** @type {Set<string>} */
   const handlerSet = new Set();
-  for (const ast of Object.values(idlData)) {
-    for (const def of ast) {
+  for (const ast of Object.values(/** @type {Record<string, any>} */ (idlData))) {
+    for (const def of /** @type {any[]} */ (ast)) {
       if (def.type !== "interface" && def.type !== "interface mixin") continue;
       for (const member of def.members) {
         if (

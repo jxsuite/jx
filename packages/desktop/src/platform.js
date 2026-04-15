@@ -20,13 +20,13 @@ export function createDesktopPlatform() {
   const rpc = Electroview.defineRPC({
     handlers: {
       requests: {},
-      messages: {
+      messages: /** @type {any} */ ({
         /** @param {{ path: string }} payload */
         fileChanged: (payload) => {
           // Future: trigger file tree refresh or document reload
           console.log("[desktop] File changed:", payload.path);
         },
-      },
+      }),
     },
   });
 
@@ -52,7 +52,7 @@ export function createDesktopPlatform() {
     async probeRootProject() {
       try {
         const content = await rpc.request.readFile({ path: "site.json" });
-        const config = JSON.parse(content);
+        const config = JSON.parse(/** @type {string} */ (content));
         return {
           meta: { root: ".", name: config.name || "project" },
           info: {

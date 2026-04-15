@@ -20,13 +20,19 @@
 export function createDevServerPlatform() {
   let _projectRoot = ".";
 
-  /** Prefix a project-relative path with the active project root for server API calls. */
+  /**
+   * Prefix a project-relative path with the active project root for server API calls.
+   * @param {string} rel
+   */
   function serverPath(rel) {
     if (!_projectRoot || _projectRoot === ".") return rel;
     return rel === "." ? _projectRoot : `${_projectRoot}/${rel}`;
   }
 
-  /** Strip the project root prefix from a server-root-relative path. */
+  /**
+   * Strip the project root prefix from a server-root-relative path.
+   * @param {string} path
+   */
   function stripRoot(path) {
     if (!_projectRoot || _projectRoot === ".") return path;
     return path.startsWith(_projectRoot + "/") ? path.slice(_projectRoot.length + 1) : path;
@@ -49,8 +55,8 @@ export function createDevServerPlatform() {
 
       let dirHandle;
       try {
-        dirHandle = await window.showDirectoryPicker({ mode: "readwrite" });
-      } catch (e) {
+        dirHandle = await /** @type {any} */ (window).showDirectoryPicker({ mode: "readwrite" });
+      } catch (/** @type {any} */ e) {
         // User cancelled the picker
         if (e.name === "AbortError") return null;
         throw e;
@@ -71,7 +77,7 @@ export function createDevServerPlatform() {
       const sitesRes = await fetch("/__studio/sites");
       if (!sitesRes.ok) throw new Error("Failed to fetch site list from server");
       const sites = await sitesRes.json();
-      const match = sites.find(s => JSON.stringify(s.config) === JSON.stringify(config));
+      const match = sites.find(/** @param {any} s */ s => JSON.stringify(s.config) === JSON.stringify(config));
 
       if (!match) {
         throw new Error("Selected project is not under the dev server root");
@@ -109,6 +115,7 @@ export function createDevServerPlatform() {
 
     // ─── File operations ──────────────────────────────────────────────────
 
+    /** @param {string} dir */
     async listDirectory(dir) {
       const res = await fetch(`/__studio/files?dir=${encodeURIComponent(serverPath(dir))}`);
       if (!res.ok) throw new Error(`Failed to list directory: ${dir}`);
@@ -117,6 +124,7 @@ export function createDevServerPlatform() {
       return entries;
     },
 
+    /** @param {string} path */
     async readFile(path) {
       const res = await fetch(`/__studio/file?path=${encodeURIComponent(serverPath(path))}`);
       if (!res.ok) throw new Error(`Failed to read file: ${path}`);
@@ -124,6 +132,10 @@ export function createDevServerPlatform() {
       return data.content;
     },
 
+    /**
+     * @param {string} path
+     * @param {string} content
+     */
     async writeFile(path, content) {
       const res = await fetch(`/__studio/file?path=${encodeURIComponent(serverPath(path))}`, {
         method: "PUT",
@@ -132,6 +144,7 @@ export function createDevServerPlatform() {
       if (!res.ok) throw new Error(`Failed to write file: ${path}`);
     },
 
+    /** @param {string} path */
     async deleteFile(path) {
       const res = await fetch(`/__studio/file?path=${encodeURIComponent(serverPath(path))}`, {
         method: "DELETE",
@@ -139,6 +152,10 @@ export function createDevServerPlatform() {
       if (!res.ok && res.status !== 404) throw new Error(`Failed to delete file: ${path}`);
     },
 
+    /**
+     * @param {string} from
+     * @param {string} to
+     */
     async renameFile(from, to) {
       const res = await fetch("/__studio/file/rename", {
         method: "POST",
@@ -148,6 +165,7 @@ export function createDevServerPlatform() {
       if (!res.ok) throw new Error(`Failed to rename: ${from} → ${to}`);
     },
 
+    /** @param {string} path */
     async createDirectory(path) {
       // The server creates directories implicitly when writing files.
       // Write a placeholder and delete it, or rely on mkdir behavior.
@@ -157,6 +175,7 @@ export function createDevServerPlatform() {
 
     // ─── Component discovery ──────────────────────────────────────────────
 
+    /** @param {string} dir */
     async discoverComponents(dir) {
       const scanDir = dir || _projectRoot;
       const url = scanDir === "." ? "/__studio/components" : `/__studio/components?dir=${encodeURIComponent(scanDir)}`;
@@ -167,6 +186,10 @@ export function createDevServerPlatform() {
 
     // ─── Code services (optional) ─────────────────────────────────────────
 
+    /**
+     * @param {string} action
+     * @param {any} payload
+     */
     async codeService(action, payload) {
       try {
         const res = await fetch(`/__studio/code/${action}`, {
@@ -183,6 +206,7 @@ export function createDevServerPlatform() {
 
     // ─── File location ────────────────────────────────────────────────────
 
+    /** @param {string} name */
     async locateFile(name) {
       try {
         const res = await fetch("/__studio/locate", {
@@ -197,6 +221,11 @@ export function createDevServerPlatform() {
 
     // ─── Plugin schema ────────────────────────────────────────────────────
 
+    /**
+     * @param {string} src
+     * @param {string} prototype
+     * @param {string} base
+     */
     async fetchPluginSchema(src, prototype, base) {
       const params = new URLSearchParams({ src });
       if (prototype) params.set("prototype", prototype);

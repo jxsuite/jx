@@ -25,6 +25,7 @@ import { resolve, relative, basename, extname, join } from "node:path";
  * @property {boolean} isCatchAll  - Whether route uses [...param] spread
  * @property {string[]} params     - Parameter names (e.g. ["slug"])
  * @property {string|null} $layout - Layout override from page frontmatter, if any
+ * @property {Record<string, string>} [_pathParams] - Resolved path parameters
  */
 
 /**
@@ -34,6 +35,7 @@ import { resolve, relative, basename, extname, join } from "node:path";
  * @returns {Route[]} Sorted route table (static routes first, then dynamic)
  */
 export function discoverPages(pagesDir) {
+  /** @type {Route[]} */
   const routes = [];
   walkDir(pagesDir, pagesDir, routes);
 
@@ -49,6 +51,9 @@ export function discoverPages(pagesDir) {
 
 /**
  * Recursively walk the pages directory tree.
+ * @param {string} dir
+ * @param {string} pagesRoot
+ * @param {Route[]} routes
  */
 function walkDir(dir, pagesRoot, routes) {
   const entries = readdirSync(dir, { withFileTypes: true });
@@ -100,12 +105,13 @@ function fileToRoute(relativePath, absolutePath) {
   if (!urlPath.startsWith("/")) urlPath = "/" + urlPath;
 
   // Extract parameters from bracket syntax
+  /** @type {string[]} */
   const params = [];
   let isDynamic = false;
   let isCatchAll = false;
 
   // Convert [param] → :param and [...param] → *
-  const urlPattern = urlPath.replace(/\[\.\.\.(\w+)\]|\[(\w+)\]/g, (match, spread, named) => {
+  const urlPattern = urlPath.replace(/\[\.\.\.(\w+)\]|\[(\w+)\]/g, (/** @type {string} */ match, /** @type {string} */ spread, /** @type {string} */ named) => {
     if (spread) {
       isCatchAll = true;
       isDynamic = true;
@@ -118,6 +124,7 @@ function fileToRoute(relativePath, absolutePath) {
   });
 
   // Peek at the page JSON to extract $layout if present
+  /** @type {string | null} */
   let $layout = null;
   try {
     const raw = JSON.parse(readFileSync(absolutePath, "utf8"));
@@ -150,10 +157,11 @@ function fileToRoute(relativePath, absolutePath) {
  *
  * @param {Route[]} routes - Discovered route table
  * @param {string} projectRoot - Project root for resolving $ref paths
- * @param {Map<string, object[]>} [collections] - Loaded content collections (from content-loader)
+ * @param {Map<string, any[]>} [collections] - Loaded content collections (from content-loader)
  * @returns {Promise<Route[]>} Expanded routes with concrete paths
  */
 export async function expandDynamicRoutes(routes, projectRoot, collections = new Map()) {
+  /** @type {Route[]} */
   const expanded = [];
 
   for (const route of routes) {
@@ -163,6 +171,7 @@ export async function expandDynamicRoutes(routes, projectRoot, collections = new
     }
 
     // Read the page to look for $paths
+    /** @type {any} */
     let raw;
     try {
       raw = JSON.parse(readFileSync(route.sourcePath, "utf8"));
@@ -183,8 +192,8 @@ export async function expandDynamicRoutes(routes, projectRoot, collections = new
     for (const pathEntry of pathEntries) {
       let concreteUrl = route.urlPattern;
       for (const [param, value] of Object.entries(pathEntry)) {
-        concreteUrl = concreteUrl.replace(`:${param}`, value);
-        concreteUrl = concreteUrl.replace("*", value);
+        concreteUrl = concreteUrl.replace(`:${param}`, /** @type {string} */ (value));
+        concreteUrl = concreteUrl.replace("*", /** @type {string} */ (value));
       }
 
       expanded.push({
@@ -204,10 +213,10 @@ export async function expandDynamicRoutes(routes, projectRoot, collections = new
 /**
  * Resolve $paths into an array of param objects.
  *
- * @param {object|Array} $paths - The $paths declaration
+ * @param {any} $paths - The $paths declaration
  * @param {string} projectRoot
- * @param {Map<string, object[]>} collections
- * @returns {object[]} Array of { paramName: value } objects
+ * @param {Map<string, any[]>} collections
+ * @returns {Record<string, any>[]} Array of { paramName: value } objects
  */
 function resolvePathEntries($paths, projectRoot, collections) {
   // Legacy: array of param objects
@@ -226,7 +235,7 @@ function resolvePathEntries($paths, projectRoot, collections) {
     }
     const param = $paths.param ?? "slug";
     const field = $paths.field ?? "id";
-    return entries.map((entry) => ({
+    return entries.map((/** @type {any} */ entry) => ({
       [param]: field === "id" ? entry.id : (entry.data[field] ?? entry.id),
     }));
   }
@@ -234,16 +243,18 @@ function resolvePathEntries($paths, projectRoot, collections) {
   // Explicit values: { values: ["en", "fr"], param: "lang" }
   if (Array.isArray($paths.values)) {
     const param = $paths.param ?? "value";
-    return $paths.values.map((v) => ({ [param]: v }));
+    return $paths.values.map((/** @type {any} */ v) => ({ [param]: v }));
   }
 
   // Data file ref: { "$ref": "./data/products.json", param: "id", field: "sku" }
   if ($paths.$ref) {
     const filePath = resolve(projectRoot, $paths.$ref);
+    /** @type {any} */
     let data;
     try {
       data = JSON.parse(readFileSync(filePath, "utf8"));
-    } catch (err) {
+    } catch (e) {
+      const err = /** @type {any} */ (e);
       console.warn(`Warning: $paths.$ref could not load "${$paths.$ref}": ${err.message}`);
       return [];
     }
@@ -253,7 +264,7 @@ function resolvePathEntries($paths, projectRoot, collections) {
     }
     const param = $paths.param ?? "id";
     const field = $paths.field ?? "id";
-    return data.map((item) => ({
+    return data.map((/** @type {any} */ item) => ({
       [param]: item[field] ?? item.id ?? String(item),
     }));
   }

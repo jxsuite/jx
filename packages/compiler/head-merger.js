@@ -15,11 +15,11 @@
 /**
  * Merge $head arrays from site, layout, and page levels.
  *
- * @param {Array} siteHead   - site.json $head entries
- * @param {Array} layoutHead - Layout $head entries (may be empty)
- * @param {Array} pageHead   - Page $head entries (may be empty)
- * @param {object} context   - { title, lang, charset, url, pageUrl }
- * @returns {Array} Merged, deduplicated $head array
+ * @param {any[]} [siteHead]   - site.json $head entries
+ * @param {any[]} [layoutHead] - Layout $head entries (may be empty)
+ * @param {any[]} [pageHead]   - Page $head entries (may be empty)
+ * @param {any} [context]   - { title, lang, charset, url, pageUrl }
+ * @returns {any[]} Merged, deduplicated $head array
  */
 export function mergeHead(siteHead = [], layoutHead = [], pageHead = [], context = {}) {
   // Start with auto-injected defaults
@@ -29,6 +29,7 @@ export function mergeHead(siteHead = [], layoutHead = [], pageHead = [], context
   ];
 
   // Merge layers: site → layout → page (later wins)
+  /** @type {Map<string, any>} */
   const merged = new Map();
 
   for (const entry of [...defaults, ...siteHead, ...layoutHead, ...pageHead]) {
@@ -55,6 +56,8 @@ export function mergeHead(siteHead = [], layoutHead = [], pageHead = [], context
 /**
  * Generate a deduplication key for a <head> element.
  * Elements with the same key are considered duplicates; the last one wins.
+ * @param {any} entry
+ * @returns {string}
  */
 function headEntryKey(entry) {
   if (!entry || typeof entry !== "object") return String(entry);
@@ -94,6 +97,8 @@ function headEntryKey(entry) {
 
 /**
  * Simple string hash for deduplication (not cryptographic).
+ * @param {string} str
+ * @returns {string}
  */
 function simpleHash(str) {
   let hash = 0;
@@ -106,15 +111,17 @@ function simpleHash(str) {
 /**
  * Render a merged $head array to HTML string for insertion into <head>.
  *
- * @param {Array} headEntries - Merged head entries
+ * @param {any[]} headEntries - Merged head entries
  * @returns {string} HTML string
  */
 export function renderHead(headEntries) {
-  return headEntries.map(renderHeadEntry).join("\n  ");
+  return headEntries.map((/** @type {any} */ e) => renderHeadEntry(e)).join("\n  ");
 }
 
 /**
  * Render a single $head entry to an HTML string.
+ * @param {any} entry
+ * @returns {string}
  */
 function renderHeadEntry(entry) {
   if (typeof entry === "string") return entry;
@@ -123,7 +130,7 @@ function renderHeadEntry(entry) {
   const tag = entry.tagName;
   const attrs = entry.attributes ?? {};
   const attrStr = Object.entries(attrs)
-    .map(([k, v]) => v === true ? k : `${k}="${escapeAttr(v)}"`)
+    .map(([k, v]) => v === true ? k : `${k}="${escapeAttr(/** @type {any} */ (v))}"`)
     .join(" ");
 
   const open = attrStr ? `<${tag} ${attrStr}>` : `<${tag}>`;
@@ -137,6 +144,10 @@ function renderHeadEntry(entry) {
   return `${open}${content}</${tag}>`;
 }
 
+/**
+ * @param {any} val
+ * @returns {string}
+ */
 function escapeAttr(val) {
   return String(val).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
 }

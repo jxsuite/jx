@@ -16,10 +16,17 @@ const DEFAULT_IGNORE = [
   "**/bun.lock",
 ];
 
+/**
+ * @param {string} value
+ */
 function normalizePath(value) {
   return value.replaceAll("\\", "/");
 }
 
+/**
+ * @param {string} pathname
+ * @param {string[]} ignore
+ */
 function shouldIgnore(pathname, ignore) {
   const normalizedPath = normalizePath(pathname);
   return ignore.some((pattern) => {
@@ -38,6 +45,9 @@ function shouldIgnore(pathname, ignore) {
 
 export const SSE_SCRIPT = `\n<script>new EventSource('/__reload').onmessage=()=>location.reload()</script>`;
 
+/**
+ * @param {string} html
+ */
 export function injectSSE(html) {
   return html.includes("</body>")
     ? html.replace("</body>", SSE_SCRIPT + "\n</body>")
@@ -47,7 +57,7 @@ export function injectSSE(html) {
 /**
  * Create the file watcher + SSE system.
  * @param {string} root - Absolute path to watch
- * @param {Array} builds - Build entries (for selective rebuild)
+ * @param {any[]} builds - Build entries (for selective rebuild)
  * @param {{ ignore?: string[], debounce?: number }} [opts]
  * @returns {{ broadcast: () => void, handleSSE: () => Response }}
  */
@@ -64,10 +74,11 @@ export function createWatcher(root, builds, opts = {}) {
   }
 
   function handleSSE() {
+    /** @type {any} */
     let send;
     const stream = new ReadableStream({
       start(c) {
-        send = (msg) => {
+        send = (/** @type {string} */ msg) => {
           try {
             c.enqueue(encoder.encode(msg));
           } catch {}
@@ -94,6 +105,7 @@ export function createWatcher(root, builds, opts = {}) {
     });
   }
 
+  /** @type {any} */
   let timer = null;
   const watcher = chokidar.watch(root, {
     ignored: (watchedPath) => shouldIgnore(watchedPath, ignore),

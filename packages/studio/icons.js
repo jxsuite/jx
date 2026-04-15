@@ -5,11 +5,11 @@
 import { html } from "lit";
 
 // Helper for custom filled-rect icons (alignment/justify diagrams) where no Spectrum match exists
-const R = (d) =>
+const R = (/** @type {any} */ d) =>
   html`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none">${d}</svg>`;
 
 // Helper for custom stroke icons
-const S = (d) =>
+const S = (/** @type {any} */ d) =>
   html`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
 
 const icons = {

@@ -20,12 +20,14 @@ import { globSync } from "glob";
  * Handles quoted fields with commas and newlines.
  *
  * @param {string} csv - Raw CSV text
- * @returns {object[]} Array of row objects
+ * @returns {Record<string, any>[]} Array of row objects
  */
 function parseCSV(csv) {
+  /** @type {Record<string, any>[]} */
   const rows = [];
   let current = "";
   let inQuotes = false;
+  /** @type {string[]} */
   const lines = [];
 
   // Split into rows respecting quoted newlines
@@ -50,7 +52,9 @@ function parseCSV(csv) {
 
   if (lines.length === 0) return [];
 
+  /** @param {string} line */
   const parseRow = (line) => {
+    /** @type {string[]} */
     const fields = [];
     let field = "";
     let q = false;
@@ -77,6 +81,7 @@ function parseCSV(csv) {
   const headers = parseRow(lines[0]);
   for (let i = 1; i < lines.length; i++) {
     const fields = parseRow(lines[i]);
+    /** @type {Record<string, any>} */
     const obj = {};
     for (let j = 0; j < headers.length; j++) {
       obj[headers[j].trim()] = fields[j]?.trim() ?? "";
@@ -88,11 +93,13 @@ function parseCSV(csv) {
 
 // ─── Markdown loader ──────────────────────────────────────────────────────────
 
+/** @type {any} */
 let _mdModule = null;
 
 /**
  * Lazily import @jsonsx/parser for Markdown support.
  * This avoids hard dependency — only loads when MD collections exist.
+ * @returns {Promise<any>}
  */
 async function getMarkdownModule() {
   if (!_mdModule) {
@@ -134,7 +141,7 @@ async function loadMarkdownEntry(filePath) {
 function loadJSONEntries(filePath) {
   const raw = JSON.parse(readFileSync(filePath, "utf-8"));
   if (Array.isArray(raw)) {
-    return raw.map((item, i) => ({
+    return raw.map((/** @type {any} */ item, /** @type {number} */ i) => ({
       id: item.id ?? basename(filePath, ".json") + "-" + i,
       data: item,
       body: null,
@@ -153,19 +160,20 @@ function loadJSONEntries(filePath) {
 /**
  * Load a CSV file into ContentEntry(s).
  * @param {string} filePath - Absolute path to .csv file
- * @param {object} [schema] - Collection schema (for type coercion)
+ * @param {any} [schema] - Collection schema (for type coercion)
  * @returns {object[]} Array of ContentEntry shapes
  */
 function loadCSVEntries(filePath, schema) {
   const csv = readFileSync(filePath, "utf-8");
   const rows = parseCSV(csv);
-  return rows.map((row, i) => {
+  return rows.map((/** @type {Record<string, any>} */ row, /** @type {number} */ i) => {
     // Apply type coercion based on schema if available
     if (schema?.properties) {
       for (const [key, def] of Object.entries(schema.properties)) {
+        const d = /** @type {any} */ (def);
         if (key in row) {
-          if (def.type === "number") row[key] = Number(row[key]);
-          else if (def.type === "boolean") row[key] = row[key] === "true";
+          if (d.type === "number") row[key] = Number(row[key]);
+          else if (d.type === "boolean") row[key] = row[key] === "true";
         }
       }
     }
@@ -181,7 +189,7 @@ function loadCSVEntries(filePath, schema) {
  * Load and parse content/content.config.json.
  *
  * @param {string} projectRoot - Project root directory
- * @returns {{ config: object, contentDir: string } | null} Parsed config or null if no content dir
+ * @returns {{ config: any, contentDir: string } | null} Parsed config or null if no content dir
  */
 export function loadContentConfig(projectRoot) {
   const contentDir = resolve(projectRoot, "content");
@@ -189,6 +197,7 @@ export function loadContentConfig(projectRoot) {
 
   if (!existsSync(contentDir)) return null;
 
+  /** @type {any} */
   let config = { collections: {} };
   if (existsSync(configPath)) {
     config = JSON.parse(readFileSync(configPath, "utf-8"));
@@ -203,17 +212,18 @@ export function loadContentConfig(projectRoot) {
  * Load all content collections defined in content.config.json.
  *
  * @param {string} projectRoot - Project root directory
- * @returns {Promise<Map<string, object[]>>} Map of collection name → array of ContentEntry
+ * @returns {Promise<Map<string, any[]>>} Map of collection name → array of ContentEntry
  */
 export async function loadCollections(projectRoot) {
   const result = loadContentConfig(projectRoot);
   if (!result) return new Map();
 
   const { config, contentDir } = result;
+  /** @type {Map<string, any[]>} */
   const collections = new Map();
 
   for (const [name, collectionDef] of Object.entries(config.collections)) {
-    const entries = await loadCollection(name, collectionDef, contentDir);
+    const entries = await loadCollection(name, /** @type {any} */ (collectionDef), contentDir);
     collections.set(name, entries);
   }
 
@@ -224,9 +234,9 @@ export async function loadCollections(projectRoot) {
  * Load a single collection by its definition.
  *
  * @param {string} name - Collection name
- * @param {object} collectionDef - Collection definition from content.config.json
+ * @param {any} collectionDef - Collection definition from content.config.json
  * @param {string} contentDir - Absolute path to content/ directory
- * @returns {Promise<object[]>} Array of ContentEntry
+ * @returns {Promise<any[]>} Array of ContentEntry
  */
 async function loadCollection(name, collectionDef, contentDir) {
   const source = collectionDef.source;
@@ -236,6 +246,7 @@ async function loadCollection(name, collectionDef, contentDir) {
   const pattern = resolve(contentDir, source).split("\\").join("/");
   const files = globSync(pattern, { absolute: true });
 
+  /** @type {any[]} */
   const entries = [];
 
   for (const filePath of files) {
@@ -264,8 +275,8 @@ async function loadCollection(name, collectionDef, contentDir) {
  * Validate content entries against their collection schema.
  * Logs warnings for missing required fields and type mismatches.
  *
- * @param {object[]} entries - Array of ContentEntry
- * @param {object} schema - JSON Schema for the collection
+ * @param {any[]} entries - Array of ContentEntry
+ * @param {any} schema - JSON Schema for the collection
  * @param {string} collectionName - For error messages
  */
 function validateEntries(entries, schema, collectionName) {
@@ -284,22 +295,23 @@ function validateEntries(entries, schema, collectionName) {
 
     // Check types
     for (const [field, def] of Object.entries(properties)) {
+      const d = /** @type {any} */ (def);
       const value = entry.data[field];
       if (value == null) continue;
 
-      if (def.type === "string" && typeof value !== "string") {
+      if (d.type === "string" && typeof value !== "string") {
         console.warn(
           `Content validation: "${collectionName}/${entry.id}" field "${field}" expected string, got ${typeof value}`
         );
-      } else if (def.type === "number" && typeof value !== "number") {
+      } else if (d.type === "number" && typeof value !== "number") {
         console.warn(
           `Content validation: "${collectionName}/${entry.id}" field "${field}" expected number, got ${typeof value}`
         );
-      } else if (def.type === "boolean" && typeof value !== "boolean") {
+      } else if (d.type === "boolean" && typeof value !== "boolean") {
         console.warn(
           `Content validation: "${collectionName}/${entry.id}" field "${field}" expected boolean, got ${typeof value}`
         );
-      } else if (def.type === "array" && !Array.isArray(value)) {
+      } else if (d.type === "array" && !Array.isArray(value)) {
         console.warn(
           `Content validation: "${collectionName}/${entry.id}" field "${field}" expected array, got ${typeof value}`
         );
@@ -314,20 +326,17 @@ function validateEntries(entries, schema, collectionName) {
  * Query a loaded collection with filter, sort, and limit.
  * Implements the ContentCollection $prototype resolution.
  *
- * @param {object[]} entries - Full collection entries
- * @param {object} query - Query options
- * @param {object} [query.filter] - Key-value filter (AND semantics)
- * @param {object} [query.sort] - { field, order }
- * @param {number} [query.limit] - Max entries to return
- * @returns {object[]} Filtered, sorted, limited entries
+ * @param {any[]} entries - Full collection entries
+ * @param {any} [query] - Query options
+ * @returns {any[]} Filtered, sorted, limited entries
  */
 export function queryCollection(entries, query = {}) {
   let result = [...entries];
 
   // Filter
   if (query.filter && typeof query.filter === "object") {
-    result = result.filter((entry) => {
-      for (const [key, expected] of Object.entries(query.filter)) {
+    result = result.filter((/** @type {any} */ entry) => {
+      for (const [key, expected] of Object.entries(/** @type {Record<string, any>} */ (query.filter))) {
         const actual = entry.data[key];
         if (actual !== expected) return false;
       }
@@ -338,7 +347,7 @@ export function queryCollection(entries, query = {}) {
   // Sort
   if (query.sort) {
     const { field, order = "asc" } = query.sort;
-    result.sort((a, b) => {
+    result.sort((/** @type {any} */ a, /** @type {any} */ b) => {
       const aVal = a.data[field] ?? "";
       const bVal = b.data[field] ?? "";
       if (aVal < bVal) return order === "asc" ? -1 : 1;
@@ -359,12 +368,12 @@ export function queryCollection(entries, query = {}) {
  * Find a single entry by ID in a collection.
  * Implements the ContentEntry $prototype resolution.
  *
- * @param {object[]} entries - Full collection entries
+ * @param {any[]} entries - Full collection entries
  * @param {string} id - Entry ID to find
- * @returns {object|null} The matching entry or null
+ * @returns {any|null} The matching entry or null
  */
 export function findEntry(entries, id) {
-  return entries.find((e) => e.id === id) ?? null;
+  return entries.find((/** @type {any} */ e) => e.id === id) ?? null;
 }
 
 // ─── Collection Reference Resolution ─────────────────────────────────────────
@@ -374,27 +383,29 @@ export function findEntry(entries, id) {
  * For example, a blog post's `author: "jane-doe"` with a schema `$ref`
  * to the authors collection gets resolved to the full author entry.
  *
- * @param {Map<string, object[]>} collections - All loaded collections
- * @param {object} config - content.config.json
+ * @param {Map<string, any[]>} collections - All loaded collections
+ * @param {any} config - content.config.json
  */
 export function resolveCollectionRefs(collections, config) {
   for (const [name, collectionDef] of Object.entries(config.collections)) {
-    const schema = collectionDef.schema;
+    const cd = /** @type {any} */ (collectionDef);
+    const schema = cd.schema;
     if (!schema?.properties) continue;
 
     const entries = collections.get(name);
     if (!entries) continue;
 
     for (const [field, def] of Object.entries(schema.properties)) {
-      if (!def.$ref?.startsWith("#/collections/")) continue;
-      const refCollection = def.$ref.replace("#/collections/", "");
+      const d = /** @type {any} */ (def);
+      if (!d.$ref?.startsWith("#/collections/")) continue;
+      const refCollection = d.$ref.replace("#/collections/", "");
       const refEntries = collections.get(refCollection);
       if (!refEntries) continue;
 
       for (const entry of entries) {
         const refId = entry.data[field];
         if (typeof refId === "string") {
-          const resolved = refEntries.find((e) => e.id === refId);
+          const resolved = refEntries.find((/** @type {any} */ e) => e.id === refId);
           if (resolved) {
             entry.data[field] = resolved;
           }

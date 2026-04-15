@@ -11,6 +11,10 @@ import { resolve, relative, basename, dirname } from "node:path";
 import { readdir, stat, readFile, writeFile, rename, unlink, mkdir } from "node:fs/promises";
 import { readFileSync, existsSync } from "node:fs";
 
+/**
+ * @param {string} filePath
+ * @param {string} root
+ */
 function assertUnderRoot(filePath, root) {
   const rel = relative(root, filePath);
   if (rel.startsWith("..") || rel.startsWith("/")) throw new Error("Path outside project root");
@@ -18,6 +22,9 @@ function assertUnderRoot(filePath, root) {
 
 /**
  * Handle /__studio/* requests.
+ * @param {Request} req
+ * @param {URL} url
+ * @param {string} root
  */
 export async function handleStudioApi(req, url, root) {
   const path = url.pathname;
@@ -42,7 +49,7 @@ export async function handleStudioApi(req, url, root) {
     const absDir = resolve(root, dir);
     try {
       assertUnderRoot(absDir, root);
-    } catch (e) {
+    } catch (/** @type {any} */ e) {
       return Response.json({ error: e.message }, { status: 400 });
     }
     try {
@@ -67,7 +74,7 @@ export async function handleStudioApi(req, url, root) {
       } catch {}
 
       return Response.json({ isSiteProject, siteConfig, directories, projectRoot });
-    } catch (e) {
+    } catch (/** @type {any} */ e) {
       return Response.json({ error: e.message }, { status: 500 });
     }
   }
@@ -89,7 +96,7 @@ export async function handleStudioApi(req, url, root) {
         } catch {}
       }
       return Response.json(sites);
-    } catch (e) {
+    } catch (/** @type {any} */ e) {
       return Response.json({ error: e.message }, { status: 500 });
     }
   }
@@ -101,7 +108,7 @@ export async function handleStudioApi(req, url, root) {
     const absDir = resolve(root, dir);
     try {
       assertUnderRoot(absDir, root);
-    } catch (e) {
+    } catch (/** @type {any} */ e) {
       return Response.json({ error: e.message }, { status: 400 });
     }
 
@@ -141,7 +148,7 @@ export async function handleStudioApi(req, url, root) {
         });
       }
       return Response.json(files);
-    } catch (e) {
+    } catch (/** @type {any} */ e) {
       return Response.json({ error: e.message }, { status: 500 });
     }
   }
@@ -151,7 +158,7 @@ export async function handleStudioApi(req, url, root) {
     const dir = url.searchParams.get("dir");
     const scanRoot = dir ? resolve(root, dir) : root;
     if (dir) {
-      try { assertUnderRoot(scanRoot, root); } catch (e) {
+      try { assertUnderRoot(scanRoot, root); } catch (/** @type {any} */ e) {
         return Response.json({ error: e.message }, { status: 400 });
       }
     }
@@ -177,7 +184,7 @@ export async function handleStudioApi(req, url, root) {
         } catch {} // skip non-JSON or parse errors
       }
       return Response.json(components);
-    } catch (e) {
+    } catch (/** @type {any} */ e) {
       return Response.json({ error: e.message }, { status: 500 });
     }
   }
@@ -189,12 +196,12 @@ export async function handleStudioApi(req, url, root) {
     const abs = resolve(root, fp);
     try {
       assertUnderRoot(abs, root);
-    } catch (e) {
+    } catch (/** @type {any} */ e) {
       return new Response(e.message, { status: 400 });
     }
     try {
       return Response.json({ content: await readFile(abs, "utf8"), path: relative(root, abs) });
-    } catch (e) {
+    } catch (/** @type {any} */ e) {
       return e.code === "ENOENT"
         ? new Response("Not found", { status: 404 })
         : Response.json({ error: e.message }, { status: 500 });
@@ -208,14 +215,14 @@ export async function handleStudioApi(req, url, root) {
     const abs = resolve(root, fp);
     try {
       assertUnderRoot(abs, root);
-    } catch (e) {
+    } catch (/** @type {any} */ e) {
       return new Response(e.message, { status: 400 });
     }
     try {
       await mkdir(dirname(abs), { recursive: true });
       await writeFile(abs, await req.text(), "utf8");
       return Response.json({ ok: true, path: relative(root, abs) });
-    } catch (e) {
+    } catch (/** @type {any} */ e) {
       return Response.json({ error: e.message }, { status: 500 });
     }
   }
@@ -227,13 +234,13 @@ export async function handleStudioApi(req, url, root) {
     const abs = resolve(root, fp);
     try {
       assertUnderRoot(abs, root);
-    } catch (e) {
+    } catch (/** @type {any} */ e) {
       return new Response(e.message, { status: 400 });
     }
     try {
       await unlink(abs);
       return Response.json({ ok: true, path: relative(root, abs) });
-    } catch (e) {
+    } catch (/** @type {any} */ e) {
       return e.code === "ENOENT"
         ? new Response("Not found", { status: 404 })
         : Response.json({ error: e.message }, { status: 500 });
@@ -255,14 +262,14 @@ export async function handleStudioApi(req, url, root) {
     try {
       assertUnderRoot(absFrom, root);
       assertUnderRoot(absTo, root);
-    } catch (e) {
+    } catch (/** @type {any} */ e) {
       return new Response(e.message, { status: 400 });
     }
     try {
       await mkdir(dirname(absTo), { recursive: true });
       await rename(absFrom, absTo);
       return Response.json({ ok: true, from: relative(root, absFrom), to: relative(root, absTo) });
-    } catch (e) {
+    } catch (/** @type {any} */ e) {
       return Response.json({ error: e.message }, { status: 500 });
     }
   }
@@ -291,7 +298,7 @@ export async function handleStudioApi(req, url, root) {
         path: matches[0],
         ...(matches.length > 1 ? { alternatives: matches } : {}),
       });
-    } catch (e) {
+    } catch (/** @type {any} */ e) {
       return Response.json({ error: e.message }, { status: 500 });
     }
   }
@@ -312,7 +319,7 @@ export async function handleStudioApi(req, url, root) {
       } else {
         moduleAbsPath = resolve(root, src);
       }
-    } catch (e) {
+    } catch (/** @type {any} */ e) {
       return Response.json({ schema: null, error: e.message });
     }
 
@@ -322,7 +329,7 @@ export async function handleStudioApi(req, url, root) {
         const content = readFileSync(moduleAbsPath, "utf8");
         const classDef = JSON.parse(content);
         return Response.json({ schema: extractStudioSchema(classDef, moduleAbsPath) });
-      } catch (e) {
+      } catch (/** @type {any} */ e) {
         return Response.json({ schema: null, error: e.message });
       }
     }
@@ -348,7 +355,7 @@ export async function handleStudioApi(req, url, root) {
         return Response.json({ schema: null, error: `Export "${exportName}" not found` });
       }
       return Response.json({ schema: ExportedClass.schema ?? null });
-    } catch (e) {
+    } catch (/** @type {any} */ e) {
       return Response.json({ schema: null, error: e.message });
     }
   }
@@ -360,6 +367,9 @@ export async function handleStudioApi(req, url, root) {
  * Extract a studio-friendly schema from a .class.json definition.
  * Transforms $defs.parameters and $defs.fields into the flat { description, properties, required }
  * shape that renderSchemaFields() in the studio already consumes.
+ * @param {any} classDef
+ * @param {string} classJsonPath
+ * @returns {{ description: any, properties: Record<string, any>, required: string[] }}
  */
 function extractStudioSchema(classDef, classJsonPath) {
   // If extends.$ref points to a parent, recursively merge
@@ -377,7 +387,9 @@ function extractStudioSchema(classDef, classJsonPath) {
 
   const params = classDef.$defs?.parameters ?? {};
   const fields = classDef.$defs?.fields ?? {};
+  /** @type {Record<string, any>} */
   const properties = {};
+  /** @type {string[]} */
   const required = [];
 
   // Start with parent properties (child overrides)
@@ -415,6 +427,7 @@ function extractStudioSchema(classDef, classJsonPath) {
 
   // Determine required from constructor parameters that have no default
   const ctorParams = classDef.$defs?.constructor?.parameters ?? [];
+  /** @type {Set<string>} */
   const requiredSet = new Set(required);
   for (const p of ctorParams) {
     const name = p.$ref ? p.$ref.split("/").pop() : (p.identifier ?? p.name);

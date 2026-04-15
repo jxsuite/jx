@@ -43,6 +43,7 @@ export const MD_TEXT_ONLY = new Set(["code"]);
 /**
  * Nesting constraints: which child elements are allowed inside each parent.
  * null = any block/inline allowed (used for content root and directive components).
+ * @type {Record<string, { block: boolean, inline: boolean, directive: boolean, only: Set<string> | null }>}
  */
 export const MD_NESTING = {
   _root: { block: true, inline: false, directive: true, only: null },

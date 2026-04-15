@@ -27,12 +27,13 @@ import { loadCollections, loadContentConfig, resolveCollectionRefs } from "./con
  *
  * @param {string} projectRoot - Absolute path to the project root (contains site.json)
  * @param {object} [options]
- * @param {boolean} [options.clean=true]  - Remove outDir before building
- * @param {boolean} [options.verbose=false] - Log progress
+ * @param {boolean} [options.clean]  - Remove outDir before building
+ * @param {boolean} [options.verbose] - Log progress
  * @returns {Promise<{ routes: number, files: number, errors: string[] }>}
  */
 export async function buildSite(projectRoot, options = {}) {
   const { clean = true, verbose = false } = options;
+  /** @type {string[]} */
   const errors = [];
   const log = verbose ? console.log.bind(console) : () => {};
 
@@ -104,7 +105,8 @@ export async function buildSite(projectRoot, options = {}) {
         writeFileSync(serverPath, result.serverHandler, "utf8");
         fileCount++;
       }
-    } catch (err) {
+    } catch (e) {
+      const err = /** @type {any} */ (e);
       const msg = `Error compiling ${route.urlPattern}: ${err.message}`;
       errors.push(msg);
       console.error(msg);
@@ -137,6 +139,12 @@ export async function buildSite(projectRoot, options = {}) {
  * Compile a single page within the site build context.
  *
  * Pipeline: load JSON → resolve layout → inject context → merge head → compile
+ *
+ * @param {any} route
+ * @param {any} siteConfig
+ * @param {string} projectRoot
+ * @param {Map<string, any[]>} [collections]
+ * @returns {Promise<{ html: string, files: any[], serverHandler: string | null }>}
  */
 async function compilePage(route, siteConfig, projectRoot, collections = new Map()) {
   // Load the raw page document
@@ -184,6 +192,7 @@ async function compilePage(route, siteConfig, projectRoot, collections = new Map
   result.html = injectHead(result.html, mergedHead, siteConfig.defaults?.lang ?? "en");
 
   // Compile server handler if applicable
+  /** @type {string | null} */
   let serverHandler = null;
   try {
     const serverResult = await compileServer(route.sourcePath);
@@ -200,6 +209,10 @@ async function compilePage(route, siteConfig, projectRoot, collections = new Map
 /**
  * Post-process compiled HTML to inject the merged <head> content.
  * Replaces the compiler's default <head> section with our merged version.
+ * @param {string} html
+ * @param {any[]} headEntries
+ * @param {string} lang
+ * @returns {string}
  */
 function injectHead(html, headEntries, lang) {
   const headHtml = renderHead(headEntries);
@@ -211,7 +224,7 @@ function injectHead(html, headEntries, lang) {
   }
 
   // Set the lang attribute on <html>
-  html = html.replace(/<html\s[^>]*>/i, (match) => {
+  html = html.replace(/<html\s[^>]*>/i, (/** @type {string} */ match) => {
     if (/lang=/.test(match)) {
       return match.replace(/lang="[^"]*"/, `lang="${lang}"`);
     }
@@ -227,6 +240,11 @@ function injectHead(html, headEntries, lang) {
  * "/" → dist/index.html
  * "/about" → dist/about/index.html (with trailingSlash: "always")
  * "/blog/hello" → dist/blog/hello/index.html
+ *
+ * @param {string} urlPattern
+ * @param {string} outDir
+ * @param {string} trailingSlash
+ * @returns {string}
  */
 function routeToOutputPath(urlPattern, outDir, trailingSlash) {
   if (urlPattern === "/") {
@@ -247,10 +265,13 @@ function routeToOutputPath(urlPattern, outDir, trailingSlash) {
 /**
  * Generate redirect files (HTML meta refresh and _redirects).
  *
+ * @param {Record<string, any>} redirects
+ * @param {string} outDir
  * @returns {number} Number of files written
  */
 function generateRedirects(redirects, outDir) {
   let count = 0;
+  /** @type {string[]} */
   const redirectLines = [];
 
   for (const [source, target] of Object.entries(redirects)) {
@@ -292,10 +313,18 @@ function generateRedirects(redirects, outDir) {
   return count;
 }
 
+/**
+ * @param {string} str
+ * @returns {string}
+ */
 function escapeHtml(str) {
   return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+/**
+ * @param {string} str
+ * @returns {string}
+ */
 function escapeAttr(str) {
   return String(str).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
 }

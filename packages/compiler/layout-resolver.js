@@ -18,10 +18,10 @@ import { resolve, dirname } from "node:path";
 /**
  * Resolve a page's layout, wrapping the page content in the layout structure.
  *
- * @param {object} pageDoc   - The raw page JSON document
- * @param {object} siteConfig - Site configuration (for defaults.layout)
+ * @param {any} pageDoc   - The raw page JSON document
+ * @param {any} siteConfig - Site configuration (for defaults.layout)
  * @param {string} projectRoot - Project root directory
- * @returns {object} The merged document (layout wrapping page content)
+ * @returns {any} The merged document (layout wrapping page content)
  */
 export function resolveLayout(pageDoc, siteConfig, projectRoot) {
   // Determine which layout to use
@@ -38,10 +38,12 @@ export function resolveLayout(pageDoc, siteConfig, projectRoot) {
     throw new Error(`Layout not found: ${layoutRef} (resolved to ${layoutPath})`);
   }
 
+  /** @type {any} */
   let layoutDoc;
   try {
     layoutDoc = JSON.parse(readFileSync(layoutPath, "utf8"));
-  } catch (err) {
+  } catch (e) {
+    const err = /** @type {any} */ (e);
     throw new Error(`Invalid layout JSON at ${layoutPath}: ${err.message}`);
   }
 
@@ -97,22 +99,24 @@ export function resolveLayout(pageDoc, siteConfig, projectRoot) {
  *   3. Remaining children go into the default (unnamed) slot
  *   4. Replace each <slot> element with its distributed children
  *
- * @param {object} node      - Layout document tree (mutated in place)
- * @param {Array}  children  - Page children to distribute
+ * @param {any} node      - Layout document tree (mutated in place)
+ * @param {any[]}  children  - Page children to distribute
  */
 function distributeSlots(node, children) {
   if (!node || typeof node !== "object") return;
   if (!Array.isArray(node.children)) return;
 
   // Collect named and default children
+  /** @type {Map<string, any[]>} */
   const named = new Map();   // slot name → children[]
+  /** @type {any[]} */
   const defaults = [];        // children without a slot target
 
   for (const child of children) {
     if (child && typeof child === "object" && child.attributes?.slot) {
       const slotName = child.attributes.slot;
       if (!named.has(slotName)) named.set(slotName, []);
-      named.get(slotName).push(child);
+      /** @type {any[]} */ (named.get(slotName)).push(child);
     } else {
       defaults.push(child);
     }
@@ -124,11 +128,15 @@ function distributeSlots(node, children) {
 
 /**
  * Recursively walk the tree and replace <slot> elements with distributed content.
+ * @param {any} node
+ * @param {Map<string, any[]>} named
+ * @param {any[]} defaults
  */
 function fillSlots(node, named, defaults) {
   if (!node || typeof node !== "object") return;
   if (!Array.isArray(node.children)) return;
 
+  /** @type {any[]} */
   const newChildren = [];
 
   for (const child of node.children) {
@@ -137,7 +145,7 @@ function fillSlots(node, named, defaults) {
 
       if (slotName && named.has(slotName)) {
         // Named slot — replace with matching children
-        newChildren.push(...named.get(slotName));
+        newChildren.push(.../** @type {any[]} */ (named.get(slotName)));
         named.delete(slotName); // consumed
       } else if (!slotName && defaults.length > 0) {
         // Default slot — replace with unassigned children
@@ -162,6 +170,8 @@ function fillSlots(node, named, defaults) {
 
 /**
  * Deep clone a JSON-serializable object.
+ * @param {any} obj
+ * @returns {any}
  */
 function deepClone(obj) {
   return JSON.parse(JSON.stringify(obj));
