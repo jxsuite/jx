@@ -55,6 +55,7 @@ function makeDoc() {
   };
 }
 
+/** @param {any} [doc] */
 function makeState(doc) {
   return createState(doc || makeDoc());
 }
@@ -74,7 +75,7 @@ describe("getNodeAtPath", () => {
 
   test("resolves deeply nested child", () => {
     expect(getNodeAtPath(doc, ["children", 1, "children", 0])).toBe(
-      doc.children[1].children[0],
+      /** @type {any} */ (doc.children[1]).children[0],
     );
   });
 
@@ -219,7 +220,7 @@ describe("flattenTree", () => {
     const rows = flattenTree(doc);
     expect(rows.some((r) => r.nodeType === "map")).toBe(true);
     const mapRow = rows.find((r) => r.nodeType === "map");
-    expect(mapRow.depth).toBe(1);
+    expect(/** @type {any} */ (mapRow).depth).toBe(1);
     // Template element should be at depth 2
     const templateRow = rows.find(
       (r) => r.node.tagName === "li" && r.depth === 2,
@@ -490,7 +491,7 @@ describe("removeNode", () => {
 
   test("does nothing for null path", () => {
     const s = makeState();
-    expect(removeNode(s, null)).toBe(s);
+    expect(removeNode(s, /** @type {any} */ (null))).toBe(s);
   });
 
   test("clears selection if removed node was selected", () => {
@@ -534,7 +535,7 @@ describe("duplicateNode", () => {
 
   test("does nothing for null path", () => {
     const s = makeState();
-    expect(duplicateNode(s, null)).toBe(s);
+    expect(duplicateNode(s, /** @type {any} */ (null))).toBe(s);
   });
 
   test("creates a deep clone", () => {

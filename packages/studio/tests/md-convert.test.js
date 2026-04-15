@@ -3,46 +3,57 @@ import { mdToJsonsx, jsonsxToMd } from "../md-convert.js";
 
 // ─── Helpers — build mdast nodes ─────────────────────────────────────────────
 
+/** @param {any[]} children */
 function root(...children) {
   return { type: "root", children };
 }
 
+/** @param {any} depth @param {any} text */
 function heading(depth, text) {
   return { type: "heading", depth, children: [{ type: "text", value: text }] };
 }
 
+/** @param {any} text */
 function paragraph(text) {
   return { type: "paragraph", children: [{ type: "text", value: text }] };
 }
 
+/** @param {any} text */
 function emphasis(text) {
   return { type: "emphasis", children: [{ type: "text", value: text }] };
 }
 
+/** @param {any} text */
 function strong(text) {
   return { type: "strong", children: [{ type: "text", value: text }] };
 }
 
+/** @param {any} url @param {any} text @param {any} [title] */
 function link(url, text, title) {
   return { type: "link", url, title: title ?? null, children: [{ type: "text", value: text }] };
 }
 
+/** @param {any} url @param {any} alt @param {any} title */
 function image(url, alt, title) {
   return { type: "image", url, alt: alt ?? "", title: title ?? null };
 }
 
+/** @param {any} value */
 function inlineCode(value) {
   return { type: "inlineCode", value };
 }
 
+/** @param {any} ordered @param {any[]} items */
 function list(ordered, ...items) {
   return { type: "list", ordered, spread: false, children: items };
 }
 
+/** @param {any[]} children */
 function listItem(...children) {
   return { type: "listItem", spread: false, children };
 }
 
+/** @param {any} value @param {any} lang */
 function codeBlock(value, lang) {
   return { type: "code", lang: lang ?? null, value };
 }
@@ -55,6 +66,7 @@ function thematicBreak() {
 
 describe("mdToJsonsx", () => {
   test("root node becomes content div", () => {
+    /** @type {any} */
     const result = mdToJsonsx(root());
     expect(result.tagName).toBe("div");
     expect(result.$id).toBe("content");
@@ -62,18 +74,21 @@ describe("mdToJsonsx", () => {
   });
 
   test("converts heading", () => {
+    /** @type {any} */
     const result = mdToJsonsx(root(heading(2, "Hello")));
     expect(result.children[0]).toEqual({ tagName: "h2", textContent: "Hello" });
   });
 
   test("converts all heading depths", () => {
     for (let i = 1; i <= 6; i++) {
+      /** @type {any} */
       const result = mdToJsonsx(root(heading(i, "H")));
       expect(result.children[0].tagName).toBe(`h${i}`);
     }
   });
 
   test("converts paragraph", () => {
+    /** @type {any} */
     const result = mdToJsonsx(root(paragraph("Some text")));
     expect(result.children[0]).toEqual({ tagName: "p", textContent: "Some text" });
   });
@@ -83,6 +98,7 @@ describe("mdToJsonsx", () => {
       type: "paragraph",
       children: [emphasis("italic")],
     });
+    /** @type {any} */
     const result = mdToJsonsx(mdast);
     const p = result.children[0];
     expect(p.children[0]).toEqual({ tagName: "em", textContent: "italic" });
@@ -93,6 +109,7 @@ describe("mdToJsonsx", () => {
       type: "paragraph",
       children: [strong("bold")],
     });
+    /** @type {any} */
     const result = mdToJsonsx(mdast);
     const p = result.children[0];
     expect(p.children[0]).toEqual({ tagName: "strong", textContent: "bold" });
@@ -103,6 +120,7 @@ describe("mdToJsonsx", () => {
       type: "paragraph",
       children: [inlineCode("const x = 1")],
     });
+    /** @type {any} */
     const result = mdToJsonsx(mdast);
     const p = result.children[0];
     expect(p.children[0]).toEqual({ tagName: "code", textContent: "const x = 1" });
@@ -113,6 +131,7 @@ describe("mdToJsonsx", () => {
       type: "paragraph",
       children: [link("https://example.com", "Example")],
     });
+    /** @type {any} */
     const result = mdToJsonsx(mdast);
     const a = result.children[0].children[0];
     expect(a.tagName).toBe("a");
@@ -125,6 +144,7 @@ describe("mdToJsonsx", () => {
       type: "paragraph",
       children: [image("img.png", "Alt text", "Title")],
     });
+    /** @type {any} */
     const result = mdToJsonsx(mdast);
     const img = result.children[0].children[0];
     expect(img.tagName).toBe("img");
@@ -137,6 +157,7 @@ describe("mdToJsonsx", () => {
     const mdast = root(
       list(false, listItem(paragraph("Item 1")), listItem(paragraph("Item 2"))),
     );
+    /** @type {any} */
     const result = mdToJsonsx(mdast);
     const ul = result.children[0];
     expect(ul.tagName).toBe("ul");
@@ -146,12 +167,14 @@ describe("mdToJsonsx", () => {
 
   test("converts ordered list", () => {
     const mdast = root(list(true, listItem(paragraph("First"))));
+    /** @type {any} */
     const result = mdToJsonsx(mdast);
     expect(result.children[0].tagName).toBe("ol");
   });
 
   test("converts code block", () => {
     const mdast = root(codeBlock("console.log('hi')", "js"));
+    /** @type {any} */
     const result = mdToJsonsx(mdast);
     const pre = result.children[0];
     expect(pre.tagName).toBe("pre");
@@ -162,12 +185,14 @@ describe("mdToJsonsx", () => {
 
   test("converts thematic break", () => {
     const mdast = root(thematicBreak());
+    /** @type {any} */
     const result = mdToJsonsx(mdast);
     expect(result.children[0]).toEqual({ tagName: "hr" });
   });
 
   test("filters out yaml frontmatter nodes", () => {
     const mdast = root({ type: "yaml", value: "title: Test" }, paragraph("Hello"));
+    /** @type {any} */
     const result = mdToJsonsx(mdast);
     expect(result.children.length).toBe(1);
     expect(result.children[0].tagName).toBe("p");
@@ -178,6 +203,7 @@ describe("mdToJsonsx", () => {
       type: "blockquote",
       children: [paragraph("Quoted text")],
     });
+    /** @type {any} */
     const result = mdToJsonsx(mdast);
     const bq = result.children[0];
     expect(bq.tagName).toBe("blockquote");
@@ -189,11 +215,13 @@ describe("mdToJsonsx", () => {
 
 describe("jsonsxToMd", () => {
   test("empty document", () => {
+    /** @type {any} */
     const result = jsonsxToMd({ tagName: "div", children: [] });
     expect(result).toEqual({ type: "root", children: [] });
   });
 
   test("paragraph", () => {
+    /** @type {any} */
     const result = jsonsxToMd({
       tagName: "div",
       children: [{ tagName: "p", textContent: "Hello" }],
@@ -203,6 +231,7 @@ describe("jsonsxToMd", () => {
   });
 
   test("heading depth", () => {
+    /** @type {any} */
     const result = jsonsxToMd({
       tagName: "div",
       children: [{ tagName: "h3", textContent: "Title" }],
@@ -212,6 +241,7 @@ describe("jsonsxToMd", () => {
   });
 
   test("link", () => {
+    /** @type {any} */
     const result = jsonsxToMd({
       tagName: "div",
       children: [
@@ -229,6 +259,7 @@ describe("jsonsxToMd", () => {
   });
 
   test("image", () => {
+    /** @type {any} */
     const result = jsonsxToMd({
       tagName: "div",
       children: [
@@ -247,6 +278,7 @@ describe("jsonsxToMd", () => {
   });
 
   test("unordered list", () => {
+    /** @type {any} */
     const result = jsonsxToMd({
       tagName: "div",
       children: [
@@ -266,6 +298,7 @@ describe("jsonsxToMd", () => {
   });
 
   test("ordered list", () => {
+    /** @type {any} */
     const result = jsonsxToMd({
       tagName: "div",
       children: [
@@ -279,6 +312,7 @@ describe("jsonsxToMd", () => {
   });
 
   test("code block with language", () => {
+    /** @type {any} */
     const result = jsonsxToMd({
       tagName: "div",
       children: [
@@ -301,6 +335,7 @@ describe("jsonsxToMd", () => {
   });
 
   test("thematic break", () => {
+    /** @type {any} */
     const result = jsonsxToMd({
       tagName: "div",
       children: [{ tagName: "hr" }],
@@ -309,6 +344,7 @@ describe("jsonsxToMd", () => {
   });
 
   test("non-markdown tag becomes directive", () => {
+    /** @type {any} */
     const result = jsonsxToMd({
       tagName: "div",
       children: [{ tagName: "my-widget", attributes: { color: "red" } }],
@@ -325,7 +361,9 @@ describe("jsonsxToMd", () => {
 describe("round-trip", () => {
   test("paragraph survives round-trip", () => {
     const mdast = root(paragraph("Hello world"));
+    /** @type {any} */
     const jsonsx = mdToJsonsx(mdast);
+    /** @type {any} */
     const back = jsonsxToMd(jsonsx);
     expect(back.children[0].type).toBe("paragraph");
     expect(back.children[0].children[0].value).toBe("Hello world");
@@ -333,7 +371,9 @@ describe("round-trip", () => {
 
   test("heading survives round-trip", () => {
     const mdast = root(heading(2, "Title"));
+    /** @type {any} */
     const jsonsx = mdToJsonsx(mdast);
+    /** @type {any} */
     const back = jsonsxToMd(jsonsx);
     expect(back.children[0].type).toBe("heading");
     expect(back.children[0].depth).toBe(2);
@@ -342,7 +382,9 @@ describe("round-trip", () => {
 
   test("code block survives round-trip", () => {
     const mdast = root(codeBlock("x = 1", "python"));
+    /** @type {any} */
     const jsonsx = mdToJsonsx(mdast);
+    /** @type {any} */
     const back = jsonsxToMd(jsonsx);
     expect(back.children[0].type).toBe("code");
     expect(back.children[0].lang).toBe("python");
@@ -351,7 +393,9 @@ describe("round-trip", () => {
 
   test("thematic break survives round-trip", () => {
     const mdast = root(thematicBreak());
+    /** @type {any} */
     const jsonsx = mdToJsonsx(mdast);
+    /** @type {any} */
     const back = jsonsxToMd(jsonsx);
     expect(back.children[0].type).toBe("thematicBreak");
   });

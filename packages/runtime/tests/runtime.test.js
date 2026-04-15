@@ -117,7 +117,7 @@ describe("resolveRef", () => {
   child["$map/item"] = child.$map.item;
   child["$map/index"] = child.$map.index;
 
-  test("non-string returns as-is", () => expect(resolveRef(42, state)).toBe(42));
+  test("non-string returns as-is", () => expect(resolveRef(/** @type {any} */ (42), state)).toBe(42));
   test("#/state/ prefix resolves from scope", () => {
     expect(resolveRef("#/state/count", state)).toBe(5);
   });
@@ -125,14 +125,14 @@ describe("resolveRef", () => {
     expect(resolveRef("parent#/name", state)).toBe("Alice");
   });
   test("window#/ resolves global window property", () => {
-    window._testProp = "win";
+    /** @type {any} */ (window)._testProp = "win";
     expect(resolveRef("window#/_testProp", state)).toBe("win");
-    delete window._testProp;
+    delete /** @type {any} */ (window)._testProp;
   });
   test("document#/ resolves global document property", () => {
-    document._testProp = "doc";
+    /** @type {any} */ (document)._testProp = "doc";
     expect(resolveRef("document#/_testProp", state)).toBe("doc");
-    delete document._testProp;
+    delete /** @type {any} */ (document)._testProp;
   });
   test("$map/item resolves map item", () => {
     expect(resolveRef("$map/item", child)).toEqual({ text: "hello", nested: { deep: 42 } });
@@ -164,18 +164,18 @@ describe("resolve", () => {
 
   test("fetches string URL and parses JSON", async () => {
     const payload = { tagName: "span" };
-    global.fetch = mock(() =>
+    global.fetch = /** @type {any} */ (mock(() =>
       Promise.resolve({
         ok: true,
         json: () => Promise.resolve(payload),
       }),
-    );
+    ));
     const result = await resolve("http://example.com/comp.json");
     expect(result).toEqual(payload);
   });
 
   test("throws on non-ok response", async () => {
-    global.fetch = mock(() => Promise.resolve({ ok: false, status: 404 }));
+    global.fetch = /** @type {any} */ (mock(() => Promise.resolve({ ok: false, status: 404 })));
     await expect(resolve("http://example.com/missing.json")).rejects.toThrow("404");
   });
 });
@@ -224,6 +224,7 @@ describe("buildScope", () => {
   // Reactivity test
   test("Shape 1: reactive property tracks mutations", async () => {
     const state = await buildScope({ state: { count: 0 } }, {}, BASE);
+    /** @type {any} */
     let observed;
     effect(() => {
       observed = state.count;
@@ -236,6 +237,7 @@ describe("buildScope", () => {
 
   test("Shape 1: array reactive property tracks push", async () => {
     const state = await buildScope({ state: { items: [1, 2] } }, {}, BASE);
+    /** @type {any} */
     let length;
     effect(() => {
       length = state.items.length;
@@ -392,7 +394,7 @@ describe("buildScope", () => {
 // ─── applyStyle ───────────────────────────────────────────────────────────────
 
 describe("applyStyle", () => {
-  let el;
+  /** @type {any} */ let el;
   beforeEach(() => {
     el = document.createElement("div");
     document.head.querySelectorAll("style").forEach((s) => s.remove());
@@ -414,7 +416,7 @@ describe("applyStyle", () => {
     applyStyle(el, { ":hover": { color: "blue" } });
     expect(el.dataset.jsonsx).toBeDefined();
     const uid = el.dataset.jsonsx;
-    const style = document.head.querySelector("style");
+    const style = /** @type {HTMLStyleElement} */ (document.head.querySelector("style"));
     expect(style).not.toBeNull();
     expect(style.textContent).toContain(`[data-jsonsx="${uid}"] :hover`);
     expect(style.textContent).toContain("color: blue");
@@ -423,28 +425,28 @@ describe("applyStyle", () => {
   test("emits scoped <style> for .class selector", () => {
     applyStyle(el, { ".child": { marginTop: "4px" } });
     const uid = el.dataset.jsonsx;
-    const style = document.head.querySelector("style");
+    const style = /** @type {HTMLStyleElement} */ (document.head.querySelector("style"));
     expect(style.textContent).toContain(`[data-jsonsx="${uid}"] .child`);
   });
 
   test("emits scoped <style> for &.compound selector", () => {
     applyStyle(el, { "&.active": { fontWeight: "bold" } });
     const uid = el.dataset.jsonsx;
-    const style = document.head.querySelector("style");
+    const style = /** @type {HTMLStyleElement} */ (document.head.querySelector("style"));
     expect(style.textContent).toContain(`[data-jsonsx="${uid}"].active`);
   });
 
   test("emits scoped <style> for [attr] selector", () => {
     applyStyle(el, { "[disabled]": { opacity: "0.5" } });
     const uid = el.dataset.jsonsx;
-    const style = document.head.querySelector("style");
+    const style = /** @type {HTMLStyleElement} */ (document.head.querySelector("style"));
     expect(style.textContent).toContain(`[data-jsonsx="${uid}"][disabled]`);
   });
 
   test("resolves named @--breakpoint from mediaQueries", () => {
     applyStyle(el, { "@--md": { fontSize: "18px" } }, { "--md": "(min-width: 768px)" });
     const uid = el.dataset.jsonsx;
-    const style = document.head.querySelector("style");
+    const style = /** @type {HTMLStyleElement} */ (document.head.querySelector("style"));
     expect(style.textContent).toContain("@media (min-width: 768px)");
     expect(style.textContent).toContain(`[data-jsonsx="${uid}"]`);
     expect(style.textContent).toContain("font-size: 18px");
@@ -452,13 +454,13 @@ describe("applyStyle", () => {
 
   test("uses literal condition for @(min-width:...) keys", () => {
     applyStyle(el, { "@(min-width: 1024px)": { padding: "2rem" } });
-    const style = document.head.querySelector("style");
+    const style = /** @type {HTMLStyleElement} */ (document.head.querySelector("style"));
     expect(style.textContent).toContain("@media (min-width: 1024px)");
   });
 
   test("falls back to raw name when @--name not found in mediaQueries", () => {
     applyStyle(el, { "@--xl": { gap: "2rem" } }, {});
-    const style = document.head.querySelector("style");
+    const style = /** @type {HTMLStyleElement} */ (document.head.querySelector("style"));
     expect(style.textContent).toContain("@media --xl");
   });
 
@@ -469,7 +471,7 @@ describe("applyStyle", () => {
       { "--sm": "(min-width: 640px)" },
     );
     expect(el.style.color).toBe("green");
-    const style = document.head.querySelector("style");
+    const style = /** @type {HTMLStyleElement} */ (document.head.querySelector("style"));
     expect(style.textContent).toContain("] :focus");
     expect(style.textContent).toContain("@media (min-width: 640px)");
   });
@@ -480,7 +482,7 @@ describe("applyStyle", () => {
       { "@--md": { fontSize: "2rem", ":hover": { color: "blue" } } },
       { "--md": "(min-width: 768px)" },
     );
-    const style = document.head.querySelector("style");
+    const style = /** @type {HTMLStyleElement} */ (document.head.querySelector("style"));
     const css = style.textContent;
     // Media block flat props
     expect(css).toContain("@media (min-width: 768px)");
@@ -495,7 +497,7 @@ describe("applyStyle", () => {
       { "@--sm": { "&.active": { fontWeight: "bold" } } },
       { "--sm": "(min-width: 640px)" },
     );
-    const style = document.head.querySelector("style");
+    const style = /** @type {HTMLStyleElement} */ (document.head.querySelector("style"));
     const css = style.textContent;
     expect(css).toMatch(/@media \(min-width: 640px\) \{ \[data-jsonsx="[^"]+"\]\.active \{ font-weight: bold \} \}/);
   });
@@ -505,13 +507,13 @@ describe("applyStyle", () => {
 
 describe("resolvePrototype", () => {
   test("Request: returns ref, starts null, fetches and sets data", async () => {
-    global.fetch = mock(() =>
+    global.fetch = /** @type {any} */ (mock(() =>
       Promise.resolve({
         ok: true,
         json: () => Promise.resolve({ id: 1 }),
       }),
-    );
-    const state = reactive({});
+    ));
+    const state = reactive(/** @type {Record<string, any>} */ ({}));
     const result = await resolvePrototype(
       { $prototype: "Request", url: "/api/test" },
       state,
@@ -525,22 +527,22 @@ describe("resolvePrototype", () => {
 
   test("Request: manual:true does not auto-fetch", async () => {
     const fetchMock = mock(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) }));
-    global.fetch = fetchMock;
-    const state = reactive({});
+    global.fetch = /** @type {any} */ (fetchMock);
+    const state = reactive(/** @type {Record<string, any>} */ ({}));
     await resolvePrototype({ $prototype: "Request", url: "/api/x", manual: true }, state, "x");
     await wait();
     expect(fetchMock.mock.calls.length).toBe(0);
   });
 
   test("Request: sets error on non-ok response", async () => {
-    global.fetch = mock(() =>
+    global.fetch = /** @type {any} */ (mock(() =>
       Promise.resolve({
         ok: false,
         statusText: "Not Found",
         json: () => Promise.resolve({}),
       }),
-    );
-    const state = reactive({});
+    ));
+    const state = reactive(/** @type {Record<string, any>} */ ({}));
     const result = await resolvePrototype({ $prototype: "Request", url: "/api/z" }, state, "z");
     state.z = result;
     await wait();
@@ -548,12 +550,12 @@ describe("resolvePrototype", () => {
   });
 
   test("Request: POST with headers and body", async () => {
-    let captured;
-    global.fetch = mock((_url, opts) => {
+    let captured = /** @type {any} */ (undefined);
+    global.fetch = /** @type {any} */ (mock((_url, opts) => {
       captured = opts;
       return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
-    });
-    const state = reactive({});
+    }));
+    const state = reactive(/** @type {Record<string, any>} */ ({}));
     await resolvePrototype(
       { $prototype: "Request", url: "/api", method: "POST", headers: { x: "1" }, body: { a: 1 } },
       state,
@@ -577,7 +579,7 @@ describe("resolvePrototype", () => {
 
   test("LocalStorage: reads existing value", async () => {
     localStorage.setItem("lsKey", JSON.stringify(99));
-    const state = reactive({});
+    const state = reactive(/** @type {Record<string, any>} */ ({}));
     const result = await resolvePrototype(
       { $prototype: "LocalStorage", key: "lsKey" },
       state,
@@ -590,7 +592,7 @@ describe("resolvePrototype", () => {
 
   test("LocalStorage: defaults to def.default when key absent", async () => {
     localStorage.removeItem("lsMissing");
-    const state = reactive({});
+    const state = reactive(/** @type {Record<string, any>} */ ({}));
     const result = await resolvePrototype(
       { $prototype: "LocalStorage", key: "lsMissing", default: "fallback" },
       state,
@@ -602,7 +604,7 @@ describe("resolvePrototype", () => {
 
   test("LocalStorage: assignment persists to storage", async () => {
     localStorage.removeItem("lsPersist");
-    const state = reactive({});
+    const state = reactive(/** @type {Record<string, any>} */ ({}));
     const result = await resolvePrototype(
       { $prototype: "LocalStorage", key: "lsPersist", default: 0 },
       state,
@@ -611,13 +613,13 @@ describe("resolvePrototype", () => {
     state.ls = result;
     state.ls = 123;
     await wait();
-    expect(JSON.parse(localStorage.getItem("lsPersist"))).toBe(123);
+    expect(JSON.parse(/** @type {string} */ (localStorage.getItem("lsPersist")))).toBe(123);
     localStorage.removeItem("lsPersist");
   });
 
   test("SessionStorage: reads and writes session storage", async () => {
     sessionStorage.setItem("ssKey", JSON.stringify("hello"));
-    const state = reactive({});
+    const state = reactive(/** @type {Record<string, any>} */ ({}));
     const result = await resolvePrototype(
       { $prototype: "SessionStorage", key: "ssKey" },
       state,
@@ -627,12 +629,12 @@ describe("resolvePrototype", () => {
     expect(state.ss).toBe("hello");
     state.ss = "world";
     await wait();
-    expect(JSON.parse(sessionStorage.getItem("ssKey"))).toBe("world");
+    expect(JSON.parse(/** @type {string} */ (sessionStorage.getItem("ssKey")))).toBe("world");
     sessionStorage.removeItem("ssKey");
   });
 
   test("Cookie: reads, writes cookie", async () => {
-    const state = reactive({});
+    const state = reactive(/** @type {Record<string, any>} */ ({}));
     const result = await resolvePrototype(
       {
         $prototype: "Cookie",
@@ -653,8 +655,8 @@ describe("resolvePrototype", () => {
 
   test("IndexedDB: returns ref", async () => {
     const fakeReq = { onupgradeneeded: null, onsuccess: null, onerror: null };
-    global.indexedDB = { open: () => fakeReq };
-    const state = reactive({});
+    global.indexedDB = /** @type {any} */ ({ open: () => fakeReq });
+    const state = reactive(/** @type {Record<string, any>} */ ({}));
     const result = await resolvePrototype(
       {
         $prototype: "IndexedDB",
@@ -665,11 +667,11 @@ describe("resolvePrototype", () => {
       "db",
     );
     expect(isRef(result)).toBe(true);
-    delete global.indexedDB;
+    delete /** @type {any} */ (global).indexedDB;
   });
 
   test("Set: returns a Set", async () => {
-    const state = reactive({});
+    const state = reactive(/** @type {Record<string, any>} */ ({}));
     const result = await resolvePrototype({ $prototype: "Set" }, state, "s");
     state.s = result;
     expect(state.s).toBeInstanceOf(Set);
@@ -677,28 +679,28 @@ describe("resolvePrototype", () => {
   });
 
   test("Set: default values", async () => {
-    const state = reactive({});
+    const state = reactive(/** @type {Record<string, any>} */ ({}));
     const result = await resolvePrototype({ $prototype: "Set", default: [1, 2] }, state, "s");
     state.s = result;
     expect(state.s.has(1)).toBe(true);
   });
 
   test("Map: returns a Map", async () => {
-    const state = reactive({});
+    const state = reactive(/** @type {Record<string, any>} */ ({}));
     const result = await resolvePrototype({ $prototype: "Map" }, state, "m");
     state.m = result;
     expect(state.m).toBeInstanceOf(Map);
   });
 
   test("Map: default object", async () => {
-    const state = reactive({});
+    const state = reactive(/** @type {Record<string, any>} */ ({}));
     const result = await resolvePrototype({ $prototype: "Map", default: { a: 1 } }, state, "m");
     state.m = result;
     expect(state.m.get("a")).toBe(1);
   });
 
   test("FormData: returns FormData", async () => {
-    const state = reactive({});
+    const state = reactive(/** @type {Record<string, any>} */ ({}));
     const result = await resolvePrototype(
       { $prototype: "FormData", fields: { name: "Alice" } },
       state,
@@ -709,7 +711,7 @@ describe("resolvePrototype", () => {
   });
 
   test("Blob: returns Blob", async () => {
-    const state = reactive({});
+    const state = reactive(/** @type {Record<string, any>} */ ({}));
     const result = await resolvePrototype(
       { $prototype: "Blob", parts: ["hello"], type: "text/plain" },
       state,
@@ -719,14 +721,14 @@ describe("resolvePrototype", () => {
   });
 
   test("ReadableStream: returns null", async () => {
-    const state = reactive({});
+    const state = reactive(/** @type {Record<string, any>} */ ({}));
     const result = await resolvePrototype({ $prototype: "ReadableStream" }, state, "rs");
     expect(result).toBeNull();
   });
 
   test("unknown $prototype: warns and returns ref(null)", async () => {
     const warn = spyOn(console, "warn").mockImplementation(() => {});
-    const state = reactive({});
+    const state = reactive(/** @type {Record<string, any>} */ ({}));
     const result = await resolvePrototype({ $prototype: "Unknown" }, state, "u");
     expect(isRef(result)).toBe(true);
     expect(result.value).toBeNull();
@@ -755,7 +757,7 @@ describe("renderNode", () => {
 
   test("sets plain boolean property", () => {
     const el = renderNode({ tagName: "button", disabled: true }, reactive({}));
-    expect(el.disabled).toBe(true);
+    expect(/** @type {any} */ (el).disabled).toBe(true);
   });
 
   test("sets reactive property from $ref", async () => {
@@ -781,7 +783,7 @@ describe("renderNode", () => {
 
   test("binds event handler via onclick $ref", async () => {
     const state = reactive({ count: 0 });
-    state.clickHandler = function (state) {
+    /** @type {any} */ (state).clickHandler = function (/** @type {any} */ state) {
       state.count++;
     };
     const el = renderNode({ tagName: "button", onclick: { $ref: "#/state/clickHandler" } }, state);
@@ -964,7 +966,7 @@ describe("renderNode", () => {
   test("Array map with filter", () => {
     const state = reactive({
       list: [1, 2, 3, 4],
-      isEven: (x) => x % 2 === 0,
+      isEven: (/** @type {any} */ x) => x % 2 === 0,
     });
     const el = renderNode(
       {
@@ -984,7 +986,7 @@ describe("renderNode", () => {
   test("Array map with sort", () => {
     const state = reactive({
       list: [3, 1, 2],
-      sortAsc: (a, b) => a - b,
+      sortAsc: (/** @type {any} */ a, /** @type {any} */ b) => a - b,
     });
     const el = renderNode(
       {
@@ -1069,18 +1071,18 @@ describe("JSONsx", () => {
       target,
     );
     await wait();
-    expect(globalThis._testMounted).toBe(true);
-    delete globalThis._testMounted;
+    expect(/** @type {any} */ (globalThis)._testMounted).toBe(true);
+    delete /** @type {any} */ (globalThis)._testMounted;
   });
 
   test("fetches string source", async () => {
     const doc = { tagName: "article" };
-    global.fetch = mock(() =>
+    global.fetch = /** @type {any} */ (mock(() =>
       Promise.resolve({
         ok: true,
         json: () => Promise.resolve(doc),
       }),
-    );
+    ));
     const target = document.createElement("div");
     await JSONsx("http://example.com/test.json", target);
     expect(target.children[0].tagName.toLowerCase()).toBe("article");

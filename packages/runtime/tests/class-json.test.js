@@ -132,9 +132,9 @@ const hybridClassDef = {
 };
 
 // Mock fetch to serve .class.json content based on URL
-function setupFetchMock(classDefMap) {
+function setupFetchMock(/** @type {any} */ classDefMap) {
   const originalFetch = global.fetch;
-  global.fetch = mock((url) => {
+  global.fetch = /** @type {any} */ (mock((url) => {
     const urlStr = typeof url === "string" ? url : url.toString();
     for (const [pattern, def] of Object.entries(classDefMap)) {
       if (urlStr.includes(pattern)) {
@@ -150,7 +150,7 @@ function setupFetchMock(classDefMap) {
     }
     // Let non-class-json requests through (shouldn't happen in these tests)
     return originalFetch(url);
-  });
+  }));
   return () => { global.fetch = originalFetch; };
 }
 
@@ -349,7 +349,7 @@ describe("resolveClassJson — fallback", () => {
     // Mock fetch to fail for the .class.json
     const originalFetch = global.fetch;
     let proxyCalled = false;
-    global.fetch = mock((url, opts) => {
+    global.fetch = /** @type {any} */ (mock((url, opts) => {
       const urlStr = typeof url === "string" ? url : url.toString();
       if (urlStr.endsWith(".class.json")) {
         return Promise.reject(new Error("Network error"));
@@ -363,7 +363,7 @@ describe("resolveClassJson — fallback", () => {
         });
       }
       return originalFetch(url);
-    });
+    }));
 
     try {
       const sig = await resolvePrototype(

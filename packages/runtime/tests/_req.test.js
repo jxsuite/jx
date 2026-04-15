@@ -11,13 +11,13 @@ const wait = () => new Promise((r) => setTimeout(r, 0));
 
 describe("resolvePrototype", () => {
   test("Request: returns ref", async () => {
-    global.fetch = mock(() =>
+    global.fetch = /** @type {any} */ (mock(() =>
       Promise.resolve({
         ok: true,
         json: () => Promise.resolve({ id: 1 }),
       }),
-    );
-    const state = reactive({});
+    ));
+    const state = reactive(/** @type {Record<string, any>} */ ({}));
     const result = await resolvePrototype(
       { $prototype: "Request", url: "/api/test" },
       state,

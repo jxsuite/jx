@@ -104,7 +104,7 @@ describe("compileElement", () => {
       await compileElement({ tagName: "nohyphen", state: {} });
       expect(true).toBe(false);
     } catch (e) {
-      expect(e.message).toContain("must contain a hyphen");
+      expect(/** @type {Error} */ (e).message).toContain("must contain a hyphen");
     }
   });
 
