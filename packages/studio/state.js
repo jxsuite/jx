@@ -11,11 +11,37 @@
  *   ['children', 0, 'children', 2] = third child of first child
  */
 
+/**
+ * @typedef {Record<string, any>} JsonsxNode
+ * @typedef {(string|number)[]} JsonsxPath
+ * @typedef {{ document: JsonsxNode, selection: JsonsxPath | null }} HistorySnapshot
+ * @typedef {{
+ *   document: JsonsxNode,
+ *   selection: JsonsxPath | null,
+ *   hover: JsonsxPath | null,
+ *   history: HistorySnapshot[],
+ *   historyIndex: number,
+ *   dirty: boolean,
+ *   fileHandle: any,
+ *   documentPath: string | null,
+ *   documentStack: any[],
+ *   handlersSource: string | null,
+ *   mode: string,
+ *   content: { frontmatter: Record<string, any> },
+ *   ui: Record<string, any>,
+ * }} StudioState
+ */
+
 const HISTORY_LIMIT = 100;
 
 // ─── Path utilities ───────────────────────────────────────────────────────────
 
-/** Walk the document tree and return the node at the given path. */
+/**
+ * Walk the document tree and return the node at the given path.
+ * @param {any} doc
+ * @param {JsonsxPath} path
+ * @returns {any}
+ */
 export function getNodeAtPath(doc, path) {
   let node = doc;
   for (const key of path) {
@@ -25,29 +51,51 @@ export function getNodeAtPath(doc, path) {
   return node;
 }
 
-/** Return the path to the parent element (strips trailing 'children' + index). */
+/**
+ * Return the path to the parent element (strips trailing 'children' + index).
+ * @param {JsonsxPath} path
+ * @returns {JsonsxPath | null}
+ */
 export function parentElementPath(path) {
   return path.length >= 2 ? path.slice(0, -2) : null;
 }
 
-/** Return the child index (last segment of the path). */
+/**
+ * Return the child index (last segment of the path).
+ * @param {JsonsxPath} path
+ * @returns {string | number}
+ */
 export function childIndex(path) {
   return path[path.length - 1];
 }
 
-/** Serialize a path to a string key for Map lookups. */
+/**
+ * Serialize a path to a string key for Map lookups.
+ * @param {JsonsxPath} path
+ * @returns {string}
+ */
 export function pathKey(path) {
   return path.join("/");
 }
 
-/** Compare two paths for equality. */
+/**
+ * Compare two paths for equality.
+ * @param {JsonsxPath | null} a
+ * @param {JsonsxPath | null} b
+ * @returns {boolean}
+ */
 export function pathsEqual(a, b) {
   if (a === b) return true;
   if (!a || !b || a.length !== b.length) return false;
   return a.every((v, i) => v === b[i]);
 }
 
-/** Returns true if `path` is an ancestor of (or equal to) `descendant`. */
+/**
+ * Returns true if `path` is an ancestor of (or equal to) `descendant`.
+ * @param {JsonsxPath} path
+ * @param {JsonsxPath} descendant
+ * @returns {boolean}
+ */
 export function isAncestor(path, descendant) {
   if (path.length > descendant.length) return false;
   return path.every((v, i) => v === descendant[i]);
@@ -60,8 +108,13 @@ export function isAncestor(path, descendant) {
  * Walks static children arrays, $map templates, and $switch cases.
  *
  * nodeType: 'element' (default) | 'map' | 'case' | 'case-ref'
+ * @param {any} doc
+ * @param {JsonsxPath} [path]
+ * @param {number} [depth]
+ * @returns {Array<{ node: any, path: JsonsxPath, depth: number, nodeType: string }>}
  */
 export function flattenTree(doc, path = [], depth = 0) {
+  /** @type {Array<{ node: any, path: JsonsxPath, depth: number, nodeType: string }>} */
   const rows = [{ node: doc, path, depth, nodeType: "element" }];
 
   // Custom component instances are atomic in the layer tree — don't recurse into internals
@@ -89,7 +142,7 @@ export function flattenTree(doc, path = [], depth = 0) {
   if (doc.$switch && doc.cases && typeof doc.cases === "object") {
     for (const [caseName, caseDef] of Object.entries(doc.cases)) {
       const casePath = [...path, "cases", caseName];
-      if (caseDef && typeof caseDef === "object" && caseDef.$ref) {
+      if (caseDef && typeof caseDef === "object" && /** @type {any} */ (caseDef).$ref) {
         rows.push({ node: caseDef, path: casePath, depth: depth + 1, nodeType: "case-ref" });
       } else if (caseDef && typeof caseDef === "object") {
         rows.push({ node: caseDef, path: casePath, depth: depth + 1, nodeType: "case" });
@@ -103,7 +156,11 @@ export function flattenTree(doc, path = [], depth = 0) {
   return rows;
 }
 
-/** Get a display label for a node (for layers + overlays). */
+/**
+ * Get a display label for a node (for layers + overlays).
+ * @param {any} node
+ * @returns {string}
+ */
 export function nodeLabel(node) {
   if (!node) return "?";
   // $map container (Repeater)
@@ -122,6 +179,10 @@ export function nodeLabel(node) {
 
 // ─── State factory ────────────────────────────────────────────────────────────
 
+/**
+ * @param {any} doc
+ * @returns {StudioState}
+ */
 export function createState(doc) {
   const initial = { document: doc, selection: null };
   return {
@@ -163,8 +224,12 @@ export function createState(doc) {
 //          selectedPath: string|null, searchQuery: string }
 // DirEntry: { name, path, type: "file"|"directory", size, modified }
 
+/** @type {any} */
 export let projectState = null;
 
+/**
+ * @param {any} ps
+ */
 export function setProjectState(ps) { projectState = ps; }
 
 // ─── Core mutation ────────────────────────────────────────────────────────────
@@ -172,6 +237,9 @@ export function setProjectState(ps) { projectState = ps; }
 /**
  * Apply a mutation to the document. Clones the document immutably,
  * applies the mutation function to the clone, and pushes to history.
+ * @param {StudioState} state
+ * @param {(doc: any) => void} mutationFn
+ * @returns {StudioState}
  */
 export function applyMutation(state, mutationFn) {
   const newDoc = structuredClone(state.document);
@@ -190,16 +258,30 @@ export function applyMutation(state, mutationFn) {
 
 // ─── Selection / hover ────────────────────────────────────────────────────────
 
+/**
+ * @param {StudioState} state
+ * @param {JsonsxPath | null} path
+ * @returns {StudioState}
+ */
 export function selectNode(state, path) {
   return { ...state, selection: path };
 }
 
+/**
+ * @param {StudioState} state
+ * @param {JsonsxPath | null} path
+ * @returns {StudioState}
+ */
 export function hoverNode(state, path) {
   return { ...state, hover: path };
 }
 
 // ─── Undo / redo ──────────────────────────────────────────────────────────────
 
+/**
+ * @param {StudioState} state
+ * @returns {StudioState}
+ */
 export function undo(state) {
   if (state.historyIndex <= 0) return state;
   const idx = state.historyIndex - 1;
@@ -213,6 +295,10 @@ export function undo(state) {
   };
 }
 
+/**
+ * @param {StudioState} state
+ * @returns {StudioState}
+ */
 export function redo(state) {
   if (state.historyIndex >= state.history.length - 1) return state;
   const idx = state.historyIndex + 1;
@@ -228,6 +314,13 @@ export function redo(state) {
 
 // ─── Document mutations ───────────────────────────────────────────────────────
 
+/**
+ * @param {StudioState} state
+ * @param {JsonsxPath} parentPath
+ * @param {number} index
+ * @param {any} nodeDef
+ * @returns {StudioState}
+ */
 export function insertNode(state, parentPath, index, nodeDef) {
   return applyMutation(state, (doc) => {
     const parent = getNodeAtPath(doc, parentPath);
@@ -236,12 +329,17 @@ export function insertNode(state, parentPath, index, nodeDef) {
   });
 }
 
+/**
+ * @param {StudioState} state
+ * @param {JsonsxPath} path
+ * @returns {StudioState}
+ */
 export function removeNode(state, path) {
   if (!path || path.length < 2) return state; // can't remove root
   const elemPath = parentElementPath(path);
   const idx = childIndex(path);
   const newState = applyMutation(state, (doc) => {
-    getNodeAtPath(doc, elemPath).children.splice(idx, 1);
+    getNodeAtPath(doc, /** @type {JsonsxPath} */ (elemPath)).children.splice(idx, 1);
   });
   // Clear selection if we removed the selected node
   if (state.selection && isAncestor(path, state.selection)) {
@@ -250,19 +348,31 @@ export function removeNode(state, path) {
   return newState;
 }
 
+/**
+ * @param {StudioState} state
+ * @param {JsonsxPath} path
+ * @returns {StudioState}
+ */
 export function duplicateNode(state, path) {
   if (!path || path.length < 2) return state;
   const node = getNodeAtPath(state.document, path);
   if (!node) return state;
-  const elemPath = parentElementPath(path);
-  const idx = childIndex(path);
+  const elemPath = /** @type {JsonsxPath} */ (parentElementPath(path));
+  const idx = /** @type {number} */ (childIndex(path));
   const newState = insertNode(state, elemPath, idx + 1, structuredClone(node));
   return selectNode(newState, [...elemPath, "children", idx + 1]);
 }
 
+/**
+ * @param {StudioState} state
+ * @param {JsonsxPath} fromPath
+ * @param {JsonsxPath} toParentPath
+ * @param {number} toIndex
+ * @returns {StudioState}
+ */
 export function moveNode(state, fromPath, toParentPath, toIndex) {
   return applyMutation(state, (doc) => {
-    const fromParentPath = parentElementPath(fromPath);
+    const fromParentPath = /** @type {JsonsxPath} */ (parentElementPath(fromPath));
     const fromParent = getNodeAtPath(doc, fromParentPath);
     const fromIdx = childIndex(fromPath);
     const [node] = fromParent.children.splice(fromIdx, 1);
@@ -270,13 +380,20 @@ export function moveNode(state, fromPath, toParentPath, toIndex) {
     if (!toParent.children) toParent.children = [];
     // Adjust target index if moving within the same parent and source was before target
     let adjustedIndex = toIndex;
-    if (fromParent === toParent && fromIdx < toIndex) {
+    if (fromParent === toParent && /** @type {number} */ (fromIdx) < toIndex) {
       adjustedIndex--;
     }
     toParent.children.splice(adjustedIndex, 0, node);
   });
 }
 
+/**
+ * @param {StudioState} state
+ * @param {JsonsxPath} path
+ * @param {string} key
+ * @param {any} value
+ * @returns {StudioState}
+ */
 export function updateProperty(state, path, key, value) {
   return applyMutation(state, (doc) => {
     const node = getNodeAtPath(doc, path);
@@ -285,6 +402,13 @@ export function updateProperty(state, path, key, value) {
   });
 }
 
+/**
+ * @param {StudioState} state
+ * @param {JsonsxPath} path
+ * @param {string} prop
+ * @param {any} value
+ * @returns {StudioState}
+ */
 export function updateStyle(state, path, prop, value) {
   return applyMutation(state, (doc) => {
     const node = getNodeAtPath(doc, path);
@@ -295,6 +419,13 @@ export function updateStyle(state, path, prop, value) {
   });
 }
 
+/**
+ * @param {StudioState} state
+ * @param {JsonsxPath} path
+ * @param {string} attr
+ * @param {any} value
+ * @returns {StudioState}
+ */
 export function updateAttribute(state, path, attr, value) {
   return applyMutation(state, (doc) => {
     const node = getNodeAtPath(doc, path);
@@ -305,6 +436,12 @@ export function updateAttribute(state, path, attr, value) {
   });
 }
 
+/**
+ * @param {StudioState} state
+ * @param {string} name
+ * @param {any} def
+ * @returns {StudioState}
+ */
 export function addDef(state, name, def) {
   return applyMutation(state, (doc) => {
     if (!doc.state) doc.state = {};
@@ -312,6 +449,11 @@ export function addDef(state, name, def) {
   });
 }
 
+/**
+ * @param {StudioState} state
+ * @param {string} name
+ * @returns {StudioState}
+ */
 export function removeDef(state, name) {
   return applyMutation(state, (doc) => {
     if (doc.state) {
@@ -321,6 +463,12 @@ export function removeDef(state, name) {
   });
 }
 
+/**
+ * @param {StudioState} state
+ * @param {string} name
+ * @param {Record<string, any>} updates
+ * @returns {StudioState}
+ */
 export function updateDef(state, name, updates) {
   return applyMutation(state, (doc) => {
     if (!doc.state) doc.state = {};
@@ -334,6 +482,12 @@ export function updateDef(state, name, updates) {
   });
 }
 
+/**
+ * @param {StudioState} state
+ * @param {string} oldName
+ * @param {string} newName
+ * @returns {StudioState}
+ */
 export function renameDef(state, oldName, newName) {
   return applyMutation(state, (doc) => {
     if (!doc.state || !doc.state[oldName]) return;
@@ -344,7 +498,15 @@ export function renameDef(state, oldName, newName) {
 
 // ─── Media mutations ─────────────────────────────────────────────────────────
 
-/** Update a style property inside a media override block (e.g., @--md). */
+/**
+ * Update a style property inside a media override block (e.g., @--md).
+ * @param {StudioState} state
+ * @param {JsonsxPath} path
+ * @param {string} mediaName
+ * @param {string} prop
+ * @param {any} value
+ * @returns {StudioState}
+ */
 export function updateMediaStyle(state, path, mediaName, prop, value) {
   return applyMutation(state, (doc) => {
     const node = getNodeAtPath(doc, path);
@@ -361,7 +523,15 @@ export function updateMediaStyle(state, path, mediaName, prop, value) {
   });
 }
 
-/** Update a style property inside a nested selector block (e.g., :hover). */
+/**
+ * Update a style property inside a nested selector block (e.g., :hover).
+ * @param {StudioState} state
+ * @param {JsonsxPath} path
+ * @param {string} selector
+ * @param {string} prop
+ * @param {any} value
+ * @returns {StudioState}
+ */
 export function updateNestedStyle(state, path, selector, prop, value) {
   return applyMutation(state, (doc) => {
     const node = getNodeAtPath(doc, path);
@@ -377,7 +547,16 @@ export function updateNestedStyle(state, path, selector, prop, value) {
   });
 }
 
-/** Update a style property inside a nested selector within a media block (e.g., @--md > :hover). */
+/**
+ * Update a style property inside a nested selector within a media block (e.g., @--md > :hover).
+ * @param {StudioState} state
+ * @param {JsonsxPath} path
+ * @param {string} mediaName
+ * @param {string} selector
+ * @param {string} prop
+ * @param {any} value
+ * @returns {StudioState}
+ */
 export function updateMediaNestedStyle(state, path, mediaName, selector, prop, value) {
   return applyMutation(state, (doc) => {
     const node = getNodeAtPath(doc, path);
@@ -396,7 +575,13 @@ export function updateMediaNestedStyle(state, path, mediaName, selector, prop, v
   });
 }
 
-/** Add or update a named media entry at the document root. */
+/**
+ * Add or update a named media entry at the document root.
+ * @param {StudioState} state
+ * @param {string} name
+ * @param {any} query
+ * @returns {StudioState}
+ */
 export function updateMedia(state, name, query) {
   return applyMutation(state, (doc) => {
     if (!doc.$media) doc.$media = {};
@@ -411,7 +596,13 @@ export function updateMedia(state, name, query) {
 
 // ─── Document stack (component navigation) ──────────────────────────────────
 
-/** Push current document onto the stack and switch to editing a new document. */
+/**
+ * Push current document onto the stack and switch to editing a new document.
+ * @param {StudioState} state
+ * @param {any} doc
+ * @param {string | null} documentPath
+ * @returns {StudioState}
+ */
 export function pushDocument(state, doc, documentPath) {
   const frame = {
     document: state.document,
@@ -430,7 +621,11 @@ export function pushDocument(state, doc, documentPath) {
   return newState;
 }
 
-/** Pop the document stack and return to the previous document. */
+/**
+ * Pop the document stack and return to the previous document.
+ * @param {StudioState} state
+ * @returns {StudioState}
+ */
 export function popDocument(state) {
   if (!state.documentStack || state.documentStack.length === 0) return state;
   const stack = [...state.documentStack];
@@ -445,7 +640,14 @@ export function popDocument(state) {
 
 // ─── $props mutations ────────────────────────────────────────────────────────
 
-/** Update a $prop on a component instance. */
+/**
+ * Update a $prop on a component instance.
+ * @param {StudioState} state
+ * @param {JsonsxPath} path
+ * @param {string} propName
+ * @param {any} value
+ * @returns {StudioState}
+ */
 export function updateProp(state, path, propName, value) {
   return applyMutation(state, (doc) => {
     const node = getNodeAtPath(doc, path);
@@ -458,6 +660,13 @@ export function updateProp(state, path, propName, value) {
 
 // ─── $switch case mutations ──────────────────────────────────────────────────
 
+/**
+ * @param {StudioState} state
+ * @param {JsonsxPath} path
+ * @param {string} caseName
+ * @param {any} [caseDef]
+ * @returns {StudioState}
+ */
 export function addSwitchCase(state, path, caseName, caseDef) {
   return applyMutation(state, (doc) => {
     const node = getNodeAtPath(doc, path);
@@ -466,6 +675,12 @@ export function addSwitchCase(state, path, caseName, caseDef) {
   });
 }
 
+/**
+ * @param {StudioState} state
+ * @param {JsonsxPath} path
+ * @param {string} caseName
+ * @returns {StudioState}
+ */
 export function removeSwitchCase(state, path, caseName) {
   return applyMutation(state, (doc) => {
     const node = getNodeAtPath(doc, path);
@@ -475,6 +690,13 @@ export function removeSwitchCase(state, path, caseName) {
   });
 }
 
+/**
+ * @param {StudioState} state
+ * @param {JsonsxPath} path
+ * @param {string} oldName
+ * @param {string} newName
+ * @returns {StudioState}
+ */
 export function renameSwitchCase(state, path, oldName, newName) {
   return applyMutation(state, (doc) => {
     const node = getNodeAtPath(doc, path);

@@ -8,17 +8,31 @@
  * See spec/desktop.md §3 for the full StudioPlatform interface.
  */
 
+/**
+ * @typedef {Record<string, any>} StudioPlatform
+ */
+
+/** @type {StudioPlatform | null} */
 let _platform = null;
 
+/**
+ * @param {StudioPlatform} platform
+ */
 export function registerPlatform(platform) {
   _platform = platform;
 }
 
+/**
+ * @returns {StudioPlatform}
+ */
 export function getPlatform() {
   if (!_platform) throw new Error("No platform registered. Call registerPlatform() before starting Studio.");
   return _platform;
 }
 
+/**
+ * @returns {boolean}
+ */
 export function hasPlatform() {
   return _platform !== null;
 }

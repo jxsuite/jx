@@ -28,7 +28,7 @@ import { handleCodeApi } from "./code-api.js";
  * @param {object} options
  * @param {string}   options.root           - Project root (absolute or relative)
  * @param {number}   [options.port=3000]    - Server port
- * @param {Array}    [options.builds=[]]    - Bun.build entries with optional match regex
+ * @param {Array<{ entrypoints: string[], outdir: string, match?: Function|RegExp, label?: string }>}    [options.builds=[]]    - Bun.build entries with optional match regex
  * @param {boolean|object} [options.watch=true]  - Watch config or false to disable
  * @param {boolean}  [options.studio=true]  - Enable /__studio/* endpoints
  * @param {Function} [options.middleware]    - Custom route handler (req, url) => Response|null

@@ -7,6 +7,8 @@ import { readFileSync } from "node:fs";
 
 /**
  * Handle POST /__jsonsx_resolve__ — proxy $prototype + $src entries.
+ * @param {Request} req
+ * @param {string} root
  */
 export async function handleResolve(req, root) {
   let body;
@@ -28,7 +30,7 @@ export async function handleResolve(req, root) {
     } else {
       moduleAbsPath = resolve(root, $src);
     }
-  } catch (e) {
+  } catch (/** @type {any} */ e) {
     return new Response(`Cannot resolve $src "${$src}": ${e.message}`, { status: 400 });
   }
 
@@ -71,7 +73,7 @@ export async function handleResolve(req, root) {
 
       // Self-contained: construct class from schema
       const DynClass = classFromSchema(classDef);
-      const instance = new DynClass(config);
+      const instance = /** @type {any} */ (new DynClass(config));
       const value =
         typeof instance.resolve === "function"
           ? await instance.resolve()
@@ -79,7 +81,7 @@ export async function handleResolve(req, root) {
             ? instance.value
             : instance;
       return Response.json(value);
-    } catch (e) {
+    } catch (/** @type {any} */ e) {
       return Response.json({ error: e.message }, { status: 500 });
     }
   }
@@ -87,7 +89,7 @@ export async function handleResolve(req, root) {
   let mod;
   try {
     mod = await import(moduleAbsPath);
-  } catch (e) {
+  } catch (/** @type {any} */ e) {
     return new Response(`Failed to import "${$src}": ${e.message}`, { status: 500 });
   }
 
@@ -106,7 +108,7 @@ export async function handleResolve(req, root) {
           ? instance.value
           : instance;
     return Response.json(value);
-  } catch (e) {
+  } catch (/** @type {any} */ e) {
     return Response.json({ error: e.message }, { status: 500 });
   }
 }
@@ -114,6 +116,8 @@ export async function handleResolve(req, root) {
 /**
  * Handle POST /__jsonsx_server__ — proxy timing: "server" function calls.
  * In dev mode, the runtime sends these instead of hitting the production Hono handler.
+ * @param {Request} req
+ * @param {string} root
  */
 export async function handleServerFunction(req, root) {
   let body;
@@ -135,14 +139,14 @@ export async function handleServerFunction(req, root) {
     } else {
       moduleAbsPath = resolve(root, $src);
     }
-  } catch (e) {
+  } catch (/** @type {any} */ e) {
     return new Response(`Cannot resolve $src: ${e.message}`, { status: 400 });
   }
 
   let mod;
   try {
     mod = await import(moduleAbsPath);
-  } catch (e) {
+  } catch (/** @type {any} */ e) {
     return new Response(`Failed to import "${$src}": ${e.message}`, { status: 500 });
   }
 
@@ -154,7 +158,7 @@ export async function handleServerFunction(req, root) {
   try {
     const result = await fn(args);
     return Response.json(result ?? null);
-  } catch (e) {
+  } catch (/** @type {any} */ e) {
     return Response.json({ error: e.message }, { status: 500 });
   }
 }
@@ -162,6 +166,7 @@ export async function handleServerFunction(req, root) {
 /**
  * Dynamically construct a class from a .class.json schema definition.
  * Server-side variant — no private field limitations.
+ * @param {any} classDef
  */
 function classFromSchema(classDef) {
   const fields = classDef.$defs?.fields ?? {};
@@ -170,12 +175,14 @@ function classFromSchema(classDef) {
 
   class DynClass {
     constructor(config = {}) {
+      const self = /** @type {any} */ (this);
+      const cfg = /** @type {Record<string, any>} */ (config);
       for (const [key, field] of Object.entries(fields)) {
         const id = field.identifier ?? key;
-        if (config[id] !== undefined) this[id] = config[id];
-        else if (field.initializer !== undefined) this[id] = field.initializer;
-        else if (field.default !== undefined) this[id] = structuredClone(field.default);
-        else this[id] = null;
+        if (cfg[id] !== undefined) self[id] = cfg[id];
+        else if (field.initializer !== undefined) self[id] = field.initializer;
+        else if (field.default !== undefined) self[id] = structuredClone(field.default);
+        else self[id] = null;
       }
       if (ctor?.body) {
         const bodyStr = Array.isArray(ctor.body) ? ctor.body.join("\n") : ctor.body;
@@ -186,24 +193,25 @@ function classFromSchema(classDef) {
 
   for (const [key, method] of Object.entries(methods)) {
     const name = method.identifier ?? key;
-    const params = (method.parameters ?? []).map((p) => {
+    const params = (method.parameters ?? []).map((/** @type {any} */ p) => {
       if (p.$ref) return p.$ref.split("/").pop();
       return p.identifier ?? p.name ?? "arg";
     });
     const bodyStr = Array.isArray(method.body) ? method.body.join("\n") : (method.body ?? "");
 
     if (method.role === "accessor") {
+      /** @type {any} */
       const descriptor = {};
       if (method.getter) descriptor.get = new Function(method.getter.body);
       if (method.setter) {
-        const sp = (method.setter.parameters ?? []).map((p) => p.$ref?.split("/").pop() ?? "v");
+        const sp = (method.setter.parameters ?? []).map((/** @type {any} */ p) => p.$ref?.split("/").pop() ?? "v");
         descriptor.set = new Function(...sp, method.setter.body);
       }
       Object.defineProperty(DynClass.prototype, name, { ...descriptor, configurable: true });
     } else if (method.scope === "static") {
-      DynClass[name] = new Function(...params, bodyStr);
+      /** @type {any} */ (DynClass)[name] = new Function(...params, bodyStr);
     } else {
-      DynClass.prototype[name] = new Function(...params, bodyStr);
+      /** @type {any} */ (DynClass.prototype)[name] = new Function(...params, bodyStr);
     }
   }
 

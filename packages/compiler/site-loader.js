@@ -49,7 +49,8 @@ export function loadSiteConfig(projectRoot) {
   let raw;
   try {
     raw = JSON.parse(readFileSync(configPath, "utf8"));
-  } catch (err) {
+  } catch (e) {
+    const err = /** @type {any} */ (e);
     throw new Error(`Invalid JSON in ${configPath}: ${err.message}`);
   }
 

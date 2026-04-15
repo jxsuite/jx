@@ -41,12 +41,9 @@ export { isDynamic, compileServer, compileElement, compileElementPage, compileCl
  *   2. tagName contains hyphen → custom element (lit-html)
  *   3. Otherwise → pre-rendered HTML with reactive bindings
  *
- * @param {string | object} sourcePath - Path to .json file, URL, or raw object
- * @param {object}          [opts]
- * @param {string}          [opts.title='JSONsx App'] - HTML document title
- * @param {string}          [opts.reactivitySrc] - CDN URL for @vue/reactivity
- * @param {string}          [opts.litHtmlSrc] - CDN URL for lit-html
- * @returns {Promise<{ html: string, files: Array<{ path: string, content: string, tagName?: string }> }>}
+ * @param {string | any} sourcePath - Path to .json file, URL, or raw object
+ * @param {any}          [opts]
+ * @returns {Promise<{ html: string, files: { path: string, content: string, tagName?: string }[] }>}
  */
 export async function compile(sourcePath, opts = {}) {
   const {
@@ -135,11 +132,11 @@ if (isMainModule && process.argv[2]) {
       }
       if (server && out) {
         const serverOut = out.replace(/(\.[^.]+)?$/, "-server.js");
-        writeFileSync(serverOut, server, "utf8");
+        writeFileSync(serverOut, /** @type {string} */ (server), "utf8");
         console.error(`Server handler written to ${serverOut}`);
       }
     })
-    .catch((err) => {
+    .catch((/** @type {any} */ err) => {
       console.error(err);
       process.exit(1);
     });

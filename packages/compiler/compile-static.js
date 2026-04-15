@@ -18,21 +18,20 @@ import { emitElementModule } from "./compile-element.js";
 /**
  * Compile a static document to HTML, with dynamic subtrees as islands.
  *
- * @param {object} raw - Raw JSON document (with $ref pointers preserved)
- * @param {object} opts
- * @param {string} opts.title - HTML document title
- * @param {string} opts.reactivitySrc - CDN URL for @vue/reactivity
- * @param {string} opts.litHtmlSrc - CDN URL for lit-html
- * @returns {{ html: string, files: Array<{ path: string, content: string, tagName: string }> }}
+ * @param {any} raw - Raw JSON document (with $ref pointers preserved)
+ * @param {any} opts
+ * @returns {{ html: string, files: { path: string, content: string, tagName: string }[] }}
  */
 export function compileStaticPage(raw, opts) {
   const { title, reactivitySrc, litHtmlSrc } = opts;
 
   const rootContext = createCompileContext(raw, null, raw.state ?? {}, raw.$media ?? {});
   const styleBlock = compileStyles(raw, raw.$media ?? {});
+  /** @type {{ def: any, tagName: string, className: string }[]} */
   const islands = [];
   const bodyContent = compileNode(raw, false, raw, rootContext, islands);
 
+  /** @type {{ path: string, content: string, tagName: string }[]} */
   const files = [];
   let importMap = "";
   let moduleScripts = "";
@@ -49,7 +48,7 @@ export function compileStaticPage(raw, opts) {
     }
   }
   </script>`;
-    moduleScripts = files.map(f =>
+    moduleScripts = files.map((/** @type {{ path: string }} */ f) =>
       `<script type="module" src="./${f.path}"></script>`
     ).join("\n  ");
   }
@@ -77,6 +76,12 @@ export function compileStaticPage(raw, opts) {
 /**
  * Compile a single JSONsx node to an HTML string.
  * Dynamic nodes become hydration islands; static nodes become plain HTML.
+ * @param {any} def
+ * @param {boolean} dynamic
+ * @param {any} raw
+ * @param {any} context
+ * @param {{ def: any, tagName: string, className: string }[]} islands
+ * @returns {string}
  */
 function compileNode(def, dynamic, raw, context, islands) {
   // String children are text nodes
@@ -114,6 +119,11 @@ function compileNode(def, dynamic, raw, context, islands) {
 /**
  * Build the inner HTML (textContent or children) for a node.
  * For children, emit islands only for those that are actually dynamic.
+ * @param {any} def
+ * @param {any} raw
+ * @param {any} context
+ * @param {{ def: any, tagName: string, className: string }[]} islands
+ * @returns {string}
  */
 function buildInnerWithIslands(def, raw, context, islands) {
   const source = raw ?? def;
@@ -126,7 +136,7 @@ function buildInnerWithIslands(def, raw, context, islands) {
   if (Array.isArray(source.children)) {
     const rawChildren = raw?.children;
     return source.children
-      .map((c, i) => {
+      .map((/** @type {any} */ c, /** @type {number} */ i) => {
         const childDynamic = isNodeDynamic(c);
         const childRaw = rawChildren?.[i] ?? c;
         return compileNode(c, childDynamic, childRaw, context, islands);

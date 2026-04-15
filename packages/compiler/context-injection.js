@@ -22,11 +22,11 @@ import { queryCollection, findEntry } from "./content-loader.js";
 /**
  * Inject $site and $page context into a page document's state.
  *
- * @param {object} doc        - The page document (mutated)
- * @param {object} siteConfig - Loaded site configuration
- * @param {object} route      - The resolved route for this page
- * @param {Map<string, object[]>} [collections] - Loaded content collections
- * @returns {object} The mutated document
+ * @param {any} doc        - The page document (mutated)
+ * @param {any} siteConfig - Loaded site configuration
+ * @param {any} route      - The resolved route for this page
+ * @param {Map<string, any[]>} [collections] - Loaded content collections
+ * @returns {any} The mutated document
  */
 export function injectContext(doc, siteConfig, route, collections = new Map()) {
   if (!doc.state) doc.state = {};
@@ -74,9 +74,9 @@ export function injectContext(doc, siteConfig, route, collections = new Map()) {
  *   { "$prototype": "ContentCollection", "collection": "blog", ... }
  * with the actual resolved collection data.
  *
- * @param {object} state - Page state (mutated)
- * @param {Map<string, object[]>} collections - Loaded collections
- * @param {object} params - Route parameters for $ref resolution
+ * @param {Record<string, any>} state - Page state (mutated)
+ * @param {Map<string, any[]>} collections - Loaded collections
+ * @param {Record<string, any>} params - Route parameters for $ref resolution
  */
 function resolveContentPrototypes(state, collections, params) {
   for (const [key, value] of Object.entries(state)) {

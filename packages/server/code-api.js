@@ -18,11 +18,18 @@ const OXLINT_BIN = resolve(
 
 // ─── Wrapper utilities ───────────────────────────────────────────────────────
 
+/**
+ * @param {string} body
+ * @param {string[]} [args]
+ */
 function wrapBody(body, args = ["state", "event"]) {
 	const params = args.join(", ");
 	return `function __jsonsx_fn__(${params}) {\n${body}\n}`;
 }
 
+/**
+ * @param {string} formatted
+ */
 function unwrapFormatted(formatted) {
 	const lines = formatted.split("\n");
 	// Remove first line (function header) and last non-empty line (closing brace)
@@ -34,6 +41,10 @@ function unwrapFormatted(formatted) {
 	return bodyLines.map((l) => (l.startsWith("\t") ? l.slice(1) : l)).join("\n");
 }
 
+/**
+ * @param {any[]} diagnostics
+ * @param {number} headerLen
+ */
 function adjustDiagnostics(diagnostics, headerLen) {
 	return diagnostics
 		.filter((d) => {
@@ -59,6 +70,10 @@ const minifier = new Bun.Transpiler({ minifyWhitespace: true });
 
 // ─── Handler ─────────────────────────────────────────────────────────────────
 
+/**
+ * @param {Request} req
+ * @param {URL} url
+ */
 export async function handleCodeApi(req, url) {
 	const path = url.pathname;
 	if (!path.startsWith("/__studio/code/") || req.method !== "POST") return null;
@@ -85,7 +100,7 @@ export async function handleCodeApi(req, url) {
 				code: unwrapFormatted(result.code),
 				errors: result.errors,
 			});
-		} catch (e) {
+		} catch (/** @type {any} */ e) {
 			return Response.json({ code, errors: [{ message: e.message }] });
 		}
 	}
@@ -99,7 +114,7 @@ export async function handleCodeApi(req, url) {
 		try {
 			const minified = minifier.transformSync(code).trim();
 			return Response.json({ code: minified });
-		} catch (e) {
+		} catch (/** @type {any} */ e) {
 			return Response.json({ code, error: e.message });
 		}
 	}
@@ -135,7 +150,7 @@ export async function handleCodeApi(req, url) {
 			const parsed = JSON.parse(output);
 			const adjusted = adjustDiagnostics(parsed.diagnostics || [], headerLen);
 			return Response.json({ diagnostics: adjusted });
-		} catch (e) {
+		} catch (/** @type {any} */ e) {
 			return Response.json({ diagnostics: [], error: e.message });
 		} finally {
 			try {

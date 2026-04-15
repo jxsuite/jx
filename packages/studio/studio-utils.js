@@ -4,35 +4,62 @@
  * These are all side-effect-free functions used by style/properties/events panels.
  */
 
-/** camelCase → kebab-case for inline style attributes */
+/**
+ * camelCase → kebab-case for inline style attributes
+ * @param {string} str
+ * @returns {string}
+ */
 export function camelToKebab(str) {
-  return str.replace(/[A-Z]/g, (c) => "-" + c.toLowerCase());
+  return str.replace(/[A-Z]/g, (/** @type {string} */ c) => "-" + c.toLowerCase());
 }
 
-/** Convert camelCase property name to "Title Case" label (e.g. "backgroundColor" → "Background Color") */
+/**
+ * Convert camelCase property name to "Title Case" label (e.g. "backgroundColor" → "Background Color")
+ * @param {string} prop
+ * @returns {string}
+ */
 export function camelToLabel(prop) {
-  return prop.replace(/([A-Z])/g, " $1").replace(/^./, (c) => c.toUpperCase());
+  return prop.replace(/([A-Z])/g, " $1").replace(/^./, (/** @type {string} */ c) => c.toUpperCase());
 }
 
-/** Convert a kebab-case CSS value to Title Case for picker display (e.g. "border-box" → "Border Box") */
+/**
+ * Convert a kebab-case CSS value to Title Case for picker display (e.g. "border-box" → "Border Box")
+ * @param {string} val
+ * @returns {string}
+ */
 export function kebabToLabel(val) {
-  return val.replace(/(^|-)(\w)/g, (_, sep, c) => (sep ? " " : "") + c.toUpperCase());
+  return val.replace(/(^|-)(\w)/g, (/** @type {string} */ _, /** @type {string} */ sep, /** @type {string} */ c) => (sep ? " " : "") + c.toUpperCase());
 }
 
-/** Get display label from metadata entry or prop name */
+/**
+ * Get display label from metadata entry or prop name
+ * @param {any} entry
+ * @param {string} prop
+ * @returns {string}
+ */
 export function propLabel(entry, prop) {
   return entry?.$label || camelToLabel(prop);
 }
 
-/** Label for HTML attributes — handles kebab-case (aria-label → "Aria Label") */
+/**
+ * Label for HTML attributes — handles kebab-case (aria-label → "Aria Label")
+ * @param {any} entry
+ * @param {string} attr
+ * @returns {string}
+ */
 export function attrLabel(entry, attr) {
   if (entry?.$label) return entry.$label;
-  if (attr.includes("-")) return attr.replace(/(^|-)(\w)/g, (_, sep, c) => (sep ? " " : "") + c.toUpperCase());
+  if (attr.includes("-")) return attr.replace(/(^|-)(\w)/g, (/** @type {string} */ _, /** @type {string} */ sep, /** @type {string} */ c) => (sep ? " " : "") + c.toUpperCase());
   return camelToLabel(attr);
 }
 
-/** Abbreviate a CSS value for button-group display */
+/**
+ * Abbreviate a CSS value for button-group display
+ * @param {string} val
+ * @returns {string}
+ */
 export function abbreviateValue(val) {
+  /** @type {Record<string, string>} */
   const map = {
     inline: "inl", "inline-block": "i-blk", "inline-flex": "i-flx", "inline-grid": "i-grd",
     contents: "cnt", "flow-root": "flow", nowrap: "no-wr", "wrap-reverse": "wr-rev",
@@ -43,7 +70,11 @@ export function abbreviateValue(val) {
   return map[val] || val;
 }
 
-/** Determine input widget type from a css-meta entry */
+/**
+ * Determine input widget type from a css-meta entry
+ * @param {any} entry
+ * @returns {string}
+ */
 export function inferInputType(entry) {
   if (entry.$shorthand === true) return "shorthand";
   if (entry.$input === "button-group") return "button-group";

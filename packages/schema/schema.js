@@ -911,6 +911,7 @@ export async function generateSchema() {
  * @returns {object}
  */
 function buildEventHandlerProperties(eventHandlers) {
+  /** @type {Record<string, any>} */
   const properties = {};
   for (const name of eventHandlers) {
     properties[name] = {
@@ -931,6 +932,7 @@ function buildEventHandlerProperties(eventHandlers) {
  * @returns {object}
  */
 function buildCssProperties(cssProps) {
+  /** @type {Record<string, any>} */
   const properties = {};
   for (const name of cssProps) {
     properties[name] = { oneOf: [{ type: "string" }, { type: "number" }] };
@@ -958,7 +960,9 @@ export async function generateSchemaString() {
 export async function validateDocument(doc) {
   let Ajv, addFormats;
   try {
+    // @ts-ignore — optional peer dependency
     ({ default: Ajv } = await import("ajv"));
+    // @ts-ignore — optional peer dependency
     ({ default: addFormats } = await import("ajv-formats"));
   } catch {
     throw new Error("Schema validation requires ajv and ajv-formats: bun add ajv ajv-formats");

@@ -22,7 +22,7 @@ export async function buildAll(builds) {
 
 /**
  * Rebuild entries whose match function/regex matches the changed filename.
- * @param {Array} builds
+ * @param {Array<{ entrypoints: string[], outdir: string, match?: Function|RegExp, label?: string }>} builds
  * @param {string} changedFile
  * @returns {Promise<{ rebuilt: string[], success: boolean }>}
  */

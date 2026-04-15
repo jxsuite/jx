@@ -28,15 +28,15 @@ import { globSync } from "glob";
 
 /**
  * Walk an AST tree, calling visitor for nodes matching the given type.
- * @param {object} tree
- * @param {string} type
- * @param {function} visitor
+ * @param {any} tree
+ * @param {string|function} typeOrVisitor
+ * @param {function} [maybeVisitor]
  */
 function visit(tree, typeOrVisitor, maybeVisitor) {
   const type = typeof typeOrVisitor === "string" ? typeOrVisitor : null;
   const visitor = type ? maybeVisitor : typeOrVisitor;
 
-  function walk(node) {
+  function walk(/** @type {any} */ node) {
     if (!node || typeof node !== "object") return;
     if (!type || node.type === type) visitor(node);
     if (Array.isArray(node.children)) {
@@ -48,7 +48,7 @@ function visit(tree, typeOrVisitor, maybeVisitor) {
 
 /**
  * Serialize an mdast tree to plain text.
- * @param {object} node
+ * @param {any} node
  * @returns {string}
  */
 function mdastToString(node) {
@@ -77,8 +77,9 @@ function readingTime(text) {
  * @returns {Array<{depth: number, text: string, id: string}>}
  */
 function extractToc(tree) {
+  /** @type {Array<{depth: number, text: string, id: string}>} */
   const entries = [];
-  visit(tree, "heading", (node) => {
+  visit(tree, "heading", (/** @type {any} */ node) => {
     const text = mdastToString(node);
     const id = text
       .toLowerCase()
@@ -94,11 +95,12 @@ function extractToc(tree) {
 /**
  * Extract first paragraph as HTML excerpt from an mdast tree.
  * @param {object} tree - mdast AST
- * @returns {string} HTML string of first paragraph, or empty string
+ * @returns {Promise<string>} HTML string of first paragraph, or empty string
  */
 async function extractExcerpt(tree) {
+  /** @type {any} */
   let firstParagraph = null;
-  visit(tree, "paragraph", (node) => {
+  visit(tree, "paragraph", (/** @type {any} */ node) => {
     if (!firstParagraph) firstParagraph = node;
   });
   if (!firstParagraph) return "";
@@ -106,16 +108,16 @@ async function extractExcerpt(tree) {
   const result = await unified()
     .use(remarkRehype)
     .use(rehypeStringify)
-    .stringify(await unified().use(remarkRehype).run(excerptTree));
+    .stringify(/** @type {any} */ (await unified().use(remarkRehype).run(excerptTree)));
   return String(result);
 }
 
 /**
  * Build the unified processing pipeline with standard plugins.
- * @param {object} config
+ * @param {any} config
  * @param {boolean} [config.directives=false]
- * @param {Array}   [config.remarkPlugins=[]]
- * @param {Array}   [config.rehypePlugins=[]]
+ * @param {any[]}   [config.remarkPlugins=[]]
+ * @param {any[]}   [config.rehypePlugins=[]]
  * @returns {object} unified processor
  */
 function buildProcessor(config = {}) {
@@ -128,7 +130,7 @@ function buildProcessor(config = {}) {
   if (config.directives) {
     processor = processor
       .use(remarkDirective)
-      .use(MarkdownDirective, config.directiveOptions ?? {});
+      .use(/** @type {any} */ (MarkdownDirective), config.directiveOptions ?? {});
   }
 
   for (const plugin of config.remarkPlugins ?? []) {
@@ -141,7 +143,7 @@ function buildProcessor(config = {}) {
     processor = Array.isArray(plugin) ? processor.use(plugin[0], plugin[1]) : processor.use(plugin);
   }
 
-  processor = processor.use(rehypeStringify, { allowDangerousHtml: true });
+  processor = processor.use(rehypeStringify, /** @type {any} */ ({ allowDangerousHtml: true }));
 
   return processor;
 }
@@ -157,7 +159,7 @@ async function processMarkdown(source, filePath, config = {}) {
   const processor = buildProcessor(config);
 
   const vfile = await processor.process(source);
-  const frontmatter = vfile.data?.frontmatter ?? {};
+  const frontmatter = /** @type {any} */ (vfile.data)?.frontmatter ?? {};
 
   // Parse a separate tree for TOC/excerpt extraction (without rehype transform)
   const mdProcessor = unified().use(remarkParse).use(remarkFrontmatter, ["yaml"]).use(remarkGfm);
@@ -182,12 +184,12 @@ async function processMarkdown(source, filePath, config = {}) {
 
 /**
  * Resolve a dot-notation path within an object.
- * @param {object} obj
+ * @param {any} obj
  * @param {string} path
  * @returns {*}
  */
 function getNestedValue(obj, path) {
-  return path.split(".").reduce((o, k) => o?.[k], obj);
+  return path.split(".").reduce((/** @type {any} */ o, k) => o?.[k], obj);
 }
 
 // ─── MarkdownFile ─────────────────────────────────────────────────────────────
@@ -204,8 +206,8 @@ export class MarkdownFile {
    * @param {object} config
    * @param {string} config.src         - File path to markdown file
    * @param {boolean} [config.directives=false]
-   * @param {Array}   [config.remarkPlugins=[]]
-   * @param {Array}   [config.rehypePlugins=[]]
+   * @param {any[]}   [config.remarkPlugins=[]]
+   * @param {any[]}   [config.rehypePlugins=[]]
    * @param {string}  [config.basePath]  - Base path for resolving src
    */
   constructor(config) {
@@ -242,8 +244,8 @@ export class MarkdownCollection {
    * @param {number}  [config.limit]
    * @param {Function} [config.filter]     - Filter function
    * @param {boolean} [config.directives=false]
-   * @param {Array}   [config.remarkPlugins=[]]
-   * @param {Array}   [config.rehypePlugins=[]]
+   * @param {any[]}   [config.remarkPlugins=[]]
+   * @param {any[]}   [config.rehypePlugins=[]]
    * @param {string}  [config.basePath]    - Base path for resolving glob
    */
   constructor(config) {
@@ -280,7 +282,7 @@ export class MarkdownCollection {
     // Filter
     let filtered = results;
     if (typeof filter === "function") {
-      filtered = results.filter(filter);
+      filtered = results.filter(/** @type {any} */ (filter));
     }
 
     // Sort
@@ -326,8 +328,8 @@ export class MarkdownCollection {
 export function MarkdownDirective(options = {}) {
   const { prefix = "jx-", passContent = true, allowedNames } = options;
 
-  return (tree) => {
-    visit(tree, (node) => {
+  return (/** @type {any} */ tree) => {
+    visit(tree, (/** @type {any} */ node) => {
       if (
         node.type === "leafDirective" ||
         node.type === "containerDirective" ||
