@@ -115,7 +115,7 @@ export function isInlineElement(node, parentNode) {
  *
  * @param {HTMLElement} el - The canvas DOM element to edit
  * @param {Array<any>} path - JSON path to the element
- * @param {object} callbacks - { onCommit, onSplit, onInsert, onEnd }
+ * @param {Record<string, any>} callbacks - { onCommit, onSplit, onInsert, onEnd }
  *   onCommit(path, children|null, textContent|null) — save inline content
  *   onSplit(path, beforeChildren, afterChildren) — Enter key: split block
  *   onInsert(path, elementDef) — slash command: insert after

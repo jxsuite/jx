@@ -38,7 +38,7 @@ function visit(tree, typeOrVisitor, maybeVisitor) {
 
   function walk(/** @type {any} */ node) {
     if (!node || typeof node !== "object") return;
-    if (!type || node.type === type) visitor(node);
+    if (!type || node.type === type) /** @type {Function} */ (visitor)(node);
     if (Array.isArray(node.children)) {
       for (const child of node.children) walk(child);
     }
@@ -108,17 +108,18 @@ async function extractExcerpt(tree) {
   const result = await unified()
     .use(remarkRehype)
     .use(rehypeStringify)
-    .stringify(/** @type {any} */ (await unified().use(remarkRehype).run(excerptTree)));
+    .stringify(/** @type {any} */ (await unified().use(remarkRehype).run(/** @type {any} */ (excerptTree))));
   return String(result);
 }
 
 /**
  * Build the unified processing pipeline with standard plugins.
- * @param {any} config
- * @param {boolean} [config.directives=false]
- * @param {any[]}   [config.remarkPlugins=[]]
- * @param {any[]}   [config.rehypePlugins=[]]
- * @returns {object} unified processor
+ * @param {object} config
+ * @param {boolean} [config.directives]
+ * @param {any}     [config.directiveOptions]
+ * @param {any[]}   [config.remarkPlugins]
+ * @param {any[]}   [config.rehypePlugins]
+ * @returns {any} unified processor
  */
 function buildProcessor(config = {}) {
   let processor = unified()
@@ -143,7 +144,7 @@ function buildProcessor(config = {}) {
     processor = Array.isArray(plugin) ? processor.use(plugin[0], plugin[1]) : processor.use(plugin);
   }
 
-  processor = processor.use(rehypeStringify, /** @type {any} */ ({ allowDangerousHtml: true }));
+  processor = /** @type {any} */ (processor.use(rehypeStringify, /** @type {any} */ ({ allowDangerousHtml: true })));
 
   return processor;
 }
@@ -152,7 +153,7 @@ function buildProcessor(config = {}) {
  * Process a single markdown source string into a MarkdownFileResult.
  * @param {string} source   - Raw markdown string
  * @param {string} filePath - File path (for slug derivation)
- * @param {object} config   - Processing options
+ * @param {any} config   - Processing options
  * @returns {Promise<object>} MarkdownFileResult
  */
 async function processMarkdown(source, filePath, config = {}) {

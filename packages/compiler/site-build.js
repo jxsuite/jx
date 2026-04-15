@@ -196,8 +196,8 @@ async function compilePage(route, siteConfig, projectRoot, collections = new Map
   let serverHandler = null;
   try {
     const serverResult = await compileServer(route.sourcePath);
-    if (serverResult.handler) {
-      serverHandler = serverResult.handler;
+    if (serverResult) {
+      serverHandler = serverResult;
     }
   } catch {
     // No server entries — that's fine

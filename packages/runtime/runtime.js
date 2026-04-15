@@ -971,6 +971,7 @@ async function resolveClassJson(def, state, key, base) {
   if (classDef.$implementation) {
     const schemaUrl = base ? new URL(src, base).href : new URL(src, location.href).href;
     const implSrc = new URL(classDef.$implementation, schemaUrl).href;
+    /** @type {Record<string, any>} */
     const implDef = { ...def, $src: implSrc };
     // Use $export from def, or title from schema, or $prototype from def
     if (!implDef.$export) implDef.$export = classDef.title ?? def.$prototype;
@@ -1047,10 +1048,10 @@ function classFromSchema(classDef) {
     if (typedMethod.role === "accessor") {
       /** @type {PropertyDescriptor} */
       const descriptor = {};
-      if (typedMethod.getter) descriptor.get = new Function(typedMethod.getter.body);
+      if (typedMethod.getter) descriptor.get = /** @type {any} */ (new Function(typedMethod.getter.body));
       if (typedMethod.setter) {
         const sp = (typedMethod.setter.parameters ?? []).map((/** @type {any} */ p) => p.$ref?.split("/").pop() ?? "v");
-        descriptor.set = new Function(...sp, typedMethod.setter.body);
+        descriptor.set = /** @type {any} */ (new Function(...sp, typedMethod.setter.body));
       }
       Object.defineProperty(DynClass.prototype, name, { ...descriptor, configurable: true });
     } else if (typedMethod.scope === "static") {
@@ -1402,20 +1403,23 @@ export async function defineElement(source, base) {
   }
   base = base ?? location.href;
 
-  const tagName = source.tagName;
+  /** @type {Record<string, any>} */
+  const source_ = /** @type {Record<string, any>} */ (source);
+
+  const tagName = source_.tagName;
   if (!tagName || !tagName.includes("-")) {
     throw new Error(`JSONsx defineElement: tagName "${tagName}" must contain a hyphen`);
   }
   if (customElements.get(tagName)) return;
 
   // Register sub-dependencies first
-  if (source.$elements) {
-    await registerElements(source.$elements, base);
+  if (source_.$elements) {
+    await registerElements(source_.$elements, base);
   }
 
-  _elementDefs.set(tagName, { doc: source, base });
+  _elementDefs.set(tagName, { doc: source_, base });
 
-  const def = source;
+  const def = source_;
   const observedAttrs = def.observedAttributes ?? [];
 
   const ElementClass = class extends HTMLElement {
@@ -1506,7 +1510,7 @@ export async function defineElement(source, base) {
  * @param {Record<string, any>} def
  * @param {Record<string, any>} state
  * @param {any} [options]
- * @param {any[]} path
+ * @param {any[]} [path]
  * @returns {HTMLElement}
  */
 function renderCustomElementWithProps(def, state, options, path) {

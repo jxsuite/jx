@@ -53,7 +53,7 @@ function adjustDiagnostics(diagnostics, headerLen) {
 		})
 		.map((d) => ({
 			...d,
-			labels: d.labels.map((label) => ({
+			labels: d.labels.map((/** @type {any} */ label) => ({
 				...label,
 				span: {
 					...label.span,

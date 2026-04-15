@@ -36,7 +36,7 @@ const DEFAULTS = {
  * Load and validate site.json from a project root.
  *
  * @param {string} projectRoot - Absolute path to the project directory
- * @returns {{ config: object, configPath: string, projectRoot: string }}
+ * @returns {{ config: Record<string, any>, configPath: string, projectRoot: string }}
  * @throws {Error} if site.json is missing or invalid JSON
  */
 export function loadSiteConfig(projectRoot) {

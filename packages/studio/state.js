@@ -499,7 +499,7 @@ export function renameDef(state, oldName, newName) {
 // ─── Media mutations ─────────────────────────────────────────────────────────
 
 /**
- * Update a style property inside a media override block (e.g., @--md).
+ * Update a style property inside a media override block (e.g., `@--md`).
  * @param {StudioState} state
  * @param {JsonsxPath} path
  * @param {string} mediaName
@@ -548,7 +548,7 @@ export function updateNestedStyle(state, path, selector, prop, value) {
 }
 
 /**
- * Update a style property inside a nested selector within a media block (e.g., @--md > :hover).
+ * Update a style property inside a nested selector within a media block (e.g., `@--md` > `:hover`).
  * @param {StudioState} state
  * @param {JsonsxPath} path
  * @param {string} mediaName

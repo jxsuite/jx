@@ -144,12 +144,12 @@ function isNestedSelector(k) {
   return k.startsWith(":") || k.startsWith(".") || k.startsWith("&") || k.startsWith("[");
 }
 
-const canvasWrap = $("#canvas-wrap");
-const activityBar = $("#activity-bar");
-const leftPanel = $("#left-panel");
-const rightPanel = $("#right-panel");
-const toolbar = $("#toolbar");
-const statusbar = $("#statusbar");
+const canvasWrap = /** @type {any} */ ($("#canvas-wrap"));
+const activityBar = /** @type {any} */ ($("#activity-bar"));
+const leftPanel = /** @type {any} */ ($("#left-panel"));
+const rightPanel = /** @type {any} */ ($("#right-panel"));
+const toolbar = /** @type {any} */ ($("#toolbar"));
+const statusbar = /** @type {any} */ ($("#statusbar"));
 
 // ─── Component registry ───────────────────────────────────────────────────────
 
@@ -195,7 +195,7 @@ async function navigateToComponent(componentPath) {
     S.dirty = false;
     render();
     statusMessage(`Editing component: ${doc.tagName || componentPath}`);
-  } catch (e) {
+  } catch (/** @type {any} */ e) {
     const err = /** @type {any} */ (e);
     statusMessage(`Error: ${err.message}`);
   }
@@ -207,7 +207,7 @@ async function navigateBack() {
     try {
       const platform = getPlatform();
       await platform.writeFile(S.documentPath, JSON.stringify(S.document, null, 2));
-    } catch (e) {
+    } catch (/** @type {any} */ e) {
       const err = /** @type {any} */ (e);
       statusMessage(`Save error: ${err.message}`);
     }
@@ -328,7 +328,7 @@ function setLintMarkers(editor, diagnostics) {
       source: "oxlint",
     };
   }).filter(Boolean);
-  monaco.editor.setModelMarkers(model, "oxlint", markers);
+  monaco.editor.setModelMarkers(model, "oxlint", /** @type {any} */ (markers));
 }
 
 /** @param {any} editing */
@@ -607,7 +607,7 @@ async function renderCanvasLive(doc, canvasEl) {
       for (const entry of renderDoc.$elements) {
         if (entry?.$ref) {
           const href = new URL(entry.$ref, docBase).href;
-          try { await defineElement(href); } catch (e) {
+          try { await defineElement(href); } catch (/** @type {any} */ e) {
             console.warn("Studio: failed to register element", entry.$ref, e);
           }
         }
@@ -646,7 +646,7 @@ async function renderCanvasLive(doc, canvasEl) {
       // Disable pointer events on all rendered elements for edit mode
       el.style.pointerEvents = "none";
       for (const child of el.querySelectorAll("*")) {
-        child.style.pointerEvents = "none";
+        /** @type {any} */ (child).style.pointerEvents = "none";
       }
     }
     canvasEl.appendChild(el);
@@ -659,12 +659,12 @@ async function renderCanvasLive(doc, canvasEl) {
           // Preserve pointer-events on the actively-edited element
           if (componentInlineEdit && child === componentInlineEdit.el) continue;
           if (editingEl && child === editingEl) continue;
-          child.style.pointerEvents = "none";
+          /** @type {any} */ (child).style.pointerEvents = "none";
         }
       });
     }
     return $defs;
-  } catch (err) {
+  } catch (/** @type {any} */ err) {
     console.warn("JSONsx Studio: runtime render failed, falling back to structural preview", err);
     return null;
   }
@@ -691,11 +691,11 @@ for (const [name] of webdata.cssProps) {
 document.body.appendChild(cssPropList);
 
 /** Map<camelCaseName, initialValue> for placeholder hints */
-const cssInitialMap = new Map(webdata.cssProps);
+const cssInitialMap = new Map(/** @type {any} */ (webdata.cssProps));
 
 // ─── Icon maps & module-level UI state (must be before render() call) ─────────
 
-const toolbarIconMap = {
+const toolbarIconMap = /** @type {Record<string, any>} */ ({
   "sp-icon-folder-open": html`<sp-icon-folder-open slot="icon"></sp-icon-folder-open>`,
   "sp-icon-save-floppy": html`<sp-icon-save-floppy slot="icon"></sp-icon-save-floppy>`,
   "sp-icon-back": html`<sp-icon-back slot="icon"></sp-icon-back>`,
@@ -709,7 +709,7 @@ const toolbarIconMap = {
   "sp-icon-code": html`<sp-icon-code slot="icon"></sp-icon-code>`,
   "sp-icon-brush": html`<sp-icon-brush slot="icon"></sp-icon-brush>`,
   "sp-icon-document": html`<sp-icon-document slot="icon"></sp-icon-document>`,
-};
+});
 
 /**
  * @param {any} label
@@ -725,14 +725,14 @@ function tbBtnTpl(label, onClick, iconTag) {
   `;
 }
 
-const fileIconMap = {
+const fileIconMap = /** @type {Record<string, any>} */ ({
   "sp-icon-folder-open": html`<sp-icon-folder-open></sp-icon-folder-open>`,
   "sp-icon-folder": html`<sp-icon-folder></sp-icon-folder>`,
   "sp-icon-file-code": html`<sp-icon-file-code></sp-icon-file-code>`,
   "sp-icon-file-txt": html`<sp-icon-file-txt></sp-icon-file-txt>`,
   "sp-icon-image": html`<sp-icon-image></sp-icon-image>`,
   "sp-icon-document": html`<sp-icon-document></sp-icon-document>`,
-};
+});
 
 let blocksCollapsed = new Set();
 let blocksFilter = "";
@@ -764,7 +764,7 @@ render();
   const openParam = new URLSearchParams(location.search).get("open");
   if (openParam) {
     getPlatform().readFile(openParam)
-      .then(async (content) => {
+      .then(async (/** @type {any} */ content) => {
         if (content) {
           const doc = JSON.parse(content);
           S = createState(doc);
@@ -1275,7 +1275,7 @@ function renderZoomIndicator() {
 }
 
 function positionZoomIndicator() {
-  const indicator = document.querySelector(".zoom-indicator");
+  const indicator = /** @type {HTMLElement | null} */ (document.querySelector(".zoom-indicator"));
   if (!indicator) return;
   const rect = canvasWrap.getBoundingClientRect();
   indicator.style.left = `${rect.left + rect.width / 2}px`;
@@ -1299,7 +1299,7 @@ function updateActivePanelHeaders() {
 // ─── Signals / defs helpers ──────────────────────────────────────────────────
 
 /** Default templates for creating new signal definitions. */
-const DEF_TEMPLATES = {
+const DEF_TEMPLATES = /** @type {Record<string, any>} */ ({
   state: { type: "string", default: "" },
   computed: { $compute: "", $deps: [] },
   request: { $prototype: "Request", url: "", method: "GET", timing: "client" },
@@ -1312,7 +1312,7 @@ const DEF_TEMPLATES = {
   formData: { $prototype: "FormData", fields: {} },
   function: { $prototype: "Function", body: "", parameters: [] },
   external: { $prototype: "", $src: "" },
-};
+});
 
 /** Classify a state entry into a category string.
  * @param {any} def
@@ -1371,7 +1371,7 @@ function isCustomElementDoc() {
  */
 function collectCssParts(node, parts = []) {
   if (node?.attributes?.part) parts.push({ name: node.attributes.part, tag: node.tagName || "div" });
-  if (Array.isArray(node?.children)) node.children.forEach((c) => collectCssParts(c, parts));
+  if (Array.isArray(node?.children)) node.children.forEach((/** @type {any} */ c) => collectCssParts(c, parts));
   return parts;
 }
 
@@ -1384,6 +1384,7 @@ function collectCssParts(node, parts = []) {
 function resolveDefaultForCanvas(value, defs) {
   if (!value || typeof value !== "object" || !value.$ref) return value;
   const ref = value.$ref;
+  /** @type {any} */
   let defName;
   if (ref.startsWith("#/state/")) defName = ref.slice(8);
   else if (ref.startsWith("$")) defName = ref;
@@ -1519,7 +1520,7 @@ function registerPanelDnD(panel) {
   const monitorCleanup = monitorForElements({
     onDragStart() {
       for (const el of canvas.querySelectorAll("*")) {
-        el.style.pointerEvents = "auto";
+        /** @type {any} */ (el).style.pointerEvents = "auto";
       }
       // Disable click layers on ALL panels during drag
       for (const p of canvasPanels) p.overlayClk.style.pointerEvents = "none";
@@ -1532,7 +1533,7 @@ function registerPanelDnD(panel) {
       for (const p of canvasPanels) p.dropLine.style.display = "none";
       lastDragInput = null;
       for (const el of canvas.querySelectorAll("*")) {
-        el.style.pointerEvents = "none";
+        /** @type {any} */ (el).style.pointerEvents = "none";
       }
       for (const p of canvasPanels) p.overlayClk.style.pointerEvents = "";
     },
@@ -1550,7 +1551,7 @@ function registerPanelDnD(panel) {
       element: el,
       canDrop({ source }) {
         const srcPath = source.data.path;
-        if (srcPath && isAncestor(srcPath, elPath)) return false;
+        if (srcPath && isAncestor(/** @type {any} */ (srcPath), elPath)) return false;
         return true;
       },
       getData() {
@@ -1718,7 +1719,7 @@ function getActivePanel() {
 // ── Floating inline toolbar ────────────────────────────────────────────────
 
 /** Pre-built icon templates for inline format buttons (avoids unsafeStatic) */
-const formatIconMap = {
+const formatIconMap = /** @type {Record<string, any>} */ ({
   "sp-icon-text-bold": html`<sp-icon-text-bold slot="icon"></sp-icon-text-bold>`,
   "sp-icon-text-italic": html`<sp-icon-text-italic slot="icon"></sp-icon-text-italic>`,
   "sp-icon-text-underline": html`<sp-icon-text-underline slot="icon"></sp-icon-text-underline>`,
@@ -1727,28 +1728,36 @@ const formatIconMap = {
   "sp-icon-text-subscript": html`<sp-icon-text-subscript slot="icon"></sp-icon-text-subscript>`,
   "sp-icon-code": html`<sp-icon-code slot="icon"></sp-icon-code>`,
   "sp-icon-link": html`<sp-icon-link slot="icon"></sp-icon-link>`,
-};
+});
 
-/** Prevent the bar from stealing focus from contenteditable */
+/** Prevent the bar from stealing focus from contenteditable
+ * @param {any} e
+ */
 function onBarMousedown(e) {
   if (e.target.closest("sp-textfield")) return;
   if (e.target.closest(".bar-drag-handle")) return;
   e.preventDefault();
 }
 
-/** Saved selection range for format button mousedown→click flow */
+/** Saved selection range for format button mousedown→click flow
+ * @type {any}
+ */
 let savedRange = null;
 function captureSelectionRange() {
   const sel = window.getSelection();
-  if (sel.rangeCount) savedRange = sel.getRangeAt(0).cloneRange();
+  if (sel && sel.rangeCount) savedRange = sel.getRangeAt(0).cloneRange();
 }
 
+/**
+ * @param {any} e
+ * @param {any} action
+ */
 function onFormatClick(e, action) {
   e.stopPropagation();
   if (action.command === "link") {
     showLinkPopover(e.target.closest("sp-action-button"));
   } else if (savedRange) {
-    const sel = window.getSelection();
+    const sel = /** @type {any} */ (window.getSelection());
     const anchor = savedRange.startContainer;
     const editableRoot = (anchor?.nodeType === Node.ELEMENT_NODE ? anchor : anchor?.parentElement)
       ?.closest("[contenteditable]");
@@ -1767,26 +1776,26 @@ function renderParentSelector() {
   const parentNode = getNodeAtPath(S.document, pPath);
   return html`
     <sp-action-button size="xs" quiet title="Select parent: ${nodeLabel(parentNode)}"
-      @click=${(e) => { e.stopPropagation(); update(selectNode(S, pPath)); }}>
+      @click=${(/** @type {any} */ e) => { e.stopPropagation(); update(selectNode(S, pPath)); }}>
       <sp-icon-back slot="icon"></sp-icon-back>
     </sp-action-button>
   `;
 }
 
 function renderMoveArrows() {
-  const idx = childIndex(S.selection);
+  const idx = /** @type {number} */ (childIndex(S.selection));
   const pPath = parentElementPath(S.selection);
-  const parentNode = getNodeAtPath(S.document, pPath);
+  const parentNode = getNodeAtPath(S.document, /** @type {any} */ (pPath));
   const siblings = parentNode?.children;
   return html`
     <sp-action-button size="xs" quiet title="Move up"
       ?disabled=${idx <= 0}
-      @click=${(e) => { e.stopPropagation(); moveSelectionUp(); }}>
+      @click=${(/** @type {any} */ e) => { e.stopPropagation(); moveSelectionUp(); }}>
       <sp-icon-arrow-up slot="icon"></sp-icon-arrow-up>
     </sp-action-button>
     <sp-action-button size="xs" quiet title="Move down"
       ?disabled=${!siblings || idx >= siblings.length - 1}
-      @click=${(e) => { e.stopPropagation(); moveSelectionDown(); }}>
+      @click=${(/** @type {any} */ e) => { e.stopPropagation(); moveSelectionDown(); }}>
       <sp-icon-arrow-down slot="icon"></sp-icon-arrow-down>
     </sp-action-button>
   `;
@@ -1794,9 +1803,11 @@ function renderMoveArrows() {
 
 /**
  * Apply an inline format action.
+ * @param {any} action
  */
 function applyInlineFormat(action) {
   // Map commands to semantic tags
+  /** @type {Record<string, any>} */
   const cmdToTag = {
     bold: "strong",
     italic: "em",
@@ -1818,14 +1829,20 @@ function applyInlineFormat(action) {
 /**
  * Show a link URL popover anchored to a toolbar button.
  */
+/** @type {any} */
 let linkPopoverEl = null;
 
+/**
+ * @param {any} anchorBtn
+ */
 function showLinkPopover(anchorBtn) {
   if (linkPopoverEl) { linkPopoverEl.remove(); linkPopoverEl = null; }
 
   const sel = window.getSelection();
+  /** @type {any} */
   let existingLink = null;
   if (sel?.rangeCount) {
+    /** @type {any} */
     let node = sel.anchorNode;
     while (node && node !== document.body) {
       if (node.nodeType === Node.ELEMENT_NODE && node.tagName.toLowerCase() === "a") {
@@ -1859,7 +1876,7 @@ function showLinkPopover(anchorBtn) {
     renderBlockActionBar();
   };
 
-  const onKeydown = (e) => {
+  const onKeydown = (/** @type {any} */ e) => {
     if (e.key === "Enter") onApply();
     else if (e.key === "Escape") { linkPopoverEl.remove(); linkPopoverEl = null; }
   };
@@ -1888,9 +1905,9 @@ function showLinkPopover(anchorBtn) {
  */
 function moveSelectionUp() {
   if (!S.selection || S.selection.length < 2) return;
-  const idx = childIndex(S.selection);
+  const idx = /** @type {number} */ (childIndex(S.selection));
   if (idx <= 0) return;
-  const pPath = parentElementPath(S.selection);
+  const pPath = /** @type {any} */ (parentElementPath(S.selection));
   update(moveNode(S, S.selection, pPath, idx - 1));
   S = { ...S, selection: [...pPath, "children", idx - 1] };
   renderOverlays();
@@ -1901,8 +1918,8 @@ function moveSelectionUp() {
  */
 function moveSelectionDown() {
   if (!S.selection || S.selection.length < 2) return;
-  const idx = childIndex(S.selection);
-  const pPath = parentElementPath(S.selection);
+  const idx = /** @type {number} */ (childIndex(S.selection));
+  const pPath = /** @type {any} */ (parentElementPath(S.selection));
   const parentNode = getNodeAtPath(S.document, pPath);
   const siblings = parentNode?.children;
   if (!siblings || idx >= siblings.length - 1) return;
@@ -1942,8 +1959,8 @@ function renderBlockActionBar() {
 
   // Inline format state
   const inlineEditing = isEditing() || el.contentEditable === "true";
-  const actions = getInlineActions(tag);
-  const showFormat = inlineEditing && actions?.length > 0;
+  const actions = getInlineActions(tag) || [];
+  const showFormat = inlineEditing && actions.length > 0;
   const activeValues = showFormat
     ? actions.filter(a => isTagActiveInSelection(a.tag, el)).map(a => a.tag)
     : [];
@@ -1971,7 +1988,7 @@ function renderBlockActionBar() {
             <sp-action-button size="xs" value=${action.tag}
               title="${action.label}${action.shortcut ? ` (${action.shortcut})` : ""}"
               @mousedown=${captureSelectionRange}
-              @click=${(e) => onFormatClick(e, action)}>
+              @click=${(/** @type {any} */ e) => onFormatClick(e, action)}>
               ${formatIconMap[action.icon] ?? nothing}
             </sp-action-button>
           `)}
@@ -2006,7 +2023,9 @@ function renderBlockActionBar() {
 // When a pseudo-selector (:hover, :focus, etc.) is active in the style sidebar,
 // force those styles onto the selected element so the user can see the result.
 
+/** @type {any} */
 let _forcedStyleTag = null;
+/** @type {any} */
 let _forcedAttrEl = null;
 
 function updateForcedPseudoPreview() {
@@ -2026,6 +2045,7 @@ function updateForcedPseudoPreview() {
   const node = getNodeAtPath(S.document, S.selection);
   if (!node?.style) return;
   const activeTab = S.ui.activeMedia;
+  /** @type {any} */
   const ctx = activeTab ? (node.style[`@${activeTab}`] || {}) : node.style;
   const rules = ctx[sel];
   if (!rules || typeof rules !== "object") return;
@@ -2033,7 +2053,7 @@ function updateForcedPseudoPreview() {
   // Build CSS text from the rules
   const cssProps = Object.entries(rules)
     .filter(([k]) => typeof rules[k] === "string" || typeof rules[k] === "number")
-    .map(([k, v]) => `${k.replace(/[A-Z]/g, c => `-${c.toLowerCase()}`)}: ${v} !important`)
+    .map(([k, v]) => `${k.replace(/[A-Z]/g, (/** @type {any} */ c) => `-${c.toLowerCase()}`)}: ${v} !important`)
     .join("; ");
   if (!cssProps) return;
 
@@ -2072,6 +2092,11 @@ function effectiveZoom() {
   return canvasMode === "edit" ? 1 : S.ui.zoom;
 }
 
+/**
+ * @param {any} el
+ * @param {any} type
+ * @param {any} panel
+ */
 function drawOverlayBox(el, type, panel) {
   const vpRect = panel.viewport.getBoundingClientRect();
   const elRect = el.getBoundingClientRect();
@@ -2090,6 +2115,10 @@ function drawOverlayBox(el, type, panel) {
   return box;
 }
 
+/**
+ * @param {any} path
+ * @param {any} canvasEl
+ */
 function findCanvasElement(path, canvasEl) {
   let el = canvasEl.firstElementChild;
   if (!el) return null;
@@ -2311,8 +2340,8 @@ function enterInlineEdit(el, path) {
       }
 
       // Insert new element after with "after" content
-      const parentPath = parentElementPath(splitPath);
-      const idx = childIndex(splitPath);
+      const parentPath = /** @type {any} */ (parentElementPath(splitPath));
+      const idx = /** @type {number} */ (childIndex(splitPath));
       /** @type {any} */
       const newNode = { tagName: tag };
       if (after.textContent != null) {
@@ -2349,8 +2378,8 @@ function enterInlineEdit(el, path) {
     },
 
     onInsert(/** @type {any} */ afterPath, /** @type {any} */ elementDef) {
-      const parentPath = parentElementPath(afterPath);
-      const idx = childIndex(afterPath);
+      const parentPath = /** @type {any} */ (parentElementPath(afterPath));
+      const idx = /** @type {number} */ (childIndex(afterPath));
       let s = insertNode(S, parentPath, idx + 1, structuredClone(elementDef));
       const newPath = [...parentPath, "children", idx + 1];
       s = selectNode(s, newPath);
@@ -2514,8 +2543,8 @@ function enterComponentInlineEdit(el, path) {
         // Remove empty node; adjust hitPath if it shifts after removal
         let s = removeNode(S, editPath);
         // If hit path is a later sibling in the same parent, adjust index
-        const removedIdx = childIndex(editPath);
-        const hitIdx = childIndex(hitPath);
+        const removedIdx = /** @type {number} */ (childIndex(editPath));
+        const hitIdx = /** @type {number} */ (childIndex(hitPath));
         const hitParent = parentElementPath(hitPath);
         if (hitParent && pPath && hitParent.join("/") === pPath.join("/") && hitIdx > removedIdx) {
           hitPath = [...pPath, "children", hitIdx - 1];
@@ -2612,8 +2641,8 @@ function splitParagraph() {
   // Get node info for building the new sibling
   const node = getNodeAtPath(S.document, path);
   const tag = node?.tagName || "p";
-  const pPath = parentElementPath(path);
-  const idx = childIndex(path);
+  const pPath = /** @type {any} */ (parentElementPath(path));
+  const idx = /** @type {number} */ (childIndex(path));
   if (!pPath) return; // can't split root
 
   const newDef = { tagName: tag, textContent: textAfter };
@@ -2778,7 +2807,7 @@ function selectComponentSlashItem(cmd) {
   if (!componentInlineEdit) return;
   const { el, path, mediaName } = componentInlineEdit;
   const pPath = parentElementPath(path);
-  const idx = childIndex(path);
+  const idx = /** @type {number} */ (childIndex(path));
   if (!pPath) return;
 
   dismissComponentSlashMenu();
@@ -2807,16 +2836,16 @@ function selectComponentSlashItem(cmd) {
 function tabIcon(tag, size) {
   /** @type {Record<string, any>} */
   const m = {
-    "sp-icon-folder": (s) => html`<sp-icon-folder slot="icon" size=${s}></sp-icon-folder>`,
-    "sp-icon-layers": (s) => html`<sp-icon-layers slot="icon" size=${s}></sp-icon-layers>`,
-    "sp-icon-view-grid": (s) => html`<sp-icon-view-grid slot="icon" size=${s}></sp-icon-view-grid>`,
-    "sp-icon-brackets": (s) => html`<sp-icon-brackets slot="icon" size=${s}></sp-icon-brackets>`,
-    "sp-icon-data": (s) => html`<sp-icon-data slot="icon" size=${s}></sp-icon-data>`,
-    "sp-icon-properties": (s) => html`<sp-icon-properties slot="icon" size=${s}></sp-icon-properties>`,
-    "sp-icon-event": (s) => html`<sp-icon-event slot="icon" size=${s}></sp-icon-event>`,
-    "sp-icon-brush": (s) => html`<sp-icon-brush slot="icon" size=${s}></sp-icon-brush>`,
-    "sp-icon-artboard": (s) => html`<sp-icon-artboard slot="icon" size=${s}></sp-icon-artboard>`,
-    "sp-icon-box": (s) => html`<sp-icon-box slot="icon" size=${s}></sp-icon-box>`,
+    "sp-icon-folder": (/** @type {any} */ s) => html`<sp-icon-folder slot="icon" size=${s}></sp-icon-folder>`,
+    "sp-icon-layers": (/** @type {any} */ s) => html`<sp-icon-layers slot="icon" size=${s}></sp-icon-layers>`,
+    "sp-icon-view-grid": (/** @type {any} */ s) => html`<sp-icon-view-grid slot="icon" size=${s}></sp-icon-view-grid>`,
+    "sp-icon-brackets": (/** @type {any} */ s) => html`<sp-icon-brackets slot="icon" size=${s}></sp-icon-brackets>`,
+    "sp-icon-data": (/** @type {any} */ s) => html`<sp-icon-data slot="icon" size=${s}></sp-icon-data>`,
+    "sp-icon-properties": (/** @type {any} */ s) => html`<sp-icon-properties slot="icon" size=${s}></sp-icon-properties>`,
+    "sp-icon-event": (/** @type {any} */ s) => html`<sp-icon-event slot="icon" size=${s}></sp-icon-event>`,
+    "sp-icon-brush": (/** @type {any} */ s) => html`<sp-icon-brush slot="icon" size=${s}></sp-icon-brush>`,
+    "sp-icon-artboard": (/** @type {any} */ s) => html`<sp-icon-artboard slot="icon" size=${s}></sp-icon-artboard>`,
+    "sp-icon-box": (/** @type {any} */ s) => html`<sp-icon-box slot="icon" size=${s}></sp-icon-box>`,
   };
   const fn = m[tag];
   return fn ? fn(size || "s") : nothing;
@@ -2845,7 +2874,7 @@ function renderActivityBar() {
       `)}
     </sp-tabs>
   `;
-  litRender(tpl, activityBar);
+  litRender(tpl, /** @type {any} */ (activityBar));
 }
 
 // ─── Left panel: Layers ───────────────────────────────────────────────────────
@@ -2863,14 +2892,14 @@ function renderLeftPanel() {
   else if (tab === "data") content = renderDataExplorerTemplate();
   else content = nothing;
 
-  litRender(html`<div class="panel-body">${content}</div>`, leftPanel);
+  litRender(html`<div class="panel-body">${content}</div>`, /** @type {any} */ (leftPanel));
 
   // Post-render side effects
   if (tab === "layers" && canvasMode !== "stylebook") registerLayersDnD();
   else if (tab === "components") registerComponentsDnD();
   else if (tab === "blocks") registerBlocksDnD();
   else if (tab === "files") {
-    const tree = leftPanel.querySelector(".file-tree");
+    const tree = /** @type {any} */ (leftPanel)?.querySelector(".file-tree");
     if (tree) setupTreeKeyboard(tree);
   }
 }
@@ -2988,7 +3017,7 @@ function renderLayersTemplate() {
 /** Register DnD on layer rows after litRender — called from renderLeftPanel */
 function registerLayersDnD() {
   requestAnimationFrame(() => {
-    const container = leftPanel.querySelector(".layers-container");
+    const container = /** @type {any} */ (leftPanel)?.querySelector(".layers-container");
     if (!container) return;
 
     container.querySelectorAll("[data-dnd-row]").forEach(/** @param {any} row */ row => {
@@ -3022,13 +3051,13 @@ function registerLayersDnD() {
           getData(/** @type {any} */ { input, element }) {
             return attachInstruction(
               { path: rowPath },
-              {
+              /** @type {any} */ ({
                 input,
                 element,
                 currentLevel: rowDepth,
                 indentPerLevel: 16,
                 block: isVoid ? ["make-child"] : [],
-              },
+              }),
             );
           },
           onDragEnter(/** @type {any} */ { self }) {
@@ -3068,7 +3097,7 @@ function registerLayersDnD() {
 /** Register DnD on component rows — called from renderLeftPanel when tab=components */
 function registerComponentsDnD() {
   requestAnimationFrame(() => {
-    const container = leftPanel.querySelector(".components-section");
+    const container = /** @type {any} */ (leftPanel)?.querySelector(".components-section");
     if (!container) return;
 
     container.querySelectorAll(".component-row").forEach(/** @param {any} row */ row => {
@@ -3187,7 +3216,7 @@ function renderStylebookLayersTemplate() {
     /** @type {any[]} */
     const elementRows = [];
     for (const section of stylebookMeta.$sections) {
-      for (const entry of section.elements) {
+      for (const entry of /** @type {any[]} */ (section.elements)) {
         elementRows.push(html`
           <div class="layer-row${entry.tag === selectedTag ? " selected" : ""}"
             @click=${() => {
@@ -3259,8 +3288,8 @@ function renderStylebookLayersTemplate() {
 function applyDropInstruction(instruction, srcData, targetPath) {
   if (srcData.type === "tree-node") {
     const fromPath = srcData.path;
-    const targetParent = parentElementPath(targetPath);
-    const targetIdx = childIndex(targetPath);
+    const targetParent = /** @type {any} */ (parentElementPath(targetPath));
+    const targetIdx = /** @type {number} */ (childIndex(targetPath));
 
     switch (instruction.type) {
       case "reorder-above":
@@ -3277,8 +3306,8 @@ function applyDropInstruction(instruction, srcData, targetPath) {
       }
     }
   } else if (srcData.type === "block") {
-    const targetParent = parentElementPath(targetPath);
-    const targetIdx = childIndex(targetPath);
+    const targetParent = /** @type {any} */ (parentElementPath(targetPath));
+    const targetIdx = /** @type {number} */ (childIndex(targetPath));
 
     switch (instruction.type) {
       case "reorder-above":
@@ -3401,7 +3430,7 @@ function renderBlocksTemplate() {
           else blocksCollapsed.add(category);
           renderLeftPanel();
         }}>${category}</div>
-      ${blocksCollapsed.has(category) ? nothing : filtered.map(({ tag }) => {
+      ${blocksCollapsed.has(category) ? nothing : filtered.map((/** @type {any} */ { tag }) => {
         const def = defaultDef(tag);
         return html`
           <div class="block-row" data-block-tag=${tag}
@@ -3428,7 +3457,7 @@ function renderBlocksTemplate() {
 
 function registerBlocksDnD() {
   requestAnimationFrame(() => {
-    const container = leftPanel.querySelector(".panel-body");
+    const container = /** @type {any} */ (leftPanel)?.querySelector(".panel-body");
     if (!container) return;
     container.querySelectorAll("[data-block-tag]").forEach(/** @param {any} row */ row => {
       const tag = row.dataset.blockTag;
@@ -3569,15 +3598,15 @@ function renderStylebook() {
     chrome.appendChild(customizedBtn);
   }
 
-  canvasWrap.appendChild(chrome);
+  /** @type {any} */ (canvasWrap).appendChild(chrome);
 
   // Set up panzoom surface — same as normal canvas mode
-  canvasWrap.style.overflow = "hidden";
+  /** @type {any} */ (canvasWrap).style.overflow = "hidden";
   panzoomWrap = document.createElement("div");
   panzoomWrap.className = "panzoom-wrap";
   panzoomWrap.style.transformOrigin = "0 0";
   panzoomWrap.style.paddingTop = "36px"; // space for chrome bar
-  canvasWrap.appendChild(panzoomWrap);
+  /** @type {any} */ (canvasWrap).appendChild(panzoomWrap);
 
   // Build panel definitions
   /** @type {any[]} */
@@ -3651,7 +3680,7 @@ function renderStylebook() {
 function renderStylebookElementsIntoCanvas(canvasEl, rootStyle, filter, customizedOnly, activeBreakpoints) {
   for (const section of stylebookMeta.$sections) {
     // Filter elements
-    let entries = section.elements;
+    let entries = /** @type {any} */ (section.elements);
     if (filter) {
       entries = entries.filter((/** @type {any} */ e) =>
         e.tag.includes(filter) || section.label.toLowerCase().includes(filter),
@@ -3861,6 +3890,7 @@ function renderVarRow(catKey, catMeta, varName, varVal, isNew) {
   inputRow.className = "sb-var-input-row";
 
   // Color swatch
+  /** @type {any} */
   let colorPicker = null;
   if (catKey === "color") {
     const swatch = document.createElement("div");
@@ -3916,7 +3946,7 @@ function renderVarRow(catKey, catMeta, varName, varVal, isNew) {
     if (colorPicker) {
       colorPicker.oninput = () => {
         hexField.value = colorPicker.value;
-        const swatch = row.querySelector(".sb-var-swatch");
+        const swatch = /** @type {any} */ (row.querySelector(".sb-var-swatch"));
         if (swatch) swatch.style.backgroundColor = colorPicker.value;
         if (!isNew && varName) update(updateStyle(S, [], varName, colorPicker.value));
       };
@@ -3927,7 +3957,7 @@ function renderVarRow(catKey, catMeta, varName, varVal, isNew) {
         debounce = setTimeout(() => {
           const v = hexField.value;
           try { colorPicker.value = v.startsWith("#") ? v : colorPicker.value; } catch {}
-          const swatch = row.querySelector(".sb-var-swatch");
+          const swatch = /** @type {any} */ (row.querySelector(".sb-var-swatch"));
           if (swatch) swatch.style.backgroundColor = v;
           if (!isNew && varName) update(updateStyle(S, [], varName, v));
         }, 400);
@@ -4200,7 +4230,7 @@ function registerStylebookPanelEvents(panel) {
     // Find the closest element with a stylebook tag mapping (walk up parents for nested elements)
     for (const el of elements) {
       if (!canvas.contains(el) || el === canvas) continue;
-      let cur = el;
+      let cur = /** @type {any} */ (el);
       while (cur && cur !== canvas) {
         const tag = stylebookElToTag.get(cur);
         if (tag) {
@@ -4237,7 +4267,7 @@ function registerStylebookPanelEvents(panel) {
     let hoverTag = null;
     for (const el of elements) {
       if (!canvas.contains(el) || el === canvas) continue;
-      let cur = el;
+      let cur = /** @type {any} */ (el);
       while (cur && cur !== canvas) {
         const tag = stylebookElToTag.get(cur);
         if (tag) { hoverTag = tag; break; }
@@ -4280,7 +4310,7 @@ function renderStylebookOverlays() {
 }
 
 /** Find a stylebook element by tag in the canvas */
-function findStylebookEl(canvasEl, tag) {
+function findStylebookEl(/** @type {any} */ canvasEl, /** @type {any} */ tag) {
   for (const child of canvasEl.querySelectorAll("*")) {
     if (stylebookElToTag.get(child) === tag) return child;
   }
@@ -4288,7 +4318,7 @@ function findStylebookEl(canvasEl, tag) {
 }
 
 /** Draw an overlay box with a custom label (used by stylebook) */
-function drawOverlayBoxRaw(el, type, panel, labelText) {
+function drawOverlayBoxRaw(/** @type {any} */ el, /** @type {any} */ type, /** @type {any} */ panel, /** @type {any} */ labelText) {
   const vpRect = panel.viewport.getBoundingClientRect();
   const elRect = el.getBoundingClientRect();
   const scale = effectiveZoom();
@@ -4314,6 +4344,7 @@ function drawOverlayBoxRaw(el, type, panel, labelText) {
 // ─── Left panel: Signals ─────────────────────────────────────────────────────
 
 /** Expanded signal editor state (persists across renders). */
+/** @type {any} */
 let expandedSignal = null;
 
 function renderSignalsTemplate() {
@@ -4321,7 +4352,7 @@ function renderSignalsTemplate() {
   const entries = Object.entries(defs);
 
   // Group by category
-  const groups = { state: [], computed: [], data: [], function: [] };
+  const groups = /** @type {Record<string, any[]>} */ ({ state: [], computed: [], data: [], function: [] });
   for (const [name, def] of entries) {
     groups[defCategory(def)].push([name, def]);
   }
@@ -4341,13 +4372,14 @@ function renderSignalsTemplate() {
       ${label} (${items.length})
     </div>
     ${collapsedCats.has(key) ? nothing : items.map(([name, def]) => {
+      /** @type {any} */
       const isExpanded = expandedSignal === name;
       return html`
         <div class="signal-row${isExpanded ? " expanded" : ""}" @click=${() => { expandedSignal = isExpanded ? null : name; renderLeftPanel(); }}>
           <span class="signal-badge ${defCategory(def)}">${defBadgeLabel(def)}</span>
           <span class="signal-name">${name}</span>
           <span class="signal-hint">${defHint(name, def)}</span>
-          <sp-action-button quiet size="xs" class="signal-del" @click=${(e) => { e.stopPropagation(); update(removeDef(S, name)); }}>
+          <sp-action-button quiet size="xs" class="signal-del" @click=${(/** @type {any} */ e) => { e.stopPropagation(); update(removeDef(S, name)); }}>
             <sp-icon-delete slot="icon"></sp-icon-delete>
           </sp-action-button>
         </div>
@@ -4360,7 +4392,7 @@ function renderSignalsTemplate() {
     ${catTemplates}
     ${entries.length === 0 ? html`<div class="empty-state">No state defined</div>` : nothing}
     <div class="signals-add">
-      <sp-picker size="s" label="+ Add\u2026" placeholder="+ Add\u2026" @change=${(e) => {
+      <sp-picker size="s" label="+ Add\u2026" placeholder="+ Add\u2026" @change=${(/** @type {any} */ e) => {
         const type = e.target.value;
         if (!type) return;
         const template = DEF_TEMPLATES[type];
@@ -4394,23 +4426,24 @@ function renderSignalsTemplate() {
 }
 
 /** Render inline editor fields for a specific signal/def type. */
-function renderSignalEditorTemplate(name, def) {
+function renderSignalEditorTemplate(/** @type {any} */ name, /** @type {any} */ def) {
   const cat = defCategory(def);
 
   // Helper for picker rows
-  const pickerRow = (label, options, currentVal, onChange) => {
+  const pickerRow = (/** @type {any} */ label, /** @type {any} */ options, /** @type {any} */ currentVal, /** @type {any} */ onChange) => {
     return html`
       <div class="field-row">
         <label class="field-label">${label}</label>
-        <sp-picker size="s" class="field-input" value=${currentVal} @change=${(e) => onChange(e.target.value)}>
-          ${options.map(opt => html`<sp-menu-item value=${opt}>${opt}</sp-menu-item>`)}
+        <sp-picker size="s" class="field-input" value=${currentVal} @change=${(/** @type {any} */ e) => onChange(e.target.value)}>
+          ${options.map((/** @type {any} */ opt) => html`<sp-menu-item value=${opt}>${opt}</sp-menu-item>`)}
         </sp-picker>
       </div>
     `;
   };
 
   // Helper for textarea rows
-  const textareaRow = (label, value, onChange, opts = {}) => {
+  const textareaRow = (/** @type {any} */ label, /** @type {any} */ value, /** @type {any} */ onChange, /** @type {any} */ opts = {}) => {
+    /** @type {any} */
     let debounce;
     return html`
       <div class="field-row">
@@ -4418,19 +4451,20 @@ function renderSignalEditorTemplate(name, def) {
         <textarea class="field-input"
           style="min-height:${opts.minHeight || "40px"};${opts.mono ? "font-family:'SF Mono','Fira Code','Consolas',monospace;font-size:11px;" : ""}"
           .value=${value}
-          @input=${(e) => { clearTimeout(debounce); debounce = setTimeout(() => onChange(e.target.value), 500); }}></textarea>
+          @input=${(/** @type {any} */ e) => { clearTimeout(debounce); debounce = setTimeout(() => onChange(e.target.value), 500); }}></textarea>
       </div>
     `;
   };
 
   // Name field (common to all)
-  const nameField = signalFieldRow("name", name, (v) => {
+  const nameField = signalFieldRow("name", name, (/** @type {any} */ v) => {
     if (v && v !== name && !(S.document.state && S.document.state[v])) {
       expandedSignal = v;
       update(renameDef(S, name, v));
     }
   });
 
+  /** @type {any} */
   let fields = nothing;
 
   if (cat === "state") {
@@ -4442,19 +4476,19 @@ function renderSignalEditorTemplate(name, def) {
         : "";
 
     const cemFields = isCustomElementDoc() ? html`
-      ${signalFieldRow("attribute", def.attribute || "", (v) => update(updateDef(S, name, { attribute: v || undefined })))}
+      ${signalFieldRow("attribute", def.attribute || "", (/** @type {any} */ v) => update(updateDef(S, name, { attribute: v || undefined })))}
       <div class="field-row">
         <label class="field-label">reflects</label>
         <sp-checkbox class="field-check" ?checked=${!!def.reflects}
-          @change=${(e) => update(updateDef(S, name, { reflects: e.target.checked || undefined }))}></sp-checkbox>
+          @change=${(/** @type {any} */ e) => update(updateDef(S, name, { reflects: e.target.checked || undefined }))}></sp-checkbox>
       </div>
-      ${signalFieldRow("deprecated", typeof def.deprecated === "string" ? def.deprecated : "", (v) => update(updateDef(S, name, { deprecated: v || undefined })))}
+      ${signalFieldRow("deprecated", typeof def.deprecated === "string" ? def.deprecated : "", (/** @type {any} */ v) => update(updateDef(S, name, { deprecated: v || undefined })))}
     ` : nothing;
 
     fields = html`
       ${pickerRow("type", ["string", "integer", "number", "boolean", "array", "object"], def.type || "string",
-        (v) => update(updateDef(S, name, { type: v })))}
-      ${signalFieldRow("default", defaultVal, (v) => {
+        (/** @type {any} */ v) => update(updateDef(S, name, { type: v })))}
+      ${signalFieldRow("default", defaultVal, (/** @type {any} */ v) => {
         let parsed = v;
         if (def.type === "integer") parsed = parseInt(v, 10) || 0;
         else if (def.type === "number") parsed = parseFloat(v) || 0;
@@ -4462,16 +4496,17 @@ function renderSignalEditorTemplate(name, def) {
         else if (def.type === "array" || def.type === "object") { try { parsed = JSON.parse(v); } catch { parsed = v; } }
         update(updateDef(S, name, { default: parsed }));
       })}
-      ${signalFieldRow("desc", def.description || "", (v) => update(updateDef(S, name, { description: v || undefined })))}
+      ${signalFieldRow("desc", def.description || "", (/** @type {any} */ v) => update(updateDef(S, name, { description: v || undefined })))}
       ${cemFields}
     `;
   } else if (cat === "computed") {
+    /** @type {any} */
     let debounce;
     fields = html`
       <div class="field-row">
         <label class="field-label">expr</label>
         <textarea class="field-input" style="min-height:40px" .value=${def.$compute || ""}
-          @input=${(e) => { clearTimeout(debounce); debounce = setTimeout(() => {
+          @input=${(/** @type {any} */ e) => { clearTimeout(debounce); debounce = setTimeout(() => {
             const expr = e.target.value;
             const depMatches = expr.match(/\$[a-zA-Z_]\w*/g) || [];
             const deps = [...new Set(depMatches)].map(d => `#/state/${d}`);
@@ -4481,7 +4516,7 @@ function renderSignalEditorTemplate(name, def) {
       ${def.$deps && def.$deps.length > 0 ? html`
         <div class="field-row">
           <label class="field-label">deps</label>
-          <span class="signal-hint" style="flex:1;max-width:none">${def.$deps.map(d => d.replace("#/state/", "")).join(", ")}</span>
+          <span class="signal-hint" style="flex:1;max-width:none">${def.$deps.map((/** @type {any} */ d) => d.replace("#/state/", "")).join(", ")}</span>
         </div>
       ` : nothing}
     `;
@@ -4495,16 +4530,16 @@ function renderSignalEditorTemplate(name, def) {
 }
 
 /** Data source fields for signal editor */
-function renderDataSourceFields(name, def, textareaRow, pickerRow) {
+function renderDataSourceFields(/** @type {any} */ name, /** @type {any} */ def, /** @type {any} */ textareaRow, /** @type {any} */ pickerRow) {
   const proto = def.$prototype;
 
   if (proto === "Request") {
     return html`
-      ${signalFieldRow("url", def.url || "", (v) => update(updateDef(S, name, { url: v })))}
+      ${signalFieldRow("url", def.url || "", (/** @type {any} */ v) => update(updateDef(S, name, { url: v })))}
       ${pickerRow("method", ["GET", "POST", "PUT", "DELETE", "PATCH"], def.method || "GET",
-        (v) => update(updateDef(S, name, { method: v })))}
+        (/** @type {any} */ v) => update(updateDef(S, name, { method: v })))}
       ${pickerRow("timing", ["client", "server"], def.timing || "client",
-        (v) => update(updateDef(S, name, { timing: v })))}
+        (/** @type {any} */ v) => update(updateDef(S, name, { timing: v })))}
     `;
   }
   if (proto === "LocalStorage" || proto === "SessionStorage") {
@@ -4512,8 +4547,8 @@ function renderDataSourceFields(name, def, textareaRow, pickerRow) {
       ? typeof def.default === "object" ? JSON.stringify(def.default, null, 2) : String(def.default)
       : "";
     return html`
-      ${signalFieldRow("key", def.key || "", (v) => update(updateDef(S, name, { key: v })))}
-      ${textareaRow("default", defaultStr, (v) => {
+      ${signalFieldRow("key", def.key || "", (/** @type {any} */ v) => update(updateDef(S, name, { key: v })))}
+      ${textareaRow("default", defaultStr, (/** @type {any} */ v) => {
         try { update(updateDef(S, name, { default: JSON.parse(v) })); }
         catch { update(updateDef(S, name, { default: v })); }
       })}
@@ -4521,15 +4556,15 @@ function renderDataSourceFields(name, def, textareaRow, pickerRow) {
   }
   if (proto === "IndexedDB") {
     return html`
-      ${signalFieldRow("database", def.database || "", (v) => update(updateDef(S, name, { database: v })))}
-      ${signalFieldRow("store", def.store || "", (v) => update(updateDef(S, name, { store: v })))}
-      ${signalFieldRow("version", String(def.version || 1), (v) => update(updateDef(S, name, { version: parseInt(v, 10) || 1 })))}
+      ${signalFieldRow("database", def.database || "", (/** @type {any} */ v) => update(updateDef(S, name, { database: v })))}
+      ${signalFieldRow("store", def.store || "", (/** @type {any} */ v) => update(updateDef(S, name, { store: v })))}
+      ${signalFieldRow("version", String(def.version || 1), (/** @type {any} */ v) => update(updateDef(S, name, { version: parseInt(v, 10) || 1 })))}
     `;
   }
   if (proto === "Cookie") {
     return html`
-      ${signalFieldRow("cookie", def.name || "", (v) => update(updateDef(S, name, { name: v })))}
-      ${signalFieldRow("default", def.default || "", (v) => update(updateDef(S, name, { default: v })))}
+      ${signalFieldRow("cookie", def.name || "", (/** @type {any} */ v) => update(updateDef(S, name, { name: v })))}
+      ${signalFieldRow("default", def.default || "", (/** @type {any} */ v) => update(updateDef(S, name, { default: v })))}
     `;
   }
   if (proto === "Set" || proto === "Map" || proto === "FormData") {
@@ -4537,7 +4572,7 @@ function renderDataSourceFields(name, def, textareaRow, pickerRow) {
     const defaultStr = def.default !== undefined && def.default !== null
       ? JSON.stringify(def.default, null, 2)
       : proto === "FormData" ? JSON.stringify(def.fields || {}, null, 2) : "";
-    return textareaRow(fieldName, defaultStr, (v) => {
+    return textareaRow(fieldName, defaultStr, (/** @type {any} */ v) => {
       try { update(updateDef(S, name, { [fieldName]: JSON.parse(v) })); } catch {}
     });
   }
@@ -4546,11 +4581,11 @@ function renderDataSourceFields(name, def, textareaRow, pickerRow) {
 }
 
 /** Function fields for signal editor */
-function renderFunctionFields(name, def, textareaRow) {
+function renderFunctionFields(/** @type {any} */ name, /** @type {any} */ def, /** @type {any} */ textareaRow) {
   const srcFields = def.$src ? html`
-    ${signalFieldRow("$src", def.$src || "", (v) => update(updateDef(S, name, { $src: v || undefined })))}
-    ${signalFieldRow("$export", def.$export || "", (v) => update(updateDef(S, name, { $export: v || undefined })))}
-  ` : textareaRow("body", def.body || "", (v) => update(updateDef(S, name, { body: v })), { minHeight: "60px", mono: true });
+    ${signalFieldRow("$src", def.$src || "", (/** @type {any} */ v) => update(updateDef(S, name, { $src: v || undefined })))}
+    ${signalFieldRow("$export", def.$export || "", (/** @type {any} */ v) => update(updateDef(S, name, { $export: v || undefined })))}
+  ` : textareaRow("body", def.body || "", (/** @type {any} */ v) => update(updateDef(S, name, { body: v })), { minHeight: "60px", mono: true });
 
   return html`
     ${srcFields}
@@ -4562,14 +4597,14 @@ function renderFunctionFields(name, def, textareaRow) {
         renderCanvas();
       }}>Open in editor</button>
     ` : nothing}
-    ${signalFieldRow("desc", def.description || "", (v) => update(updateDef(S, name, { description: v || undefined })))}
+    ${signalFieldRow("desc", def.description || "", (/** @type {any} */ v) => update(updateDef(S, name, { description: v || undefined })))}
   `;
 }
 
 // ─── CEM Editors ─────────────────────────────────────────────────────────────
 
 /** Normalize a parameter entry to a CEM object. */
-function normParam(p) {
+function normParam(/** @type {any} */ p) {
   return typeof p === "string" ? { name: p } : p;
 }
 
@@ -4577,7 +4612,7 @@ function normParam(p) {
 const advancedParamOpen = new Set();
 
 /** Render CEM parameter editor with basic/advanced toggle. */
-function renderParameterEditorTemplate(name, def) {
+function renderParameterEditorTemplate(/** @type {any} */ name, /** @type {any} */ def) {
   const params = (def.parameters || []).map(normParam);
   const isAdvanced = advancedParamOpen.has(name);
 
@@ -4587,16 +4622,16 @@ function renderParameterEditorTemplate(name, def) {
       <div class="field-row" style="flex-wrap:wrap">
         <label class="field-label">params</label>
         <div style="display:flex;flex-wrap:wrap;gap:4px;flex:1;align-items:center">
-          ${params.map((p, i) => html`
+          ${params.map((/** @type {any} */ p, /** @type {any} */ i) => html`
             <span style="display:inline-flex;align-items:center;gap:2px;padding:1px 6px;border-radius:3px;background:var(--bg-hover);font-size:11px;font-family:monospace">
               ${p.name || "?"}
               <span style="cursor:pointer;opacity:0.5;margin-left:2px" @click=${() => {
-                update(updateDef(S, name, { parameters: params.filter((_, j) => j !== i).length ? params.filter((_, j) => j !== i) : undefined }));
+                update(updateDef(S, name, { parameters: params.filter((/** @type {any} */ _, /** @type {any} */ j) => j !== i).length ? params.filter((/** @type {any} */ _, /** @type {any} */ j) => j !== i) : undefined }));
               }}>\u00d7</span>
             </span>
           `)}
           <input class="field-input" style="width:60px;flex:0 0 auto;font-size:11px" placeholder="+"
-            @keydown=${(e) => {
+            @keydown=${(/** @type {any} */ e) => {
               if (e.key === "Enter" && e.target.value.trim()) {
                 update(updateDef(S, name, { parameters: [...params, { name: e.target.value.trim() }] }));
               }
@@ -4613,18 +4648,18 @@ function renderParameterEditorTemplate(name, def) {
     <div class="field-row" style="flex-wrap:wrap">
       <label class="field-label">params</label>
       <div style="flex:1;display:flex;flex-direction:column;gap:4px">
-        ${params.map((p, i) => html`
+        ${params.map((/** @type {any} */ p, /** @type {any} */ i) => html`
           <div style="display:flex;gap:4px;align-items:center">
             <input class="field-input" .value=${p.name || ""} placeholder="name" style="flex:1"
-              @change=${(e) => { const next = [...params]; next[i] = { ...next[i], name: e.target.value }; update(updateDef(S, name, { parameters: next })); }}>
+              @change=${(/** @type {any} */ e) => { const next = [...params]; next[i] = { ...next[i], name: e.target.value }; update(updateDef(S, name, { parameters: next })); }}>
             <input class="field-input" .value=${p.type?.text || ""} placeholder="type" style="flex:1"
-              @change=${(e) => { const next = [...params]; next[i] = { ...next[i], type: e.target.value ? { text: e.target.value } : undefined }; update(updateDef(S, name, { parameters: next })); }}>
+              @change=${(/** @type {any} */ e) => { const next = [...params]; next[i] = { ...next[i], type: e.target.value ? { text: e.target.value } : undefined }; update(updateDef(S, name, { parameters: next })); }}>
             <input class="field-input" .value=${p.description || ""} placeholder="desc" style="flex:2"
-              @change=${(e) => { const next = [...params]; next[i] = { ...next[i], description: e.target.value || undefined }; update(updateDef(S, name, { parameters: next })); }}>
+              @change=${(/** @type {any} */ e) => { const next = [...params]; next[i] = { ...next[i], description: e.target.value || undefined }; update(updateDef(S, name, { parameters: next })); }}>
             <input type="checkbox" title="optional" .checked=${!!p.optional}
-              @change=${(e) => { const next = [...params]; next[i] = { ...next[i], optional: e.target.checked || undefined }; update(updateDef(S, name, { parameters: next })); }}>
+              @change=${(/** @type {any} */ e) => { const next = [...params]; next[i] = { ...next[i], optional: e.target.checked || undefined }; update(updateDef(S, name, { parameters: next })); }}>
             <span style="cursor:pointer;opacity:0.5" @click=${() => {
-              const next = params.filter((_, j) => j !== i);
+              const next = params.filter((/** @type {any} */ _, /** @type {any} */ j) => j !== i);
               update(updateDef(S, name, { parameters: next.length ? next : undefined }));
             }}>\u00d7</span>
           </div>
@@ -4638,22 +4673,22 @@ function renderParameterEditorTemplate(name, def) {
 }
 
 /** Render CEM emits editor for function state entries. */
-function renderEmitsEditorTemplate(name, def) {
+function renderEmitsEditorTemplate(/** @type {any} */ name, /** @type {any} */ def) {
   const emits = def.emits || [];
   if (emits.length === 0 && !isCustomElementDoc()) return nothing;
 
   return html`
     <div style="font-size:11px;font-weight:600;color:var(--fg-dim);margin:8px 0 4px;text-transform:uppercase;letter-spacing:0.05em">Emits</div>
-    ${emits.map((ev, i) => html`
+    ${emits.map((/** @type {any} */ ev, /** @type {any} */ i) => html`
       <div style="display:flex;gap:4px;align-items:center;margin-bottom:4px">
         <input class="field-input" .value=${ev.name || ""} placeholder="event name" style="flex:1"
-          @change=${(e) => { const next = [...emits]; next[i] = { ...next[i], name: e.target.value }; update(updateDef(S, name, { emits: next })); }}>
+          @change=${(/** @type {any} */ e) => { const next = [...emits]; next[i] = { ...next[i], name: e.target.value }; update(updateDef(S, name, { emits: next })); }}>
         <input class="field-input" .value=${ev.type?.text || ""} placeholder="type" style="flex:1"
-          @change=${(e) => { const next = [...emits]; next[i] = { ...next[i], type: e.target.value ? { text: e.target.value } : undefined }; update(updateDef(S, name, { emits: next })); }}>
+          @change=${(/** @type {any} */ e) => { const next = [...emits]; next[i] = { ...next[i], type: e.target.value ? { text: e.target.value } : undefined }; update(updateDef(S, name, { emits: next })); }}>
         <input class="field-input" .value=${ev.description || ""} placeholder="description" style="flex:2"
-          @change=${(e) => { const next = [...emits]; next[i] = { ...next[i], description: e.target.value || undefined }; update(updateDef(S, name, { emits: next })); }}>
+          @change=${(/** @type {any} */ e) => { const next = [...emits]; next[i] = { ...next[i], description: e.target.value || undefined }; update(updateDef(S, name, { emits: next })); }}>
         <span style="cursor:pointer;opacity:0.5" @click=${() => {
-          update(updateDef(S, name, { emits: emits.filter((_, j) => j !== i).length ? emits.filter((_, j) => j !== i) : undefined }));
+          update(updateDef(S, name, { emits: emits.filter((/** @type {any} */ _, /** @type {any} */ j) => j !== i).length ? emits.filter((/** @type {any} */ _, /** @type {any} */ j) => j !== i) : undefined }));
         }}>\u00d7</span>
       </div>
     `)}
@@ -4662,12 +4697,13 @@ function renderEmitsEditorTemplate(name, def) {
 }
 
 /** Simple field row for signal editors. */
-function signalFieldRow(label, value, onChange) {
+function signalFieldRow(/** @type {any} */ label, /** @type {any} */ value, /** @type {any} */ onChange) {
+  /** @type {any} */
   let debounce;
   return html`
     <div class="field-row">
       <sp-field-label size="s">${label}</sp-field-label>
-      <sp-textfield size="s" value=${value} @input=${(e) => {
+      <sp-textfield size="s" value=${value} @input=${(/** @type {any} */ e) => {
         clearTimeout(debounce);
         debounce = setTimeout(() => onChange(e.target.value), 400);
       }}></sp-textfield>
@@ -4688,7 +4724,7 @@ const STUDIO_RESERVED_KEYS = new Set([
  * Render config form fields from a JSON Schema `properties` object.
  * Maps schema types to appropriate form controls.
  */
-function renderSchemaFieldsTemplate(schema, def, name) {
+function renderSchemaFieldsTemplate(/** @type {any} */ schema, /** @type {any} */ def, /** @type {any} */ name) {
   if (!schema?.properties) return nothing;
 
   const required = new Set(schema.required ?? []);
@@ -4701,15 +4737,16 @@ function renderSchemaFieldsTemplate(schema, def, name) {
     if (ps.enum) {
       control = html`
         <sp-picker size="s" value=${currentValue !== undefined ? String(currentValue) : ps.default !== undefined ? String(ps.default) : "__none__"}
-          @change=${(e) => update(updateDef(S, name, { [prop]: e.target.value === "__none__" ? undefined : e.target.value }))}>
+          @change=${(/** @type {any} */ e) => update(updateDef(S, name, { [prop]: e.target.value === "__none__" ? undefined : e.target.value }))}>
           ${!required.has(prop) ? html`<sp-menu-item value="__none__">\u2014</sp-menu-item>` : nothing}
-          ${ps.enum.map(val => html`<sp-menu-item value=${val}>${val}</sp-menu-item>`)}
+          ${ps.enum.map((/** @type {any} */ val) => html`<sp-menu-item value=${val}>${val}</sp-menu-item>`)}
         </sp-picker>
       `;
     } else if (ps.type === "boolean") {
       control = html`<sp-checkbox ?checked=${currentValue ?? ps.default ?? false}
-        @change=${(e) => update(updateDef(S, name, { [prop]: e.target.checked }))}></sp-checkbox>`;
+        @change=${(/** @type {any} */ e) => update(updateDef(S, name, { [prop]: e.target.checked }))}></sp-checkbox>`;
     } else if (ps.type === "integer" || ps.type === "number") {
+      /** @type {any} */
       let debounce;
       control = html`<sp-number-field size="s"
         min=${ps.minimum !== undefined ? ps.minimum : nothing}
@@ -4717,13 +4754,14 @@ function renderSchemaFieldsTemplate(schema, def, name) {
         step=${ps.type === "integer" ? "1" : nothing}
         .value=${currentValue !== undefined ? currentValue : nothing}
         placeholder=${ps.default !== undefined ? String(ps.default) : nothing}
-        @change=${(e) => { clearTimeout(debounce); debounce = setTimeout(() => {
+        @change=${(/** @type {any} */ e) => { clearTimeout(debounce); debounce = setTimeout(() => {
           const parsed = ps.type === "integer" ? parseInt(e.target.value, 10) : parseFloat(e.target.value);
           update(updateDef(S, name, { [prop]: isNaN(parsed) ? undefined : parsed }));
         }, 400); }}></sp-number-field>`;
     } else if (ps.format === "json-schema") {
       const hasValue = currentValue && typeof currentValue === "object" && Object.keys(currentValue).length > 0;
       const isRef = currentValue && typeof currentValue === "object" && currentValue.$ref;
+      /** @type {any} */
       let debounce;
       control = html`
         <div class="schema-param-editor">
@@ -4737,20 +4775,22 @@ function renderSchemaFieldsTemplate(schema, def, name) {
           <sp-textfield multiline size="s" style="min-height:${hasValue ? "80px" : "40px"};font-family:monospace;font-size:11px"
             .value=${currentValue !== undefined ? JSON.stringify(currentValue, null, 2) : ""}
             placeholder=${ps.description ?? "JSON Schema defining the data shape\u2026"}
-            @input=${(e) => { clearTimeout(debounce); debounce = setTimeout(() => { try { update(updateDef(S, name, { [prop]: JSON.parse(e.target.value) })); } catch {} }, 500); }}></sp-textfield>
+            @input=${(/** @type {any} */ e) => { clearTimeout(debounce); debounce = setTimeout(() => { try { update(updateDef(S, name, { [prop]: JSON.parse(e.target.value) })); } catch {} }, 500); }}></sp-textfield>
         </div>
       `;
     } else if (ps.type === "array" || ps.type === "object") {
+      /** @type {any} */
       let debounce;
       control = html`<sp-textfield multiline size="s" style="min-height:40px"
         .value=${currentValue !== undefined ? JSON.stringify(currentValue, null, 2) : ""}
         placeholder=${ps.default !== undefined ? JSON.stringify(ps.default) : nothing}
-        @input=${(e) => { clearTimeout(debounce); debounce = setTimeout(() => { try { update(updateDef(S, name, { [prop]: JSON.parse(e.target.value) })); } catch {} }, 500); }}></sp-textfield>`;
+        @input=${(/** @type {any} */ e) => { clearTimeout(debounce); debounce = setTimeout(() => { try { update(updateDef(S, name, { [prop]: JSON.parse(e.target.value) })); } catch {} }, 500); }}></sp-textfield>`;
     } else {
+      /** @type {any} */
       let debounce;
       const ph = ps.default !== undefined ? String(ps.default) : (ps.examples?.[0] ?? "");
       control = html`<sp-textfield size="s" .value=${currentValue ?? ""} placeholder=${ph || nothing} title=${ps.description || nothing}
-        @input=${(e) => { clearTimeout(debounce); debounce = setTimeout(() => update(updateDef(S, name, { [prop]: e.target.value || undefined })), 400); }}></sp-textfield>`;
+        @input=${(/** @type {any} */ e) => { clearTimeout(debounce); debounce = setTimeout(() => update(updateDef(S, name, { [prop]: e.target.value || undefined })), 400); }}></sp-textfield>`;
     }
 
     return html`
@@ -4766,8 +4806,9 @@ function renderSchemaFieldsTemplate(schema, def, name) {
  * Render editor fields for an external $prototype + $src plugin.
  * Shows $src/$export inputs plus schema-driven config fields.
  */
-function renderExternalPrototypeEditorTemplate(name, def) {
+function renderExternalPrototypeEditorTemplate(/** @type {any} */ name, /** @type {any} */ def) {
   // Schema-driven config fields (async with cache)
+  /** @type {any} */
   let schemaContent = nothing;
   if (def.$src && def.$prototype) {
     const cacheKey = `${def.$src}::${def.$prototype}`;
@@ -4789,15 +4830,15 @@ function renderExternalPrototypeEditorTemplate(name, def) {
   }
 
   return html`
-    ${signalFieldRow("$src", def.$src || "", (v) => {
+    ${signalFieldRow("$src", def.$src || "", (/** @type {any} */ v) => {
       update(updateDef(S, name, { $src: v || undefined }));
       pluginSchemaCache.delete(`${v}::${def.$prototype}`);
     })}
-    ${signalFieldRow("$prototype", def.$prototype || "", (v) => {
+    ${signalFieldRow("$prototype", def.$prototype || "", (/** @type {any} */ v) => {
       update(updateDef(S, name, { $prototype: v || undefined }));
       pluginSchemaCache.delete(`${def.$src}::${v}`);
     })}
-    ${def.$export ? signalFieldRow("$export", def.$export || "", (v) => update(updateDef(S, name, { $export: v || undefined }))) : nothing}
+    ${def.$export ? signalFieldRow("$export", def.$export || "", (/** @type {any} */ v) => update(updateDef(S, name, { $export: v || undefined }))) : nothing}
     ${schemaContent}
   `;
 }
@@ -4808,13 +4849,13 @@ function renderExternalPrototypeEditorTemplate(name, def) {
 const expandedDataKeys = new Set();
 
 /** Unwrap a Vue ref (has .value and .__v_isRef) to get the underlying value. */
-function unwrapSignal(value) {
+function unwrapSignal(/** @type {any} */ value) {
   if (value && typeof value === "object" && value.__v_isRef) return value.value;
   return value;
 }
 
 /** Type label for a signal value in the data explorer. */
-function dataTypeLabel(value) {
+function dataTypeLabel(/** @type {any} */ value) {
   const v = unwrapSignal(value);
   if (v === null) return "null";
   if (v === undefined) return "pending";
@@ -4868,8 +4909,9 @@ function renderDataExplorerTemplate() {
 
 /**
  * Recursively render a JSON value as a tree view (Lit template).
+ * @returns {any}
  */
-function renderDataTreeTemplate(value, depth, maxDepth = 5) {
+function renderDataTreeTemplate(/** @type {any} */ value, /** @type {any} */ depth, maxDepth = 5) {
   const indent = `${(depth + 1) * 12}px`;
 
   if (depth > maxDepth) {
@@ -4956,7 +4998,7 @@ async function loadProject() {
   }
 }
 
-async function loadDirectory(dirPath) {
+async function loadDirectory(/** @type {any} */ dirPath) {
   if (!projectState) return;
   try {
     const platform = getPlatform();
@@ -5005,12 +5047,12 @@ async function openProject() {
     renderActivityBar();
     renderLeftPanel();
     statusMessage(`Opened project: ${projectState.name}`);
-  } catch (e) {
+  } catch (/** @type {any} */ e) {
     statusMessage(`Error: ${e.message}`);
   }
 }
 
-function fileTypeIconTpl(name, type) {
+function fileTypeIconTpl(/** @type {any} */ name, /** @type {any} */ type) {
   let tag;
   if (type === "directory") {
     tag = projectState?.expanded?.has(name) ? "sp-icon-folder-open" : "sp-icon-folder";
@@ -5064,8 +5106,8 @@ function renderFilesTemplate() {
         </sp-action-button>
       </sp-action-group>
       <sp-search size="s" quiet placeholder="Filter files\u2026" value=${projectState.searchQuery}
-        @input=${(e) => { projectState.searchQuery = e.target.value; renderLeftPanel(); }}
-        @submit=${(e) => e.preventDefault()}></sp-search>
+        @input=${(/** @type {any} */ e) => { projectState.searchQuery = e.target.value; renderLeftPanel(); }}
+        @submit=${(/** @type {any} */ e) => e.preventDefault()}></sp-search>
     </div>
     <div class="file-tree" role="tree" aria-label="Project files">
       ${renderTreeLevelTemplate(".", 0)}
@@ -5074,7 +5116,8 @@ function renderFilesTemplate() {
 }
 
 
-function renderTreeLevelTemplate(dirPath, depth) {
+/** @returns {any} */
+function renderTreeLevelTemplate(/** @type {any} */ dirPath, /** @type {any} */ depth) {
   const entries = projectState.dirs.get(dirPath);
   if (!entries) {
     loadDirectory(dirPath).then(() => renderLeftPanel());
@@ -5103,7 +5146,7 @@ function renderTreeLevelTemplate(dirPath, depth) {
         role="treeitem" aria-level=${depth + 1} tabindex="-1"
         data-path=${entry.path} data-type=${entry.type}
         aria-expanded=${isDir ? String(isExpanded) : nothing}
-        @click=${async (e) => {
+        @click=${async (/** @type {any} */ e) => {
           e.stopPropagation();
           if (isDir) {
             if (isExpanded) projectState.expanded.delete(entry.path);
@@ -5116,7 +5159,7 @@ function renderTreeLevelTemplate(dirPath, depth) {
             openFileFromTree(entry.path);
           }
         }}
-        @contextmenu=${(e) => { e.preventDefault(); e.stopPropagation(); showFileContextMenu(e, entry); }}>
+        @contextmenu=${(/** @type {any} */ e) => { e.preventDefault(); e.stopPropagation(); showFileContextMenu(e, entry); }}>
         ${isDir
           ? html`<span class="file-tree-toggle">${isExpanded ? "\u25bc" : "\u25b6"}</span>`
           : html`<span class="file-tree-toggle empty"> </span>`}
@@ -5129,8 +5172,8 @@ function renderTreeLevelTemplate(dirPath, depth) {
 }
 
 
-function setupTreeKeyboard(tree) {
-  tree.addEventListener("keydown", (e) => {
+function setupTreeKeyboard(/** @type {any} */ tree) {
+  tree.addEventListener("keydown", (/** @type {any} */ e) => {
     const items = [...tree.querySelectorAll('.file-tree-item')];
     const focused = tree.querySelector('.file-tree-item:focus');
     if (!focused || items.length === 0) return;
@@ -5178,9 +5221,10 @@ function setupTreeKeyboard(tree) {
 }
 
 /** Context menu for file tree items using Spectrum popover + menu */
+/** @type {any} */
 let fileContextPopover = null;
 
-function showFileContextMenu(e, entry) {
+function showFileContextMenu(/** @type {any} */ e, /** @type {any} */ entry) {
   if (fileContextPopover) { fileContextPopover.remove(); fileContextPopover = null; }
 
   const isDir = entry.type === "directory";
@@ -5202,7 +5246,7 @@ function showFileContextMenu(e, entry) {
   litRender(tpl, fileContextPopover);
   document.body.appendChild(fileContextPopover);
 
-  const closeHandler = (ev) => {
+  const closeHandler = (/** @type {any} */ ev) => {
     if (!fileContextPopover?.contains(ev.target)) {
       closeFileContextMenu();
       document.removeEventListener("mousedown", closeHandler, true);
@@ -5232,12 +5276,12 @@ async function createNewFile(dirPath = ".") {
     await loadDirectory(dirPath);
     renderLeftPanel();
     statusMessage(`Created ${path}`);
-  } catch (e) {
+  } catch (/** @type {any} */ e) {
     statusMessage(`Error: ${e.message}`);
   }
 }
 
-async function renameFile(entry) {
+async function renameFile(/** @type {any} */ entry) {
   const newName = prompt("New name:", entry.name);
   if (!newName || newName === entry.name) return;
   const parentDir = entry.path.includes("/")
@@ -5253,12 +5297,12 @@ async function renameFile(entry) {
     }
     renderLeftPanel();
     statusMessage(`Renamed to ${newName}`);
-  } catch (e) {
+  } catch (/** @type {any} */ e) {
     statusMessage(`Error: ${e.message}`);
   }
 }
 
-async function deleteFile(entry) {
+async function deleteFile(/** @type {any} */ entry) {
   if (!confirm(`Delete "${entry.name}"?`)) return;
   try {
     const platform = getPlatform();
@@ -5272,12 +5316,12 @@ async function deleteFile(entry) {
     }
     renderLeftPanel();
     statusMessage(`Deleted ${entry.name}`);
-  } catch (e) {
+  } catch (/** @type {any} */ e) {
     statusMessage(`Error: ${e.message}`);
   }
 }
 
-async function openFileFromTree(path) {
+async function openFileFromTree(/** @type {any} */ path) {
   const platform = getPlatform();
   // Auto-save current dirty document
   if (S.dirty && S.documentPath) {
@@ -5296,7 +5340,7 @@ async function openFileFromTree(path) {
         output = JSON.stringify(S.document, null, 2);
       }
       await platform.writeFile(S.documentPath, output);
-    } catch (e) {
+    } catch (/** @type {any} */ e) {
       statusMessage(`Save error: ${e.message}`);
     }
   }
@@ -5321,7 +5365,7 @@ async function openFileFromTree(path) {
 
     render();
     statusMessage(`Opened ${path}`);
-  } catch (e) {
+  } catch (/** @type {any} */ e) {
     statusMessage(`Error: ${e.message}`);
   }
 }
@@ -5341,7 +5385,7 @@ function renderRightPanel() {
   const tabsT = html`
     <div class="panel-tabs">
       <sp-tabs selected=${tab} quiet
-        @change=${(e) => {
+        @change=${(/** @type {any} */ e) => {
           const sel = e.target.selected;
           if (sel && sel !== tab) {
             S = { ...S, ui: { ...S.ui, rightTab: sel } };
@@ -5359,13 +5403,14 @@ function renderRightPanel() {
   `;
 
   // ── Panel body ────────────────────────────────────────────────────────
+  /** @type {any} */
   let bodyT = nothing;
   if (tab === "properties") {
     bodyT = propertiesSidebarTemplate();
   } else if (tab === "events") {
     bodyT = eventsSidebarTemplate();
   } else if (tab === "style") {
-    try { bodyT = renderStylePanelTemplate(); } catch(e) { console.error("[renderStylePanelTemplate]", e); }
+    try { bodyT = renderStylePanelTemplate(); } catch (/** @type {any} */ e) { console.error("[renderStylePanelTemplate]", e); }
   }
 
   const tpl = html`
@@ -5400,7 +5445,7 @@ function propertiesSidebarTemplate() {
     : null;
 
   // Helper: render an attribute row using the style-row pattern
-  function renderAttrRow(attr, entry, value) {
+  function renderAttrRow(/** @type {any} */ attr, /** @type {any} */ entry, /** @type {any} */ value) {
     const type = inferInputType(entry);
     const hasVal = value !== undefined && value !== "";
 
@@ -5410,11 +5455,11 @@ function propertiesSidebarTemplate() {
         <div class="style-row" data-prop=${attr}>
           <div class="style-row-label">
             ${hasVal ? html`<span class="set-dot" title="Clear ${attr}"
-              @click=${(e) => { e.stopPropagation(); update(updateAttribute(S, path, attr, undefined)); }}></span>` : nothing}
+              @click=${(/** @type {any} */ e) => { e.stopPropagation(); update(updateAttribute(S, path, attr, undefined)); }}></span>` : nothing}
             <sp-field-label size="s" title=${attr}>${attrLabel(entry, attr)}</sp-field-label>
           </div>
           <sp-checkbox size="s" .checked=${live(!!value)}
-            @change=${(e) => update(updateAttribute(S, path, attr, e.target.checked || undefined))}>
+            @change=${(/** @type {any} */ e) => update(updateAttribute(S, path, attr, e.target.checked || undefined))}>
           </sp-checkbox>
         </div>
       `;
@@ -5424,31 +5469,31 @@ function propertiesSidebarTemplate() {
       <div class="style-row" data-prop=${attr}>
         <div class="style-row-label">
           ${hasVal ? html`<span class="set-dot" title="Clear ${attr}"
-            @click=${(e) => { e.stopPropagation(); update(updateAttribute(S, path, attr, undefined)); }}></span>` : nothing}
+            @click=${(/** @type {any} */ e) => { e.stopPropagation(); update(updateAttribute(S, path, attr, undefined)); }}></span>` : nothing}
           <sp-field-label size="s" title=${attr}>${attrLabel(entry, attr)}</sp-field-label>
         </div>
-        ${widgetForType(type, entry, attr, value || "", (v) => update(updateAttribute(S, path, attr, v || undefined)))}
+        ${widgetForType(type, entry, attr, value || "", (/** @type {any} */ v) => update(updateAttribute(S, path, attr, v || undefined)))}
       </div>
     `;
   }
 
   // ── Collect applicable attributes from html-meta ──
-  const applicableAttrs = {};
-  for (const [attr, entry] of Object.entries(htmlMeta.$defs)) {
+  const applicableAttrs = /** @type {Record<string, any>} */ ({});
+  for (const [attr, entry] of /** @type {[string, any][]} */ (Object.entries(htmlMeta.$defs))) {
     if (!entry.$elements || entry.$elements.includes(tagName)) {
       applicableAttrs[attr] = entry;
     }
   }
 
   // Partition into sections
-  const attrSections = {};
+  const attrSections = /** @type {Record<string, any[]>} */ ({});
   for (const sec of htmlMeta.$sections) attrSections[sec.key] = [];
   for (const [attr, entry] of Object.entries(applicableAttrs)) {
     const secKey = entry.$section;
     if (attrSections[secKey]) attrSections[secKey].push({ name: attr, entry });
   }
   for (const sec of htmlMeta.$sections) {
-    attrSections[sec.key].sort((a, b) => a.entry.$order - b.entry.$order);
+    attrSections[sec.key].sort((/** @type {any} */ a, /** @type {any} */ b) => a.entry.$order - b.entry.$order);
   }
 
   // Collect "custom" attributes (not in html-meta)
@@ -5464,12 +5509,12 @@ function propertiesSidebarTemplate() {
   // Also auto-open if there are custom attrs
   if (customAttrs.length > 0) autoOpen.add("__custom");
 
-  function isSectionOpen(key) {
+  function isSectionOpen(/** @type {any} */ key) {
     if (S.ui.inspectorSections[key] !== undefined) return S.ui.inspectorSections[key];
     return autoOpen.has(key);
   }
 
-  function toggleSection(key) {
+  function toggleSection(/** @type {any} */ key) {
     const current = isSectionOpen(key);
     S = { ...S, ui: { ...S.ui, inspectorSections: { ...S.ui.inspectorSections, [key]: !current } } };
     renderRightPanel();
@@ -5487,29 +5532,29 @@ function propertiesSidebarTemplate() {
             <sp-field-label size="s">Tag</sp-field-label>
           </div>
           <sp-textfield size="s" .value=${live(tagName)} autocomplete="off" list="tag-names"
-            @input=${debouncedStyleCommit("prop:tagName", 400, (e) => {
+            @input=${debouncedStyleCommit("prop:tagName", 400, (/** @type {any} */ e) => {
               update(updateProperty(S, path, "tagName", e.target.value || undefined));
             })}></sp-textfield>
         </div>
         <div class="style-row" data-prop="$id">
           <div class="style-row-label">
             ${node.$id ? html`<span class="set-dot" title="Clear $id"
-              @click=${(e) => { e.stopPropagation(); update(updateProperty(S, path, "$id", undefined)); }}></span>` : nothing}
+              @click=${(/** @type {any} */ e) => { e.stopPropagation(); update(updateProperty(S, path, "$id", undefined)); }}></span>` : nothing}
             <sp-field-label size="s">ID</sp-field-label>
           </div>
           <sp-textfield size="s" .value=${live(node.$id || "")}
-            @input=${debouncedStyleCommit("prop:$id", 400, (e) => {
+            @input=${debouncedStyleCommit("prop:$id", 400, (/** @type {any} */ e) => {
               update(updateProperty(S, path, "$id", e.target.value || undefined));
             })}></sp-textfield>
         </div>
         <div class="style-row" data-prop="className">
           <div class="style-row-label">
             ${node.className ? html`<span class="set-dot" title="Clear class"
-              @click=${(e) => { e.stopPropagation(); update(updateProperty(S, path, "className", undefined)); }}></span>` : nothing}
+              @click=${(/** @type {any} */ e) => { e.stopPropagation(); update(updateProperty(S, path, "className", undefined)); }}></span>` : nothing}
             <sp-field-label size="s">Class</sp-field-label>
           </div>
           <sp-textfield size="s" .value=${live(node.className || "")}
-            @input=${debouncedStyleCommit("prop:className", 400, (e) => {
+            @input=${debouncedStyleCommit("prop:className", 400, (/** @type {any} */ e) => {
               update(updateProperty(S, path, "className", e.target.value || undefined));
             })}></sp-textfield>
         </div>
@@ -5517,11 +5562,11 @@ function propertiesSidebarTemplate() {
           <div class="style-row" data-prop="textContent">
             <div class="style-row-label">
               ${node.textContent !== undefined ? html`<span class="set-dot" title="Clear text"
-                @click=${(e) => { e.stopPropagation(); update(updateProperty(S, path, "textContent", undefined)); }}></span>` : nothing}
+                @click=${(/** @type {any} */ e) => { e.stopPropagation(); update(updateProperty(S, path, "textContent", undefined)); }}></span>` : nothing}
               <sp-field-label size="s">Text Content</sp-field-label>
             </div>
             <sp-textfield size="s" multiline .value=${live(typeof node.textContent === "string" ? node.textContent : (node.textContent ?? ""))}
-              @input=${debouncedStyleCommit("prop:textContent", 400, (e) => {
+              @input=${debouncedStyleCommit("prop:textContent", 400, (/** @type {any} */ e) => {
                 update(updateProperty(S, path, "textContent", e.target.value || undefined));
               })}></sp-textfield>
           </div>
@@ -5529,11 +5574,11 @@ function propertiesSidebarTemplate() {
         <div class="style-row" data-prop="hidden">
           <div class="style-row-label">
             ${node.hidden ? html`<span class="set-dot" title="Clear hidden"
-              @click=${(e) => { e.stopPropagation(); update(updateProperty(S, path, "hidden", undefined)); }}></span>` : nothing}
+              @click=${(/** @type {any} */ e) => { e.stopPropagation(); update(updateProperty(S, path, "hidden", undefined)); }}></span>` : nothing}
             <sp-field-label size="s">Hidden</sp-field-label>
           </div>
           <sp-checkbox size="s" .checked=${live(!!node.hidden)}
-            @change=${(e) => update(updateProperty(S, path, "hidden", e.target.checked || undefined))}>
+            @change=${(/** @type {any} */ e) => update(updateProperty(S, path, "hidden", e.target.checked || undefined))}>
           </sp-checkbox>
         </div>
         ${isMapParent ? html`
@@ -5595,14 +5640,14 @@ function propertiesSidebarTemplate() {
     .filter((sec) => attrSections[sec.key].length > 0)
     .map((sec) => {
       const sectionAttrs = attrSections[sec.key];
-      const hasAnySet = sectionAttrs.some((a) => attrs[a.name] !== undefined);
+      const hasAnySet = sectionAttrs.some((/** @type {any} */ a) => attrs[a.name] !== undefined);
       return html`
         <sp-accordion-item label=${sec.label}
           ?open=${isSectionOpen(sec.key)}
           @sp-accordion-item-toggle=${() => toggleSection(sec.key)}>
           ${hasAnySet ? html`<span slot="heading" class="set-dot set-dot--section"></span>` : nothing}
           <div class="style-section-body">
-            ${sectionAttrs.map((a) => renderAttrRow(a.name, a.entry, attrs[a.name]))}
+            ${sectionAttrs.map((/** @type {any} */ a) => renderAttrRow(a.name, a.entry, attrs[a.name]))}
           </div>
         </sp-accordion-item>
       `;
@@ -5688,11 +5733,11 @@ function propertiesSidebarTemplate() {
 }
 
 /** Repeater fields template */
-function renderRepeaterFieldsTemplate(node, path, mapSignals) {
+function renderRepeaterFieldsTemplate(/** @type {any} */ node, /** @type {any} */ path, /** @type {any} */ mapSignals) {
   return html`
-    ${bindableFieldRow("Items", "text", node.items, (v) => update(updateProperty(S, path, "items", v)))}
-    ${node.filter ? bindableFieldRow("Filter", "text", node.filter, (v) => update(updateProperty(S, path, "filter", v || undefined))) : nothing}
-    ${node.sort ? bindableFieldRow("Sort", "text", node.sort, (v) => update(updateProperty(S, path, "sort", v || undefined))) : nothing}
+    ${bindableFieldRow("Items", "text", node.items, (/** @type {any} */ v) => update(updateProperty(S, path, "items", v)))}
+    ${node.filter ? bindableFieldRow("Filter", "text", node.filter, (/** @type {any} */ v) => update(updateProperty(S, path, "filter", v || undefined))) : nothing}
+    ${node.sort ? bindableFieldRow("Sort", "text", node.sort, (/** @type {any} */ v) => update(updateProperty(S, path, "sort", v || undefined))) : nothing}
     <div style="display:flex;gap:8px;margin-top:4px">
       ${!node.filter ? html`<span class="kv-add" @click=${() => update(updateProperty(S, path, "filter", { $ref: "#/state/" }))}>+ Add filter</span>` : nothing}
       ${!node.sort ? html`<span class="kv-add" @click=${() => update(updateProperty(S, path, "sort", { $ref: "#/state/" }))}>+ Add sort</span>` : nothing}
@@ -5705,26 +5750,27 @@ function renderRepeaterFieldsTemplate(node, path, mapSignals) {
 }
 
 /** Switch fields template */
-function renderSwitchFieldsTemplate(node, path, mapSignals) {
+function renderSwitchFieldsTemplate(/** @type {any} */ node, /** @type {any} */ path, /** @type {any} */ mapSignals) {
   const caseNames = Object.keys(node.cases || {});
   return html`
-    ${bindableFieldRow("Expression", "text", node.$switch, (v) => update(updateProperty(S, path, "$switch", v)), null, mapSignals)}
+    ${bindableFieldRow("Expression", "text", node.$switch, (/** @type {any} */ v) => update(updateProperty(S, path, "$switch", v)), null, mapSignals)}
     <div style="font-size:11px;font-weight:600;color:var(--fg-dim);margin:8px 0 4px;text-transform:uppercase;letter-spacing:0.05em">Cases</div>
     ${caseNames.map(caseName => {
+      /** @type {any} */
       let debounce;
       return html`
         <div class="field-row" style="display:flex;align-items:center;gap:4px;margin-bottom:3px">
           <input class="field-input" value=${caseName} style="flex:1"
-            @input=${(e) => {
+            @input=${(/** @type {any} */ e) => {
               clearTimeout(debounce);
               debounce = setTimeout(() => {
                 if (e.target.value && e.target.value !== caseName) update(renameSwitchCase(S, path, caseName, e.target.value));
               }, 500);
             }}>
           <span class="bind-toggle" title="Edit case" style="cursor:pointer"
-            @click=${(e) => { e.stopPropagation(); update(selectNode(S, [...path, "cases", caseName])); }}>\u2192</span>
+            @click=${(/** @type {any} */ e) => { e.stopPropagation(); update(selectNode(S, [...path, "cases", caseName])); }}>\u2192</span>
           <span style="cursor:pointer;color:var(--danger);font-size:11px"
-            @click=${(e) => { e.stopPropagation(); update(removeSwitchCase(S, path, caseName)); }}>\u2715</span>
+            @click=${(/** @type {any} */ e) => { e.stopPropagation(); update(removeSwitchCase(S, path, caseName)); }}>\u2715</span>
         </div>
       `;
     })}
@@ -5735,13 +5781,13 @@ function renderSwitchFieldsTemplate(node, path, mapSignals) {
 }
 
 /** Component props fields template */
-function renderComponentPropsFieldsTemplate(node, path, mapSignals) {
+function renderComponentPropsFieldsTemplate(/** @type {any} */ node, /** @type {any} */ path, /** @type {any} */ mapSignals) {
   const comp = componentRegistry.find((c) => c.tagName === node.tagName);
   if (!comp) return html`<div class="empty-state">Component not found</div>`;
   const currentProps = node.$props || {};
   return html`
-    ${comp.props.map(prop =>
-      bindableFieldRow(camelToLabel(prop.name), "text", currentProps[prop.name], (v) => update(updateProp(S, path, prop.name, v)), null, mapSignals)
+    ${comp.props.map((/** @type {any} */ prop) =>
+      bindableFieldRow(camelToLabel(prop.name), "text", currentProps[prop.name], (/** @type {any} */ v) => update(updateProp(S, path, prop.name, v)), null, mapSignals)
     )}
     ${comp.props.length === 0 ? html`<div class="empty-state">No props defined</div>` : nothing}
     <span class="kv-add" @click=${() => navigateToComponent(comp.path)}>\u2192 Edit definition</span>
@@ -5749,14 +5795,14 @@ function renderComponentPropsFieldsTemplate(node, path, mapSignals) {
 }
 
 /** Custom attrs fields template */
-function renderCustomAttrsFieldsTemplate(node, path, attrs, knownAttrNames) {
+function renderCustomAttrsFieldsTemplate(/** @type {any} */ node, /** @type {any} */ path, /** @type {any} */ attrs, /** @type {any} */ knownAttrNames) {
   const customAttrs = Object.entries(attrs).filter(([k]) => !knownAttrNames.has(k));
   return html`
     ${customAttrs.map(([attr, val]) =>
       kvRow(
         attr,
         String(val),
-        (newAttr, newVal) => {
+        (/** @type {any} */ newAttr, /** @type {any} */ newVal) => {
           if (newAttr !== attr) {
             let s = updateAttribute(S, path, attr, undefined);
             s = updateAttribute(s, path, newAttr, newVal);
@@ -5776,8 +5822,9 @@ function renderCustomAttrsFieldsTemplate(node, path, attrs, knownAttrNames) {
 let showAddBreakpointForm = false;
 let addBreakpointPreview = "";
 
-function renderMediaFieldsTemplate(node) {
+function renderMediaFieldsTemplate(/** @type {any} */ node) {
   const media = node.$media || {};
+  /** @type {any} */
   let baseDebounce;
   const breakpoints = Object.entries(media).filter(([k]) => k !== "--");
 
@@ -5786,7 +5833,7 @@ function renderMediaFieldsTemplate(node) {
       <span class="field-label" style="width:auto;margin-right:4px">Base width</span>
       <input class="field-input" style="width:70px;flex:none" placeholder="320px"
         value=${media["--"] || ""}
-        @input=${(e) => {
+        @input=${(/** @type {any} */ e) => {
           clearTimeout(baseDebounce);
           baseDebounce = setTimeout(() => {
             const val = e.target.value.trim();
@@ -5800,7 +5847,7 @@ function renderMediaFieldsTemplate(node) {
 
     <div>
       <span class="kv-add" style=${showAddBreakpointForm ? "display:none" : ""}
-        @click=${(e) => {
+        @click=${(/** @type {any} */ e) => {
           showAddBreakpointForm = true;
           renderRightPanel();
         }}>+ Add breakpoint</span>
@@ -5808,14 +5855,14 @@ function renderMediaFieldsTemplate(node) {
         <div style="margin-top:4px">
           <div style="display:flex;gap:4px;margin-bottom:3px;align-items:center">
             <input class="field-input" placeholder="Name (e.g. Tablet)" style="flex:1"
-              @input=${(e) => { addBreakpointPreview = friendlyNameToMedia(e.target.value) || ""; renderRightPanel(); }}>
+              @input=${(/** @type {any} */ e) => { addBreakpointPreview = friendlyNameToMedia(e.target.value) || ""; renderRightPanel(); }}>
             <span style="font-size:10px;color:var(--fg-dim);font-family:'SF Mono','Fira Code',monospace;white-space:nowrap">${addBreakpointPreview}</span>
           </div>
           <div style="display:flex;gap:4px;margin-bottom:3px;align-items:center">
             <input class="field-input add-bp-query" value="(min-width: 768px)" style="flex:1">
           </div>
           <div style="display:flex;gap:4px">
-            <button class="kv-add" style="padding:2px 10px;cursor:pointer" @click=${(e) => {
+            <button class="kv-add" style="padding:2px 10px;cursor:pointer" @click=${(/** @type {any} */ e) => {
               const wrap = e.target.closest("div").parentElement;
               const nameVal = wrap.querySelector("input")?.value;
               const queryVal = wrap.querySelector(".add-bp-query")?.value?.trim();
@@ -5839,7 +5886,8 @@ function renderMediaFieldsTemplate(node) {
 }
 
 /** Single media breakpoint row template */
-function mediaBreakpointRowTemplate(name, query) {
+function mediaBreakpointRowTemplate(/** @type {any} */ name, /** @type {any} */ query) {
+  /** @type {any} */
   let debounceTimer;
   let currentRawLabel = name;
   return html`
@@ -5847,7 +5895,7 @@ function mediaBreakpointRowTemplate(name, query) {
       <div style="display:flex;align-items:center;gap:4px;margin-bottom:2px">
         <input class="field-input" value=${mediaDisplayName(name)}
           style="flex:1;font-weight:600;font-size:12px"
-          @input=${(e) => {
+          @input=${(/** @type {any} */ e) => {
             const newKey = friendlyNameToMedia(e.target.value);
             currentRawLabel = newKey || "";
             const rawEl = e.target.parentElement?.querySelector(".bp-raw-label");
@@ -5867,7 +5915,7 @@ function mediaBreakpointRowTemplate(name, query) {
       </div>
       <div style="display:flex;gap:4px;align-items:center">
         <input class="field-input bp-query-input" value=${query} style="flex:1"
-          @input=${(e) => {
+          @input=${(/** @type {any} */ e) => {
             clearTimeout(debounceTimer);
             debounceTimer = setTimeout(() => update(updateMedia(S, name, e.target.value)), 400);
           }}>
@@ -5882,22 +5930,22 @@ const UNIT_RE = /^(-?[\d.]+)(px|rem|em|%|vw|vh|svw|svh|dvh|ms|s|fr|ch|ex|deg)?$/
 
 // inferInputType — imported from studio-utils.js
 
-function conditionPasses(cond, styles) {
+function conditionPasses(/** @type {any} */ cond, /** @type {any} */ styles) {
   const val = styles[cond.prop] ?? "";
   if (cond.values.length === 0) return val !== "" && val !== "initial";
   return cond.values.includes(val);
 }
 
-function allConditionsPass(entry, styles) {
-  return (entry.$show ?? []).every((c) => conditionPasses(c, styles));
+function allConditionsPass(/** @type {any} */ entry, /** @type {any} */ styles) {
+  return (entry.$show ?? []).every((/** @type {any} */ c) => conditionPasses(c, styles));
 }
 
-function autoOpenSections(node, currentSections) {
+function autoOpenSections(/** @type {any} */ node, /** @type {any} */ currentSections) {
   const style = node.style || {};
   const result = { ...currentSections };
   for (const prop of Object.keys(style)) {
     if (typeof style[prop] === "object") continue;
-    const entry = cssMeta.$defs[prop];
+    const entry = /** @type {Record<string, any>} */ (cssMeta.$defs)[prop];
     const section = entry?.$section ?? "other";
     if (!result[section]) result[section] = true;
   }
@@ -5905,9 +5953,9 @@ function autoOpenSections(node, currentSections) {
 }
 
 /** Get longhands for a shorthand property from css-meta */
-function getLonghands(shorthandProp) {
+function getLonghands(/** @type {any} */ shorthandProp) {
   const result = [];
-  for (const [name, entry] of Object.entries(cssMeta.$defs)) {
+  for (const [name, entry] of /** @type {[string, any][]} */ (Object.entries(cssMeta.$defs))) {
     if (entry.$shorthand === shorthandProp) result.push({ name, entry });
   }
   result.sort((a, b) => a.entry.$order - b.entry.$order);
@@ -5915,8 +5963,11 @@ function getLonghands(shorthandProp) {
 }
 
 // ── Color popover singleton ─────────────────────────────────────────────────
+/** @type {any} */
 let _colorPopover = null;
+/** @type {any} */
 let _colorCallback = null;
+/** @type {any} */
 let _colorDismissHandler = null;
 
 /** Extract --color-* CSS custom properties from the document root style. */
@@ -5946,7 +5997,7 @@ function getFontVars() {
 }
 
 /** Resolve a color value for display — if it's a var() reference, look up the actual color. */
-function resolveColorForDisplay(val) {
+function resolveColorForDisplay(/** @type {any} */ val) {
   if (!val) return "transparent";
   const m = val.match(/^var\((--[^)]+)\)$/);
   if (m) {
@@ -5977,35 +6028,43 @@ function closeColorPopover() {
   }
 }
 
-function openColorPopover(anchorEl, currentColor, onChange) {
+function openColorPopover(/** @type {any} */ anchorEl, /** @type {any} */ currentColor, /** @type {any} */ onChange) {
   ensureColorPopover();
 
   const colorVars = getColorVars();
   const resolvedColor = resolveColorForDisplay(currentColor) || "#000000";
 
   // Render popover content with lit-html
-  const syncFromArea = (e) => {
+  const syncFromArea = (/** @type {any} */ e) => {
+    /** @type {any} */
     const area = _colorPopover.querySelector("sp-color-area");
+    /** @type {any} */
     const slider = _colorPopover.querySelector("sp-color-slider");
+    /** @type {any} */
     const tf = _colorPopover.querySelector(".color-popover-hex");
     if (slider) slider.color = area.color;
     if (tf) tf.value = area.color;
     _colorCallback?.(area.color);
   };
 
-  const syncFromSlider = (e) => {
+  const syncFromSlider = (/** @type {any} */ e) => {
+    /** @type {any} */
     const area = _colorPopover.querySelector("sp-color-area");
+    /** @type {any} */
     const slider = _colorPopover.querySelector("sp-color-slider");
+    /** @type {any} */
     const tf = _colorPopover.querySelector(".color-popover-hex");
     if (area) area.color = slider.color;
     if (tf) tf.value = area.color;
     _colorCallback?.(area.color);
   };
 
-  const syncFromText = (e) => {
+  const syncFromText = (/** @type {any} */ e) => {
     const val = e.target.value.trim();
     if (!val) return;
+    /** @type {any} */
     const area = _colorPopover.querySelector("sp-color-area");
+    /** @type {any} */
     const slider = _colorPopover.querySelector("sp-color-slider");
     try {
       if (area) area.color = val;
@@ -6038,11 +6097,12 @@ function openColorPopover(anchorEl, currentColor, onChange) {
               color=${cv.value}
               .value=${cv.name}
               title=${cv.name}
-              @click=${(e) => {
+              @click=${(/** @type {any} */ e) => {
                 e.stopPropagation();
                 const varRef = `var(${cv.name})`;
                 _colorCallback?.(varRef);
                 // Update the text field to show the var reference
+                /** @type {any} */
                 const tf = _colorPopover.querySelector(".color-popover-hex");
                 if (tf) tf.value = varRef;
               }}
@@ -6067,7 +6127,7 @@ function openColorPopover(anchorEl, currentColor, onChange) {
     document.removeEventListener("pointerdown", _colorDismissHandler, true);
     document.removeEventListener("keydown", _colorDismissHandler, true);
   }
-  _colorDismissHandler = (e) => {
+  _colorDismissHandler = (/** @type {any} */ e) => {
     if (e.type === "keydown") {
       if (e.key === "Escape") closeColorPopover();
       return;
@@ -6084,26 +6144,26 @@ function openColorPopover(anchorEl, currentColor, onChange) {
   });
 }
 
-function safeColor(val) {
+function safeColor(/** @type {any} */ val) {
   if (!val) return "transparent";
   return resolveColorForDisplay(val);
 }
 
-function renderColorInput(prop, value, onChange) {
+function renderColorInput(/** @type {any} */ prop, /** @type {any} */ value, /** @type {any} */ onChange) {
   return html`
     <div class="style-input-color">
       <sp-swatch size="s" rounding="none" border="light"
         color=${safeColor(value)}
-        @click=${(e) => {
+        @click=${(/** @type {any} */ e) => {
           if (_colorPopover?.open) { closeColorPopover(); return; }
-          openColorPopover(e.currentTarget, value, (c) => {
+          openColorPopover(e.currentTarget, value, (/** @type {any} */ c) => {
             onChange(c);
           });
         }}
       ></sp-swatch>
       <sp-textfield size="s" style="flex:1; min-width:0"
         .value=${live(value || "")}
-        @input=${debouncedStyleCommit(`color:${prop}`, 400, (e) => {
+        @input=${debouncedStyleCommit(`color:${prop}`, 400, (/** @type {any} */ e) => {
           onChange(e.target.value.trim());
         })}
       ></sp-textfield>
@@ -6111,13 +6171,13 @@ function renderColorInput(prop, value, onChange) {
   `;
 }
 
-function renderNumberUnitInput(entry, prop, value, onChange) {
+function renderNumberUnitInput(/** @type {any} */ entry, /** @type {any} */ prop, /** @type {any} */ value, /** @type {any} */ onChange) {
   const units = entry.$units || [];
   const keywords = entry.$keywords || [];
   const strVal = String(value ?? "");
   const match = strVal.match(UNIT_RE);
   const isKeyword = !match && strVal !== "" && keywords.includes(strVal);
-  const isNumericVal = (v) => /^-?\d*\.?\d*$/.test(v);
+  const isNumericVal = (/** @type {any} */ v) => /^-?\d*\.?\d*$/.test(v);
 
   const currentUnit = isKeyword ? units[0] || "" : match ? match[2] || "" : units[0] || "";
   let displayValue;
@@ -6137,7 +6197,7 @@ function renderNumberUnitInput(entry, prop, value, onChange) {
       <div class=${classMap({ "input-group": true, "is-expression": isExpression })}>
         <sp-textfield size="s" placeholder="0"
           .value=${live(displayValue)}
-          @input=${debouncedStyleCommit(`nui:${prop}`, 400, (e) => {
+          @input=${debouncedStyleCommit(`nui:${prop}`, 400, (/** @type {any} */ e) => {
             const val = (e.target.value ?? "").trim();
             if (val === "") { onChange(""); return; }
             if (isNumericVal(val)) onChange(units.length > 0 ? val + currentUnit : val);
@@ -6150,7 +6210,7 @@ function renderNumberUnitInput(entry, prop, value, onChange) {
           </sp-picker-button>
           <sp-overlay trigger="${btnId}@click" placement="bottom-end" offset="4">
             <sp-popover style="min-width: var(--spectrum-component-width-900, 64px)">
-              <sp-menu label="CSS unit" @change=${(e) => {
+              <sp-menu label="CSS unit" @change=${(/** @type {any} */ e) => {
                 const chosen = e.target.value;
                 if (keywords.includes(chosen)) {
                   onChange(chosen);
@@ -6161,9 +6221,9 @@ function renderNumberUnitInput(entry, prop, value, onChange) {
                   if (numPart) onChange(numPart + chosen);
                 }
               }}>
-                ${units.map(u => html`<sp-menu-item value=${u}>${u}</sp-menu-item>`)}
+                ${units.map((/** @type {any} */ u) => html`<sp-menu-item value=${u}>${u}</sp-menu-item>`)}
                 ${keywords.length > 0 && units.length > 0 ? html`<sp-menu-divider></sp-menu-divider>` : nothing}
-                ${keywords.map(kw => html`<sp-menu-item value=${kw}>${kw}</sp-menu-item>`)}
+                ${keywords.map((/** @type {any} */ kw) => html`<sp-menu-item value=${kw}>${kw}</sp-menu-item>`)}
               </sp-menu>
             </sp-popover>
           </sp-overlay>
@@ -6181,7 +6241,7 @@ function renderButtonGroupInput(entry, prop, value, onChange) {
   /** @type {Record<string, any>} */
   const iconMap = entry.$icons || {};
   const extra = entry.$buttonValues && entry.enum && entry.enum.length > entry.$buttonValues.length
-    ? entry.enum.filter((v) => !entry.$buttonValues.includes(v)) : [];
+    ? entry.enum.filter((/** @type {any} */ v) => !entry.$buttonValues.includes(v)) : [];
 
   const menuId = `style-btngrp-${prop}`;
   const hasExtra = extra.length > 0;
@@ -6194,8 +6254,8 @@ function renderButtonGroupInput(entry, prop, value, onChange) {
         ${values.map((/** @type {any} */ v) => html`
           <sp-action-button size="s" title=${v} ?selected=${v === value}
             @click=${() => onChange(v === value ? "" : v)}>
-            ${iconMap[v] && icons[iconMap[v]]
-              ? icons[iconMap[v]]
+            ${/** @type {any} */ (iconMap)[v] && /** @type {any} */ (icons)[/** @type {any} */ (iconMap)[v]]
+              ? /** @type {any} */ (icons)[/** @type {any} */ (iconMap)[v]]
               : abbreviateValue(v)}
           </sp-action-button>
         `)}
@@ -6290,7 +6350,7 @@ function renderKeywordInput(options, prop, value, onChange) {
         <sp-textfield size="s"
           placeholder=${cssInitialMap.get(prop) || ""}
           .value=${live(value || "")}
-          @input=${debouncedStyleCommit(`kw:${prop}`, 400, (e) => onChange(e.target.value))}
+          @input=${debouncedStyleCommit(`kw:${prop}`, 400, (/** @type {any} */ e) => onChange(e.target.value))}
         ></sp-textfield>
         <sp-picker-button size="s" id=${menuId}></sp-picker-button>
         <sp-overlay trigger=${menuId}@click placement="bottom-end" type="auto">
@@ -6308,18 +6368,18 @@ function renderKeywordInput(options, prop, value, onChange) {
     <sp-combobox size="s"
       placeholder=${cssInitialMap.get(prop) || ""}
       .value=${live(value || "")}
-      @input=${debouncedStyleCommit(`kw:${prop}`, 400, (e) => onChange(e.target.value))}
-      @change=${(e) => onChange(e.target.value)}>
+      @input=${debouncedStyleCommit(`kw:${prop}`, 400, (/** @type {any} */ e) => onChange(e.target.value))}
+      @change=${(/** @type {any} */ e) => onChange(e.target.value)}>
       ${menuItemsT}
     </sp-combobox>
   `;
 }
 
-function renderSelectInput(entry, prop, value, onChange) {
+function renderSelectInput(/** @type {any} */ entry, /** @type {any} */ prop, /** @type {any} */ value, /** @type {any} */ onChange) {
   return renderKeywordInput(entry.enum || [], prop, value, onChange);
 }
 
-function handleFontPresetSelection(preset, onChange) {
+function handleFontPresetSelection(/** @type {any} */ preset, /** @type {any} */ onChange) {
   const varName = friendlyNameToVar(preset.title, "--font-");
   if (!S.document?.style?.[varName]) {
     S = updateStyle(S, [], varName, preset.value);
@@ -6327,13 +6387,13 @@ function handleFontPresetSelection(preset, onChange) {
   onChange(`var(${varName})`);
 }
 
-function renderFontOptions(fontVars, presets) {
-  const unaddedPresets = presets.filter((p) => {
+function renderFontOptions(/** @type {any} */ fontVars, /** @type {any} */ presets) {
+  const unaddedPresets = presets.filter((/** @type {any} */ p) => {
     const varName = friendlyNameToVar(p.title, "--font-");
-    return !fontVars.some((fv) => fv.name === varName);
+    return !fontVars.some((/** @type {any} */ fv) => fv.name === varName);
   });
   return html`
-    ${fontVars.map((fv) => html`
+    ${fontVars.map((/** @type {any} */ fv) => html`
       <sp-menu-item value=${fv.name}
         style="font-family: ${fv.value}">
         ${varDisplayName(fv.name, "--font-")}
@@ -6341,7 +6401,7 @@ function renderFontOptions(fontVars, presets) {
     `)}
     ${unaddedPresets.length > 0 ? html`
       <sp-menu-divider></sp-menu-divider>
-      ${unaddedPresets.map((p) => html`
+      ${unaddedPresets.map((/** @type {any} */ p) => html`
         <sp-menu-item value=${"__preset__:" + p.title}
           style="font-family: ${p.value}">
           ${p.title}
@@ -6351,11 +6411,11 @@ function renderFontOptions(fontVars, presets) {
   `;
 }
 
-function handleFontSelection(val, presets, onChange) {
+function handleFontSelection(/** @type {any} */ val, /** @type {any} */ presets, /** @type {any} */ onChange) {
   if (!val) return;
   if (val.startsWith("__preset__:")) {
     const title = val.slice("__preset__:".length);
-    const preset = presets.find((p) => p.title === title);
+    const preset = presets.find((/** @type {any} */ p) => p.title === title);
     if (preset) handleFontPresetSelection(preset, onChange);
     return;
   }
@@ -6363,26 +6423,26 @@ function handleFontSelection(val, presets, onChange) {
   onChange("var(" + val + ")");
 }
 
-function renderFontVarPicker(fontVars, presets, value, onChange) {
+function renderFontVarPicker(/** @type {any} */ fontVars, /** @type {any} */ presets, /** @type {any} */ value, /** @type {any} */ onChange) {
   const varMatch = value.match(/^var\((--[^)]+)\)$/);
   const currentVarName = varMatch ? varMatch[1] : "";
 
   return html`
     <sp-picker size="s" class="font-var-picker"
       .value=${live(currentVarName || "__none__")}
-      @change=${(e) => handleFontSelection(e.target.value, presets, onChange)}>
+      @change=${(/** @type {any} */ e) => handleFontSelection(e.target.value, presets, onChange)}>
       ${renderFontOptions(fontVars, presets)}
     </sp-picker>
   `;
 }
 
-function renderFontCombobox(fontVars, presets, value, onChange) {
+function renderFontCombobox(/** @type {any} */ fontVars, /** @type {any} */ presets, /** @type {any} */ value, /** @type {any} */ onChange) {
   return html`
     <sp-combobox size="s" class="font-combo-field"
       placeholder=${cssInitialMap.get("fontFamily") || ""}
       .value=${live(value || "")}
-      @input=${debouncedStyleCommit("combo:fontFamily", 400, (e) => onChange(e.target.value))}
-      @change=${(e) => {
+      @input=${debouncedStyleCommit("combo:fontFamily", 400, (/** @type {any} */ e) => onChange(e.target.value))}
+      @change=${(/** @type {any} */ e) => {
         handleFontSelection(e.target.value, presets, onChange);
       }}>
       ${renderFontOptions(fontVars, presets)}
@@ -6390,7 +6450,7 @@ function renderFontCombobox(fontVars, presets, value, onChange) {
   `;
 }
 
-function renderComboboxInput(entry, prop, value, onChange) {
+function renderComboboxInput(/** @type {any} */ entry, /** @type {any} */ prop, /** @type {any} */ value, /** @type {any} */ onChange) {
   const fontVars = (prop === "fontFamily") ? getFontVars() : [];
   const presets = entry.presets || [];
   const examples = entry.examples || [];
@@ -6414,18 +6474,18 @@ function renderComboboxInput(entry, prop, value, onChange) {
     <sp-textfield size="s"
       placeholder=${cssInitialMap.get(prop) || ""}
       .value=${live(value || "")}
-      @input=${debouncedStyleCommit(`combo:${prop}`, 400, (e) => onChange(e.target.value))}
+      @input=${debouncedStyleCommit(`combo:${prop}`, 400, (/** @type {any} */ e) => onChange(e.target.value))}
     ></sp-textfield>
   `;
 }
 
-function renderNumberInput(entry, prop, value, onChange) {
+function renderNumberInput(/** @type {any} */ entry, /** @type {any} */ prop, /** @type {any} */ value, /** @type {any} */ onChange) {
   return html`
     <sp-number-field size="s" hide-stepper
       .value=${live(value !== undefined && value !== "" ? Number(value) : undefined)}
       min=${ifDefined(entry.minimum)} max=${ifDefined(entry.maximum)}
       step=${ifDefined(entry.maximum !== undefined && entry.maximum <= 1 ? 0.1 : undefined)}
-      @change=${debouncedStyleCommit(`num:${prop}`, 400, (e) => {
+      @change=${debouncedStyleCommit(`num:${prop}`, 400, (/** @type {any} */ e) => {
         const v = e.target.value;
         if (v === undefined || isNaN(v)) onChange("");
         else onChange(Number(v));
@@ -6434,19 +6494,19 @@ function renderNumberInput(entry, prop, value, onChange) {
   `;
 }
 
-function renderTextInput(prop, value, onChange) {
+function renderTextInput(/** @type {any} */ prop, /** @type {any} */ value, /** @type {any} */ onChange) {
   return html`
     <sp-textfield size="s"
       placeholder=${cssInitialMap.get(prop) || ""}
       .value=${live(value || "")}
-      @input=${debouncedStyleCommit(`text:${prop}`, 400, (e) => onChange(e.target.value))}
+      @input=${debouncedStyleCommit(`text:${prop}`, 400, (/** @type {any} */ e) => onChange(e.target.value))}
     ></sp-textfield>
   `;
 }
 
 // camelToLabel, kebabToLabel, propLabel, attrLabel — imported from studio-utils.js
 
-function widgetForType(type, entry, prop, value, onCommit) {
+function widgetForType(/** @type {any} */ type, /** @type {any} */ entry, /** @type {any} */ prop, /** @type {any} */ value, /** @type {any} */ onCommit) {
   switch (type) {
     case "button-group": return renderButtonGroupInput(entry, prop, value, onCommit);
     case "color": return renderColorInput(prop, value, onCommit);
@@ -6458,7 +6518,7 @@ function widgetForType(type, entry, prop, value, onCommit) {
   }
 }
 
-function renderStyleRow(entry, prop, value, onCommit, onDelete, isWarning, gridMode) {
+function renderStyleRow(/** @type {any} */ entry, /** @type {any} */ prop, /** @type {any} */ value, /** @type {any} */ onCommit, /** @type {any} */ onDelete, /** @type {any} */ isWarning, /** @type {any} */ gridMode) {
   const type = inferInputType(entry);
   const hasVal = value !== undefined && value !== "";
   return html`
@@ -6467,7 +6527,7 @@ function renderStyleRow(entry, prop, value, onCommit, onDelete, isWarning, gridM
          style=${gridMode && entry.$span === 2 ? "grid-column: 1 / -1" : ""}>
       <div class="style-row-label">
         ${hasVal ? html`<span class="set-dot" title="Clear ${prop}"
-          @click=${(e) => { e.stopPropagation(); onDelete(); }}></span>` : nothing}
+          @click=${(/** @type {any} */ e) => { e.stopPropagation(); onDelete(); }}></span>` : nothing}
         <sp-field-label size="s" title=${prop}>${propLabel(entry, prop)}</sp-field-label>
       </div>
       ${widgetForType(type, entry, prop, value, onCommit)}
@@ -6475,7 +6535,7 @@ function renderStyleRow(entry, prop, value, onCommit, onDelete, isWarning, gridM
   `;
 }
 
-function renderShorthandRow(shortProp, entry, style, commitFn, deleteFn) {
+function renderShorthandRow(/** @type {any} */ shortProp, /** @type {any} */ entry, /** @type {any} */ style, /** @type {any} */ commitFn, /** @type {any} */ deleteFn) {
   const longhands = getLonghands(shortProp);
   const shortVal = style[shortProp];
   const hasLonghands = longhands.some((l) => style[l.name] !== undefined);
@@ -6485,7 +6545,7 @@ function renderShorthandRow(shortProp, entry, style, commitFn, deleteFn) {
   return html`
     <div class="style-row" data-prop=${shortProp}>
       <div class="style-row-label">
-        ${hasAnyVal ? html`<span class="set-dot" title="Clear ${shortProp}" @click=${(e) => {
+        ${hasAnyVal ? html`<span class="set-dot" title="Clear ${shortProp}" @click=${(/** @type {any} */ e) => {
           e.stopPropagation();
           let s = S;
           if (shortVal !== undefined) s = commitFn(s, shortProp, undefined);
@@ -6500,7 +6560,7 @@ function renderShorthandRow(shortProp, entry, style, commitFn, deleteFn) {
         <sp-textfield size="s"
           .value=${live(shortVal || "")}
           placeholder=${!shortVal && hasLonghands ? longhands.map((l) => style[l.name] || "0").join(" ") : ""}
-          @input=${debouncedStyleCommit(`short:${shortProp}`, 400, (e) => {
+          @input=${debouncedStyleCommit(`short:${shortProp}`, 400, (/** @type {any} */ e) => {
             let s = S;
             for (const l of longhands) {
               if (style[l.name] !== undefined) s = commitFn(s, l.name, undefined);
@@ -6509,7 +6569,7 @@ function renderShorthandRow(shortProp, entry, style, commitFn, deleteFn) {
             update(s);
           })}
         ></sp-textfield>
-        <sp-action-button size="xs" quiet @click=${(e) => {
+        <sp-action-button size="xs" quiet @click=${(/** @type {any} */ e) => {
           e.stopPropagation();
           S = { ...S, ui: { ...S.ui, styleShorthands: { ...S.ui.styleShorthands, [shortProp]: !isExpanded } } };
           renderRightPanel();
@@ -6526,10 +6586,10 @@ function renderShorthandRow(shortProp, entry, style, commitFn, deleteFn) {
         <div class="style-row style-row--child" data-prop=${name}>
           <div class="style-row-label">
             ${lVal !== undefined && lVal !== "" ? html`<span class="set-dot" title="Clear ${name}"
-              @click=${(e) => { e.stopPropagation(); update(commitFn(S, name, undefined)); }}></span>` : nothing}
+              @click=${(/** @type {any} */ e) => { e.stopPropagation(); update(commitFn(S, name, undefined)); }}></span>` : nothing}
             <sp-field-label size="s" title=${name}>${propLabel(lEntry, name)}</sp-field-label>
           </div>
-          ${widgetForType(inferInputType(lEntry), lEntry, name, lVal, (newVal) => update(commitFn(S, name, newVal || undefined)))}
+          ${widgetForType(inferInputType(lEntry), lEntry, name, lVal, (/** @type {any} */ newVal) => update(commitFn(S, name, newVal || undefined)))}
         </div>
       `;
     }) : nothing}
@@ -6537,7 +6597,7 @@ function renderShorthandRow(shortProp, entry, style, commitFn, deleteFn) {
 }
 
 
-function styleSidebarTemplate(node, activeMediaTab, activeSelector) {
+function styleSidebarTemplate(/** @type {any} */ node, /** @type {any} */ activeMediaTab, /** @type {any} */ activeSelector) {
   const style = node.style || {};
   const { sizeBreakpoints } = parseMediaEntries(S.document.$media);
   const mediaNames = sizeBreakpoints.map((bp) => bp.name);
@@ -6580,7 +6640,7 @@ function styleSidebarTemplate(node, activeMediaTab, activeSelector) {
     <div class="selector-bar">
       <sp-picker class="selector-select"
         .value=${live(_selectorVal)}
-        @change=${(e) => {
+        @change=${(/** @type {any} */ e) => {
           const val = e.target.value;
           if (val === "__add_custom__") {
             requestAnimationFrame(() => { e.target.value = activeSelector || "__base__"; });
@@ -6595,7 +6655,7 @@ function styleSidebarTemplate(node, activeMediaTab, activeSelector) {
             bar.appendChild(inp);
             inp.focus();
             let done = false;
-            const finish = (accept) => {
+            const finish = (/** @type {any} */ accept) => {
               if (done) return;
               done = true;
               const v = inp.value.trim();
@@ -6635,28 +6695,30 @@ function styleSidebarTemplate(node, activeMediaTab, activeSelector) {
   `;
 
   // ── Determine the active style object ──────────────────────────────────────
+  /** @type {Record<string, any>} */
   let activeStyle;
+  /** @type {any} */
   let commitStyle;
   if (activeSelector && activeTab && mediaNames.length > 0) {
     activeStyle = (style[`@${activeTab}`] || {})[activeSelector] || {};
-    commitStyle = (s, prop, val) =>
+    commitStyle = (/** @type {any} */ s, /** @type {any} */ prop, /** @type {any} */ val) =>
       updateMediaNestedStyle(s, S.selection, activeTab, activeSelector, prop, val);
   } else if (activeSelector) {
     activeStyle = style[activeSelector] || {};
-    commitStyle = (s, prop, val) =>
+    commitStyle = (/** @type {any} */ s, /** @type {any} */ prop, /** @type {any} */ val) =>
       updateNestedStyle(s, S.selection, activeSelector, prop, val);
   } else if (activeTab !== null && mediaNames.length > 0) {
     activeStyle = {};
     for (const [p, v] of Object.entries(style[`@${activeTab}`] || {})) {
       if (typeof v !== "object") activeStyle[p] = v;
     }
-    commitStyle = (s, prop, val) => updateMediaStyle(s, S.selection, activeTab, prop, val);
+    commitStyle = (/** @type {any} */ s, /** @type {any} */ prop, /** @type {any} */ val) => updateMediaStyle(s, S.selection, activeTab, prop, val);
   } else {
     activeStyle = {};
     for (const [p, v] of Object.entries(style)) {
       if (typeof v !== "object") activeStyle[p] = v;
     }
-    commitStyle = (s, prop, val) => updateStyle(s, S.selection, prop, val);
+    commitStyle = (/** @type {any} */ s, /** @type {any} */ prop, /** @type {any} */ val) => updateStyle(s, S.selection, prop, val);
   }
 
   // Auto-open sections that have properties
@@ -6666,21 +6728,21 @@ function styleSidebarTemplate(node, activeMediaTab, activeSelector) {
   }
 
   // Partition properties into sections
-  const sectionProps = {};
+  const sectionProps = /** @type {Record<string, any[]>} */ ({});
   for (const sec of cssMeta.$sections) sectionProps[sec.key] = [];
 
-  for (const [prop, entry] of Object.entries(cssMeta.$defs)) {
+  for (const [prop, entry] of /** @type {[string, any][]} */ (Object.entries(cssMeta.$defs))) {
     if (typeof entry.$shorthand === "string") continue;
     const sec = entry.$section || "other";
     sectionProps[sec].push({ prop, entry });
   }
   for (const sec of cssMeta.$sections) {
-    sectionProps[sec.key].sort((a, b) => a.entry.$order - b.entry.$order);
+    sectionProps[sec.key].sort((/** @type {any} */ a, /** @type {any} */ b) => a.entry.$order - b.entry.$order);
   }
 
   const otherProps = [];
   for (const prop of Object.keys(activeStyle)) {
-    if (!cssMeta.$defs[prop]) otherProps.push(prop);
+    if (!(/** @type {Record<string, any>} */ (cssMeta.$defs))[prop]) otherProps.push(prop);
   }
 
   // ── Section templates ────────────────────────────────────────────────────
@@ -6689,7 +6751,7 @@ function styleSidebarTemplate(node, activeMediaTab, activeSelector) {
     .map((sec) => {
       const entries = sectionProps[sec.key];
 
-      const sectionActiveProps = entries.filter(({ prop, entry }) => {
+      const sectionActiveProps = entries.filter((/** @type {any} */ { prop, entry }) => {
         if (activeStyle[prop] !== undefined) return true;
         if (inferInputType(entry) === "shorthand") {
           return getLonghands(prop).some((l) => activeStyle[l.name] !== undefined);
@@ -6715,7 +6777,7 @@ function styleSidebarTemplate(node, activeMediaTab, activeSelector) {
           if (hasVal || condMet) {
             rows.push(renderStyleRow(
               entry, prop, val ?? "",
-              (newVal) => update(commitStyle(S, prop, newVal || undefined)),
+              (/** @type {any} */ newVal) => update(commitStyle(S, prop, newVal || undefined)),
               () => update(commitStyle(S, prop, undefined)),
               isWarning, sec.$layout === "grid",
             ));
@@ -6729,7 +6791,7 @@ function styleSidebarTemplate(node, activeMediaTab, activeSelector) {
         <sp-accordion-item
           label=${sec.label}
           .open=${isOpen}
-          @sp-accordion-item-toggle=${(e) => {
+          @sp-accordion-item-toggle=${(/** @type {any} */ e) => {
             S = { ...S, ui: { ...S.ui, styleSections: { ...S.ui.styleSections, [sec.key]: e.target.open } } };
           }}>
           ${sectionActiveProps.length > 0 ? html`
@@ -6737,7 +6799,7 @@ function styleSidebarTemplate(node, activeMediaTab, activeSelector) {
               ${sec.label}
               <span class="set-dot set-dot--section"
                 title="Clear all ${sec.label.toLowerCase()} properties"
-                @click=${(e) => {
+                @click=${(/** @type {any} */ e) => {
                   e.stopPropagation();
                   e.preventDefault();
                   let s = S;
@@ -6766,14 +6828,14 @@ function styleSidebarTemplate(node, activeMediaTab, activeSelector) {
     <sp-accordion-item
       label="Custom"
       .open=${customIsOpen}
-      @sp-accordion-item-toggle=${(e) => {
+      @sp-accordion-item-toggle=${(/** @type {any} */ e) => {
         S = { ...S, ui: { ...S.ui, styleSections: { ...S.ui.styleSections, other: e.target.open } } };
       }}>
       <div>
         ${otherProps.map((prop) => html`
           <div class="kv-row">
             <sp-textfield size="s" class="kv-key" .value=${live(prop)}
-              @change=${(e) => {
+              @change=${(/** @type {any} */ e) => {
                 const newProp = e.target.value.trim();
                 if (newProp && newProp !== prop) {
                   let s = commitStyle(S, prop, undefined);
@@ -6784,7 +6846,7 @@ function styleSidebarTemplate(node, activeMediaTab, activeSelector) {
             <sp-textfield size="s" class="kv-val"
               .value=${live(String(activeStyle[prop]))}
               placeholder=${ifDefined(cssInitialMap.get(prop))}
-              @input=${debouncedStyleCommit(`custom:${prop}`, 400, (e) => {
+              @input=${debouncedStyleCommit(`custom:${prop}`, 400, (/** @type {any} */ e) => {
                 update(commitStyle(S, prop, e.target.value));
               })}></sp-textfield>
             <sp-action-button size="xs" quiet @click=${() => update(commitStyle(S, prop, undefined))}>
@@ -6794,7 +6856,7 @@ function styleSidebarTemplate(node, activeMediaTab, activeSelector) {
         `)}
         <div style="display:flex;gap:4px;padding-top:4px">
           <sp-textfield size="s" placeholder="Property name\u2026" style="flex:1"
-            @keydown=${(e) => {
+            @keydown=${(/** @type {any} */ e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
                 const prop = e.target.value.trim();
@@ -6839,21 +6901,22 @@ function renderStylePanelTemplate() {
 }
 
 /** @deprecated — use renderStylePanelTemplate() for lit-html integration */
-function renderStylePanel(container) {
+function renderStylePanel(/** @type {any} */ container) {
   litRender(renderStylePanelTemplate(), container);
 }
 
 /** Single property input row */
-function fieldRow(label, type, value, onChange, datalistId) {
+function fieldRow(/** @type {any} */ label, /** @type {any} */ type, /** @type {any} */ value, /** @type {any} */ onChange, /** @type {any} */ datalistId) {
+  /** @type {any} */
   let debounceTimer;
-  const onInput = (e) => {
+  const onInput = (/** @type {any} */ e) => {
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => onChange(e.target.value), 400);
   };
   const inputTpl = type === "textarea"
     ? html`<sp-textfield multiline size="s" value=${value ?? ""} @input=${onInput}></sp-textfield>`
     : type === "checkbox"
-    ? html`<sp-checkbox ?checked=${!!value} @change=${(e) => onChange(e.target.checked)}></sp-checkbox>`
+    ? html`<sp-checkbox ?checked=${!!value} @change=${(/** @type {any} */ e) => onChange(e.target.checked)}></sp-checkbox>`
     : html`<sp-textfield size="s" value=${value ?? ""} @input=${onInput}></sp-textfield>`;
   return html`
     <div class="field-row">
@@ -6866,7 +6929,7 @@ function fieldRow(label, type, value, onChange, datalistId) {
 /**
  * Check if a selection path is inside a $map template (contains [..., "children", "map", ...]).
  */
-function isInsideMapTemplate(path) {
+function isInsideMapTemplate(/** @type {any} */ path) {
   if (!path) return false;
   for (let i = 0; i < path.length - 1; i++) {
     if (path[i] === "children" && path[i + 1] === "map") return true;
@@ -6878,7 +6941,7 @@ function isInsideMapTemplate(path) {
  * Field row with binding toggle — allows switching between static value and signal binding.
  * rawValue can be a string/bool (static) or { $ref: "..." } (bound).
  */
-function bindableFieldRow(label, type, rawValue, onChange, filterFn, extraSignals) {
+function bindableFieldRow(/** @type {any} */ label, /** @type {any} */ type, /** @type {any} */ rawValue, /** @type {any} */ onChange, /** @type {any} */ filterFn = null, /** @type {any} */ extraSignals = null) {
   const defs = S.document.state || {};
   const isBound = typeof rawValue === "object" && rawValue !== null && rawValue.$ref;
 
@@ -6886,8 +6949,9 @@ function bindableFieldRow(label, type, rawValue, onChange, filterFn, extraSignal
     filterFn ? filterFn(d) : !d.$handler && d.$prototype !== "Function",
   );
 
+  /** @type {any} */
   let debounce;
-  const onInput = (e) => {
+  const onInput = (/** @type {any} */ e) => {
     clearTimeout(debounce);
     debounce = setTimeout(() => onChange(e.target.value), 400);
   };
@@ -6896,13 +6960,13 @@ function bindableFieldRow(label, type, rawValue, onChange, filterFn, extraSignal
   const staticTpl = type === "textarea"
     ? html`<sp-textfield multiline size="s" value=${staticVal} @input=${onInput}></sp-textfield>`
     : type === "checkbox"
-    ? html`<sp-checkbox ?checked=${!!staticVal} @change=${(e) => onChange(e.target.checked)}></sp-checkbox>`
+    ? html`<sp-checkbox ?checked=${!!staticVal} @change=${(/** @type {any} */ e) => onChange(e.target.checked)}></sp-checkbox>`
     : html`<sp-textfield size="s" value=${staticVal} @input=${onInput}></sp-textfield>`;
 
   const boundTpl = html`
     <sp-picker size="s" quiet placeholder="\u2014 select signal \u2014"
       value=${isBound && rawValue.$ref ? rawValue.$ref : nothing}
-      @change=${(e) => {
+      @change=${(/** @type {any} */ e) => {
         if (e.target.value) onChange({ $ref: e.target.value });
         else onChange(undefined);
       }}>
@@ -6911,7 +6975,7 @@ function bindableFieldRow(label, type, rawValue, onChange, filterFn, extraSignal
       )}
       ${extraSignals ? html`
         <sp-menu-divider></sp-menu-divider>
-        ${extraSignals.map(sig =>
+        ${extraSignals.map((/** @type {any} */ sig) =>
           html`<sp-menu-item value=${sig.value}>${sig.label}</sp-menu-item>`
         )}
       ` : nothing}
@@ -6947,7 +7011,8 @@ function bindableFieldRow(label, type, rawValue, onChange, filterFn, extraSignal
 }
 
 /** Key-value pair row for styles / attributes */
-function kvRow(key, value, onChange, onDelete, datalistId) {
+function kvRow(/** @type {any} */ key, /** @type {any} */ value, /** @type {any} */ onChange, /** @type {any} */ onDelete, /** @type {any} */ datalistId = null) {
+  /** @type {any} */
   let debounceTimer;
   let currentKey = key;
   let currentVal = value;
@@ -6959,14 +7024,14 @@ function kvRow(key, value, onChange, onDelete, datalistId) {
   return html`
     <div class="kv-row">
       <sp-textfield size="s" class="kv-key" value=${key}
-        @input=${(e) => { currentKey = e.target.value; commit(); }}
-        @change=${datalistId === "css-props" ? (e) => {
+        @input=${(/** @type {any} */ e) => { currentKey = e.target.value; commit(); }}
+        @change=${datalistId === "css-props" ? (/** @type {any} */ e) => {
           const el = e.target.closest(".kv-row")?.querySelector(".kv-val");
           if (el) el.setAttribute("placeholder", cssInitialMap.get(e.target.value) || "");
         } : nothing}></sp-textfield>
       <sp-textfield size="s" class="kv-val" value=${value}
         placeholder=${placeholder}
-        @input=${(e) => { currentVal = e.target.value; commit(); }}></sp-textfield>
+        @input=${(/** @type {any} */ e) => { currentVal = e.target.value; commit(); }}></sp-textfield>
       <sp-action-button size="xs" quiet @click=${onDelete}>
         <sp-icon-close slot="icon"></sp-icon-close>
       </sp-action-button>
@@ -6976,7 +7041,7 @@ function kvRow(key, value, onChange, onDelete, datalistId) {
 
 // ─── Source view ──────────────────────────────────────────────────────────────
 
-function renderSourceView(container) {
+function renderSourceView(/** @type {any} */ container) {
   if (!S.selection) {
     const ta = document.createElement("textarea");
     ta.id = "source-view";
@@ -7066,7 +7131,11 @@ function renderFunctionEditor() {
   });
 
   // Debounced sync back to state + lint on edit
-  let syncDebounce, lintDebounce, lintGen = 0;
+  /** @type {any} */
+  let syncDebounce;
+  /** @type {any} */
+  let lintDebounce;
+  let lintGen = 0;
   functionEditor.onDidChangeModelContent(() => {
     if (functionEditor._ignoreNextChange) {
       functionEditor._ignoreNextChange = false;
@@ -7102,7 +7171,7 @@ function renderFunctionEditor() {
   });
 }
 
-function getFunctionBody(editing) {
+function getFunctionBody(/** @type {any} */ editing) {
   if (editing.type === "def") {
     return S.document.state?.[editing.defName]?.body || "";
   } else if (editing.type === "event") {
@@ -7163,6 +7232,7 @@ function eventsSidebarTemplate() {
   );
 
   // Declared CEM events (custom element docs)
+  /** @type {any} */
   let declaredEventsT = nothing;
   if (isCustomElementDoc()) {
     const allEmits = [];
@@ -7210,7 +7280,7 @@ function eventsSidebarTemplate() {
             <div class="event-binding">
               <div class="event-row">
                 <sp-picker size="s" class="event-name" .value=${live(evKey)}
-                  @change=${(e) => {
+                  @change=${(/** @type {any} */ e) => {
                     const newKey = e.target.value;
                     if (newKey && newKey !== evKey) {
                       let s = updateProperty(S, S.selection, evKey, undefined);
@@ -7223,7 +7293,7 @@ function eventsSidebarTemplate() {
                   )}
                 </sp-picker>
                 <sp-picker size="s" class="event-mode" .value=${live(isInline ? "inline" : "ref")}
-                  @change=${(e) => {
+                  @change=${(/** @type {any} */ e) => {
                     if (e.target.value === "inline") {
                       update(updateProperty(S, S.selection, evKey, { $prototype: "Function", body: "", parameters: [] }));
                     } else {
@@ -7243,7 +7313,7 @@ function eventsSidebarTemplate() {
                 <div class="event-body-row">
                   <sp-textfield size="s" multiline grows placeholder="// handler body"
                     .value=${live(evVal.body || "")}
-                    @input=${(e) => {
+                    @input=${(/** @type {any} */ e) => {
                       update(updateProperty(S, S.selection, evKey, {
                         $prototype: "Function",
                         body: e.target.value,
@@ -7261,7 +7331,7 @@ function eventsSidebarTemplate() {
                 </div>
               ` : html`
                 <sp-picker size="s" class="event-handler" .value=${live(evVal.$ref || "__none__")}
-                  @change=${(e) => {
+                  @change=${(/** @type {any} */ e) => {
                     if (e.target.value && e.target.value !== "__none__") {
                       update(updateProperty(S, S.selection, evKey, { $ref: e.target.value }));
                     } else {
@@ -7300,11 +7370,11 @@ function eventsSidebarTemplate() {
 // ─── CEM Export ──────────────────────────────────────────────────────────────
 
 /** Collect slot elements from the document tree. */
-function collectSlots(node, slots = []) {
+function collectSlots(/** @type {any} */ node, /** @type {any} */ slots = []) {
   if (node?.tagName === "slot") {
     slots.push(node.attributes?.name || "");
   }
-  if (Array.isArray(node?.children)) node.children.forEach((c) => collectSlots(c, slots));
+  if (Array.isArray(node?.children)) node.children.forEach((/** @type {any} */ c) => collectSlots(c, slots));
   return slots;
 }
 
@@ -7369,7 +7439,7 @@ function exportCemManifest() {
 
   // Slots
   const slotNames = collectSlots(doc);
-  const slots = slotNames.map((name) => ({ name: name || "", ...(name ? {} : { description: "Default slot" }) }));
+  const slots = slotNames.map((/** @type {any} */ name) => ({ name: name || "", ...(name ? {} : { description: "Default slot" }) }));
 
   // CSS custom properties
   const style = doc.style || {};
@@ -7421,7 +7491,7 @@ function renderToolbar() {
         @click=${hasFunc ? closeFunctionEditor : navigateBack}>
         ${toolbarIconMap["sp-icon-back"]}Back
       </sp-action-button>
-      ${hasStack ? S.documentStack.map(frame => html`
+      ${hasStack ? S.documentStack.map((/** @type {any} */ frame) => html`
         <span class="breadcrumb-item">${frame.documentPath?.split("/").pop() || "untitled"}</span>
         <span class="breadcrumb-sep"> › </span>
       `) : nothing}
@@ -7535,7 +7605,7 @@ function renderStatusbar() {
   statusbar.textContent = parts.join("  |  ") || "JSONsx Studio";
 }
 
-function statusMessage(msg, duration = 3000) {
+function statusMessage(/** @type {any} */ msg, duration = 3000) {
   statusMsg = msg;
   renderStatusbar();
   clearTimeout(statusTimeout);
@@ -7551,7 +7621,7 @@ async function openFile() {
   try {
     // File System Access API
     if ("showOpenFilePicker" in window) {
-      const [handle] = await window.showOpenFilePicker({
+      const [handle] = await /** @type {any} */ (window).showOpenFilePicker({
         types: [
           { description: "JSONsx Component", accept: { "application/json": [".json"] } },
           { description: "Markdown Content", accept: { "text/markdown": [".md"] } },
@@ -7579,7 +7649,7 @@ async function openFile() {
       input.type = "file";
       input.accept = ".json,.md";
       input.onchange = async () => {
-        const file = input.files[0];
+        const file = input.files?.[0];
         if (!file) return;
         const text = await file.text();
 
@@ -7596,7 +7666,7 @@ async function openFile() {
       };
       input.click();
     }
-  } catch (e) {
+  } catch (/** @type {any} */ e) {
     if (e.name !== "AbortError") statusMessage(`Error: ${e.message}`);
   }
 }
@@ -7605,7 +7675,7 @@ async function openFile() {
  * Load a markdown string into the studio in content mode.
  * Parses frontmatter, converts mdast → JSONsx element tree.
  */
-function loadMarkdown(source, fileHandle) {
+function loadMarkdown(/** @type {any} */ source, /** @type {any} */ fileHandle) {
   const processor = unified()
     .use(remarkParse)
     .use(remarkFrontmatter, ["yaml"])
@@ -7632,7 +7702,7 @@ function loadMarkdown(source, fileHandle) {
   S.dirty = false;
 }
 
-async function loadCompanionJS(handle) {
+async function loadCompanionJS(/** @type {any} */ handle) {
   try {
     // Try to get the parent directory to look for .js file
     // Note: getParent is not widely supported; best-effort
@@ -7681,7 +7751,7 @@ async function saveFile() {
       renderToolbar();
       statusMessage("Saved");
     } else if ("showSaveFilePicker" in window) {
-      const handle = await window.showSaveFilePicker({
+      const handle = await /** @type {any} */ (window).showSaveFilePicker({
         suggestedName: isContent ? "content.md" : "component.json",
         types: [{ description, accept: { [mimeType]: [ext] } }],
       });
@@ -7704,7 +7774,7 @@ async function saveFile() {
       renderToolbar();
       statusMessage("Downloaded");
     }
-  } catch (e) {
+  } catch (/** @type {any} */ e) {
     if (e.name !== "AbortError") statusMessage(`Save error: ${e.message}`);
   }
 }
@@ -7712,7 +7782,7 @@ async function saveFile() {
 // ─── Keyboard shortcuts ───────────────────────────────────────────────────────
 
 // Wheel handler: Ctrl+Scroll = zoom (cursor-centered), plain scroll = pan
-canvasWrap.addEventListener("wheel", (e) => {
+canvasWrap.addEventListener("wheel", (/** @type {any} */ e) => {
   // Edit (content) mode: let the scroll container handle scrolling natively
   if (canvasMode === "edit") return;
   e.preventDefault();
@@ -7738,13 +7808,13 @@ canvasWrap.addEventListener("wheel", (e) => {
 }, { passive: false });
 
 // Middle-mouse drag panning
-canvasWrap.addEventListener("pointerdown", (e) => {
+canvasWrap.addEventListener("pointerdown", (/** @type {any} */ e) => {
   if (canvasMode === "edit") return; // no panning in edit mode
   if (e.button !== 1) return; // middle button only
   e.preventDefault();
   canvasWrap.setPointerCapture(e.pointerId);
   let lastX = e.clientX, lastY = e.clientY;
-  const onMove = (ev) => {
+  const onMove = (/** @type {any} */ ev) => {
     panX += ev.clientX - lastX;
     panY += ev.clientY - lastY;
     lastX = ev.clientX;
@@ -7881,25 +7951,26 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
-function navigateSelection(direction) {
+function navigateSelection(/** @type {any} */ direction) {
   if (!S.selection) {
     update(selectNode(S, []));
     return;
   }
   if (S.selection.length < 2) return; // can't navigate from root
 
-  const parent = getNodeAtPath(S.document, parentElementPath(S.selection));
-  const idx = childIndex(S.selection);
+  const parent = getNodeAtPath(S.document, /** @type {any} */ (parentElementPath(S.selection)));
+  const idx = /** @type {number} */ (childIndex(S.selection));
   const newIdx = idx + direction;
 
   if (newIdx >= 0 && newIdx < parent.children.length) {
-    const newPath = [...parentElementPath(S.selection), "children", newIdx];
+    const newPath = [.../** @type {any} */ (parentElementPath(S.selection)), "children", newIdx];
     update(selectNode(S, newPath));
   }
 }
 
 // ─── Clipboard ────────────────────────────────────────────────────────────────
 
+/** @type {any} */
 let clipboard = null;
 
 function copyNode() {
@@ -7927,8 +7998,8 @@ function pasteNode() {
 
   if (S.selection && S.selection.length >= 2) {
     // Paste as sibling after selection
-    const pp = parentElementPath(S.selection);
-    const idx = childIndex(S.selection);
+    const pp = /** @type {any} */ (parentElementPath(S.selection));
+    const idx = /** @type {number} */ (childIndex(S.selection));
     update(insertNode(S, pp, idx + 1, structuredClone(clipboard)));
   } else {
     // Paste as last child of root/selected
@@ -7951,7 +8022,7 @@ document.addEventListener("click", () => {
   ctxMenu.removeAttribute("open");
 });
 
-function showContextMenu(e, path) {
+function showContextMenu(/** @type {any} */ e, /** @type {any} */ path) {
   e.preventDefault();
   ctxMenu.removeAttribute("open");
 
@@ -7984,8 +8055,8 @@ function showContextMenu(e, path) {
       items.push({
         label: "Paste after",
         action: () => {
-          const pp = parentElementPath(path);
-          const idx = childIndex(path);
+          const pp = /** @type {any} */ (parentElementPath(path));
+          const idx = /** @type {number} */ (childIndex(path));
           update(insertNode(S, pp, idx + 1, structuredClone(clipboard)));
         },
       });
@@ -8003,7 +8074,7 @@ function showContextMenu(e, path) {
     if (item.danger) el.style.color = "var(--danger)";
     el.addEventListener("click", () => {
       ctxMenu.removeAttribute("open");
-      item.action();
+      item.action?.();
     });
     ctxMenuInner.appendChild(el);
   }
@@ -8021,6 +8092,7 @@ function showContextMenu(e, path) {
 
 // ─── Autosave ─────────────────────────────────────────────────────────────────
 
+/** @type {any} */
 let autosaveTimer;
 const AUTO_SAVE_DELAY = 2000;
 
@@ -8043,7 +8115,8 @@ function scheduleAutosave() {
 
 // Hook autosave into update
 const _origUpdate = update;
-update = function (newState) {
+// @ts-ignore — intentional monkey-patch of hoisted function
+update = function (/** @type {any} */ newState) {
   _origUpdate(newState);
   if (S.dirty) scheduleAutosave();
 };
