@@ -1,5 +1,5 @@
-# `@jsonsx/studio` Specification
-## Visual Builder for JSONsx Documents
+# `@jxplatform/studio` Specification
+## Visual Builder for Jx Documents
 
 **Version:** 2.0.0-draft
 **Status:** In Progress
@@ -9,18 +9,18 @@
 
 ## 1. Overview
 
-JSONsx Studio is a visual IDE for the development and management of local-first, statically compiled applications and websites which are composed and deployed via the JSONsx schema and pipeline. It renders a live canvas via the JSONsx runtime, provides a layer tree for structural editing, an inspector for property/style/state management, and a code editor for function bodies. The UI is built with Adobe Spectrum Web Components.
+Jx Studio is a visual IDE for the development and management of local-first, statically compiled applications and websites which are composed and deployed via the Jx schema and pipeline. It renders a live canvas via the Jx runtime, provides a layer tree for structural editing, an inspector for property/style/state management, and a code editor for function bodies. The UI is built with Adobe Spectrum Web Components.
 
-At the component level, Studio is a visual builder for individual JSONsx files. At the site level, it is a content management system — providing a project explorer, content collection browser, schema-driven entry editors, media management, SEO tooling, and redirect management. The full site-level architecture is specified in the companion [Site Architecture Specification](site-architecture.md).
+At the component level, Studio is a visual builder for individual Jx files. At the site level, it is a content management system — providing a project explorer, content collection browser, schema-driven entry editors, media management, SEO tooling, and redirect management. The full site-level architecture is specified in the companion [Site Architecture Specification](site-architecture.md).
 
 ---
 
 ## 2. Design Principles
 
 1. **JSON is the source of truth** — Studio reads and writes `.json` files. No proprietary intermediate format.
-2. **Canvas is the runtime** — The preview canvas renders via `@jsonsx/runtime`, showing exactly what users will see.
-3. **Zero lock-in** — Studio edits produce standard JSONsx files. Any editor can open them.
-4. **Self-hosting** — Studio is itself a JSONsx application served by `@jsonsx/server`.
+2. **Canvas is the runtime** — The preview canvas renders via `@jxplatform/runtime`, showing exactly what users will see.
+3. **Zero lock-in** — Studio edits produce standard Jx files. Any editor can open them.
+4. **Self-hosting** — Studio is itself a Jx application served by `@jxplatform/server`.
 5. **Developer-first** — Keyboard shortcuts, undo/redo, and code editing are first-class.
 
 ---
@@ -81,7 +81,7 @@ Immutable state with undo/redo history (100 entries). All mutations produce a ne
 
 ### 4.1 Rendering
 
-The canvas renders the current document using `@jsonsx/runtime`. It shows exactly what the component looks like at runtime — no simulation or approximation.
+The canvas renders the current document using `@jxplatform/runtime`. It shows exactly what the component looks like at runtime — no simulation or approximation.
 
 ### 4.2 Modes
 
@@ -203,16 +203,16 @@ For custom element definitions, the inspector includes CEM editing panels:
 ### 7.1 Bidirectional Conversion
 
 The `md-convert.js` module provides:
-- `mdToJsonsx(markdown)` — Markdown string → JSONsx document tree
-- `jsonsxToMd(doc)` — JSONsx document tree → Markdown string
+- `mdToJsonsx(markdown)` — Markdown string → Jx document tree
+- `jxToMd(doc)` — Jx document tree → Markdown string
 
 ### 7.2 Inline Editing
 
-In content mode, text elements (headings, paragraphs, list items) are directly editable in the canvas. Changes are synchronized back to the JSONsx document and can be exported as markdown.
+In content mode, text elements (headings, paragraphs, list items) are directly editable in the canvas. Changes are synchronized back to the Jx document and can be exported as markdown.
 
 ### 7.3 Markdown Loading
 
-The studio can load `.md` files, convert them to JSONsx for visual editing, and save back as markdown.
+The studio can load `.md` files, convert them to Jx for visual editing, and save back as markdown.
 
 > **Status: Implemented.** `md-convert.js` with `startEditing`, `stopEditing`, `isEditableBlock` in studio.
 
@@ -230,7 +230,7 @@ The studio tracks:
 
 ### 8.2 Server Integration
 
-All file operations go through the `@jsonsx/server` Studio API:
+All file operations go through the `@jxplatform/server` Studio API:
 - List directories with glob patterns
 - Read/write/delete/rename files
 - Discover custom element components
@@ -256,7 +256,7 @@ All file operations go through the `@jsonsx/server` Studio API:
 
 | Package | Purpose |
 |---|---|
-| `@jsonsx/runtime` | Canvas rendering |
+| `@jxplatform/runtime` | Canvas rendering |
 | `@atlaskit/pragmatic-drag-and-drop` | Layer tree drag-and-drop |
 | `lit-html` | Studio UI template rendering |
 | `monaco-editor` | Code editor |
@@ -286,4 +286,4 @@ See the [Site Architecture Specification](site-architecture.md) §7 for full des
 
 ---
 
-*`@jsonsx/studio` Specification v2.0.0-draft*
+*`@jxplatform/studio` Specification v2.0.0-draft*

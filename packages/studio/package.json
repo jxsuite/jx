@@ -1,7 +1,7 @@
 {
-  "name": "@jsonsx/studio",
+  "name": "@jxplatform/studio",
   "version": "1.0.0",
-  "description": "JSONsx Studio — visual builder for JSONsx documents",
+  "description": "Jx Studio — visual builder for Jx documents",
   "license": "MIT",
   "type": "module",
   "exports": {
@@ -16,7 +16,7 @@
   "dependencies": {
     "@atlaskit/pragmatic-drag-and-drop": "^1.7.10",
     "@atlaskit/pragmatic-drag-and-drop-hitbox": "^1.1.0",
-    "@jsonsx/runtime": "workspace:*",
+    "@jxplatform/runtime": "workspace:*",
     "@spectrum-web-components/accordion": "^1.11.2",
     "@spectrum-web-components/action-button": "^1.6.0",
     "@spectrum-web-components/action-group": "^1.6.0",

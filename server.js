@@ -1,11 +1,11 @@
 /**
- * server.js — JSONsx development server
+ * server.js — Jx development server
  *
  * Run with: bun run dev
  */
 
 import { resolve } from 'node:path';
-import { createDevServer } from '@jsonsx/server';
+import { createDevServer } from '@jxplatform/server';
 
 await createDevServer({
   root: resolve(import.meta.dir, '.'),
@@ -26,7 +26,7 @@ await createDevServer({
   ],
 });
 
-console.log('  /packages/studio/              ← JSONsx Studio');
+console.log('  /packages/studio/              ← Jx Studio');
 console.log('  /examples/todo/');
 console.log('  /examples/counter/');
 console.log('  /examples/computed/');

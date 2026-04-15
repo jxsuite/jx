@@ -1,7 +1,7 @@
 /**
  * compile-static.js — Static HTML compilation
  *
- * Compiles fully static JSONsx documents to plain HTML/CSS with zero JS.
+ * Compiles fully static Jx documents to plain HTML/CSS with zero JS.
  * Dynamic child subtrees become hydration islands (custom elements).
  */
 
@@ -74,7 +74,7 @@ export function compileStaticPage(raw, opts) {
 // ─── Node compilation ─────────────────────────────────────────────────────────
 
 /**
- * Compile a single JSONsx node to an HTML string.
+ * Compile a single Jx node to an HTML string.
  * Dynamic nodes become hydration islands; static nodes become plain HTML.
  * @param {any} def
  * @param {boolean} dynamic
@@ -102,7 +102,7 @@ function compileNode(def, dynamic, raw, context, islands) {
 
   if (dynamic) {
     const n = islands.length;
-    const tagName = `jsonsx-island-${n}`;
+    const tagName = `jx-island-${n}`;
     const className = `JsonsxIsland${n}`;
     const elementDef = { ...(raw ?? def), tagName };
     islands.push({ def: elementDef, tagName, className });

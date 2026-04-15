@@ -464,7 +464,7 @@ function attributesMatch(a, b) {
 
 /**
  * Expand a Range so that it fully includes any `${...}` template expressions
- * that are partially selected. Template expressions are atomic in JSONsx — if
+ * that are partially selected. Template expressions are atomic in Jx — if
  * split across inline elements, the template string breaks.
  *
  * Scans the text content of the start and end containers for `${...}` patterns

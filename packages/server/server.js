@@ -1,11 +1,11 @@
 /**
- * @jsonsx/server — JSONsx development server
+ * @jxplatform/server — Jx development server
  *
  * Provides builds, live reload, $src module proxying, timing: "server" function
  * proxying, and studio filesystem integration as a single createDevServer() call.
  *
  * @example
- * import { createDevServer } from '@jsonsx/server';
+ * import { createDevServer } from '@jxplatform/server';
  *
  * await createDevServer({
  *   root: import.meta.dir,
@@ -23,7 +23,7 @@ import { handleStudioApi } from "./studio-api.js";
 import { handleCodeApi } from "./code-api.js";
 
 /**
- * Create and start a JSONsx development server.
+ * Create and start a Jx development server.
  *
  * @param {object} options
  * @param {string}   options.root           - Project root (absolute or relative)
@@ -44,7 +44,7 @@ export async function createDevServer(options) {
     middleware,
   } = options;
 
-  if (!root) throw new Error("@jsonsx/server: root is required");
+  if (!root) throw new Error("@jxplatform/server: root is required");
   const absRoot = resolve(root);
 
   // ─── Build pipeline ─────────────────────────────────────────────────────────
@@ -79,12 +79,12 @@ export async function createDevServer(options) {
       }
 
       // $prototype + $src proxy
-      if (path === "/__jsonsx_resolve__" && req.method === "POST") {
+      if (path === "/__jx_resolve__" && req.method === "POST") {
         return handleResolve(req, absRoot);
       }
 
       // timing: "server" function proxy
-      if (path === "/__jsonsx_server__" && req.method === "POST") {
+      if (path === "/__jx_server__" && req.method === "POST") {
         return handleServerFunction(req, absRoot);
       }
 
@@ -118,7 +118,7 @@ export async function createDevServer(options) {
     },
   });
 
-  console.log(`\n@jsonsx/server listening on http://localhost:${server.port}`);
+  console.log(`\n@jxplatform/server listening on http://localhost:${server.port}`);
 
   return server;
 }

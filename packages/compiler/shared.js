@@ -5,7 +5,7 @@
  * utilities used across all compilation targets (static, client, element, server).
  */
 
-import { camelToKebab, toCSSText, RESERVED_KEYS } from "@jsonsx/runtime";
+import { camelToKebab, toCSSText, RESERVED_KEYS } from "@jxplatform/runtime";
 
 // Re-export runtime utilities used by submodules
 export { camelToKebab, toCSSText, RESERVED_KEYS };
@@ -506,7 +506,7 @@ export function titleToTagName(title) {
 		.toLowerCase()
 		.replace(/[^a-z0-9]+/g, "-")
 		.replace(/^-|-$/g, "");
-	return slug.includes("-") ? slug : `jsonsx-${slug}`;
+	return slug.includes("-") ? slug : `jx-${slug}`;
 }
 
 /**

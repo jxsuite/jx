@@ -1,5 +1,5 @@
 /**
- * @jsonsx/md — Markdown integration for JSONsx
+ * @jxplatform/md — Markdown integration for Jx
  *
  * Provides three exports:
  *   - MarkdownFile       — Parse a single markdown file (external class for $prototype)
@@ -8,7 +8,7 @@
  *
  * Built on the unified/remark/rehype ecosystem. No framework dependency.
  *
- * @module @jsonsx/md
+ * @module @jxplatform/md
  * @license MIT
  */
 
@@ -194,10 +194,10 @@ function getNestedValue(obj, path) {
 
 /**
  * Parse a single markdown file.
- * Satisfies the JSONsx external class contract ($prototype).
+ * Satisfies the Jx external class contract ($prototype).
  *
  * @example
- * { "$prototype": "MarkdownFile", "$src": "@jsonsx/md", "src": "./content/about.md", "signal": true }
+ * { "$prototype": "MarkdownFile", "$src": "@jxplatform/md", "src": "./content/about.md", "signal": true }
  */
 export class MarkdownFile {
   /**
@@ -228,10 +228,10 @@ export class MarkdownFile {
 
 /**
  * Parse a glob of markdown files into a sorted, filterable array.
- * Satisfies the JSONsx external class contract ($prototype).
+ * Satisfies the Jx external class contract ($prototype).
  *
  * @example
- * { "$prototype": "MarkdownCollection", "$src": "@jsonsx/md", "src": "./posts/*.md", "signal": true }
+ * { "$prototype": "MarkdownCollection", "$src": "@jxplatform/md", "src": "./posts/*.md", "signal": true }
  */
 export class MarkdownCollection {
   /**

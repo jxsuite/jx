@@ -1,9 +1,9 @@
 /**
- * jsonsx-compiler.js — Compiler orchestrator
+ * jx-compiler.js — Compiler orchestrator
  * @version 3.0.0
  * @license MIT
  *
- * Routes JSONsx documents to the appropriate compilation target:
+ * Routes Jx documents to the appropriate compilation target:
  *   - Fully static         → compile-static.js  (plain HTML/CSS, zero JS)
  *   - Custom element (-)   → compile-element.js  (lit-html web component)
  *   - Dynamic (standard)   → compile-client.js   (pre-rendered HTML + reactive bindings)
@@ -34,7 +34,7 @@ export { isDynamic, compileServer, compileElement, compileElementPage, compileCl
 // ─── Entry ────────────────────────────────────────────────────────────────────
 
 /**
- * Compile a JSONsx document to HTML (+ optional JS module files).
+ * Compile a Jx document to HTML (+ optional JS module files).
  *
  * Routing:
  *   1. Not dynamic → static HTML/CSS, zero JS
@@ -47,7 +47,7 @@ export { isDynamic, compileServer, compileElement, compileElementPage, compileCl
  */
 export async function compile(sourcePath, opts = {}) {
   const {
-    title = "JSONsx App",
+    title = "Jx App",
     reactivitySrc = DEFAULT_REACTIVITY_SRC,
     litHtmlSrc = DEFAULT_LIT_HTML_SRC,
   } = opts;

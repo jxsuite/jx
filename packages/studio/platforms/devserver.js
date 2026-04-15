@@ -1,7 +1,7 @@
 /**
  * devserver.js — Dev Server Platform Adapter
  *
- * Implements the StudioPlatform interface for the @jsonsx/server development
+ * Implements the StudioPlatform interface for the @jxplatform/server development
  * workflow. All file I/O goes through /__studio/* REST endpoints. Project
  * opening uses the Chrome File System Access API (showDirectoryPicker).
  *

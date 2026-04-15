@@ -16,7 +16,7 @@ import {
   camelToKebab,
   toCSSText,
   RESERVED_KEYS,
-  JSONsx,
+  Jx,
 } from "../runtime.js";
 
 const wait = () => new Promise((r) => setTimeout(r, 0));
@@ -34,16 +34,16 @@ describe("resolvePrototype", () => {
   });
 });
 
-describe("JSONsx", () => {
+describe("Jx", () => {
   test("mounts object doc into target", async () => {
     const target = document.createElement("div");
-    await JSONsx({ tagName: "span", textContent: "mounted" }, target);
+    await Jx({ tagName: "span", textContent: "mounted" }, target);
     expect(target.children[0].tagName.toLowerCase()).toBe("span");
   });
 
   test("defaults target to document.body", async () => {
     const before = document.body.children.length;
-    await JSONsx({ tagName: "div" });
+    await Jx({ tagName: "div" });
     expect(document.body.children.length).toBe(before + 1);
   });
 });

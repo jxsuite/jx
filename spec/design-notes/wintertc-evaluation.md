@@ -1,7 +1,7 @@
-# WinterTC (TC55) Evaluation for JSONsx Site Architecture
+# WinterTC (TC55) Evaluation for Jx Site Architecture
 
 **Date:** 2025-07-18
-**Context:** Evaluating the WinterTC [Minimum Common API](https://min-common-api.proposal.wintertc.org/) as a standards source for JSONsx's server-side/build-time site-definition schema conventions.
+**Context:** Evaluating the WinterTC [Minimum Common API](https://min-common-api.proposal.wintertc.org/) as a standards source for Jx's server-side/build-time site-definition schema conventions.
 
 ---
 
@@ -11,11 +11,11 @@ WinterTC (formally TC55) is an Ecma International technical committee whose miss
 
 Its primary output is the **Minimum Common API** — a curated subset of Web Platform APIs that all conforming server-side runtimes must implement. The goal: code written against these APIs runs identically in Node.js, Deno, Bun, Cloudflare Workers, and edge runtimes.
 
-## 2. Why It Matters to JSONsx
+## 2. Why It Matters to Jx
 
-JSONsx's `$prototype` system already maps JSON declarations to Web API constructors (`Request`, `URLSearchParams`, `FormData`, `ReadableStream`, `Blob`). The site-architecture spec introduces build-time and server-side concerns (routing, redirects, server functions) that execute outside the browser.
+Jx's `$prototype` system already maps JSON declarations to Web API constructors (`Request`, `URLSearchParams`, `FormData`, `ReadableStream`, `Blob`). The site-architecture spec introduces build-time and server-side concerns (routing, redirects, server functions) that execute outside the browser.
 
-**The WinterTC common API defines the exact set of Web APIs that JSONsx can safely assume exist in any server-side/build-time runtime.** This means:
+**The WinterTC common API defines the exact set of Web APIs that Jx can safely assume exist in any server-side/build-time runtime.** This means:
 
 1. Any `$prototype` value in the common API is portable across all runtimes
 2. Build-time compilation can rely on these APIs without polyfills
@@ -23,26 +23,26 @@ JSONsx's `$prototype` system already maps JSON declarations to Web API construct
 
 ## 3. Overlap Analysis
 
-### 3.1 Already Aligned (JSONsx ↔ WinterTC)
+### 3.1 Already Aligned (Jx ↔ WinterTC)
 
-| JSONsx `$prototype` | WinterTC API | Notes |
+| Jx `$prototype` | WinterTC API | Notes |
 |---|---|---|
-| `Request` | Fetch API (`Request`, `Response`, `Headers`) | JSONsx already implements reactive Request. Response/Headers are implicit in server function returns. |
-| `URLSearchParams` | URL API (`URL`, `URLSearchParams`) | Direct match. JSONsx implements computed `.toString()`. |
+| `Request` | Fetch API (`Request`, `Response`, `Headers`) | Jx already implements reactive Request. Response/Headers are implicit in server function returns. |
+| `URLSearchParams` | URL API (`URL`, `URLSearchParams`) | Direct match. Jx implements computed `.toString()`. |
 | `FormData` | Fetch API (`FormData`) | Direct match. |
-| `Blob` | File API (`Blob`, `File`) | JSONsx implements `Blob`. `File` extends `Blob` — could be added. |
-| `ReadableStream` | Streams API (`ReadableStream`, `WritableStream`, `TransformStream`) | JSONsx has a stub. WinterTC mandates full Streams. |
+| `Blob` | File API (`Blob`, `File`) | Jx implements `Blob`. `File` extends `Blob` — could be added. |
+| `ReadableStream` | Streams API (`ReadableStream`, `WritableStream`, `TransformStream`) | Jx has a stub. WinterTC mandates full Streams. |
 
-**Conclusion:** JSONsx's existing `$prototype` namespace is already well-aligned with WinterTC. No changes needed for current prototypes.
+**Conclusion:** Jx's existing `$prototype` namespace is already well-aligned with WinterTC. No changes needed for current prototypes.
 
 ### 3.2 New Opportunities
 
-| WinterTC API | Relevance to JSONsx | Recommendation |
+| WinterTC API | Relevance to Jx | Recommendation |
 |---|---|---|
 | **`URLPattern`** | ★★★ **Critical** — Route matching + redirect patterns | **Adopt** (see §4) |
 | `URL` | ★★☆ — Useful for canonical URL construction in SEO/sitemap | Consider as `$prototype` |
 | `AbortController` / `AbortSignal` | ★★☆ — Build pipeline cancellation, request cancellation | Already implicit in `signal: true`; no schema change needed |
-| `EventTarget` / `CustomEvent` | ★☆☆ — Component event dispatch | JSONsx uses DOM events natively in custom elements; no schema-level action needed |
+| `EventTarget` / `CustomEvent` | ★☆☆ — Component event dispatch | Jx uses DOM events natively in custom elements; no schema-level action needed |
 | `TextEncoder` / `TextDecoder` | ★☆☆ — Build internals only | Implementation detail, not schema-relevant |
 | `CompressionStream` | ★☆☆ — Asset pipeline optimization | Build tool concern, not schema |
 | `Crypto` / `SubtleCrypto` | ☆☆☆ — No direct schema relevance | Not applicable |
@@ -50,7 +50,7 @@ JSONsx's `$prototype` system already maps JSON declarations to Web API construct
 
 ### 3.3 Not Applicable
 
-These WinterTC APIs have no bearing on JSONsx's declarative schema model:
+These WinterTC APIs have no bearing on Jx's declarative schema model:
 - **WebAssembly** — binary execution model
 - **Sockets API** (in progress) — TCP connections
 - **CLI API** (in progress) — argv/env access
@@ -81,7 +81,7 @@ The site-architecture spec currently uses `:param` and `*` wildcard syntax inher
 
 ### 4.3 URLPattern in JSON Data Formats
 
-Section 4.2 of the URLPattern spec explicitly defines how to **[integrate with JSON data formats](https://urlpattern.spec.whatwg.org/#other-specs-json)** — precisely JSONsx's use case. It specifies:
+Section 4.2 of the URLPattern spec explicitly defines how to **[integrate with JSON data formats](https://urlpattern.spec.whatwg.org/#other-specs-json)** — precisely Jx's use case. It specifies:
 
 - Accept patterns as strings (constructor string syntax) or as `URLPatternInit` objects
 - Resolve relative patterns against a base URL
@@ -91,7 +91,7 @@ This means our redirect/routing syntax is **already compatible** with the URLPat
 
 ### 4.4 Recommendation
 
-**Formally reference URLPattern as the pattern syntax standard for all route matching and redirect rules in JSONsx.**
+**Formally reference URLPattern as the pattern syntax standard for all route matching and redirect rules in Jx.**
 
 This requires no syntax changes to site-architecture.md — the `:param` and `*` patterns already conform. What it does is:
 
@@ -107,7 +107,7 @@ This requires no syntax changes to site-architecture.md — the `:param` and `*`
 
 ### 4.5 URLPattern as `$prototype`
 
-For advanced routing or redirect scenarios, JSONsx could support:
+For advanced routing or redirect scenarios, Jx could support:
 
 ```json
 {
@@ -126,7 +126,7 @@ This would compile to `new URLPattern({ pathname: "/blog/:slug" })` — useful f
 
 ### 5.1 Current State
 
-JSONsx server functions (`timing: "server"`) are compiled to Hono route handlers. The spec doesn't constrain the function signature.
+Jx server functions (`timing: "server"`) are compiled to Hono route handlers. The spec doesn't constrain the function signature.
 
 ### 5.2 WinterTC Alignment
 
@@ -136,11 +136,11 @@ WinterTC's Minimum Common API mandates the Fetch API (`Request` → `Response`).
 async function handler(request: Request): Promise<Response> { ... }
 ```
 
-This is already how Hono handlers work, and how JSONsx's `$prototype: "Request"` maps. **No changes needed** — JSONsx is already aligned here.
+This is already how Hono handlers work, and how Jx's `$prototype: "Request"` maps. **No changes needed** — Jx is already aligned here.
 
 ### 5.3 Recommendation
 
-Document in the server spec that server functions compiled by JSONsx should conform to the `Request → Response` interface as defined by the Fetch Standard (a WinterTC common API).
+Document in the server spec that server functions compiled by Jx should conform to the `Request → Response` interface as defined by the Fetch Standard (a WinterTC common API).
 
 ## 6. Summary of Recommendations
 
@@ -159,14 +159,14 @@ Document in the server spec that server functions compiled by JSONsx should conf
 
 WinterTC standardizes runtime APIs, not:
 - File-based routing conventions (no standard — Astro/Next.js are de facto)
-- Content collection schemas (no standard — this is JSONsx's contribution)
-- Layout/slot projection (covered by HTML `<slot>` which JSONsx already uses)
+- Content collection schemas (no standard — this is Jx's contribution)
+- Layout/slot projection (covered by HTML `<slot>` which Jx already uses)
 - Build pipeline orchestration (no standard)
 - SEO/sitemap generation (no standard)
 - i18n conventions (various standards, none for build-time SSG)
 
-These areas remain framework-defined conventions where JSONsx's Astro-inspired approach is as good as any.
+These areas remain framework-defined conventions where Jx's Astro-inspired approach is as good as any.
 
 ---
 
-**Bottom line:** WinterTC validates JSONsx's existing `$prototype` design and provides one high-value addition — formally referencing URLPattern as the pattern syntax standard for routing and redirects. The current site-architecture.md syntax is already compliant; the only change is adding the normative reference.
+**Bottom line:** WinterTC validates Jx's existing `$prototype` design and provides one high-value addition — formally referencing URLPattern as the pattern syntax standard for routing and redirects. The current site-architecture.md syntax is already compliant; the only change is adding the normative reference.

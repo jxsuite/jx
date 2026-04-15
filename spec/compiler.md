@@ -1,4 +1,4 @@
-# `@jsonsx/compiler` Specification
+# `@jxplatform/compiler` Specification
 ## Static HTML Compiler, Custom Element Emitter, and Island Detector
 
 **Version:** 2.0.0-draft
@@ -9,7 +9,7 @@
 
 ## 1. Overview
 
-The JSONsx compiler transforms `.json` component files into optimized production artifacts. It erases all JSONsx abstractions at build time — no JSON, no runtime, and no JSONsx code ships to production. The compiler auto-detects the appropriate output target based on document analysis.
+The Jx compiler transforms `.json` component files into optimized production artifacts. It erases all Jx abstractions at build time — no JSON, no runtime, and no Jx code ships to production. The compiler auto-detects the appropriate output target based on document analysis.
 
 **Production dependencies:** `@vue/reactivity` (~7 kB gzip) + `lit-html` (~3 kB gzip).
 
@@ -141,7 +141,7 @@ customElements.define('user-card', UserCard);
 
 ### 4.3 lit-html Binding Syntax
 
-| JSONsx | lit-html | What it does |
+| Jx | lit-html | What it does |
 |---|---|---|
 | `"textContent": "${state.name}"` | `${s.name}` | Reactive text |
 | `"onclick": { "$ref": "#/state/fn" }` | `@click="${() => s.fn(s)}"` | Event listener |
@@ -222,7 +222,7 @@ ${s.currentRoute === 'about' ? html`<div>About page</div>` : ''}
 
 ```json
 {
-  "$schema": "https://jsonsx.dev/schema/v1/class",
+  "$schema": "https://jxplatform.net/schema/v1/class",
   "$id": "MarkdownCollection",
   "description": "Globs and parses markdown files into a collection",
   "$defs": {
@@ -296,8 +296,8 @@ A file is a `.class.json` document when:
 
 For each `timing: "server"` entry, the compiler emits two artifacts:
 
-1. **Client-side:** A `POST /_jsonsx/server/$export` fetch call that stores the JSON response in a signal. If any `arguments` value is reactive, the fetch is wrapped in an effect.
-2. **Server-side:** A Hono handler file that imports the `$export` from `$src` and exposes it at `/_jsonsx/server/$export`.
+1. **Client-side:** A `POST /_jx/server/$export` fetch call that stores the JSON response in a signal. If any `arguments` value is reactive, the fetch is wrapped in an effect.
+2. **Server-side:** A Hono handler file that imports the `$export` from `$src` and exposes it at `/_jx/server/$export`.
 
 ### 6.2 Generated Server Handler
 
@@ -307,7 +307,7 @@ import { fetchMetrics } from './dashboard.server.js';
 
 const app = new Hono();
 
-app.post('/_jsonsx/server/fetchMetrics', async (c) => {
+app.post('/_jx/server/fetchMetrics', async (c) => {
   const args = await c.req.json();
   const result = await fetchMetrics(args);
   return c.json(result);
@@ -352,7 +352,7 @@ For dynamic documents that are not custom elements, the compiler emits:
 | Feature | Description | Status |
 |---|---|---|
 | `timing: "compiler"` | Bake fetch responses into HTML at build time | **Not implemented** |
-| Island serialization | `<script type="application/JSONsx+json">` hydration islands | **Not implemented** |
+| Island serialization | `<script type="application/Jx+json">` hydration islands | **Not implemented** |
 | Bundle manifest | Exact dependency manifest from JSON analysis | **Partially implemented** (imports collected but no standalone manifest file) |
 | Multi-page build | Orchestrate compilation across all pages in a site project | **Not implemented** |
 | Layout resolution | Resolve `$layout`, `$slot`, `$slotTarget` during compilation | **Not implemented** |
@@ -389,4 +389,4 @@ See the [Site Architecture Specification](site-architecture.md) for the full mul
 
 ---
 
-*`@jsonsx/compiler` Specification v2.0.0-draft*
+*`@jxplatform/compiler` Specification v2.0.0-draft*

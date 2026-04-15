@@ -5,7 +5,7 @@
   "state": {
     "items": {
       "$prototype": "LocalStorage",
-      "key": "jsonsx-list-items",
+      "key": "jx-list-items",
       "default": ["Apples", "Bananas", "Cherries"],
       "description": "List items — persisted transparently via the LocalStorage prototype"
     },

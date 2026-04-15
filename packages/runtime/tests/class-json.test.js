@@ -6,7 +6,7 @@ try {
 }
 
 import { describe, test, expect, mock, spyOn } from "bun:test";
-import { buildScope, resolvePrototype, isSignal } from "@jsonsx/runtime";
+import { buildScope, resolvePrototype, isSignal } from "@jxplatform/runtime";
 import { resolve as resolvePath, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -356,7 +356,7 @@ describe("resolveClassJson — fallback", () => {
         return Promise.reject(new Error("Network error"));
       }
       // Dev proxy call
-      if (urlStr.includes("__jsonsx_resolve__")) {
+      if (urlStr.includes("__jx_resolve__")) {
         proxyCalled = true;
         return Promise.resolve({
           ok: true,

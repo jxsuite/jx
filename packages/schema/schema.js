@@ -1,9 +1,9 @@
 /**
- * jsonsx-schema.js — JSONsx JSON Schema 2020-12 meta-schema generator
+ * jx-schema.js — Jx JSON Schema 2020-12 meta-schema generator
  * @version 1.0.0
  * @license MIT
  *
- * Generates a comprehensive JSON Schema 2020-12 document that validates JSONsx
+ * Generates a comprehensive JSON Schema 2020-12 document that validates Jx
  * source files. All HTML element names, CSS property names, and DOM event
  * handler names are derived at generation time from upstream web standards via:
  *
@@ -19,14 +19,14 @@
  * CLI:
  *   bun run schema.js [output-path]
  *
- * @module jsonsx-schema
+ * @module jx-schema
  */
 
 import { listAll as listElements } from "@webref/elements";
 import css from "@webref/css";
 import idl from "@webref/idl";
 
-// ─── Built-in $prototype values (JSONsx-specific, not from web standards) ─────
+// ─── Built-in $prototype values (Jx-specific, not from web standards) ─────
 
 const BUILT_IN_PROTOTYPES = [
   "Function",
@@ -101,7 +101,7 @@ async function loadWebData() {
 // ─── Generator ────────────────────────────────────────────────────────────────
 
 /**
- * Generate the full JSONsx meta-schema as a plain JavaScript object.
+ * Generate the full Jx meta-schema as a plain JavaScript object.
  * Derives HTML elements, CSS properties, and event handlers from upstream
  * web standards data at generation time.
  *
@@ -112,11 +112,11 @@ export async function generateSchema() {
 
   return {
     $schema: "https://json-schema.org/draft/2020-12/schema",
-    $id: "https://jsonsx.dev/schema/v1",
-    title: "JSONsx Document",
+    $id: "https://jxplatform.net/schema/v1",
+    title: "Jx Document",
     description:
-      "Schema for JSONsx component files. " +
-      "A JSONsx document is a JSON object that declaratively describes a reactive " +
+      "Schema for Jx component files. " +
+      "A Jx document is a JSON object that declaratively describes a reactive " +
       "web component: its structure (DOM tree), styling, type definitions ($defs), " +
       "runtime state, and inline or external functions. Reactivity is powered by @vue/reactivity.",
     type: "object",
@@ -126,9 +126,9 @@ export async function generateSchema() {
     properties: {
       $schema: {
         description:
-          "URI identifying the JSONsx dialect version. Enables schema-aware IDE tooling.",
+          "URI identifying the Jx dialect version. Enables schema-aware IDE tooling.",
         type: "string",
-        examples: ["https://jsonsx.dev/schema/v1"],
+        examples: ["https://jxplatform.net/schema/v1"],
       },
       $id: {
         description: "Component identifier string. Used by tooling and the builder.",
@@ -553,7 +553,7 @@ export async function generateSchema() {
           $src: {
             description: "External module specifier. Required when $prototype is not a built-in.",
             type: "string",
-            examples: ["@jsonsx/md", "./lib/my-parser.js", "npm:@myorg/data"],
+            examples: ["@jxplatform/md", "./lib/my-parser.js", "npm:@myorg/data"],
           },
           $export: {
             description: "Named export in $src module. Defaults to the $prototype value.",
@@ -615,7 +615,7 @@ export async function generateSchema() {
 
       // ── Element definition ────────────────────────────────────────────────
       ElementDef: {
-        description: "A JSONsx element definition. Maps directly to a DOM element.",
+        description: "A Jx element definition. Maps directly to a DOM element.",
         type: "object",
         required: ["tagName"],
         properties: {
@@ -790,7 +790,7 @@ export async function generateSchema() {
       },
 
       ExternalRef: {
-        description: "Reference to an external JSONsx component file.",
+        description: "Reference to an external Jx component file.",
         type: "string",
         pattern: "^(\\./|\\.\\./).*\\.json$|^https?://",
         examples: ["./card.json", "https://cdn.example.com/button.json"],
@@ -952,7 +952,7 @@ export async function generateSchemaString() {
 }
 
 /**
- * Validate a JSONsx document against the generated schema using Ajv.
+ * Validate a Jx document against the generated schema using Ajv.
  *
  * @param {object} doc
  * @returns {Promise<{ valid: boolean, errors: object[] | null }>}
@@ -987,7 +987,7 @@ if (process.argv[1] && process.argv[1].endsWith("schema.js")) {
   if (out) {
     const { writeFileSync } = await import("node:fs");
     writeFileSync(out, schemaStr, "utf8");
-    console.error(`JSONsx meta-schema written to ${out}`);
+    console.error(`Jx meta-schema written to ${out}`);
   } else {
     process.stdout.write(schemaStr + "\n");
   }

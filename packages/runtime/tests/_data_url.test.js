@@ -4,7 +4,7 @@ try {
 } catch {}
 
 import { describe, test, expect, mock } from "bun:test";
-import { buildScope, JSONsx, isSignal } from "../runtime.js";
+import { buildScope, Jx, isSignal } from "../runtime.js";
 
 const wait = () => new Promise((r) => setTimeout(r, 0));
 const BASE = "http://localhost/";
@@ -25,11 +25,11 @@ describe("buildScope", () => {
   });
 });
 
-describe("JSONsx", () => {
+describe("Jx", () => {
   test("calls onMount if present in scope via $src", async () => {
     const target = document.createElement("div");
     const srcUrl = new URL("./_test_handlers.js", import.meta.url).href;
-    await JSONsx(
+    await Jx(
       {
         tagName: "div",
         state: {
@@ -52,7 +52,7 @@ describe("JSONsx", () => {
       }),
     ));
     const target = document.createElement("div");
-    await JSONsx("http://example.com/test.json", target);
+    await Jx("http://example.com/test.json", target);
     expect(target.children[0].tagName.toLowerCase()).toBe("article");
   });
 });

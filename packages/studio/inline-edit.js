@@ -331,7 +331,7 @@ function handleEnterKey() {
   splitFn(path, beforeChildren, afterChildren);
 }
 
-// ─── Content sync: DOM → JSONsx ────────────────────────────────────────────
+// ─── Content sync: DOM → Jx ────────────────────────────────────────────
 
 function commitChanges() {
   if (!commitFn || !activeEl || !activePath) return;
@@ -342,7 +342,7 @@ function commitChanges() {
 }
 
 /**
- * Convert a contenteditable element's content to JSONsx children/textContent.
+ * Convert a contenteditable element's content to Jx children/textContent.
  * Returns { textContent } for plain text or { children } for rich content.
  * @param {HTMLElement} el
  * @returns {{ textContent?: string | null, children?: any[] }}
@@ -377,7 +377,7 @@ function elementToJsonsx(el) {
 }
 
 /**
- * Convert a DOM node to a JSONsx element definition.
+ * Convert a DOM node to a Jx element definition.
  * @param {Node} node
  * @returns {any}
  */
@@ -428,7 +428,7 @@ function domNodeToJsonsx(node) {
 }
 
 /**
- * Convert a DocumentFragment to a JSONsx-compatible structure.
+ * Convert a DocumentFragment to a Jx-compatible structure.
  * Returns { textContent } or { children }.
  * @param {DocumentFragment} frag
  * @returns {{ textContent?: string | null, children?: any[] }}
@@ -721,7 +721,7 @@ function dismissSlashMenu() {
 }
 
 /**
- * Build a default JSONsx element definition for a given tag.
+ * Build a default Jx element definition for a given tag.
  * @param {string} tag
  * @returns {any}
  */

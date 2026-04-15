@@ -5,7 +5,7 @@
     "items": {
       "type": "array",
       "default": [
-        { "id": 1, "text": "Learn JSONsx", "done": false },
+        { "id": 1, "text": "Learn Jx", "done": false },
         { "id": 2, "text": "Build something reactive", "done": false }
       ],
       "description": "Array of todo items: { id, text, done }"

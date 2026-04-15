@@ -1,8 +1,8 @@
 /**
- * md-convert.js — Bidirectional mdast ↔ JSONsx conversion
+ * md-convert.js — Bidirectional mdast ↔ Jx conversion
  *
- * mdToJsonsx(mdast) → JSONsx element tree (for loading into the canvas)
- * jsonsxToMd(jsonsx) → mdast             (for saving back to markdown)
+ * mdToJsonsx(mdast) → Jx element tree (for loading into the canvas)
+ * jxToMd(jx) → mdast             (for saving back to markdown)
  *
  * Both are pure tree transformations. The remark ecosystem handles
  * all actual parsing and serialization.
@@ -10,10 +10,10 @@
 
 import { MD_ALL, MD_BLOCK, MD_INLINE } from "./md-allowlist.js";
 
-// ─── mdast → JSONsx ──────────────────────────────────────────────────────────
+// ─── mdast → Jx ──────────────────────────────────────────────────────────
 
 /**
- * mdast node-type → JSONsx tagName mapping
+ * mdast node-type → Jx tagName mapping
  * @type {Record<string, (n: any) => string>}
  */
 const MDAST_TAG_MAP = {
@@ -39,9 +39,9 @@ const MDAST_TAG_MAP = {
 };
 
 /**
- * Convert an mdast tree to a JSONsx element tree.
+ * Convert an mdast tree to a Jx element tree.
  * @param {any} mdast - Root mdast node (type: 'root')
- * @returns {any} JSONsx element tree
+ * @returns {any} Jx element tree
  */
 export function mdToJsonsx(mdast) {
   if (mdast.type === "root") {
@@ -212,10 +212,10 @@ function convertDirective(node) {
   return el;
 }
 
-// ─── JSONsx → mdast ──────────────────────────────────────────────────────────
+// ─── Jx → mdast ──────────────────────────────────────────────────────────
 
 /**
- * JSONsx tagName → mdast node-type mapping (inverse of MDAST_TAG_MAP)
+ * Jx tagName → mdast node-type mapping (inverse of MDAST_TAG_MAP)
  * @type {Record<string, string>}
  */
 const TAG_MDAST_MAP = {
@@ -247,12 +247,12 @@ const TAG_MDAST_MAP = {
 };
 
 /**
- * Convert a JSONsx element tree to an mdast tree.
- * @param {any} jsonsx - JSONsx element tree (root content div)
+ * Convert a Jx element tree to an mdast tree.
+ * @param {any} jx - Jx element tree (root content div)
  * @returns {any} mdast root node
  */
-export function jsonsxToMd(jsonsx) {
-  const children = (jsonsx.children ?? [])
+export function jxToMd(jx) {
+  const children = (jx.children ?? [])
     .map((/** @type {any} */ child, /** @type {number} */ i) => convertJsonsxNode(child, true))
     .filter(Boolean);
 
@@ -260,8 +260,8 @@ export function jsonsxToMd(jsonsx) {
 }
 
 /**
- * Convert a single JSONsx element to an mdast node.
- * @param {any} el - JSONsx element
+ * Convert a single Jx element to an mdast node.
+ * @param {any} el - Jx element
  * @param {boolean} isBlock - Whether this element is in a block context
  * @returns {any} mdast node
  */
@@ -406,7 +406,7 @@ function convertJsonsxNode(el, isBlock) {
 }
 
 /**
- * Get inline children from a JSONsx element as mdast nodes.
+ * Get inline children from a Jx element as mdast nodes.
  * Handles both textContent shorthand and explicit children array.
  * @param {any} el
  * @returns {any[]}
@@ -419,7 +419,7 @@ function inlineChildren(el) {
 }
 
 /**
- * Get block children from a JSONsx element as mdast nodes.
+ * Get block children from a Jx element as mdast nodes.
  * @param {any} el
  * @returns {any[]}
  */
@@ -432,7 +432,7 @@ function blockChildren(el) {
 }
 
 /**
- * Convert a non-markdown-native JSONsx element to a directive node.
+ * Convert a non-markdown-native Jx element to a directive node.
  * @param {any} el
  * @param {boolean} isBlock
  * @returns {any}

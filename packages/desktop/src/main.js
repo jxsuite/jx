@@ -1,5 +1,5 @@
 /**
- * main.js — JSONsx Studio desktop entry point (Electrobun Bun process)
+ * main.js — Jx Studio desktop entry point (Electrobun Bun process)
  *
  * 1. Determines the initial project root (CLI arg, env var, or CWD)
  * 2. Starts the embedded HTTP server for studio assets + /__studio/* API
@@ -38,8 +38,8 @@ setProjectRoot(projectRoot);
 // ─── Start embedded HTTP server ───────────────────────────────────────────────
 // The server handles:
 //   /studio/*           → bundled Studio assets (HTML, JS, CSS)
-//   /__jsonsx_resolve__  → $prototype/$src module proxy
-//   /__jsonsx_server__   → timing:"server" function proxy
+//   /__jx_resolve__  → $prototype/$src module proxy
+//   /__jx_server__   → timing:"server" function proxy
 //   /__studio/*          → fallback file API (used by devserver adapter)
 
 const server = /** @type {{ port: number }} */ (
@@ -72,7 +72,7 @@ const rpc = BrowserView.defineRPC({
 // ─── Open the main window ─────────────────────────────────────────────────────
 
 new BrowserWindow({
-  title: "JSONsx Studio",
+  title: "Jx Studio",
   url: `http://localhost:${server.port}/studio/index.html`,
   frame: { x: 0, y: 0, width: 1400, height: 900 },
   rpc,

@@ -107,9 +107,9 @@
             "about": {
               "tagName": "section",
               "children": [
-                { "tagName": "h2", "textContent": "About JSONsx",
+                { "tagName": "h2", "textContent": "About Jx",
                   "style": { "margin": "0 0 0.75em", "color": "#333" } },
-                { "tagName": "p", "textContent": "JSONsx is a schema and runtime for building reactive web applications using plain JSON.",
+                { "tagName": "p", "textContent": "Jx is a schema and runtime for building reactive web applications using plain JSON.",
                   "style": { "color": "#555", "lineHeight": "1.6" } },
                 { "tagName": "ul",
                   "style": { "color": "#555", "lineHeight": "2" },

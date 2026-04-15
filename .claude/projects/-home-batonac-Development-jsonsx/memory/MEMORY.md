@@ -1,31 +1,31 @@
-# JSONsx Project Memory
+# Jx Project Memory
 
 ## Project Overview
-- Monorepo at `/home/batonac/Development/jsonsx/` using Bun + npm workspaces
+- Monorepo at `/home/batonac/Development/jx/` using Bun + npm workspaces
 - JSON-native reactive web component system — structure and state are plain JSON, reactivity via `@vue/reactivity`
 - DDOM was the precursor project; DDOME was the unbuilt visual editor spec for DDOM
 
 ## Packages
-- `@jsonsx/runtime` — core renderer (851 lines), sole dep: `@vue/reactivity`
-- `@jsonsx/compiler` — static HTML compiler with hydration islands
-- `@jsonsx/parser` — markdown integration (`MarkdownFile`, `MarkdownCollection`, `MarkdownDirective` remark plugin) in `md.js`
-- `@jsonsx/schema` — JSON Schema 2020-12 meta-schema generator from `@webref/*` data
-- `@jsonsx/studio` — visual builder (~2850 lines vanilla JS), uses Atlassian pragmatic-drag-and-drop
+- `@jxplatform/runtime` — core renderer (851 lines), sole dep: `@vue/reactivity`
+- `@jxplatform/compiler` — static HTML compiler with hydration islands
+- `@jxplatform/parser` — markdown integration (`MarkdownFile`, `MarkdownCollection`, `MarkdownDirective` remark plugin) in `md.js`
+- `@jxplatform/schema` — JSON Schema 2020-12 meta-schema generator from `@webref/*` data
+- `@jxplatform/studio` — visual builder (~2850 lines vanilla JS), uses Atlassian pragmatic-drag-and-drop
 
 ## Key Specs
-- `spec/spec.md` — main JSONsx spec (five `$defs` shapes, `$ref`, `$prototype`, `$media`, etc.)
+- `spec/spec.md` — main Jx spec (five `$defs` shapes, `$ref`, `$prototype`, `$media`, etc.)
 - `spec/builder-spec.md` — studio builder spec
 - `spec/ddome.md` — DDOME vision doc (never built, precursor concepts)
 - `spec/studio-next-spec.md` — v0.3.0 next steps proposal: runtime-first, then markdown-as-canvas-mode
 
 ## Studio Status
 - Working: file I/O, layer tree DnD, multi-breakpoint canvas, inspector, signal management, block library
-- Gap: uses own preview renderer, not `@jsonsx/runtime`; no markdown editing; single-file scope
+- Gap: uses own preview renderer, not `@jxplatform/runtime`; no markdown editing; single-file scope
 
 ## Studio Next Steps (v0.3.0 spec)
 - Priority 1: Runtime integration (onNodeCreated callback, edit/preview toggle)
-- Priority 2: Markdown as canvas mode — NOT a text editor. Bidirectional mdast↔JSONsx conversion
-  - mdToJsonsx() and jsonsxToMd() — two tree walkers + mapping table, ~300 lines total
+- Priority 2: Markdown as canvas mode — NOT a text editor. Bidirectional mdast↔Jx conversion
+  - mdToJsonsx() and jxToMd() — two tree walkers + mapping table, ~300 lines total
   - Markdown element allowlist defines what round-trips to pure markdown
   - Non-allowlist elements become directive syntax on export
   - Existing canvas, layer tree, DnD, inspector all reused — no new UI panels

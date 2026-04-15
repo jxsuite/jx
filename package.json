@@ -4,7 +4,7 @@
     "oxfmt": "^0.44.0",
     "oxlint": "^1.59.0"
   },
-  "name": "jsonsx-workspace",
+  "name": "jx-platform",
   "private": true,
   "scripts": {
     "build": "bun run build:compiler && bun run build:runtime && bun run build:studio && bun run generate:schema",

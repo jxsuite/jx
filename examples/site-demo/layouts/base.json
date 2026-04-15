@@ -17,7 +17,7 @@
               "tagName": "a",
               "attributes": { "href": "/" },
               "style": { "color": "white", "textDecoration": "none", "fontWeight": "bold", "fontSize": "1.25rem" },
-              "children": ["JSONsx Demo"]
+              "children": ["Jx Demo"]
             },
             {
               "tagName": "a",
@@ -46,7 +46,7 @@
         "marginTop": "2rem"
       },
       "children": [
-        { "tagName": "p", "children": ["Built with JSONsx"] }
+        { "tagName": "p", "children": ["Built with Jx"] }
       ]
     }
   ]

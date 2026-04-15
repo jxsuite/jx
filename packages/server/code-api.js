@@ -24,7 +24,7 @@ const OXLINT_BIN = resolve(
  */
 function wrapBody(body, args = ["state", "event"]) {
 	const params = args.join(", ");
-	return `function __jsonsx_fn__(${params}) {\n${body}\n}`;
+	return `function __jx_fn__(${params}) {\n${body}\n}`;
 }
 
 /**
@@ -129,7 +129,7 @@ export async function handleCodeApi(req, url) {
 		const headerLen = wrapped.indexOf("\n") + 1;
 		const tmpFile = join(
 			tmpdir(),
-			`__jsonsx_lint_${Date.now()}_${Math.random().toString(36).slice(2)}.js`,
+			`__jx_lint_${Date.now()}_${Math.random().toString(36).slice(2)}.js`,
 		);
 
 		try {

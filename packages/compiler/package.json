@@ -1,7 +1,7 @@
 {
-  "name": "@jsonsx/compiler",
+  "name": "@jxplatform/compiler",
   "version": "1.0.0",
-  "description": "JSONsx static HTML compiler, island detector, and site builder",
+  "description": "Jx static HTML compiler, island detector, and site builder",
   "license": "MIT",
   "type": "module",
   "exports": {
@@ -15,7 +15,7 @@
     "./content-loader": "./content-loader.js"
   },
   "bin": {
-    "jsonsx-build": "./cli-build.js"
+    "jx-build": "./cli-build.js"
   },
   "scripts": {
     "test": "bun test",
@@ -24,7 +24,8 @@
   },
   "dependencies": {
     "@apidevtools/json-schema-ref-parser": "^15.3.5",
-    "@jsonsx/runtime": "workspace:*"
+    "@jxplatform/runtime": "workspace:*",
+    "@jxplatform/parser": "workspace:*"
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.8.9"

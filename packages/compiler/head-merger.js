@@ -38,7 +38,7 @@ export function mergeHead(siteHead = [], layoutHead = [], pageHead = [], context
   }
 
   // Insert <title> if present
-  const title = context.title ?? context.siteName ?? "JSONsx Site";
+  const title = context.title ?? context.siteName ?? "Jx Site";
   merged.set("title", { tagName: "title", children: [title] });
 
   // Add canonical URL if provided

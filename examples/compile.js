@@ -1,5 +1,5 @@
 /**
- * compile.js — Build step for JSONsx examples
+ * compile.js — Build step for Jx examples
  *
  * Compiles every example's JSON descriptor to a static HTML file in dist/.
  * Each example is output to dist/<example-name>/index.html.
@@ -10,7 +10,7 @@
  *   node compile.js
  */
 
-import { compile, compileServer, compileElement, compileElementPage } from '@jsonsx/compiler';
+import { compile, compileServer, compileElement, compileElementPage } from '@jxplatform/compiler';
 import { readFileSync, writeFileSync, mkdirSync, copyFileSync, rmSync } from 'node:fs';
 import { resolve, dirname, relative, basename } from 'node:path';
 
@@ -26,55 +26,55 @@ const examples = [
     name:    'counter',
     src:     resolve(__dir, 'counter/counter.json'),
     out:     resolve(__dir, 'dist/counter/index.html'),
-    title:   'Counter — JSONsx',
+    title:   'Counter — Jx',
   },
   {
     name:    'todo',
     src:     resolve(__dir, 'todo/todo-app.json'),
     out:     resolve(__dir, 'dist/todo/index.html'),
-    title:   'Todo App — JSONsx',
+    title:   'Todo App — Jx',
   },
   {
     name:    'form',
     src:     resolve(__dir, 'form/contact-form.json'),
     out:     resolve(__dir, 'dist/form/index.html'),
-    title:   'Contact Form — JSONsx',
+    title:   'Contact Form — Jx',
   },
   {
     name:    'list',
     src:     resolve(__dir, 'list/dynamic-list.json'),
     out:     resolve(__dir, 'dist/list/index.html'),
-    title:   'Dynamic List — JSONsx',
+    title:   'Dynamic List — Jx',
   },
   {
     name:    'fetch',
     src:     resolve(__dir, 'fetch/fetch-demo.json'),
     out:     resolve(__dir, 'dist/fetch/index.html'),
-    title:   'Fetch Demo — JSONsx',
+    title:   'Fetch Demo — Jx',
   },
   {
     name:    'computed',
     src:     resolve(__dir, 'computed/user-card.json'),
     out:     resolve(__dir, 'dist/computed/index.html'),
-    title:   'Computed — JSONsx',
+    title:   'Computed — Jx',
   },
   {
     name:    'markdown',
     src:     resolve(__dir, 'markdown/blog.json'),
     out:     resolve(__dir, 'dist/markdown/index.html'),
-    title:   'Blog — JSONsx',
+    title:   'Blog — Jx',
   },
   {
     name:    'responsive',
     src:     resolve(__dir, 'responsive/responsive-card.json'),
     out:     resolve(__dir, 'dist/responsive/index.html'),
-    title:   'Responsive Card — JSONsx',
+    title:   'Responsive Card — Jx',
   },
   {
     name:    'switch',
     src:     resolve(__dir, 'switch/router.json'),
     out:     resolve(__dir, 'dist/switch/index.html'),
-    title:   'Router — JSONsx',
+    title:   'Router — Jx',
   },
 ];
 
@@ -198,7 +198,7 @@ const elementExamples = [
     name: 'custom-elements',
     src: resolve(__dir, 'custom-elements/task-manager.json'),
     outDir: resolve(__dir, 'dist/custom-elements'),
-    title: 'Task Manager — Compiled Output (No JSONsx Runtime)',
+    title: 'Task Manager — Compiled Output (No Jx Runtime)',
   },
 ];
 

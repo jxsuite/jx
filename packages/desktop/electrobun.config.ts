@@ -5,8 +5,8 @@ const pkg = JSON.parse(readFileSync("./package.json", "utf8"));
 
 export default {
   app: {
-    name: "JSONsx Studio",
-    identifier: "com.jxplatform.jsonsx-studio",
+    name: "Jx Studio",
+    identifier: "com.jxplatform.jx-studio",
     version: pkg.version,
   },
 

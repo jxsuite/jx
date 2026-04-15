@@ -1,12 +1,12 @@
 ---
-title: Building a Blog with JSONsx
+title: Building a Blog with Jx
 date: 2025-04-10
-tags: [jsonsx, blog, markdown]
+tags: [jx, blog, markdown]
 published: true
 author: Jane Smith
 ---
 
-This guide walks through building a complete blog using JSONsx and `@jsonsx/md`.
+This guide walks through building a complete blog using Jx and `@jxplatform/md`.
 
 ## Project Structure
 
@@ -29,7 +29,7 @@ Use `MarkdownCollection` to load all posts as a sorted array:
   "$defs": {
     "$posts": {
       "$prototype": "MarkdownCollection",
-      "$src": "@jsonsx/md",
+      "$src": "@jxplatform/md",
       "src": "./content/posts/*.md",
       "sortBy": "frontmatter.date",
       "sortOrder": "desc",
@@ -49,7 +49,7 @@ Use `MarkdownFile` to parse a single post and inject its HTML body into your lay
   "$defs": {
     "$post": {
       "$prototype": "MarkdownFile",
-      "$src": "@jsonsx/md",
+      "$src": "@jxplatform/md",
       "src": "./content/posts/first-post.md",
       "timing": "compiler",
       "signal": true

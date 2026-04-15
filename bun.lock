@@ -18,37 +18,37 @@
       },
     },
     "examples": {
-      "name": "@jsonsx/examples",
+      "name": "@jxplatform/examples",
       "version": "1.0.0",
       "dependencies": {
-        "@jsonsx/compiler": "workspace:*",
-        "@jsonsx/parser": "workspace:*",
-        "@jsonsx/runtime": "workspace:*",
-        "@jsonsx/server": "workspace:*",
-        "@jsonsx/studio": "workspace:*",
+        "@jxplatform/compiler": "workspace:*",
+        "@jxplatform/parser": "workspace:*",
+        "@jxplatform/runtime": "workspace:*",
+        "@jxplatform/server": "workspace:*",
+        "@jxplatform/studio": "workspace:*",
       },
     },
     "packages/compiler": {
-      "name": "@jsonsx/compiler",
+      "name": "@jxplatform/compiler",
       "version": "1.0.0",
       "dependencies": {
         "@apidevtools/json-schema-ref-parser": "^15.3.5",
-        "@jsonsx/runtime": "workspace:*",
+        "@jxplatform/runtime": "workspace:*",
       },
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.8.9",
       },
     },
     "packages/desktop": {
-      "name": "@jsonsx/desktop",
+      "name": "@jxplatform/desktop",
       "version": "1.0.0",
       "dependencies": {
-        "@jsonsx/server": "workspace:*",
+        "@jxplatform/server": "workspace:*",
         "electrobun": "latest",
       },
     },
     "packages/parser": {
-      "name": "@jsonsx/parser",
+      "name": "@jxplatform/parser",
       "version": "1.0.0",
       "dependencies": {
         "glob": "^13.0.6",
@@ -65,11 +65,11 @@
       },
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.8.9",
-        "@jsonsx/runtime": "workspace:*",
+        "@jxplatform/runtime": "workspace:*",
       },
     },
     "packages/runtime": {
-      "name": "@jsonsx/runtime",
+      "name": "@jxplatform/runtime",
       "version": "2.0.0",
       "dependencies": {
         "@vue/reactivity": "^3.5.0",
@@ -79,7 +79,7 @@
       },
     },
     "packages/schema": {
-      "name": "@jsonsx/schema",
+      "name": "@jxplatform/schema",
       "version": "1.0.0",
       "dependencies": {
         "@webref/css": "^8.5.2",
@@ -88,19 +88,19 @@
       },
     },
     "packages/server": {
-      "name": "@jsonsx/server",
+      "name": "@jxplatform/server",
       "version": "1.0.0",
       "dependencies": {
         "chokidar": "^5.0.0",
       },
     },
     "packages/studio": {
-      "name": "@jsonsx/studio",
+      "name": "@jxplatform/studio",
       "version": "1.0.0",
       "dependencies": {
         "@atlaskit/pragmatic-drag-and-drop": "^1.7.10",
         "@atlaskit/pragmatic-drag-and-drop-hitbox": "^1.1.0",
-        "@jsonsx/runtime": "workspace:*",
+        "@jxplatform/runtime": "workspace:*",
         "@spectrum-web-components/accordion": "^1.11.2",
         "@spectrum-web-components/action-button": "^1.6.0",
         "@spectrum-web-components/action-group": "^1.6.0",
@@ -157,21 +157,21 @@
 
     "@internationalized/number": ["@internationalized/number@3.6.5", "", { "dependencies": { "@swc/helpers": "^0.5.0" } }, "sha512-6hY4Kl4HPBvtfS62asS/R22JzNNy8vi/Ssev7x6EobfCp+9QIB2hKvI2EtbdJ0VSQacxVNtqhE/NmF/NZ0gm6g=="],
 
-    "@jsonsx/compiler": ["@jsonsx/compiler@workspace:packages/compiler"],
+    "@jxplatform/compiler": ["@jxplatform/compiler@workspace:packages/compiler"],
 
-    "@jsonsx/desktop": ["@jsonsx/desktop@workspace:packages/desktop"],
+    "@jxplatform/desktop": ["@jxplatform/desktop@workspace:packages/desktop"],
 
-    "@jsonsx/examples": ["@jsonsx/examples@workspace:examples"],
+    "@jxplatform/examples": ["@jxplatform/examples@workspace:examples"],
 
-    "@jsonsx/parser": ["@jsonsx/parser@workspace:packages/parser"],
+    "@jxplatform/parser": ["@jxplatform/parser@workspace:packages/parser"],
 
-    "@jsonsx/runtime": ["@jsonsx/runtime@workspace:packages/runtime"],
+    "@jxplatform/runtime": ["@jxplatform/runtime@workspace:packages/runtime"],
 
-    "@jsonsx/schema": ["@jsonsx/schema@workspace:packages/schema"],
+    "@jxplatform/schema": ["@jxplatform/schema@workspace:packages/schema"],
 
-    "@jsonsx/server": ["@jsonsx/server@workspace:packages/server"],
+    "@jxplatform/server": ["@jxplatform/server@workspace:packages/server"],
 
-    "@jsonsx/studio": ["@jsonsx/studio@workspace:packages/studio"],
+    "@jxplatform/studio": ["@jxplatform/studio@workspace:packages/studio"],
 
     "@lit-labs/observers": ["@lit-labs/observers@2.0.2", "", { "dependencies": { "@lit/reactive-element": "^1.0.0 || ^2.0.0" } }, "sha512-eZb5+W9Cb0e/Y5m1DNxBSGTvGB2TAVTGMnTxL/IzFhPQEcZIAHewW1eVBhN8W07A5tirRaAmmF6fGL1V20p3gQ=="],
 
@@ -725,7 +725,7 @@
 
     "@floating-ui/core/@floating-ui/utils": ["@floating-ui/utils@0.2.11", "", {}, "sha512-RiB/yIh78pcIxl6lLMG0CgBXAZ2Y0eVHqMPYugu+9U0AeT6YBeiJpf7lbdJNIugFP5SIjwNRgo4DhR1Qxi26Gg=="],
 
-    "@jsonsx/studio/remark-directive": ["remark-directive@3.0.1", "", { "dependencies": { "@types/mdast": "^4.0.0", "mdast-util-directive": "^3.0.0", "micromark-extension-directive": "^3.0.0", "unified": "^11.0.0" } }, "sha512-gwglrEQEZcZYgVyG1tQuA+h58EZfq5CSULw7J90AFuCTyib1thgHPoqQ+h9iFvU6R+vnZ5oNFQR5QKgGpk741A=="],
+    "@jxplatform/studio/remark-directive": ["remark-directive@3.0.1", "", { "dependencies": { "@types/mdast": "^4.0.0", "mdast-util-directive": "^3.0.0", "micromark-extension-directive": "^3.0.0", "unified": "^11.0.0" } }, "sha512-gwglrEQEZcZYgVyG1tQuA+h58EZfq5CSULw7J90AFuCTyib1thgHPoqQ+h9iFvU6R+vnZ5oNFQR5QKgGpk741A=="],
 
     "parse-entities/@types/unist": ["@types/unist@2.0.11", "", {}, "sha512-CmBKiL6NNo/OqgmMn95Fk9Whlp2mtvIv+KNpQKN2F4SjvrEesubTRWGYSg+BnWZOnlCaSTU1sMpsBOzgbYhnsA=="],
 
@@ -737,7 +737,7 @@
 
     "unist-util-find/unist-util-visit": ["unist-util-visit@2.0.3", "", { "dependencies": { "@types/unist": "^2.0.0", "unist-util-is": "^4.0.0", "unist-util-visit-parents": "^3.0.0" } }, "sha512-iJ4/RczbJMkD0712mGktuGpm/U4By4FfDonL7N/9tATGIF4imikjOuagyMY53tnZq3NP6BcmlrHhEKAfGWjh7Q=="],
 
-    "@jsonsx/studio/remark-directive/micromark-extension-directive": ["micromark-extension-directive@3.0.2", "", { "dependencies": { "devlop": "^1.0.0", "micromark-factory-space": "^2.0.0", "micromark-factory-whitespace": "^2.0.0", "micromark-util-character": "^2.0.0", "micromark-util-symbol": "^2.0.0", "micromark-util-types": "^2.0.0", "parse-entities": "^4.0.0" } }, "sha512-wjcXHgk+PPdmvR58Le9d7zQYWy+vKEU9Se44p2CrCDPiLr2FMyiT4Fyb5UFKFC66wGB3kPlgD7q3TnoqPS7SZA=="],
+    "@jxplatform/studio/remark-directive/micromark-extension-directive": ["micromark-extension-directive@3.0.2", "", { "dependencies": { "devlop": "^1.0.0", "micromark-factory-space": "^2.0.0", "micromark-factory-whitespace": "^2.0.0", "micromark-util-character": "^2.0.0", "micromark-util-symbol": "^2.0.0", "micromark-util-types": "^2.0.0", "parse-entities": "^4.0.0" } }, "sha512-wjcXHgk+PPdmvR58Le9d7zQYWy+vKEU9Se44p2CrCDPiLr2FMyiT4Fyb5UFKFC66wGB3kPlgD7q3TnoqPS7SZA=="],
 
     "unist-util-find/unist-util-visit/@types/unist": ["@types/unist@2.0.11", "", {}, "sha512-CmBKiL6NNo/OqgmMn95Fk9Whlp2mtvIv+KNpQKN2F4SjvrEesubTRWGYSg+BnWZOnlCaSTU1sMpsBOzgbYhnsA=="],
 

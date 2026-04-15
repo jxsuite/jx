@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * jsonsx-build — CLI entry point for multi-page site builds
+ * jx-build — CLI entry point for multi-page site builds
  *
  * Usage:
  *   bun packages/compiler/cli-build.js [project-root]

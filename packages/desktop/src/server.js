@@ -1,25 +1,25 @@
 /**
- * server.js — Embedded HTTP server for the JSONsx Studio desktop app.
+ * server.js — Embedded HTTP server for the Jx Studio desktop app.
  *
- * Wraps @jsonsx/server's createDevServer with:
+ * Wraps @jxplatform/server's createDevServer with:
  *   - watch disabled (no SSE live-reload in production)
  *   - a middleware that intercepts /studio/* requests and serves them
  *     directly from the bundled app views directory (PATHS.VIEWS_FOLDER)
  *     rather than the user's project root
  *
- * The @jsonsx/server default handlers still take care of:
+ * The @jxplatform/server default handlers still take care of:
  *   - /__studio/*        studio filesystem API (read/write project files)
- *   - /__jsonsx_resolve__  $src / $prototype module proxy
- *   - /__jsonsx_server__   timing:"server" function proxy
+ *   - /__jx_resolve__  $src / $prototype module proxy
+ *   - /__jx_server__   timing:"server" function proxy
  */
 
 import { join } from "node:path";
-import { createDevServer } from "@jsonsx/server";
+import { createDevServer } from "@jxplatform/server";
 
 /**
  * @param {string} viewsDir   PATHS.VIEWS_FOLDER from the main process — where bundled
  *                             studio assets live inside the app bundle.
- * @param {string} projectRoot  The user's JSONsx project directory to serve and edit.
+ * @param {string} projectRoot  The user's Jx project directory to serve and edit.
  */
 export async function startStudioServer(viewsDir, projectRoot) {
   const server = await createDevServer({
@@ -32,7 +32,7 @@ export async function startStudioServer(viewsDir, projectRoot) {
       const path = url.pathname;
 
       // Serve bundled studio assets (HTML + compiled JS/CSS) from the app bundle.
-      // All other paths fall through to the standard @jsonsx/server handlers.
+      // All other paths fall through to the standard @jxplatform/server handlers.
       if (path.startsWith("/studio/")) {
         const assetPath = join(viewsDir, path);
         const file = Bun.file(assetPath);

@@ -35,7 +35,7 @@ export function injectContext(doc, siteConfig, route, collections = new Map(), p
 
   // $site context — read-only site-level data
   doc.state.$site = {
-    name: siteConfig.name ?? "JSONsx Site",
+    name: siteConfig.name ?? "Jx Site",
     url: siteConfig.url ?? "",
     ...(siteConfig.state ?? {}),
   };

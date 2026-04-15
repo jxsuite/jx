@@ -1,7 +1,7 @@
 {
-  "name": "@jsonsx/server",
+  "name": "@jxplatform/server",
   "version": "1.0.0",
-  "description": "JSONsx development server with live reload, server-side proxy, and studio integration",
+  "description": "Jx development server with live reload, server-side proxy, and studio integration",
   "license": "MIT",
   "type": "module",
   "exports": {

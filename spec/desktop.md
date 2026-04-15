@@ -1,4 +1,4 @@
-# JSONsx Studio Desktop Architecture
+# Jx Studio Desktop Architecture
 ## Platform Abstraction, Project Loading, and Component Scoping
 
 **Version:** 1.0.0-draft
@@ -24,21 +24,21 @@
 
 ## 1. Overview
 
-JSONsx Studio is designed for three deployment targets that share a single core codebase:
+Jx Studio is designed for three deployment targets that share a single core codebase:
 
 | Target | Runtime | Backend | Storage | Status |
 |---|---|---|---|---|
 | **Desktop app** | ElectroBun (Bun + native webview) | Bun process (local) | Filesystem | Primary target |
-| **Dev mode** | Chrome | `@jsonsx/server` (localhost) | Filesystem via dev server | Active (Studio development) |
+| **Dev mode** | Chrome | `@jxplatform/server` (localhost) | Filesystem via dev server | Active (Studio development) |
 | **SaaS/PaaS** | Browser | Cloud API server | Database / object storage | Future |
 
-The studio package (`@jsonsx/studio`) contains all UI logic and is backend-agnostic. It communicates with its environment through a **Platform Abstraction Layer (PAL)** — an interface that each deployment target implements. The server package (`@jsonsx/server`) is one such implementation; the ElectroBun Bun process is another; a cloud API server is a third.
+The studio package (`@jxplatform/studio`) contains all UI logic and is backend-agnostic. It communicates with its environment through a **Platform Abstraction Layer (PAL)** — an interface that each deployment target implements. The server package (`@jxplatform/server`) is one such implementation; the ElectroBun Bun process is another; a cloud API server is a third.
 
 ### 1.1 Relationship to Other Specs
 
 - **[Studio Spec](studio.md)** — Defines the visual builder: canvas, layer tree, inspector, state model, keyboard shortcuts. This spec does not alter any of that.
 - **[Site Architecture Spec](site-architecture.md)** — Defines project structure (`site.json`, `pages/`, `content/`, etc.), routing, layouts, content collections. This spec defines how Studio *discovers and opens* those projects.
-- **[Server Spec](server.md)** — Defines the `@jsonsx/server` dev server endpoints. This spec defines a backend API contract that the server must satisfy, and that other backends can also satisfy.
+- **[Server Spec](server.md)** — Defines the `@jxplatform/server` dev server endpoints. This spec defines a backend API contract that the server must satisfy, and that other backends can also satisfy.
 
 ---
 
@@ -195,13 +195,13 @@ Each deployment target calls `registerPlatform()` before Studio initializes:
 
 ```javascript
 // Desktop (ElectroBun main view init)
-import { registerPlatform } from "@jsonsx/studio/platform.js";
-import { createDesktopPlatform } from "@jsonsx/studio-desktop";
+import { registerPlatform } from "@jxplatform/studio/platform.js";
+import { createDesktopPlatform } from "@jxplatform/studio-desktop";
 registerPlatform(createDesktopPlatform());
 
-// Dev server (browser, served by @jsonsx/server)
-import { registerPlatform } from "@jsonsx/studio/platform.js";
-import { createDevServerPlatform } from "@jsonsx/studio/platforms/devserver.js";
+// Dev server (browser, served by @jxplatform/server)
+import { registerPlatform } from "@jxplatform/studio/platform.js";
+import { createDevServerPlatform } from "@jxplatform/studio/platforms/devserver.js";
 registerPlatform(createDevServerPlatform());
 ```
 
@@ -292,11 +292,11 @@ projectState = {
 
 ## 5. Backend API Contract
 
-The Backend API Contract defines the operations that any Studio backend must support. The current `@jsonsx/server` endpoints map directly to these operations. Future backends (ElectroBun Bun process, cloud API) implement the same operations through their own transport.
+The Backend API Contract defines the operations that any Studio backend must support. The current `@jxplatform/server` endpoints map directly to these operations. Future backends (ElectroBun Bun process, cloud API) implement the same operations through their own transport.
 
 ### 5.1 File Operations
 
-| Operation | `@jsonsx/server` endpoint | PAL method |
+| Operation | `@jxplatform/server` endpoint | PAL method |
 |---|---|---|
 | List directory | `GET /__studio/files?dir=` | `listDirectory(dir)` |
 | Read file | `GET /__studio/file?path=` | `readFile(path)` |
@@ -308,14 +308,14 @@ The Backend API Contract defines the operations that any Studio backend must sup
 
 ### 5.2 Project Operations
 
-| Operation | `@jsonsx/server` endpoint | PAL method |
+| Operation | `@jxplatform/server` endpoint | PAL method |
 |---|---|---|
 | Open project | N/A (client-side dialog) | `openProject()` |
 | Project metadata | `GET /__studio/project` | Derived from `ProjectHandle` |
 
 ### 5.3 Code Services (Optional)
 
-| Operation | `@jsonsx/server` endpoint | PAL method |
+| Operation | `@jxplatform/server` endpoint | PAL method |
 |---|---|---|
 | Format code | `POST /__studio/code/format` | `codeService("format", code)` |
 | Lint code | `POST /__studio/code/lint` | `codeService("lint", code)` |
@@ -323,10 +323,10 @@ The Backend API Contract defines the operations that any Studio backend must sup
 
 ### 5.4 Runtime Services (Optional)
 
-| Operation | `@jsonsx/server` endpoint | PAL method |
+| Operation | `@jxplatform/server` endpoint | PAL method |
 |---|---|---|
-| Resolve $prototype/$src | `POST /__jsonsx_resolve__` | `resolvePrototype(payload)` |
-| Execute server function | `POST /__jsonsx_server__` | `executeServerFunction(payload)` |
+| Resolve $prototype/$src | `POST /__jx_resolve__` | `resolvePrototype(payload)` |
+| Execute server function | `POST /__jx_server__` | `executeServerFunction(payload)` |
 
 Optional methods may not exist on all platforms. Studio must check for their presence before calling:
 
@@ -409,8 +409,8 @@ When the user navigates into a sub-component (via `pushDocument()` in the state 
 │  ┌─────────────────┐    RPC    ┌──────────────────┐ │
 │  │   Bun Process    │◄────────►│  Native Webview   │ │
 │  │                  │          │                    │ │
-│  │  - File I/O      │          │  - @jsonsx/studio  │ │
-│  │  - Utils.*       │          │  - @jsonsx/runtime │ │
+│  │  - File I/O      │          │  - @jxplatform/studio  │ │
+│  │  - Utils.*       │          │  - @jxplatform/runtime │ │
 │  │  - Code services │          │  - Lit + Spectrum  │ │
 │  │  - Build / SSG   │          │  - Monaco          │ │
 │  └─────────────────┘          └──────────────────┘ │
@@ -511,7 +511,7 @@ export async function handleListDirectory(dir) {
 ### 7.4 App Structure
 
 ```
-jsonsx-studio-app/
+jx-studio-app/
 ├── electrobun.config.js         # ElectroBun build config
 ├── src/
 │   ├── bun/
@@ -524,8 +524,8 @@ jsonsx-studio-app/
 │           └── init.js           # registerPlatform(createDesktopPlatform())
 ├── package.json
 └── node_modules/
-    ├── @jsonsx/studio/           # UI package (the studio itself)
-    ├── @jsonsx/runtime/          # Canvas rendering
+    ├── @jxplatform/studio/           # UI package (the studio itself)
+    ├── @jxplatform/runtime/          # Canvas rendering
     └── electrobun/               # Framework
 ```
 
@@ -533,7 +533,7 @@ jsonsx-studio-app/
 
 ## 8. Chrome Development Mode
 
-During Studio's own development, the studio runs in Chrome served by `@jsonsx/server`. This is the current workflow and must remain fully functional.
+During Studio's own development, the studio runs in Chrome served by `@jxplatform/server`. This is the current workflow and must remain fully functional.
 
 ### 8.1 Dev Server Platform Adapter
 
@@ -701,4 +701,4 @@ Ensure desktop app matches dev-mode capabilities:
 
 ---
 
-*JSONsx Studio Desktop Architecture Specification v1.0.0-draft*
+*Jx Studio Desktop Architecture Specification v1.0.0-draft*

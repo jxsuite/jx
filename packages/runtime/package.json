@@ -1,5 +1,5 @@
 {
-  "name": "@jsonsx/runtime",
+  "name": "@jxplatform/runtime",
   "version": "2.0.0",
   "description": "JSON-native reactive web component runtime",
   "license": "MIT",

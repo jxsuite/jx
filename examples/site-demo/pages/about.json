@@ -1,7 +1,7 @@
 {
-  "title": "About — JSONsx Demo",
+  "title": "About — Jx Demo",
   "$head": [
-    { "tagName": "meta", "attributes": { "name": "description", "content": "About the JSONsx site builder." } }
+    { "tagName": "meta", "attributes": { "name": "description", "content": "About the Jx site builder." } }
   ],
   "children": [
     {
@@ -10,7 +10,7 @@
     },
     {
       "tagName": "p",
-      "children": ["JSONsx is a declarative web framework that compiles JSON documents into static HTML, reactive web components, and server handlers."]
+      "children": ["Jx is a declarative web framework that compiles JSON documents into static HTML, reactive web components, and server handlers."]
     },
     {
       "tagName": "h2",

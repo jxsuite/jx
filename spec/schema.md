@@ -1,4 +1,4 @@
-# `@jsonsx/schema` Specification
+# `@jxplatform/schema` Specification
 ## JSON Schema 2020-12 Meta-Schema Generator
 
 **Version:** 2.0.0-draft
@@ -9,7 +9,7 @@
 
 ## 1. Overview
 
-`@jsonsx/schema` generates the JSONsx meta-schema — a JSON Schema 2020-12 document that validates JSONsx component files. The schema is derived at generation time from web standards data (`@webref/css`, `@webref/elements`, `@webref/idl`), ensuring it stays current with browser capabilities.
+`@jxplatform/schema` generates the Jx meta-schema — a JSON Schema 2020-12 document that validates Jx component files. The schema is derived at generation time from web standards data (`@webref/css`, `@webref/elements`, `@webref/idl`), ensuring it stays current with browser capabilities.
 
 ---
 
@@ -17,9 +17,9 @@
 
 | Export | Description |
 |---|---|
-| `generateSchema()` | Returns the full JSONsx meta-schema as a JavaScript object |
+| `generateSchema()` | Returns the full Jx meta-schema as a JavaScript object |
 | `generateSchemaString()` | Returns the schema as a formatted JSON string |
-| `validateDocument(doc)` | Validates a JSONsx document against the generated schema |
+| `validateDocument(doc)` | Validates a Jx document against the generated schema |
 
 ---
 
@@ -98,7 +98,7 @@ All 12 built-in prototypes are enumerated with their specific configuration prop
 2. Extract HTML tag names and their valid properties
 3. Extract CSS properties and convert to CSSOM camelCase
 4. Extract DOM event handler names
-5. Compose the meta-schema with all JSONsx vocabulary
+5. Compose the meta-schema with all Jx vocabulary
 6. Write to `schema.json`
 
 The schema is regenerated when web standards packages are updated.
@@ -107,11 +107,11 @@ The schema is regenerated when web standards packages are updated.
 
 ## 5. Output
 
-The generated `schema.json` is a single JSON Schema 2020-12 document (~970 lines of generator code, large output). It can be referenced via the `$schema` field in any JSONsx document:
+The generated `schema.json` is a single JSON Schema 2020-12 document (~970 lines of generator code, large output). It can be referenced via the `$schema` field in any Jx document:
 
 ```json
 {
-  "$schema": "https://jsonsx.dev/schema/v1"
+  "$schema": "https://jxplatform.net/schema/v1"
 }
 ```
 
@@ -127,4 +127,4 @@ The generated `schema.json` is a single JSON Schema 2020-12 document (~970 lines
 
 ---
 
-*`@jsonsx/schema` Specification v2.0.0-draft*
+*`@jxplatform/schema` Specification v2.0.0-draft*

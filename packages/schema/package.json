@@ -1,7 +1,7 @@
 {
-  "name": "@jsonsx/schema",
+  "name": "@jxplatform/schema",
   "version": "1.0.0",
-  "description": "JSON Schema 2020-12 meta-schema generator for JSONsx documents",
+  "description": "JSON Schema 2020-12 meta-schema generator for Jx documents",
   "license": "MIT",
   "type": "module",
   "exports": {

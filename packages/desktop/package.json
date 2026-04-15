@@ -1,8 +1,8 @@
 {
-  "name": "@jsonsx/desktop",
+  "name": "@jxplatform/desktop",
   "version": "1.0.0",
   "private": true,
-  "description": "JSONsx Studio — standalone desktop application built with Electrobun",
+  "description": "Jx Studio — standalone desktop application built with Electrobun",
   "type": "module",
   "scripts": {
     "dev": "bunx electrobun dev",
@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "electrobun": "latest",
-    "@jsonsx/server": "workspace:*",
-    "@jsonsx/studio": "workspace:*"
+    "@jxplatform/server": "workspace:*",
+    "@jxplatform/studio": "workspace:*"
   }
 }

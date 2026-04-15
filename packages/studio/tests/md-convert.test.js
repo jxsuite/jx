@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { mdToJsonsx, jsonsxToMd } from "../md-convert.js";
+import { mdToJsonsx, jxToMd } from "../md-convert.js";
 
 // ─── Helpers — build mdast nodes ─────────────────────────────────────────────
 
@@ -211,18 +211,18 @@ describe("mdToJsonsx", () => {
   });
 });
 
-// ─── jsonsxToMd ──────────────────────────────────────────────────────────────
+// ─── jxToMd ──────────────────────────────────────────────────────────────
 
-describe("jsonsxToMd", () => {
+describe("jxToMd", () => {
   test("empty document", () => {
     /** @type {any} */
-    const result = jsonsxToMd({ tagName: "div", children: [] });
+    const result = jxToMd({ tagName: "div", children: [] });
     expect(result).toEqual({ type: "root", children: [] });
   });
 
   test("paragraph", () => {
     /** @type {any} */
-    const result = jsonsxToMd({
+    const result = jxToMd({
       tagName: "div",
       children: [{ tagName: "p", textContent: "Hello" }],
     });
@@ -232,7 +232,7 @@ describe("jsonsxToMd", () => {
 
   test("heading depth", () => {
     /** @type {any} */
-    const result = jsonsxToMd({
+    const result = jxToMd({
       tagName: "div",
       children: [{ tagName: "h3", textContent: "Title" }],
     });
@@ -242,7 +242,7 @@ describe("jsonsxToMd", () => {
 
   test("link", () => {
     /** @type {any} */
-    const result = jsonsxToMd({
+    const result = jxToMd({
       tagName: "div",
       children: [
         {
@@ -260,7 +260,7 @@ describe("jsonsxToMd", () => {
 
   test("image", () => {
     /** @type {any} */
-    const result = jsonsxToMd({
+    const result = jxToMd({
       tagName: "div",
       children: [
         {
@@ -279,7 +279,7 @@ describe("jsonsxToMd", () => {
 
   test("unordered list", () => {
     /** @type {any} */
-    const result = jsonsxToMd({
+    const result = jxToMd({
       tagName: "div",
       children: [
         {
@@ -299,7 +299,7 @@ describe("jsonsxToMd", () => {
 
   test("ordered list", () => {
     /** @type {any} */
-    const result = jsonsxToMd({
+    const result = jxToMd({
       tagName: "div",
       children: [
         {
@@ -313,7 +313,7 @@ describe("jsonsxToMd", () => {
 
   test("code block with language", () => {
     /** @type {any} */
-    const result = jsonsxToMd({
+    const result = jxToMd({
       tagName: "div",
       children: [
         {
@@ -336,7 +336,7 @@ describe("jsonsxToMd", () => {
 
   test("thematic break", () => {
     /** @type {any} */
-    const result = jsonsxToMd({
+    const result = jxToMd({
       tagName: "div",
       children: [{ tagName: "hr" }],
     });
@@ -345,7 +345,7 @@ describe("jsonsxToMd", () => {
 
   test("non-markdown tag becomes directive", () => {
     /** @type {any} */
-    const result = jsonsxToMd({
+    const result = jxToMd({
       tagName: "div",
       children: [{ tagName: "my-widget", attributes: { color: "red" } }],
     });
@@ -362,9 +362,9 @@ describe("round-trip", () => {
   test("paragraph survives round-trip", () => {
     const mdast = root(paragraph("Hello world"));
     /** @type {any} */
-    const jsonsx = mdToJsonsx(mdast);
+    const jx = mdToJsonsx(mdast);
     /** @type {any} */
-    const back = jsonsxToMd(jsonsx);
+    const back = jxToMd(jx);
     expect(back.children[0].type).toBe("paragraph");
     expect(back.children[0].children[0].value).toBe("Hello world");
   });
@@ -372,9 +372,9 @@ describe("round-trip", () => {
   test("heading survives round-trip", () => {
     const mdast = root(heading(2, "Title"));
     /** @type {any} */
-    const jsonsx = mdToJsonsx(mdast);
+    const jx = mdToJsonsx(mdast);
     /** @type {any} */
-    const back = jsonsxToMd(jsonsx);
+    const back = jxToMd(jx);
     expect(back.children[0].type).toBe("heading");
     expect(back.children[0].depth).toBe(2);
     expect(back.children[0].children[0].value).toBe("Title");
@@ -383,9 +383,9 @@ describe("round-trip", () => {
   test("code block survives round-trip", () => {
     const mdast = root(codeBlock("x = 1", "python"));
     /** @type {any} */
-    const jsonsx = mdToJsonsx(mdast);
+    const jx = mdToJsonsx(mdast);
     /** @type {any} */
-    const back = jsonsxToMd(jsonsx);
+    const back = jxToMd(jx);
     expect(back.children[0].type).toBe("code");
     expect(back.children[0].lang).toBe("python");
     expect(back.children[0].value).toBe("x = 1");
@@ -394,9 +394,9 @@ describe("round-trip", () => {
   test("thematic break survives round-trip", () => {
     const mdast = root(thematicBreak());
     /** @type {any} */
-    const jsonsx = mdToJsonsx(mdast);
+    const jx = mdToJsonsx(mdast);
     /** @type {any} */
-    const back = jsonsxToMd(jsonsx);
+    const back = jxToMd(jx);
     expect(back.children[0].type).toBe("thematicBreak");
   });
 });

@@ -1,18 +1,18 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://jsonsx.dev/schema/v1",
-  "title": "JSONsx Document",
-  "description": "Schema for JSONsx component files. A JSONsx document is a JSON object that declaratively describes a reactive web component: its structure (DOM tree), styling, type definitions ($defs), runtime state, and inline or external functions. Reactivity is powered by @vue/reactivity.",
+  "$id": "https://jxplatform.net/schema/v1",
+  "title": "Jx Document",
+  "description": "Schema for Jx component files. A Jx document is a JSON object that declaratively describes a reactive web component: its structure (DOM tree), styling, type definitions ($defs), runtime state, and inline or external functions. Reactivity is powered by @vue/reactivity.",
   "type": "object",
   "required": [
     "tagName"
   ],
   "properties": {
     "$schema": {
-      "description": "URI identifying the JSONsx dialect version. Enables schema-aware IDE tooling.",
+      "description": "URI identifying the Jx dialect version. Enables schema-aware IDE tooling.",
       "type": "string",
       "examples": [
-        "https://jsonsx.dev/schema/v1"
+        "https://jxplatform.net/schema/v1"
       ]
     },
     "$id": {
@@ -681,7 +681,7 @@
           "description": "External module specifier. Required when $prototype is not a built-in.",
           "type": "string",
           "examples": [
-            "@jsonsx/md",
+            "@jxplatform/md",
             "./lib/my-parser.js",
             "npm:@myorg/data"
           ]
@@ -835,7 +835,7 @@
       }
     },
     "ElementDef": {
-      "description": "A JSONsx element definition. Maps directly to a DOM element.",
+      "description": "A Jx element definition. Maps directly to a DOM element.",
       "type": "object",
       "required": [
         "tagName"
@@ -18551,7 +18551,7 @@
       ]
     },
     "ExternalRef": {
-      "description": "Reference to an external JSONsx component file.",
+      "description": "Reference to an external Jx component file.",
       "type": "string",
       "pattern": "^(\\./|\\.\\./).*\\.json$|^https?://",
       "examples": [

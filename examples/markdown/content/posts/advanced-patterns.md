@@ -1,12 +1,12 @@
 ---
-title: Advanced Patterns in JSONsx
+title: Advanced Patterns in Jx
 date: 2025-04-01
-tags: [jsonsx, advanced, patterns]
+tags: [jx, advanced, patterns]
 published: true
 author: John Doe
 ---
 
-Once you have the basics down, JSONsx offers several powerful patterns for building complex applications.
+Once you have the basics down, Jx offers several powerful patterns for building complex applications.
 
 ## Dynamic Component Switching
 
@@ -24,7 +24,7 @@ Use `$switch` to conditionally render components based on signal values:
 
 ## Content Collections
 
-With the `@jsonsx/md` library and **external class integration**, you can build Astro-like content pipelines entirely within JSONsx's declarative model.
+With the `@jxplatform/md` library and **external class integration**, you can build Astro-like content pipelines entirely within Jx's declarative model.
 
 ### Markdown as a Data Source
 
@@ -33,7 +33,7 @@ Glob a directory of markdown files and render them as a list:
 ```json
 {
   "$prototype": "MarkdownCollection",
-  "$src": "@jsonsx/md",
+  "$src": "@jxplatform/md",
   "src": "./content/posts/*.md",
   "sortBy": "frontmatter.date",
   "timing": "compiler",
@@ -47,7 +47,7 @@ Embed custom elements directly in your markdown content using directive syntax.
 
 ## Compile-Time Processing
 
-The JSONsx compiler produces five output tiers depending on how dynamic your component is:
+The Jx compiler produces five output tiers depending on how dynamic your component is:
 
 | Surface | Output |
 |---|---|

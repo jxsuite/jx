@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://jsonsx.dev/schemas/MarkdownCollection.class.json",
+  "$id": "https://jxplatform.net/schemas/MarkdownCollection.class.json",
   "title": "MarkdownCollection",
   "description": "Load and parse a collection of Markdown files",
   "$prototype": "Class",

@@ -6,7 +6,7 @@ import { resolve, relative, dirname } from "node:path";
 import { readFileSync } from "node:fs";
 
 /**
- * Handle POST /__jsonsx_resolve__ — proxy $prototype + $src entries.
+ * Handle POST /__jx_resolve__ — proxy $prototype + $src entries.
  * @param {Request} req
  * @param {string} root
  */
@@ -95,7 +95,7 @@ export async function handleResolve(req, root) {
 }
 
 /**
- * Handle POST /__jsonsx_server__ — proxy timing: "server" function calls.
+ * Handle POST /__jx_server__ — proxy timing: "server" function calls.
  * In dev mode, the runtime sends these instead of hitting the production Hono handler.
  * @param {Request} req
  * @param {string} root

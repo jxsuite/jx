@@ -14,7 +14,7 @@ try {
   /* already registered */
 }
 
-import { buildScope, resolvePrototype, isSignal, RESERVED_KEYS } from "@jsonsx/runtime";
+import { buildScope, resolvePrototype, isSignal, RESERVED_KEYS } from "@jxplatform/runtime";
 import { MarkdownFile, MarkdownCollection, MarkdownDirective } from "../md.js";
 import { readFileSync } from "node:fs";
 
@@ -75,7 +75,7 @@ describe("MarkdownFile", () => {
   });
 
   test("frontmatter.title is extracted", () => {
-    expect(result.frontmatter.title).toBe("Getting Started with JSONsx");
+    expect(result.frontmatter.title).toBe("Getting Started with Jx");
   });
 
   test("frontmatter.date is extracted", () => {
@@ -84,7 +84,7 @@ describe("MarkdownFile", () => {
 
   test("frontmatter.tags is an array", () => {
     expect(Array.isArray(result.frontmatter.tags)).toBe(true);
-    expect(result.frontmatter.tags).toContain("jsonsx");
+    expect(result.frontmatter.tags).toContain("jx");
   });
 
   test("frontmatter.published is a boolean", () => {
@@ -501,7 +501,7 @@ describe("Runtime external prototype ($src)", () => {
     expect(isSignal(sig)).toBe(true);
     const val = sig.value;
     expect(val.slug).toBe("getting-started");
-    expect(val.frontmatter.title).toBe("Getting Started with JSONsx");
+    expect(val.frontmatter.title).toBe("Getting Started with Jx");
   });
 
   test("resolvePrototype with $src loads MarkdownCollection", async () => {

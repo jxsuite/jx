@@ -36,7 +36,7 @@ beforeAll(() => {
     url: "https://test.com",
     defaults: { layout: "./layouts/base.json", lang: "en" },
     $head: [
-      { tagName: "meta", attributes: { name: "generator", content: "JSONsx" } },
+      { tagName: "meta", attributes: { name: "generator", content: "Jx" } },
     ],
     redirects: { "/old": "/new" },
     build: { outDir: "./dist" },
@@ -166,7 +166,7 @@ describe("layout-resolver", () => {
 describe("head-merger", () => {
   it("merges site + page heads with deduplication", () => {
     const siteHead = [
-      { tagName: "meta", attributes: { name: "generator", content: "JSONsx" } },
+      { tagName: "meta", attributes: { name: "generator", content: "Jx" } },
     ];
     const pageHead = [
       { tagName: "meta", attributes: { name: "description", content: "Page desc" } },

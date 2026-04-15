@@ -18,7 +18,7 @@ import {
   camelToKebab,
   toCSSText,
   RESERVED_KEYS,
-  JSONsx,
+  Jx,
 } from "../runtime.js";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -408,47 +408,47 @@ describe("applyStyle", () => {
 
   test("empty style object — no side effects", () => {
     applyStyle(el, {});
-    expect(el.dataset.jsonsx).toBeUndefined();
+    expect(el.dataset.jx).toBeUndefined();
     expect(document.head.querySelectorAll("style").length).toBe(0);
   });
 
   test("emits scoped <style> for :pseudo selector", () => {
     applyStyle(el, { ":hover": { color: "blue" } });
-    expect(el.dataset.jsonsx).toBeDefined();
-    const uid = el.dataset.jsonsx;
+    expect(el.dataset.jx).toBeDefined();
+    const uid = el.dataset.jx;
     const style = /** @type {HTMLStyleElement} */ (document.head.querySelector("style"));
     expect(style).not.toBeNull();
-    expect(style.textContent).toContain(`[data-jsonsx="${uid}"] :hover`);
+    expect(style.textContent).toContain(`[data-jx="${uid}"] :hover`);
     expect(style.textContent).toContain("color: blue");
   });
 
   test("emits scoped <style> for .class selector", () => {
     applyStyle(el, { ".child": { marginTop: "4px" } });
-    const uid = el.dataset.jsonsx;
+    const uid = el.dataset.jx;
     const style = /** @type {HTMLStyleElement} */ (document.head.querySelector("style"));
-    expect(style.textContent).toContain(`[data-jsonsx="${uid}"] .child`);
+    expect(style.textContent).toContain(`[data-jx="${uid}"] .child`);
   });
 
   test("emits scoped <style> for &.compound selector", () => {
     applyStyle(el, { "&.active": { fontWeight: "bold" } });
-    const uid = el.dataset.jsonsx;
+    const uid = el.dataset.jx;
     const style = /** @type {HTMLStyleElement} */ (document.head.querySelector("style"));
-    expect(style.textContent).toContain(`[data-jsonsx="${uid}"].active`);
+    expect(style.textContent).toContain(`[data-jx="${uid}"].active`);
   });
 
   test("emits scoped <style> for [attr] selector", () => {
     applyStyle(el, { "[disabled]": { opacity: "0.5" } });
-    const uid = el.dataset.jsonsx;
+    const uid = el.dataset.jx;
     const style = /** @type {HTMLStyleElement} */ (document.head.querySelector("style"));
-    expect(style.textContent).toContain(`[data-jsonsx="${uid}"][disabled]`);
+    expect(style.textContent).toContain(`[data-jx="${uid}"][disabled]`);
   });
 
   test("resolves named @--breakpoint from mediaQueries", () => {
     applyStyle(el, { "@--md": { fontSize: "18px" } }, { "--md": "(min-width: 768px)" });
-    const uid = el.dataset.jsonsx;
+    const uid = el.dataset.jx;
     const style = /** @type {HTMLStyleElement} */ (document.head.querySelector("style"));
     expect(style.textContent).toContain("@media (min-width: 768px)");
-    expect(style.textContent).toContain(`[data-jsonsx="${uid}"]`);
+    expect(style.textContent).toContain(`[data-jx="${uid}"]`);
     expect(style.textContent).toContain("font-size: 18px");
   });
 
@@ -488,7 +488,7 @@ describe("applyStyle", () => {
     expect(css).toContain("@media (min-width: 768px)");
     expect(css).toContain("font-size: 2rem");
     // Nested selector within media
-    expect(css).toMatch(/@media \(min-width: 768px\) \{ \[data-jsonsx="[^"]+"\] :hover \{ color: blue \} \}/);
+    expect(css).toMatch(/@media \(min-width: 768px\) \{ \[data-jx="[^"]+"\] :hover \{ color: blue \} \}/);
   });
 
   test("& compound selector inside media block", () => {
@@ -499,7 +499,7 @@ describe("applyStyle", () => {
     );
     const style = /** @type {HTMLStyleElement} */ (document.head.querySelector("style"));
     const css = style.textContent;
-    expect(css).toMatch(/@media \(min-width: 640px\) \{ \[data-jsonsx="[^"]+"\]\.active \{ font-weight: bold \} \}/);
+    expect(css).toMatch(/@media \(min-width: 640px\) \{ \[data-jx="[^"]+"\]\.active \{ font-weight: bold \} \}/);
   });
 });
 
@@ -1036,32 +1036,32 @@ describe("renderNode", () => {
   });
 });
 
-// ─── JSONsx (top-level mount) ─────────────────────────────────────────────────
+// ─── Jx (top-level mount) ─────────────────────────────────────────────────
 
-describe("JSONsx", () => {
+describe("Jx", () => {
   test("mounts object doc into target", async () => {
     const target = document.createElement("div");
-    await JSONsx({ tagName: "span", textContent: "mounted" }, target);
+    await Jx({ tagName: "span", textContent: "mounted" }, target);
     expect(target.children[0].tagName.toLowerCase()).toBe("span");
     expect(target.children[0].textContent).toBe("mounted");
   });
 
   test("returns scope with naked value property", async () => {
     const target = document.createElement("div");
-    const state = await JSONsx({ tagName: "div", state: { x: 1 } }, target);
+    const state = await Jx({ tagName: "div", state: { x: 1 } }, target);
     expect(state.x).toBe(1);
   });
 
   test("returns scope with expanded signal property", async () => {
     const target = document.createElement("div");
-    const state = await JSONsx({ tagName: "div", state: { x: { default: 5 } } }, target);
+    const state = await Jx({ tagName: "div", state: { x: { default: 5 } } }, target);
     expect(state.x).toBe(5);
   });
 
   test("calls onMount if present in scope", async () => {
     const target = document.createElement("div");
     const srcUrl = new URL("./_test_handlers.js", import.meta.url).href;
-    await JSONsx(
+    await Jx(
       {
         tagName: "div",
         state: {
@@ -1084,13 +1084,13 @@ describe("JSONsx", () => {
       }),
     ));
     const target = document.createElement("div");
-    await JSONsx("http://example.com/test.json", target);
+    await Jx("http://example.com/test.json", target);
     expect(target.children[0].tagName.toLowerCase()).toBe("article");
   });
 
   test("defaults target to document.body", async () => {
     const before = document.body.children.length;
-    await JSONsx({ tagName: "div" });
+    await Jx({ tagName: "div" });
     expect(document.body.children.length).toBe(before + 1);
   });
 });

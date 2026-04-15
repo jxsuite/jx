@@ -1,4 +1,4 @@
-# JSONsx Site Architecture Specification
+# Jx Site Architecture Specification
 ## File-Based Routing, Content Collections, Layouts, and Static Site Generation
 
 **Version:** 1.0.0-draft
@@ -28,7 +28,7 @@
 
 ## 1. Vision
 
-JSONsx Studio is a visual IDE for the development and management of local-first, statically compiled applications and websites which are composed and deployed via the JSONsx schema and pipeline.
+Jx Studio is a visual IDE for the development and management of local-first, statically compiled applications and websites which are composed and deployed via the Jx schema and pipeline.
 
 ### 1.1 Design Principles
 
@@ -46,10 +46,10 @@ JSONsx Studio is a visual IDE for the development and management of local-first,
 
 This spec defines everything that sits *above* the component model: how components compose into pages, how pages compose into sites, how content enters the system, and how Studio manages all of it. It answers:
 
-- How to compose a new site with JSONsx
+- How to compose a new site with Jx
 - How to define datatypes and content collections
 - How to manage (add/edit/delete) data in Studio
-- How templates (JSONsx) and datasets (Markdown, CSV, media) correlate on the filesystem
+- How templates (Jx) and datasets (Markdown, CSV, media) correlate on the filesystem
 - How to bake SEO metadata into pages
 - How to manage redirects, rewrites, and other CMS concerns
 - How to manage media assets
@@ -59,7 +59,7 @@ This spec defines everything that sits *above* the component model: how componen
 
 ## 2. Project Structure
 
-A JSONsx site project follows a conventional directory layout. Only `site.json` and `pages/` are required — everything else is optional and additive.
+A Jx site project follows a conventional directory layout. Only `site.json` and `pages/` are required — everything else is optional and additive.
 
 ```
 my-site/
@@ -76,7 +76,7 @@ my-site/
 │   ├── base.json                # Root layout: <html>, <head>, <body>
 │   ├── blog-post.json           # Blog-specific layout
 │   └── docs.json                # Documentation layout with sidebar
-├── components/                  # Reusable JSONsx components
+├── components/                  # Reusable Jx components
 │   ├── header.json
 │   ├── footer.json
 │   └── nav.json
@@ -135,7 +135,7 @@ The `site.json` file at the project root defines site-wide settings. It is the o
 
 ```json
 {
-  "$schema": "https://jsonsx.dev/schemas/site.schema.json",
+  "$schema": "https://jxplatform.net/schemas/site.schema.json",
   "name": "My Site",
   "url": "https://example.com",
 
@@ -333,11 +333,11 @@ Inside a dynamic page, route parameters are available via `$params`:
 
 ## 5. Layouts
 
-Layouts are JSONsx documents that provide a shared page shell — the `<html>`, `<head>`, `<body>`, navigation, footer, and any other chrome common across pages.
+Layouts are Jx documents that provide a shared page shell — the `<html>`, `<head>`, `<body>`, navigation, footer, and any other chrome common across pages.
 
 ### 5.1 Layout Documents
 
-A layout is a standard JSONsx file that uses HTML `<slot>` elements — the same mechanism already implemented for custom elements — to indicate where page content is injected:
+A layout is a standard Jx file that uses HTML `<slot>` elements — the same mechanism already implemented for custom elements — to indicate where page content is injected:
 
 ```json
 {
@@ -511,7 +511,7 @@ Collections are defined in `content/content.config.json`:
 
 ```json
 {
-  "$schema": "https://jsonsx.dev/schemas/content-config.schema.json",
+  "$schema": "https://jxplatform.net/schemas/content-config.schema.json",
   "collections": {
     "blog": {
       "source": "./blog/**/*.md",
@@ -585,7 +585,7 @@ Collections are defined in `content/content.config.json`:
 
 ### 6.3 Schema Validation
 
-Collection schemas are standard JSON Schema. The `@jsonsx/schema` package already generates JSON Schema from web platform IDL — the same infrastructure validates content entries.
+Collection schemas are standard JSON Schema. The `@jxplatform/schema` package already generates JSON Schema from web platform IDL — the same infrastructure validates content entries.
 
 At build time:
 - Every content entry is validated against its collection schema
@@ -917,7 +917,7 @@ The compiler processes images referenced from content and components:
 
 ### 9.3 Referencing Media
 
-In JSONsx documents:
+In Jx documents:
 ```json
 {
   "tagName": "img",
@@ -1108,16 +1108,16 @@ Emit dist/
 
 ```bash
 # Development
-jsonsx dev                   # Start dev server with live reload
+jx dev                   # Start dev server with live reload
 
 # Production build
-jsonsx build                 # Full static site build
+jx build                 # Full static site build
 
 # Preview production build
-jsonsx preview               # Serve dist/ locally
+jx preview               # Serve dist/ locally
 ```
 
-These are thin wrappers around `@jsonsx/server` (dev) and a new `@jsonsx/build` entry point that will invoke the compiler in multi-page mode.
+These are thin wrappers around `@jxplatform/server` (dev) and a new `@jxplatform/build` entry point that will invoke the compiler in multi-page mode.
 
 ### 12.3 Incremental Builds
 
@@ -1276,11 +1276,11 @@ This spec introduces the following new reserved keywords:
 
 ## Appendix B: Mapping to Existing Primitives
 
-This spec builds on existing JSONsx primitives wherever possible:
+This spec builds on existing Jx primitives wherever possible:
 
 | New Concept | Built On |
 |---|---|
-| Layouts | Standard JSONsx documents + HTML `<slot>` element (already implemented for custom elements) |
+| Layouts | Standard Jx documents + HTML `<slot>` element (already implemented for custom elements) |
 | Named layout slots | Standard `slot` attribute targeting (already implemented) |
 | Content query | `$prototype` (same pattern as `Array`, `URL`, etc.) |
 | Dynamic routes | `$ref` + compiler-time resolution |

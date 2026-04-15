@@ -23,7 +23,7 @@ import { compile, compileServer } from "./compiler.js";
 import { loadCollections, loadContentConfig, resolveCollectionRefs } from "./content-loader.js";
 
 /**
- * Build an entire JSONsx site from a project directory.
+ * Build an entire Jx site from a project directory.
  *
  * @param {string} projectRoot - Absolute path to the project root (contains site.json)
  * @param {object} [options]
@@ -166,7 +166,7 @@ async function compilePage(route, siteConfig, projectRoot, collections = new Map
   injectContext(layoutDoc, siteConfig, route, collections, projectRoot);
 
   // Determine the page title
-  const title = pageTitle ?? siteConfig.name ?? "JSONsx Site";
+  const title = pageTitle ?? siteConfig.name ?? "Jx Site";
 
   // Merge $head from site + layout + page
   const mergedHead = mergeHead(

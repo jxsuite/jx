@@ -1,7 +1,7 @@
 /**
- * studio.js — JSONsx Studio main application
+ * studio.js — Jx Studio main application
  *
- * Phase 1: Open a JSONsx file, render in canvas, edit properties
+ * Phase 1: Open a Jx file, render in canvas, edit properties
  * in the inspector, see changes live, and save.
  * Phase 2: Tree editing with drag-and-drop reordering.
  */
@@ -46,7 +46,7 @@ import {
   setProjectState,
 } from "./state.js";
 
-import { renderNode as runtimeRenderNode, buildScope, defineElement } from "@jsonsx/runtime";
+import { renderNode as runtimeRenderNode, buildScope, defineElement } from "@jxplatform/runtime";
 
 import { unified } from "unified";
 import remarkParse from "remark-parse";
@@ -55,7 +55,7 @@ import remarkFrontmatter from "remark-frontmatter";
 import remarkGfm from "remark-gfm";
 import remarkDirective from "remark-directive";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
-import { mdToJsonsx, jsonsxToMd } from "./md-convert.js";
+import { mdToJsonsx, jxToMd } from "./md-convert.js";
 import { MD_ALL, MD_BLOCK, MD_INLINE, isValidChild } from "./md-allowlist.js";
 import {
   startEditing,
@@ -414,7 +414,7 @@ let functionEditor = null;
 let liveScope = null;
 
 /**
- * Strip all on* event handler properties from a JSONsx document tree (deep clone).
+ * Strip all on* event handler properties from a Jx document tree (deep clone).
  * Returns a new object safe for edit-mode rendering where clicks should be intercepted.
  * @param {any} node
  * @returns {any}
@@ -557,7 +557,7 @@ function prepareForEditMode(node) {
 }
 
 /**
- * Render a JSONsx document into a canvas element using the real runtime.
+ * Render a Jx document into a canvas element using the real runtime.
  * Populates elToPath for each created element via onNodeCreated callback.
  * Returns the live state scope on success, null on failure.
  * @param {any} doc
@@ -665,7 +665,7 @@ async function renderCanvasLive(doc, canvasEl) {
     }
     return $defs;
   } catch (/** @type {any} */ err) {
-    console.warn("JSONsx Studio: runtime render failed, falling back to structural preview", err);
+    console.warn("Jx Studio: runtime render failed, falling back to structural preview", err);
     return null;
   }
 }
@@ -749,7 +749,7 @@ const EMPTY_DOC = {
   style: { padding: "2rem", fontFamily: "system-ui, sans-serif" },
   children: [
     { tagName: "h1", textContent: "New Component" },
-    { tagName: "p", textContent: "Open a JSONsx file or start editing." },
+    { tagName: "p", textContent: "Open a Jx file or start editing." },
   ],
 };
 
@@ -1418,7 +1418,7 @@ function resolveDefaultForCanvas(value, defs) {
 }
 
 /**
- * Recursively render a JSONsx node to the canvas DOM.
+ * Recursively render a Jx node to the canvas DOM.
  * Media-aware: applies base styles + active breakpoint/feature overrides.
  * @param {any} node
  * @param {any} path
@@ -2314,7 +2314,7 @@ function enterInlineEdit(el, path) {
 
   startEditing(el, path, {
     onCommit(/** @type {any} */ commitPath, /** @type {any} */ children, /** @type {any} */ textContent) {
-      // Update the JSONsx node with the edited content
+      // Update the Jx node with the edited content
       if (children) {
         let s = updateProperty(S, commitPath, "textContent", undefined);
         s = updateProperty(s, commitPath, "children", children);
@@ -3346,7 +3346,7 @@ function applyDropInstruction(instruction, srcData, targetPath) {
 }
 
 /**
- * Generate a sensible default JSONsx node for a given tag name
+ * Generate a sensible default Jx node for a given tag name
  * @param {any} tag
  */
 function defaultDef(tag) {
@@ -5329,7 +5329,7 @@ async function openFileFromTree(/** @type {any} */ path) {
       const isContent = S.mode === "content";
       let output;
       if (isContent) {
-        const mdast = jsonsxToMd(S.document);
+        const mdast = jxToMd(S.document);
         const md = unified()
           .use(remarkStringify, { bullet: "-", emphasis: "*", strong: "*" })
           .stringify(mdast);
@@ -7602,7 +7602,7 @@ function renderStatusbar() {
     parts.push(`Path: ${S.selection.join(" > ") || "root"}`);
   }
   if (statusMsg) parts.push(statusMsg);
-  statusbar.textContent = parts.join("  |  ") || "JSONsx Studio";
+  statusbar.textContent = parts.join("  |  ") || "Jx Studio";
 }
 
 function statusMessage(/** @type {any} */ msg, duration = 3000) {
@@ -7623,7 +7623,7 @@ async function openFile() {
     if ("showOpenFilePicker" in window) {
       const [handle] = await /** @type {any} */ (window).showOpenFilePicker({
         types: [
-          { description: "JSONsx Component", accept: { "application/json": [".json"] } },
+          { description: "Jx Component", accept: { "application/json": [".json"] } },
           { description: "Markdown Content", accept: { "text/markdown": [".md"] } },
         ],
       });
@@ -7673,7 +7673,7 @@ async function openFile() {
 
 /**
  * Load a markdown string into the studio in content mode.
- * Parses frontmatter, converts mdast → JSONsx element tree.
+ * Parses frontmatter, converts mdast → Jx element tree.
  */
 function loadMarkdown(/** @type {any} */ source, /** @type {any} */ fileHandle) {
   const processor = unified()
@@ -7693,9 +7693,9 @@ function loadMarkdown(/** @type {any} */ source, /** @type {any} */ fileHandle) 
     } catch {}
   }
 
-  const jsonsxTree = mdToJsonsx(mdast);
+  const jxTree = mdToJsonsx(mdast);
 
-  S = createState(jsonsxTree);
+  S = createState(jxTree);
   S.mode = "content";
   S.content = { frontmatter };
   S.fileHandle = fileHandle;
@@ -7723,8 +7723,8 @@ async function saveFile() {
     let output, mimeType, ext, description;
 
     if (isContent) {
-      // Convert JSONsx tree → mdast → markdown string
-      const mdast = jsonsxToMd(S.document);
+      // Convert Jx tree → mdast → markdown string
+      const mdast = jxToMd(S.document);
       const md = unified()
         .use(remarkStringify, { bullet: "-", emphasis: "*", strong: "*" })
         .stringify(mdast);
@@ -7740,7 +7740,7 @@ async function saveFile() {
       output = JSON.stringify(S.document, null, 2);
       mimeType = "application/json";
       ext = ".json";
-      description = "JSONsx Component";
+      description = "Jx Component";
     }
 
     if (S.fileHandle && "createWritable" in S.fileHandle) {

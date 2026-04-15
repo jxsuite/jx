@@ -62,7 +62,7 @@ With page-side targeting via `$slotTarget`:
 
 ### Recommendation: **Unify on `tagName: "slot"`**
 
-The `<slot>` element is a W3C standard. JSONsx's philosophy is DOM-first — property names mirror the DOM API. Using `{ "tagName": "slot" }` for **both** custom element slots and layout injection points is the right call.
+The `<slot>` element is a W3C standard. Jx's philosophy is DOM-first — property names mirror the DOM API. Using `{ "tagName": "slot" }` for **both** custom element slots and layout injection points is the right call.
 
 **The key insight:** Layouts are just "custom elements that wrap pages." The same slot distribution mechanism should apply.
 
@@ -134,7 +134,7 @@ The `<slot>` element is a W3C standard. JSONsx's philosophy is DOM-first — pro
 
 **At build time:** The compiler performs the same `distributeSlots()` logic the runtime already does — just at compile time instead of DOM time. The algorithm is identical. This is the same pattern as Astro's `<slot />` and `<slot name="sidebar" />`, which are also standard HTML slot elements resolved at build time.
 
-**What we lose:** Nothing. The `$slot`/`$slotTarget` proposal was a reinvention of an existing standard that JSONsx already implements.
+**What we lose:** Nothing. The `$slot`/`$slotTarget` proposal was a reinvention of an existing standard that Jx already implements.
 
 ---
 
@@ -151,9 +151,9 @@ In the browser DOM, these are two different properties:
 
 This distinction is meaningful in the DOM because text like `"Hello "` between tags becomes a `Text` node — a child node but not a child element.
 
-### In JSONsx, the Distinction Doesn't Apply
+### In Jx, the Distinction Doesn't Apply
 
-JSONsx documents are JSON. There is no interleaving of text and element nodes at the same structural level. A JSONsx child is always an object with a `tagName` (an element definition). Text is a property (`textContent`) of an element, not a sibling node.
+Jx documents are JSON. There is no interleaving of text and element nodes at the same structural level. A Jx child is always an object with a `tagName` (an element definition). Text is a property (`textContent`) of an element, not a sibling node.
 
 ```json
 {
@@ -165,14 +165,14 @@ JSONsx documents are JSON. There is no interleaving of text and element nodes at
 }
 ```
 
-There's no `Text` node sitting as a peer of those spans. The JSONsx model is element-only at the child array level. Therefore, `children` (element-only) is the **technically correct** mapping.
+There's no `Text` node sitting as a peer of those spans. The Jx model is element-only at the child array level. Therefore, `children` (element-only) is the **technically correct** mapping.
 
 ### Current Codebase Usage
 
 | Context | `children` | `childNodes` |
 |---|---|---|
 | Main spec (`spec/spec.md`) | **13 occurrences** | **0** |
-| Runtime (`runtime.js`) | **15 occurrences** (as JSONsx property) | **1** (DOM API only) |
+| Runtime (`runtime.js`) | **15 occurrences** (as Jx property) | **1** (DOM API only) |
 | Compiler (all `*.js`) | **42 occurrences** | **0** |
 | All examples (`.json` files) | **Exclusive** | **0** |
 | Tests | **Exclusive** | **0** |
@@ -190,14 +190,14 @@ The site-architecture spec is the **only** place in the entire codebase using `c
 
 #### Case for `children`
 - **Already canonical.** Used in the spec, runtime, compiler, every example, and every test. Changing would require modifying 170+ occurrences across the entire codebase.
-- **Technically accurate.** JSONsx child arrays contain only element definitions, not text/comment nodes. `children` (element-only) is the correct DOM API counterpart.
+- **Technically accurate.** Jx child arrays contain only element definitions, not text/comment nodes. `children` (element-only) is the correct DOM API counterpart.
 - **Shorter.** JSON is already verbose; brevity helps. `"children"` saves 4 chars per occurrence × hundreds of occurrences across a project.
 - **Already in `RESERVED_KEYS`.** The runtime explicitly reserves `"children"` — adding `"childNodes"` as an alias creates ambiguity.
 - **Established convention.** React uses `children`, Vue uses default slot children, Preact uses `children`. The web component ecosystem standardized on this term for "the stuff inside."
 
 ### Recommendation: **Keep `children`**
 
-`children` is technically correct (JSONsx arrays are element-only), is already the universal term across the codebase, and changing to `childNodes` would require rewriting the spec, runtime, compiler, every example, and every test for a property name that implies a capability (mixed node types) that JSONsx doesn't have.
+`children` is technically correct (Jx arrays are element-only), is already the universal term across the codebase, and changing to `childNodes` would require rewriting the spec, runtime, compiler, every example, and every test for a property name that implies a capability (mixed node types) that Jx doesn't have.
 
 The site-architecture spec should be updated to use `children` consistently.
 
@@ -207,7 +207,7 @@ The site-architecture spec should be updated to use `children` consistently.
 
 ### Existing `$`-Prefix Patterns
 
-The `$` prefix in JSONsx follows the JSON Schema 2020-12 convention where `$`-prefixed keywords have special structural meaning. JSONsx's existing `$`-keywords fall into clear categories:
+The `$` prefix in Jx follows the JSON Schema 2020-12 convention where `$`-prefixed keywords have special structural meaning. Jx's existing `$`-keywords fall into clear categories:
 
 #### Category A: JSON Schema Standard Keywords
 | Keyword | Standard | Purpose |
@@ -217,7 +217,7 @@ The `$` prefix in JSONsx follows the JSON Schema 2020-12 convention where `$`-pr
 | `$defs` | JSON Schema 2020-12 | Type definitions |
 | `$ref` | JSON Schema 2020-12 / RFC 6901 | JSON Pointer reference |
 
-#### Category B: JSONsx Structural Directives
+#### Category B: Jx Structural Directives
 | Keyword | Purpose | Position |
 |---|---|---|
 | `$prototype` | Type/class discriminator | Inside a `state` entry |

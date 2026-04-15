@@ -1,4 +1,4 @@
-# `@jsonsx/parser` Specification
+# `@jxplatform/parser` Specification
 ## Markdown Parser and External Class Integration
 
 **Version:** 2.0.0-draft
@@ -9,7 +9,7 @@
 
 ## 1. Overview
 
-`@jsonsx/parser` provides the content layer for JSONsx applications. It exports external classes (`MarkdownFile`, `MarkdownCollection`) that satisfy the JSONsx `$prototype` + `$src` external class contract, enabling markdown content to be declared as reactive data sources in JSONsx component files.
+`@jxplatform/parser` provides the content layer for Jx applications. It exports external classes (`MarkdownFile`, `MarkdownCollection`) that satisfy the Jx `$prototype` + `$src` external class contract, enabling markdown content to be declared as reactive data sources in Jx component files.
 
 Built on the `unified` / `remark` / `rehype` pipeline.
 
@@ -27,14 +27,14 @@ Built on the `unified` / `remark` / `rehype` pipeline.
 
 ## 3. `MarkdownFile`
 
-### 3.1 JSONsx Usage
+### 3.1 Jx Usage
 
 ```json
 {
   "state": {
     "post": {
       "$prototype": "MarkdownFile",
-      "$src": "@jsonsx/md",
+      "$src": "@jxplatform/md",
       "src": "./content/posts/hello-world.md",
       "signal": true
     }
@@ -80,14 +80,14 @@ The `resolve()` method returns an object with:
 
 ## 4. `MarkdownCollection`
 
-### 4.1 JSONsx Usage
+### 4.1 Jx Usage
 
 ```json
 {
   "state": {
     "posts": {
       "$prototype": "MarkdownCollection",
-      "$src": "@jsonsx/md",
+      "$src": "@jxplatform/md",
       "src": "./content/posts/*.md",
       "sortBy": "date",
       "sortOrder": "desc",
@@ -132,7 +132,7 @@ Becomes:
 <my-component title="Hello" count="5"></my-component>
 ```
 
-This allows JSONsx custom elements to be embedded inside markdown content.
+This allows Jx custom elements to be embedded inside markdown content.
 
 > **Status: Implemented.** Plugin registered in the remark pipeline.
 
@@ -140,7 +140,7 @@ This allows JSONsx custom elements to be embedded inside markdown content.
 
 ## 6. External Class Contract Compliance
 
-Both `MarkdownFile` and `MarkdownCollection` satisfy the JSONsx external class contract:
+Both `MarkdownFile` and `MarkdownCollection` satisfy the Jx external class contract:
 
 | Requirement | Implementation |
 |---|---|
@@ -182,4 +182,4 @@ These enable the dev server and compiler to introspect class structure without i
 
 ---
 
-*`@jsonsx/parser` Specification v2.0.0-draft*
+*`@jxplatform/parser` Specification v2.0.0-draft*

@@ -15,7 +15,7 @@ import {
   camelToKebab,
   toCSSText,
   RESERVED_KEYS,
-  JSONsx,
+  Jx,
 } from "../runtime.js";
 
 describe("sanity", () => {

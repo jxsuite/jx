@@ -8,7 +8,7 @@
   ],
   "state": {
     "tasks": [
-      { "id": 1, "text": "Read the JSONsx spec", "done": true },
+      { "id": 1, "text": "Read the Jx spec", "done": true },
       { "id": 2, "text": "Build a custom element", "done": false },
       { "id": 3, "text": "Ship to production", "done": false }
     ],

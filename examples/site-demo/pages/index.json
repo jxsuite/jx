@@ -1,16 +1,16 @@
 {
-  "title": "Home — JSONsx Demo",
+  "title": "Home — Jx Demo",
   "$head": [
-    { "tagName": "meta", "attributes": { "name": "description", "content": "A JSONsx site demo showing multi-page builds." } }
+    { "tagName": "meta", "attributes": { "name": "description", "content": "A Jx site demo showing multi-page builds." } }
   ],
   "children": [
     {
       "tagName": "h1",
-      "children": ["Welcome to JSONsx"]
+      "children": ["Welcome to Jx"]
     },
     {
       "tagName": "p",
-      "children": ["This is a statically compiled multi-page site built with the JSONsx site builder."]
+      "children": ["This is a statically compiled multi-page site built with the Jx site builder."]
     },
     {
       "tagName": "ul",

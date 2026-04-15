@@ -1,5 +1,5 @@
 {
-  "name": "@jsonsx/examples",
+  "name": "@jxplatform/examples",
   "version": "1.0.0",
   "private": true,
   "type": "module",
@@ -8,10 +8,10 @@
     "compile": "bun run compile.js"
   },
   "dependencies": {
-    "@jsonsx/runtime": "workspace:*",
-    "@jsonsx/compiler": "workspace:*",
-    "@jsonsx/parser": "workspace:*",
-    "@jsonsx/server": "workspace:*",
-    "@jsonsx/studio": "workspace:*"
+    "@jxplatform/runtime": "workspace:*",
+    "@jxplatform/compiler": "workspace:*",
+    "@jxplatform/parser": "workspace:*",
+    "@jxplatform/server": "workspace:*",
+    "@jxplatform/studio": "workspace:*"
   }
 }

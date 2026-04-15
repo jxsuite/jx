@@ -1,12 +1,12 @@
 ---
 title: Interactive Post with Components
 date: 2025-04-12
-tags: [jsonsx, directives, interactive]
+tags: [jx, directives, interactive]
 published: true
 author: John Doe
 ---
 
-This post demonstrates embedding JSONsx custom elements inside markdown using directive syntax.
+This post demonstrates embedding Jx custom elements inside markdown using directive syntax.
 
 ## A Simple Callout
 

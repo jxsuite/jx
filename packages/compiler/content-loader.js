@@ -97,13 +97,13 @@ function parseCSV(csv) {
 let _mdModule = null;
 
 /**
- * Lazily import @jsonsx/parser for Markdown support.
+ * Lazily import @jxplatform/parser for Markdown support.
  * This avoids hard dependency — only loads when MD collections exist.
  * @returns {Promise<any>}
  */
 async function getMarkdownModule() {
   if (!_mdModule) {
-    _mdModule = await import("@jsonsx/parser");
+    _mdModule = await import("@jxplatform/parser");
   }
   return _mdModule;
 }

@@ -13,7 +13,7 @@ import { resolve, dirname } from "node:path";
  * these defaults fill in anything the author omits.
  */
 const DEFAULTS = {
-  name: "JSONsx Site",
+  name: "Jx Site",
   url: "",
   defaults: {
     layout: null,

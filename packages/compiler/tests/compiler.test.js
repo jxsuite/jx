@@ -142,9 +142,9 @@ describe("compile — output structure", () => {
     expect(files.length).toBe(0);
   });
 
-  test('default title is "JSONsx App"', async () => {
+  test('default title is "Jx App"', async () => {
     const { html } = await compile({ tagName: "div" });
-    expect(html).toContain("<title>JSONsx App</title>");
+    expect(html).toContain("<title>Jx App</title>");
   });
 
   test("custom title is escaped and inserted", async () => {
@@ -324,7 +324,7 @@ describe("compile — dynamic documents (standard tagName → client target)", (
     // isDynamic detects the dynamic child → client target
     expect(files.length).toBe(1);
     expect(html).toContain("importmap");
-    expect(html).not.toContain("<jsonsx-app>");
+    expect(html).not.toContain("<jx-app>");
   });
 
   test("${} template string in property makes node dynamic → client target", async () => {
@@ -338,7 +338,7 @@ describe("compile — dynamic documents (standard tagName → client target)", (
     // Dynamic child → client target
     expect(files.length).toBe(1);
     expect(html).toContain("importmap");
-    expect(html).not.toContain("<jsonsx-app>");
+    expect(html).not.toContain("<jx-app>");
   });
 
   test("no hydration island markers in output", async () => {
@@ -346,8 +346,8 @@ describe("compile — dynamic documents (standard tagName → client target)", (
       tagName: "div",
       state: { $count: 0 },
     });
-    expect(html).not.toContain("data-jsonsx-island");
-    expect(html).not.toContain("application/jsonsx+json");
+    expect(html).not.toContain("data-jx-island");
+    expect(html).not.toContain("application/jx+json");
   });
 });
 

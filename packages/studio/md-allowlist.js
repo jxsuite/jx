@@ -2,7 +2,7 @@
  * md-allowlist.js — Markdown element allowlist and nesting constraints
  *
  * Defines which HTML elements are "native markdown" — they round-trip
- * to pure markdown syntax. Everything else is a JSONsx component directive.
+ * to pure markdown syntax. Everything else is a Jx component directive.
  */
 
 /** Block-level elements that map directly to markdown syntax */

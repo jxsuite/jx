@@ -116,7 +116,7 @@ writeFileSync(join(FIXTURES, "Secret.class.json"), JSON.stringify(privateFieldsC
 
 // Helper: create a mock Request
 function mockRequest(/** @type {any} */ body) {
-  return new Request("http://localhost/__jsonsx_resolve__", {
+  return new Request("http://localhost/__jx_resolve__", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -218,7 +218,7 @@ describe("handleResolve — hybrid .class.json", () => {
 
 describe("handleResolve — errors", () => {
   test("returns 400 for invalid JSON body", async () => {
-    const req = new Request("http://localhost/__jsonsx_resolve__", {
+    const req = new Request("http://localhost/__jx_resolve__", {
       method: "POST",
       body: "not json",
     });

@@ -104,7 +104,7 @@ export function isAncestor(path, descendant) {
 // ─── Tree flattening (for layer panel) ────────────────────────────────────────
 
 /**
- * Flatten a JSONsx document into an array of { node, path, depth, nodeType } rows.
+ * Flatten a Jx document into an array of { node, path, depth, nodeType } rows.
  * Walks static children arrays, $map templates, and $switch cases.
  *
  * nodeType: 'element' (default) | 'map' | 'case' | 'case-ref'

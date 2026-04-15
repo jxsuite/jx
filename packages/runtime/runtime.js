@@ -1,5 +1,5 @@
 /**
- * JSONsx — JSON-native reactive web component runtime
+ * Jx — JSON-native reactive web component runtime
  * @version 3.0.0
  * @license MIT
  *
@@ -9,7 +9,7 @@
  *   3. render     — walk resolved tree, build DOM, wire reactive effects
  *   4. output     — append to target
  *
- * @module jsonsx
+ * @module jx
  */
 
 import { reactive, ref, computed, effect, isRef, onEffectCleanup } from "@vue/reactivity";
@@ -17,7 +17,7 @@ import { reactive, ref, computed, effect, isRef, onEffectCleanup } from "@vue/re
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
- * Mount a JSONsx document into a DOM container.
+ * Mount a Jx document into a DOM container.
  *
  * @param {string | Record<string, any>} source - Path to .json file, URL, or raw document object
  * @param {HTMLElement} [target=document.body]
@@ -25,10 +25,10 @@ import { reactive, ref, computed, effect, isRef, onEffectCleanup } from "@vue/re
  * @returns {Promise<Record<string, any>>} Resolves with the live component scope (state reactive proxy)
  *
  * @example
- * import { JSONsx } from '@jsonsx/runtime';
- * const state = await JSONsx('./counter.json', document.getElementById('app'));
+ * import { Jx } from '@jxplatform/runtime';
+ * const state = await Jx('./counter.json', document.getElementById('app'));
  */
-export async function JSONsx(source, target = document.body, options) {
+export async function Jx(source, target = document.body, options) {
   const base = typeof source === "string" ? new URL(source, location.href).href : location.href;
   const doc = await resolve(source);
 
@@ -46,7 +46,7 @@ export async function JSONsx(source, target = document.body, options) {
 // ─── Step 1: Resolve ──────────────────────────────────────────────────────────
 
 /**
- * Fetch and parse a JSONsx JSON source.
+ * Fetch and parse a Jx JSON source.
  * Accepts a URL string, absolute URL, or a pre-parsed object.
  *
  * @param {string | Record<string, any>} source
@@ -55,7 +55,7 @@ export async function JSONsx(source, target = document.body, options) {
 export async function resolve(source) {
   if (typeof source !== "string") return source;
   const res = await fetch(source);
-  if (!res.ok) throw new Error(`JSONsx: failed to fetch ${source} (${res.status})`);
+  if (!res.ok) throw new Error(`Jx: failed to fetch ${source} (${res.status})`);
   return res.json();
 }
 
@@ -105,7 +105,7 @@ export async function buildScope(doc, parentScope = {}, base = location.href) {
       const mapped = imports[def.$prototype];
       if (mapped) {
         if (typeof mapped !== "string" || !mapped.endsWith(".class.json")) {
-          console.warn(`JSONsx: import "${def.$prototype}" must map to a .class.json path, got "${mapped}"`);
+          console.warn(`Jx: import "${def.$prototype}" must map to a .class.json path, got "${mapped}"`);
           continue;
         }
         def.$src = mapped;
@@ -238,10 +238,10 @@ const _moduleCache = new Map();
  */
 async function resolveFunction(def, state, key, base) {
   if (def.body && def.$src) {
-    throw new Error(`JSONsx: '${key}' declares both body and $src — these are mutually exclusive`);
+    throw new Error(`Jx: '${key}' declares both body and $src — these are mutually exclusive`);
   }
   if (!def.body && !def.$src) {
-    throw new Error(`JSONsx: '${key}' is a Function prototype with no body or $src`);
+    throw new Error(`Jx: '${key}' is a Function prototype with no body or $src`);
   }
 
   let fn;
@@ -265,14 +265,14 @@ async function resolveFunction(def, state, key, base) {
           const resolvedSrc = new URL(src, base).href;
           mod = await import(resolvedSrc);
         } else {
-          throw new Error(`JSONsx: failed to import '$src' "${src}" for "${key}"`);
+          throw new Error(`Jx: failed to import '$src' "${src}" for "${key}"`);
         }
       }
       _moduleCache.set(src, mod);
     }
     fn = mod[exportName] ?? mod.default?.[exportName];
     if (typeof fn !== "function") {
-      throw new Error(`JSONsx: export "${exportName}" not found or not a function in "${src}"`);
+      throw new Error(`Jx: export "${exportName}" not found or not a function in "${src}"`);
     }
   }
 
@@ -307,7 +307,7 @@ function resolveParamNames(def) {
 }
 
 /**
- * Reserved JSONsx keys — never set as DOM properties.
+ * Reserved Jx keys — never set as DOM properties.
  * @type {Set<string>}
  */
 export const RESERVED_KEYS = new Set([
@@ -344,7 +344,7 @@ export const RESERVED_KEYS = new Set([
 ]);
 
 /**
- * Recursively render a JSONsx element definition into a DOM element.
+ * Recursively render a Jx element definition into a DOM element.
  *
  * @param {Record<string, any>} def
  * @param {Record<string, any>} state - reactive scope proxy (or child scope via Object.create)
@@ -500,17 +500,17 @@ export function applyStyle(el, styleDef, mediaQueries = {}, state = {}) {
   const hasMedia = Object.keys(media).length > 0;
   if (!hasNested && !hasMedia) return;
 
-  const uid = `jsonsx-${Math.random().toString(36).slice(2, 7)}`;
-  el.dataset.jsonsx = uid;
+  const uid = `jx-${Math.random().toString(36).slice(2, 7)}`;
+  el.dataset.jx = uid;
 
   let css = "";
 
   for (const [sel, rules] of Object.entries(nested)) {
     const resolved = sel.startsWith("&")
-      ? sel.replace("&", `[data-jsonsx="${uid}"]`)
+      ? sel.replace("&", `[data-jx="${uid}"]`)
       : sel.startsWith("[")
-        ? `[data-jsonsx="${uid}"]${sel}`
-        : `[data-jsonsx="${uid}"] ${sel}`;
+        ? `[data-jx="${uid}"]${sel}`
+        : `[data-jx="${uid}"] ${sel}`;
     css += `${resolved} { ${toCSSText(rules)} }\n`;
   }
 
@@ -519,7 +519,7 @@ export function applyStyle(el, styleDef, mediaQueries = {}, state = {}) {
     const query = key.startsWith("@--")
       ? (mediaQueries[key.slice(1)] ?? key.slice(1))
       : key.slice(1);
-    const scope = `[data-jsonsx="${uid}"]`;
+    const scope = `[data-jx="${uid}"]`;
     css += `@media ${query} { ${scope} { ${toCSSText(rules)} } }\n`;
     for (const [sel, nestedRules] of Object.entries(rules)) {
       if (!isNestedSelector(sel)) continue;
@@ -645,7 +645,7 @@ function renderSwitch(def, state, options) {
           container.appendChild(renderNode(doc, childScope, childOpts));
         })
         .catch((/** @type {any} */ e) =>
-          console.error("JSONsx $switch: failed to load external case", caseDef.$ref, e),
+          console.error("Jx $switch: failed to load external case", caseDef.$ref, e),
         );
       return;
     }
@@ -859,7 +859,7 @@ export async function resolvePrototype(def, state, key, base) {
 
     default:
       console.warn(
-        `JSONsx: unknown $prototype "${def.$prototype}" for "${key}". Did you mean to add '$src'?`,
+        `Jx: unknown $prototype "${def.$prototype}" for "${key}". Did you mean to add '$src'?`,
       );
       return ref(null);
   }
@@ -897,7 +897,7 @@ async function resolveExternalPrototype(def, state, key, base) {
   // Non-Function $prototype must use .class.json as entrypoint
   if (!src.endsWith(".class.json")) {
     throw new Error(
-      `JSONsx: $prototype "${def.$prototype}" requires a .class.json $src, got "${src}". ` +
+      `Jx: $prototype "${def.$prototype}" requires a .class.json $src, got "${src}". ` +
       `Wrap the class in a .class.json schema with $implementation.`
     );
   }
@@ -934,10 +934,10 @@ async function importAndInstantiate(def, src, exportName, base) {
 
   const ExportedClass = mod[exportName] ?? mod.default?.[exportName];
   if (!ExportedClass) {
-    throw new Error(`JSONsx: export "${exportName}" not found in "${src}"`);
+    throw new Error(`Jx: export "${exportName}" not found in "${src}"`);
   }
   if (typeof ExportedClass !== "function") {
-    throw new Error(`JSONsx: "${exportName}" from "${src}" is not a class`);
+    throw new Error(`Jx: "${exportName}" from "${src}" is not a class`);
   }
 
   /** @type {Record<string, any>} */
@@ -1094,7 +1094,7 @@ function classFromSchema(classDef) {
 
 /**
  * Dev-mode fallback: when an $src module cannot run in the browser, proxy the
- * resolve() call through the JSONsx dev server (POST /__jsonsx_resolve__).
+ * resolve() call through the Jx dev server (POST /__jx_resolve__).
  * Supports reactive template strings in config values via Vue effect().
  * @param {Record<string, any>} def
  * @param {Record<string, any>} state
@@ -1113,7 +1113,7 @@ async function resolveViaDevProxy(def, state, key, base) {
 
   /** @param {Record<string, any>} resolvedConfig */
   const doResolve = (resolvedConfig) =>
-    fetch("/__jsonsx_resolve__", {
+    fetch("/__jx_resolve__", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -1124,7 +1124,7 @@ async function resolveViaDevProxy(def, state, key, base) {
         ...resolvedConfig,
       }),
     }).then((r) => {
-      if (!r.ok) throw new Error(`JSONsx dev proxy ${r.status} for "${key}"`);
+      if (!r.ok) throw new Error(`Jx dev proxy ${r.status} for "${key}"`);
       return r.json();
     });
 
@@ -1142,14 +1142,14 @@ async function resolveViaDevProxy(def, state, key, base) {
         .then((/** @type {any} */ value) => {
           s.value = value;
         })
-        .catch((/** @type {any} */ e) => console.error("JSONsx dev proxy:", e));
+        .catch((/** @type {any} */ e) => console.error("Jx dev proxy:", e));
     });
   } else {
     doResolve(config)
       .then((/** @type {any} */ value) => {
         s.value = value;
       })
-      .catch((/** @type {any} */ e) => console.error("JSONsx dev proxy:", e));
+      .catch((/** @type {any} */ e) => console.error("Jx dev proxy:", e));
   }
   return s;
 }
@@ -1192,9 +1192,9 @@ async function resolveServerFunction(def, state, key, base) {
   }
 
   const fn = mod[exportName] ?? mod.default?.[exportName];
-  if (!fn) throw new Error(`JSONsx: export "${exportName}" not found in "${src}" for "${key}"`);
+  if (!fn) throw new Error(`Jx: export "${exportName}" not found in "${src}" for "${key}"`);
   if (typeof fn !== "function")
-    throw new Error(`JSONsx: "${exportName}" from "${src}" is not a function`);
+    throw new Error(`Jx: "${exportName}" from "${src}" is not a function`);
 
   const rawArgs = def.arguments ?? {};
   const hasReactiveArg = Object.values(rawArgs).some((/** @type {any} */ v) => isRefObj(v));
@@ -1228,7 +1228,7 @@ async function resolveServerFunction(def, state, key, base) {
 
 /**
  * Dev-mode fallback: when a timing: "server" module cannot run in the browser,
- * proxy the function call through the JSONsx dev server (POST /__jsonsx_server__).
+ * proxy the function call through the Jx dev server (POST /__jx_server__).
  * Supports reactive $ref arguments via Vue effect().
  * @param {Record<string, any>} def
  * @param {Record<string, any>} state
@@ -1251,7 +1251,7 @@ async function resolveServerFunctionViaProxy(def, state, key, base) {
 
   /** @param {Record<string, any>} args */
   const doResolve = (args) =>
-    fetch("/__jsonsx_server__", {
+    fetch("/__jx_server__", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -1261,7 +1261,7 @@ async function resolveServerFunctionViaProxy(def, state, key, base) {
         arguments: args,
       }),
     }).then((r) => {
-      if (!r.ok) throw new Error(`JSONsx server proxy ${r.status} for "${key}"`);
+      if (!r.ok) throw new Error(`Jx server proxy ${r.status} for "${key}"`);
       return r.json();
     });
 
@@ -1276,14 +1276,14 @@ async function resolveServerFunctionViaProxy(def, state, key, base) {
         .then((/** @type {any} */ result) => {
           s.value = result;
         })
-        .catch((/** @type {any} */ e) => console.error("JSONsx server proxy:", e));
+        .catch((/** @type {any} */ e) => console.error("Jx server proxy:", e));
     });
   } else {
     doResolve(resolveArgs())
       .then((/** @type {any} */ result) => {
         s.value = result;
       })
-      .catch((/** @type {any} */ e) => console.error("JSONsx server proxy:", e));
+      .catch((/** @type {any} */ e) => console.error("Jx server proxy:", e));
   }
   return s;
 }
@@ -1417,7 +1417,7 @@ async function registerElements(elements, base) {
 }
 
 /**
- * Register a custom element from a JSONsx document.
+ * Register a custom element from a Jx document.
  *
  * @param {string | Record<string, any>} source - URL to .json file, or raw document object
  * @param {string} [base] - Base URL for resolving $src imports
@@ -1435,7 +1435,7 @@ export async function defineElement(source, base) {
 
   const tagName = source_.tagName;
   if (!tagName || !tagName.includes("-")) {
-    throw new Error(`JSONsx defineElement: tagName "${tagName}" must contain a hyphen`);
+    throw new Error(`Jx defineElement: tagName "${tagName}" must contain a hyphen`);
   }
   if (customElements.get(tagName)) return;
 

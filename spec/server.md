@@ -1,4 +1,4 @@
-# `@jsonsx/server` Specification
+# `@jxplatform/server` Specification
 ## Development Server with Live Reload, Proxy Resolution, and Studio API
 
 **Version:** 2.0.0-draft
@@ -9,14 +9,14 @@
 
 ## 1. Overview
 
-`@jsonsx/server` is a Bun-native development server for JSONsx projects. It provides live reload, `$src`/`$prototype` proxy resolution, `timing: "server"` function execution, a filesystem API for Studio, and OXC-powered code services.
+`@jxplatform/server` is a Bun-native development server for Jx projects. It provides live reload, `$src`/`$prototype` proxy resolution, `timing: "server"` function execution, a filesystem API for Studio, and OXC-powered code services.
 
 ---
 
 ## 2. Entry Point
 
 ```js
-import { createDevServer } from '@jsonsx/server';
+import { createDevServer } from '@jxplatform/server';
 
 createDevServer({
   root: './my-project',
@@ -37,7 +37,7 @@ SSE (Server-Sent Events) endpoint. The server watches the project directory via 
 
 > **Status: Implemented.** `watch.js` handles file watching + SSE broadcasting.
 
-### 3.2 `$prototype`/`$src` Proxy (`POST /__jsonsx_resolve__`)
+### 3.2 `$prototype`/`$src` Proxy (`POST /__jx_resolve__`)
 
 When the runtime encounters an external `$prototype` with `$src` during development, it sends a POST request to the dev server for server-side resolution. The server:
 
@@ -61,7 +61,7 @@ When `$src` points to a `.class.json` file:
 
 > **Status: Implemented.** `resolve.js` handles full resolution pipeline.
 
-### 3.3 Server Function Proxy (`POST /__jsonsx_server__`)
+### 3.3 Server Function Proxy (`POST /__jx_server__`)
 
 Executes `timing: "server"` functions during development. The runtime sends:
 ```json
@@ -142,4 +142,4 @@ Bun built-ins: `Bun.serve`, `Bun.build`, `Bun.Transpiler`.
 
 ---
 
-*`@jsonsx/server` Specification v2.0.0-draft*
+*`@jxplatform/server` Specification v2.0.0-draft*
