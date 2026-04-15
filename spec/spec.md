@@ -893,14 +893,14 @@ Private environment variables and server-only credentials remain in the server p
 
 ### 12.1 The `$src` Property
 
-`$src` on any `state` entry with `$prototype` resolves the class from an external module:
+`$src` on any `state` entry with a non-Function `$prototype` **must** point to a `.class.json` file. The `.class.json` schema is the canonical entrypoint — it can optionally reference a JS implementation via `$implementation`. Direct JS `$src` for non-Function prototypes is not allowed.
 
 ```json
 {
   "state": {
     "posts": {
       "$prototype": "MarkdownCollection",
-      "$src": "@jsonsx/md",
+      "$src": "./MarkdownCollection.class.json",
       "src": "./content/posts/*.md",
       "signal": true
     }
@@ -910,9 +910,9 @@ Private environment variables and server-only credentials remain in the server p
 
 | Specifier form | Example | Resolution |
 |---|---|---|
-| Relative path | `"./lib/my-class.js"` | Relative to the `.json` file |
-| Absolute URL | `"https://cdn.example.com/parser.js"` | Fetched directly |
-| Package name | `"@jsonsx/md"` | Resolved via npm/import map |
+| Relative `.class.json` path | `"./lib/MyClass.class.json"` | Relative to the `.json` file |
+| Absolute `.class.json` URL | `"https://cdn.example.com/Parser.class.json"` | Fetched directly |
+| `$prototype: "Function"` with `.js` | `"./lib/helpers.js"` | Direct JS import (Functions only) |
 
 ### 12.2 External Class Contract
 
@@ -931,7 +931,7 @@ instance.unsubscribe()
 
 ### 12.3 `.class.json` Schema-Defined Classes
 
-External classes may be defined via `.class.json` files — JSON Schema 2020-12 documents describing a class structure with an optional `$implementation` key:
+All non-Function external classes **must** use a `.class.json` file as their `$src` entrypoint. These are JSON Schema 2020-12 documents describing a class structure with an optional `$implementation` key:
 
 ```json
 {
@@ -948,9 +948,9 @@ External classes may be defined via `.class.json` files — JSON Schema 2020-12 
 }
 ```
 
-When `$src` points to a `.class.json` file, the runtime reads the schema, follows `$implementation`, and instantiates the class. If no `$implementation` is present, the runtime dynamically constructs a class from the schema.
+When `$src` points to a `.class.json` file, the runtime reads the schema and follows `$implementation` to instantiate the class from the JS module. If no `$implementation` is present, the runtime dynamically constructs a class from the schema definition (self-contained mode).
 
-> **Status: Implemented.** Runtime resolves `.class.json` with `$implementation`. Dev server handles resolution via proxy. Compiler emits `.class.json` → ES class.
+> **Status: Implemented.** Runtime enforces `.class.json` entrypoint for all non-Function external prototypes. `$implementation` in the schema optionally redirects to a JS module. Dev server handles resolution via proxy. Compiler emits `.class.json` → ES class.
 
 ---
 

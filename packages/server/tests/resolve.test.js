@@ -231,6 +231,17 @@ describe("handleResolve — errors", () => {
     const res = await handleResolve(req, import.meta.dir);
     expect(res.status).toBe(400);
   });
+
+  test("returns 400 when non-Function $src points to .js", async () => {
+    const req = mockRequest({
+      $src: "./_fixtures/calc.js",
+      $prototype: "Calculator",
+    });
+    const res = await handleResolve(req, import.meta.dir);
+    expect(res.status).toBe(400);
+    const text = await res.text();
+    expect(text).toContain(".class.json");
+  });
 });
 
 // Cleanup

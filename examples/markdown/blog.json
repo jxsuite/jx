@@ -5,7 +5,7 @@
   "state": {
     "posts": {
       "$prototype": "MarkdownCollection",
-      "$src": "../../packages/parser/md.js",
+      "$src": "../../packages/parser/MarkdownCollection.class.json",
       "src": "./content/posts/*.md",
       "sortBy": "frontmatter.date",
       "sortOrder": "desc"
@@ -13,7 +13,7 @@
     "currentSlug": { "type": "string", "default": "getting-started" },
     "currentPost": {
       "$prototype": "MarkdownFile",
-      "$src": "../../packages/parser/md.js",
+      "$src": "../../packages/parser/MarkdownFile.class.json",
       "src": "./content/posts/${state.currentSlug}.md"
     },
     "selectPost": {

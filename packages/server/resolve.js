@@ -86,31 +86,12 @@ export async function handleResolve(req, root) {
     }
   }
 
-  let mod;
-  try {
-    mod = await import(moduleAbsPath);
-  } catch (/** @type {any} */ e) {
-    return new Response(`Failed to import "${$src}": ${e.message}`, { status: 500 });
-  }
-
-  const exportName = xport ?? $prototype;
-  const ExportedClass = mod[exportName] ?? mod.default?.[exportName];
-  if (typeof ExportedClass !== "function") {
-    return new Response(`Export "${exportName}" not found in "${$src}"`, { status: 500 });
-  }
-
-  try {
-    const instance = new ExportedClass(config);
-    const value =
-      typeof instance.resolve === "function"
-        ? await instance.resolve()
-        : "value" in instance
-          ? instance.value
-          : instance;
-    return Response.json(value);
-  } catch (/** @type {any} */ e) {
-    return Response.json({ error: e.message }, { status: 500 });
-  }
+  // Non-Function $prototype must use .class.json as entrypoint
+  return new Response(
+    `Non-Function $prototype "${$prototype}" requires a .class.json $src, got "${$src}". ` +
+    `Wrap the class in a .class.json schema with $implementation.`,
+    { status: 400 },
+  );
 }
 
 /**

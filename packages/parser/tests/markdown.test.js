@@ -16,12 +16,33 @@ try {
 
 import { buildScope, resolvePrototype, isSignal, RESERVED_KEYS } from "@jsonsx/runtime";
 import { MarkdownFile, MarkdownCollection, MarkdownDirective } from "../md.js";
+import { readFileSync } from "node:fs";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const FIXTURE_DIR = join(__dirname, "..", "..", "..", "examples", "markdown", "content", "posts");
+
+/**
+ * Mock fetch to serve .class.json files from disk (Happy DOM can't fetch file:// URLs).
+ * @param {Record<string, string>} fileMap - maps URL substrings to absolute file paths
+ * @returns {() => void} restore function
+ */
+function setupClassJsonFetchMock(/** @type {Record<string, string>} */ fileMap) {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = /** @type {any} */ (async (/** @type {any} */ url, /** @type {any} */ opts) => {
+    const urlStr = typeof url === "string" ? url : url.toString();
+    for (const [pattern, filePath] of Object.entries(fileMap)) {
+      if (urlStr.includes(pattern)) {
+        const content = readFileSync(filePath, "utf8");
+        return { ok: true, json: () => Promise.resolve(JSON.parse(content)) };
+      }
+    }
+    return originalFetch(url, opts);
+  });
+  return () => { globalThis.fetch = originalFetch; };
+}
 
 // ─── MarkdownFile ─────────────────────────────────────────────────────────────
 
@@ -445,6 +466,22 @@ describe("External class contract", () => {
 // ─── Runtime integration ($src external prototype) ────────────────────────────
 
 describe("Runtime external prototype ($src)", () => {
+  const parserDir = resolvePath(__dirname, "..");
+  const mdFilePath = resolvePath(parserDir, "MarkdownFile.class.json");
+  const mdCollPath = resolvePath(parserDir, "MarkdownCollection.class.json");
+
+  /** @type {() => void} */
+  let restore;
+
+  beforeAll(() => {
+    restore = setupClassJsonFetchMock({
+      "MarkdownFile.class.json": mdFilePath,
+      "MarkdownCollection.class.json": mdCollPath,
+    });
+  });
+
+  // afterAll not available in bun:test, but restore on process exit is fine for tests
+
   test("RESERVED_KEYS includes $src", () => {
     expect(RESERVED_KEYS.has("$src")).toBe(true);
   });
@@ -456,7 +493,7 @@ describe("Runtime external prototype ($src)", () => {
   test("resolvePrototype with $src loads MarkdownFile", async () => {
     const def = {
       $prototype: "MarkdownFile",
-      $src: resolvePath(__dirname, "..", "md.js"),
+      $src: "file://" + mdFilePath,
       src: join(FIXTURE_DIR, "getting-started.md"),
       signal: true,
     };
@@ -470,7 +507,7 @@ describe("Runtime external prototype ($src)", () => {
   test("resolvePrototype with $src loads MarkdownCollection", async () => {
     const def = {
       $prototype: "MarkdownCollection",
-      $src: resolvePath(__dirname, "..", "md.js"),
+      $src: "file://" + mdCollPath,
       src: join(FIXTURE_DIR, "*.md"),
       sortBy: "frontmatter.date",
       sortOrder: "desc",
@@ -487,7 +524,7 @@ describe("Runtime external prototype ($src)", () => {
   test("resolvePrototype strips reserved keys from config", async () => {
     const def = {
       $prototype: "MarkdownFile",
-      $src: resolvePath(__dirname, "..", "md.js"),
+      $src: "file://" + mdFilePath,
       src: join(FIXTURE_DIR, "getting-started.md"),
       signal: true,
       timing: "client",
@@ -500,10 +537,10 @@ describe("Runtime external prototype ($src)", () => {
   });
 
   test("resolvePrototype with $export override", async () => {
-    // MarkdownCollection is a named export in md.js
+    // MarkdownCollection is a named export referenced via .class.json
     const def = {
       $prototype: "MC",
-      $src: resolvePath(__dirname, "..", "md.js"),
+      $src: "file://" + mdCollPath,
       $export: "MarkdownCollection",
       src: join(FIXTURE_DIR, "*.md"),
       limit: 1,
@@ -516,13 +553,13 @@ describe("Runtime external prototype ($src)", () => {
     expect(val.length).toBe(1);
   });
 
-  test("resolvePrototype throws for missing export", async () => {
+  test("rejects non-Function $src pointing to .js", async () => {
     const def = {
-      $prototype: "NonExistentClass",
+      $prototype: "MarkdownFile",
       $src: resolvePath(__dirname, "..", "md.js"),
       signal: true,
     };
-    await expect(resolvePrototype(def, {}, "$x")).rejects.toThrow("not found");
+    await expect(resolvePrototype(def, {}, "$x")).rejects.toThrow(".class.json");
   });
 
   test("buildScope with external $src prototype", async () => {
@@ -530,7 +567,7 @@ describe("Runtime external prototype ($src)", () => {
       state: {
         $post: {
           $prototype: "MarkdownFile",
-          $src: resolvePath(__dirname, "..", "md.js"),
+          $src: "file://" + mdFilePath,
           src: join(FIXTURE_DIR, "getting-started.md"),
         },
       },

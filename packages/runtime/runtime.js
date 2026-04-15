@@ -878,13 +878,27 @@ const EXTERNAL_RESERVED = new Set([
 async function resolveExternalPrototype(def, state, key, base) {
   const src = def.$src;
 
-  // .class.json: schema-defined class
-  if (src.endsWith(".class.json")) {
-    return resolveClassJson(def, state, key, base);
+  // Non-Function $prototype must use .class.json as entrypoint
+  if (!src.endsWith(".class.json")) {
+    throw new Error(
+      `JSONsx: $prototype "${def.$prototype}" requires a .class.json $src, got "${src}". ` +
+      `Wrap the class in a .class.json schema with $implementation.`
+    );
   }
 
-  const exportName = def.$export ?? def.$prototype;
+  return resolveClassJson(def, state, key, base);
+}
 
+/**
+ * Import a JS module and instantiate a class from it.
+ * Internal helper used by resolveClassJson for $implementation.
+ * @param {Record<string, any>} def - Original state entry (for config extraction)
+ * @param {string} src - JS module URL to import
+ * @param {string} exportName - Export name to look up
+ * @param {string} [base] - Base URL for resolution
+ * @returns {Promise<any>}
+ */
+async function importAndInstantiate(def, src, exportName, base) {
   let mod;
   if (_moduleCache.has(src)) {
     mod = _moduleCache.get(src);
@@ -893,15 +907,10 @@ async function resolveExternalPrototype(def, state, key, base) {
       mod = await import(src);
     } catch {
       if (base) {
-        try {
-          const resolvedSrc = new URL(src, base).href;
-          mod = await import(resolvedSrc);
-        } catch {
-          // Module cannot run in the browser — fall back to dev server proxy
-          return resolveViaDevProxy(def, state, key, base);
-        }
+        const resolvedSrc = new URL(src, base).href;
+        mod = await import(resolvedSrc);
       } else {
-        return resolveViaDevProxy(def, state, key, base);
+        throw new Error(`Failed to import "${src}"`);
       }
     }
     _moduleCache.set(src, mod);
@@ -971,11 +980,13 @@ async function resolveClassJson(def, state, key, base) {
   if (classDef.$implementation) {
     const schemaUrl = base ? new URL(src, base).href : new URL(src, location.href).href;
     const implSrc = new URL(classDef.$implementation, schemaUrl).href;
-    /** @type {Record<string, any>} */
-    const implDef = { ...def, $src: implSrc };
-    // Use $export from def, or title from schema, or $prototype from def
-    if (!implDef.$export) implDef.$export = classDef.title ?? def.$prototype;
-    return resolveExternalPrototype(implDef, state, key, base);
+    const exportName = def.$export ?? classDef.title ?? def.$prototype;
+    try {
+      return await importAndInstantiate(def, implSrc, exportName, base);
+    } catch {
+      // Browser can't import the JS module — fall back to dev proxy with original .class.json def
+      return resolveViaDevProxy(def, state, key, base);
+    }
   }
 
   // Self-contained: construct class dynamically from schema

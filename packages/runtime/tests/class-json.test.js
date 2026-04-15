@@ -316,19 +316,20 @@ describe("classFromSchema — via resolvePrototype", () => {
 
 describe("resolveClassJson — hybrid $implementation", () => {
   test("follows $implementation to JS module via resolveExternalPrototype", async () => {
-    const mdPath = resolvePath(__dirname, "..", "..", "parser", "md.js");
+    const parserDir = resolvePath(__dirname, "..", "..", "parser");
     const hybridDef = {
       $prototype: "Class",
       title: "MarkdownFile",
-      $implementation: mdPath,
+      $implementation: "./md.js",
     };
+    const schemaSrc = "file://" + join(parserDir, "MdFile.class.json");
     const restore = setupFetchMock({ "MdFile.class.json": hybridDef });
     try {
       const fixtureDir = resolvePath(__dirname, "..", "..", "..", "examples", "markdown", "content", "posts");
       const sig = await resolvePrototype(
         {
           $prototype: "MarkdownFile",
-          $src: "http://localhost/MdFile.class.json",
+          $src: schemaSrc,
           src: join(fixtureDir, "getting-started.md"),
         },
         {},
@@ -398,6 +399,35 @@ describe("buildScope — .class.json $src", () => {
       const scope = await buildScope(doc, {}, BASE);
       // Vue reactive() unwraps refs
       expect(scope.$result).toBe(30);
+    } finally {
+      restore();
+    }
+  });
+});
+
+// ─── .class.json enforcement ─────────────────────────────────────────────────
+
+describe("resolveExternalPrototype — .class.json enforcement", () => {
+  test("throws when non-Function $src does not end in .class.json", async () => {
+    expect(
+      resolvePrototype(
+        { $prototype: "MyClass", $src: "./my-class.js" },
+        {},
+        "$mc",
+      ),
+    ).rejects.toThrow(".class.json");
+  });
+
+  test("allows .class.json $src for non-Function prototypes", async () => {
+    const restore = setupFetchMock({ "Adder.class.json": selfContainedClassDef });
+    try {
+      const sig = await resolvePrototype(
+        { $prototype: "Adder", $src: "http://localhost/Adder.class.json", a: 1, b: 2 },
+        {},
+        "$sum",
+      );
+      expect(isSignal(sig)).toBe(true);
+      expect(/** @type {any} */ (sig).value).toBe(3);
     } finally {
       restore();
     }
