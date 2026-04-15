@@ -25,6 +25,7 @@ export default {
       "assets/studio/index.html": "views/studio/index.html",
       "assets/studio/dist/studio.css": "views/studio/dist/studio.css",
       "assets/studio/dist/studio.js": "views/studio/dist/studio.js",
+      "assets/studio/dist/init.js": "views/studio/dist/init.js",
     },
   },
 

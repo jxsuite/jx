@@ -82,7 +82,7 @@ import {
   inferInputType,
 } from "./studio-utils.js";
 
-import { registerPlatform, getPlatform } from "./platform.js";
+import { registerPlatform, getPlatform, hasPlatform } from "./platform.js";
 import { createDevServerPlatform } from "./platforms/devserver.js";
 
 import {
@@ -678,8 +678,10 @@ let blocksFilter = "";
 
 // ─── Bootstrap ────────────────────────────────────────────────────────────────
 
-// Register the dev server platform adapter (PAL)
-registerPlatform(createDevServerPlatform());
+// Register the dev server platform adapter (PAL) as default if none pre-registered
+if (!hasPlatform()) {
+  registerPlatform(createDevServerPlatform());
+}
 
 const EMPTY_DOC = {
   tagName: "div",
