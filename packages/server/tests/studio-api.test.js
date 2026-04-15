@@ -319,6 +319,30 @@ describe("project-info", () => {
   });
 });
 
+// ─── sites discovery endpoint ────────────────────────────────────────────────
+
+describe("sites discovery", () => {
+  test("discovers site projects with site.json", async () => {
+    const url = new URL("http://localhost/__studio/sites");
+    const req = new Request(url, { method: "GET" });
+    const res = await handleStudioApi(req, url, import.meta.dir);
+    expect(res).not.toBeNull();
+    const sites = await res.json();
+    const testSite = sites.find((s) => s.config.name === "Test Site");
+    expect(testSite).toBeDefined();
+    expect(testSite.path).toBe("_studio_fixtures/my-site");
+    expect(testSite.config.url).toBe("https://test.dev");
+  });
+
+  test("does not include directories without site.json", async () => {
+    const url = new URL("http://localhost/__studio/sites");
+    const req = new Request(url, { method: "GET" });
+    const res = await handleStudioApi(req, url, import.meta.dir);
+    const sites = await res.json();
+    expect(sites.every((s) => s.path !== "_studio_fixtures/plain-dir")).toBe(true);
+  });
+});
+
 // ─── components?dir= scoped scan ─────────────────────────────────────────────
 
 describe("components — scoped scan", () => {

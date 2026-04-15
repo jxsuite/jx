@@ -158,7 +158,7 @@ export function createState(doc) {
 
 // ─── Project state (persists across document switches) ────────────────────────
 //
-// Shape: { root, name, projectRoot, isSiteProject, siteConfig, projectDirs,
+// Shape: { root, name, projectRoot, isSiteProject, siteConfig,
 //          dirs: Map<string, DirEntry[]>, expanded: Set<string>,
 //          selectedPath: string|null, searchQuery: string }
 // DirEntry: { name, path, type: "file"|"directory", size, modified }

@@ -72,6 +72,28 @@ export async function handleStudioApi(req, url, root) {
     }
   }
 
+  // Discover site projects — find all site.json files under root
+  if (path === "/__studio/sites" && req.method === "GET") {
+    try {
+      const glob = new Bun.Glob("**/site.json");
+      const sites = [];
+      for await (const match of glob.scan({ cwd: root, dot: false })) {
+        if (match.includes("node_modules") || match.includes("dist/") || match.includes(".claude/")) continue;
+        const fp = resolve(root, match);
+        try {
+          const raw = JSON.parse(await readFile(fp, "utf8"));
+          if (typeof raw === "object" && raw !== null && !Array.isArray(raw)) {
+            const projectDir = dirname(match) === "." ? "." : dirname(match);
+            sites.push({ path: projectDir, config: raw });
+          }
+        } catch {}
+      }
+      return Response.json(sites);
+    } catch (e) {
+      return Response.json({ error: e.message }, { status: 500 });
+    }
+  }
+
   // List files
   if (path === "/__studio/files" && req.method === "GET") {
     const dir = url.searchParams.get("dir") ?? ".";

@@ -82,6 +82,9 @@ import {
   inferInputType,
 } from "./studio-utils.js";
 
+import { registerPlatform, getPlatform } from "./platform.js";
+import { createDevServerPlatform } from "./platforms/devserver.js";
+
 import {
   draggable,
   dropTargetForElements,
@@ -162,10 +165,8 @@ let componentRegistryLoaded = false;
 
 async function loadComponentRegistry() {
   try {
-    const dir = projectState?.projectRoot || ".";
-    const url = dir === "." ? "/__studio/components" : `/__studio/components?dir=${encodeURIComponent(dir)}`;
-    const res = await fetch(url);
-    if (res.ok) componentRegistry = await res.json();
+    const platform = getPlatform();
+    componentRegistry = await platform.discoverComponents();
     componentRegistryLoaded = true;
   } catch {
     componentRegistryLoaded = true;
@@ -174,14 +175,14 @@ async function loadComponentRegistry() {
 
 async function navigateToComponent(componentPath) {
   try {
-    const res = await fetch(`/__studio/file?path=${encodeURIComponent(projectPath(componentPath))}`);
-    const data = await res.json();
-    if (!data.content) return;
-    const doc = JSON.parse(data.content);
-    S = pushDocument(S, doc, data.path);
+    const platform = getPlatform();
+    const content = await platform.readFile(componentPath);
+    if (!content) return;
+    const doc = JSON.parse(content);
+    S = pushDocument(S, doc, componentPath);
     S.dirty = false;
     render();
-    statusMessage(`Editing component: ${doc.tagName || data.path}`);
+    statusMessage(`Editing component: ${doc.tagName || componentPath}`);
   } catch (e) {
     statusMessage(`Error: ${e.message}`);
   }
@@ -191,10 +192,8 @@ async function navigateBack() {
   if (!S.documentStack || S.documentStack.length === 0) return;
   if (S.dirty && S.documentPath) {
     try {
-      await fetch(`/__studio/file?path=${encodeURIComponent(S.documentPath)}`, {
-        method: "PUT",
-        body: JSON.stringify(S.document, null, 2),
-      });
+      const platform = getPlatform();
+      await platform.writeFile(S.documentPath, JSON.stringify(S.document, null, 2));
     } catch (e) {
       statusMessage(`Save error: ${e.message}`);
     }
@@ -247,30 +246,16 @@ function computeRelativePath(fromDocPath, toCompPath) {
 // ─── OXC code services (server-backed) ───────────────────────────────────────
 
 async function codeService(action, payload) {
-  try {
-    const res = await fetch(`/__studio/code/${action}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) return null;
-    return await res.json();
-  } catch {
-    return null;
-  }
+  const platform = getPlatform();
+  if (!platform.codeService) return null;
+  return platform.codeService(action, payload);
 }
 
 /** Ask the server to locate a document by filename within the project root. */
 async function locateDocument(name) {
-  try {
-    const res = await fetch("/__studio/locate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name }),
-    });
-    if (res.ok) return (await res.json()).path || null;
-  } catch {}
-  return null;
+  const platform = getPlatform();
+  if (!platform.locateFile) return null;
+  return platform.locateFile(name);
 }
 
 /** Cache of plugin schemas keyed by "$src::$prototype". */
@@ -283,11 +268,10 @@ async function fetchPluginSchema(def) {
   if (pluginSchemaCache.has(cacheKey)) return pluginSchemaCache.get(cacheKey);
 
   try {
-    const params = new URLSearchParams({ src: def.$src, prototype: def.$prototype });
-    if (S.documentPath) params.set("base", `${location.origin}/${S.documentPath}`);
-    const res = await fetch(`/__studio/plugin-schema?${params}`);
-    if (!res.ok) { pluginSchemaCache.set(cacheKey, null); return null; }
-    const { schema } = await res.json();
+    const platform = getPlatform();
+    if (!platform.fetchPluginSchema) { pluginSchemaCache.set(cacheKey, null); return null; }
+    const base = S.documentPath ? `${location.origin}/${S.documentPath}` : undefined;
+    const schema = await platform.fetchPluginSchema(def.$src, def.$prototype, base);
     pluginSchemaCache.set(cacheKey, schema);
     return schema;
   } catch {
@@ -694,6 +678,9 @@ let blocksFilter = "";
 
 // ─── Bootstrap ────────────────────────────────────────────────────────────────
 
+// Register the dev server platform adapter (PAL)
+registerPlatform(createDevServerPlatform());
+
 const EMPTY_DOC = {
   tagName: "div",
   style: { padding: "2rem", fontFamily: "system-ui, sans-serif" },
@@ -709,20 +696,19 @@ loadComponentRegistry();
 loadProject();
 render();
 
-// Auto-open a document via ?open=path query parameter (server-backed)
+// Auto-open a document via ?open=path query parameter
 {
   const openParam = new URLSearchParams(location.search).get("open");
   if (openParam) {
-    fetch(`/__studio/file?path=${encodeURIComponent(openParam)}`)
-      .then((r) => r.json())
-      .then(async (data) => {
-        if (data.content) {
-          const doc = JSON.parse(data.content);
+    getPlatform().readFile(openParam)
+      .then(async (content) => {
+        if (content) {
+          const doc = JSON.parse(content);
           S = createState(doc);
           S.dirty = false;
-          S.documentPath = data.path;
+          S.documentPath = openParam;
           render();
-          statusMessage(`Opened ${data.path}`);
+          statusMessage(`Opened ${openParam}`);
         }
       })
       .catch((e) => statusMessage(`Error: ${e.message}`));
@@ -4744,32 +4730,12 @@ function renderDataTreeTemplate(value, depth, maxDepth = 5) {
 
 // ─── File management ──────────────────────────────────────────────────────────
 
-/** Prefix a project-relative path with the active project root for server API calls */
-function projectPath(rel) {
-  const root = projectState?.projectRoot;
-  if (!root || root === ".") return rel;
-  return rel === "." ? root : `${root}/${rel}`;
-}
-
-/** Strip the project root prefix from a server-root-relative path for display */
-function stripProjectRoot(serverPath) {
-  const root = projectState?.projectRoot;
-  if (!root || root === ".") return serverPath;
-  return serverPath.startsWith(root + "/") ? serverPath.slice(root.length + 1) : serverPath;
-}
-
 async function loadProject() {
   try {
-    const res = await fetch("/__studio/project");
-    if (!res.ok) return;
-    const meta = await res.json();
-
-    // Probe root for site project
-    let info = { isSiteProject: false, siteConfig: null, directories: [] };
-    try {
-      const infoRes = await fetch("/__studio/project-info?dir=.");
-      if (infoRes.ok) info = await infoRes.json();
-    } catch {}
+    const platform = getPlatform();
+    const result = await platform.probeRootProject();
+    if (!result) return;
+    const { meta, info } = result;
 
     setProjectState({
       root: meta.root,
@@ -4796,176 +4762,55 @@ async function loadProject() {
 async function loadDirectory(dirPath) {
   if (!projectState) return;
   try {
-    const res = await fetch(`/__studio/files?dir=${encodeURIComponent(projectPath(dirPath))}`);
-    if (!res.ok) return;
-    const entries = await res.json();
-    // Strip project root prefix so tree operates in project-relative paths
-    for (const e of entries) e.path = stripProjectRoot(e.path);
+    const platform = getPlatform();
+    const entries = await platform.listDirectory(dirPath);
     projectState.dirs.set(dirPath, entries);
   } catch {
     projectState.dirs.set(dirPath, []);
   }
 }
 
-// ─── Open Project dialog ─────────────────────────────────────────────────────
-
-let _folderPickerState = null; // { dirs: Map, expanded: Set, selected: string|null, siteProjects: Set }
+// ─── Open Project (PAL-based) ─────────────────────────────────────────────
 
 async function openProject() {
-  // Initialize folder picker state
-  _folderPickerState = {
-    dirs: new Map(),
-    expanded: new Set(),
-    selected: null,
-    siteProjects: new Set(), // paths that have site.json
-  };
-
-  // Load root directory listing for the picker
   try {
-    const res = await fetch("/__studio/files?dir=.");
-    if (res.ok) {
-      const entries = await res.json();
-      _folderPickerState.dirs.set(".", entries.filter((e) => e.type === "directory"));
+    const platform = getPlatform();
+    const result = await platform.openProject();
+    if (!result) return; // User cancelled
 
-      // Check which immediate subdirectories are site projects
-      for (const e of entries) {
-        if (e.type === "directory") {
-          try {
-            const infoRes = await fetch(`/__studio/project-info?dir=${encodeURIComponent(e.path)}`);
-            if (infoRes.ok) {
-              const info = await infoRes.json();
-              if (info.isSiteProject) _folderPickerState.siteProjects.add(e.path);
-            }
-          } catch {}
-        }
-      }
-    }
-  } catch {}
+    const { config, handle } = result;
 
-  renderFolderPickerDialog();
-}
-
-function renderFolderPickerDialog() {
-  const overlay = document.getElementById("folder-picker-overlay") || (() => {
-    const el = document.createElement("div");
-    el.id = "folder-picker-overlay";
-    document.body.appendChild(el);
-    return el;
-  })();
-
-  const state = _folderPickerState;
-  if (!state) { litRender(nothing, overlay); return; }
-
-  const closePicker = () => {
-    _folderPickerState = null;
-    litRender(nothing, overlay);
-  };
-
-  const confirmSelection = async () => {
-    if (!state.selected) return;
-    try {
-      const infoRes = await fetch(`/__studio/project-info?dir=${encodeURIComponent(state.selected)}`);
-      const info = infoRes.ok ? await infoRes.json() : { isSiteProject: false, directories: [] };
-      setProjectState({
-        ...projectState,
-        projectRoot: state.selected,
-        isSiteProject: info.isSiteProject,
-        siteConfig: info.isSiteProject ? info.siteConfig : null,
-        projectDirs: info.directories || [],
-        name: info.siteConfig?.name || state.selected.split("/").pop(),
-        dirs: new Map(),
-        expanded: new Set(),
-        selectedPath: null,
-        searchQuery: "",
-      });
-      closePicker();
-      await loadDirectory(".");
-      await loadComponentRegistry();
-      // Auto-expand key directories
-      for (const d of (info.directories || [])) {
-        if (["pages", "components", "layouts"].includes(d)) {
-          projectState.expanded.add(d);
-          await loadDirectory(d);
-        }
-      }
-      S = { ...S, ui: { ...S.ui, leftTab: "files" } };
-      renderActivityBar();
-      renderLeftPanel();
-      statusMessage(`Opened project: ${projectState.name}`);
-    } catch (e) {
-      statusMessage(`Error: ${e.message}`);
-    }
-  };
-
-  const renderPickerTree = (dirPath, depth) => {
-    const entries = state.dirs.get(dirPath);
-    if (!entries) {
-      // Lazy-load
-      fetch(`/__studio/files?dir=${encodeURIComponent(dirPath)}`)
-        .then((r) => r.ok ? r.json() : [])
-        .then((all) => {
-          state.dirs.set(dirPath, all.filter((e) => e.type === "directory"));
-          // Check site projects
-          for (const e of all) {
-            if (e.type === "directory") {
-              fetch(`/__studio/project-info?dir=${encodeURIComponent(e.path)}`)
-                .then((r) => r.ok ? r.json() : null)
-                .then((info) => {
-                  if (info?.isSiteProject) {
-                    state.siteProjects.add(e.path);
-                    renderFolderPickerDialog(); // refresh
-                  }
-                }).catch(() => {});
-            }
-          }
-          renderFolderPickerDialog();
-        }).catch(() => { state.dirs.set(dirPath, []); renderFolderPickerDialog(); });
-      return html`<div class="folder-picker-item" style="padding-left:${depth * 16 + 8}px">Loading\u2026</div>`;
-    }
-
-    const filtered = entries.filter((e) => !e.name.startsWith(".") && e.name !== "node_modules" && e.name !== "dist" && e.name !== ".claude");
-
-    return filtered.map((e) => {
-      const isExpanded = state.expanded.has(e.path);
-      const isSelected = state.selected === e.path;
-      const isSite = state.siteProjects.has(e.path);
-      return html`
-        <div class="folder-picker-item${isSelected ? " selected" : ""}${isSite ? " site-project" : ""}"
-          style="padding-left:${depth * 16 + 8}px"
-          @click=${(ev) => {
-            ev.stopPropagation();
-            state.selected = e.path;
-            if (isExpanded) state.expanded.delete(e.path);
-            else state.expanded.add(e.path);
-            renderFolderPickerDialog();
-          }}
-          @dblclick=${(ev) => { ev.stopPropagation(); state.selected = e.path; confirmSelection(); }}>
-          <span class="folder-picker-toggle">${isExpanded ? "\u25BC" : "\u25B6"}</span>
-          <sp-icon-folder slot="icon" size="s"></sp-icon-folder>
-          <span class="folder-picker-name">${e.name}</span>
-          ${isSite ? html`<span class="site-indicator">site</span>` : nothing}
-        </div>
-        ${isExpanded ? renderPickerTree(e.path, depth + 1) : nothing}
-      `;
+    setProjectState({
+      ...projectState,
+      projectRoot: handle.root,
+      isSiteProject: true,
+      siteConfig: config,
+      name: config.name || handle.name,
+      dirs: new Map(),
+      expanded: new Set(),
+      selectedPath: null,
+      searchQuery: "",
     });
-  };
 
-  litRender(html`
-    <div class="open-project-dialog" @click=${closePicker}>
-      <div class="open-project-dialog-inner" @click=${(e) => e.stopPropagation()}>
-        <div class="open-project-dialog-header">Open Project Folder</div>
-        <div class="folder-picker-tree">
-          ${renderPickerTree(".", 0)}
-        </div>
-        <div class="open-project-dialog-footer">
-          <sp-button variant="secondary" size="s" @click=${closePicker}>Cancel</sp-button>
-          <sp-button variant="accent" size="s" ?disabled=${!state.selected} @click=${confirmSelection}>
-            Open${state.selected && state.siteProjects.has(state.selected) ? " Project" : ""}
-          </sp-button>
-        </div>
-      </div>
-    </div>
-  `, overlay);
+    await loadDirectory(".");
+    await loadComponentRegistry();
+
+    // Auto-expand key directories
+    const entries = projectState.dirs.get(".") || [];
+    for (const e of entries) {
+      if (e.type === "directory" && ["pages", "components", "layouts"].includes(e.name)) {
+        projectState.expanded.add(e.path || e.name);
+        await loadDirectory(e.path || e.name);
+      }
+    }
+
+    S = { ...S, ui: { ...S.ui, leftTab: "files" } };
+    renderActivityBar();
+    renderLeftPanel();
+    statusMessage(`Opened project: ${projectState.name}`);
+  } catch (e) {
+    statusMessage(`Error: ${e.message}`);
+  }
 }
 
 function fileTypeIconTpl(name, type) {
@@ -4997,7 +4842,7 @@ function renderFilesTemplate() {
   if (!projectState.isSiteProject && projectState.projectRoot === ".") {
     return html`<div class="file-tree-empty">
       <p style="margin:0 0 12px">Open a project folder to get started.</p>
-      <sp-button variant="accent" size="s" @click=${openProject}>Open Folder</sp-button>
+      <sp-button variant="accent" size="s" @click=${openProject}>Open Project</sp-button>
     </div>`;
   }
 
@@ -5185,11 +5030,8 @@ async function createNewFile(dirPath = ".") {
     ? "---\ntitle: Untitled\n---\n\n"
     : JSON.stringify({ tagName: "div", children: [] }, null, 2);
   try {
-    await fetch(`/__studio/file?path=${encodeURIComponent(projectPath(path))}`, {
-      method: "PUT",
-      body: content,
-    });
-    // Refresh the directory
+    const platform = getPlatform();
+    await platform.writeFile(path, content);
     await loadDirectory(dirPath);
     renderLeftPanel();
     statusMessage(`Created ${path}`);
@@ -5206,11 +5048,8 @@ async function renameFile(entry) {
     : ".";
   const newPath = parentDir === "." ? newName : `${parentDir}/${newName}`;
   try {
-    await fetch("/__studio/file/rename", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ from: projectPath(entry.path), to: projectPath(newPath) }),
-    });
+    const platform = getPlatform();
+    await platform.renameFile(entry.path, newPath);
     await loadDirectory(parentDir);
     if (projectState.selectedPath === entry.path) {
       projectState.selectedPath = newPath;
@@ -5225,9 +5064,8 @@ async function renameFile(entry) {
 async function deleteFile(entry) {
   if (!confirm(`Delete "${entry.name}"?`)) return;
   try {
-    await fetch(`/__studio/file?path=${encodeURIComponent(projectPath(entry.path))}`, {
-      method: "DELETE",
-    });
+    const platform = getPlatform();
+    await platform.deleteFile(entry.path);
     const parentDir = entry.path.includes("/")
       ? entry.path.substring(0, entry.path.lastIndexOf("/"))
       : ".";
@@ -5243,7 +5081,8 @@ async function deleteFile(entry) {
 }
 
 async function openFileFromTree(path) {
-  // Auto-save current dirty document if on dev server
+  const platform = getPlatform();
+  // Auto-save current dirty document
   if (S.dirty && S.documentPath) {
     try {
       const isContent = S.mode === "content";
@@ -5259,10 +5098,7 @@ async function openFileFromTree(path) {
       } else {
         output = JSON.stringify(S.document, null, 2);
       }
-      await fetch(`/__studio/file?path=${encodeURIComponent(S.documentPath)}`, {
-        method: "PUT",
-        body: output,
-      });
+      await platform.writeFile(S.documentPath, output);
     } catch (e) {
       statusMessage(`Save error: ${e.message}`);
     }
@@ -5270,18 +5106,16 @@ async function openFileFromTree(path) {
 
   // Fetch the file
   try {
-    const serverPath = projectPath(path);
-    const res = await fetch(`/__studio/file?path=${encodeURIComponent(serverPath)}`);
-    const data = await res.json();
-    if (!data.content) return;
+    const content = await platform.readFile(path);
+    if (!content) return;
 
     if (path.endsWith(".md")) {
-      loadMarkdown(data.content, null);
-      S.documentPath = data.path;
+      loadMarkdown(content, null);
+      S.documentPath = path;
     } else {
-      const doc = JSON.parse(data.content);
+      const doc = JSON.parse(content);
       S = createState(doc);
-      S.documentPath = data.path;
+      S.documentPath = path;
       S.dirty = false;
     }
 
@@ -5289,7 +5123,7 @@ async function openFileFromTree(path) {
     projectState.selectedPath = path;
 
     render();
-    statusMessage(`Opened ${data.path}`);
+    statusMessage(`Opened ${path}`);
   } catch (e) {
     statusMessage(`Error: ${e.message}`);
   }
@@ -7463,7 +7297,7 @@ function renderToolbar() {
 
   const tpl = html`
     <sp-action-group compact size="s">
-      ${tbBtnTpl("Open Folder", openProject, "sp-icon-folder-open")}
+      ${tbBtnTpl("Open Project", openProject, "sp-icon-folder-open")}
       ${tbBtnTpl("Open File", openFile, "sp-icon-document")}
       ${tbBtnTpl("Save", saveFile, "sp-icon-save-floppy")}
       ${S.fileHandle ? html`<span class="tb-filename">${S.fileHandle.name}</span>` : nothing}
