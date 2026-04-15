@@ -1,35 +1,27 @@
 {
-  "name": "@jxplatform/studio",
-  "version": "1.0.0",
-  "description": "Jx Studio — visual builder for Jx documents",
-  "license": "MIT",
-  "type": "module",
-  "exports": {
-    ".": "./studio.js",
-    "./platform.js": "./platform.js"
-  },
-  "scripts": {
-    "build": "bun build ./studio.js --outdir dist --target browser --sourcemap=linked",
-    "gen:webdata": "bun run gen-webdata.js",
-    "test": "bun test"
-  },
   "dependencies": {
     "@atlaskit/pragmatic-drag-and-drop": "^1.7.10",
     "@atlaskit/pragmatic-drag-and-drop-hitbox": "^1.1.0",
     "@jxplatform/runtime": "workspace:*",
     "@spectrum-web-components/accordion": "^1.11.2",
+    "@spectrum-web-components/action-bar": "1.11.2",
     "@spectrum-web-components/action-button": "^1.6.0",
     "@spectrum-web-components/action-group": "^1.6.0",
     "@spectrum-web-components/checkbox": "^1.6.0",
+    "@spectrum-web-components/color-area": "^1.11.2",
+    "@spectrum-web-components/color-handle": "^1.11.2",
+    "@spectrum-web-components/color-slider": "^1.11.2",
     "@spectrum-web-components/combobox": "^1.11.2",
     "@spectrum-web-components/divider": "^1.6.0",
     "@spectrum-web-components/icons-workflow": "^1.6.0",
     "@spectrum-web-components/menu": "^1.6.0",
+    "@spectrum-web-components/number-field": "^1.11.2",
     "@spectrum-web-components/overlay": "^1.6.0",
     "@spectrum-web-components/picker": "^1.11.2",
     "@spectrum-web-components/picker-button": "^1.11.2",
     "@spectrum-web-components/popover": "^1.6.0",
     "@spectrum-web-components/search": "^1.6.0",
+    "@spectrum-web-components/swatch": "^1.11.2",
     "@spectrum-web-components/switch": "^1.6.0",
     "@spectrum-web-components/tabs": "^1.6.0",
     "@spectrum-web-components/textfield": "^1.6.0",
@@ -45,9 +37,23 @@
     "unified": "^11.0.0",
     "yaml": "^2.7.0"
   },
+  "description": "Jx Studio — visual builder for Jx documents",
   "devDependencies": {
     "@webref/css": "^8.5.2",
     "@webref/elements": "^2.7.0",
     "@webref/idl": "^3.75.1"
-  }
+  },
+  "exports": {
+    ".": "./studio.js",
+    "./platform.js": "./platform.js"
+  },
+  "license": "MIT",
+  "name": "@jxplatform/studio",
+  "scripts": {
+    "build": "bun build ./studio.js --outdir dist --target browser --sourcemap=linked",
+    "gen:webdata": "bun run gen-webdata.js",
+    "test": "bun test"
+  },
+  "type": "module",
+  "version": "1.0.0"
 }

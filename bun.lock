@@ -3,14 +3,6 @@
   "configVersion": 0,
   "workspaces": {
     "": {
-      "dependencies": {
-        "@spectrum-web-components/action-bar": "1.11.2",
-        "@spectrum-web-components/color-area": "^1.11.2",
-        "@spectrum-web-components/color-handle": "^1.11.2",
-        "@spectrum-web-components/color-slider": "^1.11.2",
-        "@spectrum-web-components/number-field": "^1.11.2",
-        "@spectrum-web-components/swatch": "^1.11.2",
-      },
       "devDependencies": {
         "chrome-devtools-mcp": "^0.21.0",
         "oxfmt": "^0.44.0",
@@ -31,8 +23,12 @@
     "packages/compiler": {
       "name": "@jxplatform/compiler",
       "version": "1.0.0",
+      "bin": {
+        "jx-build": "./cli-build.js",
+      },
       "dependencies": {
         "@apidevtools/json-schema-ref-parser": "^15.3.5",
+        "@jxplatform/parser": "workspace:*",
         "@jxplatform/runtime": "workspace:*",
       },
       "devDependencies": {
@@ -44,6 +40,7 @@
       "version": "1.0.0",
       "dependencies": {
         "@jxplatform/server": "workspace:*",
+        "@jxplatform/studio": "workspace:*",
         "electrobun": "latest",
       },
     },
@@ -102,18 +99,24 @@
         "@atlaskit/pragmatic-drag-and-drop-hitbox": "^1.1.0",
         "@jxplatform/runtime": "workspace:*",
         "@spectrum-web-components/accordion": "^1.11.2",
+        "@spectrum-web-components/action-bar": "1.11.2",
         "@spectrum-web-components/action-button": "^1.6.0",
         "@spectrum-web-components/action-group": "^1.6.0",
         "@spectrum-web-components/checkbox": "^1.6.0",
+        "@spectrum-web-components/color-area": "^1.11.2",
+        "@spectrum-web-components/color-handle": "^1.11.2",
+        "@spectrum-web-components/color-slider": "^1.11.2",
         "@spectrum-web-components/combobox": "^1.11.2",
         "@spectrum-web-components/divider": "^1.6.0",
         "@spectrum-web-components/icons-workflow": "^1.6.0",
         "@spectrum-web-components/menu": "^1.6.0",
+        "@spectrum-web-components/number-field": "^1.11.2",
         "@spectrum-web-components/overlay": "^1.6.0",
         "@spectrum-web-components/picker": "^1.11.2",
         "@spectrum-web-components/picker-button": "^1.11.2",
         "@spectrum-web-components/popover": "^1.6.0",
         "@spectrum-web-components/search": "^1.6.0",
+        "@spectrum-web-components/swatch": "^1.11.2",
         "@spectrum-web-components/switch": "^1.6.0",
         "@spectrum-web-components/tabs": "^1.6.0",
         "@spectrum-web-components/textfield": "^1.6.0",
