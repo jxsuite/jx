@@ -1,5 +1,5 @@
 /**
- * main.ts — JSONsx Studio desktop entry point (Electrobun Bun process)
+ * main.js — JSONsx Studio desktop entry point (Electrobun Bun process)
  *
  * 1. Determines the initial project root (CLI arg, env var, or CWD)
  * 2. Starts the embedded HTTP server for studio assets + /__studio/* API
@@ -9,8 +9,7 @@
  * See spec/desktop.md §7 for the architecture overview.
  */
 
-import { BrowserView, BrowserWindow } from "electrobun/bun";
-import type { StudioRPCSchema } from "./rpc-schema.ts";
+import { BrowserView, BrowserWindow, PATHS } from "electrobun/bun";
 import {
   setProjectRoot,
   openProject,
@@ -24,9 +23,8 @@ import {
   codeService,
   locateFile,
   fetchPluginSchema,
-} from "./handlers.ts";
-import { startStudioServer } from "./server.ts";
-import PATHS from "electrobun/bun";
+} from "./handlers.js";
+import { startStudioServer } from "./server.js";
 
 // ─── Determine project root ───────────────────────────────────────────────────
 
@@ -44,49 +42,28 @@ setProjectRoot(projectRoot);
 //   /__jsonsx_server__   → timing:"server" function proxy
 //   /__studio/*          → fallback file API (used by devserver adapter)
 
-const server = await startStudioServer(PATHS.VIEWS_FOLDER, projectRoot);
+const server = /** @type {{ port: number }} */ (
+  await startStudioServer(PATHS.VIEWS_FOLDER, projectRoot)
+);
 
 // ─── Register RPC handlers ────────────────────────────────────────────────────
 // The webview's DesktopPlatform adapter calls these via ElectroBun's RPC bridge.
 // Each handler maps 1:1 to a StudioPlatform interface method (spec §3.1).
 
-const rpc = BrowserView.defineRPC<StudioRPCSchema>({
+const rpc = BrowserView.defineRPC({
   handlers: {
     requests: {
-      openProject: async () => {
-        const result = await openProject();
-        return result;
-      },
-      listDirectory: async (params) => {
-        return listDirectory(params);
-      },
-      readFile: async (params) => {
-        return handleReadFile(params);
-      },
-      writeFile: async (params) => {
-        return handleWriteFile(params);
-      },
-      deleteFile: async (params) => {
-        return handleDeleteFile(params);
-      },
-      renameFile: async (params) => {
-        return handleRenameFile(params);
-      },
-      createDirectory: async (params) => {
-        return handleCreateDirectory(params);
-      },
-      discoverComponents: async (params) => {
-        return discoverComponents(params);
-      },
-      codeService: async (params) => {
-        return codeService(params);
-      },
-      locateFile: async (params) => {
-        return locateFile(params);
-      },
-      fetchPluginSchema: async (params) => {
-        return fetchPluginSchema(params);
-      },
+      openProject: () => openProject(),
+      listDirectory: (/** @type {any} */ params) => listDirectory(params),
+      readFile: (/** @type {any} */ params) => handleReadFile(params),
+      writeFile: (/** @type {any} */ params) => handleWriteFile(params),
+      deleteFile: (/** @type {any} */ params) => handleDeleteFile(params),
+      renameFile: (/** @type {any} */ params) => handleRenameFile(params),
+      createDirectory: (/** @type {any} */ params) => handleCreateDirectory(params),
+      discoverComponents: (/** @type {any} */ params) => discoverComponents(params),
+      codeService: (/** @type {any} */ params) => codeService(params),
+      locateFile: (/** @type {any} */ params) => locateFile(params),
+      fetchPluginSchema: (/** @type {any} */ params) => fetchPluginSchema(params),
     },
     messages: {},
   },

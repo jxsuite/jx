@@ -1,5 +1,5 @@
 /**
- * init.ts — Webview initialization for JSONsx Studio desktop app
+ * init.js — Webview initialization for JSONsx Studio desktop app
  *
  * This script runs in the webview BEFORE studio.js loads. It:
  * 1. Creates the DesktopPlatform adapter (connects RPC to Bun process)
@@ -11,6 +11,6 @@
  */
 
 import { registerPlatform } from "@jsonsx/studio/platform.js";
-import { createDesktopPlatform } from "./platform.ts";
+import { createDesktopPlatform } from "./platform.js";
 
 registerPlatform(createDesktopPlatform());

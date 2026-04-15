@@ -16,7 +16,7 @@ export default {
 
   build: {
     bun: {
-      entrypoint: "src/main.ts",
+      entrypoint: "src/main.js",
     },
 
     // preBuild copies compiled studio + runtime assets into assets/ before these run.
@@ -30,6 +30,6 @@ export default {
   },
 
   scripts: {
-    preBuild: "./scripts/pre-build.ts",
+    preBuild: "./scripts/pre-build.js",
   },
 } satisfies ElectrobunConfig;

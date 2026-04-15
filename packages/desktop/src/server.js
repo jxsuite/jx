@@ -1,5 +1,5 @@
 /**
- * server.ts — Embedded HTTP server for the JSONsx Studio desktop app.
+ * server.js — Embedded HTTP server for the JSONsx Studio desktop app.
  *
  * Wraps @jsonsx/server's createDevServer with:
  *   - watch disabled (no SSE live-reload in production)
@@ -17,18 +17,18 @@ import { join } from "node:path";
 import { createDevServer } from "@jsonsx/server";
 
 /**
- * @param viewsDir   PATHS.VIEWS_FOLDER from the main process — where bundled
- *                   studio assets live inside the app bundle.
- * @param projectRoot  The user's JSONsx project directory to serve and edit.
+ * @param {string} viewsDir   PATHS.VIEWS_FOLDER from the main process — where bundled
+ *                             studio assets live inside the app bundle.
+ * @param {string} projectRoot  The user's JSONsx project directory to serve and edit.
  */
-export async function startStudioServer(viewsDir: string, projectRoot: string) {
+export async function startStudioServer(viewsDir, projectRoot) {
   const server = await createDevServer({
     root: projectRoot,
     port: 0,       // let the OS assign a free port
     watch: false,  // no SSE live-reload in the packaged app
     builds: [],
 
-    middleware: async (req: Request, url: URL) => {
+    middleware: async (/** @type {Request} */ req, /** @type {URL} */ url) => {
       const path = url.pathname;
 
       // Serve bundled studio assets (HTML + compiled JS/CSS) from the app bundle.

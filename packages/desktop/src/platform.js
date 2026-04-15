@@ -1,5 +1,5 @@
 /**
- * platform.ts — Desktop Platform Adapter (runs in webview)
+ * platform.js — Desktop Platform Adapter (runs in webview)
  *
  * Implements the StudioPlatform interface by forwarding every call over
  * ElectroBun's RPC bridge to the Bun process handlers.
@@ -8,8 +8,6 @@
  */
 
 import { Electroview } from "electrobun/view";
-import { BrowserView } from "electrobun/bun";
-import type { StudioRPCSchema } from "./rpc-schema.ts";
 
 /**
  * Create the DesktopPlatform adapter and connect to the Bun process via RPC.
@@ -19,10 +17,11 @@ import type { StudioRPCSchema } from "./rpc-schema.ts";
  */
 export function createDesktopPlatform() {
   // Set up webview-side RPC — handles incoming messages from Bun
-  const rpc = Electroview.defineRPC<StudioRPCSchema>({
+  const rpc = Electroview.defineRPC({
     handlers: {
       requests: {},
       messages: {
+        /** @param {{ path: string }} payload */
         fileChanged: (payload) => {
           // Future: trigger file tree refresh or document reload
           console.log("[desktop] File changed:", payload.path);
@@ -32,10 +31,10 @@ export function createDesktopPlatform() {
   });
 
   // Connect to the Bun process WebSocket
-  const view = new Electroview({ rpc });
+  new Electroview({ rpc });
 
   return {
-    id: "desktop" as const,
+    id: /** @type {"desktop"} */ ("desktop"),
 
     // ─── Project opening ────────────────────────────────────────────────
 
@@ -51,8 +50,6 @@ export function createDesktopPlatform() {
      * with the devserver adapter.
      */
     async probeRootProject() {
-      // The desktop app always has a project root set at startup.
-      // Try to read site.json to detect if it's a site project.
       try {
         const content = await rpc.request.readFile({ path: "site.json" });
         const config = JSON.parse(content);
@@ -74,51 +71,74 @@ export function createDesktopPlatform() {
 
     // ─── File operations ────────────────────────────────────────────────
 
-    async listDirectory(dir: string) {
+    /** @param {string} dir */
+    async listDirectory(dir) {
       return rpc.request.listDirectory({ dir });
     },
 
-    async readFile(path: string) {
+    /** @param {string} path */
+    async readFile(path) {
       return rpc.request.readFile({ path });
     },
 
-    async writeFile(path: string, content: string) {
+    /**
+     * @param {string} path
+     * @param {string} content
+     */
+    async writeFile(path, content) {
       return rpc.request.writeFile({ path, content });
     },
 
-    async deleteFile(path: string) {
+    /** @param {string} path */
+    async deleteFile(path) {
       return rpc.request.deleteFile({ path });
     },
 
-    async renameFile(from: string, to: string) {
+    /**
+     * @param {string} from
+     * @param {string} to
+     */
+    async renameFile(from, to) {
       return rpc.request.renameFile({ from, to });
     },
 
-    async createDirectory(path: string) {
+    /** @param {string} path */
+    async createDirectory(path) {
       return rpc.request.createDirectory({ path });
     },
 
     // ─── Component discovery ────────────────────────────────────────────
 
-    async discoverComponents(dir?: string) {
+    /** @param {string} [dir] */
+    async discoverComponents(dir) {
       return rpc.request.discoverComponents({ dir });
     },
 
     // ─── Code services ──────────────────────────────────────────────────
 
-    async codeService(action: string, payload: unknown) {
+    /**
+     * @param {string} action
+     * @param {unknown} payload
+     */
+    async codeService(action, payload) {
       return rpc.request.codeService({ action, payload });
     },
 
     // ─── File location ──────────────────────────────────────────────────
 
-    async locateFile(name: string) {
+    /** @param {string} name */
+    async locateFile(name) {
       return rpc.request.locateFile({ name });
     },
 
     // ─── Plugin schema ──────────────────────────────────────────────────
 
-    async fetchPluginSchema(src: string, prototype?: string, base?: string) {
+    /**
+     * @param {string} src
+     * @param {string} [prototype]
+     * @param {string} [base]
+     */
+    async fetchPluginSchema(src, prototype, base) {
       return rpc.request.fetchPluginSchema({ src, prototype, base });
     },
   };

@@ -1,5 +1,5 @@
 /**
- * pre-build.ts — Electrobun preBuild hook for @jsonsx/desktop
+ * pre-build.js — Electrobun preBuild hook for @jsonsx/desktop
  *
  * Runs before Electrobun assembles the app bundle.  It:
  *   1. Builds @jsonsx/studio  → packages/studio/dist/{studio.js, studio.css}
@@ -26,11 +26,11 @@ console.log("[prebuild] Building @jsonsx/studio…");
 await $`bun run build`.cwd(studioDir);
 
 // ── 2. Build desktop init script ───────────────────────────────────────────
-// This bundles src/init.ts + src/platform.ts + the RPC schema into a single
+// This bundles src/init.js + src/platform.js + the RPC schema into a single
 // browser-targeted JS file that registers the DesktopPlatform adapter.
 
 console.log("[prebuild] Building desktop init script…");
-await $`bun build ./src/init.ts --outdir ./assets/studio/dist --target browser --sourcemap=linked`.cwd(desktopDir);
+await $`bun build ./src/init.js --outdir ./assets/studio/dist --target browser --sourcemap=linked`.cwd(desktopDir);
 
 // ── 3. Copy + patch assets ─────────────────────────────────────────────────
 
