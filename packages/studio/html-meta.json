@@ -158,11 +158,27 @@
       "type": "string",
       "$elements": ["input", "button"],
       "enum": [
-        "text", "password", "email", "number", "tel", "url", "search",
-        "date", "time", "datetime-local", "month", "week",
-        "color", "range", "file",
-        "checkbox", "radio",
-        "hidden", "submit", "reset", "button"
+        "text",
+        "password",
+        "email",
+        "number",
+        "tel",
+        "url",
+        "search",
+        "date",
+        "time",
+        "datetime-local",
+        "month",
+        "week",
+        "color",
+        "range",
+        "file",
+        "checkbox",
+        "radio",
+        "hidden",
+        "submit",
+        "reset",
+        "button"
       ]
     },
     "name": {

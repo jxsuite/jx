@@ -1,12 +1,16 @@
 {
-  "dependencies": {},
-  "devDependencies": {
-    "chrome-devtools-mcp": "^0.21.0",
-    "oxfmt": "^0.44.0",
-    "oxlint": "^1.59.0"
-  },
   "name": "jx-platform",
-  "private": true,
+  "version": "0.2.0",
+  "private": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jxplatform/jx.git"
+  },
+  "workspaces": [
+    "packages/*",
+    "examples"
+  ],
+  "type": "module",
   "scripts": {
     "build": "bun run build:compiler && bun run build:runtime && bun run build:studio && bun run generate:schema",
     "build:compiler": "bun run --cwd packages/compiler build",
@@ -16,14 +20,61 @@
     "desktop:build": "bun run --cwd packages/desktop build",
     "desktop:release": "bun run --cwd packages/desktop build:release",
     "dev": "bun run server.js",
+    "format": "oxfmt .",
     "generate:schema": "bun run --cwd packages/schema schema",
+    "lint": "oxlint .",
+    "lint:fix": "oxlint --fix .",
+    "prepare": "husky",
+    "release": "release-it",
     "test": "bun test",
     "test:coverage": "bun test --coverage"
   },
-  "type": "module",
-  "version": "1.0.0",
-  "workspaces": [
-    "packages/*",
-    "examples"
-  ]
+  "dependencies": {},
+  "devDependencies": {
+    "@commitlint/cli": "^20.5.0",
+    "@commitlint/config-conventional": "^20.5.0",
+    "@release-it/bumper": "^7.0.5",
+    "@release-it/conventional-changelog": "^10.0.6",
+    "chrome-devtools-mcp": "^0.21.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.4.0",
+    "oxfmt": "^0.44.0",
+    "oxlint": "^1.59.0",
+    "release-it": "^20.0.0"
+  },
+  "lint-staged": {
+    "*.{js,json,ts}": [
+      "oxlint --fix",
+      "oxfmt"
+    ]
+  },
+  "release-it": {
+    "git": {
+      "requireCleanWorkingDir": false
+    },
+    "github": {
+      "release": true
+    },
+    "hooks": {
+      "after:bump": "bun run build && bun publish --cwd packages/compiler --access public && bun publish --cwd packages/parser --access public && bun publish --cwd packages/runtime --access public && bun publish --cwd packages/schema --access public && bun publish --cwd packages/server --access public && bun publish --cwd packages/studio --access public"
+    },
+    "npm": {
+      "publish": false
+    },
+    "plugins": {
+      "@release-it/bumper": {
+        "out": [
+          "packages/compiler/package.json",
+          "packages/parser/package.json",
+          "packages/runtime/package.json",
+          "packages/schema/package.json",
+          "packages/server/package.json",
+          "packages/studio/package.json"
+        ]
+      },
+      "@release-it/conventional-changelog": {
+        "preset": "angular"
+      }
+    }
+  }
 }

@@ -1,6 +1,4 @@
-/**
- * watch.js — File watcher + SSE live reload
- */
+/** Watch.js — File watcher + SSE live reload */
 
 import chokidar from "chokidar";
 import { relative } from "node:path";
@@ -16,9 +14,7 @@ const DEFAULT_IGNORE = [
   "**/bun.lock",
 ];
 
-/**
- * @param {string} value
- */
+/** @param {string} value */
 function normalizePath(value) {
   return value.replaceAll("\\", "/");
 }
@@ -45,9 +41,7 @@ function shouldIgnore(pathname, ignore) {
 
 export const SSE_SCRIPT = `\n<script>new EventSource('/__reload').onmessage=()=>location.reload()</script>`;
 
-/**
- * @param {string} html
- */
+/** @param {string} html */
 export function injectSSE(html) {
   return html.includes("</body>")
     ? html.replace("</body>", SSE_SCRIPT + "\n</body>")
@@ -56,10 +50,11 @@ export function injectSSE(html) {
 
 /**
  * Create the file watcher + SSE system.
+ *
  * @param {string} root - Absolute path to watch
  * @param {any[]} builds - Build entries (for selective rebuild)
- * @param {{ ignore?: string[], debounce?: number }} [opts]
- * @returns {{ broadcast: () => void, handleSSE: () => Response }}
+ * @param {{ ignore?: string[]; debounce?: number }} [opts]
+ * @returns {{ broadcast: () => void; handleSSE: () => Response }}
  */
 export function createWatcher(root, builds, opts = {}) {
   const ignore = opts.ignore ?? DEFAULT_IGNORE;

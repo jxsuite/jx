@@ -6,12 +6,7 @@
   "env": {
     "builtin": true
   },
-  "plugins": [
-    "jsdoc",
-    "oxc",
-    "typescript",
-    "unicorn",
-  ],
+  "plugins": ["jsdoc", "oxc", "typescript", "unicorn"],
   "rules": {},
   "settings": {
     "jsdoc": {

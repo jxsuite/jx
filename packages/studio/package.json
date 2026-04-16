@@ -1,4 +1,22 @@
 {
+  "name": "@jxplatform/studio",
+  "version": "0.2.0",
+  "description": "Jx Studio — visual builder for Jx documents",
+  "license": "MIT",
+  "files": [
+    "*.js",
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": "./studio.js",
+    "./platform.js": "./platform.js"
+  },
+  "scripts": {
+    "build": "bun build ./studio.js --outdir dist --target browser --sourcemap=linked",
+    "gen:webdata": "bun run gen-webdata.js",
+    "test": "bun test"
+  },
   "dependencies": {
     "@atlaskit/pragmatic-drag-and-drop": "^1.7.10",
     "@atlaskit/pragmatic-drag-and-drop-hitbox": "^1.1.0",
@@ -37,23 +55,9 @@
     "unified": "^11.0.0",
     "yaml": "^2.7.0"
   },
-  "description": "Jx Studio — visual builder for Jx documents",
   "devDependencies": {
     "@webref/css": "^8.5.2",
     "@webref/elements": "^2.7.0",
     "@webref/idl": "^3.75.1"
-  },
-  "exports": {
-    ".": "./studio.js",
-    "./platform.js": "./platform.js"
-  },
-  "license": "MIT",
-  "name": "@jxplatform/studio",
-  "scripts": {
-    "build": "bun build ./studio.js --outdir dist --target browser --sourcemap=linked",
-    "gen:webdata": "bun run gen-webdata.js",
-    "test": "bun test"
-  },
-  "type": "module",
-  "version": "1.0.0"
+  }
 }

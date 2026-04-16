@@ -1,6 +1,7 @@
 .devenv
 .direnv
 .DS_Store
+.env
 *.local
 dist/
 node_modules/

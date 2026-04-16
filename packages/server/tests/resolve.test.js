@@ -39,7 +39,13 @@ const valueClass = {
   $prototype: "Class",
   $defs: {
     fields: {
-      name: { role: "field", access: "public", scope: "instance", identifier: "name", default: "world" },
+      name: {
+        role: "field",
+        access: "public",
+        scope: "instance",
+        identifier: "name",
+        default: "world",
+      },
     },
     methods: {
       greeting: {
@@ -101,7 +107,13 @@ const privateFieldsClass = {
   $prototype: "Class",
   $defs: {
     fields: {
-      data: { role: "field", access: "private", scope: "instance", identifier: "data", default: "hidden" },
+      data: {
+        role: "field",
+        access: "private",
+        scope: "instance",
+        identifier: "data",
+        default: "hidden",
+      },
     },
     methods: {
       resolve: {
@@ -246,5 +258,7 @@ describe("handleResolve — errors", () => {
 
 // Cleanup
 process.on("exit", () => {
-  try { rmSync(FIXTURES, { recursive: true }); } catch {}
+  try {
+    rmSync(FIXTURES, { recursive: true });
+  } catch {}
 });

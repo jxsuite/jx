@@ -55,7 +55,10 @@
         "properties": {
           "slug": { "type": "string", "description": "Filename without extension" },
           "path": { "type": "string", "description": "Absolute file path" },
-          "frontmatter": { "type": "object", "description": "Shape defined by itemSchema parameter" },
+          "frontmatter": {
+            "type": "object",
+            "description": "Shape defined by itemSchema parameter"
+          },
           "$body": { "type": "string", "description": "Rendered HTML string" },
           "$excerpt": { "type": "string", "description": "First paragraph as plain text" },
           "$toc": {

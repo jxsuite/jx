@@ -1,24 +1,25 @@
 /**
- * layout-resolver.js — Layout loading and slot distribution at compile time
+ * Layout-resolver.js — Layout loading and slot distribution at compile time
  *
- * Resolves $layout references, loads layout JSON files, and distributes
- * page content into layout <slot> elements. This is the compile-time
- * equivalent of the runtime's distributeSlots() algorithm.
+ * Resolves $layout references, loads layout JSON files, and distributes page content into layout
+ * <slot> elements. This is the compile-time equivalent of the runtime's distributeSlots()
+ * algorithm.
  *
  * Per site-architecture spec §5:
- *   - Layouts are JSON files in the layouts/ directory
- *   - Pages reference layouts via "$layout": "./layouts/base.json"
- *   - The page's children are distributed into the layout's <slot> elements
- *   - Named slots use attributes.slot on page children
+ *
+ * - Layouts are JSON files in the layouts/ directory
+ * - Pages reference layouts via "$layout": "./layouts/base.json"
+ * - The page's children are distributed into the layout's <slot> elements
+ * - Named slots use attributes.slot on page children
  */
 
 import { readFileSync, existsSync } from "node:fs";
-import { resolve, dirname } from "node:path";
+import { resolve } from "node:path";
 
 /**
  * Resolve a page's layout, wrapping the page content in the layout structure.
  *
- * @param {any} pageDoc   - The raw page JSON document
+ * @param {any} pageDoc - The raw page JSON document
  * @param {any} siteConfig - Site configuration (for defaults.layout)
  * @param {string} projectRoot - Project root directory
  * @returns {any} The merged document (layout wrapping page content)
@@ -61,22 +62,22 @@ export function resolveLayout(pageDoc, siteConfig, projectRoot) {
   // Merge page-level properties onto the resolved document
   // Page state extends layout state
   if (pageDoc.state) {
-    merged.state = { ...(merged.state ?? {}), ...pageDoc.state };
+    merged.state = { ...merged.state, ...pageDoc.state };
   }
 
   // Page $media extends layout $media
   if (pageDoc.$media) {
-    merged.$media = { ...(merged.$media ?? {}), ...pageDoc.$media };
+    merged.$media = { ...merged.$media, ...pageDoc.$media };
   }
 
   // Page style extends layout style
   if (pageDoc.style) {
-    merged.style = { ...(merged.style ?? {}), ...pageDoc.style };
+    merged.style = { ...merged.style, ...pageDoc.style };
   }
 
   // Page attributes extend layout attributes
   if (pageDoc.attributes) {
-    merged.attributes = { ...(merged.attributes ?? {}), ...pageDoc.attributes };
+    merged.attributes = { ...merged.attributes, ...pageDoc.attributes };
   }
 
   // Preserve page-level metadata
@@ -90,17 +91,18 @@ export function resolveLayout(pageDoc, siteConfig, projectRoot) {
 }
 
 /**
- * Distribute children into <slot> elements within a layout document tree.
- * This is the compile-time equivalent of the runtime's distributeSlots().
+ * Distribute children into <slot> elements within a layout document tree. This is the compile-time
+ * equivalent of the runtime's distributeSlots().
  *
  * Algorithm:
- *   1. Find all <slot> elements in the layout tree
- *   2. For each child with attributes.slot, distribute to the matching named slot
- *   3. Remaining children go into the default (unnamed) slot
- *   4. Replace each <slot> element with its distributed children
  *
- * @param {any} node      - Layout document tree (mutated in place)
- * @param {any[]}  children  - Page children to distribute
+ * 1. Find all <slot> elements in the layout tree
+ * 2. For each child with attributes.slot, distribute to the matching named slot
+ * 3. Remaining children go into the default (unnamed) slot
+ * 4. Replace each <slot> element with its distributed children
+ *
+ * @param {any} node - Layout document tree (mutated in place)
+ * @param {any[]} children - Page children to distribute
  */
 function distributeSlots(node, children) {
   if (!node || typeof node !== "object") return;
@@ -108,9 +110,9 @@ function distributeSlots(node, children) {
 
   // Collect named and default children
   /** @type {Map<string, any[]>} */
-  const named = new Map();   // slot name → children[]
+  const named = new Map(); // slot name → children[]
   /** @type {any[]} */
-  const defaults = [];        // children without a slot target
+  const defaults = []; // children without a slot target
 
   for (const child of children) {
     if (child && typeof child === "object" && child.attributes?.slot) {
@@ -128,6 +130,7 @@ function distributeSlots(node, children) {
 
 /**
  * Recursively walk the tree and replace <slot> elements with distributed content.
+ *
  * @param {any} node
  * @param {Map<string, any[]>} named
  * @param {any[]} defaults
@@ -170,6 +173,7 @@ function fillSlots(node, named, defaults) {
 
 /**
  * Deep clone a JSON-serializable object.
+ *
  * @param {any} obj
  * @returns {any}
  */

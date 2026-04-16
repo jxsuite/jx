@@ -46,26 +46,26 @@ describe("css-meta.json", () => {
   });
 
   test("every def has $section referencing a valid section", () => {
-    for (const [prop, entry] of defs) {
+    for (const [_prop, entry] of defs) {
       expect(sections.has(entry.$section)).toBe(true);
     }
   });
 
   test("every def has numeric $order", () => {
-    for (const [prop, entry] of defs) {
+    for (const [_prop, entry] of defs) {
       expect(typeof entry.$order).toBe("number");
     }
   });
 
   test("every def has a type", () => {
     const validTypes = new Set(["string", "number", "boolean", "color"]);
-    for (const [prop, entry] of defs) {
+    for (const [_prop, entry] of defs) {
       expect(validTypes.has(entry.type)).toBe(true);
     }
   });
 
   test("enum entries are arrays of strings", () => {
-    for (const [prop, entry] of defs) {
+    for (const [_prop, entry] of defs) {
       if (entry.enum) {
         expect(Array.isArray(entry.enum)).toBe(true);
         for (const v of entry.enum) {
@@ -76,7 +76,7 @@ describe("css-meta.json", () => {
   });
 
   test("$buttonValues are subsets of enum", () => {
-    for (const [prop, entry] of defs) {
+    for (const [_prop, entry] of defs) {
       if (entry.$buttonValues && entry.enum) {
         for (const bv of entry.$buttonValues) {
           expect(entry.enum).toContain(bv);
@@ -86,7 +86,7 @@ describe("css-meta.json", () => {
   });
 
   test("$icons keys exist in $buttonValues", () => {
-    for (const [prop, entry] of defs) {
+    for (const [_prop, entry] of defs) {
       if (entry.$icons && entry.$buttonValues) {
         for (const iconKey of Object.keys(entry.$icons)) {
           expect(entry.$buttonValues).toContain(iconKey);
@@ -144,26 +144,26 @@ describe("html-meta.json", () => {
   });
 
   test("every def has $section referencing a valid section", () => {
-    for (const [attr, entry] of defs) {
+    for (const [_attr, entry] of defs) {
       expect(sections.has(entry.$section)).toBe(true);
     }
   });
 
   test("every def has numeric $order", () => {
-    for (const [attr, entry] of defs) {
+    for (const [_attr, entry] of defs) {
       expect(typeof entry.$order).toBe("number");
     }
   });
 
   test("every def has a type", () => {
     const validTypes = new Set(["string", "boolean"]);
-    for (const [attr, entry] of defs) {
+    for (const [_attr, entry] of defs) {
       expect(validTypes.has(entry.type)).toBe(true);
     }
   });
 
   test("$elements arrays contain only lowercase tag names", () => {
-    for (const [attr, entry] of defs) {
+    for (const [_attr, entry] of defs) {
       if (entry.$elements) {
         expect(Array.isArray(entry.$elements)).toBe(true);
         for (const tag of entry.$elements) {
@@ -244,13 +244,13 @@ describe("elements-meta.json", () => {
   });
 
   test("every element def has $inlineChildren array", () => {
-    for (const [tag, def] of Object.entries(elementsMeta.$defs)) {
+    for (const [_tag, def] of Object.entries(elementsMeta.$defs)) {
       expect(Array.isArray(def.$inlineChildren)).toBe(true);
     }
   });
 
   test("$inlineChildren contain only lowercase tag names", () => {
-    for (const [tag, def] of Object.entries(elementsMeta.$defs)) {
+    for (const [_tag, def] of Object.entries(elementsMeta.$defs)) {
       for (const child of def.$inlineChildren) {
         expect(child).toBe(child.toLowerCase());
         expect(child).toMatch(/^[a-z][a-z0-9]*$/);
@@ -264,7 +264,7 @@ describe("elements-meta.json", () => {
   });
 
   test("$inlineActions string references resolve to valid arrays", () => {
-    for (const [tag, def] of Object.entries(elementsMeta.$defs)) {
+    for (const [_tag, def] of Object.entries(elementsMeta.$defs)) {
       if (typeof def.$inlineActions === "string") {
         const ref = elementsMeta.$defs[def.$inlineActions];
         expect(ref).toBeDefined();
@@ -274,7 +274,7 @@ describe("elements-meta.json", () => {
   });
 
   test("$inlineActions entries have required fields", () => {
-    for (const [tag, def] of Object.entries(elementsMeta.$defs)) {
+    for (const [_tag, def] of Object.entries(elementsMeta.$defs)) {
       let actions = def.$inlineActions;
       if (typeof actions === "string") actions = elementsMeta.$defs[actions]?.$inlineActions;
       if (!Array.isArray(actions)) continue;

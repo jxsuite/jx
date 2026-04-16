@@ -1,8 +1,8 @@
 /**
- * compile-static.js — Static HTML compilation
+ * Compile-static.js — Static HTML compilation
  *
- * Compiles fully static Jx documents to plain HTML/CSS with zero JS.
- * Dynamic child subtrees become hydration islands (custom elements).
+ * Compiles fully static Jx documents to plain HTML/CSS with zero JS. Dynamic child subtrees become
+ * hydration islands (custom elements).
  */
 
 import {
@@ -20,25 +20,29 @@ import { emitElementModule } from "./compile-element.js";
  *
  * @param {any} raw - Raw JSON document (with $ref pointers preserved)
  * @param {any} opts
- * @returns {{ html: string, files: { path: string, content: string, tagName: string }[] }}
+ * @returns {{ html: string; files: { path: string; content: string; tagName: string }[] }}
  */
 export function compileStaticPage(raw, opts) {
   const { title, reactivitySrc, litHtmlSrc } = opts;
 
   const rootContext = createCompileContext(raw, null, raw.state ?? {}, raw.$media ?? {});
   const styleBlock = compileStyles(raw, raw.$media ?? {});
-  /** @type {{ def: any, tagName: string, className: string }[]} */
+  /** @type {{ def: any; tagName: string; className: string }[]} */
   const islands = [];
   const bodyContent = compileNode(raw, false, raw, rootContext, islands);
 
-  /** @type {{ path: string, content: string, tagName: string }[]} */
+  /** @type {{ path: string; content: string; tagName: string }[]} */
   const files = [];
   let importMap = "";
   let moduleScripts = "";
   if (islands.length > 0) {
     for (const island of islands) {
       const moduleContent = emitElementModule(island.def, island.className, []);
-      files.push({ path: `_islands/${island.tagName}.js`, content: moduleContent, tagName: island.tagName });
+      files.push({
+        path: `_islands/${island.tagName}.js`,
+        content: moduleContent,
+        tagName: island.tagName,
+      });
     }
     importMap = `<script type="importmap">
   {
@@ -48,9 +52,11 @@ export function compileStaticPage(raw, opts) {
     }
   }
   </script>`;
-    moduleScripts = files.map((/** @type {{ path: string }} */ f) =>
-      `<script type="module" src="./${f.path}"></script>`
-    ).join("\n  ");
+    moduleScripts = files
+      .map(
+        (/** @type {{ path: string }} */ f) => `<script type="module" src="./${f.path}"></script>`,
+      )
+      .join("\n  ");
   }
 
   const html = `<!DOCTYPE html>
@@ -74,13 +80,14 @@ export function compileStaticPage(raw, opts) {
 // ─── Node compilation ─────────────────────────────────────────────────────────
 
 /**
- * Compile a single Jx node to an HTML string.
- * Dynamic nodes become hydration islands; static nodes become plain HTML.
+ * Compile a single Jx node to an HTML string. Dynamic nodes become hydration islands; static nodes
+ * become plain HTML.
+ *
  * @param {any} def
  * @param {boolean} dynamic
  * @param {any} raw
  * @param {any} context
- * @param {{ def: any, tagName: string, className: string }[]} islands
+ * @param {{ def: any; tagName: string; className: string }[]} islands
  * @returns {string}
  */
 function compileNode(def, dynamic, raw, context, islands) {
@@ -117,12 +124,13 @@ function compileNode(def, dynamic, raw, context, islands) {
 }
 
 /**
- * Build the inner HTML (textContent or children) for a node.
- * For children, emit islands only for those that are actually dynamic.
+ * Build the inner HTML (textContent or children) for a node. For children, emit islands only for
+ * those that are actually dynamic.
+ *
  * @param {any} def
  * @param {any} raw
  * @param {any} context
- * @param {{ def: any, tagName: string, className: string }[]} islands
+ * @param {{ def: any; tagName: string; className: string }[]} islands
  * @returns {string}
  */
 function buildInnerWithIslands(def, raw, context, islands) {

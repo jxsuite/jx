@@ -14,8 +14,6 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = join(__filename, "..");
 const BASE = "http://localhost/";
 
-const wait = () => new Promise((r) => setTimeout(r, 0));
-
 // ─── .class.json self-contained class schema ────────────────────────────────
 
 const selfContainedClassDef = {
@@ -41,14 +39,26 @@ const privateFieldsClassDef = {
   title: "Secret",
   $defs: {
     fields: {
-      data: { role: "field", access: "private", scope: "instance", identifier: "data", default: "hidden" },
-      pub: { role: "field", access: "public", scope: "instance", identifier: "pub", default: "visible" },
+      data: {
+        role: "field",
+        access: "private",
+        scope: "instance",
+        identifier: "data",
+        default: "hidden",
+      },
+      pub: {
+        role: "field",
+        access: "public",
+        scope: "instance",
+        identifier: "pub",
+        default: "visible",
+      },
     },
     methods: {
       resolve: {
         role: "method",
         identifier: "resolve",
-        body: 'return { priv: this._data, pub: this.pub };',
+        body: "return { priv: this._data, pub: this.pub };",
       },
     },
   },
@@ -59,7 +69,13 @@ const classWithValueProp = {
   title: "Greeter",
   $defs: {
     fields: {
-      greeting: { role: "field", access: "public", scope: "instance", identifier: "greeting", default: "world" },
+      greeting: {
+        role: "field",
+        access: "public",
+        scope: "instance",
+        identifier: "greeting",
+        default: "world",
+      },
     },
     methods: {
       val: {
@@ -113,7 +129,13 @@ const classWithInitializer = {
   title: "Initer",
   $defs: {
     fields: {
-      items: { role: "field", access: "public", scope: "instance", identifier: "items", initializer: [] },
+      items: {
+        role: "field",
+        access: "public",
+        scope: "instance",
+        identifier: "items",
+        initializer: [],
+      },
     },
     methods: {
       resolve: {
@@ -125,33 +147,31 @@ const classWithInitializer = {
   },
 };
 
-const hybridClassDef = {
-  $prototype: "Class",
-  title: "MarkdownFile",
-  $implementation: "./md.js",
-};
-
 // Mock fetch to serve .class.json content based on URL
 function setupFetchMock(/** @type {any} */ classDefMap) {
   const originalFetch = global.fetch;
-  global.fetch = /** @type {any} */ (mock((url) => {
-    const urlStr = typeof url === "string" ? url : url.toString();
-    for (const [pattern, def] of Object.entries(classDefMap)) {
-      if (urlStr.includes(pattern)) {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve(def),
-        });
+  global.fetch = /** @type {any} */ (
+    mock((url) => {
+      const urlStr = typeof url === "string" ? url : url.toString();
+      for (const [pattern, def] of Object.entries(classDefMap)) {
+        if (urlStr.includes(pattern)) {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve(def),
+          });
+        }
       }
-    }
-    // Fall through to 404 for unknown .class.json urls
-    if (urlStr.endsWith(".class.json")) {
-      return Promise.resolve({ ok: false, status: 404 });
-    }
-    // Let non-class-json requests through (shouldn't happen in these tests)
-    return originalFetch(url);
-  }));
-  return () => { global.fetch = originalFetch; };
+      // Fall through to 404 for unknown .class.json urls
+      if (urlStr.endsWith(".class.json")) {
+        return Promise.resolve({ ok: false, status: 404 });
+      }
+      // Let non-class-json requests through (shouldn't happen in these tests)
+      return originalFetch(url);
+    })
+  );
+  return () => {
+    global.fetch = originalFetch;
+  };
 }
 
 // ─── resolveClassJson — self-contained ──────────────────────────────────────
@@ -325,7 +345,16 @@ describe("resolveClassJson — hybrid $implementation", () => {
     const schemaSrc = "file://" + join(parserDir, "MdFile.class.json");
     const restore = setupFetchMock({ "MdFile.class.json": hybridDef });
     try {
-      const fixtureDir = resolvePath(__dirname, "..", "..", "..", "examples", "markdown", "content", "posts");
+      const fixtureDir = resolvePath(
+        __dirname,
+        "..",
+        "..",
+        "..",
+        "examples",
+        "markdown",
+        "content",
+        "posts",
+      );
       const sig = await resolvePrototype(
         {
           $prototype: "MarkdownFile",
@@ -350,21 +379,23 @@ describe("resolveClassJson — fallback", () => {
     // Mock fetch to fail for the .class.json
     const originalFetch = global.fetch;
     let proxyCalled = false;
-    global.fetch = /** @type {any} */ (mock((url, opts) => {
-      const urlStr = typeof url === "string" ? url : url.toString();
-      if (urlStr.endsWith(".class.json")) {
-        return Promise.reject(new Error("Network error"));
-      }
-      // Dev proxy call
-      if (urlStr.includes("__jx_resolve__")) {
-        proxyCalled = true;
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve(42),
-        });
-      }
-      return originalFetch(url);
-    }));
+    global.fetch = /** @type {any} */ (
+      mock((url, _opts) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+        if (urlStr.endsWith(".class.json")) {
+          return Promise.reject(new Error("Network error"));
+        }
+        // Dev proxy call
+        if (urlStr.includes("__jx_resolve__")) {
+          proxyCalled = true;
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve(42),
+          });
+        }
+        return originalFetch(url);
+      })
+    );
 
     try {
       const sig = await resolvePrototype(
@@ -410,11 +441,7 @@ describe("buildScope — .class.json $src", () => {
 describe("resolveExternalPrototype — .class.json enforcement", () => {
   test("throws when non-Function $src does not end in .class.json", async () => {
     expect(
-      resolvePrototype(
-        { $prototype: "MyClass", $src: "./my-class.js" },
-        {},
-        "$mc",
-      ),
+      resolvePrototype({ $prototype: "MyClass", $src: "./my-class.js" }, {}, "$mc"),
     ).rejects.toThrow(".class.json");
   });
 
@@ -503,9 +530,7 @@ describe("buildScope — import map", () => {
         },
       };
       const scope = await buildScope(doc, {}, BASE);
-      expect(warn).toHaveBeenCalledWith(
-        expect.stringContaining('must map to a .class.json path'),
-      );
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining("must map to a .class.json path"));
       // $x should remain null (no $src injected, falls through to unknown prototype warning)
       expect(scope.$x).toBeNull();
     } finally {

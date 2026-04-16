@@ -3,10 +3,10 @@
   "$id": "UserCard",
 
   "state": {
-    "firstName": { "type": "string",  "default": "John" },
-    "lastName":  { "type": "string",  "default": "Doe" },
-    "score":     { "type": "integer", "default": 85 },
-    "level":     { "type": "integer", "default": 1 },
+    "firstName": { "type": "string", "default": "John" },
+    "lastName": { "type": "string", "default": "Doe" },
+    "score": { "type": "integer", "default": 85 },
+    "level": { "type": "integer", "default": 1 },
 
     "fullName": {
       "$prototype": "Function",
@@ -76,20 +76,20 @@
         "backgroundColor": "white",
         "boxShadow": "0 2px 4px rgba(0,0,0,0.1)",
 
-        "[data-level=\"beginner\"] .badge":        { "backgroundColor": "#6c757d" },
-        "[data-level=\"intermediate\"] .badge":    { "backgroundColor": "#ffc107" },
-        "[data-level=\"advanced\"] .badge":        { "backgroundColor": "#007bff" },
-        "[data-level=\"expert\"] .badge":          { "backgroundColor": "#28a745" },
+        "[data-level=\"beginner\"] .badge": { "backgroundColor": "#6c757d" },
+        "[data-level=\"intermediate\"] .badge": { "backgroundColor": "#ffc107" },
+        "[data-level=\"advanced\"] .badge": { "backgroundColor": "#007bff" },
+        "[data-level=\"expert\"] .badge": { "backgroundColor": "#28a745" },
 
-        "[data-level=\"beginner\"] .level-text":   { "color": "#6c757d" },
+        "[data-level=\"beginner\"] .level-text": { "color": "#6c757d" },
         "[data-level=\"intermediate\"] .level-text": { "color": "#ffc107" },
-        "[data-level=\"advanced\"] .level-text":   { "color": "#007bff" },
-        "[data-level=\"expert\"] .level-text":     { "color": "#28a745" },
+        "[data-level=\"advanced\"] .level-text": { "color": "#007bff" },
+        "[data-level=\"expert\"] .level-text": { "color": "#28a745" },
 
-        "[data-level=\"beginner\"] .progress-bar":     { "backgroundColor": "#6c757d" },
+        "[data-level=\"beginner\"] .progress-bar": { "backgroundColor": "#6c757d" },
         "[data-level=\"intermediate\"] .progress-bar": { "backgroundColor": "#ffc107" },
-        "[data-level=\"advanced\"] .progress-bar":     { "backgroundColor": "#007bff" },
-        "[data-level=\"expert\"] .progress-bar":       { "backgroundColor": "#28a745" }
+        "[data-level=\"advanced\"] .progress-bar": { "backgroundColor": "#007bff" },
+        "[data-level=\"expert\"] .progress-bar": { "backgroundColor": "#28a745" }
       },
 
       "children": [

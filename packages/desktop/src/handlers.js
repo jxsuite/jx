@@ -1,8 +1,8 @@
 /**
- * handlers.js — Bun-side PAL implementation
+ * Handlers.js — Bun-side PAL implementation
  *
- * Each export maps to a StudioRPCSchema bun request handler.
- * The handlers perform direct filesystem operations against the project root.
+ * Each export maps to a StudioRPCSchema bun request handler. The handlers perform direct filesystem
+ * operations against the project root.
  *
  * See spec/desktop.md §7.3 for the architecture.
  */
@@ -189,7 +189,8 @@ export async function discoverComponents(params) {
   const components = [];
 
   for await (const match of glob.scan({ cwd: scanRoot, dot: false })) {
-    if (match.includes("node_modules") || match.includes("dist/") || match.includes(".claude/")) continue;
+    if (match.includes("node_modules") || match.includes("dist/") || match.includes(".claude/"))
+      continue;
     const fp = resolve(scanRoot, match);
     try {
       const content = JSON.parse(await readFile(fp, "utf8"));
@@ -199,8 +200,19 @@ export async function discoverComponents(params) {
           $id: content.$id || null,
           path: match,
           props: Object.entries(content.state || {})
-            .filter(([, d]) => d && typeof d === "object" && !/** @type {any} */(d).$prototype && !/** @type {any} */(d).$handler && !/** @type {any} */(d).$compute)
-            .map(([name, d]) => ({ name, type: /** @type {any} */(d).type, default: /** @type {any} */(d).default })),
+            .filter(
+              ([, d]) =>
+                d &&
+                typeof d === "object" &&
+                !(/** @type {any} */ (d).$prototype) &&
+                !(/** @type {any} */ (d).$handler) &&
+                !(/** @type {any} */ (d).$compute),
+            )
+            .map(([name, d]) => ({
+              name,
+              type: /** @type {any} */ (d).type,
+              default: /** @type {any} */ (d).default,
+            })),
           hasElements: Array.isArray(content.$elements) && content.$elements.length > 0,
         });
       }
@@ -214,7 +226,7 @@ export async function discoverComponents(params) {
  * @param {{ action: string; payload: unknown }} params
  * @returns {Promise<CodeServiceResult | null>}
  */
-export async function codeService(params) {
+export async function codeService(_params) {
   // Code services run in the Bun process directly.
   // For now, return null — oxfmt/oxlint integration is Phase 3.
   return null;

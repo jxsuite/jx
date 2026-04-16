@@ -1,22 +1,19 @@
 #!/usr/bin/env node
 /**
- * jx-build — CLI entry point for multi-page site builds
+ * Jx-build — CLI entry point for multi-page site builds
  *
- * Usage:
- *   bun packages/compiler/cli-build.js [project-root]
- *   bun packages/compiler/cli-build.js ./my-site --verbose
+ * Usage: bun packages/compiler/cli-build.js [project-root] bun packages/compiler/cli-build.js
+ * ./my-site --verbose
  *
- * Options:
- *   --verbose    Print detailed build progress
- *   --no-clean   Don't clean outDir before building
+ * Options: --verbose Print detailed build progress --no-clean Don't clean outDir before building
  */
 
 import { resolve } from "node:path";
 import { buildSite } from "./site-build.js";
 
 const args = process.argv.slice(2);
-const flags = new Set(args.filter(a => a.startsWith("--")));
-const positional = args.filter(a => !a.startsWith("--"));
+const flags = new Set(args.filter((a) => a.startsWith("--")));
+const positional = args.filter((a) => !a.startsWith("--"));
 
 const projectRoot = resolve(positional[0] ?? ".");
 const verbose = flags.has("--verbose");

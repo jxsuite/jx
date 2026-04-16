@@ -3,10 +3,10 @@
   "$id": "FetchDemo",
 
   "state": {
-    "searchTerm":     { "type": "string",  "default": "" },
-    "selectedUserId": { "type": "string",  "default": "" },
-    "currentPage":    { "type": "integer", "default": 1 },
-    "perPage":        { "type": "integer", "default": 10 },
+    "searchTerm": { "type": "string", "default": "" },
+    "selectedUserId": { "type": "string", "default": "" },
+    "currentPage": { "type": "integer", "default": 1 },
+    "perPage": { "type": "integer", "default": 10 },
 
     "allPosts": {
       "$prototype": "Request",
@@ -88,7 +88,12 @@
     {
       "tagName": "p",
       "textContent": "allPosts and allUsers are Request prototypes — they auto-fetch on mount. filteredPosts and paginatedPosts are computed signals that update reactively as you type or filter.",
-      "style": { "color": "#6c757d", "margin": "0 0 1.5em", "fontSize": "0.9em", "maxWidth": "640px" }
+      "style": {
+        "color": "#6c757d",
+        "margin": "0 0 1.5em",
+        "fontSize": "0.9em",
+        "maxWidth": "640px"
+      }
     },
 
     {

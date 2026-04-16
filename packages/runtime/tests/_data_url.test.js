@@ -4,7 +4,7 @@ try {
 } catch {}
 
 import { describe, test, expect, mock } from "bun:test";
-import { buildScope, Jx, isSignal } from "../runtime.js";
+import { buildScope, Jx } from "../runtime.js";
 
 const wait = () => new Promise((r) => setTimeout(r, 0));
 const BASE = "http://localhost/";
@@ -40,17 +40,19 @@ describe("Jx", () => {
     );
     await wait();
     expect(/** @type {any} */ (globalThis)._testMounted).toBe(true);
-    delete /** @type {any} */ (globalThis)._testMounted;
+    delete (/** @type {any} */ (globalThis)._testMounted);
   });
 
   test("fetches string source", async () => {
     const doc = { tagName: "article" };
-    global.fetch = /** @type {any} */ (mock(() =>
-      Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve(doc),
-      }),
-    ));
+    global.fetch = /** @type {any} */ (
+      mock(() =>
+        Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve(doc),
+        }),
+      )
+    );
     const target = document.createElement("div");
     await Jx("http://example.com/test.json", target);
     expect(target.children[0].tagName.toLowerCase()).toBe("article");

@@ -1,14 +1,18 @@
-/**
- * build.js — Configurable Bun.build pipeline
- */
+/** Build.js — Configurable Bun.build pipeline */
 
 /**
  * Build all entries with sensible defaults (browser target, ESM, linked sourcemaps).
- * @param {Array<{ entrypoints: string[], outdir: string, match?: Function|RegExp, label?: string }>} builds
+ *
+ * @param {{
+ *   entrypoints: string[];
+ *   outdir: string;
+ *   match?: Function | RegExp;
+ *   label?: string;
+ * }[]} builds
  */
 export async function buildAll(builds) {
   for (const entry of builds) {
-    const { match, label, ...opts } = entry;
+    const { match: _match, label, ...opts } = entry;
     const result = await Bun.build({
       target: "browser",
       format: "esm",
@@ -22,9 +26,15 @@ export async function buildAll(builds) {
 
 /**
  * Rebuild entries whose match function/regex matches the changed filename.
- * @param {Array<{ entrypoints: string[], outdir: string, match?: Function|RegExp, label?: string }>} builds
+ *
+ * @param {{
+ *   entrypoints: string[];
+ *   outdir: string;
+ *   match?: Function | RegExp;
+ *   label?: string;
+ * }[]} builds
  * @param {string} changedFile
- * @returns {Promise<{ rebuilt: string[], success: boolean }>}
+ * @returns {Promise<{ rebuilt: string[]; success: boolean }>}
  */
 export async function rebuild(builds, changedFile) {
   const rebuilt = [];
@@ -38,7 +48,7 @@ export async function rebuild(builds, changedFile) {
           ? entry.match.test(changedFile)
           : false;
     if (!matches) continue;
-    const { match, label, ...opts } = entry;
+    const { match: _match, label, ...opts } = entry;
     const result = await Bun.build({
       target: "browser",
       format: "esm",

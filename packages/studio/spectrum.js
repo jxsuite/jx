@@ -1,11 +1,10 @@
 /**
- * spectrum.js — Explicit Spectrum Web Component registration
+ * Spectrum.js — Explicit Spectrum Web Component registration
  *
- * Bun's bundler tree-shakes bare side-effect imports (`import "..."`) because
- * the Spectrum `sp-*.js` entry files export nothing — they only call
- * `customElements.define()` as a side effect. To prevent the bundler from
- * dropping them, we import the class constructors and collect them into an
- * exported array that the main module references.
+ * Bun's bundler tree-shakes bare side-effect imports (`import "..."`) because the Spectrum
+ * `sp-*.js` entry files export nothing — they only call `customElements.define()` as a side effect.
+ * To prevent the bundler from dropping them, we import the class constructors and collect them into
+ * an exported array that the main module references.
  */
 
 import { Theme } from "@spectrum-web-components/theme/src/Theme.js";

@@ -18,7 +18,6 @@ import {
   isDynamic,
   compileStyles,
   escapeHtml,
-  titleToTagName,
   tagNameToClassName,
   DEFAULT_REACTIVITY_SRC,
   DEFAULT_LIT_HTML_SRC,
@@ -36,14 +35,15 @@ export { isDynamic, compileServer, compileElement, compileElementPage, compileCl
 /**
  * Compile a Jx document to HTML (+ optional JS module files).
  *
- * Routing:
- *   1. Not dynamic → static HTML/CSS, zero JS
- *   2. tagName contains hyphen → custom element (lit-html)
- *   3. Otherwise → pre-rendered HTML with reactive bindings
+ * Routing: 1. Not dynamic → static HTML/CSS, zero JS 2. tagName contains hyphen → custom element
+ * (lit-html) 3. Otherwise → pre-rendered HTML with reactive bindings
  *
  * @param {string | any} sourcePath - Path to .json file, URL, or raw object
- * @param {any}          [opts]
- * @returns {Promise<{ html: string, files: { path: string, content: string, tagName?: string }[] }>}
+ * @param {any} [opts]
+ * @returns {Promise<{
+ *   html: string;
+ *   files: { path: string; content: string; tagName?: string }[];
+ * }>}
  */
 export async function compile(sourcePath, opts = {}) {
   const {
@@ -59,9 +59,10 @@ export async function compile(sourcePath, opts = {}) {
   if (raw.$prototype === "Class") {
     const { compileClassJson } = await import("./compile-class.js");
     const jsContent = compileClassJson(raw, opts);
-    const outputPath = typeof sourcePath === "string"
-      ? sourcePath.replace(/\.class\.json$/, ".js")
-      : `${raw.title}.js`;
+    const outputPath =
+      typeof sourcePath === "string"
+        ? sourcePath.replace(/\.class\.json$/, ".js")
+        : `${raw.title}.js`;
     return { html: "", files: [{ path: outputPath, content: jsContent }] };
   }
 

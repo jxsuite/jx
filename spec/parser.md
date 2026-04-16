@@ -1,4 +1,5 @@
 # `@jxplatform/parser` Specification
+
 ## Markdown Parser and External Class Integration
 
 **Version:** 2.0.0-draft
@@ -17,11 +18,11 @@ Built on the `unified` / `remark` / `rehype` pipeline.
 
 ## 2. Exports
 
-| Export | Type | Description |
-|---|---|---|
-| `MarkdownFile` | Class | Parses a single markdown file into structured data |
-| `MarkdownCollection` | Class | Globs markdown files into a sorted, filterable collection |
-| `MarkdownDirective` | Remark plugin | Maps `::directive{attrs}` syntax to custom element tags |
+| Export               | Type          | Description                                               |
+| -------------------- | ------------- | --------------------------------------------------------- |
+| `MarkdownFile`       | Class         | Parses a single markdown file into structured data        |
+| `MarkdownCollection` | Class         | Globs markdown files into a sorted, filterable collection |
+| `MarkdownDirective`  | Remark plugin | Maps `::directive{attrs}` syntax to custom element tags   |
 
 ---
 
@@ -46,24 +47,24 @@ Built on the `unified` / `remark` / `rehype` pipeline.
 
 Receives a configuration object with:
 
-| Property | Type | Required | Description |
-|---|---|---|---|
-| `src` | `string` | Yes | Path to a single markdown file |
+| Property | Type     | Required | Description                    |
+| -------- | -------- | -------- | ------------------------------ |
+| `src`    | `string` | Yes      | Path to a single markdown file |
 
 ### 3.3 Resolved Value
 
 The `resolve()` method returns an object with:
 
-| Property | Type | Description |
-|---|---|---|
-| `slug` | `string` | Filename without extension |
-| `path` | `string` | Full file path |
-| `frontmatter` | `object` | Parsed YAML frontmatter |
-| `$body` | `string` | Rendered HTML body |
-| `$excerpt` | `string` | First paragraph as HTML |
-| `$toc` | `array` | Table of contents (heading id, text, depth) |
-| `$readingTime` | `number` | Estimated reading time in minutes |
-| `$wordCount` | `number` | Word count |
+| Property       | Type     | Description                                 |
+| -------------- | -------- | ------------------------------------------- |
+| `slug`         | `string` | Filename without extension                  |
+| `path`         | `string` | Full file path                              |
+| `frontmatter`  | `object` | Parsed YAML frontmatter                     |
+| `$body`        | `string` | Rendered HTML body                          |
+| `$excerpt`     | `string` | First paragraph as HTML                     |
+| `$toc`         | `array`  | Table of contents (heading id, text, depth) |
+| `$readingTime` | `number` | Estimated reading time in minutes           |
+| `$wordCount`   | `number` | Word count                                  |
 
 ### 3.4 Parsing Pipeline
 
@@ -100,13 +101,13 @@ The `resolve()` method returns an object with:
 
 ### 4.2 Constructor
 
-| Property | Type | Required | Description |
-|---|---|---|---|
-| `src` | `string` | Yes | Glob pattern for markdown files |
-| `sortBy` | `string` | No | Frontmatter field to sort by (default: `"date"`) |
-| `sortOrder` | `string` | No | `"asc"` or `"desc"` (default: `"desc"`) |
-| `limit` | `number` | No | Maximum number of results |
-| `filter` | `string` | No | Frontmatter field filter expression |
+| Property    | Type     | Required | Description                                      |
+| ----------- | -------- | -------- | ------------------------------------------------ |
+| `src`       | `string` | Yes      | Glob pattern for markdown files                  |
+| `sortBy`    | `string` | No       | Frontmatter field to sort by (default: `"date"`) |
+| `sortOrder` | `string` | No       | `"asc"` or `"desc"` (default: `"desc"`)          |
+| `limit`     | `number` | No       | Maximum number of results                        |
+| `filter`    | `string` | No       | Frontmatter field filter expression              |
 
 ### 4.3 Resolved Value
 
@@ -142,12 +143,12 @@ This allows Jx custom elements to be embedded inside markdown content.
 
 Both `MarkdownFile` and `MarkdownCollection` satisfy the Jx external class contract:
 
-| Requirement | Implementation |
-|---|---|
-| Constructor receives config object | Yes — all properties except reserved keywords |
-| `resolve()` async method | Yes — returns parsed content |
-| `value` property | Accessible after resolution |
-| `subscribe(callback)` | Not implemented (content is static at load time) |
+| Requirement                        | Implementation                                   |
+| ---------------------------------- | ------------------------------------------------ |
+| Constructor receives config object | Yes — all properties except reserved keywords    |
+| `resolve()` async method           | Yes — returns parsed content                     |
+| `value` property                   | Accessible after resolution                      |
+| `subscribe(callback)`              | Not implemented (content is static at load time) |
 
 ---
 
@@ -166,20 +167,20 @@ These enable the dev server and compiler to introspect class structure without i
 
 ## 8. Dependencies
 
-| Package | Purpose |
-|---|---|
-| `unified` | Pipeline orchestrator |
-| `remark-parse` | Markdown → MDAST |
-| `remark-frontmatter` | YAML frontmatter support |
-| `remark-parse-frontmatter` | Frontmatter extraction |
-| `remark-gfm` | GitHub Flavored Markdown |
-| `remark-directive` | Directive syntax |
-| `remark-rehype` | MDAST → HAST |
-| `rehype-stringify` | HAST → HTML |
-| `glob` | File globbing for collections |
-| `mdast-util-to-string` | Text extraction |
-| `unist-util-visit` | AST traversal |
+| Package                    | Purpose                       |
+| -------------------------- | ----------------------------- |
+| `unified`                  | Pipeline orchestrator         |
+| `remark-parse`             | Markdown → MDAST              |
+| `remark-frontmatter`       | YAML frontmatter support      |
+| `remark-parse-frontmatter` | Frontmatter extraction        |
+| `remark-gfm`               | GitHub Flavored Markdown      |
+| `remark-directive`         | Directive syntax              |
+| `remark-rehype`            | MDAST → HAST                  |
+| `rehype-stringify`         | HAST → HTML                   |
+| `glob`                     | File globbing for collections |
+| `mdast-util-to-string`     | Text extraction               |
+| `unist-util-visit`         | AST traversal                 |
 
 ---
 
-*`@jxplatform/parser` Specification v2.0.0-draft*
+_`@jxplatform/parser` Specification v2.0.0-draft_

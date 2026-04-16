@@ -1,16 +1,16 @@
 /**
- * site-loader.js — Load and validate site.json configuration
+ * Site-loader.js — Load and validate site.json configuration
  *
- * Parses the project root's site.json file and provides normalized
- * configuration with sensible defaults for all site-level properties.
+ * Parses the project root's site.json file and provides normalized configuration with sensible
+ * defaults for all site-level properties.
  */
 
 import { readFileSync, existsSync } from "node:fs";
-import { resolve, dirname } from "node:path";
+import { resolve } from "node:path";
 
 /**
- * Default site configuration. All properties are optional in site.json;
- * these defaults fill in anything the author omits.
+ * Default site configuration. All properties are optional in site.json; these defaults fill in
+ * anything the author omits.
  */
 const DEFAULTS = {
   name: "Jx Site",
@@ -37,8 +37,8 @@ const DEFAULTS = {
  * Load and validate site.json from a project root.
  *
  * @param {string} projectRoot - Absolute path to the project directory
- * @returns {{ config: Record<string, any>, configPath: string, projectRoot: string }}
- * @throws {Error} if site.json is missing or invalid JSON
+ * @returns {{ config: Record<string, any>; configPath: string; projectRoot: string }}
+ * @throws {Error} If site.json is missing or invalid JSON
  */
 export function loadSiteConfig(projectRoot) {
   const configPath = resolve(projectRoot, "site.json");

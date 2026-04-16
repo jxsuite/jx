@@ -1,9 +1,9 @@
 /**
- * devserver.js — Dev Server Platform Adapter
+ * Devserver.js — Dev Server Platform Adapter
  *
- * Implements the StudioPlatform interface for the @jxplatform/server development
- * workflow. All file I/O goes through /__studio/* REST endpoints. Project
- * opening uses the Chrome File System Access API (showDirectoryPicker).
+ * Implements the StudioPlatform interface for the @jxplatform/server development workflow. All file
+ * I/O goes through /__studio/* REST endpoints. Project opening uses the Chrome File System Access
+ * API (showDirectoryPicker).
  *
  * See spec/desktop.md §8 for the full specification.
  */
@@ -11,17 +11,17 @@
 /**
  * Create a DevServerPlatform instance.
  *
- * The adapter is stateless apart from `_projectRoot`, which tracks the
- * server-relative project directory (e.g. "examples/site-demo"). All
- * paths passed INTO PAL methods are project-relative; the adapter
- * prefixes them with `_projectRoot` before hitting the server, and
- * strips the prefix from responses.
+ * The adapter is stateless apart from `_projectRoot`, which tracks the server-relative project
+ * directory (e.g. "examples/site-demo"). All paths passed INTO PAL methods are project-relative;
+ * the adapter prefixes them with `_projectRoot` before hitting the server, and strips the prefix
+ * from responses.
  */
 export function createDevServerPlatform() {
   let _projectRoot = ".";
 
   /**
    * Prefix a project-relative path with the active project root for server API calls.
+   *
    * @param {string} rel
    */
   function serverPath(rel) {
@@ -31,6 +31,7 @@ export function createDevServerPlatform() {
 
   /**
    * Strip the project root prefix from a server-root-relative path.
+   *
    * @param {string} path
    */
   function stripRoot(path) {
@@ -42,8 +43,12 @@ export function createDevServerPlatform() {
     id: "devserver",
 
     /** Get or set the current project root (server-relative path). */
-    get projectRoot() { return _projectRoot; },
-    set projectRoot(v) { _projectRoot = v || "."; },
+    get projectRoot() {
+      return _projectRoot;
+    },
+    set projectRoot(v) {
+      _projectRoot = v || ".";
+    },
 
     // ─── Project opening ──────────────────────────────────────────────────
 
@@ -77,7 +82,9 @@ export function createDevServerPlatform() {
       const sitesRes = await fetch("/__studio/sites");
       if (!sitesRes.ok) throw new Error("Failed to fetch site list from server");
       const sites = await sitesRes.json();
-      const match = sites.find(/** @param {any} s */ s => JSON.stringify(s.config) === JSON.stringify(config));
+      const match = sites.find(
+        /** @param {any} s */ (s) => JSON.stringify(s.config) === JSON.stringify(config),
+      );
 
       if (!match) {
         throw new Error("Selected project is not under the dev server root");
@@ -96,8 +103,8 @@ export function createDevServerPlatform() {
     },
 
     /**
-     * Probe the server root to see if it is itself a site project.
-     * Used at startup to auto-detect projects.
+     * Probe the server root to see if it is itself a site project. Used at startup to auto-detect
+     * projects.
      */
     async probeRootProject() {
       try {
@@ -165,8 +172,8 @@ export function createDevServerPlatform() {
       if (!res.ok) throw new Error(`Failed to rename: ${from} → ${to}`);
     },
 
-    /** @param {string} path */
-    async createDirectory(path) {
+    /** @param {string} _path */
+    async createDirectory(_path) {
       // The server creates directories implicitly when writing files.
       // Write a placeholder and delete it, or rely on mkdir behavior.
       // For now, use the writeFile + delete approach if directory creation
@@ -178,7 +185,10 @@ export function createDevServerPlatform() {
     /** @param {string} dir */
     async discoverComponents(dir) {
       const scanDir = dir || _projectRoot;
-      const url = scanDir === "." ? "/__studio/components" : `/__studio/components?dir=${encodeURIComponent(scanDir)}`;
+      const url =
+        scanDir === "."
+          ? "/__studio/components"
+          : `/__studio/components?dir=${encodeURIComponent(scanDir)}`;
       const res = await fetch(url);
       if (!res.ok) return [];
       return await res.json();

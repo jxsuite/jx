@@ -1,8 +1,8 @@
 /**
- * studio-api.js — Studio filesystem integration
+ * Studio-api.js — Studio filesystem integration
  *
- * REST endpoints under /__studio/* that provide server-backed file operations
- * so the studio can work universally (not just Chrome with File System Access API).
+ * REST endpoints under /__studio/* that provide server-backed file operations so the studio can
+ * work universally (not just Chrome with File System Access API).
  *
  * All paths are relative to the project root. Directory traversal above root is rejected.
  */
@@ -22,6 +22,7 @@ function assertUnderRoot(filePath, root) {
 
 /**
  * Handle /__studio/* requests.
+ *
  * @param {Request} req
  * @param {URL} url
  * @param {string} root
@@ -54,7 +55,15 @@ export async function handleStudioApi(req, url, root) {
     }
     try {
       const projectRoot = relative(root, absDir) || ".";
-      const conventionalDirs = ["pages", "layouts", "components", "content", "data", "public", "styles"];
+      const conventionalDirs = [
+        "pages",
+        "layouts",
+        "components",
+        "content",
+        "data",
+        "public",
+        "styles",
+      ];
       const directories = [];
       for (const d of conventionalDirs) {
         try {
@@ -85,7 +94,8 @@ export async function handleStudioApi(req, url, root) {
       const glob = new Bun.Glob("**/site.json");
       const sites = [];
       for await (const match of glob.scan({ cwd: root, dot: false })) {
-        if (match.includes("node_modules") || match.includes("dist/") || match.includes(".claude/")) continue;
+        if (match.includes("node_modules") || match.includes("dist/") || match.includes(".claude/"))
+          continue;
         const fp = resolve(root, match);
         try {
           const raw = JSON.parse(await readFile(fp, "utf8"));
@@ -158,7 +168,9 @@ export async function handleStudioApi(req, url, root) {
     const dir = url.searchParams.get("dir");
     const scanRoot = dir ? resolve(root, dir) : root;
     if (dir) {
-      try { assertUnderRoot(scanRoot, root); } catch (/** @type {any} */ e) {
+      try {
+        assertUnderRoot(scanRoot, root);
+      } catch (/** @type {any} */ e) {
         return Response.json({ error: e.message }, { status: 400 });
       }
     }
@@ -166,7 +178,8 @@ export async function handleStudioApi(req, url, root) {
       const glob = new Bun.Glob("**/*.json");
       const components = [];
       for await (const match of glob.scan({ cwd: scanRoot, dot: false })) {
-        if (match.includes("node_modules") || match.includes("dist/") || match.includes(".claude/")) continue;
+        if (match.includes("node_modules") || match.includes("dist/") || match.includes(".claude/"))
+          continue;
         const fp = resolve(scanRoot, match);
         try {
           const content = JSON.parse(await readFile(fp, "utf8"));
@@ -176,7 +189,10 @@ export async function handleStudioApi(req, url, root) {
               $id: content.$id || null,
               path: match,
               props: Object.entries(content.state || {})
-                .filter(([, d]) => d && typeof d === "object" && !d.$prototype && !d.$handler && !d.$compute)
+                .filter(
+                  ([, d]) =>
+                    d && typeof d === "object" && !d.$prototype && !d.$handler && !d.$compute,
+                )
                 .map(([name, d]) => ({ name, type: d.type, default: d.default })),
               hasElements: Array.isArray(content.$elements) && content.$elements.length > 0,
             });
@@ -364,12 +380,13 @@ export async function handleStudioApi(req, url, root) {
 }
 
 /**
- * Extract a studio-friendly schema from a .class.json definition.
- * Transforms $defs.parameters and $defs.fields into the flat { description, properties, required }
- * shape that renderSchemaFields() in the studio already consumes.
+ * Extract a studio-friendly schema from a .class.json definition. Transforms $defs.parameters and
+ * $defs.fields into the flat { description, properties, required } shape that renderSchemaFields()
+ * in the studio already consumes.
+ *
  * @param {any} classDef
  * @param {string} classJsonPath
- * @returns {{ description: any, properties: Record<string, any>, required: string[] }}
+ * @returns {{ description: any; properties: Record<string, any>; required: string[] }}
  */
 function extractStudioSchema(classDef, classJsonPath) {
   // If extends.$ref points to a parent, recursively merge
@@ -420,7 +437,8 @@ function extractStudioSchema(classDef, classJsonPath) {
     if (field.type && typeof field.type === "object") Object.assign(prop, field.type);
     if (field.description) prop.description = field.description;
     if (field.default !== undefined) prop.default = field.default;
-    if (field.initializer !== undefined && prop.default === undefined) prop.default = field.initializer;
+    if (field.initializer !== undefined && prop.default === undefined)
+      prop.default = field.initializer;
     if (field.examples) prop.examples = field.examples;
     properties[id] = prop;
   }

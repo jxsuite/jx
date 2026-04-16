@@ -7,9 +7,9 @@
  * source files. All HTML element names, CSS property names, and DOM event
  * handler names are derived at generation time from upstream web standards via:
  *
- *   @webref/elements — HTML element tag names
- *   @webref/css      — CSS property names (camelCase CSSOM)
- *   @webref/idl      — DOM EventHandler attribute names
+ *   webref/elements — HTML element tag names
+ *   webref/css      — CSS property names (camelCase CSSOM)
+ *   webref/idl      — DOM EventHandler attribute names
  *
  * Usage:
  *   import { generateSchema } from './schema.js';
@@ -49,7 +49,7 @@ const BUILT_IN_PROTOTYPES = [
 /**
  * Fetch and normalise the three webref datasets in parallel.
  *
- * @returns {Promise<{ tagExamples: string[], cssProps: string[], eventHandlers: string[] }>}
+ * @returns {Promise<{ tagExamples: string[]; cssProps: string[]; eventHandlers: string[] }>}
  */
 async function loadWebData() {
   const [elementsData, cssData, idlData] = await Promise.all([
@@ -101,9 +101,8 @@ async function loadWebData() {
 // ─── Generator ────────────────────────────────────────────────────────────────
 
 /**
- * Generate the full Jx meta-schema as a plain JavaScript object.
- * Derives HTML elements, CSS properties, and event handlers from upstream
- * web standards data at generation time.
+ * Generate the full Jx meta-schema as a plain JavaScript object. Derives HTML elements, CSS
+ * properties, and event handlers from upstream web standards data at generation time.
  *
  * @returns {Promise<object>} JSON Schema 2020-12 document
  */
@@ -125,8 +124,7 @@ export async function generateSchema() {
     // ── Top-level properties ────────────────────────────────────────────────
     properties: {
       $schema: {
-        description:
-          "URI identifying the Jx dialect version. Enables schema-aware IDE tooling.",
+        description: "URI identifying the Jx dialect version. Enables schema-aware IDE tooling.",
         type: "string",
         examples: ["https://jxplatform.net/schema/v1"],
       },
@@ -187,10 +185,7 @@ export async function generateSchema() {
         description:
           "A $defs type definition entry. Must be a pure JSON Schema type " +
           "definition or a class definition (.class.json format).",
-        oneOf: [
-          { $ref: "#/$defs/PureTypeDef" },
-          { $ref: "#/$defs/ClassDef" },
-        ],
+        oneOf: [{ $ref: "#/$defs/PureTypeDef" }, { $ref: "#/$defs/ClassDef" }],
       },
 
       // ── state map (runtime variables) ───────────────────────────────────
@@ -250,10 +245,7 @@ export async function generateSchema() {
           type: {
             description:
               "JSON Schema type definition, $ref to a $defs type, or JSON Schema type string.",
-            oneOf: [
-              { type: "string" },
-              { type: "object" },
-            ],
+            oneOf: [{ type: "string" }, { type: "object" }],
           },
           description: { type: "string" },
           attribute: {
@@ -327,10 +319,7 @@ export async function generateSchema() {
               "Accepts CEM-compatible parameter objects or bare string names for backward compatibility.",
             type: "array",
             items: {
-              oneOf: [
-                { type: "string" },
-                { $ref: "#/$defs/CemParameter" },
-              ],
+              oneOf: [{ type: "string" }, { $ref: "#/$defs/CemParameter" }],
             },
             examples: [
               ["event"],
@@ -369,7 +358,7 @@ export async function generateSchema() {
       // ── Shape 6: Class Definition ($prototype: "Class") ────────────────
       ClassDef: {
         description:
-          "A .class.json schema-defined class. $prototype must be \"Class\". " +
+          'A .class.json schema-defined class. $prototype must be "Class". ' +
           "Defines fields, constructor, methods, and type parameters via $defs. " +
           "Optionally points to a JS module via $implementation for hybrid execution.",
         type: "object",
@@ -432,7 +421,7 @@ export async function generateSchema() {
           identifier: { type: "string" },
           type: {},
           format: {
-            description: "When \"json-schema\", this parameter's value is itself a JSON Schema.",
+            description: 'When "json-schema", this parameter\'s value is itself a JSON Schema.',
             type: "string",
           },
           description: { type: "string" },
@@ -451,7 +440,7 @@ export async function generateSchema() {
           identifier: { type: "string" },
           type: {},
           $prototype: {
-            description: "Data source prototype for this field (e.g., \"Request\").",
+            description: 'Data source prototype for this field (e.g., "Request").',
             type: "string",
           },
           initializer: {},
@@ -483,10 +472,7 @@ export async function generateSchema() {
             },
           },
           body: {
-            oneOf: [
-              { type: "string" },
-              { type: "array", items: { type: "string" } },
-            ],
+            oneOf: [{ type: "string" }, { type: "array", items: { type: "string" } }],
           },
         },
       },
@@ -511,10 +497,7 @@ export async function generateSchema() {
           },
           returnType: {},
           body: {
-            oneOf: [
-              { type: "string" },
-              { type: "array", items: { type: "string" } },
-            ],
+            oneOf: [{ type: "string" }, { type: "array", items: { type: "string" } }],
           },
           getter: {
             type: "object",
@@ -756,7 +739,8 @@ export async function generateSchema() {
 
       // ── $ref types ────────────────────────────────────────────────────────
       RefObject: {
-        description: "A $ref binding. Resolves to a state entry (reactive) or plain value (static).",
+        description:
+          "A $ref binding. Resolves to a state entry (reactive) or plain value (static).",
         type: "object",
         required: ["$ref"],
         properties: { $ref: { $ref: "#/$defs/AnyRef" } },
@@ -903,9 +887,9 @@ export async function generateSchema() {
 // ─── Schema building helpers ──────────────────────────────────────────────────
 
 /**
- * Build the event handler `properties` fragment for ElementDef.
- * Each key maps to a RefObject pointing at a declared handler function.
- * Derived from @webref/idl EventHandler attributes at generation time.
+ * Build the event handler `properties` fragment for ElementDef. Each key maps to a RefObject
+ * pointing at a declared handler function. Derived from @webref/idl EventHandler attributes at
+ * generation time.
  *
  * @param {string[]} eventHandlers
  * @returns {object}
@@ -923,10 +907,9 @@ function buildEventHandlerProperties(eventHandlers) {
 }
 
 /**
- * Build the explicit CSS `properties` fragment for StyleObject.
- * Each key is a camelCase CSSOM property name; the value schema accepts
- * strings and numbers (CSS values are always coerced to strings at runtime).
- * Derived from @webref/css styleDeclaration names at generation time.
+ * Build the explicit CSS `properties` fragment for StyleObject. Each key is a camelCase CSSOM
+ * property name; the value schema accepts strings and numbers (CSS values are always coerced to
+ * strings at runtime). Derived from @webref/css styleDeclaration names at generation time.
  *
  * @param {string[]} cssProps
  * @returns {object}
@@ -955,7 +938,7 @@ export async function generateSchemaString() {
  * Validate a Jx document against the generated schema using Ajv.
  *
  * @param {object} doc
- * @returns {Promise<{ valid: boolean, errors: object[] | null }>}
+ * @returns {Promise<{ valid: boolean; errors: object[] | null }>}
  */
 export async function validateDocument(doc) {
   let Ajv, addFormats;

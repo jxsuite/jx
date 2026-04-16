@@ -117,7 +117,8 @@ describe("resolveRef", () => {
   child["$map/item"] = child.$map.item;
   child["$map/index"] = child.$map.index;
 
-  test("non-string returns as-is", () => expect(resolveRef(/** @type {any} */ (42), state)).toBe(42));
+  test("non-string returns as-is", () =>
+    expect(resolveRef(/** @type {any} */ (42), state)).toBe(42));
   test("#/state/ prefix resolves from scope", () => {
     expect(resolveRef("#/state/count", state)).toBe(5);
   });
@@ -127,12 +128,12 @@ describe("resolveRef", () => {
   test("window#/ resolves global window property", () => {
     /** @type {any} */ (window)._testProp = "win";
     expect(resolveRef("window#/_testProp", state)).toBe("win");
-    delete /** @type {any} */ (window)._testProp;
+    delete (/** @type {any} */ (window)._testProp);
   });
   test("document#/ resolves global document property", () => {
     /** @type {any} */ (document)._testProp = "doc";
     expect(resolveRef("document#/_testProp", state)).toBe("doc");
-    delete /** @type {any} */ (document)._testProp;
+    delete (/** @type {any} */ (document)._testProp);
   });
   test("$map/item resolves map item", () => {
     expect(resolveRef("$map/item", child)).toEqual({ text: "hello", nested: { deep: 42 } });
@@ -164,12 +165,14 @@ describe("resolve", () => {
 
   test("fetches string URL and parses JSON", async () => {
     const payload = { tagName: "span" };
-    global.fetch = /** @type {any} */ (mock(() =>
-      Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve(payload),
-      }),
-    ));
+    global.fetch = /** @type {any} */ (
+      mock(() =>
+        Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve(payload),
+        }),
+      )
+    );
     const result = await resolve("http://example.com/comp.json");
     expect(result).toEqual(payload);
   });
@@ -488,7 +491,9 @@ describe("applyStyle", () => {
     expect(css).toContain("@media (min-width: 768px)");
     expect(css).toContain("font-size: 2rem");
     // Nested selector within media
-    expect(css).toMatch(/@media \(min-width: 768px\) \{ \[data-jx="[^"]+"\] :hover \{ color: blue \} \}/);
+    expect(css).toMatch(
+      /@media \(min-width: 768px\) \{ \[data-jx="[^"]+"\] :hover \{ color: blue \} \}/,
+    );
   });
 
   test("& compound selector inside media block", () => {
@@ -499,7 +504,9 @@ describe("applyStyle", () => {
     );
     const style = /** @type {HTMLStyleElement} */ (document.head.querySelector("style"));
     const css = style.textContent;
-    expect(css).toMatch(/@media \(min-width: 640px\) \{ \[data-jx="[^"]+"\]\.active \{ font-weight: bold \} \}/);
+    expect(css).toMatch(
+      /@media \(min-width: 640px\) \{ \[data-jx="[^"]+"\]\.active \{ font-weight: bold \} \}/,
+    );
   });
 });
 
@@ -507,12 +514,14 @@ describe("applyStyle", () => {
 
 describe("resolvePrototype", () => {
   test("Request: returns ref, starts null, fetches and sets data", async () => {
-    global.fetch = /** @type {any} */ (mock(() =>
-      Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve({ id: 1 }),
-      }),
-    ));
+    global.fetch = /** @type {any} */ (
+      mock(() =>
+        Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ id: 1 }),
+        }),
+      )
+    );
     const state = reactive(/** @type {Record<string, any>} */ ({}));
     const result = await resolvePrototype(
       { $prototype: "Request", url: "/api/test" },
@@ -535,13 +544,15 @@ describe("resolvePrototype", () => {
   });
 
   test("Request: sets error on non-ok response", async () => {
-    global.fetch = /** @type {any} */ (mock(() =>
-      Promise.resolve({
-        ok: false,
-        statusText: "Not Found",
-        json: () => Promise.resolve({}),
-      }),
-    ));
+    global.fetch = /** @type {any} */ (
+      mock(() =>
+        Promise.resolve({
+          ok: false,
+          statusText: "Not Found",
+          json: () => Promise.resolve({}),
+        }),
+      )
+    );
     const state = reactive(/** @type {Record<string, any>} */ ({}));
     const result = await resolvePrototype({ $prototype: "Request", url: "/api/z" }, state, "z");
     state.z = result;
@@ -551,10 +562,12 @@ describe("resolvePrototype", () => {
 
   test("Request: POST with headers and body", async () => {
     let captured = /** @type {any} */ (undefined);
-    global.fetch = /** @type {any} */ (mock((_url, opts) => {
-      captured = opts;
-      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
-    }));
+    global.fetch = /** @type {any} */ (
+      mock((_url, opts) => {
+        captured = opts;
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+      })
+    );
     const state = reactive(/** @type {Record<string, any>} */ ({}));
     await resolvePrototype(
       { $prototype: "Request", url: "/api", method: "POST", headers: { x: "1" }, body: { a: 1 } },
@@ -667,7 +680,7 @@ describe("resolvePrototype", () => {
       "db",
     );
     expect(isRef(result)).toBe(true);
-    delete /** @type {any} */ (global).indexedDB;
+    delete (/** @type {any} */ (global).indexedDB);
   });
 
   test("Set: returns a Set", async () => {
@@ -1072,17 +1085,19 @@ describe("Jx", () => {
     );
     await wait();
     expect(/** @type {any} */ (globalThis)._testMounted).toBe(true);
-    delete /** @type {any} */ (globalThis)._testMounted;
+    delete (/** @type {any} */ (globalThis)._testMounted);
   });
 
   test("fetches string source", async () => {
     const doc = { tagName: "article" };
-    global.fetch = /** @type {any} */ (mock(() =>
-      Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve(doc),
-      }),
-    ));
+    global.fetch = /** @type {any} */ (
+      mock(() =>
+        Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve(doc),
+        }),
+      )
+    );
     const target = document.createElement("div");
     await Jx("http://example.com/test.json", target);
     expect(target.children[0].tagName.toLowerCase()).toBe("article");

@@ -1,5 +1,5 @@
 /**
- * main.js — Jx Studio desktop entry point (Electrobun Bun process)
+ * Main.js — Jx Studio desktop entry point (Electrobun Bun process)
  *
  * 1. Determines the initial project root (CLI arg, env var, or CWD)
  * 2. Starts the embedded HTTP server for studio assets + /__studio/* API
@@ -28,10 +28,7 @@ import { startStudioServer } from "./server.js";
 
 // ─── Determine project root ───────────────────────────────────────────────────
 
-const projectRoot =
-  process.argv[2] ||
-  process.env.JSONSX_PROJECT_ROOT ||
-  process.cwd();
+const projectRoot = process.argv[2] || process.env.JSONSX_PROJECT_ROOT || process.cwd();
 
 setProjectRoot(projectRoot);
 

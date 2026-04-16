@@ -1,23 +1,23 @@
 /**
- * index.js — external functions for the examples index page.
- * Used via $src on $prototype: "Function" entries.
+ * Index.js — external functions for the examples index page. Used via $src on $prototype:
+ * "Function" entries.
  */
 
 const SOURCES = {
-  counter:    './counter/counter.json',
-  computed:   './computed/user-card.json',
-  list:       './list/dynamic-list.json',
-  fetch:      './fetch/fetch-demo.json',
-  switch:     './switch/router.json',
-  form:       './form/contact-form.json',
-  responsive: './responsive/responsive-card.json',
-  todo:       './todo/todo-app.json',
+  counter: "./counter/counter.json",
+  computed: "./computed/user-card.json",
+  list: "./list/dynamic-list.json",
+  fetch: "./fetch/fetch-demo.json",
+  switch: "./switch/router.json",
+  form: "./form/contact-form.json",
+  responsive: "./responsive/responsive-card.json",
+  todo: "./todo/todo-app.json",
 };
 
 async function loadSource(id, state) {
-  state.sourceText = 'Loading...';
+  state.sourceText = "Loading...";
   try {
-    const res  = await fetch(SOURCES[id]);
+    const res = await fetch(SOURCES[id]);
     const text = await res.text();
     state.sourceText = text;
   } catch (e) {

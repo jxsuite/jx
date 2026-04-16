@@ -1,8 +1,12 @@
 {
   "name": "@jxplatform/runtime",
-  "version": "2.0.0",
+  "version": "0.2.0",
   "description": "JSON-native reactive web component runtime",
   "license": "MIT",
+  "files": [
+    "runtime.js",
+    "dist"
+  ],
   "type": "module",
   "exports": {
     ".": "./runtime.js"

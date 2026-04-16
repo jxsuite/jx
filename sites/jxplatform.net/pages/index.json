@@ -1,0 +1,34 @@
+{
+  "title": "${state.page.frontmatter.title}",
+  "$head": [
+    {
+      "tagName": "meta",
+      "attributes": { "name": "description", "content": "${state.page.frontmatter.description}" }
+    },
+    {
+      "tagName": "meta",
+      "attributes": { "property": "og:title", "content": "${state.page.frontmatter.title}" }
+    },
+    {
+      "tagName": "meta",
+      "attributes": {
+        "property": "og:description",
+        "content": "${state.page.frontmatter.description}"
+      }
+    },
+    { "tagName": "meta", "attributes": { "property": "og:type", "content": "website" } }
+  ],
+  "state": {
+    "page": {
+      "$prototype": "MarkdownFile",
+      "src": "../content/pages/home.md",
+      "timing": "compiler"
+    }
+  },
+  "children": [
+    {
+      "tagName": "article",
+      "innerHTML": "${state.page.$body}"
+    }
+  ]
+}

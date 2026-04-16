@@ -48,7 +48,8 @@ Add a comprehensive Custom Elements section to the main Jx spec (`spec/spec.md`)
 - **§20.8 Cleanup** — Each instance maintains an AbortController. `disconnectedCallback` aborts all effects and cleans up subscriptions.
 
 **C. Update §16.2 "Output Tiers"** — Add a row for custom element definitions:
-  - Custom element definition → `class extends HTMLElement` + `customElements.define()` + lit-html template
+
+- Custom element definition → `class extends HTMLElement` + `customElements.define()` + lit-html template
 
 **D. Update §17 "Runtime Pipeline"** — Add a note about `defineElement()` as a public API alongside `Jx()`.
 
@@ -79,9 +80,9 @@ A detailed spec amendment (following the pattern of `jx-external-class-spec.md`)
 
 ### 3. Files Modified
 
-| File | Change |
-|------|--------|
-| `spec/spec.md` | Add §20, update §16.2, §17, §18, §19.4, ToC |
-| `spec/jx-custom-elements-spec.md` | New file — detailed amendment |
+| File                              | Change                                      |
+| --------------------------------- | ------------------------------------------- |
+| `spec/spec.md`                    | Add §20, update §16.2, §17, §18, §19.4, ToC |
+| `spec/jx-custom-elements-spec.md` | New file — detailed amendment               |
 
 No code changes — this is spec-only as requested.

@@ -16,7 +16,12 @@
             {
               "tagName": "a",
               "attributes": { "href": "/" },
-              "style": { "color": "white", "textDecoration": "none", "fontWeight": "bold", "fontSize": "1.25rem" },
+              "style": {
+                "color": "white",
+                "textDecoration": "none",
+                "fontWeight": "bold",
+                "fontSize": "1.25rem"
+              },
               "children": ["Jx Demo"]
             },
             {
@@ -32,9 +37,7 @@
     {
       "tagName": "main",
       "style": { "maxWidth": "800px", "margin": "2rem auto", "padding": "0 1rem" },
-      "children": [
-        { "tagName": "slot" }
-      ]
+      "children": [{ "tagName": "slot" }]
     },
     {
       "tagName": "footer",
@@ -45,9 +48,7 @@
         "color": "#666",
         "marginTop": "2rem"
       },
-      "children": [
-        { "tagName": "p", "children": ["Built with Jx"] }
-      ]
+      "children": [{ "tagName": "p", "children": ["Built with Jx"] }]
     }
   ]
 }

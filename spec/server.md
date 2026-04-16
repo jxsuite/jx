@@ -1,4 +1,5 @@
 # `@jxplatform/server` Specification
+
 ## Development Server with Live Reload, Proxy Resolution, and Studio API
 
 **Version:** 2.0.0-draft
@@ -16,12 +17,12 @@
 ## 2. Entry Point
 
 ```js
-import { createDevServer } from '@jxplatform/server';
+import { createDevServer } from "@jxplatform/server";
 
 createDevServer({
-  root: './my-project',
+  root: "./my-project",
   port: 3000,
-  buildOptions: { entrypoints: ['./index.html'] }
+  buildOptions: { entrypoints: ["./index.html"] },
 });
 ```
 
@@ -53,6 +54,7 @@ This avoids CORS issues, enables Node.js-only dependencies (e.g. `glob`, `fs`), 
 #### `.class.json` Resolution
 
 When `$src` points to a `.class.json` file:
+
 1. Read the JSON schema
 2. Check for `$implementation` key
 3. If present: import the implementation module, use its exported class
@@ -64,6 +66,7 @@ When `$src` points to a `.class.json` file:
 ### 3.3 Server Function Proxy (`POST /__jx_server__`)
 
 Executes `timing: "server"` functions during development. The runtime sends:
+
 ```json
 { "$src": "./dashboard.server.js", "$export": "fetchMetrics", "arguments": { "userId": 42 } }
 ```
@@ -80,16 +83,16 @@ A REST API for the Studio visual builder to manage project files.
 
 ### 4.1 Endpoints
 
-| Method | Path | Description | Status |
-|---|---|---|---|
-| GET | `/__studio/project` | Project metadata (name, root) | **Implemented** |
-| GET | `/__studio/files` | Directory listing with glob support | **Implemented** |
-| GET | `/__studio/file` | Read file contents | **Implemented** |
-| PUT | `/__studio/file` | Write file contents | **Implemented** |
-| DELETE | `/__studio/file` | Delete file | **Implemented** |
-| POST | `/__studio/file/rename` | Rename/move file | **Implemented** |
-| GET | `/__studio/components` | Custom element discovery (hyphenated `tagName` files) | **Implemented** |
-| GET | `/__studio/search` | Search file contents | **Implemented** |
+| Method | Path                    | Description                                           | Status          |
+| ------ | ----------------------- | ----------------------------------------------------- | --------------- |
+| GET    | `/__studio/project`     | Project metadata (name, root)                         | **Implemented** |
+| GET    | `/__studio/files`       | Directory listing with glob support                   | **Implemented** |
+| GET    | `/__studio/file`        | Read file contents                                    | **Implemented** |
+| PUT    | `/__studio/file`        | Write file contents                                   | **Implemented** |
+| DELETE | `/__studio/file`        | Delete file                                           | **Implemented** |
+| POST   | `/__studio/file/rename` | Rename/move file                                      | **Implemented** |
+| GET    | `/__studio/components`  | Custom element discovery (hyphenated `tagName` files) | **Implemented** |
+| GET    | `/__studio/search`      | Search file contents                                  | **Implemented** |
 
 ### 4.2 Security
 
@@ -103,11 +106,11 @@ All file operations are constrained to the project root via `assertUnderRoot()` 
 
 OXC-powered code quality services for the Studio's function body editor.
 
-| Endpoint | Tool | Description | Status |
-|---|---|---|---|
-| `POST /__studio/code/format` | `oxfmt` | Format JavaScript snippet | **Implemented** |
-| `POST /__studio/code/minify` | `Bun.Transpiler` | Minify JavaScript snippet | **Implemented** |
-| `POST /__studio/code/lint` | `oxlint` | Lint JavaScript snippet (JSON diagnostics) | **Implemented** |
+| Endpoint                     | Tool             | Description                                | Status          |
+| ---------------------------- | ---------------- | ------------------------------------------ | --------------- |
+| `POST /__studio/code/format` | `oxfmt`          | Format JavaScript snippet                  | **Implemented** |
+| `POST /__studio/code/minify` | `Bun.Transpiler` | Minify JavaScript snippet                  | **Implemented** |
+| `POST /__studio/code/lint`   | `oxlint`         | Lint JavaScript snippet (JSON diagnostics) | **Implemented** |
 
 > **Status: Implemented.** `code-api.js` with diagnostic remapping.
 
@@ -118,6 +121,7 @@ OXC-powered code quality services for the Studio's function body editor.
 ### 6.1 `buildAll(options)`
 
 Uses `Bun.build` to bundle entrypoints. Supports:
+
 - Multiple entrypoints
 - Selective rebuild (only changed files)
 - Watch mode integration with live reload
@@ -132,14 +136,14 @@ Incremental rebuild triggered by file watcher. Only reprocesses affected entrypo
 
 ## 7. Dependencies
 
-| Package | Purpose |
-|---|---|
-| `chokidar` | File watching for live reload |
-| `oxfmt` | JavaScript formatting (via code API) |
-| `oxlint` | JavaScript linting (via code API) |
+| Package    | Purpose                              |
+| ---------- | ------------------------------------ |
+| `chokidar` | File watching for live reload        |
+| `oxfmt`    | JavaScript formatting (via code API) |
+| `oxlint`   | JavaScript linting (via code API)    |
 
 Bun built-ins: `Bun.serve`, `Bun.build`, `Bun.Transpiler`.
 
 ---
 
-*`@jxplatform/server` Specification v2.0.0-draft*
+_`@jxplatform/server` Specification v2.0.0-draft_

@@ -1,4 +1,5 @@
 # Jx Studio Desktop Architecture
+
 ## Platform Abstraction, Project Loading, and Component Scoping
 
 **Version:** 1.0.0-draft
@@ -26,18 +27,18 @@
 
 Jx Studio is designed for three deployment targets that share a single core codebase:
 
-| Target | Runtime | Backend | Storage | Status |
-|---|---|---|---|---|
-| **Desktop app** | ElectroBun (Bun + native webview) | Bun process (local) | Filesystem | Primary target |
-| **Dev mode** | Chrome | `@jxplatform/server` (localhost) | Filesystem via dev server | Active (Studio development) |
-| **SaaS/PaaS** | Browser | Cloud API server | Database / object storage | Future |
+| Target          | Runtime                           | Backend                          | Storage                   | Status                      |
+| --------------- | --------------------------------- | -------------------------------- | ------------------------- | --------------------------- |
+| **Desktop app** | ElectroBun (Bun + native webview) | Bun process (local)              | Filesystem                | Primary target              |
+| **Dev mode**    | Chrome                            | `@jxplatform/server` (localhost) | Filesystem via dev server | Active (Studio development) |
+| **SaaS/PaaS**   | Browser                           | Cloud API server                 | Database / object storage | Future                      |
 
 The studio package (`@jxplatform/studio`) contains all UI logic and is backend-agnostic. It communicates with its environment through a **Platform Abstraction Layer (PAL)** — an interface that each deployment target implements. The server package (`@jxplatform/server`) is one such implementation; the ElectroBun Bun process is another; a cloud API server is a third.
 
 ### 1.1 Relationship to Other Specs
 
 - **[Studio Spec](studio.md)** — Defines the visual builder: canvas, layer tree, inspector, state model, keyboard shortcuts. This spec does not alter any of that.
-- **[Site Architecture Spec](site-architecture.md)** — Defines project structure (`site.json`, `pages/`, `content/`, etc.), routing, layouts, content collections. This spec defines how Studio *discovers and opens* those projects.
+- **[Site Architecture Spec](site-architecture.md)** — Defines project structure (`site.json`, `pages/`, `content/`, etc.), routing, layouts, content collections. This spec defines how Studio _discovers and opens_ those projects.
 - **[Server Spec](server.md)** — Defines the `@jxplatform/server` dev server endpoints. This spec defines a backend API contract that the server must satisfy, and that other backends can also satisfy.
 
 ---
@@ -140,15 +141,15 @@ interface StudioPlatform {
 ```typescript
 interface DirEntry {
   name: string;
-  path: string;           // Project-relative
+  path: string; // Project-relative
   type: "file" | "directory";
   size?: number;
-  modified?: string;      // ISO 8601
+  modified?: string; // ISO 8601
 }
 
 interface ComponentMeta {
   tagName: string;
-  path: string;           // Project-relative
+  path: string; // Project-relative
   state?: Record<string, any>;
   $defs?: Record<string, any>;
 }
@@ -186,7 +187,8 @@ export function registerPlatform(platform) {
 }
 
 export function getPlatform() {
-  if (!_platform) throw new Error("No platform registered. Call registerPlatform() before starting Studio.");
+  if (!_platform)
+    throw new Error("No platform registered. Call registerPlatform() before starting Studio.");
   return _platform;
 }
 ```
@@ -276,13 +278,15 @@ Single file mode is the default when no project is loaded. It is also active wit
 ```javascript
 // After opening a project:
 projectState = {
-  root: "/Users/alice/Sites/my-site",   // Absolute path (local) or project ID (cloud)
-  name: "My Site",                       // From site.json
-  projectRoot: ".",                      // Relative path prefix for API calls
+  root: "/Users/alice/Sites/my-site", // Absolute path (local) or project ID (cloud)
+  name: "My Site", // From site.json
+  projectRoot: ".", // Relative path prefix for API calls
   isSiteProject: true,
-  siteConfig: { /* parsed site.json */ },
-  dirs: new Map(),                       // Cached directory listings
-  expanded: new Set(),                   // Expanded tree nodes
+  siteConfig: {
+    /* parsed site.json */
+  },
+  dirs: new Map(), // Cached directory listings
+  expanded: new Set(), // Expanded tree nodes
   selectedPath: null,
   searchQuery: "",
 };
@@ -296,37 +300,37 @@ The Backend API Contract defines the operations that any Studio backend must sup
 
 ### 5.1 File Operations
 
-| Operation | `@jxplatform/server` endpoint | PAL method |
-|---|---|---|
-| List directory | `GET /__studio/files?dir=` | `listDirectory(dir)` |
-| Read file | `GET /__studio/file?path=` | `readFile(path)` |
-| Write file | `PUT /__studio/file?path=` | `writeFile(path, content)` |
-| Delete file | `DELETE /__studio/file?path=` | `deleteFile(path)` |
-| Rename file | `POST /__studio/file/rename` | `renameFile(from, to)` |
-| Discover components | `GET /__studio/components?dir=` | `discoverComponents(dir)` |
-| Search contents | `GET /__studio/search?q=` | `searchFiles(query, glob)` |
+| Operation           | `@jxplatform/server` endpoint   | PAL method                 |
+| ------------------- | ------------------------------- | -------------------------- |
+| List directory      | `GET /__studio/files?dir=`      | `listDirectory(dir)`       |
+| Read file           | `GET /__studio/file?path=`      | `readFile(path)`           |
+| Write file          | `PUT /__studio/file?path=`      | `writeFile(path, content)` |
+| Delete file         | `DELETE /__studio/file?path=`   | `deleteFile(path)`         |
+| Rename file         | `POST /__studio/file/rename`    | `renameFile(from, to)`     |
+| Discover components | `GET /__studio/components?dir=` | `discoverComponents(dir)`  |
+| Search contents     | `GET /__studio/search?q=`       | `searchFiles(query, glob)` |
 
 ### 5.2 Project Operations
 
-| Operation | `@jxplatform/server` endpoint | PAL method |
-|---|---|---|
-| Open project | N/A (client-side dialog) | `openProject()` |
-| Project metadata | `GET /__studio/project` | Derived from `ProjectHandle` |
+| Operation        | `@jxplatform/server` endpoint | PAL method                   |
+| ---------------- | ----------------------------- | ---------------------------- |
+| Open project     | N/A (client-side dialog)      | `openProject()`              |
+| Project metadata | `GET /__studio/project`       | Derived from `ProjectHandle` |
 
 ### 5.3 Code Services (Optional)
 
-| Operation | `@jxplatform/server` endpoint | PAL method |
-|---|---|---|
-| Format code | `POST /__studio/code/format` | `codeService("format", code)` |
-| Lint code | `POST /__studio/code/lint` | `codeService("lint", code)` |
-| Minify code | `POST /__studio/code/minify` | `codeService("minify", code)` |
+| Operation   | `@jxplatform/server` endpoint | PAL method                    |
+| ----------- | ----------------------------- | ----------------------------- |
+| Format code | `POST /__studio/code/format`  | `codeService("format", code)` |
+| Lint code   | `POST /__studio/code/lint`    | `codeService("lint", code)`   |
+| Minify code | `POST /__studio/code/minify`  | `codeService("minify", code)` |
 
 ### 5.4 Runtime Services (Optional)
 
-| Operation | `@jxplatform/server` endpoint | PAL method |
-|---|---|---|
-| Resolve $prototype/$src | `POST /__jx_resolve__` | `resolvePrototype(payload)` |
-| Execute server function | `POST /__jx_server__` | `executeServerFunction(payload)` |
+| Operation               | `@jxplatform/server` endpoint | PAL method                       |
+| ----------------------- | ----------------------------- | -------------------------------- |
+| Resolve $prototype/$src | `POST /__jx_resolve__`        | `resolvePrototype(payload)`      |
+| Execute server function | `POST /__jx_server__`         | `executeServerFunction(payload)` |
 
 Optional methods may not exist on all platforms. Studio must check for their presence before calling:
 
@@ -351,6 +355,7 @@ When editing a standalone component with no project loaded:
 - **Not shown:** A global component scan. There is no project root to scan.
 
 The component list is derived by walking the document tree and extracting:
+
 1. `$defs` entries that define reusable sub-components
 2. `$ref` paths that point to other `.json` files (these are the "imported" components)
 3. Custom element `tagName` values that match known component files
@@ -366,10 +371,10 @@ When a project is loaded and the user is at the project level (e.g. in the file 
 
 When a project is loaded and the user opens a specific page, layout, or component:
 
-| Section | Contents |
-|---|---|
-| **Active** | Components directly referenced by the current document (same logic as §6.1) |
-| **Global** | All other components in the project that are *not* referenced by the current document |
+| Section    | Contents                                                                              |
+| ---------- | ------------------------------------------------------------------------------------- |
+| **Active** | Components directly referenced by the current document (same logic as §6.1)           |
+| **Global** | All other components in the project that are _not_ referenced by the current document |
 
 This two-tier separation lets the user quickly find components already in use ("Active") while still having access to the full project library ("Global") for drag-and-drop insertion.
 
@@ -498,7 +503,7 @@ export async function handleListDirectory(dir) {
   const absDir = resolve(projectRoot, dir);
   assertUnderRoot(absDir, projectRoot);
   const entries = await readdir(absDir, { withFileTypes: true });
-  return entries.map(e => ({
+  return entries.map((e) => ({
     name: e.name,
     path: relative(projectRoot, join(absDir, e.name)),
     type: e.isDirectory() ? "directory" : "file",
@@ -565,7 +570,7 @@ export function createDevServerPlatform() {
       // Resolve server-relative path by matching against known sites
       const sitesRes = await fetch("/__studio/sites");
       const sites = await sitesRes.json();
-      const match = sites.find(s => JSON.stringify(s.config) === JSON.stringify(config));
+      const match = sites.find((s) => JSON.stringify(s.config) === JSON.stringify(config));
 
       if (!match) {
         throw new Error("Selected project is not under the dev server root");
@@ -633,11 +638,11 @@ A cloud adapter replaces filesystem operations with API calls to a remote servic
 
 The cloud backend stores projects in a database with an abstraction equivalent to the filesystem:
 
-| Filesystem concept | Cloud equivalent |
-|---|---|
-| `site.json` | Project record with config JSON column |
-| Directory listing | Query files table by parent path |
-| File read/write | Row-level CRUD on files table |
+| Filesystem concept  | Cloud equivalent                       |
+| ------------------- | -------------------------------------- |
+| `site.json`         | Project record with config JSON column |
+| Directory listing   | Query files table by parent path       |
+| File read/write     | Row-level CRUD on files table          |
 | Component discovery | Query files table by naming convention |
 
 The same PAL interface means Studio code doesn't change — only the adapter implementation.
@@ -701,4 +706,4 @@ Ensure desktop app matches dev-mode capabilities:
 
 ---
 
-*Jx Studio Desktop Architecture Specification v1.0.0-draft*
+_Jx Studio Desktop Architecture Specification v1.0.0-draft_

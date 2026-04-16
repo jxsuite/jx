@@ -1,35 +1,48 @@
 /**
- * site-build.js — Multi-page build orchestrator
+ * Site-build.js — Multi-page build orchestrator
  *
- * Coordinates the full site build pipeline:
- *   1. Load site.json
- *   2. Discover pages/ routes
- *   3. Expand dynamic routes ($paths)
- *   4. For each route: resolve layout, merge $head, inject context, compile
- *   5. Emit compiled files to dist/
- *   6. Generate redirects
+ * Coordinates the full site build pipeline: 1. Load site.json 2. Discover pages/ routes 3. Expand
+ * dynamic routes ($paths) 4. For each route: resolve layout, merge $head, inject context, compile
+ * 5. Emit compiled files to dist/ 6. Generate redirects
  *
  * This is the Phase 1 implementation of site-architecture spec §12.
  */
 
-import { readFileSync, writeFileSync, mkdirSync, existsSync, rmSync, cpSync } from "node:fs";
-import { resolve, dirname, join, relative } from "node:path";
+import {
+  readFileSync,
+  writeFileSync,
+  mkdirSync,
+  existsSync,
+  rmSync,
+  cpSync,
+  readdirSync,
+} from "node:fs";
+import { resolve, dirname, join } from "node:path";
 import { loadSiteConfig } from "./site-loader.js";
 import { discoverPages, expandDynamicRoutes } from "./pages-discovery.js";
 import { resolveLayout } from "./layout-resolver.js";
 import { mergeHead, renderHead } from "./head-merger.js";
 import { injectContext } from "./context-injection.js";
 import { compile, compileServer } from "./compiler.js";
+import { compileElement } from "./compile-element.js";
+import {
+  buildInitialScope,
+  isTemplateString,
+  evaluateStaticTemplate,
+  DEFAULT_REACTIVITY_SRC,
+  DEFAULT_LIT_HTML_SRC,
+} from "./shared.js";
 import { loadCollections, loadContentConfig, resolveCollectionRefs } from "./content-loader.js";
+import { resolvePrototypes } from "./prototype-resolver.js";
 
 /**
  * Build an entire Jx site from a project directory.
  *
  * @param {string} projectRoot - Absolute path to the project root (contains site.json)
  * @param {object} [options]
- * @param {boolean} [options.clean]  - Remove outDir before building
+ * @param {boolean} [options.clean] - Remove outDir before building
  * @param {boolean} [options.verbose] - Log progress
- * @returns {Promise<{ routes: number, files: number, errors: string[] }>}
+ * @returns {Promise<{ routes: number; files: number; errors: string[] }>}
  */
 export async function buildSite(projectRoot, options = {}) {
   const { clean = true, verbose = false } = options;
@@ -77,13 +90,54 @@ export async function buildSite(projectRoot, options = {}) {
   const routes = await expandDynamicRoutes(staticRoutes, projectRoot, collections);
   log(`  ${routes.length} route(s) after expansion`);
 
-  // ── 5. Compile each route ───────────────────────────────────────────────
   let fileCount = 0;
+
+  // ── 5. Compile site components ──────────────────────────────────────────
+  const componentsDir = resolve(projectRoot, "components");
+  /** @type {string[]} */
+  const compiledComponentTags = [];
+  if (existsSync(componentsDir)) {
+    log("Compiling components...");
+    const componentFiles = readdirSync(componentsDir).filter((/** @type {string} */ f) =>
+      f.endsWith(".json"),
+    );
+    const componentOutDir = resolve(outDir, "components");
+    mkdirSync(componentOutDir, { recursive: true });
+
+    for (const file of componentFiles) {
+      try {
+        const componentPath = resolve(componentsDir, file);
+        const result = await compileElement(componentPath);
+        for (const f of result.files) {
+          const outName = f.path.includes("/")
+            ? /** @type {string} */ (f.path.split("/").pop())
+            : f.path;
+          writeFileSync(resolve(componentOutDir, outName), f.content, "utf8");
+          if (f.tagName) compiledComponentTags.push(f.tagName);
+          fileCount++;
+        }
+      } catch (e) {
+        const err = /** @type {any} */ (e);
+        errors.push(`Error compiling component ${file}: ${err.message}`);
+        console.error(`Error compiling component ${file}: ${err.message}`);
+      }
+    }
+    log(
+      `  Compiled ${compiledComponentTags.length} component(s): ${compiledComponentTags.join(", ")}`,
+    );
+  }
+
+  // ── 6. Compile each route ───────────────────────────────────────────────
 
   for (const route of routes) {
     try {
       log(`  Compiling ${route.urlPattern} ...`);
       const result = await compilePage(route, siteConfig, projectRoot, collections);
+
+      // Inject component scripts if the page references any compiled components
+      if (compiledComponentTags.length > 0) {
+        result.html = injectComponentScripts(result.html, compiledComponentTags);
+      }
 
       // Determine output path
       const outPath = routeToOutputPath(route.urlPattern, outDir, trailingSlash);
@@ -113,7 +167,7 @@ export async function buildSite(projectRoot, options = {}) {
     }
   }
 
-  // ── 6. Generate redirects ───────────────────────────────────────────────
+  // ── 7. Generate redirects ───────────────────────────────────────────────
   if (siteConfig.redirects && Object.keys(siteConfig.redirects).length > 0) {
     log("Generating redirects...");
     const redirectFiles = generateRedirects(siteConfig.redirects, outDir);
@@ -144,7 +198,7 @@ export async function buildSite(projectRoot, options = {}) {
  * @param {any} siteConfig
  * @param {string} projectRoot
  * @param {Map<string, any[]>} [collections]
- * @returns {Promise<{ html: string, files: any[], serverHandler: string | null }>}
+ * @returns {Promise<{ html: string; files: any[]; serverHandler: string | null }>}
  */
 async function compilePage(route, siteConfig, projectRoot, collections = new Map()) {
   // Load the raw page document
@@ -165,22 +219,50 @@ async function compilePage(route, siteConfig, projectRoot, collections = new Map
   // Inject $site and $page context, resolve ContentCollection/ContentEntry
   injectContext(layoutDoc, siteConfig, route, collections, projectRoot);
 
-  // Determine the page title
-  const title = pageTitle ?? siteConfig.name ?? "Jx Site";
+  // Resolve generic $prototype entries via .class.json imports
+  await resolvePrototypes(layoutDoc, route, projectRoot);
+
+  // Build scope from resolved state so template strings in title/$head can be evaluated
+  const scope = buildInitialScope(layoutDoc.state ?? {});
+
+  // Determine the page title — resolve template strings against the scope
+  let title = pageTitle ?? siteConfig.name ?? "Jx Site";
+  if (typeof title === "string" && isTemplateString(title)) {
+    title = evaluateStaticTemplate(title, scope) ?? title;
+  }
+
+  // Resolve template strings in $head entries
+  const resolvedPageHead = resolveHeadTemplates(pageHead, scope);
+  const resolvedLayoutHead = resolveHeadTemplates(layoutHead, scope);
+
+  // Resolve template strings in the document tree (innerHTML, textContent, style, attributes)
+  // so that timing: "compiler" data is baked into the static HTML
+  resolveDocTemplates(layoutDoc, scope);
+
+  // Strip resolved timing: "compiler" state entries — they're now baked into the tree
+  // and keeping them would cause isDynamic() to misclassify the page as dynamic
+  if (layoutDoc.state) {
+    for (const [key, def] of Object.entries(layoutDoc.state)) {
+      if (key === "$site" || key === "$page") continue;
+      if (
+        def &&
+        typeof def === "object" &&
+        !Array.isArray(def) &&
+        /** @type {any} */ (def).timing === "compiler"
+      ) {
+        delete layoutDoc.state[key];
+      }
+    }
+  }
 
   // Merge $head from site + layout + page
-  const mergedHead = mergeHead(
-    siteConfig.$head ?? [],
-    layoutHead,
-    pageHead,
-    {
-      title,
-      charset: siteConfig.defaults?.charset ?? "utf-8",
-      siteName: siteConfig.name,
-      siteUrl: siteConfig.url,
-      pageUrl: route.urlPattern,
-    }
-  );
+  const mergedHead = mergeHead(siteConfig.$head ?? [], resolvedLayoutHead, resolvedPageHead, {
+    title,
+    charset: siteConfig.defaults?.charset ?? "utf-8",
+    siteName: siteConfig.name,
+    siteUrl: siteConfig.url,
+    pageUrl: route.urlPattern,
+  });
 
   // Compile the document using the existing compiler
   const result = await compile(layoutDoc, {
@@ -207,8 +289,110 @@ async function compilePage(route, siteConfig, projectRoot, collections = new Map
 }
 
 /**
- * Post-process compiled HTML to inject the merged <head> content.
+ * Resolve template strings in $head entries against the compiled scope.
+ *
+ * @param {any[]} headEntries
+ * @param {any} scope
+ * @returns {any[]}
+ */
+function resolveHeadTemplates(headEntries, scope) {
+  return headEntries.map((/** @type {any} */ entry) => {
+    if (!entry || typeof entry !== "object") return entry;
+    const resolved = { ...entry };
+    if (resolved.attributes) {
+      resolved.attributes = { ...resolved.attributes };
+      for (const [k, v] of Object.entries(resolved.attributes)) {
+        if (typeof v === "string" && isTemplateString(v)) {
+          resolved.attributes[k] = evaluateStaticTemplate(v, scope) ?? v;
+        }
+      }
+    }
+    if (typeof resolved.textContent === "string" && isTemplateString(resolved.textContent)) {
+      resolved.textContent =
+        evaluateStaticTemplate(resolved.textContent, scope) ?? resolved.textContent;
+    }
+    return resolved;
+  });
+}
+
+/**
+ * Recursively resolve template strings in a document tree against a scope. Mutates the document in
+ * place — evaluates ${...} in innerHTML, textContent, style values, and attribute values.
+ *
+ * @param {any} node
+ * @param {any} scope
+ */
+function resolveDocTemplates(node, scope) {
+  if (!node || typeof node !== "object") return;
+
+  if (typeof node.innerHTML === "string" && isTemplateString(node.innerHTML)) {
+    node.innerHTML = evaluateStaticTemplate(node.innerHTML, scope) ?? node.innerHTML;
+  }
+  if (typeof node.textContent === "string" && isTemplateString(node.textContent)) {
+    node.textContent = evaluateStaticTemplate(node.textContent, scope) ?? node.textContent;
+  }
+  if (node.style && typeof node.style === "object") {
+    for (const [k, v] of Object.entries(node.style)) {
+      if (typeof v === "string" && isTemplateString(v)) {
+        node.style[k] = evaluateStaticTemplate(v, scope) ?? v;
+      }
+    }
+  }
+  if (node.attributes && typeof node.attributes === "object") {
+    for (const [k, v] of Object.entries(node.attributes)) {
+      if (typeof v === "string" && isTemplateString(v)) {
+        node.attributes[k] = evaluateStaticTemplate(v, scope) ?? v;
+      }
+    }
+  }
+  if (Array.isArray(node.children)) {
+    for (const child of node.children) {
+      resolveDocTemplates(child, scope);
+    }
+  }
+}
+
+/**
+ * Inject component script tags into compiled HTML for any referenced custom elements. Adds an
+ * import map and module scripts before </body>.
+ *
+ * @param {string} html
+ * @param {string[]} allComponentTags - All compiled component tag names
+ * @returns {string}
+ */
+function injectComponentScripts(html, allComponentTags) {
+  // Find which components are actually referenced in this page
+  const usedTags = allComponentTags.filter(
+    (/** @type {string} */ tag) => html.includes(`<${tag}`), // matches <tag> and <tag ...>
+  );
+  if (usedTags.length === 0) return html;
+
+  // Build import map (needed for @vue/reactivity and lit-html)
+  const importMap = `<script type="importmap">
+  {
+    "imports": {
+      "@vue/reactivity": "${DEFAULT_REACTIVITY_SRC}",
+      "lit-html": "${DEFAULT_LIT_HTML_SRC}"
+    }
+  }
+  </script>`;
+
+  const moduleScripts = usedTags
+    .map(
+      (/** @type {string} */ tag) => `<script type="module" src="/components/${tag}.js"></script>`,
+    )
+    .join("\n  ");
+
+  // Check if an import map already exists (from islands etc.)
+  const hasImportMap = html.includes('<script type="importmap">');
+  const injection = (hasImportMap ? "" : `${importMap}\n  `) + moduleScripts;
+
+  return html.replace("</body>", `  ${injection}\n</body>`);
+}
+
+/**
  * Replaces the compiler's default <head> section with our merged version.
+ *
  * @param {string} html
  * @param {any[]} headEntries
  * @param {string} lang
@@ -217,10 +401,18 @@ async function compilePage(route, siteConfig, projectRoot, collections = new Map
 function injectHead(html, headEntries, lang) {
   const headHtml = renderHead(headEntries);
 
-  // Replace the existing <head>...</head> block
-  const headPattern = /<head>[\s\S]*?<\/head>/i;
+  // Replace the existing <head>...</head> block, preserving compiler-generated <style> and <script> blocks
+  const headPattern = /<head>([\s\S]*?)<\/head>/i;
+  const existingMatch = html.match(headPattern);
+  let preservedBlocks = "";
+  if (existingMatch) {
+    const styles = existingMatch[1].match(/<style>[\s\S]*?<\/style>/gi);
+    if (styles) preservedBlocks += "\n  " + styles.join("\n  ");
+    const scripts = existingMatch[1].match(/<script[\s\S]*?<\/script>/gi);
+    if (scripts) preservedBlocks += "\n  " + scripts.join("\n  ");
+  }
   if (headPattern.test(html)) {
-    html = html.replace(headPattern, `<head>\n  ${headHtml}\n</head>`);
+    html = html.replace(headPattern, `<head>\n  ${headHtml}${preservedBlocks}\n</head>`);
   }
 
   // Set the lang attribute on <html>
@@ -237,8 +429,7 @@ function injectHead(html, headEntries, lang) {
 /**
  * Convert a URL pattern to an output file path.
  *
- * "/" → dist/index.html
- * "/about" → dist/about/index.html (with trailingSlash: "always")
+ * "/" → dist/index.html "/about" → dist/about/index.html (with trailingSlash: "always")
  * "/blog/hello" → dist/blog/hello/index.html
  *
  * @param {string} urlPattern

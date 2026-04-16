@@ -1,8 +1,13 @@
 {
   "name": "@jxplatform/schema",
-  "version": "1.0.0",
+  "version": "0.2.0",
   "description": "JSON Schema 2020-12 meta-schema generator for Jx documents",
   "license": "MIT",
+  "files": [
+    "*.js",
+    "*.json",
+    "!package.json"
+  ],
   "type": "module",
   "exports": {
     ".": "./schema.js"

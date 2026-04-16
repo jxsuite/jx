@@ -154,9 +154,7 @@ describe("mdToJsonsx", () => {
   });
 
   test("converts unordered list", () => {
-    const mdast = root(
-      list(false, listItem(paragraph("Item 1")), listItem(paragraph("Item 2"))),
-    );
+    const mdast = root(list(false, listItem(paragraph("Item 1")), listItem(paragraph("Item 2"))));
     /** @type {any} */
     const result = mdToJsonsx(mdast);
     const ul = result.children[0];
@@ -247,9 +245,7 @@ describe("jxToMd", () => {
       children: [
         {
           tagName: "p",
-          children: [
-            { tagName: "a", attributes: { href: "https://x.com" }, textContent: "Link" },
-          ],
+          children: [{ tagName: "a", attributes: { href: "https://x.com" }, textContent: "Link" }],
         },
       ],
     });
@@ -265,9 +261,7 @@ describe("jxToMd", () => {
       children: [
         {
           tagName: "p",
-          children: [
-            { tagName: "img", attributes: { src: "photo.jpg", alt: "A photo" } },
-          ],
+          children: [{ tagName: "img", attributes: { src: "photo.jpg", alt: "A photo" } }],
         },
       ],
     });

@@ -1,4 +1,5 @@
 # `@jxplatform/schema` Specification
+
 ## JSON Schema 2020-12 Meta-Schema Generator
 
 **Version:** 2.0.0-draft
@@ -15,11 +16,11 @@
 
 ## 2. Exports
 
-| Export | Description |
-|---|---|
-| `generateSchema()` | Returns the full Jx meta-schema as a JavaScript object |
-| `generateSchemaString()` | Returns the schema as a formatted JSON string |
-| `validateDocument(doc)` | Validates a Jx document against the generated schema |
+| Export                   | Description                                            |
+| ------------------------ | ------------------------------------------------------ |
+| `generateSchema()`       | Returns the full Jx meta-schema as a JavaScript object |
+| `generateSchemaString()` | Returns the schema as a formatted JSON string          |
+| `validateDocument(doc)`  | Validates a Jx document against the generated schema   |
 
 ---
 
@@ -33,13 +34,13 @@
 
 ### 3.2 `state` Entry Shapes
 
-| Shape | Schema Definition | Status |
-|---|---|---|
-| Naked value (scalar, array, object) | `StateEntry.oneOf` | **Implemented** |
-| Typed value (`TypedStateDef` with `default`) | `TypedStateDef` with `attribute`, `reflects`, `deprecated` CEM fields | **Implemented** |
-| Computed (template string containing `${}`) | String pattern match | **Implemented** |
-| Function (`$prototype: "Function"`) | `FunctionDef` with `body`, `parameters`, `$src`, `$export`, `signal`, `emits` | **Implemented** |
-| External class (`$prototype: <ClassName>`) | `ExternalClassDef` with all built-in prototypes | **Implemented** |
+| Shape                                        | Schema Definition                                                             | Status          |
+| -------------------------------------------- | ----------------------------------------------------------------------------- | --------------- |
+| Naked value (scalar, array, object)          | `StateEntry.oneOf`                                                            | **Implemented** |
+| Typed value (`TypedStateDef` with `default`) | `TypedStateDef` with `attribute`, `reflects`, `deprecated` CEM fields         | **Implemented** |
+| Computed (template string containing `${}`)  | String pattern match                                                          | **Implemented** |
+| Function (`$prototype: "Function"`)          | `FunctionDef` with `body`, `parameters`, `$src`, `$export`, `signal`, `emits` | **Implemented** |
+| External class (`$prototype: <ClassName>`)   | `ExternalClassDef` with all built-in prototypes                               | **Implemented** |
 
 ### 3.3 `$defs` Pure Type Definitions
 
@@ -80,13 +81,13 @@ All 12 built-in prototypes are enumerated with their specific configuration prop
 
 ### 3.7 CEM Annotations
 
-| Annotation | On | Purpose |
-|---|---|---|
-| `attribute` | `TypedStateDef` | Maps state entry to an HTML attribute |
-| `reflects` | `TypedStateDef` | Attribute reflects property changes |
-| `deprecated` | `TypedStateDef` | Marks entry as deprecated |
-| `parameters` | `FunctionDef` | CEM `Parameter` objects |
-| `emits` | `FunctionDef` | CEM `Event` objects |
+| Annotation   | On              | Purpose                               |
+| ------------ | --------------- | ------------------------------------- |
+| `attribute`  | `TypedStateDef` | Maps state entry to an HTML attribute |
+| `reflects`   | `TypedStateDef` | Attribute reflects property changes   |
+| `deprecated` | `TypedStateDef` | Marks entry as deprecated             |
+| `parameters` | `FunctionDef`   | CEM `Parameter` objects               |
+| `emits`      | `FunctionDef`   | CEM `Event` objects                   |
 
 > **Status: Implemented.**
 
@@ -119,12 +120,12 @@ The generated `schema.json` is a single JSON Schema 2020-12 document (~970 lines
 
 ## 6. Dependencies
 
-| Package | Purpose |
-|---|---|
-| `@webref/css` | CSS property definitions |
-| `@webref/elements` | HTML element definitions |
-| `@webref/idl` | Web IDL interface definitions |
+| Package            | Purpose                       |
+| ------------------ | ----------------------------- |
+| `@webref/css`      | CSS property definitions      |
+| `@webref/elements` | HTML element definitions      |
+| `@webref/idl`      | Web IDL interface definitions |
 
 ---
 
-*`@jxplatform/schema` Specification v2.0.0-draft*
+_`@jxplatform/schema` Specification v2.0.0-draft_

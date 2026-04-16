@@ -1,12 +1,10 @@
-/**
- * site-build.test.js — Tests for the Phase 1 site build pipeline
- */
+/** Site-build.test.js — Tests for the Phase 1 site build pipeline */
 
 import { describe, it, expect, beforeAll, afterAll } from "bun:test";
 import { mkdirSync, writeFileSync, rmSync, readFileSync, existsSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { loadSiteConfig } from "../site-loader.js";
-import { discoverPages, expandDynamicRoutes } from "../pages-discovery.js";
+import { discoverPages } from "../pages-discovery.js";
 import { resolveLayout } from "../layout-resolver.js";
 import { mergeHead, renderHead } from "../head-merger.js";
 import { injectContext } from "../context-injection.js";
@@ -35,9 +33,7 @@ beforeAll(() => {
     name: "Test Site",
     url: "https://test.com",
     defaults: { layout: "./layouts/base.json", lang: "en" },
-    $head: [
-      { tagName: "meta", attributes: { name: "generator", content: "Jx" } },
-    ],
+    $head: [{ tagName: "meta", attributes: { name: "generator", content: "Jx" } }],
     redirects: { "/old": "/new" },
     build: { outDir: "./dist" },
   });
@@ -58,9 +54,7 @@ beforeAll(() => {
 
   writeJSON("pages/about.json", {
     title: "About",
-    $head: [
-      { tagName: "meta", attributes: { name: "description", content: "About page" } },
-    ],
+    $head: [{ tagName: "meta", attributes: { name: "description", content: "About page" } }],
     children: [{ tagName: "h1", children: ["About Us"] }],
   });
 
@@ -165,9 +159,7 @@ describe("layout-resolver", () => {
 
 describe("head-merger", () => {
   it("merges site + page heads with deduplication", () => {
-    const siteHead = [
-      { tagName: "meta", attributes: { name: "generator", content: "Jx" } },
-    ];
+    const siteHead = [{ tagName: "meta", attributes: { name: "generator", content: "Jx" } }];
     const pageHead = [
       { tagName: "meta", attributes: { name: "description", content: "Page desc" } },
     ];
@@ -184,17 +176,11 @@ describe("head-merger", () => {
   });
 
   it("page-level overrides site-level for same key", () => {
-    const siteHead = [
-      { tagName: "meta", attributes: { name: "description", content: "Site" } },
-    ];
-    const pageHead = [
-      { tagName: "meta", attributes: { name: "description", content: "Page" } },
-    ];
+    const siteHead = [{ tagName: "meta", attributes: { name: "description", content: "Site" } }];
+    const pageHead = [{ tagName: "meta", attributes: { name: "description", content: "Page" } }];
 
     const merged = mergeHead(siteHead, [], pageHead, {});
-    const desc = merged.find(
-      (e) => e.tagName === "meta" && e.attributes?.name === "description"
-    );
+    const desc = merged.find((e) => e.tagName === "meta" && e.attributes?.name === "description");
     expect(desc.attributes.content).toBe("Page");
   });
 
@@ -268,10 +254,7 @@ describe("buildSite", () => {
     const redirects = readFileSync(resolve(TMP, "dist/_redirects"), "utf8");
     expect(redirects).toContain("/old /new 301");
 
-    const redirectHtml = readFileSync(
-      resolve(TMP, "dist/old/index.html"),
-      "utf8"
-    );
+    const redirectHtml = readFileSync(resolve(TMP, "dist/old/index.html"), "utf8");
     expect(redirectHtml).toContain('http-equiv="refresh"');
     expect(redirectHtml).toContain("/new");
   });
