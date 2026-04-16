@@ -1,4 +1,5 @@
 # `@jxplatform/compiler` Specification
+
 ## Static HTML Compiler, Custom Element Emitter, and Island Detector
 
 **Version:** 2.0.0-draft
@@ -19,17 +20,18 @@ The Jx compiler transforms `.json` component files into optimized production art
 
 The compiler inspects each input document and routes to the appropriate compilation target:
 
-| Route | Condition | Output | Status |
-|---|---|---|---|
-| 0 — Class | Input is `.class.json` | ES class module | **Implemented** |
-| 1 — Static | `isDynamic()` returns false | Plain HTML/CSS, zero JS | **Implemented** |
-| 2 — Custom Element | Root `tagName` contains hyphen | `class extends HTMLElement` + lit-html | **Implemented** |
-| 3 — Dynamic Page | `isDynamic()` returns true, no hyphen | Pre-rendered HTML + reactive JS | **Implemented** |
-| 4 — Server | Document has `timing: "server"` entries | Hono server handler file | **Implemented** |
+| Route              | Condition                               | Output                                 | Status          |
+| ------------------ | --------------------------------------- | -------------------------------------- | --------------- |
+| 0 — Class          | Input is `.class.json`                  | ES class module                        | **Implemented** |
+| 1 — Static         | `isDynamic()` returns false             | Plain HTML/CSS, zero JS                | **Implemented** |
+| 2 — Custom Element | Root `tagName` contains hyphen          | `class extends HTMLElement` + lit-html | **Implemented** |
+| 3 — Dynamic Page   | `isDynamic()` returns true, no hyphen   | Pre-rendered HTML + reactive JS        | **Implemented** |
+| 4 — Server         | Document has `timing: "server"` entries | Hono server handler file               | **Implemented** |
 
 ### 2.1 Static Detection (`isDynamic`)
 
 A node is static if it and all descendants satisfy:
+
 - No `state` entries that produce signals or functions
 - No `${}` template strings in any property value
 - No `$prototype` namespaces
@@ -45,17 +47,17 @@ Static detection is a single recursive tree walk — no code execution required.
 
 ## 3. Output Tiers
 
-| Component surface | Compiler output |
-|---|---|
-| Fully static subtree | Plain HTML, zero JS |
-| Naked value with `${}` in document | HTML + `effect()` only |
-| Template string signal | HTML + `computed()` + `effect()` |
-| `$prototype: "Function"` | HTML + function + handler wiring |
-| External class with `timing: "compiler"` | HTML with baked response data |
-| External class with `timing: "client"` | HTML + runtime hydration |
-| Server function (`timing: "server"`) | HTML + client fetch + generated server handler |
-| Custom element (hyphenated `tagName`) | `class extends HTMLElement` + lit-html template |
-| Pure type definition (`$defs`) | No output |
+| Component surface                        | Compiler output                                 |
+| ---------------------------------------- | ----------------------------------------------- |
+| Fully static subtree                     | Plain HTML, zero JS                             |
+| Naked value with `${}` in document       | HTML + `effect()` only                          |
+| Template string signal                   | HTML + `computed()` + `effect()`                |
+| `$prototype: "Function"`                 | HTML + function + handler wiring                |
+| External class with `timing: "compiler"` | HTML with baked response data                   |
+| External class with `timing: "client"`   | HTML + runtime hydration                        |
+| Server function (`timing: "server"`)     | HTML + client fetch + generated server handler  |
+| Custom element (hyphenated `tagName`)    | `class extends HTMLElement` + lit-html template |
+| Pure type definition (`$defs`)           | No output                                       |
 
 ---
 
@@ -74,6 +76,7 @@ For each custom element, the compiler emits a self-contained ES module:
 ### 4.2 Example
 
 **Input** (`user-card.json`):
+
 ```json
 {
   "tagName": "user-card",
@@ -95,9 +98,10 @@ For each custom element, the compiler emits a self-contained ES module:
 ```
 
 **Output** (`user-card.js`):
+
 ```js
-import { reactive, computed, effect } from '@vue/reactivity';
-import { render, html } from 'lit-html';
+import { reactive, computed, effect } from "@vue/reactivity";
+import { render, html } from "lit-html";
 
 class UserCard extends HTMLElement {
   #dispose = null;
@@ -105,13 +109,15 @@ class UserCard extends HTMLElement {
   constructor() {
     super();
     this.state = reactive({
-      username: 'Guest',
-      status: 'online',
+      username: "Guest",
+      status: "online",
     });
-    this.state.displayStatus = computed(
-      () => this.state.status === 'online' ? 'Available' : 'Away'
+    this.state.displayStatus = computed(() =>
+      this.state.status === "online" ? "Available" : "Away",
     );
-    this.state.setAway = (state) => { state.status = 'away' };
+    this.state.setAway = (state) => {
+      state.status = "away";
+    };
   }
 
   template() {
@@ -132,23 +138,26 @@ class UserCard extends HTMLElement {
   }
 
   disconnectedCallback() {
-    if (this.#dispose) { this.#dispose(); this.#dispose = null; }
+    if (this.#dispose) {
+      this.#dispose();
+      this.#dispose = null;
+    }
   }
 }
 
-customElements.define('user-card', UserCard);
+customElements.define("user-card", UserCard);
 ```
 
 ### 4.3 lit-html Binding Syntax
 
-| Jx | lit-html | What it does |
-|---|---|---|
-| `"textContent": "${state.name}"` | `${s.name}` | Reactive text |
-| `"onclick": { "$ref": "#/state/fn" }` | `@click="${() => s.fn(s)}"` | Event listener |
-| `"$props": { "items": { "$ref": "..." } }` | `.items="${s.items}"` | JS property (by reference) |
-| `"hidden": "${state.loading}"` | `?hidden="${s.loading}"` | Boolean attribute |
-| `"className": "${state.cls}"` | `class="${s.cls}"` | Attribute binding |
-| `"style": { "color": "${state.c}" }` | `style="color: ${s.c}"` | Inline style |
+| Jx                                         | lit-html                    | What it does               |
+| ------------------------------------------ | --------------------------- | -------------------------- |
+| `"textContent": "${state.name}"`           | `${s.name}`                 | Reactive text              |
+| `"onclick": { "$ref": "#/state/fn" }`      | `@click="${() => s.fn(s)}"` | Event listener             |
+| `"$props": { "items": { "$ref": "..." } }` | `.items="${s.items}"`       | JS property (by reference) |
+| `"hidden": "${state.loading}"`             | `?hidden="${s.loading}"`    | Boolean attribute          |
+| `"className": "${state.cls}"`              | `class="${s.cls}"`          | Attribute binding          |
+| `"style": { "color": "${state.c}" }`       | `style="color: ${s.c}"`     | Inline style               |
 
 The `.property` syntax is the key enabler for the property-first interface.
 
@@ -174,16 +183,21 @@ connectedCallback() {
 ```
 
 Emits:
+
 ```css
-user-card { display: block; }
-user-card:hover { background-color: #f0f0f0; }
+user-card {
+  display: block;
+}
+user-card:hover {
+  background-color: #f0f0f0;
+}
 ```
 
 ### 4.6 `$elements` Dependencies
 
 ```js
-import './variant-card.js';
-import './variant-attribute.js';
+import "./variant-card.js";
+import "./variant-attribute.js";
 ```
 
 Registered before the parent's `customElements.define()`.
@@ -227,13 +241,13 @@ ${s.currentRoute === 'about' ? html`<div>About page</div>` : ''}
   "description": "Globs and parses markdown files into a collection",
   "$defs": {
     "parameters": {
-      "src":       { "type": "string", "description": "Glob pattern for markdown files" },
-      "sortBy":    { "type": "string", "default": "date" },
+      "src": { "type": "string", "description": "Glob pattern for markdown files" },
+      "sortBy": { "type": "string", "default": "date" },
       "sortOrder": { "type": "string", "default": "desc", "enum": ["asc", "desc"] },
-      "limit":     { "type": "integer" }
+      "limit": { "type": "integer" }
     },
     "fields": {
-      "files":    { "type": "array", "items": { "$ref": "#/$defs/fields/file" } },
+      "files": { "type": "array", "items": { "$ref": "#/$defs/fields/file" } },
       "resolved": { "type": "boolean", "default": false }
     },
     "constructor": {
@@ -252,13 +266,13 @@ ${s.currentRoute === 'about' ? html`<div>About page</div>` : ''}
 
 ### 5.3 `$defs` Object Categories
 
-| Category | Purpose |
-|---|---|
-| `parameters` | Constructor parameter properties (config object fields) |
-| `fields` | Instance fields (private if `#`-prefixed) |
-| `constructor` | Constructor body and super args |
-| `methods` | Instance methods and accessors (`get`/`set` prefix or `accessor: true`) |
-| `returnTypes` | Named return type schemas for tooling |
+| Category      | Purpose                                                                 |
+| ------------- | ----------------------------------------------------------------------- |
+| `parameters`  | Constructor parameter properties (config object fields)                 |
+| `fields`      | Instance fields (private if `#`-prefixed)                               |
+| `constructor` | Constructor body and super args                                         |
+| `methods`     | Instance methods and accessors (`get`/`set` prefix or `accessor: true`) |
+| `returnTypes` | Named return type schemas for tooling                                   |
 
 ### 5.4 The `$implementation` Key
 
@@ -273,6 +287,7 @@ When present, the runtime/server follows this reference to import the actual cla
 ### 5.5 Compilation Output
 
 The compiler emits:
+
 - Private fields (`#name`)
 - Static fields and methods
 - Constructor with `super()` support
@@ -283,6 +298,7 @@ The compiler emits:
 ### 5.6 Detection and Routing
 
 A file is a `.class.json` document when:
+
 - File extension is `.class.json`, OR
 - Root object has `$defs` with `constructor` or `methods` or `fields`, AND no `tagName`
 
@@ -302,12 +318,12 @@ For each `timing: "server"` entry, the compiler emits two artifacts:
 ### 6.2 Generated Server Handler
 
 ```js
-import { Hono } from 'hono';
-import { fetchMetrics } from './dashboard.server.js';
+import { Hono } from "hono";
+import { fetchMetrics } from "./dashboard.server.js";
 
 const app = new Hono();
 
-app.post('/_jx/server/fetchMetrics', async (c) => {
+app.post("/_jx/server/fetchMetrics", async (c) => {
   const args = await c.req.json();
   const result = await fetchMetrics(args);
   return c.json(result);
@@ -339,6 +355,7 @@ All static `style` definitions are extracted into a single `<style>` block in `<
 ### 8.1 Pre-rendered HTML + Reactive JS
 
 For dynamic documents that are not custom elements, the compiler emits:
+
 - Pre-rendered HTML from static portions
 - `@vue/reactivity` bootstrapper for dynamic state
 - `effect()` bindings for reactive properties
@@ -349,19 +366,19 @@ For dynamic documents that are not custom elements, the compiler emits:
 
 ## 9. Pending Features
 
-| Feature | Description | Status |
-|---|---|---|
-| `timing: "compiler"` | Bake fetch responses into HTML at build time | **Not implemented** |
-| Island serialization | `<script type="application/Jx+json">` hydration islands | **Not implemented** |
-| Bundle manifest | Exact dependency manifest from JSON analysis | **Partially implemented** (imports collected but no standalone manifest file) |
-| Multi-page build | Orchestrate compilation across all pages in a site project | **Not implemented** |
-| Layout resolution | Resolve `$layout`, `$slot`, `$slotTarget` during compilation | **Not implemented** |
-| `$head` merge | Merge site + layout + page `<head>` entries with deduplication | **Not implemented** |
-| `$paths` expansion | Generate one page per content entry for dynamic routes | **Not implemented** |
-| `ContentCollection` / `ContentEntry` | New `$prototype` values for querying content at build time | **Not implemented** |
-| Sitemap generation | Auto-generate `sitemap.xml` from route table | **Not implemented** |
-| Image optimization | Format conversion, responsive sizes, lazy loading | **Not implemented** |
-| Platform adapters | Emit `_redirects` (Netlify), `vercel.json`, etc. | **Not implemented** |
+| Feature                              | Description                                                    | Status                                                                        |
+| ------------------------------------ | -------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `timing: "compiler"`                 | Bake fetch responses into HTML at build time                   | **Not implemented**                                                           |
+| Island serialization                 | `<script type="application/Jx+json">` hydration islands        | **Not implemented**                                                           |
+| Bundle manifest                      | Exact dependency manifest from JSON analysis                   | **Partially implemented** (imports collected but no standalone manifest file) |
+| Multi-page build                     | Orchestrate compilation across all pages in a site project     | **Not implemented**                                                           |
+| Layout resolution                    | Resolve `$layout`, `$slot`, `$slotTarget` during compilation   | **Not implemented**                                                           |
+| `$head` merge                        | Merge site + layout + page `<head>` entries with deduplication | **Not implemented**                                                           |
+| `$paths` expansion                   | Generate one page per content entry for dynamic routes         | **Not implemented**                                                           |
+| `ContentCollection` / `ContentEntry` | New `$prototype` values for querying content at build time     | **Not implemented**                                                           |
+| Sitemap generation                   | Auto-generate `sitemap.xml` from route table                   | **Not implemented**                                                           |
+| Image optimization                   | Format conversion, responsive sizes, lazy loading              | **Not implemented**                                                           |
+| Platform adapters                    | Emit `_redirects` (Netlify), `vercel.json`, etc.               | **Not implemented**                                                           |
 
 See the [Site Architecture Specification](site-architecture.md) for the full multi-page compilation and routing design.
 
@@ -370,9 +387,13 @@ See the [Site Architecture Specification](site-architecture.md) for the full mul
 ## 10. Shared Utilities
 
 ### `isDynamic(def)` — Recursive static detection
+
 ### `isSchemaOnly(def)` — Shape 2b detection (pure type definitions)
+
 ### `buildInitialScope(state)` — Static scope for compile-time pre-rendering
+
 ### `compileStyles(def)` — CSS extraction from component tree
+
 ### `collectServerEntries(doc)` — Find all `timing: "server"` entries
 
 > **Status: Implemented.** All in `shared.js`.
@@ -381,12 +402,12 @@ See the [Site Architecture Specification](site-architecture.md) for the full mul
 
 ## Appendix A — Production Dependency Stack
 
-| Package | Size (gzip) | Purpose |
-|---|---|---|
-| `@vue/reactivity` | ~7 kB | `reactive()`, `computed()`, `effect()` |
-| `lit-html` | ~3 kB | `html`, `render()` |
-| **Total** | **~10 kB** | |
+| Package           | Size (gzip) | Purpose                                |
+| ----------------- | ----------- | -------------------------------------- |
+| `@vue/reactivity` | ~7 kB       | `reactive()`, `computed()`, `effect()` |
+| `lit-html`        | ~3 kB       | `html`, `render()`                     |
+| **Total**         | **~10 kB**  |                                        |
 
 ---
 
-*`@jxplatform/compiler` Specification v2.0.0-draft*
+_`@jxplatform/compiler` Specification v2.0.0-draft_

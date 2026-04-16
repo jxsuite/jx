@@ -1,12 +1,11 @@
-/**
- * resolve.js — Generic $src module proxy + timing: "server" function proxy
- */
+/** Resolve.js — Generic $src module proxy + timing: "server" function proxy */
 
 import { resolve, relative, dirname } from "node:path";
 import { readFileSync } from "node:fs";
 
 /**
- * Handle POST /__jx_resolve__ — proxy $prototype + $src entries.
+ * Handle POST /**jx_resolve** — proxy $prototype + $src entries.
+ *
  * @param {Request} req
  * @param {string} root
  */
@@ -59,7 +58,9 @@ export async function handleResolve(req, root) {
         const mod = await import(implPath);
         const ExportedClass = mod[exportName] ?? mod.default?.[exportName];
         if (typeof ExportedClass !== "function") {
-          return new Response(`Export "${exportName}" not found in "${classDef.$implementation}"`, { status: 500 });
+          return new Response(`Export "${exportName}" not found in "${classDef.$implementation}"`, {
+            status: 500,
+          });
         }
         const instance = new ExportedClass(config);
         const value =
@@ -89,14 +90,15 @@ export async function handleResolve(req, root) {
   // Non-Function $prototype must use .class.json as entrypoint
   return new Response(
     `Non-Function $prototype "${$prototype}" requires a .class.json $src, got "${$src}". ` +
-    `Wrap the class in a .class.json schema with $implementation.`,
+      `Wrap the class in a .class.json schema with $implementation.`,
     { status: 400 },
   );
 }
 
 /**
- * Handle POST /__jx_server__ — proxy timing: "server" function calls.
- * In dev mode, the runtime sends these instead of hitting the production Hono handler.
+ * Handle POST /**jx_server** — proxy timing: "server" function calls. In dev mode, the runtime
+ * sends these instead of hitting the production Hono handler.
+ *
  * @param {Request} req
  * @param {string} root
  */
@@ -145,8 +147,9 @@ export async function handleServerFunction(req, root) {
 }
 
 /**
- * Dynamically construct a class from a .class.json schema definition.
- * Server-side variant — no private field limitations.
+ * Dynamically construct a class from a .class.json schema definition. Server-side variant — no
+ * private field limitations.
+ *
  * @param {any} classDef
  */
 function classFromSchema(classDef) {
@@ -185,7 +188,9 @@ function classFromSchema(classDef) {
       const descriptor = {};
       if (method.getter) descriptor.get = new Function(method.getter.body);
       if (method.setter) {
-        const sp = (method.setter.parameters ?? []).map((/** @type {any} */ p) => p.$ref?.split("/").pop() ?? "v");
+        const sp = (method.setter.parameters ?? []).map(
+          (/** @type {any} */ p) => p.$ref?.split("/").pop() ?? "v",
+        );
         descriptor.set = new Function(...sp, method.setter.body);
       }
       Object.defineProperty(DynClass.prototype, name, { ...descriptor, configurable: true });

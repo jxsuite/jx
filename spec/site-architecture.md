@@ -1,4 +1,5 @@
 # Jx Site Architecture Specification
+
 ## File-Based Routing, Content Collections, Layouts, and Static Site Generation
 
 **Version:** 1.0.0-draft
@@ -44,7 +45,7 @@ Jx Studio is a visual IDE for the development and management of local-first, sta
 
 ### 1.2 What This Spec Covers
 
-This spec defines everything that sits *above* the component model: how components compose into pages, how pages compose into sites, how content enters the system, and how Studio manages all of it. It answers:
+This spec defines everything that sits _above_ the component model: how components compose into pages, how pages compose into sites, how content enters the system, and how Studio manages all of it. It answers:
 
 - How to compose a new site with Jx
 - How to define datatypes and content collections
@@ -104,16 +105,16 @@ my-site/
 
 ### 2.1 Directory Conventions
 
-| Directory | Purpose | Required |
-|---|---|---|
-| `pages/` | File-based routing. Each `.json` file becomes a route. | **Yes** |
-| `layouts/` | Layout components. Referenced by pages via `$layout`. | No |
-| `components/` | Reusable components. Referenced via `$ref` or `$elements`. | No |
-| `content/` | Content collections with schema validation. | No |
-| `data/` | Static data files loaded at build time. No schema enforcement. | No |
-| `public/` | Static assets copied verbatim to `dist/`. No processing. | No |
-| `styles/` | Shared style fragments and design tokens. | No |
-| `dist/` | Build output. Ignored by git. | Generated |
+| Directory     | Purpose                                                        | Required  |
+| ------------- | -------------------------------------------------------------- | --------- |
+| `pages/`      | File-based routing. Each `.json` file becomes a route.         | **Yes**   |
+| `layouts/`    | Layout components. Referenced by pages via `$layout`.          | No        |
+| `components/` | Reusable components. Referenced via `$ref` or `$elements`.     | No        |
+| `content/`    | Content collections with schema validation.                    | No        |
+| `data/`       | Static data files loaded at build time. No schema enforcement. | No        |
+| `public/`     | Static assets copied verbatim to `dist/`. No processing.       | No        |
+| `styles/`     | Shared style fragments and design tokens.                      | No        |
+| `dist/`       | Build output. Ignored by git.                                  | Generated |
 
 ### 2.2 Component Co-location
 
@@ -182,8 +183,8 @@ The `site.json` file at the project root defines site-wide settings. It is the o
   },
 
   "imports": {
-    "MarkdownCollection": "./lib/MarkdownCollection.class.json",
-    "MarkdownFile": "./lib/MarkdownFile.class.json"
+    "MarkdownCollection": "@jxplatform/parser",
+    "MarkdownFile": "@jxplatform/parser"
   },
 
   "redirects": {
@@ -201,20 +202,20 @@ The `site.json` file at the project root defines site-wide settings. It is the o
 
 ### 3.1 Configuration Properties
 
-| Property | Type | Description |
-|---|---|---|
-| `name` | `string` | Site name, used in default `<title>` and meta tags |
-| `url` | `string` | Production URL, used for canonical URLs and sitemap generation |
-| `defaults.layout` | `string` | Default layout applied to all pages that don't specify `$layout` |
-| `defaults.lang` | `string` | Default `<html lang>` attribute |
-| `defaults.charset` | `string` | Default charset (always `utf-8`) |
-| `$head` | `array` | Global `<head>` elements injected into every page |
-| `$media` | `object` | Named media query breakpoints, available to all components |
-| `style` | `object` | Root-level CSS custom properties and global styles |
-| `state` | `object` | Site-wide state accessible to all pages and components |
-| `redirects` | `object` | Static redirect rules (see §11) |
-| `imports` | `object` | Import map: `$prototype` name → `.class.json` path (see spec §12.4) |
-| `build` | `object` | Build output configuration |
+| Property           | Type     | Description                                                         |
+| ------------------ | -------- | ------------------------------------------------------------------- |
+| `name`             | `string` | Site name, used in default `<title>` and meta tags                  |
+| `url`              | `string` | Production URL, used for canonical URLs and sitemap generation      |
+| `defaults.layout`  | `string` | Default layout applied to all pages that don't specify `$layout`    |
+| `defaults.lang`    | `string` | Default `<html lang>` attribute                                     |
+| `defaults.charset` | `string` | Default charset (always `utf-8`)                                    |
+| `$head`            | `array`  | Global `<head>` elements injected into every page                   |
+| `$media`           | `object` | Named media query breakpoints, available to all components          |
+| `style`            | `object` | Root-level CSS custom properties and global styles                  |
+| `state`            | `object` | Site-wide state accessible to all pages and components              |
+| `redirects`        | `object` | Static redirect rules (see §11)                                     |
+| `imports`          | `object` | Import map: `$prototype` name → `.class.json` path (see spec §12.4) |
+| `build`            | `object` | Build output configuration                                          |
 
 ### 3.2 Inheritance
 
@@ -240,24 +241,24 @@ Inspired by Astro and Next.js, every `.json` file in the `pages/` directory auto
 
 The file path determines the URL path:
 
-| File | URL |
-|---|---|
-| `pages/index.json` | `/` |
-| `pages/about.json` | `/about` |
-| `pages/about/index.json` | `/about` |
-| `pages/blog/index.json` | `/blog` |
-| `pages/blog/first-post.json` | `/blog/first-post` |
+| File                              | URL                     |
+| --------------------------------- | ----------------------- |
+| `pages/index.json`                | `/`                     |
+| `pages/about.json`                | `/about`                |
+| `pages/about/index.json`          | `/about`                |
+| `pages/blog/index.json`           | `/blog`                 |
+| `pages/blog/first-post.json`      | `/blog/first-post`      |
 | `pages/docs/getting-started.json` | `/docs/getting-started` |
 
 ### 4.2 Dynamic Routes
 
 Bracket syntax in filenames creates parameterized routes:
 
-| File | URL Pattern | Example |
-|---|---|---|
-| `pages/blog/[slug].json` | `/blog/:slug` | `/blog/hello-world` |
-| `pages/[category]/[id].json` | `/:category/:id` | `/products/42` |
-| `pages/docs/[...path].json` | `/docs/*` | `/docs/api/runtime/install` |
+| File                         | URL Pattern      | Example                     |
+| ---------------------------- | ---------------- | --------------------------- |
+| `pages/blog/[slug].json`     | `/blog/:slug`    | `/blog/hello-world`         |
+| `pages/[category]/[id].json` | `/:category/:id` | `/products/42`              |
+| `pages/docs/[...path].json`  | `/docs/*`        | `/docs/api/runtime/install` |
 
 Dynamic route parameters are resolved at build time by querying content collections or providing explicit path sets.
 
@@ -358,9 +359,7 @@ A layout is a standard Jx file that uses HTML `<slot>` elements — the same mec
         { "$ref": "../components/header.json" },
         {
           "tagName": "main",
-          "children": [
-            { "tagName": "slot" }
-          ]
+          "children": [{ "tagName": "slot" }]
         },
         { "$ref": "../components/footer.json" }
       ]
@@ -407,15 +406,11 @@ Layouts may define multiple named slots for structured page regions, using the s
     { "$ref": "../components/header.json" },
     {
       "tagName": "aside",
-      "children": [
-        { "tagName": "slot", "attributes": { "name": "sidebar" } }
-      ]
+      "children": [{ "tagName": "slot", "attributes": { "name": "sidebar" } }]
     },
     {
       "tagName": "main",
-      "children": [
-        { "tagName": "slot" }
-      ]
+      "children": [{ "tagName": "slot" }]
     },
     { "$ref": "../components/footer.json" }
   ]
@@ -435,9 +430,7 @@ Pages target named slots via the standard `slot` attribute — the same mechanis
     },
     {
       "tagName": "article",
-      "children": [
-        { "tagName": "h1", "textContent": "Documentation" }
-      ]
+      "children": [{ "tagName": "h1", "textContent": "Documentation" }]
     }
   ]
 }
@@ -459,15 +452,11 @@ Layouts can reference other layouts, enabling composition:
       "children": [
         {
           "tagName": "aside",
-          "children": [
-            { "tagName": "slot", "attributes": { "name": "sidebar" } }
-          ]
+          "children": [{ "tagName": "slot", "attributes": { "name": "sidebar" } }]
         },
         {
           "tagName": "article",
-          "children": [
-            { "tagName": "slot" }
-          ]
+          "children": [{ "tagName": "slot" }]
         }
       ]
     }
@@ -481,22 +470,22 @@ This allows `blog-post.json` layout to wrap within `base.json`, providing blog-s
 
 Layouts receive page metadata via the `$page` context object:
 
-| Property | Source | Description |
-|---|---|---|
-| `$page.title` | Page's `$head` title or explicit `title` field | Page title |
-| `$page.description` | Page's `$head` meta description | Meta description |
-| `$page.url` | Computed from file path | Page URL path |
-| `$page.lang` | Page-level or site default | Language code |
-| `$page.$head` | Page's `$head` array | Page-specific head entries |
-| `$page.frontmatter` | Content entry frontmatter (for content pages) | All frontmatter fields |
+| Property            | Source                                         | Description                |
+| ------------------- | ---------------------------------------------- | -------------------------- |
+| `$page.title`       | Page's `$head` title or explicit `title` field | Page title                 |
+| `$page.description` | Page's `$head` meta description                | Meta description           |
+| `$page.url`         | Computed from file path                        | Page URL path              |
+| `$page.lang`        | Page-level or site default                     | Language code              |
+| `$page.$head`       | Page's `$head` array                           | Page-specific head entries |
+| `$page.frontmatter` | Content entry frontmatter (for content pages)  | All frontmatter fields     |
 
 The `$site` context provides site-level data:
 
-| Property | Source | Description |
-|---|---|---|
-| `$site.name` | `site.json` `name` | Site name |
-| `$site.url` | `site.json` `url` | Production URL |
-| `$site.state` | `site.json` `state` | Site-wide state |
+| Property      | Source              | Description         |
+| ------------- | ------------------- | ------------------- |
+| `$site.name`  | `site.json` `name`  | Site name           |
+| `$site.url`   | `site.json` `url`   | Production URL      |
+| `$site.state` | `site.json` `state` | Site-wide state     |
 | `$site.$head` | `site.json` `$head` | Global head entries |
 
 ---
@@ -576,24 +565,26 @@ Collections are defined in `content/content.config.json`:
 
 ### 6.2 Collection Shapes
 
-| Source Pattern | File Type | Entry ID | Notes |
-|---|---|---|---|
-| `**/*.md` | Markdown with frontmatter | Filename (slugified) | Body rendered to HTML |
-| `**/*.json` | JSON objects | `id` field or filename | Direct data access |
-| `*.csv` | CSV rows | Row index or ID column | Parsed via built-in CSV parser |
-| `**/*.yaml` | YAML documents | `id` field or filename | Parsed via built-in YAML parser |
+| Source Pattern | File Type                 | Entry ID               | Notes                           |
+| -------------- | ------------------------- | ---------------------- | ------------------------------- |
+| `**/*.md`      | Markdown with frontmatter | Filename (slugified)   | Body rendered to HTML           |
+| `**/*.json`    | JSON objects              | `id` field or filename | Direct data access              |
+| `*.csv`        | CSV rows                  | Row index or ID column | Parsed via built-in CSV parser  |
+| `**/*.yaml`    | YAML documents            | `id` field or filename | Parsed via built-in YAML parser |
 
 ### 6.3 Schema Validation
 
 Collection schemas are standard JSON Schema. The `@jxplatform/schema` package already generates JSON Schema from web platform IDL — the same infrastructure validates content entries.
 
 At build time:
+
 - Every content entry is validated against its collection schema
 - Missing required fields produce compile errors with file path and line number
 - Type mismatches are reported with expected vs actual types
 - The `$ref` between collections (e.g., `author` referencing `authors` collection) is resolved and validated
 
 In Studio:
+
 - Schema drives form generation for content editing (see §7)
 - Autocomplete and inline validation in the content editor
 
@@ -704,6 +695,7 @@ content/
 ```
 
 **Key rules:**
+
 - One directory per collection (named after the collection)
 - For glob-based collections (`**/*.md`), each file is one entry
 - For file-based collections (`*.json`, `*.csv`), one file contains many entries
@@ -744,11 +736,11 @@ The left panel gains a project-level file explorer (above the layer tree) when a
 
 When a user expands a content collection in the project explorer, Studio renders a data browser:
 
-| View | Description |
-|---|---|
-| **Table view** | Spreadsheet-like grid showing all entries with columns for each schema field. Sortable, filterable. |
-| **Card view** | Visual card layout with hero image, title, and summary. Good for blog posts. |
-| **Calendar view** | Date-sorted timeline. Useful for date-based collections (blog, events). |
+| View              | Description                                                                                         |
+| ----------------- | --------------------------------------------------------------------------------------------------- |
+| **Table view**    | Spreadsheet-like grid showing all entries with columns for each schema field. Sortable, filterable. |
+| **Card view**     | Visual card layout with hero image, title, and summary. Good for blog posts.                        |
+| **Calendar view** | Date-sorted timeline. Useful for date-based collections (blog, events).                             |
 
 The view mode is selectable per collection. Studio remembers the preference.
 
@@ -762,32 +754,33 @@ Clicking a content entry opens a schema-driven editor in the right panel:
 
 #### Form Widget Mapping
 
-| JSON Schema Type | Widget |
-|---|---|
-| `string` | Text input |
-| `string` + `format: "date"` | Date picker |
-| `string` + `format: "uri-reference"` | File picker (opens media browser) |
-| `string` + `enum` | Select dropdown |
-| `number` | Number input |
-| `boolean` | Toggle switch |
-| `array` of `string` | Tag input (chip editor) |
-| `array` of `object` | Repeatable field group |
-| `object` | Nested form group |
-| `$ref` to collection | Entry picker (dropdown of collection entries) |
+| JSON Schema Type                     | Widget                                        |
+| ------------------------------------ | --------------------------------------------- |
+| `string`                             | Text input                                    |
+| `string` + `format: "date"`          | Date picker                                   |
+| `string` + `format: "uri-reference"` | File picker (opens media browser)             |
+| `string` + `enum`                    | Select dropdown                               |
+| `number`                             | Number input                                  |
+| `boolean`                            | Toggle switch                                 |
+| `array` of `string`                  | Tag input (chip editor)                       |
+| `array` of `object`                  | Repeatable field group                        |
+| `object`                             | Nested form group                             |
+| `$ref` to collection                 | Entry picker (dropdown of collection entries) |
 
 ### 7.4 Content CRUD Operations
 
-| Operation | Action |
-|---|---|
-| **Create** | "New Entry" button on collection. Creates a file with schema defaults. For Markdown, creates a file with frontmatter stub. Studio assigns a slug from the title or prompts for one. |
-| **Read** | Collection browser and entry editor. |
-| **Update** | Edit fields in the form editor or Markdown source. Auto-saves on change (debounced). Validates against schema on save. |
-| **Delete** | Context menu → Delete. Confirms with dialog. Removes the file from disk. |
-| **Rename/Move** | Context menu → Rename. Updates filename (and therefore entry ID/slug). Warns if other entries reference this ID. |
+| Operation       | Action                                                                                                                                                                              |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Create**      | "New Entry" button on collection. Creates a file with schema defaults. For Markdown, creates a file with frontmatter stub. Studio assigns a slug from the title or prompts for one. |
+| **Read**        | Collection browser and entry editor.                                                                                                                                                |
+| **Update**      | Edit fields in the form editor or Markdown source. Auto-saves on change (debounced). Validates against schema on save.                                                              |
+| **Delete**      | Context menu → Delete. Confirms with dialog. Removes the file from disk.                                                                                                            |
+| **Rename/Move** | Context menu → Rename. Updates filename (and therefore entry ID/slug). Warns if other entries reference this ID.                                                                    |
 
 ### 7.5 Draft Workflow
 
 Entries with `"draft": true` (a conventional boolean field in the schema):
+
 - Shown with a "Draft" badge in the collection browser
 - Excluded from production builds by default
 - Included in dev server builds for preview
@@ -809,8 +802,16 @@ Pages declare metadata via `$head`. The compiler resolves these into `<head>` el
     { "tagName": "title", "textContent": "My Blog Post — My Site" },
     { "tagName": "meta", "name": "description", "content": "A great blog post about things" },
     { "tagName": "meta", "property": "og:title", "content": "My Blog Post" },
-    { "tagName": "meta", "property": "og:description", "content": "A great blog post about things" },
-    { "tagName": "meta", "property": "og:image", "content": "https://example.com/blog/images/hero.jpg" },
+    {
+      "tagName": "meta",
+      "property": "og:description",
+      "content": "A great blog post about things"
+    },
+    {
+      "tagName": "meta",
+      "property": "og:image",
+      "content": "https://example.com/blog/images/hero.jpg"
+    },
     { "tagName": "meta", "property": "og:type", "content": "article" },
     { "tagName": "meta", "name": "twitter:card", "content": "summary_large_image" },
     { "tagName": "link", "rel": "canonical", "href": "https://example.com/blog/my-post" }
@@ -848,13 +849,13 @@ Later entries can override earlier entries. If both site and page define a `<tit
 
 The compiler automatically generates certain tags if not explicitly declared:
 
-| Auto-generated | Condition |
-|---|---|
-| `<link rel="canonical">` | Always, from `$site.url` + page path |
-| `<meta property="og:url">` | Always, matches canonical |
-| `<meta property="og:site_name">` | From `$site.name` |
-| `<html lang>` | From page or site `lang` |
-| Sitemap entry | All non-draft pages included in `sitemap.xml` |
+| Auto-generated                   | Condition                                     |
+| -------------------------------- | --------------------------------------------- |
+| `<link rel="canonical">`         | Always, from `$site.url` + page path          |
+| `<meta property="og:url">`       | Always, matches canonical                     |
+| `<meta property="og:site_name">` | From `$site.name`                             |
+| `<html lang>`                    | From page or site `lang`                      |
+| Sitemap entry                    | All non-draft pages included in `sitemap.xml` |
 
 ### 8.5 Structured Data (JSON-LD)
 
@@ -901,10 +902,10 @@ The Studio inspector includes an "SEO" tab for any page or content entry:
 
 Media files live in two locations:
 
-| Location | Purpose | Processing |
-|---|---|---|
-| `public/` | Global static assets (favicon, fonts, PDFs) | Copied verbatim to `dist/` |
-| `content/*/images/` (or co-located) | Collection-specific media | Optimized at build time |
+| Location                            | Purpose                                     | Processing                 |
+| ----------------------------------- | ------------------------------------------- | -------------------------- |
+| `public/`                           | Global static assets (favicon, fonts, PDFs) | Copied verbatim to `dist/` |
+| `content/*/images/` (or co-located) | Collection-specific media                   | Optimized at build time    |
 
 ### 9.2 Image Optimization
 
@@ -918,6 +919,7 @@ The compiler processes images referenced from content and components:
 ### 9.3 Referencing Media
 
 In Jx documents:
+
 ```json
 {
   "tagName": "img",
@@ -927,11 +929,13 @@ In Jx documents:
 ```
 
 In Markdown frontmatter:
+
 ```yaml
 heroImage: ./images/hero.jpg
 ```
 
 In Markdown body:
+
 ```markdown
 ![Alt text](./images/diagram.png)
 ```
@@ -941,10 +945,12 @@ All paths are relative to the referring file. The compiler resolves them to fina
 ### 9.4 Studio Media Browser
 
 Studio provides a media management panel accessible from:
+
 - The file picker widget (when editing a `uri-reference` schema field)
 - The main toolbar (global media browser)
 
 Features:
+
 - **Grid/list view** of all media in the project
 - **Upload** — drag-and-drop files into the browser. Files are placed in the selected directory.
 - **Preview** — thumbnail preview for images, video, audio players
@@ -967,12 +973,12 @@ site.json
               └── component.json (via $ref or $elements)
 ```
 
-| Scope Level | Inherits From | What Cascades |
-|---|---|---|
-| **Component** | Nothing (encapsulated) | Own `state`, own `style`. Receives `$props` explicitly. |
-| **Page** | Site + Layout | Site `state` (read-only), site `$media`, site CSS custom properties, layout structure |
-| **Layout** | Site | Site `state`, site `$media`, site CSS custom properties, site `$head` |
-| **Site** | Nothing (root) | Defines global `$media`, global CSS custom properties, global `$head`, global `state` |
+| Scope Level   | Inherits From          | What Cascades                                                                         |
+| ------------- | ---------------------- | ------------------------------------------------------------------------------------- |
+| **Component** | Nothing (encapsulated) | Own `state`, own `style`. Receives `$props` explicitly.                               |
+| **Page**      | Site + Layout          | Site `state` (read-only), site `$media`, site CSS custom properties, layout structure |
+| **Layout**    | Site                   | Site `state`, site `$media`, site CSS custom properties, site `$head`                 |
+| **Site**      | Nothing (root)         | Defines global `$media`, global CSS custom properties, global `$head`, global `state` |
 
 ### 10.2 What Inherits Automatically
 
@@ -993,6 +999,7 @@ These require deliberate reference:
 1. **Site state** — Available in pages/layouts as `$site.state.foo`, not as bare `state.foo`. This prevents naming collisions and makes the data source clear.
 
 2. **Data files** — Static data from `data/` must be explicitly loaded via `$ref`:
+
    ```json
    {
      "state": {
@@ -1168,6 +1175,7 @@ pages/
 ```
 
 `"prefix-except-default"` means:
+
 - `/about` → English (default, no prefix)
 - `/fr/about` → French
 - `/de/about` → German
@@ -1193,7 +1201,7 @@ The collection config can specify locale awareness:
 {
   "blog": {
     "source": "./blog/{locale}/**/*.md",
-    "schema": { "..." : "..." }
+    "schema": { "...": "..." }
   }
 }
 ```
@@ -1206,13 +1214,13 @@ The collection config can specify locale awareness:
 
 The build output is standard static files deployable anywhere. The compiler can additionally generate platform-specific files:
 
-| Platform | Extra Output |
-|---|---|
-| **Generic** | Just `dist/` with HTML/CSS/JS/assets |
-| **Netlify** | `_redirects`, `_headers` |
-| **Vercel** | `vercel.json` with redirects/headers |
-| **Cloudflare Pages** | `_redirects`, `_headers` |
-| **GitHub Pages** | `.nojekyll`, 404.html |
+| Platform             | Extra Output                         |
+| -------------------- | ------------------------------------ |
+| **Generic**          | Just `dist/` with HTML/CSS/JS/assets |
+| **Netlify**          | `_redirects`, `_headers`             |
+| **Vercel**           | `vercel.json` with redirects/headers |
+| **Cloudflare Pages** | `_redirects`, `_headers`             |
+| **GitHub Pages**     | `.nojekyll`, 404.html                |
 
 Configured in `site.json`:
 
@@ -1255,44 +1263,45 @@ dist/
 
 This spec introduces the following new reserved keywords:
 
-| Keyword | Context | Purpose |
-|---|---|---|
-| `$layout` | Page root | Specifies the layout wrapping this page |
-| `$paths` | Page root | Dynamic route parameter generation |
-| `$params` | Template string | Route parameters (read-only) |
-| `$page` | Template string | Page metadata context |
-| `$site` | Template string | Site metadata context |
-| `$head` | Page/site root | `<head>` element declarations |
-| `ContentCollection` | `$prototype` value | Collection query |
-| `ContentEntry` | `$prototype` value | Single entry access |
+| Keyword             | Context            | Purpose                                 |
+| ------------------- | ------------------ | --------------------------------------- |
+| `$layout`           | Page root          | Specifies the layout wrapping this page |
+| `$paths`            | Page root          | Dynamic route parameter generation      |
+| `$params`           | Template string    | Route parameters (read-only)            |
+| `$page`             | Template string    | Page metadata context                   |
+| `$site`             | Template string    | Site metadata context                   |
+| `$head`             | Page/site root     | `<head>` element declarations           |
+| `ContentCollection` | `$prototype` value | Collection query                        |
+| `ContentEntry`      | `$prototype` value | Single entry access                     |
 
 **Reused existing primitives (no new keywords needed):**
 
-| Mechanism | Existing Primitive | Site-Level Use |
-|---|---|---|
-| Layout slot injection | `{ "tagName": "slot" }` | Marks where page content goes in a layout |
-| Named slot targeting | `{ "attributes": { "slot": "name" } }` | Pages target specific layout regions |
-| Slot fallback content | Children of `<slot>` element | Default content when no page content is provided |
+| Mechanism             | Existing Primitive                     | Site-Level Use                                   |
+| --------------------- | -------------------------------------- | ------------------------------------------------ |
+| Layout slot injection | `{ "tagName": "slot" }`                | Marks where page content goes in a layout        |
+| Named slot targeting  | `{ "attributes": { "slot": "name" } }` | Pages target specific layout regions             |
+| Slot fallback content | Children of `<slot>` element           | Default content when no page content is provided |
 
 ## Appendix B: Mapping to Existing Primitives
 
 This spec builds on existing Jx primitives wherever possible:
 
-| New Concept | Built On |
-|---|---|
-| Layouts | Standard Jx documents + HTML `<slot>` element (already implemented for custom elements) |
-| Named layout slots | Standard `slot` attribute targeting (already implemented) |
-| Content query | `$prototype` (same pattern as `Array`, `URL`, etc.) |
-| Dynamic routes | `$ref` + compiler-time resolution |
-| Site state | Standard `state` with scope prefix |
-| Media breakpoints | Existing `$media` (already implemented) |
-| SEO metadata | Standard element definitions (existing `tagName`, `name`, `content`) |
-| Redirects | Compiler output (new, but no runtime concept) |
-| File-based routing | Convention only (no new language feature) |
+| New Concept        | Built On                                                                                |
+| ------------------ | --------------------------------------------------------------------------------------- |
+| Layouts            | Standard Jx documents + HTML `<slot>` element (already implemented for custom elements) |
+| Named layout slots | Standard `slot` attribute targeting (already implemented)                               |
+| Content query      | `$prototype` (same pattern as `Array`, `URL`, etc.)                                     |
+| Dynamic routes     | `$ref` + compiler-time resolution                                                       |
+| Site state         | Standard `state` with scope prefix                                                      |
+| Media breakpoints  | Existing `$media` (already implemented)                                                 |
+| SEO metadata       | Standard element definitions (existing `tagName`, `name`, `content`)                    |
+| Redirects          | Compiler output (new, but no runtime concept)                                           |
+| File-based routing | Convention only (no new language feature)                                               |
 
 ## Appendix C: Implementation Roadmap
 
 ### Phase 1: Foundation
+
 - [ ] `site.json` schema and loader
 - [ ] File-based routing discovery (`pages/` scanner)
 - [ ] Layout system (`$layout`, `<slot>` distribution at compile time)
@@ -1301,6 +1310,7 @@ This spec builds on existing Jx primitives wherever possible:
 - [ ] `$page` and `$site` context injection
 
 ### Phase 2: Content
+
 - [ ] Content collection loader (Markdown, JSON, CSV)
 - [ ] `content.config.json` schema validation
 - [ ] `ContentCollection` and `ContentEntry` prototypes
@@ -1310,6 +1320,7 @@ This spec builds on existing Jx primitives wherever possible:
 - [ ] Studio: Content collection browser
 
 ### Phase 3: Polish
+
 - [ ] Studio: Content entry editor (Markdown, JSON, CSV)
 - [ ] Studio: Media browser
 - [ ] Studio: SEO panel
@@ -1320,6 +1331,7 @@ This spec builds on existing Jx primitives wherever possible:
 - [ ] Platform-specific adapters (Netlify, Vercel, Cloudflare, GitHub Pages)
 
 ### Phase 4: Advanced
+
 - [ ] Internationalization routing
 - [ ] Content localization
 - [ ] Pagination helpers

@@ -1,11 +1,9 @@
 /**
- * gen-webdata.js — Extract web platform data from @webref packages
+ * Gen-webdata.js — Extract web platform data from @webref packages
  *
- * Produces studio/webdata.json with:
- *   - Categorized HTML elements for the blocks panel
- *   - CSS property names + initial values for autocomplete
- *   - Event handler names from IDL
- *   - All non-obsolete tag names
+ * Produces studio/webdata.json with: - Categorized HTML elements for the blocks panel - CSS
+ * property names + initial values for autocomplete - Event handler names from IDL - All
+ * non-obsolete tag names
  *
  * Usage: bun run studio/gen-webdata.js
  */
@@ -128,7 +126,7 @@ async function main() {
   // 2. Build categorized elements — only include tags that actually exist in @webref
   /** @type {Set<string>} */
   const categorized = new Set();
-  /** @type {Record<string, Array<{ tag: string }>>} */
+  /** @type {Record<string, { tag: string }[]>} */
   const elements = {};
   for (const [category, tags] of Object.entries(CATEGORIES)) {
     const valid = tags.filter((t) => tagSet.has(t));
@@ -153,7 +151,7 @@ async function main() {
   }
 
   // 3. Extract CSS properties (non-legacy, with camelCase name)
-  /** @type {Array<[string, string]>} */
+  /** @type {[string, string][]} */
   const cssProps = [];
   for (const prop of /** @type {any} */ (cssData).properties) {
     if (prop.legacyAliasOf) continue;

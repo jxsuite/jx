@@ -1,31 +1,36 @@
 /**
- * head-merger.js — $head merge pipeline
+ * Head-merger.js — $head merge pipeline
  *
  * Merges <head> element arrays from three levels:
- *   1. site.json.$head      — global (e.g., favicon, global stylesheet)
- *   2. layout.$head         — layout-level (e.g., shared nav scripts)
- *   3. page.$head           — page-specific (e.g., per-page meta tags)
+ *
+ * 1. Site.json.$head — global (e.g., favicon, global stylesheet)
+ * 2. Layout.$head — layout-level (e.g., shared nav scripts)
+ * 3. Page.$head — page-specific (e.g., per-page meta tags)
  *
  * Per site-architecture spec §8:
- *   - Later levels override earlier levels for the same element
- *   - Deduplication by tagName + key attribute (name, property, rel+href)
- *   - charset and viewport are auto-injected if missing
+ *
+ * - Later levels override earlier levels for the same element
+ * - Deduplication by tagName + key attribute (name, property, rel+href)
+ * - Charset and viewport are auto-injected if missing
  */
 
 /**
  * Merge $head arrays from site, layout, and page levels.
  *
- * @param {any[]} [siteHead]   - site.json $head entries
+ * @param {any[]} [siteHead] - Site.json $head entries
  * @param {any[]} [layoutHead] - Layout $head entries (may be empty)
- * @param {any[]} [pageHead]   - Page $head entries (may be empty)
- * @param {any} [context]   - { title, lang, charset, url, pageUrl }
+ * @param {any[]} [pageHead] - Page $head entries (may be empty)
+ * @param {any} [context] - { title, lang, charset, url, pageUrl }
  * @returns {any[]} Merged, deduplicated $head array
  */
 export function mergeHead(siteHead = [], layoutHead = [], pageHead = [], context = {}) {
   // Start with auto-injected defaults
   const defaults = [
     { tagName: "meta", attributes: { charset: context.charset ?? "utf-8" } },
-    { tagName: "meta", attributes: { name: "viewport", content: "width=device-width, initial-scale=1" } },
+    {
+      tagName: "meta",
+      attributes: { name: "viewport", content: "width=device-width, initial-scale=1" },
+    },
   ];
 
   // Merge layers: site → layout → page (later wins)
@@ -44,7 +49,7 @@ export function mergeHead(siteHead = [], layoutHead = [], pageHead = [], context
   // Add canonical URL if provided
   if (context.pageUrl && context.siteUrl) {
     const canonical = new URL(context.pageUrl, context.siteUrl).href;
-    merged.set('link:canonical', {
+    merged.set("link:canonical", {
       tagName: "link",
       attributes: { rel: "canonical", href: canonical },
     });
@@ -54,8 +59,9 @@ export function mergeHead(siteHead = [], layoutHead = [], pageHead = [], context
 }
 
 /**
- * Generate a deduplication key for a <head> element.
- * Elements with the same key are considered duplicates; the last one wins.
+ * Generate a deduplication key for a <head> element. Elements with the same key are considered
+ * duplicates; the last one wins.
+ *
  * @param {any} entry
  * @returns {string}
  */
@@ -97,6 +103,7 @@ function headEntryKey(entry) {
 
 /**
  * Simple string hash for deduplication (not cryptographic).
+ *
  * @param {string} str
  * @returns {string}
  */
@@ -120,6 +127,7 @@ export function renderHead(headEntries) {
 
 /**
  * Render a single $head entry to an HTML string.
+ *
  * @param {any} entry
  * @returns {string}
  */
@@ -130,7 +138,7 @@ function renderHeadEntry(entry) {
   const tag = entry.tagName;
   const attrs = entry.attributes ?? {};
   const attrStr = Object.entries(attrs)
-    .map(([k, v]) => v === true ? k : `${k}="${escapeAttr(/** @type {any} */ (v))}"`)
+    .map(([k, v]) => (v === true ? k : `${k}="${escapeAttr(/** @type {any} */ (v))}"`))
     .join(" ");
 
   const open = attrStr ? `<${tag} ${attrStr}>` : `<${tag}>`;

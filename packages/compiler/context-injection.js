@@ -1,20 +1,15 @@
 /**
- * context-injection.js — $page and $site context injection
+ * Context-injection.js — $page and $site context injection
  *
- * Injects site-level and page-level context variables into a page's
- * state before compilation. These are available as $site.* and $page.*
- * in template expressions.
+ * Injects site-level and page-level context variables into a page's state before compilation. These
+ * are available as $site.* and $page.* in template expressions.
  *
- * Also resolves ContentCollection and ContentEntry $prototype entries
- * against loaded content collections (Phase 2, spec §6.4).
+ * Also resolves ContentCollection and ContentEntry $prototype entries against loaded content
+ * collections (Phase 2, spec §6.4).
  *
- * Per site-architecture spec §10:
- *   $site.name      — from site.json name
- *   $site.url       — from site.json url
- *   $site.state.*   — site-wide reactive state
- *   $page.url       — current page URL path
- *   $page.title     — page title
- *   $page.params    — dynamic route parameters (if any)
+ * Per site-architecture spec §10: $site.name — from site.json name $site.url — from site.json url
+ * $site.state.* — site-wide reactive state $page.url — current page URL path $page.title — page
+ * title $page.params — dynamic route parameters (if any)
  */
 
 import { queryCollection, findEntry } from "./content-loader.js";
@@ -23,9 +18,9 @@ import { resolve, dirname, relative } from "node:path";
 /**
  * Inject $site and $page context into a page document's state.
  *
- * @param {any} doc        - The page document (mutated)
+ * @param {any} doc - The page document (mutated)
  * @param {any} siteConfig - Loaded site configuration
- * @param {any} route      - The resolved route for this page
+ * @param {any} route - The resolved route for this page
  * @param {Map<string, any[]>} [collections] - Loaded content collections
  * @param {string | null} [projectRoot] - Absolute path to the project root (for import rebasing)
  * @returns {any} The mutated document
@@ -37,7 +32,7 @@ export function injectContext(doc, siteConfig, route, collections = new Map(), p
   doc.state.$site = {
     name: siteConfig.name ?? "Jx Site",
     url: siteConfig.url ?? "",
-    ...(siteConfig.state ?? {}),
+    ...siteConfig.state,
   };
 
   // $page context — read-only page-level data
@@ -63,7 +58,7 @@ export function injectContext(doc, siteConfig, route, collections = new Map(), p
 
   // Merge site-level $media into page $media
   if (siteConfig.$media) {
-    doc.$media = { ...siteConfig.$media, ...(doc.$media ?? {}) };
+    doc.$media = { ...siteConfig.$media, ...doc.$media };
   }
 
   // Merge site-level imports into page imports (page wins on collision)
@@ -71,12 +66,13 @@ export function injectContext(doc, siteConfig, route, collections = new Map(), p
     if (!doc.imports) doc.imports = {};
     for (const [name, srcPath] of Object.entries(siteConfig.imports)) {
       if (!(name in doc.imports)) {
-        if (projectRoot && route.sourcePath) {
-          // Rebase from site-root-relative to page-relative
-          const abs = resolve(projectRoot, /** @type {string} */ (srcPath));
+        const src = /** @type {string} */ (srcPath);
+        // Only rebase relative paths — bare/npm specifiers pass through unmodified
+        if (projectRoot && route.sourcePath && (src.startsWith("./") || src.startsWith("../"))) {
+          const abs = resolve(projectRoot, src);
           doc.imports[name] = "./" + relative(dirname(route.sourcePath), abs);
         } else {
-          doc.imports[name] = srcPath;
+          doc.imports[name] = src;
         }
       }
     }
@@ -88,8 +84,7 @@ export function injectContext(doc, siteConfig, route, collections = new Map(), p
 /**
  * Resolve ContentCollection and ContentEntry $prototype state entries.
  *
- * Replaces state entries like:
- *   { "$prototype": "ContentCollection", "collection": "blog", ... }
+ * Replaces state entries like: { "$prototype": "ContentCollection", "collection": "blog", ... }
  * with the actual resolved collection data.
  *
  * @param {Record<string, any>} state - Page state (mutated)

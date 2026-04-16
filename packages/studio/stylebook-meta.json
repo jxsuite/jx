@@ -49,7 +49,11 @@
         {
           "tag": "blockquote",
           "children": [
-            { "tag": "p", "text": "In quoting others, we cite ourselves.", "style": "font-size:1.25em;font-style:italic" },
+            {
+              "tag": "p",
+              "text": "In quoting others, we cite ourselves.",
+              "style": "font-size:1.25em;font-style:italic"
+            },
             { "tag": "p", "text": "\u2014 Julio Cortázar" }
           ]
         }
@@ -96,7 +100,10 @@
             { "tag": "option", "text": "Option 3" }
           ]
         },
-        { "tag": "textarea", "attributes": { "placeholder": "Enter longer text\u2026", "rows": "3" } }
+        {
+          "tag": "textarea",
+          "attributes": { "placeholder": "Enter longer text\u2026", "rows": "3" }
+        }
       ]
     },
     {
@@ -159,7 +166,10 @@
           "attributes": { "open": "" },
           "children": [
             { "tag": "summary", "text": "Click to expand details" },
-            { "tag": "p", "text": "Additional detail content revealed when the disclosure widget is toggled open." }
+            {
+              "tag": "p",
+              "text": "Additional detail content revealed when the disclosure widget is toggled open."
+            }
           ]
         }
       ]
@@ -167,8 +177,16 @@
     {
       "label": "Media",
       "elements": [
-        { "tag": "img", "attributes": { "alt": "Placeholder image" }, "style": "width:100%;max-width:400px;height:200px;background:#e0e0e0;display:block;border-radius:4px" },
-        { "tag": "video", "attributes": { "controls": "" }, "style": "width:100%;max-width:400px;height:200px;background:#e0e0e0;display:block;border-radius:4px" },
+        {
+          "tag": "img",
+          "attributes": { "alt": "Placeholder image" },
+          "style": "width:100%;max-width:400px;height:200px;background:#e0e0e0;display:block;border-radius:4px"
+        },
+        {
+          "tag": "video",
+          "attributes": { "controls": "" },
+          "style": "width:100%;max-width:400px;height:200px;background:#e0e0e0;display:block;border-radius:4px"
+        },
         { "tag": "audio", "attributes": { "controls": "" }, "style": "width:100%" }
       ]
     }

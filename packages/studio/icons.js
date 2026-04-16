@@ -5,12 +5,33 @@
 import { html } from "lit";
 
 // Helper for custom filled-rect icons (alignment/justify diagrams) where no Spectrum match exists
-const R = (/** @type {any} */ d) =>
-  html`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none">${d}</svg>`;
+const _R = (/** @type {any} */ d) =>
+  html`<svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="16"
+    height="16"
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    stroke="none"
+  >
+    ${d}
+  </svg>`;
 
 // Helper for custom stroke icons
-const S = (/** @type {any} */ d) =>
-  html`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+const _S = (/** @type {any} */ d) =>
+  html`<svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="16"
+    height="16"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="2"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  >
+    ${d}
+  </svg>`;
 
 const icons = {
   // ─── Arrows — flexDirection ───
@@ -32,16 +53,24 @@ const icons = {
   "align-start-v": html`<sp-icon-align-top slot="icon"></sp-icon-align-top>`,
   "align-end-v": html`<sp-icon-align-bottom slot="icon"></sp-icon-align-bottom>`,
   "align-center-v": html`<sp-icon-align-middle slot="icon"></sp-icon-align-middle>`,
-  "align-stretch-v": html`<sp-icon-distribute-vertically slot="icon"></sp-icon-distribute-vertically>`,
+  "align-stretch-v": html`<sp-icon-distribute-vertically
+    slot="icon"
+  ></sp-icon-distribute-vertically>`,
   "align-baseline": html`<sp-icon-text-baseline-shift slot="icon"></sp-icon-text-baseline-shift>`,
 
   // ─── justifyContent — horizontal distribution within container ───
   "justify-start": html`<sp-icon-align-left slot="icon"></sp-icon-align-left>`,
   "justify-end": html`<sp-icon-align-right slot="icon"></sp-icon-align-right>`,
   "justify-center": html`<sp-icon-align-center slot="icon"></sp-icon-align-center>`,
-  "justify-between": html`<sp-icon-distribute-space-horiz slot="icon"></sp-icon-distribute-space-horiz>`,
-  "justify-around": html`<sp-icon-distribute-horizontally slot="icon"></sp-icon-distribute-horizontally>`,
-  "justify-evenly": html`<sp-icon-distribute-horizontal-center slot="icon"></sp-icon-distribute-horizontal-center>`,
+  "justify-between": html`<sp-icon-distribute-space-horiz
+    slot="icon"
+  ></sp-icon-distribute-space-horiz>`,
+  "justify-around": html`<sp-icon-distribute-horizontally
+    slot="icon"
+  ></sp-icon-distribute-horizontally>`,
+  "justify-evenly": html`<sp-icon-distribute-horizontal-center
+    slot="icon"
+  ></sp-icon-distribute-horizontal-center>`,
 
   // ─── display mode icons ───
   "display-flex": html`<sp-icon-view-column slot="icon"></sp-icon-view-column>`,

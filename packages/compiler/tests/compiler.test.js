@@ -310,7 +310,7 @@ describe("compile — dynamic documents (standard tagName → client target)", (
     const { html, files } = await compile({ tagName: "div", textContent: "static" });
     expect(files.length).toBe(0);
     expect(html).not.toContain("importmap");
-    expect(html).not.toContain("type=\"module\"");
+    expect(html).not.toContain('type="module"');
   });
 
   test("static parent with dynamic child: routes to client target", async () => {
@@ -353,9 +353,7 @@ describe("compile — dynamic documents (standard tagName → client target)", (
 
 describe("compile — dynamic documents (custom element tagName → element target)", () => {
   test("hyphenated tagName routes to element target", async () => {
-    const { html, files } = await compile(
-      { tagName: "my-counter", state: { count: 0 } },
-    );
+    const { html, files } = await compile({ tagName: "my-counter", state: { count: 0 } });
     expect(html).toContain("importmap");
     expect(html).toContain("@vue/reactivity");
     expect(html).toContain("lit-html");
@@ -366,9 +364,10 @@ describe("compile — dynamic documents (custom element tagName → element targ
   });
 
   test("custom element module contains class definition", async () => {
-    const { files } = await compile(
-      { tagName: "my-widget", state: { x: { type: "integer", default: 1 } } },
-    );
+    const { files } = await compile({
+      tagName: "my-widget",
+      state: { x: { type: "integer", default: 1 } },
+    });
     expect(files.length).toBe(1);
     expect(files[0].content).toContain("class MyWidget extends HTMLElement");
     expect(files[0].content).toContain("customElements.define('my-widget'");

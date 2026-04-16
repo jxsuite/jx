@@ -1,28 +1,23 @@
 /**
- * compile-element.js — Custom element compilation with lit-html
+ * Compile-element.js — Custom element compilation with lit-html
  *
- * Compiles Jx documents into self-registering custom element ES modules
- * using @vue/reactivity for state and lit-html for rendering.
+ * Compiles Jx documents into self-registering custom element ES modules using @vue/reactivity for
+ * state and lit-html for rendering.
  */
 
 import { camelToKebab, RESERVED_KEYS } from "@jxplatform/runtime";
-import {
-  escapeHtml,
-  titleToTagName,
-  tagNameToClassName,
-  isSchemaOnly,
-} from "./shared.js";
+import { escapeHtml, tagNameToClassName, isSchemaOnly } from "./shared.js";
 
 /**
  * Compile a Jx custom element document to a JS module string.
  *
  * @param {string | any} sourcePath - Path to .json file or raw object
- * @param {any}          [opts]
- * @returns {Promise<{ files: { path: string, content: string, tagName: string }[] }>}
+ * @param {any} [opts]
+ * @returns {Promise<{ files: { path: string; content: string; tagName: string }[] }>}
  */
 export async function compileElement(sourcePath, opts = {}) {
   const { resolveElementPath } = opts;
-  /** @type {{ path: string, content: string, tagName: string }[]} */
+  /** @type {{ path: string; content: string; tagName: string }[]} */
   const files = [];
   /** @type {Set<string>} */
   const visited = new Set();
@@ -38,7 +33,7 @@ export async function compileElement(sourcePath, opts = {}) {
     let filePath;
     if (typeof srcPath === "string") {
       const { readFileSync } = await import("node:fs");
-      const { resolve, dirname, basename } = await import("node:path");
+      const { resolve } = await import("node:path");
       filePath = parentDir ? resolve(parentDir, srcPath) : resolve(srcPath);
       if (visited.has(filePath)) return;
       visited.add(filePath);
@@ -55,7 +50,7 @@ export async function compileElement(sourcePath, opts = {}) {
       throw new Error(`compileElement: tagName "${tagName}" must contain a hyphen`);
     }
 
-    const { dirname: dn, basename: bn } = await import("node:path");
+    const { dirname: dn } = await import("node:path");
     const currentDir = filePath ? dn(filePath) : null;
 
     // Process $elements dependencies depth-first
@@ -92,11 +87,15 @@ export async function compileElement(sourcePath, opts = {}) {
 }
 
 /**
- * Compile a Jx custom element document to a complete HTML page
- * with an import map for CDN dependencies.
+ * Compile a Jx custom element document to a complete HTML page with an import map for CDN
+ * dependencies.
+ *
  * @param {string | any} sourcePath
  * @param {any} [opts]
- * @returns {Promise<{ html: string, files: { path: string, content: string, tagName: string }[] }>}
+ * @returns {Promise<{
+ *   html: string;
+ *   files: { path: string; content: string; tagName: string }[];
+ * }>}
  */
 export async function compileElementPage(sourcePath, opts = {}) {
   const {
@@ -138,9 +137,10 @@ export async function compileElementPage(sourcePath, opts = {}) {
 // ─── Element code generation helpers ──────────────────────────────────────────
 
 /**
- * Extract the initial value for a state entry to use in reactive({}).
- * Bug fix: expanded signals like { type, default, description } now
- * correctly extract the `default` value instead of dumping the whole object.
+ * Extract the initial value for a state entry to use in reactive({}). Bug fix: expanded signals
+ * like { type, default, description } now correctly extract the `default` value instead of dumping
+ * the whole object.
+ *
  * @param {any} def
  * @returns {string | undefined}
  */
@@ -169,6 +169,7 @@ function extractInitialValue(def) {
 
 /**
  * Generate a complete ES module string for a custom element.
+ *
  * @param {any} doc
  * @param {string} className
  * @param {string[]} elementImports
@@ -273,9 +274,13 @@ export function emitElementModule(doc, className, elementImports) {
     const dynamicStyles = [];
     for (const [prop, value] of Object.entries(doc.style)) {
       if (
-        prop.startsWith(":") || prop.startsWith(".") || prop.startsWith("&") ||
-        prop.startsWith("[") || prop.startsWith("@")
-      ) continue;
+        prop.startsWith(":") ||
+        prop.startsWith(".") ||
+        prop.startsWith("&") ||
+        prop.startsWith("[") ||
+        prop.startsWith("@")
+      )
+        continue;
       if (value === null || typeof value === "object") continue;
       const cssProp = camelToKebab(prop);
       if (typeof value === "string" && value.includes("${")) {
@@ -292,8 +297,10 @@ export function emitElementModule(doc, className, elementImports) {
     if (dynamicStyles.length > 0) {
       lines.push("    effect(() => {");
       for (const [cssProp, value] of dynamicStyles) {
-        const expr = value.replace(/\$\{([^}]+)\}/g, (/** @type {string} */ _, /** @type {string} */ e) =>
-          "${" + e.replace(/state\./g, "this.state.") + "}"
+        const expr = value.replace(
+          /\$\{([^}]+)\}/g,
+          (/** @type {string} */ _, /** @type {string} */ e) =>
+            "${" + e.replace(/state\./g, "this.state.") + "}",
         );
         lines.push(`      this.style['${cssProp}'] = \`${expr}\`;`);
       }
@@ -319,6 +326,7 @@ export function emitElementModule(doc, className, elementImports) {
 
 /**
  * Convert Jx children to lit-html template content.
+ *
  * @param {any} children
  * @param {any} parentStyle
  * @param {string} indent
@@ -342,6 +350,15 @@ function emitLitChildren(children, parentStyle, indent) {
  * @returns {string}
  */
 function emitLitNode(def, indent) {
+  // String children are text nodes
+  if (typeof def === "string") {
+    return `${indent}${escapeHtml(def)}`;
+  }
+  if (typeof def === "number" || typeof def === "boolean") {
+    return `${indent}${escapeHtml(String(def))}`;
+  }
+  if (!def || typeof def !== "object") return "";
+
   const tag = def.tagName ?? "div";
 
   /** @type {string[]} */
@@ -398,7 +415,11 @@ function emitLitNode(def, indent) {
     const eventName = key.slice(2).toLowerCase();
     if (val && typeof val === "object" && /** @type {any} */ (val).$ref) {
       parts.push(`@${eventName}="\${(e) => ${refToExpr(/** @type {any} */ (val).$ref)}(s, e)}"`);
-    } else if (val && typeof val === "object" && /** @type {any} */ (val).$prototype === "Function") {
+    } else if (
+      val &&
+      typeof val === "object" &&
+      /** @type {any} */ (val).$prototype === "Function"
+    ) {
       parts.push(`@${eventName}="\${(e) => { ${inlineHandlerBody(/** @type {any} */ (val))} }}"`);
     }
   }
@@ -477,6 +498,7 @@ function emitMappedArray(arrayDef, indent) {
 
 /**
  * Convert a $ref string to a JS expression using `s` (this.state alias).
+ *
  * @param {string} ref
  * @returns {string}
  */
@@ -512,8 +534,9 @@ function toLitExpr(str) {
 }
 
 /**
- * Convert textContent value to lit-html text content.
- * Bug fix: handles $ref objects, which previously produced [object Object].
+ * Convert textContent value to lit-html text content. Bug fix: handles $ref objects, which
+ * previously produced [object Object].
+ *
  * @param {any} value
  * @returns {string}
  */

@@ -46,10 +46,7 @@ function makeDoc() {
       { tagName: "h1", textContent: "Hello" },
       {
         tagName: "section",
-        children: [
-          { tagName: "p", textContent: "Paragraph" },
-          { tagName: "span" },
-        ],
+        children: [{ tagName: "p", textContent: "Paragraph" }, { tagName: "span" }],
       },
     ],
   };
@@ -98,10 +95,7 @@ describe("parentElementPath", () => {
   });
 
   test("returns parent of a deeply nested path", () => {
-    expect(parentElementPath(["children", 1, "children", 0])).toEqual([
-      "children",
-      1,
-    ]);
+    expect(parentElementPath(["children", 1, "children", 0])).toEqual(["children", 1]);
   });
 
   test("returns null for root path", () => {
@@ -129,9 +123,7 @@ describe("pathKey", () => {
   });
 
   test("joins segments with /", () => {
-    expect(pathKey(["children", 0, "children", 1])).toBe(
-      "children/0/children/1",
-    );
+    expect(pathKey(["children", 0, "children", 1])).toBe("children/0/children/1");
   });
 });
 
@@ -146,9 +138,7 @@ describe("pathsEqual", () => {
   });
 
   test("different lengths", () => {
-    expect(pathsEqual(["children", 0], ["children", 0, "children"])).toBe(
-      false,
-    );
+    expect(pathsEqual(["children", 0], ["children", 0, "children"])).toBe(false);
   });
 
   test("different values", () => {
@@ -179,15 +169,11 @@ describe("isAncestor", () => {
   });
 
   test("parent is ancestor of child", () => {
-    expect(
-      isAncestor(["children", 1], ["children", 1, "children", 0]),
-    ).toBe(true);
+    expect(isAncestor(["children", 1], ["children", 1, "children", 0])).toBe(true);
   });
 
   test("child is not ancestor of parent", () => {
-    expect(
-      isAncestor(["children", 1, "children", 0], ["children", 1]),
-    ).toBe(false);
+    expect(isAncestor(["children", 1, "children", 0], ["children", 1])).toBe(false);
   });
 
   test("sibling is not ancestor", () => {
@@ -222,9 +208,7 @@ describe("flattenTree", () => {
     const mapRow = rows.find((r) => r.nodeType === "map");
     expect(/** @type {any} */ (mapRow).depth).toBe(1);
     // Template element should be at depth 2
-    const templateRow = rows.find(
-      (r) => r.node.tagName === "li" && r.depth === 2,
-    );
+    const templateRow = rows.find((r) => r.node.tagName === "li" && r.depth === 2);
     expect(templateRow).toBeDefined();
   });
 
@@ -293,9 +277,7 @@ describe("nodeLabel", () => {
   });
 
   test("tag + textContent", () => {
-    expect(nodeLabel({ tagName: "p", textContent: "Hello world" })).toBe(
-      "p — Hello world",
-    );
+    expect(nodeLabel({ tagName: "p", textContent: "Hello world" })).toBe("p — Hello world");
   });
 
   test("truncates long text to 24 chars", () => {

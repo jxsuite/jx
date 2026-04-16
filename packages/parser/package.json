@@ -1,11 +1,18 @@
 {
   "name": "@jxplatform/parser",
-  "version": "1.0.0",
+  "version": "0.2.0",
   "description": "Jx markdown parser and external class integration",
   "license": "MIT",
+  "files": [
+    "*.js",
+    "*.json",
+    "!package.json"
+  ],
   "type": "module",
   "exports": {
-    ".": "./md.js"
+    ".": "./md.js",
+    "./MarkdownFile.class.json": "./MarkdownFile.class.json",
+    "./MarkdownCollection.class.json": "./MarkdownCollection.class.json"
   },
   "scripts": {
     "test": "bun test"

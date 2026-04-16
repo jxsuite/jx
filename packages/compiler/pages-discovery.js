@@ -1,30 +1,27 @@
 /**
- * pages-discovery.js — File-based route discovery
+ * Pages-discovery.js — File-based route discovery
  *
- * Scans the pages/ directory and builds a route table mapping
- * URL paths to their source JSON files, layouts, and metadata.
+ * Scans the pages/ directory and builds a route table mapping URL paths to their source JSON files,
+ * layouts, and metadata.
  *
- * Conventions (per site-architecture spec §4):
- *   pages/index.json          → /
- *   pages/about.json          → /about
- *   pages/about/index.json    → /about
- *   pages/blog/[slug].json    → /blog/:slug  (dynamic)
- *   pages/docs/[...path].json → /docs/*      (catch-all)
- *   pages/_component.json     → NOT routed   (underscore prefix)
+ * Conventions (per site-architecture spec §4): pages/index.json → / pages/about.json → /about
+ * pages/about/index.json → /about pages/blog/[slug].json → /blog/:slug (dynamic)
+ * pages/docs/[...path].json → /docs/* (catch-all) pages/_component.json → NOT routed (underscore
+ * prefix)
  */
 
-import { readdirSync, statSync, readFileSync } from "node:fs";
-import { resolve, relative, basename, extname, join } from "node:path";
+import { readdirSync, readFileSync } from "node:fs";
+import { resolve, relative, extname, join } from "node:path";
 
 /**
  * @typedef {object} Route
- * @property {string} urlPattern   - URL pattern (e.g. "/blog/:slug")
- * @property {string} sourcePath   - Absolute path to the .json source file
+ * @property {string} urlPattern - URL pattern (e.g. "/blog/:slug")
+ * @property {string} sourcePath - Absolute path to the .json source file
  * @property {string} relativePath - Path relative to pages/ dir
- * @property {boolean} isDynamic   - Whether route has parameters
- * @property {boolean} isCatchAll  - Whether route uses [...param] spread
- * @property {string[]} params     - Parameter names (e.g. ["slug"])
- * @property {string|null} $layout - Layout override from page frontmatter, if any
+ * @property {boolean} isDynamic - Whether route has parameters
+ * @property {boolean} isCatchAll - Whether route uses [...param] spread
+ * @property {string[]} params - Parameter names (e.g. ["slug"])
+ * @property {string | null} $layout - Layout override from page frontmatter, if any
  * @property {Record<string, string>} [_pathParams] - Resolved path parameters
  */
 
@@ -51,6 +48,7 @@ export function discoverPages(pagesDir) {
 
 /**
  * Recursively walk the pages directory tree.
+ *
  * @param {string} dir
  * @param {string} pagesRoot
  * @param {Route[]} routes
@@ -83,7 +81,7 @@ function walkDir(dir, pagesRoot, routes) {
 /**
  * Convert a file path relative to pages/ into a Route object.
  *
- * @param {string} relativePath - e.g. "blog/[slug].json"
+ * @param {string} relativePath - E.g. "blog/[slug].json"
  * @param {string} absolutePath - Full filesystem path
  * @returns {Route}
  */
@@ -111,17 +109,20 @@ function fileToRoute(relativePath, absolutePath) {
   let isCatchAll = false;
 
   // Convert [param] → :param and [...param] → *
-  const urlPattern = urlPath.replace(/\[\.\.\.(\w+)\]|\[(\w+)\]/g, (/** @type {string} */ match, /** @type {string} */ spread, /** @type {string} */ named) => {
-    if (spread) {
-      isCatchAll = true;
+  const urlPattern = urlPath.replace(
+    /\[\.\.\.(\w+)\]|\[(\w+)\]/g,
+    (/** @type {string} */ match, /** @type {string} */ spread, /** @type {string} */ named) => {
+      if (spread) {
+        isCatchAll = true;
+        isDynamic = true;
+        params.push(spread);
+        return "*";
+      }
       isDynamic = true;
-      params.push(spread);
-      return "*";
-    }
-    isDynamic = true;
-    params.push(named);
-    return `:${named}`;
-  });
+      params.push(named);
+      return `:${named}`;
+    },
+  );
 
   // Peek at the page JSON to extract $layout if present
   /** @type {string | null} */
@@ -149,11 +150,10 @@ function fileToRoute(relativePath, absolutePath) {
 /**
  * Expand dynamic routes by resolving $paths from each dynamic page.
  *
- * Supports three $paths shapes (per spec §4.3):
- *   1. Collection-based: { collection: "blog", param: "slug", field: "id" }
- *   2. Explicit values:  { values: ["en", "fr"], param: "lang" }
- *   3. Data file ref:    { "$ref": "./data/products.json", param: "id", field: "sku" }
- *   4. Legacy array:     [{ slug: "hello" }, { slug: "world" }]
+ * Supports three $paths shapes (per spec §4.3): 1. Collection-based: { collection: "blog", param:
+ * "slug", field: "id" } 2. Explicit values: { values: ["en", "fr"], param: "lang" } 3. Data file
+ * ref: { "$ref": "./data/products.json", param: "id", field: "sku" } 4. Legacy array: [{ slug:
+ * "hello" }, { slug: "world" }]
  *
  * @param {Route[]} routes - Discovered route table
  * @param {string} projectRoot - Project root for resolving $ref paths
@@ -181,9 +181,7 @@ export async function expandDynamicRoutes(routes, projectRoot, collections = new
     }
 
     if (!raw.$paths) {
-      console.warn(
-        `Warning: dynamic route ${route.urlPattern} has no $paths — skipping`
-      );
+      console.warn(`Warning: dynamic route ${route.urlPattern} has no $paths — skipping`);
       continue;
     }
 
@@ -229,7 +227,7 @@ function resolvePathEntries($paths, projectRoot, collections) {
     const entries = collections.get($paths.collection);
     if (!entries || entries.length === 0) {
       console.warn(
-        `Warning: $paths references collection "${$paths.collection}" but it has no entries`
+        `Warning: $paths references collection "${$paths.collection}" but it has no entries`,
       );
       return [];
     }

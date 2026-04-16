@@ -1,8 +1,15 @@
 {
   "name": "@jxplatform/compiler",
-  "version": "1.0.0",
+  "version": "0.2.0",
   "description": "Jx static HTML compiler, island detector, and site builder",
   "license": "MIT",
+  "bin": {
+    "jx-build": "./cli-build.js"
+  },
+  "files": [
+    "*.js",
+    "dist"
+  ],
   "type": "module",
   "exports": {
     ".": "./compiler.js",
@@ -14,9 +21,6 @@
     "./context-injection": "./context-injection.js",
     "./content-loader": "./content-loader.js"
   },
-  "bin": {
-    "jx-build": "./cli-build.js"
-  },
   "scripts": {
     "test": "bun test",
     "build": "bun build compiler.js --outdir=dist --format=esm --minify",
@@ -24,8 +28,8 @@
   },
   "dependencies": {
     "@apidevtools/json-schema-ref-parser": "^15.3.5",
-    "@jxplatform/runtime": "workspace:*",
-    "@jxplatform/parser": "workspace:*"
+    "@jxplatform/parser": "workspace:*",
+    "@jxplatform/runtime": "workspace:*"
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.8.9"

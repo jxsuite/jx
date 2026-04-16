@@ -1,34 +1,34 @@
 /**
- * state.js — Builder state model and mutation API
+ * State.js — Builder state model and mutation API
  *
- * All state changes go through named mutation functions.
- * State is immutable — every mutation produces a new state object.
- * History is a linear stack of { document, selection } snapshots.
+ * All state changes go through named mutation functions. State is immutable — every mutation
+ * produces a new state object. History is a linear stack of { document, selection } snapshots.
  *
- * Path convention:
- *   [] = root document
- *   ['children', 0] = first child
- *   ['children', 0, 'children', 2] = third child of first child
+ * Path convention: [] = root document ['children', 0] = first child ['children', 0, 'children', 2]
+ * = third child of first child
  */
 
 /**
  * @typedef {Record<string, any>} JsonsxNode
- * @typedef {(string|number)[]} JsonsxPath
- * @typedef {{ document: JsonsxNode, selection: JsonsxPath | null }} HistorySnapshot
+ *
+ * @typedef {(string | number)[]} JsonsxPath
+ *
+ * @typedef {{ document: JsonsxNode; selection: JsonsxPath | null }} HistorySnapshot
+ *
  * @typedef {{
- *   document: JsonsxNode,
- *   selection: JsonsxPath | null,
- *   hover: JsonsxPath | null,
- *   history: HistorySnapshot[],
- *   historyIndex: number,
- *   dirty: boolean,
- *   fileHandle: any,
- *   documentPath: string | null,
- *   documentStack: any[],
- *   handlersSource: string | null,
- *   mode: string,
- *   content: { frontmatter: Record<string, any> },
- *   ui: Record<string, any>,
+ *   document: JsonsxNode;
+ *   selection: JsonsxPath | null;
+ *   hover: JsonsxPath | null;
+ *   history: HistorySnapshot[];
+ *   historyIndex: number;
+ *   dirty: boolean;
+ *   fileHandle: any;
+ *   documentPath: string | null;
+ *   documentStack: any[];
+ *   handlersSource: string | null;
+ *   mode: string;
+ *   content: { frontmatter: Record<string, any> };
+ *   ui: Record<string, any>;
  * }} StudioState
  */
 
@@ -38,6 +38,7 @@ const HISTORY_LIMIT = 100;
 
 /**
  * Walk the document tree and return the node at the given path.
+ *
  * @param {any} doc
  * @param {JsonsxPath} path
  * @returns {any}
@@ -53,6 +54,7 @@ export function getNodeAtPath(doc, path) {
 
 /**
  * Return the path to the parent element (strips trailing 'children' + index).
+ *
  * @param {JsonsxPath} path
  * @returns {JsonsxPath | null}
  */
@@ -62,6 +64,7 @@ export function parentElementPath(path) {
 
 /**
  * Return the child index (last segment of the path).
+ *
  * @param {JsonsxPath} path
  * @returns {string | number}
  */
@@ -71,6 +74,7 @@ export function childIndex(path) {
 
 /**
  * Serialize a path to a string key for Map lookups.
+ *
  * @param {JsonsxPath} path
  * @returns {string}
  */
@@ -80,6 +84,7 @@ export function pathKey(path) {
 
 /**
  * Compare two paths for equality.
+ *
  * @param {JsonsxPath | null} a
  * @param {JsonsxPath | null} b
  * @returns {boolean}
@@ -92,6 +97,7 @@ export function pathsEqual(a, b) {
 
 /**
  * Returns true if `path` is an ancestor of (or equal to) `descendant`.
+ *
  * @param {JsonsxPath} path
  * @param {JsonsxPath} descendant
  * @returns {boolean}
@@ -104,17 +110,18 @@ export function isAncestor(path, descendant) {
 // ─── Tree flattening (for layer panel) ────────────────────────────────────────
 
 /**
- * Flatten a Jx document into an array of { node, path, depth, nodeType } rows.
- * Walks static children arrays, $map templates, and $switch cases.
+ * Flatten a Jx document into an array of { node, path, depth, nodeType } rows. Walks static
+ * children arrays, $map templates, and $switch cases.
  *
- * nodeType: 'element' (default) | 'map' | 'case' | 'case-ref'
+ * NodeType: 'element' (default) | 'map' | 'case' | 'case-ref'
+ *
  * @param {any} doc
  * @param {JsonsxPath} [path]
  * @param {number} [depth]
- * @returns {Array<{ node: any, path: JsonsxPath, depth: number, nodeType: string }>}
+ * @returns {{ node: any; path: JsonsxPath; depth: number; nodeType: string }[]}
  */
 export function flattenTree(doc, path = [], depth = 0) {
-  /** @type {Array<{ node: any, path: JsonsxPath, depth: number, nodeType: string }>} */
+  /** @type {{ node: any; path: JsonsxPath; depth: number; nodeType: string }[]} */
   const rows = [{ node: doc, path, depth, nodeType: "element" }];
 
   // Custom component instances are atomic in the layer tree — don't recurse into internals
@@ -158,6 +165,7 @@ export function flattenTree(doc, path = [], depth = 0) {
 
 /**
  * Get a display label for a node (for layers + overlays).
+ *
  * @param {any} node
  * @returns {string}
  */
@@ -227,16 +235,17 @@ export function createState(doc) {
 /** @type {any} */
 export let projectState = null;
 
-/**
- * @param {any} ps
- */
-export function setProjectState(ps) { projectState = ps; }
+/** @param {any} ps */
+export function setProjectState(ps) {
+  projectState = ps;
+}
 
 // ─── Core mutation ────────────────────────────────────────────────────────────
 
 /**
- * Apply a mutation to the document. Clones the document immutably,
- * applies the mutation function to the clone, and pushes to history.
+ * Apply a mutation to the document. Clones the document immutably, applies the mutation function to
+ * the clone, and pushes to history.
+ *
  * @param {StudioState} state
  * @param {(doc: any) => void} mutationFn
  * @returns {StudioState}
@@ -500,6 +509,7 @@ export function renameDef(state, oldName, newName) {
 
 /**
  * Update a style property inside a media override block (e.g., `@--md`).
+ *
  * @param {StudioState} state
  * @param {JsonsxPath} path
  * @param {string} mediaName
@@ -525,6 +535,7 @@ export function updateMediaStyle(state, path, mediaName, prop, value) {
 
 /**
  * Update a style property inside a nested selector block (e.g., :hover).
+ *
  * @param {StudioState} state
  * @param {JsonsxPath} path
  * @param {string} selector
@@ -549,6 +560,7 @@ export function updateNestedStyle(state, path, selector, prop, value) {
 
 /**
  * Update a style property inside a nested selector within a media block (e.g., `@--md` > `:hover`).
+ *
  * @param {StudioState} state
  * @param {JsonsxPath} path
  * @param {string} mediaName
@@ -577,6 +589,7 @@ export function updateMediaNestedStyle(state, path, mediaName, selector, prop, v
 
 /**
  * Add or update a named media entry at the document root.
+ *
  * @param {StudioState} state
  * @param {string} name
  * @param {any} query
@@ -598,6 +611,7 @@ export function updateMedia(state, name, query) {
 
 /**
  * Push current document onto the stack and switch to editing a new document.
+ *
  * @param {StudioState} state
  * @param {any} doc
  * @param {string | null} documentPath
@@ -623,6 +637,7 @@ export function pushDocument(state, doc, documentPath) {
 
 /**
  * Pop the document stack and return to the previous document.
+ *
  * @param {StudioState} state
  * @returns {StudioState}
  */
@@ -642,6 +657,7 @@ export function popDocument(state) {
 
 /**
  * Update a $prop on a component instance.
+ *
  * @param {StudioState} state
  * @param {JsonsxPath} path
  * @param {string} propName

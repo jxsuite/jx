@@ -1,20 +1,31 @@
 /**
- * inline-format.js — Inline formatting engine for contenteditable editing
+ * Inline-format.js — Inline formatting engine for contenteditable editing
  *
- * Handles toggling inline formatting (bold, italic, code, etc.) with proper
- * wrap/unwrap logic, DOM normalization, and whitespace management.
+ * Handles toggling inline formatting (bold, italic, code, etc.) with proper wrap/unwrap logic, DOM
+ * normalization, and whitespace management.
  */
 
 /** Tags considered inline formatting wrappers */
 const FORMAT_TAGS = new Set([
-  "strong", "em", "b", "i", "u", "del", "s", "strike",
-  "code", "sub", "sup", "span",
+  "strong",
+  "em",
+  "b",
+  "i",
+  "u",
+  "del",
+  "s",
+  "strike",
+  "code",
+  "sub",
+  "sup",
+  "span",
 ]);
 
 /**
- * Check whether `tag` is currently active on both ends of the selection.
- * Walks from anchor and focus nodes up to editableRoot looking for the tag.
- * Returns false if selection is outside editableRoot or in plaintext-only mode.
+ * Check whether `tag` is currently active on both ends of the selection. Walks from anchor and
+ * focus nodes up to editableRoot looking for the tag. Returns false if selection is outside
+ * editableRoot or in plaintext-only mode.
+ *
  * @param {string} tag
  * @param {HTMLElement | null} editableRoot
  * @returns {boolean}
@@ -36,7 +47,11 @@ export function isTagActiveInSelection(tag, editableRoot) {
    */
   const hasTag = (node) => {
     while (node && node !== editableRoot) {
-      if (node.nodeType === Node.ELEMENT_NODE && /** @type {Element} */ (node).tagName.toLowerCase() === tag) return true;
+      if (
+        node.nodeType === Node.ELEMENT_NODE &&
+        /** @type {Element} */ (node).tagName.toLowerCase() === tag
+      )
+        return true;
       node = node.parentNode;
     }
     return false;
@@ -46,8 +61,9 @@ export function isTagActiveInSelection(tag, editableRoot) {
 }
 
 /**
- * Toggle an inline format tag on/off for the current selection.
- * If the tag is active → unwrap. If not → wrap.
+ * Toggle an inline format tag on/off for the current selection. If the tag is active → unwrap. If
+ * not → wrap.
+ *
  * @param {string} tag
  * @param {HTMLElement | null} editableRoot
  */
@@ -76,6 +92,7 @@ export function toggleInlineFormat(tag, editableRoot) {
 
 /**
  * Find all elements with the given tag that intersect the selection range.
+ *
  * @param {string} tag
  * @param {Range} range
  * @param {HTMLElement} root
@@ -90,7 +107,10 @@ function findIntersectingElements(tag, range, root) {
      * @returns {number}
      */
     acceptNode(node) {
-      if (/** @type {Element} */ (node).tagName.toLowerCase() === tag && range.intersectsNode(node)) {
+      if (
+        /** @type {Element} */ (node).tagName.toLowerCase() === tag &&
+        range.intersectsNode(node)
+      ) {
         return NodeFilter.FILTER_ACCEPT;
       }
       return NodeFilter.FILTER_SKIP;
@@ -103,8 +123,9 @@ function findIntersectingElements(tag, range, root) {
 }
 
 /**
- * Unwrap all instances of `tag` within the range.
- * Processes in reverse document order to preserve earlier offsets.
+ * Unwrap all instances of `tag` within the range. Processes in reverse document order to preserve
+ * earlier offsets.
+ *
  * @param {string} tag
  * @param {Range} range
  * @param {HTMLElement} editableRoot
@@ -120,6 +141,7 @@ function unwrapTagInRange(tag, range, editableRoot, matches) {
 
 /**
  * Replace an element with its children (unwrap).
+ *
  * @param {Element} el
  */
 function unwrapElement(el) {
@@ -133,13 +155,14 @@ function unwrapElement(el) {
 }
 
 /**
- * Wrap the current selection range in a new element of the given tag.
- * Handles whitespace: leading/trailing whitespace stays outside the wrapper.
+ * Wrap the current selection range in a new element of the given tag. Handles whitespace:
+ * leading/trailing whitespace stays outside the wrapper.
+ *
  * @param {string} tag
  * @param {Range} range
  * @param {HTMLElement} editableRoot
  */
-function wrapRangeInTag(tag, range, editableRoot) {
+function wrapRangeInTag(tag, range, _editableRoot) {
   const contents = range.extractContents();
 
   // Trim leading whitespace from the fragment
@@ -180,8 +203,9 @@ function wrapRangeInTag(tag, range, editableRoot) {
 }
 
 /**
- * Remove and return leading whitespace from a document fragment.
- * Only trims if the first node is a text node starting with whitespace.
+ * Remove and return leading whitespace from a document fragment. Only trims if the first node is a
+ * text node starting with whitespace.
+ *
  * @param {DocumentFragment} frag
  * @returns {string | null}
  */
@@ -202,8 +226,9 @@ function trimLeadingWhitespace(frag) {
 }
 
 /**
- * Remove and return trailing whitespace from a document fragment.
- * Only trims if the last node is a text node ending with whitespace.
+ * Remove and return trailing whitespace from a document fragment. Only trims if the last node is a
+ * text node ending with whitespace.
+ *
  * @param {DocumentFragment} frag
  * @returns {string | null}
  */
@@ -225,10 +250,10 @@ function trimTrailingWhitespace(frag) {
 // ─── Normalization ─────────────────────────────────────────────────────────────
 
 /**
- * Normalize the inline content of an editable root.
- * Merges adjacent same-tag siblings, collapses redundant nesting,
- * removes empty inline elements, and lifts edge whitespace.
- * Runs to fixed-point.
+ * Normalize the inline content of an editable root. Merges adjacent same-tag siblings, collapses
+ * redundant nesting, removes empty inline elements, and lifts edge whitespace. Runs to
+ * fixed-point.
+ *
  * @param {HTMLElement | null} root
  */
 export function normalizeInlineContent(root) {
@@ -260,8 +285,9 @@ export function normalizeInlineContent(root) {
 }
 
 /**
- * Merge adjacent sibling elements with the same tag name.
- * E.g., <strong>a</strong><strong>b</strong> → <strong>ab</strong>
+ * Merge adjacent sibling elements with the same tag name. E.g.,
+ * <strong>a</strong><strong>b</strong> → <strong>ab</strong>
+ *
  * @param {HTMLElement} root
  * @returns {boolean}
  */
@@ -300,8 +326,9 @@ function mergeAdjacentSiblings(root) {
 }
 
 /**
- * Collapse redundant nesting where a parent and its only child share the same tag.
- * E.g., <strong><strong>x</strong></strong> → <strong>x</strong>
+ * Collapse redundant nesting where a parent and its only child share the same tag. E.g.,
+ * <strong><strong>x</strong></strong> → <strong>x</strong>
+ *
  * @param {HTMLElement} root
  * @returns {boolean}
  */
@@ -339,6 +366,7 @@ function collapseRedundantNesting(root) {
 
 /**
  * Remove empty inline elements.
+ *
  * @param {HTMLElement} root
  * @returns {boolean}
  */
@@ -364,15 +392,16 @@ function removeEmptyInlines(root) {
 }
 
 /**
- * Lift leading/trailing whitespace out of inline wrapper elements.
- * E.g., <strong> text </strong> → " "<strong>text</strong>" "
+ * Lift leading/trailing whitespace out of inline wrapper elements. E.g., <strong> text </strong> →
+ * " "<strong>text</strong>" "
+ *
  * @param {HTMLElement} root
  * @returns {boolean}
  */
 function liftEdgeWhitespace(root) {
   let changed = false;
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
-  /** @type {Array<{ type: string, el: Element, ws: string }>} */
+  /** @type {{ type: string; el: Element; ws: string }[]} */
   const ops = [];
 
   while (walker.nextNode()) {
@@ -416,8 +445,9 @@ function liftEdgeWhitespace(root) {
 }
 
 /**
- * Unwrap bare <span> elements that have no class, style, or meaningful attributes.
- * These are semantically empty wrappers left over from formatting operations.
+ * Unwrap bare <span> elements that have no class, style, or meaningful attributes. These are
+ * semantically empty wrappers left over from formatting operations.
+ *
  * @param {HTMLElement} root
  * @returns {boolean}
  */
@@ -444,9 +474,9 @@ function unwrapBareSpans(root) {
 }
 
 /**
- * Check if two elements have matching attributes (for merge eligibility).
- * For simple formatting tags, attributes don't matter.
- * For <a>, href must match.
+ * Check if two elements have matching attributes (for merge eligibility). For simple formatting
+ * tags, attributes don't matter. For <a>, href must match.
+ *
  * @param {Element} a
  * @param {Element} b
  * @returns {boolean}
@@ -463,23 +493,24 @@ function attributesMatch(a, b) {
 // ─── Template expression preservation ─────────────────────────────────────────
 
 /**
- * Expand a Range so that it fully includes any `${...}` template expressions
- * that are partially selected. Template expressions are atomic in Jx — if
- * split across inline elements, the template string breaks.
+ * Expand a Range so that it fully includes any `${...}` template expressions that are partially
+ * selected. Template expressions are atomic in Jx — if split across inline elements, the template
+ * string breaks.
  *
- * Scans the text content of the start and end containers for `${...}` patterns
- * and adjusts the range boundaries outward to include the complete expression.
+ * Scans the text content of the start and end containers for `${...}` patterns and adjusts the
+ * range boundaries outward to include the complete expression.
+ *
  * @param {Range} range
  */
 export function expandRangeToTemplateExpressions(range) {
-  expandBoundary(range, true);  // start
+  expandBoundary(range, true); // start
   expandBoundary(range, false); // end
 }
 
 /**
- * Expand one boundary (start or end) of a range to avoid splitting a ${...}.
- * `isStart` = true adjusts startContainer/startOffset,
- * `isStart` = false adjusts endContainer/endOffset.
+ * Expand one boundary (start or end) of a range to avoid splitting a ${...}. `isStart` = true
+ * adjusts startContainer/startOffset, `isStart` = false adjusts endContainer/endOffset.
+ *
  * @param {Range} range
  * @param {boolean} isStart
  */
@@ -509,14 +540,14 @@ function expandBoundary(range, isStart) {
 }
 
 /**
- * Find all `${...}` expression spans in a string, handling nested braces.
- * Returns array of { start, end } where start is the index of '$' and
- * end is one past the closing '}'.
+ * Find all `${...}` expression spans in a string, handling nested braces. Returns array of { start,
+ * end } where start is the index of '$' and end is one past the closing '}'.
+ *
  * @param {string} text
- * @returns {Array<{ start: number, end: number }>}
+ * @returns {{ start: number; end: number }[]}
  */
 export function findTemplateExpressions(text) {
-  /** @type {Array<{ start: number, end: number }>} */
+  /** @type {{ start: number; end: number }[]} */
   const results = [];
   let i = 0;
   while (i < text.length - 1) {

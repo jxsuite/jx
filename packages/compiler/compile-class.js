@@ -1,8 +1,8 @@
 /**
- * compile-class.js — Compile .class.json schema-defined classes to JavaScript ES modules
+ * Compile-class.js — Compile .class.json schema-defined classes to JavaScript ES modules
  *
- * Generates proper ES modules with private fields, static members, accessors, etc.
- * from a JSON Schema 2020-12 class definition.
+ * Generates proper ES modules with private fields, static members, accessors, etc. from a JSON
+ * Schema 2020-12 class definition.
  */
 
 /**
@@ -12,7 +12,7 @@
  * @param {any} [opts]
  * @returns {string} JavaScript module source code
  */
-export function compileClassJson(classDef, opts = {}) {
+export function compileClassJson(classDef, _opts = {}) {
   const className = classDef.title;
   if (!className) throw new Error("compileClassJson: missing title (class name)");
 
@@ -37,11 +37,12 @@ export function compileClassJson(classDef, opts = {}) {
     if (f.scope !== "static") continue;
     const name = f.identifier ?? key;
     const prefix = f.access === "private" ? "#" : "";
-    const initVal = f.initializer !== undefined
-      ? JSON.stringify(f.initializer)
-      : f.default !== undefined
-        ? JSON.stringify(f.default)
-        : "null";
+    const initVal =
+      f.initializer !== undefined
+        ? JSON.stringify(f.initializer)
+        : f.default !== undefined
+          ? JSON.stringify(f.default)
+          : "null";
     lines.push(`  static ${prefix}${name} = ${initVal};`);
   }
 
@@ -59,9 +60,7 @@ export function compileClassJson(classDef, opts = {}) {
   // Constructor
   lines.push("  constructor(config = {}) {");
   if (ctor?.superCall || baseClass !== "Object") {
-    const superArgs = ctor?.superCall?.arguments
-      ? ctor.superCall.arguments.join(", ")
-      : "";
+    const superArgs = ctor?.superCall?.arguments ? ctor.superCall.arguments.join(", ") : "";
     lines.push(`    super(${superArgs});`);
   }
 
@@ -71,12 +70,15 @@ export function compileClassJson(classDef, opts = {}) {
     if (f.scope === "static") continue;
     const name = f.identifier ?? key;
     const prefix = f.access === "private" ? "#" : "";
-    const initVal = f.initializer !== undefined
-      ? JSON.stringify(f.initializer)
-      : f.default !== undefined
-        ? JSON.stringify(f.default)
-        : "null";
-    lines.push(`    this.${prefix}${name} = config.${name} !== undefined ? config.${name} : ${initVal};`);
+    const initVal =
+      f.initializer !== undefined
+        ? JSON.stringify(f.initializer)
+        : f.default !== undefined
+          ? JSON.stringify(f.default)
+          : "null";
+    lines.push(
+      `    this.${prefix}${name} = config.${name} !== undefined ? config.${name} : ${initVal};`,
+    );
   }
 
   // Constructor body statements
@@ -137,6 +139,7 @@ export function compileClassJson(classDef, opts = {}) {
 
 /**
  * Resolve the base class name from an extends value.
+ *
  * @param {any} ext
  * @returns {string}
  */
@@ -154,18 +157,22 @@ function resolveBaseClass(ext) {
 
 /**
  * Resolve parameter names from $ref or inline definitions.
+ *
  * @param {any[]} params
  * @returns {string}
  */
 function resolveParams(params) {
-  return params.map((/** @type {any} */ p) => {
-    if (p.$ref) return p.$ref.split("/").pop();
-    return p.identifier ?? p.name ?? "arg";
-  }).join(", ");
+  return params
+    .map((/** @type {any} */ p) => {
+      if (p.$ref) return p.$ref.split("/").pop();
+      return p.identifier ?? p.name ?? "arg";
+    })
+    .join(", ");
 }
 
 /**
  * Resolve body from string or array of strings.
+ *
  * @param {any} body
  * @returns {string[]}
  */
@@ -177,6 +184,7 @@ function resolveBody(body) {
 
 /**
  * Simple heuristic: does the method body contain await?
+ *
  * @param {any} method
  * @returns {boolean}
  */

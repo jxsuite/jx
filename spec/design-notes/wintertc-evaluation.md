@@ -25,32 +25,33 @@ Jx's `$prototype` system already maps JSON declarations to Web API constructors 
 
 ### 3.1 Already Aligned (Jx ↔ WinterTC)
 
-| Jx `$prototype` | WinterTC API | Notes |
-|---|---|---|
-| `Request` | Fetch API (`Request`, `Response`, `Headers`) | Jx already implements reactive Request. Response/Headers are implicit in server function returns. |
-| `URLSearchParams` | URL API (`URL`, `URLSearchParams`) | Direct match. Jx implements computed `.toString()`. |
-| `FormData` | Fetch API (`FormData`) | Direct match. |
-| `Blob` | File API (`Blob`, `File`) | Jx implements `Blob`. `File` extends `Blob` — could be added. |
-| `ReadableStream` | Streams API (`ReadableStream`, `WritableStream`, `TransformStream`) | Jx has a stub. WinterTC mandates full Streams. |
+| Jx `$prototype`   | WinterTC API                                                        | Notes                                                                                             |
+| ----------------- | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `Request`         | Fetch API (`Request`, `Response`, `Headers`)                        | Jx already implements reactive Request. Response/Headers are implicit in server function returns. |
+| `URLSearchParams` | URL API (`URL`, `URLSearchParams`)                                  | Direct match. Jx implements computed `.toString()`.                                               |
+| `FormData`        | Fetch API (`FormData`)                                              | Direct match.                                                                                     |
+| `Blob`            | File API (`Blob`, `File`)                                           | Jx implements `Blob`. `File` extends `Blob` — could be added.                                     |
+| `ReadableStream`  | Streams API (`ReadableStream`, `WritableStream`, `TransformStream`) | Jx has a stub. WinterTC mandates full Streams.                                                    |
 
 **Conclusion:** Jx's existing `$prototype` namespace is already well-aligned with WinterTC. No changes needed for current prototypes.
 
 ### 3.2 New Opportunities
 
-| WinterTC API | Relevance to Jx | Recommendation |
-|---|---|---|
-| **`URLPattern`** | ★★★ **Critical** — Route matching + redirect patterns | **Adopt** (see §4) |
-| `URL` | ★★☆ — Useful for canonical URL construction in SEO/sitemap | Consider as `$prototype` |
-| `AbortController` / `AbortSignal` | ★★☆ — Build pipeline cancellation, request cancellation | Already implicit in `signal: true`; no schema change needed |
-| `EventTarget` / `CustomEvent` | ★☆☆ — Component event dispatch | Jx uses DOM events natively in custom elements; no schema-level action needed |
-| `TextEncoder` / `TextDecoder` | ★☆☆ — Build internals only | Implementation detail, not schema-relevant |
-| `CompressionStream` | ★☆☆ — Asset pipeline optimization | Build tool concern, not schema |
-| `Crypto` / `SubtleCrypto` | ☆☆☆ — No direct schema relevance | Not applicable |
-| `Performance` | ☆☆☆ — Profiling only | Not applicable |
+| WinterTC API                      | Relevance to Jx                                            | Recommendation                                                                |
+| --------------------------------- | ---------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| **`URLPattern`**                  | ★★★ **Critical** — Route matching + redirect patterns      | **Adopt** (see §4)                                                            |
+| `URL`                             | ★★☆ — Useful for canonical URL construction in SEO/sitemap | Consider as `$prototype`                                                      |
+| `AbortController` / `AbortSignal` | ★★☆ — Build pipeline cancellation, request cancellation    | Already implicit in `signal: true`; no schema change needed                   |
+| `EventTarget` / `CustomEvent`     | ★☆☆ — Component event dispatch                             | Jx uses DOM events natively in custom elements; no schema-level action needed |
+| `TextEncoder` / `TextDecoder`     | ★☆☆ — Build internals only                                 | Implementation detail, not schema-relevant                                    |
+| `CompressionStream`               | ★☆☆ — Asset pipeline optimization                          | Build tool concern, not schema                                                |
+| `Crypto` / `SubtleCrypto`         | ☆☆☆ — No direct schema relevance                           | Not applicable                                                                |
+| `Performance`                     | ☆☆☆ — Profiling only                                       | Not applicable                                                                |
 
 ### 3.3 Not Applicable
 
 These WinterTC APIs have no bearing on Jx's declarative schema model:
+
 - **WebAssembly** — binary execution model
 - **Sockets API** (in progress) — TCP connections
 - **CLI API** (in progress) — argv/env access
@@ -68,14 +69,14 @@ These WinterTC APIs have no bearing on Jx's declarative schema model:
 
 The site-architecture spec currently uses `:param` and `*` wildcard syntax inherited from Astro/Next.js conventions. URLPattern uses the **same foundational syntax** because both derive from path-to-regexp:
 
-| Feature | Current site-architecture.md | URLPattern Standard |
-|---|---|---|
-| Named parameter | `/blog/:slug` | `/blog/:slug` |
-| Multiple params | `/blog/:year/:slug` | `/blog/:year/:slug` |
-| Wildcard (catch-all) | `/docs/*` | `/docs/*` |
-| Optional segment | Not specified | `/products/:id?` |
-| Regexp constraint | Not specified | `/blog/:id(\\d+)` |
-| Optional group | Not specified | `/products/{:id}?` |
+| Feature              | Current site-architecture.md | URLPattern Standard |
+| -------------------- | ---------------------------- | ------------------- |
+| Named parameter      | `/blog/:slug`                | `/blog/:slug`       |
+| Multiple params      | `/blog/:year/:slug`          | `/blog/:year/:slug` |
+| Wildcard (catch-all) | `/docs/*`                    | `/docs/*`           |
+| Optional segment     | Not specified                | `/products/:id?`    |
+| Regexp constraint    | Not specified                | `/blog/:id(\\d+)`   |
+| Optional group       | Not specified                | `/products/{:id}?`  |
 
 **The syntax is identical for all patterns currently in site-architecture.md.** URLPattern is a strict superset — it adds optional segments, regexp constraints, and explicit grouping that the current spec doesn't use but could benefit from.
 
@@ -101,6 +102,7 @@ This requires no syntax changes to site-architecture.md — the `:param` and `*`
 4. **Align with ecosystem** — HTML Speculation Rules already use URLPattern for prefetch matching
 
 **Concrete changes:**
+
 - Add a normative reference to URLPattern in site-architecture.md §4 and §11
 - Note that redirect pattern strings conform to URLPattern pathname syntax
 - Consider adding `URLPattern` to the `$prototype` supported list for advanced matching use cases
@@ -144,20 +146,21 @@ Document in the server spec that server functions compiled by Jx should conform 
 
 ## 6. Summary of Recommendations
 
-| Area | Action | Priority |
-|---|---|---|
-| **URLPattern** | Add normative reference in §4 (routing) and §11 (redirects) | **High** — standards alignment at zero cost |
-| **URLPattern syntax** | No syntax changes needed — current patterns already conform | **None** — already compatible |
-| **`URLPattern` as `$prototype`** | Defer — add when client-side routing needs it | **Low** — future iteration |
-| **`URL` as `$prototype`** | Consider adding for canonical URL construction | **Low** — nice to have |
-| **Fetch interface** | Document `Request → Response` as server function convention | **Medium** — clarifies server.md |
-| **AbortController** | Already implicit in `signal: true` — no schema change | **None** |
-| **EventTarget** | No schema-level action — handled by DOM custom elements | **None** |
-| **Other WinterTC APIs** | Not applicable to schema layer | **None** |
+| Area                             | Action                                                      | Priority                                    |
+| -------------------------------- | ----------------------------------------------------------- | ------------------------------------------- |
+| **URLPattern**                   | Add normative reference in §4 (routing) and §11 (redirects) | **High** — standards alignment at zero cost |
+| **URLPattern syntax**            | No syntax changes needed — current patterns already conform | **None** — already compatible               |
+| **`URLPattern` as `$prototype`** | Defer — add when client-side routing needs it               | **Low** — future iteration                  |
+| **`URL` as `$prototype`**        | Consider adding for canonical URL construction              | **Low** — nice to have                      |
+| **Fetch interface**              | Document `Request → Response` as server function convention | **Medium** — clarifies server.md            |
+| **AbortController**              | Already implicit in `signal: true` — no schema change       | **None**                                    |
+| **EventTarget**                  | No schema-level action — handled by DOM custom elements     | **None**                                    |
+| **Other WinterTC APIs**          | Not applicable to schema layer                              | **None**                                    |
 
 ## 7. What WinterTC Does NOT Cover
 
 WinterTC standardizes runtime APIs, not:
+
 - File-based routing conventions (no standard — Astro/Next.js are de facto)
 - Content collection schemas (no standard — this is Jx's contribution)
 - Layout/slot projection (covered by HTML `<slot>` which Jx already uses)

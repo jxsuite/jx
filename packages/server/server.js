@@ -1,18 +1,16 @@
 /**
- * @jxplatform/server — Jx development server
- *
- * Provides builds, live reload, $src module proxying, timing: "server" function
- * proxying, and studio filesystem integration as a single createDevServer() call.
- *
  * @example
- * import { createDevServer } from '@jxplatform/server';
+ *   import { createDevServer } from "@jxplatform/server";
  *
- * await createDevServer({
+ *   await createDevServer({
  *   root: import.meta.dir,
- *   builds: [
- *     { entrypoints: ['./src/app.js'], outdir: './dist', match: /src/, label: 'app' },
- *   ],
- * });
+ *   builds: [{ entrypoints: ["./src/app.js"], outdir: "./dist", match: /src/, label: "app" }],
+ *   });
+ *
+ *   jxplatform/server — Jx development server
+ *
+ *   Provides builds, live reload, $src module proxying, timing: "server" function
+ *   proxying, and studio filesystem integration as a single createDevServer() call.
  */
 
 import { resolve } from "node:path";
@@ -26,12 +24,18 @@ import { handleCodeApi } from "./code-api.js";
  * Create and start a Jx development server.
  *
  * @param {object} options
- * @param {string}   options.root           - Project root (absolute or relative)
- * @param {number}   [options.port=3000]    - Server port
- * @param {Array<{ entrypoints: string[], outdir: string, match?: Function|RegExp, label?: string }>}    [options.builds=[]]    - Bun.build entries with optional match regex
- * @param {boolean|object} [options.watch=true]  - Watch config or false to disable
- * @param {boolean}  [options.studio=true]  - Enable /__studio/* endpoints
- * @param {Function} [options.middleware]    - Custom route handler (req, url) => Response|null
+ * @param {string} options.root - Project root (absolute or relative)
+ * @param {number} [options.port] - Server port. Default is `3000`
+ * @param {{
+ *   entrypoints: string[];
+ *   outdir: string;
+ *   match?: Function | RegExp;
+ *   label?: string;
+ * }[]} [options.builds]
+ *   - Bun.build entries with optional match regex
+ * @param {boolean | object} [options.watch] - Watch config or false to disable. Default is `true`
+ * @param {boolean} [options.studio] - Enable /**studio/* endpoints. Default is `true`
+ * @param {Function} [options.middleware] - Custom route handler (req, url) => Response|null
  * @returns {Promise<object>} The Bun.serve server object
  */
 export async function createDevServer(options) {

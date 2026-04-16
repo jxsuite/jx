@@ -79,9 +79,7 @@ describe("compileClient", () => {
         name: { type: "string", default: "World", description: "Name to greet" },
       },
       tagName: "div",
-      children: [
-        { tagName: "span", textContent: "${state.name}" },
-      ],
+      children: [{ tagName: "span", textContent: "${state.name}" }],
     };
 
     const result = compileClient(doc, { title: "Test" });
@@ -101,15 +99,13 @@ describe("compileClient", () => {
         },
       },
       tagName: "div",
-      children: [
-        { tagName: "h1", textContent: { $ref: "#/state/label" } },
-      ],
+      children: [{ tagName: "h1", textContent: { $ref: "#/state/label" } }],
     };
 
     const result = compileClient(doc, { title: "Test" });
 
     // h1 should have data-bind and :textContent binding
-    expect(result.html).toContain('data-bind');
+    expect(result.html).toContain("data-bind");
     expect(result.html).toContain(':text-content="label"');
     // Should NOT contain [object Object]
     expect(result.html).not.toContain("[object Object]");
@@ -183,9 +179,7 @@ describe("compileClient", () => {
         count: 0,
       },
       tagName: "div",
-      children: [
-        { tagName: "span", textContent: "${state.count}" },
-      ],
+      children: [{ tagName: "span", textContent: "${state.count}" }],
     };
 
     const result = compileClient(doc, { title: "Test" });

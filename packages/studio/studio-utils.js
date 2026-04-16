@@ -1,11 +1,12 @@
 /**
- * studio-utils.js — Pure utility functions extracted from studio.js
+ * Studio-utils.js — Pure utility functions extracted from studio.js
  *
  * These are all side-effect-free functions used by style/properties/events panels.
  */
 
 /**
- * camelCase → kebab-case for inline style attributes
+ * CamelCase → kebab-case for inline style attributes
+ *
  * @param {string} str
  * @returns {string}
  */
@@ -14,25 +15,36 @@ export function camelToKebab(str) {
 }
 
 /**
- * Convert camelCase property name to "Title Case" label (e.g. "backgroundColor" → "Background Color")
+ * Convert camelCase property name to "Title Case" label (e.g. "backgroundColor" → "Background
+ * Color")
+ *
  * @param {string} prop
  * @returns {string}
  */
 export function camelToLabel(prop) {
-  return prop.replace(/([A-Z])/g, " $1").replace(/^./, (/** @type {string} */ c) => c.toUpperCase());
+  return prop
+    .replace(/([A-Z])/g, " $1")
+    .replace(/^./, (/** @type {string} */ c) => c.toUpperCase());
 }
 
 /**
- * Convert a kebab-case CSS value to Title Case for picker display (e.g. "border-box" → "Border Box")
+ * Convert a kebab-case CSS value to Title Case for picker display (e.g. "border-box" → "Border
+ * Box")
+ *
  * @param {string} val
  * @returns {string}
  */
 export function kebabToLabel(val) {
-  return val.replace(/(^|-)(\w)/g, (/** @type {string} */ _, /** @type {string} */ sep, /** @type {string} */ c) => (sep ? " " : "") + c.toUpperCase());
+  return val.replace(
+    /(^|-)(\w)/g,
+    (/** @type {string} */ _, /** @type {string} */ sep, /** @type {string} */ c) =>
+      (sep ? " " : "") + c.toUpperCase(),
+  );
 }
 
 /**
  * Get display label from metadata entry or prop name
+ *
  * @param {any} entry
  * @param {string} prop
  * @returns {string}
@@ -43,35 +55,57 @@ export function propLabel(entry, prop) {
 
 /**
  * Label for HTML attributes — handles kebab-case (aria-label → "Aria Label")
+ *
  * @param {any} entry
  * @param {string} attr
  * @returns {string}
  */
 export function attrLabel(entry, attr) {
   if (entry?.$label) return entry.$label;
-  if (attr.includes("-")) return attr.replace(/(^|-)(\w)/g, (/** @type {string} */ _, /** @type {string} */ sep, /** @type {string} */ c) => (sep ? " " : "") + c.toUpperCase());
+  if (attr.includes("-"))
+    return attr.replace(
+      /(^|-)(\w)/g,
+      (/** @type {string} */ _, /** @type {string} */ sep, /** @type {string} */ c) =>
+        (sep ? " " : "") + c.toUpperCase(),
+    );
   return camelToLabel(attr);
 }
 
 /**
  * Abbreviate a CSS value for button-group display
+ *
  * @param {string} val
  * @returns {string}
  */
 export function abbreviateValue(val) {
   /** @type {Record<string, string>} */
   const map = {
-    inline: "inl", "inline-block": "i-blk", "inline-flex": "i-flx", "inline-grid": "i-grd",
-    contents: "cnt", "flow-root": "flow", nowrap: "no-wr", "wrap-reverse": "wr-rev",
-    "flex-start": "start", "flex-end": "end", "space-between": "betw",
-    "space-around": "arnd", "space-evenly": "even", stretch: "str", baseline: "base",
-    normal: "norm", "row-reverse": "row-r", "column-reverse": "col-r", column: "col",
+    inline: "inl",
+    "inline-block": "i-blk",
+    "inline-flex": "i-flx",
+    "inline-grid": "i-grd",
+    contents: "cnt",
+    "flow-root": "flow",
+    nowrap: "no-wr",
+    "wrap-reverse": "wr-rev",
+    "flex-start": "start",
+    "flex-end": "end",
+    "space-between": "betw",
+    "space-around": "arnd",
+    "space-evenly": "even",
+    stretch: "str",
+    baseline: "base",
+    normal: "norm",
+    "row-reverse": "row-r",
+    "column-reverse": "col-r",
+    column: "col",
   };
   return map[val] || val;
 }
 
 /**
  * Determine input widget type from a css-meta entry
+ *
  * @param {any} entry
  * @returns {string}
  */

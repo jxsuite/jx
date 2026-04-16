@@ -1,9 +1,7 @@
-/**
- * content-collections.test.js — Tests for Phase 2 content collection system
- */
+/** Content-collections.test.js — Tests for Phase 2 content collection system */
 
 import { describe, it, expect, beforeAll, afterAll } from "bun:test";
-import { mkdirSync, writeFileSync, rmSync, readFileSync, existsSync } from "node:fs";
+import { mkdirSync, writeFileSync, rmSync, existsSync } from "node:fs";
 import { resolve, join } from "node:path";
 import {
   loadContentConfig,
@@ -22,7 +20,11 @@ const TMP = resolve(import.meta.dir, "__test-content__");
 function writeFile(relPath, content) {
   const abs = resolve(TMP, relPath);
   mkdirSync(resolve(abs, ".."), { recursive: true });
-  writeFileSync(abs, typeof content === "string" ? content : JSON.stringify(content, null, 2), "utf8");
+  writeFileSync(
+    abs,
+    typeof content === "string" ? content : JSON.stringify(content, null, 2),
+    "utf8",
+  );
 }
 
 // ── Test fixtures ─────────────────────────────────────────────────────────────
@@ -89,7 +91,9 @@ beforeAll(() => {
   });
 
   // Blog posts (Markdown)
-  writeFile("content/blog/hello-world.md", `---
+  writeFile(
+    "content/blog/hello-world.md",
+    `---
 title: Hello World
 pubDate: "2024-01-15"
 author: jane
@@ -102,9 +106,12 @@ draft: false
 # Hello World
 
 This is my first blog post. Welcome!
-`);
+`,
+  );
 
-  writeFile("content/blog/second-post.md", `---
+  writeFile(
+    "content/blog/second-post.md",
+    `---
 title: Second Post
 pubDate: "2024-02-20"
 author: jane
@@ -116,9 +123,12 @@ draft: false
 # Second Post
 
 Another great article here.
-`);
+`,
+  );
 
-  writeFile("content/blog/draft-post.md", `---
+  writeFile(
+    "content/blog/draft-post.md",
+    `---
 title: Draft Post
 pubDate: "2024-03-01"
 draft: true
@@ -127,7 +137,8 @@ draft: true
 # Draft
 
 This shouldn't show up in published lists.
-`);
+`,
+  );
 
   // Authors (JSON)
   writeFile("content/authors/jane.json", {
@@ -137,11 +148,12 @@ This shouldn't show up in published lists.
   });
 
   // Products (CSV)
-  writeFile("content/products/catalog.csv",
+  writeFile(
+    "content/products/catalog.csv",
     `sku,name,price,category
 WIDGET-1,Blue Widget,9.99,widgets
 GADGET-2,Red Gadget,19.99,gadgets
-WIDGET-3,Green Widget,14.99,widgets`
+WIDGET-3,Green Widget,14.99,widgets`,
   );
 
   // ── Pages ─────────────────────────────────────────────────────────────
@@ -335,7 +347,9 @@ describe("$paths expansion", () => {
     const routes = discoverPages(pagesDir);
     const expanded = await expandDynamicRoutes(routes, TMP, collections);
 
-    const blogRoutes = expanded.filter((r) => r.urlPattern.startsWith("/blog/") && r.urlPattern !== "/blog");
+    const blogRoutes = expanded.filter(
+      (r) => r.urlPattern.startsWith("/blog/") && r.urlPattern !== "/blog",
+    );
     // Should have one route per blog entry (3 posts)
     expect(blogRoutes.length).toBe(3);
     expect(blogRoutes.map((r) => r.urlPattern).sort()).toEqual([
@@ -351,9 +365,7 @@ describe("$paths expansion", () => {
     const routes = discoverPages(pagesDir);
     const expanded = await expandDynamicRoutes(routes, TMP, collections);
 
-    const langRoutes = expanded.filter((r) =>
-      ["/en", "/fr", "/de"].includes(r.urlPattern)
-    );
+    const langRoutes = expanded.filter((r) => ["/en", "/fr", "/de"].includes(r.urlPattern));
     expect(langRoutes.length).toBe(3);
   });
 

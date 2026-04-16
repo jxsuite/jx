@@ -1,19 +1,32 @@
 /**
- * inline-edit.js — Contenteditable inline editing for content mode
+ * Inline-edit.js — Contenteditable inline editing for content mode
  *
- * Manages the lifecycle of editing text-bearing block elements directly
- * on the canvas. Handles rich text formatting, Enter for new paragraphs,
- * and slash commands for inserting elements.
+ * Manages the lifecycle of editing text-bearing block elements directly on the canvas. Handles rich
+ * text formatting, Enter for new paragraphs, and slash commands for inserting elements.
  */
 
-import { MD_BLOCK, MD_INLINE } from "./md-allowlist.js";
 import elementsMeta from "./elements-meta.json";
 import { toggleInlineFormat, normalizeInlineContent } from "./inline-format.js";
 
 // ─── Inline tag set (tags that represent rich text formatting) ─────────────
 
 /** Fallback set — used when parent context is unknown */
-const INLINE_TAGS = new Set(["em", "strong", "del", "code", "a", "span", "br", "img", "b", "i", "u", "sub", "sup", "s"]);
+const INLINE_TAGS = new Set([
+  "em",
+  "strong",
+  "del",
+  "code",
+  "a",
+  "span",
+  "br",
+  "img",
+  "b",
+  "i",
+  "u",
+  "sub",
+  "sup",
+  "s",
+]);
 
 /** Tags that can be edited inline (text-bearing block elements) */
 const EDITABLE_BLOCKS = new Set([
@@ -33,8 +46,9 @@ const EDITABLE_BLOCKS = new Set([
 // ─── Context-aware inline scoping ─────────────────────────────────────────
 
 /**
- * Check if a child tag is inline within the context of a given parent tag.
- * Uses $inlineChildren from elements-meta.json.
+ * Check if a child tag is inline within the context of a given parent tag. Uses $inlineChildren
+ * from elements-meta.json.
+ *
  * @param {string} childTag
  * @param {string} parentTag
  * @returns {boolean}
@@ -47,8 +61,9 @@ export function isInlineInContext(childTag, parentTag) {
 }
 
 /**
- * Get the resolved $inlineActions for a given element tag.
- * Follows string references (e.g., "h1" → look up h1's actions).
+ * Get the resolved $inlineActions for a given element tag. Follows string references (e.g., "h1" →
+ * look up h1's actions).
+ *
  * @param {string} tag
  * @returns {any[] | null}
  */
@@ -81,10 +96,11 @@ let endFn = null; // function() called when editing stops
 /** @type {any} */
 let slashMenuEl = null; // slash command menu element
 /** @type {any} */
-let slashMenuCleanup = null;
+let _slashMenuCleanup = null;
 
 /**
  * Check if an element is a text-bearing editable block.
+ *
  * @param {HTMLElement} el
  * @returns {boolean}
  */
@@ -93,9 +109,9 @@ export function isEditableBlock(el) {
 }
 
 /**
- * Check if a node is an inline child.
- * When parentNode is provided, uses context-aware scoping from metadata.
- * Without parent, uses the fallback INLINE_TAGS set.
+ * Check if a node is an inline child. When parentNode is provided, uses context-aware scoping from
+ * metadata. Without parent, uses the fallback INLINE_TAGS set.
+ *
  * @param {any} node
  * @param {any} [parentNode]
  * @returns {boolean}
@@ -114,12 +130,11 @@ export function isInlineElement(node, parentNode) {
  * Start inline editing on a canvas element.
  *
  * @param {HTMLElement} el - The canvas DOM element to edit
- * @param {Array<any>} path - JSON path to the element
- * @param {Record<string, any>} callbacks - { onCommit, onSplit, onInsert, onEnd }
- *   onCommit(path, children|null, textContent|null) — save inline content
- *   onSplit(path, beforeChildren, afterChildren) — Enter key: split block
- *   onInsert(path, elementDef) — slash command: insert after
- *   onEnd() — called when editing stops (for overlay restoration)
+ * @param {any[]} path - JSON path to the element
+ * @param {Record<string, any>} callbacks - { onCommit, onSplit, onInsert, onEnd } onCommit(path,
+ *   children|null, textContent|null) — save inline content onSplit(path, beforeChildren,
+ *   afterChildren) — Enter key: split block onInsert(path, elementDef) — slash command: insert
+ *   after onEnd() — called when editing stops (for overlay restoration)
  */
 export function startEditing(el, path, callbacks) {
   if (activeEl) stopEditing();
@@ -155,9 +170,7 @@ export function startEditing(el, path, callbacks) {
   el.addEventListener("paste", handlePaste);
 }
 
-/**
- * Stop editing and commit changes.
- */
+/** Stop editing and commit changes. */
 export function stopEditing() {
   if (!activeEl) return;
 
@@ -190,6 +203,7 @@ export function stopEditing() {
 
 /**
  * Whether inline editing is currently active.
+ *
  * @returns {boolean}
  */
 export function isEditing() {
@@ -198,6 +212,7 @@ export function isEditing() {
 
 /**
  * Get the currently editing element.
+ *
  * @returns {HTMLElement | null}
  */
 export function getActiveElement() {
@@ -206,9 +221,7 @@ export function getActiveElement() {
 
 // ─── Event handlers ────────────────────────────────────────────────────────
 
-/**
- * @param {KeyboardEvent} e
- */
+/** @param {KeyboardEvent} e */
 function handleKeydown(e) {
   if (e.key === "Escape") {
     e.preventDefault();
@@ -268,9 +281,7 @@ function handleInput() {
   }
 }
 
-/**
- * @param {FocusEvent} e
- */
+/** @param {FocusEvent} e */
 function handleBlur(e) {
   // Don't close if clicking the slash menu
   if (slashMenuEl && slashMenuEl.contains(/** @type {Node | null} */ (e.relatedTarget))) return;
@@ -283,9 +294,7 @@ function handleBlur(e) {
   }, 150);
 }
 
-/**
- * @param {ClipboardEvent} e
- */
+/** @param {ClipboardEvent} e */
 function handlePaste(e) {
   e.preventDefault();
   // Paste as plain text to avoid foreign HTML
@@ -342,10 +351,11 @@ function commitChanges() {
 }
 
 /**
- * Convert a contenteditable element's content to Jx children/textContent.
- * Returns { textContent } for plain text or { children } for rich content.
+ * Convert a contenteditable element's content to Jx children/textContent. Returns { textContent }
+ * for plain text or { children } for rich content.
+ *
  * @param {HTMLElement} el
- * @returns {{ textContent?: string | null, children?: any[] }}
+ * @returns {{ textContent?: string | null; children?: any[] }}
  */
 function elementToJsonsx(el) {
   const nodes = el.childNodes;
@@ -367,7 +377,8 @@ function elementToJsonsx(el) {
   // If all children are plain text spans (no formatting, no attributes),
   // collapse them into a single textContent
   const allPlainText = children.every(
-    (/** @type {any} */ c) => c.tagName === "span" && c.textContent != null && !c.children && !c.attributes && !c.style
+    (/** @type {any} */ c) =>
+      c.tagName === "span" && c.textContent != null && !c.children && !c.attributes && !c.style,
   );
   if (allPlainText) {
     return { textContent: children.map((/** @type {any} */ c) => c.textContent).join("") };
@@ -378,6 +389,7 @@ function elementToJsonsx(el) {
 
 /**
  * Convert a DOM node to a Jx element definition.
+ *
  * @param {Node} node
  * @returns {any}
  */
@@ -403,7 +415,8 @@ function domNodeToJsonsx(node) {
   // Attributes
   if (tag === "a" && /** @type {HTMLAnchorElement} */ (el).href) {
     result.attributes = { href: el.getAttribute("href") };
-    if (/** @type {HTMLAnchorElement} */ (el).title) result.attributes.title = /** @type {HTMLAnchorElement} */ (el).title;
+    if (/** @type {HTMLAnchorElement} */ (el).title)
+      result.attributes.title = /** @type {HTMLAnchorElement} */ (el).title;
   }
   if (tag === "code") {
     result.textContent = el.textContent;
@@ -428,10 +441,10 @@ function domNodeToJsonsx(node) {
 }
 
 /**
- * Convert a DocumentFragment to a Jx-compatible structure.
- * Returns { textContent } or { children }.
+ * Convert a DocumentFragment to a Jx-compatible structure. Returns { textContent } or { children }.
+ *
  * @param {DocumentFragment} frag
- * @returns {{ textContent?: string | null, children?: any[] }}
+ * @returns {{ textContent?: string | null; children?: any[] }}
  */
 function fragmentToJsonsx(frag) {
   const nodes = frag.childNodes;
@@ -484,14 +497,17 @@ const SLASH_COMMANDS = [
   { label: "Table", tag: "table", icon: "\u229E", description: "Insert table" },
 ];
 
-/** Project-level component commands — populated externally
- * @type {Array<{ label: string, tag: string, description: string }>}
+/**
+ * Project-level component commands — populated externally
+ *
+ * @type {{ label: string; tag: string; description: string }[]}
  */
 let projectComponents = [];
 
 /**
  * Set available project components for the slash menu.
- * @param {Array<{ label: string, tag: string, description: string }>} components
+ *
+ * @param {{ label: string; tag: string; description: string }[]} components
  */
 export function setProjectComponents(components) {
   projectComponents = components;
@@ -558,9 +574,7 @@ function updateSlashMenu() {
   }
 }
 
-/**
- * @param {string} filter
- */
+/** @param {string} filter */
 function renderSlashItems(filter) {
   if (!slashMenuEl) return;
   const menuInner = slashMenuEl._menuInner;
@@ -577,7 +591,8 @@ function renderSlashItems(filter) {
 
   const items = filter
     ? allItems.filter(
-        (/** @type {any} */ i) => i.label.toLowerCase().includes(filter) || i.tag.toLowerCase().includes(filter),
+        (/** @type {any} */ i) =>
+          i.label.toLowerCase().includes(filter) || i.tag.toLowerCase().includes(filter),
       )
     : allItems;
 
@@ -650,9 +665,7 @@ function renderSlashItems(filter) {
   }
 }
 
-/**
- * @param {any} item
- */
+/** @param {any} item */
 function selectSlashItem(item) {
   if (!activeEl || !insertFn || !activePath) return;
 
@@ -722,6 +735,7 @@ function dismissSlashMenu() {
 
 /**
  * Build a default Jx element definition for a given tag.
+ *
  * @param {string} tag
  * @returns {any}
  */

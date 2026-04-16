@@ -1,4 +1,5 @@
 # Jx Specification
+
 ## Declarative Document Object Model — JSON Edition
 
 **Version:** 2.0.0-draft
@@ -82,14 +83,14 @@ Within a single component, state declared in `state` is available to all descend
 
 Where a web platform standard exists, Jx follows it:
 
-| Jx Feature | Platform Precedent |
-|---|---|
-| `$ref` for references | JSON Reference / JSON Pointer (RFC 6901) |
-| `$defs` for type definitions | JSON Schema 2020-12 |
-| Signal scope at component boundary | CSS Custom Properties scope |
-| Explicit props at element boundary | HTML attributes on Custom Elements |
-| `.json` / `.js` file pairs | HTML / JS, CSS Modules / JS |
-| `$prototype` namespaces | Web API constructor names |
+| Jx Feature                         | Platform Precedent                       |
+| ---------------------------------- | ---------------------------------------- |
+| `$ref` for references              | JSON Reference / JSON Pointer (RFC 6901) |
+| `$defs` for type definitions       | JSON Schema 2020-12                      |
+| Signal scope at component boundary | CSS Custom Properties scope              |
+| Explicit props at element boundary | HTML attributes on Custom Elements       |
+| `.json` / `.js` file pairs         | HTML / JS, CSS Modules / JS              |
+| `$prototype` namespaces            | Web API constructor names                |
 
 ---
 
@@ -103,21 +104,21 @@ Every Jx document is a JSON object with the following top-level fields:
 {
   "$schema": "https://jxplatform.net/schema/v1",
   "$id": "ComponentName",
-  "$defs": { },
-  "state": { },
+  "$defs": {},
+  "state": {},
   "tagName": "my-component",
-  "children": [ ]
+  "children": []
 }
 ```
 
-| Field | Required | Description |
-|---|---|---|
-| `$schema` | Recommended | URI identifying the Jx dialect version |
-| `$id` | Recommended | Component identifier, used by tooling |
-| `$defs` | Optional | Pure JSON Schema type definitions — tooling only, no runtime artifacts |
-| `state` | Optional | Reactive state: signals, computed values, functions, and data sources |
-| `tagName` | Required | HTML tag name for the root element |
-| `children` | Optional | Array of child element definitions, or Array namespace |
+| Field      | Required    | Description                                                            |
+| ---------- | ----------- | ---------------------------------------------------------------------- |
+| `$schema`  | Recommended | URI identifying the Jx dialect version                                 |
+| `$id`      | Recommended | Component identifier, used by tooling                                  |
+| `$defs`    | Optional    | Pure JSON Schema type definitions — tooling only, no runtime artifacts |
+| `state`    | Optional    | Reactive state: signals, computed values, functions, and data sources  |
+| `tagName`  | Required    | HTML tag name for the root element                                     |
+| `children` | Optional    | Array of child element definitions, or Array namespace                 |
 
 ### 3.2 JSON Schema Dialect
 
@@ -166,8 +167,12 @@ When handler functions grow complex, they may be extracted to a `.js` sidecar fi
 The `.js` file exports each function as a named export. The first parameter is always `state` — the component's reactive scope object:
 
 ```js
-export function increment(state) { state.count++ }
-export function decrement(state) { state.count = Math.max(0, state.count - 1) }
+export function increment(state) {
+  state.count++;
+}
+export function decrement(state) {
+  state.count = Math.max(0, state.count - 1);
+}
 ```
 
 When multiple Function entries share a `$src`, the runtime imports the module once and extracts named exports. Module caching is automatic.
@@ -178,10 +183,10 @@ At runtime, function exports are called with `state` as their first argument. `s
 
 ```js
 export function increment(state) {
-  state.count++
+  state.count++;
 }
 export function handleInput(state, event) {
-  state.name = event.target.value
+  state.name = event.target.value;
 }
 ```
 
@@ -212,7 +217,7 @@ This separation aligns `$defs` with its standard JSON Schema 2020-12 meaning and
     "TodoItem": {
       "type": "object",
       "properties": {
-        "id":   { "type": "integer" },
+        "id": { "type": "integer" },
         "text": { "type": "string" },
         "done": { "type": "boolean" }
       },
@@ -223,6 +228,7 @@ This separation aligns `$defs` with its standard JSON Schema 2020-12 meaning and
 ```
 
 **Rules:**
+
 - Every `$defs` entry is a JSON Schema — it has `type`, `properties`, `enum`, `$ref`, etc.
 - No `default`, `$prototype`, `body`, `signal`, or template strings
 - Naming convention: `PascalCase` for types (`TodoItem`, `Count`, `Status`)
@@ -244,13 +250,13 @@ Every entry in `state` falls into exactly one of four shapes, determinable by in
 ```json
 {
   "state": {
-    "count":   0,
-    "price":   9.99,
-    "name":    "World",
-    "active":  false,
-    "data":    null,
-    "tags":    [],
-    "user":    { "id": null, "name": "", "role": "guest" }
+    "count": 0,
+    "price": 9.99,
+    "name": "World",
+    "active": false,
+    "data": null,
+    "tags": [],
+    "user": { "id": null, "name": "", "role": "guest" }
   }
 }
 ```
@@ -258,6 +264,7 @@ Every entry in `state` falls into exactly one of four shapes, determinable by in
 **Emitted as:** property on `reactive({})`, initialized to the value.
 
 **Rules:**
+
 - A plain string without `${}` is a string state property initialized to that string value
 - A plain object with no `$prototype`, no `type`, no `default`, and no `properties` is an object state property
 - All state entries are reactive by default — no `signal: true` needed
@@ -287,6 +294,7 @@ Every entry in `state` falls into exactly one of four shapes, determinable by in
 **Emitted as:** property on `reactive({})`, initialized to the `default` value.
 
 **Rules:**
+
 - The `default` keyword is the required discriminator — its value is the initial state
 - The `type` property references a JSON Schema (either via `$ref` to `$defs` or inline)
 - Schema keywords are tooling-only — they power LSP validation, autocomplete, and studio rendering. Stripped before runtime emission.
@@ -302,10 +310,10 @@ Every entry in `state` falls into exactly one of four shapes, determinable by in
 ```json
 {
   "state": {
-    "fullName":     "${state.firstName} ${state.lastName}",
+    "fullName": "${state.firstName} ${state.lastName}",
     "displayTitle": "${state.score >= 90 ? 'Expert' : 'Beginner'}",
-    "scoreLabel":   "${state.score}%",
-    "isEmpty":      "${state.items.length === 0}"
+    "scoreLabel": "${state.score}%",
+    "isEmpty": "${state.items.length === 0}"
   }
 }
 ```
@@ -313,6 +321,7 @@ Every entry in `state` falls into exactly one of four shapes, determinable by in
 **Emitted as:** `computed(() => \`...template...\`)`
 
 **Rules:**
+
 - Dependencies are tracked automatically by Vue when `state.*` properties are read during evaluation
 - The string must be a pure expression — no statements, no assignments, no semicolons
 - `return` is never written — the expression value is the signal value
@@ -368,18 +377,18 @@ Functions and data sources are both declared via `$prototype`:
 
 ##### 4d — Function Properties
 
-| Property | Required | Description |
-|---|---|---|
-| `$prototype` | Yes | Must be `"Function"` |
-| `body` | If no `$src` | Raw function body string |
-| `arguments` | No | Array of parameter name strings. Default: `[]` |
-| `parameters` | No | Array of CEM-compatible parameter objects (alternative to `arguments`) |
-| `name` | No | Explicit function name. Default: the `state` key name |
-| `$src` | If no `body` | External module specifier |
-| `$export` | No | Named export in `$src` module. Default: `state` key name |
-| `signal` | No | When `true`, wraps in `computed()`. Default: `false` |
-| `description` | No | Documentation string |
-| `emits` | No | Array of CEM `Event` objects this function dispatches |
+| Property      | Required     | Description                                                            |
+| ------------- | ------------ | ---------------------------------------------------------------------- |
+| `$prototype`  | Yes          | Must be `"Function"`                                                   |
+| `body`        | If no `$src` | Raw function body string                                               |
+| `arguments`   | No           | Array of parameter name strings. Default: `[]`                         |
+| `parameters`  | No           | Array of CEM-compatible parameter objects (alternative to `arguments`) |
+| `name`        | No           | Explicit function name. Default: the `state` key name                  |
+| `$src`        | If no `body` | External module specifier                                              |
+| `$export`     | No           | Named export in `$src` module. Default: `state` key name               |
+| `signal`      | No           | When `true`, wraps in `computed()`. Default: `false`                   |
+| `description` | No           | Documentation string                                                   |
+| `emits`       | No           | Array of CEM `Event` objects this function dispatches                  |
 
 `body` and `$src` are mutually exclusive. Declaring both is a compile-time error.
 
@@ -411,14 +420,14 @@ Functions and data sources are both declared via `$prototype`:
 
 ### 5.4 `signal: true` Semantics
 
-| Shape | `signal: true` | Behaviour |
-|---|---|---|
-| Naked value | Not applicable | Reactive by default via `reactive()` |
-| Typed value with `default` | Not applicable | Reactive by default via `reactive()` |
-| Template string | Not applicable | `computed()` by default |
-| `$prototype: "Function"` (handler) | Forbidden | Not applicable |
-| `$prototype: "Function"` (computed) | **Required to opt in** | Wraps in `computed()` |
-| `$prototype: "ClassName"` | **Optional** | Wraps resolved value in `ref()` |
+| Shape                               | `signal: true`         | Behaviour                            |
+| ----------------------------------- | ---------------------- | ------------------------------------ |
+| Naked value                         | Not applicable         | Reactive by default via `reactive()` |
+| Typed value with `default`          | Not applicable         | Reactive by default via `reactive()` |
+| Template string                     | Not applicable         | `computed()` by default              |
+| `$prototype: "Function"` (handler)  | Forbidden              | Not applicable                       |
+| `$prototype: "Function"` (computed) | **Required to opt in** | Wraps in `computed()`                |
+| `$prototype: "ClassName"`           | **Optional**           | Wraps resolved value in `ref()`      |
 
 ### 5.5 Naming Convention
 
@@ -430,17 +439,17 @@ Within function `body` strings and external `.js` files, state is read and writt
 
 ```js
 // Read
-const current = state.count
+const current = state.count;
 
 // Write
-state.count = current + 1
+state.count = current + 1;
 
 // Mutate array in place (Vue tracks array mutations)
-state.items.push(newItem)
-state.items.splice(0, 1)
+state.items.push(newItem);
+state.items.splice(0, 1);
 
 // Mutate nested object (Vue tracks nested reads and writes)
-state.user.name = 'Alice'
+state.user.name = "Alice";
 ```
 
 > **Status: Implemented.** All examples and the runtime use direct property access on the `state` reactive proxy.
@@ -496,8 +505,8 @@ Template literal syntax `${}` is valid **anywhere a string value appears in the 
 {
   "tagName": "div",
   "textContent": "${state.count} items remaining",
-  "className":   "${state.active ? 'card active' : 'card'}",
-  "hidden":      "${state.items.length === 0}"
+  "className": "${state.active ? 'card active' : 'card'}",
+  "hidden": "${state.items.length === 0}"
 }
 ```
 
@@ -507,7 +516,7 @@ Template literal syntax `${}` is valid **anywhere a string value appears in the 
 {
   "tagName": "div",
   "style": {
-    "color":   "${state.score > 90 ? 'gold' : 'inherit'}",
+    "color": "${state.score > 90 ? 'gold' : 'inherit'}",
     "opacity": "${state.loading ? '0.5' : '1'}"
   }
 }
@@ -537,10 +546,10 @@ watchEffect(() => {
 
 ### 6.5 Relationship to `$ref`
 
-| Pattern | Use when |
-|---|---|
+| Pattern                       | Use when                                                  |
+| ----------------------------- | --------------------------------------------------------- |
 | `{ "$ref": "#/state/label" }` | Binding to a named signal — referenced in multiple places |
-| `"${state.count} items"` | Inline computed binding used in exactly one place |
+| `"${state.count} items"`      | Inline computed binding used in exactly one place         |
 
 Prefer `${}` for single-use reactive bindings. Prefer `$ref` for reused or named signals.
 
@@ -564,15 +573,15 @@ Jx uses `$ref` to express bindings between properties and declared state, follow
 
 ### 7.2 Reference Schemes
 
-| Scheme | Example | Resolves to |
-|---|---|---|
-| Internal `state` | `"#/state/count"` | Signal or handler in current component's `state` |
-| Window global | `"window#/currentUser"` | `window.currentUser` |
-| Document global | `"document#/appConfig"` | `document.appConfig` |
-| Parent scope | `"parent#/sharedState"` | Named signal passed via `$props` |
-| Map context | `"$map/item"` | Current item in an Array map iteration |
-| Map index | `"$map/index"` | Current index in an Array map iteration |
-| External file | `"./other.json"` | Another Jx component (fully dereferenced) |
+| Scheme           | Example                 | Resolves to                                      |
+| ---------------- | ----------------------- | ------------------------------------------------ |
+| Internal `state` | `"#/state/count"`       | Signal or handler in current component's `state` |
+| Window global    | `"window#/currentUser"` | `window.currentUser`                             |
+| Document global  | `"document#/appConfig"` | `document.appConfig`                             |
+| Parent scope     | `"parent#/sharedState"` | Named signal passed via `$props`                 |
+| Map context      | `"$map/item"`           | Current item in an Array map iteration           |
+| Map index        | `"$map/index"`          | Current index in an Array map iteration          |
+| External file    | `"./other.json"`        | Another Jx component (fully dereferenced)        |
 
 ### 7.3 Reactive Bindings
 
@@ -642,7 +651,7 @@ Children are expressed as a JSON array of element definition objects:
   "tagName": "div",
   "children": [
     { "tagName": "h1", "textContent": "Title" },
-    { "tagName": "p",  "textContent": "Content" }
+    { "tagName": "p", "textContent": "Content" }
   ]
 }
 ```
@@ -657,9 +666,7 @@ Custom elements support the standard HTML `slot` mechanism for content compositi
   "children": [
     {
       "tagName": "header",
-      "children": [
-        { "tagName": "slot", "attributes": { "name": "header" } }
-      ]
+      "children": [{ "tagName": "slot", "attributes": { "name": "header" } }]
     },
     {
       "tagName": "main",
@@ -721,9 +728,9 @@ Named breakpoints are declared at root level using `$media`, following the CSS `
 ```json
 {
   "$media": {
-    "--sm":   "(min-width: 640px)",
-    "--md":   "(min-width: 768px)",
-    "--lg":   "(min-width: 1024px)",
+    "--sm": "(min-width: 640px)",
+    "--md": "(min-width: 768px)",
+    "--lg": "(min-width: 1024px)",
     "--dark": "(prefers-color-scheme: dark)"
   }
 }
@@ -770,9 +777,9 @@ Dynamic lists are declared by setting `children` to an object with `$prototype: 
 
 ### 10.2 Iteration Context
 
-| Reference | Resolves to |
-|---|---|
-| `{ "$ref": "$map/item" }` | The current array item object |
+| Reference                  | Resolves to                          |
+| -------------------------- | ------------------------------------ |
+| `{ "$ref": "$map/item" }`  | The current array item object        |
 | `{ "$ref": "$map/index" }` | The current zero-based integer index |
 
 ### 10.3 Filtering and Sorting
@@ -780,9 +787,9 @@ Dynamic lists are declared by setting `children` to an object with `$prototype: 
 ```json
 {
   "$prototype": "Array",
-  "items":  { "$ref": "#/state/allItems" },
+  "items": { "$ref": "#/state/allItems" },
   "filter": { "$ref": "#/state/isVisible" },
-  "sort":   { "$ref": "#/state/sortByDate" },
+  "sort": { "$ref": "#/state/sortByDate" },
   "map": { "tagName": "list-item", "item": { "$ref": "$map/item" } }
 }
 ```
@@ -813,28 +820,28 @@ Web APIs are accessed via `$prototype` in a `state` entry:
 
 ### 11.2 Supported Prototypes
 
-| `$prototype` | Web API | Status |
-|---|---|---|
-| `Request` | Fetch API | **Implemented** — reactive URL, debounce, manual mode, abort controller |
-| `URLSearchParams` | URL API | **Implemented** — computed `.toString()` |
-| `FormData` | FormData API | **Implemented** — basic field population |
-| `LocalStorage` | Storage API | **Implemented** — reactive read/write with persistence |
-| `SessionStorage` | Storage API | **Implemented** — session-scoped reactive storage |
-| `Cookie` | Cookie API | **Implemented** — maxAge, path, domain, secure, sameSite |
-| `IndexedDB` | IDB API | **Implemented** — store creation, indexes, CRUD helper |
-| `Array` | — | **Implemented** — dynamic mapped list (see §10) |
-| `Set` | — | **Implemented** — `new Set(default)` |
-| `Map` | — | **Implemented** — `new Map(Object.entries(default))` |
-| `Blob` | Blob API | **Implemented** — parts and type |
-| `ReadableStream` | Streams API | **Pending** — stub returns `null` |
+| `$prototype`      | Web API      | Status                                                                  |
+| ----------------- | ------------ | ----------------------------------------------------------------------- |
+| `Request`         | Fetch API    | **Implemented** — reactive URL, debounce, manual mode, abort controller |
+| `URLSearchParams` | URL API      | **Implemented** — computed `.toString()`                                |
+| `FormData`        | FormData API | **Implemented** — basic field population                                |
+| `LocalStorage`    | Storage API  | **Implemented** — reactive read/write with persistence                  |
+| `SessionStorage`  | Storage API  | **Implemented** — session-scoped reactive storage                       |
+| `Cookie`          | Cookie API   | **Implemented** — maxAge, path, domain, secure, sameSite                |
+| `IndexedDB`       | IDB API      | **Implemented** — store creation, indexes, CRUD helper                  |
+| `Array`           | —            | **Implemented** — dynamic mapped list (see §10)                         |
+| `Set`             | —            | **Implemented** — `new Set(default)`                                    |
+| `Map`             | —            | **Implemented** — `new Map(Object.entries(default))`                    |
+| `Blob`            | Blob API     | **Implemented** — parts and type                                        |
+| `ReadableStream`  | Streams API  | **Pending** — stub returns `null`                                       |
 
 ### 11.3 Timing Values
 
-| Value | When | Status |
-|---|---|---|
-| `"client"` | Resolved at runtime in the browser (default) | **Implemented** |
-| `"server"` | Resolved at runtime on the server via RPC | **Implemented** |
-| `"compiler"` | Resolved at build time; result baked into emitted HTML | **Pending** |
+| Value        | When                                                   | Status          |
+| ------------ | ------------------------------------------------------ | --------------- |
+| `"client"`   | Resolved at runtime in the browser (default)           | **Implemented** |
+| `"server"`   | Resolved at runtime on the server via RPC              | **Implemented** |
+| `"compiler"` | Resolved at build time; result baked into emitted HTML | **Pending**     |
 
 ### 11.4 Server Timing — RPC Function Boundary
 
@@ -857,8 +864,8 @@ The referenced function must be an async export in the `$src` module:
 
 ```js
 export async function fetchMetrics() {
-  const { data } = await supabase.from('metrics').select('*')
-  return data
+  const { data } = await supabase.from("metrics").select("*");
+  return data;
 }
 ```
 
@@ -908,25 +915,27 @@ Private environment variables and server-only credentials remain in the server p
 }
 ```
 
-| Specifier form | Example | Resolution |
-|---|---|---|
-| Relative `.class.json` path | `"./lib/MyClass.class.json"` | Relative to the `.json` file |
-| Absolute `.class.json` URL | `"https://cdn.example.com/Parser.class.json"` | Fetched directly |
-| `$prototype: "Function"` with `.js` | `"./lib/helpers.js"` | Direct JS import (Functions only) |
+| Specifier form                      | Example                                       | Resolution                        |
+| ----------------------------------- | --------------------------------------------- | --------------------------------- |
+| Relative `.class.json` path         | `"./lib/MyClass.class.json"`                  | Relative to the `.json` file      |
+| Absolute `.class.json` URL          | `"https://cdn.example.com/Parser.class.json"` | Fetched directly                  |
+| `$prototype: "Function"` with `.js` | `"./lib/helpers.js"`                          | Direct JS import (Functions only) |
 
 ### 12.2 External Class Contract
 
 **Constructor:** Receives a single configuration object containing all `state` properties except reserved keywords.
 
 **Value resolution:** Checked in order:
+
 1. `instance.resolve()` — async method, awaited
 2. `instance.value` — synchronous getter or property
 3. `instance` itself — fallback
 
 **Reactivity (optional):**
+
 ```js
-instance.subscribe(callback)
-instance.unsubscribe()
+instance.subscribe(callback);
+instance.unsubscribe();
 ```
 
 ### 12.3 `.class.json` Schema-Defined Classes
@@ -964,20 +973,23 @@ To avoid repeating `$src` paths across every state entry, a document may declare
   },
   "state": {
     "posts": { "$prototype": "MarkdownCollection", "src": "./content/posts/*.md" },
-    "currentPost": { "$prototype": "MarkdownFile", "src": "./content/posts/${state.currentSlug}.md" }
+    "currentPost": {
+      "$prototype": "MarkdownFile",
+      "src": "./content/posts/${state.currentSlug}.md"
+    }
   }
 }
 ```
 
 **Rules:**
 
-| Rule | Description |
-|---|---|
-| Values must end in `.class.json` | Non-`.class.json` values emit a console warning and are skipped |
-| Explicit `$src` wins | If a state entry already has `$src`, the import map is not consulted |
-| `$prototype: "Function"` excluded | Function prototypes are never resolved via import map |
-| Built-in prototypes unchanged | `Request`, `Set`, `Map`, `LocalStorage`, etc. are unaffected |
-| Site-level cascading | `imports` in `site.json` cascade to all pages; page-level entries win on collision |
+| Rule                              | Description                                                                        |
+| --------------------------------- | ---------------------------------------------------------------------------------- |
+| Values must end in `.class.json`  | Non-`.class.json` values emit a console warning and are skipped                    |
+| Explicit `$src` wins              | If a state entry already has `$src`, the import map is not consulted               |
+| `$prototype: "Function"` excluded | Function prototypes are never resolved via import map                              |
+| Built-in prototypes unchanged     | `Request`, `Set`, `Map`, `LocalStorage`, etc. are unaffected                       |
+| Site-level cascading              | `imports` in `site.json` cascade to all pages; page-level entries win on collision |
 
 **Resolution order:** explicit `$src` → page `imports` → site `imports` → built-in prototypes → unknown prototype warning.
 
@@ -1040,14 +1052,16 @@ Signal scope is bounded at the component (custom element) level. Child component
 ```json
 {
   "tagName": "main",
-  "children": [{
-    "$switch": { "$ref": "#/state/currentRoute" },
-    "cases": {
-      "home":    { "$ref": "./views/home.json" },
-      "about":   { "$ref": "./views/about.json" },
-      "profile": { "$ref": "./views/profile.json" }
+  "children": [
+    {
+      "$switch": { "$ref": "#/state/currentRoute" },
+      "cases": {
+        "home": { "$ref": "./views/home.json" },
+        "about": { "$ref": "./views/about.json" },
+        "profile": { "$ref": "./views/profile.json" }
+      }
     }
-  }]
+  ]
 }
 ```
 
@@ -1059,11 +1073,11 @@ Signal scope is bounded at the component (custom element) level. Child component
 
 ### 15.1 Scope Levels
 
-| Level | Scope | Mirrors |
-|---|---|---|
-| `window` | Application-wide | `window` global |
-| `document` | Document-wide | `document` object |
-| Component | Custom element boundary | CSS Custom Property scope |
+| Level      | Scope                   | Mirrors                   |
+| ---------- | ----------------------- | ------------------------- |
+| `window`   | Application-wide        | `window` global           |
+| `document` | Document-wide           | `document` object         |
+| Component  | Custom element boundary | CSS Custom Property scope |
 
 ### 15.2 Within-Component Scope
 
@@ -1099,9 +1113,7 @@ A Jx component whose root `tagName` contains a hyphen is a custom element defini
     "status": "offline",
     "displayName": "${state.username} (${state.status})"
   },
-  "children": [
-    { "tagName": "h3", "textContent": "${state.displayName}" }
-  ]
+  "children": [{ "tagName": "h3", "textContent": "${state.displayName}" }]
 }
 ```
 
@@ -1114,9 +1126,7 @@ Custom elements use JavaScript properties as their primary data interface. `$pro
 ```json
 {
   "tagName": "variant-item-list",
-  "$elements": [
-    { "$ref": "./components/variant-card.json" }
-  ]
+  "$elements": [{ "$ref": "./components/variant-card.json" }]
 }
 ```
 
@@ -1126,12 +1136,12 @@ Dependencies are registered depth-first before the parent.
 
 ### 16.4 Lifecycle Hooks
 
-| Callback | `state` Entry | Called When |
-|---|---|---|
-| `connectedCallback` | `onMount` | Element inserted into DOM and rendered |
-| `disconnectedCallback` | `onUnmount` | Element removed from DOM |
-| `adoptedCallback` | `onAdopted` | Element moved to new document |
-| `attributeChangedCallback` | (automatic) | Observed attribute changes |
+| Callback                   | `state` Entry | Called When                            |
+| -------------------------- | ------------- | -------------------------------------- |
+| `connectedCallback`        | `onMount`     | Element inserted into DOM and rendered |
+| `disconnectedCallback`     | `onUnmount`   | Element removed from DOM               |
+| `adoptedCallback`          | `onAdopted`   | Element moved to new document          |
+| `attributeChangedCallback` | (automatic)   | Observed attribute changes             |
 
 > **Status: Implemented.**
 
@@ -1157,12 +1167,12 @@ Custom elements render to the light DOM (no Shadow DOM). Style scoping uses `dat
 
 ### 16.7 Development vs. Production
 
-| | Development | Production |
-|---|---|---|
-| Renderer | `@jxplatform/runtime` | `lit-html` |
-| State | `@vue/reactivity` | `@vue/reactivity` |
-| Source | JSON interpreted live | JSON compiled away |
-| Bundle | `.json` + runtime | `.js` classes only (~10 kB deps) |
+|          | Development           | Production                       |
+| -------- | --------------------- | -------------------------------- |
+| Renderer | `@jxplatform/runtime` | `lit-html`                       |
+| State    | `@vue/reactivity`     | `@vue/reactivity`                |
+| Source   | JSON interpreted live | JSON compiled away               |
+| Bundle   | `.json` + runtime     | `.js` classes only (~10 kB deps) |
 
 ### 16.8 CEM-Compatible Annotations
 
@@ -1179,47 +1189,47 @@ Custom elements may carry annotations compatible with the Custom Elements Manife
 
 ## 17. Reserved Keywords
 
-| Keyword | Purpose |
-|---|---|
-| `$schema` | Dialect identifier |
-| `$id` | Component identifier |
-| `$defs` | Pure JSON Schema type definitions |
-| `state` | Reactive state, computed values, functions, and data sources |
-| `$ref` | Reference pointer (JSON Pointer, RFC 6901) |
-| `$props` | Explicit prop passing at component boundary |
-| `$prototype` | Constructor name — Web API class, `"Function"`, or external class |
-| `$src` | External module specifier |
-| `$export` | Named export within `$src` module |
-| `$switch` | Dynamic component switching |
-| `$map` | Iteration context namespace |
-| `$media` | Named media breakpoint declarations |
-| `$elements` | Custom element dependency declarations |
-| `signal` | Reactive wrapping on computed functions and external classes |
-| `timing` | Execution timing: `"compiler"`, `"server"`, or `"client"` |
-| `default` | Initial value for typed state entries |
-| `body` | Inline function body |
-| `arguments` | Function parameter names (string array) |
-| `parameters` | CEM-compatible function parameter objects |
-| `name` | Inline function explicit name |
-| `description` | Documentation string |
-| `observedAttributes` | HTML attributes the custom element watches |
-| `onMount` | Lifecycle: connected and rendered |
-| `onUnmount` | Lifecycle: disconnected |
-| `onAdopted` | Lifecycle: adopted into new document |
+| Keyword              | Purpose                                                           |
+| -------------------- | ----------------------------------------------------------------- |
+| `$schema`            | Dialect identifier                                                |
+| `$id`                | Component identifier                                              |
+| `$defs`              | Pure JSON Schema type definitions                                 |
+| `state`              | Reactive state, computed values, functions, and data sources      |
+| `$ref`               | Reference pointer (JSON Pointer, RFC 6901)                        |
+| `$props`             | Explicit prop passing at component boundary                       |
+| `$prototype`         | Constructor name — Web API class, `"Function"`, or external class |
+| `$src`               | External module specifier                                         |
+| `$export`            | Named export within `$src` module                                 |
+| `$switch`            | Dynamic component switching                                       |
+| `$map`               | Iteration context namespace                                       |
+| `$media`             | Named media breakpoint declarations                               |
+| `$elements`          | Custom element dependency declarations                            |
+| `signal`             | Reactive wrapping on computed functions and external classes      |
+| `timing`             | Execution timing: `"compiler"`, `"server"`, or `"client"`         |
+| `default`            | Initial value for typed state entries                             |
+| `body`               | Inline function body                                              |
+| `arguments`          | Function parameter names (string array)                           |
+| `parameters`         | CEM-compatible function parameter objects                         |
+| `name`               | Inline function explicit name                                     |
+| `description`        | Documentation string                                              |
+| `observedAttributes` | HTML attributes the custom element watches                        |
+| `onMount`            | Lifecycle: connected and rendered                                 |
+| `onUnmount`          | Lifecycle: disconnected                                           |
+| `onAdopted`          | Lifecycle: adopted into new document                              |
 
 ---
 
 ## 18. Standards Alignment
 
-| Feature | Standard |
-|---|---|
-| `$ref`, `$defs`, `$id` | JSON Schema 2020-12 |
-| JSON Pointer paths | RFC 6901 |
-| Reactivity | `@vue/reactivity` (Vue 3) |
-| Custom elements | Web Components v1 |
-| Style properties | CSSOM camelCase |
-| Media breakpoints | CSS `@custom-media` convention |
-| Module loading | ECMAScript Modules / `import()` |
+| Feature                | Standard                        |
+| ---------------------- | ------------------------------- |
+| `$ref`, `$defs`, `$id` | JSON Schema 2020-12             |
+| JSON Pointer paths     | RFC 6901                        |
+| Reactivity             | `@vue/reactivity` (Vue 3)       |
+| Custom elements        | Web Components v1               |
+| Style properties       | CSSOM camelCase                 |
+| Media breakpoints      | CSS `@custom-media` convention  |
+| Module loading         | ECMAScript Modules / `import()` |
 
 ---
 
@@ -1234,7 +1244,7 @@ Custom elements may carry annotations compatible with the Custom Elements Manife
     "TodoItem": {
       "type": "object",
       "properties": {
-        "id":   { "type": "integer" },
+        "id": { "type": "integer" },
         "text": { "type": "string" },
         "done": { "type": "boolean" }
       },
@@ -1248,8 +1258,8 @@ Custom elements may carry annotations compatible with the Custom Elements Manife
       "default": [{ "id": 1, "text": "Learn Jx", "done": false }]
     },
     "remaining": "${state.items.filter(i => !i.done).length}",
-    "total":     "${state.items.length}",
-    "summary":   "${state.remaining} of ${state.total} remaining",
+    "total": "${state.items.length}",
+    "summary": "${state.remaining} of ${state.total} remaining",
     "addItem": {
       "$prototype": "Function",
       "body": "state.items.push({ id: Date.now(), text: 'New item', done: false })"
@@ -1274,8 +1284,16 @@ Custom elements may carry annotations compatible with the Custom Elements Manife
       "tagName": "div",
       "style": { "display": "flex", "gap": "0.5rem", "marginBottom": "1rem" },
       "children": [
-        { "tagName": "button", "textContent": "Add item", "onclick": { "$ref": "#/state/addItem" } },
-        { "tagName": "button", "textContent": "Clear done", "onclick": { "$ref": "#/state/clearDone" } }
+        {
+          "tagName": "button",
+          "textContent": "Add item",
+          "onclick": { "$ref": "#/state/addItem" }
+        },
+        {
+          "tagName": "button",
+          "textContent": "Clear done",
+          "onclick": { "$ref": "#/state/clearDone" }
+        }
       ]
     },
     {
@@ -1287,7 +1305,7 @@ Custom elements may carry annotations compatible with the Custom Elements Manife
           "tagName": "li",
           "style": {
             "textDecoration": "${$map.item.done ? 'line-through' : 'none'}",
-            "opacity":        "${$map.item.done ? '0.5' : '1'}"
+            "opacity": "${$map.item.done ? '0.5' : '1'}"
           },
           "textContent": "${$map.item.text}",
           "onclick": { "$ref": "#/state/toggleItem" }
@@ -1302,10 +1320,10 @@ Custom elements may carry annotations compatible with the Custom Elements Manife
 
 ## Appendix B — Dependency Stack
 
-| Package | Version | Purpose |
-|---|---|---|
-| `@vue/reactivity` | `^3.5` | Reactive primitives (`reactive`, `computed`, `effect`) |
+| Package           | Version | Purpose                                                |
+| ----------------- | ------- | ------------------------------------------------------ |
+| `@vue/reactivity` | `^3.5`  | Reactive primitives (`reactive`, `computed`, `effect`) |
 
 ---
 
-*Jx Specification v2.0.0-draft — subject to revision*
+_Jx Specification v2.0.0-draft — subject to revision_

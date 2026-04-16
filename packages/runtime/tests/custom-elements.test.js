@@ -119,8 +119,14 @@ describe("Custom Elements", () => {
 
     const child = el.querySelector(tag);
     expect(child).not.toBeNull();
-    expect(/** @type {HTMLElement} */ (/** @type {HTMLElement} */ (child).querySelector(".val")).textContent).toBe("42");
-    expect(/** @type {HTMLElement} */ (/** @type {HTMLElement} */ (child).querySelector(".name")).textContent).toBe("test");
+    expect(
+      /** @type {HTMLElement} */ (/** @type {HTMLElement} */ (child).querySelector(".val"))
+        .textContent,
+    ).toBe("42");
+    expect(
+      /** @type {HTMLElement} */ (/** @type {HTMLElement} */ (child).querySelector(".name"))
+        .textContent,
+    ).toBe("test");
     document.body.removeChild(el);
   });
 

@@ -3,23 +3,9 @@ try {
   GlobalRegistrator.register();
 } catch {}
 
-import { describe, test, expect, mock, spyOn } from "bun:test";
-import { reactive, ref, isRef } from "@vue/reactivity";
-import {
-  resolve,
-  buildScope,
-  renderNode,
-  applyStyle,
-  resolveRef,
-  resolvePrototype,
-  isSignal,
-  camelToKebab,
-  toCSSText,
-  RESERVED_KEYS,
-  Jx,
-} from "../runtime.js";
-
-const wait = () => new Promise((r) => setTimeout(r, 0));
+import { describe, test, expect } from "bun:test";
+import { reactive, ref } from "@vue/reactivity";
+import { resolvePrototype, isSignal, Jx } from "../runtime.js";
 
 describe("isSignal", () => {
   test("true for ref", () => expect(isSignal(ref(0))).toBe(true));

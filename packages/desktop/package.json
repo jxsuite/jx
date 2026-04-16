@@ -10,8 +10,8 @@
     "build:release": "bunx electrobun build --release"
   },
   "dependencies": {
-    "electrobun": "latest",
     "@jxplatform/server": "workspace:*",
-    "@jxplatform/studio": "workspace:*"
+    "@jxplatform/studio": "workspace:*",
+    "electrobun": "latest"
   }
 }

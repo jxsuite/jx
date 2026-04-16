@@ -1,16 +1,14 @@
 /**
- * compile-client.js — Pre-rendered HTML with reactive bindings
+ * Compile-client.js — Pre-rendered HTML with reactive bindings
  *
- * Produces clean HTML with `data-bind` marker attributes and a small JS
- * bootstrapper using @vue/reactivity's `effect` + `computed`.
+ * Produces clean HTML with `data-bind` marker attributes and a small JS bootstrapper using
+ * vue/reactivity's `effect` + `computed`.
  *
- * Functions whose body contains `return` become computed() on state.
- * Mapped arrays ($prototype: "Array") use lit-html for efficient rendering.
+ * Functions whose body contains `return` become computed() on state. Mapped arrays ($prototype:
+ * "Array") use lit-html for efficient rendering.
  *
- * Output pattern:
- *   HTML: pre-rendered with data-bind, :prop="key", @event="key"
- *   JS:   state (reactive state + computed signals),
- *         bind (DOM getters), on (event handlers), hydrate()
+ * Output pattern: HTML: pre-rendered with data-bind, :prop="key", @event="key" JS: state (reactive
+ * state + computed signals), bind (DOM getters), on (event handlers), hydrate()
  */
 
 import { camelToKebab, RESERVED_KEYS } from "@jxplatform/runtime";
@@ -23,16 +21,16 @@ import {
   buildAttrs,
   compileStyles,
   escapeHtml,
-  collectSrcImports,
   DEFAULT_REACTIVITY_SRC,
   DEFAULT_LIT_HTML_SRC,
 } from "./shared.js";
 
 /**
  * Compile a Jx document to pre-rendered HTML + reactive JS module.
+ *
  * @param {any} raw
  * @param {any} opts
- * @returns {{ html: string, files: { path: string, content: string }[] }}
+ * @returns {{ html: string; files: { path: string; content: string }[] }}
  */
 export function compileClient(raw, opts) {
   const {
@@ -54,15 +52,15 @@ export function compileClient(raw, opts) {
 
   // Classify state entries into reactive state, computed, bind, on, and init blocks
   /** @type {[string, any][]} */
-  const stateEntries = [];     // [key, initValue]  → reactive({...})
+  const stateEntries = []; // [key, initValue]  → reactive({...})
   /** @type {[string, string][]} */
-  const computedEntries = [];  // [key, bodyExpr]   → state.key = computed(...)
+  const computedEntries = []; // [key, bodyExpr]   → state.key = computed(...)
   /** @type {[string, string][]} */
-  const bindEntries = [];      // [key, bodyExpr]   → bind = {...}
+  const bindEntries = []; // [key, bodyExpr]   → bind = {...}
   /** @type {[string, any][]} */
-  const onEntries = [];        // [key, { args, body }] → on = {...}
+  const onEntries = []; // [key, { args, body }] → on = {...}
   /** @type {string[]} */
-  const initBlocks = [];       // lines emitted after state for prototype init
+  const initBlocks = []; // lines emitted after state for prototype init
 
   // Map $src path → Set of function names to import
   /** @type {Map<string, Set<string>>} */
@@ -74,7 +72,7 @@ export function compileClient(raw, opts) {
       // Naked primitive or array → reactive state
       if (typeof def === "string" && isTemplateString(def)) {
         // Template string → computed on state so other computeds can ref it
-        computedEntries.push([key, '() => `' + def + '`']);
+        computedEntries.push([key, "() => `" + def + "`"]);
       } else {
         stateEntries.push([key, def]);
       }
@@ -91,10 +89,10 @@ export function compileClient(raw, opts) {
         /** @type {Set<string>} */ (srcImportMap.get(d.$src)).add(key);
 
         // $src functions always produce computed entries (they return values)
-        computedEntries.push([key, '() => { return ' + key + '(state); }']);
+        computedEntries.push([key, "() => { return " + key + "(state); }"]);
       } else if (d.body && d.body.includes("return")) {
         // Body contains return → computed
-        computedEntries.push([key, '() => { ' + d.body + ' }']);
+        computedEntries.push([key, "() => { " + d.body + " }"]);
       } else {
         // No return → event handler
         onEntries.push([key, { args: args ?? ["state"], body: d.body }]);
@@ -156,14 +154,18 @@ export function compileClient(raw, opts) {
 
   // Generate the JS module
   const moduleContent = emitClientModule(
-    stateEntries, computedEntries, bindEntries, onEntries,
-    initBlocks, srcImportMap, counter, reactivitySrc,
+    stateEntries,
+    computedEntries,
+    bindEntries,
+    onEntries,
+    initBlocks,
+    srcImportMap,
+    counter,
+    reactivitySrc,
   );
 
   // Build importmap entries
-  const importmapEntries = [
-    `      "@vue/reactivity": "${reactivitySrc}"`,
-  ];
+  const importmapEntries = [`      "@vue/reactivity": "${reactivitySrc}"`];
   if (counter.needsLit) {
     importmapEntries.push(`      "lit-html": "${litHtmlSrc}"`);
   }
@@ -204,6 +206,15 @@ ${importmapEntries.join(",\n")}
  * @returns {string}
  */
 function buildClientNode(def, raw, context, bindings, handlers, counter) {
+  // String children are text nodes
+  if (typeof def === "string") {
+    return escapeHtml(def);
+  }
+  if (typeof def === "number" || typeof def === "boolean") {
+    return escapeHtml(String(def));
+  }
+  if (!def || typeof def !== "object") return "";
+
   const nextContext = createCompileContext(
     raw,
     context.scope,
@@ -226,7 +237,7 @@ function buildClientNode(def, raw, context, bindings, handlers, counter) {
     } else if (isTemplateString(tc)) {
       const key = `_t${counter.t++}`;
       bindAttrs.push(`:text-content="${key}"`);
-      bindings.set(key, '() => `' + tc + '`');
+      bindings.set(key, "() => `" + tc + "`");
       needsBind = true;
     }
   }
@@ -239,7 +250,11 @@ function buildClientNode(def, raw, context, bindings, handlers, counter) {
       const key = refToBindingKey(/** @type {any} */ (val).$ref);
       bindAttrs.push(`@${eventName}="${key}"`);
       needsBind = true;
-    } else if (val && typeof val === "object" && /** @type {any} */ (val).$prototype === "Function") {
+    } else if (
+      val &&
+      typeof val === "object" &&
+      /** @type {any} */ (val).$prototype === "Function"
+    ) {
       const v = /** @type {any} */ (val);
       const key = `_h${counter.h++}`;
       bindAttrs.push(`@${eventName}="${key}"`);
@@ -251,13 +266,19 @@ function buildClientNode(def, raw, context, bindings, handlers, counter) {
   // Dynamic style properties
   if (def.style && typeof def.style === "object") {
     for (const [prop, val] of Object.entries(def.style)) {
-      if (prop.startsWith(":") || prop.startsWith(".") || prop.startsWith("&") ||
-          prop.startsWith("[") || prop.startsWith("@")) continue;
+      if (
+        prop.startsWith(":") ||
+        prop.startsWith(".") ||
+        prop.startsWith("&") ||
+        prop.startsWith("[") ||
+        prop.startsWith("@")
+      )
+        continue;
       if (val === null || typeof val === "object") continue;
       if (isTemplateString(val)) {
         const key = `_s${counter.s++}`;
         bindAttrs.push(`:style.${camelToKebab(prop)}="${key}"`);
-        bindings.set(key, '() => `' + val + '`');
+        bindings.set(key, "() => `" + val + "`");
         needsBind = true;
       }
     }
@@ -274,7 +295,7 @@ function buildClientNode(def, raw, context, bindings, handlers, counter) {
       } else if (isTemplateString(val)) {
         const key = `_t${counter.t++}`;
         bindAttrs.push(`:attr.${attr}="${key}"`);
-        bindings.set(key, '() => `' + val + '`');
+        bindings.set(key, "() => `" + val + "`");
         needsBind = true;
       }
     }
@@ -282,10 +303,20 @@ function buildClientNode(def, raw, context, bindings, handlers, counter) {
 
   // Dynamic non-reserved properties (hidden, value, etc.)
   for (const [prop, val] of Object.entries(def)) {
-    if (RESERVED_KEYS.has(prop) || prop.startsWith("on") || prop.startsWith("$") ||
-        prop === "tagName" || prop === "id" || prop === "className" || prop === "style" ||
-        prop === "children" || prop === "textContent" || prop === "innerHTML" ||
-        prop === "attributes") continue;
+    if (
+      RESERVED_KEYS.has(prop) ||
+      prop.startsWith("on") ||
+      prop.startsWith("$") ||
+      prop === "tagName" ||
+      prop === "id" ||
+      prop === "className" ||
+      prop === "style" ||
+      prop === "children" ||
+      prop === "textContent" ||
+      prop === "innerHTML" ||
+      prop === "attributes"
+    )
+      continue;
     if (isRefObject(val)) {
       const key = refToBindingKey(/** @type {any} */ (val).$ref);
       bindAttrs.push(`:${camelToKebab(prop)}="${key}"`);
@@ -294,7 +325,7 @@ function buildClientNode(def, raw, context, bindings, handlers, counter) {
     } else if (isTemplateString(val)) {
       const key = `_t${counter.t++}`;
       bindAttrs.push(`:${camelToKebab(prop)}="${key}"`);
-      bindings.set(key, '() => `' + val + '`');
+      bindings.set(key, "() => `" + val + "`");
       needsBind = true;
     }
   }
@@ -319,7 +350,12 @@ function buildClientNode(def, raw, context, bindings, handlers, counter) {
     }
   } else if (source.innerHTML) {
     inner = resolveStaticValue(source.innerHTML, nextContext.scope) ?? "";
-  } else if (source.children && typeof source.children === "object" && !Array.isArray(source.children) && source.children.$prototype === "Array") {
+  } else if (
+    source.children &&
+    typeof source.children === "object" &&
+    !Array.isArray(source.children) &&
+    source.children.$prototype === "Array"
+  ) {
     // ─── Mapped array → lit-html render binding ───
     counter.needsLit = true;
     const listKey = `_list${counter.l++}`;
@@ -336,7 +372,10 @@ function buildClientNode(def, raw, context, bindings, handlers, counter) {
 
     // Compile the map template to a lit-html template string
     const litTemplate = emitLitMapTemplate(arrayDef.map);
-    bindings.set(listKey, '() => (' + itemsExpr + ' ?? []).map((item, index) => html`' + litTemplate + '`)');
+    bindings.set(
+      listKey,
+      "() => (" + itemsExpr + " ?? []).map((item, index) => html`" + litTemplate + "`)",
+    );
 
     bindAttrs.push(`:render="${listKey}"`);
     needsBind = true;
@@ -370,8 +409,9 @@ function buildClientNode(def, raw, context, bindings, handlers, counter) {
 // ─── Lit-html map template generation ─────────────────────────────────────────
 
 /**
- * Compile a map definition to a lit-html template string.
- * Converts $map.item → item, $map.index → index.
+ * Compile a map definition to a lit-html template string. Converts $map.item → item, $map.index →
+ * index.
+ *
  * @param {any} def
  * @returns {string}
  */
@@ -399,8 +439,14 @@ function emitLitMapTemplate(def) {
     /** @type {string[]} */
     const parts = [];
     for (const [k, v] of Object.entries(def.style)) {
-      if (k.startsWith(":") || k.startsWith(".") || k.startsWith("&") ||
-          k.startsWith("[") || k.startsWith("@")) continue;
+      if (
+        k.startsWith(":") ||
+        k.startsWith(".") ||
+        k.startsWith("&") ||
+        k.startsWith("[") ||
+        k.startsWith("@")
+      )
+        continue;
       if (v === null || typeof v === "object") continue;
       const cssProp = camelToKebab(k);
       if (isTemplateString(String(v))) {
@@ -421,7 +467,11 @@ function emitLitMapTemplate(def) {
     if (isRefObject(val)) {
       const key = refToBindingKey(/** @type {any} */ (val).$ref);
       attrs += " @" + eventName + "=${(e) => { state.$map = { item, index }; on." + key + "(e); }}";
-    } else if (val && typeof val === "object" && /** @type {any} */ (val).$prototype === "Function") {
+    } else if (
+      val &&
+      typeof val === "object" &&
+      /** @type {any} */ (val).$prototype === "Function"
+    ) {
       const body = mapRefsToLit(/** @type {any} */ (val).body);
       attrs += " @" + eventName + "=${(e) => { " + body + " }}";
     }
@@ -447,7 +497,10 @@ function emitLitMapTemplate(def) {
   } else if (def.innerHTML) {
     inner = mapRefsToLit(String(def.innerHTML));
   } else if (Array.isArray(def.children)) {
-    inner = "\n      " + def.children.map((/** @type {any} */ c) => emitLitMapTemplate(c)).join("\n      ") + "\n    ";
+    inner =
+      "\n      " +
+      def.children.map((/** @type {any} */ c) => emitLitMapTemplate(c)).join("\n      ") +
+      "\n    ";
   }
 
   const voidTags = new Set(["input", "br", "hr", "img", "meta", "link"]);
@@ -457,6 +510,7 @@ function emitLitMapTemplate(def) {
 
 /**
  * Replace $map references: $map.item → item, $map.index → index
+ *
  * @param {string} str
  * @returns {string}
  */
@@ -477,7 +531,16 @@ function mapRefsToLit(str) {
  * @param {string} reactivitySrc
  * @returns {string}
  */
-function emitClientModule(stateEntries, computedEntries, bindEntries, onEntries, initBlocks, srcImportMap, counter, reactivitySrc) {
+function emitClientModule(
+  stateEntries,
+  computedEntries,
+  bindEntries,
+  onEntries,
+  initBlocks,
+  srcImportMap,
+  counter,
+  _reactivitySrc,
+) {
   /** @type {string[]} */
   const lines = [];
   const needsLit = counter.needsLit;
@@ -544,12 +607,26 @@ function emitClientModule(stateEntries, computedEntries, bindEntries, onEntries,
     for (const [key, def] of onEntries) {
       if (def.imported) {
         const argNames = def.args ?? ["state"];
-        const callArgs = argNames.map((/** @type {string} */ a) => a === "state" ? "state" : "e").join(", ");
+        const callArgs = argNames
+          .map((/** @type {string} */ a) => (a === "state" ? "state" : "e"))
+          .join(", ");
         lines.push("  " + key + ": (e) => { " + key + "(" + callArgs + "); },");
       } else {
         const argNames = def.args ?? ["state"];
-        const callArgs = argNames.map((/** @type {string} */ a) => a === "state" ? "state" : "e").join(", ");
-        lines.push("  " + key + ": (e) => { const fn = (" + argNames.join(", ") + ") => { " + def.body + " }; fn(" + callArgs + "); },");
+        const callArgs = argNames
+          .map((/** @type {string} */ a) => (a === "state" ? "state" : "e"))
+          .join(", ");
+        lines.push(
+          "  " +
+            key +
+            ": (e) => { const fn = (" +
+            argNames.join(", ") +
+            ") => { " +
+            def.body +
+            " }; fn(" +
+            callArgs +
+            "); },",
+        );
       }
     }
     lines.push("};");
@@ -625,7 +702,10 @@ function emitRequestInit(key, def) {
   if (method !== "GET") fetchOpts.push("method: " + JSON.stringify(method));
   if (def.headers) fetchOpts.push("headers: " + JSON.stringify(def.headers));
   if (def.body) {
-    const bodyStr = typeof def.body === "object" ? JSON.stringify(JSON.stringify(def.body)) : JSON.stringify(def.body);
+    const bodyStr =
+      typeof def.body === "object"
+        ? JSON.stringify(JSON.stringify(def.body))
+        : JSON.stringify(def.body);
     fetchOpts.push("body: " + bodyStr);
   }
 
@@ -652,13 +732,19 @@ function emitStorageInit(key, storeName, storageKey, defaultVal) {
   lines.push("// " + key + ": " + storeName + ' (key: "' + storageKey + '")');
   lines.push("try {");
   lines.push("  const _s = " + storeName + ".getItem(" + JSON.stringify(storageKey) + ");");
-  lines.push("  state." + key + " = _s !== null ? JSON.parse(_s) : " + JSON.stringify(defaultVal) + ";");
+  lines.push(
+    "  state." + key + " = _s !== null ? JSON.parse(_s) : " + JSON.stringify(defaultVal) + ";",
+  );
   lines.push("} catch { state." + key + " = " + JSON.stringify(defaultVal) + "; }");
   lines.push("effect(() => {");
   lines.push("  const v = state." + key + ";");
   lines.push("  try {");
-  lines.push("    if (v === null) " + storeName + ".removeItem(" + JSON.stringify(storageKey) + ");");
-  lines.push("    else " + storeName + ".setItem(" + JSON.stringify(storageKey) + ", JSON.stringify(v));");
+  lines.push(
+    "    if (v === null) " + storeName + ".removeItem(" + JSON.stringify(storageKey) + ");",
+  );
+  lines.push(
+    "    else " + storeName + ".setItem(" + JSON.stringify(storageKey) + ", JSON.stringify(v));",
+  );
   lines.push("  } catch {}");
   lines.push("});");
   return lines.join("\n");
@@ -675,8 +761,16 @@ function emitCookieInit(key, cookieName, defaultVal) {
   const lines = [];
   lines.push("// " + key + ': Cookie (name: "' + cookieName + '")');
   lines.push("{");
-  lines.push('  const _m = document.cookie.match(new RegExp("(?:^|; )' + cookieName + '=([^;]*)"));');
-  lines.push("  try { state." + key + " = _m ? JSON.parse(decodeURIComponent(_m[1])) : " + JSON.stringify(defaultVal) + "; }");
+  lines.push(
+    '  const _m = document.cookie.match(new RegExp("(?:^|; )' + cookieName + '=([^;]*)"));',
+  );
+  lines.push(
+    "  try { state." +
+      key +
+      " = _m ? JSON.parse(decodeURIComponent(_m[1])) : " +
+      JSON.stringify(defaultVal) +
+      "; }",
+  );
   lines.push("  catch { state." + key + " = _m ? _m[1] : " + JSON.stringify(defaultVal) + "; }");
   lines.push("}");
   return lines.join("\n");

@@ -12,12 +12,12 @@
     "newText": { "type": "string", "default": "" },
     "itemCount": "${state.items.length + ' ' + (state.items.length === 1 ? 'item' : 'items')}",
 
-    "addItem":     { "$prototype": "Function", "$src": "./dynamic-list.js" },
-    "addKeydown":  { "$prototype": "Function", "$src": "./dynamic-list.js" },
-    "removeItem":  { "$prototype": "Function", "$src": "./dynamic-list.js" },
-    "saveEdit":    { "$prototype": "Function", "$src": "./dynamic-list.js" },
+    "addItem": { "$prototype": "Function", "$src": "./dynamic-list.js" },
+    "addKeydown": { "$prototype": "Function", "$src": "./dynamic-list.js" },
+    "removeItem": { "$prototype": "Function", "$src": "./dynamic-list.js" },
+    "saveEdit": { "$prototype": "Function", "$src": "./dynamic-list.js" },
     "editKeydown": { "$prototype": "Function", "$src": "./dynamic-list.js" },
-    "updateText":  { "$prototype": "Function", "$src": "./dynamic-list.js" }
+    "updateText": { "$prototype": "Function", "$src": "./dynamic-list.js" }
   },
 
   "tagName": "div",
@@ -86,7 +86,7 @@
             {
               "tagName": "input",
               "value": { "$ref": "#/state/newText" },
-              "oninput":  { "$ref": "#/state/updateText" },
+              "oninput": { "$ref": "#/state/updateText" },
               "onkeydown": { "$ref": "#/state/addKeydown" },
               "attributes": { "type": "text", "placeholder": "Add a new item\u2026" },
               "style": {
@@ -96,7 +96,10 @@
                 "border": "1.5px solid #ced4da",
                 "borderRadius": "5px",
                 "outline": "none",
-                ":focus": { "borderColor": "#007bff", "boxShadow": "0 0 0 2px rgba(0,123,255,0.15)" }
+                ":focus": {
+                  "borderColor": "#007bff",
+                  "boxShadow": "0 0 0 2px rgba(0,123,255,0.15)"
+                }
               }
             },
             {
@@ -163,7 +166,7 @@
                   "tagName": "span",
                   "textContent": "${$map.item}",
                   "contentEditable": "true",
-                  "onblur":   { "$ref": "#/state/saveEdit" },
+                  "onblur": { "$ref": "#/state/saveEdit" },
                   "onkeydown": { "$ref": "#/state/editKeydown" },
                   "style": {
                     "flex": "1",

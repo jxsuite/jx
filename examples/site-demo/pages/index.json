@@ -1,7 +1,13 @@
 {
   "title": "Home — Jx Demo",
   "$head": [
-    { "tagName": "meta", "attributes": { "name": "description", "content": "A Jx site demo showing multi-page builds." } }
+    {
+      "tagName": "meta",
+      "attributes": {
+        "name": "description",
+        "content": "A Jx site demo showing multi-page builds."
+      }
+    }
   ],
   "children": [
     {
@@ -18,7 +24,11 @@
         {
           "tagName": "li",
           "children": [
-            { "tagName": "a", "attributes": { "href": "/about" }, "children": ["About this project"] }
+            {
+              "tagName": "a",
+              "attributes": { "href": "/about" },
+              "children": ["About this project"]
+            }
           ]
         }
       ]

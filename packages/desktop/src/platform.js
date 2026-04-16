@@ -1,8 +1,8 @@
 /**
- * platform.js — Desktop Platform Adapter (runs in webview)
+ * Platform.js — Desktop Platform Adapter (runs in webview)
  *
- * Implements the StudioPlatform interface by forwarding every call over
- * ElectroBun's RPC bridge to the Bun process handlers.
+ * Implements the StudioPlatform interface by forwarding every call over ElectroBun's RPC bridge to
+ * the Bun process handlers.
  *
  * See spec/desktop.md §7.2 for the design.
  */
@@ -12,8 +12,8 @@ import { Electroview } from "electrobun/view";
 /**
  * Create the DesktopPlatform adapter and connect to the Bun process via RPC.
  *
- * Must be called early in the webview lifecycle, before Studio initializes.
- * Returns the platform object that should be passed to `registerPlatform()`.
+ * Must be called early in the webview lifecycle, before Studio initializes. Returns the platform
+ * object that should be passed to `registerPlatform()`.
  */
 export function createDesktopPlatform() {
   // Set up webview-side RPC — handles incoming messages from Bun
@@ -44,10 +44,9 @@ export function createDesktopPlatform() {
     },
 
     /**
-     * Probe the current project root for site-project characteristics.
-     * In desktop mode, the project is always opened via openProject(), so
-     * this returns the already-loaded state. Kept for API compatibility
-     * with the devserver adapter.
+     * Probe the current project root for site-project characteristics. In desktop mode, the project
+     * is always opened via openProject(), so this returns the already-loaded state. Kept for API
+     * compatibility with the devserver adapter.
      */
     async probeRootProject() {
       try {

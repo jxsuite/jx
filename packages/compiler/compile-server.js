@@ -1,26 +1,26 @@
 /**
- * compile-server.js — Hono server handler compilation
+ * Compile-server.js — Hono server handler compilation
  *
- * Compiles `timing: "server"` entries from a Jx document into a
- * deployable Hono server handler file.
+ * Compiles `timing: "server"` entries from a Jx document into a deployable Hono server handler
+ * file.
  */
 
 import $RefParser from "@apidevtools/json-schema-ref-parser";
 import { collectServerEntries } from "./shared.js";
 
 /**
- * Compile a Jx document to a Hono server handler file.
- * The handler exposes each `timing: "server"` entry as a POST endpoint under
- * `/_jx/server/$export`. Returns null if no server entries are found.
- *
- * @param {string | object} sourcePath - Path to .json file, URL, or raw object
- * @param {object}          [opts]
- * @param {string}          [opts.baseUrl='/_jx/server'] - Base path for server endpoints
- * @returns {Promise<string | null>} Hono server handler source string, or null
+ * Compile a Jx document to a Hono server handler file. The handler exposes each `timing: "server"`
+ * entry as a POST endpoint under `/_jx/server/$export`. Returns null if no server entries are
+ * found.
  *
  * @example
- * const server = await compileServer('./dashboard.json');
- * if (server) fs.writeFileSync('dist/server.js', server);
+ *   const server = await compileServer("./dashboard.json");
+ *   if (server) fs.writeFileSync("dist/server.js", server);
+ *
+ * @param {string | object} sourcePath - Path to .json file, URL, or raw object
+ * @param {object} [opts]
+ * @param {string} [opts.baseUrl] - Base path for server endpoints. Default is `'/_jx/server'`
+ * @returns {Promise<string | null>} Hono server handler source string, or null
  */
 export async function compileServer(sourcePath, opts = {}) {
   const { baseUrl = "/_jx/server" } = opts;

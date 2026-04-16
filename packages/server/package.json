@@ -1,8 +1,11 @@
 {
   "name": "@jxplatform/server",
-  "version": "1.0.0",
+  "version": "0.2.0",
   "description": "Jx development server with live reload, server-side proxy, and studio integration",
   "license": "MIT",
+  "files": [
+    "*.js"
+  ],
   "type": "module",
   "exports": {
     ".": "./server.js"

@@ -50,9 +50,7 @@ const simpleClass = {
     constructor: {
       role: "constructor",
       $prototype: "Function",
-      parameters: [
-        { $ref: "#/$defs/parameters/url" },
-      ],
+      parameters: [{ $ref: "#/$defs/parameters/url" }],
     },
   },
 };
@@ -120,13 +118,15 @@ const parameterizedClass = {
     constructor: {
       role: "constructor",
       $prototype: "Function",
-      parameters: [
-        { $ref: "#/$defs/parameters/src" },
-      ],
+      parameters: [{ $ref: "#/$defs/parameters/src" }],
     },
   },
 };
-writeFileSync(join(FIXTURES, "TypedCollection.class.json"), JSON.stringify(parameterizedClass), "utf8");
+writeFileSync(
+  join(FIXTURES, "TypedCollection.class.json"),
+  JSON.stringify(parameterizedClass),
+  "utf8",
+);
 
 // Sibling JS module with a companion .class.json
 writeFileSync(join(FIXTURES, "parser.js"), "export class Parser {}", "utf8");
@@ -167,9 +167,21 @@ describe("plugin-schema — direct .class.json path", () => {
     const res = await handleStudioApi(req, url, import.meta.dir);
     expect(res).not.toBeNull();
     const { schema } = await /** @type {any} */ (res).json();
-    expect(schema.properties.url).toEqual({ type: "string", description: "API endpoint URL", examples: ["https://api.example.com"] });
-    expect(schema.properties.limit).toEqual({ type: "integer", default: 10, description: "Max results" });
-    expect(schema.properties.debug).toEqual({ type: "boolean", default: false, description: "Enable debug mode" });
+    expect(schema.properties.url).toEqual({
+      type: "string",
+      description: "API endpoint URL",
+      examples: ["https://api.example.com"],
+    });
+    expect(schema.properties.limit).toEqual({
+      type: "integer",
+      default: 10,
+      description: "Max results",
+    });
+    expect(schema.properties.debug).toEqual({
+      type: "boolean",
+      default: false,
+      description: "Enable debug mode",
+    });
   });
 
   test("includes public fields but excludes private fields", async () => {
@@ -195,7 +207,10 @@ describe("plugin-schema — direct .class.json path", () => {
 
 describe("plugin-schema — extends inheritance", () => {
   test("child inherits parent parameters", async () => {
-    const { req, url } = schemaRequest(`./_studio_fixtures/PostCollection.class.json`, "PostCollection");
+    const { req, url } = schemaRequest(
+      `./_studio_fixtures/PostCollection.class.json`,
+      "PostCollection",
+    );
     const res = await handleStudioApi(req, url, import.meta.dir);
     const { schema } = await /** @type {any} */ (res).json();
     expect(schema.description).toBe("Posts collection");
@@ -207,7 +222,10 @@ describe("plugin-schema — extends inheritance", () => {
   });
 
   test("child inherits parent required fields", async () => {
-    const { req, url } = schemaRequest(`./_studio_fixtures/PostCollection.class.json`, "PostCollection");
+    const { req, url } = schemaRequest(
+      `./_studio_fixtures/PostCollection.class.json`,
+      "PostCollection",
+    );
     const res = await handleStudioApi(req, url, import.meta.dir);
     const { schema } = await /** @type {any} */ (res).json();
     // src is required from parent (no default)
@@ -219,7 +237,10 @@ describe("plugin-schema — extends inheritance", () => {
 
 describe("plugin-schema — format: json-schema", () => {
   test("preserves format: json-schema annotation", async () => {
-    const { req, url } = schemaRequest(`./_studio_fixtures/TypedCollection.class.json`, "TypedCollection");
+    const { req, url } = schemaRequest(
+      `./_studio_fixtures/TypedCollection.class.json`,
+      "TypedCollection",
+    );
     const res = await handleStudioApi(req, url, import.meta.dir);
     const { schema } = await /** @type {any} */ (res).json();
     expect(schema.properties.itemSchema.format).toBe("json-schema");
@@ -265,7 +286,11 @@ const SITE_PROJECT = join(FIXTURES, "my-site");
 mkdirSync(join(SITE_PROJECT, "pages"), { recursive: true });
 mkdirSync(join(SITE_PROJECT, "layouts"), { recursive: true });
 mkdirSync(join(SITE_PROJECT, "components"), { recursive: true });
-writeFileSync(join(SITE_PROJECT, "site.json"), JSON.stringify({ name: "Test Site", url: "https://test.dev" }), "utf8");
+writeFileSync(
+  join(SITE_PROJECT, "site.json"),
+  JSON.stringify({ name: "Test Site", url: "https://test.dev" }),
+  "utf8",
+);
 
 // Non-site project fixture (just a plain directory)
 const PLAIN_DIR = join(FIXTURES, "plain-dir");
@@ -276,7 +301,7 @@ writeFileSync(join(PLAIN_DIR, "readme.txt"), "hello", "utf8");
 writeFileSync(
   join(SITE_PROJECT, "components", "my-card.json"),
   JSON.stringify({ tagName: "my-card", state: { title: { type: "string", default: "" } } }),
-  "utf8"
+  "utf8",
 );
 
 function projectInfoRequest(/** @type {any} */ dir) {
@@ -342,7 +367,9 @@ describe("sites discovery", () => {
     const req = new Request(url, { method: "GET" });
     const res = await handleStudioApi(req, url, import.meta.dir);
     const sites = await /** @type {any} */ (res).json();
-    expect(sites.every((/** @type {any} */ s) => s.path !== "_studio_fixtures/plain-dir")).toBe(true);
+    expect(sites.every((/** @type {any} */ s) => s.path !== "_studio_fixtures/plain-dir")).toBe(
+      true,
+    );
   });
 });
 
@@ -377,5 +404,7 @@ describe("components — scoped scan", () => {
 
 // Cleanup
 process.on("exit", () => {
-  try { rmSync(FIXTURES, { recursive: true }); } catch {}
+  try {
+    rmSync(FIXTURES, { recursive: true });
+  } catch {}
 });

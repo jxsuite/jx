@@ -1,19 +1,20 @@
 /**
- * md-convert.js — Bidirectional mdast ↔ Jx conversion
+ * Md-convert.js — Bidirectional mdast ↔ Jx conversion
  *
- * mdToJsonsx(mdast) → Jx element tree (for loading into the canvas)
- * jxToMd(jx) → mdast             (for saving back to markdown)
+ * MdToJsonsx(mdast) → Jx element tree (for loading into the canvas) jxToMd(jx) → mdast (for saving
+ * back to markdown)
  *
- * Both are pure tree transformations. The remark ecosystem handles
- * all actual parsing and serialization.
+ * Both are pure tree transformations. The remark ecosystem handles all actual parsing and
+ * serialization.
  */
 
-import { MD_ALL, MD_BLOCK, MD_INLINE } from "./md-allowlist.js";
+import { MD_ALL } from "./md-allowlist.js";
 
 // ─── mdast → Jx ──────────────────────────────────────────────────────────
 
 /**
- * mdast node-type → Jx tagName mapping
+ * Mdast node-type → Jx tagName mapping
+ *
  * @type {Record<string, (n: any) => string>}
  */
 const MDAST_TAG_MAP = {
@@ -40,6 +41,7 @@ const MDAST_TAG_MAP = {
 
 /**
  * Convert an mdast tree to a Jx element tree.
+ *
  * @param {any} mdast - Root mdast node (type: 'root')
  * @returns {any} Jx element tree
  */
@@ -216,6 +218,7 @@ function convertDirective(node) {
 
 /**
  * Jx tagName → mdast node-type mapping (inverse of MDAST_TAG_MAP)
+ *
  * @type {Record<string, string>}
  */
 const TAG_MDAST_MAP = {
@@ -248,12 +251,13 @@ const TAG_MDAST_MAP = {
 
 /**
  * Convert a Jx element tree to an mdast tree.
+ *
  * @param {any} jx - Jx element tree (root content div)
- * @returns {any} mdast root node
+ * @returns {any} Mdast root node
  */
 export function jxToMd(jx) {
   const children = (jx.children ?? [])
-    .map((/** @type {any} */ child, /** @type {number} */ i) => convertJsonsxNode(child, true))
+    .map((/** @type {any} */ child, /** @type {number} */ _i) => convertJsonsxNode(child, true))
     .filter(Boolean);
 
   return { type: "root", children };
@@ -261,9 +265,10 @@ export function jxToMd(jx) {
 
 /**
  * Convert a single Jx element to an mdast node.
+ *
  * @param {any} el - Jx element
  * @param {boolean} isBlock - Whether this element is in a block context
- * @returns {any} mdast node
+ * @returns {any} Mdast node
  */
 function convertJsonsxNode(el, isBlock) {
   if (!el || typeof el !== "object") return null;
@@ -334,7 +339,9 @@ function convertJsonsxNode(el, isBlock) {
         ordered: tag === "ol",
         start: tag === "ol" ? parseInt(el.attributes?.start, 10) || 1 : null,
         spread: false,
-        children: (el.children ?? []).map((/** @type {any} */ c) => convertJsonsxNode(c, true)).filter(Boolean),
+        children: (el.children ?? [])
+          .map((/** @type {any} */ c) => convertJsonsxNode(c, true))
+          .filter(Boolean),
       };
 
     case "listItem":
@@ -392,7 +399,9 @@ function convertJsonsxNode(el, isBlock) {
     case "tableRow":
       return {
         type: "tableRow",
-        children: (el.children ?? []).map((/** @type {any} */ c) => convertJsonsxNode(c, false)).filter(Boolean),
+        children: (el.children ?? [])
+          .map((/** @type {any} */ c) => convertJsonsxNode(c, false))
+          .filter(Boolean),
       };
 
     case "tableCell":
@@ -406,8 +415,9 @@ function convertJsonsxNode(el, isBlock) {
 }
 
 /**
- * Get inline children from a Jx element as mdast nodes.
- * Handles both textContent shorthand and explicit children array.
+ * Get inline children from a Jx element as mdast nodes. Handles both textContent shorthand and
+ * explicit children array.
+ *
  * @param {any} el
  * @returns {any[]}
  */
@@ -415,11 +425,14 @@ function inlineChildren(el) {
   if (el.textContent != null) {
     return [{ type: "text", value: String(el.textContent) }];
   }
-  return (el.children ?? []).map((/** @type {any} */ c) => convertJsonsxNode(c, false)).filter(Boolean);
+  return (el.children ?? [])
+    .map((/** @type {any} */ c) => convertJsonsxNode(c, false))
+    .filter(Boolean);
 }
 
 /**
  * Get block children from a Jx element as mdast nodes.
+ *
  * @param {any} el
  * @returns {any[]}
  */
@@ -428,11 +441,14 @@ function blockChildren(el) {
     // Wrap bare text in a paragraph
     return [{ type: "paragraph", children: [{ type: "text", value: String(el.textContent) }] }];
   }
-  return (el.children ?? []).map((/** @type {any} */ c) => convertJsonsxNode(c, true)).filter(Boolean);
+  return (el.children ?? [])
+    .map((/** @type {any} */ c) => convertJsonsxNode(c, true))
+    .filter(Boolean);
 }
 
 /**
  * Convert a non-markdown-native Jx element to a directive node.
+ *
  * @param {any} el
  * @param {boolean} isBlock
  * @returns {any}
@@ -450,7 +466,9 @@ function convertToDirective(el, isBlock) {
       children:
         el.textContent != null
           ? [{ type: "text", value: String(el.textContent) }]
-          : (el.children ?? []).map((/** @type {any} */ c) => convertJsonsxNode(c, false)).filter(Boolean),
+          : (el.children ?? [])
+              .map((/** @type {any} */ c) => convertJsonsxNode(c, false))
+              .filter(Boolean),
     };
   }
 
@@ -472,6 +490,8 @@ function convertToDirective(el, isBlock) {
     children:
       el.textContent != null
         ? [{ type: "paragraph", children: [{ type: "text", value: String(el.textContent) }] }]
-        : (el.children ?? []).map((/** @type {any} */ c) => convertJsonsxNode(c, true)).filter(Boolean),
+        : (el.children ?? [])
+            .map((/** @type {any} */ c) => convertJsonsxNode(c, true))
+            .filter(Boolean),
   };
 }

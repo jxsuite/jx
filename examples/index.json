@@ -34,14 +34,14 @@
       "children": {
         "$prototype": "Array",
         "items": [
-          { "id": "counter",    "label": "Counter"    },
-          { "id": "computed",   "label": "Computed"   },
-          { "id": "list",       "label": "List"       },
-          { "id": "fetch",      "label": "Fetch"      },
-          { "id": "switch",     "label": "Switch"     },
-          { "id": "form",       "label": "Form"       },
+          { "id": "counter", "label": "Counter" },
+          { "id": "computed", "label": "Computed" },
+          { "id": "list", "label": "List" },
+          { "id": "fetch", "label": "Fetch" },
+          { "id": "switch", "label": "Switch" },
+          { "id": "form", "label": "Form" },
           { "id": "responsive", "label": "Responsive" },
-          { "id": "todo",       "label": "Todo"       }
+          { "id": "todo", "label": "Todo" }
         ],
         "map": {
           "tagName": "button",
@@ -73,19 +73,21 @@
         "overflow": "auto",
         "minHeight": "0"
       },
-      "children": [{
-        "$switch": { "$ref": "#/state/activeTab" },
-        "cases": {
-          "counter":    { "$ref": "./counter/counter.json" },
-          "computed":   { "$ref": "./computed/user-card.json" },
-          "list":       { "$ref": "./list/dynamic-list.json" },
-          "fetch":      { "$ref": "./fetch/fetch-demo.json" },
-          "switch":     { "$ref": "./switch/router.json" },
-          "form":       { "$ref": "./form/contact-form.json" },
-          "responsive": { "$ref": "./responsive/responsive-card.json" },
-          "todo":       { "$ref": "./todo/todo-app.json" }
+      "children": [
+        {
+          "$switch": { "$ref": "#/state/activeTab" },
+          "cases": {
+            "counter": { "$ref": "./counter/counter.json" },
+            "computed": { "$ref": "./computed/user-card.json" },
+            "list": { "$ref": "./list/dynamic-list.json" },
+            "fetch": { "$ref": "./fetch/fetch-demo.json" },
+            "switch": { "$ref": "./switch/router.json" },
+            "form": { "$ref": "./form/contact-form.json" },
+            "responsive": { "$ref": "./responsive/responsive-card.json" },
+            "todo": { "$ref": "./todo/todo-app.json" }
+          }
         }
-      }]
+      ]
     }
   ]
 }

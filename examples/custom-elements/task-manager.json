@@ -117,7 +117,10 @@
             "body": "state.filter = 'all'"
           },
           "style": {
-            "flex": "1", "padding": "0.6em", "border": "none", "cursor": "pointer",
+            "flex": "1",
+            "padding": "0.6em",
+            "border": "none",
+            "cursor": "pointer",
             "fontWeight": "${state.filter === 'all' ? 'bold' : 'normal'}",
             "backgroundColor": "${state.filter === 'all' ? '#e7f1ff' : 'white'}",
             "color": "${state.filter === 'all' ? '#007bff' : '#666'}"
@@ -131,7 +134,11 @@
             "body": "state.filter = 'active'"
           },
           "style": {
-            "flex": "1", "padding": "0.6em", "border": "none", "borderLeft": "1px solid #eee", "cursor": "pointer",
+            "flex": "1",
+            "padding": "0.6em",
+            "border": "none",
+            "borderLeft": "1px solid #eee",
+            "cursor": "pointer",
             "fontWeight": "${state.filter === 'active' ? 'bold' : 'normal'}",
             "backgroundColor": "${state.filter === 'active' ? '#e7f1ff' : 'white'}",
             "color": "${state.filter === 'active' ? '#007bff' : '#666'}"
@@ -145,7 +152,11 @@
             "body": "state.filter = 'done'"
           },
           "style": {
-            "flex": "1", "padding": "0.6em", "border": "none", "borderLeft": "1px solid #eee", "cursor": "pointer",
+            "flex": "1",
+            "padding": "0.6em",
+            "border": "none",
+            "borderLeft": "1px solid #eee",
+            "cursor": "pointer",
             "fontWeight": "${state.filter === 'done' ? 'bold' : 'normal'}",
             "backgroundColor": "${state.filter === 'done' ? '#e7f1ff' : 'white'}",
             "color": "${state.filter === 'done' ? '#007bff' : '#666'}"

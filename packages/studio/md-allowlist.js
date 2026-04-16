@@ -1,8 +1,8 @@
 /**
- * md-allowlist.js — Markdown element allowlist and nesting constraints
+ * Md-allowlist.js — Markdown element allowlist and nesting constraints
  *
- * Defines which HTML elements are "native markdown" — they round-trip
- * to pure markdown syntax. Everything else is a Jx component directive.
+ * Defines which HTML elements are "native markdown" — they round-trip to pure markdown syntax.
+ * Everything else is a Jx component directive.
  */
 
 /** Block-level elements that map directly to markdown syntax */
@@ -41,9 +41,13 @@ export const MD_VOID = new Set(["hr", "br", "img"]);
 export const MD_TEXT_ONLY = new Set(["code"]);
 
 /**
- * Nesting constraints: which child elements are allowed inside each parent.
- * null = any block/inline allowed (used for content root and directive components).
- * @type {Record<string, { block: boolean, inline: boolean, directive: boolean, only: Set<string> | null }>}
+ * Nesting constraints: which child elements are allowed inside each parent. null = any block/inline
+ * allowed (used for content root and directive components).
+ *
+ * @type {Record<
+ *   string,
+ *   { block: boolean; inline: boolean; directive: boolean; only: Set<string> | null }
+ * >}
  */
 export const MD_NESTING = {
   _root: { block: true, inline: false, directive: true, only: null },
@@ -73,6 +77,7 @@ export const MD_NESTING = {
 
 /**
  * Check whether a tag is allowed as a child of the given parent tag in content mode.
+ *
  * @param {string} parentTag - Parent element tag (or '_root' for content root)
  * @param {string} childTag - Proposed child element tag
  * @returns {boolean}

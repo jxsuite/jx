@@ -26,22 +26,27 @@ const FIXTURE_DIR = join(__dirname, "..", "..", "..", "examples", "markdown", "c
 
 /**
  * Mock fetch to serve .class.json files from disk (Happy DOM can't fetch file:// URLs).
- * @param {Record<string, string>} fileMap - maps URL substrings to absolute file paths
- * @returns {() => void} restore function
+ *
+ * @param {Record<string, string>} fileMap - Maps URL substrings to absolute file paths
+ * @returns {() => void} Restore function
  */
 function setupClassJsonFetchMock(/** @type {Record<string, string>} */ fileMap) {
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = /** @type {any} */ (async (/** @type {any} */ url, /** @type {any} */ opts) => {
-    const urlStr = typeof url === "string" ? url : url.toString();
-    for (const [pattern, filePath] of Object.entries(fileMap)) {
-      if (urlStr.includes(pattern)) {
-        const content = readFileSync(filePath, "utf8");
-        return { ok: true, json: () => Promise.resolve(JSON.parse(content)) };
+  globalThis.fetch = /** @type {any} */ (
+    async (/** @type {any} */ url, /** @type {any} */ opts) => {
+      const urlStr = typeof url === "string" ? url : url.toString();
+      for (const [pattern, filePath] of Object.entries(fileMap)) {
+        if (urlStr.includes(pattern)) {
+          const content = readFileSync(filePath, "utf8");
+          return { ok: true, json: () => Promise.resolve(JSON.parse(content)) };
+        }
       }
+      return originalFetch(url, opts);
     }
-    return originalFetch(url, opts);
-  });
-  return () => { globalThis.fetch = originalFetch; };
+  );
+  return () => {
+    globalThis.fetch = originalFetch;
+  };
 }
 
 // ─── MarkdownFile ─────────────────────────────────────────────────────────────
@@ -320,7 +325,10 @@ describe("MarkdownCollection", () => {
     });
     const results = await mc.resolve();
     expect(results.length).toBe(2);
-    expect(/** @type {any} */ (results[0]).frontmatter.date >= /** @type {any} */ (results[1]).frontmatter.date).toBe(true);
+    expect(
+      /** @type {any} */ (results[0]).frontmatter.date >=
+        /** @type {any} */ (results[1]).frontmatter.date,
+    ).toBe(true);
   });
 
   test("directives option applies to all files", async () => {
@@ -471,10 +479,10 @@ describe("Runtime external prototype ($src)", () => {
   const mdCollPath = resolvePath(parserDir, "MarkdownCollection.class.json");
 
   /** @type {() => void} */
-  let restore;
+  let _restore;
 
   beforeAll(() => {
-    restore = setupClassJsonFetchMock({
+    _restore = setupClassJsonFetchMock({
       "MarkdownFile.class.json": mdFilePath,
       "MarkdownCollection.class.json": mdCollPath,
     });

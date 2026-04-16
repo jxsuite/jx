@@ -96,22 +96,38 @@
             "home": {
               "tagName": "section",
               "children": [
-                { "tagName": "h2", "textContent": "Welcome Home",
-                  "style": { "margin": "0 0 0.75em", "color": "#333" } },
-                { "tagName": "p", "textContent": "This is the home view, rendered by a $switch node that reacts to the currentRoute signal.",
-                  "style": { "color": "#555", "lineHeight": "1.6" } },
-                { "tagName": "p", "textContent": "Switch the active route using the nav buttons above. The $switch replaces the DOM subtree instantly \u2014 no page load.",
-                  "style": { "color": "#555", "lineHeight": "1.6" } }
+                {
+                  "tagName": "h2",
+                  "textContent": "Welcome Home",
+                  "style": { "margin": "0 0 0.75em", "color": "#333" }
+                },
+                {
+                  "tagName": "p",
+                  "textContent": "This is the home view, rendered by a $switch node that reacts to the currentRoute signal.",
+                  "style": { "color": "#555", "lineHeight": "1.6" }
+                },
+                {
+                  "tagName": "p",
+                  "textContent": "Switch the active route using the nav buttons above. The $switch replaces the DOM subtree instantly \u2014 no page load.",
+                  "style": { "color": "#555", "lineHeight": "1.6" }
+                }
               ]
             },
             "about": {
               "tagName": "section",
               "children": [
-                { "tagName": "h2", "textContent": "About Jx",
-                  "style": { "margin": "0 0 0.75em", "color": "#333" } },
-                { "tagName": "p", "textContent": "Jx is a schema and runtime for building reactive web applications using plain JSON.",
-                  "style": { "color": "#555", "lineHeight": "1.6" } },
-                { "tagName": "ul",
+                {
+                  "tagName": "h2",
+                  "textContent": "About Jx",
+                  "style": { "margin": "0 0 0.75em", "color": "#333" }
+                },
+                {
+                  "tagName": "p",
+                  "textContent": "Jx is a schema and runtime for building reactive web applications using plain JSON.",
+                  "style": { "color": "#555", "lineHeight": "1.6" }
+                },
+                {
+                  "tagName": "ul",
                   "style": { "color": "#555", "lineHeight": "2" },
                   "children": [
                     { "tagName": "li", "textContent": "JSON is the authoritative format" },
@@ -125,13 +141,21 @@
             "contact": {
               "tagName": "section",
               "children": [
-                { "tagName": "h2", "textContent": "Contact",
-                  "style": { "margin": "0 0 0.75em", "color": "#333" } },
-                { "tagName": "p", "textContent": "This view was swapped in declaratively \u2014 the $switch node evaluated currentRoute === 'contact' and rendered this case.",
-                  "style": { "color": "#555", "lineHeight": "1.6" } },
-                { "tagName": "p",
+                {
+                  "tagName": "h2",
+                  "textContent": "Contact",
+                  "style": { "margin": "0 0 0.75em", "color": "#333" }
+                },
+                {
+                  "tagName": "p",
+                  "textContent": "This view was swapped in declaratively \u2014 the $switch node evaluated currentRoute === 'contact' and rendered this case.",
+                  "style": { "color": "#555", "lineHeight": "1.6" }
+                },
+                {
+                  "tagName": "p",
                   "style": { "color": "#6c757d", "fontSize": "0.875em" },
-                  "textContent": "All cases are statically known at build time, enabling the compiler to pre-bundle every route." }
+                  "textContent": "All cases are statically known at build time, enabling the compiler to pre-bundle every route."
+                }
               ]
             }
           }

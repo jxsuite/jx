@@ -49,11 +49,11 @@ Embed custom elements directly in your markdown content using directive syntax.
 
 The Jx compiler produces five output tiers depending on how dynamic your component is:
 
-| Surface | Output |
-|---|---|
-| Fully static | Plain HTML, zero JS |
-| Signals only | HTML + signal init script |
-| Signals + handlers | HTML + module script |
-| Server-timed Request | HTML with baked data |
+| Surface              | Output                    |
+| -------------------- | ------------------------- |
+| Fully static         | Plain HTML, zero JS       |
+| Signals only         | HTML + signal init script |
+| Signals + handlers   | HTML + module script      |
+| Server-timed Request | HTML with baked data      |
 
 This means a blog built with `MarkdownCollection` and `timing: "compiler"` ships **zero JavaScript** for the index page.

@@ -7,21 +7,15 @@ describe("findTemplateExpressions", () => {
   });
 
   test("single expression", () => {
-    expect(findTemplateExpressions("hello ${name} world")).toEqual([
-      { start: 6, end: 13 },
-    ]);
+    expect(findTemplateExpressions("hello ${name} world")).toEqual([{ start: 6, end: 13 }]);
   });
 
   test("expression at start", () => {
-    expect(findTemplateExpressions("${x} rest")).toEqual([
-      { start: 0, end: 4 },
-    ]);
+    expect(findTemplateExpressions("${x} rest")).toEqual([{ start: 0, end: 4 }]);
   });
 
   test("expression at end", () => {
-    expect(findTemplateExpressions("rest ${x}")).toEqual([
-      { start: 5, end: 9 },
-    ]);
+    expect(findTemplateExpressions("rest ${x}")).toEqual([{ start: 5, end: 9 }]);
   });
 
   test("multiple expressions", () => {
@@ -32,9 +26,7 @@ describe("findTemplateExpressions", () => {
   });
 
   test("nested braces", () => {
-    expect(findTemplateExpressions("${obj.map(x => {x})}")).toEqual([
-      { start: 0, end: 20 },
-    ]);
+    expect(findTemplateExpressions("${obj.map(x => {x})}")).toEqual([{ start: 0, end: 20 }]);
   });
 
   test("adjacent expressions", () => {
@@ -45,9 +37,7 @@ describe("findTemplateExpressions", () => {
   });
 
   test("dollar without brace is not an expression", () => {
-    expect(findTemplateExpressions("$100 and ${x}")).toEqual([
-      { start: 9, end: 13 },
-    ]);
+    expect(findTemplateExpressions("$100 and ${x}")).toEqual([{ start: 9, end: 13 }]);
   });
 
   test("unclosed expression is ignored", () => {

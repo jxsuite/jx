@@ -8,9 +8,9 @@
     "compile": "bun run compile.js"
   },
   "dependencies": {
-    "@jxplatform/runtime": "workspace:*",
     "@jxplatform/compiler": "workspace:*",
     "@jxplatform/parser": "workspace:*",
+    "@jxplatform/runtime": "workspace:*",
     "@jxplatform/server": "workspace:*",
     "@jxplatform/studio": "workspace:*"
   }

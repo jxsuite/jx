@@ -26,15 +26,14 @@ Use `MarkdownCollection` to load all posts as a sorted array:
 
 ```json
 {
-  "$defs": {
+  "state": {
     "$posts": {
       "$prototype": "MarkdownCollection",
       "$src": "@jxplatform/md",
       "src": "./content/posts/*.md",
       "sortBy": "frontmatter.date",
       "sortOrder": "desc",
-      "timing": "compiler",
-      "signal": true
+      "timing": "compiler"
     }
   }
 }
@@ -51,8 +50,7 @@ Use `MarkdownFile` to parse a single post and inject its HTML body into your lay
       "$prototype": "MarkdownFile",
       "$src": "@jxplatform/md",
       "src": "./content/posts/first-post.md",
-      "timing": "compiler",
-      "signal": true
+      "timing": "compiler"
     }
   }
 }
