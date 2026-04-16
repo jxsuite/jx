@@ -1,15 +1,38 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": [
-    "typescript",
-    "unicorn",
-    "oxc"
-  ],
   "categories": {
     "correctness": "error"
   },
-  "rules": {},
   "env": {
     "builtin": true
+  },
+  "plugins": [
+    "jsdoc",
+    "oxc",
+    "typescript",
+    "unicorn",
+  ],
+  "rules": {},
+  "settings": {
+    "jsdoc": {
+      "check-access": true,
+      "check-property-names": true,
+      "check-tag-names": true,
+      "empty-tags": true,
+      "implements-on-classes": true,
+      "no-defaults": true,
+      "require-param": true,
+      "require-param-description": true,
+      "require-param-name": true,
+      "require-param-type": true,
+      "require-property": true,
+      "require-property-description": true,
+      "require-property-name": true,
+      "require-property-type": true,
+      "require-returns": true,
+      "require-returns-description": true,
+      "require-returns-type": true,
+      "require-yields": true
+    }
   }
 }
