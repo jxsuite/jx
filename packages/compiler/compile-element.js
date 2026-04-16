@@ -186,6 +186,22 @@ export function emitElementModule(doc, className, elementImports) {
     lines.push(`import '${imp}';`);
   }
 
+  // Collect $src imports from state entries before emitting other imports
+  /** @type {Map<string, string[]>} */
+  const srcImportMap = new Map();
+  const defs = doc.state ?? {};
+  for (const [key, def] of Object.entries(defs)) {
+    const d = /** @type {any} */ (def);
+    if (d && typeof d === "object" && !Array.isArray(d) && d.$prototype === "Function" && d.$src) {
+      const srcPath = d.$src;
+      if (!srcImportMap.has(srcPath)) srcImportMap.set(srcPath, []);
+      srcImportMap.get(srcPath).push(key);
+    }
+  }
+  for (const [srcPath, names] of srcImportMap) {
+    lines.push(`import { ${names.join(", ")} } from '${srcPath}';`);
+  }
+
   lines.push(`import { reactive, computed, effect } from '@vue/reactivity';`);
   lines.push(`import { render, html } from 'lit-html';`);
   lines.push("");
@@ -197,7 +213,6 @@ export function emitElementModule(doc, className, elementImports) {
   lines.push("  constructor() {");
   lines.push("    super();");
 
-  const defs = doc.state ?? {};
   /** @type {[string, string][]} */
   const stateEntries = [];
   /** @type {[string, any][]} */
@@ -229,23 +244,34 @@ export function emitElementModule(doc, className, elementImports) {
   }
   lines.push("    });");
 
-  // Emit functions: this.state.fnName = (state) => { body }
+  // Emit functions: this.state.fnName = (state) => { body } or imported $src function
   for (const [key, def] of functionEntries) {
     lines.push("");
-    const args = def.parameters ?? def.arguments ?? ["state"];
-    const paramList = args.join(", ");
-    lines.push(`    this.state.${key} = (${paramList}) => {`);
-    lines.push(`      ${def.body}`);
-    lines.push("    };");
+    if (def.$src) {
+      // $src function — wrap imported function so it receives state
+      const args = def.parameters ?? def.arguments ?? ["state"];
+      const paramList = args.join(", ");
+      lines.push(`    this.state.${key} = (${paramList}) => ${key}(${paramList});`);
+    } else {
+      const args = def.parameters ?? def.arguments ?? ["state"];
+      const paramList = args.join(", ");
+      lines.push(`    this.state.${key} = (${paramList}) => {`);
+      lines.push(`      ${def.body}`);
+      lines.push("    };");
+    }
   }
 
-  // Emit computed signals
+  // Emit computed signals — $src or inline body
   for (const [key, def] of computedEntries) {
     lines.push("");
-    lines.push(`    this.state.${key} = computed(() => {`);
-    const body = def.body.replace(/state\./g, "this.state.");
-    lines.push(`      ${body}`);
-    lines.push("    });");
+    if (def.$src) {
+      lines.push(`    this.state.${key} = computed(() => ${key}(this.state));`);
+    } else {
+      lines.push(`    this.state.${key} = computed(() => {`);
+      const body = def.body.replace(/state\./g, "this.state.");
+      lines.push(`      ${body}`);
+      lines.push("    });");
+    }
   }
 
   lines.push("  }"); // end constructor

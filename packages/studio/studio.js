@@ -18,10 +18,7 @@ import {
   updateProperty,
   updateStyle,
   updateAttribute,
-  addDef,
-  removeDef,
   updateDef,
-  renameDef,
   updateMediaStyle,
   updateMedia,
   updateNestedStyle,
@@ -41,20 +38,30 @@ import {
   parentElementPath,
   childIndex,
   isAncestor,
-  projectState,
-  setProjectState,
-} from "./state.js";
+  canvasWrap,
+  leftPanel,
+  rightPanel,
+  toolbarEl,
+  elToPath,
+  canvasPanels,
+  VOID_ELEMENTS,
+  COMMON_SELECTORS,
+  isNestedSelector,
+  debouncedStyleCommit,
+  stripEventHandlers,
+  registerRenderer,
+  render,
+  update,
+  setUpdateFn,
+  setGetStateFn,
+  addUpdateMiddleware,
+  runUpdateMiddleware,
+  addPostRenderHook,
+  runPostRenderHooks,
+} from "./store.js";
 
 import { renderNode as runtimeRenderNode, buildScope, defineElement } from "@jxplatform/runtime";
 
-import { unified } from "unified";
-import remarkParse from "remark-parse";
-import remarkStringify from "remark-stringify";
-import remarkFrontmatter from "remark-frontmatter";
-import remarkGfm from "remark-gfm";
-import remarkDirective from "remark-directive";
-import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
-import { mdToJsonsx, jxToMd } from "./md-convert.js";
 import {
   startEditing,
   stopEditing,
@@ -75,9 +82,34 @@ import {
   abbreviateValue,
   inferInputType,
 } from "./studio-utils.js";
+import { renderStatusbar, statusMessage, setStatusbarRenderer } from "./statusbar.js";
+import {
+  openFile as _openFile,
+  loadMarkdown as _loadMarkdown,
+  saveFile as _saveFile,
+} from "./file-ops.js";
+import {
+  loadProject as _loadProject,
+  openProject as _openProject,
+  renderFilesTemplate as _renderFilesTemplate,
+  openFileFromTree as _openFileFromTree,
+  setupTreeKeyboard,
+} from "./files.js";
+import { eventsSidebarTemplate as _eventsSidebarTemplate } from "./events-panel.js";
+import { exportCemManifest as _exportCemManifest } from "./cem-export.js";
 
 import { registerPlatform, getPlatform, hasPlatform } from "./platform.js";
 import { createDevServerPlatform } from "./platforms/devserver.js";
+import { codeService, setLintMarkers, getFunctionArgs } from "./code-services.js";
+import {
+  defCategory,
+  defBadgeLabel,
+  isCustomElementDoc,
+  collectCssParts,
+  resolveDefaultForCanvas,
+  renderSignalsTemplate,
+} from "./signals-panel.js";
+import { componentRegistry, loadComponentRegistry, computeRelativePath } from "./components.js";
 
 import {
   draggable,
@@ -94,103 +126,58 @@ import { html, render as litRender, nothing } from "lit-html";
 import { live } from "lit-html/directives/live.js";
 import { classMap } from "lit-html/directives/class-map.js";
 
-/**
- * Render a Lit TemplateResult into a fresh DOM container and return it. Bridge for imperative
- * callers.
- *
- * @param {any} tpl
- */
-function _tplToDom(tpl) {
-  const el = document.createElement("div");
-  el.style.display = "contents";
-  litRender(tpl, el);
-  return el;
-}
 import { ifDefined } from "lit-html/directives/if-defined.js";
 
 import webdata from "./webdata.json";
 import cssMeta from "./css-meta.json";
 import htmlMeta from "./html-meta.json";
 import stylebookMeta from "./stylebook-meta.json";
+import { renderDataExplorerTemplate } from "./data-explorer.js";
 
 // ─── Spectrum Web Components ──────────────────────────────────────────────────
 // Explicit class imports + registration — bare side-effect imports are tree-shaken
 // by Bun's bundler despite sideEffects declarations in Spectrum's package.json.
 import { components as _swc } from "./spectrum.js"; // eslint-disable-line no-unused-vars
 import icons from "./icons.js";
+import { showContextMenu } from "./context-menu.js";
+import { initShortcuts } from "./shortcuts.js";
+import { renderActivityBar, tabIcon } from "./activity-bar.js";
 import * as monaco from "monaco-editor/esm/vs/editor/editor.api";
 
 // ─── Globals ──────────────────────────────────────────────────────────────────
+// These mutable variables are local to studio.js for now. As sections are extracted
+// into their own modules, they will migrate to ctx in store.js.
 
 /** @type {any} */
 let S; // current state
-let statusMsg = "";
+
+const toolbar = toolbarEl;
+
+let canvasMode = "design";
+let panX = 0;
+let panY = 0;
 /** @type {any} */
-let statusTimeout;
-const $ = (/** @type {string} */ sel) => document.querySelector(sel);
-const _$$ = (/** @type {string} */ sel) => document.querySelectorAll(sel);
-
-const COMMON_SELECTORS = [
-  ":hover",
-  ":focus",
-  ":active",
-  ":focus-within",
-  ":focus-visible",
-  ":disabled",
-  ":first-child",
-  ":last-child",
-  "::before",
-  "::after",
-  "::placeholder",
-];
-
-/** @param {any} k */
-function isNestedSelector(k) {
-  return k.startsWith(":") || k.startsWith(".") || k.startsWith("&") || k.startsWith("[");
-}
-
-const canvasWrap = /** @type {any} */ ($("#canvas-wrap"));
-const activityBar = /** @type {any} */ ($("#activity-bar"));
-const leftPanel = /** @type {any} */ ($("#left-panel"));
-const rightPanel = /** @type {any} */ ($("#right-panel"));
-const toolbar = /** @type {any} */ ($("#toolbar"));
-const statusbar = /** @type {any} */ ($("#statusbar"));
+let panzoomWrap = null;
+/** @type {any} */
+let componentInlineEdit = null;
+/** @type {any} */
+let pendingInlineEdit = null;
+/** @type {any} */
+let componentSlashMenu = null;
+/** @type {any} */
+let monacoEditor = null;
+/** @type {any} */
+let functionEditor = null;
+/** @type {any} */
+let liveScope = null;
+/** @type {any} */
+let blockActionBarEl = null;
+/** @type {any} */
+let _inlineEditCleanup = null;
+/** @type {any} */
+let selDragCleanup = null;
 
 // ─── Component registry ───────────────────────────────────────────────────────
-
-// Module-level debounce map for lit-html style inputs — survives re-renders
-const _styleDebounceTimers = new Map();
-/**
- * @param {any} prop
- * @param {any} ms
- * @param {any} fn
- */
-function debouncedStyleCommit(prop, ms, fn) {
-  return (/** @type {any[]} */ ...args) => {
-    clearTimeout(_styleDebounceTimers.get(prop));
-    _styleDebounceTimers.set(
-      prop,
-      setTimeout(() => {
-        _styleDebounceTimers.delete(prop);
-        fn(...args);
-      }, ms),
-    );
-  };
-}
-
-/** @type {any[]} */
-let componentRegistry = []; // cached list from /__studio/components
-let _componentRegistryLoaded = false;
-
-async function loadComponentRegistry() {
-  try {
-    const platform = getPlatform();
-    componentRegistry = await platform.discoverComponents();
-    _componentRegistryLoaded = true;
-  } catch {
-    _componentRegistryLoaded = true;
-  }
-}
 
 /** @param {any} componentPath */
 async function navigateToComponent(componentPath) {
@@ -254,122 +241,6 @@ async function closeFunctionEditor() {
 }
 
 /**
- * @param {any} fromDocPath
- * @param {any} toCompPath
- */
-function computeRelativePath(fromDocPath, toCompPath) {
-  if (!fromDocPath) return `./${toCompPath}`;
-  const fromDir = fromDocPath.substring(0, fromDocPath.lastIndexOf("/"));
-  const fromParts = fromDir.split("/").filter(Boolean);
-  const toParts = toCompPath.split("/").filter(Boolean);
-  let common = 0;
-  while (
-    common < fromParts.length &&
-    common < toParts.length &&
-    fromParts[common] === toParts[common]
-  ) {
-    common++;
-  }
-  const ups = fromParts.length - common;
-  const remaining = toParts.slice(common);
-  return (ups > 0 ? "../".repeat(ups) : "./") + remaining.join("/");
-}
-
-// ─── OXC code services (server-backed) ───────────────────────────────────────
-
-/**
- * @param {any} action
- * @param {any} payload
- */
-async function codeService(action, payload) {
-  const platform = getPlatform();
-  if (!platform.codeService) return null;
-  return platform.codeService(action, payload);
-}
-
-/**
- * Ask the server to locate a document by filename within the project root.
- *
- * @param {any} name
- */
-async function locateDocument(name) {
-  const platform = getPlatform();
-  if (!platform.locateFile) return null;
-  return platform.locateFile(name);
-}
-
-/** Cache of plugin schemas keyed by "$src::$prototype". */
-const pluginSchemaCache = new Map();
-
-/**
- * Fetch and cache the schema for an external $prototype + $src module via the server.
- *
- * @param {any} def
- */
-async function fetchPluginSchema(def) {
-  if (!def.$src || !def.$prototype) return null;
-  const cacheKey = `${def.$src}::${def.$prototype}`;
-  if (pluginSchemaCache.has(cacheKey)) return pluginSchemaCache.get(cacheKey);
-
-  try {
-    const platform = getPlatform();
-    if (!platform.fetchPluginSchema) {
-      pluginSchemaCache.set(cacheKey, null);
-      return null;
-    }
-    const base = S.documentPath ? `${location.origin}/${S.documentPath}` : undefined;
-    const schema = await platform.fetchPluginSchema(def.$src, def.$prototype, base);
-    pluginSchemaCache.set(cacheKey, schema);
-    return schema;
-  } catch {
-    pluginSchemaCache.set(cacheKey, null);
-    return null;
-  }
-}
-
-/**
- * @param {any} editor
- * @param {any[]} diagnostics
- */
-function setLintMarkers(editor, diagnostics) {
-  const model = editor.getModel();
-  if (!model) return;
-  const markers = diagnostics
-    .map((d) => {
-      const label = d.labels?.[0];
-      if (!label) return null;
-      const { line, column, length } = label.span;
-      return {
-        severity:
-          d.severity === "error" ? monaco.MarkerSeverity.Error : monaco.MarkerSeverity.Warning,
-        message: d.message + (d.help ? `\n${d.help}` : ""),
-        startLineNumber: line,
-        startColumn: column,
-        endLineNumber: line,
-        endColumn: column + (length || 1),
-        code: d.url ? { value: d.code, target: monaco.Uri.parse(d.url) } : d.code,
-        source: "oxlint",
-      };
-    })
-    .filter(Boolean);
-  monaco.editor.setModelMarkers(model, "oxlint", /** @type {any} */ (markers));
-}
-
-/** @param {any} editing */
-function getFunctionArgs(editing) {
-  if (editing.type === "def") {
-    return S.document.state?.[editing.defName]?.parameters || ["state", "event"];
-  } else if (editing.type === "event") {
-    const node = getNodeAtPath(S.document, editing.path);
-    return node?.[editing.eventKey]?.parameters || ["state", "event"];
-  }
-  return ["state", "event"];
-}
-
-/** WeakMap<HTMLElement, Array> — maps rendered DOM elements to their JSON paths */
-const elToPath = new WeakMap();
-
-/**
  * DnD cleanup functions from previous render — called on re-render
  *
  * @type {any[]}
@@ -381,112 +252,6 @@ let dndCleanups = [];
  * @type {any[]}
  */
 let canvasDndCleanups = [];
-
-/**
- * Cleanup function for the current selection drag registration
- *
- * @type {any}
- */
-let selDragCleanup = null;
-/** @type {any} */
-let blockActionBarEl = null;
-/** @type {any} */
-let _inlineEditCleanup = null;
-
-/** Void elements that cannot accept children */
-const VOID_ELEMENTS = new Set([
-  "area",
-  "base",
-  "br",
-  "col",
-  "embed",
-  "hr",
-  "img",
-  "input",
-  "link",
-  "meta",
-  "param",
-  "source",
-  "track",
-  "wbr",
-]);
-
-/**
- * Canvas panels: Array<{ mediaName, canvas, overlay, overlayClk, viewport, dropLine }> Built
- * dynamically in renderCanvas() based on $media definitions.
- *
- * @type {any[]}
- */
-let canvasPanels = [];
-
-/** Pan/zoom state (module-level, not serialized) */
-let panX = 0,
-  panY = 0;
-/** @type {any} */
-let panzoomWrap = null; // the transform container inside #canvas-wrap
-
-/** Canvas mode: "edit" | "design" | "preview" | "source" | "stylebook" */
-let canvasMode = "design";
-
-/** Component-mode inline text editing state: { el, path, originalText, mediaName } or null */
-/** @type {any} */
-let componentInlineEdit = null;
-/** @type {any} */
-let pendingInlineEdit = null;
-/** @type {any} */
-let componentSlashMenu = null;
-
-/**
- * Active Monaco editor instance (or null when in canvas mode)
- *
- * @type {any}
- */
-let monacoEditor = null;
-
-/**
- * Active function editor Monaco instance (or null)
- *
- * @type {any}
- */
-let functionEditor = null;
-
-/**
- * Cached state scope from last runtime render
- *
- * @type {any}
- */
-let liveScope = null;
-
-/**
- * Strip all on* event handler properties from a Jx document tree (deep clone). Returns a new object
- * safe for edit-mode rendering where clicks should be intercepted.
- *
- * @param {any} node
- * @returns {any}
- */
-function stripEventHandlers(node) {
-  if (!node || typeof node !== "object") return node;
-  if (Array.isArray(node)) return node.map(stripEventHandlers);
-  /** @type {Record<string, any>} */
-  const out = {};
-  for (const [k, v] of Object.entries(node)) {
-    if (k.startsWith("on") && typeof v === "object" && (v?.$ref || v?.$prototype === "Function"))
-      continue;
-    if (k === "children") {
-      out.children = Array.isArray(v) ? v.map(stripEventHandlers) : stripEventHandlers(v);
-    } else if (k === "cases" && typeof v === "object") {
-      /** @type {Record<string, any>} */
-      const cases = {};
-      for (const [ck, cv] of Object.entries(v)) cases[ck] = stripEventHandlers(cv);
-      out.cases = cases;
-    } else if (k === "state" || k === "style" || k === "attributes" || k === "$media") {
-      out[k] = v; // preserve as-is
-    } else {
-      out[k] = v;
-    }
-  }
-  return out;
-}
 
 /**
  * Convert a template string to a displayable expression for edit mode. Replaces ${expr} with ❮ expr
@@ -735,26 +500,28 @@ async function renderCanvasLive(doc, canvasEl) {
 
 // ─── Webdata: datalists for autocomplete ──────────────────────────────────────
 
-const tagNameList = document.createElement("datalist");
-tagNameList.id = "tag-names";
-for (const tag of webdata.allTags) {
-  const opt = document.createElement("option");
-  opt.value = tag;
-  tagNameList.appendChild(opt);
-}
-document.body.appendChild(tagNameList);
-
-const cssPropList = document.createElement("datalist");
-cssPropList.id = "css-props";
-for (const [name] of webdata.cssProps) {
-  const opt = document.createElement("option");
-  opt.value = name;
-  cssPropList.appendChild(opt);
-}
-document.body.appendChild(cssPropList);
+const datalistHost = document.createElement("div");
+datalistHost.style.display = "contents";
+document.body.appendChild(datalistHost);
+litRender(
+  html`
+    <datalist id="tag-names">
+      ${webdata.allTags.map((/** @type {any} */ tag) => html`<option value=${tag}></option>`)}
+    </datalist>
+    <datalist id="css-props">
+      ${webdata.cssProps.map((/** @type {any} */ [name]) => html`<option value=${name}></option>`)}
+    </datalist>
+  `,
+  datalistHost,
+);
 
 /** Map<camelCaseName, initialValue> for placeholder hints */
 const cssInitialMap = new Map(/** @type {any} */ (webdata.cssProps));
+
+// Persistent render hosts for lit-html (must be before bootstrap/render)
+const zoomIndicatorHost = document.createElement("div");
+zoomIndicatorHost.style.display = "contents";
+document.body.appendChild(zoomIndicatorHost);
 
 // ─── Icon maps & module-level UI state (must be before render() call) ─────────
 
@@ -787,15 +554,6 @@ function tbBtnTpl(label, onClick, iconTag) {
   `;
 }
 
-const fileIconMap = /** @type {Record<string, any>} */ ({
-  "sp-icon-folder-open": html`<sp-icon-folder-open></sp-icon-folder-open>`,
-  "sp-icon-folder": html`<sp-icon-folder></sp-icon-folder>`,
-  "sp-icon-file-code": html`<sp-icon-file-code></sp-icon-file-code>`,
-  "sp-icon-file-txt": html`<sp-icon-file-txt></sp-icon-file-txt>`,
-  "sp-icon-image": html`<sp-icon-image></sp-icon-image>`,
-  "sp-icon-document": html`<sp-icon-document></sp-icon-document>`,
-});
-
 let blocksCollapsed = new Set();
 let blocksFilter = "";
 
@@ -816,45 +574,22 @@ const EMPTY_DOC = {
 };
 
 S = createState(structuredClone(EMPTY_DOC));
-registerFunctionCompletions();
-loadComponentRegistry();
-loadProject();
-render();
-
-// Auto-open a document via ?open=path query parameter
-{
-  const openParam = new URLSearchParams(location.search).get("open");
-  if (openParam) {
-    getPlatform()
-      .readFile(openParam)
-      .then(async (/** @type {any} */ content) => {
-        if (content) {
-          const doc = JSON.parse(content);
-          S = createState(doc);
-          S.dirty = false;
-          S.documentPath = openParam;
-          render();
-          statusMessage(`Opened ${openParam}`);
-        }
-      })
-      .catch((/** @type {any} */ e) => statusMessage(`Error: ${e.message}`));
-  }
-}
 
 // ─── Render loop ──────────────────────────────────────────────────────────────
 
-function render() {
-  renderToolbar();
-  renderActivityBar();
-  renderLeftPanel();
-  renderCanvas();
-  renderRightPanel();
-  renderOverlays();
-  renderStatusbar();
-}
+// Register all renderers with the store so render()/renderOnly() work
+registerRenderer("toolbar", () => renderToolbar());
+registerRenderer("activityBar", () => renderActivityBar(S));
+registerRenderer("leftPanel", () => renderLeftPanel());
+registerRenderer("canvas", () => renderCanvas());
+registerRenderer("rightPanel", () => renderRightPanel());
+registerRenderer("overlays", () => renderOverlays());
+registerRenderer("statusbar", () => renderStatusbar(S));
+setStatusbarRenderer(() => renderStatusbar(S));
 
-/** @param {any} newState */
-let update = function update(newState) {
+// Register the update implementation with the store
+setGetStateFn(() => S);
+setUpdateFn(function _update(/** @type {any} */ newState) {
   const prevDoc = S.document;
   const prevSel = S.selection;
   S = newState;
@@ -884,22 +619,57 @@ let update = function update(newState) {
     renderRightPanel();
   }
   renderOverlays();
-  updateForcedPseudoPreview();
-  renderStatusbar();
+  renderStatusbar(S);
 
-  // Process pending inline edit. If renderCanvas was NOT called (selection-only change),
-  // the canvas DOM is already populated — enter edit synchronously.
-  // If renderCanvas WAS called, the async .then() will handle it instead.
+  // Post-render hooks (pseudo-state preview, pending inline edit, etc.)
+  runPostRenderHooks(prevDoc, prevSel);
+
+  // Update middleware (autosave, etc.)
+  runUpdateMiddleware(S);
+});
+
+// Register post-render hook for pseudo-state preview
+addPostRenderHook(() => updateForcedPseudoPreview());
+
+// Register post-render hook for pending inline edit
+addPostRenderHook((/** @type {any} */ prevDoc) => {
   if (pendingInlineEdit && prevDoc === S.document) {
     const { path, mediaName: mn } = pendingInlineEdit;
     pendingInlineEdit = null;
-    const targetPanel = canvasPanels.find((p) => p.mediaName === mn) || canvasPanels[0];
+    const targetPanel =
+      canvasPanels.find((/** @type {any} */ p) => p.mediaName === mn) || canvasPanels[0];
     if (targetPanel) {
       const el = findCanvasElement(path, targetPanel.canvas);
       if (el) enterComponentInlineEdit(el, path);
     }
   }
-};
+});
+
+// Now that renderers and update are registered, bootstrap
+registerFunctionCompletions();
+loadComponentRegistry();
+loadProject();
+render();
+
+// Auto-open a document via ?open=path query parameter
+{
+  const openParam = new URLSearchParams(location.search).get("open");
+  if (openParam) {
+    getPlatform()
+      .readFile(openParam)
+      .then(async (/** @type {any} */ content) => {
+        if (content) {
+          const doc = JSON.parse(content);
+          S = createState(doc);
+          S.dirty = false;
+          S.documentPath = openParam;
+          render();
+          statusMessage(`Opened ${openParam}`);
+        }
+      })
+      .catch((/** @type {any} */ e) => statusMessage(`Error: ${e.message}`));
+  }
+}
 
 // ─── Media helpers ────────────────────────────────────────────────────────────
 
@@ -1011,7 +781,7 @@ function renderCanvas() {
   // Clean up previous canvas DnD registrations
   for (const fn of canvasDndCleanups) fn();
   canvasDndCleanups = [];
-  canvasPanels = [];
+  canvasPanels.length = 0;
 
   // Dispose Monaco editor if switching away from source mode
   if (monacoEditor) {
@@ -1084,8 +854,7 @@ function renderCanvas() {
     canvasWrap.style.overflow = "hidden";
 
     // Remove zoom indicator left over from design/preview mode
-    const oldIndicator = document.querySelector(".zoom-indicator");
-    if (oldIndicator) oldIndicator.remove();
+    litRender(nothing, zoomIndicatorHost);
 
     const scrollContainer = document.createElement("div");
     scrollContainer.className = "content-edit-canvas";
@@ -1326,28 +1095,33 @@ function fitToScreen() {
  * computed from canvas-wrap bounds.
  */
 function renderZoomIndicator() {
-  // Remove existing indicator if any
-  let indicator = document.querySelector(".zoom-indicator");
-  if (indicator) indicator.remove();
-
-  indicator = document.createElement("div");
-  indicator.className = "zoom-indicator";
-
-  const label = document.createElement("span");
-  label.className = "zoom-indicator-label";
-  label.textContent = `${Math.round(S.ui.zoom * 100)}%`;
-  indicator.appendChild(label);
-
-  const fitBtn = document.createElement("sp-action-button");
-  fitBtn.setAttribute("quiet", "");
-  fitBtn.setAttribute("size", "s");
-  fitBtn.className = "zoom-fit-btn";
-  fitBtn.title = "Fit to screen";
-  fitBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="12" height="12" rx="1"/><path d="M2 6h12M6 2v12"/></svg>`;
-  fitBtn.addEventListener("click", fitToScreen);
-  indicator.appendChild(fitBtn);
-
-  document.body.appendChild(indicator);
+  litRender(
+    html`
+      <div class="zoom-indicator">
+        <span class="zoom-indicator-label">${Math.round(S.ui.zoom * 100)}%</span>
+        <sp-action-button
+          quiet
+          size="s"
+          class="zoom-fit-btn"
+          title="Fit to screen"
+          @click=${fitToScreen}
+        >
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+          >
+            <rect x="2" y="2" width="12" height="12" rx="1" />
+            <path d="M2 6h12M6 2v12" />
+          </svg>
+        </sp-action-button>
+      </div>
+    `,
+    zoomIndicatorHost,
+  );
   positionZoomIndicator();
 }
 
@@ -1371,138 +1145,6 @@ function updateActivePanelHeaders() {
       header.classList.toggle("active", isActive);
     }
   }
-}
-
-// ─── Signals / defs helpers ──────────────────────────────────────────────────
-
-/** Default templates for creating new signal definitions. */
-const DEF_TEMPLATES = /** @type {Record<string, any>} */ ({
-  state: { type: "string", default: "" },
-  computed: { $compute: "", $deps: [] },
-  request: { $prototype: "Request", url: "", method: "GET", timing: "client" },
-  localStorage: { $prototype: "LocalStorage", key: "", default: null },
-  sessionStorage: { $prototype: "SessionStorage", key: "", default: null },
-  indexedDB: { $prototype: "IndexedDB", database: "", store: "", version: 1 },
-  cookie: { $prototype: "Cookie", name: "", default: "" },
-  set: { $prototype: "Set", default: [] },
-  map: { $prototype: "Map", default: {} },
-  formData: { $prototype: "FormData", fields: {} },
-  function: { $prototype: "Function", body: "", parameters: [] },
-  external: { $prototype: "", $src: "" },
-});
-
-/**
- * Classify a state entry into a category string.
- *
- * @param {any} def
- */
-function defCategory(def) {
-  if (!def) return "state";
-  if (def.$handler || def.$prototype === "Function") return "function";
-  if (def.$compute) return "computed";
-  if (def.$prototype) return "data";
-  return "state";
-}
-
-/**
- * Badge label for a def category.
- *
- * @param {any} def
- */
-function defBadgeLabel(def) {
-  if (!def) return "S";
-  if (def.$handler || def.$prototype === "Function") return "F";
-  if (def.$compute) return "C";
-  if (def.$prototype) return def.$prototype.charAt(0);
-  return "S";
-}
-
-/**
- * Hint text for a signal row.
- *
- * @param {any} name
- * @param {any} def
- */
-function defHint(name, def) {
-  if (!def) return "";
-  if (def.$prototype === "Function") {
-    if (def.body) return def.body.length > 20 ? def.body.slice(0, 20) + "..." : def.body;
-    if (def.$src) return def.$src;
-    return "function";
-  }
-  if (def.$handler) return "handler (legacy)";
-  if (def.$compute)
-    return "=" + (def.$compute.length > 20 ? def.$compute.slice(0, 20) + "..." : def.$compute);
-  if (def.$prototype === "Request") return def.method + " " + (def.url || "").slice(0, 20);
-  if (def.$prototype === "LocalStorage" || def.$prototype === "SessionStorage")
-    return def.key || "";
-  if (def.$prototype === "IndexedDB") return def.database || "";
-  if (def.$prototype === "Cookie") return def.name || "";
-  if (def.$prototype) return def.$prototype;
-  if (def.attribute) return `[${def.attribute}] ${def.type || ""}`;
-  return def.type || "";
-}
-
-/** Whether the current document defines a custom element (hyphenated tagName). */
-function isCustomElementDoc() {
-  return (S.document.tagName || "").includes("-");
-}
-
-/**
- * Recursively collect CSS `part` attributes from the document tree.
- *
- * @param {any} node
- * @param {any[]} [parts]
- */
-function collectCssParts(node, parts = []) {
-  if (node?.attributes?.part)
-    parts.push({ name: node.attributes.part, tag: node.tagName || "div" });
-  if (Array.isArray(node?.children))
-    node.children.forEach((/** @type {any} */ c) => collectCssParts(c, parts));
-  return parts;
-}
-
-/**
- * Resolve a $ref value to a display string using signal defaults. Used by the canvas to show real
- * values instead of raw refs.
- *
- * @param {any} value
- * @param {any} defs
- */
-function resolveDefaultForCanvas(value, defs) {
-  if (!value || typeof value !== "object" || !value.$ref) return value;
-  const ref = value.$ref;
-  /** @type {any} */
-  let defName;
-  if (ref.startsWith("#/state/")) defName = ref.slice(8);
-  else if (ref.startsWith("$")) defName = ref;
-  else return `{${ref}}`;
-
-  const def = defs?.[defName];
-  if (!def) return `{${defName}}`;
-
-  // State signal → use default
-  if (!def.$compute && !def.$prototype) {
-    if (def.default !== undefined && def.default !== null) {
-      if (typeof def.default === "object") return JSON.stringify(def.default);
-      return String(def.default);
-    }
-    return "";
-  }
-  // Computed → expression indicator
-  if (def.$compute) return `\u0192(${defName})`;
-  // Request → URL hint
-  if (def.$prototype === "Request") return `\u27F3 ${def.url || "fetch"}`;
-  // Storage → use default or key
-  if (def.$prototype === "LocalStorage" || def.$prototype === "SessionStorage") {
-    if (def.default !== undefined && def.default !== null) {
-      if (typeof def.default === "object") return JSON.stringify(def.default);
-      return String(def.default);
-    }
-    return `[${def.key || "storage"}]`;
-  }
-  if (def.$prototype) return `{${def.$prototype}}`;
-  return `{${defName}}`;
 }
 
 /**
@@ -1742,15 +1384,10 @@ function showCanvasDropIndicator(el, elPath, isVoid, panel) {
 // ─── Overlay system ───────────────────────────────────────────────────────────
 
 function renderOverlays() {
-  // Clear all panel overlays
-  for (const p of canvasPanels) {
-    p.overlay.innerHTML = "";
-    p.overlay.appendChild(p.dropLine);
-  }
-
   // In non-interactive modes (except stylebook), hide overlays and click interceptors
   if (canvasMode !== "design" && canvasMode !== "edit" && canvasMode !== "stylebook") {
     for (const p of canvasPanels) {
+      litRender(nothing, p.overlay);
       p.overlayClk.style.pointerEvents = "none";
     }
     if (selDragCleanup) {
@@ -1761,8 +1398,6 @@ function renderOverlays() {
   }
   // Stylebook manages its own overlays
   if (canvasMode === "stylebook") {
-    // Elements tab: enable click interceptor for hit-testing
-    // Variables tab: disable it so form inputs are directly interactive
     const enable = S.ui.stylebookTab === "elements";
     for (const p of canvasPanels) {
       p.overlayClk.style.pointerEvents = enable ? "" : "none";
@@ -1778,29 +1413,74 @@ function renderOverlays() {
     selDragCleanup = null;
   }
 
-  // Draw hover overlay on whichever panel the hover is on
-  if (S.hover && !pathsEqual(S.hover, S.selection)) {
-    for (const p of canvasPanels) {
-      const el = findCanvasElement(S.hover, p.canvas);
-      if (el) drawOverlayBox(el, "hover", p);
-    }
-  }
+  // Collect overlay boxes per panel, then render in batch
+  for (const p of canvasPanels) {
+    /**
+     * @type {{
+     *   cls: string;
+     *   top: string;
+     *   left: string;
+     *   width: string;
+     *   height: string;
+     *   border?: string;
+     * }[]}
+     */
+    const boxes = [];
 
-  // Draw selection overlay only on the active panel
-  if (S.selection) {
-    const activePanel = getActivePanel();
-    if (activePanel) {
-      const el = findCanvasElement(S.selection, activePanel.canvas);
+    // Hover overlay
+    if (S.hover && !pathsEqual(S.hover, S.selection)) {
+      const el = findCanvasElement(S.hover, p.canvas);
+      if (el) boxes.push(overlayBoxDescriptor(el, "hover", p));
+    }
+
+    // Selection overlay (only on active panel)
+    if (S.selection && p === getActivePanel()) {
+      const el = findCanvasElement(S.selection, p.canvas);
       if (el) {
-        const box = drawOverlayBox(el, "selection", activePanel);
-        // During inline edit: hide selection border
-        if (componentInlineEdit || isEditing()) {
-          box.style.border = "none";
-        }
+        const desc = overlayBoxDescriptor(el, "selection", p);
+        if (componentInlineEdit || isEditing()) desc.border = "none";
+        boxes.push(desc);
       }
     }
+
+    litRender(
+      html`
+        ${p.dropLine}
+        ${boxes.map(
+          (b) => html`
+            <div
+              class=${b.cls}
+              style="top:${b.top};left:${b.left};width:${b.width};height:${b.height}${b.border
+                ? `;border:${b.border}`
+                : ""}"
+            ></div>
+          `,
+        )}
+      `,
+      p.overlay,
+    );
   }
   renderBlockActionBar();
+}
+
+/**
+ * Build an overlay box descriptor (no DOM creation).
+ *
+ * @param {any} el
+ * @param {any} type
+ * @param {any} panel
+ */
+function overlayBoxDescriptor(el, type, panel) {
+  const vpRect = panel.viewport.getBoundingClientRect();
+  const elRect = el.getBoundingClientRect();
+  const scale = effectiveZoom();
+  return {
+    cls: `overlay-box overlay-${type}`,
+    top: `${(elRect.top - vpRect.top + panel.viewport.scrollTop) / scale}px`,
+    left: `${(elRect.left - vpRect.left + panel.viewport.scrollLeft) / scale}px`,
+    width: `${elRect.width / scale}px`,
+    height: `${elRect.height / scale}px`,
+  };
 }
 
 function getActivePanel() {
@@ -1955,15 +1635,14 @@ function applyInlineFormat(action) {
 }
 
 /** Show a link URL popover anchored to a toolbar button. */
-/** @type {any} */
-let linkPopoverEl = null;
+const linkPopoverHost = document.createElement("div");
+linkPopoverHost.style.display = "contents";
+(document.querySelector("sp-theme") || document.body).appendChild(linkPopoverHost);
 
 /** @param {any} anchorBtn */
 function showLinkPopover(anchorBtn) {
-  if (linkPopoverEl) {
-    linkPopoverEl.remove();
-    linkPopoverEl = null;
-  }
+  // Dismiss existing
+  litRender(nothing, linkPopoverHost);
 
   const sel = window.getSelection();
   /** @type {any} */
@@ -1981,18 +1660,16 @@ function showLinkPopover(anchorBtn) {
   }
 
   const rect = anchorBtn.getBoundingClientRect();
-  linkPopoverEl = document.createElement("div");
 
   const onApply = () => {
-    const field = linkPopoverEl.querySelector("sp-textfield");
-    const url = field?.value;
+    const field = linkPopoverHost.querySelector("sp-textfield");
+    const url = /** @type {any} */ (field)?.value;
     if (existingLink) {
       existingLink.setAttribute("href", url);
     } else if (url) {
       document.execCommand("createLink", false, url);
     }
-    linkPopoverEl.remove();
-    linkPopoverEl = null;
+    litRender(nothing, linkPopoverHost);
     renderBlockActionBar();
   };
 
@@ -2000,16 +1677,14 @@ function showLinkPopover(anchorBtn) {
     const frag = document.createDocumentFragment();
     while (existingLink.firstChild) frag.appendChild(existingLink.firstChild);
     existingLink.parentNode.replaceChild(frag, existingLink);
-    linkPopoverEl.remove();
-    linkPopoverEl = null;
+    litRender(nothing, linkPopoverHost);
     renderBlockActionBar();
   };
 
   const onKeydown = (/** @type {any} */ e) => {
     if (e.key === "Enter") onApply();
     else if (e.key === "Escape") {
-      linkPopoverEl.remove();
-      linkPopoverEl = null;
+      litRender(nothing, linkPopoverHost);
     }
   };
 
@@ -2035,11 +1710,10 @@ function showLinkPopover(anchorBtn) {
           : nothing}
       </sp-popover>
     `,
-    linkPopoverEl,
+    linkPopoverHost,
   );
 
-  (document.querySelector("sp-theme") || document.body).appendChild(linkPopoverEl);
-  requestAnimationFrame(() => linkPopoverEl?.querySelector("sp-textfield")?.focus());
+  requestAnimationFrame(() => linkPopoverHost?.querySelector("sp-textfield")?.focus());
 }
 
 /** Move the selected node up (swap with previous sibling). */
@@ -2264,29 +1938,6 @@ function effectiveZoom() {
 }
 
 /**
- * @param {any} el
- * @param {any} type
- * @param {any} panel
- */
-function drawOverlayBox(el, type, panel) {
-  const vpRect = panel.viewport.getBoundingClientRect();
-  const elRect = el.getBoundingClientRect();
-  const scale = effectiveZoom();
-
-  const box = document.createElement("div");
-  box.className = `overlay-box overlay-${type}`;
-  box.style.top = `${(elRect.top - vpRect.top + panel.viewport.scrollTop) / scale}px`;
-  box.style.left = `${(elRect.left - vpRect.left + panel.viewport.scrollLeft) / scale}px`;
-  box.style.width = `${elRect.width / scale}px`;
-  box.style.height = `${elRect.height / scale}px`;
-
-  // Selection label is now handled by the unified block action bar
-
-  panel.overlay.appendChild(box);
-  return box;
-}
-
-/**
  * @param {any} path
  * @param {any} canvasEl
  */
@@ -2447,7 +2098,7 @@ function registerPanelEvents(panel) {
         let path = elToPath.get(el);
         if (path) {
           path = bubbleInlinePath(S.document, path);
-          showContextMenu(e, path);
+          showContextMenu(e, path, S);
           return;
         }
       }
@@ -2956,61 +2607,58 @@ function componentInlineInput() {
   }
 }
 
+const slashMenuHost = document.createElement("div");
+slashMenuHost.style.display = "contents";
+(document.querySelector("sp-theme") || document.body).appendChild(slashMenuHost);
+
 /**
  * @param {any} el
  * @param {any} filter
  */
 function showComponentSlashMenu(el, filter) {
-  dismissComponentSlashMenu();
-
   const items = filter
     ? COMPONENT_SLASH_COMMANDS.filter(
         (c) => c.label.toLowerCase().includes(filter) || c.tag.toLowerCase().includes(filter),
       )
     : COMPONENT_SLASH_COMMANDS;
 
-  if (!items.length) return;
+  if (!items.length) {
+    dismissComponentSlashMenu();
+    return;
+  }
 
   const rect = el.getBoundingClientRect();
 
-  const popover = /** @type {any} */ (document.createElement("sp-popover"));
-  popover.open = true;
-  popover.placement = "bottom-start";
-  popover.style.position = "fixed";
-  popover.style.left = `${rect.left}px`;
-  popover.style.top = `${rect.bottom + 4}px`;
-  popover.style.zIndex = "9999";
-  popover.style.maxHeight = "280px";
-  popover.style.overflowY = "auto";
-
-  const menu = document.createElement("sp-menu");
-  menu.style.minWidth = "220px";
-
-  for (let i = 0; i < items.length; i++) {
-    const cmd = items[i];
-    const mi = /** @type {any} */ (document.createElement("sp-menu-item"));
-    mi.textContent = cmd.label;
-    mi._cmd = cmd;
-    if (cmd.description) {
-      const desc = document.createElement("span");
-      desc.slot = "description";
-      desc.textContent = cmd.description;
-      mi.appendChild(desc);
-    }
-    if (i === 0) mi.setAttribute("focused", "");
-    mi.addEventListener("click", () => selectComponentSlashItem(cmd));
-    menu.appendChild(mi);
-  }
-
-  popover.appendChild(menu);
-  (document.querySelector("sp-theme") || document.body).appendChild(popover);
-  popover._activeIdx = 0;
-  componentSlashMenu = popover;
+  litRender(
+    html`
+      <sp-popover
+        open
+        placement="bottom-start"
+        style="position:fixed;left:${rect.left}px;top:${rect.bottom +
+        4}px;z-index:9999;max-height:280px;overflow-y:auto"
+      >
+        <sp-menu style="min-width:220px">
+          ${items.map(
+            (cmd, i) => html`
+              <sp-menu-item ?focused=${i === 0} @click=${() => selectComponentSlashItem(cmd)}>
+                ${cmd.label}
+                ${cmd.description
+                  ? html`<span slot="description">${cmd.description}</span>`
+                  : nothing}
+              </sp-menu-item>
+            `,
+          )}
+        </sp-menu>
+      </sp-popover>
+    `,
+    slashMenuHost,
+  );
+  componentSlashMenu = slashMenuHost;
 }
 
 function dismissComponentSlashMenu() {
   if (!componentSlashMenu) return;
-  componentSlashMenu.remove();
+  litRender(nothing, slashMenuHost);
   componentSlashMenu = null;
 }
 
@@ -3039,72 +2687,6 @@ function selectComponentSlashItem(cmd) {
   update(s);
 }
 
-// ─── Activity bar ────────────────────────────────────────────────────────────
-
-/**
- * @param {any} tag
- * @param {any} size
- */
-function tabIcon(tag, size) {
-  /** @type {Record<string, any>} */
-  const m = {
-    "sp-icon-folder": (/** @type {any} */ s) =>
-      html`<sp-icon-folder slot="icon" size=${s}></sp-icon-folder>`,
-    "sp-icon-layers": (/** @type {any} */ s) =>
-      html`<sp-icon-layers slot="icon" size=${s}></sp-icon-layers>`,
-    "sp-icon-view-grid": (/** @type {any} */ s) =>
-      html`<sp-icon-view-grid slot="icon" size=${s}></sp-icon-view-grid>`,
-    "sp-icon-brackets": (/** @type {any} */ s) =>
-      html`<sp-icon-brackets slot="icon" size=${s}></sp-icon-brackets>`,
-    "sp-icon-data": (/** @type {any} */ s) =>
-      html`<sp-icon-data slot="icon" size=${s}></sp-icon-data>`,
-    "sp-icon-properties": (/** @type {any} */ s) =>
-      html`<sp-icon-properties slot="icon" size=${s}></sp-icon-properties>`,
-    "sp-icon-event": (/** @type {any} */ s) =>
-      html`<sp-icon-event slot="icon" size=${s}></sp-icon-event>`,
-    "sp-icon-brush": (/** @type {any} */ s) =>
-      html`<sp-icon-brush slot="icon" size=${s}></sp-icon-brush>`,
-    "sp-icon-artboard": (/** @type {any} */ s) =>
-      html`<sp-icon-artboard slot="icon" size=${s}></sp-icon-artboard>`,
-    "sp-icon-box": (/** @type {any} */ s) =>
-      html`<sp-icon-box slot="icon" size=${s}></sp-icon-box>`,
-  };
-  const fn = m[tag];
-  return fn ? fn(size || "s") : nothing;
-}
-
-function renderActivityBar() {
-  const tabs = [
-    { value: "files", icon: "sp-icon-folder", label: "Files" },
-    { value: "layers", icon: "sp-icon-layers", label: "Layers" },
-    { value: "components", icon: "sp-icon-box", label: "Components" },
-    { value: "blocks", icon: "sp-icon-view-grid", label: "Blocks" },
-    { value: "state", icon: "sp-icon-brackets", label: "State" },
-    { value: "data", icon: "sp-icon-data", label: "Data" },
-  ];
-  const tpl = html`
-    <sp-tabs
-      selected=${S.ui.leftTab}
-      direction="vertical"
-      quiet
-      @change=${(/** @type {any} */ e) => {
-        S = { ...S, ui: { ...S.ui, leftTab: e.target.selected } };
-        renderActivityBar();
-        renderLeftPanel();
-      }}
-    >
-      ${tabs.map(
-        (t) => html`
-          <sp-tab value=${t.value} title=${t.label} aria-label=${t.label}>
-            ${tabIcon(t.icon, "m")}
-          </sp-tab>
-        `,
-      )}
-    </sp-tabs>
-  `;
-  litRender(tpl, /** @type {any} */ (activityBar));
-}
-
 // ─── Left panel: Layers ───────────────────────────────────────────────────────
 
 function renderLeftPanel() {
@@ -3117,8 +2699,14 @@ function renderLeftPanel() {
   else if (tab === "components") content = renderComponentsTemplate();
   else if (tab === "files") content = renderFilesTemplate();
   else if (tab === "blocks") content = renderBlocksTemplate();
-  else if (tab === "state") content = renderSignalsTemplate();
-  else if (tab === "data") content = renderDataExplorerTemplate();
+  else if (tab === "state") content = renderSignalsTemplate(S, { renderLeftPanel, renderCanvas });
+  else if (tab === "data")
+    content = renderDataExplorerTemplate(S.document.state, liveScope, {
+      renderCanvas,
+      renderLeftPanel,
+      defCategory,
+      defBadgeLabel,
+    });
   else content = nothing;
 
   litRender(html`<div class="panel-body">${content}</div>`, /** @type {any} */ (leftPanel));
@@ -3219,7 +2807,7 @@ function renderLayersTemplate() {
         data-dnd-void=${nodeType === "element" && isVoidEl ? "" : nothing}
         @click=${() => update(selectNode(S, path))}
         @contextmenu=${nodeType === "element"
-          ? (/** @type {any} */ e) => showContextMenu(e, path)
+          ? (/** @type {any} */ e) => showContextMenu(e, path, S)
           : nothing}
       >
         <span class="layer-handle">${nodeType === "element" ? "⠿" : ""}</span>
@@ -3908,55 +3496,70 @@ function renderStylebook() {
   const hasMedia = sizeBreakpoints.length > 0;
 
   // Chrome bar (tabs + filter) — positioned absolutely above the panzoom surface
-  const chrome = document.createElement("div");
-  chrome.className = "sb-chrome";
-  chrome.style.cssText =
-    "position:absolute;top:0;left:0;right:0;z-index:15;background:var(--bg-panel);border-bottom:1px solid var(--border)";
+  const chromeHost = document.createElement("div");
+  chromeHost.style.display = "contents";
 
-  const tabBar = document.createElement("sp-tabs");
-  tabBar.setAttribute("size", "s");
-  for (const t of ["elements", "variables"]) {
-    const tab = document.createElement("sp-tab");
-    tab.setAttribute("label", t.charAt(0).toUpperCase() + t.slice(1));
-    tab.setAttribute("value", t);
-    if (S.ui.stylebookTab === t) tab.setAttribute("selected", "");
-    tab.addEventListener("click", () => {
-      S = { ...S, ui: { ...S.ui, stylebookTab: t } };
-      renderCanvas();
-      renderOverlays();
-      renderLeftPanel();
-    });
-    tabBar.appendChild(tab);
-  }
-  chrome.appendChild(tabBar);
+  const onTabClick = (/** @type {string} */ t) => {
+    S = { ...S, ui: { ...S.ui, stylebookTab: t } };
+    renderCanvas();
+    renderOverlays();
+    renderLeftPanel();
+  };
 
-  // Filter bar (elements tab only)
-  if (S.ui.stylebookTab === "elements") {
-    const search = document.createElement("input");
-    search.className = "field-input";
-    search.style.cssText = "flex:1;max-width:200px;margin-left:8px";
-    search.placeholder = "Filter\u2026";
-    search.value = S.ui.stylebookFilter;
-    search.oninput = () => {
-      S = { ...S, ui: { ...S.ui, stylebookFilter: search.value } };
-      renderCanvas();
-      renderOverlays();
-    };
-    chrome.appendChild(search);
+  const onFilterInput = (/** @type {any} */ e) => {
+    S = { ...S, ui: { ...S.ui, stylebookFilter: e.target.value } };
+    renderCanvas();
+    renderOverlays();
+  };
 
-    const customizedBtn = document.createElement("button");
-    customizedBtn.className = `tb-toggle${S.ui.stylebookCustomizedOnly ? " active" : ""}`;
-    customizedBtn.style.marginLeft = "4px";
-    customizedBtn.textContent = "Customized";
-    customizedBtn.onclick = () => {
-      S = { ...S, ui: { ...S.ui, stylebookCustomizedOnly: !S.ui.stylebookCustomizedOnly } };
-      renderCanvas();
-      renderOverlays();
-    };
-    chrome.appendChild(customizedBtn);
-  }
+  const onCustomizedToggle = () => {
+    S = { ...S, ui: { ...S.ui, stylebookCustomizedOnly: !S.ui.stylebookCustomizedOnly } };
+    renderCanvas();
+    renderOverlays();
+  };
 
-  /** @type {any} */ (canvasWrap).appendChild(chrome);
+  litRender(
+    html`
+      <div
+        class="sb-chrome"
+        style="position:absolute;top:0;left:0;right:0;z-index:15;background:var(--bg-panel);border-bottom:1px solid var(--border)"
+      >
+        <sp-tabs size="s">
+          ${["elements", "variables"].map(
+            (t) => html`
+              <sp-tab
+                label=${t.charAt(0).toUpperCase() + t.slice(1)}
+                value=${t}
+                ?selected=${S.ui.stylebookTab === t}
+                @click=${() => onTabClick(t)}
+              ></sp-tab>
+            `,
+          )}
+        </sp-tabs>
+        ${S.ui.stylebookTab === "elements"
+          ? html`
+              <input
+                class="field-input"
+                style="flex:1;max-width:200px;margin-left:8px"
+                placeholder="Filter…"
+                .value=${S.ui.stylebookFilter}
+                @input=${onFilterInput}
+              />
+              <button
+                class="tb-toggle${S.ui.stylebookCustomizedOnly ? " active" : ""}"
+                style="margin-left:4px"
+                @click=${onCustomizedToggle}
+              >
+                Customized
+              </button>
+            `
+          : nothing}
+      </div>
+    `,
+    chromeHost,
+  );
+
+  /** @type {any} */ (canvasWrap).appendChild(chromeHost);
 
   // Set up panzoom surface — same as normal canvas mode
   /** @type {any} */ (canvasWrap).style.overflow = "hidden";
@@ -4187,45 +3790,46 @@ function renderStylebookVarsIntoCanvas(canvasEl, rootStyle) {
   for (const [catKey, catMeta] of Object.entries(varCats)) {
     const vars = groups[catKey];
 
-    const sectionEl = document.createElement("div");
-    sectionEl.className = "sb-section";
-    const label = document.createElement("div");
-    label.className = "sb-label";
-    label.textContent = catMeta.label;
-    sectionEl.appendChild(label);
+    // Section container built via lit-html
+    const sectionHost = document.createElement("div");
+    sectionHost.style.display = "contents";
 
-    const body = document.createElement("div");
-    body.className = "sb-body";
+    /** @type {any} */
+    let bodyEl = null;
 
-    // Existing variable rows
-    if (vars.length > 0) {
-      for (const [varName, varVal] of vars) {
-        body.appendChild(renderVarRow(catKey, catMeta, varName, String(varVal), false));
-      }
-    } else {
-      const empty = document.createElement("div");
-      empty.className = "sb-var-empty";
-      empty.textContent = `No ${catMeta.label.toLowerCase()} variables yet.`;
-      body.appendChild(empty);
-    }
-
-    // "Add" button at bottom of each section
-    const addBtn = document.createElement("button");
-    addBtn.className = "sb-var-add-btn";
-    addBtn.innerHTML = `<span class="sb-var-add-icon">+</span> Add ${catMeta.label}`;
-    addBtn.onclick = () => {
-      // Insert new empty row just before the add button
+    const onAdd = () => {
+      if (!bodyEl) return;
+      const addBtn = bodyEl.querySelector(".sb-var-add-btn");
       const row = renderVarRow(catKey, catMeta, null, "", true);
-      body.insertBefore(row, addBtn);
-      addBtn.style.display = "none";
-      // Focus the name field
+      bodyEl.insertBefore(row, addBtn);
+      if (addBtn) addBtn.style.display = "none";
       const nameField = /** @type {any} */ (row.querySelector("sp-textfield"));
       if (nameField) requestAnimationFrame(() => nameField.focus());
     };
-    body.appendChild(addBtn);
 
-    sectionEl.appendChild(body);
-    canvasEl.appendChild(sectionEl);
+    litRender(
+      html`
+        <div class="sb-section">
+          <div class="sb-label">${catMeta.label}</div>
+          <div class="sb-body">
+            ${vars.length > 0
+              ? vars.map(([varName, varVal]) =>
+                  renderVarRow(catKey, catMeta, varName, String(varVal), false),
+                )
+              : html`<div class="sb-var-empty">
+                  No ${catMeta.label.toLowerCase()} variables yet.
+                </div>`}
+            <button class="sb-var-add-btn" @click=${onAdd}>
+              <span class="sb-var-add-icon">+</span> Add ${catMeta.label}
+            </button>
+          </div>
+        </div>
+      `,
+      sectionHost,
+    );
+
+    bodyEl = sectionHost.querySelector(".sb-body");
+    canvasEl.appendChild(sectionHost);
   }
 }
 
@@ -4712,22 +4316,46 @@ function renderStylebookOverlays() {
   const selectedTag = S.ui.stylebookSelection;
 
   for (const panel of canvasPanels) {
-    panel.overlay.innerHTML = "";
-    panel.overlay.appendChild(panel.dropLine);
-
     const hoverTag = panel._lastHoverTag;
+    /**
+     * @type {{
+     *   cls: string;
+     *   top: string;
+     *   left: string;
+     *   width: string;
+     *   height: string;
+     *   label?: string;
+     * }[]}
+     */
+    const boxes = [];
 
-    // Draw hover
     if (hoverTag && hoverTag !== selectedTag) {
       const el = findStylebookEl(panel.canvas, hoverTag);
-      if (el) drawOverlayBoxRaw(el, "hover", panel, `<${hoverTag}>`);
+      if (el) boxes.push({ ...overlayBoxDescriptor(el, "hover", panel), label: undefined });
     }
 
-    // Draw selection
     if (selectedTag) {
       const el = findStylebookEl(panel.canvas, selectedTag);
-      if (el) drawOverlayBoxRaw(el, "selection", panel, `<${selectedTag}>`);
+      if (el)
+        boxes.push({ ...overlayBoxDescriptor(el, "selection", panel), label: `<${selectedTag}>` });
     }
+
+    litRender(
+      html`
+        ${panel.dropLine}
+        ${boxes.map(
+          (b) => html`
+            <div
+              class=${b.cls}
+              style="top:${b.top};left:${b.left};width:${b.width};height:${b.height}"
+            >
+              ${b.label ? html`<div class="overlay-label">${b.label}</div>` : nothing}
+            </div>
+          `,
+        )}
+      `,
+      panel.overlay,
+    );
   }
 }
 
@@ -4737,1573 +4365,6 @@ function findStylebookEl(/** @type {any} */ canvasEl, /** @type {any} */ tag) {
     if (stylebookElToTag.get(child) === tag) return child;
   }
   return null;
-}
-
-/** Draw an overlay box with a custom label (used by stylebook) */
-function drawOverlayBoxRaw(
-  /** @type {any} */ el,
-  /** @type {any} */ type,
-  /** @type {any} */ panel,
-  /** @type {any} */ labelText,
-) {
-  const vpRect = panel.viewport.getBoundingClientRect();
-  const elRect = el.getBoundingClientRect();
-  const scale = effectiveZoom();
-
-  const box = document.createElement("div");
-  box.className = `overlay-box overlay-${type}`;
-  box.style.top = `${(elRect.top - vpRect.top + panel.viewport.scrollTop) / scale}px`;
-  box.style.left = `${(elRect.left - vpRect.left + panel.viewport.scrollLeft) / scale}px`;
-  box.style.width = `${elRect.width / scale}px`;
-  box.style.height = `${elRect.height / scale}px`;
-
-  if (type === "selection" && labelText) {
-    const label = document.createElement("div");
-    label.className = "overlay-label";
-    label.textContent = labelText;
-    box.appendChild(label);
-  }
-
-  panel.overlay.appendChild(box);
-  return box;
-}
-
-// ─── Left panel: Signals ─────────────────────────────────────────────────────
-
-/** Expanded signal editor state (persists across renders). */
-/** @type {any} */
-let expandedSignal = null;
-
-function renderSignalsTemplate() {
-  const defs = S.document.state || {};
-  const entries = Object.entries(defs);
-
-  // Group by category
-  const groups = /** @type {Record<string, any[]>} */ ({
-    state: [],
-    computed: [],
-    data: [],
-    function: [],
-  });
-  for (const [name, def] of entries) {
-    groups[defCategory(def)].push([name, def]);
-  }
-
-  const categories = [
-    { key: "state", label: "State", items: groups.state },
-    { key: "computed", label: "Computed", items: groups.computed },
-    { key: "data", label: "Data", items: groups.data },
-    { key: "function", label: "Functions", items: groups.function },
-  ];
-
-  const collapsedCats = S._collapsedSignalCats || (S._collapsedSignalCats = new Set());
-
-  const catTemplates = categories
-    .filter((c) => c.items.length > 0)
-    .map(
-      ({ key, label, items }) => html`
-        <div
-          class="signal-category${collapsedCats.has(key) ? " collapsed" : ""}"
-          @click=${() => {
-            if (collapsedCats.has(key)) collapsedCats.delete(key);
-            else collapsedCats.add(key);
-            renderLeftPanel();
-          }}
-        >
-          ${label} (${items.length})
-        </div>
-        ${collapsedCats.has(key)
-          ? nothing
-          : items.map(([name, def]) => {
-              /** @type {any} */
-              const isExpanded = expandedSignal === name;
-              return html`
-                <div
-                  class="signal-row${isExpanded ? " expanded" : ""}"
-                  @click=${() => {
-                    expandedSignal = isExpanded ? null : name;
-                    renderLeftPanel();
-                  }}
-                >
-                  <span class="signal-badge ${defCategory(def)}">${defBadgeLabel(def)}</span>
-                  <span class="signal-name">${name}</span>
-                  <span class="signal-hint">${defHint(name, def)}</span>
-                  <sp-action-button
-                    quiet
-                    size="xs"
-                    class="signal-del"
-                    @click=${(/** @type {any} */ e) => {
-                      e.stopPropagation();
-                      update(removeDef(S, name));
-                    }}
-                  >
-                    <sp-icon-delete slot="icon"></sp-icon-delete>
-                  </sp-action-button>
-                </div>
-                ${isExpanded
-                  ? html`<div class="signal-editor">${renderSignalEditorTemplate(name, def)}</div>`
-                  : nothing}
-              `;
-            })}
-      `,
-    );
-
-  return html`
-    ${catTemplates}
-    ${entries.length === 0 ? html`<div class="empty-state">No state defined</div>` : nothing}
-    <div class="signals-add">
-      <sp-picker
-        size="s"
-        label="+ Add…"
-        placeholder="+ Add…"
-        @change=${(/** @type {any} */ e) => {
-          const type = e.target.value;
-          if (!type) return;
-          const template = DEF_TEMPLATES[type];
-          if (!template) return;
-          const isFunction = type === "function";
-          let nameBase = isFunction ? "newFunction" : "$newSignal";
-          let n = nameBase;
-          let i = 1;
-          while (S.document.state && S.document.state[n]) {
-            n = nameBase + i++;
-          }
-          update(addDef(S, n, structuredClone(template)));
-          expandedSignal = n;
-          renderLeftPanel();
-        }}
-      >
-        <sp-menu-item value="state">State Signal</sp-menu-item>
-        <sp-menu-item value="computed">Computed</sp-menu-item>
-        <sp-menu-divider></sp-menu-divider>
-        <sp-menu-item value="request">Fetch (Request)</sp-menu-item>
-        <sp-menu-item value="localStorage">LocalStorage</sp-menu-item>
-        <sp-menu-item value="sessionStorage">SessionStorage</sp-menu-item>
-        <sp-menu-item value="indexedDB">IndexedDB</sp-menu-item>
-        <sp-menu-item value="cookie">Cookie</sp-menu-item>
-        <sp-menu-item value="set">Set</sp-menu-item>
-        <sp-menu-item value="map">Map</sp-menu-item>
-        <sp-menu-item value="formData">FormData</sp-menu-item>
-        <sp-menu-item value="external">External Module…</sp-menu-item>
-        <sp-menu-divider></sp-menu-divider>
-        <sp-menu-item value="function">Function</sp-menu-item>
-      </sp-picker>
-    </div>
-  `;
-}
-
-/** Render inline editor fields for a specific signal/def type. */
-function renderSignalEditorTemplate(/** @type {any} */ name, /** @type {any} */ def) {
-  const cat = defCategory(def);
-
-  // Helper for picker rows
-  const pickerRow = (
-    /** @type {any} */ label,
-    /** @type {any} */ options,
-    /** @type {any} */ currentVal,
-    /** @type {any} */ onChange,
-  ) => {
-    return html`
-      <div class="field-row">
-        <label class="field-label">${label}</label>
-        <sp-picker
-          size="s"
-          class="field-input"
-          value=${currentVal}
-          @change=${(/** @type {any} */ e) => onChange(e.target.value)}
-        >
-          ${options.map(
-            (/** @type {any} */ opt) => html`<sp-menu-item value=${opt}>${opt}</sp-menu-item>`,
-          )}
-        </sp-picker>
-      </div>
-    `;
-  };
-
-  // Helper for textarea rows
-  const textareaRow = (
-    /** @type {any} */ label,
-    /** @type {any} */ value,
-    /** @type {any} */ onChange,
-    /** @type {any} */ opts = {},
-  ) => {
-    /** @type {any} */
-    let debounce;
-    return html`
-      <div class="field-row">
-        <label class="field-label">${label}</label>
-        <textarea
-          class="field-input"
-          style="min-height:${opts.minHeight || "40px"};${opts.mono
-            ? "font-family:'SF Mono','Fira Code','Consolas',monospace;font-size:11px;"
-            : ""}"
-          .value=${value}
-          @input=${(/** @type {any} */ e) => {
-            clearTimeout(debounce);
-            debounce = setTimeout(() => onChange(e.target.value), 500);
-          }}
-        ></textarea>
-      </div>
-    `;
-  };
-
-  // Name field (common to all)
-  const nameField = signalFieldRow("name", name, (/** @type {any} */ v) => {
-    if (v && v !== name && !(S.document.state && S.document.state[v])) {
-      expandedSignal = v;
-      update(renameDef(S, name, v));
-    }
-  });
-
-  /** @type {any} */
-  let fields = nothing;
-
-  if (cat === "state") {
-    const defaultVal =
-      def.default !== undefined && def.default !== null
-        ? typeof def.default === "object"
-          ? JSON.stringify(def.default)
-          : String(def.default)
-        : "";
-
-    const cemFields = isCustomElementDoc()
-      ? html`
-          ${signalFieldRow("attribute", def.attribute || "", (/** @type {any} */ v) =>
-            update(updateDef(S, name, { attribute: v || undefined })),
-          )}
-          <div class="field-row">
-            <label class="field-label">reflects</label>
-            <sp-checkbox
-              class="field-check"
-              ?checked=${!!def.reflects}
-              @change=${(/** @type {any} */ e) =>
-                update(updateDef(S, name, { reflects: e.target.checked || undefined }))}
-            ></sp-checkbox>
-          </div>
-          ${signalFieldRow(
-            "deprecated",
-            typeof def.deprecated === "string" ? def.deprecated : "",
-            (/** @type {any} */ v) => update(updateDef(S, name, { deprecated: v || undefined })),
-          )}
-        `
-      : nothing;
-
-    fields = html`
-      ${pickerRow(
-        "type",
-        ["string", "integer", "number", "boolean", "array", "object"],
-        def.type || "string",
-        (/** @type {any} */ v) => update(updateDef(S, name, { type: v })),
-      )}
-      ${signalFieldRow("default", defaultVal, (/** @type {any} */ v) => {
-        let parsed = v;
-        if (def.type === "integer") parsed = parseInt(v, 10) || 0;
-        else if (def.type === "number") parsed = parseFloat(v) || 0;
-        else if (def.type === "boolean") parsed = v === "true";
-        else if (def.type === "array" || def.type === "object") {
-          try {
-            parsed = JSON.parse(v);
-          } catch {
-            parsed = v;
-          }
-        }
-        update(updateDef(S, name, { default: parsed }));
-      })}
-      ${signalFieldRow("desc", def.description || "", (/** @type {any} */ v) =>
-        update(updateDef(S, name, { description: v || undefined })),
-      )}
-      ${cemFields}
-    `;
-  } else if (cat === "computed") {
-    /** @type {any} */
-    let debounce;
-    fields = html`
-      <div class="field-row">
-        <label class="field-label">expr</label>
-        <textarea
-          class="field-input"
-          style="min-height:40px"
-          .value=${def.$compute || ""}
-          @input=${(/** @type {any} */ e) => {
-            clearTimeout(debounce);
-            debounce = setTimeout(() => {
-              const expr = e.target.value;
-              const depMatches = expr.match(/\$[a-zA-Z_]\w*/g) || [];
-              const deps = [...new Set(depMatches)].map((d) => `#/state/${d}`);
-              update(updateDef(S, name, { $compute: expr, $deps: deps }));
-            }, 500);
-          }}
-        ></textarea>
-      </div>
-      ${def.$deps && def.$deps.length > 0
-        ? html`
-            <div class="field-row">
-              <label class="field-label">deps</label>
-              <span class="signal-hint" style="flex:1;max-width:none"
-                >${def.$deps
-                  .map((/** @type {any} */ d) => d.replace("#/state/", ""))
-                  .join(", ")}</span
-              >
-            </div>
-          `
-        : nothing}
-    `;
-  } else if (cat === "data") {
-    fields = renderDataSourceFields(name, def, textareaRow, pickerRow);
-  } else if (cat === "function") {
-    fields = renderFunctionFields(name, def, textareaRow);
-  }
-
-  return html`${nameField}${fields}`;
-}
-
-/** Data source fields for signal editor */
-function renderDataSourceFields(
-  /** @type {any} */ name,
-  /** @type {any} */ def,
-  /** @type {any} */ textareaRow,
-  /** @type {any} */ pickerRow,
-) {
-  const proto = def.$prototype;
-
-  if (proto === "Request") {
-    return html`
-      ${signalFieldRow("url", def.url || "", (/** @type {any} */ v) =>
-        update(updateDef(S, name, { url: v })),
-      )}
-      ${pickerRow(
-        "method",
-        ["GET", "POST", "PUT", "DELETE", "PATCH"],
-        def.method || "GET",
-        (/** @type {any} */ v) => update(updateDef(S, name, { method: v })),
-      )}
-      ${pickerRow("timing", ["client", "server"], def.timing || "client", (/** @type {any} */ v) =>
-        update(updateDef(S, name, { timing: v })),
-      )}
-    `;
-  }
-  if (proto === "LocalStorage" || proto === "SessionStorage") {
-    const defaultStr =
-      def.default !== undefined && def.default !== null
-        ? typeof def.default === "object"
-          ? JSON.stringify(def.default, null, 2)
-          : String(def.default)
-        : "";
-    return html`
-      ${signalFieldRow("key", def.key || "", (/** @type {any} */ v) =>
-        update(updateDef(S, name, { key: v })),
-      )}
-      ${textareaRow("default", defaultStr, (/** @type {any} */ v) => {
-        try {
-          update(updateDef(S, name, { default: JSON.parse(v) }));
-        } catch {
-          update(updateDef(S, name, { default: v }));
-        }
-      })}
-    `;
-  }
-  if (proto === "IndexedDB") {
-    return html`
-      ${signalFieldRow("database", def.database || "", (/** @type {any} */ v) =>
-        update(updateDef(S, name, { database: v })),
-      )}
-      ${signalFieldRow("store", def.store || "", (/** @type {any} */ v) =>
-        update(updateDef(S, name, { store: v })),
-      )}
-      ${signalFieldRow("version", String(def.version || 1), (/** @type {any} */ v) =>
-        update(updateDef(S, name, { version: parseInt(v, 10) || 1 })),
-      )}
-    `;
-  }
-  if (proto === "Cookie") {
-    return html`
-      ${signalFieldRow("cookie", def.name || "", (/** @type {any} */ v) =>
-        update(updateDef(S, name, { name: v })),
-      )}
-      ${signalFieldRow("default", def.default || "", (/** @type {any} */ v) =>
-        update(updateDef(S, name, { default: v })),
-      )}
-    `;
-  }
-  if (proto === "Set" || proto === "Map" || proto === "FormData") {
-    const fieldName = proto === "FormData" ? "fields" : "default";
-    const defaultStr =
-      def.default !== undefined && def.default !== null
-        ? JSON.stringify(def.default, null, 2)
-        : proto === "FormData"
-          ? JSON.stringify(def.fields || {}, null, 2)
-          : "";
-    return textareaRow(fieldName, defaultStr, (/** @type {any} */ v) => {
-      try {
-        update(updateDef(S, name, { [fieldName]: JSON.parse(v) }));
-      } catch {}
-    });
-  }
-  // Schema-driven fallback
-  return renderExternalPrototypeEditorTemplate(name, def);
-}
-
-/** Function fields for signal editor */
-function renderFunctionFields(
-  /** @type {any} */ name,
-  /** @type {any} */ def,
-  /** @type {any} */ textareaRow,
-) {
-  const srcFields = def.$src
-    ? html`
-        ${signalFieldRow("$src", def.$src || "", (/** @type {any} */ v) =>
-          update(updateDef(S, name, { $src: v || undefined })),
-        )}
-        ${signalFieldRow("$export", def.$export || "", (/** @type {any} */ v) =>
-          update(updateDef(S, name, { $export: v || undefined })),
-        )}
-      `
-    : textareaRow(
-        "body",
-        def.body || "",
-        (/** @type {any} */ v) => update(updateDef(S, name, { body: v })),
-        { minHeight: "60px", mono: true },
-      );
-
-  return html`
-    ${srcFields} ${renderParameterEditorTemplate(name, def)}
-    ${isCustomElementDoc() ? renderEmitsEditorTemplate(name, def) : nothing}
-    ${!def.$src
-      ? html`
-          <button
-            class="kv-add"
-            style="margin-top:4px"
-            @click=${() => {
-              S = { ...S, ui: { ...S.ui, editingFunction: { type: "def", defName: name } } };
-              renderCanvas();
-            }}
-          >
-            Open in editor
-          </button>
-        `
-      : nothing}
-    ${signalFieldRow("desc", def.description || "", (/** @type {any} */ v) =>
-      update(updateDef(S, name, { description: v || undefined })),
-    )}
-  `;
-}
-
-// ─── CEM Editors ─────────────────────────────────────────────────────────────
-
-/** Normalize a parameter entry to a CEM object. */
-function normParam(/** @type {any} */ p) {
-  return typeof p === "string" ? { name: p } : p;
-}
-
-/** Track which functions have the advanced param editor open. */
-const advancedParamOpen = new Set();
-
-/** Render CEM parameter editor with basic/advanced toggle. */
-function renderParameterEditorTemplate(/** @type {any} */ name, /** @type {any} */ def) {
-  const params = (def.parameters || []).map(normParam);
-  const isAdvanced = advancedParamOpen.has(name);
-
-  if (!isAdvanced) {
-    // Basic mode: name chips
-    return html`
-      <div class="field-row" style="flex-wrap:wrap">
-        <label class="field-label">params</label>
-        <div style="display:flex;flex-wrap:wrap;gap:4px;flex:1;align-items:center">
-          ${params.map(
-            (/** @type {any} */ p, /** @type {any} */ i) => html`
-              <span
-                style="display:inline-flex;align-items:center;gap:2px;padding:1px 6px;border-radius:3px;background:var(--bg-hover);font-size:11px;font-family:monospace"
-              >
-                ${p.name || "?"}
-                <span
-                  style="cursor:pointer;opacity:0.5;margin-left:2px"
-                  @click=${() => {
-                    update(
-                      updateDef(S, name, {
-                        parameters: params.filter(
-                          (/** @type {any} */ _, /** @type {any} */ j) => j !== i,
-                        ).length
-                          ? params.filter((/** @type {any} */ _, /** @type {any} */ j) => j !== i)
-                          : undefined,
-                      }),
-                    );
-                  }}
-                  >×</span
-                >
-              </span>
-            `,
-          )}
-          <input
-            class="field-input"
-            style="width:60px;flex:0 0 auto;font-size:11px"
-            placeholder="+"
-            @keydown=${(/** @type {any} */ e) => {
-              if (e.key === "Enter" && e.target.value.trim()) {
-                update(
-                  updateDef(S, name, { parameters: [...params, { name: e.target.value.trim() }] }),
-                );
-              }
-            }}
-          />
-        </div>
-        <span
-          style="font-size:10px;color:var(--fg-dim);cursor:pointer;width:100%;margin-top:2px"
-          @click=${() => {
-            advancedParamOpen.add(name);
-            renderLeftPanel();
-          }}
-          >▸ Advanced</span
-        >
-      </div>
-    `;
-  }
-
-  // Advanced mode: full rows
-  return html`
-    <div class="field-row" style="flex-wrap:wrap">
-      <label class="field-label">params</label>
-      <div style="flex:1;display:flex;flex-direction:column;gap:4px">
-        ${params.map(
-          (/** @type {any} */ p, /** @type {any} */ i) => html`
-            <div style="display:flex;gap:4px;align-items:center">
-              <input
-                class="field-input"
-                .value=${p.name || ""}
-                placeholder="name"
-                style="flex:1"
-                @change=${(/** @type {any} */ e) => {
-                  const next = [...params];
-                  next[i] = { ...next[i], name: e.target.value };
-                  update(updateDef(S, name, { parameters: next }));
-                }}
-              />
-              <input
-                class="field-input"
-                .value=${p.type?.text || ""}
-                placeholder="type"
-                style="flex:1"
-                @change=${(/** @type {any} */ e) => {
-                  const next = [...params];
-                  next[i] = {
-                    ...next[i],
-                    type: e.target.value ? { text: e.target.value } : undefined,
-                  };
-                  update(updateDef(S, name, { parameters: next }));
-                }}
-              />
-              <input
-                class="field-input"
-                .value=${p.description || ""}
-                placeholder="desc"
-                style="flex:2"
-                @change=${(/** @type {any} */ e) => {
-                  const next = [...params];
-                  next[i] = { ...next[i], description: e.target.value || undefined };
-                  update(updateDef(S, name, { parameters: next }));
-                }}
-              />
-              <input
-                type="checkbox"
-                title="optional"
-                .checked=${!!p.optional}
-                @change=${(/** @type {any} */ e) => {
-                  const next = [...params];
-                  next[i] = { ...next[i], optional: e.target.checked || undefined };
-                  update(updateDef(S, name, { parameters: next }));
-                }}
-              />
-              <span
-                style="cursor:pointer;opacity:0.5"
-                @click=${() => {
-                  const next = params.filter(
-                    (/** @type {any} */ _, /** @type {any} */ j) => j !== i,
-                  );
-                  update(updateDef(S, name, { parameters: next.length ? next : undefined }));
-                }}
-                >×</span
-              >
-            </div>
-          `,
-        )}
-        <button
-          class="kv-add"
-          @click=${() => update(updateDef(S, name, { parameters: [...params, { name: "" }] }))}
-        >
-          + Add parameter
-        </button>
-      </div>
-      <span
-        style="font-size:10px;color:var(--fg-dim);cursor:pointer;width:100%;margin-top:2px"
-        @click=${() => {
-          advancedParamOpen.delete(name);
-          renderLeftPanel();
-        }}
-        >▾ Basic</span
-      >
-    </div>
-  `;
-}
-
-/** Render CEM emits editor for function state entries. */
-function renderEmitsEditorTemplate(/** @type {any} */ name, /** @type {any} */ def) {
-  const emits = def.emits || [];
-  if (emits.length === 0 && !isCustomElementDoc()) return nothing;
-
-  return html`
-    <div
-      style="font-size:11px;font-weight:600;color:var(--fg-dim);margin:8px 0 4px;text-transform:uppercase;letter-spacing:0.05em"
-    >
-      Emits
-    </div>
-    ${emits.map(
-      (/** @type {any} */ ev, /** @type {any} */ i) => html`
-        <div style="display:flex;gap:4px;align-items:center;margin-bottom:4px">
-          <input
-            class="field-input"
-            .value=${ev.name || ""}
-            placeholder="event name"
-            style="flex:1"
-            @change=${(/** @type {any} */ e) => {
-              const next = [...emits];
-              next[i] = { ...next[i], name: e.target.value };
-              update(updateDef(S, name, { emits: next }));
-            }}
-          />
-          <input
-            class="field-input"
-            .value=${ev.type?.text || ""}
-            placeholder="type"
-            style="flex:1"
-            @change=${(/** @type {any} */ e) => {
-              const next = [...emits];
-              next[i] = { ...next[i], type: e.target.value ? { text: e.target.value } : undefined };
-              update(updateDef(S, name, { emits: next }));
-            }}
-          />
-          <input
-            class="field-input"
-            .value=${ev.description || ""}
-            placeholder="description"
-            style="flex:2"
-            @change=${(/** @type {any} */ e) => {
-              const next = [...emits];
-              next[i] = { ...next[i], description: e.target.value || undefined };
-              update(updateDef(S, name, { emits: next }));
-            }}
-          />
-          <span
-            style="cursor:pointer;opacity:0.5"
-            @click=${() => {
-              update(
-                updateDef(S, name, {
-                  emits: emits.filter((/** @type {any} */ _, /** @type {any} */ j) => j !== i)
-                    .length
-                    ? emits.filter((/** @type {any} */ _, /** @type {any} */ j) => j !== i)
-                    : undefined,
-                }),
-              );
-            }}
-            >×</span
-          >
-        </div>
-      `,
-    )}
-    <button
-      class="kv-add"
-      @click=${() => update(updateDef(S, name, { emits: [...emits, { name: "" }] }))}
-    >
-      + Add event
-    </button>
-  `;
-}
-
-/** Simple field row for signal editors. */
-function signalFieldRow(
-  /** @type {any} */ label,
-  /** @type {any} */ value,
-  /** @type {any} */ onChange,
-) {
-  /** @type {any} */
-  let debounce;
-  return html`
-    <div class="field-row">
-      <sp-field-label size="s">${label}</sp-field-label>
-      <sp-textfield
-        size="s"
-        value=${value}
-        @input=${(/** @type {any} */ e) => {
-          clearTimeout(debounce);
-          debounce = setTimeout(() => onChange(e.target.value), 400);
-        }}
-      ></sp-textfield>
-    </div>
-  `;
-}
-
-// ─── Plugin schema-driven form rendering ────────────────────────────────────
-
-/** Keys handled by the framework — skip when rendering schema fields. */
-const STUDIO_RESERVED_KEYS = new Set([
-  "$prototype",
-  "$src",
-  "$export",
-  "signal",
-  "timing",
-  "default",
-  "description",
-  "body",
-  "parameters",
-  "name",
-  "attribute",
-  "reflects",
-  "deprecated",
-  "emits",
-]);
-
-/**
- * Render config form fields from a JSON Schema `properties` object. Maps schema types to
- * appropriate form controls.
- */
-function renderSchemaFieldsTemplate(
-  /** @type {any} */ schema,
-  /** @type {any} */ def,
-  /** @type {any} */ name,
-) {
-  if (!schema?.properties) return nothing;
-
-  const required = new Set(schema.required ?? []);
-
-  return Object.entries(schema.properties)
-    .filter(([prop]) => !STUDIO_RESERVED_KEYS.has(prop))
-    .map(([prop, ps]) => {
-      const currentValue = def[prop];
-      const labelText = prop + (required.has(prop) ? " *" : "");
-
-      let control;
-      if (ps.enum) {
-        control = html`
-          <sp-picker
-            size="s"
-            value=${currentValue !== undefined
-              ? String(currentValue)
-              : ps.default !== undefined
-                ? String(ps.default)
-                : "__none__"}
-            @change=${(/** @type {any} */ e) =>
-              update(
-                updateDef(S, name, {
-                  [prop]: e.target.value === "__none__" ? undefined : e.target.value,
-                }),
-              )}
-          >
-            ${!required.has(prop) ? html`<sp-menu-item value="__none__">—</sp-menu-item>` : nothing}
-            ${ps.enum.map(
-              (/** @type {any} */ val) => html`<sp-menu-item value=${val}>${val}</sp-menu-item>`,
-            )}
-          </sp-picker>
-        `;
-      } else if (ps.type === "boolean") {
-        control = html`<sp-checkbox
-          ?checked=${currentValue ?? ps.default ?? false}
-          @change=${(/** @type {any} */ e) =>
-            update(updateDef(S, name, { [prop]: e.target.checked }))}
-        ></sp-checkbox>`;
-      } else if (ps.type === "integer" || ps.type === "number") {
-        /** @type {any} */
-        let debounce;
-        control = html`<sp-number-field
-          size="s"
-          min=${ps.minimum !== undefined ? ps.minimum : nothing}
-          max=${ps.maximum !== undefined ? ps.maximum : nothing}
-          step=${ps.type === "integer" ? "1" : nothing}
-          .value=${currentValue !== undefined ? currentValue : nothing}
-          placeholder=${ps.default !== undefined ? String(ps.default) : nothing}
-          @change=${(/** @type {any} */ e) => {
-            clearTimeout(debounce);
-            debounce = setTimeout(() => {
-              const parsed =
-                ps.type === "integer" ? parseInt(e.target.value, 10) : parseFloat(e.target.value);
-              update(updateDef(S, name, { [prop]: isNaN(parsed) ? undefined : parsed }));
-            }, 400);
-          }}
-        ></sp-number-field>`;
-      } else if (ps.format === "json-schema") {
-        const hasValue =
-          currentValue && typeof currentValue === "object" && Object.keys(currentValue).length > 0;
-        const isRef = currentValue && typeof currentValue === "object" && currentValue.$ref;
-        /** @type {any} */
-        let debounce;
-        control = html`
-          <div class="schema-param-editor">
-            ${hasValue && !isRef && currentValue.properties
-              ? html`
-                  <div style="display:flex;flex-wrap:wrap;gap:3px;margin-bottom:4px">
-                    ${Object.entries(currentValue.properties).map(
-                      ([k, v]) => html`
-                        <span
-                          style="background:var(--bg-alt);padding:1px 6px;border-radius:3px;font-size:10px;color:var(--fg-dim)"
-                          >${k}: ${v.type ?? "any"}</span
-                        >
-                      `,
-                    )}
-                  </div>
-                `
-              : nothing}
-            <sp-textfield
-              multiline
-              size="s"
-              style="min-height:${hasValue ? "80px" : "40px"};font-family:monospace;font-size:11px"
-              .value=${currentValue !== undefined ? JSON.stringify(currentValue, null, 2) : ""}
-              placeholder=${ps.description ?? "JSON Schema defining the data shape\u2026"}
-              @input=${(/** @type {any} */ e) => {
-                clearTimeout(debounce);
-                debounce = setTimeout(() => {
-                  try {
-                    update(updateDef(S, name, { [prop]: JSON.parse(e.target.value) }));
-                  } catch {}
-                }, 500);
-              }}
-            ></sp-textfield>
-          </div>
-        `;
-      } else if (ps.type === "array" || ps.type === "object") {
-        /** @type {any} */
-        let debounce;
-        control = html`<sp-textfield
-          multiline
-          size="s"
-          style="min-height:40px"
-          .value=${currentValue !== undefined ? JSON.stringify(currentValue, null, 2) : ""}
-          placeholder=${ps.default !== undefined ? JSON.stringify(ps.default) : nothing}
-          @input=${(/** @type {any} */ e) => {
-            clearTimeout(debounce);
-            debounce = setTimeout(() => {
-              try {
-                update(updateDef(S, name, { [prop]: JSON.parse(e.target.value) }));
-              } catch {}
-            }, 500);
-          }}
-        ></sp-textfield>`;
-      } else {
-        /** @type {any} */
-        let debounce;
-        const ph = ps.default !== undefined ? String(ps.default) : (ps.examples?.[0] ?? "");
-        control = html`<sp-textfield
-          size="s"
-          .value=${currentValue ?? ""}
-          placeholder=${ph || nothing}
-          title=${ps.description || nothing}
-          @input=${(/** @type {any} */ e) => {
-            clearTimeout(debounce);
-            debounce = setTimeout(
-              () => update(updateDef(S, name, { [prop]: e.target.value || undefined })),
-              400,
-            );
-          }}
-        ></sp-textfield>`;
-      }
-
-      return html`
-        <div class="field-row">
-          <sp-field-label size="s" title=${ps.description || nothing}>${labelText}</sp-field-label>
-          ${control}
-        </div>
-      `;
-    });
-}
-
-/**
- * Render editor fields for an external $prototype + $src plugin. Shows $src/$export inputs plus
- * schema-driven config fields.
- */
-function renderExternalPrototypeEditorTemplate(/** @type {any} */ name, /** @type {any} */ def) {
-  // Schema-driven config fields (async with cache)
-  /** @type {any} */
-  let schemaContent = nothing;
-  if (def.$src && def.$prototype) {
-    const cacheKey = `${def.$src}::${def.$prototype}`;
-    if (pluginSchemaCache.has(cacheKey)) {
-      const schema = pluginSchemaCache.get(cacheKey);
-      if (schema) {
-        schemaContent = html`
-          ${schema.description
-            ? html`<div class="signal-hint" style="padding:4px 0 8px">${schema.description}</div>`
-            : nothing}
-          ${renderSchemaFieldsTemplate(schema, def, name)}
-        `;
-      }
-    } else {
-      // Trigger async load — will re-render when cached
-      schemaContent = html`<div
-        style="padding:4px 0;font-size:11px;color:var(--fg-dim);font-style:italic"
-      >
-        Loading schema…
-      </div>`;
-      fetchPluginSchema(def).then((schema) => {
-        if (schema) renderLeftPanel();
-      });
-    }
-  }
-
-  return html`
-    ${signalFieldRow("$src", def.$src || "", (/** @type {any} */ v) => {
-      update(updateDef(S, name, { $src: v || undefined }));
-      pluginSchemaCache.delete(`${v}::${def.$prototype}`);
-    })}
-    ${signalFieldRow("$prototype", def.$prototype || "", (/** @type {any} */ v) => {
-      update(updateDef(S, name, { $prototype: v || undefined }));
-      pluginSchemaCache.delete(`${def.$src}::${v}`);
-    })}
-    ${def.$export
-      ? signalFieldRow("$export", def.$export || "", (/** @type {any} */ v) =>
-          update(updateDef(S, name, { $export: v || undefined })),
-        )
-      : nothing}
-    ${schemaContent}
-  `;
-}
-
-// ─── Data Explorer ──────────────────────────────────────────────────────────
-
-/** Expanded data entries set — persists across renders. */
-const expandedDataKeys = new Set();
-
-/** Unwrap a Vue ref (has .value and .__v_isRef) to get the underlying value. */
-function unwrapSignal(/** @type {any} */ value) {
-  if (value && typeof value === "object" && value.__v_isRef) return value.value;
-  return value;
-}
-
-/** Type label for a signal value in the data explorer. */
-function dataTypeLabel(/** @type {any} */ value) {
-  const v = unwrapSignal(value);
-  if (v === null) return "null";
-  if (v === undefined) return "pending";
-  if (Array.isArray(v)) return `Array(${v.length})`;
-  if (typeof v === "object") return `{${Object.keys(v).length}}`;
-  return typeof v;
-}
-
-/** Render the data explorer tab showing live resolved values. */
-function renderDataExplorerTemplate() {
-  if (!liveScope) {
-    return html`<div class="empty-state">No live data — render the document in preview mode</div>`;
-  }
-
-  const defs = S.document.state || {};
-  const entries = Object.entries(defs);
-
-  return html`
-    <div class="data-explorer-toolbar">
-      <sp-action-button
-        quiet
-        size="s"
-        class="data-refresh-btn"
-        @click=${() => {
-          renderCanvas();
-          setTimeout(() => renderLeftPanel(), 200);
-        }}
-      >
-        <sp-icon-refresh slot="icon"></sp-icon-refresh>
-        Refresh
-      </sp-action-button>
-    </div>
-    ${entries.length === 0
-      ? html`<div class="empty-state">No state defined</div>`
-      : entries.map(([name, def]) => {
-          const value = liveScope[name];
-          const unwrapped = unwrapSignal(value);
-          const isExpanded = expandedDataKeys.has(name);
-          return html`
-            <div class="data-row">
-              <div
-                class="data-row-header${isExpanded ? " expanded" : ""}"
-                @click=${() => {
-                  if (expandedDataKeys.has(name)) expandedDataKeys.delete(name);
-                  else expandedDataKeys.add(name);
-                  renderLeftPanel();
-                }}
-              >
-                <span class="signal-badge ${defCategory(def)}">${defBadgeLabel(def)}</span>
-                <span class="data-name">${name}</span>
-                <span class="data-type${unwrapped === null ? " data-pending" : ""}"
-                  >${dataTypeLabel(value)}</span
-                >
-              </div>
-              ${isExpanded
-                ? html`<div class="data-tree">${renderDataTreeTemplate(unwrapped, 0)}</div>`
-                : nothing}
-            </div>
-          `;
-        })}
-  `;
-}
-
-/**
- * Recursively render a JSON value as a tree view (Lit template).
- *
- * @returns {any}
- */
-function renderDataTreeTemplate(/** @type {any} */ value, /** @type {any} */ depth, maxDepth = 5) {
-  const indent = `${(depth + 1) * 12}px`;
-
-  if (depth > maxDepth) {
-    return html`<div class="data-leaf data-ellipsis" style="padding-left:${indent}">…</div>`;
-  }
-
-  if (value === null || value === undefined) {
-    return html`<div class="data-leaf data-null" style="padding-left:${indent}">
-      ${String(value)}
-    </div>`;
-  }
-
-  if (typeof value !== "object") {
-    const text =
-      typeof value === "string" && value.length > 200
-        ? `"${value.slice(0, 200)}\u2026"`
-        : JSON.stringify(value);
-    return html`<div class="data-leaf data-${typeof value}" style="padding-left:${indent}">
-      ${text}
-    </div>`;
-  }
-
-  if (Array.isArray(value)) {
-    const cap = 20;
-    const items = value.slice(0, cap).map((item, i) => {
-      if (item === null || item === undefined || typeof item !== "object") {
-        const valText =
-          typeof item === "string" && item.length > 80
-            ? `"${item.slice(0, 80)}\u2026"`
-            : JSON.stringify(item);
-        return html`<div class="data-branch" style="padding-left:${indent}">
-          <span class="data-key">[${i}] </span
-          ><span class="data-value data-${item === null ? "null" : typeof item}">${valText}</span>
-        </div>`;
-      }
-      const label = Array.isArray(item) ? `Array(${item.length})` : `{${Object.keys(item).length}}`;
-      return html`
-        <div class="data-branch" style="padding-left:${indent}">
-          <span class="data-key">[${i}] </span
-          ><span class="data-value data-object-label">${label}</span>
-        </div>
-        ${renderDataTreeTemplate(item, depth + 1, maxDepth)}
-      `;
-    });
-    return html`${items}${value.length > cap
-      ? html`<div class="data-leaf data-ellipsis" style="padding-left:${indent}">
-          … ${value.length - cap} more
-        </div>`
-      : nothing}`;
-  }
-
-  // Object
-  const keys = Object.keys(value);
-  const cap = 30;
-  const items = keys.slice(0, cap).map((key) => {
-    const v = value[key];
-    if (v === null || v === undefined || typeof v !== "object") {
-      const valText =
-        typeof v === "string" && v.length > 80 ? `"${v.slice(0, 80)}\u2026"` : JSON.stringify(v);
-      return html`<div class="data-branch" style="padding-left:${indent}">
-        <span class="data-key">${key}: </span
-        ><span class="data-value data-${v === null ? "null" : typeof v}">${valText}</span>
-      </div>`;
-    }
-    const label = Array.isArray(v) ? `Array(${v.length})` : `{${Object.keys(v).length}}`;
-    return html`
-      <div class="data-branch" style="padding-left:${indent}">
-        <span class="data-key">${key}: </span
-        ><span class="data-value data-object-label">${label}</span>
-      </div>
-      ${renderDataTreeTemplate(v, depth + 1, maxDepth)}
-    `;
-  });
-  return html`${items}${keys.length > cap
-    ? html`<div class="data-leaf data-ellipsis" style="padding-left:${indent}">
-        … ${keys.length - cap} more
-      </div>`
-    : nothing}`;
-}
-
-// ─── File management ──────────────────────────────────────────────────────────
-
-async function loadProject() {
-  try {
-    const platform = getPlatform();
-    const result = await platform.probeRootProject();
-    if (!result) return;
-    const { meta, info } = result;
-
-    setProjectState({
-      root: meta.root,
-      name: info.isSiteProject ? info.siteConfig?.name || meta.name : meta.name,
-      projectRoot: ".",
-      isSiteProject: info.isSiteProject,
-      siteConfig: info.isSiteProject ? info.siteConfig : null,
-      projectDirs: info.directories || [],
-      dirs: new Map(),
-      expanded: new Set(),
-      selectedPath: null,
-      searchQuery: "",
-    });
-
-    if (info.isSiteProject) {
-      await loadDirectory(".");
-    }
-    // If not a site project (monorepo) — show welcome prompt, don't load tree
-  } catch {
-    // Not on dev server — project features disabled
-  }
-}
-
-async function loadDirectory(/** @type {any} */ dirPath) {
-  if (!projectState) return;
-  try {
-    const platform = getPlatform();
-    const entries = await platform.listDirectory(dirPath);
-    projectState.dirs.set(dirPath, entries);
-  } catch {
-    projectState.dirs.set(dirPath, []);
-  }
-}
-
-// ─── Open Project (PAL-based) ─────────────────────────────────────────────
-
-async function openProject() {
-  try {
-    const platform = getPlatform();
-    const result = await platform.openProject();
-    if (!result) return; // User cancelled
-
-    const { config, handle } = result;
-
-    setProjectState({
-      ...projectState,
-      projectRoot: handle.root,
-      isSiteProject: true,
-      siteConfig: config,
-      name: config.name || handle.name,
-      dirs: new Map(),
-      expanded: new Set(),
-      selectedPath: null,
-      searchQuery: "",
-    });
-
-    await loadDirectory(".");
-    await loadComponentRegistry();
-
-    // Auto-expand key directories
-    const entries = projectState.dirs.get(".") || [];
-    for (const e of entries) {
-      if (e.type === "directory" && ["pages", "components", "layouts"].includes(e.name)) {
-        projectState.expanded.add(e.path || e.name);
-        await loadDirectory(e.path || e.name);
-      }
-    }
-
-    S = { ...S, ui: { ...S.ui, leftTab: "files" } };
-    renderActivityBar();
-    renderLeftPanel();
-    statusMessage(`Opened project: ${projectState.name}`);
-  } catch (/** @type {any} */ e) {
-    statusMessage(`Error: ${e.message}`);
-  }
-}
-
-function fileTypeIconTpl(/** @type {any} */ name, /** @type {any} */ type) {
-  let tag;
-  if (type === "directory") {
-    tag = projectState?.expanded?.has(name) ? "sp-icon-folder-open" : "sp-icon-folder";
-  } else {
-    const ext = name.split(".").pop()?.toLowerCase();
-    switch (ext) {
-      case "json":
-        tag = "sp-icon-file-code";
-        break;
-      case "md":
-        tag = "sp-icon-file-txt";
-        break;
-      case "js":
-      case "ts":
-        tag = "sp-icon-file-code";
-        break;
-      case "css":
-        tag = "sp-icon-file-code";
-        break;
-      case "png":
-      case "jpg":
-      case "jpeg":
-      case "svg":
-      case "webp":
-      case "gif":
-        tag = "sp-icon-image";
-        break;
-      default:
-        tag = "sp-icon-document";
-        break;
-    }
-  }
-  return fileIconMap[tag] || fileIconMap["sp-icon-document"];
-}
-
-function renderFilesTemplate() {
-  if (!projectState) {
-    return html`<div class="file-tree-empty">No project loaded</div>`;
-  }
-
-  // No project selected in a monorepo — show welcome prompt
-  if (!projectState.isSiteProject && projectState.projectRoot === ".") {
-    return html`<div class="file-tree-empty">
-      <p style="margin:0 0 12px">Open a project folder to get started.</p>
-      <sp-button variant="accent" size="s" @click=${openProject}>Open Project</sp-button>
-    </div>`;
-  }
-
-  return html`
-    ${projectState.isSiteProject
-      ? html`
-          <div class="project-header">
-            <span class="project-name">${projectState.siteConfig?.name || projectState.name}</span>
-          </div>
-        `
-      : nothing}
-    <div class="files-toolbar">
-      <sp-action-group size="xs" compact quiet>
-        <sp-action-button size="xs" label="New File" @click=${() => createNewFile()}>
-          <sp-icon-add slot="icon"></sp-icon-add>
-        </sp-action-button>
-        <sp-action-button
-          size="xs"
-          label="Refresh"
-          @click=${async () => {
-            projectState.dirs.clear();
-            await loadDirectory(".");
-            for (const dir of projectState.expanded) await loadDirectory(dir);
-            renderLeftPanel();
-          }}
-        >
-          <sp-icon-refresh slot="icon"></sp-icon-refresh>
-        </sp-action-button>
-      </sp-action-group>
-      <sp-search
-        size="s"
-        quiet
-        placeholder="Filter files…"
-        value=${projectState.searchQuery}
-        @input=${(/** @type {any} */ e) => {
-          projectState.searchQuery = e.target.value;
-          renderLeftPanel();
-        }}
-        @submit=${(/** @type {any} */ e) => e.preventDefault()}
-      ></sp-search>
-    </div>
-    <div class="file-tree" role="tree" aria-label="Project files">
-      ${renderTreeLevelTemplate(".", 0)}
-    </div>
-  `;
-}
-
-/** @returns {any} */
-function renderTreeLevelTemplate(/** @type {any} */ dirPath, /** @type {any} */ depth) {
-  const entries = projectState.dirs.get(dirPath);
-  if (!entries) {
-    loadDirectory(dirPath).then(() => renderLeftPanel());
-    return html`<div
-      class="file-tree-item"
-      style="padding-left:${8 + depth * 16}px;color:var(--fg-dim);font-style:italic"
-    >
-      Loading…
-    </div>`;
-  }
-
-  const sorted = [...entries].sort((a, b) => {
-    if (a.type === "directory" && b.type !== "directory") return -1;
-    if (a.type !== "directory" && b.type === "directory") return 1;
-    return a.name.localeCompare(b.name);
-  });
-
-  const query = projectState.searchQuery.toLowerCase();
-  const filtered = query
-    ? sorted.filter((e) => e.type === "directory" || e.name.toLowerCase().includes(query))
-    : sorted;
-
-  return filtered.map((entry) => {
-    const isDir = entry.type === "directory";
-    const isExpanded = projectState.expanded.has(entry.path);
-    const isSelected = projectState.selectedPath === entry.path;
-
-    return html`
-      <div
-        class="file-tree-item${isSelected ? " selected" : ""}"
-        style="padding-left:${8 + depth * 16}px"
-        role="treeitem"
-        aria-level=${depth + 1}
-        tabindex="-1"
-        data-path=${entry.path}
-        data-type=${entry.type}
-        aria-expanded=${isDir ? String(isExpanded) : nothing}
-        @click=${async (/** @type {any} */ e) => {
-          e.stopPropagation();
-          if (isDir) {
-            if (isExpanded) projectState.expanded.delete(entry.path);
-            else {
-              projectState.expanded.add(entry.path);
-              if (!projectState.dirs.has(entry.path)) await loadDirectory(entry.path);
-            }
-            renderLeftPanel();
-          } else {
-            openFileFromTree(entry.path);
-          }
-        }}
-        @contextmenu=${(/** @type {any} */ e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          showFileContextMenu(e, entry);
-        }}
-      >
-        ${isDir
-          ? html`<span class="file-tree-toggle">${isExpanded ? "\u25bc" : "\u25b6"}</span>`
-          : html`<span class="file-tree-toggle empty"> </span>`}
-        <span class="file-tree-icon">${fileTypeIconTpl(entry.path, entry.type)}</span>
-        <span class="file-tree-name">${entry.name}</span>
-      </div>
-      ${isDir && isExpanded
-        ? html`<div role="group">${renderTreeLevelTemplate(entry.path, depth + 1)}</div>`
-        : nothing}
-    `;
-  });
-}
-
-function setupTreeKeyboard(/** @type {any} */ tree) {
-  tree.addEventListener("keydown", (/** @type {any} */ e) => {
-    const items = [...tree.querySelectorAll(".file-tree-item")];
-    const focused = tree.querySelector(".file-tree-item:focus");
-    if (!focused || items.length === 0) return;
-
-    const idx = items.indexOf(focused);
-    let handled = true;
-
-    switch (e.key) {
-      case "ArrowDown":
-        if (idx < items.length - 1) items[idx + 1].focus();
-        break;
-      case "ArrowUp":
-        if (idx > 0) items[idx - 1].focus();
-        break;
-      case "ArrowRight":
-        if (focused.dataset.type === "directory") {
-          const path = focused.dataset.path;
-          if (!projectState.expanded.has(path)) {
-            projectState.expanded.add(path);
-            loadDirectory(path).then(() => renderLeftPanel());
-          }
-        }
-        break;
-      case "ArrowLeft":
-        if (focused.dataset.type === "directory") {
-          const path = focused.dataset.path;
-          if (projectState.expanded.has(path)) {
-            projectState.expanded.delete(path);
-            renderLeftPanel();
-          }
-        }
-        break;
-      case "Enter":
-        focused.click();
-        break;
-      default:
-        handled = false;
-    }
-    if (handled) e.preventDefault();
-  });
-
-  // Set first item focusable
-  const first = tree.querySelector(".file-tree-item");
-  if (first) first.setAttribute("tabindex", "0");
-}
-
-/** Context menu for file tree items using Spectrum popover + menu */
-/** @type {any} */
-let fileContextPopover = null;
-
-function showFileContextMenu(/** @type {any} */ e, /** @type {any} */ entry) {
-  if (fileContextPopover) {
-    fileContextPopover.remove();
-    fileContextPopover = null;
-  }
-
-  const isDir = entry.type === "directory";
-  fileContextPopover = document.createElement("div");
-
-  const tpl = html`
-    <sp-popover
-      placement="right-start"
-      open
-      style="position:fixed;left:${e.clientX}px;top:${e.clientY}px;z-index:9999"
-    >
-      <sp-menu style="min-width:160px">
-        ${!isDir
-          ? html`<sp-menu-item
-              @click=${() => {
-                closeFileContextMenu();
-                openFileFromTree(entry.path);
-              }}
-              >Open</sp-menu-item
-            >`
-          : nothing}
-        ${isDir
-          ? html`<sp-menu-item
-              @click=${() => {
-                closeFileContextMenu();
-                createNewFile(entry.path);
-              }}
-              >New File…</sp-menu-item
-            >`
-          : nothing}
-        <sp-menu-divider></sp-menu-divider>
-        <sp-menu-item
-          @click=${() => {
-            closeFileContextMenu();
-            renameFile(entry);
-          }}
-          >Rename…</sp-menu-item
-        >
-        <sp-menu-item
-          style="color:var(--danger)"
-          @click=${() => {
-            closeFileContextMenu();
-            deleteFile(entry);
-          }}
-          >Delete</sp-menu-item
-        >
-      </sp-menu>
-    </sp-popover>
-  `;
-
-  litRender(tpl, fileContextPopover);
-  document.body.appendChild(fileContextPopover);
-
-  const closeHandler = (/** @type {any} */ ev) => {
-    if (!fileContextPopover?.contains(ev.target)) {
-      closeFileContextMenu();
-      document.removeEventListener("mousedown", closeHandler, true);
-    }
-  };
-  setTimeout(() => document.addEventListener("mousedown", closeHandler, true), 0);
-}
-
-function closeFileContextMenu() {
-  if (fileContextPopover) {
-    fileContextPopover.remove();
-    fileContextPopover = null;
-  }
-}
-
-async function createNewFile(dirPath = ".") {
-  const name = prompt("File name:", "untitled.json");
-  if (!name) return;
-  const path = dirPath === "." ? name : `${dirPath}/${name}`;
-  const content = name.endsWith(".md")
-    ? "---\ntitle: Untitled\n---\n\n"
-    : JSON.stringify({ tagName: "div", children: [] }, null, 2);
-  try {
-    const platform = getPlatform();
-    await platform.writeFile(path, content);
-    await loadDirectory(dirPath);
-    renderLeftPanel();
-    statusMessage(`Created ${path}`);
-  } catch (/** @type {any} */ e) {
-    statusMessage(`Error: ${e.message}`);
-  }
-}
-
-async function renameFile(/** @type {any} */ entry) {
-  const newName = prompt("New name:", entry.name);
-  if (!newName || newName === entry.name) return;
-  const parentDir = entry.path.includes("/")
-    ? entry.path.substring(0, entry.path.lastIndexOf("/"))
-    : ".";
-  const newPath = parentDir === "." ? newName : `${parentDir}/${newName}`;
-  try {
-    const platform = getPlatform();
-    await platform.renameFile(entry.path, newPath);
-    await loadDirectory(parentDir);
-    if (projectState.selectedPath === entry.path) {
-      projectState.selectedPath = newPath;
-    }
-    renderLeftPanel();
-    statusMessage(`Renamed to ${newName}`);
-  } catch (/** @type {any} */ e) {
-    statusMessage(`Error: ${e.message}`);
-  }
-}
-
-async function deleteFile(/** @type {any} */ entry) {
-  if (!confirm(`Delete "${entry.name}"?`)) return;
-  try {
-    const platform = getPlatform();
-    await platform.deleteFile(entry.path);
-    const parentDir = entry.path.includes("/")
-      ? entry.path.substring(0, entry.path.lastIndexOf("/"))
-      : ".";
-    await loadDirectory(parentDir);
-    if (projectState.selectedPath === entry.path) {
-      projectState.selectedPath = null;
-    }
-    renderLeftPanel();
-    statusMessage(`Deleted ${entry.name}`);
-  } catch (/** @type {any} */ e) {
-    statusMessage(`Error: ${e.message}`);
-  }
-}
-
-async function openFileFromTree(/** @type {any} */ path) {
-  const platform = getPlatform();
-  // Auto-save current dirty document
-  if (S.dirty && S.documentPath) {
-    try {
-      const isContent = S.mode === "content";
-      let output;
-      if (isContent) {
-        const mdast = jxToMd(S.document);
-        const md = unified()
-          .use(remarkStringify, { bullet: "-", emphasis: "*", strong: "*" })
-          .stringify(mdast);
-        const fm = S.content?.frontmatter;
-        const hasFrontmatter = fm && Object.keys(fm).length > 0;
-        output = hasFrontmatter ? `---\n${stringifyYaml(fm).trim()}\n---\n\n${md}` : md;
-      } else {
-        output = JSON.stringify(S.document, null, 2);
-      }
-      await platform.writeFile(S.documentPath, output);
-    } catch (/** @type {any} */ e) {
-      statusMessage(`Save error: ${e.message}`);
-    }
-  }
-
-  // Fetch the file
-  try {
-    const content = await platform.readFile(path);
-    if (!content) return;
-
-    if (path.endsWith(".md")) {
-      loadMarkdown(content, null);
-      S.documentPath = path;
-    } else {
-      const doc = JSON.parse(content);
-      S = createState(doc);
-      S.documentPath = path;
-      S.dirty = false;
-    }
-
-    // Update tree selection
-    projectState.selectedPath = path;
-
-    render();
-    statusMessage(`Opened ${path}`);
-  } catch (/** @type {any} */ e) {
-    statusMessage(`Error: ${e.message}`);
-  }
 }
 
 // ─── Right panel: Inspector ───────────────────────────────────────────────────
@@ -6349,7 +4410,10 @@ function renderRightPanel() {
   if (tab === "properties") {
     bodyT = propertiesSidebarTemplate();
   } else if (tab === "events") {
-    bodyT = eventsSidebarTemplate();
+    bodyT = _eventsSidebarTemplate(S, {
+      isCustomElementDoc: () => isCustomElementDoc(S),
+      renderCanvas,
+    });
   } else if (tab === "style") {
     try {
       bodyT = renderStylePanelTemplate();
@@ -6656,7 +4720,7 @@ function propertiesSidebarTemplate() {
 
   // "Observed Attributes" section (custom element doc root)
   const observedAttrsT =
-    isCustomElementDoc() && isRoot
+    isCustomElementDoc(S) && isRoot
       ? (() => {
           const state = S.document.state || {};
           const entries = Object.entries(state).filter(([, d]) => d.attribute);
@@ -6766,7 +4830,7 @@ function propertiesSidebarTemplate() {
 
   // CSS Properties + CSS Parts (custom element doc root)
   const cssPropsT =
-    isCustomElementDoc() && isRoot
+    isCustomElementDoc(S) && isRoot
       ? (() => {
           const style = node.style || {};
           const cssProps = Object.entries(style).filter(([k]) => k.startsWith("--"));
@@ -6795,7 +4859,7 @@ function propertiesSidebarTemplate() {
       : nothing;
 
   const cssPartsT =
-    isCustomElementDoc() && isRoot
+    isCustomElementDoc(S) && isRoot
       ? (() => {
           const parts = collectCssParts(S.document);
           if (parts.length === 0) return nothing;
@@ -7207,7 +5271,6 @@ function getLonghands(/** @type {any} */ shorthandProp) {
 
 // ── Color popover singleton ─────────────────────────────────────────────────
 /** @type {any} */
-let _colorPopover = null;
 /** @type {any} */
 let _colorCallback = null;
 /** @type {any} */
@@ -7252,17 +5315,12 @@ function resolveColorForDisplay(/** @type {any} */ val) {
   return val;
 }
 
-function ensureColorPopover() {
-  if (_colorPopover) return;
-  _colorPopover = document.createElement("sp-popover");
-  _colorPopover.setAttribute("tabindex", "-1");
-  _colorPopover.style.cssText = "padding:12px; position:fixed; z-index:9999";
-  (document.querySelector("sp-theme") || document.body).appendChild(_colorPopover);
-}
+const _colorPopoverHost = document.createElement("div");
+_colorPopoverHost.style.display = "contents";
+(document.querySelector("sp-theme") || document.body).appendChild(_colorPopoverHost);
 
 function closeColorPopover() {
-  if (!_colorPopover) return;
-  _colorPopover.open = false;
+  litRender(nothing, _colorPopoverHost);
   _colorCallback = null;
   if (_colorDismissHandler) {
     document.removeEventListener("pointerdown", _colorDismissHandler, true);
@@ -7276,19 +5334,19 @@ function openColorPopover(
   /** @type {any} */ currentColor,
   /** @type {any} */ onChange,
 ) {
-  ensureColorPopover();
-
   const colorVars = getColorVars();
   const resolvedColor = resolveColorForDisplay(currentColor) || "#000000";
+
+  const popoverQuery = (/** @type {string} */ sel) => _colorPopoverHost.querySelector(sel);
 
   // Render popover content with lit-html
   const syncFromArea = (/** @type {any} */ _e) => {
     /** @type {any} */
-    const area = _colorPopover.querySelector("sp-color-area");
+    const area = popoverQuery("sp-color-area");
     /** @type {any} */
-    const slider = _colorPopover.querySelector("sp-color-slider");
+    const slider = popoverQuery("sp-color-slider");
     /** @type {any} */
-    const tf = _colorPopover.querySelector(".color-popover-hex");
+    const tf = popoverQuery(".color-popover-hex");
     if (slider) slider.color = area.color;
     if (tf) tf.value = area.color;
     _colorCallback?.(area.color);
@@ -7296,11 +5354,11 @@ function openColorPopover(
 
   const syncFromSlider = (/** @type {any} */ _e) => {
     /** @type {any} */
-    const area = _colorPopover.querySelector("sp-color-area");
+    const area = popoverQuery("sp-color-area");
     /** @type {any} */
-    const slider = _colorPopover.querySelector("sp-color-slider");
+    const slider = popoverQuery("sp-color-slider");
     /** @type {any} */
-    const tf = _colorPopover.querySelector(".color-popover-hex");
+    const tf = popoverQuery(".color-popover-hex");
     if (area) area.color = slider.color;
     if (tf) tf.value = area.color;
     _colorCallback?.(area.color);
@@ -7310,9 +5368,9 @@ function openColorPopover(
     const val = e.target.value.trim();
     if (!val) return;
     /** @type {any} */
-    const area = _colorPopover.querySelector("sp-color-area");
+    const area = popoverQuery("sp-color-area");
     /** @type {any} */
-    const slider = _colorPopover.querySelector("sp-color-slider");
+    const slider = popoverQuery("sp-color-slider");
     try {
       if (area) area.color = val;
       if (slider) slider.color = val;
@@ -7320,62 +5378,65 @@ function openColorPopover(
     _colorCallback?.(val);
   };
 
-  const tpl = html`
-    <div class="color-popover-inner">
-      <sp-color-area
-        style="width:200px; height:150px"
-        color=${resolvedColor}
-        @input=${syncFromArea}
-      ></sp-color-area>
-      <sp-color-slider
-        style="width:200px"
-        color=${resolvedColor}
-        @input=${syncFromSlider}
-      ></sp-color-slider>
-      <sp-textfield
-        size="s"
-        class="color-popover-hex"
-        .value=${live(currentColor || "")}
-        placeholder="#000000"
-        @change=${syncFromText}
-      ></sp-textfield>
-      ${colorVars.length > 0
-        ? html`
-            <sp-divider size="s"></sp-divider>
-            <span class="color-popover-swatches-label">Color Tokens</span>
-            <sp-swatch-group size="xs" border="light" rounding="none">
-              ${colorVars.map(
-                (cv) => html`
-                  <sp-swatch
-                    color=${cv.value}
-                    .value=${cv.name}
-                    title=${cv.name}
-                    @click=${(/** @type {any} */ e) => {
-                      e.stopPropagation();
-                      const varRef = `var(${cv.name})`;
-                      _colorCallback?.(varRef);
-                      // Update the text field to show the var reference
-                      /** @type {any} */
-                      const tf = _colorPopover.querySelector(".color-popover-hex");
-                      if (tf) tf.value = varRef;
-                    }}
-                  ></sp-swatch>
-                `,
-              )}
-            </sp-swatch-group>
-          `
-        : nothing}
-    </div>
-  `;
-
-  litRender(tpl, _colorPopover);
-
-  // Position below anchor
   const r = anchorEl.getBoundingClientRect();
-  _colorPopover.style.left = `${r.left}px`;
-  _colorPopover.style.top = `${r.bottom + 4}px`;
+
+  litRender(
+    html`
+      <sp-popover
+        open
+        tabindex="-1"
+        style="padding:12px;position:fixed;z-index:9999;left:${r.left}px;top:${r.bottom + 4}px"
+      >
+        <div class="color-popover-inner">
+          <sp-color-area
+            style="width:200px; height:150px"
+            color=${resolvedColor}
+            @input=${syncFromArea}
+          ></sp-color-area>
+          <sp-color-slider
+            style="width:200px"
+            color=${resolvedColor}
+            @input=${syncFromSlider}
+          ></sp-color-slider>
+          <sp-textfield
+            size="s"
+            class="color-popover-hex"
+            .value=${live(currentColor || "")}
+            placeholder="#000000"
+            @change=${syncFromText}
+          ></sp-textfield>
+          ${colorVars.length > 0
+            ? html`
+                <sp-divider size="s"></sp-divider>
+                <span class="color-popover-swatches-label">Color Tokens</span>
+                <sp-swatch-group size="xs" border="light" rounding="none">
+                  ${colorVars.map(
+                    (cv) => html`
+                      <sp-swatch
+                        color=${cv.value}
+                        .value=${cv.name}
+                        title=${cv.name}
+                        @click=${(/** @type {any} */ e) => {
+                          e.stopPropagation();
+                          const varRef = `var(${cv.name})`;
+                          _colorCallback?.(varRef);
+                          /** @type {any} */
+                          const tf = popoverQuery(".color-popover-hex");
+                          if (tf) tf.value = varRef;
+                        }}
+                      ></sp-swatch>
+                    `,
+                  )}
+                </sp-swatch-group>
+              `
+            : nothing}
+        </div>
+      </sp-popover>
+    `,
+    _colorPopoverHost,
+  );
+
   _colorCallback = onChange;
-  _colorPopover.open = true;
 
   // Dismiss on click-outside or Escape
   if (_colorDismissHandler) {
@@ -7387,12 +5448,11 @@ function openColorPopover(
       if (e.key === "Escape") closeColorPopover();
       return;
     }
-    // pointerdown — close if outside popover and outside the anchor swatch
-    if (!_colorPopover.contains(e.target) && !anchorEl.contains(e.target)) {
+    const popover = popoverQuery("sp-popover");
+    if (popover && !popover.contains(e.target) && !anchorEl.contains(e.target)) {
       closeColorPopover();
     }
   };
-  // Defer so the opening click doesn't immediately dismiss
   requestAnimationFrame(() => {
     document.addEventListener("pointerdown", _colorDismissHandler, true);
     document.addEventListener("keydown", _colorDismissHandler, true);
@@ -7417,7 +5477,7 @@ function renderColorInput(
         border="light"
         color=${safeColor(value)}
         @click=${(/** @type {any} */ e) => {
-          if (_colorPopover?.open) {
+          if (_colorPopoverHost.querySelector("sp-popover[open]")) {
             closeColorPopover();
             return;
           }
@@ -8661,7 +6721,7 @@ function renderFunctionEditor() {
   // Clean up canvas DnD
   for (const fn of canvasDndCleanups) fn();
   canvasDndCleanups = [];
-  canvasPanels = [];
+  canvasPanels.length = 0;
 
   canvasWrap.innerHTML = "";
   canvasWrap.style.padding = "0";
@@ -8675,7 +6735,7 @@ function renderFunctionEditor() {
   canvasWrap.appendChild(editorContainer);
 
   const body = getFunctionBody(editing);
-  const args = getFunctionArgs(editing);
+  const args = getFunctionArgs(editing, S);
 
   functionEditor = monaco.editor.create(editorContainer, {
     value: body,
@@ -8789,358 +6849,6 @@ function registerFunctionCompletions() {
       return { suggestions };
     },
   });
-}
-
-// ─── Events panel ─────────────────────────────────────────────────────────────
-
-const EVENT_NAMES = [
-  "onclick",
-  "oninput",
-  "onchange",
-  "onsubmit",
-  "onkeydown",
-  "onkeyup",
-  "onfocus",
-  "onblur",
-  "onmouseenter",
-  "onmouseleave",
-];
-
-function eventsSidebarTemplate() {
-  if (!S.selection) return html`<div class="empty-state">Select an element to edit events</div>`;
-  const node = getNodeAtPath(S.document, S.selection);
-  if (!node) return html`<div class="empty-state">Node not found</div>`;
-
-  const defs = S.document.state || {};
-  const functionDefs = Object.entries(defs).filter(
-    ([, d]) => d.$prototype === "Function" || d.$handler,
-  );
-
-  // Declared CEM events (custom element docs)
-  /** @type {any} */
-  let declaredEventsT = nothing;
-  if (isCustomElementDoc()) {
-    const allEmits = [];
-    for (const [fnName, d] of Object.entries(defs)) {
-      if (Array.isArray(d.emits)) {
-        for (const ev of d.emits) allEmits.push({ ...ev, _fn: fnName });
-      }
-    }
-    if (allEmits.length > 0) {
-      declaredEventsT = html`
-        <div class="events-section">
-          <sp-field-label size="s">Declared Events</sp-field-label>
-          ${allEmits.map(
-            (ev) => html`
-              <div class="declared-event-row" title=${ev.description || ""}>
-                <code class="event-code">${ev.name || "(unnamed)"}</code>
-                <span class="event-source">← ${ev._fn}</span>
-                ${ev.type?.text ? html`<span class="event-type">${ev.type.text}</span>` : nothing}
-              </div>
-            `,
-          )}
-        </div>
-        <sp-divider size="s"></sp-divider>
-      `;
-    }
-  }
-
-  // Find existing event bindings
-  const eventKeys = Object.keys(node).filter((k) => {
-    if (!k.startsWith("on")) return false;
-    const v = node[k];
-    if (!v || typeof v !== "object") return false;
-    return v.$ref || v.$prototype === "Function";
-  });
-
-  return html`
-    <div class="events-panel">
-      ${declaredEventsT}
-      <div class="events-section">
-        ${eventKeys.length > 0
-          ? html` <sp-field-label size="s">Event Bindings</sp-field-label> `
-          : nothing}
-        ${eventKeys.map((evKey) => {
-          const evVal = node[evKey];
-          const isInline = evVal.$prototype === "Function";
-          return html`
-            <div class="event-binding">
-              <div class="event-row">
-                <sp-picker
-                  size="s"
-                  class="event-name"
-                  .value=${live(evKey)}
-                  @change=${(/** @type {any} */ e) => {
-                    const newKey = e.target.value;
-                    if (newKey && newKey !== evKey) {
-                      let s = updateProperty(S, S.selection, evKey, undefined);
-                      s = updateProperty(s, S.selection, newKey, node[evKey]);
-                      update(s);
-                    }
-                  }}
-                >
-                  ${[evKey, ...EVENT_NAMES.filter((n) => n !== evKey)].map(
-                    (n) => html`<sp-menu-item value=${n}>${n}</sp-menu-item>`,
-                  )}
-                </sp-picker>
-                <sp-picker
-                  size="s"
-                  class="event-mode"
-                  .value=${live(isInline ? "inline" : "ref")}
-                  @change=${(/** @type {any} */ e) => {
-                    if (e.target.value === "inline") {
-                      update(
-                        updateProperty(S, S.selection, evKey, {
-                          $prototype: "Function",
-                          body: "",
-                          parameters: [],
-                        }),
-                      );
-                    } else {
-                      const firstFn = functionDefs[0];
-                      update(
-                        updateProperty(
-                          S,
-                          S.selection,
-                          evKey,
-                          firstFn ? { $ref: `#/state/${firstFn[0]}` } : { $ref: "" },
-                        ),
-                      );
-                    }
-                  }}
-                >
-                  <sp-menu-item value="inline">inline</sp-menu-item>
-                  <sp-menu-item value="ref">$ref</sp-menu-item>
-                </sp-picker>
-                <sp-action-button
-                  size="xs"
-                  quiet
-                  @click=${() => update(updateProperty(S, S.selection, evKey, undefined))}
-                >
-                  <sp-icon-delete slot="icon"></sp-icon-delete>
-                </sp-action-button>
-              </div>
-              ${isInline
-                ? html`
-                    <div class="event-body-row">
-                      <sp-textfield
-                        size="s"
-                        multiline
-                        grows
-                        placeholder="// handler body"
-                        .value=${live(evVal.body || "")}
-                        @input=${(/** @type {any} */ e) => {
-                          update(
-                            updateProperty(S, S.selection, evKey, {
-                              $prototype: "Function",
-                              body: e.target.value,
-                              parameters: evVal.parameters || [],
-                            }),
-                          );
-                        }}
-                      >
-                      </sp-textfield>
-                      <sp-action-button
-                        size="xs"
-                        quiet
-                        title="Open in editor"
-                        @click=${() => {
-                          S = {
-                            ...S,
-                            ui: {
-                              ...S.ui,
-                              editingFunction: {
-                                type: "event",
-                                path: S.selection,
-                                eventKey: evKey,
-                              },
-                            },
-                          };
-                          renderCanvas();
-                        }}
-                      >
-                        <sp-icon-code slot="icon"></sp-icon-code>
-                      </sp-action-button>
-                    </div>
-                  `
-                : html`
-                    <sp-picker
-                      size="s"
-                      class="event-handler"
-                      .value=${live(evVal.$ref || "__none__")}
-                      @change=${(/** @type {any} */ e) => {
-                        if (e.target.value && e.target.value !== "__none__") {
-                          update(updateProperty(S, S.selection, evKey, { $ref: e.target.value }));
-                        } else {
-                          update(updateProperty(S, S.selection, evKey, undefined));
-                        }
-                      }}
-                    >
-                      <sp-menu-item value="__none__">— none —</sp-menu-item>
-                      ${functionDefs.map(
-                        ([fName]) =>
-                          html`<sp-menu-item value=${`#/state/${fName}`}>${fName}</sp-menu-item>`,
-                      )}
-                    </sp-picker>
-                  `}
-            </div>
-          `;
-        })}
-        <sp-action-button
-          size="s"
-          quiet
-          @click=${() => {
-            let evName = "onclick";
-            for (const name of EVENT_NAMES) {
-              if (!node[name]) {
-                evName = name;
-                break;
-              }
-            }
-            if (functionDefs.length > 0) {
-              update(
-                updateProperty(S, S.selection, evName, { $ref: `#/state/${functionDefs[0][0]}` }),
-              );
-            } else {
-              update(
-                updateProperty(S, S.selection, evName, {
-                  $prototype: "Function",
-                  body: "",
-                  parameters: [],
-                }),
-              );
-            }
-          }}
-        >
-          <sp-icon-add slot="icon"></sp-icon-add>
-          Add Event
-        </sp-action-button>
-      </div>
-    </div>
-  `;
-}
-
-// ─── CEM Export ──────────────────────────────────────────────────────────────
-
-/** Collect slot elements from the document tree. */
-function collectSlots(/** @type {any} */ node, /** @type {any} */ slots = []) {
-  if (node?.tagName === "slot") {
-    slots.push(node.attributes?.name || "");
-  }
-  if (Array.isArray(node?.children))
-    node.children.forEach((/** @type {any} */ c) => collectSlots(c, slots));
-  return slots;
-}
-
-/** Generate and download a CEM 2.1.0 manifest for the current document. */
-function _exportCemManifest() {
-  const doc = S.document;
-  const tagName = doc.tagName;
-  if (!tagName || !tagName.includes("-")) return;
-
-  const state = doc.state || {};
-  const members = [];
-  const attributes = [];
-  const events = [];
-  const seenEvents = new Set();
-
-  for (const [key, d] of Object.entries(state)) {
-    if (key.startsWith("#")) continue; // private
-
-    const cat = defCategory(d);
-
-    if (cat === "function") {
-      members.push({
-        kind: "method",
-        name: key,
-        ...(d.description ? { description: d.description } : {}),
-        ...(d.parameters ? { parameters: d.parameters.map(normParam) } : {}),
-        ...(d.deprecated
-          ? { deprecated: typeof d.deprecated === "string" ? d.deprecated : true }
-          : {}),
-      });
-      // Collect emits
-      if (Array.isArray(d.emits)) {
-        for (const ev of d.emits) {
-          if (ev.name && !seenEvents.has(ev.name)) {
-            seenEvents.add(ev.name);
-            events.push({
-              name: ev.name,
-              ...(ev.type ? { type: ev.type } : {}),
-              ...(ev.description ? { description: ev.description } : {}),
-            });
-          }
-        }
-      }
-    } else if (cat === "state") {
-      members.push({
-        kind: "field",
-        name: key,
-        ...(d.type ? { type: { text: d.type } } : {}),
-        ...(d.default !== undefined ? { default: String(d.default) } : {}),
-        ...(d.description ? { description: d.description } : {}),
-        ...(d.attribute ? { attribute: d.attribute } : {}),
-        ...(d.reflects ? { reflects: true } : {}),
-        ...(d.deprecated
-          ? { deprecated: typeof d.deprecated === "string" ? d.deprecated : true }
-          : {}),
-      });
-      if (d.attribute) {
-        attributes.push({
-          name: d.attribute,
-          ...(d.type ? { type: { text: d.type } } : {}),
-          fieldName: key,
-        });
-      }
-    }
-  }
-
-  // Slots
-  const slotNames = collectSlots(doc);
-  const slots = slotNames.map((/** @type {any} */ name) => ({
-    name: name || "",
-    ...(name ? {} : { description: "Default slot" }),
-  }));
-
-  // CSS custom properties
-  const style = doc.style || {};
-  const cssProperties = Object.entries(style)
-    .filter(([k]) => k.startsWith("--"))
-    .map(([name, val]) => ({ name, default: String(val) }));
-
-  // CSS parts
-  const cssParts = collectCssParts(doc).map((p) => ({ name: p.name }));
-
-  const manifest = {
-    schemaVersion: "2.1.0",
-    modules: [
-      {
-        kind: "javascript-module",
-        path: "",
-        declarations: [
-          {
-            kind: "class",
-            name: tagName,
-            tagName,
-            members,
-            ...(attributes.length ? { attributes } : {}),
-            ...(events.length ? { events } : {}),
-            ...(slots.length ? { slots } : {}),
-            ...(cssProperties.length ? { cssProperties } : {}),
-            ...(cssParts.length ? { cssParts } : {}),
-          },
-        ],
-      },
-    ],
-  };
-
-  const blob = new Blob([JSON.stringify(manifest, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `${tagName}.cem.json`;
-  a.click();
-  URL.revokeObjectURL(url);
 }
 
 // ─── Toolbar ──────────────────────────────────────────────────────────────────
@@ -9303,512 +7011,82 @@ function renderToolbar() {
   litRender(tpl, toolbar);
 }
 
-// ─── Statusbar ────────────────────────────────────────────────────────────────
+// ─── File Operations (delegated to file-ops.js) ─────────────────────────────
 
-function renderStatusbar() {
-  const parts = [];
-  if (S.mode === "content") parts.push("Content Mode");
-  if (S.selection) {
-    const node = getNodeAtPath(S.document, S.selection);
-    parts.push(`Selected: ${nodeLabel(node)}`);
-    parts.push(`Path: ${S.selection.join(" > ") || "root"}`);
-  }
-  if (statusMsg) parts.push(statusMsg);
-  statusbar.textContent = parts.join("  |  ") || "Jx Studio";
-}
-
-function statusMessage(/** @type {any} */ msg, duration = 3000) {
-  statusMsg = msg;
-  renderStatusbar();
-  clearTimeout(statusTimeout);
-  statusTimeout = setTimeout(() => {
-    statusMsg = "";
-    renderStatusbar();
-  }, duration);
-}
-
-// ─── File Operations ──────────────────────────────────────────────────────────
-
-async function openFile() {
-  try {
-    // File System Access API
-    if ("showOpenFilePicker" in window) {
-      const [handle] = await /** @type {any} */ (window).showOpenFilePicker({
-        types: [
-          { description: "Jx Component", accept: { "application/json": [".json"] } },
-          { description: "Markdown Content", accept: { "text/markdown": [".md"] } },
-        ],
-      });
-      const file = await handle.getFile();
-      const text = await file.text();
-
-      if (handle.name.endsWith(".md")) {
-        loadMarkdown(text, handle);
-      } else {
-        const doc = JSON.parse(text);
-        S = createState(doc);
-        S.fileHandle = handle;
-        S.dirty = false;
-        S.documentPath = await locateDocument(handle.name);
-        await loadCompanionJS(handle);
-      }
-
+function fileOpsCtx() {
+  return {
+    S,
+    commit: (ns) => {
+      S = ns;
       render();
-      statusMessage(`Opened ${handle.name}`);
-    } else {
-      // Fallback: file input
-      const input = document.createElement("input");
-      input.type = "file";
-      input.accept = ".json,.md";
-      input.onchange = async () => {
-        const file = input.files?.[0];
-        if (!file) return;
-        const text = await file.text();
-
-        if (file.name.endsWith(".md")) {
-          loadMarkdown(text, null);
-        } else {
-          const doc = JSON.parse(text);
-          S = createState(doc);
-          S.dirty = false;
-        }
-
-        render();
-        statusMessage(`Opened ${file.name}`);
-      };
-      input.click();
-    }
-  } catch (/** @type {any} */ e) {
-    if (e.name !== "AbortError") statusMessage(`Error: ${e.message}`);
-  }
+    },
+    renderToolbar,
+  };
+}
+function openFile() {
+  return _openFile(fileOpsCtx());
+}
+function loadMarkdown(source, fileHandle) {
+  const ns = _loadMarkdown(source, fileHandle);
+  S = ns;
+}
+function saveFile() {
+  return _saveFile(fileOpsCtx());
 }
 
-/**
- * Load a markdown string into the studio in content mode. Parses frontmatter, converts mdast → Jx
- * element tree.
- */
-function loadMarkdown(/** @type {any} */ source, /** @type {any} */ fileHandle) {
-  const processor = unified()
-    .use(remarkParse)
-    .use(remarkFrontmatter, ["yaml"])
-    .use(remarkGfm)
-    .use(remarkDirective);
+// ─── File tree (delegated to files.js) ───────────────────────────────────────
 
-  const mdast = processor.parse(source);
-
-  // Extract frontmatter from the first YAML node
-  let frontmatter = {};
-  const yamlNode = mdast.children.find((n) => n.type === "yaml");
-  if (yamlNode) {
-    try {
-      frontmatter = parseYaml(yamlNode.value) ?? {};
-    } catch {}
-  }
-
-  const jxTree = mdToJsonsx(mdast);
-
-  S = createState(jxTree);
-  S.mode = "content";
-  S.content = { frontmatter };
-  S.fileHandle = fileHandle;
-  S.dirty = false;
+function loadProject() {
+  return _loadProject();
 }
-
-async function loadCompanionJS(/** @type {any} */ handle) {
-  try {
-    // Try to get the parent directory to look for .js file
-    // Note: getParent is not widely supported; best-effort
-    const _name = handle.name.replace(/\.json$/, ".js");
-    if (handle.getParent) {
-      // Not yet available in any browser; skip for now
-    }
-    // Check $handlers in the document
-    if (S.document.$handlers) {
-      S.handlersSource = `// Companion file: ${S.document.$handlers}\n// (Read-only in builder — edit the JS file directly)`;
-    }
-  } catch {}
+function openProject() {
+  return _openProject({
+    S,
+    commit: (ns) => {
+      S = ns;
+    },
+    renderActivityBar,
+    renderLeftPanel,
+  });
 }
-
-async function saveFile() {
-  try {
-    const isContent = S.mode === "content";
-    let output, mimeType, ext, description;
-
-    if (isContent) {
-      // Convert Jx tree → mdast → markdown string
-      const mdast = jxToMd(S.document);
-      const md = unified()
-        .use(remarkStringify, { bullet: "-", emphasis: "*", strong: "*" })
-        .stringify(mdast);
-
-      // Prepend frontmatter if present
-      const fm = S.content?.frontmatter;
-      const hasFrontmatter = fm && Object.keys(fm).length > 0;
-      output = hasFrontmatter ? `---\n${stringifyYaml(fm).trim()}\n---\n\n${md}` : md;
-      mimeType = "text/markdown";
-      ext = ".md";
-      description = "Markdown Content";
-    } else {
-      output = JSON.stringify(S.document, null, 2);
-      mimeType = "application/json";
-      ext = ".json";
-      description = "Jx Component";
-    }
-
-    if (S.fileHandle && "createWritable" in S.fileHandle) {
-      const writable = await S.fileHandle.createWritable();
-      await writable.write(output);
-      await writable.close();
-      S = { ...S, dirty: false };
-      renderToolbar();
-      statusMessage("Saved");
-    } else if ("showSaveFilePicker" in window) {
-      const handle = await /** @type {any} */ (window).showSaveFilePicker({
-        suggestedName: isContent ? "content.md" : "component.json",
-        types: [{ description, accept: { [mimeType]: [ext] } }],
-      });
-      const writable = await handle.createWritable();
-      await writable.write(output);
-      await writable.close();
-      S = { ...S, fileHandle: handle, dirty: false };
-      renderToolbar();
-      statusMessage(`Saved as ${handle.name}`);
-    } else {
-      // Fallback: download
-      const blob = new Blob([output], { type: mimeType });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = isContent ? "content.md" : "component.json";
-      a.click();
-      URL.revokeObjectURL(url);
-      S = { ...S, dirty: false };
-      renderToolbar();
-      statusMessage("Downloaded");
-    }
-  } catch (/** @type {any} */ e) {
-    if (e.name !== "AbortError") statusMessage(`Save error: ${e.message}`);
-  }
+function renderFilesTemplate() {
+  return _renderFilesTemplate({ openProject, openFileFromTree, renderLeftPanel });
+}
+function openFileFromTree(path) {
+  return _openFileFromTree(
+    {
+      S,
+      commit: (ns) => {
+        S = ns;
+      },
+      render,
+      loadMarkdown,
+    },
+    path,
+  );
 }
 
 // ─── Keyboard shortcuts ───────────────────────────────────────────────────────
-
-// Wheel handler: Ctrl+Scroll = zoom (cursor-centered), plain scroll = pan
-canvasWrap.addEventListener(
-  "wheel",
-  (/** @type {any} */ e) => {
-    // Edit (content) mode: let the scroll container handle scrolling natively
-    if (canvasMode === "edit") return;
-    e.preventDefault();
-    if (e.ctrlKey || e.metaKey) {
-      // Zoom towards cursor
-      const rect = canvasWrap.getBoundingClientRect();
-      const cursorX = e.clientX - rect.left;
-      const cursorY = e.clientY - rect.top;
-      const oldZoom = S.ui.zoom;
-      const delta = -e.deltaY * 0.005;
-      const newZoom = Math.min(5.0, Math.max(0.05, oldZoom * (1 + delta)));
-      const ratio = newZoom / oldZoom;
-      // Adjust pan so the point under cursor stays stationary
-      panX = cursorX - (cursorX - panX) * ratio;
-      panY = cursorY - (cursorY - panY) * ratio;
-      S = { ...S, ui: { ...S.ui, zoom: newZoom } };
-    } else {
-      // Pan
-      panX -= e.deltaX;
-      panY -= e.deltaY;
-    }
-    applyTransform();
+initShortcuts(() => ({
+  S,
+  setS: (ns) => {
+    S = ns;
   },
-  { passive: false },
-);
+  canvasMode,
+  panX,
+  panY,
+  setPan: (x, y) => {
+    panX = x;
+    panY = y;
+  },
+  applyTransform,
+  positionZoomIndicator,
+  componentInlineEdit,
+  saveFile,
+  openProject,
+}));
 
-// Middle-mouse drag panning
-canvasWrap.addEventListener("pointerdown", (/** @type {any} */ e) => {
-  if (canvasMode === "edit") return; // no panning in edit mode
-  if (e.button !== 1) return; // middle button only
-  e.preventDefault();
-  canvasWrap.setPointerCapture(e.pointerId);
-  let lastX = e.clientX,
-    lastY = e.clientY;
-  const onMove = (/** @type {any} */ ev) => {
-    panX += ev.clientX - lastX;
-    panY += ev.clientY - lastY;
-    lastX = ev.clientX;
-    lastY = ev.clientY;
-    applyTransform();
-  };
-  const onUp = () => {
-    canvasWrap.releasePointerCapture(e.pointerId);
-    canvasWrap.removeEventListener("pointermove", onMove);
-    canvasWrap.removeEventListener("pointerup", onUp);
-  };
-  canvasWrap.addEventListener("pointermove", onMove);
-  canvasWrap.addEventListener("pointerup", onUp);
-});
-
-// Reposition zoom indicator on resize
-window.addEventListener("resize", positionZoomIndicator);
-
-document.addEventListener("keydown", (e) => {
-  const mod = e.ctrlKey || e.metaKey;
-
-  // Don't intercept when typing in inputs or contenteditable
-  if (e.target instanceof HTMLElement && e.target.matches("input, textarea, select")) {
-    if (mod && e.key === "s") {
-      e.preventDefault();
-      saveFile();
-    }
-    return;
-  }
-  if (isEditing()) {
-    // Let inline editor handle its own keyboard events; only intercept Save
-    if (mod && e.key === "s") {
-      e.preventDefault();
-      saveFile();
-    }
-    return;
-  }
-  if (componentInlineEdit) {
-    if (mod && e.key === "s") {
-      e.preventDefault();
-      saveFile();
-    }
-    return;
-  }
-
-  if (mod) {
-    switch (e.key) {
-      case "o":
-        e.preventDefault();
-        openProject();
-        break;
-      case "s":
-        e.preventDefault();
-        saveFile();
-        break;
-      case "z":
-        e.preventDefault();
-        update(e.shiftKey ? redo(S) : undo(S));
-        break;
-      case "d":
-        e.preventDefault();
-        if (S.selection) update(duplicateNode(S, S.selection));
-        break;
-      case "c":
-        e.preventDefault();
-        copyNode();
-        break;
-      case "x":
-        e.preventDefault();
-        cutNode();
-        break;
-      case "v":
-        e.preventDefault();
-        pasteNode();
-        break;
-      case "0":
-        if (canvasMode === "edit") break;
-        e.preventDefault();
-        S = { ...S, ui: { ...S.ui, zoom: 1 } };
-        panX = 16;
-        panY = 16;
-        applyTransform();
-        break;
-      case "=":
-      case "+":
-        if (canvasMode === "edit") break;
-        e.preventDefault();
-        S = { ...S, ui: { ...S.ui, zoom: Math.min(5.0, S.ui.zoom * 1.2) } };
-        applyTransform();
-        break;
-      case "-":
-        if (canvasMode === "edit") break;
-        e.preventDefault();
-        S = { ...S, ui: { ...S.ui, zoom: Math.max(0.05, S.ui.zoom / 1.2) } };
-        applyTransform();
-        break;
-    }
-    return;
-  }
-
-  switch (e.key) {
-    case "Delete":
-    case "Backspace":
-      if (S.selection && S.selection.length >= 2) {
-        e.preventDefault();
-        update(removeNode(S, S.selection));
-      }
-      break;
-    case "Escape":
-      update(selectNode(S, null));
-      break;
-    case "ArrowUp":
-      e.preventDefault();
-      navigateSelection(-1);
-      break;
-    case "ArrowDown":
-      e.preventDefault();
-      navigateSelection(1);
-      break;
-    case "ArrowLeft":
-      e.preventDefault();
-      if (S.selection && S.selection.length >= 2) {
-        update(selectNode(S, parentElementPath(S.selection)));
-      }
-      break;
-    case "ArrowRight":
-      e.preventDefault();
-      if (S.selection) {
-        const node = getNodeAtPath(S.document, S.selection);
-        if (node?.children?.length > 0) {
-          update(selectNode(S, [...S.selection, "children", 0]));
-        }
-      }
-      break;
-  }
-});
-
-function navigateSelection(/** @type {any} */ direction) {
-  if (!S.selection) {
-    update(selectNode(S, []));
-    return;
-  }
-  if (S.selection.length < 2) return; // can't navigate from root
-
-  const parent = getNodeAtPath(S.document, /** @type {any} */ (parentElementPath(S.selection)));
-  const idx = /** @type {number} */ (childIndex(S.selection));
-  const newIdx = idx + direction;
-
-  if (newIdx >= 0 && newIdx < parent.children.length) {
-    const newPath = [.../** @type {any} */ (parentElementPath(S.selection)), "children", newIdx];
-    update(selectNode(S, newPath));
-  }
-}
-
-// ─── Clipboard ────────────────────────────────────────────────────────────────
-
-/** @type {any} */
-let clipboard = null;
-
-function copyNode() {
-  if (!S.selection) return;
-  const node = getNodeAtPath(S.document, S.selection);
-  if (!node) return;
-  clipboard = structuredClone(node);
-  statusMessage("Copied");
-}
-
-function cutNode() {
-  if (!S.selection || S.selection.length < 2) return;
-  const node = getNodeAtPath(S.document, S.selection);
-  if (!node) return;
-  clipboard = structuredClone(node);
-  update(removeNode(S, S.selection));
-  statusMessage("Cut");
-}
-
-function pasteNode() {
-  if (!clipboard) return;
-  const parentPath = S.selection || [];
-  const parent = getNodeAtPath(S.document, parentPath);
-  if (!parent) return;
-
-  if (S.selection && S.selection.length >= 2) {
-    // Paste as sibling after selection
-    const pp = /** @type {any} */ (parentElementPath(S.selection));
-    const idx = /** @type {number} */ (childIndex(S.selection));
-    update(insertNode(S, pp, idx + 1, structuredClone(clipboard)));
-  } else {
-    // Paste as last child of root/selected
-    const idx = parent.children ? parent.children.length : 0;
-    update(insertNode(S, parentPath, idx, structuredClone(clipboard)));
-  }
-  statusMessage("Pasted");
-}
-
-// ─── Context menu ─────────────────────────────────────────────────────────────
-
-const ctxMenu = document.createElement("sp-popover");
-const ctxMenuInner = document.createElement("sp-menu");
-ctxMenu.appendChild(ctxMenuInner);
-ctxMenu.style.position = "fixed";
-ctxMenu.style.zIndex = "10000";
-document.body.appendChild(ctxMenu);
-
-document.addEventListener("click", () => {
-  ctxMenu.removeAttribute("open");
-});
-
-function showContextMenu(/** @type {any} */ e, /** @type {any} */ path) {
-  e.preventDefault();
-  ctxMenu.removeAttribute("open");
-
-  const node = getNodeAtPath(S.document, path);
-  if (!node) return;
-
-  // Select the node
-  update(selectNode(S, path));
-
-  ctxMenuInner.innerHTML = "";
-  const items = [];
-
-  items.push({ label: "Copy", action: copyNode });
-  if (path.length >= 2) {
-    items.push({ label: "Cut", action: cutNode });
-    items.push({ label: "Duplicate", action: () => update(duplicateNode(S, S.selection)) });
-    items.push({ label: "—" }); // separator
-    items.push({ label: "Delete", action: () => update(removeNode(S, S.selection)), danger: true });
-  }
-  if (clipboard) {
-    items.push({ label: "—" });
-    items.push({
-      label: "Paste inside",
-      action: () => {
-        const idx = node.children ? node.children.length : 0;
-        update(insertNode(S, path, idx, structuredClone(clipboard)));
-      },
-    });
-    if (path.length >= 2) {
-      items.push({
-        label: "Paste after",
-        action: () => {
-          const pp = /** @type {any} */ (parentElementPath(path));
-          const idx = /** @type {number} */ (childIndex(path));
-          update(insertNode(S, pp, idx + 1, structuredClone(clipboard)));
-        },
-      });
-    }
-  }
-
-  for (const item of items) {
-    if (item.label === "—") {
-      const sep = document.createElement("sp-menu-divider");
-      ctxMenuInner.appendChild(sep);
-      continue;
-    }
-    const el = document.createElement("sp-menu-item");
-    el.textContent = item.label;
-    if (item.danger) el.style.color = "var(--danger)";
-    el.addEventListener("click", () => {
-      ctxMenu.removeAttribute("open");
-      item.action?.();
-    });
-    ctxMenuInner.appendChild(el);
-  }
-
-  // Position the menu
-  ctxMenu.setAttribute("open", "");
-  const menuRect = ctxMenu.getBoundingClientRect();
-  let x = e.clientX,
-    y = e.clientY;
-  if (x + menuRect.width > window.innerWidth) x = window.innerWidth - menuRect.width - 4;
-  if (y + menuRect.height > window.innerHeight) y = window.innerHeight - menuRect.height - 4;
-  ctxMenu.style.left = `${x}px`;
-  ctxMenu.style.top = `${y}px`;
-}
-
-// ─── Autosave ─────────────────────────────────────────────────────────────────
+// ─── Autosave (registered as update middleware) ──────────────────────────────
 
 /** @type {any} */
 let autosaveTimer;
@@ -9831,11 +7109,7 @@ function scheduleAutosave() {
   }, AUTO_SAVE_DELAY);
 }
 
-// Hook autosave into update
-const _origUpdate = update;
-// @ts-ignore — intentional monkey-patch of hoisted function
-update = function (/** @type {any} */ newState) {
-  _origUpdate(newState);
-  if (S.dirty) scheduleAutosave();
-};
+addUpdateMiddleware((/** @type {any} */ state) => {
+  if (state.dirty) scheduleAutosave();
+});
 // trigger rebuild
