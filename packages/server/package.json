@@ -1,6 +1,6 @@
 {
   "name": "@jxplatform/server",
-  "version": "0.2.0",
+  "version": "0.4.0",
   "description": "Jx development server with live reload, server-side proxy, and studio integration",
   "license": "MIT",
   "files": [

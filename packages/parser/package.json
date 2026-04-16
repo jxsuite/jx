@@ -1,6 +1,6 @@
 {
   "name": "@jxplatform/parser",
-  "version": "0.2.0",
+  "version": "0.4.0",
   "description": "Jx markdown parser and external class integration",
   "license": "MIT",
   "files": [
