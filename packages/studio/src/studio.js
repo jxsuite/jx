@@ -3149,52 +3149,82 @@ function renderComponentsTemplate() {
   `;
 }
 
+/**
+ * Select a tag in the stylebook — shared by layers panel click and canvas click.
+ *
+ * @param {string} tag
+ * @param {string | null} [media]
+ */
+function selectStylebookTag(tag, media) {
+  S = {
+    ...S,
+    selection: [],
+    ui: {
+      ...S.ui,
+      stylebookSelection: tag,
+      rightTab: "style",
+      activeSelector: `& ${tag}`,
+      ...(media !== undefined ? { activeMedia: media } : {}),
+    },
+  };
+  renderStylebookOverlays();
+  renderRightPanel();
+  renderLeftPanel();
+  renderToolbar();
+  if (canvasPanels.length > 0) {
+    const el = findStylebookEl(canvasPanels[0].canvas, tag);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+}
+
 function renderStylebookLayersTemplate() {
   const rootStyle = S.document?.style || {};
   const selectedTag = S.ui.stylebookSelection;
 
   if (S.ui.stylebookTab === "elements") {
+    /**
+     * Render a stylebook entry row with recursive children.
+     *
+     * @param {any} entry
+     * @param {number} depth
+     * @returns {any}
+     */
+    const renderEntryRow = (entry, depth = 0) => {
+      const tag = entry.tag;
+      // Deduplicate children by tag (e.g. multiple <li> → show one "li" row)
+      const uniqueChildren = entry.children
+        ? [...new Map(entry.children.map((/** @type {any} */ c) => [c.tag, c])).values()]
+        : [];
+      return html`
+        <div
+          class="layer-row${tag === selectedTag ? " selected" : ""}"
+          style="padding-left:${8 + depth * 16}px"
+          @click=${(/** @type {any} */ e) => {
+            e.stopPropagation();
+            selectStylebookTag(tag);
+          }}
+        >
+          <span class="layer-tag">${tag}</span>
+          <span
+            class="layer-label"
+            style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1"
+            >${entry.text || `<${tag}>`}</span
+          >
+          ${hasTagStyle(rootStyle, tag)
+            ? html`<span
+                style="width:6px;height:6px;border-radius:50%;background:var(--accent);flex-shrink:0"
+              ></span>`
+            : nothing}
+        </div>
+        ${uniqueChildren.map((/** @type {any} */ child) => renderEntryRow(child, depth + 1))}
+      `;
+    };
+
     /** @type {any[]} */
     const elementRows = [];
     for (const section of stylebookMeta.$sections) {
       for (const entry of /** @type {any[]} */ (section.elements)) {
-        elementRows.push(html`
-          <div
-            class="layer-row${entry.tag === selectedTag ? " selected" : ""}"
-            @click=${() => {
-              S = {
-                ...S,
-                selection: [],
-                ui: {
-                  ...S.ui,
-                  stylebookSelection: entry.tag,
-                  rightTab: "style",
-                  activeSelector: `& ${entry.tag}`,
-                },
-              };
-              renderStylebookOverlays();
-              renderRightPanel();
-              renderLeftPanel();
-              renderToolbar();
-              if (canvasPanels.length > 0) {
-                const el = findStylebookEl(canvasPanels[0].canvas, entry.tag);
-                if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
-              }
-            }}
-          >
-            <span class="layer-tag">${entry.tag}</span>
-            <span
-              class="layer-label"
-              style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1"
-              >${entry.text || `<${entry.tag}>`}</span
-            >
-            ${hasTagStyle(rootStyle, entry.tag)
-              ? html`<span
-                  style="width:6px;height:6px;border-radius:50%;background:var(--accent);flex-shrink:0"
-                ></span>`
-              : nothing}
-          </div>
-        `);
+        elementRows.push(renderEntryRow(entry, 0));
       }
     }
     // Custom components
@@ -3202,22 +3232,7 @@ function renderStylebookLayersTemplate() {
       /** @param {any} comp */ (comp) => html`
         <div
           class="layer-row${comp.tagName === selectedTag ? " selected" : ""}"
-          @click=${() => {
-            S = {
-              ...S,
-              selection: [],
-              ui: {
-                ...S.ui,
-                stylebookSelection: comp.tagName,
-                rightTab: "style",
-                activeSelector: `& ${comp.tagName}`,
-              },
-            };
-            renderStylebookOverlays();
-            renderRightPanel();
-            renderLeftPanel();
-            renderToolbar();
-          }}
+          @click=${() => selectStylebookTag(comp.tagName)}
         >
           <span class="layer-tag component-tag" style="background:var(--accent)">⬡</span>
           <span class="layer-label">${comp.tagName}</span>
@@ -3784,6 +3799,14 @@ function renderStylebookElementsIntoCanvas(
       stylebookElToTag.set(card, entry.tag);
       // Also register in the global elToPath so drawOverlayBox label works
       elToPath.set(card, ["__sb", entry.tag]);
+      // Register nested child elements so they can be selected individually
+      for (const child of el.querySelectorAll("*")) {
+        const tag = child.tagName.toLowerCase();
+        if (!stylebookElToTag.has(child)) {
+          stylebookElToTag.set(child, tag);
+          elToPath.set(child, ["__sb", tag]);
+        }
+      }
 
       body.appendChild(card);
     }
@@ -4329,22 +4352,8 @@ function registerStylebookPanelEvents(panel) {
         const tag = stylebookElToTag.get(cur);
         if (tag) {
           const newMedia = panel.mediaName === "base" ? null : (panel.mediaName ?? null);
-          S = {
-            ...S,
-            selection: [],
-            ui: {
-              ...S.ui,
-              stylebookSelection: tag,
-              rightTab: "style",
-              activeSelector: `& ${tag}`,
-              activeMedia: newMedia,
-            },
-          };
-          renderStylebookOverlays();
+          selectStylebookTag(tag, newMedia);
           updateActivePanelHeaders();
-          renderRightPanel();
-          renderLeftPanel();
-          renderToolbar();
           return;
         }
         cur = cur.parentElement;
