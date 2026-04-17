@@ -9,7 +9,7 @@
  * Compile a .class.json schema to a JavaScript ES module string.
  *
  * @param {any} classDef - Parsed .class.json content (must have $prototype: "Class")
- * @param {any} [opts]
+ * @param {any} [_opts]
  * @returns {string} JavaScript module source code
  */
 export function compileClassJson(classDef, _opts = {}) {

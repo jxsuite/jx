@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { compileElement, compileElementPage } from "../compiler.js";
+import { compileElement, compileElementPage } from "../src/compiler.js";
 import { resolve, dirname } from "node:path";
 
 const fixturesDir = resolve(dirname(new URL(import.meta.url).pathname));

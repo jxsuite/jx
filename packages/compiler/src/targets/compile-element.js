@@ -6,7 +6,7 @@
  */
 
 import { camelToKebab, RESERVED_KEYS } from "@jxplatform/runtime";
-import { escapeHtml, tagNameToClassName, isSchemaOnly } from "./shared.js";
+import { escapeHtml, tagNameToClassName, isSchemaOnly } from "../shared.js";
 
 /**
  * Compile a Jx custom element document to a JS module string.

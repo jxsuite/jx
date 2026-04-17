@@ -9,16 +9,16 @@
  */
 
 /**
- * @typedef {Record<string, any>} JsonsxNode
+ * @typedef {Record<string, any>} JxNode
  *
- * @typedef {(string | number)[]} JsonsxPath
+ * @typedef {(string | number)[]} JxPath
  *
- * @typedef {{ document: JsonsxNode; selection: JsonsxPath | null }} HistorySnapshot
+ * @typedef {{ document: JxNode; selection: JxPath | null }} HistorySnapshot
  *
  * @typedef {{
- *   document: JsonsxNode;
- *   selection: JsonsxPath | null;
- *   hover: JsonsxPath | null;
+ *   document: JxNode;
+ *   selection: JxPath | null;
+ *   hover: JxPath | null;
  *   history: HistorySnapshot[];
  *   historyIndex: number;
  *   dirty: boolean;
@@ -40,7 +40,7 @@ const HISTORY_LIMIT = 100;
  * Walk the document tree and return the node at the given path.
  *
  * @param {any} doc
- * @param {JsonsxPath} path
+ * @param {JxPath} path
  * @returns {any}
  */
 export function getNodeAtPath(doc, path) {
@@ -55,8 +55,8 @@ export function getNodeAtPath(doc, path) {
 /**
  * Return the path to the parent element (strips trailing 'children' + index).
  *
- * @param {JsonsxPath} path
- * @returns {JsonsxPath | null}
+ * @param {JxPath} path
+ * @returns {JxPath | null}
  */
 export function parentElementPath(path) {
   return path.length >= 2 ? path.slice(0, -2) : null;
@@ -65,7 +65,7 @@ export function parentElementPath(path) {
 /**
  * Return the child index (last segment of the path).
  *
- * @param {JsonsxPath} path
+ * @param {JxPath} path
  * @returns {string | number}
  */
 export function childIndex(path) {
@@ -75,7 +75,7 @@ export function childIndex(path) {
 /**
  * Serialize a path to a string key for Map lookups.
  *
- * @param {JsonsxPath} path
+ * @param {JxPath} path
  * @returns {string}
  */
 export function pathKey(path) {
@@ -85,8 +85,8 @@ export function pathKey(path) {
 /**
  * Compare two paths for equality.
  *
- * @param {JsonsxPath | null} a
- * @param {JsonsxPath | null} b
+ * @param {JxPath | null} a
+ * @param {JxPath | null} b
  * @returns {boolean}
  */
 export function pathsEqual(a, b) {
@@ -98,8 +98,8 @@ export function pathsEqual(a, b) {
 /**
  * Returns true if `path` is an ancestor of (or equal to) `descendant`.
  *
- * @param {JsonsxPath} path
- * @param {JsonsxPath} descendant
+ * @param {JxPath} path
+ * @param {JxPath} descendant
  * @returns {boolean}
  */
 export function isAncestor(path, descendant) {
@@ -116,12 +116,12 @@ export function isAncestor(path, descendant) {
  * NodeType: 'element' (default) | 'map' | 'case' | 'case-ref'
  *
  * @param {any} doc
- * @param {JsonsxPath} [path]
+ * @param {JxPath} [path]
  * @param {number} [depth]
- * @returns {{ node: any; path: JsonsxPath; depth: number; nodeType: string }[]}
+ * @returns {{ node: any; path: JxPath; depth: number; nodeType: string }[]}
  */
 export function flattenTree(doc, path = [], depth = 0) {
-  /** @type {{ node: any; path: JsonsxPath; depth: number; nodeType: string }[]} */
+  /** @type {{ node: any; path: JxPath; depth: number; nodeType: string }[]} */
   const rows = [{ node: doc, path, depth, nodeType: "element" }];
 
   // Custom component instances are atomic in the layer tree — don't recurse into internals
@@ -269,7 +269,7 @@ export function applyMutation(state, mutationFn) {
 
 /**
  * @param {StudioState} state
- * @param {JsonsxPath | null} path
+ * @param {JxPath | null} path
  * @returns {StudioState}
  */
 export function selectNode(state, path) {
@@ -278,7 +278,7 @@ export function selectNode(state, path) {
 
 /**
  * @param {StudioState} state
- * @param {JsonsxPath | null} path
+ * @param {JxPath | null} path
  * @returns {StudioState}
  */
 export function hoverNode(state, path) {
@@ -325,7 +325,7 @@ export function redo(state) {
 
 /**
  * @param {StudioState} state
- * @param {JsonsxPath} parentPath
+ * @param {JxPath} parentPath
  * @param {number} index
  * @param {any} nodeDef
  * @returns {StudioState}
@@ -340,7 +340,7 @@ export function insertNode(state, parentPath, index, nodeDef) {
 
 /**
  * @param {StudioState} state
- * @param {JsonsxPath} path
+ * @param {JxPath} path
  * @returns {StudioState}
  */
 export function removeNode(state, path) {
@@ -348,7 +348,7 @@ export function removeNode(state, path) {
   const elemPath = parentElementPath(path);
   const idx = childIndex(path);
   const newState = applyMutation(state, (doc) => {
-    getNodeAtPath(doc, /** @type {JsonsxPath} */ (elemPath)).children.splice(idx, 1);
+    getNodeAtPath(doc, /** @type {JxPath} */ (elemPath)).children.splice(idx, 1);
   });
   // Clear selection if we removed the selected node
   if (state.selection && isAncestor(path, state.selection)) {
@@ -359,14 +359,14 @@ export function removeNode(state, path) {
 
 /**
  * @param {StudioState} state
- * @param {JsonsxPath} path
+ * @param {JxPath} path
  * @returns {StudioState}
  */
 export function duplicateNode(state, path) {
   if (!path || path.length < 2) return state;
   const node = getNodeAtPath(state.document, path);
   if (!node) return state;
-  const elemPath = /** @type {JsonsxPath} */ (parentElementPath(path));
+  const elemPath = /** @type {JxPath} */ (parentElementPath(path));
   const idx = /** @type {number} */ (childIndex(path));
   const newState = insertNode(state, elemPath, idx + 1, structuredClone(node));
   return selectNode(newState, [...elemPath, "children", idx + 1]);
@@ -374,14 +374,14 @@ export function duplicateNode(state, path) {
 
 /**
  * @param {StudioState} state
- * @param {JsonsxPath} fromPath
- * @param {JsonsxPath} toParentPath
+ * @param {JxPath} fromPath
+ * @param {JxPath} toParentPath
  * @param {number} toIndex
  * @returns {StudioState}
  */
 export function moveNode(state, fromPath, toParentPath, toIndex) {
   return applyMutation(state, (doc) => {
-    const fromParentPath = /** @type {JsonsxPath} */ (parentElementPath(fromPath));
+    const fromParentPath = /** @type {JxPath} */ (parentElementPath(fromPath));
     const fromParent = getNodeAtPath(doc, fromParentPath);
     const fromIdx = childIndex(fromPath);
     const [node] = fromParent.children.splice(fromIdx, 1);
@@ -398,7 +398,7 @@ export function moveNode(state, fromPath, toParentPath, toIndex) {
 
 /**
  * @param {StudioState} state
- * @param {JsonsxPath} path
+ * @param {JxPath} path
  * @param {string} key
  * @param {any} value
  * @returns {StudioState}
@@ -413,7 +413,7 @@ export function updateProperty(state, path, key, value) {
 
 /**
  * @param {StudioState} state
- * @param {JsonsxPath} path
+ * @param {JxPath} path
  * @param {string} prop
  * @param {any} value
  * @returns {StudioState}
@@ -430,7 +430,7 @@ export function updateStyle(state, path, prop, value) {
 
 /**
  * @param {StudioState} state
- * @param {JsonsxPath} path
+ * @param {JxPath} path
  * @param {string} attr
  * @param {any} value
  * @returns {StudioState}
@@ -511,7 +511,7 @@ export function renameDef(state, oldName, newName) {
  * Update a style property inside a media override block (e.g., `@--md`).
  *
  * @param {StudioState} state
- * @param {JsonsxPath} path
+ * @param {JxPath} path
  * @param {string} mediaName
  * @param {string} prop
  * @param {any} value
@@ -537,7 +537,7 @@ export function updateMediaStyle(state, path, mediaName, prop, value) {
  * Update a style property inside a nested selector block (e.g., :hover).
  *
  * @param {StudioState} state
- * @param {JsonsxPath} path
+ * @param {JxPath} path
  * @param {string} selector
  * @param {string} prop
  * @param {any} value
@@ -562,7 +562,7 @@ export function updateNestedStyle(state, path, selector, prop, value) {
  * Update a style property inside a nested selector within a media block (e.g., `@--md` > `:hover`).
  *
  * @param {StudioState} state
- * @param {JsonsxPath} path
+ * @param {JxPath} path
  * @param {string} mediaName
  * @param {string} selector
  * @param {string} prop
@@ -659,7 +659,7 @@ export function popDocument(state) {
  * Update a $prop on a component instance.
  *
  * @param {StudioState} state
- * @param {JsonsxPath} path
+ * @param {JxPath} path
  * @param {string} propName
  * @param {any} value
  * @returns {StudioState}
@@ -678,7 +678,7 @@ export function updateProp(state, path, propName, value) {
 
 /**
  * @param {StudioState} state
- * @param {JsonsxPath} path
+ * @param {JxPath} path
  * @param {string} caseName
  * @param {any} [caseDef]
  * @returns {StudioState}
@@ -693,7 +693,7 @@ export function addSwitchCase(state, path, caseName, caseDef) {
 
 /**
  * @param {StudioState} state
- * @param {JsonsxPath} path
+ * @param {JxPath} path
  * @param {string} caseName
  * @returns {StudioState}
  */
@@ -708,7 +708,7 @@ export function removeSwitchCase(state, path, caseName) {
 
 /**
  * @param {StudioState} state
- * @param {JsonsxPath} path
+ * @param {JxPath} path
  * @param {string} oldName
  * @param {string} newName
  * @returns {StudioState}

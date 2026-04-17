@@ -209,7 +209,7 @@ For custom element definitions, the inspector includes CEM editing panels:
 
 The `md-convert.js` module provides:
 
-- `mdToJsonsx(markdown)` — Markdown string → Jx document tree
+- `mdToJx(markdown)` — Markdown string → Jx document tree
 - `jxToMd(doc)` — Jx document tree → Markdown string
 
 ### 7.2 Inline Editing

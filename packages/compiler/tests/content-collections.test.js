@@ -9,10 +9,10 @@ import {
   queryCollection,
   findEntry,
   resolveCollectionRefs,
-} from "../content-loader.js";
-import { discoverPages, expandDynamicRoutes } from "../pages-discovery.js";
-import { injectContext } from "../context-injection.js";
-import { buildSite } from "../site-build.js";
+} from "../src/site/content-loader.js";
+import { discoverPages, expandDynamicRoutes } from "../src/site/pages-discovery.js";
+import { injectContext } from "../src/site/context-injection.js";
+import { buildSite } from "../src/site/site-build.js";
 
 const TMP = resolve(import.meta.dir, "__test-content__");
 
