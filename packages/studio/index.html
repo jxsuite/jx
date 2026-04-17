@@ -644,58 +644,49 @@
       .breadcrumb-sep {
         color: var(--fg-dim);
       }
-      .block-row {
+      .element-card {
         cursor: grab;
-        display: inline-flex;
+        display: flex;
         flex-direction: column;
-        width: calc(50% - 6px);
-        margin: 3px;
-        vertical-align: top;
+        width: 100%;
         border: 1px solid var(--border);
         border-radius: var(--radius);
         overflow: hidden;
+        margin-bottom: 6px;
       }
-      .block-row:hover {
+      .element-card:hover {
         border-color: var(--accent);
       }
-      .block-preview {
+      .element-card-preview {
         background: #fff;
         padding: 6px 8px;
         min-height: 32px;
+        max-height: 120px;
         display: flex;
         align-items: center;
         overflow: hidden;
         pointer-events: none;
       }
-      .block-preview > * {
+      .element-card-preview > * {
         max-width: 100%;
-        font-size: 11px;
         color: var(--canvas-fg-2);
         margin: 0;
         padding: 0;
       }
-      .block-preview > h1,
-      .block-preview > h2,
-      .block-preview > h3,
-      .block-preview > h4,
-      .block-preview > h5,
-      .block-preview > h6 {
-        font-size: 13px;
-      }
-      .block-preview > hr {
+      .element-card-preview > hr {
         width: 100%;
         border: none;
         border-top: 1px solid var(--canvas-muted);
       }
-      .block-preview > input,
-      .block-preview > textarea,
-      .block-preview > select,
-      .block-preview > button,
-      .block-preview > progress,
-      .block-preview > meter {
+      .element-card-preview > input,
+      .element-card-preview > textarea,
+      .element-card-preview > select,
+      .element-card-preview > button,
+      .element-card-preview > progress,
+      .element-card-preview > meter {
         font-size: 10px;
       }
-      .block-label {
+      .element-card-label {
         padding: 2px 6px;
         font-size: 10px;
         color: var(--fg-dim);
@@ -703,33 +694,12 @@
         text-align: center;
         font-family: "SF Mono", "Fira Code", monospace;
       }
-      .blocks-search {
-        margin: 4px 8px;
-        width: calc(100% - 16px);
+      .elements-list {
+        border: none;
       }
-      .blocks-category {
-        padding: 6px 8px;
-        font-size: 10px;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        color: var(--fg-dim);
-        cursor: pointer;
-        user-select: none;
+      .elements-list sp-accordion-item {
+        --spectrum-accordion-item-header-font-size: 11px;
         border-bottom: 1px solid var(--border);
-      }
-      .blocks-category::before {
-        content: "▼";
-        margin-right: 6px;
-        font-size: 8px;
-        display: inline-block;
-        transition: transform 0.15s;
-      }
-      .blocks-category.collapsed::before {
-        transform: rotate(-90deg);
-      }
-      .blocks-category:hover {
-        color: var(--fg);
       }
 
       /* ─── Drop indicator ──────────────────────────── */
@@ -1500,6 +1470,9 @@
       }
       .sb-body {
         padding: 4px 0;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
       }
 
       /* Variable rows — unified layout for existing + add-new */

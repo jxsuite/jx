@@ -561,8 +561,8 @@ function tbBtnTpl(label, onClick, iconTag) {
   `;
 }
 
-let blocksCollapsed = new Set();
-let blocksFilter = "";
+let elementsCollapsed = new Set();
+let elementsFilter = "";
 
 // ─── Bootstrap ────────────────────────────────────────────────────────────────
 
@@ -2754,7 +2754,7 @@ function renderLeftPanel() {
     content = canvasMode === "stylebook" ? renderStylebookLayersTemplate() : renderLayersTemplate();
   else if (tab === "components") content = renderComponentsTemplate();
   else if (tab === "files") content = renderFilesTemplate();
-  else if (tab === "blocks") content = renderBlocksTemplate();
+  else if (tab === "blocks") content = renderElementsTemplate();
   else if (tab === "state") content = renderSignalsTemplate(S, { renderLeftPanel, renderCanvas });
   else if (tab === "data")
     content = renderDataExplorerTemplate(S.document.state, liveScope, {
@@ -2770,7 +2770,7 @@ function renderLeftPanel() {
   // Post-render side effects
   if (tab === "layers" && canvasMode !== "stylebook") registerLayersDnD();
   else if (tab === "components") registerComponentsDnD();
-  else if (tab === "blocks") registerBlocksDnD();
+  else if (tab === "blocks") registerElementsDnD();
   else if (tab === "files") {
     const tree = /** @type {any} */ (leftPanel)?.querySelector(".file-tree");
     if (tree) setupTreeKeyboard(tree);
@@ -3017,12 +3017,22 @@ function registerComponentsDnD() {
     const container = /** @type {any} */ (leftPanel)?.querySelector(".components-section");
     if (!container) return;
 
-    container.querySelectorAll(".component-row").forEach(
+    container.querySelectorAll("[data-component-tag]").forEach(
       /** @param {any} row */ (row) => {
-        const tagName = row.querySelector(".layer-label")?.textContent;
+        const tagName = row.dataset.componentTag;
         if (!tagName) return;
         const comp = componentRegistry.find(/** @param {any} c */ (c) => c.tagName === tagName);
         if (!comp) return;
+
+        // Fill preview with live rendered component
+        const preview = row.querySelector(".element-card-preview");
+        if (preview && !preview.querySelector(tagName)) {
+          renderComponentPreview(comp).then((el) => {
+            preview.textContent = "";
+            preview.appendChild(el);
+          });
+        }
+
         const instanceDef = {
           tagName: comp.tagName,
           $props: Object.fromEntries(
@@ -3112,33 +3122,26 @@ function renderComponentsTemplate() {
     </div>`;
   }
 
-  const importedRefs = new Set(
-    (S.document.$elements || [])
-      .filter((/** @type {any} */ e) => e.$ref)
-      .map((/** @type {any} */ e) => e.$ref),
-  );
-  const isImported = (/** @type {any} */ c) =>
-    importedRefs.has(`./${c.path}`) ||
-    importedRefs.has(c.path) ||
-    Array.from(importedRefs).some((/** @type {any} */ ref) =>
-      ref.endsWith(c.path.split("/").pop()),
-    );
-
   return html`
-    <div class="components-section">
+    <div class="components-section" style="padding:4px">
       ${componentRegistry.map(
         /** @param {any} comp */ (comp) => html`
           <div
-            class="layer-row component-row${isImported(comp) ? "" : " available"}"
+            class="element-card"
+            data-component-tag=${comp.tagName}
             @click=${() => navigateToComponent(comp.path)}
+            title=${comp.path}
           >
-            <span
-              class="layer-tag component-tag"
-              style="background:${isImported(comp) ? "var(--accent)" : "var(--bg-alt)"}"
-              >⬡</span
-            >
-            <span class="layer-label" title=${comp.path}>${comp.tagName}</span>
-            ${comp.$id ? html`<span class="signal-hint">${comp.$id}</span>` : nothing}
+            <div class="element-card-preview">
+              <span style="color:var(--fg-dim);font-size:11px;font-style:italic"
+                >&lt;${comp.tagName}&gt;</span
+              >
+            </div>
+            <div class="element-card-label">
+              ${comp.tagName}${comp.$id
+                ? html` <span class="signal-hint">${comp.$id}</span>`
+                : nothing}
+            </div>
           </div>
         `,
       )}
@@ -3388,47 +3391,44 @@ function defaultDef(tag) {
   return def;
 }
 
-const blocksUnsafeTags = new Set(["script", "style", "link", "iframe", "object", "embed"]);
+const unsafeTags = new Set(["script", "style", "link", "iframe", "object", "embed"]);
 
-function renderBlocksTemplate() {
+function renderElementsTemplate() {
   const categories = Object.entries(webdata.elements).map(
     (/** @type {any} */ [category, elements]) => {
-      const filtered = blocksFilter
-        ? elements.filter((/** @type {any} */ e) => e.tag.includes(blocksFilter))
+      const filtered = elementsFilter
+        ? elements.filter((/** @type {any} */ e) => e.tag.includes(elementsFilter))
         : elements;
       if (filtered.length === 0) return nothing;
 
       return html`
-        <div
-          class="blocks-category${blocksCollapsed.has(category) ? " collapsed" : ""}"
-          @click=${() => {
-            if (blocksCollapsed.has(category)) blocksCollapsed.delete(category);
-            else blocksCollapsed.add(category);
-            renderLeftPanel();
+        <sp-accordion-item
+          label=${category}
+          ?open=${!elementsCollapsed.has(category)}
+          @sp-accordion-item-toggle=${(/** @type {any} */ e) => {
+            if (e.target.open) elementsCollapsed.delete(category);
+            else elementsCollapsed.add(category);
           }}
         >
-          ${category}
-        </div>
-        ${blocksCollapsed.has(category)
-          ? nothing
-          : filtered.map((/** @type {any} */ { tag }) => {
-              const def = defaultDef(tag);
-              return html`
-                <div
-                  class="block-row"
-                  data-block-tag=${tag}
-                  @click=${() => {
-                    const parentPath = S.selection || [];
-                    const parent = getNodeAtPath(S.document, parentPath);
-                    const idx = parent?.children ? parent.children.length : 0;
-                    update(insertNode(S, parentPath, idx, structuredClone(def)));
-                  }}
-                >
-                  <div class="block-preview"></div>
-                  <div class="block-label">&lt;${tag}&gt;</div>
-                </div>
-              `;
-            })}
+          ${filtered.map((/** @type {any} */ { tag }) => {
+            const def = defaultDef(tag);
+            return html`
+              <div
+                class="element-card"
+                data-block-tag=${tag}
+                @click=${() => {
+                  const parentPath = S.selection || [];
+                  const parent = getNodeAtPath(S.document, parentPath);
+                  const idx = parent?.children ? parent.children.length : 0;
+                  update(insertNode(S, parentPath, idx, structuredClone(def)));
+                }}
+              >
+                <div class="element-card-preview"></div>
+                <div class="element-card-label">&lt;${tag}&gt;</div>
+              </div>
+            `;
+          })}
+        </sp-accordion-item>
       `;
     },
   );
@@ -3437,26 +3437,26 @@ function renderBlocksTemplate() {
     <sp-search
       size="s"
       placeholder="Filter elements…"
-      value=${blocksFilter}
+      value=${elementsFilter}
       @input=${(/** @type {any} */ e) => {
-        blocksFilter = e.target.value.toLowerCase();
+        elementsFilter = e.target.value.toLowerCase();
         renderLeftPanel();
       }}
     ></sp-search>
-    <div class="blocks-list">${categories}</div>
+    <sp-accordion class="elements-list" allow-multiple>${categories}</sp-accordion>
   `;
 }
 
-function registerBlocksDnD() {
+function registerElementsDnD() {
   requestAnimationFrame(() => {
     const container = /** @type {any} */ (leftPanel)?.querySelector(".panel-body");
     if (!container) return;
     container.querySelectorAll("[data-block-tag]").forEach(
       /** @param {any} row */ (row) => {
         const tag = row.dataset.blockTag;
-        const preview = row.querySelector(".block-preview");
+        const preview = row.querySelector(".element-card-preview");
         if (preview && !preview.firstChild) {
-          const el = document.createElement(blocksUnsafeTags.has(tag) ? "span" : tag);
+          const el = document.createElement(unsafeTags.has(tag) ? "span" : tag);
           el.textContent = tag;
           preview.appendChild(el);
         }
@@ -3531,6 +3531,32 @@ function buildStylebookElement(entry, rootStyle, activeBreakpoints) {
     }
   }
   return el;
+}
+
+/**
+ * Render a live component preview by registering its custom element and instantiating it. Falls
+ * back to a placeholder if registration fails.
+ *
+ * @param {any} comp - Entry from componentRegistry ({ tagName, path, props })
+ * @returns {Promise<HTMLElement>}
+ */
+async function renderComponentPreview(comp) {
+  const url = `${location.origin}/${comp.path}`;
+  try {
+    await defineElement(url);
+    const el = document.createElement(comp.tagName);
+    for (const p of comp.props || []) {
+      if (p.default !== undefined) /** @type {any} */ (el)[p.name] = p.default;
+    }
+    return el;
+  } catch (/** @type {any} */ e) {
+    console.warn("Component preview failed:", comp.tagName, e);
+    const fallback = document.createElement("div");
+    fallback.style.cssText =
+      "padding:12px;border:1px dashed var(--border);border-radius:4px;color:var(--fg-dim)";
+    fallback.textContent = `<${comp.tagName}>`;
+    return fallback;
+  }
 }
 
 /**
@@ -3741,14 +3767,25 @@ function renderStylebookElementsIntoCanvas(
 
     for (const entry of entries) {
       const el = buildStylebookElement(entry, rootStyle, activeBreakpoints);
-      el.style.marginBottom = "0.5em";
+
+      // Wrap in element-card
+      const card = document.createElement("div");
+      card.className = "element-card";
+      const preview = document.createElement("div");
+      preview.className = "element-card-preview";
+      preview.appendChild(el);
+      const labelEl = document.createElement("div");
+      labelEl.className = "element-card-label";
+      labelEl.textContent = `<${entry.tag}>`;
+      card.appendChild(preview);
+      card.appendChild(labelEl);
 
       // Register for overlay hit-testing
-      stylebookElToTag.set(el, entry.tag);
+      stylebookElToTag.set(card, entry.tag);
       // Also register in the global elToPath so drawOverlayBox label works
-      elToPath.set(el, ["__sb", entry.tag]);
+      elToPath.set(card, ["__sb", entry.tag]);
 
-      body.appendChild(el);
+      body.appendChild(card);
     }
 
     sectionEl.appendChild(body);
@@ -3772,40 +3809,25 @@ function renderStylebookElementsIntoCanvas(
       const body = document.createElement("div");
       body.className = "sb-body";
       for (const comp of comps) {
-        const el = document.createElement("div");
-        el.style.cssText =
-          "padding:12px;border:1px dashed var(--border);border-radius:4px;margin-bottom:0.5em;color:var(--fg-dim)";
-        el.textContent = `<${comp.tagName}>`;
-        const tagStyle = rootStyle[`& ${comp.tagName}`];
-        if (tagStyle) {
-          for (const [prop, val] of Object.entries(tagStyle)) {
-            if (typeof val === "string" || typeof val === "number") {
-              try {
-                /** @type {any} */ (el.style)[prop] = val;
-              } catch {}
-            }
-          }
-          // Apply media overrides for active breakpoints
-          if (activeBreakpoints) {
-            for (const [key, val] of Object.entries(tagStyle)) {
-              if (!key.startsWith("@") || typeof val !== "object") continue;
-              const mediaName = key.slice(1);
-              if (mediaName === "--") continue;
-              if (activeBreakpoints.has(mediaName)) {
-                for (const [prop, v] of Object.entries(/** @type {any} */ (val))) {
-                  if (typeof v === "string" || typeof v === "number") {
-                    try {
-                      /** @type {any} */ (el.style)[prop] = v;
-                    } catch {}
-                  }
-                }
-              }
-            }
-          }
-        }
-        stylebookElToTag.set(el, comp.tagName);
-        elToPath.set(el, ["__sb", comp.tagName]);
-        body.appendChild(el);
+        const card = document.createElement("div");
+        card.className = "element-card";
+        card.style.display = "inline-flex";
+        card.style.width = "";
+        const preview = document.createElement("div");
+        preview.className = "element-card-preview";
+        const labelEl = document.createElement("div");
+        labelEl.className = "element-card-label";
+        labelEl.textContent = `<${comp.tagName}>`;
+        card.appendChild(preview);
+        card.appendChild(labelEl);
+        stylebookElToTag.set(card, comp.tagName);
+        elToPath.set(card, ["__sb", comp.tagName]);
+        body.appendChild(card);
+
+        // Fill preview asynchronously with live rendered component
+        renderComponentPreview(comp).then((el) => {
+          preview.appendChild(el);
+        });
       }
       sectionEl.appendChild(body);
       canvasEl.appendChild(sectionEl);
