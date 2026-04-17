@@ -29,7 +29,7 @@
     },
     "packages/compiler": {
       "name": "@jxplatform/compiler",
-      "version": "1.0.0",
+      "version": "0.4.0",
       "bin": {
         "jx-build": "./cli-build.js",
       },
@@ -53,7 +53,7 @@
     },
     "packages/parser": {
       "name": "@jxplatform/parser",
-      "version": "1.0.0",
+      "version": "0.4.0",
       "dependencies": {
         "glob": "^13.0.6",
         "mdast-util-to-string": "^4.0.0",
@@ -74,7 +74,7 @@
     },
     "packages/runtime": {
       "name": "@jxplatform/runtime",
-      "version": "2.0.0",
+      "version": "0.4.0",
       "dependencies": {
         "@vue/reactivity": "^3.5.0",
       },
@@ -84,7 +84,7 @@
     },
     "packages/schema": {
       "name": "@jxplatform/schema",
-      "version": "1.0.0",
+      "version": "0.4.0",
       "dependencies": {
         "@webref/css": "^8.5.2",
         "@webref/elements": "^2.7.0",
@@ -93,63 +93,63 @@
     },
     "packages/server": {
       "name": "@jxplatform/server",
-      "version": "1.0.0",
+      "version": "0.4.0",
       "dependencies": {
         "chokidar": "^5.0.0",
       },
     },
     "packages/studio": {
       "name": "@jxplatform/studio",
-      "version": "1.0.0",
+      "version": "0.4.0",
       "dependencies": {
-        "@atlaskit/pragmatic-drag-and-drop": "^1.7.10",
+        "@atlaskit/pragmatic-drag-and-drop": "^1.8.0",
         "@atlaskit/pragmatic-drag-and-drop-hitbox": "^1.1.0",
         "@jxplatform/runtime": "workspace:*",
         "@spectrum-web-components/accordion": "^1.11.2",
         "@spectrum-web-components/action-bar": "1.11.2",
-        "@spectrum-web-components/action-button": "^1.6.0",
-        "@spectrum-web-components/action-group": "^1.6.0",
-        "@spectrum-web-components/checkbox": "^1.6.0",
+        "@spectrum-web-components/action-button": "^1.11.2",
+        "@spectrum-web-components/action-group": "^1.11.2",
+        "@spectrum-web-components/checkbox": "^1.11.2",
         "@spectrum-web-components/color-area": "^1.11.2",
         "@spectrum-web-components/color-handle": "^1.11.2",
         "@spectrum-web-components/color-slider": "^1.11.2",
         "@spectrum-web-components/combobox": "^1.11.2",
-        "@spectrum-web-components/divider": "^1.6.0",
-        "@spectrum-web-components/icons-workflow": "^1.6.0",
-        "@spectrum-web-components/menu": "^1.6.0",
+        "@spectrum-web-components/divider": "^1.11.2",
+        "@spectrum-web-components/icons-workflow": "^1.11.2",
+        "@spectrum-web-components/menu": "^1.11.2",
         "@spectrum-web-components/number-field": "^1.11.2",
-        "@spectrum-web-components/overlay": "^1.6.0",
+        "@spectrum-web-components/overlay": "^1.11.2",
         "@spectrum-web-components/picker": "^1.11.2",
         "@spectrum-web-components/picker-button": "^1.11.2",
-        "@spectrum-web-components/popover": "^1.6.0",
-        "@spectrum-web-components/search": "^1.6.0",
+        "@spectrum-web-components/popover": "^1.11.2",
+        "@spectrum-web-components/search": "^1.11.2",
         "@spectrum-web-components/swatch": "^1.11.2",
-        "@spectrum-web-components/switch": "^1.6.0",
-        "@spectrum-web-components/tabs": "^1.6.0",
-        "@spectrum-web-components/textfield": "^1.6.0",
-        "@spectrum-web-components/theme": "^1.6.0",
-        "@spectrum-web-components/tooltip": "^1.6.0",
+        "@spectrum-web-components/switch": "^1.11.2",
+        "@spectrum-web-components/tabs": "^1.11.2",
+        "@spectrum-web-components/textfield": "^1.11.2",
+        "@spectrum-web-components/theme": "^1.11.2",
+        "@spectrum-web-components/tooltip": "^1.11.2",
         "lit-html": "^3.3.2",
-        "monaco-editor": "^0.52.2",
-        "remark-directive": "^3.0.0",
+        "monaco-editor": "^0.55.1",
+        "remark-directive": "^4.0.0",
         "remark-frontmatter": "^5.0.0",
-        "remark-gfm": "^4.0.0",
+        "remark-gfm": "^4.0.1",
         "remark-parse": "^11.0.0",
         "remark-stringify": "^11.0.0",
-        "unified": "^11.0.0",
-        "yaml": "^2.7.0",
+        "unified": "^11.0.5",
+        "yaml": "^2.8.3",
       },
       "devDependencies": {
-        "@webref/css": "^8.5.2",
-        "@webref/elements": "^2.7.0",
-        "@webref/idl": "^3.75.1",
+        "@webref/css": "^8.5.3",
+        "@webref/elements": "^2.7.1",
+        "@webref/idl": "^3.75.2",
       },
     },
   },
   "packages": {
     "@apidevtools/json-schema-ref-parser": ["@apidevtools/json-schema-ref-parser@15.3.5", "", { "dependencies": { "js-yaml": "^4.1.1" }, "peerDependencies": { "@types/json-schema": "^7.0.15" } }, "sha512-orNOYXw3hYXxxisXMldjzjBzqqTLBPbwOtHg7ovBPvfBHDue1qM9YJENZ3W2BQuS+7z4ThogMbEzEsov57Itkg=="],
 
-    "@atlaskit/pragmatic-drag-and-drop": ["@atlaskit/pragmatic-drag-and-drop@1.7.10", "", { "dependencies": { "@babel/runtime": "^7.0.0", "bind-event-listener": "^3.0.0", "raf-schd": "^4.0.3" } }, "sha512-2oHJbThv26CVxM+N8w1X9iyvnts9f8n5+XdCHyG2DtLtqk97rsvbykUyRV2m2llpH06ZdBycycz/+H7eBgRN4A=="],
+    "@atlaskit/pragmatic-drag-and-drop": ["@atlaskit/pragmatic-drag-and-drop@1.8.0", "", { "dependencies": { "@babel/runtime": "^7.0.0", "bind-event-listener": "^3.0.0", "raf-schd": "^4.0.3" } }, "sha512-xUvSniuXsiu28ImUnR27oEH4Ov8AExQrdwBE3feAq0d9W9ngLgS+dD5DY3PW5wKEMFjdSecIzbg7o9bsctbf5Q=="],
 
     "@atlaskit/pragmatic-drag-and-drop-hitbox": ["@atlaskit/pragmatic-drag-and-drop-hitbox@1.1.0", "", { "dependencies": { "@atlaskit/pragmatic-drag-and-drop": "^1.6.0", "@babel/runtime": "^7.0.0" } }, "sha512-JWt6eVp6Br2FPHRM8s0dUIHQk/jFInGP1f3ti5CdtM1Ji5/pt8Akm44wDC063Gv2i5RGseixtbW0z/t6RYtbdg=="],
 
@@ -675,6 +675,8 @@
 
     "domhandler": ["domhandler@5.0.3", "", { "dependencies": { "domelementtype": "^2.3.0" } }, "sha512-cgwlv/1iFQiFnU96XXgROh8xTeetsnJiDsTc7TYCLFd9+/WNkIqPTxiM/8pSd8VIrhXGTf1Ny1q1hquVqDJB5w=="],
 
+    "dompurify": ["dompurify@3.2.7", "", { "optionalDependencies": { "@types/trusted-types": "^2.0.7" } }, "sha512-WhL/YuveyGXJaerVlMYGWhvQswa7myDG17P7Vu65EWC05o8vfeNbvNf4d/BOvH99+ZW+LlQsc1GDKMa1vNK6dw=="],
+
     "domutils": ["domutils@3.2.2", "", { "dependencies": { "dom-serializer": "^2.0.0", "domelementtype": "^2.3.0", "domhandler": "^5.0.3" } }, "sha512-6kZKyUajlDuqlHKVX1w7gyslj9MPIXzIFiz/rGu35uC1wMi+kMhQwGhl4lt9unC9Vb9INnY9Z3/ZA3+FhASLaw=="],
 
     "dot-prop": ["dot-prop@5.3.0", "", { "dependencies": { "is-obj": "^2.0.0" } }, "sha512-QM8q3zDe58hqUqjraQOmzZ1LIH9SWQJTlEKCH4kJ2oQvLZk7RbQXvtDM2XEq3fwkV9CCvvH4LA0AV+ogFsBM2Q=="],
@@ -903,6 +905,8 @@
 
     "markdown-table": ["markdown-table@3.0.4", "", {}, "sha512-wiYz4+JrLyb/DqW2hkFJxP7Vd7JuTDm77fvbM8VfEQdmSMqcImWeeRbHwZjBjIFki/VaMK2BhFi7oUUZeM5bqw=="],
 
+    "marked": ["marked@14.0.0", "", { "bin": { "marked": "bin/marked.js" } }, "sha512-uIj4+faQ+MgHgwUW1l2PsPglZLOLOT1uErt06dAPtx2kjteLAkbsd/0FiYg/MGS+i7ZKLb7w2WClxHkzOOuryQ=="],
+
     "mdast-util-directive": ["mdast-util-directive@3.1.0", "", { "dependencies": { "@types/mdast": "^4.0.0", "@types/unist": "^3.0.0", "ccount": "^2.0.0", "devlop": "^1.0.0", "mdast-util-from-markdown": "^2.0.0", "mdast-util-to-markdown": "^2.0.0", "parse-entities": "^4.0.0", "stringify-entities": "^4.0.0", "unist-util-visit-parents": "^6.0.0" } }, "sha512-I3fNFt+DHmpWCYAT7quoM6lHf9wuqtI+oCOfvILnoicNIqjh5E3dEJWiXuYME2gNe8vl1iMQwyUHa7bgFmak6Q=="],
 
     "mdast-util-find-and-replace": ["mdast-util-find-and-replace@3.0.2", "", { "dependencies": { "@types/mdast": "^4.0.0", "escape-string-regexp": "^5.0.0", "unist-util-is": "^6.0.0", "unist-util-visit-parents": "^6.0.0" } }, "sha512-Tmd1Vg/m3Xz43afeNxDIhWRtFZgM2VLyaf4vSTYwudTyeuTneoL3qtWMA5jeLyz/O1vDJmmV4QuScFCA2tBPwg=="],
@@ -1011,7 +1015,7 @@
 
     "minipass": ["minipass@7.1.3", "", {}, "sha512-tEBHqDnIoM/1rXME1zgka9g6Q2lcoCkxHLuc7ODJ5BxbP5d4c2Z5cGgtXAku59200Cx7diuHTOYfSBD8n6mm8A=="],
 
-    "monaco-editor": ["monaco-editor@0.52.2", "", {}, "sha512-GEQWEZmfkOGLdd3XK8ryrfWz3AIP8YymVXiPHEdewrUq7mh0qrKrfHLNCXcbB6sTnMLnOZ3ztSiKcciFUkIJwQ=="],
+    "monaco-editor": ["monaco-editor@0.55.1", "", { "dependencies": { "dompurify": "3.2.7", "marked": "14.0.0" } }, "sha512-jz4x+TJNFHwHtwuV9vA9rMujcZRb0CEilTEwG2rRSpe/A7Jdkuj8xPKttCgOh+v/lkHy7HsZ64oj+q3xoAFl9A=="],
 
     "ms": ["ms@2.1.3", "", {}, "sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA=="],
 
@@ -1281,11 +1285,17 @@
 
     "zwitch": ["zwitch@2.0.4", "", {}, "sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A=="],
 
+    "@atlaskit/pragmatic-drag-and-drop-hitbox/@atlaskit/pragmatic-drag-and-drop": ["@atlaskit/pragmatic-drag-and-drop@1.7.10", "", { "dependencies": { "@babel/runtime": "^7.0.0", "bind-event-listener": "^3.0.0", "raf-schd": "^4.0.3" } }, "sha512-2oHJbThv26CVxM+N8w1X9iyvnts9f8n5+XdCHyG2DtLtqk97rsvbykUyRV2m2llpH06ZdBycycz/+H7eBgRN4A=="],
+
     "@floating-ui/core/@floating-ui/utils": ["@floating-ui/utils@0.2.11", "", {}, "sha512-RiB/yIh78pcIxl6lLMG0CgBXAZ2Y0eVHqMPYugu+9U0AeT6YBeiJpf7lbdJNIugFP5SIjwNRgo4DhR1Qxi26Gg=="],
 
     "@inquirer/external-editor/iconv-lite": ["iconv-lite@0.7.2", "", { "dependencies": { "safer-buffer": ">= 2.1.2 < 3.0.0" } }, "sha512-im9DjEDQ55s9fL4EYzOAv0yMqmMBSZp6G0VvFyTMPKWxiSBHUj9NW/qqLmXUwXrrM7AvqSlTCfvqRb0cM8yYqw=="],
 
-    "@jxplatform/studio/remark-directive": ["remark-directive@3.0.1", "", { "dependencies": { "@types/mdast": "^4.0.0", "mdast-util-directive": "^3.0.0", "micromark-extension-directive": "^3.0.0", "unified": "^11.0.0" } }, "sha512-gwglrEQEZcZYgVyG1tQuA+h58EZfq5CSULw7J90AFuCTyib1thgHPoqQ+h9iFvU6R+vnZ5oNFQR5QKgGpk741A=="],
+    "@jxplatform/studio/@webref/css": ["@webref/css@8.5.3", "", { "peerDependencies": { "css-tree": "^3.2.1" } }, "sha512-UQ0rOmt01faB6uzFa+jHQBCz9/TIeDgQjzlY3Zt2hqE/MlQQC8v4zWDP7cY+BSDmS8vaMXUtotcMamrwMYzfSQ=="],
+
+    "@jxplatform/studio/@webref/elements": ["@webref/elements@2.7.1", "", {}, "sha512-ke5VQWxr7vGket8tObjgNrmQ/+BO7MY1XL9gb0auPnHRzW7EN1Xpv5O237glCd4HWRrro05fBpBFXTPHlb24pw=="],
+
+    "@jxplatform/studio/@webref/idl": ["@webref/idl@3.75.2", "", { "peerDependencies": { "webidl2": "^24.5.0" } }, "sha512-0fyTK++AOLfISQi281gfw/N+CxgEWv59Kco/wuSXjEWGwLn4Oh/ChkH3g8y8joIrp4ZTTqkW7WIGhas5IBSTQQ=="],
 
     "cli-truncate/string-width": ["string-width@8.2.0", "", { "dependencies": { "get-east-asian-width": "^1.5.0", "strip-ansi": "^7.1.2" } }, "sha512-6hJPQ8N0V0P3SNmP6h2J99RLuzrWz2gvT7VnK5tKvrNqJoyS9W4/Fb8mo31UiPvy00z7DQXkP2hnKBVav76thw=="],
 
@@ -1336,8 +1346,6 @@
     "wrap-ansi/strip-ansi": ["strip-ansi@7.2.0", "", { "dependencies": { "ansi-regex": "^6.2.2" } }, "sha512-yDPMNjp4WyfYBkHnjIRLfca1i6KMyGCtsVgoKe/z1+6vukgaENdgGBZt+ZmKPc4gavvEZ5OgHfHdrazhgNyG7w=="],
 
     "yargs/yargs-parser": ["yargs-parser@21.1.1", "", {}, "sha512-tVpsJW7DdjecAiFpbIB1e3qxIQsE6NoPc5/eTdrbbIC4h0LVsWhnoa3g+m2HclBIujHzsxZ4VJVA+GUuc2/LBw=="],
-
-    "@jxplatform/studio/remark-directive/micromark-extension-directive": ["micromark-extension-directive@3.0.2", "", { "dependencies": { "devlop": "^1.0.0", "micromark-factory-space": "^2.0.0", "micromark-factory-whitespace": "^2.0.0", "micromark-util-character": "^2.0.0", "micromark-util-symbol": "^2.0.0", "micromark-util-types": "^2.0.0", "parse-entities": "^4.0.0" } }, "sha512-wjcXHgk+PPdmvR58Le9d7zQYWy+vKEU9Se44p2CrCDPiLr2FMyiT4Fyb5UFKFC66wGB3kPlgD7q3TnoqPS7SZA=="],
 
     "cli-truncate/string-width/strip-ansi": ["strip-ansi@7.2.0", "", { "dependencies": { "ansi-regex": "^6.2.2" } }, "sha512-yDPMNjp4WyfYBkHnjIRLfca1i6KMyGCtsVgoKe/z1+6vukgaENdgGBZt+ZmKPc4gavvEZ5OgHfHdrazhgNyG7w=="],
 

@@ -1,8 +1,8 @@
 /** OXC code services (server-backed) */
 
 import { getPlatform } from "../platform.js";
-import { getNodeAtPath } from "../../store.js";
-import * as monaco from "monaco-editor/esm/vs/editor/editor.api";
+import { getNodeAtPath } from "../store.js";
+import * as monaco from "monaco-editor/esm/vs/editor/editor.api.js";
 
 /**
  * @param {any} action

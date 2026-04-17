@@ -18,7 +18,7 @@ await createDevServer({
       label: "runtime",
     },
     {
-      entrypoints: ["./packages/studio/studio.js"],
+      entrypoints: ["./packages/studio/src/studio.js"],
       outdir: "./packages/studio/dist",
       match: /studio/,
       label: "studio",
@@ -26,7 +26,7 @@ await createDevServer({
   ],
 });
 
-console.log("  /packages/studio/              ← Jx Studio");
+console.log("  /packages/studio/index.html     ← Jx Studio");
 console.log("  /examples/todo/");
 console.log("  /examples/counter/");
 console.log("  /examples/computed/");

@@ -9,7 +9,7 @@ import {
   getNodeAtPath,
   parentElementPath,
   childIndex,
-} from "../../store.js";
+} from "../store.js";
 import { statusMessage } from "../panels/statusbar.js";
 
 /** @type {any} */

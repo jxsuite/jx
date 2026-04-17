@@ -132,10 +132,10 @@ import { classMap } from "lit-html/directives/class-map.js";
 
 import { ifDefined } from "lit-html/directives/if-defined.js";
 
-import webdata from "./data/webdata.json";
-import cssMeta from "./data/css-meta.json";
-import htmlMeta from "./data/html-meta.json";
-import stylebookMeta from "./data/stylebook-meta.json";
+import webdata from "../data/webdata.json";
+import cssMeta from "../data/css-meta.json";
+import htmlMeta from "../data/html-meta.json";
+import stylebookMeta from "../data/stylebook-meta.json";
 import { renderDataExplorerTemplate } from "./panels/data-explorer.js";
 
 // ─── Spectrum Web Components ──────────────────────────────────────────────────
@@ -146,7 +146,7 @@ import icons from "./ui/icons.js";
 import { showContextMenu } from "./editor/context-menu.js";
 import { initShortcuts } from "./editor/shortcuts.js";
 import { renderActivityBar, tabIcon } from "./panels/activity-bar.js";
-import * as monaco from "monaco-editor/esm/vs/editor/editor.api";
+import * as monaco from "monaco-editor/esm/vs/editor/editor.api.js";
 
 // ─── Globals ──────────────────────────────────────────────────────────────────
 // These mutable variables are local to studio.js for now. As sections are extracted

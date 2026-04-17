@@ -5,7 +5,7 @@
  */
 
 import { html, nothing } from "lit-html";
-import { addDef, removeDef, updateDef, renameDef, update } from "../../store.js";
+import { addDef, removeDef, updateDef, renameDef, update } from "../store.js";
 import { fetchPluginSchema, pluginSchemaCache } from "../services/code-services.js";
 
 // ─── Module-local state ─────────────────────────────────────────────────────

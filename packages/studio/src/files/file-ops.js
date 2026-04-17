@@ -13,7 +13,7 @@ import remarkGfm from "remark-gfm";
 import remarkDirective from "remark-directive";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { mdToJsonsx, jxToMd } from "../markdown/md-convert.js";
-import { createState } from "../../store.js";
+import { createState } from "../store.js";
 import { locateDocument } from "../services/code-services.js";
 import { statusMessage } from "../panels/statusbar.js";
 

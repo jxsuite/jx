@@ -10,7 +10,7 @@ import { unified } from "unified";
 import remarkStringify from "remark-stringify";
 import { stringify as stringifyYaml } from "yaml";
 import { jxToMd } from "../markdown/md-convert.js";
-import { createState, projectState, setProjectState } from "../../store.js";
+import { createState, projectState, setProjectState } from "../store.js";
 import { getPlatform } from "../platform.js";
 import { statusMessage } from "../panels/statusbar.js";
 import { loadComponentRegistry } from "./components.js";
