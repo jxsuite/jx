@@ -223,7 +223,7 @@ export async function discoverComponents(params) {
 }
 
 /**
- * @param {{ action: string; payload: unknown }} params
+ * @param {any} _params
  * @returns {Promise<CodeServiceResult | null>}
  */
 export async function codeService(_params) {

@@ -239,6 +239,8 @@ function navigateSelection(S, direction = -1) {
   const idx = /** @type {number} */ (childIndex(S.selection));
   const newIdx = idx + direction;
   if (parent?.children && newIdx >= 0 && newIdx < parent.children.length) {
-    update(selectNode(S, [...parentElementPath(S.selection), "children", newIdx]));
+    update(
+      selectNode(S, [.../** @type {any[]} */ (parentElementPath(S.selection)), "children", newIdx]),
+    );
   }
 }

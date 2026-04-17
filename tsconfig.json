@@ -11,8 +11,10 @@
     /* Environment */
     "target": "ESNext",
     "module": "ESNext",
-    "moduleResolution": "bundler"
+    "moduleResolution": "bundler",
+    "skipLibCheck": true,
+    "resolveJsonModule": true
   },
-  "include": ["packages/**/src/**/*", "packages/**/tests/**/*"],
-  "exclude": ["node_modules"]
+  "include": ["types.d.ts", "packages/**/src/**/*", "packages/**/tests/**/*"],
+  "exclude": ["node_modules", "**/node_modules", "**/dist", "**/assets"]
 }
