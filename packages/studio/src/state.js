@@ -380,7 +380,7 @@ export function duplicateNode(state, path) {
  * @returns {StudioState}
  */
 export function moveNode(state, fromPath, toParentPath, toIndex) {
-  return applyMutation(state, (doc) => {
+  const newState = applyMutation(state, (doc) => {
     const fromParentPath = /** @type {JxPath} */ (parentElementPath(fromPath));
     const fromParent = getNodeAtPath(doc, fromParentPath);
     const fromIdx = childIndex(fromPath);
@@ -394,6 +394,22 @@ export function moveNode(state, fromPath, toParentPath, toIndex) {
     }
     toParent.children.splice(adjustedIndex, 0, node);
   });
+  // Update selection to follow the moved node
+  if (pathsEqual(newState.selection, fromPath)) {
+    let adjustedIdx = toIndex;
+    // Adjust if same parent and source was before target
+    const fromParentPath = /** @type {JxPath} */ (parentElementPath(fromPath));
+    const fromIdx = childIndex(fromPath);
+    if (
+      fromParentPath.length === toParentPath.length &&
+      fromParentPath.every((v, i) => v === toParentPath[i]) &&
+      /** @type {number} */ (fromIdx) < toIndex
+    ) {
+      adjustedIdx = toIndex - 1;
+    }
+    newState.selection = [...toParentPath, "children", adjustedIdx];
+  }
+  return newState;
 }
 
 /**

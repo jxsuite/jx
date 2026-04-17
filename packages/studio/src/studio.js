@@ -604,7 +604,11 @@ setUpdateFn(function _update(/** @type {any} */ newState) {
   renderToolbar();
 
   if (prevDoc !== S.document) {
-    renderCanvas();
+    try {
+      renderCanvas();
+    } catch (e) {
+      console.warn("renderCanvas error:", e);
+    }
     renderLeftPanel();
   } else if (!pathsEqual(prevSel, S.selection)) {
     renderLeftPanel();
@@ -1151,33 +1155,66 @@ function fitToScreen() {
  * computed from canvas-wrap bounds.
  */
 function renderZoomIndicator() {
-  litRender(
-    html`
-      <div class="zoom-indicator">
-        <span class="zoom-indicator-label">${Math.round(S.ui.zoom * 100)}%</span>
-        <sp-action-button
-          quiet
-          size="s"
-          class="zoom-fit-btn"
-          title="Fit to screen"
-          @click=${fitToScreen}
-        >
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 16 16"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.5"
+  // Reset lit-html state if the host was disconnected or markers were ejected
+  if (!zoomIndicatorHost.isConnected) document.body.appendChild(zoomIndicatorHost);
+  try {
+    litRender(
+      html`
+        <div class="zoom-indicator">
+          <span class="zoom-indicator-label">${Math.round(S.ui.zoom * 100)}%</span>
+          <sp-action-button
+            quiet
+            size="s"
+            class="zoom-fit-btn"
+            title="Fit to screen"
+            @click=${fitToScreen}
           >
-            <rect x="2" y="2" width="12" height="12" rx="1" />
-            <path d="M2 6h12M6 2v12" />
-          </svg>
-        </sp-action-button>
-      </div>
-    `,
-    zoomIndicatorHost,
-  );
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+            >
+              <rect x="2" y="2" width="12" height="12" rx="1" />
+              <path d="M2 6h12M6 2v12" />
+            </svg>
+          </sp-action-button>
+        </div>
+      `,
+      zoomIndicatorHost,
+    );
+  } catch {
+    zoomIndicatorHost.textContent = "";
+    litRender(
+      html`
+        <div class="zoom-indicator">
+          <span class="zoom-indicator-label">${Math.round(S.ui.zoom * 100)}%</span>
+          <sp-action-button
+            quiet
+            size="s"
+            class="zoom-fit-btn"
+            title="Fit to screen"
+            @click=${fitToScreen}
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+            >
+              <rect x="2" y="2" width="12" height="12" rx="1" />
+              <path d="M2 6h12M6 2v12" />
+            </svg>
+          </sp-action-button>
+        </div>
+      `,
+      zoomIndicatorHost,
+    );
+  }
   positionZoomIndicator();
 }
 
@@ -2857,19 +2894,39 @@ function renderLayersTemplate() {
       labelItalic = false;
     }
 
+    // Compute move-button availability for element nodes
+    const isElement = nodeType === "element";
+    const isRoot = path.length < 2;
+    const idx = isElement ? /** @type {number} */ (childIndex(path)) : 0;
+    const parentPath = isElement && !isRoot ? /** @type {any} */ (parentElementPath(path)) : null;
+    const parentNode = parentPath ? getNodeAtPath(S.document, parentPath) : null;
+    const siblingCount = parentNode?.children?.length || 0;
+    const canMoveUp = isElement && !isRoot && idx > 0;
+    const canMoveDown = isElement && !isRoot && idx < siblingCount - 1;
+    // "in" = move into the previous sibling (become its last child)
+    const prevSibling = canMoveUp && parentNode ? parentNode.children[idx - 1] : null;
+    const canMoveIn =
+      isElement &&
+      !isRoot &&
+      prevSibling &&
+      !VOID_ELEMENTS.has((prevSibling.tagName || "div").toLowerCase());
+    // "out" = move out of parent to grandparent (after parent)
+    const grandparentPath =
+      isElement && parentPath && parentPath.length >= 2
+        ? /** @type {any} */ (parentElementPath(parentPath))
+        : null;
+    const canMoveOut = isElement && !isRoot && !!grandparentPath;
+
     layerRows.push(html`
       <div
         class="layer-row${isSelected ? " selected" : ""}"
         data-path=${key}
-        data-dnd-row=${nodeType === "element" ? key : nothing}
-        data-dnd-depth=${nodeType === "element" ? depth : nothing}
-        data-dnd-void=${nodeType === "element" && isVoidEl ? "" : nothing}
+        data-dnd-row=${isElement ? key : nothing}
+        data-dnd-depth=${isElement ? depth : nothing}
+        data-dnd-void=${isElement && isVoidEl ? "" : nothing}
         @click=${() => update(selectNode(S, path))}
-        @contextmenu=${nodeType === "element"
-          ? (/** @type {any} */ e) => showContextMenu(e, path, S)
-          : nothing}
+        @contextmenu=${isElement ? (/** @type {any} */ e) => showContextMenu(e, path, S) : nothing}
       >
-        <span class="layer-handle">${nodeType === "element" ? "⠿" : ""}</span>
         <span class="layer-indent" style="width:${depth * 16}px"></span>
         <span class="layer-toggle"
           >${isExpandable
@@ -2884,20 +2941,82 @@ function renderLayersTemplate() {
         <span class="layer-label" style=${labelItalic ? "font-style:italic" : nothing}
           >${labelText}</span
         >
-        ${path.length >= 2 && nodeType === "element"
+        ${isElement && !isRoot
           ? html`
-              <sp-action-button
-                quiet
-                size="xs"
-                class="layer-delete"
-                title="Delete"
-                @click=${(/** @type {any} */ e) => {
-                  e.stopPropagation();
-                  update(removeNode(S, path));
-                }}
-              >
-                <sp-icon-close slot="icon"></sp-icon-close>
-              </sp-action-button>
+              <span class="layer-actions">
+                ${canMoveUp
+                  ? html`<sp-action-button
+                      quiet
+                      size="xs"
+                      title="Move up"
+                      @click=${(/** @type {any} */ e) => {
+                        e.stopPropagation();
+                        /** @type {HTMLElement} */ (e.currentTarget).blur();
+                        update(moveNode(S, path, parentPath, idx - 1));
+                      }}
+                    >
+                      <sp-icon-arrow-up slot="icon"></sp-icon-arrow-up>
+                    </sp-action-button>`
+                  : nothing}
+                ${canMoveDown
+                  ? html`<sp-action-button
+                      quiet
+                      size="xs"
+                      title="Move down"
+                      @click=${(/** @type {any} */ e) => {
+                        e.stopPropagation();
+                        /** @type {HTMLElement} */ (e.currentTarget).blur();
+                        update(moveNode(S, path, parentPath, idx + 1));
+                      }}
+                    >
+                      <sp-icon-arrow-down slot="icon"></sp-icon-arrow-down>
+                    </sp-action-button>`
+                  : nothing}
+                ${canMoveIn
+                  ? html`<sp-action-button
+                      quiet
+                      size="xs"
+                      title="Move into previous sibling"
+                      @click=${(/** @type {any} */ e) => {
+                        e.stopPropagation();
+                        /** @type {HTMLElement} */ (e.currentTarget).blur();
+                        const prevPath = [...parentPath, idx - 1];
+                        const prev = getNodeAtPath(S.document, prevPath);
+                        const len = prev?.children?.length || 0;
+                        update(moveNode(S, path, prevPath, len));
+                      }}
+                    >
+                      <sp-icon-arrow-right slot="icon"></sp-icon-arrow-right>
+                    </sp-action-button>`
+                  : nothing}
+                ${canMoveOut
+                  ? html`<sp-action-button
+                      quiet
+                      size="xs"
+                      title="Move out of parent"
+                      @click=${(/** @type {any} */ e) => {
+                        e.stopPropagation();
+                        /** @type {HTMLElement} */ (e.currentTarget).blur();
+                        const parentIdx = /** @type {number} */ (childIndex(parentPath));
+                        update(moveNode(S, path, grandparentPath, parentIdx + 1));
+                      }}
+                    >
+                      <sp-icon-arrow-left slot="icon"></sp-icon-arrow-left>
+                    </sp-action-button>`
+                  : nothing}
+                <sp-action-button
+                  quiet
+                  size="xs"
+                  class="layer-delete"
+                  title="Delete"
+                  @click=${(/** @type {any} */ e) => {
+                    e.stopPropagation();
+                    update(removeNode(S, path));
+                  }}
+                >
+                  <sp-icon-close slot="icon"></sp-icon-close>
+                </sp-action-button>
+              </span>
             `
           : nothing}
       </div>
@@ -2943,12 +3062,18 @@ function registerLayersDnD() {
           .map((/** @type {any} */ s) => (/^\d+$/.test(s) ? parseInt(s) : s));
         const rowDepth = parseInt(/** @type {string} */ (row.dataset.dndDepth)) || 0;
         const isVoid = row.hasAttribute("data-dnd-void");
-        const handle = row.querySelector(".layer-handle");
 
         const cleanup = combine(
           draggable({
             element: row,
-            dragHandle: handle,
+            canDrag(/** @type {any} */ { element: _el, input }) {
+              // Prevent drag when clicking action buttons
+              const target = /** @type {HTMLElement} */ (
+                document.elementFromPoint(input.clientX, input.clientY)
+              );
+              if (target?.closest(".layer-actions")) return false;
+              return true;
+            },
             getInitialData() {
               return { type: "tree-node", path: rowPath };
             },

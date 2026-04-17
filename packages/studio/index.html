@@ -485,7 +485,7 @@
         align-items: center;
         gap: 4px;
         padding: 3px 8px;
-        cursor: pointer;
+        cursor: grab;
         white-space: nowrap;
         user-select: none;
         border-left: 2px solid transparent;
@@ -510,18 +510,18 @@
       .layer-indent {
         flex-shrink: 0;
       }
-      .layer-handle {
-        cursor: grab;
-        color: var(--fg-dim);
-        font-size: 11px;
+      .layer-actions {
+        display: none;
+        align-items: center;
+        gap: 0;
         flex-shrink: 0;
-        width: 14px;
-        text-align: center;
-        opacity: 0;
-        transition: opacity 0.1s;
+        margin-left: auto;
       }
-      .layer-row:hover .layer-handle {
-        opacity: 1;
+      .layer-actions sp-action-button {
+        cursor: pointer;
+      }
+      .layer-row:hover .layer-actions {
+        display: flex;
       }
       .layer-toggle {
         width: 14px;
@@ -549,14 +549,7 @@
         flex-shrink: 0;
       }
       .layer-delete {
-        visibility: hidden;
-        cursor: pointer;
         color: var(--danger);
-        font-size: 11px;
-        flex-shrink: 0;
-      }
-      .layer-row:hover .layer-delete {
-        visibility: visible;
       }
       .map-tag {
         background: var(--map) !important;
