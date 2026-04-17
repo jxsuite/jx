@@ -908,6 +908,13 @@ function renderCanvas() {
     canvasPanels.push(panel);
     renderCanvasIntoPanel(panel, new Set(), featureToggles);
     applyTransform();
+    // Defer centering until layout is complete (double-rAF ensures paint has occurred)
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        centerCanvasIfNeeded();
+        applyTransform();
+      }),
+    );
     renderZoomIndicator();
     return;
   }
@@ -944,6 +951,12 @@ function renderCanvas() {
 
   // Apply current zoom + pan transform
   applyTransform();
+  requestAnimationFrame(() =>
+    requestAnimationFrame(() => {
+      centerCanvasIfNeeded();
+      applyTransform();
+    }),
+  );
 
   // Floating zoom indicator
   renderZoomIndicator();
@@ -1045,6 +1058,20 @@ function createCanvasPanel(mediaName, label, fullWidth, width) {
     dropLine,
     _width: width || null,
   };
+}
+
+/** Center canvas in viewport on fresh load (before user has panned). */
+function centerCanvasIfNeeded() {
+  if (panX !== 0 || panY !== 0) return; // user already panned
+  if (!panzoomWrap) return;
+  const wrapWidth = canvasWrap.clientWidth;
+  const wrapHeight = canvasWrap.clientHeight;
+  const contentWidth = panzoomWrap.scrollWidth;
+  const contentHeight = panzoomWrap.scrollHeight;
+  const scaledWidth = contentWidth * S.ui.zoom;
+  const scaledHeight = contentHeight * S.ui.zoom;
+  panX = Math.max(16, (wrapWidth - scaledWidth) / 2);
+  panY = Math.max(16, (wrapHeight - scaledHeight) / 2);
 }
 
 /** Apply the current zoom + pan transform to the panzoom wrapper. */

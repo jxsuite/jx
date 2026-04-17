@@ -12,7 +12,7 @@ await createDevServer({
   port: 3000,
   builds: [
     {
-      entrypoints: ["./packages/runtime/runtime.js"],
+      entrypoints: ["./packages/runtime/src/runtime.js"],
       outdir: "./packages/runtime/dist",
       match: /runtime\.js/,
       label: "runtime",

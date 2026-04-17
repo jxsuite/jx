@@ -58,6 +58,9 @@ export function initShortcuts(getContext) {
         // Adjust pan so the point under cursor stays stationary
         setPan(cursorX - (cursorX - panX) * ratio, cursorY - (cursorY - panY) * ratio);
         setS({ ...S, ui: { ...S.ui, zoom: newZoom } });
+      } else if (e.shiftKey) {
+        // Shift+scroll = horizontal pan
+        setPan(panX - e.deltaY, panY);
       } else {
         // Pan
         setPan(panX - e.deltaX, panY - e.deltaY);
@@ -222,6 +225,17 @@ export function initShortcuts(getContext) {
         break;
     }
   });
+
+  // Block ctrl+scroll (browser zoom) on all non-canvas areas
+  document.addEventListener(
+    "wheel",
+    (/** @type {any} */ e) => {
+      if ((e.ctrlKey || e.metaKey) && !canvasWrap.contains(e.target)) {
+        e.preventDefault();
+      }
+    },
+    { passive: false },
+  );
 }
 
 /**
