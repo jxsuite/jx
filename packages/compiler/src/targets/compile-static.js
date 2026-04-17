@@ -12,7 +12,7 @@ import {
   buildAttrs,
   compileStyles,
   escapeHtml,
-} from "./shared.js";
+} from "../shared.js";
 import { emitElementModule } from "./compile-element.js";
 
 /**
@@ -110,7 +110,7 @@ function compileNode(def, dynamic, raw, context, islands) {
   if (dynamic) {
     const n = islands.length;
     const tagName = `jx-island-${n}`;
-    const className = `JsonsxIsland${n}`;
+    const className = `JxIsland${n}`;
     const elementDef = { ...(raw ?? def), tagName };
     islands.push({ def: elementDef, tagName, className });
     return `<${tagName}></${tagName}>`;

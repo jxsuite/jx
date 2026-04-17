@@ -1,6 +1,6 @@
 import { describe, test, expect } from "bun:test";
-import { compile, isDynamic } from "../compiler.js";
-import { isClassJsonSrc } from "../shared.js";
+import { compile, isDynamic } from "../src/compiler.js";
+import { isClassJsonSrc } from "../src/shared.js";
 
 // ─── isClassJsonSrc ─────────────────────────────────────────────────────────
 

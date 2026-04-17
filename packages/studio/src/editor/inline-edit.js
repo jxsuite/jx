@@ -325,8 +325,8 @@ function handleEnterKey() {
   const beforeFrag = beforeRange.cloneContents();
   const afterFrag = afterRange.cloneContents();
 
-  const beforeChildren = fragmentToJsonsx(beforeFrag);
-  const afterChildren = fragmentToJsonsx(afterFrag);
+  const beforeChildren = fragmentToJx(beforeFrag);
+  const afterChildren = fragmentToJx(afterFrag);
 
   // Stop editing before mutating state (which will re-render)
   const path = [...activePath];
@@ -346,7 +346,7 @@ function commitChanges() {
   if (!commitFn || !activeEl || !activePath) return;
 
   normalizeInlineContent(activeEl);
-  const result = elementToJsonsx(activeEl);
+  const result = elementToJx(activeEl);
   commitFn(activePath, result.children ?? null, result.textContent ?? null);
 }
 
@@ -357,7 +357,7 @@ function commitChanges() {
  * @param {HTMLElement} el
  * @returns {{ textContent?: string | null; children?: any[] }}
  */
-function elementToJsonsx(el) {
+function elementToJx(el) {
   const nodes = el.childNodes;
 
   // If just a single text node, use textContent
@@ -370,7 +370,7 @@ function elementToJsonsx(el) {
   /** @type {any[]} */
   const children = [];
   for (const child of nodes) {
-    const jsx = domNodeToJsonsx(child);
+    const jsx = domNodeToJx(child);
     if (jsx) children.push(jsx);
   }
 
@@ -393,7 +393,7 @@ function elementToJsonsx(el) {
  * @param {Node} node
  * @returns {any}
  */
-function domNodeToJsonsx(node) {
+function domNodeToJx(node) {
   if (node.nodeType === Node.TEXT_NODE) {
     const text = node.textContent;
     if (!text) return null;
@@ -432,7 +432,7 @@ function domNodeToJsonsx(node) {
   } else {
     result.children = [];
     for (const child of childNodes) {
-      const jsx = domNodeToJsonsx(child);
+      const jsx = domNodeToJx(child);
       if (jsx) result.children.push(jsx);
     }
   }
@@ -446,7 +446,7 @@ function domNodeToJsonsx(node) {
  * @param {DocumentFragment} frag
  * @returns {{ textContent?: string | null; children?: any[] }}
  */
-function fragmentToJsonsx(frag) {
+function fragmentToJx(frag) {
   const nodes = frag.childNodes;
   if (nodes.length === 0) return { textContent: "" };
   if (nodes.length === 1 && nodes[0].nodeType === Node.TEXT_NODE) {
@@ -456,7 +456,7 @@ function fragmentToJsonsx(frag) {
   /** @type {any[]} */
   const children = [];
   for (const child of nodes) {
-    const jsx = domNodeToJsonsx(child);
+    const jsx = domNodeToJx(child);
     if (jsx) children.push(jsx);
   }
 

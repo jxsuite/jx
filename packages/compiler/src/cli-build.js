@@ -9,7 +9,7 @@
  */
 
 import { resolve } from "node:path";
-import { buildSite } from "./site-build.js";
+import { buildSite } from "./site/site-build.js";
 
 const args = process.argv.slice(2);
 const flags = new Set(args.filter((a) => a.startsWith("--")));

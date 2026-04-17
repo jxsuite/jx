@@ -23,7 +23,7 @@ import {
   escapeHtml,
   DEFAULT_REACTIVITY_SRC,
   DEFAULT_LIT_HTML_SRC,
-} from "./shared.js";
+} from "../shared.js";
 
 /**
  * Compile a Jx document to pre-rendered HTML + reactive JS module.
@@ -528,7 +528,7 @@ function mapRefsToLit(str) {
  * @param {string[]} initBlocks
  * @param {Map<string, Set<string>>} srcImportMap
  * @param {any} counter
- * @param {string} reactivitySrc
+ * @param {string} _reactivitySrc
  * @returns {string}
  */
 function emitClientModule(

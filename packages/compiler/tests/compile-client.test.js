@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { compileClient } from "../compile-client.js";
+import { compileClient } from "../src/targets/compile-client.js";
 
 describe("compileClient", () => {
   test("compiles counter example to pre-rendered HTML with bindings", () => {

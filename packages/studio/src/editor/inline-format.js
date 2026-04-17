@@ -160,7 +160,7 @@ function unwrapElement(el) {
  *
  * @param {string} tag
  * @param {Range} range
- * @param {HTMLElement} editableRoot
+ * @param {HTMLElement} _editableRoot
  */
 function wrapRangeInTag(tag, range, _editableRoot) {
   const contents = range.extractContents();

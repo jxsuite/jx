@@ -1,8 +1,8 @@
 /**
  * Md-convert.js — Bidirectional mdast ↔ Jx conversion
  *
- * MdToJsonsx(mdast) → Jx element tree (for loading into the canvas) jxToMd(jx) → mdast (for saving
- * back to markdown)
+ * MdToJx(mdast) → Jx element tree (for loading into the canvas) jxToMd(jx) → mdast (for saving back
+ * to markdown)
  *
  * Both are pure tree transformations. The remark ecosystem handles all actual parsing and
  * serialization.
@@ -45,7 +45,7 @@ const MDAST_TAG_MAP = {
  * @param {any} mdast - Root mdast node (type: 'root')
  * @returns {any} Jx element tree
  */
-export function mdToJsonsx(mdast) {
+export function mdToJx(mdast) {
   if (mdast.type === "root") {
     return {
       tagName: "div",
@@ -257,7 +257,7 @@ const TAG_MDAST_MAP = {
  */
 export function jxToMd(jx) {
   const children = (jx.children ?? [])
-    .map((/** @type {any} */ child, /** @type {number} */ _i) => convertJsonsxNode(child, true))
+    .map((/** @type {any} */ child, /** @type {number} */ _i) => convertJxNode(child, true))
     .filter(Boolean);
 
   return { type: "root", children };
@@ -270,7 +270,7 @@ export function jxToMd(jx) {
  * @param {boolean} isBlock - Whether this element is in a block context
  * @returns {any} Mdast node
  */
-function convertJsonsxNode(el, isBlock) {
+function convertJxNode(el, isBlock) {
   if (!el || typeof el !== "object") return null;
 
   const tag = el.tagName ?? "div";
@@ -340,7 +340,7 @@ function convertJsonsxNode(el, isBlock) {
         start: tag === "ol" ? parseInt(el.attributes?.start, 10) || 1 : null,
         spread: false,
         children: (el.children ?? [])
-          .map((/** @type {any} */ c) => convertJsonsxNode(c, true))
+          .map((/** @type {any} */ c) => convertJxNode(c, true))
           .filter(Boolean),
       };
 
@@ -376,7 +376,7 @@ function convertJsonsxNode(el, isBlock) {
       for (const section of el.children ?? []) {
         if (section.tagName === "thead" || section.tagName === "tbody") {
           for (const row of section.children ?? []) {
-            const mdRow = convertJsonsxNode(row, true);
+            const mdRow = convertJxNode(row, true);
             if (mdRow) {
               // Mark header cells
               if (section.tagName === "thead") {
@@ -400,7 +400,7 @@ function convertJsonsxNode(el, isBlock) {
       return {
         type: "tableRow",
         children: (el.children ?? [])
-          .map((/** @type {any} */ c) => convertJsonsxNode(c, false))
+          .map((/** @type {any} */ c) => convertJxNode(c, false))
           .filter(Boolean),
       };
 
@@ -425,9 +425,7 @@ function inlineChildren(el) {
   if (el.textContent != null) {
     return [{ type: "text", value: String(el.textContent) }];
   }
-  return (el.children ?? [])
-    .map((/** @type {any} */ c) => convertJsonsxNode(c, false))
-    .filter(Boolean);
+  return (el.children ?? []).map((/** @type {any} */ c) => convertJxNode(c, false)).filter(Boolean);
 }
 
 /**
@@ -441,9 +439,7 @@ function blockChildren(el) {
     // Wrap bare text in a paragraph
     return [{ type: "paragraph", children: [{ type: "text", value: String(el.textContent) }] }];
   }
-  return (el.children ?? [])
-    .map((/** @type {any} */ c) => convertJsonsxNode(c, true))
-    .filter(Boolean);
+  return (el.children ?? []).map((/** @type {any} */ c) => convertJxNode(c, true)).filter(Boolean);
 }
 
 /**
@@ -467,7 +463,7 @@ function convertToDirective(el, isBlock) {
         el.textContent != null
           ? [{ type: "text", value: String(el.textContent) }]
           : (el.children ?? [])
-              .map((/** @type {any} */ c) => convertJsonsxNode(c, false))
+              .map((/** @type {any} */ c) => convertJxNode(c, false))
               .filter(Boolean),
     };
   }
@@ -490,8 +486,6 @@ function convertToDirective(el, isBlock) {
     children:
       el.textContent != null
         ? [{ type: "paragraph", children: [{ type: "text", value: String(el.textContent) }] }]
-        : (el.children ?? [])
-            .map((/** @type {any} */ c) => convertJsonsxNode(c, true))
-            .filter(Boolean),
+        : (el.children ?? []).map((/** @type {any} */ c) => convertJxNode(c, true)).filter(Boolean),
   };
 }

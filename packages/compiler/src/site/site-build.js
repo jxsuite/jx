@@ -23,15 +23,15 @@ import { discoverPages, expandDynamicRoutes } from "./pages-discovery.js";
 import { resolveLayout } from "./layout-resolver.js";
 import { mergeHead, renderHead } from "./head-merger.js";
 import { injectContext } from "./context-injection.js";
-import { compile, compileServer } from "./compiler.js";
-import { compileElement } from "./compile-element.js";
+import { compile, compileServer } from "../compiler.js";
+import { compileElement } from "../targets/compile-element.js";
 import {
   buildInitialScope,
   isTemplateString,
   evaluateStaticTemplate,
   DEFAULT_REACTIVITY_SRC,
   DEFAULT_LIT_HTML_SRC,
-} from "./shared.js";
+} from "../shared.js";
 import { loadCollections, loadContentConfig, resolveCollectionRefs } from "./content-loader.js";
 import { resolvePrototypes } from "./prototype-resolver.js";
 

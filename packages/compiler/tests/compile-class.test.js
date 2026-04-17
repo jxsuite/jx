@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { compileClassJson } from "../compile-class.js";
+import { compileClassJson } from "../src/targets/compile-class.js";
 
 // ─── compileClassJson — Basic class generation ──────────────────────────────
 
@@ -720,7 +720,7 @@ describe("compileClassJson — full integration", () => {
 
 describe("compile — $prototype: Class routing", () => {
   test("routes $prototype: Class to compile-class.js", async () => {
-    const { compile } = await import("../compiler.js");
+    const { compile } = await import("../src/compiler.js");
     const result = await compile({
       $prototype: "Class",
       title: "TestClass",
@@ -732,7 +732,7 @@ describe("compile — $prototype: Class routing", () => {
   });
 
   test("output path derived from title for raw object", async () => {
-    const { compile } = await import("../compiler.js");
+    const { compile } = await import("../src/compiler.js");
     const result = await compile({
       $prototype: "Class",
       title: "MyWidget",

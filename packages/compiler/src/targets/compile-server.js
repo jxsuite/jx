@@ -6,7 +6,7 @@
  */
 
 import $RefParser from "@apidevtools/json-schema-ref-parser";
-import { collectServerEntries } from "./shared.js";
+import { collectServerEntries } from "../shared.js";
 
 /**
  * Compile a Jx document to a Hono server handler file. The handler exposes each `timing: "server"`

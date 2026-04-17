@@ -30,7 +30,7 @@
 
 - Priority 1: Runtime integration (onNodeCreated callback, edit/preview toggle)
 - Priority 2: Markdown as canvas mode — NOT a text editor. Bidirectional mdast↔Jx conversion
-  - mdToJsonsx() and jxToMd() — two tree walkers + mapping table, ~300 lines total
+  - mdToJx() and jxToMd() — two tree walkers + mapping table, ~300 lines total
   - Markdown element allowlist defines what round-trips to pure markdown
   - Non-allowlist elements become directive syntax on export
   - Existing canvas, layer tree, DnD, inspector all reused — no new UI panels

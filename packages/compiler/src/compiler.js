@@ -22,10 +22,14 @@ import {
   DEFAULT_REACTIVITY_SRC,
   DEFAULT_LIT_HTML_SRC,
 } from "./shared.js";
-import { compileServer } from "./compile-server.js";
-import { compileElement, compileElementPage, emitElementModule } from "./compile-element.js";
-import { compileStaticPage } from "./compile-static.js";
-import { compileClient } from "./compile-client.js";
+import { compileServer } from "./targets/compile-server.js";
+import {
+  compileElement,
+  compileElementPage,
+  emitElementModule,
+} from "./targets/compile-element.js";
+import { compileStaticPage } from "./targets/compile-static.js";
+import { compileClient } from "./targets/compile-client.js";
 
 // Re-exports for consumers
 export { isDynamic, compileServer, compileElement, compileElementPage, compileClient };
@@ -57,7 +61,7 @@ export async function compile(sourcePath, opts = {}) {
 
   // Route 0: .class.json schema-defined class → JS class module
   if (raw.$prototype === "Class") {
-    const { compileClassJson } = await import("./compile-class.js");
+    const { compileClassJson } = await import("./targets/compile-class.js");
     const jsContent = compileClassJson(raw, opts);
     const outputPath =
       typeof sourcePath === "string"

@@ -3,12 +3,12 @@
 import { describe, it, expect, beforeAll, afterAll } from "bun:test";
 import { mkdirSync, writeFileSync, rmSync, readFileSync, existsSync } from "node:fs";
 import { resolve, join } from "node:path";
-import { loadSiteConfig } from "../site-loader.js";
-import { discoverPages } from "../pages-discovery.js";
-import { resolveLayout } from "../layout-resolver.js";
-import { mergeHead, renderHead } from "../head-merger.js";
-import { injectContext } from "../context-injection.js";
-import { buildSite } from "../site-build.js";
+import { loadSiteConfig } from "../src/site/site-loader.js";
+import { discoverPages } from "../src/site/pages-discovery.js";
+import { resolveLayout } from "../src/site/layout-resolver.js";
+import { mergeHead, renderHead } from "../src/site/head-merger.js";
+import { injectContext } from "../src/site/context-injection.js";
+import { buildSite } from "../src/site/site-build.js";
 
 const TMP = resolve(import.meta.dir, "__test-site__");
 
