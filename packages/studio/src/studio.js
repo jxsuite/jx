@@ -612,8 +612,11 @@ setUpdateFn(function _update(/** @type {any} */ newState) {
 
   // Skip right-panel rebuild when an input inside it is focused (user is typing)
   // unless the selection changed — that always needs a full re-render
+  // Also re-render when color popover is open (changes come from outside rightPanel)
+  const colorPopoverOpen = !!_colorPopoverHost.querySelector("sp-popover[open]");
   const activeTag = document.activeElement?.tagName;
   const rightHasFocus =
+    !colorPopoverOpen &&
     rightPanel.contains(document.activeElement) &&
     (activeTag === "INPUT" ||
       activeTag === "TEXTAREA" ||
@@ -5421,9 +5424,22 @@ function openColorPopover(
   /** @type {any} */ onChange,
 ) {
   const colorVars = getColorVars();
-  const resolvedColor = resolveColorForDisplay(currentColor) || "#000000";
+  const rawResolved = resolveColorForDisplay(currentColor) || "#000000";
+  // Ensure # prefix so Spectrum components return #-prefixed hex
+  const resolvedColor =
+    rawResolved.startsWith("#") || rawResolved.startsWith("rgb") || rawResolved.startsWith("hsl")
+      ? rawResolved
+      : `#${rawResolved}`;
 
   const popoverQuery = (/** @type {string} */ sel) => _colorPopoverHost.querySelector(sel);
+
+  /** Ensure hex color always has a # prefix */
+  const normalizeHex = (/** @type {string} */ c) => {
+    if (!c) return c;
+    if (c.startsWith("var(") || c.startsWith("rgb") || c.startsWith("hsl")) return c;
+    const hex = c.replace(/^#?/, "#");
+    return hex;
+  };
 
   // Render popover content with lit-html
   const syncFromArea = (/** @type {any} */ _e) => {
@@ -5433,9 +5449,10 @@ function openColorPopover(
     const slider = popoverQuery("sp-color-slider");
     /** @type {any} */
     const tf = popoverQuery(".color-popover-hex");
-    if (slider) slider.color = area.color;
-    if (tf) tf.value = area.color;
-    _colorCallback?.(area.color);
+    const color = normalizeHex(String(area.color));
+    if (slider) slider.color = color;
+    if (tf) tf.value = color;
+    _colorCallback?.(color);
   };
 
   const syncFromSlider = (/** @type {any} */ _e) => {
@@ -5445,9 +5462,10 @@ function openColorPopover(
     const slider = popoverQuery("sp-color-slider");
     /** @type {any} */
     const tf = popoverQuery(".color-popover-hex");
-    if (area) area.color = slider.color;
-    if (tf) tf.value = area.color;
-    _colorCallback?.(area.color);
+    const color = normalizeHex(String(slider.color));
+    if (area) area.color = color;
+    if (tf) tf.value = color;
+    _colorCallback?.(color);
   };
 
   const syncFromText = (/** @type {any} */ e) => {
@@ -5471,22 +5489,24 @@ function openColorPopover(
       <sp-popover
         open
         tabindex="-1"
-        style="padding:12px;position:fixed;z-index:9999;left:${r.left}px;top:${r.bottom + 4}px"
+        style="padding:12px;position:fixed;z-index:9999;left:${r.left}px;top:${r.bottom +
+        4}px;overflow:visible"
       >
         <div class="color-popover-inner">
           <sp-color-area
-            style="width:200px; height:150px"
+            style="width:200px; height:150px; --mod-colorarea-width:200px; --mod-colorarea-height:150px"
             color=${resolvedColor}
             @input=${syncFromArea}
           ></sp-color-area>
           <sp-color-slider
-            style="width:200px"
+            style="width:200px; --mod-colorslider-length:200px"
             color=${resolvedColor}
             @input=${syncFromSlider}
           ></sp-color-slider>
           <sp-textfield
             size="s"
             class="color-popover-hex"
+            style="width:200px"
             .value=${live(currentColor || "")}
             placeholder="#000000"
             @change=${syncFromText}
