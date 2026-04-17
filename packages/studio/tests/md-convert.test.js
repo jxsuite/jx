@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { mdToJsonsx, jxToMd } from "../md-convert.js";
+import { mdToJsonsx, jxToMd } from "../src/markdown/md-convert.js";
 
 // ─── Helpers — build mdast nodes ─────────────────────────────────────────────
 

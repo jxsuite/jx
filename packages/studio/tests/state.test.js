@@ -35,7 +35,7 @@ import {
   addSwitchCase,
   removeSwitchCase,
   renameSwitchCase,
-} from "../state.js";
+} from "../src/state.js";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 

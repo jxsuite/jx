@@ -16,7 +16,7 @@ import {
   childIndex,
   canvasWrap,
   update,
-} from "./store.js";
+} from "../../store.js";
 import { isEditing } from "./inline-edit.js";
 import { copyNode, cutNode, pasteNode } from "./context-menu.js";
 

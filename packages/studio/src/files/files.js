@@ -9,10 +9,10 @@ import { html, render as litRender, nothing } from "lit-html";
 import { unified } from "unified";
 import remarkStringify from "remark-stringify";
 import { stringify as stringifyYaml } from "yaml";
-import { jxToMd } from "./md-convert.js";
-import { createState, projectState, setProjectState } from "./store.js";
-import { getPlatform } from "./platform.js";
-import { statusMessage } from "./statusbar.js";
+import { jxToMd } from "../markdown/md-convert.js";
+import { createState, projectState, setProjectState } from "../../store.js";
+import { getPlatform } from "../platform.js";
+import { statusMessage } from "../panels/statusbar.js";
 import { loadComponentRegistry } from "./components.js";
 
 // ─── File icon map ────────────────────────────────────────────────────────────

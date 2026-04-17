@@ -186,7 +186,7 @@ async function main() {
   // 5. Write output
   const output = { elements, cssProps, eventHandlers, allTags };
   const json = JSON.stringify(output, null, 2);
-  writeFileSync("studio/webdata.json", json);
+  writeFileSync("studio/data/webdata.json", json);
 
   // Stats
   const cats = Object.entries(elements)

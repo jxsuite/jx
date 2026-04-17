@@ -1,6 +1,6 @@
 /** Statusbar — status message display for Jx Studio */
 
-import { statusbarEl, getNodeAtPath, nodeLabel } from "./store.js";
+import { statusbarEl, getNodeAtPath, nodeLabel } from "../../store.js";
 
 // ─── Module state ────────────────────────────────────────────────────────────
 

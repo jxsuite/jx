@@ -7,7 +7,7 @@ import {
   attrLabel,
   abbreviateValue,
   inferInputType,
-} from "../studio-utils.js";
+} from "../src/utils/studio-utils.js";
 
 // ─── camelToKebab ────────────────────────────────────────────────────────────
 

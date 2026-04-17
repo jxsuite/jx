@@ -7,7 +7,7 @@ import {
   MD_TEXT_ONLY,
   MD_NESTING,
   isValidChild,
-} from "../md-allowlist.js";
+} from "../src/markdown/md-allowlist.js";
 
 // ─── Set membership ──────────────────────────────────────────────────────────
 

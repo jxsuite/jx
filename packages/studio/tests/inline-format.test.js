@@ -1,5 +1,5 @@
 import { expect, test, describe } from "bun:test";
-import { findTemplateExpressions } from "../inline-format.js";
+import { findTemplateExpressions } from "../src/editor/inline-format.js";
 
 describe("findTemplateExpressions", () => {
   test("no expressions", () => {

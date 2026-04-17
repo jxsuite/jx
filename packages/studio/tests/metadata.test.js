@@ -6,10 +6,14 @@ import { fileURLToPath } from "url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const studioDir = join(__dirname, "..");
 
-const cssMeta = JSON.parse(readFileSync(join(studioDir, "css-meta.json"), "utf8"));
-const htmlMeta = JSON.parse(readFileSync(join(studioDir, "html-meta.json"), "utf8"));
-const stylebookMeta = JSON.parse(readFileSync(join(studioDir, "stylebook-meta.json"), "utf8"));
-const elementsMeta = JSON.parse(readFileSync(join(studioDir, "elements-meta.json"), "utf8"));
+const cssMeta = JSON.parse(readFileSync(join(studioDir, "data", "css-meta.json"), "utf8"));
+const htmlMeta = JSON.parse(readFileSync(join(studioDir, "data", "html-meta.json"), "utf8"));
+const stylebookMeta = JSON.parse(
+  readFileSync(join(studioDir, "data", "stylebook-meta.json"), "utf8"),
+);
+const elementsMeta = JSON.parse(
+  readFileSync(join(studioDir, "data", "elements-meta.json"), "utf8"),
+);
 
 // ─── Shared metadata helpers ─────────────────────────────────────────────────
 

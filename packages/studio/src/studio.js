@@ -71,8 +71,8 @@ import {
   isInlineElement,
   isInlineInContext,
   getInlineActions,
-} from "./inline-edit.js";
-import { toggleInlineFormat, isTagActiveInSelection } from "./inline-format.js";
+} from "./editor/inline-edit.js";
+import { toggleInlineFormat, isTagActiveInSelection } from "./editor/inline-format.js";
 import {
   camelToKebab,
   camelToLabel,
@@ -81,26 +81,26 @@ import {
   attrLabel,
   abbreviateValue,
   inferInputType,
-} from "./studio-utils.js";
-import { renderStatusbar, statusMessage, setStatusbarRenderer } from "./statusbar.js";
+} from "./utils/studio-utils.js";
+import { renderStatusbar, statusMessage, setStatusbarRenderer } from "./panels/statusbar.js";
 import {
   openFile as _openFile,
   loadMarkdown as _loadMarkdown,
   saveFile as _saveFile,
-} from "./file-ops.js";
+} from "./files/file-ops.js";
 import {
   loadProject as _loadProject,
   openProject as _openProject,
   renderFilesTemplate as _renderFilesTemplate,
   openFileFromTree as _openFileFromTree,
   setupTreeKeyboard,
-} from "./files.js";
-import { eventsSidebarTemplate as _eventsSidebarTemplate } from "./events-panel.js";
-import { exportCemManifest as _exportCemManifest } from "./cem-export.js";
+} from "./files/files.js";
+import { eventsSidebarTemplate as _eventsSidebarTemplate } from "./panels/events-panel.js";
+import { exportCemManifest as _exportCemManifest } from "./services/cem-export.js";
 
 import { registerPlatform, getPlatform, hasPlatform } from "./platform.js";
 import { createDevServerPlatform } from "./platforms/devserver.js";
-import { codeService, setLintMarkers, getFunctionArgs } from "./code-services.js";
+import { codeService, setLintMarkers, getFunctionArgs } from "./services/code-services.js";
 import {
   defCategory,
   defBadgeLabel,
@@ -108,8 +108,12 @@ import {
   collectCssParts,
   resolveDefaultForCanvas,
   renderSignalsTemplate,
-} from "./signals-panel.js";
-import { componentRegistry, loadComponentRegistry, computeRelativePath } from "./components.js";
+} from "./panels/signals-panel.js";
+import {
+  componentRegistry,
+  loadComponentRegistry,
+  computeRelativePath,
+} from "./files/components.js";
 
 import {
   draggable,
@@ -128,20 +132,20 @@ import { classMap } from "lit-html/directives/class-map.js";
 
 import { ifDefined } from "lit-html/directives/if-defined.js";
 
-import webdata from "./webdata.json";
-import cssMeta from "./css-meta.json";
-import htmlMeta from "./html-meta.json";
-import stylebookMeta from "./stylebook-meta.json";
-import { renderDataExplorerTemplate } from "./data-explorer.js";
+import webdata from "./data/webdata.json";
+import cssMeta from "./data/css-meta.json";
+import htmlMeta from "./data/html-meta.json";
+import stylebookMeta from "./data/stylebook-meta.json";
+import { renderDataExplorerTemplate } from "./panels/data-explorer.js";
 
 // ─── Spectrum Web Components ──────────────────────────────────────────────────
 // Explicit class imports + registration — bare side-effect imports are tree-shaken
 // by Bun's bundler despite sideEffects declarations in Spectrum's package.json.
-import { components as _swc } from "./spectrum.js"; // eslint-disable-line no-unused-vars
-import icons from "./icons.js";
-import { showContextMenu } from "./context-menu.js";
-import { initShortcuts } from "./shortcuts.js";
-import { renderActivityBar, tabIcon } from "./activity-bar.js";
+import { components as _swc } from "./ui/spectrum.js"; // eslint-disable-line no-unused-vars
+import icons from "./ui/icons.js";
+import { showContextMenu } from "./editor/context-menu.js";
+import { initShortcuts } from "./editor/shortcuts.js";
+import { renderActivityBar, tabIcon } from "./panels/activity-bar.js";
 import * as monaco from "monaco-editor/esm/vs/editor/editor.api";
 
 // ─── Globals ──────────────────────────────────────────────────────────────────

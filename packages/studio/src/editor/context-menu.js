@@ -9,8 +9,8 @@ import {
   getNodeAtPath,
   parentElementPath,
   childIndex,
-} from "./store.js";
-import { statusMessage } from "./statusbar.js";
+} from "../../store.js";
+import { statusMessage } from "../panels/statusbar.js";
 
 /** @type {any} */
 let clipboard = null;

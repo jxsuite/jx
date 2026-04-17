@@ -1,4 +1,4 @@
-import { getNodeAtPath, updateProperty, update } from "./store.js";
+import { getNodeAtPath, updateProperty, update } from "../../store.js";
 import { html, nothing } from "lit-html";
 import { live } from "lit-html/directives/live.js";
 

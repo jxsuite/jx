@@ -5,6 +5,15 @@
   "license": "MIT",
   "files": [
     "*.js",
+    "panels/",
+    "editor/",
+    "files/",
+    "markdown/",
+    "services/",
+    "ui/",
+    "utils/",
+    "data/",
+    "platforms/",
     "dist"
   ],
   "type": "module",
@@ -14,7 +23,7 @@
   },
   "scripts": {
     "build": "bun build ./studio.js --outdir dist --target browser --sourcemap=linked",
-    "gen:webdata": "bun run gen-webdata.js",
+    "gen:webdata": "bun run scripts/gen-webdata.js",
     "test": "bun test"
   },
   "dependencies": {

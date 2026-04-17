@@ -1,7 +1,7 @@
 /** Activity bar — tab icons for switching left panel views. */
 
 import { html, render as litRender, nothing } from "lit-html";
-import { activityBar, update, getState, renderOnly } from "./store.js";
+import { activityBar, update, getState, renderOnly } from "../../store.js";
 
 /**
  * @param {any} tag

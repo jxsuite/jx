@@ -1,6 +1,6 @@
 /** Component registry — cached list of project components discovered via the platform. */
 
-import { getPlatform } from "./platform.js";
+import { getPlatform } from "../platform.js";
 
 /** @type {any[]} */
 export let componentRegistry = []; // cached list from /__studio/components

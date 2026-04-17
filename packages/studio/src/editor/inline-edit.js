@@ -5,7 +5,7 @@
  * text formatting, Enter for new paragraphs, and slash commands for inserting elements.
  */
 
-import elementsMeta from "./elements-meta.json";
+import elementsMeta from "../data/elements-meta.json";
 import { toggleInlineFormat, normalizeInlineContent } from "./inline-format.js";
 
 // ─── Inline tag set (tags that represent rich text formatting) ─────────────
