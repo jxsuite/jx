@@ -2,7 +2,7 @@
 
 ## Visual Builder for Jx Documents
 
-**Version:** 2.0.0-draft
+**Version:** 2.1.0-draft
 **Status:** In Progress
 **License:** MIT
 
@@ -34,7 +34,7 @@ Three-column layout:
 
 | Column | Content                                    |
 | ------ | ------------------------------------------ |
-| Left   | Layer tree (document structure)            |
+| Left   | Activity bar + panel (layers, files, etc.) |
 | Center | Canvas (live preview) + Toolbar            |
 | Right  | Inspector (properties, style, state, code) |
 
@@ -52,29 +52,52 @@ Immutable state with undo/redo history (100 entries). All mutations produce a ne
 
 **Key state operations** (from `state.js`):
 
-| Operation                                         | Description                         | Status          |
-| ------------------------------------------------- | ----------------------------------- | --------------- |
-| `createState(doc)`                                | Initialize from JSON document       | **Implemented** |
-| `selectNode(path)`                                | Select element by path              | **Implemented** |
-| `hoverNode(path)`                                 | Hover highlight                     | **Implemented** |
-| `undo()` / `redo()`                               | History navigation                  | **Implemented** |
-| `insertNode(path, def)`                           | Add child element                   | **Implemented** |
-| `removeNode(path)`                                | Delete element                      | **Implemented** |
-| `duplicateNode(path)`                             | Clone element                       | **Implemented** |
-| `moveNode(fromPath, toPath)`                      | Reorder/reparent                    | **Implemented** |
-| `updateProperty(path, key, value)`                | Set element property                | **Implemented** |
-| `updateStyle(path, prop, value)`                  | Set style property                  | **Implemented** |
-| `updateAttribute(path, key, value)`               | Set HTML attribute                  | **Implemented** |
-| `addDef(key, value)`                              | Add state entry                     | **Implemented** |
-| `removeDef(key)`                                  | Remove state entry                  | **Implemented** |
-| `updateDef(key, value)`                           | Update state entry                  | **Implemented** |
-| `renameDef(oldKey, newKey)`                       | Rename state entry                  | **Implemented** |
-| `updateMediaStyle(path, breakpoint, prop, value)` | Responsive style                    | **Implemented** |
-| `updateNestedStyle(path, selector, prop, value)`  | Nested CSS selector style           | **Implemented** |
-| `addSwitchCase(path, key)`                        | Add `$switch` case                  | **Implemented** |
-| `removeSwitchCase(path, key)`                     | Remove `$switch` case               | **Implemented** |
-| `pushDocument(doc)` / `popDocument()`             | Navigate into/out of sub-components | **Implemented** |
-| `projectState` / `setProjectState`                | File management state               | **Implemented** |
+| Operation                                         | Description                         |
+| ------------------------------------------------- | ----------------------------------- |
+| `createState(doc)`                                | Initialize from JSON document       |
+| `selectNode(path)`                                | Select element by path              |
+| `hoverNode(path)`                                 | Hover highlight                     |
+| `undo()` / `redo()`                               | History navigation                  |
+| `insertNode(path, def)`                           | Add child element                   |
+| `removeNode(path)`                                | Delete element                      |
+| `duplicateNode(path)`                             | Clone element                       |
+| `moveNode(fromPath, toPath)`                      | Reorder/reparent                    |
+| `updateProperty(path, key, value)`                | Set element property                |
+| `updateStyle(path, prop, value)`                  | Set style property                  |
+| `updateAttribute(path, key, value)`               | Set HTML attribute                  |
+| `addDef(key, value)`                              | Add state entry                     |
+| `removeDef(key)`                                  | Remove state entry                  |
+| `updateDef(key, value)`                           | Update state entry                  |
+| `renameDef(oldKey, newKey)`                        | Rename state entry                  |
+| `updateMediaStyle(path, breakpoint, prop, value)` | Responsive style                    |
+| `updateNestedStyle(path, selector, prop, value)`  | Nested CSS selector style           |
+| `addSwitchCase(path, key)`                        | Add `$switch` case                  |
+| `removeSwitchCase(path, key)`                     | Remove `$switch` case               |
+| `pushDocument(doc)` / `popDocument()`             | Navigate into/out of sub-components |
+| `projectState` / `setProjectState`                | File management state               |
+
+### 3.4 Platform Abstraction Layer (PAL)
+
+Studio uses a platform abstraction (`platform.js`) to decouple UI from backend:
+
+| Method                | Description                          |
+| --------------------- | ------------------------------------ |
+| `listFiles(dir)`      | List directory contents              |
+| `readFile(path)`      | Read file content                    |
+| `writeFile(path, c)`  | Write file content                   |
+| `deleteFile(path)`    | Delete file                          |
+| `renameFile(old,new)` | Rename/move file                     |
+| `discoverComponents()`| Scan project for custom elements     |
+| `openProject()`       | Open project picker                  |
+| `probeRootProject()`  | Auto-detect project at startup       |
+
+Three platform targets:
+
+- **DevServer** (`platforms/devserver.js`) — Wraps `/__studio/*` fetch calls for Chrome-based development.
+- **Desktop** (`@jxplatform/desktop`) — ElectroBun app with RPC to Bun process for native file I/O.
+- **Cloud** — Future SaaS target.
+
+Registration: `registerPlatform(impl)` at startup, `getPlatform()` for access.
 
 ---
 
@@ -86,44 +109,83 @@ The canvas renders the current document using `@jxplatform/runtime`. It shows ex
 
 ### 4.2 Modes
 
-| Mode    | Description                                 | Status          |
-| ------- | ------------------------------------------- | --------------- |
-| Edit    | Interactive editing with selection overlays | **Implemented** |
-| Preview | Clean preview without editing chrome        | **Implemented** |
-| Source  | Raw JSON/code view                          | **Implemented** |
-| Content | Markdown editing mode (inline text editing) | **Implemented** |
+| Mode      | Description                                   |
+| --------- | --------------------------------------------- |
+| Design    | Interactive editing with selection overlays    |
+| Stylebook | Design token management and component gallery  |
+| Preview   | Clean preview without editing chrome           |
+| Source    | Raw JSON/code view                             |
+| Content   | Markdown editing mode (inline text editing)    |
 
-### 4.3 Responsive Preview
+### 4.3 Pan, Zoom, and Centering
 
-Canvas supports width presets matching `$media` breakpoints for responsive design testing.
+The design canvas supports pan and zoom:
 
-> **Status: Implemented.**
+- **Pan**: Middle-click drag or Space+drag
+- **Zoom**: Ctrl+scroll wheel, pinch gesture, or toolbar controls
+- **Fit to view**: Intelligent centering of documents on load and window resize
+- **Responsive presets**: Width presets matching `$media` breakpoints
 
----
+### 4.4 Block Action Bar
 
-## 5. Layer Tree
+Unified floating action bar (Gutenberg-style) attached to the selected element:
 
-### 5.1 Structure
+| Control            | Description                                      |
+| ------------------ | ------------------------------------------------ |
+| Parent selector    | Navigate up to parent element (back icon)        |
+| Tag indicator      | Shows tag name or `$id`                          |
+| Drag handle        | Plain `<span>` for native drag events            |
+| Move up/down       | Reorder within parent                            |
+| Inline formatting  | Bold/italic/code/link (content mode only)        |
 
-Flattened tree of all elements in the document with indentation representing nesting depth. Each row shows:
-
-- Element tag name and label
-- Visibility toggle
-- Lock toggle (prevent accidental edits)
-
-### 5.2 Drag and Drop
-
-Reordering via [Atlassian Pragmatic Drag and Drop](https://atlassian.design/components/pragmatic-drag-and-drop):
-
-- Reorder siblings
-- Reparent to different container
-- Drop indicators for insertion point
-
-> **Status: Implemented.**
+Formatting buttons only appear in content mode (rich text `contentEditable`), not in component mode (`contentEditable="plaintext-only"`).
 
 ---
 
-## 6. Inspector
+## 5. Left Panel
+
+### 5.1 Activity Bar
+
+Vertical tab strip for switching panel views:
+
+| Tab        | Icon             | Panel                     |
+| ---------- | ---------------- | ------------------------- |
+| Files      | folder           | Project file tree         |
+| Layers     | layers           | Document structure tree   |
+| Components | box              | Component library         |
+| Elements   | view-grid        | HTML element palette      |
+| State      | brackets         | State definitions         |
+| Data       | data             | Data connections          |
+
+### 5.2 Layers Panel
+
+Flattened tree of all elements in the document with indentation representing nesting depth. Each row shows element tag name, label, visibility toggle, and lock toggle.
+
+**Drag and Drop** via Atlassian Pragmatic Drag and Drop — reorder siblings, reparent to different container, with drop indicators.
+
+### 5.3 Elements Panel
+
+HTML element palette organized by category using Spectrum accordions (`sp-accordion` with `allow-multiple`). Each element displays as a full-width card with:
+
+- **Live preview**: Actual DOM element rendered at natural browser sizes
+- **Tag label**: Element tag name below the preview
+
+Categories: Layout, Typography, Media, Form, Interactive, Semantic, Table.
+
+Elements are drag-and-drop sources for inserting into the canvas.
+
+### 5.4 Components Panel
+
+Project component library discovered via the platform (`discoverComponents()`). Each component displays as a full-width card with:
+
+- **Live preview**: Component rendered via `defineElement(url)` + `document.createElement(tagName)` through the runtime — real component instances, not placeholders
+- **Tag label**: Component tag name below the preview
+
+Components are drag-and-drop sources for inserting into the canvas.
+
+---
+
+## 6. Inspector (Right Panel)
 
 ### 6.1 Property Panel
 
@@ -131,24 +193,22 @@ Displays and edits element properties (`tagName`, `className`, `textContent`, et
 
 ### 6.2 Style Sidebar (Metadata-Driven)
 
-The style sidebar replaces a flat key-value list with organized, metadata-driven sections. Metadata is loaded from `css-meta.json` which provides JSON Schema definitions for each CSS property.
+Organized, metadata-driven style sections. Metadata loaded from `css-meta.json` (JSON Schema definitions for each CSS property).
 
 #### Sections
 
-| Section     | Properties                                                                                                               | Status          |
-| ----------- | ------------------------------------------------------------------------------------------------------------------------ | --------------- |
-| Layout      | `display`, `flexDirection`, `flexWrap`, `alignItems`, `justifyContent`, `gap`, `gridTemplateColumns`, `gridTemplateRows` | **Implemented** |
-| Spacing     | `margin*`, `padding*`                                                                                                    | **Implemented** |
-| Positioning | `position`, `top`, `right`, `bottom`, `left`, `zIndex`                                                                   | **Implemented** |
-| Typography  | `fontFamily`, `fontSize`, `fontWeight`, `lineHeight`, `textAlign`, `color`, `textDecoration`                             | **Implemented** |
-| Background  | `backgroundColor`, `backgroundImage`, `backgroundSize`, `backgroundPosition`                                             | **Implemented** |
-| Border      | `border*`, `borderRadius`, `outline`                                                                                     | **Implemented** |
-| Effects     | `opacity`, `boxShadow`, `transform`, `transition`, `cursor`, `overflow`                                                  | **Implemented** |
-| Other       | Unlisted properties                                                                                                      | **Implemented** |
+| Section     | Properties                                                                 |
+| ----------- | -------------------------------------------------------------------------- |
+| Layout      | `display`, `flexDirection`, `flexWrap`, `alignItems`, `justifyContent`, `gap`, `gridTemplateColumns`, `gridTemplateRows` |
+| Spacing     | `margin*`, `padding*`                                                      |
+| Positioning | `position`, `top`, `right`, `bottom`, `left`, `zIndex`                     |
+| Typography  | `fontFamily`, `fontSize`, `fontWeight`, `lineHeight`, `textAlign`, `color`, `textDecoration` |
+| Background  | `backgroundColor`, `backgroundImage`, `backgroundSize`, `backgroundPosition` |
+| Border      | `border*`, `borderRadius`, `outline`                                       |
+| Effects     | `opacity`, `boxShadow`, `transform`, `transition`, `cursor`, `overflow`    |
+| Other       | Unlisted properties                                                        |
 
 #### Input Types
-
-Input controls are inferred from CSS metadata JSON Schema keywords:
 
 | Schema pattern       | Control              |
 | -------------------- | -------------------- |
@@ -158,21 +218,30 @@ Input controls are inferred from CSS metadata JSON Schema keywords:
 | Color values         | Color picker         |
 | Shorthand properties | Expandable group     |
 
+#### Color Picker
+
+Inline color editing via Spectrum color components (`sp-color-area`, `sp-color-slider`, `sp-swatch`, `sp-textfield`). Features:
+
+- Swatch button opens popover with color area + hue slider + hex text field
+- All three controls stay in sync — area, slider, and text field update each other in real time
+- Hex values always `#`-prefixed for valid CSS
+- Right panel swatch and field update live during color picking (bypasses focus-guard optimization in `_update`)
+
 #### Conditional Display (`$show`)
 
-Some properties conditionally appear based on other property values (e.g. flex properties appear when `display: flex`).
+Properties conditionally appear based on other property values (e.g. flex properties when `display: flex`).
 
 #### Media Breakpoint Tabs
 
-The style sidebar shows tabs for each `$media` breakpoint, allowing responsive style editing per breakpoint.
+Tabs for each `$media` breakpoint, allowing responsive style editing per breakpoint.
 
-#### Pseudo-Selector Context
+#### Nested Selector Context
 
-Nested CSS selectors (`:hover`, `:focus`, `:active`) are editable as separate style contexts.
+Nested CSS selectors (`:hover`, `:focus`, `:active`, `& childTag`) are editable as separate style contexts.
 
 ### 6.3 State Editor
 
-Add, remove, rename, and edit `state` entries. All four shapes are supported:
+Add, remove, rename, and edit `state` entries. All four shapes supported:
 
 - Naked values — inline editing
 - Typed values — type constraints displayed
@@ -187,11 +256,9 @@ Monaco-powered editor for function `body` strings. Integrated with server code s
 - **Minify** — via `Bun.Transpiler`
 - **Lint** — via `oxlint` with diagnostic display
 
-> **Status: Implemented.**
-
 ### 6.5 CEM Annotations Editor
 
-For custom element definitions, the inspector includes CEM editing panels:
+For custom element definitions:
 
 | Panel                 | Description                             | Status          |
 | --------------------- | --------------------------------------- | --------------- |
@@ -203,30 +270,54 @@ For custom element definitions, the inspector includes CEM editing panels:
 
 ---
 
-## 7. Content / Markdown Mode
+## 7. Stylebook Mode
 
-### 7.1 Bidirectional Conversion
+### 7.1 Overview
+
+Design token management and component gallery. Renders all HTML elements and project components with the document's root styles applied, enabling visual design system development.
+
+### 7.2 Canvas
+
+Elements rendered as full-width cards with live DOM previews. Components rendered via the runtime (`defineElement` + `createElement`). Root document styles (`$style`) applied to all elements for consistent theming.
+
+### 7.3 Layers Panel (Nested Tree)
+
+The stylebook layers panel displays a hierarchical tree of elements. Entries with children (e.g. `ul > li`, `table > thead > tr > td`) show their descendants as indented rows, deduplicated by tag. Selecting a child element:
+
+- Sets `activeSelector` to `& childTag` for nested style editing
+- Scrolls the canvas to the parent card and highlights the child element
+- Opens the style inspector for the nested selector
+
+Selection works from both the layers panel (click row) and the canvas (click element directly). Canvas click-to-select registers all descendant DOM elements in `stylebookElToTag` during canvas build.
+
+### 7.4 Style Editing
+
+Editing styles in stylebook mode writes nested CSS rules (`& tag`) to the document's root `$style` object. Media breakpoint tabs allow responsive token editing.
+
+---
+
+## 8. Content / Markdown Mode
+
+### 8.1 Bidirectional Conversion
 
 The `md-convert.js` module provides:
 
 - `mdToJx(markdown)` — Markdown string → Jx document tree
 - `jxToMd(doc)` — Jx document tree → Markdown string
 
-### 7.2 Inline Editing
+### 8.2 Inline Editing
 
 In content mode, text elements (headings, paragraphs, list items) are directly editable in the canvas. Changes are synchronized back to the Jx document and can be exported as markdown.
 
-### 7.3 Markdown Loading
+### 8.3 Markdown Loading
 
 The studio can load `.md` files, convert them to Jx for visual editing, and save back as markdown.
 
-> **Status: Implemented.** `md-convert.js` with `startEditing`, `stopEditing`, `isEditableBlock` in studio.
-
 ---
 
-## 8. File Management
+## 9. File Management
 
-### 8.1 Project State
+### 9.1 Project State
 
 The studio tracks:
 
@@ -235,32 +326,32 @@ The studio tracks:
 - Selected file path
 - Component discovery results
 
-### 8.2 Server Integration
+### 9.2 Server Integration
 
-All file operations go through the `@jxplatform/server` Studio API:
+All file operations go through the Platform Abstraction Layer, which maps to `@jxplatform/server` Studio API endpoints:
 
 - List directories with glob patterns
 - Read/write/delete/rename files
 - Discover custom element components
 - Path traversal protection
 
-> **Status: Implemented.** Full CRUD via `/__studio/*` endpoints.
+---
+
+## 10. Keyboard Shortcuts
+
+| Shortcut                         | Action                  |
+| -------------------------------- | ----------------------- |
+| `Cmd+Z` / `Ctrl+Z`              | Undo                    |
+| `Cmd+Shift+Z` / `Ctrl+Shift+Z`  | Redo                    |
+| `Delete` / `Backspace`           | Delete selected node    |
+| `Cmd+D` / `Ctrl+D`              | Duplicate selected node |
+| `Escape`                         | Deselect                |
+| `Space` + drag                   | Pan canvas              |
+| `Ctrl+scroll` / pinch            | Zoom canvas             |
 
 ---
 
-## 9. Keyboard Shortcuts
-
-| Shortcut                       | Action                  |
-| ------------------------------ | ----------------------- |
-| `Cmd+Z` / `Ctrl+Z`             | Undo                    |
-| `Cmd+Shift+Z` / `Ctrl+Shift+Z` | Redo                    |
-| `Delete` / `Backspace`         | Delete selected node    |
-| `Cmd+D` / `Ctrl+D`             | Duplicate selected node |
-| `Escape`                       | Deselect                |
-
----
-
-## 10. Dependencies
+## 11. Dependencies
 
 | Package                             | Purpose                      |
 | ----------------------------------- | ---------------------------- |
@@ -274,24 +365,22 @@ All file operations go through the `@jxplatform/server` Studio API:
 
 ---
 
-## 11. Pending Features
+## 12. Pending Features
 
 | Feature                      | Description                                                    | Status      |
 | ---------------------------- | -------------------------------------------------------------- | ----------- |
 | CSS custom properties panel  | Declare `--custom-property` interfaces for CEM                 | **Pending** |
 | CSS parts panel              | Declare `::part()` styling hooks for CEM                       | **Pending** |
 | Full CEM document export     | Generate complete Custom Elements Manifest JSON                | **Pending** |
-| Stylebook mode               | Design token management and component gallery                  | **Pending** |
 | Component library management | Browse, install, and manage component packages                 | **Pending** |
-| Project explorer             | File tree for site projects (pages, layouts, content, public)  | **Pending** |
 | Content collection browser   | Table/card/calendar views for content entries                  | **Pending** |
 | Content entry editor         | Schema-driven forms for Markdown frontmatter, JSON, CSV        | **Pending** |
 | Media browser                | Grid/list view of project media with upload and usage tracking | **Pending** |
 | SEO panel                    | Title/description/OG preview with schema.org editor            | **Pending** |
 | Redirect editor              | CRUD table for site redirect rules                             | **Pending** |
 
-See the [Site Architecture Specification](site-architecture.md) §7 for full design details on content management UI.
+See the [Site Architecture Specification](site-architecture.md) for full design details on content management UI.
 
 ---
 
-_`@jxplatform/studio` Specification v2.0.0-draft_
+_`@jxplatform/studio` Specification v2.1.0-draft_
