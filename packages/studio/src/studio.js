@@ -160,6 +160,9 @@ const toolbar = toolbarEl;
 let canvasMode = "design";
 let panX = 0;
 let panY = 0;
+let needsCenter = true;
+/** @type {ResizeObserver | null} */
+let centerObserver = null;
 /** @type {any} */
 let panzoomWrap = null;
 /** @type {any} */
@@ -782,7 +785,11 @@ function renderCanvas() {
     return;
   }
 
-  // Clean up previous canvas DnD registrations
+  // Clean up previous canvas DnD registrations and center observer
+  if (centerObserver) {
+    centerObserver.disconnect();
+    centerObserver = null;
+  }
   for (const fn of canvasDndCleanups) fn();
   canvasDndCleanups = [];
   canvasPanels.length = 0;
@@ -908,13 +915,7 @@ function renderCanvas() {
     canvasPanels.push(panel);
     renderCanvasIntoPanel(panel, new Set(), featureToggles);
     applyTransform();
-    // Defer centering until layout is complete (double-rAF ensures paint has occurred)
-    requestAnimationFrame(() =>
-      requestAnimationFrame(() => {
-        centerCanvasIfNeeded();
-        applyTransform();
-      }),
-    );
+    observeCenterUntilStable();
     renderZoomIndicator();
     return;
   }
@@ -951,12 +952,7 @@ function renderCanvas() {
 
   // Apply current zoom + pan transform
   applyTransform();
-  requestAnimationFrame(() =>
-    requestAnimationFrame(() => {
-      centerCanvasIfNeeded();
-      applyTransform();
-    }),
-  );
+  observeCenterUntilStable();
 
   // Floating zoom indicator
   renderZoomIndicator();
@@ -1060,9 +1056,8 @@ function createCanvasPanel(mediaName, label, fullWidth, width) {
   };
 }
 
-/** Center canvas in viewport on fresh load (before user has panned). */
-function centerCanvasIfNeeded() {
-  if (panX !== 0 || panY !== 0) return; // user already panned
+/** Center canvas in viewport. */
+function centerCanvas() {
   if (!panzoomWrap) return;
   const wrapWidth = canvasWrap.clientWidth;
   const wrapHeight = canvasWrap.clientHeight;
@@ -1071,7 +1066,34 @@ function centerCanvasIfNeeded() {
   const scaledWidth = contentWidth * S.ui.zoom;
   const scaledHeight = contentHeight * S.ui.zoom;
   panX = Math.max(16, (wrapWidth - scaledWidth) / 2);
-  panY = Math.max(16, (wrapHeight - scaledHeight) / 2);
+  // Center vertically only when content fits; top-align with margin when taller
+  const verticalCenter = (wrapHeight - scaledHeight) / 2;
+  panY = verticalCenter > 16 ? verticalCenter : 16;
+}
+
+/**
+ * Attach a ResizeObserver to panzoomWrap that re-centers until the user pans. Handles async content
+ * (runtime rendering, data fetching) that changes layout after initial paint.
+ */
+function observeCenterUntilStable() {
+  if (centerObserver) {
+    centerObserver.disconnect();
+    centerObserver = null;
+  }
+  if (!panzoomWrap) return;
+  needsCenter = true;
+  centerObserver = new ResizeObserver(() => {
+    if (!needsCenter) {
+      centerObserver?.disconnect();
+      centerObserver = null;
+      return;
+    }
+    centerCanvas();
+    applyTransform();
+  });
+  centerObserver.observe(panzoomWrap);
+  // Also center immediately for synchronous content
+  centerCanvas();
 }
 
 /** Apply the current zoom + pan transform to the panzoom wrapper. */
@@ -3671,12 +3693,11 @@ function renderStylebook() {
   }
 
   applyTransform();
+  observeCenterUntilStable();
   renderZoomIndicator();
 }
 
 /**
- * Render element sections into the canvas from stylebook-meta.json
- *
  * @param {any} canvasEl
  * @param {any} rootStyle
  * @param {any} filter
@@ -6991,6 +7012,8 @@ function renderToolbar() {
                 S = { ...S, ui: { ...S.ui, editingFunction: null } };
               }
               canvasMode = m.key;
+              panX = 0;
+              panY = 0;
               renderCanvas();
               renderOverlays();
               renderToolbar();
@@ -7112,6 +7135,7 @@ initShortcuts(() => ({
   setPan: (x, y) => {
     panX = x;
     panY = y;
+    needsCenter = false;
   },
   applyTransform,
   positionZoomIndicator,
