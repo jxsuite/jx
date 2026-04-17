@@ -4,15 +4,15 @@
   "description": "JSON-native reactive web component runtime",
   "license": "MIT",
   "files": [
-    "runtime.js",
+    "src/",
     "dist"
   ],
   "type": "module",
   "exports": {
-    ".": "./runtime.js"
+    ".": "./src/runtime.js"
   },
   "scripts": {
-    "build": "bun build ./runtime.js --outdir dist --target browser --sourcemap=linked",
+    "build": "bun build ./src/runtime.js --outdir dist --target browser --sourcemap=linked",
     "test": "bun test"
   },
   "dependencies": {

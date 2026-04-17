@@ -4,7 +4,7 @@ try {
 } catch {}
 
 import { describe, test, expect, mock } from "bun:test";
-import { buildScope, Jx } from "../runtime.js";
+import { buildScope, Jx } from "../src/runtime.js";
 
 const wait = () => new Promise((r) => setTimeout(r, 0));
 const BASE = "http://localhost/";

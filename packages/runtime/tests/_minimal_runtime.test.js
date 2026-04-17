@@ -4,7 +4,7 @@ try {
 } catch {}
 
 import { describe, test, expect } from "bun:test";
-import { isSignal } from "../runtime.js";
+import { isSignal } from "../src/runtime.js";
 
 describe("sanity", () => {
   test("import works", () => {

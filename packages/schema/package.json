@@ -4,16 +4,16 @@
   "description": "JSON Schema 2020-12 meta-schema generator for Jx documents",
   "license": "MIT",
   "files": [
-    "*.js",
+    "src/",
     "*.json",
     "!package.json"
   ],
   "type": "module",
   "exports": {
-    ".": "./schema.js"
+    ".": "./src/schema.js"
   },
   "scripts": {
-    "schema": "bun run schema.js ./schema.json",
+    "schema": "bun run src/schema.js ./schema.json",
     "test": "bun test"
   },
   "dependencies": {

@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { handleResolve } from "../resolve.js";
+import { handleResolve } from "../src/resolve.js";
 import { join, resolve } from "node:path";
 import { writeFileSync, mkdirSync, rmSync } from "node:fs";
 

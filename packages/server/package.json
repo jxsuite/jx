@@ -4,11 +4,11 @@
   "description": "Jx development server with live reload, server-side proxy, and studio integration",
   "license": "MIT",
   "files": [
-    "*.js"
+    "src/"
   ],
   "type": "module",
   "exports": {
-    ".": "./server.js"
+    ".": "./src/server.js"
   },
   "dependencies": {
     "chokidar": "^5.0.0"

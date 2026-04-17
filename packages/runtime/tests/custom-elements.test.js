@@ -6,7 +6,7 @@ try {
   /* already registered */
 }
 
-import { defineElement, renderNode, buildScope, RESERVED_KEYS } from "../runtime.js";
+import { defineElement, renderNode, buildScope, RESERVED_KEYS } from "../src/runtime.js";
 
 // Use unique tag names per test to avoid cross-test registration collisions
 let uid = 0;

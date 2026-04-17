@@ -5,7 +5,7 @@ try {
 
 import { describe, test, expect, mock } from "bun:test";
 import { reactive, isRef } from "@vue/reactivity";
-import { resolvePrototype } from "../runtime.js";
+import { resolvePrototype } from "../src/runtime.js";
 
 const wait = () => new Promise((r) => setTimeout(r, 0));
 

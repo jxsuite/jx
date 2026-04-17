@@ -5,7 +5,7 @@ try {
 
 import { describe, test, expect } from "bun:test";
 import { reactive, ref } from "@vue/reactivity";
-import { resolvePrototype, isSignal, Jx } from "../runtime.js";
+import { resolvePrototype, isSignal, Jx } from "../src/runtime.js";
 
 describe("isSignal", () => {
   test("true for ref", () => expect(isSignal(ref(0))).toBe(true));

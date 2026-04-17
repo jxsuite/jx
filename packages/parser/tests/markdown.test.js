@@ -15,7 +15,7 @@ try {
 }
 
 import { buildScope, resolvePrototype, isSignal, RESERVED_KEYS } from "@jxplatform/runtime";
-import { MarkdownFile, MarkdownCollection, MarkdownDirective } from "../md.js";
+import { MarkdownFile, MarkdownCollection, MarkdownDirective } from "../src/md.js";
 import { readFileSync } from "node:fs";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -475,8 +475,8 @@ describe("External class contract", () => {
 
 describe("Runtime external prototype ($src)", () => {
   const parserDir = resolvePath(__dirname, "..");
-  const mdFilePath = resolvePath(parserDir, "MarkdownFile.class.json");
-  const mdCollPath = resolvePath(parserDir, "MarkdownCollection.class.json");
+  const mdFilePath = resolvePath(parserDir, "src", "MarkdownFile.class.json");
+  const mdCollPath = resolvePath(parserDir, "src", "MarkdownCollection.class.json");
 
   /** @type {() => void} */
   let _restore;

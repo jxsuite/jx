@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { handleStudioApi } from "../studio-api.js";
+import { handleStudioApi } from "../src/studio-api.js";
 import { join, resolve } from "node:path";
 import { writeFileSync, mkdirSync, rmSync } from "node:fs";
 

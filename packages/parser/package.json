@@ -4,15 +4,13 @@
   "description": "Jx markdown parser and external class integration",
   "license": "MIT",
   "files": [
-    "*.js",
-    "*.json",
-    "!package.json"
+    "src/"
   ],
   "type": "module",
   "exports": {
-    ".": "./md.js",
-    "./MarkdownFile.class.json": "./MarkdownFile.class.json",
-    "./MarkdownCollection.class.json": "./MarkdownCollection.class.json"
+    ".": "./src/md.js",
+    "./MarkdownFile.class.json": "./src/MarkdownFile.class.json",
+    "./MarkdownCollection.class.json": "./src/MarkdownCollection.class.json"
   },
   "scripts": {
     "test": "bun test"

@@ -19,7 +19,7 @@ import {
   toCSSText,
   RESERVED_KEYS,
   Jx,
-} from "../runtime.js";
+} from "../src/runtime.js";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
