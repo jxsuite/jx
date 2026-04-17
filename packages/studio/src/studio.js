@@ -1442,7 +1442,7 @@ function renderOverlays() {
       const el = findCanvasElement(S.selection, p.canvas);
       if (el) {
         const desc = overlayBoxDescriptor(el, "selection", p);
-        if (componentInlineEdit || isEditing()) desc.border = "none";
+        if (componentInlineEdit || isEditing()) /** @type {any} */ (desc).border = "none";
         boxes.push(desc);
       }
     }
@@ -1717,7 +1717,10 @@ function showLinkPopover(anchorBtn) {
     linkPopoverHost,
   );
 
-  requestAnimationFrame(() => linkPopoverHost?.querySelector("sp-textfield")?.focus());
+  requestAnimationFrame(
+    () =>
+      /** @type {HTMLElement | null} */ (linkPopoverHost?.querySelector("sp-textfield"))?.focus(),
+  );
 }
 
 /** Move the selected node up (swap with previous sibling). */
@@ -3817,7 +3820,7 @@ function renderStylebookVarsIntoCanvas(canvasEl, rootStyle) {
           <div class="sb-label">${catMeta.label}</div>
           <div class="sb-body">
             ${vars.length > 0
-              ? vars.map(([varName, varVal]) =>
+              ? vars.map((/** @type {[string, any]} */ [varName, varVal]) =>
                   renderVarRow(catKey, catMeta, varName, String(varVal), false),
                 )
               : html`<div class="sb-var-empty">
@@ -7020,7 +7023,7 @@ function renderToolbar() {
 function fileOpsCtx() {
   return {
     S,
-    commit: (ns) => {
+    commit: (/** @type {any} */ ns) => {
       S = ns;
       render();
     },
@@ -7030,7 +7033,7 @@ function fileOpsCtx() {
 function openFile() {
   return _openFile(fileOpsCtx());
 }
-function loadMarkdown(source, fileHandle) {
+function loadMarkdown(/** @type {any} */ source, /** @type {any} */ fileHandle) {
   const ns = _loadMarkdown(source, fileHandle);
   S = ns;
 }
@@ -7046,21 +7049,21 @@ function loadProject() {
 function openProject() {
   return _openProject({
     S,
-    commit: (ns) => {
+    commit: (/** @type {any} */ ns) => {
       S = ns;
     },
-    renderActivityBar,
+    renderActivityBar: () => renderActivityBar(S),
     renderLeftPanel,
   });
 }
 function renderFilesTemplate() {
   return _renderFilesTemplate({ openProject, openFileFromTree, renderLeftPanel });
 }
-function openFileFromTree(path) {
+function openFileFromTree(/** @type {any} */ path) {
   return _openFileFromTree(
     {
       S,
-      commit: (ns) => {
+      commit: (/** @type {any} */ ns) => {
         S = ns;
       },
       render,

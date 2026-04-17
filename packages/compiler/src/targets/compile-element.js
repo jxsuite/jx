@@ -195,7 +195,7 @@ export function emitElementModule(doc, className, elementImports) {
     if (d && typeof d === "object" && !Array.isArray(d) && d.$prototype === "Function" && d.$src) {
       const srcPath = d.$src;
       if (!srcImportMap.has(srcPath)) srcImportMap.set(srcPath, []);
-      srcImportMap.get(srcPath).push(key);
+      /** @type {string[]} */ (srcImportMap.get(srcPath)).push(key);
     }
   }
   for (const [srcPath, names] of srcImportMap) {

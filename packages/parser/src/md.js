@@ -215,6 +215,7 @@ export class MarkdownFile {
    * @param {any[]} [config.remarkPlugins] Default is `[]`
    * @param {any[]} [config.rehypePlugins] Default is `[]`
    * @param {string} [config.basePath] - Base path for resolving src
+   * @param {boolean} [config.directives] - Enable directive support
    */
   constructor(config) {
     this.config = config;
@@ -253,6 +254,7 @@ export class MarkdownCollection {
    * @param {any[]} [config.remarkPlugins] Default is `[]`
    * @param {any[]} [config.rehypePlugins] Default is `[]`
    * @param {string} [config.basePath] - Base path for resolving glob
+   * @param {boolean} [config.directives] - Enable directive support
    */
   constructor(config) {
     this.config = config;
