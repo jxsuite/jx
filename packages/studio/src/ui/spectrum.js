@@ -113,6 +113,9 @@ import { IconTextSuperscript } from "@spectrum-web-components/icons-workflow/src
 import { IconTextSubscript } from "@spectrum-web-components/icons-workflow/src/elements/IconTextSubscript.js";
 import { IconLink } from "@spectrum-web-components/icons-workflow/src/elements/IconLink.js";
 
+// UI icons (used internally by Spectrum components like accordion, picker, combobox)
+import { IconChevron100 } from "@spectrum-web-components/icons-ui/src/elements/IconChevron100.js";
+
 // Register all components. Using defineElement from Spectrum's base package
 // ensures duplicate registration is handled gracefully.
 import { defineElement } from "@spectrum-web-components/base/src/define-element.js";
@@ -214,6 +217,8 @@ const components = [
   ["sp-icon-text-superscript", IconTextSuperscript],
   ["sp-icon-text-subscript", IconTextSubscript],
   ["sp-icon-link", IconLink],
+  // UI icons (internal component chrome)
+  ["sp-icon-chevron100", IconChevron100],
 ];
 
 for (const [tag, ctor] of /** @type {[string, CustomElementConstructor][]} */ (components)) {
