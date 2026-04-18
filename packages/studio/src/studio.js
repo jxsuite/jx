@@ -129,7 +129,8 @@ import {
 import { html, render as litRender, nothing } from "lit-html";
 import { live } from "lit-html/directives/live.js";
 import { classMap } from "lit-html/directives/class-map.js";
-
+import { ref } from "lit-html/directives/ref.js";
+import { styleMap } from "lit-html/directives/style-map.js";
 import { ifDefined } from "lit-html/directives/if-defined.js";
 
 import webdata from "../data/webdata.json";
@@ -154,6 +155,14 @@ import * as monaco from "monaco-editor/esm/vs/editor/editor.api.js";
 
 /** @type {any} */
 let S; // current state
+
+/** Creates a display:contents container appended to sp-theme or body, for floating popovers/menus. */
+function createFloatingContainer() {
+  const el = document.createElement("div");
+  el.style.display = "contents";
+  (document.querySelector("sp-theme") || document.body).appendChild(el);
+  return el;
+}
 
 const toolbar = toolbarEl;
 
@@ -807,7 +816,7 @@ function renderCanvas() {
     monacoEditor = null;
   }
 
-  canvasWrap.innerHTML = "";
+  litRender(nothing, canvasWrap);
   panzoomWrap = null;
   // Reset inline style overrides from other modes
   canvasWrap.style.padding = "";
@@ -823,12 +832,20 @@ function renderCanvas() {
   // Source mode: create Monaco editor instead of canvas
   if (canvasMode === "source") {
     canvasWrap.style.padding = "0";
-    const editorContainer = document.createElement("div");
-    editorContainer.className = "source-editor";
-    canvasWrap.appendChild(editorContainer);
+    /** @type {HTMLDivElement | null} */
+    let editorContainer = null;
+    litRender(
+      html`<div
+        class="source-editor"
+        ${ref((el) => {
+          if (el) editorContainer = /** @type {HTMLDivElement} */ (el);
+        })}
+      ></div>`,
+      canvasWrap,
+    );
 
     const jsonStr = JSON.stringify(S.document, null, 2);
-    monacoEditor = monaco.editor.create(editorContainer, {
+    monacoEditor = monaco.editor.create(/** @type {any} */ (editorContainer), {
       value: jsonStr,
       language: "json",
       theme: "vs-dark",
@@ -874,17 +891,15 @@ function renderCanvas() {
     // Remove zoom indicator left over from design/preview mode
     litRender(nothing, zoomIndicatorHost);
 
-    const scrollContainer = document.createElement("div");
-    scrollContainer.className = "content-edit-canvas";
-
-    const column = document.createElement("div");
-    column.className = "content-edit-column";
-    scrollContainer.appendChild(column);
-    canvasWrap.appendChild(scrollContainer);
-
-    // Create a canvas panel inside the column so overlays and selection work
-    const panel = createCanvasPanel(null, null, true);
-    column.appendChild(panel.element);
+    const { tpl: panelTpl, panel } = canvasPanelTemplate(null, null, true);
+    litRender(
+      html`
+        <div class="content-edit-canvas">
+          <div class="content-edit-column">${panelTpl}</div>
+        </div>
+      `,
+      canvasWrap,
+    );
     canvasPanels.push(panel);
     renderCanvasIntoPanel(panel, new Set(), S.ui.featureToggles);
     return;
@@ -903,22 +918,30 @@ function renderCanvas() {
   const featureToggles = S.ui.featureToggles;
 
   // Create panzoom wrapper (the element that gets transformed)
-  panzoomWrap = document.createElement("div");
-  panzoomWrap.className = "panzoom-wrap";
-  panzoomWrap.style.transformOrigin = "0 0";
-  canvasWrap.appendChild(panzoomWrap);
-
   if (!hasMedia) {
     // Single panel — use baseWidth if a custom one is defined, otherwise full-width
     const hasBaseWidth = S.document.$media && S.document.$media["--"];
     const label = hasBaseWidth ? `${mediaDisplayName("--")} (${baseWidth}px)` : null;
-    const panel = createCanvasPanel(
+    const { tpl: panelTpl, panel } = canvasPanelTemplate(
       hasBaseWidth ? "base" : null,
       label,
       !hasBaseWidth,
       hasBaseWidth ? baseWidth : undefined,
     );
-    panzoomWrap.appendChild(panel.element);
+    litRender(
+      html`
+        <div
+          class="panzoom-wrap"
+          style="transform-origin:0 0"
+          ${ref((el) => {
+            if (el) panzoomWrap = /** @type {HTMLDivElement} */ (el);
+          })}
+        >
+          ${panelTpl}
+        </div>
+      `,
+      canvasWrap,
+    );
     canvasPanels.push(panel);
     renderCanvasIntoPanel(panel, new Set(), featureToggles);
     applyTransform();
@@ -946,12 +969,31 @@ function renderCanvas() {
   }
   allPanelDefs.sort((a, b) => b.width - a.width);
 
-  for (const def of allPanelDefs) {
+  /** @type {{ tpl: any; panel: any; activeSet: any }[]} */
+  const panelEntries = allPanelDefs.map((def) => {
     const label = `${def.displayName} (${def.width}px)`;
-    const panel = createCanvasPanel(def.name, label, false, def.width);
-    panzoomWrap.appendChild(panel.element);
+    const { tpl, panel } = canvasPanelTemplate(def.name, label, false, def.width);
+    return { tpl, panel, activeSet: def.activeSet };
+  });
+
+  litRender(
+    html`
+      <div
+        class="panzoom-wrap"
+        style="transform-origin:0 0"
+        ${ref((el) => {
+          if (el) panzoomWrap = /** @type {HTMLDivElement} */ (el);
+        })}
+      >
+        ${panelEntries.map((e) => e.tpl)}
+      </div>
+    `,
+    canvasWrap,
+  );
+
+  for (const { panel, activeSet } of panelEntries) {
     canvasPanels.push(panel);
-    renderCanvasIntoPanel(panel, def.activeSet, featureToggles);
+    renderCanvasIntoPanel(panel, activeSet, featureToggles);
   }
 
   // Highlight active panel header
@@ -1008,59 +1050,89 @@ function renderCanvasIntoPanel(panel, activeBreakpoints, featureToggles) {
  * @param {any} fullWidth
  * @param {any} [width]
  */
-function createCanvasPanel(mediaName, label, fullWidth, width) {
-  const panel = document.createElement("div");
-  panel.className = `canvas-panel${fullWidth ? " full-width" : ""}`;
-  if (mediaName !== null) panel.dataset.media = mediaName;
-
-  if (label) {
-    const header = document.createElement("div");
-    header.className = "canvas-panel-header";
-    header.textContent = label;
-    header.onclick = () => {
-      S = { ...S, ui: { ...S.ui, activeMedia: mediaName === "base" ? null : mediaName } };
-      updateActivePanelHeaders();
-      renderRightPanel();
-    };
-    panel.appendChild(header);
-  }
-
-  const viewport = document.createElement("div");
-  viewport.className = "canvas-panel-viewport";
-  // No overflow:hidden on viewport — full content height visible for pan/zoom
-  if (width && !fullWidth) viewport.style.width = `${width}px`;
-
-  const canvasDiv = document.createElement("div");
-  canvasDiv.className = "canvas-panel-canvas";
-  // No CSS zoom — zoom is handled by transform on the panzoom wrapper
-  canvasDiv.style.width = width ? `${width}px` : "";
-
-  const overlayDiv = document.createElement("div");
-  overlayDiv.className = "canvas-panel-overlay";
-
-  const dropLine = document.createElement("div");
-  dropLine.className = "canvas-drop-indicator";
-  dropLine.style.display = "none";
-  overlayDiv.appendChild(dropLine);
-
-  const clickDiv = document.createElement("div");
-  clickDiv.className = "canvas-panel-click";
-
-  viewport.appendChild(canvasDiv);
-  viewport.appendChild(overlayDiv);
-  viewport.appendChild(clickDiv);
-  panel.appendChild(viewport);
-
-  return {
+function canvasPanelTemplate(mediaName, label, fullWidth, width) {
+  /**
+   * @type {{
+   *   mediaName: any;
+   *   element: Element | null;
+   *   canvas: Element | null;
+   *   overlay: Element | null;
+   *   overlayClk: Element | null;
+   *   viewport: Element | null;
+   *   dropLine: Element | null;
+   *   _width: any;
+   * }}
+   */
+  const panel = {
     mediaName,
-    element: panel,
-    canvas: canvasDiv,
-    overlay: overlayDiv,
-    overlayClk: clickDiv,
-    viewport,
-    dropLine,
+    element: null,
+    canvas: null,
+    overlay: null,
+    overlayClk: null,
+    viewport: null,
+    dropLine: null,
     _width: width || null,
   };
+  const tpl = html`
+    <div
+      class=${`canvas-panel${fullWidth ? " full-width" : ""}`}
+      data-media=${ifDefined(mediaName !== null ? mediaName : undefined)}
+      ${ref((el) => {
+        if (el) panel.element = el;
+      })}
+    >
+      ${label
+        ? html`
+            <div
+              class="canvas-panel-header"
+              @click=${() => {
+                S = { ...S, ui: { ...S.ui, activeMedia: mediaName === "base" ? null : mediaName } };
+                updateActivePanelHeaders();
+                renderRightPanel();
+              }}
+            >
+              ${label}
+            </div>
+          `
+        : nothing}
+      <div
+        class="canvas-panel-viewport"
+        style=${styleMap({ width: width && !fullWidth ? `${width}px` : "" })}
+        ${ref((el) => {
+          if (el) panel.viewport = el;
+        })}
+      >
+        <div
+          class="canvas-panel-canvas"
+          style=${styleMap({ width: width ? `${width}px` : "" })}
+          ${ref((el) => {
+            if (el) panel.canvas = el;
+          })}
+        ></div>
+        <div
+          class="canvas-panel-overlay"
+          ${ref((el) => {
+            if (el) panel.overlay = el;
+          })}
+        >
+          <div
+            class="canvas-drop-indicator"
+            style="display:none"
+            ${ref((el) => {
+              if (el) panel.dropLine = el;
+            })}
+          ></div>
+        </div>
+        <div
+          class="canvas-panel-click"
+          ${ref((el) => {
+            if (el) panel.overlayClk = el;
+          })}
+        ></div>
+      </div>
+    </div>
+  `;
+  return { tpl, panel };
 }
 
 /** Center canvas in viewport. */
@@ -1843,8 +1915,7 @@ function moveSelectionDown() {
 function renderBlockActionBar() {
   // Ensure persistent render container exists
   if (!blockActionBarEl) {
-    blockActionBarEl = document.createElement("div");
-    (document.querySelector("sp-theme") || document.body).appendChild(blockActionBarEl);
+    blockActionBarEl = createFloatingContainer();
   }
 
   // Tear down drag if it was active
@@ -3721,9 +3792,6 @@ function renderStylebook() {
   const hasMedia = sizeBreakpoints.length > 0;
 
   // Chrome bar (tabs + filter) — positioned absolutely above the panzoom surface
-  const chromeHost = document.createElement("div");
-  chromeHost.style.display = "contents";
-
   const onTabClick = (/** @type {string} */ t) => {
     S = { ...S, ui: { ...S.ui, stylebookTab: t } };
     renderCanvas();
@@ -3743,56 +3811,46 @@ function renderStylebook() {
     renderOverlays();
   };
 
-  litRender(
-    html`
-      <div
-        class="sb-chrome"
-        style="position:absolute;top:0;left:0;right:0;z-index:15;background:var(--bg-panel);border-bottom:1px solid var(--border)"
-      >
-        <sp-tabs size="s">
-          ${["elements", "variables"].map(
-            (t) => html`
-              <sp-tab
-                label=${t.charAt(0).toUpperCase() + t.slice(1)}
-                value=${t}
-                ?selected=${S.ui.stylebookTab === t}
-                @click=${() => onTabClick(t)}
-              ></sp-tab>
-            `,
-          )}
-        </sp-tabs>
-        ${S.ui.stylebookTab === "elements"
-          ? html`
-              <input
-                class="field-input"
-                style="flex:1;max-width:200px;margin-left:8px"
-                placeholder="Filter…"
-                .value=${S.ui.stylebookFilter}
-                @input=${onFilterInput}
-              />
-              <button
-                class="tb-toggle${S.ui.stylebookCustomizedOnly ? " active" : ""}"
-                style="margin-left:4px"
-                @click=${onCustomizedToggle}
-              >
-                Customized
-              </button>
-            `
-          : nothing}
-      </div>
-    `,
-    chromeHost,
-  );
-
-  /** @type {any} */ (canvasWrap).appendChild(chromeHost);
+  const chromeBarTpl = html`
+    <div
+      class="sb-chrome"
+      style="position:absolute;top:0;left:0;right:0;z-index:15;background:var(--bg-panel);border-bottom:1px solid var(--border)"
+    >
+      <sp-tabs size="s">
+        ${["elements", "variables"].map(
+          (t) => html`
+            <sp-tab
+              label=${t.charAt(0).toUpperCase() + t.slice(1)}
+              value=${t}
+              ?selected=${S.ui.stylebookTab === t}
+              @click=${() => onTabClick(t)}
+            ></sp-tab>
+          `,
+        )}
+      </sp-tabs>
+      ${S.ui.stylebookTab === "elements"
+        ? html`
+            <input
+              class="field-input"
+              style="flex:1;max-width:200px;margin-left:8px"
+              placeholder="Filter…"
+              .value=${S.ui.stylebookFilter}
+              @input=${onFilterInput}
+            />
+            <button
+              class="tb-toggle${S.ui.stylebookCustomizedOnly ? " active" : ""}"
+              style="margin-left:4px"
+              @click=${onCustomizedToggle}
+            >
+              Customized
+            </button>
+          `
+        : nothing}
+    </div>
+  `;
 
   // Set up panzoom surface — same as normal canvas mode
   /** @type {any} */ (canvasWrap).style.overflow = "hidden";
-  panzoomWrap = document.createElement("div");
-  panzoomWrap.className = "panzoom-wrap";
-  panzoomWrap.style.transformOrigin = "0 0";
-  panzoomWrap.style.paddingTop = "36px"; // space for chrome bar
-  /** @type {any} */ (canvasWrap).appendChild(panzoomWrap);
 
   // Build panel definitions
   /** @type {any[]} */
@@ -3836,28 +3894,49 @@ function renderStylebook() {
     }
   };
 
+  /** @type {{ tpl: any; panel: any; activeSet: any }[]} */
+  let panelEntries;
   if (!hasMedia) {
     // Single panel
     const hasBaseWidth = S.document.$media && S.document.$media["--"];
     const label = hasBaseWidth ? `${mediaDisplayName("--")} (${baseWidth}px)` : null;
-    const panel = createCanvasPanel(
+    const entry = canvasPanelTemplate(
       hasBaseWidth ? "base" : null,
       label,
       !hasBaseWidth,
       hasBaseWidth ? baseWidth : undefined,
     );
-    panzoomWrap.appendChild(panel.element);
-    canvasPanels.push(panel);
-    renderIntoPanel(panel, new Set());
+    panelEntries = [{ tpl: entry.tpl, panel: entry.panel, activeSet: new Set() }];
   } else {
     // Multi-panel: one per breakpoint, sorted widest first
-    for (const def of allPanelDefs) {
+    panelEntries = allPanelDefs.map((def) => {
       const label = `${def.displayName} (${def.width}px)`;
-      const panel = createCanvasPanel(def.name, label, false, def.width);
-      panzoomWrap.appendChild(panel.element);
-      canvasPanels.push(panel);
-      renderIntoPanel(panel, def.activeSet);
-    }
+      const { tpl, panel } = canvasPanelTemplate(def.name, label, false, def.width);
+      return { tpl, panel, activeSet: def.activeSet };
+    });
+  }
+
+  litRender(
+    html`
+      ${chromeBarTpl}
+      <div
+        class="panzoom-wrap"
+        style="transform-origin:0 0;padding-top:36px"
+        ${ref((el) => {
+          if (el) panzoomWrap = /** @type {HTMLDivElement} */ (el);
+        })}
+      >
+        ${panelEntries.map((e) => e.tpl)}
+      </div>
+    `,
+    /** @type {any} */ (canvasWrap),
+  );
+
+  for (const { panel, activeSet } of panelEntries) {
+    canvasPanels.push(panel);
+    renderIntoPanel(panel, activeSet);
+  }
+  if (hasMedia) {
     updateActivePanelHeaders();
   }
 
@@ -3880,6 +3959,9 @@ function renderStylebookElementsIntoCanvas(
   customizedOnly,
   activeBreakpoints,
 ) {
+  /** @type {import("lit-html").TemplateResult[]} */
+  const sectionTemplates = [];
+
   for (const section of stylebookMeta.$sections) {
     // Filter elements
     let entries = /** @type {any} */ (section.elements);
@@ -3894,53 +3976,41 @@ function renderStylebookElementsIntoCanvas(
     }
     if (entries.length === 0) continue;
 
-    // Section container
-    const sectionEl = document.createElement("div");
-    sectionEl.className = "sb-section";
-
-    // Section label
-    const label = document.createElement("div");
-    label.className = "sb-label";
-    label.textContent = section.label;
-    sectionEl.appendChild(label);
-
-    // Section content
-    const body = document.createElement("div");
-    body.className = "sb-body";
-
-    for (const entry of entries) {
+    const cardTemplates = entries.map((/** @type {any} */ entry) => {
       const el = buildStylebookElement(entry, rootStyle, activeBreakpoints);
+      return html`
+        <div
+          class="element-card"
+          ${ref((card) => {
+            if (!card) return;
+            stylebookElToTag.set(card, entry.tag);
+            elToPath.set(card, ["__sb", entry.tag]);
+            for (const child of el.querySelectorAll("*")) {
+              const tag = child.tagName.toLowerCase();
+              if (!stylebookElToTag.has(child)) {
+                stylebookElToTag.set(child, tag);
+                elToPath.set(child, ["__sb", tag]);
+              }
+            }
+          })}
+        >
+          <div
+            class="element-card-preview"
+            ${ref((c) => {
+              if (c && !c.firstChild) c.appendChild(el);
+            })}
+          ></div>
+          <div class="element-card-label">&lt;${entry.tag}&gt;</div>
+        </div>
+      `;
+    });
 
-      // Wrap in element-card
-      const card = document.createElement("div");
-      card.className = "element-card";
-      const preview = document.createElement("div");
-      preview.className = "element-card-preview";
-      preview.appendChild(el);
-      const labelEl = document.createElement("div");
-      labelEl.className = "element-card-label";
-      labelEl.textContent = `<${entry.tag}>`;
-      card.appendChild(preview);
-      card.appendChild(labelEl);
-
-      // Register for overlay hit-testing
-      stylebookElToTag.set(card, entry.tag);
-      // Also register in the global elToPath so drawOverlayBox label works
-      elToPath.set(card, ["__sb", entry.tag]);
-      // Register nested child elements so they can be selected individually
-      for (const child of el.querySelectorAll("*")) {
-        const tag = child.tagName.toLowerCase();
-        if (!stylebookElToTag.has(child)) {
-          stylebookElToTag.set(child, tag);
-          elToPath.set(child, ["__sb", tag]);
-        }
-      }
-
-      body.appendChild(card);
-    }
-
-    sectionEl.appendChild(body);
-    canvasEl.appendChild(sectionEl);
+    sectionTemplates.push(html`
+      <div class="sb-section">
+        <div class="sb-label">${section.label}</div>
+        <div class="sb-body">${cardTemplates}</div>
+      </div>
+    `);
   }
 
   // Custom components from registry
@@ -3951,45 +4021,55 @@ function renderStylebookElementsIntoCanvas(
     if (customizedOnly)
       comps = comps.filter((/** @type {any} */ c) => hasTagStyle(rootStyle, c.tagName));
     if (comps.length > 0) {
-      const sectionEl = document.createElement("div");
-      sectionEl.className = "sb-section";
-      const label = document.createElement("div");
-      label.className = "sb-label";
-      label.textContent = "Components";
-      sectionEl.appendChild(label);
-      const body = document.createElement("div");
-      body.className = "sb-body";
-      for (const comp of comps) {
-        const card = document.createElement("div");
-        card.className = "element-card";
-        card.style.display = "inline-flex";
-        card.style.width = "";
-        const preview = document.createElement("div");
-        preview.className = "element-card-preview";
-        const labelEl = document.createElement("div");
-        labelEl.className = "element-card-label";
-        labelEl.textContent = `<${comp.tagName}>`;
-        card.appendChild(preview);
-        card.appendChild(labelEl);
-        stylebookElToTag.set(card, comp.tagName);
-        elToPath.set(card, ["__sb", comp.tagName]);
-        body.appendChild(card);
-
+      const compCards = comps.map((/** @type {any} */ comp) => {
+        /** @type {HTMLDivElement | null} */
+        let previewEl = null;
+        const cardTpl = html`
+          <div
+            class="element-card"
+            style="display:inline-flex;width:auto"
+            ${ref((card) => {
+              if (!card) return;
+              stylebookElToTag.set(card, comp.tagName);
+              elToPath.set(card, ["__sb", comp.tagName]);
+            })}
+          >
+            <div
+              class="element-card-preview"
+              ${ref((c) => {
+                if (c) previewEl = /** @type {HTMLDivElement} */ (c);
+              })}
+            ></div>
+            <div class="element-card-label">&lt;${comp.tagName}&gt;</div>
+          </div>
+        `;
         // Fill preview asynchronously with live rendered component
         renderComponentPreview(comp).then((el) => {
-          preview.appendChild(el);
+          if (previewEl) previewEl.appendChild(el);
         });
-      }
-      sectionEl.appendChild(body);
-      canvasEl.appendChild(sectionEl);
+        return cardTpl;
+      });
+
+      sectionTemplates.push(html`
+        <div class="sb-section">
+          <div class="sb-label">Components</div>
+          <div class="sb-body">${compCards}</div>
+        </div>
+      `);
     }
   }
 
-  if (canvasEl.children.length === 0) {
-    const empty = document.createElement("div");
-    empty.style.cssText = "padding:48px;text-align:center;color:var(--fg-dim);font-size:13px";
-    empty.textContent = customizedOnly ? "No customized elements" : "No matching elements";
-    canvasEl.appendChild(empty);
+  if (sectionTemplates.length === 0) {
+    litRender(
+      html`
+        <div style="padding:48px;text-align:center;color:var(--fg-dim);font-size:13px">
+          ${customizedOnly ? "No customized elements" : "No matching elements"}
+        </div>
+      `,
+      canvasEl,
+    );
+  } else {
+    litRender(html`${sectionTemplates}`, canvasEl);
   }
 }
 
@@ -4015,50 +4095,48 @@ function renderStylebookVarsIntoCanvas(canvasEl, rootStyle) {
     else groups.other.push([k, v]);
   }
 
-  for (const [catKey, catMeta] of Object.entries(varCats)) {
+  /** @type {Map<string, HTMLElement | null>} */
+  const bodyRefs = new Map();
+
+  const sectionTemplates = Object.entries(varCats).map(([catKey, catMeta]) => {
     const vars = groups[catKey];
 
-    // Section container built via lit-html
-    const sectionHost = document.createElement("div");
-    sectionHost.style.display = "contents";
-
-    /** @type {any} */
-    let bodyEl = null;
-
     const onAdd = () => {
+      const bodyEl = bodyRefs.get(catKey);
       if (!bodyEl) return;
       const addBtn = bodyEl.querySelector(".sb-var-add-btn");
-      const row = renderVarRow(catKey, catMeta, null, "", true);
+      const row = renderVarRow(catKey, /** @type {any} */ (catMeta), null, "", true);
       bodyEl.insertBefore(row, addBtn);
-      if (addBtn) addBtn.style.display = "none";
+      if (addBtn) /** @type {any} */ (addBtn).style.display = "none";
       const nameField = /** @type {any} */ (row.querySelector("sp-textfield"));
       if (nameField) requestAnimationFrame(() => nameField.focus());
     };
 
-    litRender(
-      html`
-        <div class="sb-section">
-          <div class="sb-label">${catMeta.label}</div>
-          <div class="sb-body">
-            ${vars.length > 0
-              ? vars.map((/** @type {[string, any]} */ [varName, varVal]) =>
-                  renderVarRow(catKey, catMeta, varName, String(varVal), false),
-                )
-              : html`<div class="sb-var-empty">
-                  No ${catMeta.label.toLowerCase()} variables yet.
-                </div>`}
-            <button class="sb-var-add-btn" @click=${onAdd}>
-              <span class="sb-var-add-icon">+</span> Add ${catMeta.label}
-            </button>
-          </div>
+    return html`
+      <div class="sb-section">
+        <div class="sb-label">${/** @type {any} */ (catMeta).label}</div>
+        <div
+          class="sb-body"
+          ${ref((el) => {
+            if (el) bodyRefs.set(catKey, /** @type {HTMLElement} */ (el));
+          })}
+        >
+          ${vars.length > 0
+            ? vars.map((/** @type {[string, any]} */ [varName, varVal]) =>
+                renderVarRow(catKey, /** @type {any} */ (catMeta), varName, String(varVal), false),
+              )
+            : html`<div class="sb-var-empty">
+                No ${/** @type {any} */ (catMeta).label.toLowerCase()} variables yet.
+              </div>`}
+          <button class="sb-var-add-btn" @click=${onAdd}>
+            <span class="sb-var-add-icon">+</span> Add ${/** @type {any} */ (catMeta).label}
+          </button>
         </div>
-      `,
-      sectionHost,
-    );
+      </div>
+    `;
+  });
 
-    bodyEl = sectionHost.querySelector(".sb-body");
-    canvasEl.appendChild(sectionHost);
-  }
+  litRender(html`${sectionTemplates}`, canvasEl);
 }
 
 /**
@@ -4074,123 +4152,99 @@ function renderVarRow(catKey, catMeta, varName, varVal, isNew) {
   const row = document.createElement("div");
   row.className = isNew ? "sb-var-row is-new" : "sb-var-row";
 
-  // ─── Header: friendly name + dash name + delete ───
-  const header = document.createElement("div");
-  header.className = "sb-var-row-header";
-
-  if (!isNew && varName) {
-    const title = document.createElement("span");
-    title.className = "sb-var-row-title";
-    title.textContent = varDisplayName(varName, catMeta.prefix);
-    header.appendChild(title);
-    const ref = document.createElement("span");
-    ref.className = "sb-var-row-ref";
-    ref.textContent = varName;
-    header.appendChild(ref);
-
-    const del = /** @type {any} */ (document.createElement("sp-action-button"));
-    del.size = "s";
-    del.quiet = true;
-    del.className = "sb-var-del";
-    del.style.pointerEvents = "auto";
-    const delIcon = document.createElement("sp-icon-delete");
-    delIcon.slot = "icon";
-    del.appendChild(delIcon);
-    del.onclick = () => update(updateStyle(S, [], varName, undefined));
-    header.appendChild(del);
-  }
-
-  if (header.childNodes.length) row.appendChild(header);
-
-  // ─── Horizontal input row: [swatch] + name(flex:2) + value(flex:3) + [actions] ───
-  const inputRow = document.createElement("div");
-  inputRow.className = "sb-var-input-row";
-
-  // Color swatch
   /** @type {any} */
   let colorPicker = null;
-  if (catKey === "color") {
-    const swatch = document.createElement("div");
-    swatch.className = "sb-var-swatch";
-    swatch.style.backgroundColor = varVal || "var(--accent)";
-    colorPicker = document.createElement("input");
-    colorPicker.type = "color";
-    try {
-      colorPicker.value = varVal && varVal.startsWith("#") ? varVal : "#007acc";
-    } catch {}
-    swatch.appendChild(colorPicker);
-    inputRow.appendChild(swatch);
-  }
-
-  // Name column
   /** @type {any} */
   let nameField = null;
-  if (isNew) {
-    const nameCol = document.createElement("div");
-    nameCol.className = "sb-var-col-name";
-    const lbl = document.createElement("div");
-    lbl.className = "sb-var-col-label";
-    lbl.textContent = "Name";
-    nameCol.appendChild(lbl);
-    nameField = /** @type {any} */ (document.createElement("sp-textfield"));
-    nameField.size = "s";
-    nameField.placeholder =
-      catKey === "color"
-        ? "Primary Blue"
-        : catKey === "font"
-          ? "Body Serif"
-          : catKey === "size"
-            ? "Spacing Large"
-            : "Border Radius";
-    nameField.style.pointerEvents = "auto";
-    nameCol.appendChild(nameField);
-    inputRow.appendChild(nameCol);
-  }
-
-  // Value column
-  const valCol = document.createElement("div");
-  valCol.className = "sb-var-col-value";
-  if (isNew) {
-    const lbl = document.createElement("div");
-    lbl.className = "sb-var-col-label";
-    lbl.textContent = "Value";
-    valCol.appendChild(lbl);
-  }
-
   /** @type {any} */
   let getValueFn;
+  /** @type {any} */
+  let hexField = null;
+
+  // ─── Color swatch setup ───
+  const swatchTpl =
+    catKey === "color"
+      ? html`
+          <div
+            class="sb-var-swatch"
+            style=${styleMap({ backgroundColor: varVal || "var(--accent)" })}
+          >
+            <input
+              type="color"
+              .value=${varVal && varVal.startsWith("#") ? varVal : "#007acc"}
+              ${ref((el) => {
+                if (el) colorPicker = el;
+              })}
+              @input=${() => {
+                if (!colorPicker || !hexField) return;
+                hexField.value = colorPicker.value;
+                const swatch = /** @type {any} */ (row.querySelector(".sb-var-swatch"));
+                if (swatch) swatch.style.backgroundColor = colorPicker.value;
+                if (!isNew && varName) update(updateStyle(S, [], varName, colorPicker.value));
+              }}
+            />
+          </div>
+        `
+      : nothing;
+
+  // ─── Name column (add-new only) ───
+  const namePlaceholder =
+    catKey === "color"
+      ? "Primary Blue"
+      : catKey === "font"
+        ? "Body Serif"
+        : catKey === "size"
+          ? "Spacing Large"
+          : "Border Radius";
+
+  const nameColTpl = isNew
+    ? html`
+        <div class="sb-var-col-name">
+          <div class="sb-var-col-label">Name</div>
+          <sp-textfield
+            size="s"
+            placeholder=${namePlaceholder}
+            style="pointer-events:auto"
+            ${ref((el) => {
+              if (el) nameField = el;
+            })}
+          ></sp-textfield>
+        </div>
+      `
+    : nothing;
+
+  // ─── Value column ───
+  /** @type {any} */
+  let valueContent;
 
   if (catKey === "color") {
-    const hexField = /** @type {any} */ (document.createElement("sp-textfield"));
-    hexField.size = "s";
-    hexField.value = varVal || "#007acc";
-    hexField.placeholder = "#007acc";
-    hexField.style.pointerEvents = "auto";
-    valCol.appendChild(hexField);
-    getValueFn = () => hexField.value.trim();
-
-    if (colorPicker) {
-      colorPicker.oninput = () => {
-        hexField.value = colorPicker.value;
-        const swatch = /** @type {any} */ (row.querySelector(".sb-var-swatch"));
-        if (swatch) swatch.style.backgroundColor = colorPicker.value;
-        if (!isNew && varName) update(updateStyle(S, [], varName, colorPicker.value));
-      };
-      /** @type {any} */
-      let debounce;
-      hexField.addEventListener("input", () => {
-        clearTimeout(debounce);
-        debounce = setTimeout(() => {
-          const v = hexField.value;
-          try {
-            colorPicker.value = v.startsWith("#") ? v : colorPicker.value;
-          } catch {}
-          const swatch = /** @type {any} */ (row.querySelector(".sb-var-swatch"));
-          if (swatch) swatch.style.backgroundColor = v;
-          if (!isNew && varName) update(updateStyle(S, [], varName, v));
-        }, 400);
-      });
-    }
+    /** @type {any} */
+    let debounce;
+    valueContent = html`
+      <sp-textfield
+        size="s"
+        .value=${varVal || "#007acc"}
+        placeholder="#007acc"
+        style="pointer-events:auto"
+        ${ref((el) => {
+          if (el) hexField = el;
+        })}
+        @input=${() => {
+          clearTimeout(debounce);
+          debounce = setTimeout(() => {
+            if (!hexField) return;
+            const v = hexField.value;
+            try {
+              if (colorPicker) colorPicker.value = v.startsWith("#") ? v : colorPicker.value;
+            } catch {}
+            const swatch = /** @type {any} */ (row.querySelector(".sb-var-swatch"));
+            if (swatch) swatch.style.backgroundColor = v;
+            if (!isNew && varName) update(updateStyle(S, [], varName, v));
+          }, 400);
+        }}
+      ></sp-textfield>
+    `;
+    getValueFn = () => hexField?.value?.trim() || "";
   } else if (catKey === "size") {
     const ui = createUnitInput(varVal || "16px", {
       onChange: (/** @type {any} */ newVal) => {
@@ -4200,106 +4254,143 @@ function renderVarRow(catKey, catMeta, varName, varVal, isNew) {
       },
     });
     if (isNew) ui.textfield.value = "";
-    valCol.appendChild(ui.wrap);
+    valueContent = html`<div
+      ${ref((el) => {
+        if (el && !el.firstChild) el.appendChild(ui.wrap);
+      })}
+    ></div>`;
     getValueFn = () => ui.getValue();
   } else {
-    const textField = /** @type {any} */ (document.createElement("sp-textfield"));
-    textField.size = "s";
-    textField.value = varVal;
-    textField.placeholder = catMeta.placeholder;
-    textField.style.pointerEvents = "auto";
-    valCol.appendChild(textField);
-    getValueFn = () => textField.value.trim();
-
-    if (!isNew && varName) {
-      /** @type {any} */
-      let debounce;
-      textField.addEventListener("input", () => {
-        clearTimeout(debounce);
-        debounce = setTimeout(() => {
-          const v = textField.value;
-          const fontPrev = /** @type {any} */ (row.querySelector(".sb-var-font-preview"));
-          if (fontPrev) fontPrev.style.fontFamily = v;
-          update(updateStyle(S, [], varName, v));
-        }, 400);
-      });
-    }
+    /** @type {any} */
+    let textFieldEl = null;
+    /** @type {any} */
+    let debounce;
+    valueContent = html`
+      <sp-textfield
+        size="s"
+        .value=${varVal}
+        placeholder=${catMeta.placeholder}
+        style="pointer-events:auto"
+        ${ref((el) => {
+          if (el) textFieldEl = el;
+        })}
+        @input=${() => {
+          if (!textFieldEl || isNew || !varName) return;
+          clearTimeout(debounce);
+          debounce = setTimeout(() => {
+            const v = textFieldEl.value;
+            const fontPrev = /** @type {any} */ (row.querySelector(".sb-var-font-preview"));
+            if (fontPrev) fontPrev.style.fontFamily = v;
+            update(updateStyle(S, [], varName, v));
+          }, 400);
+        }}
+      ></sp-textfield>
+    `;
+    getValueFn = () => textFieldEl?.value?.trim() || "";
   }
 
-  inputRow.appendChild(valCol);
+  const valColTpl = html`
+    <div class="sb-var-col-value">
+      ${isNew ? html`<div class="sb-var-col-label">Value</div>` : nothing} ${valueContent}
+    </div>
+  `;
 
-  // Action buttons for add-new (inline at end of input row)
-  if (isNew) {
-    const actions = document.createElement("div");
-    actions.className = "sb-var-add-actions";
+  // ─── Action buttons (add-new only) ───
+  const actionsTpl = isNew
+    ? html`
+        <div class="sb-var-add-actions">
+          <sp-action-button
+            size="s"
+            style="pointer-events:auto"
+            @click=${() => {
+              const name = (nameField?.value || "").trim();
+              const val = getValueFn();
+              const generatedVar = friendlyNameToVar(name, catMeta.prefix);
+              if (!generatedVar || !val) return;
+              update(updateStyle(S, [], generatedVar, val));
+            }}
+            >Add</sp-action-button
+          >
+          <sp-action-button
+            size="s"
+            quiet
+            style="pointer-events:auto"
+            @click=${() => {
+              const body = row.parentElement;
+              row.remove();
+              const addBtn = /** @type {any} */ (body?.querySelector(".sb-var-add-btn"));
+              if (addBtn) addBtn.style.display = "";
+            }}
+          >
+            <sp-icon-close slot="icon"></sp-icon-close>
+          </sp-action-button>
+        </div>
+      `
+    : nothing;
 
-    const confirmBtn = /** @type {any} */ (document.createElement("sp-action-button"));
-    confirmBtn.size = "s";
-    confirmBtn.style.pointerEvents = "auto";
-    confirmBtn.textContent = "Add";
-    confirmBtn.onclick = () => {
-      const name = (nameField.value || "").trim();
-      const val = getValueFn();
-      const generatedVar = friendlyNameToVar(name, catMeta.prefix);
-      if (!generatedVar || !val) return;
-      update(updateStyle(S, [], generatedVar, val));
-    };
-    actions.appendChild(confirmBtn);
+  // ─── Header ───
+  const headerTpl =
+    !isNew && varName
+      ? html`
+          <div class="sb-var-row-header">
+            <span class="sb-var-row-title">${varDisplayName(varName, catMeta.prefix)}</span>
+            <span class="sb-var-row-ref">${varName}</span>
+            <sp-action-button
+              size="s"
+              quiet
+              class="sb-var-del"
+              style="pointer-events:auto"
+              @click=${() => update(updateStyle(S, [], varName, undefined))}
+            >
+              <sp-icon-delete slot="icon"></sp-icon-delete>
+            </sp-action-button>
+          </div>
+        `
+      : nothing;
 
-    const cancelBtn = /** @type {any} */ (document.createElement("sp-action-button"));
-    cancelBtn.size = "s";
-    cancelBtn.quiet = true;
-    cancelBtn.style.pointerEvents = "auto";
-    const closeIcon = document.createElement("sp-icon-close");
-    closeIcon.slot = "icon";
-    cancelBtn.appendChild(closeIcon);
-    cancelBtn.onclick = () => {
-      const body = row.parentElement;
-      row.remove();
-      const addBtn = /** @type {any} */ (body?.querySelector(".sb-var-add-btn"));
-      if (addBtn) addBtn.style.display = "";
-    };
-    actions.appendChild(cancelBtn);
-
-    inputRow.appendChild(actions);
-  }
-
-  row.appendChild(inputRow);
-
-  // Live preview of generated var name (add-new only)
-  if (isNew && nameField) {
-    const preview = document.createElement("div");
-    preview.className = "sb-var-add-preview";
-    nameField.addEventListener("input", () => {
-      preview.textContent = friendlyNameToVar(nameField.value || "", catMeta.prefix);
-    });
-    row.appendChild(preview);
-  }
+  // ─── Live preview of generated var name (add-new) ───
+  const addPreviewTpl = isNew
+    ? html`
+        <div
+          class="sb-var-add-preview"
+          ${ref((el) => {
+            if (!el || !nameField) return;
+            nameField.addEventListener("input", () => {
+              el.textContent = friendlyNameToVar(nameField.value || "", catMeta.prefix);
+            });
+          })}
+        ></div>
+      `
+    : nothing;
 
   // ─── Type-specific preview ───
-  if (catKey === "font" && varVal) {
-    const preview = document.createElement("div");
-    preview.className = "sb-var-preview";
-    const fontPrev = document.createElement("div");
-    fontPrev.className = "sb-var-font-preview";
-    fontPrev.style.fontFamily = varVal;
-    fontPrev.textContent = "The quick brown fox jumps over the lazy dog";
-    preview.appendChild(fontPrev);
-    row.appendChild(preview);
-  }
+  const typePrevTpl =
+    catKey === "font" && varVal
+      ? html`
+          <div class="sb-var-preview">
+            <div class="sb-var-font-preview" style=${styleMap({ fontFamily: varVal })}>
+              The quick brown fox jumps over the lazy dog
+            </div>
+          </div>
+        `
+      : catKey === "size" && varVal
+        ? html`
+            <div class="sb-var-preview">
+              <div class="sb-var-size-track">
+                <div class="sb-var-size-bar" style=${styleMap({ width: varVal })}></div>
+              </div>
+            </div>
+          `
+        : nothing;
 
-  if (catKey === "size" && varVal) {
-    const preview = document.createElement("div");
-    preview.className = "sb-var-preview";
-    const track = document.createElement("div");
-    track.className = "sb-var-size-track";
-    const bar = document.createElement("div");
-    bar.className = "sb-var-size-bar";
-    bar.style.width = varVal;
-    track.appendChild(bar);
-    preview.appendChild(track);
-    row.appendChild(preview);
-  }
+  litRender(
+    html`
+      ${headerTpl}
+      <div class="sb-var-input-row">${swatchTpl} ${nameColTpl} ${valColTpl} ${actionsTpl}</div>
+      ${addPreviewTpl} ${typePrevTpl}
+    `,
+    row,
+  );
 
   return row;
 }
@@ -4380,15 +4471,10 @@ function createUnitInput(initialValue, { onChange, size = "s" } = {}) {
   wrap.className = "sb-unit-input";
   wrap.style.pointerEvents = "auto";
 
-  const textfield = /** @type {any} */ (document.createElement("sp-textfield"));
-  textfield.value = numVal;
-  textfield.size = size;
-  wrap.appendChild(textfield);
-
-  const picker = /** @type {any} */ (document.createElement("sp-picker"));
-  picker.quiet = true;
-  picker.size = size;
-  if (!isNumeric) picker.style.display = "none";
+  /** @type {any} */
+  let textfield = null;
+  /** @type {any} */
+  let picker = null;
 
   const units = [
     { value: "px", label: "px" },
@@ -4403,54 +4489,68 @@ function createUnitInput(initialValue, { onChange, size = "s" } = {}) {
     { value: "auto", label: "auto" },
     { value: "fit-content", label: "fit-content" },
   ];
-  for (const u of units) {
-    if (u.divider) {
-      picker.appendChild(document.createElement("sp-menu-divider"));
-    } else {
-      const item = /** @type {any} */ (document.createElement("sp-menu-item"));
-      item.value = u.value;
-      item.textContent = u.label;
-      picker.appendChild(item);
-    }
-  }
-  requestAnimationFrame(() => {
-    picker.value = unitVal || "px";
-  });
-  wrap.appendChild(picker);
+
+  /** @type {any} */
+  let debounce;
 
   function getValue() {
-    const num = textfield.value;
-    const unit = picker.value;
-    // Keyword units like "auto" replace the whole value
+    const num = textfield?.value;
+    const unit = picker?.value;
     if (unit === "auto" || unit === "fit-content") return unit;
     return num ? `${num}${unit}` : "";
   }
 
-  // Textfield typing — show/hide picker based on numeric content
-  /** @type {any} */
-  let debounce;
-  textfield.addEventListener("input", () => {
-    clearTimeout(debounce);
-    const raw = textfield.value.trim();
-    const looksNumeric = /^-?[\d.]+$/.test(raw);
-    picker.style.display = looksNumeric ? "" : "none";
-    debounce = setTimeout(() => {
-      if (onChange) onChange(looksNumeric ? `${raw}${picker.value}` : raw);
-    }, 400);
-  });
-
-  // Picker change — keyword replaces input, numeric unit appends
-  picker.addEventListener("change", () => {
-    const unit = picker.value;
-    if (unit === "auto" || unit === "fit-content") {
-      textfield.value = unit;
-      picker.style.display = "none";
-      if (onChange) onChange(unit);
-    } else {
-      unitVal = unit;
-      if (onChange) onChange(getValue());
-    }
-  });
+  litRender(
+    html`
+      <sp-textfield
+        .value=${numVal}
+        size=${size}
+        ${ref((el) => {
+          if (el) textfield = el;
+        })}
+        @input=${() => {
+          clearTimeout(debounce);
+          const raw = textfield?.value?.trim();
+          const looksNumeric = /^-?[\d.]+$/.test(raw || "");
+          if (picker) picker.style.display = looksNumeric ? "" : "none";
+          debounce = setTimeout(() => {
+            if (onChange) onChange(looksNumeric ? `${raw}${picker?.value}` : raw);
+          }, 400);
+        }}
+      ></sp-textfield>
+      <sp-picker
+        quiet
+        size=${size}
+        style=${styleMap({ display: isNumeric ? "" : "none" })}
+        ${ref((el) => {
+          if (el) {
+            picker = el;
+            requestAnimationFrame(() => {
+              /** @type {any} */ (el).value = unitVal || "px";
+            });
+          }
+        })}
+        @change=${() => {
+          const unit = picker?.value;
+          if (unit === "auto" || unit === "fit-content") {
+            if (textfield) textfield.value = unit;
+            if (picker) picker.style.display = "none";
+            if (onChange) onChange(unit);
+          } else {
+            unitVal = unit;
+            if (onChange) onChange(getValue());
+          }
+        }}
+      >
+        ${units.map((u) =>
+          u.divider
+            ? html`<sp-menu-divider></sp-menu-divider>`
+            : html`<sp-menu-item value=${u.value}>${u.label}</sp-menu-item>`,
+        )}
+      </sp-picker>
+    `,
+    wrap,
+  );
 
   return { wrap, textfield, picker, getValue };
 }
@@ -5529,9 +5629,7 @@ function resolveColorForDisplay(/** @type {any} */ val) {
   return val;
 }
 
-const _colorPopoverHost = document.createElement("div");
-_colorPopoverHost.style.display = "contents";
-(document.querySelector("sp-theme") || document.body).appendChild(_colorPopoverHost);
+const _colorPopoverHost = createFloatingContainer();
 
 function closeColorPopover() {
   litRender(nothing, _colorPopoverHost);
@@ -6901,26 +6999,32 @@ function kvRow(
 
 function _renderSourceView(/** @type {any} */ container) {
   if (!S.selection) {
-    const ta = document.createElement("textarea");
-    ta.id = "source-view";
-    ta.value = JSON.stringify(S.document, null, 2);
-    ta.onblur = () => {
-      try {
-        const parsed = JSON.parse(ta.value);
-        S = { ...S, document: parsed, dirty: true };
-        render();
-      } catch {}
-    };
-    container.appendChild(ta);
+    litRender(
+      html`
+        <textarea
+          id="source-view"
+          .value=${live(JSON.stringify(S.document, null, 2))}
+          @blur=${(/** @type {any} */ e) => {
+            try {
+              const parsed = JSON.parse(e.target.value);
+              S = { ...S, document: parsed, dirty: true };
+              render();
+            } catch {}
+          }}
+        ></textarea>
+      `,
+      container,
+    );
     return;
   }
 
   const node = getNodeAtPath(S.document, S.selection);
-  const ta = document.createElement("textarea");
-  ta.id = "source-view";
-  ta.value = JSON.stringify(node, null, 2);
-  ta.readOnly = true;
-  container.appendChild(ta);
+  litRender(
+    html`
+      <textarea id="source-view" readonly .value=${live(JSON.stringify(node, null, 2))}></textarea>
+    `,
+    container,
+  );
 }
 
 // ─── Function editor (Monaco JS mode) ─────────────────────────────────────────
@@ -6954,21 +7058,29 @@ function renderFunctionEditor() {
   canvasDndCleanups = [];
   canvasPanels.length = 0;
 
-  canvasWrap.innerHTML = "";
+  litRender(nothing, canvasWrap);
   canvasWrap.style.padding = "0";
 
   // Toolbar breadcrumb handles context display — re-render it
   renderToolbar();
 
   // Editor container
-  const editorContainer = document.createElement("div");
-  editorContainer.className = "source-editor";
-  canvasWrap.appendChild(editorContainer);
+  /** @type {HTMLDivElement | null} */
+  let editorContainer = null;
+  litRender(
+    html`<div
+      class="source-editor"
+      ${ref((el) => {
+        if (el) editorContainer = /** @type {HTMLDivElement} */ (el);
+      })}
+    ></div>`,
+    canvasWrap,
+  );
 
   const body = getFunctionBody(editing);
   const args = getFunctionArgs(editing, S);
 
-  functionEditor = monaco.editor.create(editorContainer, {
+  functionEditor = monaco.editor.create(/** @type {any} */ (editorContainer), {
     value: body,
     language: "javascript",
     theme: "vs-dark",

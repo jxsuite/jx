@@ -7,6 +7,7 @@
 
 import elementsMeta from "../../data/elements-meta.json";
 import { toggleInlineFormat, normalizeInlineContent } from "./inline-format.js";
+import { html, render as litRender, nothing } from "lit-html";
 
 // ─── Inline tag set (tags that represent rich text formatting) ─────────────
 
@@ -578,7 +579,6 @@ function updateSlashMenu() {
 function renderSlashItems(filter) {
   if (!slashMenuEl) return;
   const menuInner = slashMenuEl._menuInner;
-  menuInner.innerHTML = "";
 
   const allItems = [
     ...SLASH_COMMANDS,
@@ -598,40 +598,35 @@ function renderSlashItems(filter) {
 
   let activeIdx = 0;
 
-  for (let i = 0; i < items.length; i++) {
-    const item = items[i];
-    const row = document.createElement("sp-menu-item");
-    if (i === 0) row.setAttribute("selected", "");
-
-    const icon = document.createElement("span");
-    icon.slot = "icon";
-    icon.textContent = item.icon;
-    row.appendChild(icon);
-
-    row.textContent = item.label;
-    // Re-append icon since textContent cleared it
-    row.prepend(icon);
-    if (item.description) {
-      const desc = document.createElement("span");
-      desc.slot = "description";
-      desc.textContent = item.description;
-      row.appendChild(desc);
-    }
-
-    row.addEventListener("mouseenter", () => {
-      for (const r of menuInner.querySelectorAll("sp-menu-item")) r.removeAttribute("selected");
-      row.setAttribute("selected", "");
-      activeIdx = i;
-    });
-
-    row.addEventListener("click", (/** @type {Event} */ e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      selectSlashItem(item);
-    });
-
-    menuInner.appendChild(row);
-  }
+  litRender(
+    html`
+      ${items.map(
+        (item, i) => html`
+          <sp-menu-item
+            ?selected=${i === 0}
+            @mouseenter=${(/** @type {any} */ e) => {
+              for (const r of menuInner.querySelectorAll("sp-menu-item"))
+                r.removeAttribute("selected");
+              e.target.setAttribute("selected", "");
+              activeIdx = i;
+            }}
+            @click=${(/** @type {Event} */ e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              selectSlashItem(item);
+            }}
+          >
+            <span slot="icon">${item.icon}</span>
+            ${item.label}
+            ${item.description
+              ? html`<span slot="description">${item.description}</span>`
+              : nothing}
+          </sp-menu-item>
+        `,
+      )}
+    `,
+    menuInner,
+  );
 
   // Keyboard navigation within the menu
   if (!slashMenuEl._keyHandler) {
