@@ -61,7 +61,8 @@ export function pasteNode(S) {
 const ctxMenu = document.createElement("sp-popover");
 ctxMenu.style.position = "fixed";
 ctxMenu.style.zIndex = "10000";
-document.body.appendChild(ctxMenu);
+/** Append inside sp-theme so the popover inherits Spectrum styles */
+(document.querySelector("sp-theme") || document.body).appendChild(ctxMenu);
 
 document.addEventListener("click", () => {
   ctxMenu.removeAttribute("open");
@@ -114,18 +115,20 @@ export function showContextMenu(e, path, S) {
   }
 
   litRender(
-    html`${items.map((item) =>
-      item.label === "—"
-        ? html`<sp-menu-divider></sp-menu-divider>`
-        : html`<sp-menu-item
-            style=${item.danger ? "color: var(--danger)" : ""}
-            @click=${() => {
-              ctxMenu.removeAttribute("open");
-              item.action?.();
-            }}
-            >${item.label}</sp-menu-item
-          >`,
-    )}`,
+    html`<sp-menu>
+      ${items.map((item) =>
+        item.label === "—"
+          ? html`<sp-menu-divider></sp-menu-divider>`
+          : html`<sp-menu-item
+              style=${item.danger ? "color: var(--danger)" : ""}
+              @click=${() => {
+                ctxMenu.removeAttribute("open");
+                item.action?.();
+              }}
+              >${item.label}</sp-menu-item
+            >`,
+      )}
+    </sp-menu>`,
     ctxMenu,
   );
 
