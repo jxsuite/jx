@@ -72,6 +72,11 @@ import {
   isInlineInContext,
   getInlineActions,
 } from "./editor/inline-edit.js";
+import {
+  showSlashMenu as sharedShowSlashMenu,
+  dismissSlashMenu as sharedDismissSlashMenu,
+  isSlashMenuOpen,
+} from "./editor/slash-menu.js";
 import { toggleInlineFormat, isTagActiveInSelection } from "./editor/inline-format.js";
 import {
   camelToKebab,
@@ -178,8 +183,6 @@ let panzoomWrap = null;
 let componentInlineEdit = null;
 /** @type {any} */
 let pendingInlineEdit = null;
-/** @type {any} */
-let componentSlashMenu = null;
 /** @type {any} */
 let monacoEditor = null;
 /** @type {any} */
@@ -2350,7 +2353,7 @@ function enterInlineEdit(el, path) {
 
     onSplit(/** @type {any} */ splitPath, /** @type {any} */ before, /** @type {any} */ after) {
       // Update current element with "before" content
-      const tag = getNodeAtPath(S.document, splitPath)?.tagName ?? "p";
+      const tag = "p";
       let s = S;
 
       if (before.textContent != null) {
@@ -2399,7 +2402,9 @@ function enterInlineEdit(el, path) {
       });
     },
 
-    onInsert(/** @type {any} */ afterPath, /** @type {any} */ elementDef) {
+    onInsert(/** @type {any} */ afterPath, /** @type {any} */ cmd) {
+      // cmd comes from the shared slash menu: { label, tag, description }
+      const elementDef = defaultDef(cmd.tag);
       const parentPath = /** @type {any} */ (parentElementPath(afterPath));
       const idx = /** @type {number} */ (childIndex(afterPath));
       let s = insertNode(S, parentPath, idx + 1, structuredClone(elementDef));
@@ -2525,8 +2530,8 @@ function enterComponentInlineEdit(el, path) {
       return;
     }
     if (componentInlineEdit.el.contains(evt.target)) return; // click within editing el — let it through
-    // Let clicks inside the slash command menu through
-    if (componentSlashMenu && componentSlashMenu.contains(evt.target)) return;
+    // Let clicks through when the slash command menu is open
+    if (isSlashMenuOpen()) return;
     // Let clicks inside the block action bar through
     if (blockActionBarEl && blockActionBarEl.contains(evt.target)) return;
     document.removeEventListener("mousedown", outsideHandler, true);
@@ -2607,36 +2612,9 @@ function enterComponentInlineEdit(el, path) {
 
 /** @param {any} e */
 function componentInlineKeydown(e) {
-  // When slash menu is open, delegate navigation keys
-  if (componentSlashMenu) {
-    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-      e.preventDefault();
-      e.stopPropagation();
-      const items = [...componentSlashMenu.querySelectorAll("sp-menu-item")];
-      if (!items.length) return;
-      let idx = componentSlashMenu._activeIdx ?? 0;
-      if (e.key === "ArrowDown") idx = (idx + 1) % items.length;
-      else idx = (idx - 1 + items.length) % items.length;
-      componentSlashMenu._activeIdx = idx;
-      for (const it of items) it.removeAttribute("focused");
-      items[idx].setAttribute("focused", "");
-      items[idx].scrollIntoView({ block: "nearest" });
-      return;
-    }
-    if (e.key === "Enter") {
-      e.preventDefault();
-      e.stopPropagation();
-      const items = [...componentSlashMenu.querySelectorAll("sp-menu-item")];
-      const idx = componentSlashMenu._activeIdx ?? 0;
-      if (items[idx]?._cmd) selectComponentSlashItem(items[idx]._cmd);
-      return;
-    }
-    if (e.key === "Escape") {
-      e.preventDefault();
-      e.stopPropagation();
-      dismissComponentSlashMenu();
-      return;
-    }
+  // When slash menu is open, let the shared module's capturing handler deal with it
+  if (isSlashMenuOpen()) {
+    if (["ArrowDown", "ArrowUp", "Enter", "Escape"].includes(e.key)) return;
   }
 
   if (e.key === "Enter" && !e.shiftKey) {
@@ -2668,9 +2646,7 @@ function splitParagraph() {
   const textBefore = fullText.slice(0, offset);
   const textAfter = fullText.slice(offset);
 
-  // Get node info for building the new sibling
-  const node = getNodeAtPath(S.document, path);
-  const tag = node?.tagName || "p";
+  const tag = "p";
   const pPath = /** @type {any} */ (parentElementPath(path));
   const idx = /** @type {number} */ (childIndex(path));
   if (!pPath) return; // can't split root
@@ -2720,7 +2696,7 @@ function cancelComponentInlineEdit() {
 function cleanupComponentInlineEdit(el) {
   el.removeEventListener("keydown", componentInlineKeydown);
   el.removeEventListener("input", componentInlineInput);
-  dismissComponentSlashMenu();
+  sharedDismissSlashMenu();
   el.removeAttribute("contenteditable");
   el.style.cursor = "";
   el.style.outline = "";
@@ -2741,24 +2717,7 @@ function cleanupComponentInlineEdit(el) {
   }
 }
 
-// ─── Component-mode slash commands ───────────────────────────────────────────
-
-const COMPONENT_SLASH_COMMANDS = [
-  { label: "Heading 1", tag: "h1", icon: "H1", description: "Large heading" },
-  { label: "Heading 2", tag: "h2", icon: "H2", description: "Medium heading" },
-  { label: "Heading 3", tag: "h3", icon: "H3", description: "Small heading" },
-  { label: "Paragraph", tag: "p", icon: "\u00B6", description: "Plain text" },
-  { label: "Unordered List", tag: "ul", icon: "\u2022", description: "Bulleted list" },
-  { label: "Ordered List", tag: "ol", icon: "1.", description: "Numbered list" },
-  { label: "Blockquote", tag: "blockquote", icon: "\u275D", description: "Quote block" },
-  { label: "Image", tag: "img", icon: "\uD83D\uDDBC", description: "Insert image" },
-  { label: "Horizontal Rule", tag: "hr", icon: "\u2014", description: "Divider line" },
-  { label: "Button", tag: "button", icon: "\u25A2", description: "Button element" },
-  { label: "Link", tag: "a", icon: "\uD83D\uDD17", description: "Anchor link" },
-  { label: "Code Block", tag: "pre", icon: "<>", description: "Preformatted code" },
-  { label: "Div", tag: "div", icon: "\u2610", description: "Container" },
-  { label: "Section", tag: "section", icon: "\u00A7", description: "Section container" },
-];
+// ─── Component-mode slash commands (delegates to shared slash-menu.js) ────────
 
 function componentInlineInput() {
   if (!componentInlineEdit) return;
@@ -2768,76 +2727,20 @@ function componentInlineInput() {
   // Only trigger slash menu when the paragraph was originally empty and starts with /
   if (originalText === "" && text.startsWith("/")) {
     const filter = text.slice(1).toLowerCase();
-    showComponentSlashMenu(el, filter);
+    sharedShowSlashMenu(el, filter, { onSelect: handleComponentSlashSelect });
   } else {
-    dismissComponentSlashMenu();
+    sharedDismissSlashMenu();
   }
-}
-
-const slashMenuHost = document.createElement("div");
-slashMenuHost.style.display = "contents";
-(document.querySelector("sp-theme") || document.body).appendChild(slashMenuHost);
-
-/**
- * @param {any} el
- * @param {any} filter
- */
-function showComponentSlashMenu(el, filter) {
-  const items = filter
-    ? COMPONENT_SLASH_COMMANDS.filter(
-        (c) => c.label.toLowerCase().includes(filter) || c.tag.toLowerCase().includes(filter),
-      )
-    : COMPONENT_SLASH_COMMANDS;
-
-  if (!items.length) {
-    dismissComponentSlashMenu();
-    return;
-  }
-
-  const rect = el.getBoundingClientRect();
-
-  litRender(
-    html`
-      <sp-popover
-        open
-        placement="bottom-start"
-        style="position:fixed;left:${rect.left}px;top:${rect.bottom +
-        4}px;z-index:9999;max-height:280px;overflow-y:auto"
-      >
-        <sp-menu style="min-width:220px">
-          ${items.map(
-            (cmd, i) => html`
-              <sp-menu-item ?focused=${i === 0} @click=${() => selectComponentSlashItem(cmd)}>
-                ${cmd.label}
-                ${cmd.description
-                  ? html`<span slot="description">${cmd.description}</span>`
-                  : nothing}
-              </sp-menu-item>
-            `,
-          )}
-        </sp-menu>
-      </sp-popover>
-    `,
-    slashMenuHost,
-  );
-  componentSlashMenu = slashMenuHost;
-}
-
-function dismissComponentSlashMenu() {
-  if (!componentSlashMenu) return;
-  litRender(nothing, slashMenuHost);
-  componentSlashMenu = null;
 }
 
 /** @param {any} cmd */
-function selectComponentSlashItem(cmd) {
+function handleComponentSlashSelect(cmd) {
   if (!componentInlineEdit) return;
   const { el, path, mediaName } = componentInlineEdit;
   const pPath = parentElementPath(path);
   const idx = /** @type {number} */ (childIndex(path));
   if (!pPath) return;
 
-  dismissComponentSlashMenu();
   cleanupComponentInlineEdit(el);
 
   const newDef = defaultDef(cmd.tag);
@@ -7430,6 +7333,17 @@ initShortcuts(() => ({
   componentInlineEdit,
   saveFile,
   openProject,
+  enterEditOnPath(path) {
+    requestAnimationFrame(() => {
+      const activePanel = getActivePanel();
+      if (activePanel) {
+        const el = findCanvasElement(path, activePanel.canvas);
+        if (el && isEditableBlock(el)) {
+          enterInlineEdit(el, path);
+        }
+      }
+    });
+  },
 }));
 
 // ─── Autosave (registered as update middleware) ──────────────────────────────

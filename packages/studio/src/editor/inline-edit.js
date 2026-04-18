@@ -7,7 +7,11 @@
 
 import elementsMeta from "../../data/elements-meta.json";
 import { toggleInlineFormat, normalizeInlineContent } from "./inline-format.js";
-import { html, render as litRender, nothing } from "lit-html";
+import {
+  showSlashMenu as sharedShowSlashMenu,
+  dismissSlashMenu as sharedDismissSlashMenu,
+  isSlashMenuOpen,
+} from "./slash-menu.js";
 
 // ─── Inline tag set (tags that represent rich text formatting) ─────────────
 
@@ -94,10 +98,6 @@ let splitFn = null; // function(path, beforeChildren, afterChildren) to split pa
 let insertFn = null; // function(path, elementDef) to insert after current block
 /** @type {(() => void) | null} */
 let endFn = null; // function() called when editing stops
-/** @type {any} */
-let slashMenuEl = null; // slash command menu element
-/** @type {any} */
-let _slashMenuCleanup = null;
 
 /**
  * Check if an element is a text-bearing editable block.
@@ -176,7 +176,7 @@ export function stopEditing() {
   if (!activeEl) return;
 
   commitChanges();
-  dismissSlashMenu();
+  sharedDismissSlashMenu();
 
   activeEl.contentEditable = "false";
   activeEl.style.pointerEvents = "";
@@ -226,12 +226,15 @@ export function getActiveElement() {
 function handleKeydown(e) {
   if (e.key === "Escape") {
     e.preventDefault();
+    e.stopPropagation();
     stopEditing();
     return;
   }
 
   if (e.key === "Enter" && !e.shiftKey) {
+    if (isSlashMenuOpen()) return; // shared slash menu captures Enter
     e.preventDefault();
+    e.stopPropagation();
     handleEnterKey();
     return;
   }
@@ -245,7 +248,7 @@ function handleKeydown(e) {
       const textBefore = getTextBeforeCursor(range);
       if (textBefore === "" || textBefore.endsWith(" ") || textBefore.endsWith("\n")) {
         // Let the / character be typed, then show menu on next input
-        requestAnimationFrame(() => showSlashMenu());
+        requestAnimationFrame(() => openSlashMenu());
         return;
       }
     }
@@ -270,22 +273,25 @@ function handleKeydown(e) {
   }
 
   // Dismiss slash menu on non-matching keys
-  if (slashMenuEl && !["ArrowUp", "ArrowDown", "Enter", "Backspace", "Delete"].includes(e.key)) {
+  if (
+    isSlashMenuOpen() &&
+    !["ArrowUp", "ArrowDown", "Enter", "Backspace", "Delete"].includes(e.key)
+  ) {
     // Let the input handler deal with filtering
   }
 }
 
 function handleInput() {
   // Check if slash menu should update or dismiss
-  if (slashMenuEl) {
+  if (isSlashMenuOpen()) {
     updateSlashMenu();
   }
 }
 
-/** @param {FocusEvent} e */
-function handleBlur(e) {
-  // Don't close if clicking the slash menu
-  if (slashMenuEl && slashMenuEl.contains(/** @type {Node | null} */ (e.relatedTarget))) return;
+/** @param {FocusEvent} _e */
+function handleBlur(_e) {
+  // Don't close if focus moved to slash menu
+  if (isSlashMenuOpen()) return;
 
   // Delay to allow click events to fire
   setTimeout(() => {
@@ -481,187 +487,46 @@ function getTextBeforeCursor(range) {
   return preRange.toString();
 }
 
-// ─── Slash command menu ────────────────────────────────────────────────────
+// ─── Slash command menu (delegates to shared slash-menu.js) ──────────────
 
-/** Default slash command items */
-const SLASH_COMMANDS = [
-  { label: "Heading 1", tag: "h1", icon: "H1", description: "Large heading" },
-  { label: "Heading 2", tag: "h2", icon: "H2", description: "Medium heading" },
-  { label: "Heading 3", tag: "h3", icon: "H3", description: "Small heading" },
-  { label: "Paragraph", tag: "p", icon: "P", description: "Plain text" },
-  { label: "Bulleted List", tag: "ul", icon: "\u2022", description: "Unordered list" },
-  { label: "Numbered List", tag: "ol", icon: "1.", description: "Ordered list" },
-  { label: "Blockquote", tag: "blockquote", icon: '"', description: "Quote block" },
-  { label: "Code Block", tag: "pre", icon: "<>", description: "Fenced code" },
-  { label: "Image", tag: "img", icon: "\uD83D\uDDBC", description: "Insert image" },
-  { label: "Horizontal Rule", tag: "hr", icon: "\u2014", description: "Divider line" },
-  { label: "Table", tag: "table", icon: "\u229E", description: "Insert table" },
-];
+/** Track the character offset where "/" was typed so we can detect backspace-past-slash */
+let _slashFilterStart = 0;
 
-/**
- * Project-level component commands — populated externally
- *
- * @type {{ label: string; tag: string; description: string }[]}
- */
-let projectComponents = [];
-
-/**
- * Set available project components for the slash menu.
- *
- * @param {{ label: string; tag: string; description: string }[]} components
- */
-export function setProjectComponents(components) {
-  projectComponents = components;
-}
-
-function showSlashMenu() {
-  dismissSlashMenu();
+function openSlashMenu() {
+  if (!activeEl || !insertFn || !activePath) return;
 
   const sel = window.getSelection();
   if (!sel || !sel.rangeCount) return;
-
   const range = sel.getRangeAt(0);
-  const rect = range.getBoundingClientRect();
+  _slashFilterStart = getTextBeforeCursor(range).length;
 
-  slashMenuEl = document.createElement("sp-popover");
-  const slashMenuInner = document.createElement("sp-menu");
-  slashMenuEl.appendChild(slashMenuInner);
-  slashMenuEl._menuInner = slashMenuInner;
-  slashMenuEl.style.position = "fixed";
-  slashMenuEl.style.left = `${rect.left}px`;
-  slashMenuEl.style.top = `${rect.bottom + 4}px`;
-  slashMenuEl.tabIndex = -1;
-
-  renderSlashItems("");
-  document.body.appendChild(slashMenuEl);
-  slashMenuEl.setAttribute("open", "");
-
-  // Track filter text after the /
-  slashMenuEl._filterStart = getTextBeforeCursor(range).length;
+  sharedShowSlashMenu(activeEl, "", { onSelect: handleSlashSelect });
 }
 
 function updateSlashMenu() {
-  if (!slashMenuEl || !activeEl) return;
+  if (!activeEl) return;
 
   const sel = window.getSelection();
   if (!sel || !sel.rangeCount) {
-    dismissSlashMenu();
+    sharedDismissSlashMenu();
     return;
   }
 
   const range = sel.getRangeAt(0);
   const fullText = getTextBeforeCursor(range);
-
-  // Find the position of the last /
   const slashIdx = fullText.lastIndexOf("/");
-  if (slashIdx < 0) {
-    dismissSlashMenu();
+
+  if (slashIdx < 0 || fullText.length < _slashFilterStart - 1) {
+    sharedDismissSlashMenu();
     return;
   }
 
   const filter = fullText.slice(slashIdx + 1).toLowerCase();
-
-  // If user backspaced past the /, dismiss
-  if (fullText.length < (slashMenuEl._filterStart || 0) - 1) {
-    dismissSlashMenu();
-    return;
-  }
-
-  renderSlashItems(filter);
-
-  // If no items match, dismiss
-  if (slashMenuEl._menuInner.children.length === 0) {
-    dismissSlashMenu();
-  }
+  sharedShowSlashMenu(activeEl, filter, { onSelect: handleSlashSelect });
 }
 
-/** @param {string} filter */
-function renderSlashItems(filter) {
-  if (!slashMenuEl) return;
-  const menuInner = slashMenuEl._menuInner;
-
-  const allItems = [
-    ...SLASH_COMMANDS,
-    ...projectComponents.map((/** @type {any} */ c) => ({
-      ...c,
-      icon: "\u25C6",
-      isComponent: true,
-    })),
-  ];
-
-  const items = filter
-    ? allItems.filter(
-        (/** @type {any} */ i) =>
-          i.label.toLowerCase().includes(filter) || i.tag.toLowerCase().includes(filter),
-      )
-    : allItems;
-
-  let activeIdx = 0;
-
-  litRender(
-    html`
-      ${items.map(
-        (item, i) => html`
-          <sp-menu-item
-            ?selected=${i === 0}
-            @mouseenter=${(/** @type {any} */ e) => {
-              for (const r of menuInner.querySelectorAll("sp-menu-item"))
-                r.removeAttribute("selected");
-              e.target.setAttribute("selected", "");
-              activeIdx = i;
-            }}
-            @click=${(/** @type {Event} */ e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              selectSlashItem(item);
-            }}
-          >
-            <span slot="icon">${item.icon}</span>
-            ${item.label}
-            ${item.description
-              ? html`<span slot="description">${item.description}</span>`
-              : nothing}
-          </sp-menu-item>
-        `,
-      )}
-    `,
-    menuInner,
-  );
-
-  // Keyboard navigation within the menu
-  if (!slashMenuEl._keyHandler) {
-    slashMenuEl._keyHandler = (/** @type {KeyboardEvent} */ e) => {
-      if (!slashMenuEl) return;
-      const rows = menuInner.querySelectorAll("sp-menu-item");
-      if (!rows.length) return;
-
-      if (e.key === "ArrowDown") {
-        e.preventDefault();
-        rows[activeIdx]?.removeAttribute("selected");
-        activeIdx = (activeIdx + 1) % rows.length;
-        rows[activeIdx]?.setAttribute("selected", "");
-        rows[activeIdx]?.scrollIntoView({ block: "nearest" });
-      } else if (e.key === "ArrowUp") {
-        e.preventDefault();
-        rows[activeIdx]?.removeAttribute("selected");
-        activeIdx = (activeIdx - 1 + rows.length) % rows.length;
-        rows[activeIdx]?.setAttribute("selected", "");
-        rows[activeIdx]?.scrollIntoView({ block: "nearest" });
-      } else if (e.key === "Enter") {
-        e.preventDefault();
-        const match = items[activeIdx];
-        if (match) selectSlashItem(match);
-      } else if (e.key === "Escape") {
-        e.preventDefault();
-        dismissSlashMenu();
-      }
-    };
-    activeEl?.addEventListener("keydown", slashMenuEl._keyHandler);
-  }
-}
-
-/** @param {any} item */
-function selectSlashItem(item) {
+/** @param {any} cmd */
+function handleSlashSelect(cmd) {
   if (!activeEl || !insertFn || !activePath) return;
 
   // Remove the /command text from the element
@@ -671,12 +536,6 @@ function selectSlashItem(item) {
     const fullText = getTextBeforeCursor(range);
     const slashIdx = fullText.lastIndexOf("/");
     if (slashIdx >= 0) {
-      // Delete from slash position to cursor
-      const preRange = document.createRange();
-      preRange.setStart(activeEl, 0);
-      preRange.setEnd(range.startContainer, range.startOffset);
-
-      // Walk to find the text node and offset of the slash
       const walker = document.createTreeWalker(activeEl, NodeFilter.SHOW_TEXT);
       let charCount = 0;
       /** @type {Text | null} */
@@ -691,7 +550,6 @@ function selectSlashItem(item) {
         }
         charCount += node.length;
       }
-
       if (slashNode) {
         const delRange = document.createRange();
         delRange.setStart(slashNode, slashOffset);
@@ -701,12 +559,7 @@ function selectSlashItem(item) {
     }
   }
 
-  // Commit current content before inserting
   commitChanges();
-  dismissSlashMenu();
-
-  // Build the element definition to insert
-  const def = buildDefaultForTag(item.tag);
 
   const path = [...activePath];
   activeEl.contentEditable = "false";
@@ -716,68 +569,6 @@ function selectSlashItem(item) {
   activeEl.removeEventListener("paste", handlePaste);
   activeEl = null;
 
-  insertFn(path, def);
-}
-
-function dismissSlashMenu() {
-  if (!slashMenuEl) return;
-  if (slashMenuEl._keyHandler && activeEl) {
-    activeEl.removeEventListener("keydown", slashMenuEl._keyHandler);
-  }
-  slashMenuEl.remove();
-  slashMenuEl = null;
-}
-
-/**
- * Build a default Jx element definition for a given tag.
- *
- * @param {string} tag
- * @returns {any}
- */
-function buildDefaultForTag(tag) {
-  switch (tag) {
-    case "h1":
-      return { tagName: "h1", textContent: "Heading" };
-    case "h2":
-      return { tagName: "h2", textContent: "Heading" };
-    case "h3":
-      return { tagName: "h3", textContent: "Heading" };
-    case "h4":
-      return { tagName: "h4", textContent: "Heading" };
-    case "h5":
-      return { tagName: "h5", textContent: "Heading" };
-    case "h6":
-      return { tagName: "h6", textContent: "Heading" };
-    case "p":
-      return { tagName: "p", textContent: "" };
-    case "ul":
-      return { tagName: "ul", children: [{ tagName: "li", textContent: "Item" }] };
-    case "ol":
-      return { tagName: "ol", children: [{ tagName: "li", textContent: "Item" }] };
-    case "blockquote":
-      return { tagName: "blockquote", children: [{ tagName: "p", textContent: "Quote" }] };
-    case "pre":
-      return { tagName: "pre", children: [{ tagName: "code", textContent: "" }] };
-    case "hr":
-      return { tagName: "hr" };
-    case "img":
-      return { tagName: "img", attributes: { src: "", alt: "Image" } };
-    case "table":
-      return {
-        tagName: "table",
-        children: [
-          {
-            tagName: "thead",
-            children: [{ tagName: "tr", children: [{ tagName: "th", textContent: "Header" }] }],
-          },
-          {
-            tagName: "tbody",
-            children: [{ tagName: "tr", children: [{ tagName: "td", textContent: "Cell" }] }],
-          },
-        ],
-      };
-    default:
-      // Custom component / directive
-      return { tagName: tag, textContent: "" };
-  }
+  // Delegate to studio.js callback which builds the element def and inserts it
+  insertFn(path, cmd);
 }

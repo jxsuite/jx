@@ -10,6 +10,7 @@ import {
   undo,
   redo,
   removeNode,
+  insertNode,
   duplicateNode,
   getNodeAtPath,
   parentElementPath,
@@ -35,6 +36,7 @@ import { copyNode, cutNode, pasteNode } from "./context-menu.js";
  *   componentInlineEdit: any;
  *   saveFile: () => void;
  *   openProject: () => void;
+ *   enterEditOnPath: (path: any) => void;
  * }} getContext
  */
 export function initShortcuts(getContext) {
@@ -108,6 +110,7 @@ export function initShortcuts(getContext) {
       componentInlineEdit,
       saveFile,
       openProject,
+      enterEditOnPath,
     } = getContext();
     const mod = e.ctrlKey || e.metaKey;
 
@@ -199,6 +202,18 @@ export function initShortcuts(getContext) {
         break;
       case "Escape":
         update(selectNode(S, null));
+        break;
+      case "Enter":
+        if (S.selection && S.selection.length >= 2) {
+          e.preventDefault();
+          const pp = /** @type {any} */ (parentElementPath(S.selection));
+          const idx = /** @type {number} */ (childIndex(S.selection));
+          let s = insertNode(S, pp, idx + 1, { tagName: "p", textContent: "" });
+          const newPath = [...pp, "children", idx + 1];
+          s = selectNode(s, newPath);
+          update(s);
+          enterEditOnPath(newPath);
+        }
         break;
       case "ArrowUp":
         e.preventDefault();
