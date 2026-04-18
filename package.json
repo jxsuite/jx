@@ -28,7 +28,8 @@
     "release": "release-it",
     "test": "bun test",
     "test:coverage": "bun test --coverage",
-    "typecheck": "tsc"
+    "typecheck": "tsc",
+    "upgrade": "bun run --workspaces upgrade"
   },
   "dependencies": {},
   "devDependencies": {
@@ -39,8 +40,8 @@
     "chrome-devtools-mcp": "^0.21.0",
     "husky": "^9.1.7",
     "lint-staged": "^16.4.0",
-    "oxfmt": "^0.44.0",
-    "oxlint": "^1.59.0",
+    "oxfmt": "^0.45.0",
+    "oxlint": "^1.60.0",
     "release-it": "^20.0.0"
   },
   "lint-staged": {

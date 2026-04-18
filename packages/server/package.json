@@ -10,6 +10,9 @@
   "exports": {
     ".": "./src/server.js"
   },
+  "scripts": {
+    "upgrade": "bunx npm-check-updates -u && bun install"
+  },
   "dependencies": {
     "chokidar": "^5.0.0"
   }

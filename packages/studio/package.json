@@ -16,7 +16,7 @@
   "scripts": {
     "build": "bun build ./src/studio.js --outdir dist --target browser --sourcemap=linked",
     "gen:webdata": "bun run scripts/gen-webdata.js",
-    "npm-upgrade": "bunx npm-check-updates -u && bun install",
+    "upgrade": "bunx npm-check-updates -u && bun install",
     "test": "bun test"
   },
   "dependencies": {
@@ -33,6 +33,7 @@
     "@spectrum-web-components/color-slider": "^1.11.2",
     "@spectrum-web-components/combobox": "^1.11.2",
     "@spectrum-web-components/divider": "^1.11.2",
+    "@spectrum-web-components/icon": "^1.11.2",
     "@spectrum-web-components/icons-workflow": "^1.11.2",
     "@spectrum-web-components/menu": "^1.11.2",
     "@spectrum-web-components/number-field": "^1.11.2",

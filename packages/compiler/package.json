@@ -25,7 +25,7 @@
     "test": "bun test",
     "build": "bun build src/compiler.js --outdir=dist --format=esm --minify",
     "build:site": "bun src/cli-build.js",
-    "npm-upgrade": "bunx npm-check-updates -u && bun install"
+    "upgrade": "bunx npm-check-updates -u && bun install"
   },
   "dependencies": {
     "@apidevtools/json-schema-ref-parser": "^15.3.5",

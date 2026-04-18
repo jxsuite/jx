@@ -100,7 +100,7 @@ export async function handleStudioApi(req, url, root) {
         try {
           const raw = JSON.parse(await readFile(fp, "utf8"));
           if (typeof raw === "object" && raw !== null && !Array.isArray(raw)) {
-            const projectDir = dirname(match) === "." ? "." : dirname(match);
+            const projectDir = dirname(match) === "." ? "." : dirname(match).replaceAll("\\", "/");
             sites.push({ path: projectDir, config: raw });
           }
         } catch {}

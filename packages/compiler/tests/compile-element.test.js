@@ -1,8 +1,8 @@
 import { describe, test, expect } from "bun:test";
 import { compileElement, compileElementPage } from "../src/compiler.js";
-import { resolve, dirname } from "node:path";
+import { resolve } from "node:path";
 
-const fixturesDir = resolve(dirname(new URL(import.meta.url).pathname));
+const fixturesDir = import.meta.dir;
 const examplesDir = resolve(fixturesDir, "../../../examples/custom-elements");
 
 // ─── compileElement — basic output ──────────────────────────────────────────

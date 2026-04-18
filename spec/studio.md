@@ -68,7 +68,7 @@ Immutable state with undo/redo history (100 entries). All mutations produce a ne
 | `addDef(key, value)`                              | Add state entry                     |
 | `removeDef(key)`                                  | Remove state entry                  |
 | `updateDef(key, value)`                           | Update state entry                  |
-| `renameDef(oldKey, newKey)`                        | Rename state entry                  |
+| `renameDef(oldKey, newKey)`                       | Rename state entry                  |
 | `updateMediaStyle(path, breakpoint, prop, value)` | Responsive style                    |
 | `updateNestedStyle(path, selector, prop, value)`  | Nested CSS selector style           |
 | `addSwitchCase(path, key)`                        | Add `$switch` case                  |
@@ -80,16 +80,16 @@ Immutable state with undo/redo history (100 entries). All mutations produce a ne
 
 Studio uses a platform abstraction (`platform.js`) to decouple UI from backend:
 
-| Method                | Description                          |
-| --------------------- | ------------------------------------ |
-| `listFiles(dir)`      | List directory contents              |
-| `readFile(path)`      | Read file content                    |
-| `writeFile(path, c)`  | Write file content                   |
-| `deleteFile(path)`    | Delete file                          |
-| `renameFile(old,new)` | Rename/move file                     |
-| `discoverComponents()`| Scan project for custom elements     |
-| `openProject()`       | Open project picker                  |
-| `probeRootProject()`  | Auto-detect project at startup       |
+| Method                 | Description                      |
+| ---------------------- | -------------------------------- |
+| `listFiles(dir)`       | List directory contents          |
+| `readFile(path)`       | Read file content                |
+| `writeFile(path, c)`   | Write file content               |
+| `deleteFile(path)`     | Delete file                      |
+| `renameFile(old,new)`  | Rename/move file                 |
+| `discoverComponents()` | Scan project for custom elements |
+| `openProject()`        | Open project picker              |
+| `probeRootProject()`   | Auto-detect project at startup   |
 
 Three platform targets:
 
@@ -111,11 +111,11 @@ The canvas renders the current document using `@jxplatform/runtime`. It shows ex
 
 | Mode      | Description                                   |
 | --------- | --------------------------------------------- |
-| Design    | Interactive editing with selection overlays    |
-| Stylebook | Design token management and component gallery  |
-| Preview   | Clean preview without editing chrome           |
-| Source    | Raw JSON/code view                             |
-| Content   | Markdown editing mode (inline text editing)    |
+| Design    | Interactive editing with selection overlays   |
+| Stylebook | Design token management and component gallery |
+| Preview   | Clean preview without editing chrome          |
+| Source    | Raw JSON/code view                            |
+| Content   | Markdown editing mode (inline text editing)   |
 
 ### 4.3 Pan, Zoom, and Centering
 
@@ -130,13 +130,13 @@ The design canvas supports pan and zoom:
 
 Unified floating action bar (Gutenberg-style) attached to the selected element:
 
-| Control            | Description                                      |
-| ------------------ | ------------------------------------------------ |
-| Parent selector    | Navigate up to parent element (back icon)        |
-| Tag indicator      | Shows tag name or `$id`                          |
-| Drag handle        | Plain `<span>` for native drag events            |
-| Move up/down       | Reorder within parent                            |
-| Inline formatting  | Bold/italic/code/link (content mode only)        |
+| Control           | Description                               |
+| ----------------- | ----------------------------------------- |
+| Parent selector   | Navigate up to parent element (back icon) |
+| Tag indicator     | Shows tag name or `$id`                   |
+| Drag handle       | Plain `<span>` for native drag events     |
+| Move up/down      | Reorder within parent                     |
+| Inline formatting | Bold/italic/code/link (content mode only) |
 
 Formatting buttons only appear in content mode (rich text `contentEditable`), not in component mode (`contentEditable="plaintext-only"`).
 
@@ -148,14 +148,14 @@ Formatting buttons only appear in content mode (rich text `contentEditable`), no
 
 Vertical tab strip for switching panel views:
 
-| Tab        | Icon             | Panel                     |
-| ---------- | ---------------- | ------------------------- |
-| Files      | folder           | Project file tree         |
-| Layers     | layers           | Document structure tree   |
-| Components | box              | Component library         |
-| Elements   | view-grid        | HTML element palette      |
-| State      | brackets         | State definitions         |
-| Data       | data             | Data connections          |
+| Tab        | Icon      | Panel                   |
+| ---------- | --------- | ----------------------- |
+| Files      | folder    | Project file tree       |
+| Layers     | layers    | Document structure tree |
+| Components | box       | Component library       |
+| Elements   | view-grid | HTML element palette    |
+| State      | brackets  | State definitions       |
+| Data       | data      | Data connections        |
 
 ### 5.2 Layers Panel
 
@@ -197,16 +197,16 @@ Organized, metadata-driven style sections. Metadata loaded from `css-meta.json` 
 
 #### Sections
 
-| Section     | Properties                                                                 |
-| ----------- | -------------------------------------------------------------------------- |
+| Section     | Properties                                                                                                               |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------ |
 | Layout      | `display`, `flexDirection`, `flexWrap`, `alignItems`, `justifyContent`, `gap`, `gridTemplateColumns`, `gridTemplateRows` |
-| Spacing     | `margin*`, `padding*`                                                      |
-| Positioning | `position`, `top`, `right`, `bottom`, `left`, `zIndex`                     |
-| Typography  | `fontFamily`, `fontSize`, `fontWeight`, `lineHeight`, `textAlign`, `color`, `textDecoration` |
-| Background  | `backgroundColor`, `backgroundImage`, `backgroundSize`, `backgroundPosition` |
-| Border      | `border*`, `borderRadius`, `outline`                                       |
-| Effects     | `opacity`, `boxShadow`, `transform`, `transition`, `cursor`, `overflow`    |
-| Other       | Unlisted properties                                                        |
+| Spacing     | `margin*`, `padding*`                                                                                                    |
+| Positioning | `position`, `top`, `right`, `bottom`, `left`, `zIndex`                                                                   |
+| Typography  | `fontFamily`, `fontSize`, `fontWeight`, `lineHeight`, `textAlign`, `color`, `textDecoration`                             |
+| Background  | `backgroundColor`, `backgroundImage`, `backgroundSize`, `backgroundPosition`                                             |
+| Border      | `border*`, `borderRadius`, `outline`                                                                                     |
+| Effects     | `opacity`, `boxShadow`, `transform`, `transition`, `cursor`, `overflow`                                                  |
+| Other       | Unlisted properties                                                                                                      |
 
 #### Input Types
 
@@ -339,15 +339,15 @@ All file operations go through the Platform Abstraction Layer, which maps to `@j
 
 ## 10. Keyboard Shortcuts
 
-| Shortcut                         | Action                  |
-| -------------------------------- | ----------------------- |
-| `Cmd+Z` / `Ctrl+Z`              | Undo                    |
-| `Cmd+Shift+Z` / `Ctrl+Shift+Z`  | Redo                    |
-| `Delete` / `Backspace`           | Delete selected node    |
-| `Cmd+D` / `Ctrl+D`              | Duplicate selected node |
-| `Escape`                         | Deselect                |
-| `Space` + drag                   | Pan canvas              |
-| `Ctrl+scroll` / pinch            | Zoom canvas             |
+| Shortcut                       | Action                  |
+| ------------------------------ | ----------------------- |
+| `Cmd+Z` / `Ctrl+Z`             | Undo                    |
+| `Cmd+Shift+Z` / `Ctrl+Shift+Z` | Redo                    |
+| `Delete` / `Backspace`         | Delete selected node    |
+| `Cmd+D` / `Ctrl+D`             | Duplicate selected node |
+| `Escape`                       | Deselect                |
+| `Space` + drag                 | Pan canvas              |
+| `Ctrl+scroll` / pinch          | Zoom canvas             |
 
 ---
 

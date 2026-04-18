@@ -14,7 +14,8 @@
   },
   "scripts": {
     "schema": "bun run src/schema.js ./schema.json",
-    "test": "bun test"
+    "test": "bun test",
+    "upgrade": "bunx npm-check-updates -u && bun install"
   },
   "dependencies": {
     "@webref/css": "^8.5.2",

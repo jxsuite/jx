@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "bun run server.js",
-    "compile": "bun run compile.js"
+    "compile": "bun run compile.js",
+    "upgrade": "bunx npm-check-updates -u && bun install"
   },
   "dependencies": {
     "@jxplatform/compiler": "workspace:*",
