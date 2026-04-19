@@ -113,6 +113,9 @@ import { IconTextSuperscript } from "@spectrum-web-components/icons-workflow/src
 import { IconTextSubscript } from "@spectrum-web-components/icons-workflow/src/elements/IconTextSubscript.js";
 import { IconLink } from "@spectrum-web-components/icons-workflow/src/elements/IconLink.js";
 
+// Custom studio components
+import { JxStyledCombobox } from "./jx-styled-combobox.js";
+
 // UI icons (used internally by Spectrum components like accordion, picker, combobox)
 import { IconChevron100 } from "@spectrum-web-components/icons-ui/src/elements/IconChevron100.js";
 
@@ -219,6 +222,8 @@ const components = [
   ["sp-icon-link", IconLink],
   // UI icons (internal component chrome)
   ["sp-icon-chevron100", IconChevron100],
+  // Custom studio components
+  ["jx-styled-combobox", JxStyledCombobox],
 ];
 
 for (const [tag, ctor] of /** @type {[string, CustomElementConstructor][]} */ (components)) {

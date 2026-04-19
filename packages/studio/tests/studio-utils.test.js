@@ -7,6 +7,8 @@ import {
   attrLabel,
   abbreviateValue,
   inferInputType,
+  friendlyNameToVar,
+  varDisplayName,
 } from "../src/utils/studio-utils.js";
 
 // ─── camelToKebab ────────────────────────────────────────────────────────────
@@ -192,5 +194,68 @@ describe("inferInputType", () => {
     expect(inferInputType({ $input: "button-group", format: "color" })).toBe("button-group");
     // color wins over number-unit
     expect(inferInputType({ format: "color", $units: ["px"] })).toBe("color");
+  });
+});
+
+// ─── friendlyNameToVar ──────────────────────────────────────────────────────
+
+describe("friendlyNameToVar", () => {
+  test("converts display name to CSS variable", () => {
+    expect(friendlyNameToVar("Geometric Humanist", "--font-")).toBe("--font-geometric-humanist");
+  });
+
+  test("handles single word", () => {
+    expect(friendlyNameToVar("Monospace", "--font-")).toBe("--font-monospace");
+  });
+
+  test("handles multiple spaces", () => {
+    expect(friendlyNameToVar("Old  Style", "--font-")).toBe("--font-old-style");
+  });
+
+  test("strips special characters", () => {
+    expect(friendlyNameToVar("Neo-Grotesque!", "--font-")).toBe("--font-neo-grotesque");
+  });
+
+  test("trims whitespace", () => {
+    expect(friendlyNameToVar("  System UI  ", "--font-")).toBe("--font-system-ui");
+  });
+
+  test("returns empty string for empty input", () => {
+    expect(friendlyNameToVar("", "--font-")).toBe("");
+  });
+
+  test("works with different prefixes", () => {
+    expect(friendlyNameToVar("Primary Blue", "--color-")).toBe("--color-primary-blue");
+  });
+});
+
+// ─── varDisplayName ─────────────────────────────────────────────────────────
+
+describe("varDisplayName", () => {
+  test("converts CSS variable back to display name", () => {
+    expect(varDisplayName("--font-geometric-humanist", "--font-")).toBe("Geometric Humanist");
+  });
+
+  test("handles single word", () => {
+    expect(varDisplayName("--font-monospace", "--font-")).toBe("Monospace");
+  });
+
+  test("roundtrips with friendlyNameToVar for single-cased names", () => {
+    // varDisplayName uses Title Case (\b\w), so acronyms like "UI" become "Ui"
+    // This is fine — preset matching uses title directly, not reconstructed names
+    const names = ["Geometric Humanist", "Old Style", "Classical Humanist"];
+    for (const name of names) {
+      const varName = friendlyNameToVar(name, "--font-");
+      expect(varDisplayName(varName, "--font-")).toBe(name);
+    }
+  });
+
+  test("title-cases each word (acronyms become title case)", () => {
+    // "System UI" → --font-system-ui → "System Ui"
+    expect(varDisplayName("--font-system-ui", "--font-")).toBe("System Ui");
+  });
+
+  test("returns original if prefix doesn't match", () => {
+    expect(varDisplayName("--color-blue", "--font-")).toBe("Color Blue");
   });
 });

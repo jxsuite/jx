@@ -939,8 +939,40 @@
         color: var(--spectrum-gray-600);
         font-family: monospace;
       }
-      .font-var-picker {
+      /* jx-styled-combobox — dual-mode styled combobox component */
+      jx-styled-combobox {
+        display: contents;
+      }
+      jx-styled-combobox sp-picker {
         width: 100%;
+      }
+      .jx-combobox-group {
+        display: inline-flex;
+        position: relative;
+        width: 100%;
+      }
+      .jx-combobox-group sp-textfield {
+        flex: 1 1 auto;
+        min-width: 0;
+        --mod-textfield-border-start-end-radius: 0;
+        --mod-textfield-border-end-end-radius: 0;
+        margin-inline-end: calc(-1 * var(--spectrum-border-width-100, 1px));
+      }
+      .jx-combobox-group sp-picker-button {
+        flex: 0 0 auto;
+        --mod-picker-button-border-start-start-radius: 0;
+        --mod-picker-button-border-end-start-radius: 0;
+        --mod-picker-button-border-color: var(
+          --spectrum-global-color-gray-400,
+          var(--spectrum-gray-400)
+        );
+      }
+      /* Match font sizes between picker and combobox mode dropdowns */
+      .jx-combobox-popover sp-menu-item,
+      .jx-combobox-picker sp-menu-item {
+        --spectrum-menu-item-label-content-font-size: var(
+          --spectrum-font-size-75
+        );
       }
       /* Number-unit compound input: textfield + picker-button */
       .style-input-number-unit {

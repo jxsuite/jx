@@ -499,7 +499,13 @@ export function applyStyle(el, styleDef, mediaQueries = {}, state = {}) {
   for (const [prop, val] of Object.entries(styleDef)) {
     if (prop.startsWith("@")) media[prop] = val;
     else if (isNestedSelector(prop)) nested[prop] = val;
-    else if (isTemplateString(val))
+    else if (prop.startsWith("--")) {
+      if (isTemplateString(val))
+        effect(() => {
+          el.style.setProperty(prop, evaluateTemplate(val, state));
+        });
+      else el.style.setProperty(prop, val);
+    } else if (isTemplateString(val))
       effect(() => {
         /** @type {any} */ (el.style)[prop] = evaluateTemplate(val, state);
       });

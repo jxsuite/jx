@@ -86,6 +86,8 @@ import {
   attrLabel,
   abbreviateValue,
   inferInputType,
+  friendlyNameToVar,
+  varDisplayName,
 } from "./utils/studio-utils.js";
 import { renderStatusbar, statusMessage, setStatusbarRenderer } from "./panels/statusbar.js";
 import {
@@ -757,7 +759,8 @@ function applyCanvasStyle(el, styleDef, activeBreakpoints, featureToggles) {
   for (const [prop, val] of Object.entries(styleDef)) {
     if (typeof val === "string" || typeof val === "number") {
       try {
-        /** @type {any} */ (el.style)[prop] = val;
+        if (prop.startsWith("--")) el.style.setProperty(prop, String(val));
+        else /** @type {any} */ (el.style)[prop] = val;
       } catch {}
     }
   }
@@ -769,7 +772,8 @@ function applyCanvasStyle(el, styleDef, activeBreakpoints, featureToggles) {
       for (const [prop, v] of Object.entries(/** @type {any} */ (val))) {
         if (typeof v === "string" || typeof v === "number") {
           try {
-            /** @type {any} */ (el.style)[prop] = v;
+            if (prop.startsWith("--")) el.style.setProperty(prop, String(v));
+            else /** @type {any} */ (el.style)[prop] = v;
           } catch {}
         }
       }
@@ -4298,37 +4302,7 @@ function renderVarRow(catKey, catMeta, varName, varVal, isNew) {
   return row;
 }
 
-/**
- * @param {any} varName
- * @param {any} prefix
- */
-function varDisplayName(varName, prefix) {
-  return (
-    varName
-      .replace(new RegExp(`^${prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`), "")
-      .replace(/^--/, "")
-      .replace(/-/g, " ")
-      .replace(/\b\w/g, (/** @type {any} */ c) => c.toUpperCase()) || varName
-  );
-}
-
-/**
- * Convert a human-friendly name like "Primary Blue" to "--color-primary-blue"
- *
- * @param {any} name
- * @param {any} prefix
- */
-function friendlyNameToVar(name, prefix) {
-  const slug = name
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, "")
-    .replace(/\s+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
-  if (!slug) return "";
-  return `${prefix}${slug}`;
-}
+// varDisplayName, friendlyNameToVar — imported from studio-utils.js
 
 /**
  * Convert a $media key like "--tablet" to a friendly display name "Tablet". "--" returns "Base".
@@ -5918,82 +5892,25 @@ function renderKeywordInput(options, prop, value, onChange) {
   const isTypoPreview = TYPO_PREVIEW_PROPS.has(prop) || prop === "fontWeight";
   const font = isTypoPreview ? currentFontFamily() : "";
   const cssProp = isTypoPreview ? camelToKebab(prop) : "";
-  const isPredefined = value && options.includes(value);
 
-  const menuItemsT = options.map((/** @type {any} */ v) => {
+  const comboOptions = options.map((/** @type {any} */ v) => {
     const label = v.includes("-")
       ? kebabToLabel(v)
       : v.replace(/^./, (/** @type {any} */ c) => c.toUpperCase());
-    if (isTypoPreview) {
-      const previewStyle = `${cssProp}: ${v};${font ? ` font-family: ${font}` : ""}`;
-      return html`<sp-menu-item value=${v} style=${previewStyle}>${label}</sp-menu-item>`;
-    }
-    return html`<sp-menu-item value=${v}>${label}</sp-menu-item>`;
+    const style = isTypoPreview ? `${cssProp}: ${v};${font ? ` font-family: ${font}` : ""}` : "";
+    return { value: v, label, style };
   });
 
-  // Picker mode — value matches a predefined keyword
-  if (isPredefined) {
-    const pickerStyle = isTypoPreview
-      ? `${cssProp}: ${value};${font ? ` font-family: ${font}` : ""}`
-      : "";
-    return html`
-      <sp-picker
-        size="s"
-        style=${pickerStyle}
-        .value=${live(value)}
-        @change=${(/** @type {any} */ e) =>
-          onChange(e.target.value === "__none__" ? "" : e.target.value)}
-      >
-        <sp-menu-item value="__none__">—</sp-menu-item>
-        ${menuItemsT}
-      </sp-picker>
-    `;
-  }
-
-  // Combobox mode — empty or custom value
-  // Typography props need manual overlay for styled menu items;
-  // sp-combobox discards all item styling in its shadow DOM.
-  if (isTypoPreview) {
-    const menuId = `style-kw-${prop}`;
-    return html`
-      <div class="input-group">
-        <sp-textfield
-          size="s"
-          placeholder=${cssInitialMap.get(prop) || ""}
-          .value=${live(value || "")}
-          @input=${debouncedStyleCommit(`kw:${prop}`, 400, (/** @type {any} */ e) =>
-            onChange(e.target.value),
-          )}
-        ></sp-textfield>
-        <sp-picker-button size="s" id=${menuId}></sp-picker-button>
-        <sp-overlay trigger="${menuId}@click" placement="bottom-end" type="auto">
-          <sp-popover>
-            <sp-menu
-              @change=${(/** @type {any} */ e) => {
-                if (e.target.value) onChange(e.target.value);
-              }}
-            >
-              ${menuItemsT}
-            </sp-menu>
-          </sp-popover>
-        </sp-overlay>
-      </div>
-    `;
-  }
-
-  return html`
-    <sp-combobox
-      size="s"
-      placeholder=${cssInitialMap.get(prop) || ""}
-      .value=${live(value || "")}
-      @input=${debouncedStyleCommit(`kw:${prop}`, 400, (/** @type {any} */ e) =>
-        onChange(e.target.value),
-      )}
-      @change=${(/** @type {any} */ e) => onChange(e.target.value)}
-    >
-      ${menuItemsT}
-    </sp-combobox>
-  `;
+  return html`<jx-styled-combobox
+    size="s"
+    .value=${value || ""}
+    placeholder=${cssInitialMap.get(prop) || ""}
+    .options=${comboOptions}
+    @change=${(/** @type {any} */ e) => onChange(e.target.value)}
+    @input=${debouncedStyleCommit(`kw:${prop}`, 400, (/** @type {any} */ e) =>
+      onChange(e.target.value),
+    )}
+  ></jx-styled-combobox>`;
 }
 
 function renderSelectInput(
@@ -6013,93 +5930,69 @@ function handleFontPresetSelection(/** @type {any} */ preset, /** @type {any} */
   onChange(`var(${varName})`);
 }
 
-function renderFontOptions(/** @type {any} */ fontVars, /** @type {any} */ presets) {
-  const unaddedPresets = presets.filter((/** @type {any} */ p) => {
-    const varName = friendlyNameToVar(p.title, "--font-");
-    return !fontVars.some((/** @type {any} */ fv) => fv.name === varName);
-  });
-  return html`
-    ${fontVars.map(
-      (/** @type {any} */ fv) => html`
-        <sp-menu-item value=${fv.name} style="font-family: ${fv.value}">
-          ${varDisplayName(fv.name, "--font-")}
-        </sp-menu-item>
-      `,
-    )}
-    ${unaddedPresets.length > 0
-      ? html`
-          <sp-menu-divider></sp-menu-divider>
-          ${unaddedPresets.map(
-            (/** @type {any} */ p) => html`
-              <sp-menu-item value=${"__preset__:" + p.title} style="font-family: ${p.value}">
-                ${p.title}
-              </sp-menu-item>
-            `,
-          )}
-        `
-      : nothing}
-  `;
-}
-
 function handleFontSelection(
   /** @type {any} */ val,
   /** @type {any} */ presets,
   /** @type {any} */ onChange,
 ) {
   if (!val) return;
+  // sp-picker returns the option's value attribute (prefixed or var name)
   if (val.startsWith("__preset__:")) {
     const title = val.slice("__preset__:".length);
     const preset = presets.find((/** @type {any} */ p) => p.title === title);
     if (preset) handleFontPresetSelection(preset, onChange);
     return;
   }
-  // Existing font var selected
-  onChange("var(" + val + ")");
+  if (val.startsWith("--")) {
+    onChange(`var(${val})`);
+    return;
+  }
+  // sp-combobox returns display text — match against preset titles and font var
+  // display names before falling through to plain text
+  const preset = presets.find((/** @type {any} */ p) => p.title === val);
+  if (preset) {
+    handleFontPresetSelection(preset, onChange);
+    return;
+  }
+  const fontVars = getFontVars();
+  const matchedVar = fontVars.find(
+    (/** @type {any} */ fv) => varDisplayName(fv.name, "--font-") === val,
+  );
+  if (matchedVar) {
+    onChange(`var(${matchedVar.name})`);
+    return;
+  }
+  // Plain font family string (e.g. "serif", "Arial, sans-serif")
+  onChange(val);
 }
 
-function renderFontVarPicker(
-  /** @type {any} */ fontVars,
-  /** @type {any} */ presets,
-  /** @type {any} */ value,
-  /** @type {any} */ onChange,
-) {
-  const varMatch = value.match(/^var\((--[^)]+)\)$/);
-  const currentVarName = varMatch ? varMatch[1] : "";
-
-  return html`
-    <sp-picker
-      size="s"
-      class="font-var-picker"
-      .value=${live(currentVarName || "__none__")}
-      @change=${(/** @type {any} */ e) => handleFontSelection(e.target.value, presets, onChange)}
-    >
-      ${renderFontOptions(fontVars, presets)}
-    </sp-picker>
-  `;
-}
-
-function renderFontCombobox(
-  /** @type {any} */ fontVars,
-  /** @type {any} */ presets,
-  /** @type {any} */ value,
-  /** @type {any} */ onChange,
-) {
-  return html`
-    <sp-combobox
-      size="s"
-      class="font-combo-field"
-      placeholder=${cssInitialMap.get("fontFamily") || ""}
-      .value=${live(value || "")}
-      @input=${debouncedStyleCommit("combo:fontFamily", 400, (/** @type {any} */ e) =>
-        onChange(e.target.value),
-      )}
-      @change=${(/** @type {any} */ e) => {
-        handleFontSelection(e.target.value, presets, onChange);
-      }}
-    >
-      ${renderFontOptions(fontVars, presets)}
-    </sp-combobox>
-  `;
+/**
+ * Build font options array for jx-styled-combobox. Local font vars first, divider, then unadded
+ * presets.
+ *
+ * @param {any[]} fontVars @param {any[]} presets
+ * @returns {{ value: string; label: string; style: string }[] | { divider: true }[]}
+ */
+function buildFontOptions(fontVars, presets) {
+  /** @type {any[]} */
+  const opts = fontVars.map((/** @type {any} */ fv) => ({
+    value: fv.name,
+    label: varDisplayName(fv.name, "--font-"),
+    style: `font-family: ${fv.value}`,
+  }));
+  const unadded = presets.filter(
+    (/** @type {any} */ p) =>
+      !fontVars.some((/** @type {any} */ fv) => fv.name === friendlyNameToVar(p.title, "--font-")),
+  );
+  if (unadded.length > 0 && opts.length > 0) opts.push({ divider: true });
+  for (const p of unadded) {
+    opts.push({
+      value: "__preset__:" + p.title,
+      label: p.title,
+      style: `font-family: ${p.value}`,
+    });
+  }
+  return opts;
 }
 
 function renderComboboxInput(
@@ -6111,14 +6004,23 @@ function renderComboboxInput(
   const fontVars = prop === "fontFamily" ? getFontVars() : [];
   const presets = entry.presets || [];
   const examples = entry.examples || [];
-  const isVarRef = typeof value === "string" && value.startsWith("var(");
 
-  // fontFamily: dual-mode control (var-picker / combobox)
+  // fontFamily: single jx-styled-combobox with font options
   if (prop === "fontFamily") {
-    if (isVarRef) {
-      return renderFontVarPicker(fontVars, presets, value, onChange);
-    }
-    return renderFontCombobox(fontVars, presets, value, onChange);
+    // Strip var() wrapper so the component can match the option value
+    const varMatch = typeof value === "string" && value.match(/^var\((--[^)]+)\)$/);
+    const comboValue = varMatch ? varMatch[1] : value || "";
+    const fontOptions = buildFontOptions(fontVars, presets);
+    return html`<jx-styled-combobox
+      size="s"
+      .value=${comboValue}
+      placeholder=${cssInitialMap.get("fontFamily") || ""}
+      .options=${fontOptions}
+      @change=${(/** @type {any} */ e) => handleFontSelection(e.target.value, presets, onChange)}
+      @input=${debouncedStyleCommit("combo:fontFamily", 400, (/** @type {any} */ e) =>
+        onChange(e.target.value),
+      )}
+    ></jx-styled-combobox>`;
   }
 
   // All other comboboxes: use the shared keyword dual-mode input

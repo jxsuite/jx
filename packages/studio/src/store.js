@@ -172,6 +172,12 @@ export function debouncedStyleCommit(prop, ms, fn) {
   };
 }
 
+/** Cancel a pending debounced commit for the given prop key. */
+export function cancelStyleDebounce(/** @type {string} */ prop) {
+  clearTimeout(_styleDebounceTimers.get(prop));
+  _styleDebounceTimers.delete(prop);
+}
+
 /**
  * Strip all on* event handler properties from a Jx document tree (deep clone).
  *

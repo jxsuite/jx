@@ -119,3 +119,41 @@ export function inferInputType(entry) {
   if (Array.isArray(entry.examples) || Array.isArray(entry.presets)) return "combobox";
   return "text";
 }
+
+/**
+ * Convert a human-readable name to a CSS variable name. E.g. "Geometric Humanist" →
+ * "--font-geometric-humanist"
+ *
+ * @param {string} name
+ * @param {string} prefix - E.g. "--font-"
+ * @returns {string}
+ */
+export function friendlyNameToVar(name, prefix) {
+  const slug = name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+  if (!slug) return "";
+  return `${prefix}${slug}`;
+}
+
+/**
+ * Convert a CSS variable name back to a display name. E.g. "--font-geometric-humanist" with prefix
+ * "--font-" → "Geometric Humanist"
+ *
+ * @param {string} varName
+ * @param {string} prefix
+ * @returns {string}
+ */
+export function varDisplayName(varName, prefix) {
+  return (
+    varName
+      .replace(new RegExp(`^${prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`), "")
+      .replace(/^--/, "")
+      .replace(/-/g, " ")
+      .replace(/\b\w/g, (/** @type {any} */ c) => c.toUpperCase()) || varName
+  );
+}

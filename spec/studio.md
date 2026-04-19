@@ -227,6 +227,53 @@ Inline color editing via Spectrum color components (`sp-color-area`, `sp-color-s
 - Hex values always `#`-prefixed for valid CSS
 - Right panel swatch and field update live during color picking (bypasses focus-guard optimization in `_update`)
 
+#### Font Family (Combobox with Modern Font Stacks)
+
+The `fontFamily` property uses the `jx-styled-combobox` component — a dual-mode control that automatically switches between text input (combobox) and predefined selection (picker) modes based on whether the current value matches a known option.
+
+**Modern Font Stacks:** Preset font stacks from `css-meta.json` (e.g. "Geometric Humanist", "Classical Humanist") are listed as dropdown options. These are not literal font names — they are aliases for multi-font fallback stacks.
+
+**Styled font options:** Every font option renders in its own typeface via inline `font-family` styles on each menu item. This gives users a live preview of each font before selecting. In picker mode, the picker element itself displays the current font style.
+
+**Option grouping:**
+
+1. **Local project font variables** — `--font-*` custom properties already defined in the document root style appear first
+2. **Divider** — separates local from global
+3. **Global presets** — Unadded modern font stack presets from `css-meta.json`. Presets already instantiated as local variables are excluded from this section.
+
+**Selection flow:**
+
+1. User selects a preset (e.g. "Geometric Humanist") from the dropdown
+2. The system creates a CSS custom property on the document root style (e.g. `--font-geometric-humanist: "Avenir, Montserrat, Corbel, 'URW Gothic', source-sans-pro, sans-serif"`)
+3. The selected element's `fontFamily` is set to `var(--font-geometric-humanist)`
+4. If the variable already exists in the document root, step 2 is skipped
+
+**Existing font variables:** Variables already defined in the document root (`--font-*`) appear at the top of the dropdown. Selecting one assigns `var(--name)` without creating a new variable.
+
+**Free-text entry:** Typing a plain font family string (e.g. "serif", "Arial, sans-serif") sets the value directly — no `var()` wrapping.
+
+**Mode switching:** When the current value matches a dropdown option (e.g. a `--font-*` variable name), the component renders as a native `sp-picker`. Selecting "—" clears the value and returns to combobox mode.
+
+#### `jx-styled-combobox` Component
+
+A custom LitElement (no shadow DOM) used across all dual-mode style inputs. Replaces the former `sp-combobox` (which stripped inline styling) and the ad-hoc manual overlay pattern.
+
+**Properties:**
+- `value` (String) — current value
+- `placeholder` (String) — placeholder text for combobox mode
+- `size` (String) — Spectrum sizing token (e.g. `"s"`)
+- `options` (Array) — `[{ value, label, style? }, { divider: true }, ...]`
+
+**Events:** `change` (on menu selection), `input` (on textfield typing)
+
+**Modes:**
+- **Picker mode** (`value` matches an option) — renders `sp-picker` with styled items + "—" clear option
+- **Combobox mode** (`value` is empty/custom) — renders `sp-textfield` + `sp-picker-button` + `sp-overlay` + `sp-popover` + `sp-menu` with styled items
+
+**Width matching:** The combobox popover width matches the trigger width via `@sp-opened` handler, replicating `sp-picker`'s internal `containerStyles` behavior.
+
+**Used by:** `renderKeywordInput` (fontWeight, fontStyle, fontVariant, textTransform, textDecoration), `renderComboboxInput` (fontFamily), `renderSelectInput` (enum properties).
+
 #### Conditional Display (`$show`)
 
 Properties conditionally appear based on other property values (e.g. flex properties when `display: flex`).

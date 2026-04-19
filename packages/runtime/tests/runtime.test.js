@@ -508,6 +508,17 @@ describe("applyStyle", () => {
       /@media \(min-width: 640px\) \{ \[data-jx="[^"]+"\]\.active \{ font-weight: bold \} \}/,
     );
   });
+  test("sets CSS custom properties via setProperty", () => {
+    applyStyle(el, { "--my-color": "red", "--spacing": "8px" });
+    expect(el.style.getPropertyValue("--my-color")).toBe("red");
+    expect(el.style.getPropertyValue("--spacing")).toBe("8px");
+  });
+
+  test("custom properties and regular properties coexist", () => {
+    applyStyle(el, { color: "blue", "--accent": "green" });
+    expect(el.style.color).toBe("blue");
+    expect(el.style.getPropertyValue("--accent")).toBe("green");
+  });
 });
 
 // ─── resolvePrototype ─────────────────────────────────────────────────────────
