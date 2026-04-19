@@ -173,7 +173,7 @@ export function resolveDefaultForCanvas(value, defs) {
 
 // ─── Simple field row ────────────────────────────────────────────────────────
 
-/** Simple field row for signal editors. */
+/** Simple field row for signal editors — vertical stacked layout. */
 export function signalFieldRow(
   /** @type {any} */ label,
   /** @type {any} */ value,
@@ -182,8 +182,10 @@ export function signalFieldRow(
   /** @type {any} */
   let debounce;
   return html`
-    <div class="field-row">
-      <sp-field-label size="s">${label}</sp-field-label>
+    <div class="style-row">
+      <div class="style-row-label">
+        <sp-field-label size="s">${label}</sp-field-label>
+      </div>
       <sp-textfield
         size="s"
         value=${value}
@@ -235,94 +237,94 @@ export function renderSignalsTemplate(S, { renderLeftPanel, renderCanvas }) {
     .filter((c) => c.items.length > 0)
     .map(
       ({ key, label, items }) => html`
-        <div
-          class="signal-category${collapsedCats.has(key) ? " collapsed" : ""}"
-          @click=${() => {
+        <sp-accordion-item
+          label="${label} (${items.length})"
+          ?open=${!collapsedCats.has(key)}
+          @sp-accordion-item-toggle=${() => {
             if (collapsedCats.has(key)) collapsedCats.delete(key);
             else collapsedCats.add(key);
             renderLeftPanel();
           }}
         >
-          ${label} (${items.length})
-        </div>
-        ${collapsedCats.has(key)
-          ? nothing
-          : items.map(([name, def]) => {
-              /** @type {any} */
-              const isExpanded = expandedSignal === name;
-              return html`
-                <div
-                  class="signal-row${isExpanded ? " expanded" : ""}"
-                  @click=${() => {
-                    expandedSignal = isExpanded ? null : name;
-                    renderLeftPanel();
+          ${items.map(([name, def]) => {
+            /** @type {any} */
+            const isExpanded = expandedSignal === name;
+            return html`
+              <div
+                class="signal-row${isExpanded ? " expanded" : ""}"
+                @click=${() => {
+                  expandedSignal = isExpanded ? null : name;
+                  renderLeftPanel();
+                }}
+              >
+                <span class="signal-badge ${defCategory(def)}">${defBadgeLabel(def)}</span>
+                <span class="signal-name">${name}</span>
+                <span class="signal-hint">${defHint(name, def)}</span>
+                <sp-action-button
+                  quiet
+                  size="xs"
+                  class="signal-del"
+                  @click=${(/** @type {any} */ e) => {
+                    e.stopPropagation();
+                    update(removeDef(S, name));
                   }}
                 >
-                  <span class="signal-badge ${defCategory(def)}">${defBadgeLabel(def)}</span>
-                  <span class="signal-name">${name}</span>
-                  <span class="signal-hint">${defHint(name, def)}</span>
-                  <sp-action-button
-                    quiet
-                    size="xs"
-                    class="signal-del"
-                    @click=${(/** @type {any} */ e) => {
-                      e.stopPropagation();
-                      update(removeDef(S, name));
-                    }}
-                  >
-                    <sp-icon-delete slot="icon"></sp-icon-delete>
-                  </sp-action-button>
-                </div>
-                ${isExpanded
-                  ? html`<div class="signal-editor">
-                      ${renderSignalEditorTemplate(S, name, def, { renderLeftPanel, renderCanvas })}
-                    </div>`
-                  : nothing}
-              `;
-            })}
+                  <sp-icon-delete slot="icon"></sp-icon-delete>
+                </sp-action-button>
+              </div>
+              ${isExpanded
+                ? html`<div class="signal-editor">
+                    ${renderSignalEditorTemplate(S, name, def, { renderLeftPanel, renderCanvas })}
+                  </div>`
+                : nothing}
+            `;
+          })}
+        </sp-accordion-item>
       `,
     );
 
   return html`
-    ${catTemplates}
-    ${entries.length === 0 ? html`<div class="empty-state">No state defined</div>` : nothing}
-    <div class="signals-add">
-      <sp-picker
-        size="s"
-        label="+ Add…"
-        placeholder="+ Add…"
-        @change=${(/** @type {any} */ e) => {
-          const type = e.target.value;
-          if (!type) return;
-          const template = DEF_TEMPLATES[type];
-          if (!template) return;
-          const isFunction = type === "function";
-          let nameBase = isFunction ? "newFunction" : "$newSignal";
-          let n = nameBase;
-          let i = 1;
-          while (S.document.state && S.document.state[n]) {
-            n = nameBase + i++;
-          }
-          update(addDef(S, n, structuredClone(template)));
-          expandedSignal = n;
-          renderLeftPanel();
-        }}
-      >
-        <sp-menu-item value="state">State Signal</sp-menu-item>
-        <sp-menu-item value="computed">Computed</sp-menu-item>
-        <sp-menu-divider></sp-menu-divider>
-        <sp-menu-item value="request">Fetch (Request)</sp-menu-item>
-        <sp-menu-item value="localStorage">LocalStorage</sp-menu-item>
-        <sp-menu-item value="sessionStorage">SessionStorage</sp-menu-item>
-        <sp-menu-item value="indexedDB">IndexedDB</sp-menu-item>
-        <sp-menu-item value="cookie">Cookie</sp-menu-item>
-        <sp-menu-item value="set">Set</sp-menu-item>
-        <sp-menu-item value="map">Map</sp-menu-item>
-        <sp-menu-item value="formData">FormData</sp-menu-item>
-        <sp-menu-item value="external">External Module…</sp-menu-item>
-        <sp-menu-divider></sp-menu-divider>
-        <sp-menu-item value="function">Function</sp-menu-item>
-      </sp-picker>
+    <div class="signals-panel">
+      <sp-accordion allow-multiple size="s"> ${catTemplates} </sp-accordion>
+      ${entries.length === 0 ? html`<div class="empty-state">No state defined</div>` : nothing}
+      <div class="signals-add">
+        <sp-picker
+          size="s"
+          label="+ Add…"
+          placeholder="+ Add…"
+          @change=${(/** @type {any} */ e) => {
+            const type = e.target.value;
+            if (!type) return;
+            const template = DEF_TEMPLATES[type];
+            if (!template) return;
+            const isFunction = type === "function";
+            let nameBase = isFunction ? "newFunction" : "$newSignal";
+            let n = nameBase;
+            let i = 1;
+            while (S.document.state && S.document.state[n]) {
+              n = nameBase + i++;
+            }
+            update(addDef(S, n, structuredClone(template)));
+            expandedSignal = n;
+            renderLeftPanel();
+          }}
+        >
+          <sp-menu-item value="state">State Signal</sp-menu-item>
+          <sp-menu-item value="computed">Computed</sp-menu-item>
+          <sp-menu-divider></sp-menu-divider>
+          <sp-menu-item value="request">Fetch (Request)</sp-menu-item>
+          <sp-menu-item value="localStorage">LocalStorage</sp-menu-item>
+          <sp-menu-item value="sessionStorage">SessionStorage</sp-menu-item>
+          <sp-menu-item value="indexedDB">IndexedDB</sp-menu-item>
+          <sp-menu-item value="cookie">Cookie</sp-menu-item>
+          <sp-menu-item value="set">Set</sp-menu-item>
+          <sp-menu-item value="map">Map</sp-menu-item>
+          <sp-menu-item value="formData">FormData</sp-menu-item>
+          <sp-menu-item value="external">External Module…</sp-menu-item>
+          <sp-menu-divider></sp-menu-divider>
+          <sp-menu-item value="function">Function</sp-menu-item>
+        </sp-picker>
+      </div>
     </div>
   `;
 }
@@ -344,11 +346,12 @@ function renderSignalEditorTemplate(
     /** @type {any} */ onChange,
   ) => {
     return html`
-      <div class="field-row">
-        <label class="field-label">${label}</label>
+      <div class="style-row">
+        <div class="style-row-label">
+          <sp-field-label size="s">${label}</sp-field-label>
+        </div>
         <sp-picker
           size="s"
-          class="field-input"
           value=${currentVal}
           @change=${(/** @type {any} */ e) => onChange(e.target.value)}
         >
@@ -370,8 +373,10 @@ function renderSignalEditorTemplate(
     /** @type {any} */
     let debounce;
     return html`
-      <div class="field-row">
-        <label class="field-label">${label}</label>
+      <div class="style-row">
+        <div class="style-row-label">
+          <sp-field-label size="s">${label}</sp-field-label>
+        </div>
         <textarea
           class="field-input"
           style="min-height:${opts.minHeight || "40px"};${opts.mono
@@ -388,7 +393,7 @@ function renderSignalEditorTemplate(
   };
 
   // Name field (common to all)
-  const nameField = signalFieldRow("name", name, (/** @type {any} */ v) => {
+  const nameField = signalFieldRow("Name", name, (/** @type {any} */ v) => {
     if (v && v !== name && !(S.document.state && S.document.state[v])) {
       expandedSignal = v;
       update(renameDef(S, name, v));
@@ -408,11 +413,13 @@ function renderSignalEditorTemplate(
 
     const cemFields = isCustomElementDoc(S)
       ? html`
-          ${signalFieldRow("attribute", def.attribute || "", (/** @type {any} */ v) =>
+          ${signalFieldRow("Attribute", def.attribute || "", (/** @type {any} */ v) =>
             update(updateDef(S, name, { attribute: v || undefined })),
           )}
-          <div class="field-row">
-            <label class="field-label">reflects</label>
+          <div class="style-row">
+            <div class="style-row-label">
+              <sp-field-label size="s">Reflects</sp-field-label>
+            </div>
             <sp-checkbox
               class="field-check"
               ?checked=${!!def.reflects}
@@ -421,7 +428,7 @@ function renderSignalEditorTemplate(
             ></sp-checkbox>
           </div>
           ${signalFieldRow(
-            "deprecated",
+            "Deprecated",
             typeof def.deprecated === "string" ? def.deprecated : "",
             (/** @type {any} */ v) => update(updateDef(S, name, { deprecated: v || undefined })),
           )}
@@ -430,12 +437,12 @@ function renderSignalEditorTemplate(
 
     fields = html`
       ${pickerRow(
-        "type",
+        "Type",
         ["string", "integer", "number", "boolean", "array", "object"],
         def.type || "string",
         (/** @type {any} */ v) => update(updateDef(S, name, { type: v })),
       )}
-      ${signalFieldRow("default", defaultVal, (/** @type {any} */ v) => {
+      ${signalFieldRow("Default", defaultVal, (/** @type {any} */ v) => {
         let parsed = v;
         if (def.type === "integer") parsed = parseInt(v, 10) || 0;
         else if (def.type === "number") parsed = parseFloat(v) || 0;
@@ -449,7 +456,7 @@ function renderSignalEditorTemplate(
         }
         update(updateDef(S, name, { default: parsed }));
       })}
-      ${signalFieldRow("desc", def.description || "", (/** @type {any} */ v) =>
+      ${signalFieldRow("Description", def.description || "", (/** @type {any} */ v) =>
         update(updateDef(S, name, { description: v || undefined })),
       )}
       ${cemFields}
@@ -458,8 +465,10 @@ function renderSignalEditorTemplate(
     /** @type {any} */
     let debounce;
     fields = html`
-      <div class="field-row">
-        <label class="field-label">expr</label>
+      <div class="style-row">
+        <div class="style-row-label">
+          <sp-field-label size="s">Expression</sp-field-label>
+        </div>
         <textarea
           class="field-input"
           style="min-height:40px"
@@ -477,8 +486,10 @@ function renderSignalEditorTemplate(
       </div>
       ${def.$deps && def.$deps.length > 0
         ? html`
-            <div class="field-row">
-              <label class="field-label">deps</label>
+            <div class="style-row">
+              <div class="style-row-label">
+                <sp-field-label size="s">Dependencies</sp-field-label>
+              </div>
               <span class="signal-hint" style="flex:1;max-width:none"
                 >${def.$deps
                   .map((/** @type {any} */ d) => d.replace("#/state/", ""))
@@ -510,16 +521,16 @@ function renderDataSourceFields(
 
   if (proto === "Request") {
     return html`
-      ${signalFieldRow("url", def.url || "", (/** @type {any} */ v) =>
+      ${signalFieldRow("URL", def.url || "", (/** @type {any} */ v) =>
         update(updateDef(S, name, { url: v })),
       )}
       ${pickerRow(
-        "method",
+        "Method",
         ["GET", "POST", "PUT", "DELETE", "PATCH"],
         def.method || "GET",
         (/** @type {any} */ v) => update(updateDef(S, name, { method: v })),
       )}
-      ${pickerRow("timing", ["client", "server"], def.timing || "client", (/** @type {any} */ v) =>
+      ${pickerRow("Timing", ["client", "server"], def.timing || "client", (/** @type {any} */ v) =>
         update(updateDef(S, name, { timing: v })),
       )}
     `;
@@ -532,10 +543,10 @@ function renderDataSourceFields(
           : String(def.default)
         : "";
     return html`
-      ${signalFieldRow("key", def.key || "", (/** @type {any} */ v) =>
+      ${signalFieldRow("Key", def.key || "", (/** @type {any} */ v) =>
         update(updateDef(S, name, { key: v })),
       )}
-      ${textareaRow("default", defaultStr, (/** @type {any} */ v) => {
+      ${textareaRow("Default", defaultStr, (/** @type {any} */ v) => {
         try {
           update(updateDef(S, name, { default: JSON.parse(v) }));
         } catch {
@@ -546,36 +557,37 @@ function renderDataSourceFields(
   }
   if (proto === "IndexedDB") {
     return html`
-      ${signalFieldRow("database", def.database || "", (/** @type {any} */ v) =>
+      ${signalFieldRow("Database", def.database || "", (/** @type {any} */ v) =>
         update(updateDef(S, name, { database: v })),
       )}
-      ${signalFieldRow("store", def.store || "", (/** @type {any} */ v) =>
+      ${signalFieldRow("Store", def.store || "", (/** @type {any} */ v) =>
         update(updateDef(S, name, { store: v })),
       )}
-      ${signalFieldRow("version", String(def.version || 1), (/** @type {any} */ v) =>
+      ${signalFieldRow("Version", String(def.version || 1), (/** @type {any} */ v) =>
         update(updateDef(S, name, { version: parseInt(v, 10) || 1 })),
       )}
     `;
   }
   if (proto === "Cookie") {
     return html`
-      ${signalFieldRow("cookie", def.name || "", (/** @type {any} */ v) =>
+      ${signalFieldRow("Cookie", def.name || "", (/** @type {any} */ v) =>
         update(updateDef(S, name, { name: v })),
       )}
-      ${signalFieldRow("default", def.default || "", (/** @type {any} */ v) =>
+      ${signalFieldRow("Default", def.default || "", (/** @type {any} */ v) =>
         update(updateDef(S, name, { default: v })),
       )}
     `;
   }
   if (proto === "Set" || proto === "Map" || proto === "FormData") {
     const fieldName = proto === "FormData" ? "fields" : "default";
+    const fieldLabel = proto === "FormData" ? "Fields" : "Default";
     const defaultStr =
       def.default !== undefined && def.default !== null
         ? JSON.stringify(def.default, null, 2)
         : proto === "FormData"
           ? JSON.stringify(def.fields || {}, null, 2)
           : "";
-    return textareaRow(fieldName, defaultStr, (/** @type {any} */ v) => {
+    return textareaRow(fieldLabel, defaultStr, (/** @type {any} */ v) => {
       try {
         update(updateDef(S, name, { [fieldName]: JSON.parse(v) }));
       } catch {}
@@ -595,15 +607,15 @@ function renderFunctionFields(
 ) {
   const srcFields = def.$src
     ? html`
-        ${signalFieldRow("$src", def.$src || "", (/** @type {any} */ v) =>
+        ${signalFieldRow("Source", def.$src || "", (/** @type {any} */ v) =>
           update(updateDef(S, name, { $src: v || undefined })),
         )}
-        ${signalFieldRow("$export", def.$export || "", (/** @type {any} */ v) =>
+        ${signalFieldRow("Export", def.$export || "", (/** @type {any} */ v) =>
           update(updateDef(S, name, { $export: v || undefined })),
         )}
       `
     : textareaRow(
-        "body",
+        "Body",
         def.body || "",
         (/** @type {any} */ v) => update(updateDef(S, name, { body: v })),
         { minHeight: "60px", mono: true },
@@ -626,7 +638,7 @@ function renderFunctionFields(
           </button>
         `
       : nothing}
-    ${signalFieldRow("desc", def.description || "", (/** @type {any} */ v) =>
+    ${signalFieldRow("Description", def.description || "", (/** @type {any} */ v) =>
       update(updateDef(S, name, { description: v || undefined })),
     )}
   `;
@@ -647,9 +659,11 @@ function renderParameterEditorTemplate(
   if (!isAdvanced) {
     // Basic mode: name chips
     return html`
-      <div class="field-row" style="flex-wrap:wrap">
-        <label class="field-label">params</label>
-        <div style="display:flex;flex-wrap:wrap;gap:4px;flex:1;align-items:center">
+      <div class="style-row">
+        <div class="style-row-label">
+          <sp-field-label size="s">Parameters</sp-field-label>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px;align-items:center">
           ${params.map(
             (/** @type {any} */ p, /** @type {any} */ i) => html`
               <span
@@ -701,9 +715,11 @@ function renderParameterEditorTemplate(
 
   // Advanced mode: full rows
   return html`
-    <div class="field-row" style="flex-wrap:wrap">
-      <label class="field-label">params</label>
-      <div style="flex:1;display:flex;flex-direction:column;gap:4px">
+    <div class="style-row">
+      <div class="style-row-label">
+        <sp-field-label size="s">Parameters</sp-field-label>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:4px">
         ${params.map(
           (/** @type {any} */ p, /** @type {any} */ i) => html`
             <div style="display:flex;gap:4px;align-items:center">
@@ -1009,8 +1025,12 @@ export function renderSchemaFieldsTemplate(
       }
 
       return html`
-        <div class="field-row">
-          <sp-field-label size="s" title=${ps.description || nothing}>${labelText}</sp-field-label>
+        <div class="style-row">
+          <div class="style-row-label">
+            <sp-field-label size="s" title=${ps.description || nothing}
+              >${labelText}</sp-field-label
+            >
+          </div>
           ${control}
         </div>
       `;
@@ -1056,16 +1076,16 @@ export function renderExternalPrototypeEditorTemplate(
   }
 
   return html`
-    ${signalFieldRow("$src", def.$src || "", (/** @type {any} */ v) => {
+    ${signalFieldRow("Source", def.$src || "", (/** @type {any} */ v) => {
       update(updateDef(S, name, { $src: v || undefined }));
       pluginSchemaCache.delete(`${v}::${def.$prototype}`);
     })}
-    ${signalFieldRow("$prototype", def.$prototype || "", (/** @type {any} */ v) => {
+    ${signalFieldRow("Prototype", def.$prototype || "", (/** @type {any} */ v) => {
       update(updateDef(S, name, { $prototype: v || undefined }));
       pluginSchemaCache.delete(`${def.$src}::${v}`);
     })}
     ${def.$export
-      ? signalFieldRow("$export", def.$export || "", (/** @type {any} */ v) =>
+      ? signalFieldRow("Export", def.$export || "", (/** @type {any} */ v) =>
           update(updateDef(S, name, { $export: v || undefined })),
         )
       : nothing}

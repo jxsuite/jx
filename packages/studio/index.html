@@ -888,7 +888,8 @@
       .style-row > sp-textfield,
       .style-row > sp-number-field,
       .style-row > sp-picker,
-      .style-row > sp-combobox {
+      .style-row > sp-combobox,
+      .style-row > textarea {
         width: 100%;
       }
       .style-input-color {
@@ -1120,33 +1121,12 @@
         padding: 4px 8px 8px 26px;
         border-bottom: 1px solid var(--border);
       }
-      .signal-editor .field-row {
-        margin-bottom: 3px;
+      /* Signals panel accordion (matches style-sidebar pattern) */
+      .signals-panel sp-accordion {
+        border: none;
       }
-      .signal-editor .field-label {
-        width: 65px;
-        font-size: 10px;
-      }
-      .signal-category {
-        padding: 6px 8px;
-        font-size: 10px;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        color: var(--fg-dim);
-        border-bottom: 1px solid var(--border);
-        cursor: pointer;
-        user-select: none;
-      }
-      .signal-category::before {
-        content: "▼";
-        margin-right: 6px;
-        font-size: 8px;
-        display: inline-block;
-        transition: transform 0.15s;
-      }
-      .signal-category.collapsed::before {
-        transform: rotate(-90deg);
+      .signals-panel sp-accordion-item {
+        --spectrum-accordion-item-header-font-size: 11px;
       }
       .signals-add {
         display: flex;
