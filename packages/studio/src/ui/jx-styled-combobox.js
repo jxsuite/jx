@@ -131,7 +131,9 @@ export class JxStyledCombobox extends LitElement {
           @sp-opened=${this._setPopoverWidth}
         >
           <sp-popover class="jx-combobox-popover">
-            <sp-menu @change=${this._handleMenuChange}> ${this._renderMenuItems()} </sp-menu>
+            <sp-menu size=${this.size} @change=${this._handleMenuChange}>
+              ${this._renderMenuItems()}
+            </sp-menu>
           </sp-popover>
         </sp-overlay>
       </div>

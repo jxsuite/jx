@@ -157,45 +157,79 @@ describe("jx-styled-combobox: event handler logic", () => {
       value,
       /** @type {Event[]} */
       dispatched,
-      dispatchEvent(/** @type {Event} */ e) {
+      /** @param {Event} e */
+      dispatchEvent(e) {
         dispatched.push(e);
         return true;
       },
     };
   }
 
-  test("picker change handler sets value directly", () => {
-    const mock = createMock("bold");
-    let stopped = false;
-    const handler = function (/** @type {any} */ e) {
-      e.stopPropagation();
-      this.value = e.target.value;
-      this.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
-    }.bind(mock);
+  /**
+   * Simulates _handlePickerChange: sets value, dispatches change.
+   *
+   * @param {ReturnType<typeof createMock>} ctx
+   * @param {{ target: { value: string }; stopPropagation: () => void }} e
+   */
+  function pickerChange(ctx, e) {
+    e.stopPropagation();
+    ctx.value = e.target.value;
+    ctx.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
+  }
 
-    handler({
-      target: { value: "normal" },
+  /**
+   * Simulates _handleMenuChange: ignores empty, sets value, dispatches change.
+   *
+   * @param {ReturnType<typeof createMock>} ctx
+   * @param {{ target: { value: string }; stopPropagation: () => void }} e
+   */
+  function menuChange(ctx, e) {
+    e.stopPropagation();
+    if (!e.target.value) return;
+    ctx.value = e.target.value;
+    ctx.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
+  }
+
+  /**
+   * Simulates _handleInput: sets value, dispatches input.
+   *
+   * @param {ReturnType<typeof createMock>} ctx
+   * @param {{ target: { value: string }; stopPropagation: () => void }} e
+   */
+  function inputChange(ctx, e) {
+    e.stopPropagation();
+    ctx.value = e.target.value;
+    ctx.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
+  }
+
+  /** @param {string} val */
+  function mkEvent(val) {
+    let stopped = false;
+    return {
+      target: { value: val },
       stopPropagation() {
         stopped = true;
       },
-    });
+      get stopped() {
+        return stopped;
+      },
+    };
+  }
+
+  test("picker change handler sets value directly", () => {
+    const mock = createMock("bold");
+    const e = mkEvent("normal");
+    pickerChange(mock, e);
 
     expect(mock.value).toBe("normal");
     expect(mock.dispatched.length).toBe(1);
     expect(mock.dispatched[0].type).toBe("change");
-    expect(stopped).toBe(true);
+    expect(e.stopped).toBe(true);
   });
 
   test("menu change handler ignores empty value", () => {
     const mock = createMock("bold");
-    const handler = function (/** @type {any} */ e) {
-      e.stopPropagation();
-      if (!e.target.value) return;
-      this.value = e.target.value;
-      this.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
-    }.bind(mock);
-
-    handler({ target: { value: "" }, stopPropagation() {} });
+    menuChange(mock, mkEvent(""));
 
     expect(mock.value).toBe("bold"); // unchanged
     expect(mock.dispatched.length).toBe(0);
@@ -203,14 +237,7 @@ describe("jx-styled-combobox: event handler logic", () => {
 
   test("menu change handler sets value for non-empty input", () => {
     const mock = createMock("");
-    const handler = function (/** @type {any} */ e) {
-      e.stopPropagation();
-      if (!e.target.value) return;
-      this.value = e.target.value;
-      this.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
-    }.bind(mock);
-
-    handler({ target: { value: "lighter" }, stopPropagation() {} });
+    menuChange(mock, mkEvent("lighter"));
 
     expect(mock.value).toBe("lighter");
     expect(mock.dispatched.length).toBe(1);
@@ -218,13 +245,7 @@ describe("jx-styled-combobox: event handler logic", () => {
 
   test("input handler sets value and dispatches input event", () => {
     const mock = createMock("");
-    const handler = function (/** @type {any} */ e) {
-      e.stopPropagation();
-      this.value = e.target.value;
-      this.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
-    }.bind(mock);
-
-    handler({ target: { value: "Georgia, serif" }, stopPropagation() {} });
+    inputChange(mock, mkEvent("Georgia, serif"));
 
     expect(mock.value).toBe("Georgia, serif");
     expect(mock.dispatched.length).toBe(1);
@@ -232,42 +253,17 @@ describe("jx-styled-combobox: event handler logic", () => {
   });
 
   test("all handlers call stopPropagation on the original event", () => {
-    let stopped = 0;
-    const mkEvent = (/** @type {string} */ val) => ({
-      target: { value: val },
-      stopPropagation() {
-        stopped++;
-      },
-    });
+    const e1 = mkEvent("normal");
+    pickerChange(createMock("bold"), e1);
 
-    // Simulate picker change
-    const m1 = createMock("bold");
-    const pickerHandler = function (/** @type {any} */ e) {
-      e.stopPropagation();
-      this.value = e.target.value;
-      this.dispatchEvent(new Event("change"));
-    }.bind(m1);
-    pickerHandler(mkEvent("normal"));
+    const e2 = mkEvent("lighter");
+    menuChange(createMock(""), e2);
 
-    // Simulate menu change
-    const m2 = createMock("");
-    const menuHandler = function (/** @type {any} */ e) {
-      e.stopPropagation();
-      if (!e.target.value) return;
-      this.value = e.target.value;
-      this.dispatchEvent(new Event("change"));
-    }.bind(m2);
-    menuHandler(mkEvent("lighter"));
+    const e3 = mkEvent("test");
+    inputChange(createMock(""), e3);
 
-    // Simulate input
-    const m3 = createMock("");
-    const inputHandler = function (/** @type {any} */ e) {
-      e.stopPropagation();
-      this.value = e.target.value;
-      this.dispatchEvent(new Event("input"));
-    }.bind(m3);
-    inputHandler(mkEvent("test"));
-
-    expect(stopped).toBe(3);
+    expect(e1.stopped).toBe(true);
+    expect(e2.stopped).toBe(true);
+    expect(e3.stopped).toBe(true);
   });
 });
