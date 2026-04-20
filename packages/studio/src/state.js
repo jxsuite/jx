@@ -121,6 +121,11 @@ export function isAncestor(path, descendant) {
  * @returns {{ node: any; path: JxPath; depth: number; nodeType: string }[]}
  */
 export function flattenTree(doc, path = [], depth = 0) {
+  // Text node children: bare primitives get a "text" row
+  if (typeof doc === "string" || typeof doc === "number" || typeof doc === "boolean") {
+    return [{ node: doc, path, depth, nodeType: "text" }];
+  }
+
   /** @type {{ node: any; path: JxPath; depth: number; nodeType: string }[]} */
   const rows = [{ node: doc, path, depth, nodeType: "element" }];
 

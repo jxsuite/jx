@@ -10,7 +10,7 @@ import { reactive, ref, computed, effect, isRef } from "@vue/reactivity";
 import {
   resolve,
   buildScope,
-  renderNode,
+  renderNode as _renderNode,
   applyStyle,
   resolveRef,
   resolvePrototype,
@@ -20,6 +20,9 @@ import {
   RESERVED_KEYS,
   Jx,
 } from "../src/runtime.js";
+
+/** @type {(...args: Parameters<typeof _renderNode>) => HTMLElement} */
+const renderNode = /** @type {any} */ (_renderNode);
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 

@@ -466,37 +466,39 @@ async function renderCanvasLive(doc, canvasEl) {
     renderDoc.imports = getEffectiveImports(renderDoc.imports);
 
     const $defs = await buildScope(renderDoc, {}, docBase);
-    const el = runtimeRenderNode(renderDoc, $defs, {
-      onNodeCreated(/** @type {any} */ el, /** @type {any} */ path) {
-        // Remap $map paths: wrapper and template children → real document paths
-        // prepareForEditMode wraps $map template in: children[0] (wrapper) > children[0] (template)
-        // Real paths: wrapper → ['children'] ($map container), template → ['children', 'map']
-        let mappedPath = path;
-        if ((canvasMode === "design" || canvasMode === "edit") && mapParentPaths.size > 0) {
-          for (let i = 0; i < path.length - 1; i++) {
-            if (path[i] === "children" && path[i + 1] === 0) {
-              const parentKey = path.slice(0, i).join("/");
-              if (mapParentPaths.has(parentKey)) {
-                if (path.length === i + 2) {
-                  // Wrapper div itself → $map container path
-                  mappedPath = path.slice(0, i + 1);
-                } else if (
-                  path.length >= i + 4 &&
-                  path[i + 2] === "children" &&
-                  path[i + 3] === 0
-                ) {
-                  // Template or its descendants → children/map/...rest
-                  mappedPath = [...path.slice(0, i), "children", "map", ...path.slice(i + 4)];
+    const el = /** @type {HTMLElement} */ (
+      runtimeRenderNode(renderDoc, $defs, {
+        onNodeCreated(/** @type {any} */ el, /** @type {any} */ path) {
+          // Remap $map paths: wrapper and template children → real document paths
+          // prepareForEditMode wraps $map template in: children[0] (wrapper) > children[0] (template)
+          // Real paths: wrapper → ['children'] ($map container), template → ['children', 'map']
+          let mappedPath = path;
+          if ((canvasMode === "design" || canvasMode === "edit") && mapParentPaths.size > 0) {
+            for (let i = 0; i < path.length - 1; i++) {
+              if (path[i] === "children" && path[i + 1] === 0) {
+                const parentKey = path.slice(0, i).join("/");
+                if (mapParentPaths.has(parentKey)) {
+                  if (path.length === i + 2) {
+                    // Wrapper div itself → $map container path
+                    mappedPath = path.slice(0, i + 1);
+                  } else if (
+                    path.length >= i + 4 &&
+                    path[i + 2] === "children" &&
+                    path[i + 3] === 0
+                  ) {
+                    // Template or its descendants → children/map/...rest
+                    mappedPath = [...path.slice(0, i), "children", "map", ...path.slice(i + 4)];
+                  }
+                  break;
                 }
-                break;
               }
             }
           }
-        }
-        elToPath.set(el, mappedPath);
-      },
-      _path: [],
-    });
+          elToPath.set(el, mappedPath);
+        },
+        _path: [],
+      })
+    );
     if (canvasMode === "design" || canvasMode === "edit") {
       // Disable pointer events on all rendered elements for edit mode
       el.style.pointerEvents = "none";
@@ -1389,6 +1391,11 @@ function updateActivePanelHeaders() {
  * @param {any} featureToggles
  */
 function renderCanvasNode(node, path, parent, activeBreakpoints, featureToggles) {
+  // Text node children: bare strings/numbers/booleans → DOM Text nodes
+  if (typeof node === "string" || typeof node === "number" || typeof node === "boolean") {
+    parent.appendChild(document.createTextNode(String(node)));
+    return;
+  }
   if (!node || typeof node !== "object") return;
 
   const tag = node.tagName || "div";
@@ -2877,6 +2884,21 @@ function renderLayersTemplate() {
       }
     }
     if (hidden) continue;
+
+    // Text node children: display-only row with truncated preview
+    if (nodeType === "text") {
+      const textPreview = String(node).length > 40 ? String(node).slice(0, 40) + "…" : String(node);
+      layerRows.push(html`
+        <div
+          class="layer-row"
+          style="padding-left:${depth * 16 + 8}px; opacity: 0.6; font-style: italic;"
+        >
+          <span class="layer-tag" style="background: #64748b; font-size: 0.65rem;">text</span>
+          <span class="layer-label">${textPreview}</span>
+        </div>
+      `);
+      continue;
+    }
 
     // Skip inline elements
     if (path.length >= 2 && nodeType === "element") {

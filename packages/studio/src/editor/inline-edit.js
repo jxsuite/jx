@@ -358,6 +358,38 @@ function commitChanges() {
 }
 
 /**
+ * Normalize a node's children array: merge adjacent text nodes and fold all-text children into
+ * textContent. Returns `{ textContent }` or `{ children }`.
+ *
+ * @param {{ children?: any[] }} node
+ * @returns {{ textContent?: string | null; children?: any[] }}
+ */
+export function normalizeChildren(node) {
+  if (!Array.isArray(node.children) || node.children.length === 0) return { textContent: "" };
+
+  // Step 1: Merge adjacent text nodes
+  const merged = [];
+  for (const child of node.children) {
+    if (
+      typeof child === "string" &&
+      merged.length > 0 &&
+      typeof merged[merged.length - 1] === "string"
+    ) {
+      merged[merged.length - 1] += child;
+    } else {
+      merged.push(child);
+    }
+  }
+
+  // Step 2: If all children are text, fold into textContent
+  if (merged.every((/** @type {any} */ c) => typeof c === "string")) {
+    return { textContent: merged.join("") };
+  }
+
+  return { children: merged };
+}
+
+/**
  * Convert a contenteditable element's content to Jx children/textContent. Returns { textContent }
  * for plain text or { children } for rich content.
  *
@@ -378,20 +410,11 @@ function elementToJx(el) {
   const children = [];
   for (const child of nodes) {
     const jsx = domNodeToJx(child);
-    if (jsx) children.push(jsx);
+    if (jsx !== null && jsx !== undefined) children.push(jsx);
   }
 
-  // If all children are plain text spans (no formatting, no attributes),
-  // collapse them into a single textContent
-  const allPlainText = children.every(
-    (/** @type {any} */ c) =>
-      c.tagName === "span" && c.textContent != null && !c.children && !c.attributes && !c.style,
-  );
-  if (allPlainText) {
-    return { textContent: children.map((/** @type {any} */ c) => c.textContent).join("") };
-  }
-
-  return { children };
+  // Normalize: merge adjacent text nodes + fold all-text to textContent
+  return normalizeChildren({ children });
 }
 
 /**
@@ -404,7 +427,7 @@ function domNodeToJx(node) {
   if (node.nodeType === Node.TEXT_NODE) {
     const text = node.textContent;
     if (!text) return null;
-    return { tagName: "span", textContent: text };
+    return text; // Bare string — text node child
   }
 
   if (node.nodeType !== Node.ELEMENT_NODE) return null;

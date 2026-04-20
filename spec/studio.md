@@ -199,6 +199,8 @@ Flattened tree of all elements in the document with indentation representing nes
 
 Only applicable buttons render for each row's position in the tree. Clicking a move button updates the document, re-renders the layers panel, and tracks the selection to the node's new position.
 
+**Text Node Rows** — Bare string children appear as display-only rows with a "text" badge and truncated preview (max 40 characters). These rows do not support selection, drag, or action buttons.
+
 ### 5.3 Elements Panel
 
 HTML element palette organized by category using Spectrum accordions (`sp-accordion` with `allow-multiple`). Each element displays as a full-width card with:
@@ -391,6 +393,12 @@ The `md-convert.js` module provides:
 ### 8.2 Inline Editing
 
 In content mode, text elements (headings, paragraphs, list items) are directly editable in the canvas. Changes are synchronized back to the Jx document and can be exported as markdown.
+
+**Text node output**: When inline editing produces mixed content (text + inline formatting elements), text runs are represented as bare strings in the `children` array — not as `{ tagName: "span", textContent: ... }` wrapper elements.
+
+**Normalization rules** (applied on every inline edit commit via `normalizeChildren`):
+1. **Adjacent text merge**: Adjacent bare strings are always joined. `["hello ", "world", { "tagName": "em", ... }]` → `["hello world", { "tagName": "em", ... }]`
+2. **All-text fold**: If all children are bare strings (no element siblings), they collapse into a single `textContent` property on the parent — the simpler representation.
 
 ### 8.3 Markdown Loading
 

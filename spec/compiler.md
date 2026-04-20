@@ -43,6 +43,10 @@ Static detection is a single recursive tree walk — no code execution required.
 
 > **Status: Implemented.** `isDynamic()` in `shared.js` performs complete recursive analysis.
 
+### 2.2 Text Node Children
+
+Bare strings and numbers in `children` arrays compile to text nodes in all three output tiers. All three compilation targets (`compile-element.js`, `compile-static.js`, `compile-client.js`) handle `typeof def === "string"` children. Template strings (`"${...}"`) in text node children are reactive in the client tier.
+
 ---
 
 ## 3. Output Tiers

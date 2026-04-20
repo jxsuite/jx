@@ -641,7 +641,12 @@ export async function generateSchema() {
       ChildrenValue: {
         description: "Static array of child definitions, or an Array namespace for dynamic lists.",
         oneOf: [
-          { type: "array", items: { $ref: "#/$defs/ElementDef" } },
+          {
+            type: "array",
+            items: {
+              oneOf: [{ $ref: "#/$defs/ElementDef" }, { type: "string" }, { type: "number" }],
+            },
+          },
           { $ref: "#/$defs/ArrayNamespace" },
         ],
       },

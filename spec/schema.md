@@ -30,7 +30,7 @@
 
 - Root-level fields: `$schema`, `$id`, `$defs`, `state`, `tagName`, `children`, `$media`, `$elements`, `observedAttributes`
 - `tagName` enumeration: all standard HTML elements derived from `@webref/elements`
-- `children`: array of element definitions or Array namespace (`$prototype: "Array"`)
+- `children`: array of element definitions and/or text nodes (strings, numbers), or Array namespace (`$prototype: "Array"`)
 
 ### 3.2 `state` Entry Shapes
 

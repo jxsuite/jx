@@ -6,7 +6,15 @@ try {
   /* already registered */
 }
 
-import { defineElement, renderNode, buildScope, RESERVED_KEYS } from "../src/runtime.js";
+import {
+  defineElement,
+  renderNode as _renderNode,
+  buildScope,
+  RESERVED_KEYS,
+} from "../src/runtime.js";
+
+/** @type {(...args: Parameters<typeof _renderNode>) => HTMLElement} */
+const renderNode = /** @type {any} */ (_renderNode);
 
 // Use unique tag names per test to avoid cross-test registration collisions
 let uid = 0;

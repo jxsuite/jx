@@ -118,7 +118,7 @@ Every Jx document is a JSON object with the following top-level fields:
 | `$defs`    | Optional    | Pure JSON Schema type definitions — tooling only, no runtime artifacts |
 | `state`    | Optional    | Reactive state: signals, computed values, functions, and data sources  |
 | `tagName`  | Required    | HTML tag name for the root element                                     |
-| `children` | Optional    | Array of child element definitions, or Array namespace                 |
+| `children` | Optional    | Array of child element definitions and/or text nodes (strings/numbers), or Array namespace |
 
 ### 3.2 JSON Schema Dialect
 
@@ -644,7 +644,7 @@ Non-standard attributes are set via the `attributes` object:
 
 ### 8.4 Child Arrays
 
-Children are expressed as a JSON array of element definition objects:
+Children are expressed as a JSON array of element definitions and/or bare text nodes:
 
 ```json
 {
@@ -655,6 +655,31 @@ Children are expressed as a JSON array of element definition objects:
   ]
 }
 ```
+
+#### Text Node Children
+
+Bare strings and numbers are valid `children` items. They produce DOM `Text` nodes directly, without wrapper elements:
+
+```json
+{
+  "tagName": "p",
+  "children": [
+    "Hello ",
+    { "tagName": "strong", "textContent": "world" },
+    "!"
+  ]
+}
+```
+
+This is equivalent to the HTML `<p>Hello <strong>world</strong>!</p>`.
+
+Template strings in text node children are reactive:
+
+```json
+{ "children": ["Welcome, ${state.name}!"] }
+```
+
+When all children are bare strings with no element siblings, prefer the simpler `textContent` representation instead.
 
 ### 8.5 Slot Support
 

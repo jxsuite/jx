@@ -357,10 +357,21 @@ export const RESERVED_KEYS = new Set([
  * @param {Record<string, any>} def
  * @param {Record<string, any>} state - Reactive scope proxy (or child scope via Object.create)
  * @param {any} [options]
- * @returns {HTMLElement}
+ * @returns {HTMLElement | Text}
  */
 export function renderNode(def, state, options) {
   const path = options?._path ?? [];
+
+  // Text node children: bare strings/numbers/booleans produce DOM Text nodes
+  if (typeof def === "string" || typeof def === "number" || typeof def === "boolean") {
+    const textNode = document.createTextNode(String(def));
+    if (typeof def === "string" && isTemplateString(def)) {
+      effect(() => {
+        textNode.textContent = evaluateTemplate(def, state);
+      });
+    }
+    return textNode;
+  }
 
   // Extend scope with any $-prefixed local bindings declared on this node
   let localState = state;
