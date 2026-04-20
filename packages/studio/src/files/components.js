@@ -1,6 +1,7 @@
 /** Component registry — cached list of project components discovered via the platform. */
 
 import { getPlatform } from "../platform.js";
+import { projectState } from "../store.js";
 
 /** @type {any[]} */
 export let componentRegistry = []; // cached list from /__studio/components
@@ -9,7 +10,7 @@ export let _componentRegistryLoaded = false;
 export async function loadComponentRegistry() {
   try {
     const platform = getPlatform();
-    componentRegistry = await platform.discoverComponents();
+    componentRegistry = await platform.discoverComponents(projectState?.projectRoot || undefined);
     _componentRegistryLoaded = true;
   } catch {
     _componentRegistryLoaded = true;

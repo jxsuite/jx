@@ -88,6 +88,42 @@ export async function handleStudioApi(req, url, root) {
     }
   }
 
+  // Resolve nearest site.json ancestor for a given file path
+  if (path === "/__studio/resolve-site" && req.method === "GET") {
+    const filePath = url.searchParams.get("path");
+    if (!filePath) return Response.json({ error: "Missing path param" }, { status: 400 });
+    try {
+      // Walk up from file's directory looking for site.json
+      let dir = dirname(
+        filePath.startsWith("~") ? filePath.replace("~", process.env.HOME || "") : filePath,
+      );
+      const stopAt = "/";
+      while (dir && dir !== stopAt) {
+        const candidate = resolve(dir, "site.json");
+        if (existsSync(candidate)) {
+          const config = JSON.parse(readFileSync(candidate, "utf8"));
+          const relPath = relative(root, dir);
+          const absFile = filePath.startsWith("~")
+            ? filePath.replace("~", process.env.HOME || "")
+            : filePath;
+          const fileRelPath = relative(dir, absFile);
+          return Response.json({
+            sitePath: dir,
+            relPath: relPath || ".",
+            fileRelPath,
+            siteConfig: config,
+          });
+        }
+        const parent = dirname(dir);
+        if (parent === dir) break;
+        dir = parent;
+      }
+      return Response.json({ sitePath: null });
+    } catch (/** @type {any} */ e) {
+      return Response.json({ error: e.message }, { status: 500 });
+    }
+  }
+
   // Discover site projects — find all site.json files under root
   if (path === "/__studio/sites" && req.method === "GET") {
     try {
@@ -205,18 +241,28 @@ export async function handleStudioApi(req, url, root) {
     }
   }
 
-  // Read file
+  // Read file (supports absolute system paths for ?open= workflow)
   if (path === "/__studio/file" && req.method === "GET") {
     const fp = url.searchParams.get("path");
     if (!fp) return new Response("Missing path", { status: 400 });
-    const abs = resolve(root, fp);
-    try {
-      assertUnderRoot(abs, root);
-    } catch (/** @type {any} */ e) {
-      return new Response(e.message, { status: 400 });
+    const isAbsolute = fp.startsWith("/") || fp.startsWith("~");
+    const abs = isAbsolute
+      ? fp.startsWith("~")
+        ? fp.replace("~", process.env.HOME || "")
+        : fp
+      : resolve(root, fp);
+    if (!isAbsolute) {
+      try {
+        assertUnderRoot(abs, root);
+      } catch (/** @type {any} */ e) {
+        return new Response(e.message, { status: 400 });
+      }
     }
     try {
-      return Response.json({ content: await readFile(abs, "utf8"), path: relative(root, abs) });
+      return Response.json({
+        content: await readFile(abs, "utf8"),
+        path: isAbsolute ? fp : relative(root, abs),
+      });
     } catch (/** @type {any} */ e) {
       return e.code === "ENOENT"
         ? new Response("Not found", { status: 404 })

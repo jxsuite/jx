@@ -99,13 +99,37 @@ Three platform targets:
 
 Registration: `registerPlatform(impl)` at startup, `getPlatform()` for access.
 
+### 3.5 Project Open
+
+Studio supports opening projects via URL query parameter with absolute system paths:
+
+```
+http://localhost:3000/packages/studio/index.html?open=~/Development/jx/sites/jxplatform.net/site.json
+```
+
+The `?open=` path must point to a `site.json` file. On startup, Studio checks for this parameter, resolves the path via the PAL, and loads the project. This enables direct-linking to projects from terminals, scripts, and documentation.
+
+### 3.6 Site Context
+
+When a site project is loaded (via `?open=`, `openProject()`, or `probeRootProject()`), Studio resolves `site.json` and establishes a **site context** that applies globally to every file edited within that project:
+
+| Inherited from `site.json`   | Effect in Studio                                                                                    |
+| ---------------------------- | --------------------------------------------------------------------------------------------------- |
+| `$media` breakpoints         | Media tabs, responsive presets, and canvas panel widths reflect the site's breakpoints — not the individual file's |
+| `style` (`:root` variables)  | Global CSS custom properties and stylesheet rules are applied to the canvas, stylebook, and component previews     |
+| Component definitions        | The Components panel shows only components defined in the current project's `components/` and `$elements`          |
+| `$head`                      | Global fonts, viewport, and other head entries are applied to canvas rendering                                      |
+| `state`                      | Site-wide state entries are available (read-only) in the state explorer                                            |
+
+When navigating between components, pages, and layouts within a project, the site context persists. Individual file `$media`, `$style`, and `$elements` merge on top of (not replace) site-level definitions. This ensures the canvas always shows what the file will look like in the context of the full site.
+
 ---
 
 ## 4. Canvas
 
 ### 4.1 Rendering
 
-The canvas renders the current document using `@jxplatform/runtime`. It shows exactly what the component looks like at runtime — no simulation or approximation.
+The canvas renders the current document using `@jxplatform/runtime`. It shows exactly what the component looks like at runtime — no simulation or approximation. When a site context is active (§3.6), the canvas applies the site's global styles, CSS custom properties, and media breakpoints so that every file is rendered in its true site context.
 
 ### 4.2 Modes
 
@@ -159,9 +183,21 @@ Vertical tab strip for switching panel views:
 
 ### 5.2 Layers Panel
 
-Flattened tree of all elements in the document with indentation representing nesting depth. Each row shows element tag name, label, visibility toggle, and lock toggle.
+Flattened tree of all elements in the document with indentation representing nesting depth. Each row shows element tag name, label, and (on hover) move controls and delete button.
 
-**Drag and Drop** via Atlassian Pragmatic Drag and Drop — reorder siblings, reparent to different container, with drop indicators.
+**Drag and Drop** — The entire layer row is draggable via Atlassian Pragmatic Drag and Drop. Users can grab any part of the row to drag — no dedicated drag handle required. Drop indicators show reorder (above/below) and reparent (make-child) targets.
+
+**Move Action Buttons** — On hover, each non-root element row reveals contextual move buttons in place of a drag handle:
+
+| Button   | Icon         | Action                                           | Shown when                                   |
+| -------- | ------------ | ------------------------------------------------ | -------------------------------------------- |
+| Up       | `arrow-up`   | Move up among siblings                           | Not the first child                          |
+| Down     | `arrow-down` | Move down among siblings                         | Not the last child                           |
+| In       | `arrow-right`| Nest into the previous sibling (become last child)| Previous sibling exists and is not a void element |
+| Out      | `arrow-left` | Un-nest from parent (place after parent)         | Has a grandparent (not already at root level)|
+| Delete   | `close`      | Remove element from document                     | Always (non-root elements)                   |
+
+Only applicable buttons render for each row's position in the tree. Clicking a move button updates the document, re-renders the layers panel, and tracks the selection to the node's new position.
 
 ### 5.3 Elements Panel
 
@@ -176,7 +212,7 @@ Elements are drag-and-drop sources for inserting into the canvas.
 
 ### 5.4 Components Panel
 
-Project component library discovered via the platform (`discoverComponents()`). Each component displays as a full-width card with:
+Project component library discovered via the platform (`discoverComponents()`), scoped to the current site project. When a site context is active, only components from the project's `components/` directory and explicit `$elements` imports are shown — no components from other projects leak into the palette. Each component displays as a full-width card with:
 
 - **Live preview**: Component rendered via `defineElement(url)` + `document.createElement(tagName)` through the runtime — real component instances, not placeholders
 - **Tag label**: Component tag name below the preview

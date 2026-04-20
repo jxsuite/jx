@@ -68,7 +68,7 @@
         "unist-util-visit": "^5.1.0",
       },
       "devDependencies": {
-        "@happy-dom/global-registrator": "^20.8.9",
+        "@happy-dom/global-registrator": "^20.9.0",
         "@jxplatform/runtime": "workspace:*",
       },
     },
@@ -76,10 +76,10 @@
       "name": "@jxplatform/runtime",
       "version": "0.4.0",
       "dependencies": {
-        "@vue/reactivity": "^3.5.0",
+        "@vue/reactivity": "^3.5.32",
       },
       "devDependencies": {
-        "@happy-dom/global-registrator": "^20.8.9",
+        "@happy-dom/global-registrator": "^20.9.0",
       },
     },
     "packages/schema": {
@@ -145,6 +145,12 @@
         "@webref/css": "^8.5.3",
         "@webref/elements": "^2.7.1",
         "@webref/idl": "^3.75.2",
+      },
+    },
+    "sites/jxplatform.net": {
+      "name": "@jxplatform/site-jxplatform.net",
+      "dependencies": {
+        "@jxplatform/parser": "workspace:*",
       },
     },
   },
@@ -256,6 +262,8 @@
     "@jxplatform/schema": ["@jxplatform/schema@workspace:packages/schema"],
 
     "@jxplatform/server": ["@jxplatform/server@workspace:packages/server"],
+
+    "@jxplatform/site-jxplatform.net": ["@jxplatform/site-jxplatform.net@workspace:sites/jxplatform.net"],
 
     "@jxplatform/studio": ["@jxplatform/studio@workspace:packages/studio"],
 
