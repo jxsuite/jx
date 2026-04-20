@@ -2029,7 +2029,17 @@
         {
           "type": "array",
           "items": {
-            "$ref": "#/$defs/ElementDef"
+            "oneOf": [
+              {
+                "$ref": "#/$defs/ElementDef"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              }
+            ]
           }
         },
         {

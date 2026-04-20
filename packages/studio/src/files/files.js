@@ -62,6 +62,7 @@ export async function loadProject() {
 
     if (info.isSiteProject) {
       await loadDirectory(".");
+      await loadComponentRegistry();
     }
     // If not a site project (monorepo) — show welcome prompt, don't load tree
   } catch {
