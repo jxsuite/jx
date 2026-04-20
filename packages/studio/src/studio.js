@@ -821,7 +821,6 @@ if (_openParam) {
   }
 } else {
   // Normal mode: probe for project at server root
-  loadComponentRegistry();
   loadProject();
   render();
 }
@@ -3814,7 +3813,8 @@ function buildStylebookElement(entry, rootStyle, activeBreakpoints) {
  * @returns {Promise<HTMLElement>}
  */
 async function renderComponentPreview(comp) {
-  const url = `${location.origin}/${comp.path}`;
+  const root = projectState?.projectRoot;
+  const url = `${location.origin}/${root ? root + "/" : ""}${comp.path}`;
   try {
     await defineElement(url);
     const el = document.createElement(comp.tagName);
