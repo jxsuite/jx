@@ -58,6 +58,8 @@ import {
   runUpdateMiddleware,
   addPostRenderHook,
   runPostRenderHooks,
+  projectState,
+  setProjectState,
 } from "./store.js";
 
 import { renderNode as runtimeRenderNode, buildScope, defineElement } from "@jxplatform/runtime";
@@ -108,6 +110,7 @@ import { exportCemManifest as _exportCemManifest } from "./services/cem-export.j
 import { registerPlatform, getPlatform, hasPlatform } from "./platform.js";
 import { createDevServerPlatform } from "./platforms/devserver.js";
 import { codeService, setLintMarkers, getFunctionArgs } from "./services/code-services.js";
+import { getEffectiveMedia, getEffectiveStyle, getEffectiveImports } from "./site-context.js";
 import {
   defCategory,
   defBadgeLabel,
@@ -459,6 +462,9 @@ async function renderCanvasLive(doc, canvasEl) {
       }
     }
 
+    // Inject site-level imports so buildScope can resolve $prototype names
+    renderDoc.imports = getEffectiveImports(renderDoc.imports);
+
     const $defs = await buildScope(renderDoc, {}, docBase);
     const el = runtimeRenderNode(renderDoc, $defs, {
       onNodeCreated(/** @type {any} */ el, /** @type {any} */ path) {
@@ -675,28 +681,76 @@ addPostRenderHook((/** @type {any} */ prevDoc) => {
 
 // Now that renderers and update are registered, bootstrap
 registerFunctionCompletions();
-loadComponentRegistry();
-loadProject();
-render();
 
-// Auto-open a document via ?open=path query parameter
-{
-  const openParam = new URLSearchParams(location.search).get("open");
-  if (openParam) {
-    getPlatform()
-      .readFile(openParam)
-      .then(async (/** @type {any} */ content) => {
+const _openParam = new URLSearchParams(location.search).get("open");
+
+if (_openParam) {
+  // ?open= mode: skip normal loadProject, set up site context from the path
+  if (!_openParam.startsWith("/") && !_openParam.startsWith("~")) {
+    statusMessage(`Error: ?open= requires an absolute path (got "${_openParam}")`);
+    render();
+  } else {
+    render();
+    const platform = getPlatform();
+    (async () => {
+      try {
+        const siteCtx = platform.resolveSiteContext
+          ? await platform.resolveSiteContext(_openParam)
+          : { sitePath: null };
+
+        if (siteCtx.sitePath) {
+          // Set PAL project root to server-relative path so file ops work
+          if (siteCtx.relPath) platform.projectRoot = siteCtx.relPath;
+
+          setProjectState({
+            root: siteCtx.sitePath,
+            name: siteCtx.siteConfig?.name || "Project",
+            projectRoot: siteCtx.relPath || ".",
+            isSiteProject: true,
+            siteConfig: siteCtx.siteConfig,
+            projectDirs: [],
+            dirs: new Map(),
+            expanded: new Set(),
+            selectedPath: siteCtx.fileRelPath || null,
+            searchQuery: "",
+          });
+
+          await loadComponentRegistry();
+
+          // Load directory tree
+          const dirEntries = await platform.listDirectory(".");
+          projectState.dirs.set(".", dirEntries);
+          for (const e of dirEntries) {
+            if (e.type === "directory" && ["pages", "components", "layouts"].includes(e.name)) {
+              projectState.expanded.add(e.path || e.name);
+              const sub = await platform.listDirectory(e.path || e.name);
+              projectState.dirs.set(e.path || e.name, sub);
+            }
+          }
+        }
+
+        // Read and open the file
+        const fileRelPath = siteCtx.fileRelPath || _openParam;
+        const content = await platform.readFile(fileRelPath);
         if (content) {
           const doc = JSON.parse(content);
           S = createState(doc);
           S.dirty = false;
-          S.documentPath = openParam;
+          S.documentPath = fileRelPath;
+          S.ui = { ...S.ui, leftTab: "files" };
           render();
-          statusMessage(`Opened ${openParam}`);
+          statusMessage(`Opened ${_openParam}`);
         }
-      })
-      .catch((/** @type {any} */ e) => statusMessage(`Error: ${e.message}`));
+      } catch (/** @type {any} */ e) {
+        statusMessage(`Error: ${e.message}`);
+      }
+    })();
   }
+} else {
+  // Normal mode: probe for project at server root
+  loadComponentRegistry();
+  loadProject();
+  render();
 }
 
 // ─── Media helpers ────────────────────────────────────────────────────────────
@@ -896,7 +950,11 @@ function renderCanvas() {
     canvasWrap.style.overflow = "hidden";
 
     // Remove zoom indicator left over from design/preview mode
-    litRender(nothing, zoomIndicatorHost);
+    try {
+      litRender(nothing, zoomIndicatorHost);
+    } catch {
+      zoomIndicatorHost.textContent = "";
+    }
 
     const { tpl: panelTpl, panel } = canvasPanelTemplate(null, null, true);
     litRender(
@@ -920,14 +978,15 @@ function renderCanvas() {
     sizeBreakpoints,
     featureQueries: _featureQueries,
     baseWidth,
-  } = parseMediaEntries(S.document.$media);
+  } = parseMediaEntries(getEffectiveMedia(S.document.$media));
   const hasMedia = sizeBreakpoints.length > 0;
   const featureToggles = S.ui.featureToggles;
 
   // Create panzoom wrapper (the element that gets transformed)
   if (!hasMedia) {
     // Single panel — use baseWidth if a custom one is defined, otherwise full-width
-    const hasBaseWidth = S.document.$media && S.document.$media["--"];
+    const effectiveMedia = getEffectiveMedia(S.document.$media);
+    const hasBaseWidth = effectiveMedia && effectiveMedia["--"];
     const label = hasBaseWidth ? `${mediaDisplayName("--")} (${baseWidth}px)` : null;
     const { tpl: panelTpl, panel } = canvasPanelTemplate(
       hasBaseWidth ? "base" : null,
@@ -3691,11 +3750,11 @@ function hasTagStyle(rootStyle, tag) {
 
 function renderStylebook() {
   stylebookElToTag = new WeakMap();
-  const rootStyle = S.document.style || {};
+  const rootStyle = getEffectiveStyle(S.document.style);
   const filter = (S.ui.stylebookFilter || "").toLowerCase();
   const customizedOnly = S.ui.stylebookCustomizedOnly;
 
-  const { sizeBreakpoints, baseWidth } = parseMediaEntries(S.document.$media);
+  const { sizeBreakpoints, baseWidth } = parseMediaEntries(getEffectiveMedia(S.document.$media));
   const hasMedia = sizeBreakpoints.length > 0;
 
   // Chrome bar (tabs + filter) — positioned absolutely above the panzoom surface
@@ -3805,7 +3864,8 @@ function renderStylebook() {
   let panelEntries;
   if (!hasMedia) {
     // Single panel
-    const hasBaseWidth = S.document.$media && S.document.$media["--"];
+    const effectiveMedia = getEffectiveMedia(S.document.$media);
+    const hasBaseWidth = effectiveMedia && effectiveMedia["--"];
     const label = hasBaseWidth ? `${mediaDisplayName("--")} (${baseWidth}px)` : null;
     const entry = canvasPanelTemplate(
       hasBaseWidth ? "base" : null,
@@ -6251,7 +6311,7 @@ function styleSidebarTemplate(
   /** @type {any} */ activeSelector,
 ) {
   const style = node.style || {};
-  const { sizeBreakpoints } = parseMediaEntries(S.document.$media);
+  const { sizeBreakpoints } = parseMediaEntries(getEffectiveMedia(S.document.$media));
   const mediaNames = sizeBreakpoints.map((bp) => bp.name);
   const activeTab = activeMediaTab;
 
@@ -7048,7 +7108,7 @@ function renderToolbar() {
       : nothing;
 
   // Feature toggles
-  const { featureQueries } = parseMediaEntries(S.document.$media);
+  const { featureQueries } = parseMediaEntries(getEffectiveMedia(S.document.$media));
   const togglesTpl =
     featureQueries.length > 0
       ? html`

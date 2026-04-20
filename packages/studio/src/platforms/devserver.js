@@ -214,6 +214,20 @@ export function createDevServerPlatform() {
       }
     },
 
+    // ─── Site context resolution ──────────────────────────────────────
+
+    /**
+     * Given an absolute file path, walk up to find the nearest site.json ancestor. Returns {
+     * sitePath, siteConfig } or { sitePath: null }.
+     *
+     * @param {string} filePath — absolute system path
+     */
+    async resolveSiteContext(filePath) {
+      const res = await fetch(`/__studio/resolve-site?path=${encodeURIComponent(filePath)}`);
+      if (!res.ok) return { sitePath: null };
+      return await res.json();
+    },
+
     // ─── File location ────────────────────────────────────────────────────
 
     /** @param {string} name */

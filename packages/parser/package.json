@@ -30,7 +30,7 @@
     "unist-util-visit": "^5.1.0"
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "^20.8.9",
+    "@happy-dom/global-registrator": "^20.9.0",
     "@jxplatform/runtime": "workspace:*"
   }
 }

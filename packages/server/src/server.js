@@ -13,12 +13,61 @@
  *   proxying, and studio filesystem integration as a single createDevServer() call.
  */
 
-import { resolve } from "node:path";
+import { resolve, join } from "node:path";
 import { buildAll } from "./build.js";
 import { createWatcher, injectSSE } from "./watch.js";
 import { handleResolve, handleServerFunction } from "./resolve.js";
 import { handleStudioApi } from "./studio-api.js";
 import { handleCodeApi } from "./code-api.js";
+import { existsSync, readFileSync } from "node:fs";
+
+/**
+ * Resolve an npm-style bare specifier from a URL path via node_modules. Handles scoped packages
+ * (@scope/pkg/subpath) and respects package.json exports. Strips leading directory segments (e.g.
+ * /pages/@scope/pkg/file → @scope/pkg/file).
+ *
+ * @param {string} root - Absolute project root
+ * @param {string} urlPath - URL pathname (e.g. "/pages/@jxplatform/parser/Foo.class.json")
+ * @returns {string | null} Absolute file path or null
+ */
+function resolveNpmPath(root, urlPath) {
+  const segments = urlPath.split("/").filter(Boolean);
+
+  // Find the @scope segment — everything from there is the bare specifier
+  let start = -1;
+  for (let i = 0; i < segments.length; i++) {
+    if (segments[i].startsWith("@")) {
+      start = i;
+      break;
+    }
+  }
+  if (start < 0 || start + 1 >= segments.length) return null;
+
+  const scope = segments[start];
+  const pkg = segments[start + 1];
+  const subpath = segments.slice(start + 2).join("/");
+  const pkgDir = join(root, "node_modules", scope, pkg);
+  const pkgJsonPath = join(pkgDir, "package.json");
+
+  if (!existsSync(pkgJsonPath)) return null;
+
+  // If there's a subpath, check package.json exports first
+  if (subpath) {
+    try {
+      const pkgJson = JSON.parse(readFileSync(pkgJsonPath, "utf8"));
+      const exportKey = `./${subpath}`;
+      if (pkgJson.exports && pkgJson.exports[exportKey]) {
+        const mapped = join(pkgDir, pkgJson.exports[exportKey]);
+        if (existsSync(mapped)) return mapped;
+      }
+    } catch {}
+    // Fall back to direct path
+    const direct = join(pkgDir, subpath);
+    if (existsSync(direct)) return direct;
+  }
+
+  return null;
+}
 
 /**
  * Create and start a Jx development server.
@@ -109,7 +158,16 @@ export async function createDevServer(options) {
 
       // Static files
       const file = Bun.file(resolve(absRoot, "." + path));
-      if (!(await file.exists())) return new Response("Not found", { status: 404 });
+      if (!(await file.exists())) {
+        // Resolve npm-style bare specifiers via node_modules
+        // e.g. /pages/@scope/pkg/file.json → node_modules/@scope/pkg (+ exports map)
+        const resolved = resolveNpmPath(absRoot, path);
+        if (resolved) {
+          const nmFile = Bun.file(resolved);
+          if (await nmFile.exists()) return new Response(nmFile);
+        }
+        return new Response("Not found", { status: 404 });
+      }
 
       if (handleSSE && path.endsWith(".html")) {
         const html = await file.text();

@@ -992,7 +992,20 @@ These cascade without explicit import:
 
 4. **Language** — `defaults.lang` from `site.json` sets `<html lang>` on every page.
 
-### 10.3 What Requires Explicit Access
+5. **Global stylesheet rules** — Root-level `style` rules from `site.json` (not just `:root` custom properties, but any global selectors) are applied to all pages and cascaded into all rendered contexts including Studio's canvas and stylebook.
+
+### 10.3 Component Scoping
+
+Components are scoped to the site project. When a site context is active:
+
+- Only components in the project's `components/` directory are discoverable
+- Explicit `$elements` imports in individual files add to (not replace) the project set
+- Components from other projects or global scope do not appear in the palette or autocomplete
+- The `imports` map in `site.json` defines project-wide `$prototype` resolutions
+
+This ensures that each site is a self-contained unit — moving between components, pages, and layouts within a project always sees the same component registry.
+
+### 10.4 What Requires Explicit Access
 
 These require deliberate reference:
 
@@ -1012,7 +1025,19 @@ These require deliberate reference:
 
 4. **Cross-component state** — Components receive external data only through `$props`. No implicit scope leaking.
 
-### 10.4 CSS Cascade
+### 10.6 Studio Runtime Behavior
+
+Studio must fully enforce the site-based paradigm at edit time, not just build time. When a site project is open:
+
+- **Canvas rendering** applies the site's global styles (`site.json` `style`) and CSS custom properties so every file preview is accurate
+- **Media breakpoint tabs** reflect the site's `$media` definitions, not the individual file's — ensuring consistent responsive editing across all project files
+- **Component palette** is scoped to the project (§10.3)
+- **Stylebook mode** applies site-level design tokens when rendering element and component previews
+- **Navigation between files** (components, pages, layouts) preserves the site context — opening a component file does not lose the site's media, styles, or component registry
+
+Individual file `$media`, `$style`, and `$elements` merge on top of site-level definitions (file takes precedence on conflict), matching the cascade behavior at build time.
+
+### 10.7 CSS Cascade
 
 The global stylesheet is emitted in this order:
 

@@ -9,7 +9,10 @@
   "children": [
     {
       "tagName": "div",
-      "style": { "maxWidth": "600px", "margin": "0 auto" },
+      "style": {
+        "maxWidth": "600px",
+        "margin": "0 auto"
+      },
       "children": [
         {
           "tagName": "h2",
@@ -23,12 +26,18 @@
         },
         {
           "tagName": "p",
-          "style": { "color": "#94a3b8", "margin": "0 0 2rem", "fontSize": "1.0625rem" },
+          "style": {
+            "color": "#94a3b8",
+            "margin": "0 0 2rem",
+            "fontSize": "1.0625rem"
+          },
           "children": ["Start building your next site with JX. JSON in, HTML out."]
         },
         {
           "tagName": "a",
-          "attributes": { "href": "/docs/getting-started" },
+          "attributes": {
+            "href": "/docs/getting-started"
+          },
           "style": {
             "display": "inline-block",
             "backgroundColor": "#3b82f6",
