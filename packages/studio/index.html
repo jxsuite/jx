@@ -576,6 +576,33 @@
         font-family: "SF Mono", "Fira Code", monospace;
         pointer-events: none;
       }
+      /* Empty element placeholders (design/edit mode only) */
+      .empty-text-placeholder:not([contenteditable])::after {
+        content: "Click here to add text...";
+        color: color-mix(in srgb, var(--fg-dim, #808080) 40%, transparent);
+        font-style: italic;
+        font-size: 13px;
+        pointer-events: none;
+      }
+      .empty-container-placeholder {
+        border: 1px dashed color-mix(in srgb, var(--fg-dim, #808080) 25%, transparent);
+        border-radius: 4px;
+        min-height: 32px;
+        position: relative;
+      }
+      .empty-container-placeholder::after {
+        content: "Drag elements here...";
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        color: color-mix(in srgb, var(--fg-dim, #808080) 40%, transparent);
+        font-style: italic;
+        font-size: 11px;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+        pointer-events: none;
+        white-space: nowrap;
+      }
       [contenteditable="plaintext-only"]:focus {
         outline: 1px solid var(--accent) !important;
         outline-offset: -1px;
