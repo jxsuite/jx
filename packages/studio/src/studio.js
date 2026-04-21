@@ -395,6 +395,77 @@ function prepareForEditMode(node) {
       out[k] = prepareForEditMode(v);
     }
   }
+
+  // Mark empty elements with placeholder classes for design-mode visibility
+  if (out.tagName && !out.textContent && !out.innerHTML) {
+    const hasChildren = Array.isArray(out.children) && out.children.length > 0;
+    if (!hasChildren) {
+      const tag = out.tagName;
+      const textTags = new Set([
+        "p",
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
+        "blockquote",
+        "li",
+        "dt",
+        "dd",
+        "th",
+        "td",
+        "span",
+        "strong",
+        "em",
+        "small",
+        "mark",
+        "code",
+        "abbr",
+        "q",
+        "sub",
+        "sup",
+        "time",
+        "a",
+        "button",
+        "label",
+        "legend",
+        "caption",
+        "summary",
+        "pre",
+        "option",
+      ]);
+      const containerTags = new Set([
+        "div",
+        "section",
+        "article",
+        "aside",
+        "header",
+        "footer",
+        "main",
+        "nav",
+        "figure",
+        "figcaption",
+        "details",
+        "fieldset",
+        "form",
+        "ul",
+        "ol",
+        "dl",
+        "table",
+      ]);
+      if (textTags.has(tag)) {
+        out.className = out.className
+          ? out.className + " empty-text-placeholder"
+          : "empty-text-placeholder";
+      } else if (containerTags.has(tag)) {
+        out.className = out.className
+          ? out.className + " empty-container-placeholder"
+          : "empty-container-placeholder";
+      }
+    }
+  }
+
   return out;
 }
 
