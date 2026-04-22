@@ -1,0 +1,213 @@
+{
+  "tagName": "product-showcase",
+  "style": {
+    "padding": "clamp(3rem, 6vw, 5rem) clamp(1rem, 3vw, 2rem)",
+    "borderTop": "1px solid var(--border)"
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "style": { "maxWidth": "var(--max-width)", "margin": "0 auto" },
+      "children": [
+        {
+          "tagName": "div",
+          "style": {
+            "display": "grid",
+            "gridTemplateColumns": "1fr 1fr",
+            "gap": "clamp(2rem, 4vw, 4rem)",
+            "alignItems": "center",
+            "@(max-width: 767px)": { "gridTemplateColumns": "1fr" }
+          },
+          "children": [
+            {
+              "tagName": "div",
+              "children": [
+                {
+                  "tagName": "div",
+                  "style": {
+                    "fontSize": "0.75rem",
+                    "fontWeight": "600",
+                    "color": "var(--accent)",
+                    "textTransform": "uppercase",
+                    "letterSpacing": "0.08em",
+                    "fontFamily": "var(--font-mono)",
+                    "marginBottom": "1rem"
+                  },
+                  "children": ["JX Studio"]
+                },
+                {
+                  "tagName": "h2",
+                  "style": {
+                    "fontSize": "clamp(1.5rem, 3vw, 2.25rem)",
+                    "fontWeight": "700",
+                    "letterSpacing": "-0.02em",
+                    "lineHeight": "1.2",
+                    "margin": "0 0 1rem"
+                  },
+                  "children": ["A visual IDE for the web"]
+                },
+                {
+                  "tagName": "p",
+                  "style": {
+                    "color": "var(--text-secondary)",
+                    "fontSize": "1.0625rem",
+                    "lineHeight": "1.7",
+                    "margin": "0 0 2rem"
+                  },
+                  "children": [
+                    "Design components on a canvas. Inspect and edit properties. See changes live. Everything saves to plain JSON files on disk \u2014 no database, no lock-in."
+                  ]
+                },
+                {
+                  "tagName": "ul",
+                  "style": {
+                    "listStyle": "none",
+                    "padding": "0",
+                    "margin": "0",
+                    "display": "flex",
+                    "flexDirection": "column",
+                    "gap": "0.75rem"
+                  },
+                  "children": [
+                    {
+                      "tagName": "li",
+                      "style": {
+                        "display": "flex",
+                        "alignItems": "flex-start",
+                        "gap": "0.75rem",
+                        "color": "var(--text-secondary)",
+                        "fontSize": "0.9375rem"
+                      },
+                      "children": [
+                        {
+                          "tagName": "span",
+                          "style": {
+                            "color": "var(--accent)",
+                            "fontFamily": "var(--font-mono)",
+                            "fontSize": "0.75rem",
+                            "marginTop": "0.25rem"
+                          },
+                          "children": ["\u2713"]
+                        },
+                        "Visual canvas with drag-and-drop component editing"
+                      ]
+                    },
+                    {
+                      "tagName": "li",
+                      "style": {
+                        "display": "flex",
+                        "alignItems": "flex-start",
+                        "gap": "0.75rem",
+                        "color": "var(--text-secondary)",
+                        "fontSize": "0.9375rem"
+                      },
+                      "children": [
+                        {
+                          "tagName": "span",
+                          "style": {
+                            "color": "var(--accent)",
+                            "fontFamily": "var(--font-mono)",
+                            "fontSize": "0.75rem",
+                            "marginTop": "0.25rem"
+                          },
+                          "children": ["\u2713"]
+                        },
+                        "Property inspector with live style editing"
+                      ]
+                    },
+                    {
+                      "tagName": "li",
+                      "style": {
+                        "display": "flex",
+                        "alignItems": "flex-start",
+                        "gap": "0.75rem",
+                        "color": "var(--text-secondary)",
+                        "fontSize": "0.9375rem"
+                      },
+                      "children": [
+                        {
+                          "tagName": "span",
+                          "style": {
+                            "color": "var(--accent)",
+                            "fontFamily": "var(--font-mono)",
+                            "fontSize": "0.75rem",
+                            "marginTop": "0.25rem"
+                          },
+                          "children": ["\u2713"]
+                        },
+                        "Responsive breakpoint preview"
+                      ]
+                    },
+                    {
+                      "tagName": "li",
+                      "style": {
+                        "display": "flex",
+                        "alignItems": "flex-start",
+                        "gap": "0.75rem",
+                        "color": "var(--text-secondary)",
+                        "fontSize": "0.9375rem"
+                      },
+                      "children": [
+                        {
+                          "tagName": "span",
+                          "style": {
+                            "color": "var(--accent)",
+                            "fontFamily": "var(--font-mono)",
+                            "fontSize": "0.75rem",
+                            "marginTop": "0.25rem"
+                          },
+                          "children": ["\u2713"]
+                        },
+                        "File-based \u2014 everything is JSON on disk"
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "tagName": "div",
+              "style": {
+                "backgroundColor": "var(--bg-secondary)",
+                "border": "1px solid var(--border)",
+                "borderRadius": "var(--radius-lg)",
+                "aspectRatio": "16/10",
+                "display": "flex",
+                "alignItems": "center",
+                "justifyContent": "center",
+                "overflow": "hidden"
+              },
+              "children": [
+                {
+                  "tagName": "div",
+                  "style": { "textAlign": "center", "padding": "2rem" },
+                  "children": [
+                    {
+                      "tagName": "div",
+                      "style": {
+                        "fontSize": "2rem",
+                        "marginBottom": "0.75rem",
+                        "opacity": "0.3"
+                      },
+                      "children": ["\u25a1"]
+                    },
+                    {
+                      "tagName": "p",
+                      "style": {
+                        "color": "var(--text-muted)",
+                        "fontSize": "0.8125rem",
+                        "fontFamily": "var(--font-mono)",
+                        "margin": "0"
+                      },
+                      "children": ["Studio screenshot"]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

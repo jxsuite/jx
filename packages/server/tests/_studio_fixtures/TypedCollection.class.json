@@ -1,1 +1,20 @@
-{"$prototype":"Class","title":"TypedCollection","$defs":{"parameters":{"src":{"identifier":"src","type":{"type":"string"}},"itemSchema":{"identifier":"itemSchema","type":{"type":"object"},"format":"json-schema","description":"Schema for collection items"}},"constructor":{"role":"constructor","$prototype":"Function","parameters":[{"$ref":"#/$defs/parameters/src"}]}}}
+{
+  "$prototype": "Class",
+  "title": "TypedCollection",
+  "$defs": {
+    "parameters": {
+      "src": { "identifier": "src", "type": { "type": "string" } },
+      "itemSchema": {
+        "identifier": "itemSchema",
+        "type": { "type": "object" },
+        "format": "json-schema",
+        "description": "Schema for collection items"
+      }
+    },
+    "constructor": {
+      "role": "constructor",
+      "$prototype": "Function",
+      "parameters": [{ "$ref": "#/$defs/parameters/src" }]
+    }
+  }
+}

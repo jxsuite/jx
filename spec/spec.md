@@ -111,13 +111,13 @@ Every Jx document is a JSON object with the following top-level fields:
 }
 ```
 
-| Field      | Required    | Description                                                            |
-| ---------- | ----------- | ---------------------------------------------------------------------- |
-| `$schema`  | Recommended | URI identifying the Jx dialect version                                 |
-| `$id`      | Recommended | Component identifier, used by tooling                                  |
-| `$defs`    | Optional    | Pure JSON Schema type definitions — tooling only, no runtime artifacts |
-| `state`    | Optional    | Reactive state: signals, computed values, functions, and data sources  |
-| `tagName`  | Required    | HTML tag name for the root element                                     |
+| Field      | Required    | Description                                                                                |
+| ---------- | ----------- | ------------------------------------------------------------------------------------------ |
+| `$schema`  | Recommended | URI identifying the Jx dialect version                                                     |
+| `$id`      | Recommended | Component identifier, used by tooling                                                      |
+| `$defs`    | Optional    | Pure JSON Schema type definitions — tooling only, no runtime artifacts                     |
+| `state`    | Optional    | Reactive state: signals, computed values, functions, and data sources                      |
+| `tagName`  | Required    | HTML tag name for the root element                                                         |
 | `children` | Optional    | Array of child element definitions and/or text nodes (strings/numbers), or Array namespace |
 
 ### 3.2 JSON Schema Dialect
@@ -663,11 +663,7 @@ Bare strings and numbers are valid `children` items. They produce DOM `Text` nod
 ```json
 {
   "tagName": "p",
-  "children": [
-    "Hello ",
-    { "tagName": "strong", "textContent": "world" },
-    "!"
-  ]
+  "children": ["Hello ", { "tagName": "strong", "textContent": "world" }, "!"]
 }
 ```
 

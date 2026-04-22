@@ -1,1 +1,22 @@
-{"title":"Greeter","$prototype":"Class","$defs":{"fields":{"name":{"role":"field","access":"public","scope":"instance","identifier":"name","default":"world"}},"methods":{"greeting":{"role":"accessor","identifier":"value","getter":{"body":"return \"Hello \" + this.name;"}}}}}
+{
+  "title": "Greeter",
+  "$prototype": "Class",
+  "$defs": {
+    "fields": {
+      "name": {
+        "role": "field",
+        "access": "public",
+        "scope": "instance",
+        "identifier": "name",
+        "default": "world"
+      }
+    },
+    "methods": {
+      "greeting": {
+        "role": "accessor",
+        "identifier": "value",
+        "getter": { "body": "return \"Hello \" + this.name;" }
+      }
+    }
+  }
+}

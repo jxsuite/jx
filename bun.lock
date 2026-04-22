@@ -147,7 +147,7 @@
         "@webref/idl": "^3.75.2",
       },
     },
-    "sites/jxplatform.net": {
+    "sites/jxsuite.com": {
       "name": "@jxplatform/site-jxplatform.net",
       "dependencies": {
         "@jxplatform/parser": "workspace:*",
@@ -263,7 +263,7 @@
 
     "@jxplatform/server": ["@jxplatform/server@workspace:packages/server"],
 
-    "@jxplatform/site-jxplatform.net": ["@jxplatform/site-jxplatform.net@workspace:sites/jxplatform.net"],
+    "@jxplatform/site-jxplatform.net": ["@jxplatform/site-jxplatform.net@workspace:sites/jxsuite.com"],
 
     "@jxplatform/studio": ["@jxplatform/studio@workspace:packages/studio"],
 

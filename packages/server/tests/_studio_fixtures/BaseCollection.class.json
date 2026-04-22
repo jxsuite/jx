@@ -1,1 +1,20 @@
-{"$prototype":"Class","title":"BaseCollection","description":"Base collection class","$defs":{"parameters":{"src":{"identifier":"src","type":{"type":"string"},"description":"Source path"},"sortBy":{"identifier":"sortBy","type":{"type":"string"},"description":"Sort field"}},"constructor":{"role":"constructor","$prototype":"Function","parameters":[{"$ref":"#/$defs/parameters/src"}]}}}
+{
+  "$prototype": "Class",
+  "title": "BaseCollection",
+  "description": "Base collection class",
+  "$defs": {
+    "parameters": {
+      "src": { "identifier": "src", "type": { "type": "string" }, "description": "Source path" },
+      "sortBy": {
+        "identifier": "sortBy",
+        "type": { "type": "string" },
+        "description": "Sort field"
+      }
+    },
+    "constructor": {
+      "role": "constructor",
+      "$prototype": "Function",
+      "parameters": [{ "$ref": "#/$defs/parameters/src" }]
+    }
+  }
+}

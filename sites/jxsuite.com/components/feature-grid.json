@@ -1,0 +1,302 @@
+{
+  "tagName": "feature-grid",
+  "style": {
+    "padding": "clamp(3rem, 6vw, 5rem) clamp(1rem, 3vw, 2rem)",
+    "borderTop": "1px solid var(--border)"
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "style": {
+        "maxWidth": "var(--max-width)",
+        "margin": "0 auto"
+      },
+      "children": [
+        {
+          "tagName": "h2",
+          "style": {
+            "fontSize": "clamp(1.5rem, 3vw, 2rem)",
+            "fontWeight": "700",
+            "letterSpacing": "-0.02em",
+            "margin": "0 0 0.75rem",
+            "textAlign": "center"
+          },
+          "children": ["Everything you need, nothing you don't"]
+        },
+        {
+          "tagName": "p",
+          "style": {
+            "color": "var(--text-secondary)",
+            "textAlign": "center",
+            "maxWidth": "560px",
+            "margin": "0 auto 3rem",
+            "fontSize": "1.0625rem"
+          },
+          "children": [
+            "A complete toolkit for building modern static websites \u2014 from visual design to production deploy."
+          ]
+        },
+        {
+          "tagName": "div",
+          "style": {
+            "display": "grid",
+            "gridTemplateColumns": "repeat(auto-fit, minmax(280px, 1fr))",
+            "gap": "1px",
+            "backgroundColor": "var(--border)",
+            "borderRadius": "var(--radius-lg)",
+            "overflow": "hidden",
+            "border": "1px solid var(--border)"
+          },
+          "children": [
+            {
+              "tagName": "div",
+              "style": { "padding": "1.75rem", "backgroundColor": "var(--bg-secondary)" },
+              "children": [
+                {
+                  "tagName": "div",
+                  "style": {
+                    "width": "2.25rem",
+                    "height": "2.25rem",
+                    "borderRadius": "var(--radius)",
+                    "backgroundColor": "rgba(59, 130, 246, 0.1)",
+                    "color": "var(--accent)",
+                    "display": "flex",
+                    "alignItems": "center",
+                    "justifyContent": "center",
+                    "fontWeight": "700",
+                    "fontSize": "0.75rem",
+                    "fontFamily": "var(--font-mono)",
+                    "marginBottom": "1rem"
+                  },
+                  "children": ["{ }"]
+                },
+                {
+                  "tagName": "h3",
+                  "style": { "fontSize": "0.9375rem", "fontWeight": "600", "margin": "0 0 0.5rem" },
+                  "children": ["Declarative JSON"]
+                },
+                {
+                  "tagName": "p",
+                  "style": {
+                    "color": "var(--text-secondary)",
+                    "fontSize": "0.875rem",
+                    "margin": "0",
+                    "lineHeight": "1.6"
+                  },
+                  "children": [
+                    "Define UI, state, and behavior as structured JSON. No JSX, no templates, no build-step syntax."
+                  ]
+                }
+              ]
+            },
+            {
+              "tagName": "div",
+              "style": { "padding": "1.75rem", "backgroundColor": "var(--bg-secondary)" },
+              "children": [
+                {
+                  "tagName": "div",
+                  "style": {
+                    "width": "2.25rem",
+                    "height": "2.25rem",
+                    "borderRadius": "var(--radius)",
+                    "backgroundColor": "rgba(34, 197, 94, 0.1)",
+                    "color": "#22c55e",
+                    "display": "flex",
+                    "alignItems": "center",
+                    "justifyContent": "center",
+                    "fontWeight": "700",
+                    "fontSize": "0.6875rem",
+                    "fontFamily": "var(--font-mono)",
+                    "marginBottom": "1rem"
+                  },
+                  "children": ["0kb"]
+                },
+                {
+                  "tagName": "h3",
+                  "style": { "fontSize": "0.9375rem", "fontWeight": "600", "margin": "0 0 0.5rem" },
+                  "children": ["Zero Runtime"]
+                },
+                {
+                  "tagName": "p",
+                  "style": {
+                    "color": "var(--text-secondary)",
+                    "fontSize": "0.875rem",
+                    "margin": "0",
+                    "lineHeight": "1.6"
+                  },
+                  "children": [
+                    "Compiles to plain HTML and CSS. No JavaScript ships by default. Reactive islands hydrate only where needed."
+                  ]
+                }
+              ]
+            },
+            {
+              "tagName": "div",
+              "style": { "padding": "1.75rem", "backgroundColor": "var(--bg-secondary)" },
+              "children": [
+                {
+                  "tagName": "div",
+                  "style": {
+                    "width": "2.25rem",
+                    "height": "2.25rem",
+                    "borderRadius": "var(--radius)",
+                    "backgroundColor": "rgba(168, 85, 247, 0.1)",
+                    "color": "#a855f7",
+                    "display": "flex",
+                    "alignItems": "center",
+                    "justifyContent": "center",
+                    "fontWeight": "700",
+                    "fontSize": "0.6875rem",
+                    "fontFamily": "var(--font-mono)",
+                    "marginBottom": "1rem"
+                  },
+                  "children": ["IDE"]
+                },
+                {
+                  "tagName": "h3",
+                  "style": { "fontSize": "0.9375rem", "fontWeight": "600", "margin": "0 0 0.5rem" },
+                  "children": ["Visual Studio"]
+                },
+                {
+                  "tagName": "p",
+                  "style": {
+                    "color": "var(--text-secondary)",
+                    "fontSize": "0.875rem",
+                    "margin": "0",
+                    "lineHeight": "1.6"
+                  },
+                  "children": [
+                    "Design on a visual canvas. Inspect properties, edit styles, drag and drop \u2014 all in the browser."
+                  ]
+                }
+              ]
+            },
+            {
+              "tagName": "div",
+              "style": { "padding": "1.75rem", "backgroundColor": "var(--bg-secondary)" },
+              "children": [
+                {
+                  "tagName": "div",
+                  "style": {
+                    "width": "2.25rem",
+                    "height": "2.25rem",
+                    "borderRadius": "var(--radius)",
+                    "backgroundColor": "rgba(251, 146, 60, 0.1)",
+                    "color": "#fb923c",
+                    "display": "flex",
+                    "alignItems": "center",
+                    "justifyContent": "center",
+                    "fontWeight": "700",
+                    "fontSize": "0.6875rem",
+                    "fontFamily": "var(--font-mono)",
+                    "marginBottom": "1rem"
+                  },
+                  "children": ["</>"]
+                },
+                {
+                  "tagName": "h3",
+                  "style": { "fontSize": "0.9375rem", "fontWeight": "600", "margin": "0 0 0.5rem" },
+                  "children": ["Web Components"]
+                },
+                {
+                  "tagName": "p",
+                  "style": {
+                    "color": "var(--text-secondary)",
+                    "fontSize": "0.875rem",
+                    "margin": "0",
+                    "lineHeight": "1.6"
+                  },
+                  "children": [
+                    "Compile JSON to standard custom elements. Use them in any framework, static HTML, or standalone."
+                  ]
+                }
+              ]
+            },
+            {
+              "tagName": "div",
+              "style": { "padding": "1.75rem", "backgroundColor": "var(--bg-secondary)" },
+              "children": [
+                {
+                  "tagName": "div",
+                  "style": {
+                    "width": "2.25rem",
+                    "height": "2.25rem",
+                    "borderRadius": "var(--radius)",
+                    "backgroundColor": "rgba(234, 179, 8, 0.1)",
+                    "color": "#eab308",
+                    "display": "flex",
+                    "alignItems": "center",
+                    "justifyContent": "center",
+                    "fontWeight": "700",
+                    "fontSize": "0.8125rem",
+                    "fontFamily": "var(--font-mono)",
+                    "marginBottom": "1rem"
+                  },
+                  "children": ["\u26a1"]
+                },
+                {
+                  "tagName": "h3",
+                  "style": { "fontSize": "0.9375rem", "fontWeight": "600", "margin": "0 0 0.5rem" },
+                  "children": ["Reactive Islands"]
+                },
+                {
+                  "tagName": "p",
+                  "style": {
+                    "color": "var(--text-secondary)",
+                    "fontSize": "0.875rem",
+                    "margin": "0",
+                    "lineHeight": "1.6"
+                  },
+                  "children": [
+                    "Vue-powered reactivity ships only where you need it. Static by default, interactive on demand."
+                  ]
+                }
+              ]
+            },
+            {
+              "tagName": "div",
+              "style": { "padding": "1.75rem", "backgroundColor": "var(--bg-secondary)" },
+              "children": [
+                {
+                  "tagName": "div",
+                  "style": {
+                    "width": "2.25rem",
+                    "height": "2.25rem",
+                    "borderRadius": "var(--radius)",
+                    "backgroundColor": "rgba(14, 165, 233, 0.1)",
+                    "color": "#0ea5e9",
+                    "display": "flex",
+                    "alignItems": "center",
+                    "justifyContent": "center",
+                    "fontWeight": "700",
+                    "fontSize": "0.6875rem",
+                    "fontFamily": "var(--font-mono)",
+                    "marginBottom": "1rem"
+                  },
+                  "children": ["/\u00b7/"]
+                },
+                {
+                  "tagName": "h3",
+                  "style": { "fontSize": "0.9375rem", "fontWeight": "600", "margin": "0 0 0.5rem" },
+                  "children": ["File-Based Routing"]
+                },
+                {
+                  "tagName": "p",
+                  "style": {
+                    "color": "var(--text-secondary)",
+                    "fontSize": "0.875rem",
+                    "margin": "0",
+                    "lineHeight": "1.6"
+                  },
+                  "children": [
+                    "Drop a JSON file in pages/ and it becomes a route. Dynamic params, layouts, and content collections built in."
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

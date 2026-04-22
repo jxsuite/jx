@@ -14,33 +14,34 @@ Jx Studio builds on **Adobe Spectrum Web Components** (`@spectrum-web-components
 
 Use CSS custom properties from `:root` — never hardcode color values.
 
-| Token | Purpose | Fallback |
-|-------|---------|----------|
-| `--bg` | App background | `#1e1e1e` |
-| `--bg-panel` | Panel background | `#252526` |
-| `--bg-input` | Input field background | `#3c3c3c` |
-| `--border` | Borders and separators | `#3c3c3c` |
-| `--fg` | Primary text | `#cccccc` |
-| `--fg-dim` | Secondary text (labels, hints) | `#808080` |
-| `--accent` | Interactive elements, focus rings | `#007acc` |
-| `--accent-fg` | Text on accent backgrounds | `#ffffff` |
-| `--danger` | Destructive actions, errors | `#f44747` |
-| `--success` | Positive states | `#89d185` |
-| `--warning` | Caution states | `#c5a332` |
-| `--radius` | Standard border radius | `3px` |
-| `--hover-bg` | Hover overlay | `rgba(255,255,255,0.04)` |
+| Token         | Purpose                           | Fallback                 |
+| ------------- | --------------------------------- | ------------------------ |
+| `--bg`        | App background                    | `#1e1e1e`                |
+| `--bg-panel`  | Panel background                  | `#252526`                |
+| `--bg-input`  | Input field background            | `#3c3c3c`                |
+| `--border`    | Borders and separators            | `#3c3c3c`                |
+| `--fg`        | Primary text                      | `#cccccc`                |
+| `--fg-dim`    | Secondary text (labels, hints)    | `#808080`                |
+| `--accent`    | Interactive elements, focus rings | `#007acc`                |
+| `--accent-fg` | Text on accent backgrounds        | `#ffffff`                |
+| `--danger`    | Destructive actions, errors       | `#f44747`                |
+| `--success`   | Positive states                   | `#89d185`                |
+| `--warning`   | Caution states                    | `#c5a332`                |
+| `--radius`    | Standard border radius            | `3px`                    |
+| `--hover-bg`  | Hover overlay                     | `rgba(255,255,255,0.04)` |
 
 **Accent opacity variants** for backgrounds:
+
 - `--accent-8` through `--accent-50` — use `color-mix(in srgb, var(--accent) N%, transparent)`
 
 **Semantic tokens** for domain-specific highlighting:
 
-| Token | Purpose |
-|-------|---------|
-| `--tag` | Element tag names (`#569cd6`) |
-| `--signal` | State signals (`#dcdcaa`) |
-| `--handler` | Functions/handlers (`#c586c0`) |
-| `--map` | Repeaters (`#5b4fc7`) |
+| Token        | Purpose                               |
+| ------------ | ------------------------------------- |
+| `--tag`      | Element tag names (`#569cd6`)         |
+| `--signal`   | State signals (`#dcdcaa`)             |
+| `--handler`  | Functions/handlers (`#c586c0`)        |
+| `--map`      | Repeaters (`#5b4fc7`)                 |
 | `--switch-c` | Switch conditionals (uses `--danger`) |
 
 ---
@@ -49,20 +50,20 @@ Use CSS custom properties from `:root` — never hardcode color values.
 
 ### 2.1 Font Stacks
 
-| Context | Font Stack |
-|---------|------------|
-| UI chrome | `-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif` |
-| Code / identifiers | `"SF Mono", "Fira Code", monospace` |
-| Canvas content | Georgia, serif (content mode only) |
+| Context            | Font Stack                                                             |
+| ------------------ | ---------------------------------------------------------------------- |
+| UI chrome          | `-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif` |
+| Code / identifiers | `"SF Mono", "Fira Code", monospace`                                    |
+| Canvas content     | Georgia, serif (content mode only)                                     |
 
 ### 2.2 Type Scale
 
-| Size | Usage |
-|------|-------|
-| **12px** | Base body text, main UI |
-| **11px** | Form labels (`sp-field-label`), breadcrumbs, accordion headers |
+| Size     | Usage                                                               |
+| -------- | ------------------------------------------------------------------- |
+| **12px** | Base body text, main UI                                             |
+| **11px** | Form labels (`sp-field-label`), breadcrumbs, accordion headers      |
 | **10px** | Hints (`.style-row-label`), badges, data explorer, secondary labels |
-| **9px** | Layer toggle icons, micro indicators |
+| **9px**  | Layer toggle icons, micro indicators                                |
 
 **Line height:** 1.5 (base), 1.7 (content mode)
 
@@ -117,11 +118,12 @@ The canonical form layout. Labels sit above full-width inputs.
   <div class="style-row-label">
     <sp-field-label size="s">Label Text</sp-field-label>
   </div>
-  <sp-textfield size="s" .value=${value} @input=${handler}></sp-textfield>
+  <sp-textfield size="s" .value="${value}" @input="${handler}"></sp-textfield>
 </div>
 ```
 
 **CSS:**
+
 ```css
 .style-row {
   display: flex;
@@ -147,6 +149,7 @@ The canonical form layout. Labels sit above full-width inputs.
 ```
 
 **Rules:**
+
 - Always use `size="s"` on Spectrum inputs
 - Labels use `sp-field-label` inside `.style-row-label` — never bare `<label>` elements
 - Inputs take full width of the container
@@ -158,21 +161,25 @@ When a property has an explicit value, show a small accent dot to the left of th
 
 ```html
 <div class="style-row-label">
-  <span class="set-dot" title="Clear ${prop}" @click=${onDelete}></span>
+  <span class="set-dot" title="Clear ${prop}" @click="${onDelete}"></span>
   <sp-field-label size="s">${label}</sp-field-label>
 </div>
 ```
 
 **CSS:**
+
 ```css
 .set-dot {
-  width: 6px; height: 6px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: var(--accent);
   cursor: pointer;
   flex-shrink: 0;
 }
-.set-dot:hover { background: var(--danger); }
+.set-dot:hover {
+  background: var(--danger);
+}
 ```
 
 - Use `.set-dot--section` (7x7px) for accordion heading indicators
@@ -180,21 +187,22 @@ When a property has an explicit value, show a small accent dot to the left of th
 
 ### 4.3 Input Components
 
-| Component | When to Use |
-|-----------|-------------|
-| `sp-textfield` | Free-text string values |
-| `sp-number-field` | Numeric values with optional min/max/step |
-| `sp-picker` | Fixed option sets (enums) |
-| `sp-checkbox` | Boolean toggles |
-| `sp-switch` | On/off feature toggles |
-| `jx-styled-combobox` | Hybrid: fixed options with styled preview + free-text fallback |
-| `textarea.field-input` | Multi-line text (code, JSON, expressions) |
+| Component              | When to Use                                                    |
+| ---------------------- | -------------------------------------------------------------- |
+| `sp-textfield`         | Free-text string values                                        |
+| `sp-number-field`      | Numeric values with optional min/max/step                      |
+| `sp-picker`            | Fixed option sets (enums)                                      |
+| `sp-checkbox`          | Boolean toggles                                                |
+| `sp-switch`            | On/off feature toggles                                         |
+| `jx-styled-combobox`   | Hybrid: fixed options with styled preview + free-text fallback |
+| `textarea.field-input` | Multi-line text (code, JSON, expressions)                      |
 
 ### 4.4 Debounce Pattern
 
 All text input handlers must debounce before committing to state. Standard delay: **400ms** (500ms for code/expression textareas).
 
 **Shared utility** (preferred for style properties):
+
 ```javascript
 import { debouncedStyleCommit } from "../store.js";
 
@@ -202,6 +210,7 @@ import { debouncedStyleCommit } from "../store.js";
 ```
 
 **Local debounce** (for non-style contexts):
+
 ```javascript
 let debounce;
 @input=${(e) => {
@@ -212,9 +221,9 @@ let debounce;
 
 ### 4.5 Event Conventions
 
-| Event | Meaning | Timing |
-|-------|---------|--------|
-| `@input` | Value is changing (keystroke) | Debounced |
+| Event     | Meaning                                | Timing    |
+| --------- | -------------------------------------- | --------- |
+| `@input`  | Value is changing (keystroke)          | Debounced |
 | `@change` | Value committed (menu selection, blur) | Immediate |
 
 For `sp-picker` and menu-based inputs, use `@change` directly — no debounce needed. For `sp-textfield` and `textarea`, always debounce `@input`.
@@ -231,8 +240,8 @@ Use Spectrum `sp-accordion` for collapsible sections in all panels.
 <sp-accordion allow-multiple size="s">
   <sp-accordion-item
     label="Section Title"
-    ?open=${isOpen}
-    @sp-accordion-item-toggle=${toggleHandler}
+    ?open="${isOpen}"
+    @sp-accordion-item-toggle="${toggleHandler}"
   >
     <!-- section content -->
   </sp-accordion-item>
@@ -242,7 +251,9 @@ Use Spectrum `sp-accordion` for collapsible sections in all panels.
 ### 5.2 Styling
 
 ```css
-.panel-class sp-accordion { border: none; }
+.panel-class sp-accordion {
+  border: none;
+}
 .panel-class sp-accordion-item {
   --spectrum-accordion-item-header-font-size: 11px;
 }
@@ -253,6 +264,7 @@ Use Spectrum `sp-accordion` for collapsible sections in all panels.
 Accordion open/closed state uses one of two patterns:
 
 **Module-local Set** (for left panel sections that don't need persistence):
+
 ```javascript
 const collapsed = new Set();
 @sp-accordion-item-toggle=${() => {
@@ -263,6 +275,7 @@ const collapsed = new Set();
 ```
 
 **State object** (for inspector sections that persist with the document):
+
 ```javascript
 // Read: isSectionOpen(key) — returns boolean, defaults to true
 // Write: toggleSection(key) — flips state and re-renders
@@ -287,11 +300,12 @@ Registered in `packages/studio/src/ui/spectrum.js`:
 
 ### 6.2 Custom Components
 
-| Component | File | Purpose |
-|-----------|------|---------|
+| Component            | File                           | Purpose                                          |
+| -------------------- | ------------------------------ | ------------------------------------------------ |
 | `jx-styled-combobox` | `src/ui/jx-styled-combobox.js` | Dual-mode picker/combobox with styled menu items |
 
 **`jx-styled-combobox` API:**
+
 - Properties: `value`, `placeholder`, `size`, `.options` (array)
 - Options format: `{ value, label, style? }` or `{ divider: true }`
 - Events: `change` (selection), `input` (typing)
@@ -304,16 +318,16 @@ Registered in `packages/studio/src/ui/spectrum.js`:
 
 No formal spacing scale — use these established values consistently:
 
-| Context | Value | Usage |
-|---------|-------|-------|
-| Form row gap | `2px` | Between label and input (`.style-row`) |
-| Form row padding | `2px 0` | Vertical rhythm between rows |
-| Section padding | `4px 8px` | Panel section content |
-| Panel padding | `8px` | Panel body areas |
-| Child indent | `16px` | Nested/sub-property rows |
-| Component gap | `4px` | Within label containers, badge groups |
-| Horizontal gap | `6px` | Between inline items (signal rows, toolbar) |
-| Canvas gap | `24px` | Between canvas panels |
+| Context          | Value     | Usage                                       |
+| ---------------- | --------- | ------------------------------------------- |
+| Form row gap     | `2px`     | Between label and input (`.style-row`)      |
+| Form row padding | `2px 0`   | Vertical rhythm between rows                |
+| Section padding  | `4px 8px` | Panel section content                       |
+| Panel padding    | `8px`     | Panel body areas                            |
+| Child indent     | `16px`    | Nested/sub-property rows                    |
+| Component gap    | `4px`     | Within label containers, badge groups       |
+| Horizontal gap   | `6px`     | Between inline items (signal rows, toolbar) |
+| Canvas gap       | `24px`    | Between canvas panels                       |
 
 ---
 
@@ -337,6 +351,7 @@ Uses `@atlaskit/pragmatic-drag-and-drop` for layer reordering and canvas element
 ### 8.3 Inline Editing
 
 Canvas elements become editable via `contenteditable="true"`:
+
 - Focus ring: 2px solid accent outline, 1px offset
 - Minimum height: 1.5em (prevents collapse)
 - Escape to cancel, blur to commit
@@ -352,6 +367,7 @@ Block insertion menu triggered by typing `/` in content mode. Positioned absolut
 ### 8.6 Floating Action Bar
 
 Fixed-position toolbar that follows the selected element:
+
 - Shows element tag name, drag handle, and context actions
 - Z-index: 100
 - Shadow: standard elevation shadow

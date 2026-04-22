@@ -1,0 +1,151 @@
+{
+  "tagName": "hero-section",
+  "style": {
+    "padding": "clamp(4rem, 10vw, 8rem) clamp(1rem, 3vw, 2rem) clamp(3rem, 6vw, 5rem)",
+    "textAlign": "center",
+    "background": "radial-gradient(ellipse 80% 50% at 50% -20%, rgba(59, 130, 246, 0.12), transparent)"
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "style": { "maxWidth": "800px", "margin": "0 auto" },
+      "children": [
+        {
+          "tagName": "div",
+          "style": {
+            "display": "inline-flex",
+            "alignItems": "center",
+            "gap": "0.5rem",
+            "padding": "0.375rem 0.875rem",
+            "borderRadius": "999px",
+            "border": "1px solid var(--border)",
+            "backgroundColor": "var(--bg-surface)",
+            "fontSize": "0.8125rem",
+            "color": "var(--text-secondary)",
+            "marginBottom": "2rem"
+          },
+          "children": [
+            {
+              "tagName": "span",
+              "style": {
+                "width": "6px",
+                "height": "6px",
+                "borderRadius": "50%",
+                "backgroundColor": "#22c55e",
+                "display": "inline-block"
+              },
+              "children": [""]
+            },
+            "Open source \u00b7 MIT License"
+          ]
+        },
+        {
+          "tagName": "h1",
+          "style": {
+            "fontSize": "clamp(2.25rem, 5vw, 3.75rem)",
+            "fontWeight": "700",
+            "letterSpacing": "-0.035em",
+            "lineHeight": "1.1",
+            "margin": "0 0 1.5rem",
+            "color": "var(--text-primary)"
+          },
+          "children": [
+            "Design visually.",
+            { "tagName": "br" },
+            {
+              "tagName": "span",
+              "style": { "color": "var(--text-secondary)" },
+              "children": ["Ship as static HTML."]
+            }
+          ]
+        },
+        {
+          "tagName": "p",
+          "style": {
+            "fontSize": "clamp(1.0625rem, 2vw, 1.25rem)",
+            "color": "var(--text-secondary)",
+            "lineHeight": "1.7",
+            "margin": "0 auto 2.5rem",
+            "maxWidth": "600px"
+          },
+          "children": [
+            "JX Suite is an open-source visual IDE and declarative JSON framework for building fast, maintainable websites. Zero runtime by default. No lock-in."
+          ]
+        },
+        {
+          "tagName": "div",
+          "style": {
+            "display": "flex",
+            "gap": "0.75rem",
+            "justifyContent": "center",
+            "flexWrap": "wrap",
+            "marginBottom": "3rem"
+          },
+          "children": [
+            {
+              "tagName": "a",
+              "attributes": { "href": "/docs/getting-started" },
+              "style": {
+                "display": "inline-flex",
+                "alignItems": "center",
+                "backgroundColor": "var(--accent)",
+                "color": "white",
+                "padding": "0.6875rem 1.75rem",
+                "borderRadius": "var(--radius)",
+                "textDecoration": "none",
+                "fontWeight": "600",
+                "fontSize": "0.9375rem",
+                "transition": "background-color 0.15s"
+              },
+              "children": ["Get Started"]
+            },
+            {
+              "tagName": "a",
+              "attributes": {
+                "href": "https://github.com/jxplatform/jx",
+                "target": "_blank",
+                "rel": "noopener noreferrer"
+              },
+              "style": {
+                "display": "inline-flex",
+                "alignItems": "center",
+                "color": "var(--text-secondary)",
+                "padding": "0.6875rem 1.75rem",
+                "borderRadius": "var(--radius)",
+                "textDecoration": "none",
+                "fontWeight": "600",
+                "fontSize": "0.9375rem",
+                "border": "1px solid var(--border)",
+                "transition": "border-color 0.15s, color 0.15s"
+              },
+              "children": ["View on GitHub"]
+            }
+          ]
+        },
+        {
+          "tagName": "div",
+          "style": {
+            "backgroundColor": "var(--bg-surface)",
+            "border": "1px solid var(--border)",
+            "borderRadius": "var(--radius)",
+            "padding": "0.75rem 1.25rem",
+            "fontFamily": "var(--font-mono)",
+            "fontSize": "0.875rem",
+            "color": "var(--text-secondary)",
+            "display": "inline-flex",
+            "alignItems": "center",
+            "gap": "0.75rem"
+          },
+          "children": [
+            {
+              "tagName": "span",
+              "style": { "color": "var(--text-muted)" },
+              "children": ["$"]
+            },
+            "bun create jx-suite my-site"
+          ]
+        }
+      ]
+    }
+  ]
+}
