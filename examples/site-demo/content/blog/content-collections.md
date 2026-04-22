@@ -10,11 +10,11 @@ draft: false
 
 # Content Collections in Practice
 
-Content collections bring structure to your content. Define schemas in `content.config.json`, write Markdown with frontmatter, and query it from your pages.
+Content collections bring structure to your content. Define schemas in `project.json`, write Markdown with frontmatter, and query it from your pages.
 
 ## Defining a Collection
 
-Put a `content.config.json` in your `content/` directory with collection schemas.
+Put a `project.json` in your `content/` directory with collection schemas.
 
 ## Querying in Pages
 

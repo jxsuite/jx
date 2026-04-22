@@ -19,4 +19,4 @@ Jx lets you build entire websites using JSON. No complex build tools, no framewo
 - **Content collections** — Markdown, JSON, and CSV content with schema validation
 - **Layouts and slots** — reuse page shells across your site
 
-Start by creating a `site.json` in your project root.
+Start by creating a `project.json` in your project root.

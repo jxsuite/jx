@@ -73,33 +73,33 @@ export async function handleStudioApi(req, url, root) {
       }
 
       let isSiteProject = false;
-      let siteConfig = null;
+      let projectConfig = null;
       try {
-        const raw = JSON.parse(await readFile(resolve(absDir, "site.json"), "utf8"));
+        const raw = JSON.parse(await readFile(resolve(absDir, "project.json"), "utf8"));
         if (typeof raw === "object" && raw !== null && !Array.isArray(raw)) {
           isSiteProject = true;
-          siteConfig = raw;
+          projectConfig = raw;
         }
       } catch {}
 
-      return Response.json({ isSiteProject, siteConfig, directories, projectRoot });
+      return Response.json({ isSiteProject, projectConfig, directories, projectRoot });
     } catch (/** @type {any} */ e) {
       return Response.json({ error: e.message }, { status: 500 });
     }
   }
 
-  // Resolve nearest site.json ancestor for a given file path
+  // Resolve nearest project.json ancestor for a given file path
   if (path === "/__studio/resolve-site" && req.method === "GET") {
     const filePath = url.searchParams.get("path");
     if (!filePath) return Response.json({ error: "Missing path param" }, { status: 400 });
     try {
-      // Walk up from file's directory looking for site.json
+      // Walk up from file's directory looking for project.json
       let dir = dirname(
         filePath.startsWith("~") ? filePath.replace("~", process.env.HOME || "") : filePath,
       );
       const stopAt = "/";
       while (dir && dir !== stopAt) {
-        const candidate = resolve(dir, "site.json");
+        const candidate = resolve(dir, "project.json");
         if (existsSync(candidate)) {
           const config = JSON.parse(readFileSync(candidate, "utf8"));
           const relPath = relative(root, dir);
@@ -111,7 +111,7 @@ export async function handleStudioApi(req, url, root) {
             sitePath: dir,
             relPath: relPath || ".",
             fileRelPath,
-            siteConfig: config,
+            projectConfig: config,
           });
         }
         const parent = dirname(dir);
@@ -124,10 +124,10 @@ export async function handleStudioApi(req, url, root) {
     }
   }
 
-  // Discover site projects — find all site.json files under root
+  // Discover site projects — find all project.json files under root
   if (path === "/__studio/sites" && req.method === "GET") {
     try {
-      const glob = new Bun.Glob("**/site.json");
+      const glob = new Bun.Glob("**/project.json");
       const sites = [];
       for await (const match of glob.scan({ cwd: root, dot: false })) {
         if (match.includes("node_modules") || match.includes("dist/") || match.includes(".claude/"))

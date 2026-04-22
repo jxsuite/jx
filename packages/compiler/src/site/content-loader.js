@@ -1,8 +1,8 @@
 /**
  * Content-loader.js — Content collection loader
  *
- * Loads content collections defined in content/content.config.json. Supports Markdown (.md), JSON
- * (.json), and CSV (.csv) source files.
+ * Loads content collections defined in project.json's `collections` key. Supports Markdown (.md),
+ * JSON (.json), and CSV (.csv) source files.
  *
  * Phase 2 implementation of site-architecture spec §6.
  *
@@ -199,22 +199,20 @@ function loadCSVEntries(filePath, schema) {
 // ─── Content Config ───────────────────────────────────────────────────────────
 
 /**
- * Load and parse content/content.config.json.
+ * Load and parse content collections config from project.json.
  *
  * @param {string} projectRoot - Project root directory
+ * @param {Record<string, any>} [projectConfig] - Already-loaded project config with `collections`
+ *   key
  * @returns {{ config: any; contentDir: string } | null} Parsed config or null if no content dir
  */
-export function loadContentConfig(projectRoot) {
+export function loadContentConfig(projectRoot, projectConfig = undefined) {
   const contentDir = resolve(projectRoot, "content");
-  const configPath = resolve(contentDir, "content.config.json");
 
   if (!existsSync(contentDir)) return null;
 
   /** @type {any} */
-  let config = { collections: {} };
-  if (existsSync(configPath)) {
-    config = JSON.parse(readFileSync(configPath, "utf-8"));
-  }
+  const config = { collections: projectConfig?.collections ?? {} };
 
   return { config, contentDir };
 }
@@ -222,13 +220,14 @@ export function loadContentConfig(projectRoot) {
 // ─── Collection Loading ───────────────────────────────────────────────────────
 
 /**
- * Load all content collections defined in content.config.json.
+ * Load all content collections defined in project.json.
  *
  * @param {string} projectRoot - Project root directory
+ * @param {Record<string, any>} [projectConfig] - Already-loaded project config
  * @returns {Promise<Map<string, any[]>>} Map of collection name → array of ContentEntry
  */
-export async function loadCollections(projectRoot) {
-  const result = loadContentConfig(projectRoot);
+export async function loadCollections(projectRoot, projectConfig = undefined) {
+  const result = loadContentConfig(projectRoot, projectConfig);
   if (!result) return new Map();
 
   const { config, contentDir } = result;
@@ -244,14 +243,15 @@ export async function loadCollections(projectRoot) {
 }
 
 /**
- * Get the $elements array for a specific collection, if defined in content.config.json.
+ * Get the $elements array for a specific collection, if defined in project.json collections.
  *
  * @param {string} projectRoot - Project root directory
  * @param {string} collectionName - Name of the collection
+ * @param {Record<string, any>} [projectConfig] - Already-loaded project config
  * @returns {any[] | undefined}
  */
-export function getCollectionElements(projectRoot, collectionName) {
-  const result = loadContentConfig(projectRoot);
+export function getCollectionElements(projectRoot, collectionName, projectConfig = undefined) {
+  const result = loadContentConfig(projectRoot, projectConfig);
   if (!result) return undefined;
   const def = result.config.collections?.[collectionName];
   return def?.$elements;

@@ -12,9 +12,15 @@ import {
 } from "../src/site/content-loader.js";
 import { discoverPages, expandDynamicRoutes } from "../src/site/pages-discovery.js";
 import { injectContext } from "../src/site/context-injection.js";
+import { loadProjectConfig } from "../src/site/site-loader.js";
 import { buildSite } from "../src/site/site-build.js";
 
 const TMP = resolve(import.meta.dir, "__test-content__");
+
+/** Load project config from the test fixture */
+function getProjectConfig() {
+  return loadProjectConfig(TMP).config;
+}
 
 /** @param {string} relPath @param {string|object} content */
 function writeFile(relPath, content) {
@@ -32,22 +38,12 @@ function writeFile(relPath, content) {
 beforeAll(() => {
   rmSync(TMP, { recursive: true, force: true });
 
-  // site.json
-  writeFile("site.json", {
+  // project.json (includes collections definition)
+  writeFile("project.json", {
     name: "Content Test Site",
     url: "https://test.com",
     defaults: { layout: "./layouts/base.json", lang: "en" },
     build: { outDir: "./dist" },
-  });
-
-  // Layout
-  writeFile("layouts/base.json", {
-    tagName: "div",
-    children: [{ tagName: "main", children: [{ tagName: "slot" }] }],
-  });
-
-  // ── Content collections ───────────────────────────────────────────────
-  writeFile("content/content.config.json", {
     collections: {
       blog: {
         source: "./blog/**/*.md",
@@ -88,6 +84,12 @@ beforeAll(() => {
         },
       },
     },
+  });
+
+  // Layout
+  writeFile("layouts/base.json", {
+    tagName: "div",
+    children: [{ tagName: "main", children: [{ tagName: "slot" }] }],
   });
 
   // Blog posts (Markdown)
@@ -216,7 +218,7 @@ afterAll(() => {
 describe("content-loader", () => {
   describe("loadContentConfig", () => {
     it("loads content.config.json", () => {
-      const result = /** @type {any} */ (loadContentConfig(TMP));
+      const result = /** @type {any} */ (loadContentConfig(TMP, getProjectConfig()));
       expect(result).not.toBeNull();
       expect(result.config.collections).toBeDefined();
       expect(result.config.collections.blog).toBeDefined();
@@ -232,7 +234,7 @@ describe("content-loader", () => {
 
   describe("loadCollections", () => {
     it("loads Markdown collection entries", async () => {
-      const collections = await loadCollections(TMP);
+      const collections = await loadCollections(TMP, getProjectConfig());
       const blog = /** @type {any[]} */ (collections.get("blog"));
       expect(blog).toBeDefined();
       expect(blog.length).toBe(3); // hello-world, second-post, draft-post
@@ -246,7 +248,7 @@ describe("content-loader", () => {
     });
 
     it("loads JSON collection entries", async () => {
-      const collections = await loadCollections(TMP);
+      const collections = await loadCollections(TMP, getProjectConfig());
       const authors = /** @type {any[]} */ (collections.get("authors"));
       expect(authors).toBeDefined();
       expect(authors.length).toBe(1);
@@ -255,7 +257,7 @@ describe("content-loader", () => {
     });
 
     it("loads CSV collection entries with type coercion", async () => {
-      const collections = await loadCollections(TMP);
+      const collections = await loadCollections(TMP, getProjectConfig());
       const products = /** @type {any[]} */ (collections.get("products"));
       expect(products).toBeDefined();
       expect(products.length).toBe(3);
@@ -270,7 +272,7 @@ describe("content-loader", () => {
 
   describe("queryCollection", () => {
     it("filters entries", async () => {
-      const collections = await loadCollections(TMP);
+      const collections = await loadCollections(TMP, getProjectConfig());
       const blog = /** @type {any[]} */ (collections.get("blog"));
       const published = queryCollection(blog, { filter: { draft: false } });
       expect(published.length).toBe(2);
@@ -278,7 +280,7 @@ describe("content-loader", () => {
     });
 
     it("sorts entries", async () => {
-      const collections = await loadCollections(TMP);
+      const collections = await loadCollections(TMP, getProjectConfig());
       const blog = /** @type {any[]} */ (collections.get("blog"));
       const sorted = queryCollection(blog, {
         sort: { field: "pubDate", order: "desc" },
@@ -287,14 +289,14 @@ describe("content-loader", () => {
     });
 
     it("limits entries", async () => {
-      const collections = await loadCollections(TMP);
+      const collections = await loadCollections(TMP, getProjectConfig());
       const blog = /** @type {any[]} */ (collections.get("blog"));
       const limited = queryCollection(blog, { limit: 1 });
       expect(limited.length).toBe(1);
     });
 
     it("combines filter + sort + limit", async () => {
-      const collections = await loadCollections(TMP);
+      const collections = await loadCollections(TMP, getProjectConfig());
       const blog = /** @type {any[]} */ (collections.get("blog"));
       const result = queryCollection(blog, {
         filter: { draft: false },
@@ -308,7 +310,7 @@ describe("content-loader", () => {
 
   describe("findEntry", () => {
     it("finds entry by ID", async () => {
-      const collections = await loadCollections(TMP);
+      const collections = await loadCollections(TMP, getProjectConfig());
       const blog = /** @type {any[]} */ (collections.get("blog"));
       const entry = findEntry(blog, "hello-world");
       expect(entry).not.toBeNull();
@@ -316,7 +318,7 @@ describe("content-loader", () => {
     });
 
     it("returns null for missing ID", async () => {
-      const collections = await loadCollections(TMP);
+      const collections = await loadCollections(TMP, getProjectConfig());
       const blog = /** @type {any[]} */ (collections.get("blog"));
       expect(findEntry(blog, "nonexistent")).toBeNull();
     });
@@ -324,8 +326,8 @@ describe("content-loader", () => {
 
   describe("resolveCollectionRefs", () => {
     it("resolves cross-collection $ref (author → authors)", async () => {
-      const collections = await loadCollections(TMP);
-      const contentConfig = /** @type {any} */ (loadContentConfig(TMP));
+      const collections = await loadCollections(TMP, getProjectConfig());
+      const contentConfig = /** @type {any} */ (loadContentConfig(TMP, getProjectConfig()));
       resolveCollectionRefs(collections, contentConfig.config);
 
       const blog = /** @type {any[]} */ (collections.get("blog"));
@@ -342,7 +344,7 @@ describe("content-loader", () => {
 
 describe("$paths expansion", () => {
   it("expands collection-based $paths", async () => {
-    const collections = await loadCollections(TMP);
+    const collections = await loadCollections(TMP, getProjectConfig());
     const pagesDir = resolve(TMP, "pages");
     const routes = discoverPages(pagesDir);
     const expanded = await expandDynamicRoutes(routes, TMP, collections);
@@ -360,7 +362,7 @@ describe("$paths expansion", () => {
   });
 
   it("expands explicit values $paths", async () => {
-    const collections = await loadCollections(TMP);
+    const collections = await loadCollections(TMP, getProjectConfig());
     const pagesDir = resolve(TMP, "pages");
     const routes = discoverPages(pagesDir);
     const expanded = await expandDynamicRoutes(routes, TMP, collections);
@@ -370,7 +372,7 @@ describe("$paths expansion", () => {
   });
 
   it("preserves _pathParams on expanded routes", async () => {
-    const collections = await loadCollections(TMP);
+    const collections = await loadCollections(TMP, getProjectConfig());
     const pagesDir = resolve(TMP, "pages");
     const routes = discoverPages(pagesDir);
     const expanded = await expandDynamicRoutes(routes, TMP, collections);
@@ -384,7 +386,7 @@ describe("$paths expansion", () => {
 
 describe("$prototype resolution in context-injection", () => {
   it("resolves ContentCollection $prototype in state", async () => {
-    const collections = await loadCollections(TMP);
+    const collections = await loadCollections(TMP, getProjectConfig());
     /** @type {any} */
     const doc = {
       state: {
@@ -396,10 +398,10 @@ describe("$prototype resolution in context-injection", () => {
         },
       },
     };
-    const siteConfig = { name: "Test" };
+    const projectConfig = { name: "Test" };
     const route = { urlPattern: "/blog", _pathParams: {} };
 
-    injectContext(doc, siteConfig, route, collections);
+    injectContext(doc, projectConfig, route, collections);
 
     expect(Array.isArray(doc.state.posts)).toBe(true);
     expect(doc.state.posts.length).toBe(2); // non-drafts
@@ -407,7 +409,7 @@ describe("$prototype resolution in context-injection", () => {
   });
 
   it("resolves ContentEntry $prototype with $params ref", async () => {
-    const collections = await loadCollections(TMP);
+    const collections = await loadCollections(TMP, getProjectConfig());
     /** @type {any} */
     const doc = {
       state: {
@@ -418,13 +420,13 @@ describe("$prototype resolution in context-injection", () => {
         },
       },
     };
-    const siteConfig = { name: "Test" };
+    const projectConfig = { name: "Test" };
     const route = {
       urlPattern: "/blog/hello-world",
       _pathParams: { slug: "hello-world" },
     };
 
-    injectContext(doc, siteConfig, route, collections);
+    injectContext(doc, projectConfig, route, collections);
 
     expect(doc.state.post).not.toBeNull();
     expect(doc.state.post.id).toBe("hello-world");
@@ -433,7 +435,7 @@ describe("$prototype resolution in context-injection", () => {
   });
 
   it("returns null for missing ContentEntry", async () => {
-    const collections = await loadCollections(TMP);
+    const collections = await loadCollections(TMP, getProjectConfig());
     const doc = {
       state: {
         post: {
@@ -443,16 +445,16 @@ describe("$prototype resolution in context-injection", () => {
         },
       },
     };
-    const siteConfig = { name: "Test" };
+    const projectConfig = { name: "Test" };
     const route = { urlPattern: "/blog/nope", _pathParams: {} };
 
-    injectContext(doc, siteConfig, route, collections);
+    injectContext(doc, projectConfig, route, collections);
 
     expect(doc.state.post).toBeNull();
   });
 
   it("returns empty array for missing collection", async () => {
-    const collections = await loadCollections(TMP);
+    const collections = await loadCollections(TMP, getProjectConfig());
     /** @type {any} */
     const doc = {
       state: {
@@ -462,10 +464,10 @@ describe("$prototype resolution in context-injection", () => {
         },
       },
     };
-    const siteConfig = { name: "Test" };
+    const projectConfig = { name: "Test" };
     const route = { urlPattern: "/", _pathParams: {} };
 
-    injectContext(doc, siteConfig, route, collections);
+    injectContext(doc, projectConfig, route, collections);
 
     expect(doc.state.items).toEqual([]);
   });

@@ -29,7 +29,7 @@ Every Jx component is a pair of files:
   "$id": "Counter",
   "tagName": "my-counter",
   "$defs": {
-    "$count": { "signal": true, "default": 0 }
+    "$count": { "default": 0 }
   }
 }
 ```

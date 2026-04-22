@@ -1,8 +1,8 @@
 /**
  * Imports panel — context-aware import manager with cherry-pick component selection.
  *
- * When editing site.json: shows Class Imports, Dependencies (add/remove packages), and per-package
- * component toggles for cherry-picking individual elements. When editing a
+ * When editing project.json: shows Class Imports, Dependencies (add/remove packages), and
+ * per-package component toggles for cherry-picking individual elements. When editing a
  * page/layout/component/collection: shows Component Imports ($ref picker) and per-package component
  * toggles.
  */
@@ -75,7 +75,7 @@ export function renderImportsTemplate({
   documentElements,
   applyMutation,
 }) {
-  const isSiteLevel = documentPath?.endsWith("site.json");
+  const isSiteLevel = documentPath?.endsWith("project.json");
 
   if (isSiteLevel) {
     return renderSiteLevelImports(renderLeftPanel);
@@ -93,9 +93,9 @@ export function renderImportsTemplate({
 
 /** @param {() => void} renderLeftPanel */
 function renderSiteLevelImports(renderLeftPanel) {
-  const siteImports = projectState?.siteConfig?.imports || {};
+  const siteImports = projectState?.projectConfig?.imports || {};
   const entries = Object.entries(siteImports);
-  const siteElements = projectState?.siteConfig?.$elements || [];
+  const siteElements = projectState?.projectConfig?.$elements || [];
 
   const packageGroups = groupByPackage();
 

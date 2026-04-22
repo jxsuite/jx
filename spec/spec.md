@@ -124,7 +124,7 @@ Every Jx document is a JSON object with the following top-level fields:
 
 Jx is a JSON Schema dialect. Documents may be validated against the Jx meta-schema using any JSON Schema 2020-12 compatible validator. The `$schema` URI identifies the dialect version and enables schema-aware tooling.
 
-Jx extends the base JSON Schema vocabulary with the following reserved keywords: `$prototype`, `$props`, `$switch`, `$map`, `$src`, `$export`, `signal`, `timing`, `default`, `body`, `arguments`, `name`.
+Jx extends the base JSON Schema vocabulary with the following reserved keywords: `$prototype`, `$props`, `$switch`, `$map`, `$src`, `$export`, `timing`, `default`, `body`, `arguments`, `name`.
 
 Standard JSON Schema 2020-12 keywords (`type`, `properties`, `items`, `enum`, `minimum`, `maximum`, `minLength`, `maxLength`, `pattern`, `required`, `description`, `examples`, etc.) are inherited from the JSON Schema vocabulary and are valid on `$defs` type definitions and `state` typed value entries.
 
@@ -230,7 +230,7 @@ This separation aligns `$defs` with its standard JSON Schema 2020-12 meaning and
 **Rules:**
 
 - Every `$defs` entry is a JSON Schema — it has `type`, `properties`, `enum`, `$ref`, etc.
-- No `default`, `$prototype`, `body`, `signal`, or template strings
+- No `default`, `$prototype`, `body`, or template strings
 - Naming convention: `PascalCase` for types (`TodoItem`, `Count`, `Status`)
 - `$defs` entries are referenced from `state` entries via `$ref`, or from external documents
 - `$defs` is optional — `state` entries can declare types inline or omit types entirely
@@ -267,7 +267,7 @@ Every entry in `state` falls into exactly one of four shapes, determinable by in
 
 - A plain string without `${}` is a string state property initialized to that string value
 - A plain object with no `$prototype`, no `type`, no `default`, and no `properties` is an object state property
-- All state entries are reactive by default — no `signal: true` needed
+- All state entries are reactive by default
 
 > **Status: Implemented.** Runtime `buildScope` handles all naked value types.
 
@@ -354,12 +354,11 @@ Functions and data sources are both declared via `$prototype`:
 ```json
 "titleClass": {
   "$prototype": "Function",
-  "body": "return state.score >= 90 ? 'gold' : 'silver'",
-  "signal": true
+  "body": "return state.score >= 90 ? 'gold' : 'silver'"
 }
 ```
 
-`signal: true` wraps the function in `computed()`. Required when the function should produce a reactive derived value rather than act as a callable handler.
+A function with only `body` (no `arguments`) and no event binding acts as a computed value — the framework automatically wraps it in `computed()` when it detects it is referenced reactively.
 
 ##### 4c — Function (External)
 
@@ -386,7 +385,6 @@ Functions and data sources are both declared via `$prototype`:
 | `name`        | No           | Explicit function name. Default: the `state` key name                  |
 | `$src`        | If no `body` | External module specifier                                              |
 | `$export`     | No           | Named export in `$src` module. Default: `state` key name               |
-| `signal`      | No           | When `true`, wraps in `computed()`. Default: `false`                   |
 | `description` | No           | Documentation string                                                   |
 | `emits`       | No           | Array of CEM `Event` objects this function dispatches                  |
 
@@ -401,39 +399,24 @@ Functions and data sources are both declared via `$prototype`:
       "$prototype": "Request",
       "url": "/api/users/",
       "urlParams": { "$ref": "#/state/userId" },
-      "method": "GET",
-      "signal": true
+      "method": "GET"
     },
     "posts": {
       "$prototype": "MarkdownCollection",
       "$src": "@jxplatform/md",
-      "src": "./content/posts/*.md",
-      "signal": true
+      "src": "./content/posts/*.md"
     }
   }
 }
 ```
 
-`signal: true` on external class entries wraps the resolved value in a reactive signal. Without it, the class is instantiated once and its resolved value is static.
+External class entries are always resolved reactively — the framework wraps their resolved values in `ref()` automatically.
 
-> **Status: Implemented.** Runtime handles all four shapes. The `signal: true` flag on external classes unconditionally wraps in `ref()` in the current implementation.
-
-### 5.4 `signal: true` Semantics
-
-| Shape                               | `signal: true`         | Behaviour                            |
-| ----------------------------------- | ---------------------- | ------------------------------------ |
-| Naked value                         | Not applicable         | Reactive by default via `reactive()` |
-| Typed value with `default`          | Not applicable         | Reactive by default via `reactive()` |
-| Template string                     | Not applicable         | `computed()` by default              |
-| `$prototype: "Function"` (handler)  | Forbidden              | Not applicable                       |
-| `$prototype: "Function"` (computed) | **Required to opt in** | Wraps in `computed()`                |
-| `$prototype: "ClassName"`           | **Optional**           | Wraps resolved value in `ref()`      |
-
-### 5.5 Naming Convention
+### 5.4 Naming Convention
 
 State entries use plain `camelCase` names (e.g. `count`, `items`, `firstName`). Function entries also use `camelCase` (e.g. `increment`, `handleInput`). Type definitions in `$defs` use `PascalCase` (e.g. `TodoItem`, `Count`).
 
-### 5.6 Signal Access in JavaScript
+### 5.5 Signal Access in JavaScript
 
 Within function `body` strings and external `.js` files, state is read and written directly on the `state` reactive proxy — no `.get()` or `.set()` calls:
 
@@ -454,7 +437,7 @@ state.user.name = "Alice";
 
 > **Status: Implemented.** All examples and the runtime use direct property access on the `state` reactive proxy.
 
-### 5.7 Private State (`#` prefix)
+### 5.6 Private State (`#` prefix)
 
 State entries prefixed with `#` are private. They are never exposed to the studio property panel, never included in CEM extraction, and never settable via `$props`:
 
@@ -470,7 +453,7 @@ State entries prefixed with `#` are private. They are never exposed to the studi
 
 > **Status: Pending.** Private state convention is defined but not yet enforced in the runtime or studio.
 
-### 5.8 Shape Detection Algorithm
+### 5.7 Shape Detection Algorithm
 
 ```
 For each entry in state:
@@ -832,8 +815,7 @@ Web APIs are accessed via `$prototype` in a `state` entry:
       "$prototype": "Request",
       "url": "/api/users/",
       "urlParams": { "$ref": "#/state/userId" },
-      "method": "GET",
-      "signal": true
+      "method": "GET"
     }
   }
 }
@@ -874,8 +856,7 @@ Web APIs are accessed via `$prototype` in a `state` entry:
     "metrics": {
       "$src": "./dashboard.server.js",
       "$export": "fetchMetrics",
-      "timing": "server",
-      "signal": true
+      "timing": "server"
     }
   }
 }
@@ -899,7 +880,6 @@ An optional `arguments` field passes named parameters. Values may be static or r
   "$src": "./dashboard.server.js",
   "$export": "fetchMetrics",
   "timing": "server",
-  "signal": true,
   "arguments": {
     "userId": { "$ref": "#/state/userId" },
     "filter": "active"
@@ -929,8 +909,7 @@ Private environment variables and server-only credentials remain in the server p
     "posts": {
       "$prototype": "MarkdownCollection",
       "$src": "./MarkdownCollection.class.json",
-      "src": "./content/posts/*.md",
-      "signal": true
+      "src": "./content/posts/*.md"
     }
   }
 }
@@ -1225,7 +1204,6 @@ Custom elements may carry annotations compatible with the Custom Elements Manife
 | `$map`               | Iteration context namespace                                       |
 | `$media`             | Named media breakpoint declarations                               |
 | `$elements`          | Custom element dependency declarations                            |
-| `signal`             | Reactive wrapping on computed functions and external classes      |
 | `timing`             | Execution timing: `"compiler"`, `"server"`, or `"client"`         |
 | `default`            | Initial value for typed state entries                             |
 | `body`               | Inline function body                                              |

@@ -36,8 +36,7 @@ Built on the `unified` / `remark` / `rehype` pipeline.
     "post": {
       "$prototype": "MarkdownFile",
       "$src": "@jxplatform/md",
-      "src": "./content/posts/hello-world.md",
-      "signal": true
+      "src": "./content/posts/hello-world.md"
     }
   }
 }
@@ -92,8 +91,7 @@ The `resolve()` method returns an object with:
       "src": "./content/posts/*.md",
       "sortBy": "date",
       "sortOrder": "desc",
-      "limit": 10,
-      "signal": true
+      "limit": 10
     }
   }
 }

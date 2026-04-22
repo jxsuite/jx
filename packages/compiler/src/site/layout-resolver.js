@@ -20,13 +20,13 @@ import { resolve } from "node:path";
  * Resolve a page's layout, wrapping the page content in the layout structure.
  *
  * @param {any} pageDoc - The raw page JSON document
- * @param {any} siteConfig - Site configuration (for defaults.layout)
+ * @param {any} projectConfig - Site configuration (for defaults.layout)
  * @param {string} projectRoot - Project root directory
  * @returns {any} The merged document (layout wrapping page content)
  */
-export function resolveLayout(pageDoc, siteConfig, projectRoot) {
+export function resolveLayout(pageDoc, projectConfig, projectRoot) {
   // Determine which layout to use
-  const layoutRef = pageDoc.$layout ?? siteConfig.defaults?.layout ?? null;
+  const layoutRef = pageDoc.$layout ?? projectConfig.defaults?.layout ?? null;
 
   if (!layoutRef) {
     // No layout — return page as-is
@@ -50,7 +50,7 @@ export function resolveLayout(pageDoc, siteConfig, projectRoot) {
 
   // Check for nested layouts (layout inheriting from another layout)
   if (layoutDoc.$layout) {
-    layoutDoc = resolveLayout(layoutDoc, siteConfig, projectRoot);
+    layoutDoc = resolveLayout(layoutDoc, projectConfig, projectRoot);
   }
 
   // Distribute page children into layout slots

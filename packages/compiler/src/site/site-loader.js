@@ -1,16 +1,16 @@
 /**
- * Site-loader.js — Load and validate site.json configuration
+ * Site-loader.js — Load and validate project.json configuration
  *
- * Parses the project root's site.json file and provides normalized configuration with sensible
- * defaults for all site-level properties.
+ * Parses the project root's project.json file and provides normalized configuration with sensible
+ * defaults for all project-level properties.
  */
 
 import { readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 
 /**
- * Default site configuration. All properties are optional in site.json; these defaults fill in
- * anything the author omits.
+ * Default project configuration. All properties are optional in project.json; these defaults fill
+ * in anything the author omits.
  */
 const DEFAULTS = {
   name: "Jx Site",
@@ -25,6 +25,7 @@ const DEFAULTS = {
   $media: {},
   style: {},
   state: {},
+  collections: {},
   redirects: {},
   build: {
     outDir: "./dist",
@@ -34,17 +35,17 @@ const DEFAULTS = {
 };
 
 /**
- * Load and validate site.json from a project root.
+ * Load and validate project.json from a project root.
  *
  * @param {string} projectRoot - Absolute path to the project directory
  * @returns {{ config: Record<string, any>; configPath: string; projectRoot: string }}
- * @throws {Error} If site.json is missing or invalid JSON
+ * @throws {Error} If project.json is missing or invalid JSON
  */
-export function loadSiteConfig(projectRoot) {
-  const configPath = resolve(projectRoot, "site.json");
+export function loadProjectConfig(projectRoot) {
+  const configPath = resolve(projectRoot, "project.json");
 
   if (!existsSync(configPath)) {
-    throw new Error(`site.json not found in ${projectRoot}`);
+    throw new Error(`project.json not found in ${projectRoot}`);
   }
 
   let raw;
@@ -56,7 +57,7 @@ export function loadSiteConfig(projectRoot) {
   }
 
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
-    throw new Error(`site.json must be a JSON object, got ${typeof raw}`);
+    throw new Error(`project.json must be a JSON object, got ${typeof raw}`);
   }
 
   // Deep merge with defaults
@@ -74,6 +75,7 @@ export function loadSiteConfig(projectRoot) {
   if (raw.state) config.state = raw.state;
   if (raw.redirects) config.redirects = raw.redirects;
   if (raw.imports) config.imports = raw.imports;
+  if (raw.collections) config.collections = raw.collections;
 
   return {
     config,

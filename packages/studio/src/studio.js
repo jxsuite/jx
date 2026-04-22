@@ -824,10 +824,10 @@ if (_openParam) {
 
           setProjectState({
             root: siteCtx.sitePath,
-            name: siteCtx.siteConfig?.name || "Project",
+            name: siteCtx.projectConfig?.name || "Project",
             projectRoot: siteCtx.relPath || ".",
             isSiteProject: true,
-            siteConfig: siteCtx.siteConfig,
+            projectConfig: siteCtx.projectConfig,
             projectDirs: [],
             dirs: new Map(),
             expanded: new Set(),

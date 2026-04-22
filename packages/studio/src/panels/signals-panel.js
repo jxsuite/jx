@@ -38,7 +38,6 @@ const STUDIO_RESERVED_KEYS = new Set([
   "$prototype",
   "$src",
   "$export",
-  "signal",
   "timing",
   "default",
   "description",

@@ -31,7 +31,7 @@
 
 /** @typedef {{ name?: string; url?: string; [key: string]: unknown }} SiteConfig */
 
-/** @typedef {{ root: string; name: string; siteConfig: SiteConfig }} ProjectHandle */
+/** @typedef {{ root: string; name: string; projectConfig: SiteConfig }} ProjectHandle */
 
 /** @typedef {{ config: SiteConfig; handle: ProjectHandle }} OpenProjectResult */
 

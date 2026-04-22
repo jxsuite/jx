@@ -104,22 +104,22 @@ Registration: `registerPlatform(impl)` at startup, `getPlatform()` for access.
 Studio supports opening projects via URL query parameter with absolute system paths:
 
 ```
-http://localhost:3000/packages/studio/index.html?open=~/Development/jx/sites/jxplatform.net/site.json
+http://localhost:3000/packages/studio/index.html?open=~/Development/jx/sites/jxplatform.net/project.json
 ```
 
-The `?open=` path must point to a `site.json` file. On startup, Studio checks for this parameter, resolves the path via the PAL, and loads the project. This enables direct-linking to projects from terminals, scripts, and documentation.
+The `?open=` path must point to a `project.json` file. On startup, Studio checks for this parameter, resolves the path via the PAL, and loads the project. This enables direct-linking to projects from terminals, scripts, and documentation.
 
 ### 3.6 Site Context
 
-When a site project is loaded (via `?open=`, `openProject()`, or `probeRootProject()`), Studio resolves `site.json` and establishes a **site context** that applies globally to every file edited within that project:
+When a site project is loaded (via `?open=`, `openProject()`, or `probeRootProject()`), Studio resolves `project.json` and establishes a **site context** that applies globally to every file edited within that project:
 
-| Inherited from `site.json`  | Effect in Studio                                                                                                   |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `$media` breakpoints        | Media tabs, responsive presets, and canvas panel widths reflect the site's breakpoints — not the individual file's |
-| `style` (`:root` variables) | Global CSS custom properties and stylesheet rules are applied to the canvas, stylebook, and component previews     |
-| Component definitions       | The Components panel shows only components defined in the current project's `components/` and `$elements`          |
-| `$head`                     | Global fonts, viewport, and other head entries are applied to canvas rendering                                     |
-| `state`                     | Site-wide state entries are available (read-only) in the state explorer                                            |
+| Inherited from `project.json` | Effect in Studio                                                                                                   |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `$media` breakpoints          | Media tabs, responsive presets, and canvas panel widths reflect the site's breakpoints — not the individual file's |
+| `style` (`:root` variables)   | Global CSS custom properties and stylesheet rules are applied to the canvas, stylebook, and component previews     |
+| Component definitions         | The Components panel shows only components defined in the current project's `components/` and `$elements`          |
+| `$head`                       | Global fonts, viewport, and other head entries are applied to canvas rendering                                     |
+| `state`                       | Site-wide state entries are available (read-only) in the state explorer                                            |
 
 When navigating between components, pages, and layouts within a project, the site context persists. Individual file `$media`, `$style`, and `$elements` merge on top of (not replace) site-level definitions. This ensures the canvas always shows what the file will look like in the context of the full site.
 

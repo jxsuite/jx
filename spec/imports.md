@@ -6,7 +6,7 @@ The JX import system provides a unified way to manage three types of external de
 
 ### JX Class Imports
 
-Class imports map short names to file paths, enabling `$prototype` resolution without full paths. Defined in `site.json` under `imports`:
+Class imports map short names to file paths, enabling `$prototype` resolution without full paths. Defined in `project.json` under `imports`:
 
 ```json
 {
@@ -38,10 +38,10 @@ These cascade from site level into every page. Page-level `imports` merge on top
 
 ### Cascading
 
-`$elements` defined in `site.json` apply to every page. Page-level `$elements` merge with site-level via union (deduplicated by `$ref` value or string value). Page entries take precedence on conflict.
+`$elements` defined in `project.json` apply to every page. Page-level `$elements` merge with site-level via union (deduplicated by `$ref` value or string value). Page entries take precedence on conflict.
 
 ```
-site.json $elements  +  page $elements  =  effective $elements (union, dedup)
+project.json $elements  +  page $elements  =  effective $elements (union, dedup)
 ```
 
 ## npm Web Component Discovery
@@ -123,7 +123,7 @@ Body: `{ "name": "<package-name>" }`. Runs `bun remove <name>`.
 
 The left sidebar "Imports" tab provides three sections:
 
-1. **Class Imports** - Name-to-path mappings from `site.json` `imports`. Add/remove with write-back.
+1. **Class Imports** - Name-to-path mappings from `project.json` `imports`. Add/remove with write-back.
 2. **Components** - JX custom elements (`source: "jx"`) with live preview and drag-drop.
 3. **Packages** - npm web components (`source: "npm"`) grouped by package, with drag-drop of individual tags and package add/remove.
 
@@ -138,7 +138,7 @@ Duplicates are not added if the component is already imported.
 
 ## Content Collection `$elements`
 
-Content collections support `$elements` in their `content.config.json`, controlling which custom element directives are available in that collection's markdown files:
+Content collections support `$elements` in their `project.json `collections``, controlling which custom element directives are available in that collection's markdown files:
 
 ```json
 {
