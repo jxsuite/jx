@@ -38,7 +38,7 @@ The studio package (`@jxplatform/studio`) contains all UI logic and is backend-a
 ### 1.1 Relationship to Other Specs
 
 - **[Studio Spec](studio.md)** — Defines the visual builder: canvas, layer tree, inspector, state model, keyboard shortcuts. This spec does not alter any of that.
-- **[Site Architecture Spec](site-architecture.md)** — Defines project structure (`site.json`, `pages/`, `content/`, etc.), routing, layouts, content collections. This spec defines how Studio _discovers and opens_ those projects.
+- **[Site Architecture Spec](site-architecture.md)** — Defines project structure (`project.json`, `pages/`, `content/`, etc.), routing, layouts, content collections. This spec defines how Studio _discovers and opens_ those projects.
 - **[Server Spec](server.md)** — Defines the `@jxplatform/server` dev server endpoints. This spec defines a backend API contract that the server must satisfy, and that other backends can also satisfy.
 
 ---
@@ -73,8 +73,8 @@ interface StudioPlatform {
   /**
    * Open a project.
    * Presents a platform-appropriate dialog (native file dialog, browser
-   * directory picker, or cloud project selector) filtered to site.json.
-   * Returns the parsed site.json config and an opaque project handle,
+   * directory picker, or cloud project selector) filtered to project.json.
+   * Returns the parsed project.json config and an opaque project handle,
    * or null if the user cancelled.
    */
   openProject(): Promise<{
@@ -157,10 +157,10 @@ interface ComponentMeta {
 interface ProjectHandle {
   /** Project root identifier. Filesystem path for local, project ID for cloud. */
   root: string;
-  /** Display name, from site.json `name` field. */
+  /** Display name, from project.json `name` field. */
   name: string;
-  /** The parsed site.json content. */
-  siteConfig: SiteConfig;
+  /** The parsed project.json content. */
+  projectConfig: SiteConfig;
 }
 
 interface SiteConfig {
@@ -222,15 +222,15 @@ registerPlatform(createDevServerPlatform());
 
 ## 4. Project Loading
 
-### 4.1 The site.json Contract
+### 4.1 The project.json Contract
 
-A project is identified by its `site.json` file. This is the single point of entry for all deployment targets:
+A project is identified by its `project.json` file. This is the single point of entry for all deployment targets:
 
-- **Desktop:** User selects `site.json` via native file dialog. The parent directory becomes the project root.
-- **Dev server:** User selects the folder containing `site.json` via `showDirectoryPicker()`. Studio reads `site.json` from the directory to validate it.
-- **Cloud:** User selects a project from a project list. The cloud backend locates the project's `site.json` equivalent in its data store.
+- **Desktop:** User selects `project.json` via native file dialog. The parent directory becomes the project root.
+- **Dev server:** User selects the folder containing `project.json` via `showDirectoryPicker()`. Studio reads `project.json` from the directory to validate it.
+- **Cloud:** User selects a project from a project list. The cloud backend locates the project's `project.json` equivalent in its data store.
 
-The `site.json` file is **required** for project-level features. Studio can still open individual `.json` files for standalone component editing (see §4.3).
+The `project.json` file is **required** for project-level features. Studio can still open individual `.json` files for standalone component editing (see §4.3).
 
 ### 4.2 Project Open Flow
 
@@ -241,12 +241,12 @@ User clicks "Open Project"
 platform.openProject()
         │
         ├─── Desktop: Utils.openFileDialog({ allowedFileTypes: "json", canChooseFiles: true })
-        │    → user picks site.json → read + parse → derive project root from parent dir
+        │    → user picks project.json → read + parse → derive project root from parent dir
         │
         ├─── Dev server: showDirectoryPicker()
-        │    → user picks folder → read site.json from dir → parse + validate
+        │    → user picks folder → read project.json from dir → parse + validate
         │
-        └─── Cloud: fetch project list → user picks → fetch site.json from storage
+        └─── Cloud: fetch project list → user picks → fetch project.json from storage
         │
         ▼
 Returns { config, handle } or null
@@ -254,7 +254,7 @@ Returns { config, handle } or null
         ▼
 Studio initializes project state:
   - projectState.projectRoot = handle.root
-  - projectState.siteConfig = config
+  - projectState.projectConfig = config
   - projectState.isSiteProject = true
   - Load root directory listing
   - Load component registry
@@ -279,11 +279,11 @@ Single file mode is the default when no project is loaded. It is also active wit
 // After opening a project:
 projectState = {
   root: "/Users/alice/Sites/my-site", // Absolute path (local) or project ID (cloud)
-  name: "My Site", // From site.json
+  name: "My Site", // From project.json
   projectRoot: ".", // Relative path prefix for API calls
   isSiteProject: true,
-  siteConfig: {
-    /* parsed site.json */
+  projectConfig: {
+    /* parsed project.json */
   },
   dirs: new Map(), // Cached directory listings
   expanded: new Set(), // Expanded tree nodes
@@ -483,7 +483,7 @@ export async function handleOpenProject() {
   if (!paths || paths.length === 0) return null;
 
   const filePath = paths[0];
-  if (basename(filePath) !== "site.json") return null;
+  if (basename(filePath) !== "project.json") return null;
 
   const raw = await readFile(filePath, "utf8");
   const config = JSON.parse(raw);
@@ -494,7 +494,7 @@ export async function handleOpenProject() {
     handle: {
       root: projectRoot,
       name: config.name || basename(projectRoot),
-      siteConfig: config,
+      projectConfig: config,
     },
   };
 }
@@ -556,12 +556,12 @@ export function createDevServerPlatform() {
 
       const dirHandle = await window.showDirectoryPicker({ mode: "readwrite" });
 
-      // Read site.json from the chosen directory
+      // Read project.json from the chosen directory
       let siteHandle;
       try {
-        siteHandle = await dirHandle.getFileHandle("site.json");
+        siteHandle = await dirHandle.getFileHandle("project.json");
       } catch {
-        throw new Error("No site.json found in selected folder");
+        throw new Error("No project.json found in selected folder");
       }
 
       const file = await siteHandle.getFile();
@@ -581,7 +581,7 @@ export function createDevServerPlatform() {
         handle: {
           root: match.path,
           name: config.name || match.path.split("/").pop(),
-          siteConfig: config,
+          projectConfig: config,
         },
       };
     },
@@ -619,10 +619,10 @@ export function createDevServerPlatform() {
 In Chrome, `showOpenFilePicker` returns a `FileSystemFileHandle` with no way to access the parent directory or derive a filesystem path. The dev server needs a server-relative path to scope file operations. `showDirectoryPicker` solves this by:
 
 1. Giving the user a folder selection experience (they pick the project folder)
-2. Letting Studio read `site.json` from the `FileSystemDirectoryHandle` to validate
+2. Letting Studio read `project.json` from the `FileSystemDirectoryHandle` to validate
 3. Matching against the server's `/__studio/sites` endpoint to resolve the server-relative path
 
-For the **desktop app**, `Utils.openFileDialog` with `canChooseFiles: true` and `allowedFileTypes: "json"` gives us the file path directly, so the user can pick `site.json` explicitly.
+For the **desktop app**, `Utils.openFileDialog` with `canChooseFiles: true` and `allowedFileTypes: "json"` gives us the file path directly, so the user can pick `project.json` explicitly.
 
 ---
 
@@ -640,7 +640,7 @@ The cloud backend stores projects in a database with an abstraction equivalent t
 
 | Filesystem concept  | Cloud equivalent                       |
 | ------------------- | -------------------------------------- |
-| `site.json`         | Project record with config JSON column |
+| `project.json`      | Project record with config JSON column |
 | Directory listing   | Query files table by parent path       |
 | File read/write     | Row-level CRUD on files table          |
 | Component discovery | Query files table by naming convention |
@@ -683,7 +683,7 @@ Package Studio as an ElectroBun app:
 - [ ] Scaffold ElectroBun project with Studio as the main view
 - [ ] Implement `DesktopPlatform` adapter (RPC bridge to Bun process)
 - [ ] Implement Bun-side file handlers (read, write, list, delete, rename, discover)
-- [ ] Wire `Utils.openFileDialog()` for `openProject()` with `site.json` filter
+- [ ] Wire `Utils.openFileDialog()` for `openProject()` with `project.json` filter
 - [ ] Port code services (format, lint, minify) to run in Bun process directly
 - [ ] Verify full editing flow: open project, browse files, edit component, save
 

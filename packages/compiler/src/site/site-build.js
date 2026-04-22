@@ -1,9 +1,9 @@
 /**
  * Site-build.js — Multi-page build orchestrator
  *
- * Coordinates the full site build pipeline: 1. Load site.json 2. Discover pages/ routes 3. Expand
- * dynamic routes ($paths) 4. For each route: resolve layout, merge $head, inject context, compile
- * 5. Emit compiled files to dist/ 6. Generate redirects
+ * Coordinates the full site build pipeline: 1. Load project.json 2. Discover pages/ routes 3.
+ * Expand dynamic routes ($paths) 4. For each route: resolve layout, merge $head, inject context,
+ * compile 5. Emit compiled files to dist/ 6. Generate redirects
  *
  * This is the Phase 1 implementation of site-architecture spec §12.
  */
@@ -18,7 +18,7 @@ import {
   readdirSync,
 } from "node:fs";
 import { resolve, dirname, join } from "node:path";
-import { loadSiteConfig } from "./site-loader.js";
+import { loadProjectConfig } from "./site-loader.js";
 import { discoverPages, expandDynamicRoutes } from "./pages-discovery.js";
 import { resolveLayout } from "./layout-resolver.js";
 import { mergeHead, renderHead } from "./head-merger.js";
@@ -38,7 +38,7 @@ import { resolvePrototypes } from "./prototype-resolver.js";
 /**
  * Build an entire Jx site from a project directory.
  *
- * @param {string} projectRoot - Absolute path to the project root (contains site.json)
+ * @param {string} projectRoot - Absolute path to the project root (contains project.json)
  * @param {object} [options]
  * @param {boolean} [options.clean] - Remove outDir before building
  * @param {boolean} [options.verbose] - Log progress
@@ -50,14 +50,14 @@ export async function buildSite(projectRoot, options = {}) {
   const errors = [];
   const log = verbose ? console.log.bind(console) : () => {};
 
-  // ── 1. Load site configuration ──────────────────────────────────────────
-  log("Loading site.json...");
-  const { config: siteConfig } = loadSiteConfig(projectRoot);
+  // ── 1. Load project configuration ──────────────────────────────────────────
+  log("Loading project.json...");
+  const { config: projectConfig } = loadProjectConfig(projectRoot);
 
-  const outDir = resolve(projectRoot, siteConfig.build.outDir);
+  const outDir = resolve(projectRoot, projectConfig.build.outDir);
   const pagesDir = resolve(projectRoot, "pages");
   const publicDir = resolve(projectRoot, "public");
-  const trailingSlash = siteConfig.build.trailingSlash ?? "always";
+  const trailingSlash = projectConfig.build.trailingSlash ?? "always";
 
   // ── 2. Clean output directory ───────────────────────────────────────────
   if (clean && existsSync(outDir)) {
@@ -76,11 +76,11 @@ export async function buildSite(projectRoot, options = {}) {
 
   // ── 3b. Load content collections ──────────────────────────────────────
   log("Loading content collections...");
-  const collections = await loadCollections(projectRoot);
+  const collections = await loadCollections(projectRoot, projectConfig);
   if (collections.size > 0) {
     log(`  Loaded ${collections.size} collection(s): ${[...collections.keys()].join(", ")}`);
     // Resolve cross-collection $ref references
-    const contentConfig = loadContentConfig(projectRoot);
+    const contentConfig = loadContentConfig(projectRoot, projectConfig);
     if (contentConfig) {
       resolveCollectionRefs(collections, contentConfig.config);
     }
@@ -132,7 +132,7 @@ export async function buildSite(projectRoot, options = {}) {
   for (const route of routes) {
     try {
       log(`  Compiling ${route.urlPattern} ...`);
-      const result = await compilePage(route, siteConfig, projectRoot, collections);
+      const result = await compilePage(route, projectConfig, projectRoot, collections);
 
       // Inject component scripts if the page references any compiled components
       if (compiledComponentTags.length > 0) {
@@ -168,9 +168,9 @@ export async function buildSite(projectRoot, options = {}) {
   }
 
   // ── 7. Generate redirects ───────────────────────────────────────────────
-  if (siteConfig.redirects && Object.keys(siteConfig.redirects).length > 0) {
+  if (projectConfig.redirects && Object.keys(projectConfig.redirects).length > 0) {
     log("Generating redirects...");
-    const redirectFiles = generateRedirects(siteConfig.redirects, outDir);
+    const redirectFiles = generateRedirects(projectConfig.redirects, outDir);
     fileCount += redirectFiles;
   }
 
@@ -195,17 +195,17 @@ export async function buildSite(projectRoot, options = {}) {
  * Pipeline: load JSON → resolve layout → inject context → merge head → compile
  *
  * @param {any} route
- * @param {any} siteConfig
+ * @param {any} projectConfig
  * @param {string} projectRoot
  * @param {Map<string, any[]>} [collections]
  * @returns {Promise<{ html: string; files: any[]; serverHandler: string | null }>}
  */
-async function compilePage(route, siteConfig, projectRoot, collections = new Map()) {
+async function compilePage(route, projectConfig, projectRoot, collections = new Map()) {
   // Load the raw page document
   let pageDoc = JSON.parse(readFileSync(route.sourcePath, "utf8"));
 
   // Resolve layout (wraps page in layout with slot distribution)
-  const layoutDoc = resolveLayout(pageDoc, siteConfig, projectRoot);
+  const layoutDoc = resolveLayout(pageDoc, projectConfig, projectRoot);
 
   // Extract head arrays before they get lost in the merge
   const pageHead = pageDoc.$head ?? layoutDoc._pageHead ?? [];
@@ -217,7 +217,7 @@ async function compilePage(route, siteConfig, projectRoot, collections = new Map
   delete layoutDoc._pageTitle;
 
   // Inject $site and $page context, resolve ContentCollection/ContentEntry
-  injectContext(layoutDoc, siteConfig, route, collections, projectRoot);
+  injectContext(layoutDoc, projectConfig, route, collections, projectRoot);
 
   // Resolve generic $prototype entries via .class.json imports
   await resolvePrototypes(layoutDoc, route, projectRoot);
@@ -226,7 +226,7 @@ async function compilePage(route, siteConfig, projectRoot, collections = new Map
   const scope = buildInitialScope(layoutDoc.state ?? {});
 
   // Determine the page title — resolve template strings against the scope
-  let title = pageTitle ?? siteConfig.name ?? "Jx Site";
+  let title = pageTitle ?? projectConfig.name ?? "Jx Site";
   if (typeof title === "string" && isTemplateString(title)) {
     title = evaluateStaticTemplate(title, scope) ?? title;
   }
@@ -256,25 +256,25 @@ async function compilePage(route, siteConfig, projectRoot, collections = new Map
   }
 
   // Resolve bare npm specifiers in $head (e.g. "@pkg/name/file.css" → "/node_modules/@pkg/name/file.css")
-  const resolvedSiteHead = resolveHeadBareSpecifiers(siteConfig.$head ?? []);
+  const resolvedSiteHead = resolveHeadBareSpecifiers(projectConfig.$head ?? []);
 
   // Merge $head from site + layout + page
   const mergedHead = mergeHead(resolvedSiteHead, resolvedLayoutHead, resolvedPageHead, {
     title,
-    charset: siteConfig.defaults?.charset ?? "utf-8",
-    siteName: siteConfig.name,
-    siteUrl: siteConfig.url,
+    charset: projectConfig.defaults?.charset ?? "utf-8",
+    siteName: projectConfig.name,
+    siteUrl: projectConfig.url,
     pageUrl: route.urlPattern,
   });
 
   // Compile the document using the existing compiler
   const result = await compile(layoutDoc, {
     title,
-    lang: siteConfig.defaults?.lang ?? "en",
+    lang: projectConfig.defaults?.lang ?? "en",
   });
 
   // Post-process: inject merged <head> content into the compiled HTML
-  result.html = injectHead(result.html, mergedHead, siteConfig.defaults?.lang ?? "en");
+  result.html = injectHead(result.html, mergedHead, projectConfig.defaults?.lang ?? "en");
 
   // Inject <script type="module"> for npm $elements (cherry-picked component imports)
   const npmElements = (layoutDoc.$elements ?? []).filter(

@@ -49,10 +49,10 @@ export async function loadProject() {
 
     setProjectState({
       root: meta.root,
-      name: info.isSiteProject ? info.siteConfig?.name || meta.name : meta.name,
+      name: info.isSiteProject ? info.projectConfig?.name || meta.name : meta.name,
       projectRoot: ".",
       isSiteProject: info.isSiteProject,
-      siteConfig: info.isSiteProject ? info.siteConfig : null,
+      projectConfig: info.isSiteProject ? info.projectConfig : null,
       projectDirs: info.directories || [],
       dirs: new Map(),
       expanded: new Set(),
@@ -94,7 +94,7 @@ export async function openProject({ S, commit, renderActivityBar, renderLeftPane
       ...projectState,
       projectRoot: handle.root,
       isSiteProject: true,
-      siteConfig: config,
+      projectConfig: config,
       name: config.name || handle.name,
       dirs: new Map(),
       expanded: new Set(),
@@ -191,7 +191,9 @@ export function renderFilesTemplate({
     ${projectState.isSiteProject
       ? html`
           <div class="project-header">
-            <span class="project-name">${projectState.siteConfig?.name || projectState.name}</span>
+            <span class="project-name"
+              >${projectState.projectConfig?.name || projectState.name}</span
+            >
           </div>
         `
       : nothing}

@@ -13,7 +13,7 @@
     ".": "./src/schema.js"
   },
   "scripts": {
-    "schema": "bun run src/schema.js ./schema.json",
+    "schema": "bun run src/schema.js",
     "test": "bun test",
     "upgrade": "bunx npm-check-updates -u && bun install"
   },

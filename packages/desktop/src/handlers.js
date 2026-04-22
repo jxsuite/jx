@@ -67,8 +67,8 @@ export async function openProject() {
   if (!paths || paths.length === 0) return null;
 
   const filePath = paths[0];
-  if (basename(filePath) !== "site.json") {
-    throw new Error("Please select a site.json file");
+  if (basename(filePath) !== "project.json") {
+    throw new Error("Please select a project.json file");
   }
 
   const raw = await readFile(filePath, "utf8");
@@ -80,7 +80,7 @@ export async function openProject() {
     handle: {
       root: projectRoot,
       name: config.name || basename(projectRoot),
-      siteConfig: config,
+      projectConfig: config,
     },
   };
 }

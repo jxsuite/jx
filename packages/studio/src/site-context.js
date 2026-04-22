@@ -1,7 +1,7 @@
 /**
  * Site context helpers - merge site-level definitions with file-level.
  *
- * When a project has a site.json, its $media and style cascade into every file. File-level
+ * When a project has a project.json, its $media and style cascade into every file. File-level
  * definitions merge on top (file wins on conflict).
  */
 
@@ -15,7 +15,7 @@ import { getPlatform } from "./platform.js";
  * @returns {any}
  */
 export function getEffectiveMedia(docMedia) {
-  const siteMedia = projectState?.siteConfig?.$media;
+  const siteMedia = projectState?.projectConfig?.$media;
   if (!siteMedia) return docMedia || {};
   if (!docMedia) return { ...siteMedia };
   return { ...siteMedia, ...docMedia };
@@ -29,7 +29,7 @@ export function getEffectiveMedia(docMedia) {
  * @returns {any}
  */
 export function getEffectiveStyle(docStyle) {
-  const siteStyle = projectState?.siteConfig?.style;
+  const siteStyle = projectState?.projectConfig?.style;
   if (!siteStyle) return docStyle || {};
   if (!docStyle) return { ...siteStyle };
   const merged = { ...siteStyle };
@@ -55,7 +55,7 @@ export function getEffectiveStyle(docStyle) {
  * @returns {any}
  */
 export function getEffectiveImports(docImports) {
-  const siteImports = projectState?.siteConfig?.imports;
+  const siteImports = projectState?.projectConfig?.imports;
   if (!siteImports) return docImports || {};
   if (!docImports) return { ...siteImports };
   return { ...siteImports, ...docImports };
@@ -68,7 +68,7 @@ export function getEffectiveImports(docImports) {
  * @returns {any[]}
  */
 export function getEffectiveElements(docElements) {
-  const siteElements = projectState?.siteConfig?.$elements;
+  const siteElements = projectState?.projectConfig?.$elements;
   if (!siteElements?.length) return docElements || [];
   if (!docElements?.length) return [...siteElements];
   /** @type {Set<string>} */
@@ -92,7 +92,7 @@ export function getEffectiveElements(docElements) {
  * @returns {any[]}
  */
 export function getEffectiveHead(docHead) {
-  const siteHead = projectState?.siteConfig?.$head;
+  const siteHead = projectState?.projectConfig?.$head;
   if (!siteHead?.length) return docHead || [];
   if (!docHead?.length) return [...siteHead];
   /** @type {Set<string>} */
@@ -110,13 +110,13 @@ export function getEffectiveHead(docHead) {
 }
 
 /**
- * Update the project's site.json with a partial patch and persist to disk.
+ * Update the project's project.json with a partial patch and persist to disk.
  *
- * @param {Record<string, any>} patch - Fields to merge into the current siteConfig
+ * @param {Record<string, any>} patch - Fields to merge into the current projectConfig
  */
 export async function updateSiteConfig(patch) {
   const platform = getPlatform();
-  const config = { ...projectState.siteConfig, ...patch };
-  await platform.writeFile("site.json", JSON.stringify(config, null, 2));
-  setProjectState({ ...projectState, siteConfig: config });
+  const config = { ...projectState.projectConfig, ...patch };
+  await platform.writeFile("project.json", JSON.stringify(config, null, 2));
+  setProjectState({ ...projectState, projectConfig: config });
 }

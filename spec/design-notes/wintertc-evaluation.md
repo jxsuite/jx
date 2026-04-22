@@ -41,7 +41,7 @@ Jx's `$prototype` system already maps JSON declarations to Web API constructors 
 | --------------------------------- | ---------------------------------------------------------- | ----------------------------------------------------------------------------- |
 | **`URLPattern`**                  | ★★★ **Critical** — Route matching + redirect patterns      | **Adopt** (see §4)                                                            |
 | `URL`                             | ★★☆ — Useful for canonical URL construction in SEO/sitemap | Consider as `$prototype`                                                      |
-| `AbortController` / `AbortSignal` | ★★☆ — Build pipeline cancellation, request cancellation    | Already implicit in `signal: true`; no schema change needed                   |
+| `AbortController` / `AbortSignal` | ★★☆ — Build pipeline cancellation, request cancellation    | Already implicit in reactive data sources; no schema change needed            |
 | `EventTarget` / `CustomEvent`     | ★☆☆ — Component event dispatch                             | Jx uses DOM events natively in custom elements; no schema-level action needed |
 | `TextEncoder` / `TextDecoder`     | ★☆☆ — Build internals only                                 | Implementation detail, not schema-relevant                                    |
 | `CompressionStream`               | ★☆☆ — Asset pipeline optimization                          | Build tool concern, not schema                                                |
@@ -146,16 +146,16 @@ Document in the server spec that server functions compiled by Jx should conform 
 
 ## 6. Summary of Recommendations
 
-| Area                             | Action                                                      | Priority                                    |
-| -------------------------------- | ----------------------------------------------------------- | ------------------------------------------- |
-| **URLPattern**                   | Add normative reference in §4 (routing) and §11 (redirects) | **High** — standards alignment at zero cost |
-| **URLPattern syntax**            | No syntax changes needed — current patterns already conform | **None** — already compatible               |
-| **`URLPattern` as `$prototype`** | Defer — add when client-side routing needs it               | **Low** — future iteration                  |
-| **`URL` as `$prototype`**        | Consider adding for canonical URL construction              | **Low** — nice to have                      |
-| **Fetch interface**              | Document `Request → Response` as server function convention | **Medium** — clarifies server.md            |
-| **AbortController**              | Already implicit in `signal: true` — no schema change       | **None**                                    |
-| **EventTarget**                  | No schema-level action — handled by DOM custom elements     | **None**                                    |
-| **Other WinterTC APIs**          | Not applicable to schema layer                              | **None**                                    |
+| Area                             | Action                                                       | Priority                                    |
+| -------------------------------- | ------------------------------------------------------------ | ------------------------------------------- |
+| **URLPattern**                   | Add normative reference in §4 (routing) and §11 (redirects)  | **High** — standards alignment at zero cost |
+| **URLPattern syntax**            | No syntax changes needed — current patterns already conform  | **None** — already compatible               |
+| **`URLPattern` as `$prototype`** | Defer — add when client-side routing needs it                | **Low** — future iteration                  |
+| **`URL` as `$prototype`**        | Consider adding for canonical URL construction               | **Low** — nice to have                      |
+| **Fetch interface**              | Document `Request → Response` as server function convention  | **Medium** — clarifies server.md            |
+| **AbortController**              | Already implicit in reactive data sources — no schema change | **None**                                    |
+| **EventTarget**                  | No schema-level action — handled by DOM custom elements      | **None**                                    |
+| **Other WinterTC APIs**          | Not applicable to schema layer                               | **None**                                    |
 
 ## 7. What WinterTC Does NOT Cover
 

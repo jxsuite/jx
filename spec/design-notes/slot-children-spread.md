@@ -317,7 +317,7 @@ Beyond Astro conventions, these established standards could inform the site-leve
 | Standard                                  | Relevance                                              | Current Use                                                                                               |
 | ----------------------------------------- | ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
 | **HTML `<slot>`**                         | Content projection in layouts and custom elements      | Already implemented; should unify layout slots                                                            |
-| **JSON Schema 2020-12**                   | Collection schemas, site config validation             | Already used for `$defs`; natural for `content.config.json`                                               |
+| **JSON Schema 2020-12**                   | Collection schemas, site config validation             | Already used for `$defs`; natural for `project.json `collections``                                        |
 | **JSON Pointer (RFC 6901)**               | All `$ref` values                                      | Already used                                                                                              |
 | **URI Reference (RFC 3986)**              | `$layout`, `$src`, media paths                         | Already used for `$src` and `$ref`                                                                        |
 | **HTTP `Link` header / `<link>` element** | `$head` entries for SEO, preload, icons                | Proposed in site-architecture                                                                             |
@@ -331,10 +331,10 @@ Beyond Astro conventions, these established standards could inform the site-leve
 | Standard                        | Relevance                                                    | Recommendation                                                                               |
 | ------------------------------- | ------------------------------------------------------------ | -------------------------------------------------------------------------------------------- |
 | **Import Maps**                 | Module resolution — could map component aliases              | Consider for `$elements` resolution                                                          |
-| **Web App Manifest**            | PWA support, `manifest.webmanifest`                          | Could be generated from `site.json`                                                          |
+| **Web App Manifest**            | PWA support, `manifest.webmanifest`                          | Could be generated from `project.json`                                                       |
 | **Open Graph Protocol**         | Social media metadata                                        | Already in `$head` proposal                                                                  |
 | **RSS 2.0 / Atom**              | Feed generation from content collections                     | Worth adding to build pipeline                                                               |
-| **HTTP Redirects (301/302)**    | Redirect semantics                                           | Already in `site.json` proposal                                                              |
+| **HTTP Redirects (301/302)**    | Redirect semantics                                           | Already in `project.json` proposal                                                           |
 | **WinterTC Minimum Common API** | Server-side runtime API surface for `$prototype` portability | Validated — existing prototypes align (see [wintertc-evaluation.md](wintertc-evaluation.md)) |
 
 ### Key Principle

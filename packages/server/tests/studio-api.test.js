@@ -287,7 +287,7 @@ mkdirSync(join(SITE_PROJECT, "pages"), { recursive: true });
 mkdirSync(join(SITE_PROJECT, "layouts"), { recursive: true });
 mkdirSync(join(SITE_PROJECT, "components"), { recursive: true });
 writeFileSync(
-  join(SITE_PROJECT, "site.json"),
+  join(SITE_PROJECT, "project.json"),
   JSON.stringify({ name: "Test Site", url: "https://test.dev" }),
   "utf8",
 );
@@ -312,13 +312,13 @@ function projectInfoRequest(/** @type {any} */ dir) {
 }
 
 describe("project-info", () => {
-  test("detects a site project with site.json", async () => {
+  test("detects a site project with project.json", async () => {
     const { req, url } = projectInfoRequest("_studio_fixtures/my-site");
     const res = await handleStudioApi(req, url, import.meta.dir);
     expect(res).not.toBeNull();
     const data = await /** @type {any} */ (res).json();
     expect(data.isSiteProject).toBe(true);
-    expect(data.siteConfig.name).toBe("Test Site");
+    expect(data.projectConfig.name).toBe("Test Site");
     expect(data.directories).toContain("pages");
     expect(data.directories).toContain("layouts");
     expect(data.directories).toContain("components");
@@ -329,7 +329,7 @@ describe("project-info", () => {
     const res = await handleStudioApi(req, url, import.meta.dir);
     const data = await /** @type {any} */ (res).json();
     expect(data.isSiteProject).toBe(false);
-    expect(data.siteConfig).toBeNull();
+    expect(data.projectConfig).toBeNull();
   });
 
   test("rejects directory traversal", async () => {
@@ -350,7 +350,7 @@ describe("project-info", () => {
 // ─── sites discovery endpoint ────────────────────────────────────────────────
 
 describe("sites discovery", () => {
-  test("discovers site projects with site.json", async () => {
+  test("discovers site projects with project.json", async () => {
     const url = new URL("http://localhost/__studio/sites");
     const req = new Request(url, { method: "GET" });
     const res = await handleStudioApi(req, url, import.meta.dir);
@@ -362,7 +362,7 @@ describe("sites discovery", () => {
     expect(testSite.config.url).toBe("https://test.dev");
   });
 
-  test("does not include directories without site.json", async () => {
+  test("does not include directories without project.json", async () => {
     const url = new URL("http://localhost/__studio/sites");
     const req = new Request(url, { method: "GET" });
     const res = await handleStudioApi(req, url, import.meta.dir);

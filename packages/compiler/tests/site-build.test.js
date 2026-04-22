@@ -3,7 +3,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "bun:test";
 import { mkdirSync, writeFileSync, rmSync, readFileSync, existsSync } from "node:fs";
 import { resolve, join } from "node:path";
-import { loadSiteConfig } from "../src/site/site-loader.js";
+import { loadProjectConfig } from "../src/site/site-loader.js";
 import { discoverPages } from "../src/site/pages-discovery.js";
 import { resolveLayout } from "../src/site/layout-resolver.js";
 import { mergeHead, renderHead } from "../src/site/head-merger.js";
@@ -29,7 +29,7 @@ function writePlain(path, content) {
 beforeAll(() => {
   rmSync(TMP, { recursive: true, force: true });
 
-  writeJSON("site.json", {
+  writeJSON("project.json", {
     name: "Test Site",
     url: "https://test.com",
     defaults: { layout: "./layouts/base.json", lang: "en" },
@@ -78,8 +78,8 @@ afterAll(() => {
 // ── site-loader ───────────────────────────────────────────────────────────────
 
 describe("site-loader", () => {
-  it("loads site.json with defaults", () => {
-    const { config } = loadSiteConfig(TMP);
+  it("loads project.json with defaults", () => {
+    const { config } = loadProjectConfig(TMP);
     expect(config.name).toBe("Test Site");
     expect(config.url).toBe("https://test.com");
     expect(config.defaults.lang).toBe("en");
@@ -87,8 +87,8 @@ describe("site-loader", () => {
     expect(config.build.outDir).toBe("./dist");
   });
 
-  it("throws on missing site.json", () => {
-    expect(() => loadSiteConfig("/nonexistent")).toThrow("site.json not found");
+  it("throws on missing project.json", () => {
+    expect(() => loadProjectConfig("/nonexistent")).toThrow("project.json not found");
   });
 });
 
@@ -125,7 +125,7 @@ describe("pages-discovery", () => {
 // ── layout-resolver ───────────────────────────────────────────────────────────
 
 describe("layout-resolver", () => {
-  const siteConfig = {
+  const projectConfig = {
     defaults: { layout: "./layouts/base.json" },
   };
 
@@ -135,7 +135,7 @@ describe("layout-resolver", () => {
       children: [{ tagName: "p", children: ["Hello"] }],
     };
 
-    const result = resolveLayout(pageDoc, siteConfig, TMP);
+    const result = resolveLayout(pageDoc, projectConfig, TMP);
 
     // Should have the layout structure
     expect(result.tagName).toBe("div");
@@ -201,10 +201,10 @@ describe("context-injection", () => {
   it("injects $site and $page into state", () => {
     /** @type {any} */
     const doc = {};
-    const siteConfig = { name: "Test", url: "https://test.com" };
+    const projectConfig = { name: "Test", url: "https://test.com" };
     const route = { urlPattern: "/about", _pathParams: {} };
 
-    injectContext(doc, siteConfig, route);
+    injectContext(doc, projectConfig, route);
 
     expect(doc.state.$site.name).toBe("Test");
     expect(doc.state.$site.url).toBe("https://test.com");

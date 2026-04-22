@@ -50,20 +50,20 @@ export function createDesktopPlatform() {
      */
     async probeRootProject() {
       try {
-        const content = await rpc.request.readFile({ path: "site.json" });
+        const content = await rpc.request.readFile({ path: "project.json" });
         const config = JSON.parse(/** @type {string} */ (content));
         return {
           meta: { root: ".", name: config.name || "project" },
           info: {
             isSiteProject: true,
-            siteConfig: config,
+            projectConfig: config,
             directories: [],
           },
         };
       } catch {
         return {
           meta: { root: ".", name: "project" },
-          info: { isSiteProject: false, siteConfig: null, directories: [] },
+          info: { isSiteProject: false, projectConfig: null, directories: [] },
         };
       }
     },

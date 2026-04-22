@@ -60,11 +60,11 @@ This spec defines everything that sits _above_ the component model: how componen
 
 ## 2. Project Structure
 
-A Jx site project follows a conventional directory layout. Only `site.json` and `pages/` are required — everything else is optional and additive.
+A Jx site project follows a conventional directory layout. Only `project.json` and `pages/` are required — everything else is optional and additive.
 
 ```
 my-site/
-├── site.json                    # Site configuration (required)
+├── project.json                    # Site configuration (required)
 ├── pages/                       # File-based routing (required)
 │   ├── index.json               # → /
 │   ├── about.json               # → /about
@@ -82,7 +82,7 @@ my-site/
 │   ├── footer.json
 │   └── nav.json
 ├── content/                     # Content collections
-│   ├── content.config.json      # Collection schemas
+│   ├── project.json `collections`      # Collection schemas
 │   ├── blog/                    # "blog" collection
 │   │   ├── hello-world.md
 │   │   ├── second-post.md
@@ -132,7 +132,7 @@ pages/
 
 ## 3. Site Configuration
 
-The `site.json` file at the project root defines site-wide settings. It is the only required configuration file.
+The `project.json` file at the project root defines site-wide settings. It is the only required configuration file.
 
 ```json
 {
@@ -393,7 +393,7 @@ Pages declare their layout via `$layout`:
 
 The page's `children` are injected at the layout's `<slot>` position via the same `distributeSlots()` algorithm already implemented for custom elements — just run at compile time instead of DOM time. The page's `$head` entries merge with the layout's and site's head entries.
 
-If a page omits `$layout`, it uses the default layout from `site.json`. If `$layout` is explicitly set to `false`, no layout wraps the page (useful for standalone pages like landing pages or embeds).
+If a page omits `$layout`, it uses the default layout from `project.json`. If `$layout` is explicitly set to `false`, no layout wraps the page (useful for standalone pages like landing pages or embeds).
 
 ### 5.3 Named Slots
 
@@ -481,12 +481,12 @@ Layouts receive page metadata via the `$page` context object:
 
 The `$site` context provides site-level data:
 
-| Property      | Source              | Description         |
-| ------------- | ------------------- | ------------------- |
-| `$site.name`  | `site.json` `name`  | Site name           |
-| `$site.url`   | `site.json` `url`   | Production URL      |
-| `$site.state` | `site.json` `state` | Site-wide state     |
-| `$site.$head` | `site.json` `$head` | Global head entries |
+| Property      | Source                 | Description         |
+| ------------- | ---------------------- | ------------------- |
+| `$site.name`  | `project.json` `name`  | Site name           |
+| `$site.url`   | `project.json` `url`   | Production URL      |
+| `$site.state` | `project.json` `state` | Site-wide state     |
+| `$site.$head` | `project.json` `$head` | Global head entries |
 
 ---
 
@@ -496,7 +496,7 @@ Content collections are the data layer for content-driven sites. They bring stru
 
 ### 6.1 Defining Collections
 
-Collections are defined in `content/content.config.json`:
+Collections are defined in `the `collections` key in project.json`:
 
 ```json
 {
@@ -681,7 +681,7 @@ The filesystem structure directly mirrors the logical model:
 
 ```
 content/
-├── content.config.json          # Schema definitions for all collections
+├── project.json `collections`          # Schema definitions for all collections
 ├── blog/                        # "blog" collection
 │   ├── hello-world.md           # Entry: id = "hello-world"
 │   ├── second-post.md           # Entry: id = "second-post"
@@ -700,7 +700,7 @@ content/
 - For glob-based collections (`**/*.md`), each file is one entry
 - For file-based collections (`*.json`, `*.csv`), one file contains many entries
 - Media can be co-located next to content entries
-- The collection directory name matches the key in `content.config.json`
+- The collection directory name matches the key in `project.json `collections``
 
 ---
 
@@ -710,12 +710,12 @@ Studio extends from a component editor to a full content management interface.
 
 ### 7.1 Project Explorer
 
-The left panel gains a project-level file explorer (above the layer tree) when a site project is detected (i.e., `site.json` exists):
+The left panel gains a project-level file explorer (above the layer tree) when a site project is detected (i.e., `project.json` exists):
 
 ```
 ┌─────────────────────┐
 │ 📁 Project          │
-│ ├── 📄 site.json    │
+│ ├── 📄 project.json    │
 │ ├── 📁 pages/       │
 │ │   ├── index.json  │
 │ │   ├── about.json  │
@@ -839,7 +839,7 @@ For content-driven pages, metadata comes directly from the content entry's front
 
 The compiler assembles `<head>` content from three sources, in order:
 
-1. **Site-level** (`site.json` `$head`) — global meta tags, fonts, icons
+1. **Site-level** (`project.json` `$head`) — global meta tags, fonts, icons
 2. **Layout-level** (layout's `<head>` children) — charset, viewport, structural tags
 3. **Page-level** (page's `$head`) — page-specific title, description, OG tags
 
@@ -967,7 +967,7 @@ This section defines exactly what cascades from site → layout → page → com
 ### 10.1 Cascade Hierarchy
 
 ```
-site.json
+project.json
   └── layout.json
         └── page.json
               └── component.json (via $ref or $elements)
@@ -984,15 +984,15 @@ site.json
 
 These cascade without explicit import:
 
-1. **CSS Custom Properties** — Defined in `site.json` `style[":root"]`, they cascade through the DOM naturally. Every component can reference `var(--color-primary)` without importing anything.
+1. **CSS Custom Properties** — Defined in `project.json` `style[":root"]`, they cascade through the DOM naturally. Every component can reference `var(--color-primary)` without importing anything.
 
-2. **Named media breakpoints** — `$media` from `site.json` is available in every component's style objects. A component can use `"@--md": { ... }` without knowing where `--md` was defined.
+2. **Named media breakpoints** — `$media` from `project.json` is available in every component's style objects. A component can use `"@--md": { ... }` without knowing where `--md` was defined.
 
 3. **`<head>` entries** — Site-level `$head` entries (fonts, viewport, icons) are included in every page automatically.
 
-4. **Language** — `defaults.lang` from `site.json` sets `<html lang>` on every page.
+4. **Language** — `defaults.lang` from `project.json` sets `<html lang>` on every page.
 
-5. **Global stylesheet rules** — Root-level `style` rules from `site.json` (not just `:root` custom properties, but any global selectors) are applied to all pages and cascaded into all rendered contexts including Studio's canvas and stylebook.
+5. **Global stylesheet rules** — Root-level `style` rules from `project.json` (not just `:root` custom properties, but any global selectors) are applied to all pages and cascaded into all rendered contexts including Studio's canvas and stylebook.
 
 ### 10.3 Component Scoping
 
@@ -1001,7 +1001,7 @@ Components are scoped to the site project. When a site context is active:
 - Only components in the project's `components/` directory are discoverable
 - Explicit `$elements` imports in individual files add to (not replace) the project set
 - Components from other projects or global scope do not appear in the palette or autocomplete
-- The `imports` map in `site.json` defines project-wide `$prototype` resolutions
+- The `imports` map in `project.json` defines project-wide `$prototype` resolutions
 
 This ensures that each site is a self-contained unit — moving between components, pages, and layouts within a project always sees the same component registry.
 
@@ -1029,7 +1029,7 @@ These require deliberate reference:
 
 Studio must fully enforce the site-based paradigm at edit time, not just build time. When a site project is open:
 
-- **Canvas rendering** applies the site's global styles (`site.json` `style`) and CSS custom properties so every file preview is accurate
+- **Canvas rendering** applies the site's global styles (`project.json` `style`) and CSS custom properties so every file preview is accurate
 - **Media breakpoint tabs** reflect the site's `$media` definitions, not the individual file's — ensuring consistent responsive editing across all project files
 - **Component palette** is scoped to the project (§10.3)
 - **Stylebook mode** applies site-level design tokens when rendering element and component previews
@@ -1057,7 +1057,7 @@ This follows the natural CSS cascade — more specific sources override less spe
 
 ### 11.1 Static Redirects
 
-Defined in `site.json`:
+Defined in `project.json`:
 
 ```json
 {
@@ -1112,7 +1112,7 @@ The compiler currently processes one document at a time. Site-level builds requi
 ### 12.1 Build Pipeline
 
 ```
-site.json
+project.json
     ↓
 Discover pages/         → route table
 Discover content/       → content index
@@ -1153,7 +1153,7 @@ These are thin wrappers around `@jxplatform/server` (dev) and a new `@jxplatform
 
 ### 12.3 Incremental Builds
 
-The build system tracks dependencies between files. When a content entry changes, only pages that reference that collection are recompiled. When a layout changes, all pages using that layout are recompiled. When `site.json` changes, everything is recompiled.
+The build system tracks dependencies between files. When a content entry changes, only pages that reference that collection are recompiled. When a layout changes, all pages using that layout are recompiled. When `project.json` changes, everything is recompiled.
 
 ### 12.4 Asset Pipeline
 
@@ -1247,7 +1247,7 @@ The build output is standard static files deployable anywhere. The compiler can 
 | **Cloudflare Pages** | `_redirects`, `_headers`             |
 | **GitHub Pages**     | `.nojekyll`, 404.html                |
 
-Configured in `site.json`:
+Configured in `project.json`:
 
 ```json
 {
@@ -1327,7 +1327,7 @@ This spec builds on existing Jx primitives wherever possible:
 
 ### Phase 1: Foundation
 
-- [ ] `site.json` schema and loader
+- [ ] `project.json` schema and loader
 - [ ] File-based routing discovery (`pages/` scanner)
 - [ ] Layout system (`$layout`, `<slot>` distribution at compile time)
 - [ ] `$head` merge pipeline (site + layout + page)
@@ -1337,7 +1337,7 @@ This spec builds on existing Jx primitives wherever possible:
 ### Phase 2: Content
 
 - [ ] Content collection loader (Markdown, JSON, CSV)
-- [ ] `content.config.json` schema validation
+- [ ] `project.json `collections`` schema validation
 - [ ] `ContentCollection` and `ContentEntry` prototypes
 - [ ] `$paths` dynamic route expansion
 - [ ] Collection reference resolution (`$ref` between collections)

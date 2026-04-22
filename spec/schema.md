@@ -10,49 +10,59 @@
 
 ## 1. Overview
 
-`@jxplatform/schema` generates the Jx meta-schema — a JSON Schema 2020-12 document that validates Jx component files. The schema is derived at generation time from web standards data (`@webref/css`, `@webref/elements`, `@webref/idl`), ensuring it stays current with browser capabilities.
+`@jxplatform/schema` generates three Jx meta-schemas — JSON Schema 2020-12 documents that validate Jx source files:
+
+1. **Component schema** (`schema.json`) — validates Jx component, page, and layout files
+2. **Project schema** (`project-schema.json`) — validates `project.json` configuration files
+3. **Class schema** (`class-schema.json`) — validates `.class.json` class definition files
+
+The component schema is derived at generation time from web standards data (`@webref/css`, `@webref/elements`, `@webref/idl`), ensuring it stays current with browser capabilities. The project and class schemas are static.
 
 ---
 
 ## 2. Exports
 
-| Export                   | Description                                            |
-| ------------------------ | ------------------------------------------------------ |
-| `generateSchema()`       | Returns the full Jx meta-schema as a JavaScript object |
-| `generateSchemaString()` | Returns the schema as a formatted JSON string          |
-| `validateDocument(doc)`  | Validates a Jx document against the generated schema   |
+| Export                    | Description                                                 |
+| ------------------------- | ----------------------------------------------------------- |
+| `generateSchema()`        | Returns the Jx component meta-schema as a JavaScript object |
+| `generateProjectSchema()` | Returns the project.json schema as a JavaScript object      |
+| `generateClassSchema()`   | Returns the .class.json schema as a JavaScript object       |
+| `generateSchemaString()`  | Returns the component schema as a formatted JSON string     |
+| `validateDocument(doc)`   | Validates a Jx document against the component schema        |
 
 ---
 
 ## 3. Schema Coverage
 
-### 3.1 Document Structure
+### 3.1 Component Schema (`schema.json`)
 
-- Root-level fields: `$schema`, `$id`, `$defs`, `state`, `tagName`, `children`, `$media`, `$elements`, `observedAttributes`
+**`$id`:** `https://jxplatform.net/schema/v1`
+
+Root-level fields: `$schema`, `$id`, `$defs`, `state`, `tagName`, `children`, `$media`, `$elements`, `$head`, `$layout`, `$paths`, `title`, `imports`, `observedAttributes`, `cases`, `style`, `attributes`.
+
+- `tagName` is optional (pages with `$layout` may omit it)
 - `tagName` enumeration: all standard HTML elements derived from `@webref/elements`
-- `children`: array of element definitions and/or text nodes (strings, numbers), or Array namespace (`$prototype: "Array"`)
+- `children`: array of element definitions and/or text nodes, or Array namespace (`$prototype: "Array"`)
 
-### 3.2 `state` Entry Shapes
+#### `state` Entry Shapes
 
-| Shape                                        | Schema Definition                                                             | Status          |
-| -------------------------------------------- | ----------------------------------------------------------------------------- | --------------- |
-| Naked value (scalar, array, object)          | `StateEntry.oneOf`                                                            | **Implemented** |
-| Typed value (`TypedStateDef` with `default`) | `TypedStateDef` with `attribute`, `reflects`, `deprecated` CEM fields         | **Implemented** |
-| Computed (template string containing `${}`)  | String pattern match                                                          | **Implemented** |
-| Function (`$prototype: "Function"`)          | `FunctionDef` with `body`, `parameters`, `$src`, `$export`, `signal`, `emits` | **Implemented** |
-| External class (`$prototype: <ClassName>`)   | `ExternalClassDef` with all built-in prototypes                               | **Implemented** |
+| Shape                                        | Schema Definition                                                     | Status          |
+| -------------------------------------------- | --------------------------------------------------------------------- | --------------- |
+| Naked value (scalar, array, object)          | `StateEntry.oneOf`                                                    | **Implemented** |
+| Typed value (`TypedStateDef` with `default`) | `TypedStateDef` with `attribute`, `reflects`, `deprecated` CEM fields | **Implemented** |
+| Computed (template string containing `${}`)  | String pattern match                                                  | **Implemented** |
+| Function (`$prototype: "Function"`)          | `FunctionDef` with `body`, `parameters`, `$src`, `$export`, `emits`   | **Implemented** |
+| External class (`$prototype: <ClassName>`)   | `ExternalClassDef` with all built-in prototypes                       | **Implemented** |
 
-### 3.3 `$defs` Pure Type Definitions
+#### `$defs` Pure Type Definitions
 
 `PureTypeDef` — requires `type`, forbids `default` and `$prototype`.
 
-> **Status: Implemented.**
+#### Built-in Prototypes
 
-### 3.4 Built-in Prototypes
+All 13 built-in prototypes with their specific configuration properties:
 
-All 12 built-in prototypes are enumerated with their specific configuration properties:
-
-- `Request` — url, method, headers, body, debounce, manual, urlParams, signal, timing
+- `Request` — url, method, headers, body, debounce, manual, urlParams, timing
 - `URLSearchParams` — default params
 - `FormData` — default fields
 - `LocalStorage` / `SessionStorage` — key, default value
@@ -63,23 +73,13 @@ All 12 built-in prototypes are enumerated with their specific configuration prop
 - `Blob` — parts, type
 - `ReadableStream` — (stub)
 
-> **Status: Implemented.**
-
-### 3.5 `.class.json` Schema
-
-`ClassDef` — fields, constructor, methods, accessors, `$implementation`.
-
-> **Status: Implemented.**
-
-### 3.6 Element Properties
+#### Element Properties
 
 - All standard HTML DOM properties derived from `@webref/idl`
 - CSSOM camelCase style properties derived from `@webref/css`
 - All `EventHandler` names (onclick, oninput, etc.) derived from IDL
 
-> **Status: Implemented.**
-
-### 3.7 CEM Annotations
+#### CEM Annotations
 
 | Annotation   | On              | Purpose                               |
 | ------------ | --------------- | ------------------------------------- |
@@ -89,7 +89,39 @@ All 12 built-in prototypes are enumerated with their specific configuration prop
 | `parameters` | `FunctionDef`   | CEM `Parameter` objects               |
 | `emits`      | `FunctionDef`   | CEM `Event` objects                   |
 
-> **Status: Implemented.**
+### 3.2 Project Schema (`project-schema.json`)
+
+**`$id`:** `https://jxplatform.net/schema/project/v1`
+
+Validates `project.json` files with:
+
+- `name`, `url` — project metadata
+- `defaults` — default page settings (`layout`, `lang`, `charset`)
+- `$head` — global `<head>` entries
+- `$elements` — global custom element dependencies
+- `imports` — global prototype-to-path import map
+- `$media` — named media breakpoints
+- `style` — global CSS styles
+- `state` — site-wide reactive state
+- `collections` — content collection definitions (`source`, `schema`, `$elements`)
+- `redirects` — static redirect rules
+- `build` — build configuration (`outDir`, `format`, `trailingSlash`, `adapter`)
+- `i18n` — internationalization (`defaultLocale`, `locales`, `routing`)
+
+### 3.3 Class Schema (`class-schema.json`)
+
+**`$id`:** `https://jxplatform.net/schema/class/v1`
+
+Validates `.class.json` files with:
+
+- `$prototype: "Class"` (required), `title` (required)
+- `extends` — base class (string or `$ref`)
+- `$implementation` — path to JS module
+- `$defs.parameters` — typed parameter schemas
+- `$defs.returnTypes` — output type schemas
+- `$defs.fields` — class fields with role, access, scope
+- `$defs.constructor` — constructor definition
+- `$defs.methods` — methods and accessors
 
 ---
 
@@ -99,21 +131,27 @@ All 12 built-in prototypes are enumerated with their specific configuration prop
 2. Extract HTML tag names and their valid properties
 3. Extract CSS properties and convert to CSSOM camelCase
 4. Extract DOM event handler names
-5. Compose the meta-schema with all Jx vocabulary
-6. Write to `schema.json`
+5. Compose all three schemas
+6. Write to `schema.json`, `project-schema.json`, `class-schema.json`
 
-The schema is regenerated when web standards packages are updated.
+The component schema is regenerated when web standards packages are updated. The project and class schemas are static.
 
 ---
 
 ## 5. Output
 
-The generated `schema.json` is a single JSON Schema 2020-12 document (~970 lines of generator code, large output). It can be referenced via the `$schema` field in any Jx document:
+Three JSON Schema 2020-12 documents:
 
 ```json
-{
-  "$schema": "https://jxplatform.net/schema/v1"
-}
+{ "$schema": "https://jxplatform.net/schema/v1" }
+```
+
+```json
+{ "$schema": "https://jxplatform.net/schema/project/v1" }
+```
+
+```json
+{ "$schema": "https://jxplatform.net/schema/class/v1" }
 ```
 
 ---
