@@ -40,7 +40,7 @@ export function renderActivityBar(S) {
   const tabs = [
     { value: "files", icon: "sp-icon-folder", label: "Files" },
     { value: "layers", icon: "sp-icon-layers", label: "Layers" },
-    { value: "components", icon: "sp-icon-box", label: "Components" },
+    { value: "imports", icon: "sp-icon-box", label: "Imports" },
     { value: "blocks", icon: "sp-icon-view-grid", label: "Elements" },
     { value: "state", icon: "sp-icon-brackets", label: "State" },
     { value: "data", icon: "sp-icon-data", label: "Data" },

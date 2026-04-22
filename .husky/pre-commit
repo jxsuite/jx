@@ -1,3 +1,4 @@
 bunx lint-staged
 bun typecheck
 bun test
+bun format

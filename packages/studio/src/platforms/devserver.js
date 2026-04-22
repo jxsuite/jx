@@ -194,6 +194,36 @@ export function createDevServerPlatform() {
       return await res.json();
     },
 
+    // ─── Package management ──────────────────────────────────────────────
+
+    /** @param {string} name */
+    async addPackage(name) {
+      const res = await fetch("/__studio/packages/add", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return await res.json();
+    },
+
+    /** @param {string} name */
+    async removePackage(name) {
+      const res = await fetch("/__studio/packages/remove", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return await res.json();
+    },
+
+    async listPackages() {
+      const res = await fetch("/__studio/packages");
+      if (!res.ok) return [];
+      return await res.json();
+    },
+
     // ─── Code services (optional) ─────────────────────────────────────────
 
     /**

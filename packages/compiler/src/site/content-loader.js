@@ -115,9 +115,17 @@ async function getMarkdownModule() {
  * @param {string} filePath - Absolute path to .md file
  * @returns {Promise<object>} ContentEntry shape
  */
-async function loadMarkdownEntry(filePath) {
+/**
+ * Load a markdown file into a ContentEntry. If directiveOptions are provided, they control which
+ * custom element directives are available in the markdown.
+ *
+ * @param {string} filePath - Absolute path to .md file
+ * @param {any} [directiveOptions] - Options for the MarkdownDirective plugin
+ * @returns {Promise<object>} ContentEntry shape
+ */
+async function loadMarkdownEntry(filePath, directiveOptions) {
   const { MarkdownFile } = await getMarkdownModule();
-  const file = new MarkdownFile({ src: filePath });
+  const file = new MarkdownFile({ src: filePath, directiveOptions });
   const result = await file.resolve();
   return {
     id: result.slug,
@@ -236,6 +244,20 @@ export async function loadCollections(projectRoot) {
 }
 
 /**
+ * Get the $elements array for a specific collection, if defined in content.config.json.
+ *
+ * @param {string} projectRoot - Project root directory
+ * @param {string} collectionName - Name of the collection
+ * @returns {any[] | undefined}
+ */
+export function getCollectionElements(projectRoot, collectionName) {
+  const result = loadContentConfig(projectRoot);
+  if (!result) return undefined;
+  const def = result.config.collections?.[collectionName];
+  return def?.$elements;
+}
+
+/**
  * Load a single collection by its definition.
  *
  * @param {string} name - Collection name
@@ -246,6 +268,16 @@ export async function loadCollections(projectRoot) {
 async function loadCollection(name, collectionDef, contentDir) {
   const source = collectionDef.source;
   const schema = collectionDef.schema;
+
+  // Derive directive allowedNames from collection $elements (tag names from npm packages)
+  /** @type {any} */
+  const directiveOptions = collectionDef.$elements?.length
+    ? {
+        allowedNames: collectionDef.$elements
+          .filter((/** @type {any} */ e) => typeof e === "string" || e?.$ref)
+          .map((/** @type {any} */ e) => (typeof e === "string" ? e : e.$ref)),
+      }
+    : undefined;
 
   // Resolve the glob pattern relative to content/
   const pattern = resolve(contentDir, source).split("\\").join("/");
@@ -258,7 +290,7 @@ async function loadCollection(name, collectionDef, contentDir) {
     const ext = extname(filePath).toLowerCase();
 
     if (ext === ".md") {
-      entries.push(await loadMarkdownEntry(filePath));
+      entries.push(await loadMarkdownEntry(filePath, directiveOptions));
     } else if (ext === ".json") {
       entries.push(...loadJSONEntries(filePath));
     } else if (ext === ".csv") {

@@ -113,13 +113,13 @@ The `?open=` path must point to a `site.json` file. On startup, Studio checks fo
 
 When a site project is loaded (via `?open=`, `openProject()`, or `probeRootProject()`), Studio resolves `site.json` and establishes a **site context** that applies globally to every file edited within that project:
 
-| Inherited from `site.json`   | Effect in Studio                                                                                    |
-| ---------------------------- | --------------------------------------------------------------------------------------------------- |
-| `$media` breakpoints         | Media tabs, responsive presets, and canvas panel widths reflect the site's breakpoints — not the individual file's |
-| `style` (`:root` variables)  | Global CSS custom properties and stylesheet rules are applied to the canvas, stylebook, and component previews     |
-| Component definitions        | The Components panel shows only components defined in the current project's `components/` and `$elements`          |
-| `$head`                      | Global fonts, viewport, and other head entries are applied to canvas rendering                                      |
-| `state`                      | Site-wide state entries are available (read-only) in the state explorer                                            |
+| Inherited from `site.json`  | Effect in Studio                                                                                                   |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `$media` breakpoints        | Media tabs, responsive presets, and canvas panel widths reflect the site's breakpoints — not the individual file's |
+| `style` (`:root` variables) | Global CSS custom properties and stylesheet rules are applied to the canvas, stylebook, and component previews     |
+| Component definitions       | The Components panel shows only components defined in the current project's `components/` and `$elements`          |
+| `$head`                     | Global fonts, viewport, and other head entries are applied to canvas rendering                                     |
+| `state`                     | Site-wide state entries are available (read-only) in the state explorer                                            |
 
 When navigating between components, pages, and layouts within a project, the site context persists. Individual file `$media`, `$style`, and `$elements` merge on top of (not replace) site-level definitions. This ensures the canvas always shows what the file will look like in the context of the full site.
 
@@ -189,13 +189,13 @@ Flattened tree of all elements in the document with indentation representing nes
 
 **Move Action Buttons** — On hover, each non-root element row reveals contextual move buttons in place of a drag handle:
 
-| Button   | Icon         | Action                                           | Shown when                                   |
-| -------- | ------------ | ------------------------------------------------ | -------------------------------------------- |
-| Up       | `arrow-up`   | Move up among siblings                           | Not the first child                          |
-| Down     | `arrow-down` | Move down among siblings                         | Not the last child                           |
-| In       | `arrow-right`| Nest into the previous sibling (become last child)| Previous sibling exists and is not a void element |
-| Out      | `arrow-left` | Un-nest from parent (place after parent)         | Has a grandparent (not already at root level)|
-| Delete   | `close`      | Remove element from document                     | Always (non-root elements)                   |
+| Button | Icon          | Action                                             | Shown when                                        |
+| ------ | ------------- | -------------------------------------------------- | ------------------------------------------------- |
+| Up     | `arrow-up`    | Move up among siblings                             | Not the first child                               |
+| Down   | `arrow-down`  | Move down among siblings                           | Not the last child                                |
+| In     | `arrow-right` | Nest into the previous sibling (become last child) | Previous sibling exists and is not a void element |
+| Out    | `arrow-left`  | Un-nest from parent (place after parent)           | Has a grandparent (not already at root level)     |
+| Delete | `close`       | Remove element from document                       | Always (non-root elements)                        |
 
 Only applicable buttons render for each row's position in the tree. Clicking a move button updates the document, re-renders the layers panel, and tracks the selection to the node's new position.
 
@@ -297,6 +297,7 @@ The `fontFamily` property uses the `jx-styled-combobox` component — a dual-mod
 A custom LitElement (no shadow DOM) used across all dual-mode style inputs. Replaces the former `sp-combobox` (which stripped inline styling) and the ad-hoc manual overlay pattern.
 
 **Properties:**
+
 - `value` (String) — current value
 - `placeholder` (String) — placeholder text for combobox mode
 - `size` (String) — Spectrum sizing token (e.g. `"s"`)
@@ -305,6 +306,7 @@ A custom LitElement (no shadow DOM) used across all dual-mode style inputs. Repl
 **Events:** `change` (on menu selection), `input` (on textfield typing)
 
 **Modes:**
+
 - **Picker mode** (`value` matches an option) — renders `sp-picker` with styled items + "—" clear option
 - **Combobox mode** (`value` is empty/custom) — renders `sp-textfield` + `sp-picker-button` + `sp-overlay` + `sp-popover` + `sp-menu` with styled items
 
@@ -397,6 +399,7 @@ In content mode, text elements (headings, paragraphs, list items) are directly e
 **Text node output**: When inline editing produces mixed content (text + inline formatting elements), text runs are represented as bare strings in the `children` array — not as `{ tagName: "span", textContent: ... }` wrapper elements.
 
 **Normalization rules** (applied on every inline edit commit via `normalizeChildren`):
+
 1. **Adjacent text merge**: Adjacent bare strings are always joined. `["hello ", "world", { "tagName": "em", ... }]` → `["hello world", { "tagName": "em", ... }]`
 2. **All-text fold**: If all children are bare strings (no element siblings), they collapse into a single `textContent` property on the parent — the simpler representation.
 

@@ -255,8 +255,11 @@ async function compilePage(route, siteConfig, projectRoot, collections = new Map
     }
   }
 
+  // Resolve bare npm specifiers in $head (e.g. "@pkg/name/file.css" → "/node_modules/@pkg/name/file.css")
+  const resolvedSiteHead = resolveHeadBareSpecifiers(siteConfig.$head ?? []);
+
   // Merge $head from site + layout + page
-  const mergedHead = mergeHead(siteConfig.$head ?? [], resolvedLayoutHead, resolvedPageHead, {
+  const mergedHead = mergeHead(resolvedSiteHead, resolvedLayoutHead, resolvedPageHead, {
     title,
     charset: siteConfig.defaults?.charset ?? "utf-8",
     siteName: siteConfig.name,
@@ -272,6 +275,14 @@ async function compilePage(route, siteConfig, projectRoot, collections = new Map
 
   // Post-process: inject merged <head> content into the compiled HTML
   result.html = injectHead(result.html, mergedHead, siteConfig.defaults?.lang ?? "en");
+
+  // Inject <script type="module"> for npm $elements (cherry-picked component imports)
+  const npmElements = (layoutDoc.$elements ?? []).filter(
+    (/** @type {any} */ e) => typeof e === "string" && !e.startsWith("./") && !e.startsWith("../"),
+  );
+  if (npmElements.length > 0) {
+    result.html = injectNpmElementScripts(result.html, npmElements);
+  }
 
   // Compile server handler if applicable
   /** @type {string | null} */
@@ -313,6 +324,44 @@ function resolveHeadTemplates(headEntries, scope) {
     }
     return resolved;
   });
+}
+
+/**
+ * Resolve bare npm specifiers in $head entry attributes (href, src). e.g.
+ * "@shoelace-style/shoelace/dist/themes/light.css" →
+ * "/node_modules/@shoelace-style/shoelace/dist/themes/light.css"
+ *
+ * @param {any[]} headEntries
+ * @returns {any[]}
+ */
+function resolveHeadBareSpecifiers(headEntries) {
+  return headEntries.map((/** @type {any} */ entry) => {
+    if (!entry || typeof entry !== "object" || !entry.attributes) return entry;
+    const resolved = { ...entry, attributes: { ...entry.attributes } };
+    for (const key of ["href", "src"]) {
+      const val = resolved.attributes[key];
+      if (typeof val === "string" && isBareSpecifier(val)) {
+        resolved.attributes[key] = `/node_modules/${val}`;
+      }
+    }
+    return resolved;
+  });
+}
+
+/**
+ * Check if a string is a bare npm specifier (not a relative/absolute path or URL).
+ *
+ * @param {string} s
+ * @returns {boolean}
+ */
+function isBareSpecifier(s) {
+  return (
+    !s.startsWith("/") &&
+    !s.startsWith("./") &&
+    !s.startsWith("../") &&
+    !s.startsWith("http") &&
+    !s.startsWith("data:")
+  );
 }
 
 /**
@@ -388,6 +437,25 @@ function injectComponentScripts(html, allComponentTags) {
   const injection = (hasImportMap ? "" : `${importMap}\n  `) + moduleScripts;
 
   return html.replace("</body>", `  ${injection}\n</body>`);
+}
+
+/**
+ * Inject <script type="module"> tags for npm package $elements (cherry-picked component imports).
+ * Bare specifiers are resolved to /node_modules/ paths.
+ *
+ * @param {string} html
+ * @param {string[]} npmElements - Bare specifier strings, e.g.
+ *   "@shoelace-style/shoelace/components/button/button.js"
+ * @returns {string}
+ */
+function injectNpmElementScripts(html, npmElements) {
+  const scripts = npmElements
+    .map(
+      (/** @type {string} */ spec) => `<script type="module" src="/node_modules/${spec}"></script>`,
+    )
+    .join("\n  ");
+
+  return html.replace("</body>", `  ${scripts}\n</body>`);
 }
 
 /**

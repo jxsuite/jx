@@ -1,1 +1,11 @@
-{"title":"Calculator","$prototype":"Class","$implementation":"./calc.js","$defs":{"parameters":{"a":{"identifier":"a","type":{"type":"number"}},"b":{"identifier":"b","type":{"type":"number"}}}}}
+{
+  "title": "Calculator",
+  "$prototype": "Class",
+  "$implementation": "./calc.js",
+  "$defs": {
+    "parameters": {
+      "a": { "identifier": "a", "type": { "type": "number" } },
+      "b": { "identifier": "b", "type": { "type": "number" } }
+    }
+  }
+}

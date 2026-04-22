@@ -163,6 +163,26 @@ export async function generateSchema() {
           },
         ],
       },
+      $elements: {
+        description:
+          "Custom element dependencies. Items are either $ref objects pointing to JX " +
+          "element definitions, or bare npm package name strings for web component libraries.",
+        type: "array",
+        items: {
+          oneOf: [
+            {
+              type: "object",
+              required: ["$ref"],
+              properties: { $ref: { type: "string" } },
+              additionalProperties: false,
+            },
+            {
+              type: "string",
+              description: "npm package specifier (must declare customElements in package.json)",
+            },
+          ],
+        },
+      },
       tagName: { $ref: "#/$defs/TagName" },
       children: { $ref: "#/$defs/ChildrenValue" },
       style: { $ref: "#/$defs/StyleObject" },

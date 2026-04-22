@@ -1,0 +1,7 @@
+{
+  "name": "shoelace-demo",
+  "private": true,
+  "dependencies": {
+    "@shoelace-style/shoelace": "^2.20.1"
+  }
+}

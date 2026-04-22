@@ -78,6 +78,26 @@ export function injectContext(doc, siteConfig, route, collections = new Map(), p
     }
   }
 
+  // Merge site-level $elements into page $elements (union, dedup)
+  if (siteConfig.$elements?.length) {
+    if (!doc.$elements?.length) {
+      doc.$elements = [...siteConfig.$elements];
+    } else {
+      /** @type {Set<string>} */
+      const seen = new Set();
+      /** @type {any[]} */
+      const merged = [];
+      for (const entry of [...siteConfig.$elements, ...doc.$elements]) {
+        const key = typeof entry === "string" ? entry : entry?.$ref;
+        if (key && !seen.has(key)) {
+          seen.add(key);
+          merged.push(entry);
+        }
+      }
+      doc.$elements = merged;
+    }
+  }
+
   return doc;
 }
 

@@ -31,24 +31,54 @@ import { existsSync, readFileSync } from "node:fs";
  * @returns {string | null} Absolute file path or null
  */
 function resolveNpmPath(root, urlPath) {
-  const segments = urlPath.split("/").filter(Boolean);
+  let segments = urlPath.split("/").filter(Boolean);
 
-  // Find the @scope segment — everything from there is the bare specifier
+  // If "node_modules" appears in the path, use everything before it as a subdirectory
+  // prefix and everything after as the package specifier.
+  // e.g. /examples/demo/node_modules/@scope/pkg → root=root/examples/demo, pkg=@scope/pkg
+  const nmIdx = segments.indexOf("node_modules");
+  if (nmIdx >= 0) {
+    if (nmIdx > 0) root = join(root, ...segments.slice(0, nmIdx));
+    segments = segments.slice(nmIdx + 1);
+  }
+
+  // Find the package start — either @scope/pkg or unscoped pkg
   let start = -1;
+  let isScoped = false;
   for (let i = 0; i < segments.length; i++) {
     if (segments[i].startsWith("@")) {
       start = i;
+      isScoped = true;
       break;
     }
   }
-  if (start < 0 || start + 1 >= segments.length) return null;
 
-  const scope = segments[start];
-  const pkg = segments[start + 1];
-  const subpath = segments.slice(start + 2).join("/");
-  const pkgDir = join(root, "node_modules", scope, pkg);
+  /** @type {string} */
+  let pkgDir = "";
+  /** @type {string} */
+  let subpath = "";
+
+  if (isScoped) {
+    if (start < 0 || start + 1 >= segments.length) return null;
+    const scope = segments[start];
+    const pkg = segments[start + 1];
+    subpath = segments.slice(start + 2).join("/");
+    pkgDir = join(root, "node_modules", scope, pkg);
+  } else {
+    // Unscoped: try each segment as a package name in node_modules
+    for (let i = 0; i < segments.length; i++) {
+      const candidate = join(root, "node_modules", segments[i]);
+      if (existsSync(join(candidate, "package.json"))) {
+        start = i;
+        pkgDir = candidate;
+        subpath = segments.slice(i + 1).join("/");
+        break;
+      }
+    }
+    if (start < 0) return null;
+  }
+
   const pkgJsonPath = join(pkgDir, "package.json");
-
   if (!existsSync(pkgJsonPath)) return null;
 
   // If there's a subpath, check package.json exports first
@@ -65,6 +95,20 @@ function resolveNpmPath(root, urlPath) {
     const direct = join(pkgDir, subpath);
     if (existsSync(direct)) return direct;
   }
+
+  // Bare package (no subpath): resolve entry point
+  try {
+    const pkgJson = JSON.parse(readFileSync(pkgJsonPath, "utf8"));
+    const exp = pkgJson.exports?.["."];
+    const entry =
+      (typeof exp === "object" ? (exp.import ?? exp.default) : exp) ??
+      pkgJson.module ??
+      pkgJson.main;
+    if (entry && typeof entry === "string") {
+      const resolved = join(pkgDir, entry);
+      if (existsSync(resolved)) return resolved;
+    }
+  } catch {}
 
   return null;
 }
@@ -115,6 +159,10 @@ export async function createDevServer(options) {
     handleSSE = watcher.handleSSE;
   }
 
+  // Bundle cache for npm packages (bare specifier → bundled JS)
+  /** @type {Map<string, string>} */
+  const bundleCache = new Map();
+
   // ─── HTTP server ────────────────────────────────────────────────────────────
 
   const server = Bun.serve({
@@ -159,12 +207,31 @@ export async function createDevServer(options) {
       // Static files
       const file = Bun.file(resolve(absRoot, "." + path));
       if (!(await file.exists())) {
-        // Resolve npm-style bare specifiers via node_modules
-        // e.g. /pages/@scope/pkg/file.json → node_modules/@scope/pkg (+ exports map)
+        // Resolve npm-style bare specifiers via node_modules.
+        // Bundle on-demand so internal bare specifiers (e.g. lit/...) resolve.
         const resolved = resolveNpmPath(absRoot, path);
         if (resolved) {
-          const nmFile = Bun.file(resolved);
-          if (await nmFile.exists()) return new Response(nmFile);
+          const cacheKey = resolved;
+          if (!bundleCache.has(cacheKey)) {
+            try {
+              const result = await Bun.build({
+                entrypoints: [resolved],
+                format: "esm",
+                minify: false,
+              });
+              if (result.success && result.outputs.length > 0) {
+                bundleCache.set(cacheKey, await result.outputs[0].text());
+              }
+            } catch (/** @type {any} */ e) {
+              console.error("Bundle failed for", resolved, e);
+            }
+          }
+          const bundled = bundleCache.get(cacheKey);
+          if (bundled) {
+            return new Response(bundled, {
+              headers: { "Content-Type": "application/javascript; charset=utf-8" },
+            });
+          }
         }
         return new Response("Not found", { status: 404 });
       }
