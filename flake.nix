@@ -33,10 +33,12 @@
           devenv.shells.default =
             { config, pkgs, ... }:
             {
+              dotenv.enable = true;
               packages = with pkgs; [
                 bun
-                pre-commit
                 google-chrome
+                husky
+                pre-commit
                 procps
               ];
 

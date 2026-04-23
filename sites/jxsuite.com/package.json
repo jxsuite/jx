@@ -4,7 +4,8 @@
   "description": "Jx platform home page and documentation",
   "license": "MIT",
   "scripts": {
-    "build": "jx build"
+    "build": "jx build",
+    "upgrade": "bunx npm-check-updates -u && bun install"
   },
   "dependencies": {
     "@jxsuite/compiler": "workspace:*",

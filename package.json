@@ -1,6 +1,6 @@
 {
   "name": "jx-platform",
-  "version": "0.4.0",
+  "version": "0.0.1",
   "private": false,
   "repository": {
     "type": "git",
@@ -8,8 +8,7 @@
   },
   "workspaces": [
     "packages/*",
-    "examples",
-    "sites/*"
+    "examples"
   ],
   "type": "module",
   "scripts": {
@@ -27,10 +26,12 @@
     "lint:fix": "oxlint --fix .",
     "prepare": "husky",
     "release": "release-it",
+    "release:publish": "bun publish --cwd packages/compiler --access public && bun publish --cwd packages/parser --access public && bun publish --cwd packages/runtime --access public && bun publish --cwd packages/schema --access public && bun publish --cwd packages/server --access public && bun publish --cwd packages/studio --access public",
     "test": "bun test",
     "test:coverage": "bun test --coverage",
     "typecheck": "tsc",
-    "upgrade": "bun run --workspaces upgrade"
+    "upgrade": "bunx npm-check-updates -u && bun install && bun run --workspaces upgrade",
+    "pack": "bun run --workspaces bun pm pack"
   },
   "dependencies": {},
   "devDependencies": {
@@ -38,16 +39,19 @@
     "@commitlint/config-conventional": "^20.5.0",
     "@release-it/bumper": "^7.0.5",
     "@release-it/conventional-changelog": "^10.0.6",
-    "chrome-devtools-mcp": "^0.21.0",
+    "chrome-devtools-mcp": "^0.23.0",
     "husky": "^9.1.7",
     "lint-staged": "^16.4.0",
-    "oxfmt": "^0.45.0",
-    "oxlint": "^1.60.0",
+    "oxfmt": "^0.46.0",
+    "oxlint": "^1.61.0",
     "release-it": "^20.0.0"
   },
   "lint-staged": {
-    "*.{js,json,ts}": [
+    "*.{js,ts}": [
       "oxlint --fix",
+      "oxfmt"
+    ],
+    "*.json": [
       "oxfmt"
     ]
   },
@@ -59,7 +63,8 @@
       "release": true
     },
     "hooks": {
-      "after:bump": "bun run build && bun publish --cwd packages/compiler --access public && bun publish --cwd packages/parser --access public && bun publish --cwd packages/runtime --access public && bun publish --cwd packages/schema --access public && bun publish --cwd packages/server --access public && bun publish --cwd packages/studio --access public"
+      "before:init": "bun test && bun run lint",
+      "after:bump": "bun run build && bun run release:publish"
     },
     "npm": {
       "publish": false
