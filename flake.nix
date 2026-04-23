@@ -33,7 +33,10 @@
           devenv.shells.default =
             { config, pkgs, ... }:
             {
-              dotenv.enable = true;
+              # dotenv = {
+              #   enable = true;
+              #   filename = "$DEVENV_ROOT/.env";
+              # };
               packages = with pkgs; [
                 bun
                 google-chrome
@@ -62,6 +65,14 @@
                   bun run dev
                 '';
               };
+
+              enterShell = ''
+                echo $GREET
+                # load the .env file if it exists
+                if [ -f "$DEVENV_ROOT/.env" ]; then
+                  set -a; source "$DEVENV_ROOT/.env"; set +a
+                fi
+              '';
             };
         };
     };
