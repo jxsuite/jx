@@ -51,6 +51,7 @@ A Jx document is a JSON object describing a reactive web component:
 ### State — 5 shapes (detected by structure)
 
 **Shape 1 — Naked value** (scalar, array, or plain object with no reserved keys):
+
 ```json
 "count": 0,
 "items": [],
@@ -58,17 +59,20 @@ A Jx document is a JSON object describing a reactive web component:
 ```
 
 **Shape 2 — Typed value** (has `default`, optionally `type`):
+
 ```json
 "status": { "type": { "type": "string", "enum": ["idle", "loading"] }, "default": "idle" }
 ```
 
 **Shape 3 — Computed** (string containing `${}`):
+
 ```json
 "fullName": "${state.firstName} ${state.lastName}",
 "itemCount": "${state.items.length} items"
 ```
 
 **Shape 4 — Function** (`$prototype: "Function"`):
+
 ```json
 "increment": { "$prototype": "Function", "body": "state.count++" },
 "handleInput": { "$prototype": "Function", "arguments": ["event"], "body": "state.value = event.target.value" },
@@ -76,6 +80,7 @@ A Jx document is a JSON object describing a reactive web component:
 ```
 
 **Shape 5 — Data source** (`$prototype: <ClassName>`):
+
 ```json
 "userData": { "$prototype": "Request", "url": "/api/users", "method": "GET" },
 "posts": { "$prototype": "ContentCollection", "collection": "blog", "sort": { "field": "pubDate", "order": "desc" } }
@@ -83,21 +88,22 @@ A Jx document is a JSON object describing a reactive web component:
 
 ### `$ref` bindings
 
-| Pattern | Example | Meaning |
-|---|---|---|
-| State | `{ "$ref": "#/state/count" }` | Reactive binding to state |
-| $defs | `{ "$ref": "#/$defs/TodoItem" }` | Type definition reference |
-| Parent | `{ "$ref": "parent#/theme" }` | Prop from parent via `$props` |
-| Map item | `{ "$ref": "$map/item" }` | Current item in Array iteration |
-| Map index | `{ "$ref": "$map/index" }` | Current index |
-| External | `{ "$ref": "./card.json" }` | Another Jx component |
-| Window | `{ "$ref": "window#/config" }` | Window global |
+| Pattern   | Example                          | Meaning                         |
+| --------- | -------------------------------- | ------------------------------- |
+| State     | `{ "$ref": "#/state/count" }`    | Reactive binding to state       |
+| $defs     | `{ "$ref": "#/$defs/TodoItem" }` | Type definition reference       |
+| Parent    | `{ "$ref": "parent#/theme" }`    | Prop from parent via `$props`   |
+| Map item  | `{ "$ref": "$map/item" }`        | Current item in Array iteration |
+| Map index | `{ "$ref": "$map/index" }`       | Current index                   |
+| External  | `{ "$ref": "./card.json" }`      | Another Jx component            |
+| Window    | `{ "$ref": "window#/config" }`   | Window global                   |
 
 Use `${}` templates for inline one-off bindings. Use `$ref` objects for named/reused signals.
 
 ### Children
 
 **Static:** array of element objects or text strings:
+
 ```json
 "children": [
   { "tagName": "h1", "textContent": "Hello" },
@@ -106,6 +112,7 @@ Use `${}` templates for inline one-off bindings. Use `$ref` objects for named/re
 ```
 
 **Dynamic mapped list** (`$prototype: "Array"`):
+
 ```json
 "children": {
   "$prototype": "Array",
@@ -149,8 +156,13 @@ camelCase CSS properties. Nested selectors via `:`, `.`, `&`, `[` prefixes. Medi
 ### Attributes
 
 Non-IDL HTML attributes go in `attributes`:
+
 ```json
-{ "tagName": "a", "href": "/about", "attributes": { "aria-label": "About page", "data-section": "nav" } }
+{
+  "tagName": "a",
+  "href": "/about",
+  "attributes": { "aria-label": "About page", "data-section": "nav" }
+}
 ```
 
 Note: IDL properties like `href`, `src`, `textContent`, `className`, `hidden`, `disabled`, `value`, `checked` go directly on the element object, not inside `attributes`.
@@ -158,6 +170,7 @@ Note: IDL properties like `href`, `src`, `textContent`, `className`, `hidden`, `
 ### Event handlers
 
 Reference a function from state:
+
 ```json
 { "tagName": "button", "textContent": "Add", "onclick": { "$ref": "#/state/handleAdd" } }
 ```
@@ -206,7 +219,11 @@ Pages are component documents with additional properties:
 {
   "$paths": { "collection": "blog", "param": "slug" },
   "state": {
-    "post": { "$prototype": "ContentEntry", "collection": "blog", "id": { "$ref": "#/$params/slug" } }
+    "post": {
+      "$prototype": "ContentEntry",
+      "collection": "blog",
+      "id": { "$ref": "#/$params/slug" }
+    }
   }
 }
 ```
