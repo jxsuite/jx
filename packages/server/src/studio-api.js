@@ -73,33 +73,33 @@ export async function handleStudioApi(req, url, root) {
       }
 
       let isSiteProject = false;
-      let siteConfig = null;
+      let projectConfig = null;
       try {
-        const raw = JSON.parse(await readFile(resolve(absDir, "site.json"), "utf8"));
+        const raw = JSON.parse(await readFile(resolve(absDir, "project.json"), "utf8"));
         if (typeof raw === "object" && raw !== null && !Array.isArray(raw)) {
           isSiteProject = true;
-          siteConfig = raw;
+          projectConfig = raw;
         }
       } catch {}
 
-      return Response.json({ isSiteProject, siteConfig, directories, projectRoot });
+      return Response.json({ isSiteProject, projectConfig, directories, projectRoot });
     } catch (/** @type {any} */ e) {
       return Response.json({ error: e.message }, { status: 500 });
     }
   }
 
-  // Resolve nearest site.json ancestor for a given file path
+  // Resolve nearest project.json ancestor for a given file path
   if (path === "/__studio/resolve-site" && req.method === "GET") {
     const filePath = url.searchParams.get("path");
     if (!filePath) return Response.json({ error: "Missing path param" }, { status: 400 });
     try {
-      // Walk up from file's directory looking for site.json
+      // Walk up from file's directory looking for project.json
       let dir = dirname(
         filePath.startsWith("~") ? filePath.replace("~", process.env.HOME || "") : filePath,
       );
       const stopAt = "/";
       while (dir && dir !== stopAt) {
-        const candidate = resolve(dir, "site.json");
+        const candidate = resolve(dir, "project.json");
         if (existsSync(candidate)) {
           const config = JSON.parse(readFileSync(candidate, "utf8"));
           const relPath = relative(root, dir);
@@ -111,7 +111,7 @@ export async function handleStudioApi(req, url, root) {
             sitePath: dir,
             relPath: relPath || ".",
             fileRelPath,
-            siteConfig: config,
+            projectConfig: config,
           });
         }
         const parent = dirname(dir);
@@ -124,10 +124,10 @@ export async function handleStudioApi(req, url, root) {
     }
   }
 
-  // Discover site projects — find all site.json files under root
+  // Discover site projects — find all project.json files under root
   if (path === "/__studio/sites" && req.method === "GET") {
     try {
-      const glob = new Bun.Glob("**/site.json");
+      const glob = new Bun.Glob("**/project.json");
       const sites = [];
       for await (const match of glob.scan({ cwd: root, dot: false })) {
         if (match.includes("node_modules") || match.includes("dist/") || match.includes(".claude/"))
@@ -224,6 +224,7 @@ export async function handleStudioApi(req, url, root) {
               tagName: content.tagName,
               $id: content.$id || null,
               path: match,
+              source: "jx",
               props: Object.entries(content.state || {})
                 .filter(
                   ([, d]) =>
@@ -235,7 +236,187 @@ export async function handleStudioApi(req, url, root) {
           }
         } catch {} // skip non-JSON or parse errors
       }
+
+      // Discover CEM-bearing npm packages
+      try {
+        const projectPkgPath = resolve(scanRoot, "package.json");
+        if (existsSync(projectPkgPath)) {
+          const pkg = JSON.parse(await readFile(projectPkgPath, "utf8"));
+          const deps = { ...pkg.dependencies, ...pkg.devDependencies };
+          for (const name of Object.keys(deps)) {
+            try {
+              const depPkgPath = resolve(
+                scanRoot,
+                "node_modules",
+                ...name.split("/"),
+                "package.json",
+              );
+              // Fall back to root node_modules for hoisted packages
+              const fallbackPath = resolve(
+                root,
+                "node_modules",
+                ...name.split("/"),
+                "package.json",
+              );
+              const actualPath = existsSync(depPkgPath)
+                ? depPkgPath
+                : existsSync(fallbackPath)
+                  ? fallbackPath
+                  : null;
+              if (!actualPath) continue;
+              const depPkg = JSON.parse(await readFile(actualPath, "utf8"));
+              if (!depPkg.customElements) continue;
+              const cemPath = resolve(dirname(actualPath), depPkg.customElements);
+              if (!existsSync(cemPath)) continue;
+              const cem = JSON.parse(await readFile(cemPath, "utf8"));
+              for (const mod of cem.modules || []) {
+                for (const decl of mod.declarations || []) {
+                  if (decl.customElement && decl.tagName) {
+                    components.push({
+                      tagName: decl.tagName,
+                      $id: null,
+                      path: null,
+                      modulePath: mod.path,
+                      source: "npm",
+                      package: name,
+                      description: decl.description || null,
+                      props: (decl.attributes || []).map((/** @type {any} */ a) => ({
+                        name: a.name,
+                        type: a.type?.text,
+                        default: a.default,
+                        description: a.description || null,
+                      })),
+                      members: (decl.members || []).filter(
+                        (/** @type {any} */ m) => m.kind === "field" && m.privacy !== "private",
+                      ),
+                      slots: decl.slots || [],
+                      events: decl.events || [],
+                      cssProperties: decl.cssProperties || [],
+                      hasElements: false,
+                    });
+                  }
+                }
+              }
+            } catch {} // skip packages without valid CEM
+          }
+        }
+      } catch {} // skip if no project package.json
+
       return Response.json(components);
+    } catch (/** @type {any} */ e) {
+      return Response.json({ error: e.message }, { status: 500 });
+    }
+  }
+
+  // ─── Package management ──────────────────────────────────────────────────────
+
+  // List CEM-bearing npm packages
+  if (path === "/__studio/packages" && req.method === "GET") {
+    const dir = url.searchParams.get("dir");
+    const scanRoot = dir ? resolve(root, dir) : root;
+    try {
+      const pkgPath = resolve(scanRoot, "package.json");
+      if (!existsSync(pkgPath)) return Response.json([]);
+      const pkg = JSON.parse(await readFile(pkgPath, "utf8"));
+      const deps = { ...pkg.dependencies, ...pkg.devDependencies };
+      /** @type {any[]} */
+      const packages = [];
+      for (const [name, version] of Object.entries(deps)) {
+        const depPkgPath = resolve(scanRoot, "node_modules", ...name.split("/"), "package.json");
+        const fallbackPath = resolve(root, "node_modules", ...name.split("/"), "package.json");
+        const actualPath = existsSync(depPkgPath)
+          ? depPkgPath
+          : existsSync(fallbackPath)
+            ? fallbackPath
+            : null;
+        if (!actualPath) continue;
+        try {
+          const depPkg = JSON.parse(await readFile(actualPath, "utf8"));
+          packages.push({
+            name,
+            version: /** @type {string} */ (version),
+            hasCem: !!depPkg.customElements,
+            customElementsPath: depPkg.customElements || null,
+          });
+        } catch {}
+      }
+      return Response.json(packages);
+    } catch (/** @type {any} */ e) {
+      return Response.json({ error: e.message }, { status: 500 });
+    }
+  }
+
+  // Read CEM from a specific package
+  if (path === "/__studio/cem" && req.method === "GET") {
+    const pkg = url.searchParams.get("pkg");
+    if (!pkg) return new Response("Missing pkg", { status: 400 });
+    const dir = url.searchParams.get("dir");
+    const scanRoot = dir ? resolve(root, dir) : root;
+    try {
+      const depPkgPath = resolve(scanRoot, "node_modules", ...pkg.split("/"), "package.json");
+      const fallbackPath = resolve(root, "node_modules", ...pkg.split("/"), "package.json");
+      const actualPath = existsSync(depPkgPath)
+        ? depPkgPath
+        : existsSync(fallbackPath)
+          ? fallbackPath
+          : null;
+      if (!actualPath) return Response.json({ cem: null });
+      const depPkg = JSON.parse(await readFile(actualPath, "utf8"));
+      if (!depPkg.customElements) return Response.json({ cem: null });
+      const cemPath = resolve(dirname(actualPath), depPkg.customElements);
+      if (!existsSync(cemPath)) return Response.json({ cem: null });
+      const cem = JSON.parse(await readFile(cemPath, "utf8"));
+      return Response.json({ cem });
+    } catch (/** @type {any} */ e) {
+      return Response.json({ error: e.message }, { status: 500 });
+    }
+  }
+
+  // Add an npm package
+  if (path === "/__studio/packages/add" && req.method === "POST") {
+    try {
+      const body = await req.json();
+      const name = body.name;
+      if (!name || typeof name !== "string")
+        return Response.json({ error: "Missing name" }, { status: 400 });
+      const dir = body.dir;
+      const cwd = dir ? resolve(root, dir) : root;
+      const args = ["add", name];
+      if (body.dev) args.splice(1, 0, "-d");
+      const proc = Bun.spawn(["bun", ...args], { cwd, stdout: "pipe", stderr: "pipe" });
+      const exitCode = await proc.exited;
+      if (exitCode !== 0) {
+        const stderr = await new Response(proc.stderr).text();
+        return Response.json(
+          { error: stderr || `bun add exited with ${exitCode}` },
+          { status: 500 },
+        );
+      }
+      return Response.json({ ok: true });
+    } catch (/** @type {any} */ e) {
+      return Response.json({ error: e.message }, { status: 500 });
+    }
+  }
+
+  // Remove an npm package
+  if (path === "/__studio/packages/remove" && req.method === "POST") {
+    try {
+      const body = await req.json();
+      const name = body.name;
+      if (!name || typeof name !== "string")
+        return Response.json({ error: "Missing name" }, { status: 400 });
+      const dir = body.dir;
+      const cwd = dir ? resolve(root, dir) : root;
+      const proc = Bun.spawn(["bun", "remove", name], { cwd, stdout: "pipe", stderr: "pipe" });
+      const exitCode = await proc.exited;
+      if (exitCode !== 0) {
+        const stderr = await new Response(proc.stderr).text();
+        return Response.json(
+          { error: stderr || `bun remove exited with ${exitCode}` },
+          { status: 500 },
+        );
+      }
+      return Response.json({ ok: true });
     } catch (/** @type {any} */ e) {
       return Response.json({ error: e.message }, { status: 500 });
     }

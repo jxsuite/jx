@@ -206,7 +206,7 @@ function getNestedValue(obj, path) {
  * Parse a single markdown file. Satisfies the Jx external class contract ($prototype).
  *
  * @example
- *   { "$prototype": "MarkdownFile", "$src": "@jxplatform/md", "src": "./content/about.md", "signal": true }
+ *   { "$prototype": "MarkdownFile", "$src": "@jxplatform/md", "src": "./content/about.md" }
  */
 export class MarkdownFile {
   /**
@@ -241,7 +241,7 @@ export class MarkdownFile {
  * contract ($prototype).
  *
  * @example
- *   { "$prototype": "MarkdownCollection", "$src": "@jxplatform/md", "src": "./posts/*.md", "signal": true }
+ *   { "$prototype": "MarkdownCollection", "$src": "@jxplatform/md", "src": "./posts/*.md" }
  */
 export class MarkdownCollection {
   /**

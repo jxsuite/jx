@@ -1,8 +1,8 @@
 /**
  * Content-loader.js — Content collection loader
  *
- * Loads content collections defined in content/content.config.json. Supports Markdown (.md), JSON
- * (.json), and CSV (.csv) source files.
+ * Loads content collections defined in project.json's `collections` key. Supports Markdown (.md),
+ * JSON (.json), and CSV (.csv) source files.
  *
  * Phase 2 implementation of site-architecture spec §6.
  *
@@ -115,9 +115,17 @@ async function getMarkdownModule() {
  * @param {string} filePath - Absolute path to .md file
  * @returns {Promise<object>} ContentEntry shape
  */
-async function loadMarkdownEntry(filePath) {
+/**
+ * Load a markdown file into a ContentEntry. If directiveOptions are provided, they control which
+ * custom element directives are available in the markdown.
+ *
+ * @param {string} filePath - Absolute path to .md file
+ * @param {any} [directiveOptions] - Options for the MarkdownDirective plugin
+ * @returns {Promise<object>} ContentEntry shape
+ */
+async function loadMarkdownEntry(filePath, directiveOptions) {
   const { MarkdownFile } = await getMarkdownModule();
-  const file = new MarkdownFile({ src: filePath });
+  const file = new MarkdownFile({ src: filePath, directiveOptions });
   const result = await file.resolve();
   return {
     id: result.slug,
@@ -191,22 +199,20 @@ function loadCSVEntries(filePath, schema) {
 // ─── Content Config ───────────────────────────────────────────────────────────
 
 /**
- * Load and parse content/content.config.json.
+ * Load and parse content collections config from project.json.
  *
  * @param {string} projectRoot - Project root directory
+ * @param {Record<string, any>} [projectConfig] - Already-loaded project config with `collections`
+ *   key
  * @returns {{ config: any; contentDir: string } | null} Parsed config or null if no content dir
  */
-export function loadContentConfig(projectRoot) {
+export function loadContentConfig(projectRoot, projectConfig = undefined) {
   const contentDir = resolve(projectRoot, "content");
-  const configPath = resolve(contentDir, "content.config.json");
 
   if (!existsSync(contentDir)) return null;
 
   /** @type {any} */
-  let config = { collections: {} };
-  if (existsSync(configPath)) {
-    config = JSON.parse(readFileSync(configPath, "utf-8"));
-  }
+  const config = { collections: projectConfig?.collections ?? {} };
 
   return { config, contentDir };
 }
@@ -214,13 +220,14 @@ export function loadContentConfig(projectRoot) {
 // ─── Collection Loading ───────────────────────────────────────────────────────
 
 /**
- * Load all content collections defined in content.config.json.
+ * Load all content collections defined in project.json.
  *
  * @param {string} projectRoot - Project root directory
+ * @param {Record<string, any>} [projectConfig] - Already-loaded project config
  * @returns {Promise<Map<string, any[]>>} Map of collection name → array of ContentEntry
  */
-export async function loadCollections(projectRoot) {
-  const result = loadContentConfig(projectRoot);
+export async function loadCollections(projectRoot, projectConfig = undefined) {
+  const result = loadContentConfig(projectRoot, projectConfig);
   if (!result) return new Map();
 
   const { config, contentDir } = result;
@@ -236,6 +243,21 @@ export async function loadCollections(projectRoot) {
 }
 
 /**
+ * Get the $elements array for a specific collection, if defined in project.json collections.
+ *
+ * @param {string} projectRoot - Project root directory
+ * @param {string} collectionName - Name of the collection
+ * @param {Record<string, any>} [projectConfig] - Already-loaded project config
+ * @returns {any[] | undefined}
+ */
+export function getCollectionElements(projectRoot, collectionName, projectConfig = undefined) {
+  const result = loadContentConfig(projectRoot, projectConfig);
+  if (!result) return undefined;
+  const def = result.config.collections?.[collectionName];
+  return def?.$elements;
+}
+
+/**
  * Load a single collection by its definition.
  *
  * @param {string} name - Collection name
@@ -246,6 +268,16 @@ export async function loadCollections(projectRoot) {
 async function loadCollection(name, collectionDef, contentDir) {
   const source = collectionDef.source;
   const schema = collectionDef.schema;
+
+  // Derive directive allowedNames from collection $elements (tag names from npm packages)
+  /** @type {any} */
+  const directiveOptions = collectionDef.$elements?.length
+    ? {
+        allowedNames: collectionDef.$elements
+          .filter((/** @type {any} */ e) => typeof e === "string" || e?.$ref)
+          .map((/** @type {any} */ e) => (typeof e === "string" ? e : e.$ref)),
+      }
+    : undefined;
 
   // Resolve the glob pattern relative to content/
   const pattern = resolve(contentDir, source).split("\\").join("/");
@@ -258,7 +290,7 @@ async function loadCollection(name, collectionDef, contentDir) {
     const ext = extname(filePath).toLowerCase();
 
     if (ext === ".md") {
-      entries.push(await loadMarkdownEntry(filePath));
+      entries.push(await loadMarkdownEntry(filePath, directiveOptions));
     } else if (ext === ".json") {
       entries.push(...loadJSONEntries(filePath));
     } else if (ext === ".csv") {

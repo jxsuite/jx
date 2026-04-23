@@ -67,12 +67,12 @@ export function createDevServerPlatform() {
         throw e;
       }
 
-      // Read site.json from the chosen directory
+      // Read project.json from the chosen directory
       let siteHandle;
       try {
-        siteHandle = await dirHandle.getFileHandle("site.json");
+        siteHandle = await dirHandle.getFileHandle("project.json");
       } catch {
-        throw new Error("No site.json found in selected folder");
+        throw new Error("No project.json found in selected folder");
       }
 
       const file = await siteHandle.getFile();
@@ -97,7 +97,7 @@ export function createDevServerPlatform() {
         handle: {
           root: match.path,
           name: config.name || match.path.split("/").pop(),
-          siteConfig: config,
+          projectConfig: config,
         },
       };
     },
@@ -194,6 +194,36 @@ export function createDevServerPlatform() {
       return await res.json();
     },
 
+    // ─── Package management ──────────────────────────────────────────────
+
+    /** @param {string} name */
+    async addPackage(name) {
+      const res = await fetch("/__studio/packages/add", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return await res.json();
+    },
+
+    /** @param {string} name */
+    async removePackage(name) {
+      const res = await fetch("/__studio/packages/remove", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return await res.json();
+    },
+
+    async listPackages() {
+      const res = await fetch("/__studio/packages");
+      if (!res.ok) return [];
+      return await res.json();
+    },
+
     // ─── Code services (optional) ─────────────────────────────────────────
 
     /**
@@ -217,8 +247,8 @@ export function createDevServerPlatform() {
     // ─── Site context resolution ──────────────────────────────────────
 
     /**
-     * Given an absolute file path, walk up to find the nearest site.json ancestor. Returns {
-     * sitePath, siteConfig } or { sitePath: null }.
+     * Given an absolute file path, walk up to find the nearest project.json ancestor. Returns {
+     * sitePath, projectConfig } or { sitePath: null }.
      *
      * @param {string} filePath — absolute system path
      */

@@ -119,7 +119,6 @@ export async function generateSchema() {
       "web component: its structure (DOM tree), styling, type definitions ($defs), " +
       "runtime state, and inline or external functions. Reactivity is powered by @vue/reactivity.",
     type: "object",
-    required: ["tagName"],
 
     // ── Top-level properties ────────────────────────────────────────────────
     properties: {
@@ -162,6 +161,74 @@ export async function generateSchema() {
             "--dark": "(prefers-color-scheme: dark)",
           },
         ],
+      },
+      $elements: {
+        description:
+          "Custom element dependencies. Items are either $ref objects pointing to JX " +
+          "element definitions, or bare npm package name strings for web component libraries.",
+        type: "array",
+        items: {
+          oneOf: [
+            {
+              type: "object",
+              required: ["$ref"],
+              properties: { $ref: { type: "string" } },
+              additionalProperties: false,
+            },
+            {
+              type: "string",
+              description: "npm package specifier (must declare customElements in package.json)",
+            },
+          ],
+        },
+      },
+      $head: {
+        description:
+          "Page-level <head> entries. Array of element definitions for meta tags, " +
+          "link tags, script tags, etc. Merged with layout and site-level $head entries.",
+        type: "array",
+        items: { $ref: "#/$defs/ElementDef" },
+      },
+      $layout: {
+        description:
+          "Layout reference for pages. String path to a layout JSON file, " +
+          "or false to opt out of the default layout.",
+        oneOf: [{ type: "string" }, { type: "boolean", const: false }],
+        examples: ["./layouts/base.json"],
+      },
+      $paths: {
+        description:
+          "Dynamic route parameters. Maps parameter names to data sources " +
+          "for generating one page per entry at build time.",
+        type: "object",
+      },
+      title: {
+        description:
+          "Page title. Can be a static string or a template string with ${} expressions.",
+        $ref: "#/$defs/StringOrRef",
+      },
+      imports: {
+        description:
+          "Import map: $prototype names to .class.json file paths. " +
+          "Allows state entries to reference external classes by name without $src.",
+        type: "object",
+        additionalProperties: { type: "string" },
+      },
+      observedAttributes: {
+        description:
+          "HTML attributes the custom element watches for changes. " +
+          "Follows the Web Components observedAttributes convention.",
+        type: "array",
+        items: { type: "string" },
+      },
+      cases: {
+        description:
+          "Switch cases object. Maps case values to element definitions or external " +
+          "component refs. Used alongside $switch for dynamic component rendering.",
+        type: "object",
+        additionalProperties: {
+          oneOf: [{ $ref: "#/$defs/ElementDef" }, { $ref: "#/$defs/ExternalComponentRef" }],
+        },
       },
       tagName: { $ref: "#/$defs/TagName" },
       children: { $ref: "#/$defs/ChildrenValue" },
@@ -417,6 +484,7 @@ export async function generateSchema() {
       ClassParameterDef: {
         description: "A typed parameter definition for a class.",
         type: "object",
+        required: ["identifier"],
         properties: {
           identifier: { type: "string" },
           type: {},
@@ -460,7 +528,12 @@ export async function generateSchema() {
             type: "array",
             items: {
               oneOf: [
-                { type: "object", required: ["$ref"], properties: { $ref: { type: "string" } } },
+                {
+                  type: "object",
+                  required: ["$ref"],
+                  properties: { $ref: { type: "string" } },
+                  additionalProperties: false,
+                },
                 { $ref: "#/$defs/ClassParameterDef" },
               ],
             },
@@ -490,7 +563,12 @@ export async function generateSchema() {
             type: "array",
             items: {
               oneOf: [
-                { type: "object", required: ["$ref"], properties: { $ref: { type: "string" } } },
+                {
+                  type: "object",
+                  required: ["$ref"],
+                  properties: { $ref: { type: "string" } },
+                  additionalProperties: false,
+                },
                 { $ref: "#/$defs/ClassParameterDef" },
               ],
             },
@@ -928,6 +1006,434 @@ function buildCssProperties(cssProps) {
   return properties;
 }
 
+// ─── Project Schema Generator ────────────────────────────────────────────────
+
+/**
+ * Generate the Jx project.json schema as a plain JavaScript object. This schema validates project
+ * configuration files. No webref data needed.
+ *
+ * @returns {object} JSON Schema 2020-12 document
+ */
+export function generateProjectSchema() {
+  return {
+    $schema: "https://json-schema.org/draft/2020-12/schema",
+    $id: "https://jxplatform.net/schema/project/v1",
+    title: "Jx Project",
+    description:
+      "Schema for Jx project.json files. " +
+      "A project.json file is the root anchor file for a Jx project, " +
+      "declaring site metadata, default settings, global styles, content collections, " +
+      "and build configuration.",
+    type: "object",
+
+    properties: {
+      name: {
+        description: "Human-readable project name.",
+        type: "string",
+        default: "Jx Site",
+        examples: ["My Portfolio", "Jx Example Site"],
+      },
+      url: {
+        description: "Production URL of the deployed site.",
+        type: "string",
+        examples: ["https://example.com", "https://jxplatform.net"],
+      },
+      defaults: {
+        description: "Default settings applied to all pages unless overridden.",
+        type: "object",
+        properties: {
+          layout: {
+            description:
+              "Default layout file path applied to all pages. " +
+              "Set to null to render pages without a layout.",
+            oneOf: [{ type: "string" }, { type: "null" }],
+            default: null,
+            examples: ["./layouts/base.json"],
+          },
+          lang: {
+            description: "Default lang attribute for the <html> element.",
+            type: "string",
+            default: "en",
+          },
+          charset: {
+            description: "Default charset for the page.",
+            type: "string",
+            default: "utf-8",
+          },
+        },
+      },
+      $head: {
+        description:
+          "Global <head> entries applied to all pages. " +
+          "Array of element definitions for meta tags, link tags, script tags, etc.",
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            tagName: { type: "string" },
+            attributes: {
+              type: "object",
+              additionalProperties: { type: "string" },
+            },
+          },
+        },
+        examples: [
+          [
+            { tagName: "link", attributes: { rel: "icon", href: "/favicon.svg" } },
+            { tagName: "meta", attributes: { name: "generator", content: "Jx" } },
+          ],
+        ],
+      },
+      $elements: {
+        description:
+          "Global custom element dependencies available to all pages. " +
+          "Items are $ref objects or npm package specifier strings.",
+        type: "array",
+        items: {
+          oneOf: [
+            {
+              type: "object",
+              required: ["$ref"],
+              properties: { $ref: { type: "string" } },
+              additionalProperties: false,
+            },
+            { type: "string" },
+          ],
+        },
+      },
+      imports: {
+        description:
+          "Global import map: $prototype names to .class.json file paths. " +
+          "Makes external classes available by name in all pages.",
+        type: "object",
+        additionalProperties: { type: "string" },
+        examples: [
+          {
+            MarkdownFile: "@jxplatform/parser/MarkdownFile.class.json",
+            MarkdownCollection: "@jxplatform/parser/MarkdownCollection.class.json",
+          },
+        ],
+      },
+      $media: {
+        description:
+          "Named media breakpoints following CSS @custom-media convention. " +
+          "Available in all component style objects.",
+        type: "object",
+        additionalProperties: { type: "string" },
+        examples: [
+          {
+            "--sm": "(min-width: 640px)",
+            "--md": "(min-width: 768px)",
+            "--lg": "(min-width: 1024px)",
+          },
+        ],
+      },
+      style: {
+        description:
+          "Global CSS styles applied to the <body> element. " +
+          "Uses the same camelCase CSSOM convention as component styles.",
+        type: "object",
+        additionalProperties: {
+          oneOf: [{ type: "string" }, { type: "number" }, { type: "object" }],
+        },
+      },
+      state: {
+        description: "Site-wide reactive state available to all pages.",
+        type: "object",
+      },
+      collections: {
+        description:
+          "Content collection definitions. Each key is a collection name; " +
+          "the value defines the source glob, frontmatter schema, and element dependencies.",
+        type: "object",
+        additionalProperties: {
+          type: "object",
+          properties: {
+            source: {
+              description: "Glob pattern for content files relative to the content directory.",
+              type: "string",
+              examples: ["./blog/**/*.md", "./docs/**/*.md"],
+            },
+            schema: {
+              description: "JSON Schema for validating frontmatter of collection entries.",
+              type: "object",
+            },
+            $elements: {
+              description: "Custom elements available in markdown directives for this collection.",
+              type: "array",
+              items: {
+                oneOf: [
+                  {
+                    type: "object",
+                    required: ["$ref"],
+                    properties: { $ref: { type: "string" } },
+                  },
+                  { type: "string" },
+                ],
+              },
+            },
+          },
+        },
+      },
+      redirects: {
+        description: "Static redirect rules. Maps source paths to destination paths.",
+        type: "object",
+        additionalProperties: { type: "string" },
+        examples: [{ "/old-about": "/about" }],
+      },
+      build: {
+        description: "Build configuration.",
+        type: "object",
+        properties: {
+          outDir: {
+            description: "Output directory for compiled site.",
+            type: "string",
+            default: "./dist",
+          },
+          format: {
+            description: "Output format.",
+            type: "string",
+            enum: ["directory", "single"],
+            default: "directory",
+          },
+          trailingSlash: {
+            description: "Trailing slash behavior for generated URLs.",
+            type: "string",
+            enum: ["always", "never", "ignore"],
+            default: "always",
+          },
+          adapter: {
+            description: "Platform adapter for deployment-specific output.",
+            type: "string",
+            enum: ["netlify", "vercel", "cloudflare"],
+          },
+        },
+      },
+      i18n: {
+        description: "Internationalization configuration.",
+        type: "object",
+        properties: {
+          defaultLocale: {
+            description: "Default locale code.",
+            type: "string",
+            examples: ["en"],
+          },
+          locales: {
+            description: "Available locale codes.",
+            type: "array",
+            items: { type: "string" },
+            examples: [["en", "fr", "de"]],
+          },
+          routing: {
+            description: "Locale routing strategy.",
+            type: "string",
+            enum: ["prefix-except-default", "prefix-always"],
+          },
+        },
+      },
+    },
+
+    additionalProperties: false,
+  };
+}
+
+// ─── Class Schema Generator ─────────────────────────────────────────────────
+
+/**
+ * Generate the standalone .class.json schema as a plain JavaScript object. This schema validates Jx
+ * class definition files.
+ *
+ * @returns {object} JSON Schema 2020-12 document
+ */
+export function generateClassSchema() {
+  return {
+    $schema: "https://json-schema.org/draft/2020-12/schema",
+    $id: "https://jxplatform.net/schema/class/v1",
+    title: "Jx Class Definition",
+    description:
+      "Schema for Jx .class.json files. A class definition describes a schema-defined " +
+      "class with fields, constructor, methods, and type parameters. Optionally points " +
+      "to a JS module via $implementation for hybrid execution.",
+    type: "object",
+    required: ["$prototype", "title"],
+
+    properties: {
+      $schema: { type: "string" },
+      $id: { type: "string" },
+      $prototype: {
+        description: 'Must be "Class" for class definition files.',
+        type: "string",
+        const: "Class",
+      },
+      title: {
+        description: "PascalCase class name, used as the export name.",
+        type: "string",
+        examples: ["MarkdownFile", "DataSource", "Calculator"],
+      },
+      description: { type: "string" },
+      extends: {
+        description: "Base class — string name or $ref to another .class.json.",
+        oneOf: [
+          { type: "string" },
+          {
+            type: "object",
+            required: ["$ref"],
+            properties: { $ref: { type: "string" } },
+            additionalProperties: false,
+          },
+        ],
+      },
+      $implementation: {
+        description: "Relative path to a JS module containing the actual class implementation.",
+        type: "string",
+        examples: ["./md.js", "./lib/calculator.js"],
+      },
+      $defs: {
+        description: "Class members: parameters, returnTypes, fields, constructor, methods.",
+        type: "object",
+        properties: {
+          parameters: {
+            description: "Reusable typed parameter schemas, keyed by name.",
+            type: "object",
+            additionalProperties: { $ref: "#/$defs/ClassParameterDef" },
+          },
+          returnTypes: {
+            description: "Output type schemas, keyed by name.",
+            type: "object",
+            additionalProperties: { type: "object" },
+          },
+          fields: {
+            description: "Class fields with role, access, scope, and type information.",
+            type: "object",
+            additionalProperties: { $ref: "#/$defs/ClassFieldDef" },
+          },
+          constructor: { $ref: "#/$defs/ClassConstructorDef" },
+          methods: {
+            description: "Class methods and accessors.",
+            type: "object",
+            additionalProperties: { $ref: "#/$defs/ClassMethodDef" },
+          },
+        },
+      },
+    },
+    additionalProperties: false,
+
+    $defs: {
+      ClassParameterDef: {
+        description: "A typed parameter definition for a class.",
+        type: "object",
+        required: ["identifier"],
+        properties: {
+          identifier: { type: "string" },
+          type: {},
+          format: {
+            description: 'When "json-schema", this parameter\'s value is itself a JSON Schema.',
+            type: "string",
+          },
+          description: { type: "string" },
+          default: {},
+          examples: { type: "array" },
+        },
+      },
+
+      ClassFieldDef: {
+        description: "A class field definition with access control and scope.",
+        type: "object",
+        properties: {
+          role: { type: "string", const: "field" },
+          access: { type: "string", enum: ["public", "private", "protected"] },
+          scope: { type: "string", enum: ["instance", "static"] },
+          identifier: { type: "string" },
+          type: {},
+          $prototype: {
+            description: 'Data source prototype for this field (e.g., "Request").',
+            type: "string",
+          },
+          initializer: {},
+          default: {},
+          description: { type: "string" },
+          examples: { type: "array" },
+        },
+      },
+
+      ClassConstructorDef: {
+        description: "Class constructor definition.",
+        type: "object",
+        properties: {
+          role: { type: "string", const: "constructor" },
+          $prototype: { type: "string", const: "Function" },
+          parameters: {
+            type: "array",
+            items: {
+              oneOf: [
+                {
+                  type: "object",
+                  required: ["$ref"],
+                  properties: { $ref: { type: "string" } },
+                  additionalProperties: false,
+                },
+                { $ref: "#/$defs/ClassParameterDef" },
+              ],
+            },
+          },
+          superCall: {
+            type: "object",
+            properties: {
+              arguments: { type: "array", items: { type: "string" } },
+            },
+          },
+          body: {
+            oneOf: [{ type: "string" }, { type: "array", items: { type: "string" } }],
+          },
+          description: { type: "string" },
+        },
+      },
+
+      ClassMethodDef: {
+        description: "A class method or accessor definition.",
+        type: "object",
+        properties: {
+          role: { type: "string", enum: ["method", "accessor"] },
+          $prototype: { type: "string", const: "Function" },
+          access: { type: "string", enum: ["public", "private", "protected"] },
+          scope: { type: "string", enum: ["instance", "static"] },
+          identifier: { type: "string" },
+          parameters: {
+            type: "array",
+            items: {
+              oneOf: [
+                {
+                  type: "object",
+                  required: ["$ref"],
+                  properties: { $ref: { type: "string" } },
+                  additionalProperties: false,
+                },
+                { $ref: "#/$defs/ClassParameterDef" },
+              ],
+            },
+          },
+          returnType: {},
+          body: {
+            oneOf: [{ type: "string" }, { type: "array", items: { type: "string" } }],
+          },
+          getter: {
+            type: "object",
+            properties: { body: { type: "string" } },
+          },
+          setter: {
+            type: "object",
+            properties: {
+              parameters: { type: "array" },
+              body: { type: "string" },
+            },
+          },
+          description: { type: "string" },
+        },
+      },
+    },
+  };
+}
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
@@ -956,7 +1462,7 @@ export async function validateDocument(doc) {
     throw new Error("Schema validation requires ajv and ajv-formats: bun add ajv ajv-formats");
   }
 
-  const ajv = new Ajv({ allErrors: true, strict: false });
+  const ajv = new Ajv({ allErrors: true, strict: false, ownProperties: true });
   addFormats(ajv);
 
   const schema = await generateSchema();
@@ -969,14 +1475,34 @@ export async function validateDocument(doc) {
 // ─── CLI ──────────────────────────────────────────────────────────────────────
 
 if (process.argv[1] && process.argv[1].endsWith("schema.js")) {
+  const { writeFileSync } = await import("node:fs");
+  const { resolve, dirname } = await import("node:path");
+
+  const schemaDir = dirname(resolve(process.argv[1], ".."));
+
+  // Generate all three schemas
+  const componentSchema = await generateSchema();
+  const projectSchema = generateProjectSchema();
+  const classSchema = generateClassSchema();
+
+  const componentStr = JSON.stringify(componentSchema, null, 2);
+  const projectStr = JSON.stringify(projectSchema, null, 2);
+  const classStr = JSON.stringify(classSchema, null, 2);
+
   const [, , out] = process.argv;
-  const schemaStr = await generateSchemaString();
 
   if (out) {
-    const { writeFileSync } = await import("node:fs");
-    writeFileSync(out, schemaStr, "utf8");
-    console.error(`Jx meta-schema written to ${out}`);
+    // Legacy single-file mode
+    writeFileSync(out, componentStr, "utf8");
+    console.error(`Jx component schema written to ${out}`);
   } else {
-    process.stdout.write(schemaStr + "\n");
+    // Default: write all three to packages/schema/
+    writeFileSync(resolve(schemaDir, "schema.json"), componentStr, "utf8");
+    writeFileSync(resolve(schemaDir, "project-schema.json"), projectStr, "utf8");
+    writeFileSync(resolve(schemaDir, "class-schema.json"), classStr, "utf8");
+    console.error("Generated:");
+    console.error("  schema.json (component)");
+    console.error("  project-schema.json");
+    console.error("  class-schema.json");
   }
 }

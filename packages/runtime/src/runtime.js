@@ -38,6 +38,11 @@ export async function Jx(source, target = document.body, options) {
     await registerElements(doc.$elements, base);
   }
 
+  // Inject <head> elements declared in $head (link, meta, script, etc.)
+  if (doc.$head) {
+    injectHead(doc.$head, base);
+  }
+
   const state = await buildScope(doc, {}, base);
   target.appendChild(renderNode(doc, state, options));
   if (typeof state.onMount === "function") state.onMount(state);
@@ -1446,6 +1451,19 @@ const _elementDefs = new Map();
  */
 async function registerElements(elements, base) {
   for (const entry of elements) {
+    // Bare string: npm package side-effect import (registers custom elements)
+    if (typeof entry === "string") {
+      try {
+        // Bare specifiers need a URL path for the browser; the dev server resolves
+        // /node_modules/<pkg> to the package entry point via exports/module/main.
+        const specifier =
+          entry.startsWith("/") || entry.startsWith(".") ? entry : `/node_modules/${entry}`;
+        await import(specifier);
+      } catch (e) {
+        console.warn(`Jx: failed to import package "${entry}"`, e);
+      }
+      continue;
+    }
     if (!isRefObj(entry)) continue;
     const href = new URL(entry.$ref, base).href;
     const doc = await resolve(href);
@@ -1458,6 +1476,43 @@ async function registerElements(elements, base) {
     }
 
     await defineElement(doc, href);
+  }
+}
+
+/**
+ * Inject head elements from $head declarations. Each entry is { tagName, attributes } — bare npm
+ * specifiers in href/src are rewritten to /node_modules/ paths for the dev server.
+ *
+ * @param {any[]} entries
+ * @param {string} _base - Document base URL for resolving relative paths
+ */
+function injectHead(entries, _base) {
+  for (const entry of entries) {
+    if (!entry || !entry.tagName) continue;
+    const tag = entry.tagName.toLowerCase();
+    const attrs = { ...entry.attributes };
+    // Resolve href/src: bare npm specifiers -> /node_modules/ path
+    for (const key of ["href", "src"]) {
+      if (
+        attrs[key] &&
+        !attrs[key].startsWith("/") &&
+        !attrs[key].startsWith(".") &&
+        !attrs[key].startsWith("http")
+      ) {
+        attrs[key] = `/node_modules/${attrs[key]}`;
+      }
+    }
+
+    // Deduplicate: skip if an identical element already exists
+    const selector = `${tag}${attrs.href ? `[href="${attrs.href}"]` : ""}${attrs.src ? `[src="${attrs.src}"]` : ""}`;
+    if (selector !== tag && document.head.querySelector(selector)) continue;
+
+    const el = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs)) {
+      el.setAttribute(k, /** @type {string} */ (v));
+    }
+    if (entry.textContent) el.textContent = entry.textContent;
+    document.head.appendChild(el);
   }
 }
 

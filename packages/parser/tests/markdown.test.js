@@ -503,7 +503,6 @@ describe("Runtime external prototype ($src)", () => {
       $prototype: "MarkdownFile",
       $src: "file://" + mdFilePath,
       src: join(FIXTURE_DIR, "getting-started.md"),
-      signal: true,
     };
     const sig = await resolvePrototype(def, {}, "$post");
     expect(isSignal(sig)).toBe(true);
@@ -520,7 +519,6 @@ describe("Runtime external prototype ($src)", () => {
       sortBy: "frontmatter.date",
       sortOrder: "desc",
       limit: 2,
-      signal: true,
     };
     const sig = await resolvePrototype(def, {}, "$posts");
     expect(isSignal(sig)).toBe(true);
@@ -534,7 +532,6 @@ describe("Runtime external prototype ($src)", () => {
       $prototype: "MarkdownFile",
       $src: "file://" + mdFilePath,
       src: join(FIXTURE_DIR, "getting-started.md"),
-      signal: true,
       timing: "client",
       description: "test",
     };
@@ -552,7 +549,6 @@ describe("Runtime external prototype ($src)", () => {
       $export: "MarkdownCollection",
       src: join(FIXTURE_DIR, "*.md"),
       limit: 1,
-      signal: true,
     };
     const sig = await resolvePrototype(def, {}, "$posts");
     expect(isSignal(sig)).toBe(true);
@@ -565,7 +561,6 @@ describe("Runtime external prototype ($src)", () => {
     const def = {
       $prototype: "MarkdownFile",
       $src: resolvePath(__dirname, "..", "md.js"),
-      signal: true,
     };
     await expect(resolvePrototype(def, {}, "$x")).rejects.toThrow(".class.json");
   });

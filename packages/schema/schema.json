@@ -4,7 +4,6 @@
   "title": "Jx Document",
   "description": "Schema for Jx component files. A Jx document is a JSON object that declaratively describes a reactive web component: its structure (DOM tree), styling, type definitions ($defs), runtime state, and inline or external functions. Reactivity is powered by @vue/reactivity.",
   "type": "object",
-  "required": ["tagName"],
   "properties": {
     "$schema": {
       "description": "URI identifying the Jx dialect version. Enables schema-aware IDE tooling.",
@@ -37,6 +36,84 @@
           "--dark": "(prefers-color-scheme: dark)"
         }
       ]
+    },
+    "$elements": {
+      "description": "Custom element dependencies. Items are either $ref objects pointing to JX element definitions, or bare npm package name strings for web component libraries.",
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": ["$ref"],
+            "properties": {
+              "$ref": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "string",
+            "description": "npm package specifier (must declare customElements in package.json)"
+          }
+        ]
+      }
+    },
+    "$head": {
+      "description": "Page-level <head> entries. Array of element definitions for meta tags, link tags, script tags, etc. Merged with layout and site-level $head entries.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ElementDef"
+      }
+    },
+    "$layout": {
+      "description": "Layout reference for pages. String path to a layout JSON file, or false to opt out of the default layout.",
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "boolean",
+          "const": false
+        }
+      ],
+      "examples": ["./layouts/base.json"]
+    },
+    "$paths": {
+      "description": "Dynamic route parameters. Maps parameter names to data sources for generating one page per entry at build time.",
+      "type": "object"
+    },
+    "title": {
+      "description": "Page title. Can be a static string or a template string with ${} expressions.",
+      "$ref": "#/$defs/StringOrRef"
+    },
+    "imports": {
+      "description": "Import map: $prototype names to .class.json file paths. Allows state entries to reference external classes by name without $src.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "observedAttributes": {
+      "description": "HTML attributes the custom element watches for changes. Follows the Web Components observedAttributes convention.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "cases": {
+      "description": "Switch cases object. Maps case values to element definitions or external component refs. Used alongside $switch for dynamic component rendering.",
+      "type": "object",
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "$ref": "#/$defs/ElementDef"
+          },
+          {
+            "$ref": "#/$defs/ExternalComponentRef"
+          }
+        ]
+      }
     },
     "tagName": {
       "$ref": "#/$defs/TagName"
@@ -401,6 +478,7 @@
     "ClassParameterDef": {
       "description": "A typed parameter definition for a class.",
       "type": "object",
+      "required": ["identifier"],
       "properties": {
         "identifier": {
           "type": "string"
@@ -476,7 +554,8 @@
                   "$ref": {
                     "type": "string"
                   }
-                }
+                },
+                "additionalProperties": false
               },
               {
                 "$ref": "#/$defs/ClassParameterDef"
@@ -544,7 +623,8 @@
                   "$ref": {
                     "type": "string"
                   }
-                }
+                },
+                "additionalProperties": false
               },
               {
                 "$ref": "#/$defs/ClassParameterDef"

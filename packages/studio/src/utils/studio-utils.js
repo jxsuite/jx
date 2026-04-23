@@ -157,3 +157,29 @@ export function varDisplayName(varName, prefix) {
       .replace(/\b\w/g, (/** @type {any} */ c) => c.toUpperCase()) || varName
   );
 }
+
+/**
+ * Parse a CEM type.text string into a structured descriptor.
+ *
+ * @param {string | undefined | null} typeText
+ * @returns {{ kind: "combobox"; options: string[] }
+ *   | { kind: "boolean" }
+ *   | { kind: "number" }
+ *   | { kind: "text" }}
+ */
+export function parseCemType(typeText) {
+  if (!typeText) return { kind: "text" };
+  const t = typeText
+    .trim()
+    .replace(/\s*\|\s*undefined\b/g, "")
+    .trim();
+  if (t === "boolean") return { kind: "boolean" };
+  if (t === "number") return { kind: "number" };
+  // Detect enum: "'a' | 'b' | 'c'" — pipe-separated quoted literals
+  const enumMatch = t.match(/^'[^']*'(\s*\|\s*'[^']*')+$/);
+  if (enumMatch) {
+    const options = [...t.matchAll(/'([^']*)'/g)].map((m) => m[1]);
+    return { kind: "combobox", options };
+  }
+  return { kind: "text" };
+}

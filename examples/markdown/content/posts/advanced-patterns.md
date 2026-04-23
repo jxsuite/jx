@@ -36,8 +36,7 @@ Glob a directory of markdown files and render them as a list:
   "$src": "@jxplatform/md",
   "src": "./content/posts/*.md",
   "sortBy": "frontmatter.date",
-  "timing": "compiler",
-  "signal": true
+  "timing": "compiler"
 }
 ```
 

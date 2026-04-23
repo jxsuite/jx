@@ -90,6 +90,7 @@ import {
   inferInputType,
   friendlyNameToVar,
   varDisplayName,
+  parseCemType,
 } from "./utils/studio-utils.js";
 import { renderStatusbar, statusMessage, setStatusbarRenderer } from "./panels/statusbar.js";
 import {
@@ -105,12 +106,19 @@ import {
   setupTreeKeyboard,
 } from "./files/files.js";
 import { eventsSidebarTemplate as _eventsSidebarTemplate } from "./panels/events-panel.js";
+import { renderImportsTemplate } from "./panels/imports-panel.js";
 import { exportCemManifest as _exportCemManifest } from "./services/cem-export.js";
 
 import { registerPlatform, getPlatform, hasPlatform } from "./platform.js";
 import { createDevServerPlatform } from "./platforms/devserver.js";
 import { codeService, setLintMarkers, getFunctionArgs } from "./services/code-services.js";
-import { getEffectiveMedia, getEffectiveStyle, getEffectiveImports } from "./site-context.js";
+import {
+  getEffectiveMedia,
+  getEffectiveStyle,
+  getEffectiveImports,
+  getEffectiveElements,
+  getEffectiveHead,
+} from "./site-context.js";
 import {
   defCategory,
   defBadgeLabel,
@@ -520,9 +528,21 @@ async function renderCanvasLive(doc, canvasEl) {
     const docBase = S.documentPath ? `${location.origin}/${S.documentPath}` : undefined;
 
     // Register custom elements so the runtime can render them
-    if (renderDoc.$elements) {
-      for (const entry of renderDoc.$elements) {
-        if (entry?.$ref) {
+    const effectiveElements = getEffectiveElements(renderDoc.$elements);
+    if (effectiveElements.length) {
+      renderDoc.$elements = effectiveElements;
+      for (const entry of effectiveElements) {
+        if (typeof entry === "string") {
+          try {
+            const specifier =
+              entry.startsWith("/") || entry.startsWith(".")
+                ? entry
+                : `/${projectState?.projectRoot || ""}/node_modules/${entry}`.replace(/\/+/g, "/");
+            await import(specifier);
+          } catch (/** @type {any} */ e) {
+            console.warn("Studio: failed to import package", entry, e);
+          }
+        } else if (entry?.$ref) {
           const href = new URL(entry.$ref, docBase).href;
           try {
             await defineElement(href);
@@ -535,6 +555,33 @@ async function renderCanvasLive(doc, canvasEl) {
 
     // Inject site-level imports so buildScope can resolve $prototype names
     renderDoc.imports = getEffectiveImports(renderDoc.imports);
+
+    // Inject $head elements (link/meta/script) into document.head
+    const effectiveHead = getEffectiveHead(renderDoc.$head);
+    if (effectiveHead.length) {
+      for (const entry of effectiveHead) {
+        if (!entry?.tagName) continue;
+        const tag = entry.tagName.toLowerCase();
+        const attrs = { ...entry.attributes };
+        const root = projectState?.projectRoot || "";
+        for (const key of ["href", "src"]) {
+          if (
+            attrs[key] &&
+            !attrs[key].startsWith("/") &&
+            !attrs[key].startsWith(".") &&
+            !attrs[key].startsWith("http")
+          ) {
+            attrs[key] = `/${root}/node_modules/${attrs[key]}`.replace(/\/+/g, "/");
+          }
+        }
+        const selector = `${tag}${attrs.href ? `[href="${attrs.href}"]` : ""}${attrs.src ? `[src="${attrs.src}"]` : ""}`;
+        if (selector !== tag && document.head.querySelector(selector)) continue;
+        const el = document.createElement(tag);
+        for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, /** @type {string} */ (v));
+        if (entry.textContent) el.textContent = entry.textContent;
+        document.head.appendChild(el);
+      }
+    }
 
     const $defs = await buildScope(renderDoc, {}, docBase);
     const el = /** @type {HTMLElement} */ (
@@ -777,10 +824,10 @@ if (_openParam) {
 
           setProjectState({
             root: siteCtx.sitePath,
-            name: siteCtx.siteConfig?.name || "Project",
+            name: siteCtx.projectConfig?.name || "Project",
             projectRoot: siteCtx.relPath || ".",
             isSiteProject: true,
-            siteConfig: siteCtx.siteConfig,
+            projectConfig: siteCtx.projectConfig,
             projectDirs: [],
             dirs: new Map(),
             expanded: new Set(),
@@ -2906,7 +2953,16 @@ function renderLeftPanel() {
   let content;
   if (tab === "layers")
     content = canvasMode === "stylebook" ? renderStylebookLayersTemplate() : renderLayersTemplate();
-  else if (tab === "components") content = renderComponentsTemplate();
+  else if (tab === "imports")
+    content = renderImportsTemplate({
+      renderLeftPanel,
+      documentPath: S.documentPath,
+      documentElements: S.document.$elements || [],
+      applyMutation: (/** @type {any} */ fn) => {
+        S = applyMutation(S, fn);
+        update(S);
+      },
+    });
   else if (tab === "files") content = renderFilesTemplate();
   else if (tab === "blocks") content = renderElementsTemplate();
   else if (tab === "state") content = renderSignalsTemplate(S, { renderLeftPanel, renderCanvas });
@@ -2923,9 +2979,12 @@ function renderLeftPanel() {
 
   // Post-render side effects
   if (tab === "layers" && canvasMode !== "stylebook") registerLayersDnD();
-  else if (tab === "components") registerComponentsDnD();
-  else if (tab === "blocks") registerElementsDnD();
-  else if (tab === "files") {
+  else if (tab === "imports") {
+    /* no post-render DnD needed */
+  } else if (tab === "blocks") {
+    registerElementsDnD();
+    registerComponentsDnD();
+  } else if (tab === "files") {
     const tree = /** @type {any} */ (leftPanel)?.querySelector(".file-tree");
     if (tree) setupTreeKeyboard(tree);
   }
@@ -3368,44 +3427,6 @@ function clearLayerDropGap(container) {
   for (const r of rows) r.style.transform = "";
 }
 
-/** Returns a TemplateResult — called from renderLeftPanel when tab=components */
-function renderComponentsTemplate() {
-  if (componentRegistry.length === 0) {
-    return html`<div
-      class="empty-state"
-      style="padding:24px;text-align:center;color:var(--text-hint)"
-    >
-      No components found in this project.
-    </div>`;
-  }
-
-  return html`
-    <div class="components-section" style="padding:4px">
-      ${componentRegistry.map(
-        /** @param {any} comp */ (comp) => html`
-          <div
-            class="element-card"
-            data-component-tag=${comp.tagName}
-            @click=${() => navigateToComponent(comp.path)}
-            title=${comp.path}
-          >
-            <div class="element-card-preview">
-              <span style="color:var(--fg-dim);font-size:11px;font-style:italic"
-                >&lt;${comp.tagName}&gt;</span
-              >
-            </div>
-            <div class="element-card-label">
-              ${comp.tagName}${comp.$id
-                ? html` <span class="signal-hint">${comp.$id}</span>`
-                : nothing}
-            </div>
-          </div>
-        `,
-      )}
-    </div>
-  `;
-}
-
 /**
  * Select a tag in the stylebook — shared by layers panel click and canvas click.
  *
@@ -3575,16 +3596,32 @@ function applyDropInstruction(instruction, srcData, targetPath) {
       const comp = componentRegistry.find((/** @type {any} */ c) => c.tagName === tag);
       if (comp) {
         const elements = S.document.$elements || [];
-        const alreadyImported = elements.some(
-          (/** @type {any} */ e) =>
-            e.$ref && (e.$ref === `./${comp.path}` || e.$ref.endsWith(comp.path.split("/").pop())),
-        );
-        if (!alreadyImported) {
-          const relPath = computeRelativePath(S.documentPath, comp.path);
-          S = applyMutation(S, (/** @type {any} */ doc) => {
-            if (!doc.$elements) doc.$elements = [];
-            doc.$elements.push({ $ref: relPath });
-          });
+        if (comp.source === "npm") {
+          // npm web component: add cherry-picked subpath specifier
+          const specifier = comp.modulePath ? `${comp.package}/${comp.modulePath}` : comp.package;
+          const alreadyImported = elements.some(
+            (/** @type {any} */ e) => e === specifier || e === comp.package,
+          );
+          if (!alreadyImported) {
+            S = applyMutation(S, (/** @type {any} */ doc) => {
+              if (!doc.$elements) doc.$elements = [];
+              doc.$elements.push(specifier);
+            });
+          }
+        } else {
+          // JX component: add $ref object
+          const alreadyImported = elements.some(
+            (/** @type {any} */ e) =>
+              e.$ref &&
+              (e.$ref === `./${comp.path}` || e.$ref.endsWith(comp.path.split("/").pop())),
+          );
+          if (!alreadyImported) {
+            const relPath = computeRelativePath(S.documentPath, comp.path);
+            S = applyMutation(S, (/** @type {any} */ doc) => {
+              if (!doc.$elements) doc.$elements = [];
+              doc.$elements.push({ $ref: relPath });
+            });
+          }
         }
       }
     }
@@ -3705,6 +3742,86 @@ function renderElementsTemplate() {
     },
   );
 
+  // Components from the component registry — only show enabled (imported) npm components
+  const effectiveEls = getEffectiveElements(S.document?.$elements);
+  /** @type {Set<string>} */
+  const enabledTags = new Set();
+  for (const entry of effectiveEls) {
+    if (typeof entry !== "string") continue;
+    // Cherry-picked subpath: match by package + modulePath
+    const comp = componentRegistry.find(
+      (/** @type {any} */ c) =>
+        c.source === "npm" && c.modulePath && entry === `${c.package}/${c.modulePath}`,
+    );
+    if (comp) {
+      enabledTags.add(comp.tagName);
+    } else {
+      // Legacy full-package import: enable all components from that package
+      for (const c of componentRegistry) {
+        if (c.source === "npm" && c.package === entry) enabledTags.add(c.tagName);
+      }
+    }
+  }
+  const compsFiltered =
+    componentRegistry.length > 0
+      ? componentRegistry
+          .filter((/** @type {any} */ c) => c.source !== "npm" || enabledTags.has(c.tagName))
+          .filter(
+            (/** @type {any} */ c) =>
+              !elementsFilter || c.tagName.toLowerCase().includes(elementsFilter),
+          )
+      : [];
+
+  const componentsAccordion =
+    compsFiltered.length > 0
+      ? html`
+          <sp-accordion-item
+            label="Components"
+            ?open=${!elementsCollapsed.has("Components")}
+            @sp-accordion-item-toggle=${(/** @type {any} */ e) => {
+              if (e.target.open) elementsCollapsed.delete("Components");
+              else elementsCollapsed.add("Components");
+            }}
+          >
+            <div class="components-section">
+              ${compsFiltered.map(
+                (/** @type {any} */ comp) => html`
+                  <div
+                    class="element-card"
+                    data-component-tag=${comp.tagName}
+                    title=${comp.source === "npm"
+                      ? `${comp.package}: <${comp.tagName}>`
+                      : comp.path}
+                    @click=${() => {
+                      const parentPath = S.selection || [];
+                      const parent = getNodeAtPath(S.document, parentPath);
+                      const idx = parent?.children ? parent.children.length : 0;
+                      const instanceDef = {
+                        tagName: comp.tagName,
+                        $props: Object.fromEntries(
+                          (comp.props || []).map((/** @type {any} */ p) => [
+                            p.name,
+                            p.default !== undefined ? p.default : "",
+                          ]),
+                        ),
+                      };
+                      update(insertNode(S, parentPath, idx, structuredClone(instanceDef)));
+                    }}
+                  >
+                    <div class="element-card-preview">
+                      <span style="color:var(--fg-dim);font-size:11px;font-style:italic"
+                        >&lt;${comp.tagName}&gt;</span
+                      >
+                    </div>
+                    <div class="element-card-label">${comp.tagName}</div>
+                  </div>
+                `,
+              )}
+            </div>
+          </sp-accordion-item>
+        `
+      : nothing;
+
   return html`
     <sp-search
       size="s"
@@ -3715,7 +3832,9 @@ function renderElementsTemplate() {
         renderLeftPanel();
       }}
     ></sp-search>
-    <sp-accordion class="elements-list" allow-multiple>${categories}</sp-accordion>
+    <sp-accordion class="elements-list" allow-multiple
+      >${componentsAccordion}${categories}</sp-accordion
+    >
   `;
 }
 
@@ -3813,13 +3932,23 @@ function buildStylebookElement(entry, rootStyle, activeBreakpoints) {
  * @returns {Promise<HTMLElement>}
  */
 async function renderComponentPreview(comp) {
-  const root = projectState?.projectRoot;
-  const url = `${location.origin}/${root ? root + "/" : ""}${comp.path}`;
   try {
-    await defineElement(url);
+    if (comp.source === "npm") {
+      // npm components are already imported via $elements — check if registered
+      if (!customElements.get(comp.tagName)) {
+        throw new Error("not registered");
+      }
+    } else {
+      const root = projectState?.projectRoot;
+      const url = `${location.origin}/${root ? root + "/" : ""}${comp.path}`;
+      await defineElement(url);
+    }
     const el = document.createElement(comp.tagName);
     for (const p of comp.props || []) {
-      if (p.default !== undefined) /** @type {any} */ (el)[p.name] = p.default;
+      if (p.default !== undefined && p.default !== "false" && p.default !== "''") {
+        const val = String(p.default).replace(/^'|'$/g, "");
+        el.setAttribute(p.name, val);
+      }
     }
     return el;
   } catch (/** @type {any} */ e) {
@@ -4881,8 +5010,13 @@ function propertiesSidebarTemplate() {
     );
   }
 
-  // Collect "custom" attributes (not in html-meta)
+  // Collect "custom" attributes (not in html-meta and not CEM-defined props)
   const knownAttrNames = new Set(Object.keys(applicableAttrs));
+  // For npm web components, CEM-defined props are rendered in "Component Props"
+  if (isCustomInstance) {
+    const comp = componentRegistry.find((c) => c.tagName === node.tagName);
+    if (comp) for (const p of comp.props) knownAttrNames.add(p.name);
+  }
   const customAttrs = Object.entries(attrs).filter(([k]) => !knownAttrNames.has(k));
 
   // Auto-open sections that have set values
@@ -5372,20 +5506,148 @@ function renderComponentPropsFieldsTemplate(
 ) {
   const comp = componentRegistry.find((c) => c.tagName === node.tagName);
   if (!comp) return html`<div class="empty-state">Component not found</div>`;
-  const currentProps = node.$props || {};
+  // For npm web components, props map to attributes; for JX components, use $props
+  const isNpm = comp.source === "npm";
+  const currentVals = isNpm ? node.attributes || {} : node.$props || {};
+  const updateFn = isNpm
+    ? (/** @type {string} */ name, /** @type {any} */ v) =>
+        update(updateAttribute(S, path, name, v === "" ? undefined : v))
+    : (/** @type {string} */ name, /** @type {any} */ v) => update(updateProp(S, path, name, v));
+
+  const defs = S.document.state || {};
+  const signalDefs = Object.entries(defs).filter(
+    ([, d]) => !d.$handler && d.$prototype !== "Function",
+  );
+  const extraSignals = mapSignals;
+
   return html`
-    ${comp.props.map((/** @type {any} */ prop) =>
-      bindableFieldRow(
-        camelToLabel(prop.name),
-        "text",
-        currentProps[prop.name],
-        (/** @type {any} */ v) => update(updateProp(S, path, prop.name, v)),
-        null,
-        mapSignals,
-      ),
-    )}
+    ${comp.props.map((/** @type {any} */ prop) => {
+      const rawValue = currentVals[prop.name];
+      const isBound = typeof rawValue === "object" && rawValue !== null && rawValue.$ref;
+      const hasVal = rawValue !== undefined && rawValue !== null;
+      const parsed = parseCemType(prop.type);
+      const onChange = (/** @type {any} */ v) => updateFn(prop.name, v);
+
+      const clearProp = (/** @type {any} */ e) => {
+        e.stopPropagation();
+        updateFn(prop.name, undefined);
+      };
+
+      const onToggleBind = () => {
+        if (isBound) {
+          const ref = rawValue.$ref;
+          const defName = ref.startsWith("#/state/") ? ref.slice(8) : ref;
+          const def = defs[defName];
+          let staticVal = "";
+          if (def && def.default !== undefined)
+            staticVal =
+              typeof def.default === "object" ? JSON.stringify(def.default) : String(def.default);
+          onChange(staticVal || undefined);
+        } else {
+          if (signalDefs.length > 0) {
+            onChange({ $ref: `#/state/${signalDefs[0][0]}` });
+          } else if (extraSignals?.length > 0) {
+            onChange({ $ref: extraSignals[0].value });
+          }
+        }
+      };
+
+      // Signal picker for bound mode
+      const boundTpl = html`
+        <sp-picker
+          size="s"
+          quiet
+          placeholder="— select signal —"
+          value=${isBound && rawValue.$ref ? rawValue.$ref : nothing}
+          @change=${(/** @type {any} */ e) => {
+            if (e.target.value) onChange({ $ref: e.target.value });
+            else onChange(undefined);
+          }}
+        >
+          ${signalDefs.map(
+            ([defName]) =>
+              html`<sp-menu-item value=${`#/state/${defName}`}>${defName}</sp-menu-item>`,
+          )}
+          ${extraSignals
+            ? html`
+                <sp-menu-divider></sp-menu-divider>
+                ${extraSignals.map(
+                  (/** @type {any} */ sig) =>
+                    html`<sp-menu-item value=${sig.value}>${sig.label}</sp-menu-item>`,
+                )}
+              `
+            : nothing}
+        </sp-picker>
+      `;
+
+      // Widget based on CEM type
+      /** @type {any} */
+      let debounce;
+      const staticVal = isBound ? "" : (rawValue ?? "");
+      /** @type {any} */
+      let widgetTpl;
+      if (parsed.kind === "boolean") {
+        widgetTpl = html`<sp-checkbox
+          size="s"
+          .checked=${live(!!staticVal)}
+          @change=${(/** @type {any} */ e) => onChange(e.target.checked || undefined)}
+        ></sp-checkbox>`;
+      } else if (parsed.kind === "number") {
+        widgetTpl = html`<sp-number-field
+          size="s"
+          value=${staticVal}
+          @input=${(/** @type {any} */ e) => {
+            clearTimeout(debounce);
+            debounce = setTimeout(() => onChange(e.target.value), 400);
+          }}
+        ></sp-number-field>`;
+      } else if (parsed.kind === "combobox") {
+        const options = /** @type {string[]} */ (/** @type {any} */ (parsed).options);
+        widgetTpl = html`<jx-styled-combobox
+          .value=${String(staticVal)}
+          size="s"
+          placeholder="—"
+          .options=${options.map((o) => ({ value: o, label: camelToLabel(o) }))}
+          @change=${(/** @type {any} */ e) => onChange(e.detail?.value ?? e.target.value)}
+        ></jx-styled-combobox>`;
+      } else {
+        widgetTpl = html`<sp-textfield
+          size="s"
+          value=${staticVal}
+          @input=${(/** @type {any} */ e) => {
+            clearTimeout(debounce);
+            debounce = setTimeout(() => onChange(e.target.value), 400);
+          }}
+        ></sp-textfield>`;
+      }
+
+      return html`
+        <div class="style-row" data-prop=${prop.name}>
+          <div class="style-row-label">
+            ${hasVal
+              ? html`<span class="set-dot" title="Clear ${prop.name}" @click=${clearProp}></span>`
+              : nothing}
+            <sp-field-label size="s" title=${prop.description || prop.name}
+              >${camelToLabel(prop.name)}</sp-field-label
+            >
+            <sp-action-button
+              size="xs"
+              quiet
+              title=${isBound ? "Unbind (switch to static)" : "Bind to signal"}
+              @click=${onToggleBind}
+              >${isBound ? "\u26A1" : "\u2194"}</sp-action-button
+            >
+          </div>
+          ${isBound ? boundTpl : widgetTpl}
+        </div>
+      `;
+    })}
     ${comp.props.length === 0 ? html`<div class="empty-state">No props defined</div>` : nothing}
-    <span class="kv-add" @click=${() => navigateToComponent(comp.path)}>→ Edit definition</span>
+    ${comp.path
+      ? html`<span class="kv-add" @click=${() => navigateToComponent(comp.path)}
+          >→ Edit definition</span
+        >`
+      : nothing}
   `;
 }
 
