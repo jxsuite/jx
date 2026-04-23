@@ -1,11 +1,11 @@
 ---
-title: "Getting Started — JX Platform"
-description: "Install JX Platform and build your first component in under 5 minutes."
+title: "Getting Started — JX Suite"
+description: "Install JX Suite and build your first component in under 5 minutes."
 ---
 
 # Getting Started
 
-Get up and running with JX Platform in under 5 minutes.
+Get up and running with JX Suite in under 5 minutes.
 
 ## Installation
 
@@ -25,7 +25,7 @@ Create a file called `counter.json`:
 
 ```json
 {
-  "tagName": "div",
+  "tagName": "my-counter",
   "state": {
     "count": 0,
     "increment": {
@@ -35,13 +35,13 @@ Create a file called `counter.json`:
   },
   "children": [
     {
-      "tagName": "p",
-      "textContent": "Count: ${state.count}"
+      "tagName": "span",
+      "textContent": "${state.count}"
     },
     {
       "tagName": "button",
-      "textContent": "Increment",
-      "events": { "click": { "$ref": "#/state/increment" } }
+      "textContent": "+",
+      "onclick": { "$ref": "#/state/increment" }
     }
   ]
 }
@@ -51,7 +51,7 @@ This defines a reactive counter component entirely in JSON — state, behavior, 
 
 ## Run the Dev Server
 
-Create a minimal HTML shell and start the dev server:
+Start the development server:
 
 ```bash
 bun run dev
@@ -71,7 +71,8 @@ The output goes to `dist/` — plain HTML, CSS, and optional JavaScript. Deploy 
 
 ## What's Next
 
-- **Explore the examples** — Counter, todo list, forms, markdown, and more in the `examples/` directory
-- **Read the site architecture spec** — Learn about file-based routing, layouts, content collections, and multi-page builds
-- **Try JX Studio** — The visual IDE for designing and editing JX components on a canvas
-- **Browse the source** — [github.com/jxplatform/jx](https://github.com/jxplatform/jx)
+- **[Spec Overview](/docs/spec)** — The full Jx specification
+- **[Component Model](/docs/components)** — How components work
+- **[Reactivity](/docs/reactivity)** — Template strings, signals, and computed values
+- **[Styling](/docs/styling)** — Inline styles, nested selectors, media breakpoints
+- **[Site Architecture](/docs/site-architecture)** — Routing, layouts, content collections

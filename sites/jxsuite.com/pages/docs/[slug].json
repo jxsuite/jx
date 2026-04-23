@@ -1,0 +1,29 @@
+{
+  "$layout": "../../layouts/docs.json",
+  "$paths": {
+    "collection": "docs",
+    "param": "slug",
+    "field": "id"
+  },
+  "title": "${state.page.data.title}",
+  "$head": [
+    {
+      "tagName": "meta",
+      "attributes": { "name": "description", "content": "${state.page.data.description}" }
+    }
+  ],
+  "state": {
+    "page": {
+      "$prototype": "ContentEntry",
+      "collection": "docs",
+      "id": { "$ref": "#/$params/slug" }
+    }
+  },
+  "children": [
+    {
+      "tagName": "article",
+      "style": { "maxWidth": "720px" },
+      "innerHTML": "${state.page.rendered}"
+    }
+  ]
+}
