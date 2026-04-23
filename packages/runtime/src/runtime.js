@@ -20,7 +20,7 @@ import { reactive, ref, computed, effect, isRef, onEffectCleanup } from "@vue/re
  * Mount a Jx document into a DOM container.
  *
  * @example
- *   import { Jx } from "@jxplatform/runtime";
+ *   import { Jx } from "@jxsuite/runtime";
  *   const state = await Jx("./counter.json", document.getElementById("app"));
  *
  * @param {string | Record<string, any>} source - Path to .json file, URL, or raw document object

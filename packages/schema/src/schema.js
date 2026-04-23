@@ -614,7 +614,7 @@ export async function generateSchema() {
           $src: {
             description: "External module specifier. Required when $prototype is not a built-in.",
             type: "string",
-            examples: ["@jxplatform/md", "./lib/my-parser.js", "npm:@myorg/data"],
+            examples: ["@jxsuite/md", "./lib/my-parser.js", "npm:@myorg/data"],
           },
           $export: {
             description: "Named export in $src module. Defaults to the $prototype value.",
@@ -1109,8 +1109,8 @@ export function generateProjectSchema() {
         additionalProperties: { type: "string" },
         examples: [
           {
-            MarkdownFile: "@jxplatform/parser/MarkdownFile.class.json",
-            MarkdownCollection: "@jxplatform/parser/MarkdownCollection.class.json",
+            MarkdownFile: "@jxsuite/parser/MarkdownFile.class.json",
+            MarkdownCollection: "@jxsuite/parser/MarkdownCollection.class.json",
           },
         ],
       },

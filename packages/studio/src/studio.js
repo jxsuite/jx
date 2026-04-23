@@ -62,7 +62,7 @@ import {
   setProjectState,
 } from "./store.js";
 
-import { renderNode as runtimeRenderNode, buildScope, defineElement } from "@jxplatform/runtime";
+import { renderNode as runtimeRenderNode, buildScope, defineElement } from "@jxsuite/runtime";
 
 import {
   startEditing,

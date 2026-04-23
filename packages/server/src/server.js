@@ -1,6 +1,6 @@
 /**
  * @example
- *   import { createDevServer } from "@jxplatform/server";
+ *   import { createDevServer } from "@jxsuite/server";
  *
  *   await createDevServer({
  *   root: import.meta.dir,
@@ -27,7 +27,7 @@ import { existsSync, readFileSync } from "node:fs";
  * /pages/@scope/pkg/file → @scope/pkg/file).
  *
  * @param {string} root - Absolute project root
- * @param {string} urlPath - URL pathname (e.g. "/pages/@jxplatform/parser/Foo.class.json")
+ * @param {string} urlPath - URL pathname (e.g. "/pages/@jxsuite/parser/Foo.class.json")
  * @returns {string | null} Absolute file path or null
  */
 function resolveNpmPath(root, urlPath) {
@@ -141,7 +141,7 @@ export async function createDevServer(options) {
     middleware,
   } = options;
 
-  if (!root) throw new Error("@jxplatform/server: root is required");
+  if (!root) throw new Error("@jxsuite/server: root is required");
   const absRoot = resolve(root);
 
   // ─── Build pipeline ─────────────────────────────────────────────────────────
@@ -247,7 +247,7 @@ export async function createDevServer(options) {
     },
   });
 
-  console.log(`\n@jxplatform/server listening on http://localhost:${server.port}`);
+  console.log(`\n@jxsuite/server listening on http://localhost:${server.port}`);
 
   return server;
 }
