@@ -4,7 +4,7 @@
   "description": "Jx static HTML compiler, island detector, and site builder",
   "license": "MIT",
   "bin": {
-    "jx-build": "./src/cli-build.js"
+    "jx": "./src/cli.js"
   },
   "files": [
     "src/",
@@ -24,7 +24,7 @@
   "scripts": {
     "test": "bun test",
     "build": "bun build src/compiler.js --outdir=dist --format=esm --minify",
-    "build:site": "bun src/cli-build.js",
+    "build:site": "bun src/cli.js build",
     "upgrade": "bunx npm-check-updates -u && bun install"
   },
   "dependencies": {

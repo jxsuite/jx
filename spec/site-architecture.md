@@ -136,7 +136,7 @@ The `project.json` file at the project root defines site-wide settings. It is th
 
 ```json
 {
-  "$schema": "https://jxplatform.net/schemas/site.schema.json",
+  "$schema": "https://jxsuite.com/schema/project/v1",
   "name": "My Site",
   "url": "https://example.com",
 
@@ -500,7 +500,7 @@ Collections are defined in `the `collections` key in project.json`:
 
 ```json
 {
-  "$schema": "https://jxplatform.net/schemas/content-config.schema.json",
+  "$schema": "https://jxsuite.com/schema/project/v1",
   "collections": {
     "blog": {
       "source": "./blog/**/*.md",

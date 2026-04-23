@@ -701,7 +701,7 @@
         "$src": {
           "description": "External module specifier. Required when $prototype is not a built-in.",
           "type": "string",
-          "examples": ["@jxsuite/md", "./lib/my-parser.js", "npm:@myorg/data"]
+          "examples": ["@jxplatform/md", "./lib/my-parser.js", "npm:@myorg/data"]
         },
         "$export": {
           "description": "Named export in $src module. Defaults to the $prototype value.",

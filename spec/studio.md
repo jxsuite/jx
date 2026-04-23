@@ -104,7 +104,7 @@ Registration: `registerPlatform(impl)` at startup, `getPlatform()` for access.
 Studio supports opening projects via URL query parameter with absolute system paths:
 
 ```
-http://localhost:3000/packages/studio/index.html?open=~/Development/jx/sites/jxplatform.net/project.json
+http://localhost:3000/packages/studio/index.html?open=~/Development/jx/sites/jxsuite.com/project.json
 ```
 
 The `?open=` path must point to a `project.json` file. On startup, Studio checks for this parameter, resolves the path via the PAL, and loads the project. This enables direct-linking to projects from terminals, scripts, and documentation.

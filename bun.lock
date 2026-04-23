@@ -31,7 +31,7 @@
       "name": "@jxsuite/compiler",
       "version": "0.4.0",
       "bin": {
-        "jx-build": "./src/cli-build.js",
+        "jx": "./src/cli.js",
       },
       "dependencies": {
         "@apidevtools/json-schema-ref-parser": "^15.3.5",
@@ -150,6 +150,7 @@
     "sites/jxsuite.com": {
       "name": "@jxsuite/site-jxsuite.com",
       "dependencies": {
+        "@jxsuite/compiler": "workspace:*",
         "@jxsuite/parser": "workspace:*",
       },
     },

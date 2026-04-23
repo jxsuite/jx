@@ -47,6 +47,24 @@
     "backgroundColor": "var(--bg-primary)",
     "color": "var(--text-primary)"
   },
+  "collections": {
+    "docs": {
+      "source": "./content/docs/*.md",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "title": { "type": "string" },
+          "description": { "type": "string" }
+        },
+        "required": ["title"]
+      }
+    }
+  },
+  "copy": {
+    "../../packages/schema/schema.json": "schema/v1/index.json",
+    "../../packages/schema/project-schema.json": "schema/project/v1/index.json",
+    "../../packages/schema/class-schema.json": "schema/class/v1/index.json"
+  },
   "build": {
     "outDir": "./dist",
     "format": "directory",

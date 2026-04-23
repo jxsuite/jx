@@ -110,8 +110,8 @@
       },
       "examples": [
         {
-          "MarkdownFile": "@jxsuite/parser/MarkdownFile.class.json",
-          "MarkdownCollection": "@jxsuite/parser/MarkdownCollection.class.json"
+          "MarkdownFile": "@jxplatform/parser/MarkdownFile.class.json",
+          "MarkdownCollection": "@jxplatform/parser/MarkdownCollection.class.json"
         }
       ]
     },
@@ -199,6 +199,13 @@
           "/old-about": "/about"
         }
       ]
+    },
+    "copy": {
+      "description": "Declarative file copy map. Keys are source paths (relative to project root), values are destination paths (relative to outDir).",
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
     },
     "build": {
       "description": "Build configuration.",

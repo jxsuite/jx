@@ -1,5 +1,5 @@
 {
-  "$layout": "../../layouts/docs.json",
+  "$layout": "./layouts/docs.json",
   "$paths": {
     "collection": "docs",
     "param": "slug",

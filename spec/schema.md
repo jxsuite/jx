@@ -36,7 +36,7 @@ The component schema is derived at generation time from web standards data (`@we
 
 ### 3.1 Component Schema (`schema.json`)
 
-**`$id`:** `https://jxplatform.net/schema/v1`
+**`$id`:** `https://jxsuite.com/schema/v1`
 
 Root-level fields: `$schema`, `$id`, `$defs`, `state`, `tagName`, `children`, `$media`, `$elements`, `$head`, `$layout`, `$paths`, `title`, `imports`, `observedAttributes`, `cases`, `style`, `attributes`.
 
@@ -91,7 +91,7 @@ All 13 built-in prototypes with their specific configuration properties:
 
 ### 3.2 Project Schema (`project-schema.json`)
 
-**`$id`:** `https://jxplatform.net/schema/project/v1`
+**`$id`:** `https://jxsuite.com/schema/project/v1`
 
 Validates `project.json` files with:
 
@@ -110,7 +110,7 @@ Validates `project.json` files with:
 
 ### 3.3 Class Schema (`class-schema.json`)
 
-**`$id`:** `https://jxplatform.net/schema/class/v1`
+**`$id`:** `https://jxsuite.com/schema/class/v1`
 
 Validates `.class.json` files with:
 
@@ -143,15 +143,15 @@ The component schema is regenerated when web standards packages are updated. The
 Three JSON Schema 2020-12 documents:
 
 ```json
-{ "$schema": "https://jxplatform.net/schema/v1" }
+{ "$schema": "https://jxsuite.com/schema/v1" }
 ```
 
 ```json
-{ "$schema": "https://jxplatform.net/schema/project/v1" }
+{ "$schema": "https://jxsuite.com/schema/project/v1" }
 ```
 
 ```json
-{ "$schema": "https://jxplatform.net/schema/class/v1" }
+{ "$schema": "https://jxsuite.com/schema/class/v1" }
 ```
 
 ---

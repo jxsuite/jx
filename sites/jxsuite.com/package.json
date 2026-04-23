@@ -3,7 +3,11 @@
   "private": true,
   "description": "Jx platform home page and documentation",
   "license": "MIT",
+  "scripts": {
+    "build": "jx build"
+  },
   "dependencies": {
+    "@jxsuite/compiler": "workspace:*",
     "@jxsuite/parser": "workspace:*"
   }
 }

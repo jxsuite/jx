@@ -111,7 +111,7 @@ export async function generateSchema() {
 
   return {
     $schema: "https://json-schema.org/draft/2020-12/schema",
-    $id: "https://jxplatform.net/schema/v1",
+    $id: "https://jxsuite.com/schema/v1",
     title: "Jx Document",
     description:
       "Schema for Jx component files. " +
@@ -125,7 +125,7 @@ export async function generateSchema() {
       $schema: {
         description: "URI identifying the Jx dialect version. Enables schema-aware IDE tooling.",
         type: "string",
-        examples: ["https://jxplatform.net/schema/v1"],
+        examples: ["https://jxsuite.com/schema/v1"],
       },
       $id: {
         description: "Component identifier string. Used by tooling and the builder.",
@@ -1017,7 +1017,7 @@ function buildCssProperties(cssProps) {
 export function generateProjectSchema() {
   return {
     $schema: "https://json-schema.org/draft/2020-12/schema",
-    $id: "https://jxplatform.net/schema/project/v1",
+    $id: "https://jxsuite.com/schema/project/v1",
     title: "Jx Project",
     description:
       "Schema for Jx project.json files. " +
@@ -1036,7 +1036,7 @@ export function generateProjectSchema() {
       url: {
         description: "Production URL of the deployed site.",
         type: "string",
-        examples: ["https://example.com", "https://jxplatform.net"],
+        examples: ["https://example.com", "https://jxsuite.com"],
       },
       defaults: {
         description: "Default settings applied to all pages unless overridden.",
@@ -1181,6 +1181,12 @@ export function generateProjectSchema() {
         additionalProperties: { type: "string" },
         examples: [{ "/old-about": "/about" }],
       },
+      copy: {
+        description:
+          "Declarative file copy map. Keys are source paths (relative to project root), values are destination paths (relative to outDir).",
+        type: "object",
+        additionalProperties: { type: "string" },
+      },
       build: {
         description: "Build configuration.",
         type: "object",
@@ -1248,7 +1254,7 @@ export function generateProjectSchema() {
 export function generateClassSchema() {
   return {
     $schema: "https://json-schema.org/draft/2020-12/schema",
-    $id: "https://jxplatform.net/schema/class/v1",
+    $id: "https://jxsuite.com/schema/class/v1",
     title: "Jx Class Definition",
     description:
       "Schema for Jx .class.json files. A class definition describes a schema-defined " +
