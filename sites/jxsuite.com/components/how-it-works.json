@@ -1,0 +1,180 @@
+{
+  "tagName": "how-it-works",
+  "style": {
+    "padding": "clamp(3rem, 6vw, 5rem) clamp(1rem, 3vw, 2rem)",
+    "borderTop": "1px solid var(--border)"
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "style": { "maxWidth": "var(--max-width)", "margin": "0 auto" },
+      "children": [
+        {
+          "tagName": "h2",
+          "style": {
+            "fontSize": "clamp(1.5rem, 3vw, 2rem)",
+            "fontWeight": "700",
+            "letterSpacing": "-0.02em",
+            "margin": "0 0 0.75rem",
+            "textAlign": "center"
+          },
+          "children": ["How it works"]
+        },
+        {
+          "tagName": "p",
+          "style": {
+            "color": "var(--text-secondary)",
+            "textAlign": "center",
+            "maxWidth": "480px",
+            "margin": "0 auto 3rem",
+            "fontSize": "1.0625rem"
+          },
+          "children": ["Three steps from JSON to production."]
+        },
+        {
+          "tagName": "div",
+          "style": {
+            "display": "grid",
+            "gridTemplateColumns": "repeat(3, 1fr)",
+            "gap": "2rem",
+            "@(max-width: 767px)": { "gridTemplateColumns": "1fr" }
+          },
+          "children": [
+            {
+              "tagName": "div",
+              "style": {
+                "textAlign": "center",
+                "padding": "2rem 1.5rem"
+              },
+              "children": [
+                {
+                  "tagName": "div",
+                  "style": {
+                    "width": "3rem",
+                    "height": "3rem",
+                    "borderRadius": "50%",
+                    "border": "2px solid var(--border)",
+                    "display": "flex",
+                    "alignItems": "center",
+                    "justifyContent": "center",
+                    "margin": "0 auto 1.25rem",
+                    "fontFamily": "var(--font-mono)",
+                    "fontSize": "0.875rem",
+                    "fontWeight": "700",
+                    "color": "var(--accent)"
+                  },
+                  "children": ["1"]
+                },
+                {
+                  "tagName": "h3",
+                  "style": { "fontSize": "1.0625rem", "fontWeight": "600", "margin": "0 0 0.5rem" },
+                  "children": ["Write JSON"]
+                },
+                {
+                  "tagName": "p",
+                  "style": {
+                    "color": "var(--text-secondary)",
+                    "fontSize": "0.875rem",
+                    "margin": "0",
+                    "lineHeight": "1.6"
+                  },
+                  "children": [
+                    "Define components, pages, state, and behavior as structured JSON documents. Or design them visually in Studio."
+                  ]
+                }
+              ]
+            },
+            {
+              "tagName": "div",
+              "style": {
+                "textAlign": "center",
+                "padding": "2rem 1.5rem"
+              },
+              "children": [
+                {
+                  "tagName": "div",
+                  "style": {
+                    "width": "3rem",
+                    "height": "3rem",
+                    "borderRadius": "50%",
+                    "border": "2px solid var(--border)",
+                    "display": "flex",
+                    "alignItems": "center",
+                    "justifyContent": "center",
+                    "margin": "0 auto 1.25rem",
+                    "fontFamily": "var(--font-mono)",
+                    "fontSize": "0.875rem",
+                    "fontWeight": "700",
+                    "color": "var(--accent)"
+                  },
+                  "children": ["2"]
+                },
+                {
+                  "tagName": "h3",
+                  "style": { "fontSize": "1.0625rem", "fontWeight": "600", "margin": "0 0 0.5rem" },
+                  "children": ["Compile"]
+                },
+                {
+                  "tagName": "p",
+                  "style": {
+                    "color": "var(--text-secondary)",
+                    "fontSize": "0.875rem",
+                    "margin": "0",
+                    "lineHeight": "1.6"
+                  },
+                  "children": [
+                    "The compiler produces static HTML and CSS with zero JavaScript by default. Reactive islands hydrate only where needed."
+                  ]
+                }
+              ]
+            },
+            {
+              "tagName": "div",
+              "style": {
+                "textAlign": "center",
+                "padding": "2rem 1.5rem"
+              },
+              "children": [
+                {
+                  "tagName": "div",
+                  "style": {
+                    "width": "3rem",
+                    "height": "3rem",
+                    "borderRadius": "50%",
+                    "border": "2px solid var(--border)",
+                    "display": "flex",
+                    "alignItems": "center",
+                    "justifyContent": "center",
+                    "margin": "0 auto 1.25rem",
+                    "fontFamily": "var(--font-mono)",
+                    "fontSize": "0.875rem",
+                    "fontWeight": "700",
+                    "color": "var(--accent)"
+                  },
+                  "children": ["3"]
+                },
+                {
+                  "tagName": "h3",
+                  "style": { "fontSize": "1.0625rem", "fontWeight": "600", "margin": "0 0 0.5rem" },
+                  "children": ["Deploy"]
+                },
+                {
+                  "tagName": "p",
+                  "style": {
+                    "color": "var(--text-secondary)",
+                    "fontSize": "0.875rem",
+                    "margin": "0",
+                    "lineHeight": "1.6"
+                  },
+                  "children": [
+                    "Ship to any static host \u2014 Netlify, Vercel, Cloudflare Pages, or a plain web server. No server runtime required."
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

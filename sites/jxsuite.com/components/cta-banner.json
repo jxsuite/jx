@@ -1,0 +1,84 @@
+{
+  "tagName": "cta-banner",
+  "style": {
+    "padding": "clamp(4rem, 8vw, 6rem) clamp(1rem, 3vw, 2rem)",
+    "borderTop": "1px solid var(--border)",
+    "textAlign": "center",
+    "background": "radial-gradient(ellipse 60% 50% at 50% 100%, rgba(59, 130, 246, 0.08), transparent)"
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "style": { "maxWidth": "560px", "margin": "0 auto" },
+      "children": [
+        {
+          "tagName": "h2",
+          "style": {
+            "fontSize": "clamp(1.5rem, 3vw, 2.25rem)",
+            "fontWeight": "700",
+            "letterSpacing": "-0.02em",
+            "margin": "0 0 1rem"
+          },
+          "children": ["Ready to build?"]
+        },
+        {
+          "tagName": "p",
+          "style": {
+            "color": "var(--text-secondary)",
+            "margin": "0 0 2rem",
+            "fontSize": "1.0625rem",
+            "lineHeight": "1.7"
+          },
+          "children": [
+            "Start building your next site with JX Suite. JSON in, HTML out. Zero lock-in."
+          ]
+        },
+        {
+          "tagName": "div",
+          "style": {
+            "display": "flex",
+            "gap": "0.75rem",
+            "justifyContent": "center",
+            "flexWrap": "wrap"
+          },
+          "children": [
+            {
+              "tagName": "a",
+              "attributes": { "href": "/docs/getting-started" },
+              "style": {
+                "display": "inline-flex",
+                "alignItems": "center",
+                "backgroundColor": "var(--accent)",
+                "color": "white",
+                "padding": "0.6875rem 1.75rem",
+                "borderRadius": "var(--radius)",
+                "textDecoration": "none",
+                "fontWeight": "600",
+                "fontSize": "0.9375rem",
+                "transition": "background-color 0.15s"
+              },
+              "children": ["Get Started"]
+            },
+            {
+              "tagName": "a",
+              "attributes": { "href": "/docs/spec" },
+              "style": {
+                "display": "inline-flex",
+                "alignItems": "center",
+                "color": "var(--text-secondary)",
+                "padding": "0.6875rem 1.75rem",
+                "borderRadius": "var(--radius)",
+                "textDecoration": "none",
+                "fontWeight": "600",
+                "fontSize": "0.9375rem",
+                "border": "1px solid var(--border)",
+                "transition": "border-color 0.15s, color 0.15s"
+              },
+              "children": ["Read the Spec"]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
