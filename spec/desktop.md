@@ -27,11 +27,11 @@
 
 Jx Studio is designed for three deployment targets that share a single core codebase:
 
-| Target          | Runtime                           | Backend                          | Storage                   | Status                      |
-| --------------- | --------------------------------- | -------------------------------- | ------------------------- | --------------------------- |
-| **Desktop app** | ElectroBun (Bun + native webview) | Bun process (local)              | Filesystem                | Primary target              |
+| Target          | Runtime                           | Backend                       | Storage                   | Status                      |
+| --------------- | --------------------------------- | ----------------------------- | ------------------------- | --------------------------- |
+| **Desktop app** | ElectroBun (Bun + native webview) | Bun process (local)           | Filesystem                | Primary target              |
 | **Dev mode**    | Chrome                            | `@jxsuite/server` (localhost) | Filesystem via dev server | Active (Studio development) |
-| **SaaS/PaaS**   | Browser                           | Cloud API server                 | Database / object storage | Future                      |
+| **SaaS/PaaS**   | Browser                           | Cloud API server              | Database / object storage | Future                      |
 
 The studio package (`@jxsuite/studio`) contains all UI logic and is backend-agnostic. It communicates with its environment through a **Platform Abstraction Layer (PAL)** — an interface that each deployment target implements. The server package (`@jxsuite/server`) is one such implementation; the ElectroBun Bun process is another; a cloud API server is a third.
 
@@ -300,7 +300,7 @@ The Backend API Contract defines the operations that any Studio backend must sup
 
 ### 5.1 File Operations
 
-| Operation           | `@jxsuite/server` endpoint   | PAL method                 |
+| Operation           | `@jxsuite/server` endpoint      | PAL method                 |
 | ------------------- | ------------------------------- | -------------------------- |
 | List directory      | `GET /__studio/files?dir=`      | `listDirectory(dir)`       |
 | Read file           | `GET /__studio/file?path=`      | `readFile(path)`           |
@@ -313,24 +313,24 @@ The Backend API Contract defines the operations that any Studio backend must sup
 ### 5.2 Project Operations
 
 | Operation        | `@jxsuite/server` endpoint | PAL method                   |
-| ---------------- | ----------------------------- | ---------------------------- |
-| Open project     | N/A (client-side dialog)      | `openProject()`              |
-| Project metadata | `GET /__studio/project`       | Derived from `ProjectHandle` |
+| ---------------- | -------------------------- | ---------------------------- |
+| Open project     | N/A (client-side dialog)   | `openProject()`              |
+| Project metadata | `GET /__studio/project`    | Derived from `ProjectHandle` |
 
 ### 5.3 Code Services (Optional)
 
-| Operation   | `@jxsuite/server` endpoint | PAL method                    |
-| ----------- | ----------------------------- | ----------------------------- |
-| Format code | `POST /__studio/code/format`  | `codeService("format", code)` |
-| Lint code   | `POST /__studio/code/lint`    | `codeService("lint", code)`   |
-| Minify code | `POST /__studio/code/minify`  | `codeService("minify", code)` |
+| Operation   | `@jxsuite/server` endpoint   | PAL method                    |
+| ----------- | ---------------------------- | ----------------------------- |
+| Format code | `POST /__studio/code/format` | `codeService("format", code)` |
+| Lint code   | `POST /__studio/code/lint`   | `codeService("lint", code)`   |
+| Minify code | `POST /__studio/code/minify` | `codeService("minify", code)` |
 
 ### 5.4 Runtime Services (Optional)
 
 | Operation               | `@jxsuite/server` endpoint | PAL method                       |
-| ----------------------- | ----------------------------- | -------------------------------- |
-| Resolve $prototype/$src | `POST /__jx_resolve__`        | `resolvePrototype(payload)`      |
-| Execute server function | `POST /__jx_server__`         | `executeServerFunction(payload)` |
+| ----------------------- | -------------------------- | -------------------------------- |
+| Resolve $prototype/$src | `POST /__jx_resolve__`     | `resolvePrototype(payload)`      |
+| Execute server function | `POST /__jx_server__`      | `executeServerFunction(payload)` |
 
 Optional methods may not exist on all platforms. Studio must check for their presence before calling:
 

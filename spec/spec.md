@@ -1169,7 +1169,7 @@ Custom elements render to the light DOM (no Shadow DOM). Style scoping uses `dat
 
 |          | Development           | Production                       |
 | -------- | --------------------- | -------------------------------- |
-| Renderer | `@jxsuite/runtime` | `lit-html`                       |
+| Renderer | `@jxsuite/runtime`    | `lit-html`                       |
 | State    | `@vue/reactivity`     | `@vue/reactivity`                |
 | Source   | JSON interpreted live | JSON compiled away               |
 | Bundle   | `.json` + runtime     | `.js` classes only (~10 kB deps) |
