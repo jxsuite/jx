@@ -183,8 +183,8 @@ The `project.json` file at the project root defines site-wide settings. It is th
   },
 
   "imports": {
-    "MarkdownCollection": "@jxplatform/parser",
-    "MarkdownFile": "@jxplatform/parser"
+    "MarkdownCollection": "@jxsuite/parser",
+    "MarkdownFile": "@jxsuite/parser"
   },
 
   "redirects": {
@@ -574,7 +574,7 @@ Collections are defined in `the `collections` key in project.json`:
 
 ### 6.3 Schema Validation
 
-Collection schemas are standard JSON Schema. The `@jxplatform/schema` package already generates JSON Schema from web platform IDL — the same infrastructure validates content entries.
+Collection schemas are standard JSON Schema. The `@jxsuite/schema` package already generates JSON Schema from web platform IDL — the same infrastructure validates content entries.
 
 At build time:
 
@@ -1149,7 +1149,7 @@ jx build                 # Full static site build
 jx preview               # Serve dist/ locally
 ```
 
-These are thin wrappers around `@jxplatform/server` (dev) and a new `@jxplatform/build` entry point that will invoke the compiler in multi-page mode.
+These are thin wrappers around `@jxsuite/server` (dev) and a new `@jxsuite/build` entry point that will invoke the compiler in multi-page mode.
 
 ### 12.3 Incremental Builds
 

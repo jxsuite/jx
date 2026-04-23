@@ -325,8 +325,12 @@ export function resolveRefValue(refValue, scope) {
  * @returns {any}
  */
 export function evaluateStaticTemplate(str, scope) {
-  const fn = new Function("state", "$map", `return \`${str}\``);
-  return fn(scope, scope?.$map);
+  try {
+    const fn = new Function("state", "$map", `return \`${str}\``);
+    return fn(scope, scope?.$map);
+  } catch {
+    return null;
+  }
 }
 
 /**

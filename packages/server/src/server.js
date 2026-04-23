@@ -7,7 +7,7 @@
  *   builds: [{ entrypoints: ["./src/app.js"], outdir: "./dist", match: /src/, label: "app" }],
  *   });
  *
- *   jxplatform/server — Jx development server
+ *   jxsuite/server — Jx development server
  *
  *   Provides builds, live reload, $src module proxying, timing: "server" function
  *   proxying, and studio filesystem integration as a single createDevServer() call.

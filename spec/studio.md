@@ -1,4 +1,4 @@
-# `@jxplatform/studio` Specification
+# `@jxsuite/studio` Specification
 
 ## Visual Builder for Jx Documents
 
@@ -19,9 +19,9 @@ At the component level, Studio is a visual builder for individual Jx files. At t
 ## 2. Design Principles
 
 1. **JSON is the source of truth** — Studio reads and writes `.json` files. No proprietary intermediate format.
-2. **Canvas is the runtime** — The preview canvas renders via `@jxplatform/runtime`, showing exactly what users will see.
+2. **Canvas is the runtime** — The preview canvas renders via `@jxsuite/runtime`, showing exactly what users will see.
 3. **Zero lock-in** — Studio edits produce standard Jx files. Any editor can open them.
-4. **Self-hosting** — Studio is itself a Jx application served by `@jxplatform/server`.
+4. **Self-hosting** — Studio is itself a Jx application served by `@jxsuite/server`.
 5. **Developer-first** — Keyboard shortcuts, undo/redo, and code editing are first-class.
 
 ---
@@ -94,7 +94,7 @@ Studio uses a platform abstraction (`platform.js`) to decouple UI from backend:
 Three platform targets:
 
 - **DevServer** (`platforms/devserver.js`) — Wraps `/__studio/*` fetch calls for Chrome-based development.
-- **Desktop** (`@jxplatform/desktop`) — ElectroBun app with RPC to Bun process for native file I/O.
+- **Desktop** (`@jxsuite/desktop`) — ElectroBun app with RPC to Bun process for native file I/O.
 - **Cloud** — Future SaaS target.
 
 Registration: `registerPlatform(impl)` at startup, `getPlatform()` for access.
@@ -129,7 +129,7 @@ When navigating between components, pages, and layouts within a project, the sit
 
 ### 4.1 Rendering
 
-The canvas renders the current document using `@jxplatform/runtime`. It shows exactly what the component looks like at runtime — no simulation or approximation. When a site context is active (§3.6), the canvas applies the site's global styles, CSS custom properties, and media breakpoints so that every file is rendered in its true site context.
+The canvas renders the current document using `@jxsuite/runtime`. It shows exactly what the component looks like at runtime — no simulation or approximation. When a site context is active (§3.6), the canvas applies the site's global styles, CSS custom properties, and media breakpoints so that every file is rendered in its true site context.
 
 ### 4.2 Modes
 
@@ -422,7 +422,7 @@ The studio tracks:
 
 ### 9.2 Server Integration
 
-All file operations go through the Platform Abstraction Layer, which maps to `@jxplatform/server` Studio API endpoints:
+All file operations go through the Platform Abstraction Layer, which maps to `@jxsuite/server` Studio API endpoints:
 
 - List directories with glob patterns
 - Read/write/delete/rename files
@@ -449,7 +449,7 @@ All file operations go through the Platform Abstraction Layer, which maps to `@j
 
 | Package                             | Purpose                      |
 | ----------------------------------- | ---------------------------- |
-| `@jxplatform/runtime`               | Canvas rendering             |
+| `@jxsuite/runtime`               | Canvas rendering             |
 | `@atlaskit/pragmatic-drag-and-drop` | Layer tree drag-and-drop     |
 | `lit-html`                          | Studio UI template rendering |
 | `monaco-editor`                     | Code editor                  |
@@ -477,4 +477,4 @@ See the [Site Architecture Specification](site-architecture.md) for full design 
 
 ---
 
-_`@jxplatform/studio` Specification v2.1.0-draft_
+_`@jxsuite/studio` Specification v2.1.0-draft_

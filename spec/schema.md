@@ -1,4 +1,4 @@
-# `@jxplatform/schema` Specification
+# `@jxsuite/schema` Specification
 
 ## JSON Schema 2020-12 Meta-Schema Generator
 
@@ -10,7 +10,7 @@
 
 ## 1. Overview
 
-`@jxplatform/schema` generates three Jx meta-schemas — JSON Schema 2020-12 documents that validate Jx source files:
+`@jxsuite/schema` generates three Jx meta-schemas — JSON Schema 2020-12 documents that validate Jx source files:
 
 1. **Component schema** (`schema.json`) — validates Jx component, page, and layout files
 2. **Project schema** (`project-schema.json`) — validates `project.json` configuration files
@@ -166,4 +166,4 @@ Three JSON Schema 2020-12 documents:
 
 ---
 
-_`@jxplatform/schema` Specification v2.0.0-draft_
+_`@jxsuite/schema` Specification v2.0.0-draft_
