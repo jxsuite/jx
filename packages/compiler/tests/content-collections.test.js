@@ -46,7 +46,7 @@ beforeAll(() => {
     build: { outDir: "./dist" },
     collections: {
       blog: {
-        source: "./blog/**/*.md",
+        source: "./content/blog/**/*.md",
         schema: {
           type: "object",
           properties: {
@@ -60,7 +60,7 @@ beforeAll(() => {
         },
       },
       authors: {
-        source: "./authors/*.json",
+        source: "./content/authors/*.json",
         schema: {
           type: "object",
           properties: {
@@ -71,7 +71,7 @@ beforeAll(() => {
         },
       },
       products: {
-        source: "./products/catalog.csv",
+        source: "./content/products/catalog.csv",
         schema: {
           type: "object",
           properties: {
@@ -226,9 +226,10 @@ describe("content-loader", () => {
       expect(result.config.collections.products).toBeDefined();
     });
 
-    it("returns null when no content directory", () => {
-      const result = loadContentConfig("/tmp/nope-" + Date.now());
-      expect(result).toBeNull();
+    it("returns empty collections when no project config", () => {
+      const result = /** @type {any} */ (loadContentConfig("/tmp/nope-" + Date.now()));
+      expect(result).not.toBeNull();
+      expect(result.config.collections).toEqual({});
     });
   });
 

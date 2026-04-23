@@ -1,0 +1,48 @@
+name: Deploy jxsuite.com
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "sites/jxsuite.com/**"
+      - "packages/schema/**"
+      - "packages/compiler/**"
+      - "packages/runtime/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install
+
+      - run: bun run generate:schema
+
+      - run: bun run --cwd sites/jxsuite.com build
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: sites/jxsuite.com/dist
+
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -180,7 +180,18 @@ export async function buildSite(projectRoot, options = {}) {
     cpSync(publicDir, outDir, { recursive: true });
   }
 
-  // ── 8. Summary ──────────────────────────────────────────────────────────
+  // ── 8. Copy declarative file mappings ──────────────────────────────────
+  if (projectConfig.copy) {
+    log("Copying mapped files...");
+    for (const [src, dest] of Object.entries(projectConfig.copy)) {
+      const srcPath = resolve(projectRoot, /** @type {string} */ (src));
+      const destPath = resolve(outDir, /** @type {string} */ (dest));
+      mkdirSync(dirname(destPath), { recursive: true });
+      cpSync(srcPath, destPath);
+    }
+  }
+
+  // ── 9. Summary ──────────────────────────────────────────────────────────
   log(`\nBuild complete: ${routes.length} routes, ${fileCount} files`);
   if (errors.length > 0) {
     log(`  ${errors.length} error(s)`);

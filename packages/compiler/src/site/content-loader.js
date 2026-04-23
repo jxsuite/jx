@@ -9,7 +9,7 @@
  * @module content-loader
  */
 
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { resolve, basename, extname } from "node:path";
 import { globSync } from "glob";
 
@@ -209,8 +209,6 @@ function loadCSVEntries(filePath, schema) {
 export function loadContentConfig(projectRoot, projectConfig = undefined) {
   const contentDir = resolve(projectRoot, "content");
 
-  if (!existsSync(contentDir)) return null;
-
   /** @type {any} */
   const config = { collections: projectConfig?.collections ?? {} };
 
@@ -230,12 +228,12 @@ export async function loadCollections(projectRoot, projectConfig = undefined) {
   const result = loadContentConfig(projectRoot, projectConfig);
   if (!result) return new Map();
 
-  const { config, contentDir } = result;
+  const { config } = result;
   /** @type {Map<string, any[]>} */
   const collections = new Map();
 
   for (const [name, collectionDef] of Object.entries(config.collections)) {
-    const entries = await loadCollection(name, /** @type {any} */ (collectionDef), contentDir);
+    const entries = await loadCollection(name, /** @type {any} */ (collectionDef), projectRoot);
     collections.set(name, entries);
   }
 
@@ -261,11 +259,11 @@ export function getCollectionElements(projectRoot, collectionName, projectConfig
  * Load a single collection by its definition.
  *
  * @param {string} name - Collection name
- * @param {any} collectionDef - Collection definition from content.config.json
- * @param {string} contentDir - Absolute path to content/ directory
+ * @param {any} collectionDef - Collection definition from project.json
+ * @param {string} projectRoot - Absolute path to project root directory
  * @returns {Promise<any[]>} Array of ContentEntry
  */
-async function loadCollection(name, collectionDef, contentDir) {
+async function loadCollection(name, collectionDef, projectRoot) {
   const source = collectionDef.source;
   const schema = collectionDef.schema;
 
@@ -279,8 +277,8 @@ async function loadCollection(name, collectionDef, contentDir) {
       }
     : undefined;
 
-  // Resolve the glob pattern relative to content/
-  const pattern = resolve(contentDir, source).split("\\").join("/");
+  // Resolve the glob pattern relative to project root
+  const pattern = resolve(projectRoot, source).split("\\").join("/");
   const files = globSync(pattern, { absolute: true });
 
   /** @type {any[]} */
