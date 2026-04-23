@@ -1,5 +1,5 @@
 {
-  "name": "@jxplatform/server",
+  "name": "@jxsuite/server",
   "version": "0.4.0",
   "description": "Jx development server with live reload, server-side proxy, and studio integration",
   "license": "MIT",

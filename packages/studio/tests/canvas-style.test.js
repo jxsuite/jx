@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { applyStyle } from "@jxplatform/runtime";
+import { applyStyle } from "@jxsuite/runtime";
 import { friendlyNameToVar, varDisplayName } from "../src/utils/studio-utils.js";
 
 // ─── CSS custom properties on inline styles ─────────────────────────────────

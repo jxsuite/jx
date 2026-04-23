@@ -1,5 +1,5 @@
 {
-  "$schema": "https://jxplatform.net/schemas/content-config.schema.json",
+  "$schema": "https://jxsuite.com/schemas/content-config.schema.json",
   "collections": {
     "docs": {
       "source": "./docs/*.md",

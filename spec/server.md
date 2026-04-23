@@ -1,4 +1,4 @@
-# `@jxplatform/server` Specification
+# `@jxsuite/server` Specification
 
 ## Development Server with Live Reload, Proxy Resolution, and Studio API
 
@@ -10,14 +10,14 @@
 
 ## 1. Overview
 
-`@jxplatform/server` is a Bun-native development server for Jx projects. It provides live reload, `$src`/`$prototype` proxy resolution, `timing: "server"` function execution, a filesystem API for Studio, and OXC-powered code services.
+`@jxsuite/server` is a Bun-native development server for Jx projects. It provides live reload, `$src`/`$prototype` proxy resolution, `timing: "server"` function execution, a filesystem API for Studio, and OXC-powered code services.
 
 ---
 
 ## 2. Entry Point
 
 ```js
-import { createDevServer } from "@jxplatform/server";
+import { createDevServer } from "@jxsuite/server";
 
 createDevServer({
   root: "./my-project",
@@ -146,4 +146,4 @@ Bun built-ins: `Bun.serve`, `Bun.build`, `Bun.Transpiler`.
 
 ---
 
-_`@jxplatform/server` Specification v2.0.0-draft_
+_`@jxsuite/server` Specification v2.0.0-draft_

@@ -8,7 +8,7 @@
  * Usage: bun run compile node compile.js
  */
 
-import { compile, compileServer, compileElementPage } from "@jxplatform/compiler";
+import { compile, compileServer, compileElementPage } from "@jxsuite/compiler";
 import { readFileSync, writeFileSync, mkdirSync, copyFileSync, rmSync } from "node:fs";
 import { resolve, dirname, relative } from "node:path";
 

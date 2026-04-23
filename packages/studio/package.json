@@ -1,5 +1,5 @@
 {
-  "name": "@jxplatform/studio",
+  "name": "@jxsuite/studio",
   "version": "0.4.0",
   "description": "Jx Studio — visual builder for Jx documents",
   "license": "MIT",
@@ -20,9 +20,9 @@
     "test": "bun test"
   },
   "dependencies": {
-    "@atlaskit/pragmatic-drag-and-drop": "^1.8.0",
+    "@atlaskit/pragmatic-drag-and-drop": "^1.8.1",
     "@atlaskit/pragmatic-drag-and-drop-hitbox": "^1.1.0",
-    "@jxplatform/runtime": "workspace:*",
+    "@jxsuite/runtime": "workspace:*",
     "@spectrum-web-components/accordion": "^1.11.2",
     "@spectrum-web-components/action-bar": "1.11.2",
     "@spectrum-web-components/action-button": "^1.11.2",
@@ -62,6 +62,6 @@
     "@happy-dom/global-registrator": "^20.9.0",
     "@webref/css": "^8.5.3",
     "@webref/elements": "^2.7.1",
-    "@webref/idl": "^3.75.2"
+    "@webref/idl": "^3.75.3"
   }
 }

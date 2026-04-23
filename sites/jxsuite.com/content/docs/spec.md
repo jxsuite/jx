@@ -74,4 +74,4 @@ Every Jx document has these top-level fields:
 | `signal`     | Reactive wrapping flag                                 |
 | `timing`     | Execution timing: `"compiler"`, `"server"`, `"client"` |
 
-For the complete specification, see the [full spec document](https://github.com/jxplatform/jx/blob/main/spec/spec.md).
+For the complete specification, see the [full spec document](https://github.com/jxsuite/jx/blob/main/spec/spec.md).

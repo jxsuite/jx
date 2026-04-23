@@ -5,7 +5,7 @@
  */
 
 import { resolve } from "node:path";
-import { createDevServer } from "@jxplatform/server";
+import { createDevServer } from "@jxsuite/server";
 
 await createDevServer({
   root: resolve(import.meta.dir, "."),

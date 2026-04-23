@@ -6,7 +6,7 @@ published: true
 author: Jane Smith
 ---
 
-This guide walks through building a complete blog using Jx and `@jxplatform/md`.
+This guide walks through building a complete blog using Jx and `@jxsuite/md`.
 
 ## Project Structure
 
@@ -29,7 +29,7 @@ Use `MarkdownCollection` to load all posts as a sorted array:
   "state": {
     "$posts": {
       "$prototype": "MarkdownCollection",
-      "$src": "@jxplatform/md",
+      "$src": "@jxsuite/md",
       "src": "./content/posts/*.md",
       "sortBy": "frontmatter.date",
       "sortOrder": "desc",
@@ -48,7 +48,7 @@ Use `MarkdownFile` to parse a single post and inject its HTML body into your lay
   "$defs": {
     "$post": {
       "$prototype": "MarkdownFile",
-      "$src": "@jxplatform/md",
+      "$src": "@jxsuite/md",
       "src": "./content/posts/first-post.md",
       "timing": "compiler"
     }

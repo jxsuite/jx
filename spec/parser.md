@@ -1,4 +1,4 @@
-# `@jxplatform/parser` Specification
+# `@jxsuite/parser` Specification
 
 ## Markdown Parser and External Class Integration
 
@@ -10,7 +10,7 @@
 
 ## 1. Overview
 
-`@jxplatform/parser` provides the content layer for Jx applications. It exports external classes (`MarkdownFile`, `MarkdownCollection`) that satisfy the Jx `$prototype` + `$src` external class contract, enabling markdown content to be declared as reactive data sources in Jx component files.
+`@jxsuite/parser` provides the content layer for Jx applications. It exports external classes (`MarkdownFile`, `MarkdownCollection`) that satisfy the Jx `$prototype` + `$src` external class contract, enabling markdown content to be declared as reactive data sources in Jx component files.
 
 Built on the `unified` / `remark` / `rehype` pipeline.
 
@@ -35,7 +35,7 @@ Built on the `unified` / `remark` / `rehype` pipeline.
   "state": {
     "post": {
       "$prototype": "MarkdownFile",
-      "$src": "@jxplatform/md",
+      "$src": "@jxsuite/md",
       "src": "./content/posts/hello-world.md"
     }
   }
@@ -87,7 +87,7 @@ The `resolve()` method returns an object with:
   "state": {
     "posts": {
       "$prototype": "MarkdownCollection",
-      "$src": "@jxplatform/md",
+      "$src": "@jxsuite/md",
       "src": "./content/posts/*.md",
       "sortBy": "date",
       "sortOrder": "desc",
@@ -181,4 +181,4 @@ These enable the dev server and compiler to introspect class structure without i
 
 ---
 
-_`@jxplatform/parser` Specification v2.0.0-draft_
+_`@jxsuite/parser` Specification v2.0.0-draft_

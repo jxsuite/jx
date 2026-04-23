@@ -6,7 +6,7 @@ try {
 }
 
 import { describe, test, expect, mock, spyOn } from "bun:test";
-import { buildScope, resolvePrototype, isSignal } from "@jxplatform/runtime";
+import { buildScope, resolvePrototype, isSignal } from "@jxsuite/runtime";
 import { resolve as resolvePath, join } from "node:path";
 import { fileURLToPath } from "node:url";
 

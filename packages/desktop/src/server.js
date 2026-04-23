@@ -1,13 +1,13 @@
 /**
  * Server.js — Embedded HTTP server for the Jx Studio desktop app.
  *
- * Wraps @jxplatform/server's createDevServer with:
+ * Wraps @jxsuite/server's createDevServer with:
  *
  * - Watch disabled (no SSE live-reload in production)
  * - A middleware that intercepts /studio/* requests and serves them directly from the bundled app
  *   views directory (PATHS.VIEWS_FOLDER) rather than the user's project root
  *
- * The @jxplatform/server default handlers still take care of:
+ * The @jxsuite/server default handlers still take care of:
  *
  * - /__studio/* studio filesystem API (read/write project files)
  * - /**jx_resolve** $src / $prototype module proxy
@@ -15,7 +15,7 @@
  */
 
 import { join } from "node:path";
-import { createDevServer } from "@jxplatform/server";
+import { createDevServer } from "@jxsuite/server";
 
 /**
  * @param {string} viewsDir PATHS.VIEWS_FOLDER from the main process — where bundled studio assets
@@ -33,7 +33,7 @@ export async function startStudioServer(viewsDir, projectRoot) {
       const path = url.pathname;
 
       // Serve bundled studio assets (HTML + compiled JS/CSS) from the app bundle.
-      // All other paths fall through to the standard @jxplatform/server handlers.
+      // All other paths fall through to the standard @jxsuite/server handlers.
       if (path.startsWith("/studio/")) {
         const assetPath = join(viewsDir, path);
         const file = Bun.file(assetPath);

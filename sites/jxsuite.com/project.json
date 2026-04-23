@@ -6,8 +6,8 @@
     "lang": "en"
   },
   "imports": {
-    "MarkdownFile": "@jxplatform/parser/MarkdownFile.class.json",
-    "MarkdownCollection": "@jxplatform/parser/MarkdownCollection.class.json"
+    "MarkdownFile": "@jxsuite/parser/MarkdownFile.class.json",
+    "MarkdownCollection": "@jxsuite/parser/MarkdownCollection.class.json"
   },
   "$head": [
     { "tagName": "link", "attributes": { "rel": "icon", "href": "/favicon.svg" } },

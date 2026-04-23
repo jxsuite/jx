@@ -5,7 +5,7 @@
  * compilation targets (static, client, element, server).
  */
 
-import { camelToKebab, toCSSText, RESERVED_KEYS } from "@jxplatform/runtime";
+import { camelToKebab, toCSSText, RESERVED_KEYS } from "@jxsuite/runtime";
 
 // Re-export runtime utilities used by submodules
 export { camelToKebab, toCSSText, RESERVED_KEYS };

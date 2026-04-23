@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://jxplatform.net/schema/v1",
+  "$id": "https://jxsuite.com/schema/v1",
   "title": "Jx Document",
   "description": "Schema for Jx component files. A Jx document is a JSON object that declaratively describes a reactive web component: its structure (DOM tree), styling, type definitions ($defs), runtime state, and inline or external functions. Reactivity is powered by @vue/reactivity.",
   "type": "object",
@@ -8,7 +8,7 @@
     "$schema": {
       "description": "URI identifying the Jx dialect version. Enables schema-aware IDE tooling.",
       "type": "string",
-      "examples": ["https://jxplatform.net/schema/v1"]
+      "examples": ["https://jxsuite.com/schema/v1"]
     },
     "$id": {
       "description": "Component identifier string. Used by tooling and the builder.",
@@ -701,7 +701,7 @@
         "$src": {
           "description": "External module specifier. Required when $prototype is not a built-in.",
           "type": "string",
-          "examples": ["@jxplatform/md", "./lib/my-parser.js", "npm:@myorg/data"]
+          "examples": ["@jxsuite/md", "./lib/my-parser.js", "npm:@myorg/data"]
         },
         "$export": {
           "description": "Named export in $src module. Defaults to the $prototype value.",

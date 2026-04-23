@@ -1,4 +1,4 @@
-# `@jxplatform/compiler` Specification
+# `@jxsuite/compiler` Specification
 
 ## Static HTML Compiler, Custom Element Emitter, and Island Detector
 
@@ -240,7 +240,7 @@ ${s.currentRoute === 'about' ? html`<div>About page</div>` : ''}
 
 ```json
 {
-  "$schema": "https://jxplatform.net/schema/v1/class",
+  "$schema": "https://jxsuite.com/schema/v1/class",
   "$id": "MarkdownCollection",
   "description": "Globs and parses markdown files into a collection",
   "$defs": {
@@ -414,4 +414,4 @@ See the [Site Architecture Specification](site-architecture.md) for the full mul
 
 ---
 
-_`@jxplatform/compiler` Specification v2.0.0-draft_
+_`@jxsuite/compiler` Specification v2.0.0-draft_

@@ -1,5 +1,5 @@
 {
-  "name": "@jxplatform/schema",
+  "name": "@jxsuite/schema",
   "version": "0.4.0",
   "description": "JSON Schema 2020-12 meta-schema generator for Jx documents",
   "license": "MIT",
@@ -18,8 +18,8 @@
     "upgrade": "bunx npm-check-updates -u && bun install"
   },
   "dependencies": {
-    "@webref/css": "^8.5.2",
-    "@webref/elements": "^2.7.0",
-    "@webref/idl": "^3.75.1"
+    "@webref/css": "^8.5.3",
+    "@webref/elements": "^2.7.1",
+    "@webref/idl": "^3.75.3"
   }
 }

@@ -102,7 +102,7 @@ Every Jx document is a JSON object with the following top-level fields:
 
 ```json
 {
-  "$schema": "https://jxplatform.net/schema/v1",
+  "$schema": "https://jxsuite.com/schema/v1",
   "$id": "ComponentName",
   "$defs": {},
   "state": {},
@@ -403,7 +403,7 @@ A function with only `body` (no `arguments`) and no event binding acts as a comp
     },
     "posts": {
       "$prototype": "MarkdownCollection",
-      "$src": "@jxplatform/md",
+      "$src": "@jxsuite/md",
       "src": "./content/posts/*.md"
     }
   }
@@ -944,7 +944,7 @@ All non-Function external classes **must** use a `.class.json` file as their `$s
 
 ```json
 {
-  "$schema": "https://jxplatform.net/schema/v1/class",
+  "$schema": "https://jxsuite.com/schema/v1/class",
   "$id": "MarkdownCollection",
   "description": "Globs and parses markdown files",
   "$defs": {
@@ -1169,7 +1169,7 @@ Custom elements render to the light DOM (no Shadow DOM). Style scoping uses `dat
 
 |          | Development           | Production                       |
 | -------- | --------------------- | -------------------------------- |
-| Renderer | `@jxplatform/runtime` | `lit-html`                       |
+| Renderer | `@jxsuite/runtime` | `lit-html`                       |
 | State    | `@vue/reactivity`     | `@vue/reactivity`                |
 | Source   | JSON interpreted live | JSON compiled away               |
 | Bundle   | `.json` + runtime     | `.js` classes only (~10 kB deps) |
@@ -1236,7 +1236,7 @@ Custom elements may carry annotations compatible with the Custom Elements Manife
 
 ```json
 {
-  "$schema": "https://jxplatform.net/schema/v1",
+  "$schema": "https://jxsuite.com/schema/v1",
   "$id": "TodoApp",
 
   "$defs": {

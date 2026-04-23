@@ -14,7 +14,7 @@ try {
   /* already registered */
 }
 
-import { buildScope, resolvePrototype, isSignal, RESERVED_KEYS } from "@jxplatform/runtime";
+import { buildScope, resolvePrototype, isSignal, RESERVED_KEYS } from "@jxsuite/runtime";
 import { MarkdownFile, MarkdownCollection, MarkdownDirective } from "../src/md.js";
 import { readFileSync } from "node:fs";
 

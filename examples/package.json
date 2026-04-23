@@ -1,5 +1,5 @@
 {
-  "name": "@jxplatform/examples",
+  "name": "@jxsuite/examples",
   "version": "1.0.0",
   "private": true,
   "type": "module",
@@ -9,10 +9,10 @@
     "upgrade": "bunx npm-check-updates -u && bun install"
   },
   "dependencies": {
-    "@jxplatform/compiler": "workspace:*",
-    "@jxplatform/parser": "workspace:*",
-    "@jxplatform/runtime": "workspace:*",
-    "@jxplatform/server": "workspace:*",
-    "@jxplatform/studio": "workspace:*"
+    "@jxsuite/compiler": "workspace:*",
+    "@jxsuite/parser": "workspace:*",
+    "@jxsuite/runtime": "workspace:*",
+    "@jxsuite/server": "workspace:*",
+    "@jxsuite/studio": "workspace:*"
   }
 }

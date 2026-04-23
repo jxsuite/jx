@@ -13,10 +13,10 @@ Install the JX packages with your preferred package manager:
 
 ```bash
 # Using bun (recommended)
-bun add @jxplatform/runtime @jxplatform/compiler
+bun add @jxsuite/runtime @jxsuite/compiler
 
 # Using npm
-npm install @jxplatform/runtime @jxplatform/compiler
+npm install @jxsuite/runtime @jxsuite/compiler
 ```
 
 ## Your First Component

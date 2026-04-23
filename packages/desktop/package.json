@@ -1,5 +1,5 @@
 {
-  "name": "@jxplatform/desktop",
+  "name": "@jxsuite/desktop",
   "version": "1.0.0",
   "private": true,
   "description": "Jx Studio — standalone desktop application built with Electrobun",
@@ -11,8 +11,8 @@
     "upgrade": "bunx npm-check-updates -u && bun install"
   },
   "dependencies": {
-    "@jxplatform/server": "workspace:*",
-    "@jxplatform/studio": "workspace:*",
+    "@jxsuite/server": "workspace:*",
+    "@jxsuite/studio": "workspace:*",
     "electrobun": "latest"
   }
 }

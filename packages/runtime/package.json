@@ -1,5 +1,5 @@
 {
-  "name": "@jxplatform/runtime",
+  "name": "@jxsuite/runtime",
   "version": "0.4.0",
   "description": "JSON-native reactive web component runtime",
   "license": "MIT",
@@ -17,7 +17,7 @@
     "upgrade": "bunx npm-check-updates -u && bun install"
   },
   "dependencies": {
-    "@vue/reactivity": "^3.5.32"
+    "@vue/reactivity": "^3.5.33"
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.9.0"

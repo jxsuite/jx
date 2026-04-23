@@ -4,7 +4,7 @@
   "private": false,
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/jxplatform/jx.git"
+    "url": "git+https://github.com/jxsuite/jx.git"
   },
   "workspaces": [
     "packages/*",

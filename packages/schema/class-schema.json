@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://jxplatform.net/schema/class/v1",
+  "$id": "https://jxsuite.com/schema/class/v1",
   "title": "Jx Class Definition",
   "description": "Schema for Jx .class.json files. A class definition describes a schema-defined class with fields, constructor, methods, and type parameters. Optionally points to a JS module via $implementation for hybrid execution.",
   "type": "object",

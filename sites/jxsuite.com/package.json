@@ -1,9 +1,9 @@
 {
-  "name": "@jxplatform/site-jxplatform.net",
+  "name": "@jxsuite/site-jxsuite.com",
   "private": true,
   "description": "Jx platform home page and documentation",
   "license": "MIT",
   "dependencies": {
-    "@jxplatform/parser": "workspace:*"
+    "@jxsuite/parser": "workspace:*"
   }
 }

@@ -30,16 +30,16 @@ Jx Studio is designed for three deployment targets that share a single core code
 | Target          | Runtime                           | Backend                          | Storage                   | Status                      |
 | --------------- | --------------------------------- | -------------------------------- | ------------------------- | --------------------------- |
 | **Desktop app** | ElectroBun (Bun + native webview) | Bun process (local)              | Filesystem                | Primary target              |
-| **Dev mode**    | Chrome                            | `@jxplatform/server` (localhost) | Filesystem via dev server | Active (Studio development) |
+| **Dev mode**    | Chrome                            | `@jxsuite/server` (localhost) | Filesystem via dev server | Active (Studio development) |
 | **SaaS/PaaS**   | Browser                           | Cloud API server                 | Database / object storage | Future                      |
 
-The studio package (`@jxplatform/studio`) contains all UI logic and is backend-agnostic. It communicates with its environment through a **Platform Abstraction Layer (PAL)** — an interface that each deployment target implements. The server package (`@jxplatform/server`) is one such implementation; the ElectroBun Bun process is another; a cloud API server is a third.
+The studio package (`@jxsuite/studio`) contains all UI logic and is backend-agnostic. It communicates with its environment through a **Platform Abstraction Layer (PAL)** — an interface that each deployment target implements. The server package (`@jxsuite/server`) is one such implementation; the ElectroBun Bun process is another; a cloud API server is a third.
 
 ### 1.1 Relationship to Other Specs
 
 - **[Studio Spec](studio.md)** — Defines the visual builder: canvas, layer tree, inspector, state model, keyboard shortcuts. This spec does not alter any of that.
 - **[Site Architecture Spec](site-architecture.md)** — Defines project structure (`project.json`, `pages/`, `content/`, etc.), routing, layouts, content collections. This spec defines how Studio _discovers and opens_ those projects.
-- **[Server Spec](server.md)** — Defines the `@jxplatform/server` dev server endpoints. This spec defines a backend API contract that the server must satisfy, and that other backends can also satisfy.
+- **[Server Spec](server.md)** — Defines the `@jxsuite/server` dev server endpoints. This spec defines a backend API contract that the server must satisfy, and that other backends can also satisfy.
 
 ---
 
@@ -197,13 +197,13 @@ Each deployment target calls `registerPlatform()` before Studio initializes:
 
 ```javascript
 // Desktop (ElectroBun main view init)
-import { registerPlatform } from "@jxplatform/studio/platform.js";
-import { createDesktopPlatform } from "@jxplatform/studio-desktop";
+import { registerPlatform } from "@jxsuite/studio/platform.js";
+import { createDesktopPlatform } from "@jxsuite/studio-desktop";
 registerPlatform(createDesktopPlatform());
 
-// Dev server (browser, served by @jxplatform/server)
-import { registerPlatform } from "@jxplatform/studio/platform.js";
-import { createDevServerPlatform } from "@jxplatform/studio/platforms/devserver.js";
+// Dev server (browser, served by @jxsuite/server)
+import { registerPlatform } from "@jxsuite/studio/platform.js";
+import { createDevServerPlatform } from "@jxsuite/studio/platforms/devserver.js";
 registerPlatform(createDevServerPlatform());
 ```
 
@@ -296,11 +296,11 @@ projectState = {
 
 ## 5. Backend API Contract
 
-The Backend API Contract defines the operations that any Studio backend must support. The current `@jxplatform/server` endpoints map directly to these operations. Future backends (ElectroBun Bun process, cloud API) implement the same operations through their own transport.
+The Backend API Contract defines the operations that any Studio backend must support. The current `@jxsuite/server` endpoints map directly to these operations. Future backends (ElectroBun Bun process, cloud API) implement the same operations through their own transport.
 
 ### 5.1 File Operations
 
-| Operation           | `@jxplatform/server` endpoint   | PAL method                 |
+| Operation           | `@jxsuite/server` endpoint   | PAL method                 |
 | ------------------- | ------------------------------- | -------------------------- |
 | List directory      | `GET /__studio/files?dir=`      | `listDirectory(dir)`       |
 | Read file           | `GET /__studio/file?path=`      | `readFile(path)`           |
@@ -312,14 +312,14 @@ The Backend API Contract defines the operations that any Studio backend must sup
 
 ### 5.2 Project Operations
 
-| Operation        | `@jxplatform/server` endpoint | PAL method                   |
+| Operation        | `@jxsuite/server` endpoint | PAL method                   |
 | ---------------- | ----------------------------- | ---------------------------- |
 | Open project     | N/A (client-side dialog)      | `openProject()`              |
 | Project metadata | `GET /__studio/project`       | Derived from `ProjectHandle` |
 
 ### 5.3 Code Services (Optional)
 
-| Operation   | `@jxplatform/server` endpoint | PAL method                    |
+| Operation   | `@jxsuite/server` endpoint | PAL method                    |
 | ----------- | ----------------------------- | ----------------------------- |
 | Format code | `POST /__studio/code/format`  | `codeService("format", code)` |
 | Lint code   | `POST /__studio/code/lint`    | `codeService("lint", code)`   |
@@ -327,7 +327,7 @@ The Backend API Contract defines the operations that any Studio backend must sup
 
 ### 5.4 Runtime Services (Optional)
 
-| Operation               | `@jxplatform/server` endpoint | PAL method                       |
+| Operation               | `@jxsuite/server` endpoint | PAL method                       |
 | ----------------------- | ----------------------------- | -------------------------------- |
 | Resolve $prototype/$src | `POST /__jx_resolve__`        | `resolvePrototype(payload)`      |
 | Execute server function | `POST /__jx_server__`         | `executeServerFunction(payload)` |
@@ -414,8 +414,8 @@ When the user navigates into a sub-component (via `pushDocument()` in the state 
 │  ┌─────────────────┐    RPC    ┌──────────────────┐ │
 │  │   Bun Process    │◄────────►│  Native Webview   │ │
 │  │                  │          │                    │ │
-│  │  - File I/O      │          │  - @jxplatform/studio  │ │
-│  │  - Utils.*       │          │  - @jxplatform/runtime │ │
+│  │  - File I/O      │          │  - @jxsuite/studio  │ │
+│  │  - Utils.*       │          │  - @jxsuite/runtime │ │
 │  │  - Code services │          │  - Lit + Spectrum  │ │
 │  │  - Build / SSG   │          │  - Monaco          │ │
 │  └─────────────────┘          └──────────────────┘ │
@@ -529,8 +529,8 @@ jx-studio-app/
 │           └── init.js           # registerPlatform(createDesktopPlatform())
 ├── package.json
 └── node_modules/
-    ├── @jxplatform/studio/           # UI package (the studio itself)
-    ├── @jxplatform/runtime/          # Canvas rendering
+    ├── @jxsuite/studio/           # UI package (the studio itself)
+    ├── @jxsuite/runtime/          # Canvas rendering
     └── electrobun/               # Framework
 ```
 
@@ -538,7 +538,7 @@ jx-studio-app/
 
 ## 8. Chrome Development Mode
 
-During Studio's own development, the studio runs in Chrome served by `@jxplatform/server`. This is the current workflow and must remain fully functional.
+During Studio's own development, the studio runs in Chrome served by `@jxsuite/server`. This is the current workflow and must remain fully functional.
 
 ### 8.1 Dev Server Platform Adapter
 

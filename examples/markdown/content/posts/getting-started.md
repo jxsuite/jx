@@ -13,7 +13,7 @@ Jx is a JSON schema for building reactive web applications. It keeps **structure
 Install the runtime from npm:
 
 ```bash
-npm install @jxplatform/runtime
+npm install @jxsuite/runtime
 ```
 
 ## Your First Component
@@ -25,7 +25,7 @@ Every Jx component is a pair of files:
 
 ```json
 {
-  "$schema": "https://jxplatform.net/schema/v1",
+  "$schema": "https://jxsuite.com/schema/v1",
   "$id": "Counter",
   "tagName": "my-counter",
   "$defs": {

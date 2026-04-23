@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://jxplatform.net/schema/project/v1",
+  "$id": "https://jxsuite.com/schema/project/v1",
   "title": "Jx Project",
   "description": "Schema for Jx project.json files. A project.json file is the root anchor file for a Jx project, declaring site metadata, default settings, global styles, content collections, and build configuration.",
   "type": "object",
@@ -14,7 +14,7 @@
     "url": {
       "description": "Production URL of the deployed site.",
       "type": "string",
-      "examples": ["https://example.com", "https://jxplatform.net"]
+      "examples": ["https://example.com", "https://jxsuite.com"]
     },
     "defaults": {
       "description": "Default settings applied to all pages unless overridden.",
@@ -110,8 +110,8 @@
       },
       "examples": [
         {
-          "MarkdownFile": "@jxplatform/parser/MarkdownFile.class.json",
-          "MarkdownCollection": "@jxplatform/parser/MarkdownCollection.class.json"
+          "MarkdownFile": "@jxsuite/parser/MarkdownFile.class.json",
+          "MarkdownCollection": "@jxsuite/parser/MarkdownCollection.class.json"
         }
       ]
     },

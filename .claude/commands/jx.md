@@ -8,9 +8,9 @@ You are authoring files for the Jx platform — a declarative, JSON-based web fr
 
 Every Jx file validates against one of three JSON Schema 2020-12 documents:
 
-1. **Component/Page/Layout** (`$schema: "https://jxplatform.net/schema/v1"`) — UI documents
-2. **Project config** (`$schema: "https://jxplatform.net/schema/project/v1"`) — `project.json`
-3. **Class definition** (`$schema: "https://jxplatform.net/schema/class/v1"`) — `.class.json`
+1. **Component/Page/Layout** (`$schema: "https://jxsuite.com/schema/v1"`) — UI documents
+2. **Project config** (`$schema: "https://jxsuite.com/schema/project/v1"`) — `project.json`
+3. **Class definition** (`$schema: "https://jxsuite.com/schema/class/v1"`) — `.class.json`
 
 Read the generated schemas at `packages/schema/schema.json`, `packages/schema/project-schema.json`, and `packages/schema/class-schema.json` for the authoritative field reference.
 
@@ -38,7 +38,7 @@ A Jx document is a JSON object describing a reactive web component:
 
 ```json
 {
-  "$schema": "https://jxplatform.net/schema/v1",
+  "$schema": "https://jxsuite.com/schema/v1",
   "$id": "TaskList",
   "tagName": "task-list",
   "$defs": { ... },
@@ -258,7 +258,7 @@ Layouts wrap page content. Use `{ "tagName": "slot" }` for the page content inse
     { "tagName": "link", "attributes": { "rel": "icon", "href": "/favicon.svg" } }
   ],
   "$elements": [ ... ],
-  "imports": { "MarkdownCollection": "@jxplatform/parser/MarkdownCollection.class.json" },
+  "imports": { "MarkdownCollection": "@jxsuite/parser/MarkdownCollection.class.json" },
   "$media": { "--sm": "(min-width: 640px)", "--md": "(min-width: 768px)" },
   "style": { "fontFamily": "system-ui, sans-serif", "margin": "0" },
   "collections": {

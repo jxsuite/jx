@@ -24,7 +24,7 @@ Use `$switch` to conditionally render components based on signal values:
 
 ## Content Collections
 
-With the `@jxplatform/md` library and **external class integration**, you can build Astro-like content pipelines entirely within Jx's declarative model.
+With the `@jxsuite/md` library and **external class integration**, you can build Astro-like content pipelines entirely within Jx's declarative model.
 
 ### Markdown as a Data Source
 
@@ -33,7 +33,7 @@ Glob a directory of markdown files and render them as a list:
 ```json
 {
   "$prototype": "MarkdownCollection",
-  "$src": "@jxplatform/md",
+  "$src": "@jxsuite/md",
   "src": "./content/posts/*.md",
   "sortBy": "frontmatter.date",
   "timing": "compiler"

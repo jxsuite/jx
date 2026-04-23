@@ -17,42 +17,42 @@
       },
     },
     "examples": {
-      "name": "@jxplatform/examples",
+      "name": "@jxsuite/examples",
       "version": "1.0.0",
       "dependencies": {
-        "@jxplatform/compiler": "workspace:*",
-        "@jxplatform/parser": "workspace:*",
-        "@jxplatform/runtime": "workspace:*",
-        "@jxplatform/server": "workspace:*",
-        "@jxplatform/studio": "workspace:*",
+        "@jxsuite/compiler": "workspace:*",
+        "@jxsuite/parser": "workspace:*",
+        "@jxsuite/runtime": "workspace:*",
+        "@jxsuite/server": "workspace:*",
+        "@jxsuite/studio": "workspace:*",
       },
     },
     "packages/compiler": {
-      "name": "@jxplatform/compiler",
+      "name": "@jxsuite/compiler",
       "version": "0.4.0",
       "bin": {
         "jx-build": "./src/cli-build.js",
       },
       "dependencies": {
         "@apidevtools/json-schema-ref-parser": "^15.3.5",
-        "@jxplatform/parser": "workspace:*",
-        "@jxplatform/runtime": "workspace:*",
+        "@jxsuite/parser": "workspace:*",
+        "@jxsuite/runtime": "workspace:*",
       },
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.9.0",
       },
     },
     "packages/desktop": {
-      "name": "@jxplatform/desktop",
+      "name": "@jxsuite/desktop",
       "version": "1.0.0",
       "dependencies": {
-        "@jxplatform/server": "workspace:*",
-        "@jxplatform/studio": "workspace:*",
+        "@jxsuite/server": "workspace:*",
+        "@jxsuite/studio": "workspace:*",
         "electrobun": "latest",
       },
     },
     "packages/parser": {
-      "name": "@jxplatform/parser",
+      "name": "@jxsuite/parser",
       "version": "0.4.0",
       "dependencies": {
         "glob": "^13.0.6",
@@ -69,42 +69,42 @@
       },
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.9.0",
-        "@jxplatform/runtime": "workspace:*",
+        "@jxsuite/runtime": "workspace:*",
       },
     },
     "packages/runtime": {
-      "name": "@jxplatform/runtime",
+      "name": "@jxsuite/runtime",
       "version": "0.4.0",
       "dependencies": {
-        "@vue/reactivity": "^3.5.32",
+        "@vue/reactivity": "^3.5.33",
       },
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.9.0",
       },
     },
     "packages/schema": {
-      "name": "@jxplatform/schema",
+      "name": "@jxsuite/schema",
       "version": "0.4.0",
       "dependencies": {
-        "@webref/css": "^8.5.2",
-        "@webref/elements": "^2.7.0",
-        "@webref/idl": "^3.75.1",
+        "@webref/css": "^8.5.3",
+        "@webref/elements": "^2.7.1",
+        "@webref/idl": "^3.75.3",
       },
     },
     "packages/server": {
-      "name": "@jxplatform/server",
+      "name": "@jxsuite/server",
       "version": "0.4.0",
       "dependencies": {
         "chokidar": "^5.0.0",
       },
     },
     "packages/studio": {
-      "name": "@jxplatform/studio",
+      "name": "@jxsuite/studio",
       "version": "0.4.0",
       "dependencies": {
-        "@atlaskit/pragmatic-drag-and-drop": "^1.8.0",
+        "@atlaskit/pragmatic-drag-and-drop": "^1.8.1",
         "@atlaskit/pragmatic-drag-and-drop-hitbox": "^1.1.0",
-        "@jxplatform/runtime": "workspace:*",
+        "@jxsuite/runtime": "workspace:*",
         "@spectrum-web-components/accordion": "^1.11.2",
         "@spectrum-web-components/action-bar": "1.11.2",
         "@spectrum-web-components/action-button": "^1.11.2",
@@ -144,20 +144,20 @@
         "@happy-dom/global-registrator": "^20.9.0",
         "@webref/css": "^8.5.3",
         "@webref/elements": "^2.7.1",
-        "@webref/idl": "^3.75.2",
+        "@webref/idl": "^3.75.3",
       },
     },
     "sites/jxsuite.com": {
-      "name": "@jxplatform/site-jxplatform.net",
+      "name": "@jxsuite/site-jxsuite.com",
       "dependencies": {
-        "@jxplatform/parser": "workspace:*",
+        "@jxsuite/parser": "workspace:*",
       },
     },
   },
   "packages": {
     "@apidevtools/json-schema-ref-parser": ["@apidevtools/json-schema-ref-parser@15.3.5", "", { "dependencies": { "js-yaml": "^4.1.1" }, "peerDependencies": { "@types/json-schema": "^7.0.15" } }, "sha512-orNOYXw3hYXxxisXMldjzjBzqqTLBPbwOtHg7ovBPvfBHDue1qM9YJENZ3W2BQuS+7z4ThogMbEzEsov57Itkg=="],
 
-    "@atlaskit/pragmatic-drag-and-drop": ["@atlaskit/pragmatic-drag-and-drop@1.8.0", "", { "dependencies": { "@babel/runtime": "^7.0.0", "bind-event-listener": "^3.0.0", "raf-schd": "^4.0.3" } }, "sha512-xUvSniuXsiu28ImUnR27oEH4Ov8AExQrdwBE3feAq0d9W9ngLgS+dD5DY3PW5wKEMFjdSecIzbg7o9bsctbf5Q=="],
+    "@atlaskit/pragmatic-drag-and-drop": ["@atlaskit/pragmatic-drag-and-drop@1.8.1", "", { "dependencies": { "@babel/runtime": "^7.0.0", "bind-event-listener": "^3.0.0", "raf-schd": "^4.0.3" } }, "sha512-uXWNPpL8n4OmTVbduH7nq8pk8htqGo/prR5cYEE8sVCPJGAUMWn6lzvWTfI+4VCeQvHiDRODVz4YzH06OVAxhw=="],
 
     "@atlaskit/pragmatic-drag-and-drop-hitbox": ["@atlaskit/pragmatic-drag-and-drop-hitbox@1.1.0", "", { "dependencies": { "@atlaskit/pragmatic-drag-and-drop": "^1.6.0", "@babel/runtime": "^7.0.0" } }, "sha512-JWt6eVp6Br2FPHRM8s0dUIHQk/jFInGP1f3ti5CdtM1Ji5/pt8Akm44wDC063Gv2i5RGseixtbW0z/t6RYtbdg=="],
 
@@ -249,23 +249,23 @@
 
     "@internationalized/number": ["@internationalized/number@3.6.5", "", { "dependencies": { "@swc/helpers": "^0.5.0" } }, "sha512-6hY4Kl4HPBvtfS62asS/R22JzNNy8vi/Ssev7x6EobfCp+9QIB2hKvI2EtbdJ0VSQacxVNtqhE/NmF/NZ0gm6g=="],
 
-    "@jxplatform/compiler": ["@jxplatform/compiler@workspace:packages/compiler"],
+    "@jxsuite/compiler": ["@jxsuite/compiler@workspace:packages/compiler"],
 
-    "@jxplatform/desktop": ["@jxplatform/desktop@workspace:packages/desktop"],
+    "@jxsuite/desktop": ["@jxsuite/desktop@workspace:packages/desktop"],
 
-    "@jxplatform/examples": ["@jxplatform/examples@workspace:examples"],
+    "@jxsuite/examples": ["@jxsuite/examples@workspace:examples"],
 
-    "@jxplatform/parser": ["@jxplatform/parser@workspace:packages/parser"],
+    "@jxsuite/parser": ["@jxsuite/parser@workspace:packages/parser"],
 
-    "@jxplatform/runtime": ["@jxplatform/runtime@workspace:packages/runtime"],
+    "@jxsuite/runtime": ["@jxsuite/runtime@workspace:packages/runtime"],
 
-    "@jxplatform/schema": ["@jxplatform/schema@workspace:packages/schema"],
+    "@jxsuite/schema": ["@jxsuite/schema@workspace:packages/schema"],
 
-    "@jxplatform/server": ["@jxplatform/server@workspace:packages/server"],
+    "@jxsuite/server": ["@jxsuite/server@workspace:packages/server"],
 
-    "@jxplatform/site-jxplatform.net": ["@jxplatform/site-jxplatform.net@workspace:sites/jxsuite.com"],
+    "@jxsuite/site-jxsuite.com": ["@jxsuite/site-jxsuite.com@workspace:sites/jxsuite.com"],
 
-    "@jxplatform/studio": ["@jxplatform/studio@workspace:packages/studio"],
+    "@jxsuite/studio": ["@jxsuite/studio@workspace:packages/studio"],
 
     "@lit-labs/observers": ["@lit-labs/observers@2.0.2", "", { "dependencies": { "@lit/reactive-element": "^1.0.0 || ^2.0.0" } }, "sha512-eZb5+W9Cb0e/Y5m1DNxBSGTvGB2TAVTGMnTxL/IzFhPQEcZIAHewW1eVBhN8W07A5tirRaAmmF6fGL1V20p3gQ=="],
 
@@ -515,15 +515,15 @@
 
     "@ungap/structured-clone": ["@ungap/structured-clone@1.3.0", "", {}, "sha512-WmoN8qaIAo7WTYWbAZuG8PYEhn5fkz7dZrqTBZ7dtt//lL2Gwms1IcnQ5yHqjDfX8Ft5j4YzDM23f87zBfDe9g=="],
 
-    "@vue/reactivity": ["@vue/reactivity@3.5.32", "", { "dependencies": { "@vue/shared": "3.5.32" } }, "sha512-/ORasxSGvZ6MN5gc+uE364SxFdJ0+WqVG0CENXaGW58TOCdrAW76WWaplDtECeS1qphvtBZtR+3/o1g1zL4xPQ=="],
+    "@vue/reactivity": ["@vue/reactivity@3.5.33", "", { "dependencies": { "@vue/shared": "3.5.33" } }, "sha512-p8UfIqyIhb0rYGlSgSBV+lPhF2iUSBcRy7enhTmPqKWadHy9kcOFYF1AejYBP9P+avnd3OBbD49DU4pLWX/94A=="],
 
-    "@vue/shared": ["@vue/shared@3.5.32", "", {}, "sha512-ksNyrmRQzWJJ8n3cRDuSF7zNNontuJg1YHnmWRJd2AMu8Ij2bqwiiri2lH5rHtYPZjj4STkNcgcmiQqlOjiYGg=="],
+    "@vue/shared": ["@vue/shared@3.5.33", "", {}, "sha512-5vR2QIlmaLG77Ygd4pMP6+SGQ5yox9VhtnbDWTy9DzMzdmeLxZ1QqxrywEZ9sa1AVubfIJyaCG3ytyWU81ufcQ=="],
 
-    "@webref/css": ["@webref/css@8.5.2", "", { "peerDependencies": { "css-tree": "^3.2.1" } }, "sha512-uTjrG93xyi52VHPqAXU+dXOKEa+fnvoM5lWmZ+WHl2nCX0qLYeFHuyRJAHjqbQ1lpZxJLhxJp9aTX8EuFkHVgg=="],
+    "@webref/css": ["@webref/css@8.5.3", "", { "peerDependencies": { "css-tree": "^3.2.1" } }, "sha512-UQ0rOmt01faB6uzFa+jHQBCz9/TIeDgQjzlY3Zt2hqE/MlQQC8v4zWDP7cY+BSDmS8vaMXUtotcMamrwMYzfSQ=="],
 
-    "@webref/elements": ["@webref/elements@2.7.0", "", {}, "sha512-8oZ1eB6BnKvUVVMud5vckSXRzxPQTw91TDFSMZVK+9CG+xzItvdCYzuhqhpGVZRpJx8T98jlQEywSFx0C4KVlg=="],
+    "@webref/elements": ["@webref/elements@2.7.1", "", {}, "sha512-ke5VQWxr7vGket8tObjgNrmQ/+BO7MY1XL9gb0auPnHRzW7EN1Xpv5O237glCd4HWRrro05fBpBFXTPHlb24pw=="],
 
-    "@webref/idl": ["@webref/idl@3.75.1", "", { "peerDependencies": { "webidl2": "^24.5.0" } }, "sha512-Wgd7hBxY6+Ji/JrYrvMevxWXEw0UDoZSDyZDNs2kneDW7LjTiih4cMK0UR+LmB1JfMs5dsqN137TfKVGv3RMRA=="],
+    "@webref/idl": ["@webref/idl@3.75.3", "", { "peerDependencies": { "webidl2": "^24.5.0" } }, "sha512-S/TuL6p32El4K+uL/Ppt5TqrCyFxp4VmUFa1R8FkyBSmV+DYK6S8usihXhgwAr0OKet4iltUZvMGgg7ZtnuxyQ=="],
 
     "agent-base": ["agent-base@8.0.0", "", {}, "sha512-QT8i0hCz6C/KQ+KTAbSNwCHDGdmUJl2tp2ZpNlGSWCfhUNVbYG2WLE3MdZGBAgXPV4GAvjGMxo+C1hroyxmZEg=="],
 
@@ -1300,12 +1300,6 @@
     "@floating-ui/core/@floating-ui/utils": ["@floating-ui/utils@0.2.11", "", {}, "sha512-RiB/yIh78pcIxl6lLMG0CgBXAZ2Y0eVHqMPYugu+9U0AeT6YBeiJpf7lbdJNIugFP5SIjwNRgo4DhR1Qxi26Gg=="],
 
     "@inquirer/external-editor/iconv-lite": ["iconv-lite@0.7.2", "", { "dependencies": { "safer-buffer": ">= 2.1.2 < 3.0.0" } }, "sha512-im9DjEDQ55s9fL4EYzOAv0yMqmMBSZp6G0VvFyTMPKWxiSBHUj9NW/qqLmXUwXrrM7AvqSlTCfvqRb0cM8yYqw=="],
-
-    "@jxplatform/studio/@webref/css": ["@webref/css@8.5.3", "", { "peerDependencies": { "css-tree": "^3.2.1" } }, "sha512-UQ0rOmt01faB6uzFa+jHQBCz9/TIeDgQjzlY3Zt2hqE/MlQQC8v4zWDP7cY+BSDmS8vaMXUtotcMamrwMYzfSQ=="],
-
-    "@jxplatform/studio/@webref/elements": ["@webref/elements@2.7.1", "", {}, "sha512-ke5VQWxr7vGket8tObjgNrmQ/+BO7MY1XL9gb0auPnHRzW7EN1Xpv5O237glCd4HWRrro05fBpBFXTPHlb24pw=="],
-
-    "@jxplatform/studio/@webref/idl": ["@webref/idl@3.75.2", "", { "peerDependencies": { "webidl2": "^24.5.0" } }, "sha512-0fyTK++AOLfISQi281gfw/N+CxgEWv59Kco/wuSXjEWGwLn4Oh/ChkH3g8y8joIrp4ZTTqkW7WIGhas5IBSTQQ=="],
 
     "cli-truncate/string-width": ["string-width@8.2.0", "", { "dependencies": { "get-east-asian-width": "^1.5.0", "strip-ansi": "^7.1.2" } }, "sha512-6hJPQ8N0V0P3SNmP6h2J99RLuzrWz2gvT7VnK5tKvrNqJoyS9W4/Fb8mo31UiPvy00z7DQXkP2hnKBVav76thw=="],
 

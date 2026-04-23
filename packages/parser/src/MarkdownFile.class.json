@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://jxplatform.net/schemas/MarkdownFile.class.json",
+  "$id": "https://jxsuite.com/schemas/MarkdownFile.class.json",
   "title": "MarkdownFile",
   "description": "Load and parse a single Markdown file",
   "$prototype": "Class",

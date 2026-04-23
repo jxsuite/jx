@@ -8,11 +8,11 @@
 
 ## Packages
 
-- `@jxplatform/runtime` — core renderer (851 lines), sole dep: `@vue/reactivity`
-- `@jxplatform/compiler` — static HTML compiler with hydration islands
-- `@jxplatform/parser` — markdown integration (`MarkdownFile`, `MarkdownCollection`, `MarkdownDirective` remark plugin) in `md.js`
-- `@jxplatform/schema` — JSON Schema 2020-12 meta-schema generator from `@webref/*` data
-- `@jxplatform/studio` — visual builder (~2850 lines vanilla JS), uses Atlassian pragmatic-drag-and-drop
+- `@jxsuite/runtime` — core renderer (851 lines), sole dep: `@vue/reactivity`
+- `@jxsuite/compiler` — static HTML compiler with hydration islands
+- `@jxsuite/parser` — markdown integration (`MarkdownFile`, `MarkdownCollection`, `MarkdownDirective` remark plugin) in `md.js`
+- `@jxsuite/schema` — JSON Schema 2020-12 meta-schema generator from `@webref/*` data
+- `@jxsuite/studio` — visual builder (~2850 lines vanilla JS), uses Atlassian pragmatic-drag-and-drop
 
 ## Key Specs
 
@@ -24,7 +24,7 @@
 ## Studio Status
 
 - Working: file I/O, layer tree DnD, multi-breakpoint canvas, inspector, signal management, block library
-- Gap: uses own preview renderer, not `@jxplatform/runtime`; no markdown editing; single-file scope
+- Gap: uses own preview renderer, not `@jxsuite/runtime`; no markdown editing; single-file scope
 
 ## Studio Next Steps (v0.3.0 spec)
 
