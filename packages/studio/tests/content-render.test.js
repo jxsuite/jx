@@ -9,6 +9,8 @@ import { loadMarkdown } from "../src/files/file-ops.js";
 /**
  * Collect all unique tag names from a Jx node tree. Mirrors the inline collectTags in
  * renderCanvasLive.
+ *
+ * @param {any} node
  */
 function collectTags(node) {
   const tags = new Set();
@@ -25,12 +27,17 @@ function collectTags(node) {
 /**
  * Simulate the auto-discovery logic from renderCanvasLive: scan the document tree for tag names,
  * match against componentRegistry, and produce $ref entries for each match.
+ *
+ * @param {any} doc
+ * @param {any} documentPath
+ * @param {any[]} componentRegistry
+ * @param {any[]} existingElements
  */
 function autoDiscoverElements(doc, documentPath, componentRegistry, existingElements) {
   const effectiveElements = [...existingElements];
   const existingRefs = new Set(effectiveElements.map((e) => (typeof e === "string" ? e : e?.$ref)));
   for (const tag of collectTags(doc)) {
-    const comp = componentRegistry.find((c) => c.tagName === tag);
+    const comp = componentRegistry.find((/** @type {any} */ c) => c.tagName === tag);
     if (comp && comp.source !== "npm") {
       const relPath = computeRelativePath(documentPath, comp.path);
       if (!existingRefs.has(relPath)) {
@@ -42,7 +49,13 @@ function autoDiscoverElements(doc, documentPath, componentRegistry, existingElem
   return effectiveElements;
 }
 
-/** Build docBase URL the same way renderCanvasLive does. */
+/**
+ * Build docBase URL the same way renderCanvasLive does.
+ *
+ * @param {string} origin
+ * @param {string | null} documentPath
+ * @param {string} projectRoot
+ */
 function buildDocBase(origin, documentPath, projectRoot) {
   const root = projectRoot || "";
   const docPrefix = root && root !== "." ? `${root}/` : "";
@@ -252,7 +265,7 @@ describe("getEffectiveElements", () => {
 
   test("returns empty array when no doc elements and no site config", () => {
     expect(getEffectiveElements(undefined)).toEqual([]);
-    expect(getEffectiveElements(null)).toEqual([]);
+    expect(getEffectiveElements()).toEqual([]);
   });
 
   test("returns site elements when doc has none", () => {
@@ -298,7 +311,7 @@ describe("loadMarkdown state", () => {
     const state = loadMarkdown(md, null);
     const doc = state.document;
     expect(doc.tagName).toBe("div");
-    const tags = doc.children.map((c) => c.tagName);
+    const tags = doc.children.map((/** @type {any} */ c) => c.tagName);
     expect(tags).toContain("hero");
     expect(tags).toContain("cta-banner");
   });
