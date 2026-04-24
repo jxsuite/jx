@@ -41,7 +41,7 @@ export function compileClient(raw, opts) {
   } = opts;
 
   const context = createCompileContext(raw, null, raw.state ?? {}, raw.$media ?? {});
-  const styleBlock = compileStyles(raw, raw.$media ?? {});
+  const styleBlock = compileStyles(raw, raw.$media ?? {}, opts.projectStyle ?? null);
 
   // Collectors for bindings and handlers
   const counter = { t: 0, s: 0, h: 0, m: 0, sw: 0, l: 0, needsLit: false };

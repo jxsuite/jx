@@ -26,7 +26,7 @@ export function compileStaticPage(raw, opts) {
   const { title, reactivitySrc, litHtmlSrc } = opts;
 
   const rootContext = createCompileContext(raw, null, raw.state ?? {}, raw.$media ?? {});
-  const styleBlock = compileStyles(raw, raw.$media ?? {});
+  const styleBlock = compileStyles(raw, raw.$media ?? {}, opts.projectStyle ?? null);
   /** @type {{ def: any; tagName: string; className: string }[]} */
   const islands = [];
   const bodyContent = compileNode(raw, false, raw, rootContext, islands);

@@ -449,7 +449,7 @@ All file operations go through the Platform Abstraction Layer, which maps to `@j
 
 | Package                             | Purpose                      |
 | ----------------------------------- | ---------------------------- |
-| `@jxsuite/runtime`               | Canvas rendering             |
+| `@jxsuite/runtime`                  | Canvas rendering             |
 | `@atlaskit/pragmatic-drag-and-drop` | Layer tree drag-and-drop     |
 | `lit-html`                          | Studio UI template rendering |
 | `monaco-editor`                     | Code editor                  |

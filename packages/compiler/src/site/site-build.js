@@ -278,10 +278,16 @@ async function compilePage(route, projectConfig, projectRoot, collections = new 
     pageUrl: route.urlPattern,
   });
 
+  // Merge project-level $media into the layout document so responsive queries are available
+  if (projectConfig.$media) {
+    layoutDoc.$media = { ...projectConfig.$media, ...layoutDoc.$media };
+  }
+
   // Compile the document using the existing compiler
   const result = await compile(layoutDoc, {
     title,
     lang: projectConfig.defaults?.lang ?? "en",
+    projectStyle: projectConfig.style ?? null,
   });
 
   // Post-process: inject merged <head> content into the compiled HTML
