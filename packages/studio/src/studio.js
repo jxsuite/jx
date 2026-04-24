@@ -526,10 +526,44 @@ async function renderCanvasLive(doc, canvasEl) {
   }
 
   try {
-    const docBase = S.documentPath ? `${location.origin}/${S.documentPath}` : undefined;
+    const root = projectState?.projectRoot || "";
+    const docPrefix = root && root !== "." ? `${root}/` : "";
+    const docBase = S.documentPath ? `${location.origin}/${docPrefix}${S.documentPath}` : undefined;
 
     // Register custom elements so the runtime can render them
-    const effectiveElements = getEffectiveElements(renderDoc.$elements);
+    let effectiveElements = getEffectiveElements(renderDoc.$elements);
+
+    // In content mode (markdown), auto-discover components for directive-based
+    // custom elements that have no explicit $elements registration.
+    if (S.mode === "content" && componentRegistry.length > 0) {
+      const existingRefs = new Set(
+        effectiveElements.map((/** @type {any} */ e) => (typeof e === "string" ? e : e?.$ref)),
+      );
+      /** @param {any} node */
+      const collectTags = (node) => {
+        /** @type {Set<string>} */
+        const tags = new Set();
+        if (!node || typeof node !== "object") return tags;
+        if (node.tagName) tags.add(node.tagName);
+        if (Array.isArray(node.children)) {
+          for (const child of node.children) {
+            for (const t of collectTags(child)) tags.add(t);
+          }
+        }
+        return tags;
+      };
+      for (const tag of collectTags(renderDoc)) {
+        const comp = componentRegistry.find((/** @type {any} */ c) => c.tagName === tag);
+        if (comp && comp.source !== "npm") {
+          const relPath = computeRelativePath(S.documentPath, comp.path);
+          if (!existingRefs.has(relPath)) {
+            effectiveElements.push({ $ref: relPath });
+            existingRefs.add(relPath);
+          }
+        }
+      }
+    }
+
     if (effectiveElements.length) {
       renderDoc.$elements = effectiveElements;
       for (const entry of effectiveElements) {
@@ -7632,7 +7666,12 @@ function renderFilesTemplate() {
 function openFileFromTree(/** @type {any} */ path) {
   return _openFileFromTree(
     {
-      S,
+      get S() {
+        return S;
+      },
+      set S(v) {
+        S = v;
+      },
       commit: (/** @type {any} */ ns) => {
         S = ns;
       },
