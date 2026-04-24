@@ -11,6 +11,9 @@ import { resolve, relative, basename, dirname } from "node:path";
 import { readdir, stat, readFile, writeFile, rename, unlink, mkdir } from "node:fs/promises";
 import { readFileSync, existsSync } from "node:fs";
 
+/** Normalise a path to forward slashes (Windows `path` module returns backslashes). */
+const fwd = (/** @type {string} */ p) => p.replaceAll("\\", "/");
+
 /**
  * @param {string} filePath
  * @param {string} root
@@ -97,16 +100,15 @@ export async function handleStudioApi(req, url, root) {
       let dir = dirname(
         filePath.startsWith("~") ? filePath.replace("~", process.env.HOME || "") : filePath,
       );
-      const stopAt = "/";
-      while (dir && dir !== stopAt) {
+      while (dir) {
         const candidate = resolve(dir, "project.json");
         if (existsSync(candidate)) {
           const config = JSON.parse(readFileSync(candidate, "utf8"));
-          const relPath = relative(root, dir);
+          const relPath = fwd(relative(root, dir));
           const absFile = filePath.startsWith("~")
             ? filePath.replace("~", process.env.HOME || "")
             : filePath;
-          const fileRelPath = relative(dir, absFile);
+          const fileRelPath = fwd(relative(dir, absFile));
           return Response.json({
             sitePath: dir,
             relPath: relPath || ".",
@@ -130,13 +132,17 @@ export async function handleStudioApi(req, url, root) {
       const glob = new Bun.Glob("**/project.json");
       const sites = [];
       for await (const match of glob.scan({ cwd: root, dot: false })) {
-        if (match.includes("node_modules") || match.includes("dist/") || match.includes(".claude/"))
+        if (
+          match.includes("node_modules") ||
+          fwd(match).includes("dist/") ||
+          fwd(match).includes(".claude/")
+        )
           continue;
         const fp = resolve(root, match);
         try {
           const raw = JSON.parse(await readFile(fp, "utf8"));
           if (typeof raw === "object" && raw !== null && !Array.isArray(raw)) {
-            const projectDir = dirname(match) === "." ? "." : dirname(match).replaceAll("\\", "/");
+            const projectDir = dirname(match) === "." ? "." : fwd(dirname(match));
             sites.push({ path: projectDir, config: raw });
           }
         } catch {}
@@ -169,7 +175,7 @@ export async function handleStudioApi(req, url, root) {
             if (!s.isDirectory()) {
               files.push({
                 name: basename(match),
-                path: relative(root, fp),
+                path: fwd(relative(root, fp)),
                 size: s.size,
                 modified: s.mtime.toISOString(),
               });
@@ -187,7 +193,7 @@ export async function handleStudioApi(req, url, root) {
         const s = await stat(fp);
         files.push({
           name: entry.name,
-          path: relative(root, fp),
+          path: fwd(relative(root, fp)),
           type: entry.isDirectory() ? "directory" : "file",
           size: s.size,
           modified: s.mtime.toISOString(),
@@ -214,7 +220,11 @@ export async function handleStudioApi(req, url, root) {
       const glob = new Bun.Glob("**/*.json");
       const components = [];
       for await (const match of glob.scan({ cwd: scanRoot, dot: false })) {
-        if (match.includes("node_modules") || match.includes("dist/") || match.includes(".claude/"))
+        if (
+          match.includes("node_modules") ||
+          fwd(match).includes("dist/") ||
+          fwd(match).includes(".claude/")
+        )
           continue;
         const fp = resolve(scanRoot, match);
         try {
@@ -223,7 +233,7 @@ export async function handleStudioApi(req, url, root) {
             components.push({
               tagName: content.tagName,
               $id: content.$id || null,
-              path: match,
+              path: fwd(match),
               source: "jx",
               props: Object.entries(content.state || {})
                 .filter(
@@ -426,7 +436,7 @@ export async function handleStudioApi(req, url, root) {
   if (path === "/__studio/file" && req.method === "GET") {
     const fp = url.searchParams.get("path");
     if (!fp) return new Response("Missing path", { status: 400 });
-    const isAbsolute = fp.startsWith("/") || fp.startsWith("~");
+    const isAbsolute = fp.startsWith("/") || fp.startsWith("~") || /^[A-Za-z]:[/\\]/.test(fp);
     const abs = isAbsolute
       ? fp.startsWith("~")
         ? fp.replace("~", process.env.HOME || "")
@@ -442,7 +452,7 @@ export async function handleStudioApi(req, url, root) {
     try {
       return Response.json({
         content: await readFile(abs, "utf8"),
-        path: isAbsolute ? fp : relative(root, abs),
+        path: isAbsolute ? fp : fwd(relative(root, abs)),
       });
     } catch (/** @type {any} */ e) {
       return e.code === "ENOENT"
@@ -464,7 +474,7 @@ export async function handleStudioApi(req, url, root) {
     try {
       await mkdir(dirname(abs), { recursive: true });
       await writeFile(abs, await req.text(), "utf8");
-      return Response.json({ ok: true, path: relative(root, abs) });
+      return Response.json({ ok: true, path: fwd(relative(root, abs)) });
     } catch (/** @type {any} */ e) {
       return Response.json({ error: e.message }, { status: 500 });
     }
@@ -482,7 +492,7 @@ export async function handleStudioApi(req, url, root) {
     }
     try {
       await unlink(abs);
-      return Response.json({ ok: true, path: relative(root, abs) });
+      return Response.json({ ok: true, path: fwd(relative(root, abs)) });
     } catch (/** @type {any} */ e) {
       return e.code === "ENOENT"
         ? new Response("Not found", { status: 404 })
@@ -511,7 +521,11 @@ export async function handleStudioApi(req, url, root) {
     try {
       await mkdir(dirname(absTo), { recursive: true });
       await rename(absFrom, absTo);
-      return Response.json({ ok: true, from: relative(root, absFrom), to: relative(root, absTo) });
+      return Response.json({
+        ok: true,
+        from: fwd(relative(root, absFrom)),
+        to: fwd(relative(root, absTo)),
+      });
     } catch (/** @type {any} */ e) {
       return Response.json({ error: e.message }, { status: 500 });
     }
@@ -533,8 +547,8 @@ export async function handleStudioApi(req, url, root) {
       const matches = [];
       for await (const match of glob.scan({ cwd: root, dot: false })) {
         // Skip node_modules / dist / hidden dirs
-        if (match.includes("node_modules") || match.includes("dist/")) continue;
-        matches.push(match.split("\\").join("/"));
+        if (match.includes("node_modules") || fwd(match).includes("dist/")) continue;
+        matches.push(fwd(match));
       }
       if (matches.length === 0) return Response.json({ path: null });
       return Response.json({

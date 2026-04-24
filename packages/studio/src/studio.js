@@ -807,7 +807,9 @@ const _openParam = new URLSearchParams(location.search).get("open");
 
 if (_openParam) {
   // ?open= mode: skip normal loadProject, set up site context from the path
-  if (!_openParam.startsWith("/") && !_openParam.startsWith("~")) {
+  const isAbsPath =
+    _openParam.startsWith("/") || _openParam.startsWith("~") || /^[A-Za-z]:[/\\]/.test(_openParam);
+  if (!isAbsPath) {
     statusMessage(`Error: ?open= requires an absolute path (got "${_openParam}")`);
     render();
   } else {

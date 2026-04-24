@@ -468,8 +468,9 @@ async function createNewFile(dirPath = ".", /** @type {() => void} */ renderLeft
 async function renameFile(/** @type {any} */ entry, /** @type {() => void} */ renderLeftPanel) {
   const newName = prompt("New name:", entry.name);
   if (!newName || newName === entry.name) return;
-  const parentDir = entry.path.includes("/")
-    ? entry.path.substring(0, entry.path.lastIndexOf("/"))
+  const entryPath = entry.path.replaceAll("\\", "/");
+  const parentDir = entryPath.includes("/")
+    ? entryPath.substring(0, entryPath.lastIndexOf("/"))
     : ".";
   const newPath = parentDir === "." ? newName : `${parentDir}/${newName}`;
   try {
@@ -491,9 +492,8 @@ async function deleteFile(/** @type {any} */ entry, /** @type {() => void} */ re
   try {
     const platform = getPlatform();
     await platform.deleteFile(entry.path);
-    const parentDir = entry.path.includes("/")
-      ? entry.path.substring(0, entry.path.lastIndexOf("/"))
-      : ".";
+    const delPath = entry.path.replaceAll("\\", "/");
+    const parentDir = delPath.includes("/") ? delPath.substring(0, delPath.lastIndexOf("/")) : ".";
     await loadDirectory(parentDir);
     if (projectState.selectedPath === entry.path) {
       projectState.selectedPath = null;

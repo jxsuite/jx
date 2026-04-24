@@ -25,8 +25,9 @@ export function createDevServerPlatform() {
    * @param {string} rel
    */
   function serverPath(rel) {
-    if (!_projectRoot || _projectRoot === ".") return rel;
-    return rel === "." ? _projectRoot : `${_projectRoot}/${rel}`;
+    const r = rel.replaceAll("\\", "/");
+    if (!_projectRoot || _projectRoot === ".") return r;
+    return r === "." ? _projectRoot : `${_projectRoot}/${r}`;
   }
 
   /**
@@ -35,8 +36,9 @@ export function createDevServerPlatform() {
    * @param {string} path
    */
   function stripRoot(path) {
-    if (!_projectRoot || _projectRoot === ".") return path;
-    return path.startsWith(_projectRoot + "/") ? path.slice(_projectRoot.length + 1) : path;
+    const p = path.replaceAll("\\", "/");
+    if (!_projectRoot || _projectRoot === ".") return p;
+    return p.startsWith(_projectRoot + "/") ? p.slice(_projectRoot.length + 1) : p;
   }
 
   return {

@@ -23,9 +23,11 @@ export async function loadComponentRegistry() {
  */
 export function computeRelativePath(fromDocPath, toCompPath) {
   if (!fromDocPath) return `./${toCompPath}`;
-  const fromDir = fromDocPath.substring(0, fromDocPath.lastIndexOf("/"));
+  const from = fromDocPath.replaceAll("\\", "/");
+  const to = toCompPath.replaceAll("\\", "/");
+  const fromDir = from.substring(0, from.lastIndexOf("/"));
   const fromParts = fromDir.split("/").filter(Boolean);
-  const toParts = toCompPath.split("/").filter(Boolean);
+  const toParts = to.split("/").filter(Boolean);
   let common = 0;
   while (
     common < fromParts.length &&
