@@ -54,6 +54,7 @@ export async function compile(sourcePath, opts = {}) {
     title = "Jx App",
     reactivitySrc = DEFAULT_REACTIVITY_SRC,
     litHtmlSrc = DEFAULT_LIT_HTML_SRC,
+    projectStyle = null,
   } = opts;
 
   const raw =
@@ -72,7 +73,7 @@ export async function compile(sourcePath, opts = {}) {
 
   // Route 1: Fully static → plain HTML/CSS
   if (!isDynamic(raw)) {
-    return compileStaticPage(raw, { title, reactivitySrc, litHtmlSrc });
+    return compileStaticPage(raw, { title, reactivitySrc, litHtmlSrc, projectStyle });
   }
 
   // Route 2: Custom element tagName (contains hyphen) → lit-html web component
@@ -109,7 +110,7 @@ export async function compile(sourcePath, opts = {}) {
   }
 
   // Route 3: Dynamic with standard tagName → pre-rendered HTML + reactive bindings
-  return compileClient(raw, { title, reactivitySrc, litHtmlSrc });
+  return compileClient(raw, { title, reactivitySrc, litHtmlSrc, projectStyle });
 }
 
 // ─── CLI ──────────────────────────────────────────────────────────────────────

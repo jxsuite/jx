@@ -480,9 +480,48 @@ export function buildInner(def, raw, context, childCompiler) {
  * @param {Record<string, any>} [mediaQueries]
  * @returns {string}
  */
-export function compileStyles(doc, mediaQueries = {}) {
+export function compileStyles(doc, mediaQueries = {}, projectStyle = null) {
   /** @type {string[]} */
   const rules = [];
+
+  // Emit project-level (site-wide) styles first — `:root` vars, then `body` base rules
+  if (projectStyle && typeof projectStyle === "object") {
+    for (const [key, val] of Object.entries(projectStyle)) {
+      if (key.startsWith(":") || key.startsWith(".") || key.startsWith("[")) {
+        // Standalone selector (e.g. `:root`, `.dark`)
+        rules.push(`${key} { ${toCSSText(/** @type {any} */ (val))} }`);
+      } else if (key.startsWith("@")) {
+        // @media block
+        const query = key.startsWith("@--")
+          ? (mediaQueries[key.slice(1)] ?? key.slice(1))
+          : key.slice(1);
+        rules.push(`@media ${query} { body { ${toCSSText(/** @type {any} */ (val))} } }`);
+      } else if (val && typeof val === "object" && !Array.isArray(val)) {
+        // Nested selector that doesn't start with special char — skip (already handled)
+      } else {
+        // Direct property (margin, padding, etc.) → collect for body rule
+      }
+    }
+    // Collect direct CSS properties into a body {} rule
+    /** @type {Record<string, any>} */
+    const bodyProps = {};
+    for (const [key, val] of Object.entries(projectStyle)) {
+      if (
+        !key.startsWith(":") &&
+        !key.startsWith(".") &&
+        !key.startsWith("[") &&
+        !key.startsWith("@") &&
+        (val === null || typeof val !== "object" || Array.isArray(val))
+      ) {
+        bodyProps[key] = val;
+      }
+    }
+    const bodyCSS = toCSSText(/** @type {any} */ (bodyProps));
+    if (bodyCSS) {
+      rules.push(`body { ${bodyCSS} }`);
+    }
+  }
+
   collectStyles(doc, rules, mediaQueries, "");
   if (rules.length === 0) return "";
   return `<style>\n${rules.join("\n")}\n</style>`;
