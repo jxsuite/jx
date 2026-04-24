@@ -591,6 +591,21 @@ async function renderCanvasLive(doc, canvasEl) {
     // Inject site-level imports so buildScope can resolve $prototype names
     renderDoc.imports = getEffectiveImports(renderDoc.imports);
 
+    // Inject site-level root style (CSS custom properties, typography, etc.)
+    // Promote :root variables to top-level so they apply directly to the
+    // canvas root element (the runtime would scope them to a non-existent
+    // descendant `:root` otherwise).
+    const merged = getEffectiveStyle(renderDoc.style);
+    if (merged[":root"] && typeof merged[":root"] === "object") {
+      const { ":root": rootVars, ...rest } = merged;
+      renderDoc.style = { ...rootVars, ...rest };
+    } else {
+      renderDoc.style = merged;
+    }
+
+    // Inject site-level $media so runtime can resolve media queries in styles
+    renderDoc.$media = getEffectiveMedia(renderDoc.$media);
+
     // Inject $head elements (link/meta/script) into document.head
     const effectiveHead = getEffectiveHead(renderDoc.$head);
     if (effectiveHead.length) {

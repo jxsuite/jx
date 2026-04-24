@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach } from "bun:test";
 import { createState, setProjectState } from "../src/state.js";
-import { getEffectiveElements } from "../src/site-context.js";
+import { getEffectiveElements, getEffectiveStyle, getEffectiveMedia } from "../src/site-context.js";
 import { computeRelativePath } from "../src/files/components.js";
 import { loadMarkdown } from "../src/files/file-ops.js";
 
@@ -382,5 +382,177 @@ describe("ctx getter pattern for S reference", () => {
     // ctx.S still points to old state
     ctx.S.documentPath = "content/pages/home.md";
     expect(S.documentPath).toBeNull(); // documentPath set on wrong object!
+  });
+});
+
+// ─── getEffectiveStyle ─────────────────────────────────────────────────────
+
+describe("getEffectiveStyle", () => {
+  beforeEach(() => {
+    setProjectState(null);
+  });
+
+  test("returns doc style when no site config", () => {
+    const docStyle = { color: "red" };
+    expect(getEffectiveStyle(docStyle)).toEqual({ color: "red" });
+  });
+
+  test("returns empty object when no doc style and no site config", () => {
+    expect(getEffectiveStyle(undefined)).toEqual({});
+  });
+
+  test("returns site style when doc has none", () => {
+    setProjectState({
+      projectConfig: { style: { color: "blue", fontFamily: "sans-serif" } },
+    });
+    expect(getEffectiveStyle(undefined)).toEqual({ color: "blue", fontFamily: "sans-serif" });
+  });
+
+  test("doc style overrides site style on conflict", () => {
+    setProjectState({
+      projectConfig: { style: { color: "blue", fontFamily: "sans-serif" } },
+    });
+    const result = getEffectiveStyle({ color: "red" });
+    expect(result.color).toBe("red");
+    expect(result.fontFamily).toBe("sans-serif");
+  });
+
+  test("shallow-merges nested selector objects", () => {
+    setProjectState({
+      projectConfig: {
+        style: { ":root": { "--bg": "#000", "--text": "#fff" } },
+      },
+    });
+    const result = getEffectiveStyle({ ":root": { "--bg": "#111", "--accent": "#f00" } });
+    expect(result[":root"]["--bg"]).toBe("#111");
+    expect(result[":root"]["--text"]).toBe("#fff");
+    expect(result[":root"]["--accent"]).toBe("#f00");
+  });
+
+  test("preserves :root CSS custom properties from site config", () => {
+    setProjectState({
+      projectConfig: {
+        style: {
+          ":root": { "--bg-primary": "#0a0a0a", "--text-primary": "#fafafa" },
+          fontFamily: "system-ui",
+          backgroundColor: "var(--bg-primary)",
+        },
+      },
+    });
+    const result = getEffectiveStyle(undefined);
+    expect(result[":root"]["--bg-primary"]).toBe("#0a0a0a");
+    expect(result.backgroundColor).toBe("var(--bg-primary)");
+  });
+});
+
+// ─── :root promotion ───────────────────────────────────────────────────────
+
+describe(":root promotion for canvas rendering", () => {
+  /**
+   * Simulate the :root promotion logic from renderCanvasLive.
+   *
+   * @param {Record<string, any>} merged
+   */
+  function promoteRoot(merged) {
+    if (merged[":root"] && typeof merged[":root"] === "object") {
+      const { ":root": rootVars, ...rest } = merged;
+      return { ...rootVars, ...rest };
+    }
+    return merged;
+  }
+
+  test("promotes :root variables to top level", () => {
+    const style = {
+      ":root": { "--bg": "#000", "--text": "#fff" },
+      fontFamily: "sans-serif",
+    };
+    const result = promoteRoot(style);
+    expect(result["--bg"]).toBe("#000");
+    expect(result["--text"]).toBe("#fff");
+    expect(result.fontFamily).toBe("sans-serif");
+    expect(result[":root"]).toBeUndefined();
+  });
+
+  test("top-level properties override promoted :root on conflict", () => {
+    const style = {
+      ":root": { "--bg": "#000", color: "white" },
+      color: "red",
+    };
+    const result = promoteRoot(style);
+    // rest spread comes after rootVars, so top-level wins
+    expect(result.color).toBe("red");
+    expect(result["--bg"]).toBe("#000");
+  });
+
+  test("no-ops when :root is absent", () => {
+    const style = { fontFamily: "sans-serif", color: "red" };
+    const result = promoteRoot(style);
+    expect(result).toEqual(style);
+  });
+
+  test("no-ops when :root is not an object", () => {
+    const style = { ":root": "invalid", color: "red" };
+    const result = promoteRoot(style);
+    expect(result).toEqual(style);
+  });
+
+  test("full pipeline: site config → merge → promote", () => {
+    setProjectState({
+      projectConfig: {
+        style: {
+          ":root": { "--bg-primary": "#0a0a0a", "--text-primary": "#fafafa" },
+          fontFamily: "system-ui",
+          backgroundColor: "var(--bg-primary)",
+          color: "var(--text-primary)",
+        },
+      },
+    });
+    const merged = getEffectiveStyle(undefined);
+    const promoted = promoteRoot(merged);
+    expect(promoted["--bg-primary"]).toBe("#0a0a0a");
+    expect(promoted["--text-primary"]).toBe("#fafafa");
+    expect(promoted.backgroundColor).toBe("var(--bg-primary)");
+    expect(promoted.fontFamily).toBe("system-ui");
+    expect(promoted[":root"]).toBeUndefined();
+  });
+});
+
+// ─── getEffectiveMedia ─────────────────────────────────────────────────────
+
+describe("getEffectiveMedia", () => {
+  beforeEach(() => {
+    setProjectState(null);
+  });
+
+  test("returns doc media when no site config", () => {
+    const docMedia = { "--sm": "(min-width: 640px)" };
+    expect(getEffectiveMedia(docMedia)).toEqual(docMedia);
+  });
+
+  test("returns empty object when no doc media and no site config", () => {
+    expect(getEffectiveMedia(undefined)).toEqual({});
+  });
+
+  test("returns site media when doc has none", () => {
+    setProjectState({
+      projectConfig: {
+        $media: { "--sm": "(min-width: 640px)", "--md": "(min-width: 768px)" },
+      },
+    });
+    expect(getEffectiveMedia(undefined)).toEqual({
+      "--sm": "(min-width: 640px)",
+      "--md": "(min-width: 768px)",
+    });
+  });
+
+  test("doc media overrides site media on conflict", () => {
+    setProjectState({
+      projectConfig: {
+        $media: { "--sm": "(min-width: 640px)", "--md": "(min-width: 768px)" },
+      },
+    });
+    const result = getEffectiveMedia({ "--sm": "(min-width: 600px)" });
+    expect(result["--sm"]).toBe("(min-width: 600px)");
+    expect(result["--md"]).toBe("(min-width: 768px)");
   });
 });
