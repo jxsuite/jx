@@ -115,12 +115,14 @@
         "@spectrum-web-components/color-handle": "^1.11.2",
         "@spectrum-web-components/color-slider": "^1.11.2",
         "@spectrum-web-components/combobox": "^1.11.2",
+        "@spectrum-web-components/dialog": "^1.11.2",
         "@spectrum-web-components/divider": "^1.11.2",
         "@spectrum-web-components/icon": "^1.11.2",
         "@spectrum-web-components/icons-workflow": "^1.11.2",
         "@spectrum-web-components/menu": "^1.11.2",
         "@spectrum-web-components/number-field": "^1.11.2",
         "@spectrum-web-components/overlay": "^1.11.2",
+        "@spectrum-web-components/overlay-trigger": "^0.1.7",
         "@spectrum-web-components/picker": "^1.11.2",
         "@spectrum-web-components/picker-button": "^1.11.2",
         "@spectrum-web-components/popover": "^1.11.2",
@@ -396,9 +398,13 @@
 
     "@spectrum-web-components/action-group": ["@spectrum-web-components/action-group@1.11.2", "", { "dependencies": { "@lit-labs/observers": "2.0.2", "@spectrum-web-components/action-button": "1.11.2", "@spectrum-web-components/base": "1.11.2", "@spectrum-web-components/icons-workflow": "1.11.2", "@spectrum-web-components/reactive-controllers": "1.11.2" } }, "sha512-wV2eLK99qo4Jm21GCAFMrfa+3wLdxFpPiiaAbOHnbqVFOzaqOwabTdZX+KT7soBXII2YezqUD0cTC+VTkeRCsA=="],
 
+    "@spectrum-web-components/alert-dialog": ["@spectrum-web-components/alert-dialog@1.11.2", "", { "dependencies": { "@lit-labs/observers": "2.0.2", "@spectrum-web-components/base": "1.11.2", "@spectrum-web-components/button": "1.11.2", "@spectrum-web-components/button-group": "1.11.2", "@spectrum-web-components/divider": "1.11.2", "@spectrum-web-components/icons-workflow": "1.11.2", "@spectrum-web-components/shared": "1.11.2" } }, "sha512-XI53YkTe2oZPXjfxDqsr+MpdxJEtLeOjBY7m/emTDruDrRSVNsv2Z+OyE/aesyc7ykE7DMdxLmpdFzTz13YtbA=="],
+
     "@spectrum-web-components/base": ["@spectrum-web-components/base@1.11.2", "", { "dependencies": { "@spectrum-web-components/core": "0.0.4", "lit": "^2.5.0 || ^3.1.3" } }, "sha512-clE3qfZt2M/wLjbGMrpaUplIEDrrRVTA6SbxddXflNaIfmp+QCyWAj36oudPeAfnXVLG1/oyrc0wQwHEJ/gI3Q=="],
 
     "@spectrum-web-components/button": ["@spectrum-web-components/button@1.11.2", "", { "dependencies": { "@spectrum-web-components/base": "1.11.2", "@spectrum-web-components/clear-button": "1.11.2", "@spectrum-web-components/close-button": "1.11.2", "@spectrum-web-components/icon": "1.11.2", "@spectrum-web-components/icons-ui": "1.11.2", "@spectrum-web-components/progress-circle": "1.11.2", "@spectrum-web-components/reactive-controllers": "1.11.2", "@spectrum-web-components/shared": "1.11.2" } }, "sha512-dQy+PcCqTu+eDZ9l9/x5gtGgLuHq/FDNqWut2lwNSg6s57JO1UzvUGux+Ga+e444j8OsPUXpA8C/FdR7C7KHGw=="],
+
+    "@spectrum-web-components/button-group": ["@spectrum-web-components/button-group@1.11.2", "", { "dependencies": { "@spectrum-web-components/base": "1.11.2", "@spectrum-web-components/button": "1.11.2" } }, "sha512-WysPPjFOt+bdZGfmtWEUkuO/bmmwANKPZauZy5PAh8BgjFQGbjupH7/WeYHuOo5iXM1andDTrjXtKfU/lVtIow=="],
 
     "@spectrum-web-components/checkbox": ["@spectrum-web-components/checkbox@1.11.2", "", { "dependencies": { "@spectrum-web-components/base": "1.11.2", "@spectrum-web-components/icon": "1.11.2", "@spectrum-web-components/icons-ui": "1.11.2", "@spectrum-web-components/shared": "1.11.2" } }, "sha512-Pdz+4OBoKK21ju7eEti1nqIYCA7av+6vZY0bKV4aVDuSwrilskfngnYAuYigEjnkZqScjEYD4ib+eg8zs43wGg=="],
 
@@ -417,6 +423,8 @@
     "@spectrum-web-components/combobox": ["@spectrum-web-components/combobox@1.11.2", "", { "dependencies": { "@spectrum-web-components/action-button": "1.11.2", "@spectrum-web-components/base": "1.11.2", "@spectrum-web-components/icon": "1.11.2", "@spectrum-web-components/icons-ui": "1.11.2", "@spectrum-web-components/menu": "1.11.2", "@spectrum-web-components/overlay": "1.11.2", "@spectrum-web-components/picker-button": "1.11.2", "@spectrum-web-components/popover": "1.11.2", "@spectrum-web-components/progress-circle": "1.11.2", "@spectrum-web-components/reactive-controllers": "1.11.2", "@spectrum-web-components/textfield": "1.11.2" } }, "sha512-mD/VJFUNuKx1oSYyVq46Amq7BAUfcOXQMriXtvuWQ6O331/zharXEjdptTqW8GyKl2TlS+Ghu7A30lMiGfuNYQ=="],
 
     "@spectrum-web-components/core": ["@spectrum-web-components/core@0.0.4", "", { "dependencies": { "@lit-labs/observers": "2.0.2", "lit": "^2.5.0 || ^3.1.3" } }, "sha512-EPJBQwJWQuabDPfKMqb5Q3++/xePXR9toTvKQ12bkBR3DG/bX6/O7sEzx+X8ZAdx+72PZwZ9/bWq9D33qv0gQA=="],
+
+    "@spectrum-web-components/dialog": ["@spectrum-web-components/dialog@1.11.2", "", { "dependencies": { "@spectrum-web-components/alert-dialog": "1.11.2", "@spectrum-web-components/base": "1.11.2", "@spectrum-web-components/button": "1.11.2", "@spectrum-web-components/button-group": "1.11.2", "@spectrum-web-components/divider": "1.11.2", "@spectrum-web-components/icons-workflow": "1.11.2", "@spectrum-web-components/modal": "1.11.2", "@spectrum-web-components/shared": "1.11.2", "@spectrum-web-components/underlay": "1.11.2" } }, "sha512-3PvV6h+70ySWzf4PVqyaZ/qqOxuHeD8bQAiGD78ehrzuZMPjPbQ7Y47qjcr7/K3CGYlam8qHTxLRq5ctnwnGZw=="],
 
     "@spectrum-web-components/divider": ["@spectrum-web-components/divider@1.11.2", "", { "dependencies": { "@spectrum-web-components/base": "1.11.2", "@spectrum-web-components/core": "0.0.4" } }, "sha512-N6p1CBTrXLuXgaAnj9fPA2PdRM3sIyFHCA3HPbQjq+p5Lmgea3OE5bhCgzvWeJUetvaGMN0RjxdPaAIhtSvVVQ=="],
 
@@ -443,6 +451,10 @@
     "@spectrum-web-components/opacity-checkerboard": ["@spectrum-web-components/opacity-checkerboard@1.11.2", "", { "dependencies": { "@spectrum-web-components/base": "1.11.2" } }, "sha512-+eKEK+0gCR3pB80fzKl790Hx4xQR5Kgu9uF4tyW2Q4Ru1CO0Gyb+IwnEDmW3pZVh1ghk0YZ6Bg861L9IRFf8Lw=="],
 
     "@spectrum-web-components/overlay": ["@spectrum-web-components/overlay@1.11.2", "", { "dependencies": { "@floating-ui/dom": "1.7.4", "@floating-ui/utils": "0.2.10", "@spectrum-web-components/action-button": "1.11.2", "@spectrum-web-components/base": "1.11.2", "@spectrum-web-components/reactive-controllers": "1.11.2", "@spectrum-web-components/shared": "1.11.2", "@spectrum-web-components/theme": "1.11.2", "focus-trap": "7.6.5" } }, "sha512-zrMGmO7ZlcgoR7O7XokNhwNFQPIbTItuDIfJA4W4BHKwB2uSNmJQYcEX6CKaCSnMlxXiWhlAu4JVmHu4dFUaJQ=="],
+
+    "@spectrum-web-components/overlay-root": ["@spectrum-web-components/overlay-root@0.1.7", "", { "dependencies": { "tslib": "^1.10.0" }, "peerDependencies": { "lit-element": "^2.1.0", "lit-html": "^1.0.0" } }, "sha512-go3Ru2bLa5IYbLP+NzvWl6/BxRVzJ1sPL9z+skYoYstlcoZCiV+vE40A8xGvO1OoLnU/Ds34f0j4z7uwqHdV3g=="],
+
+    "@spectrum-web-components/overlay-trigger": ["@spectrum-web-components/overlay-trigger@0.1.7", "", { "dependencies": { "@spectrum-web-components/overlay-root": "^0.1.7", "tslib": "^1.10.0" }, "peerDependencies": { "lit-element": "^2.1.0", "lit-html": "^1.0.0" } }, "sha512-HbwL6JsUw7HghMQtTM51URyNZQfehff1kh/qhkCbBNW13/0C25idWL3+GWgNjTTgUqe9wJ4UjRHTRhS6AX0y+Q=="],
 
     "@spectrum-web-components/picker": ["@spectrum-web-components/picker@1.11.2", "", { "dependencies": { "@spectrum-web-components/base": "1.11.2", "@spectrum-web-components/button": "1.11.2", "@spectrum-web-components/field-label": "1.11.2", "@spectrum-web-components/icon": "1.11.2", "@spectrum-web-components/icons-ui": "1.11.2", "@spectrum-web-components/icons-workflow": "1.11.2", "@spectrum-web-components/menu": "1.11.2", "@spectrum-web-components/overlay": "1.11.2", "@spectrum-web-components/popover": "1.11.2", "@spectrum-web-components/progress-circle": "1.11.2", "@spectrum-web-components/reactive-controllers": "1.11.2", "@spectrum-web-components/shared": "1.11.2", "@spectrum-web-components/tooltip": "1.11.2", "@spectrum-web-components/tray": "1.11.2" } }, "sha512-hB8u8k6y+XaDkgde4ZoZTgFcmFoPgaw6JPcDjqLN4hb2uDhJlP2mTU735pIxhrVPa40cINNPbmIcMf5mcB5P5A=="],
 
@@ -1230,7 +1242,7 @@
 
     "trough": ["trough@2.2.0", "", {}, "sha512-tmMpK00BjZiUyVyvrBK7knerNgmgvcV/KLVyuma/SC+TQN167GrMRciANTz09+k3zW8L8t60jWO1GpfkZdjTaw=="],
 
-    "tslib": ["tslib@2.8.1", "", {}, "sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w=="],
+    "tslib": ["tslib@1.14.1", "", {}, "sha512-Xni35NKzjgMrwevysHTCArtLDpPvye8zV/0E4EyYn43P7/7qvQwPh9BGkHewbMulVntbigmcT7rdX3BNo9wRJg=="],
 
     "type-fest": ["type-fest@2.19.0", "", {}, "sha512-RAH822pAdBgcNMAfWnCBU3CFZcfZ/i1eZjwFU/dsLKumyuuP3niueg2UAukXYF0E2AAoc82ZSSf9J0WQBinzHA=="],
 
@@ -1309,6 +1321,10 @@
     "@floating-ui/core/@floating-ui/utils": ["@floating-ui/utils@0.2.11", "", {}, "sha512-RiB/yIh78pcIxl6lLMG0CgBXAZ2Y0eVHqMPYugu+9U0AeT6YBeiJpf7lbdJNIugFP5SIjwNRgo4DhR1Qxi26Gg=="],
 
     "@inquirer/external-editor/iconv-lite": ["iconv-lite@0.7.2", "", { "dependencies": { "safer-buffer": ">= 2.1.2 < 3.0.0" } }, "sha512-im9DjEDQ55s9fL4EYzOAv0yMqmMBSZp6G0VvFyTMPKWxiSBHUj9NW/qqLmXUwXrrM7AvqSlTCfvqRb0cM8yYqw=="],
+
+    "@swc/helpers/tslib": ["tslib@2.8.1", "", {}, "sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w=="],
+
+    "ast-types/tslib": ["tslib@2.8.1", "", {}, "sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w=="],
 
     "cli-truncate/string-width": ["string-width@8.2.0", "", { "dependencies": { "get-east-asian-width": "^1.5.0", "strip-ansi": "^7.1.2" } }, "sha512-6hJPQ8N0V0P3SNmP6h2J99RLuzrWz2gvT7VnK5tKvrNqJoyS9W4/Fb8mo31UiPvy00z7DQXkP2hnKBVav76thw=="],
 

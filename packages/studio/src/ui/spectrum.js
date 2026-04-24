@@ -37,6 +37,12 @@ import { Switch as SpSwitch } from "@spectrum-web-components/switch/src/Switch.j
 import { Divider } from "@spectrum-web-components/divider/src/Divider.js";
 import { Tooltip } from "@spectrum-web-components/tooltip/src/Tooltip.js";
 import { Overlay } from "@spectrum-web-components/overlay/src/Overlay.js";
+import { OverlayTrigger } from "@spectrum-web-components/overlay/src/OverlayTrigger.js";
+import { Dialog } from "@spectrum-web-components/dialog/src/Dialog.js";
+import { DialogWrapper } from "@spectrum-web-components/dialog/src/DialogWrapper.js";
+import { HelpText } from "@spectrum-web-components/help-text/src/HelpText.js";
+import { Button } from "@spectrum-web-components/button/src/Button.js";
+import { Underlay } from "@spectrum-web-components/underlay/src/Underlay.js";
 import { PickerButton } from "@spectrum-web-components/picker-button/src/PickerButton.js";
 import { Accordion } from "@spectrum-web-components/accordion/src/Accordion.js";
 import { AccordionItem } from "@spectrum-web-components/accordion/src/AccordionItem.js";
@@ -151,6 +157,12 @@ const components = [
   ["sp-divider", Divider],
   ["sp-tooltip", Tooltip],
   ["sp-overlay", Overlay],
+  ["overlay-trigger", OverlayTrigger],
+  ["sp-dialog", Dialog],
+  ["sp-dialog-wrapper", DialogWrapper],
+  ["sp-help-text", HelpText],
+  ["sp-button", Button],
+  ["sp-underlay", Underlay],
   ["sp-picker-button", PickerButton],
   ["sp-accordion", Accordion],
   ["sp-accordion-item", AccordionItem],

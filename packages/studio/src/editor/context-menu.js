@@ -11,6 +11,7 @@ import {
   childIndex,
 } from "../store.js";
 import { statusMessage } from "../panels/statusbar.js";
+import { convertToComponent } from "./convert-to-component.js";
 
 /** @type {any} */
 let clipboard = null;
@@ -90,6 +91,12 @@ export function showContextMenu(e, path, S) {
   if (path.length >= 2) {
     items.push({ label: "Cut", action: () => cutNode(S) });
     items.push({ label: "Duplicate", action: () => update(duplicateNode(S, S.selection)) });
+    if (node.tagName) {
+      items.push({
+        label: "Convert to Component",
+        action: () => convertToComponent(S),
+      });
+    }
     items.push({ label: "—" }); // separator
     items.push({ label: "Delete", action: () => update(removeNode(S, S.selection)), danger: true });
   }

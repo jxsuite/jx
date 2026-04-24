@@ -25,6 +25,7 @@
     "lint": "oxlint .",
     "lint:fix": "oxlint --fix .",
     "prepare": "husky",
+    "all-the-things": "bun run build && bun run test && bun run lint && bun run typecheck",
     "release": "release-it",
     "release:publish": "bun publish --cwd packages/compiler --access public && bun publish --cwd packages/parser --access public && bun publish --cwd packages/runtime --access public && bun publish --cwd packages/schema --access public && bun publish --cwd packages/server --access public && bun publish --cwd packages/studio --access public",
     "test": "bun test",

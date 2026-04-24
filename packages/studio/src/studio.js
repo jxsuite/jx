@@ -163,6 +163,7 @@ import { renderDataExplorerTemplate } from "./panels/data-explorer.js";
 import { components as _swc } from "./ui/spectrum.js"; // eslint-disable-line no-unused-vars
 import icons from "./ui/icons.js";
 import { showContextMenu } from "./editor/context-menu.js";
+import { convertToComponent } from "./editor/convert-to-component.js";
 import { initShortcuts } from "./editor/shortcuts.js";
 import { renderActivityBar, tabIcon } from "./panels/activity-bar.js";
 import * as monaco from "monaco-editor/esm/vs/editor/editor.api.js";
@@ -2158,6 +2159,15 @@ function renderBlockActionBar() {
           ? html`<span class="bar-drag-handle" title="Drag to reorder">⡇</span>`
           : nothing}
         ${S.selection.length >= 2 ? renderMoveArrows() : nothing}
+        ${S.selection.length >= 2 && node.tagName
+          ? html`<sp-action-button
+              size="xs"
+              quiet
+              title="Convert to Component"
+              @click=${() => convertToComponent(S)}
+              ><sp-icon-box slot="icon" size="xs"></sp-icon-box
+            ></sp-action-button>`
+          : nothing}
         ${showFormat
           ? html`
               <sp-divider size="s" vertical></sp-divider>
