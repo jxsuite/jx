@@ -591,15 +591,15 @@ async function renderCanvasLive(doc, canvasEl) {
     // Inject site-level imports so buildScope can resolve $prototype names
     renderDoc.imports = getEffectiveImports(renderDoc.imports);
 
-    // Apply project-level styles to the canvas viewport.  The viewport acts
-    // as the page's :root — CSS custom properties inherit into rendered
-    // content, and non-inheritable props like backgroundColor provide the
-    // correct page backdrop.  Project-level style is implicitly :root;
-    // no promotion step needed.
+    // Apply project-level styles mirroring the compiler convention:
+    //   viewport ≈ :root  → CSS custom properties (they inherit down)
+    //   canvasEl ≈ body   → regular CSS properties (inline beats CSS defaults)
+    // This ensures project font-family, color, etc. override the
+    // content-mode fallback typography rules in the stylesheet.
     const viewport = canvasEl.closest(".canvas-panel-viewport");
+    const siteStyle = projectState?.projectConfig?.style;
     if (viewport) {
       viewport.style.cssText = "";
-      const siteStyle = projectState?.projectConfig?.style;
       if (siteStyle && typeof siteStyle === "object") {
         for (const [k, v] of Object.entries(siteStyle)) {
           if (k.startsWith("--")) {
@@ -607,6 +607,13 @@ async function renderCanvasLive(doc, canvasEl) {
           } else {
             /** @type {any} */ (viewport.style)[k] = v;
           }
+        }
+      }
+    }
+    if (siteStyle && typeof siteStyle === "object") {
+      for (const [k, v] of Object.entries(siteStyle)) {
+        if (!k.startsWith("--")) {
+          /** @type {any} */ (canvasEl.style)[k] = v;
         }
       }
     }
