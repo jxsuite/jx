@@ -1582,6 +1582,11 @@ export async function defineElement(source, base) {
       const slottedChildren = Array.from(this.childNodes);
       this.innerHTML = "";
 
+      // Custom elements default to display:inline — use block so they behave as
+      // containers (matching <div> semantics).  The component's own style can
+      // override this if needed.
+      if (!this.style.display) this.style.display = "block";
+
       // Render template into light DOM (once, not in effect — inner effects handle reactivity)
       applyStyle(this, def.style ?? {}, state["$media"] ?? {}, state);
       applyAttributes(this, def.attributes ?? {}, state);
