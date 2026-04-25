@@ -484,11 +484,13 @@ export function compileStyles(doc, mediaQueries = {}, projectStyle = null) {
   /** @type {string[]} */
   const rules = [];
 
-  // Emit project-level (site-wide) styles first — `:root` vars, then `body` base rules
+  // Emit project-level (site-wide) styles — CSS custom properties go on :root,
+  // everything else on body.  Project-level style is implicitly :root, so a
+  // flat object like { "--bg": "#000", "margin": "0" } is the expected format.
   if (projectStyle && typeof projectStyle === "object") {
     for (const [key, val] of Object.entries(projectStyle)) {
       if (key.startsWith(":") || key.startsWith(".") || key.startsWith("[")) {
-        // Standalone selector (e.g. `:root`, `.dark`)
+        // Standalone selector (e.g. `.dark`)
         rules.push(`${key} { ${toCSSText(/** @type {any} */ (val))} }`);
       } else if (key.startsWith("@")) {
         // @media block
@@ -496,25 +498,27 @@ export function compileStyles(doc, mediaQueries = {}, projectStyle = null) {
           ? (mediaQueries[key.slice(1)] ?? key.slice(1))
           : key.slice(1);
         rules.push(`@media ${query} { body { ${toCSSText(/** @type {any} */ (val))} } }`);
-      } else if (val && typeof val === "object" && !Array.isArray(val)) {
-        // Nested selector that doesn't start with special char — skip (already handled)
-      } else {
-        // Direct property (margin, padding, etc.) → collect for body rule
       }
     }
-    // Collect direct CSS properties into a body {} rule
+    // Collect CSS custom properties into :root {}
+    /** @type {Record<string, any>} */
+    const rootProps = {};
+    // Collect direct CSS properties into body {}
     /** @type {Record<string, any>} */
     const bodyProps = {};
     for (const [key, val] of Object.entries(projectStyle)) {
-      if (
-        !key.startsWith(":") &&
-        !key.startsWith(".") &&
-        !key.startsWith("[") &&
-        !key.startsWith("@") &&
-        (val === null || typeof val !== "object" || Array.isArray(val))
-      ) {
+      if (key.startsWith(":") || key.startsWith(".") || key.startsWith("[") || key.startsWith("@"))
+        continue;
+      if (val !== null && typeof val === "object" && !Array.isArray(val)) continue;
+      if (key.startsWith("--")) {
+        rootProps[key] = val;
+      } else {
         bodyProps[key] = val;
       }
+    }
+    const rootCSS = toCSSText(/** @type {any} */ (rootProps));
+    if (rootCSS) {
+      rules.push(`:root { ${rootCSS} }`);
     }
     const bodyCSS = toCSSText(/** @type {any} */ (bodyProps));
     if (bodyCSS) {

@@ -417,103 +417,87 @@ describe("getEffectiveStyle", () => {
     expect(result.fontFamily).toBe("sans-serif");
   });
 
-  test("shallow-merges nested selector objects", () => {
+  test("shallow-merges nested selector objects (e.g. & li)", () => {
     setProjectState({
       projectConfig: {
-        style: { ":root": { "--bg": "#000", "--text": "#fff" } },
+        style: { "& li": { margin: "0", padding: "4px" } },
       },
     });
-    const result = getEffectiveStyle({ ":root": { "--bg": "#111", "--accent": "#f00" } });
-    expect(result[":root"]["--bg"]).toBe("#111");
-    expect(result[":root"]["--text"]).toBe("#fff");
-    expect(result[":root"]["--accent"]).toBe("#f00");
+    const result = getEffectiveStyle({ "& li": { margin: "8px", color: "red" } });
+    expect(result["& li"].margin).toBe("8px");
+    expect(result["& li"].padding).toBe("4px");
+    expect(result["& li"].color).toBe("red");
   });
 
-  test("preserves :root CSS custom properties from site config", () => {
+  test("flat CSS custom properties from site config (project style is implicitly :root)", () => {
     setProjectState({
       projectConfig: {
         style: {
-          ":root": { "--bg-primary": "#0a0a0a", "--text-primary": "#fafafa" },
+          "--bg-primary": "#0a0a0a",
+          "--text-primary": "#fafafa",
           fontFamily: "system-ui",
           backgroundColor: "var(--bg-primary)",
         },
       },
     });
     const result = getEffectiveStyle(undefined);
-    expect(result[":root"]["--bg-primary"]).toBe("#0a0a0a");
+    expect(result["--bg-primary"]).toBe("#0a0a0a");
+    expect(result["--text-primary"]).toBe("#fafafa");
     expect(result.backgroundColor).toBe("var(--bg-primary)");
+    expect(result.fontFamily).toBe("system-ui");
   });
 });
 
-// ─── :root promotion ───────────────────────────────────────────────────────
+// ─── Flat project style convention ────────────────────────────────────────
 
-describe(":root promotion for canvas rendering", () => {
-  /**
-   * Simulate the :root promotion logic from renderCanvasLive.
-   *
-   * @param {Record<string, any>} merged
-   */
-  function promoteRoot(merged) {
-    if (merged[":root"] && typeof merged[":root"] === "object") {
-      const { ":root": rootVars, ...rest } = merged;
-      return { ...rootVars, ...rest };
-    }
-    return merged;
-  }
+describe("flat project style (implicit :root)", () => {
+  beforeEach(() => {
+    setProjectState(null);
+  });
 
-  test("promotes :root variables to top level", () => {
+  test("CSS variables and regular props coexist at top level", () => {
     const style = {
-      ":root": { "--bg": "#000", "--text": "#fff" },
+      "--bg": "#000",
+      "--text": "#fff",
       fontFamily: "sans-serif",
+      backgroundColor: "var(--bg)",
     };
-    const result = promoteRoot(style);
-    expect(result["--bg"]).toBe("#000");
+    // No promotion needed — already flat
+    expect(style["--bg"]).toBe("#000");
+    expect(style["--text"]).toBe("#fff");
+    expect(style.fontFamily).toBe("sans-serif");
+    expect(style.backgroundColor).toBe("var(--bg)");
+  });
+
+  test("doc style overrides project CSS variables on conflict", () => {
+    setProjectState({
+      projectConfig: {
+        style: { "--bg": "#000", "--text": "#fff", color: "var(--text)" },
+      },
+    });
+    const result = getEffectiveStyle({ "--bg": "#111" });
+    expect(result["--bg"]).toBe("#111");
     expect(result["--text"]).toBe("#fff");
-    expect(result.fontFamily).toBe("sans-serif");
-    expect(result[":root"]).toBeUndefined();
+    expect(result.color).toBe("var(--text)");
   });
 
-  test("top-level properties override promoted :root on conflict", () => {
-    const style = {
-      ":root": { "--bg": "#000", color: "white" },
-      color: "red",
-    };
-    const result = promoteRoot(style);
-    // rest spread comes after rootVars, so top-level wins
-    expect(result.color).toBe("red");
-    expect(result["--bg"]).toBe("#000");
-  });
-
-  test("no-ops when :root is absent", () => {
-    const style = { fontFamily: "sans-serif", color: "red" };
-    const result = promoteRoot(style);
-    expect(result).toEqual(style);
-  });
-
-  test("no-ops when :root is not an object", () => {
-    const style = { ":root": "invalid", color: "red" };
-    const result = promoteRoot(style);
-    expect(result).toEqual(style);
-  });
-
-  test("full pipeline: site config → merge → promote", () => {
+  test("full pipeline: flat site config → effective style", () => {
     setProjectState({
       projectConfig: {
         style: {
-          ":root": { "--bg-primary": "#0a0a0a", "--text-primary": "#fafafa" },
+          "--bg-primary": "#0a0a0a",
+          "--text-primary": "#fafafa",
           fontFamily: "system-ui",
           backgroundColor: "var(--bg-primary)",
           color: "var(--text-primary)",
         },
       },
     });
-    const merged = getEffectiveStyle(undefined);
-    const promoted = promoteRoot(merged);
-    expect(promoted["--bg-primary"]).toBe("#0a0a0a");
-    expect(promoted["--text-primary"]).toBe("#fafafa");
-    expect(promoted.backgroundColor).toBe("var(--bg-primary)");
-    expect(promoted.fontFamily).toBe("system-ui");
-    expect(promoted[":root"]).toBeUndefined();
+    const result = getEffectiveStyle(undefined);
+    expect(result["--bg-primary"]).toBe("#0a0a0a");
+    expect(result["--text-primary"]).toBe("#fafafa");
+    expect(result.backgroundColor).toBe("var(--bg-primary)");
+    expect(result.fontFamily).toBe("system-ui");
   });
 });
 

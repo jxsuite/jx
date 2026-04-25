@@ -591,16 +591,24 @@ async function renderCanvasLive(doc, canvasEl) {
     // Inject site-level imports so buildScope can resolve $prototype names
     renderDoc.imports = getEffectiveImports(renderDoc.imports);
 
-    // Inject site-level root style (CSS custom properties, typography, etc.)
-    // Promote :root variables to top-level so they apply directly to the
-    // canvas root element (the runtime would scope them to a non-existent
-    // descendant `:root` otherwise).
-    const merged = getEffectiveStyle(renderDoc.style);
-    if (merged[":root"] && typeof merged[":root"] === "object") {
-      const { ":root": rootVars, ...rest } = merged;
-      renderDoc.style = { ...rootVars, ...rest };
-    } else {
-      renderDoc.style = merged;
+    // Apply project-level styles to the canvas viewport.  The viewport acts
+    // as the page's :root — CSS custom properties inherit into rendered
+    // content, and non-inheritable props like backgroundColor provide the
+    // correct page backdrop.  Project-level style is implicitly :root;
+    // no promotion step needed.
+    const viewport = canvasEl.closest(".canvas-panel-viewport");
+    if (viewport) {
+      viewport.style.cssText = "";
+      const siteStyle = projectState?.projectConfig?.style;
+      if (siteStyle && typeof siteStyle === "object") {
+        for (const [k, v] of Object.entries(siteStyle)) {
+          if (k.startsWith("--")) {
+            viewport.style.setProperty(k, String(v));
+          } else {
+            /** @type {any} */ (viewport.style)[k] = v;
+          }
+        }
+      }
     }
 
     // Inject site-level $media so runtime can resolve media queries in styles
