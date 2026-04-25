@@ -186,6 +186,8 @@ function createFloatingContainer() {
 const toolbar = toolbarEl;
 
 let canvasMode = "design";
+/** @type {string | null} */
+let prevCanvasMode = null;
 let panX = 0;
 let panY = 0;
 let needsCenter = true;
@@ -285,6 +287,14 @@ let dndCleanups = [];
  * @type {any[]}
  */
 let canvasDndCleanups = [];
+
+/**
+ * Cleanup functions for per-panel event handlers (click, dblclick, mousemove, contextmenu).
+ * Re-registered on each render to keep closures fresh.
+ *
+ * @type {any[]}
+ */
+let canvasEventCleanups = [];
 
 /**
  * Convert a template string to a displayable expression for edit mode. Replaces ${expr} with ❮ expr
@@ -731,7 +741,7 @@ litRender(
 const cssInitialMap = new Map(/** @type {any} */ (webdata.cssProps));
 
 // Persistent render hosts for lit-html (must be before bootstrap/render)
-const zoomIndicatorHost = document.createElement("div");
+let zoomIndicatorHost = document.createElement("div");
 zoomIndicatorHost.style.display = "contents";
 document.body.appendChild(zoomIndicatorHost);
 
@@ -1021,6 +1031,38 @@ function applyCanvasStyle(el, styleDef, activeBreakpoints, featureToggles) {
   }
 }
 
+/**
+ * After a runtime render, apply active media overrides as inline styles so they beat the base
+ * inline styles the runtime already set. The runtime uses @media CSS rules for overrides, but those
+ * can never beat inline base styles.
+ *
+ * @param {Element} canvasEl
+ * @param {Set<string>} activeBreakpoints
+ */
+function applyCanvasMediaOverrides(canvasEl, activeBreakpoints) {
+  if (!activeBreakpoints.size) return;
+  for (const el of /** @type {NodeListOf<HTMLElement>} */ (canvasEl.querySelectorAll("*"))) {
+    const path = elToPath.get(el);
+    if (!path) continue;
+    const node = getNodeAtPath(S.document, path);
+    if (!node?.style) continue;
+    for (const [key, val] of Object.entries(node.style)) {
+      if (!key.startsWith("@") || typeof val !== "object") continue;
+      const mediaName = key.slice(1);
+      if (mediaName === "--") continue;
+      if (!activeBreakpoints.has(mediaName)) continue;
+      for (const [prop, v] of Object.entries(/** @type {any} */ (val))) {
+        if (typeof v === "string" || typeof v === "number") {
+          try {
+            if (prop.startsWith("--")) el.style.setProperty(prop, String(v));
+            else /** @type {any} */ (el.style)[prop] = v;
+          } catch {}
+        }
+      }
+    }
+  }
+}
+
 // ─── Canvas ───────────────────────────────────────────────────────────────────
 
 function renderCanvas() {
@@ -1048,27 +1090,44 @@ function renderCanvas() {
     return;
   }
 
-  // Clean up previous canvas DnD registrations and center observer
-  if (centerObserver) {
-    centerObserver.disconnect();
-    centerObserver = null;
-  }
+  // Detect whether this is a mode transition or a content-only re-render
+  const modeChanged = canvasMode !== prevCanvasMode;
+  prevCanvasMode = canvasMode;
+
+  // DnD handlers are registered on inner canvas elements that get replaced on every
+  // content render, so always clean them up.
   for (const fn of canvasDndCleanups) fn();
   canvasDndCleanups = [];
+
+  // Panel event handlers (click, dblclick, etc.) capture closures over panel references.
+  // Always re-register to keep closures fresh across document switches.
+  for (const fn of canvasEventCleanups) fn();
+  canvasEventCleanups = [];
+
+  // Panel JS objects are cheap — always clear and repopulate from templates.
+  // The actual DOM elements are preserved by Lit's diffing on content-only re-renders.
   canvasPanels.length = 0;
 
-  // Dispose Monaco editor if switching away from source mode
-  if (monacoEditor) {
-    monacoEditor.dispose();
-    monacoEditor = null;
-  }
+  if (modeChanged) {
+    // Full teardown on mode transitions — new panel structure needed
+    if (centerObserver) {
+      centerObserver.disconnect();
+      centerObserver = null;
+    }
 
-  litRender(nothing, canvasWrap);
-  panzoomWrap = null;
-  // Reset inline style overrides from other modes
-  canvasWrap.style.padding = "";
-  canvasWrap.style.alignItems = "";
-  canvasWrap.style.overflow = "";
+    // Dispose Monaco editor if switching away from source mode
+    if (monacoEditor) {
+      monacoEditor.dispose();
+      monacoEditor = null;
+    }
+
+    litRender(nothing, canvasWrap);
+    panzoomWrap = null;
+    // Reset inline style overrides from other modes
+    canvasWrap.style.padding = "";
+    canvasWrap.style.alignItems = "";
+    canvasWrap.style.overflow = "";
+  }
 
   // Stylebook mode: render element catalog with panzoom surface
   if (canvasMode === "stylebook") {
@@ -1132,14 +1191,19 @@ function renderCanvas() {
 
   // Edit (content) mode — centered column, no panzoom, always 100%
   if (canvasMode === "edit") {
-    canvasWrap.style.padding = "0";
-    canvasWrap.style.overflow = "hidden";
+    if (modeChanged) {
+      canvasWrap.style.padding = "0";
+      canvasWrap.style.overflow = "hidden";
 
-    // Remove zoom indicator left over from design/preview mode
-    try {
-      litRender(nothing, zoomIndicatorHost);
-    } catch {
-      zoomIndicatorHost.textContent = "";
+      // Remove zoom indicator left over from design/preview mode
+      try {
+        litRender(nothing, zoomIndicatorHost);
+      } catch {
+        const newHost = document.createElement("div");
+        newHost.style.display = "contents";
+        zoomIndicatorHost.replaceWith(newHost);
+        zoomIndicatorHost = newHost;
+      }
     }
 
     const { tpl: panelTpl, panel } = canvasPanelTemplate(null, null, true);
@@ -1157,8 +1221,10 @@ function renderCanvas() {
   }
 
   // Normal canvas mode (design / preview) — set up panzoom surface
-  canvasWrap.style.padding = "0";
-  canvasWrap.style.overflow = "hidden";
+  if (modeChanged) {
+    canvasWrap.style.padding = "0";
+    canvasWrap.style.overflow = "hidden";
+  }
 
   const {
     sizeBreakpoints,
@@ -1197,7 +1263,9 @@ function renderCanvas() {
     canvasPanels.push(panel);
     renderCanvasIntoPanel(panel, new Set(), featureToggles);
     applyTransform();
-    observeCenterUntilStable();
+    if (modeChanged) {
+      observeCenterUntilStable();
+    }
     renderZoomIndicator();
     return;
   }
@@ -1253,7 +1321,9 @@ function renderCanvas() {
 
   // Apply current zoom + pan transform
   applyTransform();
-  observeCenterUntilStable();
+  if (modeChanged) {
+    observeCenterUntilStable();
+  }
 
   // Floating zoom indicator
   renderZoomIndicator();
@@ -1271,6 +1341,7 @@ function renderCanvasIntoPanel(panel, activeBreakpoints, featureToggles) {
   renderCanvasLive(S.document, panel.canvas).then((scope) => {
     if (scope) {
       liveScope = scope;
+      applyCanvasMediaOverrides(panel.canvas, activeBreakpoints);
       statusMessage("Runtime render OK", 1500);
     } else {
       // Fallback to structural preview
@@ -1510,7 +1581,11 @@ function renderZoomIndicator() {
       zoomIndicatorHost,
     );
   } catch {
-    zoomIndicatorHost.textContent = "";
+    // Lit markers were corrupted — replace the host element to fully reset Lit state
+    const newHost = document.createElement("div");
+    newHost.style.display = "contents";
+    zoomIndicatorHost.replaceWith(newHost);
+    zoomIndicatorHost = newHost;
     litRender(
       html`
         <div class="zoom-indicator">
@@ -2278,6 +2353,10 @@ function renderBlockActionBar() {
     if (S.selection.length >= 2) {
       const handle = bar.querySelector(".bar-drag-handle");
       if (handle) {
+        if (selDragCleanup) {
+          selDragCleanup();
+          selDragCleanup = null;
+        }
         selDragCleanup = draggable({
           element: handle,
           getInitialData: () => ({ type: "tree-node", path: S.selection }),
@@ -2402,6 +2481,9 @@ function findCanvasElement(path, canvasEl) {
 /** @param {any} panel */
 function registerPanelEvents(panel) {
   const { canvas, overlayClk, mediaName } = panel;
+  const ac = new AbortController();
+  const opts = { signal: ac.signal };
+  canvasEventCleanups.push(() => ac.abort());
 
   /** @param {any} fn */
   function withPanelPointerEvents(fn) {
@@ -2417,162 +2499,188 @@ function registerPanelEvents(panel) {
   // During component inline edit, the overlayClk is disabled (see enterComponentInlineEdit).
   // No mousedown passthrough needed — native events reach the contenteditable directly.
 
-  overlayClk.addEventListener("click", (/** @type {any} */ e) => {
-    // Don't intercept clicks meant for the block action bar
-    const barInner = blockActionBarEl?.firstElementChild;
-    if (barInner) {
-      const r = barInner.getBoundingClientRect();
-      if (
-        e.clientX >= r.left &&
-        e.clientX <= r.right &&
-        e.clientY >= r.top &&
-        e.clientY <= r.bottom
-      )
-        return;
-    }
-    // If content-mode inline editing is active, treat click outside as blur
-    if (isEditing()) {
-      stopEditing();
-    }
-
-    // Component-mode inline editing is handled by its own document-level listener
-    // (see enterComponentInlineEdit), so nothing to do here — just fall through.
-
-    const elements = withPanelPointerEvents(() => document.elementsFromPoint(e.clientX, e.clientY));
-
-    for (const el of elements) {
-      if (canvas.contains(el) && el !== canvas) {
-        let path = elToPath.get(el);
-        if (path) {
-          path = bubbleInlinePath(S.document, path);
-          const newMedia = mediaName === "base" ? null : (mediaName ?? null);
-          S = { ...S, ui: { ...S.ui, activeMedia: newMedia } };
-
-          // Find the DOM element for the bubbled path (may differ from hit element)
-          const resolvedEl = findCanvasElement(path, canvas) || el;
-
-          // Re-click on selected editable block: enter inline editing
-          // Edit mode / content mode → rich text editing (enterInlineEdit)
-          // Design mode → plaintext component editing (enterComponentInlineEdit via pendingInlineEdit)
-          if (
-            pathsEqual(path, S.selection) &&
-            isEditableBlock(resolvedEl) &&
-            (canvasMode === "edit" || S.mode === "content")
-          ) {
-            enterInlineEdit(resolvedEl, path);
-            return;
-          }
-
-          // Design mode or first click: select and schedule component inline editing
-          if (canvasMode === "design" && S.mode !== "content") {
-            pendingInlineEdit = { path, mediaName };
-            update(selectNode(S, path));
-            return;
-          }
-
-          update(selectNode(S, path));
+  overlayClk.addEventListener(
+    "click",
+    (/** @type {any} */ e) => {
+      // Don't intercept clicks meant for the block action bar
+      const barInner = blockActionBarEl?.firstElementChild;
+      if (barInner) {
+        const r = barInner.getBoundingClientRect();
+        if (
+          e.clientX >= r.left &&
+          e.clientX <= r.right &&
+          e.clientY >= r.top &&
+          e.clientY <= r.bottom
+        )
           return;
-        }
       }
-    }
-    update(selectNode(S, null));
-  });
+      // If content-mode inline editing is active, treat click outside as blur
+      if (isEditing()) {
+        stopEditing();
+      }
 
-  // Double-click shortcut for immediate inline editing
-  overlayClk.addEventListener("dblclick", (/** @type {any} */ e) => {
-    const barInner = blockActionBarEl?.firstElementChild;
-    if (barInner) {
-      const r = barInner.getBoundingClientRect();
-      if (
-        e.clientX >= r.left &&
-        e.clientX <= r.right &&
-        e.clientY >= r.top &&
-        e.clientY <= r.bottom
-      )
-        return;
-    }
-    if (canvasMode !== "edit" && canvasMode !== "design") return;
+      // Component-mode inline editing is handled by its own document-level listener
+      // (see enterComponentInlineEdit), so nothing to do here — just fall through.
 
-    const elements = withPanelPointerEvents(() => document.elementsFromPoint(e.clientX, e.clientY));
+      const elements = withPanelPointerEvents(() =>
+        document.elementsFromPoint(e.clientX, e.clientY),
+      );
 
-    for (const el of elements) {
-      if (canvas.contains(el) && el !== canvas) {
-        let path = elToPath.get(el);
-        if (path) {
-          path = bubbleInlinePath(S.document, path);
-          const resolvedEl = findCanvasElement(path, canvas) || el;
-          if (isEditableBlock(resolvedEl)) {
+      for (const el of elements) {
+        if (canvas.contains(el) && el !== canvas) {
+          let path = elToPath.get(el);
+          if (path) {
+            path = bubbleInlinePath(S.document, path);
             const newMedia = mediaName === "base" ? null : (mediaName ?? null);
             S = { ...S, ui: { ...S.ui, activeMedia: newMedia } };
+
+            // Find the DOM element for the bubbled path (may differ from hit element)
+            const resolvedEl = findCanvasElement(path, canvas) || el;
+
+            // Re-click on selected editable block: enter inline editing
+            // Edit mode / content mode → rich text editing (enterInlineEdit)
+            // Design mode → plaintext component editing (enterComponentInlineEdit via pendingInlineEdit)
+            if (
+              pathsEqual(path, S.selection) &&
+              isEditableBlock(resolvedEl) &&
+              (canvasMode === "edit" || S.mode === "content")
+            ) {
+              enterInlineEdit(resolvedEl, path);
+              return;
+            }
+
+            // Design mode or first click: select and schedule component inline editing
+            if (canvasMode === "design" && S.mode !== "content") {
+              pendingInlineEdit = { path, mediaName };
+              update(selectNode(S, path));
+              return;
+            }
+
             update(selectNode(S, path));
-            enterInlineEdit(resolvedEl, path);
             return;
           }
         }
       }
-    }
-  });
+      update(selectNode(S, null));
+    },
+    opts,
+  );
 
-  overlayClk.addEventListener("contextmenu", (/** @type {any} */ e) => {
-    const barInner = blockActionBarEl?.firstElementChild;
-    if (barInner) {
-      const r = barInner.getBoundingClientRect();
-      if (
-        e.clientX >= r.left &&
-        e.clientX <= r.right &&
-        e.clientY >= r.top &&
-        e.clientY <= r.bottom
-      )
-        return;
-    }
-    const elements = withPanelPointerEvents(() => document.elementsFromPoint(e.clientX, e.clientY));
-    for (const el of elements) {
-      if (canvas.contains(el) && el !== canvas) {
+  // Double-click shortcut for immediate inline editing
+  overlayClk.addEventListener(
+    "dblclick",
+    (/** @type {any} */ e) => {
+      const barInner = blockActionBarEl?.firstElementChild;
+      if (barInner) {
+        const r = barInner.getBoundingClientRect();
+        if (
+          e.clientX >= r.left &&
+          e.clientX <= r.right &&
+          e.clientY >= r.top &&
+          e.clientY <= r.bottom
+        )
+          return;
+      }
+      if (canvasMode !== "edit" && canvasMode !== "design") return;
+
+      const elements = withPanelPointerEvents(() =>
+        document.elementsFromPoint(e.clientX, e.clientY),
+      );
+
+      for (const el of elements) {
+        if (canvas.contains(el) && el !== canvas) {
+          let path = elToPath.get(el);
+          if (path) {
+            path = bubbleInlinePath(S.document, path);
+            const resolvedEl = findCanvasElement(path, canvas) || el;
+            if (isEditableBlock(resolvedEl)) {
+              const newMedia = mediaName === "base" ? null : (mediaName ?? null);
+              S = { ...S, ui: { ...S.ui, activeMedia: newMedia } };
+              update(selectNode(S, path));
+              enterInlineEdit(resolvedEl, path);
+              return;
+            }
+          }
+        }
+      }
+    },
+    opts,
+  );
+
+  overlayClk.addEventListener(
+    "contextmenu",
+    (/** @type {any} */ e) => {
+      const barInner = blockActionBarEl?.firstElementChild;
+      if (barInner) {
+        const r = barInner.getBoundingClientRect();
+        if (
+          e.clientX >= r.left &&
+          e.clientX <= r.right &&
+          e.clientY >= r.top &&
+          e.clientY <= r.bottom
+        )
+          return;
+      }
+      const elements = withPanelPointerEvents(() =>
+        document.elementsFromPoint(e.clientX, e.clientY),
+      );
+      for (const el of elements) {
+        if (canvas.contains(el) && el !== canvas) {
+          let path = elToPath.get(el);
+          if (path) {
+            path = bubbleInlinePath(S.document, path);
+            showContextMenu(e, path, S);
+            return;
+          }
+        }
+      }
+      e.preventDefault();
+    },
+    opts,
+  );
+
+  overlayClk.addEventListener(
+    "mousemove",
+    (/** @type {any} */ e) => {
+      const barInner = blockActionBarEl?.firstElementChild;
+      if (barInner) {
+        const r = barInner.getBoundingClientRect();
+        if (
+          e.clientX >= r.left &&
+          e.clientX <= r.right &&
+          e.clientY >= r.top &&
+          e.clientY <= r.bottom
+        )
+          return;
+      }
+      const el = withPanelPointerEvents(() => document.elementFromPoint(e.clientX, e.clientY));
+      if (el && canvas.contains(el) && el !== canvas) {
         let path = elToPath.get(el);
         if (path) {
           path = bubbleInlinePath(S.document, path);
-          showContextMenu(e, path, S);
-          return;
+          if (!pathsEqual(path, S.hover)) {
+            S = hoverNode(S, path);
+            renderOverlays();
+          }
         }
+      } else if (S.hover) {
+        S = hoverNode(S, null);
+        renderOverlays();
       }
-    }
-    e.preventDefault();
-  });
+    },
+    opts,
+  );
 
-  overlayClk.addEventListener("mousemove", (/** @type {any} */ e) => {
-    const barInner = blockActionBarEl?.firstElementChild;
-    if (barInner) {
-      const r = barInner.getBoundingClientRect();
-      if (
-        e.clientX >= r.left &&
-        e.clientX <= r.right &&
-        e.clientY >= r.top &&
-        e.clientY <= r.bottom
-      )
-        return;
-    }
-    const el = withPanelPointerEvents(() => document.elementFromPoint(e.clientX, e.clientY));
-    if (el && canvas.contains(el) && el !== canvas) {
-      let path = elToPath.get(el);
-      if (path) {
-        path = bubbleInlinePath(S.document, path);
-        if (!pathsEqual(path, S.hover)) {
-          S = hoverNode(S, path);
-          renderOverlays();
-        }
+  overlayClk.addEventListener(
+    "mouseleave",
+    () => {
+      if (S.hover) {
+        S = hoverNode(S, null);
+        renderOverlays();
       }
-    } else if (S.hover) {
-      S = hoverNode(S, null);
-      renderOverlays();
-    }
-  });
-
-  overlayClk.addEventListener("mouseleave", () => {
-    if (S.hover) {
-      S = hoverNode(S, null);
-      renderOverlays();
-    }
-  });
+    },
+    opts,
+  );
 }
 
 // ─── Inline editing bridge ────────────────────────────────────────────────────
@@ -7349,9 +7457,11 @@ function renderFunctionEditor() {
     monacoEditor = null;
   }
 
-  // Clean up canvas DnD
+  // Clean up canvas DnD and event handlers
   for (const fn of canvasDndCleanups) fn();
   canvasDndCleanups = [];
+  for (const fn of canvasEventCleanups) fn();
+  canvasEventCleanups = [];
   canvasPanels.length = 0;
 
   litRender(nothing, canvasWrap);
