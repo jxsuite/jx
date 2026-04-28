@@ -18,10 +18,10 @@
     }
   ],
   "$media": {
-    "--sm": "(min-width: 640px)",
-    "--md": "(min-width: 768px)",
-    "--lg": "(min-width: 1024px)",
-    "--xl": "(min-width: 1280px)"
+    "--": "1280px",
+    "--lg": "(max-width: 1024px)",
+    "--md": "(max-width: 768px)",
+    "--sm": "(max-width: 640px)"
   },
   "style": {
     "--bg-primary": "#0a0a0a",

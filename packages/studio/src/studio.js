@@ -1270,7 +1270,8 @@ function renderCanvas() {
     return;
   }
 
-  // Build all panels (base + breakpoints), sorted widest-first (left to right)
+  // Build all panels: base first, then breakpoints in declared order (ascending for min-width,
+  // descending for max-width — matching the direction of the design's media queries).
   const allPanelDefs = [
     {
       name: "base",
@@ -1287,7 +1288,6 @@ function renderCanvas() {
       activeSet: activeBreakpointsForWidth(sizeBreakpoints, bp.width),
     });
   }
-  allPanelDefs.sort((a, b) => b.width - a.width);
 
   /** @type {{ tpl: any; panel: any; activeSet: any }[]} */
   const panelEntries = allPanelDefs.map((def) => {
@@ -4242,7 +4242,6 @@ function renderStylebook() {
         activeSet: activeBreakpointsForWidth(sizeBreakpoints, bp.width),
       });
     }
-    allPanelDefs.sort((a, b) => b.width - a.width);
   }
 
   // Render content into panels

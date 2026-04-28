@@ -39,8 +39,7 @@
             "display": "grid",
             "gridTemplateColumns": "1fr 1fr",
             "gap": "1.5rem",
-            "@--md": { "gridTemplateColumns": "1fr 1fr" },
-            "@(max-width: 767px)": { "gridTemplateColumns": "1fr" }
+            "@--md": { "gridTemplateColumns": "1fr" }
           },
           "children": [
             {

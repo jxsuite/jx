@@ -137,7 +137,7 @@
             "height": "calc(100vh - 3.5rem)",
             "overflowY": "auto",
             "paddingRight": "0.5rem",
-            "@(max-width: 767px)": { "display": "none" }
+            "@--md": { "display": "none" }
           },
           "children": [{ "tagName": "docs-sidebar" }]
         },

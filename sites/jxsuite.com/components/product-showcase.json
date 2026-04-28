@@ -16,7 +16,7 @@
             "gridTemplateColumns": "1fr 1fr",
             "gap": "clamp(2rem, 4vw, 4rem)",
             "alignItems": "center",
-            "@(max-width: 767px)": { "gridTemplateColumns": "1fr" }
+            "@--md": { "gridTemplateColumns": "1fr" }
           },
           "children": [
             {
