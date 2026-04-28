@@ -36,17 +36,17 @@
   },
   "dependencies": {},
   "devDependencies": {
-    "@commitlint/cli": "^20.5.0",
+    "@commitlint/cli": "^20.5.2",
     "@commitlint/config-conventional": "^20.5.0",
     "@release-it/bumper": "^7.0.5",
-    "@release-it/conventional-changelog": "^10.0.6",
-    "@typescript/native-preview": "^7.0.0-dev.20260421.2",
+    "@release-it/conventional-changelog": "^11.0.0",
+    "@typescript/native-preview": "^7.0.0-dev.20260428.1",
     "chrome-devtools-mcp": "^0.23.0",
     "husky": "^9.1.7",
     "lint-staged": "^16.4.0",
-    "oxfmt": "^0.46.0",
-    "oxlint": "^1.61.0",
-    "release-it": "^20.0.0"
+    "oxfmt": "^0.47.0",
+    "oxlint": "^1.62.0",
+    "release-it": "^20.0.1"
   },
   "lint-staged": {
     "*.{js,ts}": [

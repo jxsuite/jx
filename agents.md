@@ -12,4 +12,3 @@ We're crafting a comprehensive web-based application suite that aims to encompas
 - **Spectrum Web Components**: Use stock `sp-*` components for all controls (buttons, dialogs, text fields, menus, etc.). Never build custom DOM equivalents of components that Spectrum provides. All Spectrum components used must be registered in `packages/studio/src/ui/spectrum.js`.
 - **No inline styles**: Spectrum components are styled by the design system. Do not set `style` attributes or `style.cssText` on Spectrum components. Use CSS classes in `index.html` only when Spectrum doesn't cover the layout need.
 - **Dialog pattern**: Use `sp-dialog-wrapper` with `open`, `underlay`, `headline`, `confirm-label`, `cancel-label` attributes and `@confirm`/`@cancel`/`@close` events. Do not create manual backdrops or modal overlays.
-
