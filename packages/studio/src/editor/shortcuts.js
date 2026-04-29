@@ -115,7 +115,12 @@ export function initShortcuts(getContext) {
     const mod = e.ctrlKey || e.metaKey;
 
     // Don't intercept when typing in inputs or contenteditable
-    if (e.target instanceof HTMLElement && e.target.matches("input, textarea, select")) {
+    if (
+      e.target instanceof HTMLElement &&
+      e.target.matches(
+        "input, textarea, select, sp-textfield, sp-search, sp-number-field, sp-picker",
+      )
+    ) {
       if (mod && e.key === "s") {
         e.preventDefault();
         saveFile();
