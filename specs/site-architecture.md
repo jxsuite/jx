@@ -708,51 +708,52 @@ content/
 
 Studio extends from a component editor to a full content management interface.
 
-### 7.1 Project Explorer
+### 7.1 Project Explorer (Implemented)
 
-The left panel gains a project-level file explorer (above the layer tree) when a site project is detected (i.e., `project.json` exists):
+The left panel includes a file tree (`Files` tab) that displays the project directory structure. When a site project is detected (i.e., `project.json` exists), the tree auto-expands conventional directories.
+
+Additionally, the **Browse** canvas mode provides a full-screen project file table with category filtering (All, Pages, Layouts, Components, Content, Media), text search, and click-to-open. Files are categorized by directory path, with media extensions (`.jpg`, `.png`, `.svg`, `.webp`, etc.) always classified as "Media" regardless of location.
 
 ```
-┌─────────────────────┐
-│ 📁 Project          │
-│ ├── 📄 project.json    │
-│ ├── 📁 pages/       │
-│ │   ├── index.json  │
-│ │   ├── about.json  │
-│ │   └── blog/       │
-│ ├── 📁 layouts/     │
-│ ├── 📁 components/  │
-│ ├── 📁 content/     │
-│ │   ├── 📁 blog/    │
-│ │   └── 📁 authors/ │
-│ └── 📁 public/      │
-├─────────────────────┤
-│ 🔲 Layer Tree       │ ← Current document layers
-│ (existing behavior) │
-└─────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│ [All] [Pages] [Layouts] [Components] [Content] [Media]  🔍     │
+├───────────────┬────────────┬───────┬────────────────────────────┤
+│ Name          │ Category   │ Type  │ Path                       │
+├───────────────┼────────────┼───────┼────────────────────────────┤
+│ index.json    │ Pages      │ .json │ pages/index.json           │
+│ about.json    │ Pages      │ .json │ pages/about.json           │
+│ header.json   │ Components │ .json │ components/header.json     │
+│ hello.md      │ Content    │ .md   │ content/blog/hello.md      │
+│ hero.jpg      │ Media      │ .jpg  │ content/blog/images/hero…  │
+└───────────────┴────────────┴───────┴────────────────────────────┘
 ```
 
 ### 7.2 Content Collection Browser
 
-When a user expands a content collection in the project explorer, Studio renders a data browser:
+The Browse view serves as the current collection browser. Future enhancements:
 
-| View              | Description                                                                                         |
-| ----------------- | --------------------------------------------------------------------------------------------------- |
-| **Table view**    | Spreadsheet-like grid showing all entries with columns for each schema field. Sortable, filterable. |
-| **Card view**     | Visual card layout with hero image, title, and summary. Good for blog posts.                        |
-| **Calendar view** | Date-sorted timeline. Useful for date-based collections (blog, events).                             |
+| View              | Status          | Description                                                                                         |
+| ----------------- | --------------- | --------------------------------------------------------------------------------------------------- |
+| **Table view**    | **Implemented** | File listing with Name, Category, Type, Path columns. Filterable by category and search.            |
+| **Card view**     | Planned         | Visual card layout with hero image, title, and summary. Good for blog posts.                        |
+| **Calendar view** | Planned         | Date-sorted timeline. Useful for date-based collections (blog, events).                             |
 
-The view mode is selectable per collection. Studio remembers the preference.
+The view mode will be selectable per collection. Studio will remember the preference.
 
-### 7.3 Content Entry Editor
+### 7.3 Markdown WYSIWYG Editing (Implemented)
 
-Clicking a content entry opens a schema-driven editor in the right panel:
+Markdown files (`.md`) open in **content mode** — a centered column WYSIWYG canvas where headings, paragraphs, lists, and other block elements are directly editable:
 
-- **Markdown entries:** Split pane with Markdown source (Monaco) and live rendered preview. Frontmatter fields rendered as a form above the editor, driven by the collection schema.
-- **JSON entries:** Form-based editor generated from the JSON Schema. Each field gets an appropriate widget (text input, number, date picker, toggle, select, file picker).
-- **CSV entries:** Inline table editor with column types derived from the schema.
+- **Inline rich text:** Click any text block to edit. `Cmd+B` (bold), `Cmd+I` (italic), `Cmd+\`` (code), plus toolbar buttons for `strong`, `em`, `del`, `sub`, `sup`, `u`.
+- **Slash commands:** Type `/` in any block to insert headings, paragraphs, lists, blockquotes, images, tables, code blocks, horizontal rules, etc.
+- **Bidirectional MD ↔ Jx conversion:** Markdown AST (`remark-parse`) converts to the Jx tree for canvas rendering; on save, the tree converts back to Markdown (`remark-stringify`) with frontmatter preserved.
+- **Frontmatter round-trip:** YAML frontmatter is parsed on load (`S.content.frontmatter`) and serialized back on save. Currently stored but not editable via a UI form (see §7.4).
 
-#### Form Widget Mapping
+### 7.4 Content Entry Editor
+
+#### Frontmatter Form (Not Yet Implemented)
+
+When a markdown content entry belongs to a collection with a defined schema, the **right panel** should render a schema-driven form for editing frontmatter fields. This reuses the existing `widgetForType()` / `inferInputType()` pattern already used for HTML attribute editing:
 
 | JSON Schema Type                     | Widget                                        |
 | ------------------------------------ | --------------------------------------------- |
@@ -767,17 +768,25 @@ Clicking a content entry opens a schema-driven editor in the right panel:
 | `object`                             | Nested form group                             |
 | `$ref` to collection                 | Entry picker (dropdown of collection entries) |
 
-### 7.4 Content CRUD Operations
+#### JSON Data Entry Editing (Not Yet Implemented)
 
-| Operation       | Action                                                                                                                                                                              |
-| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Create**      | "New Entry" button on collection. Creates a file with schema defaults. For Markdown, creates a file with frontmatter stub. Studio assigns a slug from the title or prompts for one. |
-| **Read**        | Collection browser and entry editor.                                                                                                                                                |
-| **Update**      | Edit fields in the form editor or Markdown source. Auto-saves on change (debounced). Validates against schema on save.                                                              |
-| **Delete**      | Context menu → Delete. Confirms with dialog. Removes the file from disk.                                                                                                            |
-| **Rename/Move** | Context menu → Rename. Updates filename (and therefore entry ID/slug). Warns if other entries reference this ID.                                                                    |
+JSON content entries (e.g., `authors/authors.json`) should open a form-based editor generated from the collection's JSON Schema, reusing the same widget mapping.
 
-### 7.5 Draft Workflow
+#### CSV Editing (Not Yet Implemented)
+
+CSV content entries should render as an inline table editor using `<sp-table>` with column types derived from the schema.
+
+### 7.5 Content CRUD Operations
+
+| Operation       | Status          | Action                                                                                                                                                                              |
+| --------------- | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Create**      | Planned         | "New Entry" button on collection. Creates a file with schema defaults. For Markdown, creates a file with frontmatter stub. Studio assigns a slug from the title or prompts for one. |
+| **Read**        | **Implemented** | Browse view lists all content files; clicking opens in WYSIWYG (Markdown) or component editor (JSON).                                                                               |
+| **Update**      | **Partial**     | Markdown body editable via WYSIWYG canvas. Frontmatter and JSON data forms not yet available.                                                                                       |
+| **Delete**      | Planned         | Context menu → Delete. Confirms with dialog. Removes the file from disk.                                                                                                            |
+| **Rename/Move** | Planned         | Context menu → Rename. Updates filename (and therefore entry ID/slug). Warns if other entries reference this ID.                                                                    |
+
+### 7.6 Draft Workflow
 
 Entries with `"draft": true` (a conventional boolean field in the schema):
 
@@ -886,7 +895,9 @@ The compiler serializes the `textContent` object to a JSON string within the `<s
 
 ### 8.6 Studio SEO Panel
 
-The Studio inspector includes an "SEO" tab for any page or content entry:
+> **Current status:** Not yet implemented. The compiler handles `$head` merge (§8.3) at build time, but Studio has no visual SEO editing UI.
+
+The Studio inspector will include an "SEO" tab for any page or content entry:
 
 - **Title preview:** Shows how the title will appear in Google search results (truncated to ~60 chars)
 - **Description preview:** Shows the meta description (truncated to ~155 chars)
@@ -944,14 +955,16 @@ All paths are relative to the referring file. The compiler resolves them to fina
 
 ### 9.4 Studio Media Browser
 
-Studio provides a media management panel accessible from:
+> **Current status:** The Browse view's "Media" category filter lists all media files by extension (regardless of directory). The features below are planned enhancements.
+
+Studio will provide a media management panel accessible from:
 
 - The file picker widget (when editing a `uri-reference` schema field)
-- The main toolbar (global media browser)
+- The Browse view's "Media" category (currently a flat table; planned upgrade to grid)
 
-Features:
+Planned features:
 
-- **Grid/list view** of all media in the project
+- **Grid/list view** of all media in the project (thumbnail grid as default, table as alternative)
 - **Upload** — drag-and-drop files into the browser. Files are placed in the selected directory.
 - **Preview** — thumbnail preview for images, video, audio players
 - **Metadata** — file size, dimensions, format shown
@@ -1096,7 +1109,9 @@ Status 200 redirects function as rewrites (proxy-style).
 
 ### 11.4 Studio Redirect Editor
 
-Studio provides a dedicated redirect management UI under site settings:
+> **Current status:** Not yet implemented. The compiler generates `_redirects` and HTML meta-refresh files from `project.json` redirect rules at build time, but Studio has no visual editor for managing them.
+
+Studio will provide a dedicated redirect management UI under site settings:
 
 - Table of all redirects with source, destination, and status columns
 - Add/edit/delete with inline editing
@@ -1337,28 +1352,36 @@ This spec builds on existing Jx primitives wherever possible:
 ### Phase 2: Content
 
 - [x] Content collection loader (Markdown, JSON, CSV)
-- [x] `project.json `collections`` schema validation
+- [x] `project.json` `collections` schema validation
 - [x] `ContentCollection` and `ContentEntry` prototypes
 - [x] `$paths` dynamic route expansion
 - [x] Collection reference resolution (`$ref` between collections)
-- [x] Studio: Project explorer panel
-- [ ] Studio: Content collection browser
+- [x] Studio: Project file tree (left panel `Files` tab)
+- [x] Studio: Browse canvas mode (table view with category filters, search, media detection)
+- [x] Studio: Markdown WYSIWYG editing (content mode, inline rich text, slash commands)
+- [x] Studio: Markdown frontmatter round-trip (parse on load, serialize on save)
 
-### Phase 3: Polish
+### Phase 3: Studio Content Management
 
-- [ ] Studio: Content entry editor (Markdown, JSON, CSV)
-- [ ] Studio: Media browser
-- [ ] Studio: SEO panel
-- [ ] Studio: Redirect editor
-- [ ] Image optimization pipeline
-- [ ] Sitemap generation
-- [ ] Incremental builds
-- [ ] Platform-specific adapters (Netlify, Vercel, Cloudflare, GitHub Pages)
+- [ ] Studio: Frontmatter form editor (schema-driven sidebar for markdown content entries)
+- [ ] Studio: JSON data entry editor (form-based editing for JSON collection entries)
+- [ ] Studio: CSV table editor (inline sp-table editor for CSV entries)
+- [ ] Studio: Content CRUD (create new entry, delete, rename/move)
+- [ ] Studio: Media browser (thumbnail grid, upload, file picker integration)
+- [ ] Studio: SEO panel (title/description preview, OG card preview, JSON-LD editor)
+- [ ] Studio: Redirect editor (table UI for managing project.json redirects)
 
-### Phase 4: Advanced
+### Phase 4: Build Pipeline
 
-- [ ] Internationalization routing
-- [ ] Content localization
+- [ ] Image optimization pipeline (WebP/AVIF, responsive srcset, lazy loading)
+- [ ] Sitemap generation (`sitemap.xml` from route table)
+- [ ] Incremental builds (dependency tracking, selective recompilation)
+- [ ] Platform-specific adapters (Netlify, Vercel, Cloudflare Pages, GitHub Pages)
+
+### Phase 5: Advanced
+
+- [ ] Internationalization routing (locale prefix, default locale handling)
+- [ ] Content localization (per-locale content directories)
 - [ ] Pagination helpers
 - [ ] RSS/Atom feed generation
 - [ ] Search index generation
