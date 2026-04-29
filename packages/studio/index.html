@@ -1433,13 +1433,67 @@
         overflow: hidden;
         text-overflow: ellipsis;
       }
+      .tb-file-title {
+        font-size: 11px;
+        color: var(--fg);
+        max-width: 300px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        padding: 0 8px;
+        font-family: "SF Mono", "Fira Code", monospace;
+      }
       .tb-dirty {
         color: var(--accent);
         font-size: 16px;
         line-height: 1;
+        margin-left: 4px;
       }
       .tb-spacer {
         flex: 1;
+      }
+
+      /* ─── Browse view ────────────────────────────── */
+      .browse-view {
+        display: flex;
+        flex-direction: column;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+      }
+      .browse-filter-bar {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 8px 16px;
+        background: var(--bg-panel);
+        border-bottom: 1px solid var(--border);
+        flex-shrink: 0;
+      }
+      .browse-filter-bar sp-search {
+        width: 240px;
+      }
+      .browse-table {
+        flex: 1;
+        overflow: auto;
+        padding: 0 16px 16px;
+      }
+      .browse-table sp-table {
+        width: 100%;
+      }
+      .browse-row {
+        cursor: pointer;
+      }
+      .browse-row:hover {
+        background: var(--spectrum-gray-200, #333);
+      }
+      .browse-name-cell {
+        font-weight: 500;
+      }
+      .browse-path-cell {
+        color: var(--fg-dim);
+        font-family: "SF Mono", "Fira Code", monospace;
+        font-size: 11px;
       }
 
       /* ─── Source view ────────────────────────────── */

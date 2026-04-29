@@ -47,6 +47,12 @@ import { PickerButton } from "@spectrum-web-components/picker-button/src/PickerB
 import { Accordion } from "@spectrum-web-components/accordion/src/Accordion.js";
 import { AccordionItem } from "@spectrum-web-components/accordion/src/AccordionItem.js";
 import { ActionBar } from "@spectrum-web-components/action-bar/src/ActionBar.js";
+import { Table } from "@spectrum-web-components/table/src/Table.js";
+import { TableHead } from "@spectrum-web-components/table/src/TableHead.js";
+import { TableHeadCell } from "@spectrum-web-components/table/src/TableHeadCell.js";
+import { TableBody } from "@spectrum-web-components/table/src/TableBody.js";
+import { TableRow } from "@spectrum-web-components/table/src/TableRow.js";
+import { TableCell } from "@spectrum-web-components/table/src/TableCell.js";
 
 // Icons
 import { IconFolder } from "@spectrum-web-components/icons-workflow/src/elements/IconFolder.js";
@@ -109,6 +115,7 @@ import { IconBox } from "@spectrum-web-components/icons-workflow/src/elements/Ic
 import { IconVisibility } from "@spectrum-web-components/icons-workflow/src/elements/IconVisibility.js";
 import { IconVisibilityOff } from "@spectrum-web-components/icons-workflow/src/elements/IconVisibilityOff.js";
 import { IconArtboard } from "@spectrum-web-components/icons-workflow/src/elements/IconArtboard.js";
+import { IconViewList } from "@spectrum-web-components/icons-workflow/src/elements/IconViewList.js";
 
 // Inline formatting icons
 import { IconTextBold } from "@spectrum-web-components/icons-workflow/src/elements/IconTextBold.js";
@@ -167,6 +174,12 @@ const components = [
   ["sp-accordion", Accordion],
   ["sp-accordion-item", AccordionItem],
   ["sp-action-bar", ActionBar],
+  ["sp-table", Table],
+  ["sp-table-head", TableHead],
+  ["sp-table-head-cell", TableHeadCell],
+  ["sp-table-body", TableBody],
+  ["sp-table-row", TableRow],
+  ["sp-table-cell", TableCell],
   ["sp-icon-folder", IconFolder],
   ["sp-icon-folder-open", IconFolderOpen],
   ["sp-icon-document", IconDocument],
@@ -225,6 +238,7 @@ const components = [
   ["sp-icon-visibility", IconVisibility],
   ["sp-icon-visibility-off", IconVisibilityOff],
   ["sp-icon-artboard", IconArtboard],
+  ["sp-icon-view-list", IconViewList],
   ["sp-icon-text-bold", IconTextBold],
   ["sp-icon-text-italic", IconTextItalic],
   ["sp-icon-text-underline", IconTextUnderline],

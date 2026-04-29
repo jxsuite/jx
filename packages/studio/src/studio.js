@@ -13,7 +13,6 @@ import {
   redo,
   insertNode,
   removeNode,
-  duplicateNode,
   moveNode,
   updateProperty,
   updateStyle,
@@ -166,6 +165,7 @@ import { showContextMenu } from "./editor/context-menu.js";
 import { convertToComponent } from "./editor/convert-to-component.js";
 import { initShortcuts } from "./editor/shortcuts.js";
 import { renderActivityBar, tabIcon } from "./panels/activity-bar.js";
+import { renderBrowse } from "./browse/browse.js";
 import * as monaco from "monaco-editor/esm/vs/editor/editor.api.js";
 
 // ─── Globals ──────────────────────────────────────────────────────────────────
@@ -760,6 +760,7 @@ const toolbarIconMap = /** @type {Record<string, any>} */ ({
   "sp-icon-preview": html`<sp-icon-preview slot="icon"></sp-icon-preview>`,
   "sp-icon-code": html`<sp-icon-code slot="icon"></sp-icon-code>`,
   "sp-icon-brush": html`<sp-icon-brush slot="icon"></sp-icon-brush>`,
+  "sp-icon-view-list": html`<sp-icon-view-list slot="icon"></sp-icon-view-list>`,
   "sp-icon-document": html`<sp-icon-document slot="icon"></sp-icon-document>`,
 });
 
@@ -914,16 +915,28 @@ if (_openParam) {
 
           await loadComponentRegistry();
 
-          // Load directory tree
+          // Load directory tree and populate projectDirs from conventional dirs found
+          const conventionalDirs = [
+            "pages",
+            "layouts",
+            "components",
+            "content",
+            "data",
+            "public",
+            "styles",
+          ];
           const dirEntries = await platform.listDirectory(".");
           projectState.dirs.set(".", dirEntries);
+          const foundDirs = [];
           for (const e of dirEntries) {
-            if (e.type === "directory" && ["pages", "components", "layouts"].includes(e.name)) {
+            if (e.type === "directory" && conventionalDirs.includes(e.name)) {
+              foundDirs.push(e.name);
               projectState.expanded.add(e.path || e.name);
               const sub = await platform.listDirectory(e.path || e.name);
               projectState.dirs.set(e.path || e.name, sub);
             }
           }
+          projectState.projectDirs = foundDirs;
         }
 
         // Read and open the file
@@ -1127,6 +1140,19 @@ function renderCanvas() {
     canvasWrap.style.padding = "";
     canvasWrap.style.alignItems = "";
     canvasWrap.style.overflow = "";
+  }
+
+  // Browse mode: project-level file browser table
+  if (canvasMode === "browse") {
+    canvasWrap.style.padding = "0";
+    canvasWrap.style.overflow = "auto";
+    renderBrowse(canvasWrap, {
+      openFile: (/** @type {string} */ path) => {
+        canvasMode = "edit";
+        openFileFromTree(path);
+      },
+    });
+    return;
   }
 
   // Stylebook mode: render element catalog with panzoom surface
@@ -7681,6 +7707,7 @@ function renderToolbar() {
 
   // Mode switcher
   const modes = [
+    { key: "browse", label: "Browse", iconTag: "sp-icon-view-list" },
     { key: "edit", label: "Edit", iconTag: "sp-icon-edit" },
     { key: "design", label: "Design", iconTag: "sp-icon-artboard" },
     { key: "preview", label: "Preview", iconTag: "sp-icon-preview" },
@@ -7715,6 +7742,10 @@ function renderToolbar() {
                 S = { ...S, ui: { ...S.ui, rightTab: "style" } };
                 renderRightPanel();
               }
+              if (m.key === "browse") {
+                S = { ...S, ui: { ...S.ui, leftTab: "files" } };
+                renderLeftPanel();
+              }
             }}
           >
             ${toolbarIconMap[m.iconTag]}${m.label}
@@ -7729,33 +7760,24 @@ function renderToolbar() {
       ${tbBtnTpl("Open Project", openProject, "sp-icon-folder-open")}
       ${tbBtnTpl("Open File", openFile, "sp-icon-document")}
       ${tbBtnTpl("Save", saveFile, "sp-icon-save-floppy")}
-      ${S.fileHandle ? html`<span class="tb-filename">${S.fileHandle.name}</span>` : nothing}
-      ${S.dirty ? html`<span class="tb-dirty">●</span>` : nothing}
     </sp-action-group>
-    ${breadcrumbTpl}
     <sp-action-group compact size="s">
       ${tbBtnTpl("Undo", () => update(undo(S)), "sp-icon-undo")}
       ${tbBtnTpl("Redo", () => update(redo(S)), "sp-icon-redo")}
     </sp-action-group>
-    <sp-action-group compact size="s">
-      ${tbBtnTpl(
-        "Duplicate",
-        () => {
-          if (S.selection) update(duplicateNode(S, S.selection));
-        },
-        "sp-icon-duplicate",
-      )}
-      ${tbBtnTpl(
-        "Delete",
-        () => {
-          if (S.selection) update(removeNode(S, S.selection));
-        },
-        "sp-icon-delete",
-      )}
-    </sp-action-group>
-    ${togglesTpl}
     <div class="tb-spacer"></div>
-    ${modeSwitcherTpl}
+    ${S.documentPath
+      ? html`<span class="tb-file-title" title=${S.documentPath}
+          >${S.documentPath}${S.dirty ? html`<span class="tb-dirty">●</span>` : nothing}</span
+        >`
+      : S.fileHandle
+        ? html`<span class="tb-file-title"
+            >${S.fileHandle.name}${S.dirty ? html`<span class="tb-dirty">●</span>` : nothing}</span
+          >`
+        : nothing}
+    ${breadcrumbTpl}
+    <div class="tb-spacer"></div>
+    ${togglesTpl} ${modeSwitcherTpl}
   `;
 
   litRender(tpl, toolbar);

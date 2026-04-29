@@ -1,10 +1,1 @@
-{
-  "$prototype": "Class",
-  "title": "Parser",
-  "description": "Sibling auto-discovered schema",
-  "$defs": {
-    "parameters": {
-      "input": { "identifier": "input", "type": { "type": "string" }, "description": "Input text" }
-    }
-  }
-}
+{"$prototype":"Class","title":"Parser","description":"Sibling auto-discovered schema","$defs":{"parameters":{"input":{"identifier":"input","type":{"type":"string"},"description":"Input text"}}}}

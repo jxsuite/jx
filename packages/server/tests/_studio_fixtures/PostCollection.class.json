@@ -1,15 +1,1 @@
-{
-  "$prototype": "Class",
-  "title": "PostCollection",
-  "description": "Posts collection",
-  "extends": { "$ref": "./BaseCollection.class.json" },
-  "$defs": {
-    "parameters": {
-      "category": {
-        "identifier": "category",
-        "type": { "type": "string" },
-        "description": "Filter by category"
-      }
-    }
-  }
-}
+{"$prototype":"Class","title":"PostCollection","description":"Posts collection","extends":{"$ref":"./BaseCollection.class.json"},"$defs":{"parameters":{"category":{"identifier":"category","type":{"type":"string"},"description":"Filter by category"}}}}

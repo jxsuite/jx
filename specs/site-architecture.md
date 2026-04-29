@@ -1327,21 +1327,21 @@ This spec builds on existing Jx primitives wherever possible:
 
 ### Phase 1: Foundation
 
-- [ ] `project.json` schema and loader
-- [ ] File-based routing discovery (`pages/` scanner)
-- [ ] Layout system (`$layout`, `<slot>` distribution at compile time)
-- [ ] `$head` merge pipeline (site + layout + page)
-- [ ] Multi-page build orchestration
-- [ ] `$page` and `$site` context injection
+- [x] `project.json` schema and loader
+- [x] File-based routing discovery (`pages/` scanner)
+- [x] Layout system (`$layout`, `<slot>` distribution at compile time)
+- [x] `$head` merge pipeline (site + layout + page)
+- [x] Multi-page build orchestration
+- [x] `$page` and `$site` context injection
 
 ### Phase 2: Content
 
-- [ ] Content collection loader (Markdown, JSON, CSV)
-- [ ] `project.json `collections`` schema validation
-- [ ] `ContentCollection` and `ContentEntry` prototypes
-- [ ] `$paths` dynamic route expansion
-- [ ] Collection reference resolution (`$ref` between collections)
-- [ ] Studio: Project explorer panel
+- [x] Content collection loader (Markdown, JSON, CSV)
+- [x] `project.json `collections`` schema validation
+- [x] `ContentCollection` and `ContentEntry` prototypes
+- [x] `$paths` dynamic route expansion
+- [x] Collection reference resolution (`$ref` between collections)
+- [x] Studio: Project explorer panel
 - [ ] Studio: Content collection browser
 
 ### Phase 3: Polish
