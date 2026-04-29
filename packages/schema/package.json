@@ -20,6 +20,6 @@
   "dependencies": {
     "@webref/css": "^8.5.3",
     "@webref/elements": "^2.7.1",
-    "@webref/idl": "^3.75.3"
+    "@webref/idl": "^3.76.0"
   }
 }
