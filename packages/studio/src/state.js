@@ -245,6 +245,28 @@ export function setProjectState(ps) {
   projectState = ps;
 }
 
+// ─── Frontmatter mutation ───────────────────────────────────────────────────
+
+/**
+ * Update a frontmatter field. Does not use applyMutation because frontmatter lives in S.content,
+ * not S.document.
+ *
+ * @param {StudioState} state
+ * @param {string} field
+ * @param {any} value
+ * @returns {StudioState}
+ */
+export function updateFrontmatter(state, field, value) {
+  const fm = { ...state.content?.frontmatter };
+  if (value === undefined || value === null || value === "") delete fm[field];
+  else fm[field] = value;
+  return {
+    ...state,
+    content: { ...state.content, frontmatter: fm },
+    dirty: true,
+  };
+}
+
 // ─── Core mutation ────────────────────────────────────────────────────────────
 
 /**

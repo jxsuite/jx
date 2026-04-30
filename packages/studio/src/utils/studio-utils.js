@@ -121,6 +121,36 @@ export function inferInputType(entry) {
 }
 
 /**
+ * Match a document path to a content collection and return its schema. Uses simple directory-prefix
+ * + extension matching against the collection's `source` glob.
+ *
+ * @param {string | null} documentPath — project-relative path (e.g. "blog/hello.md")
+ * @param {any} projectConfig — parsed project.json
+ * @returns {{ name: string; schema: any } | null}
+ */
+export function findCollectionSchema(documentPath, projectConfig) {
+  if (!documentPath || !projectConfig?.collections) return null;
+  for (const [name, def] of Object.entries(
+    /** @type {Record<string, any>} */ (projectConfig.collections),
+  )) {
+    if (!def.source || !def.schema) continue;
+    const src = def.source.replace(/^\.\//, "");
+    const dir = src.split("/")[0];
+    const ext = src.includes("*.md")
+      ? ".md"
+      : src.includes("*.json")
+        ? ".json"
+        : src.includes("*.csv")
+          ? ".csv"
+          : null;
+    if (documentPath.startsWith(dir + "/") && (!ext || documentPath.endsWith(ext))) {
+      return { name, schema: def.schema };
+    }
+  }
+  return null;
+}
+
+/**
  * Convert a human-readable name to a CSS variable name. E.g. "Geometric Humanist" →
  * "--font-geometric-humanist"
  *

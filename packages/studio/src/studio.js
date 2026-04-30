@@ -59,6 +59,7 @@ import {
   runPostRenderHooks,
   projectState,
   setProjectState,
+  updateFrontmatter,
 } from "./store.js";
 
 import { renderNode as runtimeRenderNode, buildScope, defineElement } from "@jxsuite/runtime";
@@ -87,6 +88,7 @@ import {
   attrLabel,
   abbreviateValue,
   inferInputType,
+  findCollectionSchema,
   friendlyNameToVar,
   varDisplayName,
   parseCemType,
@@ -5116,9 +5118,178 @@ function renderRightPanel() {
 
 // ─── Inspector ────────────────────────────────────────────────────────────────
 
+/** Frontmatter-only panel shown in content mode when no element is selected */
+function renderFrontmatterOnlyPanel() {
+  const fm = S.content?.frontmatter || {};
+  const col = findCollectionSchema(S.documentPath, projectState?.projectConfig);
+  const schemaProps = col?.schema?.properties;
+  const requiredFields = new Set(col?.schema?.required || []);
+
+  /** @type {{ field: string; entry: any; value: any }[]} */
+  const fields = [];
+  if (schemaProps) {
+    for (const [field, fieldSchema] of Object.entries(
+      /** @type {Record<string, any>} */ (schemaProps),
+    )) {
+      fields.push({ field, entry: fieldSchema, value: fm[field] });
+    }
+    for (const [field, value] of Object.entries(fm)) {
+      if (!schemaProps[field]) {
+        fields.push({
+          field,
+          entry: { type: typeof value === "boolean" ? "boolean" : "string" },
+          value,
+        });
+      }
+    }
+  } else {
+    for (const [field, value] of Object.entries(fm)) {
+      fields.push({
+        field,
+        entry: { type: typeof value === "boolean" ? "boolean" : "string" },
+        value,
+      });
+    }
+  }
+
+  if (fields.length === 0 && !schemaProps) {
+    return html`<div class="empty-state">No frontmatter. Select an element to inspect.</div>`;
+  }
+
+  return html`
+    <div class="style-sidebar">
+      <sp-accordion allow-multiple size="s">
+        <sp-accordion-item label=${col ? `Frontmatter (${col.name})` : "Frontmatter"} open>
+          <div class="style-section-body">
+            ${fields.map((f) => renderFmFieldRow(f.field, f.entry, f.value, requiredFields))}
+          </div>
+        </sp-accordion-item>
+      </sp-accordion>
+    </div>
+  `;
+}
+
+/** Render a single frontmatter field row (shared between both panels) */
+function renderFmFieldRow(
+  /** @type {string} */ field,
+  /** @type {any} */ entry,
+  /** @type {any} */ value,
+  /** @type {Set<string>} */ requiredFields,
+) {
+  const isRequired = requiredFields.has(field);
+  const label = field.replace(/([A-Z])/g, " $1").replace(/^./, (s) => s.toUpperCase());
+
+  // Boolean → checkbox
+  if (entry.type === "boolean") {
+    return html`
+      <div class="style-row" data-prop=${field}>
+        <div class="style-row-label">
+          <sp-field-label size="s" title=${field}>${label}${isRequired ? " *" : ""}</sp-field-label>
+        </div>
+        <sp-checkbox
+          size="s"
+          .checked=${live(!!value)}
+          @change=${(/** @type {any} */ e) =>
+            update(updateFrontmatter(S, field, e.target.checked || undefined))}
+        ></sp-checkbox>
+      </div>
+    `;
+  }
+
+  // Array of strings → comma-separated text
+  if (entry.type === "array") {
+    const display = Array.isArray(value) ? value.join(", ") : value || "";
+    return html`
+      <div class="style-row" data-prop=${field}>
+        <div class="style-row-label">
+          <sp-field-label size="s" title=${field}>${label}${isRequired ? " *" : ""}</sp-field-label>
+        </div>
+        <sp-textfield
+          size="s"
+          placeholder="comma, separated"
+          .value=${live(display)}
+          @input=${debouncedStyleCommit(`fm:${field}`, 400, (/** @type {any} */ e) => {
+            const arr = e.target.value
+              ? e.target.value
+                  .split(",")
+                  .map((/** @type {string} */ s) => s.trim())
+                  .filter(Boolean)
+              : undefined;
+            update(updateFrontmatter(S, field, arr));
+          })}
+        ></sp-textfield>
+      </div>
+    `;
+  }
+
+  // Enum → select
+  if (Array.isArray(entry.enum)) {
+    return html`
+      <div class="style-row" data-prop=${field}>
+        <div class="style-row-label">
+          <sp-field-label size="s" title=${field}>${label}${isRequired ? " *" : ""}</sp-field-label>
+        </div>
+        <sp-picker
+          size="s"
+          .value=${live(value || "")}
+          @change=${(/** @type {any} */ e) =>
+            update(updateFrontmatter(S, field, e.target.value || undefined))}
+        >
+          ${entry.enum.map(
+            (/** @type {string} */ opt) => html`<sp-menu-item value=${opt}>${opt}</sp-menu-item>`,
+          )}
+        </sp-picker>
+      </div>
+    `;
+  }
+
+  // Number
+  if (entry.type === "number") {
+    return html`
+      <div class="style-row" data-prop=${field}>
+        <div class="style-row-label">
+          <sp-field-label size="s" title=${field}>${label}${isRequired ? " *" : ""}</sp-field-label>
+        </div>
+        <sp-number-field
+          size="s"
+          hide-stepper
+          .value=${live(value !== undefined ? Number(value) : undefined)}
+          @change=${debouncedStyleCommit(`fm:${field}`, 400, (/** @type {any} */ e) => {
+            const v = e.target.value;
+            update(updateFrontmatter(S, field, isNaN(v) ? undefined : Number(v)));
+          })}
+        ></sp-number-field>
+      </div>
+    `;
+  }
+
+  // Default: text (handles string, date, etc.)
+  return html`
+    <div class="style-row" data-prop=${field}>
+      <div class="style-row-label">
+        <sp-field-label size="s" title=${field}>${label}${isRequired ? " *" : ""}</sp-field-label>
+      </div>
+      <sp-textfield
+        size="s"
+        placeholder=${entry.format === "date" ? "YYYY-MM-DD" : ""}
+        .value=${live(value || "")}
+        @input=${debouncedStyleCommit(`fm:${field}`, 400, (/** @type {any} */ e) => {
+          update(updateFrontmatter(S, field, e.target.value || undefined));
+        })}
+      ></sp-textfield>
+    </div>
+  `;
+}
+
 /** Properties panel — lit-html template with accordion sections */
 function propertiesSidebarTemplate() {
-  if (!S.selection) return html`<div class="empty-state">Select an element to inspect</div>`;
+  // In content mode with no selection, still show frontmatter fields
+  if (!S.selection) {
+    if (S.mode === "content") {
+      return renderFrontmatterOnlyPanel();
+    }
+    return html`<div class="empty-state">Select an element to inspect</div>`;
+  }
   const node = getNodeAtPath(S.document, S.selection);
   if (!node) return html`<div class="empty-state">Node not found</div>`;
 
@@ -5573,11 +5744,63 @@ function propertiesSidebarTemplate() {
         })()
       : nothing;
 
+  // ── Frontmatter section (content mode only) ──
+  const frontmatterT =
+    S.mode === "content"
+      ? (() => {
+          const fm = S.content?.frontmatter || {};
+          const col = findCollectionSchema(S.documentPath, projectState?.projectConfig);
+          const schemaProps = col?.schema?.properties;
+          const requiredFields = new Set(col?.schema?.required || []);
+
+          /** @type {{ field: string; entry: any; value: any }[]} */
+          const fields = [];
+          if (schemaProps) {
+            for (const [field, fieldSchema] of Object.entries(
+              /** @type {Record<string, any>} */ (schemaProps),
+            )) {
+              fields.push({ field, entry: fieldSchema, value: fm[field] });
+            }
+            for (const [field, value] of Object.entries(fm)) {
+              if (!schemaProps[field]) {
+                fields.push({
+                  field,
+                  entry: { type: typeof value === "boolean" ? "boolean" : "string" },
+                  value,
+                });
+              }
+            }
+          } else {
+            for (const [field, value] of Object.entries(fm)) {
+              fields.push({
+                field,
+                entry: { type: typeof value === "boolean" ? "boolean" : "string" },
+                value,
+              });
+            }
+          }
+
+          if (fields.length === 0 && !schemaProps) return nothing;
+
+          return html`
+            <sp-accordion-item
+              label=${col ? `Frontmatter (${col.name})` : "Frontmatter"}
+              ?open=${isSectionOpen("__frontmatter") !== false}
+              @sp-accordion-item-toggle=${() => toggleSection("__frontmatter")}
+            >
+              <div class="style-section-body">
+                ${fields.map((f) => renderFmFieldRow(f.field, f.entry, f.value, requiredFields))}
+              </div>
+            </sp-accordion-item>
+          `;
+        })()
+      : nothing;
+
   // ── Assemble ──
   const tpl = html`
     <div class="style-sidebar">
       <sp-accordion allow-multiple size="s">
-        ${isMapNode ? repeaterT : elemT} ${isMapNode ? nothing : observedAttrsT}
+        ${frontmatterT} ${isMapNode ? repeaterT : elemT} ${isMapNode ? nothing : observedAttrsT}
         ${isMapNode ? nothing : switchT} ${isMapNode ? nothing : compPropsT}
         ${isMapNode ? nothing : attrSectionTemplates} ${isMapNode ? nothing : customSectionT}
         ${isMapNode ? nothing : mediaT} ${isMapNode ? nothing : cssPropsT}

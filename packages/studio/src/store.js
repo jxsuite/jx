@@ -46,6 +46,7 @@ export {
   isAncestor,
   projectState,
   setProjectState,
+  updateFrontmatter,
 } from "./state.js";
 
 // ─── DOM shortcuts & element refs ────────────────────────────────────────────

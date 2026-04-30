@@ -105,14 +105,26 @@ export async function openProject({ S, commit, renderActivityBar, renderLeftPane
     await loadDirectory(".");
     await loadComponentRegistry();
 
-    // Auto-expand key directories
+    // Auto-expand key directories and populate projectDirs for Browse view
+    const conventionalDirs = [
+      "pages",
+      "layouts",
+      "components",
+      "content",
+      "data",
+      "public",
+      "styles",
+    ];
     const entries = projectState.dirs.get(".") || [];
+    const foundDirs = [];
     for (const e of entries) {
-      if (e.type === "directory" && ["pages", "components", "layouts"].includes(e.name)) {
+      if (e.type === "directory" && conventionalDirs.includes(e.name)) {
+        foundDirs.push(e.name);
         projectState.expanded.add(e.path || e.name);
         await loadDirectory(e.path || e.name);
       }
     }
+    projectState.projectDirs = foundDirs;
 
     commit({ ...S, ui: { ...S.ui, leftTab: "files" } });
     renderActivityBar();
