@@ -6,6 +6,7 @@
 
 import { html, nothing } from "lit-html";
 import { addDef, removeDef, updateDef, renameDef, update } from "../store.js";
+import { renderFieldRow } from "../ui/field-row.js";
 import { fetchPluginSchema, pluginSchemaCache } from "../services/code-services.js";
 
 // ─── Module-local state ─────────────────────────────────────────────────────
@@ -180,11 +181,11 @@ export function signalFieldRow(
 ) {
   /** @type {any} */
   let debounce;
-  return html`
-    <div class="style-row">
-      <div class="style-row-label">
-        <sp-field-label size="s">${label}</sp-field-label>
-      </div>
+  return renderFieldRow({
+    prop: label,
+    label,
+    hasValue: false,
+    widget: html`
       <sp-textfield
         size="s"
         value=${value}
@@ -193,8 +194,8 @@ export function signalFieldRow(
           debounce = setTimeout(() => onChange(e.target.value), 400);
         }}
       ></sp-textfield>
-    </div>
-  `;
+    `,
+  });
 }
 
 /** Normalize a parameter entry to a CEM object. */
@@ -344,11 +345,11 @@ function renderSignalEditorTemplate(
     /** @type {any} */ currentVal,
     /** @type {any} */ onChange,
   ) => {
-    return html`
-      <div class="style-row">
-        <div class="style-row-label">
-          <sp-field-label size="s">${label}</sp-field-label>
-        </div>
+    return renderFieldRow({
+      prop: label,
+      label,
+      hasValue: false,
+      widget: html`
         <sp-picker
           size="s"
           value=${currentVal}
@@ -358,8 +359,8 @@ function renderSignalEditorTemplate(
             (/** @type {any} */ opt) => html`<sp-menu-item value=${opt}>${opt}</sp-menu-item>`,
           )}
         </sp-picker>
-      </div>
-    `;
+      `,
+    });
   };
 
   // Helper for textarea rows
@@ -371,11 +372,11 @@ function renderSignalEditorTemplate(
   ) => {
     /** @type {any} */
     let debounce;
-    return html`
-      <div class="style-row">
-        <div class="style-row-label">
-          <sp-field-label size="s">${label}</sp-field-label>
-        </div>
+    return renderFieldRow({
+      prop: label,
+      label,
+      hasValue: false,
+      widget: html`
         <textarea
           class="field-input"
           style="min-height:${opts.minHeight || "40px"};${opts.mono
@@ -387,8 +388,8 @@ function renderSignalEditorTemplate(
             debounce = setTimeout(() => onChange(e.target.value), 500);
           }}
         ></textarea>
-      </div>
-    `;
+      `,
+    });
   };
 
   // Name field (common to all)
@@ -415,17 +416,19 @@ function renderSignalEditorTemplate(
           ${signalFieldRow("Attribute", def.attribute || "", (/** @type {any} */ v) =>
             update(updateDef(S, name, { attribute: v || undefined })),
           )}
-          <div class="style-row">
-            <div class="style-row-label">
-              <sp-field-label size="s">Reflects</sp-field-label>
-            </div>
-            <sp-checkbox
-              class="field-check"
-              ?checked=${!!def.reflects}
-              @change=${(/** @type {any} */ e) =>
-                update(updateDef(S, name, { reflects: e.target.checked || undefined }))}
-            ></sp-checkbox>
-          </div>
+          ${renderFieldRow({
+            prop: "reflects",
+            label: "Reflects",
+            hasValue: false,
+            widget: html`
+              <sp-checkbox
+                class="field-check"
+                ?checked=${!!def.reflects}
+                @change=${(/** @type {any} */ e) =>
+                  update(updateDef(S, name, { reflects: e.target.checked || undefined }))}
+              ></sp-checkbox>
+            `,
+          })}
           ${signalFieldRow(
             "Deprecated",
             typeof def.deprecated === "string" ? def.deprecated : "",
@@ -464,38 +467,40 @@ function renderSignalEditorTemplate(
     /** @type {any} */
     let debounce;
     fields = html`
-      <div class="style-row">
-        <div class="style-row-label">
-          <sp-field-label size="s">Expression</sp-field-label>
-        </div>
-        <textarea
-          class="field-input"
-          style="min-height:40px"
-          .value=${def.$compute || ""}
-          @input=${(/** @type {any} */ e) => {
-            clearTimeout(debounce);
-            debounce = setTimeout(() => {
-              const expr = e.target.value;
-              const depMatches = expr.match(/\$[a-zA-Z_]\w*/g) || [];
-              const deps = [...new Set(depMatches)].map((d) => `#/state/${d}`);
-              update(updateDef(S, name, { $compute: expr, $deps: deps }));
-            }, 500);
-          }}
-        ></textarea>
-      </div>
+      ${renderFieldRow({
+        prop: "expression",
+        label: "Expression",
+        hasValue: false,
+        widget: html`
+          <textarea
+            class="field-input"
+            style="min-height:40px"
+            .value=${def.$compute || ""}
+            @input=${(/** @type {any} */ e) => {
+              clearTimeout(debounce);
+              debounce = setTimeout(() => {
+                const expr = e.target.value;
+                const depMatches = expr.match(/\$[a-zA-Z_]\w*/g) || [];
+                const deps = [...new Set(depMatches)].map((d) => `#/state/${d}`);
+                update(updateDef(S, name, { $compute: expr, $deps: deps }));
+              }, 500);
+            }}
+          ></textarea>
+        `,
+      })}
       ${def.$deps && def.$deps.length > 0
-        ? html`
-            <div class="style-row">
-              <div class="style-row-label">
-                <sp-field-label size="s">Dependencies</sp-field-label>
-              </div>
+        ? renderFieldRow({
+            prop: "dependencies",
+            label: "Dependencies",
+            hasValue: false,
+            widget: html`
               <span class="signal-hint" style="flex:1;max-width:none"
                 >${def.$deps
                   .map((/** @type {any} */ d) => d.replace("#/state/", ""))
                   .join(", ")}</span
               >
-            </div>
-          `
+            `,
+          })
         : nothing}
     `;
   } else if (cat === "data") {
@@ -657,11 +662,11 @@ function renderParameterEditorTemplate(
 
   if (!isAdvanced) {
     // Basic mode: name chips
-    return html`
-      <div class="style-row">
-        <div class="style-row-label">
-          <sp-field-label size="s">Parameters</sp-field-label>
-        </div>
+    return renderFieldRow({
+      prop: "parameters",
+      label: "Parameters",
+      hasValue: false,
+      widget: html`
         <div style="display:flex;flex-wrap:wrap;gap:4px;align-items:center">
           ${params.map(
             (/** @type {any} */ p, /** @type {any} */ i) => html`
@@ -708,16 +713,16 @@ function renderParameterEditorTemplate(
           }}
           >▸ Advanced</span
         >
-      </div>
-    `;
+      `,
+    });
   }
 
   // Advanced mode: full rows
-  return html`
-    <div class="style-row">
-      <div class="style-row-label">
-        <sp-field-label size="s">Parameters</sp-field-label>
-      </div>
+  return renderFieldRow({
+    prop: "parameters",
+    label: "Parameters",
+    hasValue: false,
+    widget: html`
       <div style="display:flex;flex-direction:column;gap:4px">
         ${params.map(
           (/** @type {any} */ p, /** @type {any} */ i) => html`
@@ -796,8 +801,8 @@ function renderParameterEditorTemplate(
         }}
         >▾ Basic</span
       >
-    </div>
-  `;
+    `,
+  });
 }
 
 /** Render CEM emits editor for function state entries. */
@@ -1023,16 +1028,12 @@ export function renderSchemaFieldsTemplate(
         ></sp-textfield>`;
       }
 
-      return html`
-        <div class="style-row">
-          <div class="style-row-label">
-            <sp-field-label size="s" title=${ps.description || nothing}
-              >${labelText}</sp-field-label
-            >
-          </div>
-          ${control}
-        </div>
-      `;
+      return renderFieldRow({
+        prop: ps.name,
+        label: labelText,
+        hasValue: false,
+        widget: control,
+      });
     });
 }
 

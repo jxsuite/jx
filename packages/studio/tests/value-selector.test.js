@@ -1,12 +1,12 @@
 import { describe, test, expect } from "bun:test";
 
-// ─── Unit tests for jx-styled-combobox logic ──────────────────────────────
+// ─── Unit tests for jx-value-selector logic ─────────────────────────────────
 // Tests the component's core algorithms without importing Lit (avoids
 // HappyDOM/Lit global conflicts when running alongside other test files).
 // We replicate the class logic here to verify it in isolation.
 
 /**
- * Replicates JxStyledCombobox._isPicker logic.
+ * Replicates JxValueSelector._isPicker logic.
  *
  * @param {string} value
  * @param {any[]} options
@@ -16,7 +16,7 @@ function isPicker(value, options) {
 }
 
 /**
- * Replicates JxStyledCombobox._selectedStyle logic.
+ * Replicates JxValueSelector._selectedStyle logic.
  *
  * @param {string} value
  * @param {any[]} options
@@ -43,7 +43,7 @@ const OPTIONS_WITH_DIVIDER = [
 
 // ─── Mode detection (isPicker) ─────────────────────────────────────────────
 
-describe("jx-styled-combobox: isPicker logic", () => {
+describe("jx-value-selector: isPicker logic", () => {
   test("returns false when value is empty", () => {
     expect(isPicker("", SAMPLE_OPTIONS)).toBe(false);
   });
@@ -71,7 +71,7 @@ describe("jx-styled-combobox: isPicker logic", () => {
 
 // ─── Selected style (selectedStyle) ────────────────────────────────────────
 
-describe("jx-styled-combobox: selectedStyle logic", () => {
+describe("jx-value-selector: selectedStyle logic", () => {
   test("returns style of matched option in picker mode", () => {
     expect(selectedStyle("bold", SAMPLE_OPTIONS)).toBe("font-weight: bold");
   });
@@ -91,7 +91,7 @@ describe("jx-styled-combobox: selectedStyle logic", () => {
 
 // ─── Mode transitions ──────────────────────────────────────────────────────
 
-describe("jx-styled-combobox: mode transitions", () => {
+describe("jx-value-selector: mode transitions", () => {
   test("setting value to matching option switches to picker mode", () => {
     expect(isPicker("", SAMPLE_OPTIONS)).toBe(false);
     expect(isPicker("bold", SAMPLE_OPTIONS)).toBe(true);
@@ -110,7 +110,7 @@ describe("jx-styled-combobox: mode transitions", () => {
 
 // ─── Options with dividers ─────────────────────────────────────────────────
 
-describe("jx-styled-combobox: options with dividers", () => {
+describe("jx-value-selector: options with dividers", () => {
   test("dividers are skipped in picker mode detection", () => {
     expect(isPicker("--font-custom", OPTIONS_WITH_DIVIDER)).toBe(true);
   });
@@ -127,16 +127,16 @@ describe("jx-styled-combobox: options with dividers", () => {
 // The component relies on the external "clear dot" indicator, not an
 // internal "—" menu item. Verified by checking the source directly.
 
-describe("jx-styled-combobox: no __none__ clear option", () => {
+describe("jx-value-selector: no __none__ clear option", () => {
   test("picker render method does not reference __none__", async () => {
-    const src = await Bun.file(new URL("../src/ui/jx-styled-combobox.js", import.meta.url)).text();
+    const src = await Bun.file(new URL("../src/ui/value-selector.js", import.meta.url)).text();
     // The render method should not contain __none__ anywhere
     // (it was removed; clearing is handled by the external dot indicator)
     expect(src).not.toContain("__none__");
   });
 
   test("picker render method adds jx-combobox-picker class", async () => {
-    const src = await Bun.file(new URL("../src/ui/jx-styled-combobox.js", import.meta.url)).text();
+    const src = await Bun.file(new URL("../src/ui/value-selector.js", import.meta.url)).text();
     expect(src).toContain("jx-combobox-picker");
   });
 });
@@ -145,7 +145,7 @@ describe("jx-styled-combobox: no __none__ clear option", () => {
 // Tests the handler functions' value normalization and event dispatch logic
 // using minimal mock objects that mimic the component's state and behavior.
 
-describe("jx-styled-combobox: event handler logic", () => {
+describe("jx-value-selector: event handler logic", () => {
   /**
    * Creates a mock component-like object with value, addEventListener, and dispatchEvent — enough
    * to test handler behavior without Lit.

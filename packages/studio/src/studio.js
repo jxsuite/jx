@@ -86,7 +86,6 @@ import {
   kebabToLabel,
   propLabel,
   attrLabel,
-  abbreviateValue,
   inferInputType,
   findCollectionSchema,
   friendlyNameToVar,
@@ -147,7 +146,6 @@ import {
 
 import { html, render as litRender, nothing } from "lit-html";
 import { live } from "lit-html/directives/live.js";
-import { classMap } from "lit-html/directives/class-map.js";
 import { ref } from "lit-html/directives/ref.js";
 import { styleMap } from "lit-html/directives/style-map.js";
 import { ifDefined } from "lit-html/directives/if-defined.js";
@@ -162,7 +160,9 @@ import { renderDataExplorerTemplate } from "./panels/data-explorer.js";
 // Explicit class imports + registration — bare side-effect imports are tree-shaken
 // by Bun's bundler despite sideEffects declarations in Spectrum's package.json.
 import { components as _swc } from "./ui/spectrum.js"; // eslint-disable-line no-unused-vars
-import icons from "./ui/icons.js";
+import { renderFieldRow } from "./ui/field-row.js";
+import { isColorPopoverOpen } from "./ui/color-selector.js";
+import { widgetForType as _widgetForType } from "./ui/widgets.js";
 import { showContextMenu } from "./editor/context-menu.js";
 import { convertToComponent } from "./editor/convert-to-component.js";
 import { initShortcuts } from "./editor/shortcuts.js";
@@ -835,7 +835,7 @@ setUpdateFn(function _update(/** @type {any} */ newState) {
   // Skip right-panel rebuild when an input inside it is focused (user is typing)
   // unless the selection changed — that always needs a full re-render
   // Also re-render when color popover is open (changes come from outside rightPanel)
-  const colorPopoverOpen = !!_colorPopoverHost.querySelector("sp-popover[open]");
+  const colorPopoverOpen = isColorPopoverOpen();
   const activeTag = document.activeElement?.tagName;
   const rightHasFocus =
     !colorPopoverOpen &&
@@ -5178,32 +5178,37 @@ function renderFmFieldRow(
 ) {
   const isRequired = requiredFields.has(field);
   const label = field.replace(/([A-Z])/g, " $1").replace(/^./, (s) => s.toUpperCase());
+  const displayLabel = label + (isRequired ? " *" : "");
+  const hasVal = value !== undefined && value !== "" && value !== false;
+  const onClear = () => update(updateFrontmatter(S, field, undefined));
 
   // Boolean → checkbox
   if (entry.type === "boolean") {
-    return html`
-      <div class="style-row" data-prop=${field}>
-        <div class="style-row-label">
-          <sp-field-label size="s" title=${field}>${label}${isRequired ? " *" : ""}</sp-field-label>
-        </div>
+    return renderFieldRow({
+      prop: field,
+      label: displayLabel,
+      hasValue: hasVal,
+      onClear,
+      widget: html`
         <sp-checkbox
           size="s"
           .checked=${live(!!value)}
           @change=${(/** @type {any} */ e) =>
             update(updateFrontmatter(S, field, e.target.checked || undefined))}
         ></sp-checkbox>
-      </div>
-    `;
+      `,
+    });
   }
 
   // Array of strings → comma-separated text
   if (entry.type === "array") {
     const display = Array.isArray(value) ? value.join(", ") : value || "";
-    return html`
-      <div class="style-row" data-prop=${field}>
-        <div class="style-row-label">
-          <sp-field-label size="s" title=${field}>${label}${isRequired ? " *" : ""}</sp-field-label>
-        </div>
+    return renderFieldRow({
+      prop: field,
+      label: displayLabel,
+      hasValue: hasVal,
+      onClear,
+      widget: html`
         <sp-textfield
           size="s"
           placeholder="comma, separated"
@@ -5218,17 +5223,18 @@ function renderFmFieldRow(
             update(updateFrontmatter(S, field, arr));
           })}
         ></sp-textfield>
-      </div>
-    `;
+      `,
+    });
   }
 
   // Enum → select
   if (Array.isArray(entry.enum)) {
-    return html`
-      <div class="style-row" data-prop=${field}>
-        <div class="style-row-label">
-          <sp-field-label size="s" title=${field}>${label}${isRequired ? " *" : ""}</sp-field-label>
-        </div>
+    return renderFieldRow({
+      prop: field,
+      label: displayLabel,
+      hasValue: hasVal,
+      onClear,
+      widget: html`
         <sp-picker
           size="s"
           .value=${live(value || "")}
@@ -5239,17 +5245,18 @@ function renderFmFieldRow(
             (/** @type {string} */ opt) => html`<sp-menu-item value=${opt}>${opt}</sp-menu-item>`,
           )}
         </sp-picker>
-      </div>
-    `;
+      `,
+    });
   }
 
   // Number
   if (entry.type === "number") {
-    return html`
-      <div class="style-row" data-prop=${field}>
-        <div class="style-row-label">
-          <sp-field-label size="s" title=${field}>${label}${isRequired ? " *" : ""}</sp-field-label>
-        </div>
+    return renderFieldRow({
+      prop: field,
+      label: displayLabel,
+      hasValue: hasVal,
+      onClear,
+      widget: html`
         <sp-number-field
           size="s"
           hide-stepper
@@ -5259,16 +5266,17 @@ function renderFmFieldRow(
             update(updateFrontmatter(S, field, isNaN(v) ? undefined : Number(v)));
           })}
         ></sp-number-field>
-      </div>
-    `;
+      `,
+    });
   }
 
   // Default: text (handles string, date, etc.)
-  return html`
-    <div class="style-row" data-prop=${field}>
-      <div class="style-row-label">
-        <sp-field-label size="s" title=${field}>${label}${isRequired ? " *" : ""}</sp-field-label>
-      </div>
+  return renderFieldRow({
+    prop: field,
+    label: displayLabel,
+    hasValue: hasVal,
+    onClear,
+    widget: html`
       <sp-textfield
         size="s"
         placeholder=${entry.format === "date" ? "YYYY-MM-DD" : ""}
@@ -5277,8 +5285,8 @@ function renderFmFieldRow(
           update(updateFrontmatter(S, field, e.target.value || undefined));
         })}
       ></sp-textfield>
-    </div>
-  `;
+    `,
+  });
 }
 
 /** Properties panel — lit-html template with accordion sections */
@@ -5321,21 +5329,12 @@ function propertiesSidebarTemplate() {
 
     // Boolean attributes render as checkboxes
     if (entry.type === "boolean") {
-      return html`
-        <div class="style-row" data-prop=${attr}>
-          <div class="style-row-label">
-            ${hasVal
-              ? html`<span
-                  class="set-dot"
-                  title="Clear ${attr}"
-                  @click=${(/** @type {any} */ e) => {
-                    e.stopPropagation();
-                    update(updateAttribute(S, path, attr, undefined));
-                  }}
-                ></span>`
-              : nothing}
-            <sp-field-label size="s" title=${attr}>${attrLabel(entry, attr)}</sp-field-label>
-          </div>
+      return renderFieldRow({
+        prop: attr,
+        label: attrLabel(entry, attr),
+        hasValue: hasVal,
+        onClear: () => update(updateAttribute(S, path, attr, undefined)),
+        widget: html`
           <sp-checkbox
             size="s"
             .checked=${live(!!value)}
@@ -5343,30 +5342,19 @@ function propertiesSidebarTemplate() {
               update(updateAttribute(S, path, attr, e.target.checked || undefined))}
           >
           </sp-checkbox>
-        </div>
-      `;
+        `,
+      });
     }
 
-    return html`
-      <div class="style-row" data-prop=${attr}>
-        <div class="style-row-label">
-          ${hasVal
-            ? html`<span
-                class="set-dot"
-                title="Clear ${attr}"
-                @click=${(/** @type {any} */ e) => {
-                  e.stopPropagation();
-                  update(updateAttribute(S, path, attr, undefined));
-                }}
-              ></span>`
-            : nothing}
-          <sp-field-label size="s" title=${attr}>${attrLabel(entry, attr)}</sp-field-label>
-        </div>
-        ${widgetForType(type, entry, attr, value || "", (/** @type {any} */ v) =>
-          update(updateAttribute(S, path, attr, v || undefined)),
-        )}
-      </div>
-    `;
+    return renderFieldRow({
+      prop: attr,
+      label: attrLabel(entry, attr),
+      hasValue: hasVal,
+      onClear: () => update(updateAttribute(S, path, attr, undefined)),
+      widget: widgetForType(type, entry, attr, value || "", (/** @type {any} */ v) =>
+        update(updateAttribute(S, path, attr, v || undefined)),
+      ),
+    });
   }
 
   // ── Collect applicable attributes from html-meta ──
@@ -6035,13 +6023,13 @@ function renderComponentPropsFieldsTemplate(
         ></sp-number-field>`;
       } else if (parsed.kind === "combobox") {
         const options = /** @type {string[]} */ (/** @type {any} */ (parsed).options);
-        widgetTpl = html`<jx-styled-combobox
+        widgetTpl = html`<jx-value-selector
           .value=${String(staticVal)}
           size="s"
           placeholder="—"
           .options=${options.map((o) => ({ value: o, label: camelToLabel(o) }))}
           @change=${(/** @type {any} */ e) => onChange(e.detail?.value ?? e.target.value)}
-        ></jx-styled-combobox>`;
+        ></jx-value-selector>`;
       } else {
         widgetTpl = html`<sp-textfield
           size="s"
@@ -6271,7 +6259,7 @@ function mediaBreakpointRowTemplate(/** @type {any} */ name, /** @type {any} */ 
 
 // ─── Style Sidebar (metadata-driven) ───────────────────────────────────────────
 
-const UNIT_RE = /^(-?[\d.]+)(px|rem|em|%|vw|vh|svw|svh|dvh|ms|s|fr|ch|ex|deg)?$/;
+// UNIT_RE — imported from ui/unit-selector.js
 
 // inferInputType — imported from studio-utils.js
 
@@ -6307,26 +6295,6 @@ function getLonghands(/** @type {any} */ shorthandProp) {
   return result;
 }
 
-// ── Color popover singleton ─────────────────────────────────────────────────
-/** @type {any} */
-/** @type {any} */
-let _colorCallback = null;
-/** @type {any} */
-let _colorDismissHandler = null;
-
-/** Extract --color-* CSS custom properties from the document root style. */
-function getColorVars() {
-  const style = S.document?.style;
-  if (!style) return [];
-  const vars = [];
-  for (const [k, v] of Object.entries(style)) {
-    if (k.startsWith("--color") && (typeof v === "string" || typeof v === "number")) {
-      vars.push({ name: k, value: String(v) });
-    }
-  }
-  return vars;
-}
-
 /** Extract --font-* CSS custom properties from the document root style. */
 function getFontVars() {
   const style = S.document?.style;
@@ -6338,371 +6306,6 @@ function getFontVars() {
     }
   }
   return vars;
-}
-
-/** Resolve a color value for display — if it's a var() reference, look up the actual color. */
-function resolveColorForDisplay(/** @type {any} */ val) {
-  if (!val) return "transparent";
-  const m = val.match(/^var\((--[^)]+)\)$/);
-  if (m) {
-    const style = S.document?.style;
-    const resolved = style?.[m[1]];
-    if (typeof resolved === "string") return resolved;
-    return "transparent";
-  }
-  return val;
-}
-
-const _colorPopoverHost = createFloatingContainer();
-
-function closeColorPopover() {
-  litRender(nothing, _colorPopoverHost);
-  _colorCallback = null;
-  if (_colorDismissHandler) {
-    document.removeEventListener("pointerdown", _colorDismissHandler, true);
-    document.removeEventListener("keydown", _colorDismissHandler, true);
-    _colorDismissHandler = null;
-  }
-}
-
-function openColorPopover(
-  /** @type {any} */ anchorEl,
-  /** @type {any} */ currentColor,
-  /** @type {any} */ onChange,
-) {
-  const colorVars = getColorVars();
-  const rawResolved = resolveColorForDisplay(currentColor) || "#000000";
-  // Ensure # prefix so Spectrum components return #-prefixed hex
-  const resolvedColor =
-    rawResolved.startsWith("#") || rawResolved.startsWith("rgb") || rawResolved.startsWith("hsl")
-      ? rawResolved
-      : `#${rawResolved}`;
-
-  const popoverQuery = (/** @type {string} */ sel) => _colorPopoverHost.querySelector(sel);
-
-  /** Ensure hex color always has a # prefix */
-  const normalizeHex = (/** @type {string} */ c) => {
-    if (!c) return c;
-    if (c.startsWith("var(") || c.startsWith("rgb") || c.startsWith("hsl")) return c;
-    const hex = c.replace(/^#?/, "#");
-    return hex;
-  };
-
-  // Render popover content with lit-html
-  const syncFromArea = (/** @type {any} */ _e) => {
-    /** @type {any} */
-    const area = popoverQuery("sp-color-area");
-    /** @type {any} */
-    const slider = popoverQuery("sp-color-slider");
-    /** @type {any} */
-    const tf = popoverQuery(".color-popover-hex");
-    const color = normalizeHex(String(area.color));
-    if (slider) slider.color = color;
-    if (tf) tf.value = color;
-    _colorCallback?.(color);
-  };
-
-  const syncFromSlider = (/** @type {any} */ _e) => {
-    /** @type {any} */
-    const area = popoverQuery("sp-color-area");
-    /** @type {any} */
-    const slider = popoverQuery("sp-color-slider");
-    /** @type {any} */
-    const tf = popoverQuery(".color-popover-hex");
-    const color = normalizeHex(String(slider.color));
-    if (area) area.color = color;
-    if (tf) tf.value = color;
-    _colorCallback?.(color);
-  };
-
-  const syncFromText = (/** @type {any} */ e) => {
-    const val = e.target.value.trim();
-    if (!val) return;
-    /** @type {any} */
-    const area = popoverQuery("sp-color-area");
-    /** @type {any} */
-    const slider = popoverQuery("sp-color-slider");
-    try {
-      if (area) area.color = val;
-      if (slider) slider.color = val;
-    } catch {}
-    _colorCallback?.(val);
-  };
-
-  const r = anchorEl.getBoundingClientRect();
-
-  litRender(
-    html`
-      <sp-popover
-        open
-        tabindex="-1"
-        style="padding:12px;position:fixed;z-index:9999;left:${r.left}px;top:${r.bottom +
-        4}px;overflow:visible"
-      >
-        <div class="color-popover-inner">
-          <sp-color-area
-            style="width:200px; height:150px; --mod-colorarea-width:200px; --mod-colorarea-height:150px"
-            color=${resolvedColor}
-            @input=${syncFromArea}
-          ></sp-color-area>
-          <sp-color-slider
-            style="width:200px; --mod-colorslider-length:200px"
-            color=${resolvedColor}
-            @input=${syncFromSlider}
-          ></sp-color-slider>
-          <sp-textfield
-            size="s"
-            class="color-popover-hex"
-            style="width:200px"
-            .value=${live(currentColor || "")}
-            placeholder="#000000"
-            @change=${syncFromText}
-          ></sp-textfield>
-          ${colorVars.length > 0
-            ? html`
-                <sp-divider size="s"></sp-divider>
-                <span class="color-popover-swatches-label">Color Tokens</span>
-                <sp-swatch-group size="xs" border="light" rounding="none">
-                  ${colorVars.map(
-                    (cv) => html`
-                      <sp-swatch
-                        color=${cv.value}
-                        .value=${cv.name}
-                        title=${cv.name}
-                        @click=${(/** @type {any} */ e) => {
-                          e.stopPropagation();
-                          const varRef = `var(${cv.name})`;
-                          _colorCallback?.(varRef);
-                          /** @type {any} */
-                          const tf = popoverQuery(".color-popover-hex");
-                          if (tf) tf.value = varRef;
-                        }}
-                      ></sp-swatch>
-                    `,
-                  )}
-                </sp-swatch-group>
-              `
-            : nothing}
-        </div>
-      </sp-popover>
-    `,
-    _colorPopoverHost,
-  );
-
-  _colorCallback = onChange;
-
-  // Dismiss on click-outside or Escape
-  if (_colorDismissHandler) {
-    document.removeEventListener("pointerdown", _colorDismissHandler, true);
-    document.removeEventListener("keydown", _colorDismissHandler, true);
-  }
-  _colorDismissHandler = (/** @type {any} */ e) => {
-    if (e.type === "keydown") {
-      if (e.key === "Escape") closeColorPopover();
-      return;
-    }
-    const popover = popoverQuery("sp-popover");
-    if (popover && !popover.contains(e.target) && !anchorEl.contains(e.target)) {
-      closeColorPopover();
-    }
-  };
-  requestAnimationFrame(() => {
-    document.addEventListener("pointerdown", _colorDismissHandler, true);
-    document.addEventListener("keydown", _colorDismissHandler, true);
-  });
-}
-
-function safeColor(/** @type {any} */ val) {
-  if (!val) return "transparent";
-  return resolveColorForDisplay(val);
-}
-
-function renderColorInput(
-  /** @type {any} */ prop,
-  /** @type {any} */ value,
-  /** @type {any} */ onChange,
-) {
-  return html`
-    <div class="style-input-color">
-      <sp-swatch
-        size="s"
-        rounding="none"
-        border="light"
-        color=${safeColor(value)}
-        @click=${(/** @type {any} */ e) => {
-          if (_colorPopoverHost.querySelector("sp-popover[open]")) {
-            closeColorPopover();
-            return;
-          }
-          openColorPopover(e.currentTarget, value, (/** @type {any} */ c) => {
-            onChange(c);
-          });
-        }}
-      ></sp-swatch>
-      <sp-textfield
-        size="s"
-        style="flex:1; min-width:0"
-        .value=${live(value || "")}
-        @input=${debouncedStyleCommit(`color:${prop}`, 400, (/** @type {any} */ e) => {
-          onChange(e.target.value.trim());
-        })}
-      ></sp-textfield>
-    </div>
-  `;
-}
-
-function renderNumberUnitInput(
-  /** @type {any} */ entry,
-  /** @type {any} */ prop,
-  /** @type {any} */ value,
-  /** @type {any} */ onChange,
-) {
-  const units = entry.$units || [];
-  const keywords = entry.$keywords || [];
-  const strVal = String(value ?? "");
-  const match = strVal.match(UNIT_RE);
-  const isKeyword = !match && strVal !== "" && keywords.includes(strVal);
-  const isNumericVal = (/** @type {any} */ v) => /^-?\d*\.?\d*$/.test(v);
-
-  const currentUnit = isKeyword ? units[0] || "" : match ? match[2] || "" : units[0] || "";
-  let displayValue;
-  if (isKeyword) displayValue = strVal;
-  else if (match) displayValue = match[1];
-  else if (strVal !== "") {
-    const num = parseFloat(strVal);
-    displayValue = isNaN(num) ? strVal : String(num);
-  } else displayValue = "";
-
-  const isExpression = isKeyword || (displayValue !== "" && !isNumericVal(displayValue));
-  const hasUnits = units.length > 0 || keywords.length > 0;
-  const btnId = `style-unit-${prop}`;
-
-  return html`
-    <div class="style-input-number-unit">
-      <div class=${classMap({ "input-group": true, "is-expression": isExpression })}>
-        <sp-textfield
-          size="s"
-          placeholder="0"
-          .value=${live(displayValue)}
-          @input=${debouncedStyleCommit(`nui:${prop}`, 400, (/** @type {any} */ e) => {
-            const val = (e.target.value ?? "").trim();
-            if (val === "") {
-              onChange("");
-              return;
-            }
-            if (isNumericVal(val)) onChange(units.length > 0 ? val + currentUnit : val);
-            else onChange(val);
-          })}
-        ></sp-textfield>
-        ${hasUnits
-          ? html`
-              <sp-picker-button id=${btnId} size="s">
-                <span slot="label">${currentUnit || units[0] || ""}</span>
-              </sp-picker-button>
-              <sp-overlay trigger="${btnId}@click" placement="bottom-end" offset="4">
-                <sp-popover style="min-width: var(--spectrum-component-width-900, 64px)">
-                  <sp-menu
-                    label="CSS unit"
-                    @change=${(/** @type {any} */ e) => {
-                      const chosen = e.target.value;
-                      if (keywords.includes(chosen)) {
-                        onChange(chosen);
-                      } else if (units.includes(chosen)) {
-                        // Re-commit with new unit
-                        const curMatch = String(value ?? "").match(UNIT_RE);
-                        const numPart = curMatch ? curMatch[1] : "";
-                        if (numPart) onChange(numPart + chosen);
-                      }
-                    }}
-                  >
-                    ${units.map(
-                      (/** @type {any} */ u) => html`<sp-menu-item value=${u}>${u}</sp-menu-item>`,
-                    )}
-                    ${keywords.length > 0 && units.length > 0
-                      ? html`<sp-menu-divider></sp-menu-divider>`
-                      : nothing}
-                    ${keywords.map(
-                      (/** @type {any} */ kw) =>
-                        html`<sp-menu-item value=${kw}>${kw}</sp-menu-item>`,
-                    )}
-                  </sp-menu>
-                </sp-popover>
-              </sp-overlay>
-            `
-          : nothing}
-      </div>
-    </div>
-  `;
-}
-
-// abbreviateValue — imported from studio-utils.js
-
-/** @param {any} entry @param {any} prop @param {any} value @param {any} onChange */
-function renderButtonGroupInput(entry, prop, value, onChange) {
-  const values = entry.$buttonValues || entry.enum || [];
-  /** @type {Record<string, any>} */
-  const iconMap = entry.$icons || {};
-  const extra =
-    entry.$buttonValues && entry.enum && entry.enum.length > entry.$buttonValues.length
-      ? entry.enum.filter((/** @type {any} */ v) => !entry.$buttonValues.includes(v))
-      : [];
-
-  const menuId = `style-btngrp-${prop}`;
-  const hasExtra = extra.length > 0;
-  // If the current value is one of the extra (non-button) options, show it selected in the picker
-  const extraSelected = hasExtra && extra.includes(value);
-
-  return html`
-    <div class="button-group-combo ${hasExtra ? "has-overflow" : ""}">
-      <sp-action-group size="s" compact>
-        ${values.map(
-          (/** @type {any} */ v) => html`
-            <sp-action-button
-              size="s"
-              title=${v}
-              ?selected=${v === value}
-              @click=${() => onChange(v === value ? "" : v)}
-            >
-              ${
-                /** @type {any} */ (iconMap)[v] &&
-                /** @type {any} */ (icons)[/** @type {any} */ (iconMap)[v]]
-                  ? /** @type {any} */ (icons)[/** @type {any} */ (iconMap)[v]]
-                  : abbreviateValue(v)
-              }
-            </sp-action-button>
-          `,
-        )}
-      </sp-action-group>
-      ${hasExtra
-        ? html`
-            <sp-picker-button
-              size="s"
-              id=${menuId}
-              class=${extraSelected ? "has-selection" : ""}
-            ></sp-picker-button>
-            <sp-overlay trigger="${menuId}@click" placement="bottom-end" type="auto">
-              <sp-popover>
-                <sp-menu
-                  @change=${(/** @type {any} */ e) => {
-                    if (e.target.value) onChange(e.target.value);
-                  }}
-                >
-                  <sp-menu-item value="__none__">—</sp-menu-item>
-                  ${extra.map((/** @type {any} */ v) => {
-                    const label = v.includes("-")
-                      ? kebabToLabel(v)
-                      : v.replace(/^./, (/** @type {any} */ c) => c.toUpperCase());
-                    return html`<sp-menu-item value=${v} ?selected=${v === value}
-                      >${label}</sp-menu-item
-                    >`;
-                  })}
-                </sp-menu>
-              </sp-popover>
-            </sp-overlay>
-          `
-        : nothing}
-    </div>
-  `;
 }
 
 /** Typography CSS properties that should preview their values in-menu */
@@ -6748,7 +6351,7 @@ function renderKeywordInput(options, prop, value, onChange) {
     return { value: v, label, style };
   });
 
-  return html`<jx-styled-combobox
+  return html`<jx-value-selector
     size="s"
     .value=${value || ""}
     placeholder=${cssInitialMap.get(prop) || ""}
@@ -6757,7 +6360,7 @@ function renderKeywordInput(options, prop, value, onChange) {
     @input=${debouncedStyleCommit(`kw:${prop}`, 400, (/** @type {any} */ e) =>
       onChange(e.target.value),
     )}
-  ></jx-styled-combobox>`;
+  ></jx-value-selector>`;
 }
 
 function renderSelectInput(
@@ -6814,7 +6417,7 @@ function handleFontSelection(
 }
 
 /**
- * Build font options array for jx-styled-combobox. Local font vars first, divider, then unadded
+ * Build font options array for jx-value-selector. Local font vars first, divider, then unadded
  * presets.
  *
  * @param {any[]} fontVars @param {any[]} presets
@@ -6852,13 +6455,13 @@ function renderComboboxInput(
   const presets = entry.presets || [];
   const examples = entry.examples || [];
 
-  // fontFamily: single jx-styled-combobox with font options
+  // fontFamily: single jx-value-selector with font options
   if (prop === "fontFamily") {
     // Strip var() wrapper so the component can match the option value
     const varMatch = typeof value === "string" && value.match(/^var\((--[^)]+)\)$/);
     const comboValue = varMatch ? varMatch[1] : value || "";
     const fontOptions = buildFontOptions(fontVars, presets);
-    return html`<jx-styled-combobox
+    return html`<jx-value-selector
       size="s"
       .value=${comboValue}
       placeholder=${cssInitialMap.get("fontFamily") || ""}
@@ -6867,7 +6470,7 @@ function renderComboboxInput(
       @input=${debouncedStyleCommit("combo:fontFamily", 400, (/** @type {any} */ e) =>
         onChange(e.target.value),
       )}
-    ></jx-styled-combobox>`;
+    ></jx-value-selector>`;
   }
 
   // All other comboboxes: use the shared keyword dual-mode input
@@ -6888,45 +6491,7 @@ function renderComboboxInput(
   `;
 }
 
-function renderNumberInput(
-  /** @type {any} */ entry,
-  /** @type {any} */ prop,
-  /** @type {any} */ value,
-  /** @type {any} */ onChange,
-) {
-  return html`
-    <sp-number-field
-      size="s"
-      hide-stepper
-      .value=${live(value !== undefined && value !== "" ? Number(value) : undefined)}
-      min=${ifDefined(entry.minimum)}
-      max=${ifDefined(entry.maximum)}
-      step=${ifDefined(entry.maximum !== undefined && entry.maximum <= 1 ? 0.1 : undefined)}
-      @change=${debouncedStyleCommit(`num:${prop}`, 400, (/** @type {any} */ e) => {
-        const v = e.target.value;
-        if (v === undefined || isNaN(v)) onChange("");
-        else onChange(Number(v));
-      })}
-    ></sp-number-field>
-  `;
-}
-
-function renderTextInput(
-  /** @type {any} */ prop,
-  /** @type {any} */ value,
-  /** @type {any} */ onChange,
-) {
-  return html`
-    <sp-textfield
-      size="s"
-      placeholder=${cssInitialMap.get(prop) || ""}
-      .value=${live(value || "")}
-      @input=${debouncedStyleCommit(`text:${prop}`, 400, (/** @type {any} */ e) =>
-        onChange(e.target.value),
-      )}
-    ></sp-textfield>
-  `;
-}
+// renderNumberInput, renderTextInput — imported from ui/widgets.js
 
 // camelToLabel, kebabToLabel, propLabel, attrLabel — imported from studio-utils.js
 
@@ -6937,22 +6502,11 @@ function widgetForType(
   /** @type {any} */ value,
   /** @type {any} */ onCommit,
 ) {
-  switch (type) {
-    case "button-group":
-      return renderButtonGroupInput(entry, prop, value, onCommit);
-    case "color":
-      return renderColorInput(prop, value, onCommit);
-    case "number-unit":
-      return renderNumberUnitInput(entry, prop, value, onCommit);
-    case "number":
-      return renderNumberInput(entry, prop, value, onCommit);
-    case "select":
-      return renderSelectInput(entry, prop, value, onCommit);
-    case "combobox":
-      return renderComboboxInput(entry, prop, value, onCommit);
-    default:
-      return renderTextInput(prop, value, onCommit);
-  }
+  return _widgetForType(type, entry, prop, value, onCommit, {
+    placeholder: cssInitialMap.get(prop) || "",
+    renderSelect: renderSelectInput,
+    renderCombobox: renderComboboxInput,
+  });
 }
 
 function renderStyleRow(
@@ -6966,28 +6520,15 @@ function renderStyleRow(
 ) {
   const type = inferInputType(entry);
   const hasVal = value !== undefined && value !== "";
-  return html`
-    <div
-      class=${classMap({ "style-row": true, "style-row--warning": isWarning })}
-      data-prop=${prop}
-      style=${gridMode && entry.$span === 2 ? "grid-column: 1 / -1" : ""}
-    >
-      <div class="style-row-label">
-        ${hasVal
-          ? html`<span
-              class="set-dot"
-              title="Clear ${prop}"
-              @click=${(/** @type {any} */ e) => {
-                e.stopPropagation();
-                onDelete();
-              }}
-            ></span>`
-          : nothing}
-        <sp-field-label size="s" title=${prop}>${propLabel(entry, prop)}</sp-field-label>
-      </div>
-      ${widgetForType(type, entry, prop, value, onCommit)}
-    </div>
-  `;
+  return renderFieldRow({
+    prop,
+    label: propLabel(entry, prop),
+    hasValue: hasVal,
+    onClear: onDelete,
+    widget: widgetForType(type, entry, prop, value, onCommit),
+    span: gridMode && entry.$span === 2 ? 2 : undefined,
+    warning: isWarning,
+  });
 }
 
 function renderShorthandRow(

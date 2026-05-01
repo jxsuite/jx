@@ -1,15 +1,15 @@
 /**
- * Jx-styled-combobox — Dual-mode styled combobox custom element.
+ * Value Selector — Dual-mode styled combobox custom element.
  *
  * Renders as sp-picker when the current value matches a predefined option, or as a textfield +
  * dropdown overlay (manual combobox) when it doesn't. Both modes share identical styled menu items,
  * ensuring visual consistency.
  *
- * Usage: html`<jx-styled-combobox size="s" .value=${"italic"} placeholder="normal" .options=${[{
+ * Usage: html`<jx-value-selector size="s" .value=${"italic"} placeholder="normal" .options=${[{
  * value: "italic", label: "Italic", style: "font-style: italic" }]} @change=${handler}
  * @input=${handler}
  *
- * > </jx-styled-combobox>`
+ * > </jx-value-selector>`
  *
  * Options format: { value: string, label: string, style?: string } — menu item { divider: true } —
  * menu divider
@@ -20,7 +20,7 @@ import { live } from "lit/directives/live.js";
 
 /** @typedef {{ value: string; label: string; style?: string } | { divider: true }} ComboOption */
 
-export class JxStyledCombobox extends LitElement {
+export class JxValueSelector extends LitElement {
   static properties = {
     value: { type: String },
     placeholder: { type: String },
@@ -71,14 +71,14 @@ export class JxStyledCombobox extends LitElement {
 
   /** Picker mode: sp-picker @change handler */
   _handlePickerChange(/** @type {any} */ e) {
-    e.stopPropagation(); // prevent sp-picker's raw event from reaching consumer
+    e.stopPropagation();
     this.value = e.target.value;
     this.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
   }
 
   /** Combobox mode: sp-menu @change handler */
   _handleMenuChange(/** @type {any} */ e) {
-    e.stopPropagation(); // prevent sp-menu's raw event from reaching consumer
+    e.stopPropagation();
     if (!e.target.value) return;
     this.value = e.target.value;
     this.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
@@ -86,7 +86,7 @@ export class JxStyledCombobox extends LitElement {
 
   /** Combobox mode: textfield @input handler */
   _handleInput(/** @type {any} */ e) {
-    e.stopPropagation(); // prevent sp-textfield's raw event from reaching consumer
+    e.stopPropagation();
     this.value = e.target.value;
     this.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
   }

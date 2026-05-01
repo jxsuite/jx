@@ -1,0 +1,105 @@
+/**
+ * Unit-selector.js — Number + unit picker widget.
+ *
+ * Renders a text field for numeric input paired with a unit picker dropdown. Handles keywords
+ * (auto, inherit, etc.) alongside numeric+unit values.
+ */
+
+import { html, nothing } from "lit-html";
+import { live } from "lit-html/directives/live.js";
+import { classMap } from "lit-html/directives/class-map.js";
+import { debouncedStyleCommit } from "../store.js";
+
+export const UNIT_RE = /^(-?[\d.]+)(px|rem|em|%|vw|vh|svw|svh|dvh|ms|s|fr|ch|ex|deg)?$/;
+
+/**
+ * Render a number + unit selector widget.
+ *
+ * @param {any} entry — css-meta entry with $units and $keywords arrays
+ * @param {string} prop — property key (for debounce namespace)
+ * @param {any} value — current value (e.g. "12px", "auto", "")
+ * @param {(val: string) => void} onChange — commit callback
+ * @returns {any}
+ */
+export function renderUnitSelector(
+  /** @type {any} */ entry,
+  /** @type {any} */ prop,
+  /** @type {any} */ value,
+  /** @type {any} */ onChange,
+) {
+  const units = entry.$units || [];
+  const keywords = entry.$keywords || [];
+  const strVal = String(value ?? "");
+  const match = strVal.match(UNIT_RE);
+  const isKeyword = !match && strVal !== "" && keywords.includes(strVal);
+  const isNumericVal = (/** @type {any} */ v) => /^-?\d*\.?\d*$/.test(v);
+
+  const currentUnit = isKeyword ? units[0] || "" : match ? match[2] || "" : units[0] || "";
+  let displayValue;
+  if (isKeyword) displayValue = strVal;
+  else if (match) displayValue = match[1];
+  else if (strVal !== "") {
+    const num = parseFloat(strVal);
+    displayValue = isNaN(num) ? strVal : String(num);
+  } else displayValue = "";
+
+  const isExpression = isKeyword || (displayValue !== "" && !isNumericVal(displayValue));
+  const hasUnits = units.length > 0 || keywords.length > 0;
+  const btnId = `style-unit-${prop}`;
+
+  return html`
+    <div class="style-input-number-unit">
+      <div class=${classMap({ "input-group": true, "is-expression": isExpression })}>
+        <sp-textfield
+          size="s"
+          placeholder="0"
+          .value=${live(displayValue)}
+          @input=${debouncedStyleCommit(`nui:${prop}`, 400, (/** @type {any} */ e) => {
+            const val = (e.target.value ?? "").trim();
+            if (val === "") {
+              onChange("");
+              return;
+            }
+            if (isNumericVal(val)) onChange(units.length > 0 ? val + currentUnit : val);
+            else onChange(val);
+          })}
+        ></sp-textfield>
+        ${hasUnits
+          ? html`
+              <sp-picker-button id=${btnId} size="s">
+                <span slot="label">${currentUnit || units[0] || ""}</span>
+              </sp-picker-button>
+              <sp-overlay trigger="${btnId}@click" placement="bottom-end" offset="4">
+                <sp-popover style="min-width: var(--spectrum-component-width-900, 64px)">
+                  <sp-menu
+                    label="CSS unit"
+                    @change=${(/** @type {any} */ e) => {
+                      const chosen = e.target.value;
+                      if (keywords.includes(chosen)) {
+                        onChange(chosen);
+                      } else if (units.includes(chosen)) {
+                        const curMatch = String(value ?? "").match(UNIT_RE);
+                        const numPart = curMatch ? curMatch[1] : "";
+                        if (numPart) onChange(numPart + chosen);
+                      }
+                    }}
+                  >
+                    ${units.map(
+                      (/** @type {any} */ u) => html`<sp-menu-item value=${u}>${u}</sp-menu-item>`,
+                    )}
+                    ${keywords.length > 0 && units.length > 0
+                      ? html`<sp-menu-divider></sp-menu-divider>`
+                      : nothing}
+                    ${keywords.map(
+                      (/** @type {any} */ kw) =>
+                        html`<sp-menu-item value=${kw}>${kw}</sp-menu-item>`,
+                    )}
+                  </sp-menu>
+                </sp-popover>
+              </sp-overlay>
+            `
+          : nothing}
+      </div>
+    </div>
+  `;
+}
