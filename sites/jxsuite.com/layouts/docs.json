@@ -3,7 +3,7 @@
   "style": {
     "margin": "0",
     "padding": "0",
-    "color": "var(--text-primary)",
+    "color": "var(--color-text-primary)",
     "lineHeight": "1.6",
     "minHeight": "100vh",
     "display": "flex",
@@ -19,7 +19,7 @@
         "zIndex": "100",
         "backgroundColor": "rgba(10, 10, 10, 0.8)",
         "backdropFilter": "blur(12px)",
-        "borderBottom": "1px solid var(--border)",
+        "borderBottom": "1px solid var(--color-border)",
         "padding": "0 clamp(1rem, 3vw, 2rem)"
       },
       "children": [
@@ -38,7 +38,7 @@
               "tagName": "a",
               "attributes": { "href": "/" },
               "style": {
-                "color": "var(--text-primary)",
+                "color": "var(--color-text-primary)",
                 "textDecoration": "none",
                 "fontWeight": "700",
                 "fontSize": "1.0625rem",
@@ -51,7 +51,7 @@
                 {
                   "tagName": "span",
                   "style": {
-                    "backgroundColor": "var(--accent)",
+                    "backgroundColor": "var(--color-accent)",
                     "color": "white",
                     "padding": "0.125rem 0.375rem",
                     "borderRadius": "4px",
@@ -77,7 +77,7 @@
                   "tagName": "a",
                   "attributes": { "href": "/docs/getting-started" },
                   "style": {
-                    "color": "var(--text-primary)",
+                    "color": "var(--color-text-primary)",
                     "textDecoration": "none",
                     "fontSize": "0.875rem",
                     "fontWeight": "500"
@@ -88,7 +88,7 @@
                   "tagName": "a",
                   "attributes": { "href": "/docs/spec" },
                   "style": {
-                    "color": "var(--text-secondary)",
+                    "color": "var(--color-text-secondary)",
                     "textDecoration": "none",
                     "fontSize": "0.875rem",
                     "fontWeight": "500"
@@ -103,7 +103,7 @@
                     "rel": "noopener noreferrer"
                   },
                   "style": {
-                    "color": "var(--text-secondary)",
+                    "color": "var(--color-text-secondary)",
                     "textDecoration": "none",
                     "fontSize": "0.875rem",
                     "fontWeight": "500"
@@ -131,7 +131,7 @@
           "style": {
             "width": "240px",
             "flexShrink": "0",
-            "borderRight": "1px solid var(--border)",
+            "borderRight": "1px solid var(--color-border)",
             "position": "sticky",
             "top": "3.5rem",
             "height": "calc(100vh - 3.5rem)",
@@ -155,8 +155,8 @@
     {
       "tagName": "footer",
       "style": {
-        "borderTop": "1px solid var(--border)",
-        "color": "var(--text-muted)",
+        "borderTop": "1px solid var(--color-border)",
+        "color": "var(--color-text-muted)",
         "padding": "clamp(1.5rem, 3vw, 2rem) clamp(1rem, 3vw, 2rem)",
         "fontSize": "0.8125rem",
         "textAlign": "center"

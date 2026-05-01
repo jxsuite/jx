@@ -2,7 +2,7 @@
   "tagName": "cta-banner",
   "style": {
     "padding": "clamp(4rem, 8vw, 6rem) clamp(1rem, 3vw, 2rem)",
-    "borderTop": "1px solid var(--border)",
+    "borderTop": "1px solid var(--color-border)",
     "textAlign": "center",
     "background": "radial-gradient(ellipse 60% 50% at 50% 100%, rgba(59, 130, 246, 0.08), transparent)"
   },
@@ -24,7 +24,7 @@
         {
           "tagName": "p",
           "style": {
-            "color": "var(--text-secondary)",
+            "color": "var(--color-text-secondary)",
             "margin": "0 0 2rem",
             "fontSize": "1.0625rem",
             "lineHeight": "1.7"
@@ -48,7 +48,7 @@
               "style": {
                 "display": "inline-flex",
                 "alignItems": "center",
-                "backgroundColor": "var(--accent)",
+                "backgroundColor": "var(--color-accent)",
                 "color": "white",
                 "padding": "0.6875rem 1.75rem",
                 "borderRadius": "var(--radius)",
@@ -65,13 +65,13 @@
               "style": {
                 "display": "inline-flex",
                 "alignItems": "center",
-                "color": "var(--text-secondary)",
+                "color": "var(--color-text-secondary)",
                 "padding": "0.6875rem 1.75rem",
                 "borderRadius": "var(--radius)",
                 "textDecoration": "none",
                 "fontWeight": "600",
                 "fontSize": "0.9375rem",
-                "border": "1px solid var(--border)",
+                "border": "1px solid var(--color-border)",
                 "transition": "border-color 0.15s, color 0.15s"
               },
               "children": ["Read the Spec"]

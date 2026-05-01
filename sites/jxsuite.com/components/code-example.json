@@ -2,7 +2,7 @@
   "tagName": "code-example",
   "style": {
     "padding": "clamp(3rem, 6vw, 5rem) clamp(1rem, 3vw, 2rem)",
-    "borderTop": "1px solid var(--border)"
+    "borderTop": "1px solid var(--color-border)"
   },
   "children": [
     {
@@ -23,7 +23,7 @@
         {
           "tagName": "p",
           "style": {
-            "color": "var(--text-secondary)",
+            "color": "var(--color-text-secondary)",
             "textAlign": "center",
             "maxWidth": "560px",
             "margin": "0 auto 3rem",
@@ -52,9 +52,9 @@
                     "alignItems": "center",
                     "justifyContent": "space-between",
                     "padding": "0.625rem 1rem",
-                    "backgroundColor": "var(--bg-surface)",
+                    "backgroundColor": "var(--color-bg-surface)",
                     "borderRadius": "var(--radius) var(--radius) 0 0",
-                    "border": "1px solid var(--border)",
+                    "border": "1px solid var(--color-border)",
                     "borderBottom": "none"
                   },
                   "children": [
@@ -63,7 +63,7 @@
                       "style": {
                         "fontSize": "0.75rem",
                         "fontWeight": "600",
-                        "color": "var(--text-muted)",
+                        "color": "var(--color-text-muted)",
                         "fontFamily": "var(--font-mono)"
                       },
                       "children": ["counter.json"]
@@ -72,10 +72,10 @@
                       "tagName": "span",
                       "style": {
                         "fontSize": "0.6875rem",
-                        "color": "var(--text-muted)",
+                        "color": "var(--color-text-muted)",
                         "fontFamily": "var(--font-mono)",
                         "padding": "0.125rem 0.5rem",
-                        "backgroundColor": "var(--bg-primary)",
+                        "backgroundColor": "var(--color-bg-primary)",
                         "borderRadius": "4px"
                       },
                       "children": ["INPUT"]
@@ -85,11 +85,11 @@
                 {
                   "tagName": "pre",
                   "style": {
-                    "backgroundColor": "var(--bg-secondary)",
-                    "color": "var(--text-secondary)",
+                    "backgroundColor": "var(--color-bg-secondary)",
+                    "color": "var(--color-text-secondary)",
                     "padding": "1.25rem",
                     "borderRadius": "0 0 var(--radius) var(--radius)",
-                    "border": "1px solid var(--border)",
+                    "border": "1px solid var(--color-border)",
                     "fontSize": "0.8125rem",
                     "lineHeight": "1.7",
                     "overflow": "auto",
@@ -102,7 +102,7 @@
                       "children": [
                         {
                           "tagName": "span",
-                          "style": { "color": "var(--text-muted)" },
+                          "style": { "color": "var(--color-text-muted)" },
                           "children": ["{"]
                         },
                         "\n  ",
@@ -218,7 +218,7 @@
                         " }\n  ]\n",
                         {
                           "tagName": "span",
-                          "style": { "color": "var(--text-muted)" },
+                          "style": { "color": "var(--color-text-muted)" },
                           "children": ["}"]
                         }
                       ]
@@ -237,9 +237,9 @@
                     "alignItems": "center",
                     "justifyContent": "space-between",
                     "padding": "0.625rem 1rem",
-                    "backgroundColor": "var(--bg-surface)",
+                    "backgroundColor": "var(--color-bg-surface)",
                     "borderRadius": "var(--radius) var(--radius) 0 0",
-                    "border": "1px solid var(--border)",
+                    "border": "1px solid var(--color-border)",
                     "borderBottom": "none"
                   },
                   "children": [
@@ -248,7 +248,7 @@
                       "style": {
                         "fontSize": "0.75rem",
                         "fontWeight": "600",
-                        "color": "var(--text-muted)",
+                        "color": "var(--color-text-muted)",
                         "fontFamily": "var(--font-mono)"
                       },
                       "children": ["index.html"]
@@ -257,10 +257,10 @@
                       "tagName": "span",
                       "style": {
                         "fontSize": "0.6875rem",
-                        "color": "var(--text-muted)",
+                        "color": "var(--color-text-muted)",
                         "fontFamily": "var(--font-mono)",
                         "padding": "0.125rem 0.5rem",
-                        "backgroundColor": "var(--bg-primary)",
+                        "backgroundColor": "var(--color-bg-primary)",
                         "borderRadius": "4px"
                       },
                       "children": ["OUTPUT"]
@@ -270,11 +270,11 @@
                 {
                   "tagName": "pre",
                   "style": {
-                    "backgroundColor": "var(--bg-secondary)",
-                    "color": "var(--text-secondary)",
+                    "backgroundColor": "var(--color-bg-secondary)",
+                    "color": "var(--color-text-secondary)",
                     "padding": "1.25rem",
                     "borderRadius": "0 0 var(--radius) var(--radius)",
-                    "border": "1px solid var(--border)",
+                    "border": "1px solid var(--color-border)",
                     "fontSize": "0.8125rem",
                     "lineHeight": "1.7",
                     "overflow": "auto",
@@ -287,7 +287,7 @@
                       "children": [
                         {
                           "tagName": "span",
-                          "style": { "color": "var(--text-muted)" },
+                          "style": { "color": "var(--color-text-muted)" },
                           "children": ["<!-- Static output: zero JS -->"]
                         },
                         "\n",
@@ -304,7 +304,7 @@
                         },
                         {
                           "tagName": "span",
-                          "style": { "color": "var(--text-primary)" },
+                          "style": { "color": "var(--color-text-primary)" },
                           "children": ["0"]
                         },
                         {
@@ -320,7 +320,7 @@
                         },
                         {
                           "tagName": "span",
-                          "style": { "color": "var(--text-primary)" },
+                          "style": { "color": "var(--color-text-primary)" },
                           "children": ["+"]
                         },
                         {
@@ -337,7 +337,7 @@
                         "\n\n",
                         {
                           "tagName": "span",
-                          "style": { "color": "var(--text-muted)" },
+                          "style": { "color": "var(--color-text-muted)" },
                           "children": ["<!-- Reactive island: ~5kb hydration -->"]
                         },
                         "\n",
