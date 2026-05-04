@@ -7056,37 +7056,37 @@
             }
           ]
         },
-        "column-rule-edge-inset": {
-          "oneOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "number"
-            }
-          ]
-        },
-        "column-rule-edge-inset-end": {
-          "oneOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "number"
-            }
-          ]
-        },
-        "column-rule-edge-inset-start": {
-          "oneOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "number"
-            }
-          ]
-        },
         "column-rule-inset": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "column-rule-inset-cap": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "column-rule-inset-cap-end": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "column-rule-inset-cap-start": {
           "oneOf": [
             {
               "type": "string"
@@ -7106,37 +7106,37 @@
             }
           ]
         },
+        "column-rule-inset-junction": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "column-rule-inset-junction-end": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "column-rule-inset-junction-start": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            }
+          ]
+        },
         "column-rule-inset-start": {
-          "oneOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "number"
-            }
-          ]
-        },
-        "column-rule-interior-inset": {
-          "oneOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "number"
-            }
-          ]
-        },
-        "column-rule-interior-inset-end": {
-          "oneOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "number"
-            }
-          ]
-        },
-        "column-rule-interior-inset-start": {
           "oneOf": [
             {
               "type": "string"
@@ -7276,37 +7276,37 @@
             }
           ]
         },
-        "columnRuleEdgeInset": {
-          "oneOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "number"
-            }
-          ]
-        },
-        "columnRuleEdgeInsetEnd": {
-          "oneOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "number"
-            }
-          ]
-        },
-        "columnRuleEdgeInsetStart": {
-          "oneOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "number"
-            }
-          ]
-        },
         "columnRuleInset": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "columnRuleInsetCap": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "columnRuleInsetCapEnd": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "columnRuleInsetCapStart": {
           "oneOf": [
             {
               "type": "string"
@@ -7326,37 +7326,37 @@
             }
           ]
         },
+        "columnRuleInsetJunction": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "columnRuleInsetJunctionEnd": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "columnRuleInsetJunctionStart": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            }
+          ]
+        },
         "columnRuleInsetStart": {
-          "oneOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "number"
-            }
-          ]
-        },
-        "columnRuleInteriorInset": {
-          "oneOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "number"
-            }
-          ]
-        },
-        "columnRuleInteriorInsetEnd": {
-          "oneOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "number"
-            }
-          ]
-        },
-        "columnRuleInteriorInsetStart": {
           "oneOf": [
             {
               "type": "string"
@@ -13146,6 +13146,26 @@
             }
           ]
         },
+        "path-length": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "pathLength": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            }
+          ]
+        },
         "pause": {
           "oneOf": [
             {
@@ -13716,37 +13736,37 @@
             }
           ]
         },
-        "row-rule-edge-inset": {
-          "oneOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "number"
-            }
-          ]
-        },
-        "row-rule-edge-inset-end": {
-          "oneOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "number"
-            }
-          ]
-        },
-        "row-rule-edge-inset-start": {
-          "oneOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "number"
-            }
-          ]
-        },
         "row-rule-inset": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "row-rule-inset-cap": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "row-rule-inset-cap-end": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "row-rule-inset-cap-start": {
           "oneOf": [
             {
               "type": "string"
@@ -13766,37 +13786,37 @@
             }
           ]
         },
+        "row-rule-inset-junction": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "row-rule-inset-junction-end": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "row-rule-inset-junction-start": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            }
+          ]
+        },
         "row-rule-inset-start": {
-          "oneOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "number"
-            }
-          ]
-        },
-        "row-rule-interior-inset": {
-          "oneOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "number"
-            }
-          ]
-        },
-        "row-rule-interior-inset-end": {
-          "oneOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "number"
-            }
-          ]
-        },
-        "row-rule-interior-inset-start": {
           "oneOf": [
             {
               "type": "string"
@@ -13876,37 +13896,37 @@
             }
           ]
         },
-        "rowRuleEdgeInset": {
-          "oneOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "number"
-            }
-          ]
-        },
-        "rowRuleEdgeInsetEnd": {
-          "oneOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "number"
-            }
-          ]
-        },
-        "rowRuleEdgeInsetStart": {
-          "oneOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "number"
-            }
-          ]
-        },
         "rowRuleInset": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "rowRuleInsetCap": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "rowRuleInsetCapEnd": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "rowRuleInsetCapStart": {
           "oneOf": [
             {
               "type": "string"
@@ -13926,37 +13946,37 @@
             }
           ]
         },
+        "rowRuleInsetJunction": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "rowRuleInsetJunctionEnd": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "rowRuleInsetJunctionStart": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            }
+          ]
+        },
         "rowRuleInsetStart": {
-          "oneOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "number"
-            }
-          ]
-        },
-        "rowRuleInteriorInset": {
-          "oneOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "number"
-            }
-          ]
-        },
-        "rowRuleInteriorInsetEnd": {
-          "oneOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "number"
-            }
-          ]
-        },
-        "rowRuleInteriorInsetStart": {
           "oneOf": [
             {
               "type": "string"
@@ -14106,7 +14126,7 @@
             }
           ]
         },
-        "rule-edge-inset": {
+        "rule-inset": {
           "oneOf": [
             {
               "type": "string"
@@ -14116,7 +14136,7 @@
             }
           ]
         },
-        "rule-inset": {
+        "rule-inset-cap": {
           "oneOf": [
             {
               "type": "string"
@@ -14136,7 +14156,7 @@
             }
           ]
         },
-        "rule-inset-start": {
+        "rule-inset-junction": {
           "oneOf": [
             {
               "type": "string"
@@ -14146,7 +14166,7 @@
             }
           ]
         },
-        "rule-interior-inset": {
+        "rule-inset-start": {
           "oneOf": [
             {
               "type": "string"
@@ -14216,7 +14236,7 @@
             }
           ]
         },
-        "ruleEdgeInset": {
+        "ruleInset": {
           "oneOf": [
             {
               "type": "string"
@@ -14226,7 +14246,7 @@
             }
           ]
         },
-        "ruleInset": {
+        "ruleInsetCap": {
           "oneOf": [
             {
               "type": "string"
@@ -14246,7 +14266,7 @@
             }
           ]
         },
-        "ruleInsetStart": {
+        "ruleInsetJunction": {
           "oneOf": [
             {
               "type": "string"
@@ -14256,7 +14276,7 @@
             }
           ]
         },
-        "ruleInteriorInset": {
+        "ruleInsetStart": {
           "oneOf": [
             {
               "type": "string"
@@ -15096,16 +15116,6 @@
             }
           ]
         },
-        "shape-subtract": {
-          "oneOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "number"
-            }
-          ]
-        },
         "shapeImageThreshold": {
           "oneOf": [
             {
@@ -15157,16 +15167,6 @@
           ]
         },
         "shapeRendering": {
-          "oneOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "number"
-            }
-          ]
-        },
-        "shapeSubtract": {
           "oneOf": [
             {
               "type": "string"
@@ -16046,6 +16046,16 @@
             }
           ]
         },
+        "text-fit": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            }
+          ]
+        },
         "text-group-align": {
           "oneOf": [
             {
@@ -16447,6 +16457,16 @@
           ]
         },
         "textEmphasisStyle": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "textFit": {
           "oneOf": [
             {
               "type": "string"

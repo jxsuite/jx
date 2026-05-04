@@ -6296,6 +6296,33 @@ function getLonghands(/** @type {any} */ shorthandProp) {
   return result;
 }
 
+/**
+ * Expand a CSS shorthand value (margin, padding, borderWidth, borderRadius) into individual
+ * longhand values following the standard 1–4 value TRBL pattern. Returns an array matching the
+ * longhand count (always 4 for box properties).
+ */
+function expandShorthand(/** @type {string} */ shortVal, /** @type {number} */ count) {
+  if (!shortVal) return Array(count).fill("");
+  const parts = shortVal.trim().split(/\s+/);
+  if (count !== 4 || parts.length === 0) return Array(count).fill("");
+  if (parts.length === 1) return [parts[0], parts[0], parts[0], parts[0]];
+  if (parts.length === 2) return [parts[0], parts[1], parts[0], parts[1]];
+  if (parts.length === 3) return [parts[0], parts[1], parts[2], parts[1]];
+  return [parts[0], parts[1], parts[2], parts[3]];
+}
+
+/**
+ * Compress 4 TRBL values back into the shortest valid CSS shorthand string. e.g.
+ * ["0","auto","3rem","auto"] → "0 auto 3rem"
+ */
+function compressShorthand(/** @type {string[]} */ vals) {
+  const [t, r, b, l] = vals;
+  if (t === r && r === b && b === l) return t;
+  if (t === b && r === l) return `${t} ${r}`;
+  if (r === l) return `${t} ${r} ${b}`;
+  return `${t} ${r} ${b} ${l}`;
+}
+
 /** Extract --font-* CSS custom properties from the document root style. */
 function getFontVars() {
   const style = S.document?.style;
@@ -6603,33 +6630,57 @@ function renderShorthandRow(
       </div>
     </div>
     ${isExpanded
-      ? longhands.map(({ name, entry: lEntry }) => {
-          const lVal = style[name] ?? "";
-          return html`
-            <div class="style-row style-row--child" data-prop=${name}>
-              <div class="style-row-label">
-                ${lVal !== undefined && lVal !== ""
-                  ? html`<span
-                      class="set-dot"
-                      title="Clear ${name}"
-                      @click=${(/** @type {any} */ e) => {
-                        e.stopPropagation();
-                        update(commitFn(S, name, undefined));
-                      }}
-                    ></span>`
-                  : nothing}
-                <sp-field-label size="s" title=${name}>${propLabel(lEntry, name)}</sp-field-label>
+      ? (() => {
+          const expanded = shortVal ? expandShorthand(shortVal, longhands.length) : null;
+          return longhands.map(({ name, entry: lEntry }, idx) => {
+            const lVal = style[name] ?? (expanded ? expanded[idx] : "");
+            return html`
+              <div class="style-row style-row--child" data-prop=${name}>
+                <div class="style-row-label">
+                  ${lVal !== undefined && lVal !== ""
+                    ? html`<span
+                        class="set-dot"
+                        title="Clear ${name}"
+                        @click=${(/** @type {any} */ e) => {
+                          e.stopPropagation();
+                          // Recompose shorthand with this longhand cleared (use "0" as default)
+                          const vals = longhands.map((l, i) =>
+                            i === idx ? "0" : (style[l.name] ?? (expanded ? expanded[i] : "0")),
+                          );
+                          let s = S;
+                          for (const l of longhands) {
+                            if (style[l.name] !== undefined) s = commitFn(s, l.name, undefined);
+                          }
+                          s = commitFn(s, shortProp, compressShorthand(vals));
+                          update(s);
+                        }}
+                      ></span>`
+                    : nothing}
+                  <sp-field-label size="s" title=${name}>${propLabel(lEntry, name)}</sp-field-label>
+                </div>
+                ${widgetForType(
+                  inferInputType(lEntry),
+                  lEntry,
+                  name,
+                  lVal,
+                  (/** @type {any} */ newVal) => {
+                    // Recompose shorthand with this longhand updated
+                    const vals = longhands.map((l, i) =>
+                      i === idx ? newVal || "0" : (style[l.name] ?? (expanded ? expanded[i] : "0")),
+                    );
+                    let s = S;
+                    for (const l of longhands) {
+                      if (style[l.name] !== undefined) s = commitFn(s, l.name, undefined);
+                    }
+                    s = commitFn(s, shortProp, compressShorthand(vals));
+                    update(s);
+                    renderRightPanel();
+                  },
+                )}
               </div>
-              ${widgetForType(
-                inferInputType(lEntry),
-                lEntry,
-                name,
-                lVal,
-                (/** @type {any} */ newVal) => update(commitFn(S, name, newVal || undefined)),
-              )}
-            </div>
-          `;
-        })
+            `;
+          });
+        })()
       : nothing}
   `;
 }

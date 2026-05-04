@@ -54,7 +54,7 @@
       "oxfmt"
     ],
     "*.json": [
-      "oxfmt"
+      "oxfmt --no-error-on-unmatched-pattern"
     ]
   },
   "release-it": {

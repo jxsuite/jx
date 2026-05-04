@@ -732,11 +732,11 @@ Additionally, the **Browse** canvas mode provides a full-screen project file tab
 
 The Browse view serves as the current collection browser. Future enhancements:
 
-| View              | Status          | Description                                                                                         |
-| ----------------- | --------------- | --------------------------------------------------------------------------------------------------- |
-| **Table view**    | **Implemented** | File listing with Name, Category, Type, Path columns. Filterable by category and search.            |
-| **Card view**     | Planned         | Visual card layout with hero image, title, and summary. Good for blog posts.                        |
-| **Calendar view** | Planned         | Date-sorted timeline. Useful for date-based collections (blog, events).                             |
+| View              | Status          | Description                                                                              |
+| ----------------- | --------------- | ---------------------------------------------------------------------------------------- |
+| **Table view**    | **Implemented** | File listing with Name, Category, Type, Path columns. Filterable by category and search. |
+| **Card view**     | Planned         | Visual card layout with hero image, title, and summary. Good for blog posts.             |
+| **Calendar view** | Planned         | Date-sorted timeline. Useful for date-based collections (blog, events).                  |
 
 The view mode will be selectable per collection. Studio will remember the preference.
 
