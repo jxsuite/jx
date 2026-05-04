@@ -4,7 +4,10 @@
   "title": "Jx Class Definition",
   "description": "Schema for Jx .class.json files. A class definition describes a schema-defined class with fields, constructor, methods, and type parameters. Optionally points to a JS module via $implementation for hybrid execution.",
   "type": "object",
-  "required": ["$prototype", "title"],
+  "required": [
+    "$prototype",
+    "title"
+  ],
   "properties": {
     "$schema": {
       "type": "string"
@@ -20,7 +23,11 @@
     "title": {
       "description": "PascalCase class name, used as the export name.",
       "type": "string",
-      "examples": ["MarkdownFile", "DataSource", "Calculator"]
+      "examples": [
+        "MarkdownFile",
+        "DataSource",
+        "Calculator"
+      ]
     },
     "description": {
       "type": "string"
@@ -33,7 +40,9 @@
         },
         {
           "type": "object",
-          "required": ["$ref"],
+          "required": [
+            "$ref"
+          ],
           "properties": {
             "$ref": {
               "type": "string"
@@ -46,7 +55,10 @@
     "$implementation": {
       "description": "Relative path to a JS module containing the actual class implementation.",
       "type": "string",
-      "examples": ["./md.js", "./lib/calculator.js"]
+      "examples": [
+        "./md.js",
+        "./lib/calculator.js"
+      ]
     },
     "$defs": {
       "description": "Class members: parameters, returnTypes, fields, constructor, methods.",
@@ -91,7 +103,9 @@
     "ClassParameterDef": {
       "description": "A typed parameter definition for a class.",
       "type": "object",
-      "required": ["identifier"],
+      "required": [
+        "identifier"
+      ],
       "properties": {
         "identifier": {
           "type": "string"
@@ -120,11 +134,18 @@
         },
         "access": {
           "type": "string",
-          "enum": ["public", "private", "protected"]
+          "enum": [
+            "public",
+            "private",
+            "protected"
+          ]
         },
         "scope": {
           "type": "string",
-          "enum": ["instance", "static"]
+          "enum": [
+            "instance",
+            "static"
+          ]
         },
         "identifier": {
           "type": "string"
@@ -162,7 +183,9 @@
             "oneOf": [
               {
                 "type": "object",
-                "required": ["$ref"],
+                "required": [
+                  "$ref"
+                ],
                 "properties": {
                   "$ref": {
                     "type": "string"
@@ -211,7 +234,10 @@
       "properties": {
         "role": {
           "type": "string",
-          "enum": ["method", "accessor"]
+          "enum": [
+            "method",
+            "accessor"
+          ]
         },
         "$prototype": {
           "type": "string",
@@ -219,11 +245,18 @@
         },
         "access": {
           "type": "string",
-          "enum": ["public", "private", "protected"]
+          "enum": [
+            "public",
+            "private",
+            "protected"
+          ]
         },
         "scope": {
           "type": "string",
-          "enum": ["instance", "static"]
+          "enum": [
+            "instance",
+            "static"
+          ]
         },
         "identifier": {
           "type": "string"
@@ -234,7 +267,9 @@
             "oneOf": [
               {
                 "type": "object",
-                "required": ["$ref"],
+                "required": [
+                  "$ref"
+                ],
                 "properties": {
                   "$ref": {
                     "type": "string"

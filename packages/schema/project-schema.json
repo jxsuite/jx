@@ -9,12 +9,18 @@
       "description": "Human-readable project name.",
       "type": "string",
       "default": "Jx Site",
-      "examples": ["My Portfolio", "Jx Example Site"]
+      "examples": [
+        "My Portfolio",
+        "Jx Example Site"
+      ]
     },
     "url": {
       "description": "Production URL of the deployed site.",
       "type": "string",
-      "examples": ["https://example.com", "https://jxsuite.com"]
+      "examples": [
+        "https://example.com",
+        "https://jxsuite.com"
+      ]
     },
     "defaults": {
       "description": "Default settings applied to all pages unless overridden.",
@@ -31,7 +37,9 @@
             }
           ],
           "default": null,
-          "examples": ["./layouts/base.json"]
+          "examples": [
+            "./layouts/base.json"
+          ]
         },
         "lang": {
           "description": "Default lang attribute for the <html> element.",
@@ -88,7 +96,9 @@
         "oneOf": [
           {
             "type": "object",
-            "required": ["$ref"],
+            "required": [
+              "$ref"
+            ],
             "properties": {
               "$ref": {
                 "type": "string"
@@ -159,7 +169,10 @@
           "source": {
             "description": "Glob pattern for content files relative to the content directory.",
             "type": "string",
-            "examples": ["./blog/**/*.md", "./docs/**/*.md"]
+            "examples": [
+              "./blog/**/*.md",
+              "./docs/**/*.md"
+            ]
           },
           "schema": {
             "description": "JSON Schema for validating frontmatter of collection entries.",
@@ -172,7 +185,9 @@
               "oneOf": [
                 {
                   "type": "object",
-                  "required": ["$ref"],
+                  "required": [
+                    "$ref"
+                  ],
                   "properties": {
                     "$ref": {
                       "type": "string"
@@ -219,19 +234,30 @@
         "format": {
           "description": "Output format.",
           "type": "string",
-          "enum": ["directory", "single"],
+          "enum": [
+            "directory",
+            "single"
+          ],
           "default": "directory"
         },
         "trailingSlash": {
           "description": "Trailing slash behavior for generated URLs.",
           "type": "string",
-          "enum": ["always", "never", "ignore"],
+          "enum": [
+            "always",
+            "never",
+            "ignore"
+          ],
           "default": "always"
         },
         "adapter": {
           "description": "Platform adapter for deployment-specific output.",
           "type": "string",
-          "enum": ["netlify", "vercel", "cloudflare"]
+          "enum": [
+            "netlify",
+            "vercel",
+            "cloudflare"
+          ]
         }
       }
     },
@@ -242,7 +268,9 @@
         "defaultLocale": {
           "description": "Default locale code.",
           "type": "string",
-          "examples": ["en"]
+          "examples": [
+            "en"
+          ]
         },
         "locales": {
           "description": "Available locale codes.",
@@ -250,12 +278,21 @@
           "items": {
             "type": "string"
           },
-          "examples": [["en", "fr", "de"]]
+          "examples": [
+            [
+              "en",
+              "fr",
+              "de"
+            ]
+          ]
         },
         "routing": {
           "description": "Locale routing strategy.",
           "type": "string",
-          "enum": ["prefix-except-default", "prefix-always"]
+          "enum": [
+            "prefix-except-default",
+            "prefix-always"
+          ]
         }
       }
     }
