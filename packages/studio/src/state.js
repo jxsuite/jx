@@ -226,6 +226,7 @@ export function createState(doc) {
       stylebookTab: "elements", // "elements" | "variables"
       stylebookFilter: "", // search filter text
       stylebookCustomizedOnly: false, // show only customized elements
+      settingsTab: "stylebook", // "stylebook" | "definitions" | "collections"
     },
   };
 }

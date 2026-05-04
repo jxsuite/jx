@@ -168,6 +168,8 @@ import { convertToComponent } from "./editor/convert-to-component.js";
 import { initShortcuts } from "./editor/shortcuts.js";
 import { renderActivityBar, tabIcon } from "./panels/activity-bar.js";
 import { renderBrowse } from "./browse/browse.js";
+import { renderCollectionsEditor } from "./settings/collections-editor.js";
+import { renderDefsEditor } from "./settings/defs-editor.js";
 import * as monaco from "monaco-editor/esm/vs/editor/editor.api.js";
 
 // ─── Globals ──────────────────────────────────────────────────────────────────
@@ -763,6 +765,7 @@ const toolbarIconMap = /** @type {Record<string, any>} */ ({
   "sp-icon-code": html`<sp-icon-code slot="icon"></sp-icon-code>`,
   "sp-icon-brush": html`<sp-icon-brush slot="icon"></sp-icon-brush>`,
   "sp-icon-view-list": html`<sp-icon-view-list slot="icon"></sp-icon-view-list>`,
+  "sp-icon-gears": html`<sp-icon-gears slot="icon"></sp-icon-gears>`,
   "sp-icon-document": html`<sp-icon-document slot="icon"></sp-icon-document>`,
 });
 
@@ -1144,8 +1147,8 @@ function renderCanvas() {
     canvasWrap.style.overflow = "";
   }
 
-  // Browse mode: project-level file browser table
-  if (canvasMode === "browse") {
+  // Manage mode: project-level file browser table
+  if (canvasMode === "manage") {
     canvasWrap.style.padding = "0";
     canvasWrap.style.overflow = "auto";
     renderBrowse(canvasWrap, {
@@ -1157,9 +1160,9 @@ function renderCanvas() {
     return;
   }
 
-  // Stylebook mode: render element catalog with panzoom surface
-  if (canvasMode === "stylebook") {
-    renderStylebook();
+  // Settings mode: render element catalog with panzoom surface
+  if (canvasMode === "settings") {
+    renderSettings();
     return;
   }
 
@@ -1533,7 +1536,7 @@ function applyTransform() {
   const label = document.querySelector(".zoom-indicator-label");
   if (label) label.textContent = `${Math.round(S.ui.zoom * 100)}%`;
   renderOverlays();
-  if (canvasMode === "stylebook") renderStylebookOverlays();
+  if (canvasMode === "settings") renderStylebookOverlays();
 }
 
 /** Lightweight in-place zoom update — no full re-render. */
@@ -1910,7 +1913,7 @@ function showCanvasDropIndicator(el, elPath, isVoid, panel) {
 
 function renderOverlays() {
   // In non-interactive modes (except stylebook), hide overlays and click interceptors
-  if (canvasMode !== "design" && canvasMode !== "edit" && canvasMode !== "stylebook") {
+  if (canvasMode !== "design" && canvasMode !== "edit" && canvasMode !== "settings") {
     for (const p of canvasPanels) {
       litRender(nothing, p.overlay);
       p.overlayClk.style.pointerEvents = "none";
@@ -1922,7 +1925,7 @@ function renderOverlays() {
     return;
   }
   // Stylebook manages its own overlays
-  if (canvasMode === "stylebook") {
+  if (canvasMode === "settings") {
     const enable = S.ui.stylebookTab === "elements";
     for (const p of canvasPanels) {
       p.overlayClk.style.pointerEvents = enable ? "" : "none";
@@ -3164,7 +3167,7 @@ function renderLeftPanel() {
   /** @type {any} */
   let content;
   if (tab === "layers")
-    content = canvasMode === "stylebook" ? renderStylebookLayersTemplate() : renderLayersTemplate();
+    content = canvasMode === "settings" ? renderStylebookLayersTemplate() : renderLayersTemplate();
   else if (tab === "imports")
     content = renderImportsTemplate({
       renderLeftPanel,
@@ -3190,7 +3193,7 @@ function renderLeftPanel() {
   litRender(html`<div class="panel-body">${content}</div>`, /** @type {any} */ (leftPanel));
 
   // Post-render side effects
-  if (tab === "layers" && canvasMode !== "stylebook") registerLayersDnD();
+  if (tab === "layers" && canvasMode !== "settings") registerLayersDnD();
   else if (tab === "imports") {
     /* no post-render DnD needed */
   } else if (tab === "blocks") {
@@ -4182,7 +4185,51 @@ function hasTagStyle(rootStyle, tag) {
   return s && typeof s === "object" && Object.keys(s).length > 0;
 }
 
-function renderStylebook() {
+function renderSettings() {
+  const settingsTab = S.ui.settingsTab || "stylebook";
+
+  // Top-level settings tabs chrome bar
+  const settingsChromeBarTpl = html`
+    <div
+      class="sb-chrome settings-top-chrome"
+      style="position:absolute;top:0;left:0;right:0;z-index:16;background:var(--bg-panel);border-bottom:1px solid var(--border)"
+    >
+      <sp-tabs
+        size="s"
+        selected=${settingsTab}
+        @change=${(/** @type {any} */ e) => {
+          S = { ...S, ui: { ...S.ui, settingsTab: e.target.selected } };
+          renderCanvas();
+          renderOverlays();
+          renderLeftPanel();
+        }}
+      >
+        <sp-tab label="Stylebook" value="stylebook"></sp-tab>
+        <sp-tab label="Definitions" value="definitions"></sp-tab>
+        <sp-tab label="Collections" value="collections"></sp-tab>
+      </sp-tabs>
+    </div>
+  `;
+
+  // Non-stylebook tabs: render editor into canvasWrap with offset for chrome bar
+  if (settingsTab === "definitions" || settingsTab === "collections") {
+    /** @type {any} */ (canvasWrap).style.overflow = "auto";
+
+    litRender(
+      html`${settingsChromeBarTpl}
+        <div class="settings-editor-container" style="padding-top:40px"></div>`,
+      /** @type {any} */ (canvasWrap),
+    );
+
+    const container = /** @type {HTMLElement} */ (
+      canvasWrap.querySelector(".settings-editor-container")
+    );
+    if (settingsTab === "definitions") renderDefsEditor(container);
+    else renderCollectionsEditor(container);
+    return;
+  }
+
+  // Stylebook tab — existing behavior
   stylebookElToTag = new WeakMap();
   const rootStyle = getEffectiveStyle(S.document.style);
   const filter = (S.ui.stylebookFilter || "").toLowerCase();
@@ -4212,9 +4259,10 @@ function renderStylebook() {
   };
 
   const chromeBarTpl = html`
+    ${settingsChromeBarTpl}
     <div
       class="sb-chrome"
-      style="position:absolute;top:0;left:0;right:0;z-index:15;background:var(--bg-panel);border-bottom:1px solid var(--border)"
+      style="position:absolute;top:36px;left:0;right:0;z-index:15;background:var(--bg-panel);border-bottom:1px solid var(--border)"
     >
       <sp-tabs
         size="s"
@@ -4322,7 +4370,7 @@ function renderStylebook() {
       ${chromeBarTpl}
       <div
         class="panzoom-wrap"
-        style="transform-origin:0 0;padding-top:36px"
+        style="transform-origin:0 0;padding-top:72px"
         ${ref((el) => {
           if (el) panzoomWrap = /** @type {HTMLDivElement} */ (el);
         })}
@@ -7020,7 +7068,7 @@ function styleSidebarTemplate(
 
 /** Top-level Style panel — returns a lit-html template */
 function renderStylePanelTemplate() {
-  if (canvasMode === "stylebook" && S.ui.stylebookSelection) {
+  if (canvasMode === "settings" && S.ui.stylebookSelection) {
     const node = S.document;
     if (!node) return html`<div class="empty-state">No document loaded</div>`;
     return html`
@@ -7515,12 +7563,12 @@ function renderToolbar() {
 
   // Mode switcher
   const modes = [
-    { key: "browse", label: "Browse", iconTag: "sp-icon-view-list" },
+    { key: "manage", label: "Manage", iconTag: "sp-icon-view-list" },
     { key: "edit", label: "Edit", iconTag: "sp-icon-edit" },
     { key: "design", label: "Design", iconTag: "sp-icon-artboard" },
     { key: "preview", label: "Preview", iconTag: "sp-icon-preview" },
     { key: "source", label: "Code", iconTag: "sp-icon-code" },
-    { key: "stylebook", label: "Stylebook", iconTag: "sp-icon-brush" },
+    { key: "settings", label: "Settings", iconTag: "sp-icon-gears" },
   ];
 
   const modeSwitcherTpl = html`
@@ -7546,11 +7594,11 @@ function renderToolbar() {
               renderOverlays();
               renderToolbar();
               renderLeftPanel();
-              if (m.key === "stylebook") {
+              if (m.key === "settings") {
                 S = { ...S, ui: { ...S.ui, rightTab: "style" } };
                 renderRightPanel();
               }
-              if (m.key === "browse") {
+              if (m.key === "manage") {
                 S = { ...S, ui: { ...S.ui, leftTab: "files" } };
                 renderLeftPanel();
               }

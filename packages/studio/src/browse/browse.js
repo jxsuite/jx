@@ -1,13 +1,15 @@
 /**
- * Browse view — project-level file browser rendered as a Spectrum table.
+ * Manage view — project-level file browser rendered as a Spectrum table.
  *
  * Displays pages, layouts, components, content, and media in a filterable table grid. Fills the
- * center canvas area as a parallel state to Edit/Design/Preview/Code/Stylebook.
+ * center canvas area as a parallel state to Edit/Design/Preview/Code/Settings. Includes a "New +"
+ * button with type-aware entity creation (including collections from project.json).
  */
 
 import { html, render as litRender } from "lit-html";
 import { getPlatform } from "../platform.js";
 import { projectState } from "../store.js";
+import { yamlDefault } from "../settings/schema-field-ui.js";
 
 // ─── Category definitions ────────────────────────────────────────────────────
 
@@ -140,6 +142,92 @@ function filteredFiles() {
   return files;
 }
 
+// ─── Entity types for "New +" button ────────────────────────────────────────
+
+const ENTITY_TYPES = [
+  { key: "page", label: "Page", dir: "pages", ext: ".md" },
+  { key: "layout", label: "Layout", dir: "layouts", ext: ".json" },
+  { key: "component", label: "Component", dir: "components", ext: ".json" },
+  { key: "content", label: "Content", dir: "content", ext: ".md" },
+];
+
+/**
+ * Build frontmatter YAML from a collection's schema properties.
+ *
+ * @param {string} collectionName
+ * @returns {string}
+ */
+function buildFrontmatterYaml(collectionName) {
+  const config = projectState?.projectConfig;
+  const col = config?.collections?.[collectionName];
+  if (!col?.schema?.properties) return "title: Untitled\n";
+
+  let yaml = "";
+  for (const [field, def] of Object.entries(col.schema.properties)) {
+    const d = /** @type {any} */ (def);
+    yaml += `${field}: ${yamlDefault(d.type, d.format)}\n`;
+  }
+  return yaml || "title: Untitled\n";
+}
+
+/**
+ * Get collection-derived entity types from project config.
+ *
+ * @returns {{ key: string; label: string; dir: string; ext: string; collectionName: string }[]}
+ */
+function getCollectionTypes() {
+  const config = projectState?.projectConfig;
+  if (!config?.collections) return [];
+  return Object.entries(config.collections).map(([name, def]) => {
+    const d = /** @type {any} */ (def);
+    const dir = d.source ? d.source.replace(/^\.\//, "").split("/")[0] : name;
+    return {
+      key: `collection:${name}`,
+      label: name.charAt(0).toUpperCase() + name.slice(1),
+      dir,
+      ext: ".md",
+      collectionName: name,
+    };
+  });
+}
+
+/**
+ * Handle creation of a new entity.
+ *
+ * @param {string} typeKey
+ * @param {HTMLElement} container
+ * @param {{ openFile: (path: string) => void }} ctx
+ */
+async function handleNewEntity(typeKey, container, ctx) {
+  const isCollection = typeKey.startsWith("collection:");
+  const collectionName = isCollection ? typeKey.slice("collection:".length) : null;
+  const allTypes = [...ENTITY_TYPES, ...getCollectionTypes()];
+  const typeInfo = allTypes.find((t) => t.key === typeKey);
+  if (!typeInfo) return;
+
+  const name = prompt(`${typeInfo.label} name:`, "untitled");
+  if (!name) return;
+
+  const slug = name
+    .toLowerCase()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9-]/g, "");
+  const filePath = `${typeInfo.dir}/${slug}${typeInfo.ext}`;
+
+  let content;
+  if (typeInfo.ext === ".md") {
+    const frontmatter = collectionName ? buildFrontmatterYaml(collectionName) : "title: Untitled\n";
+    content = `---\n${frontmatter}---\n\n`;
+  } else {
+    content = JSON.stringify({ tagName: "div", children: [] }, null, "\t");
+  }
+
+  const platform = getPlatform();
+  await platform.writeFile(filePath, content);
+  invalidateBrowseCache();
+  ctx.openFile(filePath);
+}
+
 // ─── Render ──────────────────────────────────────────────────────────────────
 
 /**
@@ -156,6 +244,8 @@ export async function renderBrowse(container, ctx) {
   }
 
   const files = filteredFiles();
+
+  const collectionTypes = getCollectionTypes();
 
   const filterBar = html`
     <div class="browse-filter-bar">
@@ -185,6 +275,23 @@ export async function renderBrowse(container, ctx) {
         }}
         @submit=${(/** @type {Event} */ e) => e.preventDefault()}
       ></sp-search>
+      <overlay-trigger placement="bottom-start">
+        <sp-action-button size="s" slot="trigger">
+          <sp-icon-add slot="icon"></sp-icon-add> New
+        </sp-action-button>
+        <sp-popover slot="click-content" tip>
+          <sp-menu
+            @change=${(/** @type {any} */ e) => handleNewEntity(e.target.value, container, ctx)}
+          >
+            ${ENTITY_TYPES.map((t) => html`<sp-menu-item value=${t.key}>${t.label}</sp-menu-item>`)}
+            ${collectionTypes.length
+              ? html`<sp-menu-divider></sp-menu-divider> ${collectionTypes.map(
+                    (t) => html`<sp-menu-item value=${t.key}>${t.label}</sp-menu-item>`,
+                  )}`
+              : ""}
+          </sp-menu>
+        </sp-popover>
+      </overlay-trigger>
     </div>
   `;
 

@@ -1496,6 +1496,111 @@
         font-size: 11px;
       }
 
+      /* ─── Settings editors (Collections / Definitions) ─── */
+      .settings-two-col {
+        display: flex;
+        height: 100%;
+        gap: 1px;
+        background: var(--border);
+      }
+      .settings-list-panel {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        padding: 12px;
+        width: 200px;
+        min-width: 200px;
+        background: var(--bg-panel);
+        overflow-y: auto;
+      }
+      .settings-list-panel sp-action-button {
+        width: 100%;
+        justify-content: flex-start;
+      }
+      .settings-editor-panel {
+        flex: 1;
+        padding: 16px;
+        background: var(--bg-panel);
+        overflow-y: auto;
+      }
+      .settings-editor-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 16px;
+      }
+      .settings-editor-header h3 {
+        margin: 0;
+        font-size: 14px;
+        font-weight: 600;
+      }
+      .settings-empty-state {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--bg-panel);
+        color: var(--fg-dim);
+        font-size: 13px;
+      }
+      .settings-inline-form {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .settings-top-chrome {
+        z-index: 16 !important;
+      }
+
+      /* ─── Schema field cards ─── */
+      .schema-field-list {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        margin-bottom: 12px;
+      }
+      .schema-field-card {
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        padding: 6px 10px;
+      }
+      .schema-field-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .schema-field-name {
+        font-weight: 500;
+        font-size: 12px;
+        flex: 1;
+      }
+      .schema-field-type {
+        font-size: 11px;
+        padding: 1px 6px;
+        border-radius: 3px;
+        background: var(--spectrum-gray-200, #333);
+        color: var(--fg-dim);
+      }
+      .schema-field-required {
+        font-size: 10px;
+        padding: 1px 5px;
+        border-radius: 3px;
+        background: var(--spectrum-red-200, #500);
+        color: var(--spectrum-red-900, #fbb);
+      }
+      .schema-field-nested {
+        margin-left: 16px;
+        margin-top: 6px;
+        padding-left: 8px;
+        border-left: 2px solid var(--border);
+      }
+      .schema-add-field {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 0;
+      }
+
       /* ─── Source view ────────────────────────────── */
       #source-view {
         width: 100%;
