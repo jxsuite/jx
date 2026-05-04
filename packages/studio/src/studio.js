@@ -4216,15 +4216,16 @@ function renderStylebook() {
       class="sb-chrome"
       style="position:absolute;top:0;left:0;right:0;z-index:15;background:var(--bg-panel);border-bottom:1px solid var(--border)"
     >
-      <sp-tabs size="s">
+      <sp-tabs
+        size="s"
+        selected=${S.ui.stylebookTab || "elements"}
+        @change=${(/** @type {any} */ e) => {
+          onTabClick(e.target.selected);
+        }}
+      >
         ${["elements", "variables"].map(
           (t) => html`
-            <sp-tab
-              label=${t.charAt(0).toUpperCase() + t.slice(1)}
-              value=${t}
-              ?selected=${S.ui.stylebookTab === t}
-              @click=${() => onTabClick(t)}
-            ></sp-tab>
+            <sp-tab label=${t.charAt(0).toUpperCase() + t.slice(1)} value=${t}></sp-tab>
           `,
         )}
       </sp-tabs>
@@ -6647,30 +6648,22 @@ function styleSidebarTemplate(
   const mediaTabsT =
     mediaNames.length > 0
       ? html`
-          <sp-tabs size="s">
-            <sp-tab
-              label="Base"
-              value="base"
-              ?selected=${activeTab === null}
-              @click=${() => {
-                S = { ...S, ui: { ...S.ui, activeMedia: null } };
+          <sp-tabs
+            size="s"
+            selected=${activeTab || "base"}
+            @change=${(/** @type {any} */ e) => {
+              const val = e.target.selected;
+              const newMedia = val === "base" ? null : val;
+              if (newMedia !== S.ui.activeMedia) {
+                S = { ...S, ui: { ...S.ui, activeMedia: newMedia } };
                 updateActivePanelHeaders();
                 renderRightPanel();
-              }}
-            ></sp-tab>
+              }
+            }}
+          >
+            <sp-tab label="Base" value="base"></sp-tab>
             ${mediaNames.map(
-              (name) => html`
-                <sp-tab
-                  label=${mediaDisplayName(name)}
-                  value=${name}
-                  ?selected=${activeTab === name}
-                  @click=${() => {
-                    S = { ...S, ui: { ...S.ui, activeMedia: name } };
-                    updateActivePanelHeaders();
-                    renderRightPanel();
-                  }}
-                ></sp-tab>
-              `,
+              (name) => html` <sp-tab label=${mediaDisplayName(name)} value=${name}></sp-tab> `,
             )}
           </sp-tabs>
         `
