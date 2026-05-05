@@ -31,6 +31,9 @@ export default {
 
     linux: {
       bundleCEF: true,
+      chromiumFlags: {
+        "ozone-platform-hint": "auto",
+      },
     },
 
     // preBuild copies compiled studio + runtime assets into assets/ before these run.
