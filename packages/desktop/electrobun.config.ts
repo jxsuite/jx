@@ -29,6 +29,10 @@ export default {
       ],
     },
 
+    linux: {
+      bundleCEF: true,
+    },
+
     // preBuild copies compiled studio + runtime assets into assets/ before these run.
     // Source paths are relative to packages/desktop/.
     copy: {
