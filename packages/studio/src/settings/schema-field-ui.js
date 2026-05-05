@@ -18,32 +18,66 @@ export const FIELD_TYPES = ["string", "number", "boolean", "array", "object", "d
  */
 
 /**
- * Render a single schema field as a compact row card.
+ * @typedef {{
+ *   onDelete: (name: string) => void;
+ *   onToggleRequired: (name: string) => void;
+ *   onRename: (oldName: string, newName: string) => void;
+ *   onChangeType: (name: string, newType: string) => void;
+ *   onAddNestedField?: (
+ *     parentName: string,
+ *     state: { name: string; type: string; required: boolean },
+ *   ) => void;
+ *   onDeleteNested?: (parentName: string, childName: string) => void;
+ *   onToggleNestedRequired?: (parentName: string, childName: string) => void;
+ *   onRenameNested?: (parentName: string, oldChild: string, newChild: string) => void;
+ *   onChangeNestedType?: (parentName: string, childName: string, newType: string) => void;
+ * }} FieldHandlers
+ */
+
+/**
+ * Render a single schema field as an inline-editable form row.
  *
  * @param {string} fieldName
  * @param {SchemaProperty} fieldSchema — JSON Schema property definition
  * @param {boolean} isRequired
- * @param {{ onDelete: (name: string) => void; onToggleRequired: (name: string) => void }} handlers
+ * @param {FieldHandlers} handlers
  * @returns {any}
  */
 export function fieldCardTpl(fieldName, fieldSchema, isRequired, handlers) {
-  const type = fieldSchema.type || "string";
-  const isNested = type === "object" && fieldSchema.properties;
+  const type = fieldSchema.format === "date" ? "date" : fieldSchema.type || "string";
+  const isNested = type === "object";
+  const nestedProps = fieldSchema.properties || {};
+  const nestedRequired = fieldSchema.required || [];
 
   return html`
     <div class="schema-field-card">
       <div class="schema-field-row">
-        <span class="schema-field-name">${fieldName}</span>
-        <span class="schema-field-type">${type}</span>
-        ${isRequired ? html`<span class="schema-field-required">required</span>` : nothing}
-        <sp-action-button
-          size="xs"
+        <sp-textfield
+          size="s"
           quiet
-          title="Toggle required"
-          @click=${() => handlers.onToggleRequired(fieldName)}
+          value=${fieldName}
+          class="schema-field-name-input"
+          @change=${(/** @type {any} */ e) => {
+            const newName = e.target.value.trim();
+            if (newName && newName !== fieldName) handlers.onRename(fieldName, newName);
+            else e.target.value = fieldName;
+          }}
+          @keydown=${(/** @type {any} */ e) => {
+            if (e.key === "Enter") e.target.blur();
+            if (e.key === "Escape") {
+              e.target.value = fieldName;
+              e.target.blur();
+            }
+          }}
+        ></sp-textfield>
+        ${typePickerTpl(type, (newType) => handlers.onChangeType(fieldName, newType))}
+        <sp-switch
+          size="s"
+          ?checked=${isRequired}
+          @change=${() => handlers.onToggleRequired(fieldName)}
         >
-          ${isRequired ? "★" : "☆"}
-        </sp-action-button>
+          Req
+        </sp-switch>
         <sp-action-button
           size="xs"
           quiet
@@ -53,15 +87,139 @@ export function fieldCardTpl(fieldName, fieldSchema, isRequired, handlers) {
           <sp-icon-delete slot="icon"></sp-icon-delete>
         </sp-action-button>
       </div>
-      ${isNested && fieldSchema.properties
+      ${isNested
         ? html`
             <div class="schema-field-nested">
-              ${Object.entries(fieldSchema.properties).map(([name, sub]) =>
-                fieldCardTpl(name, sub, (fieldSchema.required || []).includes(name), handlers),
+              ${Object.entries(nestedProps).map(([name, sub]) =>
+                nestedFieldCardTpl(
+                  fieldName,
+                  name,
+                  /** @type {SchemaProperty} */ (sub),
+                  nestedRequired.includes(name),
+                  handlers,
+                ),
               )}
+              ${nestedAddFieldTpl(fieldName, handlers)}
             </div>
           `
         : nothing}
+    </div>
+  `;
+}
+
+/**
+ * Render a nested (child) field card — same inline-editable pattern but delegates to nested
+ * handlers.
+ *
+ * @param {string} parentName
+ * @param {string} childName
+ * @param {SchemaProperty} childSchema
+ * @param {boolean} isRequired
+ * @param {FieldHandlers} handlers
+ * @returns {any}
+ */
+function nestedFieldCardTpl(parentName, childName, childSchema, isRequired, handlers) {
+  const type = childSchema.format === "date" ? "date" : childSchema.type || "string";
+
+  return html`
+    <div class="schema-field-card schema-field-card--nested">
+      <div class="schema-field-row">
+        <sp-textfield
+          size="s"
+          quiet
+          value=${childName}
+          class="schema-field-name-input"
+          @change=${(/** @type {any} */ e) => {
+            const newName = e.target.value.trim();
+            if (newName && newName !== childName && handlers.onRenameNested) {
+              handlers.onRenameNested(parentName, childName, newName);
+            } else {
+              e.target.value = childName;
+            }
+          }}
+          @keydown=${(/** @type {any} */ e) => {
+            if (e.key === "Enter") e.target.blur();
+            if (e.key === "Escape") {
+              e.target.value = childName;
+              e.target.blur();
+            }
+          }}
+        ></sp-textfield>
+        ${typePickerTpl(type, (newType) => {
+          if (handlers.onChangeNestedType)
+            handlers.onChangeNestedType(parentName, childName, newType);
+        })}
+        <sp-switch
+          size="s"
+          ?checked=${isRequired}
+          @change=${() => {
+            if (handlers.onToggleNestedRequired)
+              handlers.onToggleNestedRequired(parentName, childName);
+          }}
+        >
+          Req
+        </sp-switch>
+        <sp-action-button
+          size="xs"
+          quiet
+          title="Delete field"
+          @click=${() => {
+            if (handlers.onDeleteNested) handlers.onDeleteNested(parentName, childName);
+          }}
+        >
+          <sp-icon-delete slot="icon"></sp-icon-delete>
+        </sp-action-button>
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * Render an inline "Add Field" row for nested objects.
+ *
+ * @param {string} parentName
+ * @param {FieldHandlers} handlers
+ * @returns {any}
+ */
+function nestedAddFieldTpl(parentName, handlers) {
+  return html`
+    <div class="schema-nested-add">
+      <sp-textfield
+        size="s"
+        placeholder="field name"
+        class="schema-nested-add-name"
+        @keydown=${(/** @type {any} */ e) => {
+          if (e.key === "Enter") {
+            const row = e.target.closest(".schema-nested-add");
+            const name = e.target.value.trim();
+            const typePicker = row?.querySelector("sp-picker");
+            const type = typePicker?.value || "string";
+            if (name && handlers.onAddNestedField) {
+              handlers.onAddNestedField(parentName, { name, type, required: false });
+              e.target.value = "";
+            }
+          }
+        }}
+      ></sp-textfield>
+      ${typePickerTpl("string", () => {})}
+      <sp-action-button
+        size="xs"
+        quiet
+        title="Add nested field"
+        @click=${(/** @type {any} */ e) => {
+          const row = e.target.closest(".schema-nested-add");
+          const nameInput = /** @type {any} */ (row?.querySelector(".schema-nested-add-name"));
+          const typePicker = /** @type {any} */ (row?.querySelector("sp-picker"));
+          const name = nameInput?.value?.trim();
+          const type = typePicker?.value || "string";
+          if (name && handlers.onAddNestedField) {
+            handlers.onAddNestedField(parentName, { name, type, required: false });
+            nameInput.value = "";
+          }
+        }}
+      >
+        <sp-icon-add slot="icon"></sp-icon-add>
+      </sp-action-button>
     </div>
   `;
 }
@@ -105,6 +263,10 @@ export function addFieldFormTpl(state, handlers) {
         placeholder="Field name"
         .value=${state.name}
         @input=${(/** @type {any} */ e) => handlers.onInput("name", e.target.value)}
+        @keydown=${(/** @type {any} */ e) => {
+          if (e.key === "Enter") handlers.onConfirm();
+          if (e.key === "Escape") handlers.onCancel();
+        }}
       ></sp-textfield>
       ${typePickerTpl(state.type, (t) => handlers.onInput("type", t))}
       <sp-switch

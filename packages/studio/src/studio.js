@@ -1158,6 +1158,16 @@ function renderCanvas() {
     canvasWrap.style.padding = "";
     canvasWrap.style.alignItems = "";
     canvasWrap.style.overflow = "";
+
+    // Clear zoom indicator (only re-rendered by design/preview/stylebook)
+    try {
+      litRender(nothing, zoomIndicatorHost);
+    } catch {
+      const newHost = document.createElement("div");
+      newHost.style.display = "contents";
+      zoomIndicatorHost.replaceWith(newHost);
+      zoomIndicatorHost = newHost;
+    }
   }
 
   // Manage mode: project-level file browser table
@@ -4226,11 +4236,14 @@ function renderSettings() {
 
   // Non-stylebook tabs: render editor into canvasWrap with offset for chrome bar
   if (settingsTab === "definitions" || settingsTab === "collections") {
-    /** @type {any} */ (canvasWrap).style.overflow = "auto";
+    /** @type {any} */ (canvasWrap).style.overflow = "hidden";
 
     litRender(
       html`${settingsChromeBarTpl}
-        <div class="settings-editor-container" style="padding-top:40px"></div>`,
+        <div
+          class="settings-editor-container"
+          style="position:absolute;inset:40px 0 0 0;overflow:auto"
+        ></div>`,
       /** @type {any} */ (canvasWrap),
     );
 

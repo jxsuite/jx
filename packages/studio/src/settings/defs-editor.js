@@ -28,6 +28,14 @@ async function saveProjectConfig() {
   await platform.writeFile("project.json", JSON.stringify(config, null, "\t"));
 }
 
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/** Get the selected $def schema object. */
+function getSelectedDef() {
+  const config = projectState?.projectConfig;
+  return config?.$defs?.[/** @type {string} */ (selectedDef)];
+}
+
 // ─── Handlers ─────────────────────────────────────────────────────────────────
 
 /** @param {() => void} rerender */
@@ -58,8 +66,7 @@ function handleAddField(rerender) {
   const name = newFieldState.name.trim();
   if (!name || !selectedDef) return;
 
-  const config = projectState?.projectConfig;
-  const def = config?.$defs?.[selectedDef];
+  const def = getSelectedDef();
   if (!def) return;
 
   if (!def.properties) def.properties = {};
@@ -81,9 +88,7 @@ function handleAddField(rerender) {
  * @param {() => void} rerender
  */
 function handleDeleteField(fieldName, rerender) {
-  if (!selectedDef) return;
-  const config = projectState?.projectConfig;
-  const def = config?.$defs?.[selectedDef];
+  const def = getSelectedDef();
   if (!def?.properties) return;
 
   delete def.properties[fieldName];
@@ -100,9 +105,7 @@ function handleDeleteField(fieldName, rerender) {
  * @param {() => void} rerender
  */
 function handleToggleRequired(fieldName, rerender) {
-  if (!selectedDef) return;
-  const config = projectState?.projectConfig;
-  const def = config?.$defs?.[selectedDef];
+  const def = getSelectedDef();
   if (!def) return;
   if (!def.required) def.required = [];
 
@@ -110,6 +113,150 @@ function handleToggleRequired(fieldName, rerender) {
   if (idx >= 0) def.required.splice(idx, 1);
   else def.required.push(fieldName);
 
+  rerender();
+  saveProjectConfig();
+}
+
+/**
+ * @param {string} oldName
+ * @param {string} newName
+ * @param {() => void} rerender
+ */
+function handleRenameField(oldName, newName, rerender) {
+  const def = getSelectedDef();
+  if (!def?.properties || !newName || def.properties[newName]) return;
+
+  /** @type {Record<string, any>} */
+  const newProps = {};
+  for (const [key, val] of Object.entries(def.properties)) {
+    newProps[key === oldName ? newName : key] = val;
+  }
+  def.properties = newProps;
+
+  if (def.required) {
+    def.required = def.required.map((/** @type {string} */ r) => (r === oldName ? newName : r));
+  }
+
+  rerender();
+  saveProjectConfig();
+}
+
+/**
+ * @param {string} fieldName
+ * @param {string} newType
+ * @param {() => void} rerender
+ */
+function handleChangeType(fieldName, newType, rerender) {
+  const def = getSelectedDef();
+  if (!def?.properties?.[fieldName]) return;
+
+  def.properties[fieldName] = schemaForType(newType);
+  rerender();
+  saveProjectConfig();
+}
+
+// ─── Nested field handlers ───────────────────────────────────────────────────
+
+/**
+ * @param {string} parentName
+ * @param {{ name: string; type: string; required: boolean }} fieldState
+ * @param {() => void} rerender
+ */
+function handleAddNestedField(parentName, fieldState, rerender) {
+  const def = getSelectedDef();
+  const parent = def?.properties?.[parentName];
+  if (!parent) return;
+
+  if (!parent.properties) parent.properties = {};
+  parent.properties[fieldState.name] = schemaForType(fieldState.type);
+
+  if (fieldState.required) {
+    if (!parent.required) parent.required = [];
+    if (!parent.required.includes(fieldState.name)) parent.required.push(fieldState.name);
+  }
+
+  rerender();
+  saveProjectConfig();
+}
+
+/**
+ * @param {string} parentName
+ * @param {string} childName
+ * @param {() => void} rerender
+ */
+function handleDeleteNested(parentName, childName, rerender) {
+  const def = getSelectedDef();
+  const parent = def?.properties?.[parentName];
+  if (!parent?.properties) return;
+
+  delete parent.properties[childName];
+  if (parent.required) {
+    parent.required = parent.required.filter((/** @type {string} */ r) => r !== childName);
+  }
+
+  rerender();
+  saveProjectConfig();
+}
+
+/**
+ * @param {string} parentName
+ * @param {string} childName
+ * @param {() => void} rerender
+ */
+function handleToggleNestedRequired(parentName, childName, rerender) {
+  const def = getSelectedDef();
+  const parent = def?.properties?.[parentName];
+  if (!parent) return;
+  if (!parent.required) parent.required = [];
+
+  const idx = parent.required.indexOf(childName);
+  if (idx >= 0) parent.required.splice(idx, 1);
+  else parent.required.push(childName);
+
+  rerender();
+  saveProjectConfig();
+}
+
+/**
+ * @param {string} parentName
+ * @param {string} oldChild
+ * @param {string} newChild
+ * @param {() => void} rerender
+ */
+function handleRenameNested(parentName, oldChild, newChild, rerender) {
+  const def = getSelectedDef();
+  const parent = def?.properties?.[parentName];
+  if (!parent?.properties || !newChild || parent.properties[newChild]) return;
+
+  /** @type {Record<string, any>} */
+  const newProps = {};
+  for (const [key, val] of Object.entries(parent.properties)) {
+    newProps[key === oldChild ? newChild : key] = val;
+  }
+  parent.properties = newProps;
+
+  if (parent.required) {
+    parent.required = parent.required.map((/** @type {string} */ r) =>
+      r === oldChild ? newChild : r,
+    );
+  }
+
+  rerender();
+  saveProjectConfig();
+}
+
+/**
+ * @param {string} parentName
+ * @param {string} childName
+ * @param {string} newType
+ * @param {() => void} rerender
+ */
+function handleChangeNestedType(parentName, childName, newType, rerender) {
+  const def = getSelectedDef();
+  const parent = def?.properties?.[parentName];
+  if (!parent?.properties?.[childName]) return;
+
+  parent.properties[childName] = schemaForType(newType);
   rerender();
   saveProjectConfig();
 }
@@ -205,11 +352,21 @@ export function renderDefsEditor(container) {
     const properties = def.properties || {};
     const required = def.required || [];
 
+    /** @type {import("./schema-field-ui.js").FieldHandlers} */
+    const handlers = {
+      onDelete: (n) => handleDeleteField(n, rerender),
+      onToggleRequired: (n) => handleToggleRequired(n, rerender),
+      onRename: (oldN, newN) => handleRenameField(oldN, newN, rerender),
+      onChangeType: (n, t) => handleChangeType(n, t, rerender),
+      onAddNestedField: (p, s) => handleAddNestedField(p, s, rerender),
+      onDeleteNested: (p, c) => handleDeleteNested(p, c, rerender),
+      onToggleNestedRequired: (p, c) => handleToggleNestedRequired(p, c, rerender),
+      onRenameNested: (p, o, n) => handleRenameNested(p, o, n, rerender),
+      onChangeNestedType: (p, c, t) => handleChangeNestedType(p, c, t, rerender),
+    };
+
     const fieldCards = Object.entries(properties).map(([name, fieldDef]) =>
-      fieldCardTpl(name, /** @type {any} */ (fieldDef), required.includes(name), {
-        onDelete: (n) => handleDeleteField(n, rerender),
-        onToggleRequired: (n) => handleToggleRequired(n, rerender),
-      }),
+      fieldCardTpl(name, /** @type {any} */ (fieldDef), required.includes(name), handlers),
     );
 
     editorTpl = html`

@@ -1572,30 +1572,28 @@
         align-items: center;
         gap: 8px;
       }
-      .schema-field-name {
-        font-weight: 500;
-        font-size: 12px;
-        flex: 1;
-      }
-      .schema-field-type {
-        font-size: 11px;
-        padding: 1px 6px;
-        border-radius: 3px;
-        background: var(--spectrum-gray-200, #333);
-        color: var(--fg-dim);
-      }
-      .schema-field-required {
-        font-size: 10px;
-        padding: 1px 5px;
-        border-radius: 3px;
-        background: var(--spectrum-red-200, #500);
-        color: var(--spectrum-red-900, #fbb);
-      }
       .schema-field-nested {
         margin-left: 16px;
         margin-top: 6px;
         padding-left: 8px;
         border-left: 2px solid var(--border);
+      }
+      .schema-field-name-input {
+        flex: 1;
+        max-width: 140px;
+      }
+      .schema-field-card--nested {
+        border-color: var(--spectrum-gray-300, #444);
+      }
+      .schema-nested-add {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 0;
+      }
+      .schema-nested-add-name {
+        flex: 1;
+        max-width: 120px;
       }
       .schema-add-field {
         display: flex;
