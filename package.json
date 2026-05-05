@@ -44,8 +44,8 @@
     "chrome-devtools-mcp": "^0.24.0",
     "husky": "^9.1.7",
     "lint-staged": "^16.4.0",
-    "oxfmt": "^0.47.0",
-    "oxlint": "^1.62.0",
+    "oxfmt": "^0.48.0",
+    "oxlint": "^1.63.0",
     "release-it": "^20.0.1"
   },
   "lint-staged": {
