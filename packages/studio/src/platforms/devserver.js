@@ -51,11 +51,22 @@ export function createDevServerPlatform() {
     set projectRoot(v) {
       _projectRoot = v || ".";
       // Notify server so it can resolve project-relative static paths
-      fetch("/__studio/activate", {
+      this.activate(_projectRoot);
+    },
+
+    /**
+     * Notify the server which project root to use for resolving static file paths. Returns a
+     * promise so callers can await activation before loading assets.
+     *
+     * @param {string} [root]
+     */
+    async activate(root) {
+      const r = root ?? _projectRoot;
+      await fetch("/__studio/activate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ root: _projectRoot }),
-      }).catch(() => {});
+        body: JSON.stringify({ root: r }),
+      });
     },
 
     // ─── Project opening ──────────────────────────────────────────────────
@@ -101,11 +112,7 @@ export function createDevServerPlatform() {
       _projectRoot = match.path;
 
       // Notify server of active project for static file resolution
-      fetch("/__studio/activate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ root: _projectRoot }),
-      }).catch(() => {});
+      await this.activate();
 
       return {
         config,

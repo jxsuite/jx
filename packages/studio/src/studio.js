@@ -916,7 +916,11 @@ if (_openParam) {
 
         if (siteCtx.sitePath) {
           // Set PAL project root to server-relative path so file ops work
-          if (siteCtx.relPath) platform.projectRoot = siteCtx.relPath;
+          if (siteCtx.relPath) {
+            platform.projectRoot = siteCtx.relPath;
+            // Await activation so the server resolves project-relative static files
+            if (platform.activate) await platform.activate();
+          }
 
           setProjectState({
             root: siteCtx.sitePath,
