@@ -29,11 +29,20 @@ export default {
       ],
     },
 
+    mac: {
+      bundleCEF: true,
+      defaultRenderer: "cef", // All webviews use CEF by default
+    },
     linux: {
       bundleCEF: true,
+      defaultRenderer: "cef",
       chromiumFlags: {
         "ozone-platform-hint": "auto",
       },
+    },
+    win: {
+      bundleCEF: true,
+      defaultRenderer: "cef",
     },
 
     // preBuild copies compiled studio + runtime assets into assets/ before these run.
