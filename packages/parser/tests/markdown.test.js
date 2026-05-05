@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeAll, spyOn } from "bun:test";
+import { describe, test, expect, beforeAll, afterAll, spyOn } from "bun:test";
 import { resolve as resolvePath, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { unified } from "unified";
@@ -25,27 +25,33 @@ const __dirname = dirname(__filename);
 const FIXTURE_DIR = join(__dirname, "..", "..", "..", "examples", "markdown", "content", "posts");
 
 /**
- * Mock fetch to serve .class.json files from disk (Happy DOM can't fetch file:// URLs).
+ * Mock fetch to serve .class.json files from disk (Happy DOM can't fetch file:// URLs). Uses spyOn
+ * so the mock is properly scoped and doesn't leak to other test files.
  *
  * @param {Record<string, string>} fileMap - Maps URL substrings to absolute file paths
  * @returns {() => void} Restore function
  */
 function setupClassJsonFetchMock(/** @type {Record<string, string>} */ fileMap) {
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = /** @type {any} */ (
-    async (/** @type {any} */ url, /** @type {any} */ opts) => {
-      const urlStr = typeof url === "string" ? url : url.toString();
-      for (const [pattern, filePath] of Object.entries(fileMap)) {
-        if (urlStr.includes(pattern)) {
-          const content = readFileSync(filePath, "utf8");
-          return { ok: true, json: () => Promise.resolve(JSON.parse(content)) };
+  const mockFn = spyOn(globalThis, "fetch").mockImplementation(
+    /** @type {any} */ (
+      async (/** @type {any} */ url, /** @type {any} */ opts) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+        for (const [pattern, filePath] of Object.entries(fileMap)) {
+          if (urlStr.includes(pattern)) {
+            const content = readFileSync(filePath, "utf8");
+            return new Response(content, {
+              status: 200,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
         }
+        return originalFetch(url, opts);
       }
-      return originalFetch(url, opts);
-    }
+    ),
   );
   return () => {
-    globalThis.fetch = originalFetch;
+    mockFn.mockRestore();
   };
 }
 
@@ -488,7 +494,9 @@ describe("Runtime external prototype ($src)", () => {
     });
   });
 
-  // afterAll not available in bun:test, but restore on process exit is fine for tests
+  afterAll(() => {
+    if (_restore) _restore();
+  });
 
   test("RESERVED_KEYS includes $src", () => {
     expect(RESERVED_KEYS.has("$src")).toBe(true);

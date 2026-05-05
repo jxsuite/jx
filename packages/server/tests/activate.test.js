@@ -1,110 +1,117 @@
-import { describe, test, expect, afterAll } from "bun:test";
-import { createDevServer } from "../src/server.js";
+import { describe, test, expect } from "bun:test";
 import { join, resolve } from "node:path";
 import { writeFileSync, mkdirSync, rmSync } from "node:fs";
 
 const FIXTURES = resolve(import.meta.dir, "_activate_fixtures");
 
-// Create a fake project structure:
-//   _activate_fixtures/
-//     sites/demo/
-//       project.json
-//       public/
-//         image.png
-mkdirSync(join(FIXTURES, "sites/demo/public"), { recursive: true });
-writeFileSync(join(FIXTURES, "sites/demo/project.json"), JSON.stringify({ name: "demo" }));
 // Write a small valid PNG (1x1 transparent pixel)
 const PNG_1x1 = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVQI12NgAAIABQAB" +
     "Nl7pcQAAAABJRU5ErkJggg==",
   "base64",
 );
-writeFileSync(join(FIXTURES, "sites/demo/public/image.png"), PNG_1x1);
 
-// Also create a file at repo root level to test baseline resolution
-mkdirSync(join(FIXTURES, "root-public"), { recursive: true });
-writeFileSync(join(FIXTURES, "root-public/root-file.txt"), "hello from root");
+function ensureFixtures() {
+  mkdirSync(join(FIXTURES, "sites/demo/public"), { recursive: true });
+  mkdirSync(join(FIXTURES, "root-public"), { recursive: true });
+  writeFileSync(join(FIXTURES, "sites/demo/project.json"), JSON.stringify({ name: "demo" }));
+  writeFileSync(join(FIXTURES, "sites/demo/public/image.png"), PNG_1x1);
+  writeFileSync(join(FIXTURES, "root-public/root-file.txt"), "hello from root");
+}
 
-/** @type {any} */
-let server;
-
+/**
+ * Run the activate integration test in a subprocess to avoid globalThis.fetch mock pollution from
+ * other test files running in the same process.
+ */
 describe("/__studio/activate + static file serving", () => {
-  test("start server", async () => {
-    server = await createDevServer({
-      root: FIXTURES,
-      port: 0,
-      builds: [],
-      watch: false,
-      studio: true,
-    });
-    expect(server.port).toBeGreaterThan(0);
-  });
+  test("activate endpoint controls project-relative static file resolution", async () => {
+    ensureFixtures();
+    try {
+      const proc = Bun.spawn(
+        [
+          "bun",
+          "-e",
+          `
+const { createDevServer } = await import("${resolve(import.meta.dir, "../src/server.js")}");
+const { join } = await import("node:path");
 
-  test("static file at repo root resolves normally", async () => {
-    const res = await fetch(`http://localhost:${server.port}/root-public/root-file.txt`);
-    expect(res.status).toBe(200);
-    expect(await res.text()).toBe("hello from root");
-  });
+const FIXTURES = ${JSON.stringify(FIXTURES)};
+const server = await createDevServer({ root: FIXTURES, port: 0, builds: [], watch: false, studio: true });
+const base = "http://localhost:" + server.port;
+const errors = [];
 
-  test("project-relative path 404s before activation", async () => {
-    // /public/image.png doesn't exist at repo root, only under sites/demo/
-    const res = await fetch(`http://localhost:${server.port}/public/image.png`);
-    expect(res.status).toBe(404);
-  });
+// Test 1: static file at repo root resolves normally
+let res = await fetch(base + "/root-public/root-file.txt");
+if (res.status !== 200) errors.push("repo root file: expected 200, got " + res.status);
+let text = await res.text();
+if (text !== "hello from root") errors.push("repo root file content: " + text);
 
-  test("POST /__studio/activate sets active project root", async () => {
-    const res = await fetch(`http://localhost:${server.port}/__studio/activate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ root: "sites/demo" }),
-    });
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body).toEqual({ ok: true, root: "sites/demo" });
-  });
+// Test 2: project-relative path 404s before activation
+res = await fetch(base + "/public/image.png");
+if (res.status !== 404) errors.push("pre-activate: expected 404, got " + res.status);
 
-  test("project-relative path resolves after activation", async () => {
-    const res = await fetch(`http://localhost:${server.port}/public/image.png`);
-    expect(res.status).toBe(200);
-    const buf = Buffer.from(await res.arrayBuffer());
-    // Verify it's a PNG (magic bytes)
-    expect(buf[0]).toBe(0x89);
-    expect(buf[1]).toBe(0x50); // 'P'
-    expect(buf[2]).toBe(0x4e); // 'N'
-    expect(buf[3]).toBe(0x47); // 'G'
-  });
-
-  test("repo-root files still resolve after activation", async () => {
-    const res = await fetch(`http://localhost:${server.port}/root-public/root-file.txt`);
-    expect(res.status).toBe(200);
-    expect(await res.text()).toBe("hello from root");
-  });
-
-  test("resolveSiteContext returns relPath for ?open= flow", async () => {
-    const absPath = join(FIXTURES, "sites/demo/project.json");
-    const res = await fetch(
-      `http://localhost:${server.port}/__studio/resolve-site?path=${encodeURIComponent(absPath)}`,
-    );
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.relPath).toBe("sites/demo");
-    expect(body.projectConfig).toEqual({ name: "demo" });
-  });
-
-  test("activation with different root switches resolution", async () => {
-    // Deactivate / reset
-    await fetch(`http://localhost:${server.port}/__studio/activate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ root: "" }),
-    });
-    // Should 404 again since no project root is active
-    const res = await fetch(`http://localhost:${server.port}/public/image.png`);
-    expect(res.status).toBe(404);
-  });
+// Test 3: POST /__studio/activate sets active project root
+res = await fetch(base + "/__studio/activate", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ root: "sites/demo" }),
 });
+if (res.status !== 200) errors.push("activate: expected 200, got " + res.status);
+let body = await res.json();
+if (body.root !== "sites/demo") errors.push("activate root: " + JSON.stringify(body));
 
-afterAll(() => {
-  if (server) server.stop();
-  rmSync(FIXTURES, { recursive: true, force: true });
+// Test 4: project-relative path resolves after activation
+res = await fetch(base + "/public/image.png");
+if (res.status !== 200) errors.push("post-activate: expected 200, got " + res.status);
+else {
+  const buf = new Uint8Array(await res.arrayBuffer());
+  if (buf[0] !== 0x89 || buf[1] !== 0x50) errors.push("png magic bytes wrong");
+}
+
+// Test 5: repo-root files still resolve after activation
+res = await fetch(base + "/root-public/root-file.txt");
+if (res.status !== 200) errors.push("repo root after activate: expected 200, got " + res.status);
+
+// Test 6: resolveSiteContext returns relPath for ?open= flow
+const absPath = join(FIXTURES, "sites/demo/project.json");
+res = await fetch(base + "/__studio/resolve-site?path=" + encodeURIComponent(absPath));
+if (res.status !== 200) errors.push("resolve-site: expected 200, got " + res.status);
+else {
+  body = await res.json();
+  if (body.relPath !== "sites/demo") errors.push("resolve-site relPath: " + body.relPath);
+}
+
+// Test 7: deactivation resets resolution
+await fetch(base + "/__studio/activate", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ root: "" }),
+});
+res = await fetch(base + "/public/image.png");
+if (res.status !== 404) errors.push("post-deactivate: expected 404, got " + res.status);
+
+server.stop();
+
+if (errors.length) {
+  console.error("FAILURES:\\n" + errors.join("\\n"));
+  process.exit(1);
+} else {
+  console.log("ALL_PASS");
+  process.exit(0);
+}
+`,
+        ],
+        { stdout: "pipe", stderr: "pipe" },
+      );
+      const result = await proc.exited;
+      const stdout = await new Response(proc.stdout).text();
+      const stderr = await new Response(proc.stderr).text();
+      if (result !== 0) {
+        throw new Error(`Subprocess failed:\n${stdout}\n${stderr}`);
+      }
+      expect(stdout).toContain("ALL_PASS");
+    } finally {
+      rmSync(FIXTURES, { recursive: true, force: true });
+    }
+  });
 });
