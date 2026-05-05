@@ -610,7 +610,9 @@ async function renderCanvasLive(doc, canvasEl) {
     //   canvasEl ≈ body   → regular CSS properties (inline beats CSS defaults)
     // This ensures project font-family, color, etc. override the
     // content-mode fallback typography rules in the stylesheet.
+    // In edit mode, propagate to the .content-edit-canvas wrapper for seamless appearance.
     const viewport = canvasEl.closest(".canvas-panel-viewport");
+    const editSurface = canvasMode === "edit" ? canvasEl.closest(".content-edit-canvas") : null;
     const siteStyle = projectState?.projectConfig?.style;
     if (viewport) {
       viewport.style.cssText = "";
@@ -620,6 +622,17 @@ async function renderCanvasLive(doc, canvasEl) {
             viewport.style.setProperty(k, String(v));
           } else {
             /** @type {any} */ (viewport.style)[k] = v;
+          }
+        }
+      }
+    }
+    if (editSurface) {
+      if (siteStyle && typeof siteStyle === "object") {
+        for (const [k, v] of Object.entries(siteStyle)) {
+          if (k.startsWith("--")) {
+            /** @type {any} */ (editSurface).style.setProperty(k, String(v));
+          } else {
+            /** @type {any} */ (editSurface.style)[k] = v;
           }
         }
       }
