@@ -43,6 +43,7 @@ export function renderButtonGroup(
           (/** @type {any} */ v) => html`
             <sp-action-button
               size="s"
+              value=${v}
               title=${v}
               ?selected=${v === value}
               @click=${() => onChange(v === value ? "" : v)}
