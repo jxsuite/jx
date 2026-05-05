@@ -53,12 +53,13 @@ export function injectSSE(html) {
  *
  * @param {string} root - Absolute path to watch
  * @param {any[]} builds - Build entries (for selective rebuild)
- * @param {{ ignore?: string[]; debounce?: number }} [opts]
+ * @param {{ ignore?: string[]; debounce?: number; reloadOnAnyChange?: boolean }} [opts]
  * @returns {{ broadcast: () => void; handleSSE: () => Response }}
  */
 export function createWatcher(root, builds, opts = {}) {
   const ignore = opts.ignore ?? DEFAULT_IGNORE;
   const debounceMs = opts.debounce ?? 50;
+  const reloadOnAnyChange = opts.reloadOnAnyChange ?? false;
 
   /** @type {Set<(msg: string) => void>} */
   const clients = new Set();
@@ -126,7 +127,7 @@ export function createWatcher(root, builds, opts = {}) {
         }
       }
       console.log(`Changed  → ${filename}`);
-      broadcast();
+      if (reloadOnAnyChange) broadcast();
     }, debounceMs);
   });
 
