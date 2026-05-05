@@ -480,6 +480,26 @@ export async function handleStudioApi(req, url, root) {
     }
   }
 
+  // Upload binary file
+  if (path === "/__studio/file/upload" && req.method === "POST") {
+    const fp = url.searchParams.get("path");
+    if (!fp) return new Response("Missing path", { status: 400 });
+    const abs = resolve(root, fp);
+    try {
+      assertUnderRoot(abs, root);
+    } catch (/** @type {any} */ e) {
+      return new Response(e.message, { status: 400 });
+    }
+    try {
+      await mkdir(dirname(abs), { recursive: true });
+      const buffer = await req.arrayBuffer();
+      await Bun.write(abs, new Uint8Array(buffer));
+      return Response.json({ ok: true, path: fwd(relative(root, abs)) });
+    } catch (/** @type {any} */ e) {
+      return Response.json({ error: e.message }, { status: 500 });
+    }
+  }
+
   // Delete file
   if (path === "/__studio/file" && req.method === "DELETE") {
     const fp = url.searchParams.get("path");

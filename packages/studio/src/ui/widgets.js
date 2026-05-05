@@ -17,6 +17,7 @@ import { debouncedStyleCommit } from "../store.js";
 import { renderColorSelector } from "./color-selector.js";
 import { renderUnitSelector } from "./unit-selector.js";
 import { renderButtonGroup } from "./button-group.js";
+import { renderMediaPicker } from "./media-picker.js";
 
 /**
  * Render a plain text input widget.
@@ -88,6 +89,8 @@ export function widgetForType(type, entry, prop, value, onCommit, opts = {}) {
       return renderUnitSelector(entry, prop, value, onCommit);
     case "number":
       return renderNumberInput(entry, prop, value, onCommit);
+    case "media":
+      return renderMediaPicker(prop, value, onCommit);
     case "select":
       // Allow caller to override select rendering (e.g. for typography preview)
       if (opts.renderSelect) return opts.renderSelect(entry, prop, value, onCommit);

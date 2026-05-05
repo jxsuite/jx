@@ -7,7 +7,10 @@
   "children": [
     {
       "tagName": "div",
-      "style": { "maxWidth": "var(--max-width)", "margin": "0 auto" },
+      "style": {
+        "maxWidth": "var(--max-width)",
+        "margin": "0 auto"
+      },
       "children": [
         {
           "tagName": "div",
@@ -16,7 +19,9 @@
             "gridTemplateColumns": "1fr 1fr",
             "gap": "clamp(2rem, 4vw, 4rem)",
             "alignItems": "center",
-            "@--md": { "gridTemplateColumns": "1fr" }
+            "@--md": {
+              "gridTemplateColumns": "1fr"
+            }
           },
           "children": [
             {
@@ -55,7 +60,7 @@
                     "margin": "0 0 2rem"
                   },
                   "children": [
-                    "Design components on a canvas. Inspect and edit properties. See changes live. Everything saves to plain JSON files on disk \u2014 no database, no lock-in."
+                    "Design components on a canvas. Inspect and edit properties. See changes live. Everything saves to plain JSON files on disk — no database, no lock-in."
                   ]
                 },
                 {
@@ -87,7 +92,7 @@
                             "fontSize": "0.75rem",
                             "marginTop": "0.25rem"
                           },
-                          "children": ["\u2713"]
+                          "children": ["✓"]
                         },
                         "Visual canvas with drag-and-drop component editing"
                       ]
@@ -110,7 +115,7 @@
                             "fontSize": "0.75rem",
                             "marginTop": "0.25rem"
                           },
-                          "children": ["\u2713"]
+                          "children": ["✓"]
                         },
                         "Property inspector with live style editing"
                       ]
@@ -133,7 +138,7 @@
                             "fontSize": "0.75rem",
                             "marginTop": "0.25rem"
                           },
-                          "children": ["\u2713"]
+                          "children": ["✓"]
                         },
                         "Responsive breakpoint preview"
                       ]
@@ -156,9 +161,9 @@
                             "fontSize": "0.75rem",
                             "marginTop": "0.25rem"
                           },
-                          "children": ["\u2713"]
+                          "children": ["✓"]
                         },
-                        "File-based \u2014 everything is JSON on disk"
+                        "File-based — everything is JSON on disk"
                       ]
                     }
                   ]
@@ -179,29 +184,12 @@
               },
               "children": [
                 {
-                  "tagName": "div",
-                  "style": { "textAlign": "center", "padding": "2rem" },
-                  "children": [
-                    {
-                      "tagName": "div",
-                      "style": {
-                        "fontSize": "2rem",
-                        "marginBottom": "0.75rem",
-                        "opacity": "0.3"
-                      },
-                      "children": ["\u25a1"]
-                    },
-                    {
-                      "tagName": "p",
-                      "style": {
-                        "color": "var(--color-text-muted)",
-                        "fontSize": "0.8125rem",
-                        "fontFamily": "var(--font-mono)",
-                        "margin": "0"
-                      },
-                      "children": ["Studio screenshot"]
-                    }
-                  ]
+                  "tagName": "img",
+                  "style": {
+                    "textAlign": "center",
+                    "padding": "2rem"
+                  },
+                  "children": []
                 }
               ]
             }

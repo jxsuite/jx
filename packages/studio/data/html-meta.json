@@ -82,6 +82,7 @@
     "src": {
       "$section": "media",
       "$order": 10,
+      "$input": "media",
       "type": "string",
       "$elements": ["img", "script", "iframe", "video", "audio", "source", "embed", "input"]
     },

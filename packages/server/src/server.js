@@ -163,6 +163,10 @@ export async function createDevServer(options) {
   /** @type {Map<string, string>} */
   const bundleCache = new Map();
 
+  // Active studio project root (set via /__studio/activate, used for static file fallback)
+  /** @type {string | null} */
+  let activeProjectRoot = null;
+
   // ─── HTTP server ────────────────────────────────────────────────────────────
 
   const server = Bun.serve({
@@ -191,6 +195,13 @@ export async function createDevServer(options) {
 
       // Studio filesystem API
       if (enableStudio && path.startsWith("/__studio/")) {
+        // Activate project — tells the server which project root to use for static file fallback
+        if (path === "/__studio/activate" && req.method === "POST") {
+          const body = await req.json();
+          activeProjectRoot = body.root || null;
+          return Response.json({ ok: true, root: activeProjectRoot });
+        }
+
         const codeRes = await handleCodeApi(req, url);
         if (codeRes) return codeRes;
 
@@ -207,6 +218,14 @@ export async function createDevServer(options) {
       // Static files
       const file = Bun.file(resolve(absRoot, "." + path));
       if (!(await file.exists())) {
+        // Try resolving relative to active studio project root
+        if (activeProjectRoot) {
+          const projectFile = Bun.file(resolve(absRoot, activeProjectRoot, "." + path));
+          if (await projectFile.exists()) {
+            return new Response(projectFile);
+          }
+        }
+
         // Resolve npm-style bare specifiers via node_modules.
         // Bundle on-demand so internal bare specifiers (e.g. lit/...) resolve.
         const resolved = resolveNpmPath(absRoot, path);

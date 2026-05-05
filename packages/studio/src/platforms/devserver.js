@@ -50,6 +50,12 @@ export function createDevServerPlatform() {
     },
     set projectRoot(v) {
       _projectRoot = v || ".";
+      // Notify server so it can resolve project-relative static paths
+      fetch("/__studio/activate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ root: _projectRoot }),
+      }).catch(() => {});
     },
 
     // ─── Project opening ──────────────────────────────────────────────────
@@ -93,6 +99,13 @@ export function createDevServerPlatform() {
       }
 
       _projectRoot = match.path;
+
+      // Notify server of active project for static file resolution
+      fetch("/__studio/activate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ root: _projectRoot }),
+      }).catch(() => {});
 
       return {
         config,
@@ -151,6 +164,21 @@ export function createDevServerPlatform() {
         body: content,
       });
       if (!res.ok) throw new Error(`Failed to write file: ${path}`);
+    },
+
+    /**
+     * Upload a binary file (image, video, font, etc.).
+     *
+     * @param {string} path — project-relative destination path
+     * @param {File | Blob | ArrayBuffer} data — file content
+     */
+    async uploadFile(path, data) {
+      const res = await fetch(
+        `/__studio/file/upload?path=${encodeURIComponent(serverPath(path))}`,
+        { method: "POST", body: data },
+      );
+      if (!res.ok) throw new Error(`Upload failed: ${path}`);
+      return await res.json();
     },
 
     /** @param {string} path */

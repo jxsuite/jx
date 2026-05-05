@@ -112,7 +112,9 @@ export function abbreviateValue(val) {
 export function inferInputType(entry) {
   if (entry.$shorthand === true) return "shorthand";
   if (entry.$input === "button-group") return "button-group";
+  if (entry.$input === "media") return "media";
   if (entry.format === "color") return "color";
+  if (entry.format === "uri-reference") return "media";
   if (entry.$units !== undefined) return "number-unit";
   if (entry.type === "number") return "number";
   if (Array.isArray(entry.enum)) return "select";

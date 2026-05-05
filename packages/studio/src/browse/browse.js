@@ -10,6 +10,7 @@ import { html, render as litRender } from "lit-html";
 import { getPlatform } from "../platform.js";
 import { projectState } from "../store.js";
 import { yamlDefault } from "../settings/schema-field-ui.js";
+import { invalidateMediaCache } from "../ui/media-picker.js";
 
 // ─── Category definitions ────────────────────────────────────────────────────
 
@@ -228,6 +229,38 @@ async function handleNewEntity(typeKey, container, ctx) {
   ctx.openFile(filePath);
 }
 
+// ─── Upload ─────────────────────────────────────────────────────────────────
+
+const UPLOAD_ACCEPT = [
+  "image/*",
+  "video/*",
+  "audio/*",
+  ".pdf",
+  ".svg",
+  ".woff",
+  ".woff2",
+  ".ttf",
+  ".otf",
+].join(",");
+
+/**
+ * Handle file uploads — writes binary files to public/ directory.
+ *
+ * @param {FileList | File[]} files
+ * @param {HTMLElement} container
+ * @param {{ openFile: (path: string) => void }} ctx
+ */
+async function handleUpload(files, container, ctx) {
+  const platform = getPlatform();
+  for (const file of files) {
+    const destPath = `public/${file.name}`;
+    await platform.uploadFile(destPath, file);
+  }
+  invalidateBrowseCache();
+  invalidateMediaCache();
+  renderBrowse(container, ctx);
+}
+
 // ─── Render ──────────────────────────────────────────────────────────────────
 
 /**
@@ -292,6 +325,28 @@ export async function renderBrowse(container, ctx) {
           </sp-menu>
         </sp-popover>
       </overlay-trigger>
+      <sp-action-button
+        size="s"
+        @click=${() => {
+          const input = /** @type {HTMLInputElement} */ (
+            container.querySelector(".browse-upload-input")
+          );
+          if (input) input.click();
+        }}
+      >
+        <sp-icon-upload slot="icon"></sp-icon-upload> Upload
+      </sp-action-button>
+      <input
+        type="file"
+        multiple
+        accept=${UPLOAD_ACCEPT}
+        class="browse-upload-input"
+        style="display:none"
+        @change=${(/** @type {any} */ e) => {
+          if (e.target.files?.length) handleUpload(e.target.files, container, ctx);
+          e.target.value = "";
+        }}
+      />
     </div>
   `;
 
@@ -329,7 +384,22 @@ export async function renderBrowse(container, ctx) {
   `;
 
   const tpl = html`
-    <div class="browse-view">
+    <div
+      class="browse-view"
+      @dragover=${(/** @type {DragEvent} */ e) => {
+        e.preventDefault();
+        /** @type {HTMLElement} */ (e.currentTarget).classList.add("browse-drop-active");
+      }}
+      @dragleave=${(/** @type {DragEvent} */ e) => {
+        /** @type {HTMLElement} */ (e.currentTarget).classList.remove("browse-drop-active");
+      }}
+      @drop=${(/** @type {DragEvent} */ e) => {
+        e.preventDefault();
+        /** @type {HTMLElement} */ (e.currentTarget).classList.remove("browse-drop-active");
+        const files = e.dataTransfer?.files;
+        if (files?.length) handleUpload(files, container, ctx);
+      }}
+    >
       ${filterBar}
       <div class="browse-table">${table}</div>
     </div>
