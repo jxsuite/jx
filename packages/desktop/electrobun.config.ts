@@ -17,6 +17,16 @@ export default {
   build: {
     bun: {
       entrypoint: "src/main.js",
+      external: [
+        "@prettier/plugin-oxc",
+        "@prettier/plugin-hermes",
+        "@prettier/plugin-pug",
+        "prettier-plugin-astro",
+        "prettier-plugin-svelte",
+        "prettier-plugin-marko",
+        "@zackad/prettier-plugin-twig",
+        "@shopify/prettier-plugin-liquid",
+      ],
     },
 
     // preBuild copies compiled studio + runtime assets into assets/ before these run.
