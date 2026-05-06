@@ -145,9 +145,25 @@
       .canvas-panel {
         flex-shrink: 0;
       }
-      .source-editor {
+      .source-wrap {
+        display: flex;
+        flex-direction: column;
         width: 100%;
         height: 100%;
+        flex: 1;
+        min-width: 0;
+      }
+      .source-toolbar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 4px 8px;
+        border-bottom: 1px solid var(--spectrum-global-color-gray-300);
+        background: var(--spectrum-global-color-gray-100);
+      }
+      .source-editor {
+        flex: 1;
+        min-height: 0;
       }
       /* ─── Content edit mode canvas ─────────────── */
       .content-edit-canvas {

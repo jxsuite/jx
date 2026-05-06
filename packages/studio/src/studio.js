@@ -97,6 +97,7 @@ import {
   openFile as _openFile,
   loadMarkdown as _loadMarkdown,
   saveFile as _saveFile,
+  exportFile as _exportFile,
 } from "./files/file-ops.js";
 import {
   loadProject as _loadProject,
@@ -1161,6 +1162,8 @@ function renderCanvas() {
     // Reset inline style overrides from other modes
     canvasWrap.style.padding = "";
     canvasWrap.style.alignItems = "";
+    canvasWrap.style.display = "";
+    canvasWrap.style.overflow = "";
     canvasWrap.style.overflow = "";
 
     // Clear zoom indicator (only re-rendered by design/preview/stylebook)
@@ -1196,15 +1199,24 @@ function renderCanvas() {
   // Source mode: create Monaco editor instead of canvas
   if (canvasMode === "source") {
     canvasWrap.style.padding = "0";
+    canvasWrap.style.display = "block";
     /** @type {HTMLDivElement | null} */
     let editorContainer = null;
     litRender(
-      html`<div
-        class="source-editor"
-        ${ref((el) => {
-          if (el) editorContainer = /** @type {HTMLDivElement} */ (el);
-        })}
-      ></div>`,
+      html`<div class="source-wrap">
+        <div class="source-toolbar">
+          <sp-action-button size="s" @click=${exportFile}>
+            <sp-icon-export slot="icon"></sp-icon-export>
+            Export
+          </sp-action-button>
+        </div>
+        <div
+          class="source-editor"
+          ${ref((el) => {
+            if (el) editorContainer = /** @type {HTMLDivElement} */ (el);
+          })}
+        ></div>
+      </div>`,
       canvasWrap,
     );
 
@@ -7690,6 +7702,9 @@ function loadMarkdown(/** @type {any} */ source, /** @type {any} */ fileHandle) 
 }
 function saveFile() {
   return _saveFile(fileOpsCtx());
+}
+function exportFile() {
+  return _exportFile(fileOpsCtx());
 }
 
 // ─── File tree (delegated to files.js) ───────────────────────────────────────

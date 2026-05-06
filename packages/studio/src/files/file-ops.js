@@ -16,6 +16,7 @@ import { mdToJx, jxToMd } from "../markdown/md-convert.js";
 import { createState } from "../store.js";
 import { locateDocument } from "../services/code-services.js";
 import { statusMessage } from "../panels/statusbar.js";
+import { getPlatform } from "../platform.js";
 
 /**
  * Open a file via the File System Access API (or fallback input).
@@ -130,52 +131,66 @@ async function loadCompanionJS(handle, state) {
 }
 
 /**
- * Save the current document to disk (or download as fallback).
+ * Save the current document back to its source location.
  *
  * @param {{ S: any; commit: (s: any) => void; renderToolbar: () => void }} ctx
  */
 export async function saveFile({ S, commit, renderToolbar }) {
   try {
-    const isContent = S.mode === "content";
-    let output, mimeType, ext, description;
+    const output = serializeDocument(S);
 
-    if (isContent) {
-      const mdast = jxToMd(S.document);
-      const md = unified()
-        .use(remarkStringify, { bullet: "-", emphasis: "*", strong: "*" })
-        .stringify(mdast);
-
-      const fm = S.content?.frontmatter;
-      const hasFrontmatter = fm && Object.keys(fm).length > 0;
-      output = hasFrontmatter ? `---\n${stringifyYaml(fm).trim()}\n---\n\n${md}` : md;
-      mimeType = "text/markdown";
-      ext = ".md";
-      description = "Markdown Content";
-    } else {
-      output = JSON.stringify(S.document, null, 2);
-      mimeType = "application/json";
-      ext = ".json";
-      description = "Jx Component";
-    }
-
-    if (S.fileHandle && "createWritable" in S.fileHandle) {
+    if (S.documentPath) {
+      // Project file — save via platform
+      const platform = getPlatform();
+      await platform.writeFile(S.documentPath, output);
+      commit({ ...S, dirty: false });
+      renderToolbar();
+      statusMessage("Saved");
+    } else if (S.fileHandle && "createWritable" in S.fileHandle) {
+      // Standalone file opened via FS Access API
       const writable = await S.fileHandle.createWritable();
       await writable.write(output);
       await writable.close();
       commit({ ...S, dirty: false });
       renderToolbar();
       statusMessage("Saved");
-    } else if ("showSaveFilePicker" in window) {
+    } else {
+      statusMessage("No save target — use Export");
+    }
+  } catch (/** @type {any} */ e) {
+    if (e.name !== "AbortError") statusMessage(`Save error: ${e.message}`);
+  }
+}
+
+/**
+ * Export the current document to a new location (Save As / download).
+ *
+ * @param {{ S: any; commit: (s: any) => void; renderToolbar: () => void }} ctx
+ */
+export async function exportFile({ S, commit, renderToolbar }) {
+  try {
+    const isContent = S.mode === "content";
+    const output = serializeDocument(S);
+    const mimeType = isContent ? "text/markdown" : "application/json";
+    const ext = isContent ? ".md" : ".json";
+    const description = isContent ? "Markdown Content" : "Jx Component";
+
+    if ("showSaveFilePicker" in window) {
+      const suggestedName = S.documentPath
+        ? S.documentPath.split("/").pop()
+        : isContent
+          ? "content.md"
+          : "component.json";
       const handle = await /** @type {any} */ (window).showSaveFilePicker({
-        suggestedName: isContent ? "content.md" : "component.json",
+        suggestedName,
         types: [{ description, accept: { [mimeType]: [ext] } }],
       });
       const writable = await handle.createWritable();
       await writable.write(output);
       await writable.close();
-      commit({ ...S, fileHandle: handle, dirty: false });
+      commit({ ...S, dirty: false });
       renderToolbar();
-      statusMessage(`Saved as ${handle.name}`);
+      statusMessage(`Exported as ${handle.name}`);
     } else {
       // Fallback: download
       const blob = new Blob([output], { type: mimeType });
@@ -190,6 +205,25 @@ export async function saveFile({ S, commit, renderToolbar }) {
       statusMessage("Downloaded");
     }
   } catch (/** @type {any} */ e) {
-    if (e.name !== "AbortError") statusMessage(`Save error: ${e.message}`);
+    if (e.name !== "AbortError") statusMessage(`Export error: ${e.message}`);
   }
+}
+
+/**
+ * Serialize the current document to its output format (JSON or Markdown).
+ *
+ * @param {any} S
+ * @returns {string}
+ */
+function serializeDocument(S) {
+  if (S.mode === "content") {
+    const mdast = jxToMd(S.document);
+    const md = unified()
+      .use(remarkStringify, { bullet: "-", emphasis: "*", strong: "*" })
+      .stringify(mdast);
+    const fm = S.content?.frontmatter;
+    const hasFrontmatter = fm && Object.keys(fm).length > 0;
+    return hasFrontmatter ? `---\n${stringifyYaml(fm).trim()}\n---\n\n${md}` : md;
+  }
+  return JSON.stringify(S.document, null, 2);
 }
