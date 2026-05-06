@@ -40,10 +40,10 @@
     "@commitlint/config-conventional": "^20.5.3",
     "@release-it/bumper": "^7.0.5",
     "@release-it/conventional-changelog": "^11.0.0",
-    "@typescript/native-preview": "^7.0.0-dev.20260505.1",
-    "chrome-devtools-mcp": "^0.24.0",
+    "@typescript/native-preview": "^7.0.0-dev.20260506.1",
+    "chrome-devtools-mcp": "^0.25.0",
     "husky": "^9.1.7",
-    "lint-staged": "^16.4.0",
+    "lint-staged": "^17.0.2",
     "oxfmt": "^0.48.0",
     "oxlint": "^1.63.0",
     "release-it": "^20.0.1"

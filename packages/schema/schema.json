@@ -1249,6 +1249,10 @@
           "description": "Event handler for the \"contextmenu\" event.",
           "$ref": "#/$defs/RefObject"
         },
+        "oncontextoverflow": {
+          "description": "Event handler for the \"contextoverflow\" event.",
+          "$ref": "#/$defs/RefObject"
+        },
         "oncontextrestored": {
           "description": "Event handler for the \"contextrestored\" event.",
           "$ref": "#/$defs/RefObject"
@@ -1803,6 +1807,10 @@
         },
         "onpushsubscriptionchange": {
           "description": "Event handler for the \"pushsubscriptionchange\" event.",
+          "$ref": "#/$defs/RefObject"
+        },
+        "onquotaoverflow": {
+          "description": "Event handler for the \"quotaoverflow\" event.",
           "$ref": "#/$defs/RefObject"
         },
         "onratechange": {

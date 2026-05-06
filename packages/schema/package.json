@@ -18,8 +18,8 @@
     "upgrade": "bunx npm-check-updates -u && bun install"
   },
   "dependencies": {
-    "@webref/css": "^8.5.4",
+    "@webref/css": "^8.5.5",
     "@webref/elements": "^2.7.1",
-    "@webref/idl": "^3.76.0"
+    "@webref/idl": "^3.77.0"
   }
 }
