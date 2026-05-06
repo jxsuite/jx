@@ -69,6 +69,11 @@ document.addEventListener("click", () => {
   ctxMenu.removeAttribute("open");
 });
 
+/** Dismiss the context menu if open. */
+export function dismissContextMenu() {
+  ctxMenu.removeAttribute("open");
+}
+
 /**
  * @param {any} e
  * @param {any} path

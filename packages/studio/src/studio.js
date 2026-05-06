@@ -164,7 +164,7 @@ import { components as _swc } from "./ui/spectrum.js"; // eslint-disable-line no
 import { renderFieldRow } from "./ui/field-row.js";
 import { isColorPopoverOpen } from "./ui/color-selector.js";
 import { widgetForType as _widgetForType } from "./ui/widgets.js";
-import { showContextMenu } from "./editor/context-menu.js";
+import { showContextMenu, dismissContextMenu } from "./editor/context-menu.js";
 import { convertToComponent } from "./editor/convert-to-component.js";
 import { initShortcuts } from "./editor/shortcuts.js";
 import { renderActivityBar, tabIcon } from "./panels/activity-bar.js";
@@ -212,6 +212,8 @@ let functionEditor = null;
 let liveScope = null;
 /** @type {any} */
 let blockActionBarEl = null;
+/** @type {any} */
+let linkPopoverHost = null;
 /** @type {any} */
 let _inlineEditCleanup = null;
 /** @type {any} */
@@ -1175,6 +1177,12 @@ function renderCanvas() {
       zoomIndicatorHost.replaceWith(newHost);
       zoomIndicatorHost = newHost;
     }
+
+    // Dismiss open popovers/toolbars that are no longer relevant
+    if (blockActionBarEl) litRender(nothing, blockActionBarEl);
+    dismissLinkPopover();
+    dismissContextMenu();
+    sharedDismissSlashMenu();
   }
 
   // Manage mode: project-level file browser table
@@ -2202,9 +2210,14 @@ function applyInlineFormat(action) {
 }
 
 /** Show a link URL popover anchored to a toolbar button. */
-const linkPopoverHost = document.createElement("div");
+linkPopoverHost = document.createElement("div");
 linkPopoverHost.style.display = "contents";
 (document.querySelector("sp-theme") || document.body).appendChild(linkPopoverHost);
+
+/** Dismiss the link popover if open. */
+function dismissLinkPopover() {
+  if (linkPopoverHost) litRender(nothing, linkPopoverHost);
+}
 
 /** @param {any} anchorBtn */
 function showLinkPopover(anchorBtn) {
