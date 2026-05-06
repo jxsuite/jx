@@ -187,9 +187,15 @@
                   "tagName": "img",
                   "style": {
                     "textAlign": "center",
-                    "padding": "2rem"
+                    "borderWidth": "1px",
+                    "borderRadius": "1rem"
                   },
-                  "children": []
+                  "children": [],
+                  "attributes": {
+                    "src": "/public/dms-screenshot-1778009366695.png",
+                    "width": "100%",
+                    "height": "100%"
+                  }
                 }
               ]
             }
