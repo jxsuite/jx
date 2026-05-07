@@ -901,7 +901,10 @@
     "border": {
       "$section": "border",
       "$order": 10,
-      "type": "string"
+      "type": "string",
+      "$shorthand": true,
+      "$shorthandType": "border-side",
+      "$longhands": ["borderWidth", "borderStyle", "borderColor"]
     },
     "borderWidth": {
       "$section": "border",
@@ -932,6 +935,70 @@
       "type": "string",
       "format": "color"
     },
+    "borderTop": {
+      "$section": "border",
+      "$order": 13.1,
+      "type": "string",
+      "$shorthand": true,
+      "$shorthandType": "border-side",
+      "$longhands": ["borderTopWidth", "borderTopStyle", "borderTopColor"]
+    },
+    "borderRight": {
+      "$section": "border",
+      "$order": 13.2,
+      "type": "string",
+      "$shorthand": true,
+      "$shorthandType": "border-side",
+      "$longhands": ["borderRightWidth", "borderRightStyle", "borderRightColor"]
+    },
+    "borderBottom": {
+      "$section": "border",
+      "$order": 13.3,
+      "type": "string",
+      "$shorthand": true,
+      "$shorthandType": "border-side",
+      "$longhands": ["borderBottomWidth", "borderBottomStyle", "borderBottomColor"]
+    },
+    "borderLeft": {
+      "$section": "border",
+      "$order": 13.4,
+      "type": "string",
+      "$shorthand": true,
+      "$shorthandType": "border-side",
+      "$longhands": ["borderLeftWidth", "borderLeftStyle", "borderLeftColor"]
+    },
+    "borderBlockStart": {
+      "$section": "border",
+      "$order": 13.5,
+      "type": "string",
+      "$shorthand": true,
+      "$shorthandType": "border-side",
+      "$longhands": ["borderBlockStartWidth", "borderBlockStartStyle", "borderBlockStartColor"]
+    },
+    "borderBlockEnd": {
+      "$section": "border",
+      "$order": 13.6,
+      "type": "string",
+      "$shorthand": true,
+      "$shorthandType": "border-side",
+      "$longhands": ["borderBlockEndWidth", "borderBlockEndStyle", "borderBlockEndColor"]
+    },
+    "borderInlineStart": {
+      "$section": "border",
+      "$order": 13.7,
+      "type": "string",
+      "$shorthand": true,
+      "$shorthandType": "border-side",
+      "$longhands": ["borderInlineStartWidth", "borderInlineStartStyle", "borderInlineStartColor"]
+    },
+    "borderInlineEnd": {
+      "$section": "border",
+      "$order": 13.8,
+      "type": "string",
+      "$shorthand": true,
+      "$shorthandType": "border-side",
+      "$longhands": ["borderInlineEndWidth", "borderInlineEndStyle", "borderInlineEndColor"]
+    },
     "borderTopWidth": {
       "$section": "border",
       "$order": 14,
@@ -942,6 +1009,7 @@
     "borderTopStyle": {
       "$section": "border",
       "$order": 15,
+      "$shorthand": "borderTop",
       "type": "string",
       "enum": [
         "none",
@@ -959,6 +1027,7 @@
     "borderTopColor": {
       "$section": "border",
       "$order": 16,
+      "$shorthand": "borderTop",
       "type": "string",
       "format": "color"
     },
@@ -972,6 +1041,7 @@
     "borderRightStyle": {
       "$section": "border",
       "$order": 18,
+      "$shorthand": "borderRight",
       "type": "string",
       "enum": [
         "none",
@@ -989,6 +1059,7 @@
     "borderRightColor": {
       "$section": "border",
       "$order": 19,
+      "$shorthand": "borderRight",
       "type": "string",
       "format": "color"
     },
@@ -1002,6 +1073,7 @@
     "borderBottomStyle": {
       "$section": "border",
       "$order": 21,
+      "$shorthand": "borderBottom",
       "type": "string",
       "enum": [
         "none",
@@ -1019,6 +1091,7 @@
     "borderBottomColor": {
       "$section": "border",
       "$order": 22,
+      "$shorthand": "borderBottom",
       "type": "string",
       "format": "color"
     },
@@ -1032,6 +1105,7 @@
     "borderLeftStyle": {
       "$section": "border",
       "$order": 24,
+      "$shorthand": "borderLeft",
       "type": "string",
       "enum": [
         "none",
@@ -1049,6 +1123,7 @@
     "borderLeftColor": {
       "$section": "border",
       "$order": 25,
+      "$shorthand": "borderLeft",
       "type": "string",
       "format": "color"
     },
@@ -1096,6 +1171,134 @@
       "$order": 41,
       "type": "string",
       "$units": ["px", "rem", "em"]
+    },
+    "borderBlockStartWidth": {
+      "$section": "border",
+      "$order": 50,
+      "type": "string",
+      "$units": ["px", "rem", "em"],
+      "$shorthand": "borderBlockStart"
+    },
+    "borderBlockStartStyle": {
+      "$section": "border",
+      "$order": 51,
+      "type": "string",
+      "enum": [
+        "none",
+        "solid",
+        "dashed",
+        "dotted",
+        "double",
+        "groove",
+        "ridge",
+        "inset",
+        "outset",
+        "hidden"
+      ],
+      "$shorthand": "borderBlockStart"
+    },
+    "borderBlockStartColor": {
+      "$section": "border",
+      "$order": 52,
+      "type": "string",
+      "format": "color",
+      "$shorthand": "borderBlockStart"
+    },
+    "borderBlockEndWidth": {
+      "$section": "border",
+      "$order": 53,
+      "type": "string",
+      "$units": ["px", "rem", "em"],
+      "$shorthand": "borderBlockEnd"
+    },
+    "borderBlockEndStyle": {
+      "$section": "border",
+      "$order": 54,
+      "type": "string",
+      "enum": [
+        "none",
+        "solid",
+        "dashed",
+        "dotted",
+        "double",
+        "groove",
+        "ridge",
+        "inset",
+        "outset",
+        "hidden"
+      ],
+      "$shorthand": "borderBlockEnd"
+    },
+    "borderBlockEndColor": {
+      "$section": "border",
+      "$order": 55,
+      "type": "string",
+      "format": "color",
+      "$shorthand": "borderBlockEnd"
+    },
+    "borderInlineStartWidth": {
+      "$section": "border",
+      "$order": 56,
+      "type": "string",
+      "$units": ["px", "rem", "em"],
+      "$shorthand": "borderInlineStart"
+    },
+    "borderInlineStartStyle": {
+      "$section": "border",
+      "$order": 57,
+      "type": "string",
+      "enum": [
+        "none",
+        "solid",
+        "dashed",
+        "dotted",
+        "double",
+        "groove",
+        "ridge",
+        "inset",
+        "outset",
+        "hidden"
+      ],
+      "$shorthand": "borderInlineStart"
+    },
+    "borderInlineStartColor": {
+      "$section": "border",
+      "$order": 58,
+      "type": "string",
+      "format": "color",
+      "$shorthand": "borderInlineStart"
+    },
+    "borderInlineEndWidth": {
+      "$section": "border",
+      "$order": 59,
+      "type": "string",
+      "$units": ["px", "rem", "em"],
+      "$shorthand": "borderInlineEnd"
+    },
+    "borderInlineEndStyle": {
+      "$section": "border",
+      "$order": 60,
+      "type": "string",
+      "enum": [
+        "none",
+        "solid",
+        "dashed",
+        "dotted",
+        "double",
+        "groove",
+        "ridge",
+        "inset",
+        "outset",
+        "hidden"
+      ],
+      "$shorthand": "borderInlineEnd"
+    },
+    "borderInlineEndColor": {
+      "$section": "border",
+      "$order": 61,
+      "type": "string",
+      "format": "color",
+      "$shorthand": "borderInlineEnd"
     },
     "boxShadow": {
       "$section": "effects",

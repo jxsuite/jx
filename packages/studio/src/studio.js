@@ -6393,9 +6393,20 @@ function autoOpenSections(/** @type {any} */ node, /** @type {any} */ currentSec
 
 /** Get longhands for a shorthand property from css-meta */
 function getLonghands(/** @type {any} */ shorthandProp) {
+  // Check for explicit $longhands array first (used by border-side shorthands)
+  const entry = /** @type {Record<string, any>} */ (cssMeta.$defs)[shorthandProp];
+  if (entry?.$longhands) {
+    return entry.$longhands
+      .map((/** @type {string} */ name) => ({
+        name,
+        entry: /** @type {Record<string, any>} */ (cssMeta.$defs)[name] || { $order: 0 },
+      }))
+      .sort((/** @type {any} */ a, /** @type {any} */ b) => a.entry.$order - b.entry.$order);
+  }
+  // Fallback: reverse-lookup by $shorthand reference
   const result = [];
-  for (const [name, entry] of /** @type {[string, any][]} */ (Object.entries(cssMeta.$defs))) {
-    if (entry.$shorthand === shorthandProp) result.push({ name, entry });
+  for (const [name, e] of /** @type {[string, any][]} */ (Object.entries(cssMeta.$defs))) {
+    if (e.$shorthand === shorthandProp) result.push({ name, entry: e });
   }
   result.sort((a, b) => a.entry.$order - b.entry.$order);
   return result;
@@ -6426,6 +6437,74 @@ function compressShorthand(/** @type {string[]} */ vals) {
   if (t === b && r === l) return `${t} ${r}`;
   if (r === l) return `${t} ${r} ${b}`;
   return `${t} ${r} ${b} ${l}`;
+}
+
+// ─── Border-side shorthand parsing ────────────────────────────────────────────
+// CSS border-side shorthand: <width> || <style> || <color> (any order, all optional)
+
+const BORDER_STYLES = new Set([
+  "none",
+  "solid",
+  "dashed",
+  "dotted",
+  "double",
+  "groove",
+  "ridge",
+  "inset",
+  "outset",
+  "hidden",
+]);
+
+/**
+ * Parse a border-side shorthand value into [width, style, color].
+ *
+ * @param {string} value — e.g. "1px solid var(--color-border)"
+ * @returns {string[]} — [width, style, color]
+ */
+function expandBorderSide(value) {
+  if (!value) return ["", "", ""];
+  // Tokenize respecting parenthesized values like var(...) and rgb(...)
+  const tokens = [];
+  let current = "";
+  let depth = 0;
+  for (const ch of value.trim()) {
+    if (ch === "(") depth++;
+    if (ch === ")") depth--;
+    if (ch === " " && depth === 0) {
+      if (current) tokens.push(current);
+      current = "";
+    } else {
+      current += ch;
+    }
+  }
+  if (current) tokens.push(current);
+
+  let width = "";
+  let style = "";
+  let color = "";
+
+  for (const tok of tokens) {
+    if (!style && BORDER_STYLES.has(tok)) {
+      style = tok;
+    } else if (!width && /^[\d.]/.test(tok)) {
+      width = tok;
+    } else {
+      // Remaining token(s) are color — join in case color was split (shouldn't be with paren-aware tokenizer)
+      color = color ? `${color} ${tok}` : tok;
+    }
+  }
+
+  return [width, style, color];
+}
+
+/**
+ * Recompose border-side longhand values into a shorthand string.
+ *
+ * @param {string[]} vals — [width, style, color]
+ * @returns {string}
+ */
+function compressBorderSide(/** @type {string[]} */ vals) {
+  return vals.filter((v) => v && v.trim()).join(" ");
 }
 
 /** Extract --font-* CSS custom properties from the document root style. */
@@ -6677,9 +6756,10 @@ function renderShorthandRow(
 ) {
   const longhands = getLonghands(shortProp);
   const shortVal = style[shortProp];
-  const hasLonghands = longhands.some((l) => style[l.name] !== undefined);
+  const hasLonghands = longhands.some((/** @type {any} */ l) => style[l.name] !== undefined);
   const isExpanded = S.ui.styleShorthands[shortProp] ?? hasLonghands;
-  const hasAnyVal = shortVal !== undefined || longhands.some((l) => style[l.name] !== undefined);
+  const hasAnyVal =
+    shortVal !== undefined || longhands.some((/** @type {any} */ l) => style[l.name] !== undefined);
 
   return html`
     <div class="style-row" data-prop=${shortProp}>
@@ -6706,11 +6786,11 @@ function renderShorthandRow(
           size="s"
           .value=${live(shortVal || "")}
           placeholder=${!shortVal && hasLonghands
-            ? longhands.map((l) => style[l.name] || "0").join(" ")
+            ? longhands.map((/** @type {any} */ l) => style[l.name] || "0").join(" ")
             : !shortVal && inherited[shortProp]
               ? inherited[shortProp]
-              : !shortVal && longhands.some((l) => inherited[l.name])
-                ? longhands.map((l) => inherited[l.name] || "0").join(" ")
+              : !shortVal && longhands.some((/** @type {any} */ l) => inherited[l.name])
+                ? longhands.map((/** @type {any} */ l) => inherited[l.name] || "0").join(" ")
                 : ""}
           @input=${debouncedStyleCommit(`short:${shortProp}`, 400, (/** @type {any} */ e) => {
             let s = S;
@@ -6744,56 +6824,72 @@ function renderShorthandRow(
     </div>
     ${isExpanded
       ? (() => {
-          const expanded = shortVal ? expandShorthand(shortVal, longhands.length) : null;
-          return longhands.map(({ name, entry: lEntry }, idx) => {
-            const lVal = style[name] ?? (expanded ? expanded[idx] : "");
-            return html`
-              <div class="style-row style-row--child" data-prop=${name}>
-                <div class="style-row-label">
-                  ${lVal !== undefined && lVal !== ""
-                    ? html`<span
-                        class="set-dot"
-                        title="Clear ${name}"
-                        @click=${(/** @type {any} */ e) => {
-                          e.stopPropagation();
-                          // Recompose shorthand with this longhand cleared (use "0" as default)
-                          const vals = longhands.map((l, i) =>
-                            i === idx ? "0" : (style[l.name] ?? (expanded ? expanded[i] : "0")),
-                          );
-                          let s = S;
-                          for (const l of longhands) {
-                            if (style[l.name] !== undefined) s = commitFn(s, l.name, undefined);
-                          }
-                          s = commitFn(s, shortProp, compressShorthand(vals));
-                          update(s);
-                        }}
-                      ></span>`
-                    : nothing}
-                  <sp-field-label size="s" title=${name}>${propLabel(lEntry, name)}</sp-field-label>
+          const isBorderSide = entry.$shorthandType === "border-side";
+          const expanded = shortVal
+            ? isBorderSide
+              ? expandBorderSide(shortVal)
+              : expandShorthand(shortVal, longhands.length)
+            : null;
+          const compress = isBorderSide ? compressBorderSide : compressShorthand;
+          const emptyVal = isBorderSide ? "" : "0";
+          return longhands.map(
+            (/** @type {any} */ { name, entry: lEntry }, /** @type {any} */ idx) => {
+              const lVal = style[name] ?? (expanded ? expanded[idx] : "");
+              return html`
+                <div class="style-row style-row--child" data-prop=${name}>
+                  <div class="style-row-label">
+                    ${lVal !== undefined && lVal !== ""
+                      ? html`<span
+                          class="set-dot"
+                          title="Clear ${name}"
+                          @click=${(/** @type {any} */ e) => {
+                            e.stopPropagation();
+                            // Recompose shorthand with this longhand cleared
+                            const vals = longhands.map(
+                              (/** @type {any} */ l, /** @type {any} */ i) =>
+                                i === idx
+                                  ? emptyVal
+                                  : (style[l.name] ?? (expanded ? expanded[i] : emptyVal)),
+                            );
+                            let s = S;
+                            for (const l of longhands) {
+                              if (style[l.name] !== undefined) s = commitFn(s, l.name, undefined);
+                            }
+                            s = commitFn(s, shortProp, compress(vals));
+                            update(s);
+                          }}
+                        ></span>`
+                      : nothing}
+                    <sp-field-label size="s" title=${name}
+                      >${propLabel(lEntry, name)}</sp-field-label
+                    >
+                  </div>
+                  ${widgetForType(
+                    inferInputType(lEntry),
+                    lEntry,
+                    name,
+                    lVal,
+                    (/** @type {any} */ newVal) => {
+                      // Recompose shorthand with this longhand updated
+                      const vals = longhands.map((/** @type {any} */ l, /** @type {any} */ i) =>
+                        i === idx
+                          ? newVal || emptyVal
+                          : (style[l.name] ?? (expanded ? expanded[i] : emptyVal)),
+                      );
+                      let s = S;
+                      for (const l of longhands) {
+                        if (style[l.name] !== undefined) s = commitFn(s, l.name, undefined);
+                      }
+                      s = commitFn(s, shortProp, compress(vals));
+                      update(s);
+                      renderRightPanel();
+                    },
+                    { placeholder: !lVal && inherited[name] ? String(inherited[name]) : "" },
+                  )}
                 </div>
-                ${widgetForType(
-                  inferInputType(lEntry),
-                  lEntry,
-                  name,
-                  lVal,
-                  (/** @type {any} */ newVal) => {
-                    // Recompose shorthand with this longhand updated
-                    const vals = longhands.map((l, i) =>
-                      i === idx ? newVal || "0" : (style[l.name] ?? (expanded ? expanded[i] : "0")),
-                    );
-                    let s = S;
-                    for (const l of longhands) {
-                      if (style[l.name] !== undefined) s = commitFn(s, l.name, undefined);
-                    }
-                    s = commitFn(s, shortProp, compressShorthand(vals));
-                    update(s);
-                    renderRightPanel();
-                  },
-                  { placeholder: !lVal && inherited[name] ? String(inherited[name]) : "" },
-                )}
-              </div>
-            `;
-          });
+              `;
+            },
+          );
         })()
       : nothing}
   `;
@@ -6977,7 +7073,9 @@ function styleSidebarTemplate(
       const sectionActiveProps = entries.filter((/** @type {any} */ { prop, entry }) => {
         if (activeStyle[prop] !== undefined) return true;
         if (inferInputType(entry) === "shorthand") {
-          return getLonghands(prop).some((l) => activeStyle[l.name] !== undefined);
+          return getLonghands(prop).some(
+            (/** @type {any} */ l) => activeStyle[l.name] !== undefined,
+          );
         }
         return false;
       });
@@ -6992,7 +7090,8 @@ function styleSidebarTemplate(
 
         if (type === "shorthand") {
           const longhands = getLonghands(prop);
-          const hasAny = hasVal || longhands.some((l) => activeStyle[l.name] !== undefined);
+          const hasAny =
+            hasVal || longhands.some((/** @type {any} */ l) => activeStyle[l.name] !== undefined);
           if (!hasAny && !condMet) continue;
           rows.push(
             renderShorthandRow(prop, entry, activeStyle, commitStyle, () => {}, inheritedStyle),
