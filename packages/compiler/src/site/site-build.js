@@ -392,7 +392,13 @@ function resolveDocTemplates(node, scope) {
   if (!node || typeof node !== "object") return;
 
   if (typeof node.innerHTML === "string" && isTemplateString(node.innerHTML)) {
-    node.innerHTML = evaluateStaticTemplate(node.innerHTML, scope) ?? node.innerHTML;
+    const resolved = evaluateStaticTemplate(node.innerHTML, scope);
+    if (resolved != null) {
+      // Encode any remaining `${` as HTML entities so the compile phase won't
+      // re-interpret them as template expressions. After resolution, any `${` in the
+      // result is literal content (e.g., code examples), not an intentional template.
+      node.innerHTML = resolved.replaceAll("${", "&#36;{");
+    }
   }
   if (typeof node.textContent === "string" && isTemplateString(node.textContent)) {
     node.textContent = evaluateStaticTemplate(node.textContent, scope) ?? node.textContent;
