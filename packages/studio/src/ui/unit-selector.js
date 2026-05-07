@@ -26,6 +26,7 @@ export function renderUnitSelector(
   /** @type {any} */ prop,
   /** @type {any} */ value,
   /** @type {any} */ onChange,
+  /** @type {string} */ placeholder = "",
 ) {
   const units = entry.$units || [];
   const keywords = entry.$keywords || [];
@@ -52,7 +53,7 @@ export function renderUnitSelector(
       <div class=${classMap({ "input-group": true, "is-expression": isExpression })}>
         <sp-textfield
           size="s"
-          placeholder="0"
+          placeholder=${placeholder || "0"}
           .value=${live(displayValue)}
           @input=${debouncedStyleCommit(`nui:${prop}`, 400, (/** @type {any} */ e) => {
             const val = (e.target.value ?? "").trim();

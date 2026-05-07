@@ -164,6 +164,7 @@ import { components as _swc } from "./ui/spectrum.js"; // eslint-disable-line no
 import { renderFieldRow } from "./ui/field-row.js";
 import { isColorPopoverOpen } from "./ui/color-selector.js";
 import { widgetForType as _widgetForType } from "./ui/widgets.js";
+import { computeInheritedStyle } from "./utils/inherited-style.js";
 import { showContextMenu, dismissContextMenu } from "./editor/context-menu.js";
 import { convertToComponent } from "./editor/convert-to-component.js";
 import { initShortcuts } from "./editor/shortcuts.js";
@@ -6632,9 +6633,10 @@ function widgetForType(
   /** @type {any} */ prop,
   /** @type {any} */ value,
   /** @type {any} */ onCommit,
+  /** @type {any} */ opts = {},
 ) {
   return _widgetForType(type, entry, prop, value, onCommit, {
-    placeholder: cssInitialMap.get(prop) || "",
+    placeholder: opts.placeholder || cssInitialMap.get(prop) || "",
     renderSelect: renderSelectInput,
     renderCombobox: renderComboboxInput,
   });
@@ -6648,15 +6650,17 @@ function renderStyleRow(
   /** @type {any} */ onDelete,
   /** @type {any} */ isWarning,
   /** @type {any} */ gridMode,
+  /** @type {any} */ inheritedValue,
 ) {
   const type = inferInputType(entry);
   const hasVal = value !== undefined && value !== "";
+  const placeholder = !hasVal && inheritedValue ? String(inheritedValue) : "";
   return renderFieldRow({
     prop,
     label: propLabel(entry, prop),
     hasValue: hasVal,
     onClear: onDelete,
-    widget: widgetForType(type, entry, prop, value, onCommit),
+    widget: widgetForType(type, entry, prop, value, onCommit, { placeholder }),
     span: gridMode && entry.$span === 2 ? 2 : undefined,
     warning: isWarning,
   });
@@ -6668,6 +6672,7 @@ function renderShorthandRow(
   /** @type {any} */ style,
   /** @type {any} */ commitFn,
   /** @type {any} */ _deleteFn,
+  /** @type {Record<string, any>} */ inherited = {},
 ) {
   const longhands = getLonghands(shortProp);
   const shortVal = style[shortProp];
@@ -6701,7 +6706,11 @@ function renderShorthandRow(
           .value=${live(shortVal || "")}
           placeholder=${!shortVal && hasLonghands
             ? longhands.map((l) => style[l.name] || "0").join(" ")
-            : ""}
+            : !shortVal && inherited[shortProp]
+              ? inherited[shortProp]
+              : !shortVal && longhands.some((l) => inherited[l.name])
+                ? longhands.map((l) => inherited[l.name] || "0").join(" ")
+                : ""}
           @input=${debouncedStyleCommit(`short:${shortProp}`, 400, (/** @type {any} */ e) => {
             let s = S;
             for (const l of longhands) {
@@ -6779,6 +6788,7 @@ function renderShorthandRow(
                     update(s);
                     renderRightPanel();
                   },
+                  { placeholder: !lVal && inherited[name] ? String(inherited[name]) : "" },
                 )}
               </div>
             `;
@@ -6927,6 +6937,10 @@ function styleSidebarTemplate(
       updateStyle(s, S.selection, prop, val);
   }
 
+  // ── Compute inherited style from higher breakpoints ──────────────────────
+  /** @type {Record<string, any>} */
+  const inheritedStyle = computeInheritedStyle(style, mediaNames, activeTab, activeSelector);
+
   // Auto-open sections that have properties
   const newSections = autoOpenSections({ style: activeStyle }, S.ui.styleSections);
   if (JSON.stringify(newSections) !== JSON.stringify(S.ui.styleSections)) {
@@ -6979,7 +6993,9 @@ function styleSidebarTemplate(
           const longhands = getLonghands(prop);
           const hasAny = hasVal || longhands.some((l) => activeStyle[l.name] !== undefined);
           if (!hasAny && !condMet) continue;
-          rows.push(renderShorthandRow(prop, entry, activeStyle, commitStyle, () => {}));
+          rows.push(
+            renderShorthandRow(prop, entry, activeStyle, commitStyle, () => {}, inheritedStyle),
+          );
         } else {
           const isWarning = hasVal && !condMet;
           if (hasVal || condMet) {
@@ -6992,6 +7008,7 @@ function styleSidebarTemplate(
                 () => update(commitStyle(S, prop, undefined)),
                 isWarning,
                 sec.$layout === "grid",
+                inheritedStyle[prop],
               ),
             );
           }

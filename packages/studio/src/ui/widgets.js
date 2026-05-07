@@ -50,12 +50,13 @@ export function renderTextInput(prop, value, onChange, placeholder = "") {
  * @param {(val: any) => void} onChange
  * @returns {any}
  */
-export function renderNumberInput(entry, prop, value, onChange) {
+export function renderNumberInput(entry, prop, value, onChange, placeholder = "") {
   return html`
     <sp-number-field
       size="s"
       hide-stepper
       .value=${live(value !== undefined && value !== "" ? Number(value) : undefined)}
+      placeholder=${placeholder}
       min=${ifDefined(entry.minimum)}
       max=${ifDefined(entry.maximum)}
       step=${ifDefined(entry.maximum !== undefined && entry.maximum <= 1 ? 0.1 : undefined)}
@@ -86,9 +87,9 @@ export function widgetForType(type, entry, prop, value, onCommit, opts = {}) {
     case "color":
       return renderColorSelector(prop, value, onCommit);
     case "number-unit":
-      return renderUnitSelector(entry, prop, value, onCommit);
+      return renderUnitSelector(entry, prop, value, onCommit, opts.placeholder);
     case "number":
-      return renderNumberInput(entry, prop, value, onCommit);
+      return renderNumberInput(entry, prop, value, onCommit, opts.placeholder);
     case "media":
       return renderMediaPicker(prop, value, onCommit);
     case "select":
