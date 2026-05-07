@@ -165,6 +165,7 @@ import { renderFieldRow } from "./ui/field-row.js";
 import { isColorPopoverOpen } from "./ui/color-selector.js";
 import { widgetForType as _widgetForType } from "./ui/widgets.js";
 import { computeInheritedStyle } from "./utils/inherited-style.js";
+import "./ui/panel-resize.js";
 import { showContextMenu, dismissContextMenu } from "./editor/context-menu.js";
 import { convertToComponent } from "./editor/convert-to-component.js";
 import { initShortcuts } from "./editor/shortcuts.js";
