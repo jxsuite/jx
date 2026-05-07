@@ -289,7 +289,6 @@ describe("compile — dynamic documents (standard tagName → client target)", (
     expect(files[0].path).toBe("app.js");
     // Client target: pre-rendered HTML, no custom element tag
     expect(html).not.toContain("<my-counter>");
-    expect(html).not.toContain("lit-html");
     // Should have reactive state in JS
     expect(files[0].content).toContain("const state = reactive({");
   });

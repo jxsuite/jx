@@ -57,8 +57,7 @@ describe("compileClient", () => {
     expect(result.html).toContain("<h1");
     expect(result.html).toContain("<button");
 
-    // HTML should NOT contain lit-html or custom element registration
-    expect(result.html).not.toContain("lit-html");
+    // HTML should NOT contain custom element registration
     expect(result.html).not.toContain("customElements.define");
 
     // JS module should have reactive state, bind, on

@@ -164,11 +164,11 @@ export function compileClient(raw, opts) {
     reactivitySrc,
   );
 
-  // Build importmap entries
-  const importmapEntries = [`      "@vue/reactivity": "${reactivitySrc}"`];
-  if (counter.needsLit) {
-    importmapEntries.push(`      "lit-html": "${litHtmlSrc}"`);
-  }
+  // Build importmap entries — always include lit-html since compiled custom elements need it
+  const importmapEntries = [
+    `      "@vue/reactivity": "${reactivitySrc}"`,
+    `      "lit-html": "${litHtmlSrc}"`,
+  ];
 
   const html = `<!DOCTYPE html>
 <html lang="en">
