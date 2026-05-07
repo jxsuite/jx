@@ -349,7 +349,9 @@ function buildClientNode(def, raw, context, bindings, handlers, counter) {
       inner = "";
     }
   } else if (source.innerHTML) {
-    inner = resolveStaticValue(source.innerHTML, nextContext.scope) ?? "";
+    // resolveStaticValue may return null if innerHTML contains `${` from rendered content
+    // (e.g., code examples) that isn't an actual template expression. Fall back to raw value.
+    inner = resolveStaticValue(source.innerHTML, nextContext.scope) ?? source.innerHTML;
   } else if (
     source.children &&
     typeof source.children === "object" &&

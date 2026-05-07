@@ -140,7 +140,8 @@ function buildInnerWithIslands(def, raw, context, islands) {
     const value = resolveStaticValue(source.textContent, context.scope);
     return value == null ? "" : escapeHtml(String(value));
   }
-  if (source.innerHTML) return resolveStaticValue(source.innerHTML, context.scope) ?? "";
+  if (source.innerHTML)
+    return resolveStaticValue(source.innerHTML, context.scope) ?? source.innerHTML;
   if (Array.isArray(source.children)) {
     const rawChildren = raw?.children;
     return source.children
