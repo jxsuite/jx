@@ -333,6 +333,7 @@ export function emitElementModule(doc, className, elementImports) {
       lines.push("    });");
     }
   }
+  lines.push("    this.innerHTML = '';"); // Clear pre-rendered scaffold before hydration
   lines.push("    this.#dispose = effect(() => render(this.template(), this));");
   lines.push("  }");
   lines.push("");

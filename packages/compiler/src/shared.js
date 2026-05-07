@@ -735,3 +735,85 @@ function _walkServerEntries(def, entries) {
     def.children.forEach((/** @type {any} */ c) => _walkServerEntries(c, entries));
   }
 }
+
+// ─── Component pre-rendering ─────────────────────────────────────────────────
+
+/** @type {Set<string>} */
+const SELF_CLOSING = new Set(["input", "br", "hr", "img", "meta", "link", "area", "col"]);
+
+/**
+ * Recursively render a Jx node tree to static HTML for pre-rendering.
+ *
+ * @param {any} node
+ * @param {any} scope
+ * @returns {string}
+ */
+export function renderStaticNode(node, scope) {
+  if (typeof node === "string") return escapeHtml(node);
+  if (typeof node === "number" || typeof node === "boolean") return escapeHtml(String(node));
+  if (Array.isArray(node))
+    return node.map((/** @type {any} */ c) => renderStaticNode(c, scope)).join("\n");
+  if (!node || typeof node !== "object") return "";
+
+  // Skip mapped arrays — can't pre-render dynamic lists
+  if (node.$prototype === "Array") return "";
+
+  const tag = node.tagName ?? "div";
+  const attrs = buildAttrs(node, scope);
+
+  if (SELF_CLOSING.has(tag)) return `<${tag}${attrs}>`;
+
+  let inner = "";
+  if (node.textContent !== undefined) {
+    const val = resolveStaticValue(node.textContent, scope);
+    inner = val != null ? escapeHtml(String(val)) : "";
+  } else if (node.innerHTML) {
+    const val = resolveStaticValue(node.innerHTML, scope);
+    inner = val != null ? val : node.innerHTML;
+  } else if (Array.isArray(node.children)) {
+    inner = node.children.map((/** @type {any} */ c) => renderStaticNode(c, scope)).join("\n");
+  }
+
+  return `<${tag}${attrs}>${inner}</${tag}>`;
+}
+
+/**
+ * Pre-render a component definition to static HTML for its inner content.
+ *
+ * @param {any} doc - Component JSON definition
+ * @returns {string} The pre-rendered innerHTML
+ */
+export function preRenderComponentHtml(doc) {
+  const scope = buildInitialScope(doc.state ?? {}, null);
+  if (!Array.isArray(doc.children)) return "";
+  return doc.children.map((/** @type {any} */ c) => renderStaticNode(c, scope)).join("\n");
+}
+
+/**
+ * Generate a CSS rule block for a component's root-level styles. Uses the tag name as the selector.
+ * Skips pseudo-selectors, media queries, nested rules, and template strings (runtime-only).
+ *
+ * @param {string} tagName - The custom element tag name (used as CSS selector)
+ * @param {any} styleDef - The component's style object
+ * @returns {string} CSS text, or empty string if no styles
+ */
+export function buildComponentCSS(tagName, styleDef) {
+  if (!styleDef || typeof styleDef !== "object") return "";
+  /** @type {string[]} */
+  const decls = [];
+  for (const [prop, value] of Object.entries(styleDef)) {
+    if (
+      prop.startsWith(":") ||
+      prop.startsWith(".") ||
+      prop.startsWith("&") ||
+      prop.startsWith("[") ||
+      prop.startsWith("@")
+    )
+      continue;
+    if (value === null || typeof value === "object") continue;
+    if (typeof value === "string" && isTemplateString(value)) continue;
+    decls.push(`  ${camelToKebab(prop)}: ${value};`);
+  }
+  if (decls.length === 0) return "";
+  return `${tagName} {\n${decls.join("\n")}\n}\n`;
+}

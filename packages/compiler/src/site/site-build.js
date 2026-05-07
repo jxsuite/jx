@@ -29,6 +29,8 @@ import {
   buildInitialScope,
   isTemplateString,
   evaluateStaticTemplate,
+  preRenderComponentHtml,
+  buildComponentCSS,
   DEFAULT_REACTIVITY_SRC,
   DEFAULT_LIT_HTML_SRC,
 } from "../shared.js";
@@ -96,6 +98,10 @@ export async function buildSite(projectRoot, options = {}) {
   const componentsDir = resolve(projectRoot, "components");
   /** @type {string[]} */
   const compiledComponentTags = [];
+  /** @type {Map<string, string>} */
+  const preRendered = new Map(); // tagName → innerHTML
+  /** @type {Map<string, string>} */
+  const componentCSS = new Map(); // tagName → CSS text
   if (existsSync(componentsDir)) {
     log("Compiling components...");
     const componentFiles = readdirSync(componentsDir).filter((/** @type {string} */ f) =>
@@ -116,6 +122,20 @@ export async function buildSite(projectRoot, options = {}) {
           if (f.tagName) compiledComponentTags.push(f.tagName);
           fileCount++;
         }
+
+        // Pre-render component HTML scaffold and CSS sidecar
+        const doc = JSON.parse(readFileSync(componentPath, "utf8"));
+        if (doc.tagName) {
+          const innerHTML = preRenderComponentHtml(doc);
+          if (innerHTML) preRendered.set(doc.tagName, innerHTML);
+
+          const css = buildComponentCSS(doc.tagName, doc.style);
+          if (css) {
+            componentCSS.set(doc.tagName, css);
+            writeFileSync(resolve(componentOutDir, `${doc.tagName}.css`), css, "utf8");
+            fileCount++;
+          }
+        }
       } catch (e) {
         const err = /** @type {any} */ (e);
         errors.push(`Error compiling component ${file}: ${err.message}`);
@@ -134,9 +154,14 @@ export async function buildSite(projectRoot, options = {}) {
       log(`  Compiling ${route.urlPattern} ...`);
       const result = await compilePage(route, projectConfig, projectRoot, collections);
 
-      // Inject component scripts if the page references any compiled components
+      // Inject component scripts and CSS if the page references any compiled components
       if (compiledComponentTags.length > 0) {
-        result.html = injectComponentScripts(result.html, compiledComponentTags);
+        result.html = injectComponentScripts(result.html, compiledComponentTags, componentCSS);
+      }
+
+      // Inject pre-rendered component HTML scaffolding
+      if (preRendered.size > 0) {
+        result.html = injectPreRenderedComponents(result.html, preRendered);
       }
 
       // Determine output path
@@ -425,19 +450,29 @@ function resolveDocTemplates(node, scope) {
 }
 
 /**
- * Inject component script tags into compiled HTML for any referenced custom elements. Adds an
- * import map and module scripts before </body>.
+ * Inject component script and CSS link tags into compiled HTML for any referenced custom elements.
+ * Adds an import map and module scripts before </body>, and CSS links in <head>.
  *
  * @param {string} html
  * @param {string[]} allComponentTags - All compiled component tag names
+ * @param {Map<string, string>} [cssMap] - TagName → CSS text (for link injection)
  * @returns {string}
  */
-function injectComponentScripts(html, allComponentTags) {
+function injectComponentScripts(html, allComponentTags, cssMap = new Map()) {
   // Find which components are actually referenced in this page
   const usedTags = allComponentTags.filter(
     (/** @type {string} */ tag) => html.includes(`<${tag}`), // matches <tag> and <tag ...>
   );
   if (usedTags.length === 0) return html;
+
+  // Inject CSS links in <head> for components that have CSS sidecars
+  const cssLinks = usedTags
+    .filter((/** @type {string} */ tag) => cssMap.has(tag))
+    .map((/** @type {string} */ tag) => `<link rel="stylesheet" href="/components/${tag}.css">`)
+    .join("\n  ");
+  if (cssLinks) {
+    html = html.replace("</head>", `  ${cssLinks}\n</head>`);
+  }
 
   // Build import map (needed for @vue/reactivity and lit-html)
   const importMap = `<script type="importmap">
@@ -460,6 +495,22 @@ function injectComponentScripts(html, allComponentTags) {
   const injection = (hasImportMap ? "" : `${importMap}\n  `) + moduleScripts;
 
   return html.replace("</body>", `  ${injection}\n</body>`);
+}
+
+/**
+ * Inject pre-rendered HTML scaffolding into empty component tags.
+ *
+ * @param {string} html
+ * @param {Map<string, string>} preRendered - TagName → innerHTML
+ * @returns {string}
+ */
+function injectPreRenderedComponents(html, preRendered) {
+  for (const [tag, innerHTML] of preRendered) {
+    if (!innerHTML) continue;
+    const pattern = new RegExp(`<${tag}(\\s[^>]*)?>\\s*</${tag}>`, "g");
+    html = html.replace(pattern, `<${tag}$1>${innerHTML}</${tag}>`);
+  }
+  return html;
 }
 
 /**
