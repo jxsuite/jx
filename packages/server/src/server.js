@@ -224,6 +224,11 @@ export async function createDevServer(options) {
           if (await projectFile.exists()) {
             return new Response(projectFile);
           }
+          // Mirror production: public/ contents are served at root
+          const publicFile = Bun.file(resolve(absRoot, activeProjectRoot, "public", "." + path));
+          if (await publicFile.exists()) {
+            return new Response(publicFile);
+          }
         }
 
         // Resolve npm-style bare specifiers via node_modules.

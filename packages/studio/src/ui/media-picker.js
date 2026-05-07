@@ -75,6 +75,10 @@ async function loadMediaCache() {
   if (mediaCacheLoaded) return;
   const platform = getPlatform();
   mediaCache = await collectMedia("public", platform);
+  // Strip "public/" prefix so paths match production (public/ contents served at root)
+  for (const m of mediaCache) {
+    m.path = m.path.replace(/^\/public\//, "/");
+  }
   mediaCacheLoaded = true;
 }
 
@@ -121,7 +125,7 @@ export function renderMediaPicker(prop, value, onCommit) {
         : nothing}
       <sp-textfield
         size="s"
-        placeholder="/public/image.jpg"
+        placeholder="/image.jpg"
         .value=${live(currentValue)}
         @input=${debouncedStyleCommit(`media:${prop}`, 400, (/** @type {any} */ e) =>
           onCommit(e.target.value),
