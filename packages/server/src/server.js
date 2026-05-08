@@ -216,6 +216,17 @@ export async function createDevServer(options) {
       }
 
       // Static files
+
+      // If the URL path is an absolute filesystem path under the active project, serve directly.
+      // Browsers produce "//abs/path" when an absolute path is used as a URL path — normalise.
+      const fsPath = path.startsWith("//") ? path.slice(1) : path;
+      if (activeProjectRoot && isAbsolute(activeProjectRoot) && fsPath.startsWith(activeProjectRoot)) {
+        const file = Bun.file(fsPath);
+        if (await file.exists()) {
+          return new Response(file);
+        }
+      }
+
       const file = Bun.file(resolve(absRoot, "." + path));
       if (!(await file.exists())) {
         // Try resolving relative to active studio project root
