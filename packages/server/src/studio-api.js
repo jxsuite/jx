@@ -15,15 +15,6 @@ import { readFileSync, existsSync } from "node:fs";
 const fwd = (/** @type {string} */ p) => p.replaceAll("\\", "/");
 
 /**
- * @param {string} filePath
- * @param {string} root
- */
-function assertUnderRoot(filePath, root) {
-  const rel = relative(root, filePath);
-  if (rel.startsWith("..") || rel.startsWith("/")) throw new Error("Path outside project root");
-}
-
-/**
  * Check that a path is under either the server root OR the active project root. This allows file
  * operations on external projects that have been explicitly activated via /__studio/activate.
  *
@@ -126,7 +117,9 @@ export async function handleStudioApi(req, url, root, activeProjectRoot = null) 
         const candidate = resolve(dir, "project.json");
         if (existsSync(candidate)) {
           const config = JSON.parse(readFileSync(candidate, "utf8"));
-          const relPath = fwd(relative(root, dir));
+          const rel = fwd(relative(root, dir));
+          // If the project is outside the server root, use the absolute path
+          const relPath = rel.startsWith("..") ? dir : rel;
           const absFile = filePath.startsWith("~")
             ? filePath.replace("~", process.env.HOME || "")
             : filePath;
@@ -495,7 +488,7 @@ export async function handleStudioApi(req, url, root, activeProjectRoot = null) 
       : resolve(root, fp);
     if (!isAbsolute) {
       try {
-        assertUnderRoot(abs, root);
+        assertAccessible(abs, root, activeProjectRoot);
       } catch (/** @type {any} */ e) {
         return new Response(e.message, { status: 400 });
       }
