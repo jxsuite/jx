@@ -60,7 +60,8 @@
   },
   "release-it": {
     "git": {
-      "requireCleanWorkingDir": false
+      "requireCleanWorkingDir": false,
+      "tagName": "v${version}"
     },
     "github": {
       "release": true,
