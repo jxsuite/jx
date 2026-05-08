@@ -220,8 +220,9 @@ export async function createDevServer(options) {
       if (!(await file.exists())) {
         // Try resolving relative to active studio project root
         if (activeProjectRoot) {
-          const projectBase =
-            isAbsolute(activeProjectRoot) ? activeProjectRoot : resolve(absRoot, activeProjectRoot);
+          const projectBase = isAbsolute(activeProjectRoot)
+            ? activeProjectRoot
+            : resolve(absRoot, activeProjectRoot);
           const projectFile = Bun.file(resolve(projectBase, "." + path));
           if (await projectFile.exists()) {
             return new Response(projectFile);
