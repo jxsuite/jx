@@ -1,5 +1,5 @@
 ---
-title: "Component Model — JX Suite"
+title: "Component Model — Jx Suite"
 description: "How Jx components work: self-describing JSON, state management, external sidecars, and custom elements."
 ---
 

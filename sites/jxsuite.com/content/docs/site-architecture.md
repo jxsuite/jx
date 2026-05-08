@@ -1,5 +1,5 @@
 ---
-title: "Site Architecture — JX Suite"
+title: "Site Architecture — Jx Suite"
 description: "File-based routing, layouts, content collections, and static site generation in Jx."
 ---
 

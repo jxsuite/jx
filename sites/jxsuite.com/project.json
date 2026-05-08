@@ -1,5 +1,5 @@
 {
-  "name": "JX Suite",
+  "name": "Jx Suite",
   "url": "https://jxsuite.com",
   "defaults": {
     "layout": "./layouts/base.json",
@@ -11,7 +11,7 @@
   },
   "$head": [
     { "tagName": "link", "attributes": { "rel": "icon", "href": "/favicon.svg" } },
-    { "tagName": "meta", "attributes": { "name": "generator", "content": "JX Suite" } },
+    { "tagName": "meta", "attributes": { "name": "generator", "content": "Jx Suite" } },
     {
       "tagName": "meta",
       "attributes": { "name": "viewport", "content": "width=device-width, initial-scale=1" }

@@ -1,5 +1,5 @@
 ---
-title: "Styling — JX Suite"
+title: "Styling — Jx Suite"
 description: "Inline styles, nested CSS selectors, and named media breakpoints in Jx."
 ---
 

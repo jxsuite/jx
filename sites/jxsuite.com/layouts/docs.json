@@ -165,7 +165,7 @@
         {
           "tagName": "p",
           "style": { "margin": "0" },
-          "children": ["Built with JX Suite. MIT License."]
+          "children": ["Built with Jx Suite. MIT License."]
         }
       ]
     }

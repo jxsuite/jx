@@ -1,5 +1,5 @@
 ---
-title: "Reactivity — JX Suite"
+title: "Reactivity — Jx Suite"
 description: "Template strings, signals, computed values, and reactive bindings in Jx."
 ---
 

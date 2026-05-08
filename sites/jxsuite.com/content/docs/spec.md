@@ -1,5 +1,5 @@
 ---
-title: "Spec Overview — JX Suite"
+title: "Spec Overview — Jx Suite"
 description: "The Jx specification: a declarative DOM format using plain JSON with reactive state, web components, and standards alignment."
 ---
 

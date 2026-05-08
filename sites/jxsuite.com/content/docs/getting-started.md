@@ -1,11 +1,11 @@
 ---
-title: "Getting Started — JX Suite"
-description: "Install JX Suite and build your first component in under 5 minutes."
+title: "Getting Started — Jx Suite"
+description: "Install Jx Suite and build your first component in under 5 minutes."
 ---
 
 # Getting Started
 
-Get up and running with JX Suite in under 5 minutes.
+Get up and running with Jx Suite in under 5 minutes.
 
 ## Installation
 
