@@ -374,8 +374,11 @@ describe("MarkdownDirective", () => {
     return String(result);
   }
 
-  /** Extract decoded data-jx-props from HTML for a given tag
-   * @param {string} html @param {string} tag */
+  /**
+   * Extract decoded data-jx-props from HTML for a given tag
+   *
+   * @param {string} html @param {string} tag
+   */
   function extractProps(html, tag) {
     const re = new RegExp(`<${tag}[^>]*data-jx-props="([^"]*)"`, "i");
     const match = html.match(re);

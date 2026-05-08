@@ -357,9 +357,7 @@ export function MarkdownDirective(options = {}) {
         data.hName = tagName;
         const attrs = node.attributes;
         data.hProperties =
-          attrs && Object.keys(attrs).length > 0
-            ? { "data-jx-props": JSON.stringify(attrs) }
-            : {};
+          attrs && Object.keys(attrs).length > 0 ? { "data-jx-props": JSON.stringify(attrs) } : {};
 
         // For text directives, preserve label as children
         if (node.type === "textDirective" && node.children?.length > 0) {
