@@ -62,7 +62,8 @@
       "requireCleanWorkingDir": false
     },
     "github": {
-      "release": true
+      "release": true,
+      "draft": true
     },
     "hooks": {
       "before:init": "bun test && bun run lint",
@@ -75,6 +76,7 @@
       "@release-it/bumper": {
         "out": [
           "packages/compiler/package.json",
+          "packages/desktop/package.json",
           "packages/parser/package.json",
           "packages/runtime/package.json",
           "packages/schema/package.json",
