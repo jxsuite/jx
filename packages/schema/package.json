@@ -3,6 +3,11 @@
   "version": "0.2.0",
   "description": "JSON Schema 2020-12 meta-schema generator for Jx documents",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jxsuite/jx.git",
+    "directory": "packages/schema"
+  },
   "files": [
     "src/",
     "*.json",
