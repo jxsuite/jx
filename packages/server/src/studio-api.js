@@ -7,7 +7,7 @@
  * All paths are relative to the project root. Directory traversal above root is rejected.
  */
 
-import { resolve, relative, basename, dirname } from "node:path";
+import { resolve, relative, basename, dirname, isAbsolute } from "node:path";
 import { readdir, stat, readFile, writeFile, rename, unlink, mkdir } from "node:fs/promises";
 import { readFileSync, existsSync } from "node:fs";
 
@@ -24,13 +24,35 @@ function assertUnderRoot(filePath, root) {
 }
 
 /**
+ * Check that a path is under either the server root OR the active project root. This allows file
+ * operations on external projects that have been explicitly activated via /__studio/activate.
+ *
+ * @param {string} filePath
+ * @param {string} root
+ * @param {string | null} activeProjectRoot
+ */
+function assertAccessible(filePath, root, activeProjectRoot) {
+  const rel = relative(root, filePath);
+  if (!rel.startsWith("..") && !rel.startsWith("/")) return;
+  if (activeProjectRoot) {
+    const activeRoot = isAbsolute(activeProjectRoot)
+      ? activeProjectRoot
+      : resolve(root, activeProjectRoot);
+    const relActive = relative(activeRoot, filePath);
+    if (!relActive.startsWith("..") && !relActive.startsWith("/")) return;
+  }
+  throw new Error("Path outside project root");
+}
+
+/**
  * Handle /__studio/* requests.
  *
  * @param {Request} req
  * @param {URL} url
  * @param {string} root
+ * @param {string | null} [activeProjectRoot]
  */
-export async function handleStudioApi(req, url, root) {
+export async function handleStudioApi(req, url, root, activeProjectRoot = null) {
   const path = url.pathname;
 
   // Project metadata
@@ -52,7 +74,7 @@ export async function handleStudioApi(req, url, root) {
     const dir = url.searchParams.get("dir") ?? ".";
     const absDir = resolve(root, dir);
     try {
-      assertUnderRoot(absDir, root);
+      assertAccessible(absDir, root, activeProjectRoot);
     } catch (/** @type {any} */ e) {
       return Response.json({ error: e.message }, { status: 400 });
     }
@@ -126,6 +148,26 @@ export async function handleStudioApi(req, url, root) {
     }
   }
 
+  // Find a project directory by name — searches $HOME for the first matching directory with a
+  // project.json. Dev-mode workaround for when showDirectoryPicker() can't provide absolute paths.
+  if (path === "/__studio/find-project" && req.method === "GET") {
+    const name = url.searchParams.get("name");
+    if (!name) return Response.json({ error: "Missing name" }, { status: 400 });
+    try {
+      const home = process.env.HOME || process.env.USERPROFILE || "";
+      if (!home) return Response.json({ path: null });
+      const glob = new Bun.Glob(`**/${name}/project.json`);
+      for await (const match of glob.scan({ cwd: home, dot: false })) {
+        if (match.includes("node_modules") || match.includes(".Trash")) continue;
+        const abs = resolve(home, dirname(match));
+        return Response.json({ path: abs });
+      }
+      return Response.json({ path: null });
+    } catch (/** @type {any} */ e) {
+      return Response.json({ error: e.message }, { status: 500 });
+    }
+  }
+
   // Discover site projects — find all project.json files under root
   if (path === "/__studio/sites" && req.method === "GET") {
     try {
@@ -159,10 +201,19 @@ export async function handleStudioApi(req, url, root) {
     const pattern = url.searchParams.get("glob");
     const absDir = resolve(root, dir);
     try {
-      assertUnderRoot(absDir, root);
+      assertAccessible(absDir, root, activeProjectRoot);
     } catch (/** @type {any} */ e) {
       return Response.json({ error: e.message }, { status: 400 });
     }
+
+    /** Report a path relative to the active project root (or server root as fallback). */
+    const reportRelative = (/** @type {string} */ fp) => {
+      if (activeProjectRoot && isAbsolute(activeProjectRoot)) {
+        const rel = relative(activeProjectRoot, fp);
+        if (!rel.startsWith("..")) return fwd(rel);
+      }
+      return fwd(relative(root, fp));
+    };
 
     try {
       if (pattern) {
@@ -175,7 +226,7 @@ export async function handleStudioApi(req, url, root) {
             if (!s.isDirectory()) {
               files.push({
                 name: basename(match),
-                path: fwd(relative(root, fp)),
+                path: reportRelative(fp),
                 size: s.size,
                 modified: s.mtime.toISOString(),
               });
@@ -193,7 +244,7 @@ export async function handleStudioApi(req, url, root) {
         const s = await stat(fp);
         files.push({
           name: entry.name,
-          path: fwd(relative(root, fp)),
+          path: reportRelative(fp),
           type: entry.isDirectory() ? "directory" : "file",
           size: s.size,
           modified: s.mtime.toISOString(),
@@ -211,7 +262,7 @@ export async function handleStudioApi(req, url, root) {
     const scanRoot = dir ? resolve(root, dir) : root;
     if (dir) {
       try {
-        assertUnderRoot(scanRoot, root);
+        assertAccessible(scanRoot, root, activeProjectRoot);
       } catch (/** @type {any} */ e) {
         return Response.json({ error: e.message }, { status: 400 });
       }
@@ -467,7 +518,7 @@ export async function handleStudioApi(req, url, root) {
     if (!fp) return new Response("Missing path", { status: 400 });
     const abs = resolve(root, fp);
     try {
-      assertUnderRoot(abs, root);
+      assertAccessible(abs, root, activeProjectRoot);
     } catch (/** @type {any} */ e) {
       return new Response(e.message, { status: 400 });
     }
@@ -486,7 +537,7 @@ export async function handleStudioApi(req, url, root) {
     if (!fp) return new Response("Missing path", { status: 400 });
     const abs = resolve(root, fp);
     try {
-      assertUnderRoot(abs, root);
+      assertAccessible(abs, root, activeProjectRoot);
     } catch (/** @type {any} */ e) {
       return new Response(e.message, { status: 400 });
     }
@@ -506,7 +557,7 @@ export async function handleStudioApi(req, url, root) {
     if (!fp) return new Response("Missing path", { status: 400 });
     const abs = resolve(root, fp);
     try {
-      assertUnderRoot(abs, root);
+      assertAccessible(abs, root, activeProjectRoot);
     } catch (/** @type {any} */ e) {
       return new Response(e.message, { status: 400 });
     }
@@ -533,8 +584,8 @@ export async function handleStudioApi(req, url, root) {
     const absFrom = resolve(root, from);
     const absTo = resolve(root, to);
     try {
-      assertUnderRoot(absFrom, root);
-      assertUnderRoot(absTo, root);
+      assertAccessible(absFrom, root, activeProjectRoot);
+      assertAccessible(absTo, root, activeProjectRoot);
     } catch (/** @type {any} */ e) {
       return new Response(e.message, { status: 400 });
     }

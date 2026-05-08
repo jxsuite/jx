@@ -13,7 +13,7 @@
  *   proxying, and studio filesystem integration as a single createDevServer() call.
  */
 
-import { resolve, join } from "node:path";
+import { resolve, join, isAbsolute } from "node:path";
 import { buildAll } from "./build.js";
 import { createWatcher, injectSSE } from "./watch.js";
 import { handleResolve, handleServerFunction } from "./resolve.js";
@@ -205,7 +205,7 @@ export async function createDevServer(options) {
         const codeRes = await handleCodeApi(req, url);
         if (codeRes) return codeRes;
 
-        const res = await handleStudioApi(req, url, absRoot);
+        const res = await handleStudioApi(req, url, absRoot, activeProjectRoot);
         if (res) return res;
       }
 
@@ -220,12 +220,14 @@ export async function createDevServer(options) {
       if (!(await file.exists())) {
         // Try resolving relative to active studio project root
         if (activeProjectRoot) {
-          const projectFile = Bun.file(resolve(absRoot, activeProjectRoot, "." + path));
+          const projectBase =
+            isAbsolute(activeProjectRoot) ? activeProjectRoot : resolve(absRoot, activeProjectRoot);
+          const projectFile = Bun.file(resolve(projectBase, "." + path));
           if (await projectFile.exists()) {
             return new Response(projectFile);
           }
           // Mirror production: public/ contents are served at root
-          const publicFile = Bun.file(resolve(absRoot, activeProjectRoot, "public", "." + path));
+          const publicFile = Bun.file(resolve(projectBase, "public", "." + path));
           if (await publicFile.exists()) {
             return new Response(publicFile);
           }

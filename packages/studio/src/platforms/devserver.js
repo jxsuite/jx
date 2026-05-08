@@ -106,10 +106,17 @@ export function createDevServerPlatform() {
       );
 
       if (!match) {
-        throw new Error("Selected project is not under the dev server root");
+        // Project is outside dev server root — ask the server to find it by directory name
+        const findRes = await fetch(
+          `/__studio/find-project?name=${encodeURIComponent(dirHandle.name)}`,
+        );
+        if (!findRes.ok) throw new Error("Could not locate project on disk");
+        const found = await findRes.json();
+        if (!found.path) throw new Error(`Could not find project directory "${dirHandle.name}"`);
+        _projectRoot = found.path;
+      } else {
+        _projectRoot = match.path;
       }
-
-      _projectRoot = match.path;
 
       // Notify server of active project for static file resolution
       await this.activate();
@@ -117,8 +124,8 @@ export function createDevServerPlatform() {
       return {
         config,
         handle: {
-          root: match.path,
-          name: config.name || match.path.split("/").pop(),
+          root: _projectRoot,
+          name: config.name || _projectRoot.split("/").pop(),
           projectConfig: config,
         },
       };
