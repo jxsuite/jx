@@ -192,17 +192,28 @@ describe("MarkdownFile with directives", () => {
     expect(result.$body).toContain("<info-box");
   });
 
-  test("$body preserves directive attributes", () => {
-    expect(result.$body).toContain('type="warning"');
+  test("$body preserves directive attributes as data-jx-props", () => {
+    expect(result.$body).toContain("data-jx-props=");
+    // The JSON is HTML-entity-encoded; decode and parse
+    const match = result.$body.match(/data-jx-props="([^"]*)"/);
+    expect(match).toBeTruthy();
+    const decoded = match[1].replace(/&#x22;/g, '"').replace(/&quot;/g, '"');
+    const props = JSON.parse(decoded);
+    expect(props.type).toBe("warning");
   });
 
   test("$body contains custom element from leaf directive", () => {
     expect(result.$body).toContain("<user-card");
   });
 
-  test("$body contains leaf directive attributes", () => {
-    expect(result.$body).toContain('firstName="Jane"');
-    expect(result.$body).toContain('lastName="Smith"');
+  test("$body contains leaf directive attributes as data-jx-props", () => {
+    // Find user-card's data-jx-props
+    const match = result.$body.match(/<user-card[^>]*data-jx-props="([^"]*)"/);
+    expect(match).toBeTruthy();
+    const decoded = match[1].replace(/&#x22;/g, '"').replace(/&quot;/g, '"');
+    const props = JSON.parse(decoded);
+    expect(props.firstName).toBe("Jane");
+    expect(props.lastName).toBe("Smith");
   });
 
   test("$body contains text directive with jx- prefix for hyphen-less names", () => {
@@ -363,31 +374,44 @@ describe("MarkdownDirective", () => {
     return String(result);
   }
 
+  /** Extract decoded data-jx-props from HTML for a given tag
+   * @param {string} html @param {string} tag */
+  function extractProps(html, tag) {
+    const re = new RegExp(`<${tag}[^>]*data-jx-props="([^"]*)"`, "i");
+    const match = html.match(re);
+    if (!match) return null;
+    return JSON.parse(match[1].replace(/&#x22;/g, '"').replace(/&quot;/g, '"'));
+  }
+
   test("leaf directive → custom element tag", async () => {
     const html = await processWithDirectives('::user-card{firstName="Jane"}');
     expect(html).toContain("<user-card");
-    expect(html).toContain('firstName="Jane"');
+    const props = extractProps(html, "user-card");
+    expect(props.firstName).toBe("Jane");
   });
 
   test("container directive → custom element with content", async () => {
     const md = ':::my-callout{type="info"}\nSome **bold** content\n:::';
     const html = await processWithDirectives(md);
     expect(html).toContain("<my-callout");
-    expect(html).toContain('type="info"');
+    const props = extractProps(html, "my-callout");
+    expect(props.type).toBe("info");
     expect(html).toContain("<strong>bold</strong>");
   });
 
   test("text directive → inline custom element", async () => {
     const html = await processWithDirectives('See :my-tooltip[the docs]{href="/docs"} here.');
     expect(html).toContain("<my-tooltip");
-    expect(html).toContain('href="/docs"');
+    const props = extractProps(html, "my-tooltip");
+    expect(props.href).toBe("/docs");
     expect(html).toContain("the docs");
   });
 
   test("directive without hyphen gets jx- prefix", async () => {
     const html = await processWithDirectives('::card{title="Hello"}');
     expect(html).toContain("<jx-card");
-    expect(html).toContain('title="Hello"');
+    const props = extractProps(html, "jx-card");
+    expect(props.title).toBe("Hello");
   });
 
   test("directive with hyphen keeps name as-is", async () => {

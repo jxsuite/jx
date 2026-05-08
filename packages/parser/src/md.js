@@ -355,7 +355,11 @@ export function MarkdownDirective(options = {}) {
         // Set hast properties for remarkRehype
         const data = node.data || (node.data = {});
         data.hName = tagName;
-        data.hProperties = { ...node.attributes };
+        const attrs = node.attributes;
+        data.hProperties =
+          attrs && Object.keys(attrs).length > 0
+            ? { "data-jx-props": JSON.stringify(attrs) }
+            : {};
 
         // For text directives, preserve label as children
         if (node.type === "textDirective" && node.children?.length > 0) {

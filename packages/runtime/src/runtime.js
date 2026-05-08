@@ -1557,6 +1557,18 @@ export async function defineElement(source, base) {
     async connectedCallback() {
       const state = await buildScope(def, {}, base);
 
+      // Read properties from directive encoding (markdown → data-jx-props)
+      const propsAttr = this.getAttribute("data-jx-props");
+      if (propsAttr) {
+        try {
+          const props = JSON.parse(propsAttr);
+          for (const [key, val] of Object.entries(props)) {
+            if (key in (def.state ?? {})) state[key] = val;
+          }
+        } catch {}
+        this.removeAttribute("data-jx-props");
+      }
+
       // Merge $props set as JS properties by parent before connection
       for (const key of Object.keys(def.state ?? {})) {
         if (key in this && /** @type {any} */ (this)[key] !== undefined) {
