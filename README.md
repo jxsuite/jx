@@ -2,8 +2,6 @@
   <img src="branding/jx.svg" alt="Jx" width="80" height="80">
 </p>
 
-<h1 align="center">Jx</h1>
-
 <p align="center">
   Build reactive web applications with plain JSON.<br>
   A declarative component model, reactive runtime, visual builder, and static compiler — all from <code>.json</code> files.
