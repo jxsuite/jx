@@ -2,6 +2,7 @@
 .direnv
 .DS_Store
 .env
+.npmrc
 *.local
 dist/
 node_modules/
