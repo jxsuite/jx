@@ -28,7 +28,7 @@
     "prepare": "husky",
     "all-the-things": "bun run build && bun run test && bun run lint && bun run typecheck",
     "release": "release-it",
-    "release:publish": "bun publish --cwd packages/compiler --access public && bun publish --cwd packages/parser --access public && bun publish --cwd packages/runtime --access public && bun publish --cwd packages/schema --access public && bun publish --cwd packages/server --access public && bun publish --cwd packages/studio --access public",
+    "release:publish": "npm publish packages/compiler --access public && npm publish packages/parser --access public && npm publish packages/runtime --access public && npm publish packages/schema --access public && npm publish packages/server --access public && npm publish packages/studio --access public",
     "test": "bun test",
     "test:coverage": "bun test --coverage",
     "typecheck": "tsc",
@@ -67,8 +67,7 @@
       "draft": true
     },
     "hooks": {
-      "before:init": "bun test && bun run lint",
-      "after:bump": "bun run build && bun run release:publish"
+      "before:init": "bun test && bun run lint"
     },
     "npm": {
       "publish": false
