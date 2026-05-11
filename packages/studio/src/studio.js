@@ -2387,13 +2387,30 @@ function renderBlockActionBar() {
           : nothing}
         ${S.selection.length >= 2 ? renderMoveArrows() : nothing}
         ${S.selection.length >= 2 && node.tagName
-          ? html`<sp-action-button
-              size="xs"
-              quiet
-              title="Convert to Component"
-              @click=${() => convertToComponent(S)}
-              ><sp-icon-box slot="icon" size="xs"></sp-icon-box
-            ></sp-action-button>`
+          ? (() => {
+              const isComp =
+                node.tagName.includes("-") &&
+                componentRegistry.some((/** @type {any} */ c) => c.tagName === node.tagName);
+              if (isComp) {
+                const comp = componentRegistry.find(
+                  (/** @type {any} */ c) => c.tagName === node.tagName,
+                );
+                return html`<sp-action-button
+                  size="xs"
+                  quiet
+                  title="Edit Component"
+                  @click=${() => navigateToComponent(comp.path)}
+                  ><sp-icon-edit slot="icon" size="xs"></sp-icon-edit
+                ></sp-action-button>`;
+              }
+              return html`<sp-action-button
+                size="xs"
+                quiet
+                title="Convert to Component"
+                @click=${() => convertToComponent(S)}
+                ><sp-icon-box slot="icon" size="xs"></sp-icon-box
+              ></sp-action-button>`;
+            })()
           : nothing}
         ${showFormat
           ? html`
@@ -2732,7 +2749,7 @@ function registerPanelEvents(panel) {
           let path = elToPath.get(el);
           if (path) {
             path = bubbleInlinePath(S.document, path);
-            showContextMenu(e, path, S);
+            showContextMenu(e, path, S, { onEditComponent: navigateToComponent });
             return;
           }
         }
@@ -3427,7 +3444,10 @@ function renderLayersTemplate() {
         data-dnd-depth=${isElement ? depth : nothing}
         data-dnd-void=${isElement && isVoidEl ? "" : nothing}
         @click=${() => update(selectNode(S, path))}
-        @contextmenu=${isElement ? (/** @type {any} */ e) => showContextMenu(e, path, S) : nothing}
+        @contextmenu=${isElement
+          ? (/** @type {any} */ e) =>
+              showContextMenu(e, path, S, { onEditComponent: navigateToComponent })
+          : nothing}
       >
         <span class="layer-indent" style="width:${depth * 16}px"></span>
         <span class="layer-toggle"

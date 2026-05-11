@@ -12,6 +12,7 @@ import {
 } from "../store.js";
 import { statusMessage } from "../panels/statusbar.js";
 import { convertToComponent } from "./convert-to-component.js";
+import { componentRegistry } from "../files/components.js";
 
 /** @type {any} */
 let clipboard = null;
@@ -78,8 +79,9 @@ export function dismissContextMenu() {
  * @param {any} e
  * @param {any} path
  * @param {any} S
+ * @param {{ onEditComponent?: (path: string) => void }} [opts]
  */
-export function showContextMenu(e, path, S) {
+export function showContextMenu(e, path, S, opts = {}) {
   e.preventDefault();
   ctxMenu.removeAttribute("open");
 
@@ -97,10 +99,21 @@ export function showContextMenu(e, path, S) {
     items.push({ label: "Cut", action: () => cutNode(S) });
     items.push({ label: "Duplicate", action: () => update(duplicateNode(S, S.selection)) });
     if (node.tagName) {
-      items.push({
-        label: "Convert to Component",
-        action: () => convertToComponent(S),
-      });
+      const isComponent =
+        node.tagName.includes("-") &&
+        componentRegistry.some((/** @type {any} */ c) => c.tagName === node.tagName);
+      if (isComponent && opts.onEditComponent) {
+        const comp = componentRegistry.find((/** @type {any} */ c) => c.tagName === node.tagName);
+        items.push({
+          label: "Edit Component",
+          action: () => opts.onEditComponent?.(comp.path),
+        });
+      } else if (!isComponent) {
+        items.push({
+          label: "Convert to Component",
+          action: () => convertToComponent(S),
+        });
+      }
     }
     items.push({ label: "—" }); // separator
     items.push({ label: "Delete", action: () => update(removeNode(S, S.selection)), danger: true });
