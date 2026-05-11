@@ -21,13 +21,13 @@ jobs:
       - run: bun install
       - run: bun run build
       - run: npm publish --access public --provenance
-        working-directory: packages/compiler
-      - run: npm publish --access public --provenance
-        working-directory: packages/parser
+        working-directory: packages/schema
       - run: npm publish --access public --provenance
         working-directory: packages/runtime
       - run: npm publish --access public --provenance
-        working-directory: packages/schema
+        working-directory: packages/parser
+      - run: npm publish --access public --provenance
+        working-directory: packages/compiler
       - run: npm publish --access public --provenance
         working-directory: packages/server
       - run: npm publish --access public --provenance
