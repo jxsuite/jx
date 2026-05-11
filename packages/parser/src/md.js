@@ -312,6 +312,20 @@ export class MarkdownCollection {
   }
 }
 
+// ─── Jx Markdown Transpiler (re-exported from browser-safe module) ──────────
+
+export {
+  expandDotPaths,
+  collapseDotPaths,
+  expandStylePaths,
+  collapseStylePaths,
+  applyStyleKeyMapping,
+  isJxMarkdown,
+  transpileJxMarkdown,
+  jxKey,
+  mdKey,
+} from "./transpile.js";
+
 // ─── MarkdownDirective ────────────────────────────────────────────────────────
 
 /**

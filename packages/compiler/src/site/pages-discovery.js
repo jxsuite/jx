@@ -66,8 +66,9 @@ function walkDir(dir, pagesRoot, routes) {
       continue;
     }
 
-    // Only process .json files
-    if (extname(entry.name) !== ".json") continue;
+    // Only process .json and .md files
+    const ext = extname(entry.name);
+    if (ext !== ".json" && ext !== ".md") continue;
 
     // Skip underscore-prefixed files (local components, not routes)
     if (entry.name.startsWith("_")) continue;
@@ -86,8 +87,8 @@ function walkDir(dir, pagesRoot, routes) {
  * @returns {Route}
  */
 function fileToRoute(relativePath, absolutePath) {
-  // Remove .json extension
-  let urlPath = relativePath.replace(/\.json$/, "");
+  // Remove .json or .md extension
+  let urlPath = relativePath.replace(/\.(json|md)$/, "");
 
   // Normalize path separators
   urlPath = urlPath.split("\\").join("/");
@@ -124,13 +125,24 @@ function fileToRoute(relativePath, absolutePath) {
     },
   );
 
-  // Peek at the page JSON to extract $layout if present
+  // Peek at the page to extract $layout if present
   /** @type {string | null} */
   let $layout = null;
   try {
-    const raw = JSON.parse(readFileSync(absolutePath, "utf8"));
-    if (typeof raw.$layout === "string") {
-      $layout = raw.$layout;
+    const source = readFileSync(absolutePath, "utf8");
+    if (absolutePath.endsWith(".md")) {
+      // Parse YAML frontmatter for $layout
+      const fmMatch = source.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+      if (fmMatch) {
+        // Quick regex extraction — avoids full YAML dependency
+        const layoutMatch = fmMatch[1].match(/^\$layout:\s*(.+)/m);
+        if (layoutMatch) $layout = layoutMatch[1].trim().replace(/^['"]|['"]$/g, "");
+      }
+    } else {
+      const raw = JSON.parse(source);
+      if (typeof raw.$layout === "string") {
+        $layout = raw.$layout;
+      }
     }
   } catch {
     // Skip unreadable files — will error during compilation

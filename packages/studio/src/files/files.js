@@ -8,6 +8,7 @@
 import { html, render as litRender, nothing } from "lit-html";
 import { unified } from "unified";
 import remarkStringify from "remark-stringify";
+import remarkDirective from "remark-directive";
 import { stringify as stringifyYaml } from "yaml";
 import { jxToMd } from "../markdown/md-convert.js";
 import { createState, projectState, setProjectState } from "../store.js";
@@ -540,6 +541,7 @@ export async function openFileFromTree(ctx, path) {
       if (isContent) {
         const mdast = jxToMd(ctx.S.document);
         const md = unified()
+          .use(remarkDirective)
           .use(remarkStringify, { bullet: "-", emphasis: "*", strong: "*" })
           .stringify(mdast);
         const fm = ctx.S.content?.frontmatter;
@@ -560,7 +562,7 @@ export async function openFileFromTree(ctx, path) {
     if (!content) return;
 
     if (path.endsWith(".md")) {
-      ctx.loadMarkdown(content, null);
+      await ctx.loadMarkdown(content, null);
       ctx.S.documentPath = path;
     } else {
       const doc = JSON.parse(content);

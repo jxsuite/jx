@@ -295,35 +295,35 @@ describe("getEffectiveElements", () => {
 // ─── loadMarkdown produces correct state ────────────────────────────────────
 
 describe("loadMarkdown state", () => {
-  test("sets mode to content", () => {
-    const state = loadMarkdown("# Hello\n\nSome text", null);
+  test("sets mode to content", async () => {
+    const state = await loadMarkdown("# Hello\n\nSome text", null);
     expect(state.mode).toBe("content");
   });
 
-  test("parses frontmatter", () => {
+  test("parses frontmatter", async () => {
     const md = '---\ntitle: "My Page"\n---\n\n# Hello';
-    const state = loadMarkdown(md, null);
+    const state = await loadMarkdown(md, null);
     expect(state.content.frontmatter.title).toBe("My Page");
   });
 
-  test("converts directives to custom element nodes", () => {
+  test("converts directives to custom element nodes", async () => {
     const md = "::hero\n\n::cta-banner\n";
-    const state = loadMarkdown(md, null);
+    const state = await loadMarkdown(md, null);
     const doc = state.document;
-    expect(doc.tagName).toBe("div");
+    expect(doc.tagName).toBeUndefined();
     const tags = doc.children.map((/** @type {any} */ c) => c.tagName);
     expect(tags).toContain("hero");
     expect(tags).toContain("cta-banner");
   });
 
-  test("document has no $elements (components must be auto-discovered)", () => {
+  test("document has no $elements (components must be auto-discovered)", async () => {
     const md = "::hero\n\n::cta-banner\n";
-    const state = loadMarkdown(md, null);
+    const state = await loadMarkdown(md, null);
     expect(state.document.$elements).toBeUndefined();
   });
 
-  test("documentPath is null (must be set by caller)", () => {
-    const state = loadMarkdown("# Hello", null);
+  test("documentPath is null (must be set by caller)", async () => {
+    const state = await loadMarkdown("# Hello", null);
     expect(state.documentPath).toBeNull();
   });
 });

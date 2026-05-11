@@ -57,8 +57,18 @@ export async function compile(sourcePath, opts = {}) {
     projectStyle = null,
   } = opts;
 
-  const raw =
-    typeof sourcePath === "string" ? JSON.parse(readFileSync(sourcePath, "utf8")) : sourcePath;
+  let raw;
+  if (typeof sourcePath === "string") {
+    const source = readFileSync(sourcePath, "utf8");
+    if (sourcePath.endsWith(".md")) {
+      const { transpileJxMarkdown } = await import("@jxsuite/parser/transpile");
+      raw = transpileJxMarkdown(source);
+    } else {
+      raw = JSON.parse(source);
+    }
+  } else {
+    raw = sourcePath;
+  }
 
   // Route 0: .class.json schema-defined class → JS class module
   if (raw.$prototype === "Class") {

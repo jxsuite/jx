@@ -261,7 +261,7 @@ export async function handleStudioApi(req, url, root, activeProjectRoot = null) 
       }
     }
     try {
-      const glob = new Bun.Glob("**/*.json");
+      const glob = new Bun.Glob("**/*.{json,md}");
       const components = [];
       for await (const match of glob.scan({ cwd: scanRoot, dot: false })) {
         if (
@@ -272,7 +272,20 @@ export async function handleStudioApi(req, url, root, activeProjectRoot = null) 
           continue;
         const fp = resolve(scanRoot, match);
         try {
-          const content = JSON.parse(await readFile(fp, "utf8"));
+          /** @type {any} */
+          let content;
+          if (match.endsWith(".md")) {
+            // Parse YAML frontmatter to check for Jx component
+            const source = await readFile(fp, "utf8");
+            const fmMatch = source.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+            if (!fmMatch) continue;
+            // Quick check: must have tagName with hyphen
+            if (!/^tagName:\s*.+-.+/m.test(fmMatch[1])) continue;
+            const { transpileJxMarkdown } = await import("@jxsuite/parser/transpile");
+            content = transpileJxMarkdown(source);
+          } else {
+            content = JSON.parse(await readFile(fp, "utf8"));
+          }
           if (content.tagName && content.tagName.includes("-")) {
             components.push({
               tagName: content.tagName,

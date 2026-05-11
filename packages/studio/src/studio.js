@@ -3283,6 +3283,9 @@ function renderLayersTemplate() {
     }
     if (hidden) continue;
 
+    // In content mode, skip the document root row (it's not a real element)
+    if (S.mode === "content" && path.length === 0) continue;
+
     // Text node children: display-only row with truncated preview
     if (nodeType === "text") {
       const textPreview = String(node).length > 40 ? String(node).slice(0, 40) + "…" : String(node);
@@ -3353,7 +3356,7 @@ function renderLayersTemplate() {
 
     // Compute move-button availability for element nodes
     const isElement = nodeType === "element";
-    const isRoot = path.length < 2;
+    const isRoot = S.mode === "content" ? path.length === 0 : path.length < 2;
     const idx = isElement ? /** @type {number} */ (childIndex(path)) : 0;
     const parentPath = isElement && !isRoot ? /** @type {any} */ (parentElementPath(path)) : null;
     const parentNode = parentPath ? getNodeAtPath(S.document, parentPath) : null;
@@ -7826,8 +7829,8 @@ function fileOpsCtx() {
 function openFile() {
   return _openFile(fileOpsCtx());
 }
-function loadMarkdown(/** @type {any} */ source, /** @type {any} */ fileHandle) {
-  const ns = _loadMarkdown(source, fileHandle);
+async function loadMarkdown(/** @type {any} */ source, /** @type {any} */ fileHandle) {
+  const ns = await _loadMarkdown(source, fileHandle);
   S = ns;
 }
 function saveFile() {
