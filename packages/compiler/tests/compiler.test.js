@@ -414,12 +414,13 @@ describe("compile — CSS extraction", () => {
     expect(html).toContain("#inp[disabled]");
   });
 
-  test("node with no id or className uses tagName as selector", async () => {
+  test("node with no id or className gets auto-scoped class", async () => {
     const { html } = await compile({
       tagName: "nav",
       style: { ":first-child": { fontWeight: "bold" } },
     });
-    expect(html).toContain("nav:first-child");
+    expect(html).toContain('class="jx-0"');
+    expect(html).toContain(".jx-0:first-child");
   });
 
   test("no nested styles → no <style> block emitted", async () => {
