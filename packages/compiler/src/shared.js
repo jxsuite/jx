@@ -537,7 +537,8 @@ export function compileStyles(doc, mediaQueries = {}, projectStyle = null) {
     }
   }
 
-  collectStyles(doc, rules, mediaQueries, "");
+  const counter = { n: 0 };
+  collectStyles(doc, rules, mediaQueries, "", counter);
   if (rules.length === 0) return "";
   return `<style>\n${rules.join("\n")}\n</style>`;
 }
@@ -547,9 +548,27 @@ export function compileStyles(doc, mediaQueries = {}, projectStyle = null) {
  * @param {string[]} rules
  * @param {Record<string, any>} mediaQueries
  * @param {string} [_parentSel]
+ * @param {{ n: number }} [counter]
  */
-export function collectStyles(def, rules, mediaQueries, _parentSel = "") {
+export function collectStyles(def, rules, mediaQueries, _parentSel = "", counter = { n: 0 }) {
   if (!def || typeof def !== "object") return;
+
+  if (def.style) {
+    // Check if this element needs CSS rules (media queries, pseudo-classes, etc.)
+    const needsCSS = Object.keys(def.style).some(
+      (k) =>
+        k.startsWith("@") ||
+        k.startsWith(":") ||
+        k.startsWith(".") ||
+        k.startsWith("&") ||
+        k.startsWith("["),
+    );
+
+    // Auto-scope elements that need CSS rules but lack a unique selector
+    if (needsCSS && !def.id && !def.className) {
+      def.className = `jx-${counter.n++}`;
+    }
+  }
 
   const selector = def.id
     ? `#${def.id}`
@@ -625,7 +644,7 @@ export function collectStyles(def, rules, mediaQueries, _parentSel = "") {
 
   if (Array.isArray(def.children)) {
     def.children.forEach((/** @type {any} */ c) => {
-      collectStyles(c, rules, mediaQueries, selector);
+      collectStyles(c, rules, mediaQueries, selector, counter);
     });
   }
 }
