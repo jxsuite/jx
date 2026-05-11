@@ -1,0 +1,62 @@
+{
+  "tagName": "site-footer",
+  "style": {
+    "display": "block",
+    "borderTop": "1px solid var(--color-border)",
+    "color": "var(--color-text-muted)",
+    "padding": "clamp(2rem, 4vw, 3rem) clamp(1rem, 3vw, 2rem)",
+    "fontSize": "0.8125rem",
+    "lineHeight": "1.8"
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "style": {
+        "maxWidth": "var(--max-width)",
+        "margin": "0 auto",
+        "display": "flex",
+        "justifyContent": "space-between",
+        "alignItems": "center",
+        "flexWrap": "wrap",
+        "gap": "1rem"
+      },
+      "children": [
+        {
+          "tagName": "p",
+          "style": { "margin": "0" },
+          "children": ["Built with Jx Suite. MIT License."]
+        },
+        {
+          "tagName": "div",
+          "style": { "display": "flex", "gap": "1.5rem" },
+          "children": [
+            {
+              "tagName": "a",
+              "attributes": { "href": "/docs/getting-started" },
+              "style": {
+                "color": "var(--color-text-muted)",
+                "textDecoration": "none",
+                "transition": "color 0.15s"
+              },
+              "children": ["Docs"]
+            },
+            {
+              "tagName": "a",
+              "attributes": {
+                "href": "https://github.com/jxsuite/jx",
+                "target": "_blank",
+                "rel": "noopener noreferrer"
+              },
+              "style": {
+                "color": "var(--color-text-muted)",
+                "textDecoration": "none",
+                "transition": "color 0.15s"
+              },
+              "children": ["GitHub"]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

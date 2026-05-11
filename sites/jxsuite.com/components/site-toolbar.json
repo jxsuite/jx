@@ -1,0 +1,104 @@
+{
+  "tagName": "site-toolbar",
+  "style": {
+    "display": "block",
+    "position": "sticky",
+    "top": "0",
+    "zIndex": "100",
+    "backgroundColor": "rgba(10, 10, 10, 0.8)",
+    "backdropFilter": "blur(12px)",
+    "borderBottom": "1px solid var(--color-border)",
+    "padding": "0 clamp(1rem, 3vw, 2rem)"
+  },
+  "children": [
+    {
+      "tagName": "nav",
+      "style": {
+        "maxWidth": "var(--max-width)",
+        "margin": "0 auto",
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "space-between",
+        "height": "3.5rem"
+      },
+      "children": [
+        {
+          "tagName": "a",
+          "attributes": { "href": "/" },
+          "style": {
+            "color": "var(--color-text-primary)",
+            "textDecoration": "none",
+            "fontWeight": "700",
+            "fontSize": "1.0625rem",
+            "letterSpacing": "-0.02em",
+            "display": "flex",
+            "alignItems": "center",
+            "gap": "0.5rem"
+          },
+          "children": [
+            {
+              "tagName": "img",
+              "attributes": {
+                "src": "/favicon.svg",
+                "alt": "Jx Suite",
+                "width": "20",
+                "height": "20"
+              }
+            },
+            "Suite"
+          ]
+        },
+        {
+          "tagName": "div",
+          "style": {
+            "display": "flex",
+            "alignItems": "center",
+            "gap": "clamp(1.25rem, 3vw, 2rem)"
+          },
+          "children": [
+            {
+              "tagName": "a",
+              "attributes": { "href": "/docs/getting-started" },
+              "style": {
+                "color": "var(--color-text-secondary)",
+                "textDecoration": "none",
+                "fontSize": "0.875rem",
+                "fontWeight": "500",
+                "transition": "color 0.15s"
+              },
+              "children": ["Docs"]
+            },
+            {
+              "tagName": "a",
+              "attributes": { "href": "/docs/spec" },
+              "style": {
+                "color": "var(--color-text-secondary)",
+                "textDecoration": "none",
+                "fontSize": "0.875rem",
+                "fontWeight": "500",
+                "transition": "color 0.15s"
+              },
+              "children": ["Spec"]
+            },
+            {
+              "tagName": "a",
+              "attributes": {
+                "href": "https://github.com/jxsuite/jx",
+                "target": "_blank",
+                "rel": "noopener noreferrer"
+              },
+              "style": {
+                "color": "var(--color-text-secondary)",
+                "textDecoration": "none",
+                "fontSize": "0.875rem",
+                "fontWeight": "500",
+                "transition": "color 0.15s"
+              },
+              "children": ["GitHub"]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
