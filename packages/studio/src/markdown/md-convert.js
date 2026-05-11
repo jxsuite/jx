@@ -4,10 +4,15 @@
  * MdToJx(mdast) → Jx element tree (for loading into the canvas) jxToMd(jx) → mdast (for saving back
  * to markdown)
  *
+ * JxDocToMd(doc) → Jx Markdown string (for saving Jx component documents back to .md)
+ *
  * Both are pure tree transformations. The remark ecosystem handles all actual parsing and
  * serialization.
  */
 
+import { unified } from "unified";
+import remarkStringify from "remark-stringify";
+import remarkDirective from "remark-directive";
 import { MD_ALL } from "./md-allowlist.js";
 
 // ─── mdast → Jx ──────────────────────────────────────────────────────────
@@ -48,8 +53,6 @@ const MDAST_TAG_MAP = {
 export function mdToJx(mdast) {
   if (mdast.type === "root") {
     return {
-      tagName: "div",
-      $id: "content",
       children: (mdast.children ?? [])
         .filter((/** @type {any} */ n) => n.type !== "yaml" && n.type !== "toml")
         .map(convertMdastNode)
@@ -221,6 +224,23 @@ function convertDirective(node) {
  *
  * @type {Record<string, string>}
  */
+/** Tags whose content model is inline (phrasing content). */
+const INLINE_CONTENT_TAGS = new Set([
+  "p",
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "em",
+  "strong",
+  "del",
+  "a",
+  "td",
+  "th",
+]);
+
 const TAG_MDAST_MAP = {
   h1: "heading",
   h2: "heading",
@@ -264,6 +284,28 @@ export function jxToMd(jx) {
 }
 
 /**
+ * Check if a Jx element has extra properties beyond the standard mdast-compatible ones. Elements
+ * with style, event handlers, state bindings, etc. need directive syntax.
+ *
+ * @param {any} el
+ * @returns {boolean}
+ */
+function hasJxProps(el) {
+  for (const key of Object.keys(el)) {
+    if (
+      key === "tagName" ||
+      key === "children" ||
+      key === "textContent" ||
+      key === "innerHTML" ||
+      key === "attributes"
+    )
+      continue;
+    return true;
+  }
+  return false;
+}
+
+/**
  * Convert a single Jx element to an mdast node.
  *
  * @param {any} el - Jx element
@@ -271,16 +313,20 @@ export function jxToMd(jx) {
  * @returns {any} Mdast node
  */
 function convertJxNode(el, isBlock) {
+  // Bare string/number text nodes → mdast text nodes
+  if (typeof el === "string" || typeof el === "number") {
+    return { type: "text", value: String(el) };
+  }
   if (!el || typeof el !== "object") return null;
 
   const tag = el.tagName ?? "div";
 
-  // If not in the markdown allowlist, convert to directive
-  if (!MD_ALL.has(tag)) {
+  // If not in the markdown allowlist or has Jx-specific props, convert to directive
+  if (!MD_ALL.has(tag) || hasJxProps(el)) {
     return convertToDirective(el, isBlock);
   }
 
-  const mdastType = TAG_MDAST_MAP[tag];
+  const mdastType = /** @type {Record<string, string>} */ (TAG_MDAST_MAP)[tag];
   if (!mdastType) return null;
 
   switch (mdastType) {
@@ -443,7 +489,42 @@ function blockChildren(el) {
 }
 
 /**
- * Convert a non-markdown-native Jx element to a directive node.
+ * Collect all directive attributes from a Jx element. Merges Jx-specific properties (style, event
+ * handlers, etc.) and HTML attributes into a flat dot-path attribute map suitable for
+ * remark-directive.
+ *
+ * @param {any} el
+ * @returns {Record<string, string>}
+ */
+function collectDirectiveAttrs(el) {
+  /** @type {Record<string, any>} */
+  const propsObj = {};
+
+  for (const [key, value] of Object.entries(el)) {
+    if (
+      key === "tagName" ||
+      key === "children" ||
+      key === "textContent" ||
+      key === "innerHTML" ||
+      key === "attributes"
+    )
+      continue;
+    propsObj[key] = value;
+  }
+
+  // Merge HTML attributes
+  if (el.attributes) {
+    for (const [key, value] of Object.entries(el.attributes)) {
+      propsObj[key] = value;
+    }
+  }
+
+  return collapsePropsToAttrMap(propsObj);
+}
+
+/**
+ * Convert a Jx element to a directive node, preserving all Jx-specific properties as collapsed
+ * dot-path directive attributes.
  *
  * @param {any} el
  * @param {boolean} isBlock
@@ -451,7 +532,7 @@ function blockChildren(el) {
  */
 function convertToDirective(el, isBlock) {
   const tag = el.tagName ?? "div";
-  const attrs = el.attributes ? { ...el.attributes } : {};
+  const attrs = collectDirectiveAttrs(el);
 
   if (!isBlock) {
     // Inline → textDirective
@@ -479,13 +560,230 @@ function convertToDirective(el, isBlock) {
   }
 
   // Block with children → containerDirective
+  /** @type {any[]} */
+  let directiveChildren;
+  if (el.textContent != null) {
+    directiveChildren = [
+      { type: "paragraph", children: [{ type: "text", value: String(el.textContent) }] },
+    ];
+  } else if (INLINE_CONTENT_TAGS.has(tag)) {
+    // Tags with inline content model: wrap all children in a single paragraph
+    // so remark serializes them as one continuous inline flow
+    const inlineNodes = (el.children ?? [])
+      .map((/** @type {any} */ c) => convertJxNode(c, false))
+      .filter(Boolean);
+    directiveChildren =
+      inlineNodes.length > 0 ? [{ type: "paragraph", children: inlineNodes }] : [];
+  } else {
+    directiveChildren = (el.children ?? [])
+      .map((/** @type {any} */ c) => convertJxNode(c, true))
+      .filter(Boolean);
+  }
+
   return {
     type: "containerDirective",
     name: tag,
     attributes: attrs,
-    children:
-      el.textContent != null
-        ? [{ type: "paragraph", children: [{ type: "text", value: String(el.textContent) }] }]
-        : (el.children ?? []).map((/** @type {any} */ c) => convertJxNode(c, true)).filter(Boolean),
+    children: directiveChildren,
   };
+}
+
+// ─── Jx Document → Jx Markdown ─────────────────────────────────────────────
+
+/** CSS pseudo-class names that need `:` stripped for markdown attributes. */
+const CSS_PSEUDO_NAMES = new Set([
+  "hover",
+  "focus",
+  "active",
+  "visited",
+  "disabled",
+  "checked",
+  "valid",
+  "invalid",
+  "required",
+  "empty",
+  "first-child",
+  "last-child",
+  "focus-within",
+  "focus-visible",
+  "placeholder",
+  "selection",
+  "before",
+  "after",
+]);
+
+/** Jx `$`-prefixed keys that become unprefixed in directive attributes. */
+const JX_DOLLAR_KEYS = new Set([
+  "$prototype",
+  "$ref",
+  "$component",
+  "$props",
+  "$switch",
+  "$elements",
+]);
+
+/**
+ * Convert a Jx JSON document back to Jx Markdown source string.
+ *
+ * Inverse of `transpileJxMarkdown()` from @jxsuite/parser/transpile. Emits YAML frontmatter from
+ * top-level props and uses remark-stringify with remark-directive for the body — standard markdown
+ * elements emit as native syntax, Jx-decorated elements emit as directives.
+ *
+ * @param {any} doc - Jx JSON document
+ * @returns {string} Jx Markdown source
+ */
+export function jxDocToMd(doc) {
+  const { stringify: stringifyYaml } = yamlImport();
+
+  /** @type {string[]} */
+  const lines = [];
+
+  // Emit YAML frontmatter
+  /** @type {Record<string, any>} */
+  const frontmatter = {};
+  for (const [key, value] of Object.entries(doc)) {
+    if (key === "children") continue;
+    frontmatter[key] = value;
+  }
+
+  if (Object.keys(frontmatter).length > 0) {
+    lines.push("---");
+    lines.push(stringifyYaml(frontmatter).trim());
+    lines.push("---");
+    lines.push("");
+  }
+
+  // Convert children to mdast and stringify with remark
+  if (Array.isArray(doc.children) && doc.children.length > 0) {
+    const mdastChildren = doc.children
+      .map((/** @type {any} */ child) => convertJxNode(child, true))
+      .filter(Boolean);
+
+    const mdast = /** @type {any} */ ({ type: "root", children: mdastChildren });
+    const md = unified()
+      .use(remarkDirective)
+      .use(remarkStringify, { bullet: "-", emphasis: "*", strong: "*" })
+      .stringify(mdast);
+
+    lines.push(md);
+  }
+
+  return (
+    lines
+      .join("\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim() + "\n"
+  );
+}
+
+/**
+ * Lazy import of yaml stringify — avoids importing at module load.
+ *
+ * @returns {{ stringify: (v: any) => string }}
+ */
+let _yaml = /** @type {any} */ (null);
+function yamlImport() {
+  if (!_yaml) {
+    // Dynamic require avoided; use the yaml package already available in studio
+    _yaml = { stringify: yamlStringifySimple };
+  }
+  return _yaml;
+}
+
+/**
+ * Simple YAML stringifier for frontmatter. Handles the subset of YAML needed for Jx frontmatter
+ * (scalars, arrays, nested objects).
+ *
+ * @param {any} value
+ * @param {number} indent
+ * @returns {string}
+ */
+function yamlStringifySimple(value, indent = 0) {
+  if (value === null || value === undefined) return "null";
+  if (typeof value === "boolean") return String(value);
+  if (typeof value === "number") return String(value);
+  if (typeof value === "string") {
+    // Quote if it contains special characters
+    if (/[:#[\]{}&*!|>'"%@`\n]/.test(value) || value === "" || value.trim() !== value) {
+      return JSON.stringify(value);
+    }
+    return value;
+  }
+
+  const prefix = "  ".repeat(indent);
+
+  if (Array.isArray(value)) {
+    if (value.length === 0) return "[]";
+    return value
+      .map((item) => {
+        const itemStr = yamlStringifySimple(item, indent + 1);
+        if (typeof item === "object" && item !== null && !Array.isArray(item)) {
+          // Object items: first key on same line as -, rest indented
+          const objLines = itemStr.split("\n");
+          return `${prefix}- ${objLines[0]}\n${objLines
+            .slice(1)
+            .map((l) => `${prefix}  ${l}`)
+            .join("\n")}`;
+        }
+        return `${prefix}- ${itemStr}`;
+      })
+      .join("\n");
+  }
+
+  if (typeof value === "object") {
+    const entries = Object.entries(value);
+    if (entries.length === 0) return "{}";
+    return entries
+      .map(([k, v]) => {
+        const valStr = yamlStringifySimple(v, indent + 1);
+        if (typeof v === "object" && v !== null) {
+          return `${prefix}${k}:\n${valStr}`;
+        }
+        return `${prefix}${k}: ${valStr}`;
+      })
+      .join("\n");
+  }
+
+  return String(value);
+}
+
+/**
+ * Collapse a Jx props object to a flat directive attribute map. Applies key mapping: strips `$`
+ * from Jx keywords, `:` from pseudo-classes, `@` from media queries.
+ *
+ * @param {Record<string, any>} propsObj
+ * @returns {Record<string, string>}
+ */
+function collapsePropsToAttrMap(propsObj) {
+  /** @type {Record<string, string>} */
+  const result = {};
+
+  function walk(/** @type {Record<string, any>} */ obj, /** @type {string} */ prefix) {
+    for (const [key, value] of Object.entries(obj)) {
+      let mdAttrKey = key;
+      // Strip $ prefix for Jx keywords
+      if (JX_DOLLAR_KEYS.has(key)) {
+        mdAttrKey = key.slice(1);
+      }
+      // Strip : prefix for CSS pseudo-classes (inside style.* paths)
+      if (key.startsWith(":") && CSS_PSEUDO_NAMES.has(key.slice(1))) {
+        mdAttrKey = key.slice(1);
+      }
+      // Strip @ prefix for media queries (inside style.* paths)
+      if (key.startsWith("@--")) {
+        mdAttrKey = key.slice(1);
+      }
+
+      const fullKey = prefix ? `${prefix}.${mdAttrKey}` : mdAttrKey;
+
+      if (value && typeof value === "object" && !Array.isArray(value)) {
+        walk(value, fullKey);
+      } else {
+        result[fullKey] = String(value);
+      }
+    }
+  }
+
+  walk(propsObj, "");
+  return result;
 }

@@ -37,7 +37,12 @@ export async function compileElement(sourcePath, opts = {}) {
       filePath = parentDir ? resolve(parentDir, srcPath) : resolve(srcPath);
       if (visited.has(filePath)) return;
       visited.add(filePath);
-      doc = JSON.parse(readFileSync(filePath, "utf8"));
+      if (filePath.endsWith(".md")) {
+        const { transpileJxMarkdown } = await import("@jxsuite/parser/transpile");
+        doc = transpileJxMarkdown(readFileSync(filePath, "utf8"));
+      } else {
+        doc = JSON.parse(readFileSync(filePath, "utf8"));
+      }
     } else {
       doc = srcPath;
       filePath = null;
@@ -288,8 +293,21 @@ export function emitElementModule(doc, className, elementImports) {
 
   // connectedCallback
   lines.push("  connectedCallback() {");
+  // Read $props from data-jx-props attribute (set by compiler for pre-rendered instances)
+  lines.push("    const _pa = this.getAttribute('data-jx-props');");
+  lines.push("    if (_pa) {");
+  lines.push("      try {");
+  lines.push("        const _p = JSON.parse(_pa);");
+  lines.push("        for (const [k, v] of Object.entries(_p)) {");
+  lines.push("          if (k in this.state) this.state[k] = v;");
+  lines.push("        }");
+  lines.push("      } catch {}");
+  lines.push("      this.removeAttribute('data-jx-props');");
+  lines.push("    }");
+  // Merge JS properties set before connection (by parent runtime).
+  // Only check own properties to avoid inherited DOM properties like `title`.
   lines.push("    for (const key of Object.keys(this.state)) {");
-  lines.push("      if (key in this && this[key] !== undefined) {");
+  lines.push("      if (this.hasOwnProperty(key) && this[key] !== undefined) {");
   lines.push("        this.state[key] = this[key];");
   lines.push("      }");
   lines.push("    }");
@@ -333,8 +351,28 @@ export function emitElementModule(doc, className, elementImports) {
       lines.push("    });");
     }
   }
-  lines.push("    this.innerHTML = '';"); // Clear pre-rendered scaffold before hydration
+  const hasSlot = treeHasSlot(doc.children);
+  if (hasSlot) {
+    // Save light DOM children (slotted content) before clearing
+    lines.push(
+      "    const _slotted = Array.from(this.childNodes).filter(n => n.nodeType === 1 || (n.nodeType === 3 && n.textContent.trim()));",
+    );
+  }
+  // Skip clearing innerHTML if content was pre-rendered with correct props
+  lines.push("    if (this.hasAttribute('data-jx-prerendered')) {");
+  lines.push("      this.removeAttribute('data-jx-prerendered');");
+  lines.push("    } else {");
+  lines.push("      this.innerHTML = '';");
+  lines.push("    }");
   lines.push("    this.#dispose = effect(() => render(this.template(), this));");
+  if (hasSlot) {
+    // Replace <slot> placeholder with saved slotted content
+    lines.push("    const _slot = this.querySelector('slot');");
+    lines.push("    if (_slot && _slotted.length > 0) {");
+    lines.push("      for (const n of _slotted) _slot.before(n);");
+    lines.push("      _slot.remove();");
+    lines.push("    }");
+  }
   lines.push("  }");
   lines.push("");
 
@@ -617,4 +655,20 @@ function emitStyleString(styleDef) {
   }
 
   return parts.join("; ");
+}
+
+/**
+ * Check if a children tree contains a `<slot>` element.
+ *
+ * @param {any} children
+ * @returns {boolean}
+ */
+function treeHasSlot(children) {
+  if (!Array.isArray(children)) return false;
+  for (const child of children) {
+    if (!child || typeof child !== "object") continue;
+    if (child.tagName === "slot") return true;
+    if (treeHasSlot(child.children)) return true;
+  }
+  return false;
 }

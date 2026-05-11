@@ -326,6 +326,13 @@ export function resolveRefValue(refValue, scope) {
  */
 export function evaluateStaticTemplate(str, scope) {
   try {
+    // When the entire string is a single ${...} expression, evaluate it directly
+    // to preserve the return type (boolean, number, etc.) instead of stringifying.
+    const singleExprMatch = str.match(/^\$\{(.+)\}$/s);
+    if (singleExprMatch) {
+      const fn = new Function("state", "$map", `return (${singleExprMatch[1]})`);
+      return fn(scope, scope?.$map);
+    }
     const fn = new Function("state", "$map", `return \`${str}\``);
     return fn(scope, scope?.$map);
   } catch {
@@ -437,6 +444,10 @@ export function buildAttrs(def, scope) {
         out += ` ${k}="${escapeHtml(String(value))}"`;
       }
     }
+  }
+
+  if (def.$props && typeof def.$props === "object") {
+    out += ` data-jx-props="${escapeHtml(JSON.stringify(def.$props))}"`;
   }
 
   return out;
@@ -746,19 +757,24 @@ const SELF_CLOSING = new Set(["input", "br", "hr", "img", "meta", "link", "area"
  *
  * @param {any} node
  * @param {any} scope
+ * @param {string | null} [slotContent] - HTML to substitute for `<slot>` elements
  * @returns {string}
  */
-export function renderStaticNode(node, scope) {
+export function renderStaticNode(node, scope, slotContent = null) {
   if (typeof node === "string") return escapeHtml(node);
   if (typeof node === "number" || typeof node === "boolean") return escapeHtml(String(node));
   if (Array.isArray(node))
-    return node.map((/** @type {any} */ c) => renderStaticNode(c, scope)).join("\n");
+    return node.map((/** @type {any} */ c) => renderStaticNode(c, scope, slotContent)).join("\n");
   if (!node || typeof node !== "object") return "";
 
   // Skip mapped arrays — can't pre-render dynamic lists
   if (node.$prototype === "Array") return "";
 
   const tag = node.tagName ?? "div";
+
+  // Replace <slot> with provided slot content
+  if (tag === "slot" && slotContent != null) return slotContent;
+
   const attrs = buildAttrs(node, scope);
 
   if (SELF_CLOSING.has(tag)) return `<${tag}${attrs}>`;
@@ -771,7 +787,9 @@ export function renderStaticNode(node, scope) {
     const val = resolveStaticValue(node.innerHTML, scope);
     inner = val != null ? val : node.innerHTML;
   } else if (Array.isArray(node.children)) {
-    inner = node.children.map((/** @type {any} */ c) => renderStaticNode(c, scope)).join("\n");
+    inner = node.children
+      .map((/** @type {any} */ c) => renderStaticNode(c, scope, slotContent))
+      .join("\n");
   }
 
   return `<${tag}${attrs}>${inner}</${tag}>`;
@@ -781,12 +799,91 @@ export function renderStaticNode(node, scope) {
  * Pre-render a component definition to static HTML for its inner content.
  *
  * @param {any} doc - Component JSON definition
+ * @param {Record<string, any> | null} [propsOverride] - Instance-specific prop values to merge into
+ *   state
+ * @param {string | null} [slotContent] - HTML to substitute for `<slot>` elements
  * @returns {string} The pre-rendered innerHTML
  */
-export function preRenderComponentHtml(doc) {
-  const scope = buildInitialScope(doc.state ?? {}, null);
+export function preRenderComponentHtml(doc, propsOverride = null, slotContent = null) {
+  let stateDefs = doc.state ?? {};
+  if (propsOverride) {
+    stateDefs = { ...stateDefs };
+    for (const [key, value] of Object.entries(propsOverride)) {
+      if (key in stateDefs) {
+        const existing = stateDefs[key];
+        // If the existing definition is an expanded signal with "default", override the default
+        if (
+          existing &&
+          typeof existing === "object" &&
+          !Array.isArray(existing) &&
+          "default" in existing
+        ) {
+          stateDefs[key] = { ...existing, default: value };
+        } else {
+          stateDefs[key] = value;
+        }
+      } else {
+        stateDefs[key] = value;
+      }
+    }
+  }
+  const scope = buildInitialScope(stateDefs, null);
   if (!Array.isArray(doc.children)) return "";
-  return doc.children.map((/** @type {any} */ c) => renderStaticNode(c, scope)).join("\n");
+  return doc.children
+    .map((/** @type {any} */ c) => renderStaticNode(c, scope, slotContent))
+    .join("\n");
+}
+
+/**
+ * Check if a component definition is fully static (no runtime behavior needed).
+ *
+ * Returns true when: no event handlers, no $prototype entries (Functions, Request, Storage), no
+ * $ref values. Conservative — returns false when uncertain.
+ *
+ * @param {any} doc - Component JSON definition
+ * @returns {boolean}
+ */
+export function isComponentFullyStatic(doc) {
+  return _isStaticNode(doc);
+}
+
+/**
+ * @param {any} node
+ * @returns {boolean}
+ */
+function _isStaticNode(node) {
+  if (!node || typeof node !== "object") return true;
+  if (Array.isArray(node)) return node.every(_isStaticNode);
+
+  // Check for $prototype (Functions, Request, Storage, etc.)
+  if (node.$prototype) return false;
+  // Check for $ref
+  if (node.$ref) return false;
+
+  // Check state entries
+  if (node.state) {
+    for (const def of Object.values(node.state)) {
+      if (!def || typeof def !== "object") continue;
+      const d = /** @type {any} */ (def);
+      if (d.$prototype) return false;
+      if (d.$ref) return false;
+    }
+  }
+
+  // Check for event handlers
+  for (const key of Object.keys(node)) {
+    if (key.startsWith("on") && key !== "observedAttributes") return false;
+  }
+
+  // Recurse into children
+  if (Array.isArray(node.children)) {
+    if (!node.children.every(_isStaticNode)) return false;
+  } else if (node.children && typeof node.children === "object") {
+    // children descriptor object ($prototype: "Array", etc.)
+    if (node.children.$prototype) return false;
+  }
+
+  return true;
 }
 
 /**

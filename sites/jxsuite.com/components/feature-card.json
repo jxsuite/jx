@@ -1,0 +1,55 @@
+{
+  "tagName": "feature-card",
+  "state": {
+    "icon": "",
+    "iconBg": "rgba(59, 130, 246, 0.1)",
+    "iconColor": "var(--color-accent)",
+    "iconSize": "0.6875rem",
+    "title": "",
+    "description": ""
+  },
+  "style": {
+    "display": "block",
+    "padding": "1.75rem",
+    "backgroundColor": "var(--color-bg-secondary)"
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "style": {
+        "width": "2.25rem",
+        "height": "2.25rem",
+        "borderRadius": "var(--radius)",
+        "backgroundColor": "${state.iconBg}",
+        "color": "${state.iconColor}",
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "fontWeight": "700",
+        "fontSize": "${state.iconSize}",
+        "fontFamily": "var(--font-mono)",
+        "marginBottom": "1rem"
+      },
+      "textContent": "${state.icon}"
+    },
+    {
+      "tagName": "h3",
+      "style": {
+        "fontSize": "0.9375rem",
+        "fontWeight": "600",
+        "margin": "0 0 0.5rem"
+      },
+      "textContent": "${state.title}"
+    },
+    {
+      "tagName": "p",
+      "style": {
+        "color": "var(--color-text-secondary)",
+        "fontSize": "0.875rem",
+        "margin": "0",
+        "lineHeight": "1.6"
+      },
+      "textContent": "${state.description}"
+    }
+  ]
+}

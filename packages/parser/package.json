@@ -14,6 +14,7 @@
   "type": "module",
   "exports": {
     ".": "./src/md.js",
+    "./transpile": "./src/transpile.js",
     "./MarkdownFile.class.json": "./src/MarkdownFile.class.json",
     "./MarkdownCollection.class.json": "./src/MarkdownCollection.class.json"
   },

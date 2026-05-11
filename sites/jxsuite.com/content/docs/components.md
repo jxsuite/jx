@@ -83,7 +83,6 @@ An object with `$prototype` for functions and data sources:
       "$prototype": "Request",
       "url": "/api/users/",
       "method": "GET",
-      "signal": true
     }
   }
 }

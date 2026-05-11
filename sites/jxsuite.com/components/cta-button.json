@@ -1,0 +1,32 @@
+{
+  "tagName": "cta-button",
+  "state": {
+    "href": "/",
+    "label": "Click",
+    "variant": "primary",
+    "isPrimary": "${state.variant === 'primary'}"
+  },
+  "style": {
+    "display": "inline-block"
+  },
+  "children": [
+    {
+      "tagName": "a",
+      "attributes": { "href": "${state.href}" },
+      "style": {
+        "display": "inline-flex",
+        "alignItems": "center",
+        "padding": "0.6875rem 1.75rem",
+        "borderRadius": "var(--radius)",
+        "textDecoration": "none",
+        "fontWeight": "600",
+        "fontSize": "0.9375rem",
+        "transition": "background-color 0.15s, border-color 0.15s, color 0.15s",
+        "backgroundColor": "${state.isPrimary ? 'var(--color-accent)' : 'transparent'}",
+        "color": "${state.isPrimary ? 'white' : 'var(--color-text-secondary)'}",
+        "border": "${state.isPrimary ? '1px solid transparent' : '1px solid var(--color-border)'}"
+      },
+      "textContent": "${state.label}"
+    }
+  ]
+}

@@ -58,7 +58,8 @@ res = await fetch(base + "/__studio/activate", {
 });
 if (res.status !== 200) errors.push("activate: expected 200, got " + res.status);
 let body = await res.json();
-if (body.root !== "sites/demo") errors.push("activate root: " + JSON.stringify(body));
+const expectedActiveRoot = join(FIXTURES, "sites/demo");
+if (body.root !== expectedActiveRoot) errors.push("activate root: " + JSON.stringify(body));
 
 // Test 4: project-relative path resolves after activation
 res = await fetch(base + "/public/image.png");
@@ -72,13 +73,14 @@ else {
 res = await fetch(base + "/root-public/root-file.txt");
 if (res.status !== 200) errors.push("repo root after activate: expected 200, got " + res.status);
 
-// Test 6: resolveSiteContext returns relPath for ?open= flow
+// Test 6: resolveSiteContext returns absolute relPath for ?open= flow
 const absPath = join(FIXTURES, "sites/demo/project.json");
 res = await fetch(base + "/__studio/resolve-site?path=" + encodeURIComponent(absPath));
 if (res.status !== 200) errors.push("resolve-site: expected 200, got " + res.status);
 else {
   body = await res.json();
-  if (body.relPath !== "sites/demo") errors.push("resolve-site relPath: " + body.relPath);
+  const expectedPath = join(FIXTURES, "sites/demo");
+  if (body.relPath !== expectedPath) errors.push("resolve-site relPath: " + body.relPath + " (expected " + expectedPath + ")");
 }
 
 // Test 7: deactivation resets resolution

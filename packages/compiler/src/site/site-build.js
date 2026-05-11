@@ -30,6 +30,7 @@ import {
   isTemplateString,
   evaluateStaticTemplate,
   preRenderComponentHtml,
+  isComponentFullyStatic,
   buildComponentCSS,
   DEFAULT_REACTIVITY_SRC,
   DEFAULT_LIT_HTML_SRC,
@@ -99,13 +100,15 @@ export async function buildSite(projectRoot, options = {}) {
   /** @type {string[]} */
   const compiledComponentTags = [];
   /** @type {Map<string, string>} */
-  const preRendered = new Map(); // tagName → innerHTML
+  const preRendered = new Map(); // tagName → innerHTML (default state, fallback)
   /** @type {Map<string, string>} */
   const componentCSS = new Map(); // tagName → CSS text
+  /** @type {Map<string, any>} */
+  const componentDefs = new Map(); // tagName → parsed component definition
   if (existsSync(componentsDir)) {
     log("Compiling components...");
-    const componentFiles = readdirSync(componentsDir).filter((/** @type {string} */ f) =>
-      f.endsWith(".json"),
+    const componentFiles = readdirSync(componentsDir).filter(
+      (/** @type {string} */ f) => f.endsWith(".json") || f.endsWith(".md"),
     );
     const componentOutDir = resolve(outDir, "components");
     mkdirSync(componentOutDir, { recursive: true });
@@ -124,8 +127,13 @@ export async function buildSite(projectRoot, options = {}) {
         }
 
         // Pre-render component HTML scaffold and CSS sidecar
-        const doc = JSON.parse(readFileSync(componentPath, "utf8"));
+        const doc = componentPath.endsWith(".md")
+          ? (await import("@jxsuite/parser/transpile")).transpileJxMarkdown(
+              readFileSync(componentPath, "utf8"),
+            )
+          : JSON.parse(readFileSync(componentPath, "utf8"));
         if (doc.tagName) {
+          componentDefs.set(doc.tagName, doc);
           const innerHTML = preRenderComponentHtml(doc);
           if (innerHTML) preRendered.set(doc.tagName, innerHTML);
 
@@ -154,14 +162,24 @@ export async function buildSite(projectRoot, options = {}) {
       log(`  Compiling ${route.urlPattern} ...`);
       const result = await compilePage(route, projectConfig, projectRoot, collections);
 
-      // Inject component scripts and CSS if the page references any compiled components
-      if (compiledComponentTags.length > 0) {
-        result.html = injectComponentScripts(result.html, compiledComponentTags, componentCSS);
+      // Inject pre-rendered component HTML scaffolding (instance-aware)
+      // Must happen before script injection so we know which tags are fully static
+      /** @type {Set<string>} */
+      let staticTags = new Set();
+      if (componentDefs.size > 0) {
+        const preResult = injectPreRenderedComponents(result.html, preRendered, componentDefs);
+        result.html = preResult.html;
+        staticTags = preResult.staticTags;
       }
 
-      // Inject pre-rendered component HTML scaffolding
-      if (preRendered.size > 0) {
-        result.html = injectPreRenderedComponents(result.html, preRendered);
+      // Inject component CSS and JS scripts
+      if (compiledComponentTags.length > 0) {
+        result.html = injectComponentScripts(
+          result.html,
+          compiledComponentTags,
+          componentCSS,
+          staticTags,
+        );
       }
 
       // Determine output path
@@ -238,7 +256,13 @@ export async function buildSite(projectRoot, options = {}) {
  */
 async function compilePage(route, projectConfig, projectRoot, collections = new Map()) {
   // Load the raw page document
-  let pageDoc = JSON.parse(readFileSync(route.sourcePath, "utf8"));
+  let pageDoc;
+  if (route.sourcePath.endsWith(".md")) {
+    const { transpileJxMarkdown } = await import("@jxsuite/parser/transpile");
+    pageDoc = transpileJxMarkdown(readFileSync(route.sourcePath, "utf8"));
+  } else {
+    pageDoc = JSON.parse(readFileSync(route.sourcePath, "utf8"));
+  }
 
   // Resolve layout (wraps page in layout with slot distribution)
   const layoutDoc = resolveLayout(pageDoc, projectConfig, projectRoot);
@@ -456,23 +480,33 @@ function resolveDocTemplates(node, scope) {
  * @param {string} html
  * @param {string[]} allComponentTags - All compiled component tag names
  * @param {Map<string, string>} [cssMap] - TagName → CSS text (for link injection)
+ * @param {Set<string>} [staticTags] - Tags where ALL instances are fully static (skip JS)
  * @returns {string}
  */
-function injectComponentScripts(html, allComponentTags, cssMap = new Map()) {
+function injectComponentScripts(
+  html,
+  allComponentTags,
+  cssMap = new Map(),
+  staticTags = new Set(),
+) {
   // Find which components are actually referenced in this page
   const usedTags = allComponentTags.filter(
     (/** @type {string} */ tag) => html.includes(`<${tag}`), // matches <tag> and <tag ...>
   );
   if (usedTags.length === 0) return html;
 
-  // Inject CSS links in <head> for components that have CSS sidecars
+  // Inject CSS links in <head> for ALL components that have CSS sidecars
   const cssLinks = usedTags
     .filter((/** @type {string} */ tag) => cssMap.has(tag))
-    .map((/** @type {string} */ tag) => `<link rel="stylesheet" href="/components/${tag}.css">`)
+    .map((/** @type {string} */ tag) => `<link rel="stylesheet" href="./components/${tag}.css">`)
     .join("\n  ");
   if (cssLinks) {
     html = html.replace("</head>", `  ${cssLinks}\n</head>`);
   }
+
+  // Only inject JS for components that have non-static instances
+  const jsTags = usedTags.filter((/** @type {string} */ tag) => !staticTags.has(tag));
+  if (jsTags.length === 0) return html;
 
   // Build import map (needed for @vue/reactivity and lit-html)
   const importMap = `<script type="importmap">
@@ -484,9 +518,9 @@ function injectComponentScripts(html, allComponentTags, cssMap = new Map()) {
   }
   </script>`;
 
-  const moduleScripts = usedTags
+  const moduleScripts = jsTags
     .map(
-      (/** @type {string} */ tag) => `<script type="module" src="/components/${tag}.js"></script>`,
+      (/** @type {string} */ tag) => `<script type="module" src="./components/${tag}.js"></script>`,
     )
     .join("\n  ");
 
@@ -498,19 +532,71 @@ function injectComponentScripts(html, allComponentTags, cssMap = new Map()) {
 }
 
 /**
- * Inject pre-rendered HTML scaffolding into empty component tags.
+ * Inject pre-rendered HTML scaffolding into component tags, using instance-specific props.
  *
  * @param {string} html
- * @param {Map<string, string>} preRendered - TagName → innerHTML
- * @returns {string}
+ * @param {Map<string, string>} preRendered - TagName → default innerHTML (fallback)
+ * @param {Map<string, any>} componentDefs - TagName → parsed component definition
+ * @returns {{ html: string; staticTags: Set<string> }}
  */
-function injectPreRenderedComponents(html, preRendered) {
-  for (const [tag, innerHTML] of preRendered) {
-    if (!innerHTML) continue;
-    const pattern = new RegExp(`<${tag}(\\s[^>]*)?>\\s*</${tag}>`, "g");
-    html = html.replace(pattern, `<${tag}$1>${innerHTML}</${tag}>`);
+function injectPreRenderedComponents(html, preRendered, componentDefs) {
+  /** @type {Set<string>} */
+  const staticTags = new Set();
+  /** @type {Map<string, boolean>} */
+  const tagHasNonStaticInstance = new Map();
+
+  for (const [tag] of componentDefs) {
+    // Match both empty tags and tags with inner content (for slotted components)
+    const pattern = new RegExp(`<${tag}(\\s[^>]*?)?>([\\s\\S]*?)</${tag}>`, "g");
+    html = html.replace(pattern, (match, attrsStr, existingInner) => {
+      const attrs = attrsStr ?? "";
+      const doc = componentDefs.get(tag);
+      if (!doc) {
+        // No definition, use default pre-rendered content
+        const fallback = preRendered.get(tag) ?? "";
+        return `<${tag}${attrs}>${fallback}</${tag}>`;
+      }
+
+      // Extract data-jx-props from the attribute string
+      /** @type {Record<string, any> | null} */
+      let props = null;
+      const propsMatch = attrs.match(/\sdata-jx-props="([^"]*)"/);
+      if (propsMatch) {
+        try {
+          props = JSON.parse(
+            propsMatch[1]
+              .replace(/&quot;/g, '"')
+              .replace(/&amp;/g, "&")
+              .replace(/&lt;/g, "<")
+              .replace(/&gt;/g, ">")
+              .replace(/&#39;/g, "'"),
+          );
+        } catch {}
+      }
+
+      // Pre-render with instance-specific props
+      const slotContent = existingInner.trim() || null;
+      const innerHTML = preRenderComponentHtml(doc, props, slotContent);
+
+      const isStatic = isComponentFullyStatic(doc);
+      if (!isStatic) tagHasNonStaticInstance.set(tag, true);
+
+      if (isStatic) {
+        // Strip data-jx-props from attrs for fully static instances
+        let cleanAttrs = attrs.replace(/\s*data-jx-props="[^"]*"/, "");
+        return `<${tag}${cleanAttrs} data-jx-static>${innerHTML}</${tag}>`;
+      } else {
+        return `<${tag}${attrs} data-jx-prerendered>${innerHTML}</${tag}>`;
+      }
+    });
+
+    // Track whether ALL instances of this tag are static
+    if (componentDefs.has(tag) && !tagHasNonStaticInstance.has(tag)) {
+      staticTags.add(tag);
+    }
   }
-  return html;
+
+  return { html, staticTags };
 }
 
 /**
@@ -525,7 +611,8 @@ function injectPreRenderedComponents(html, preRendered) {
 function injectNpmElementScripts(html, npmElements) {
   const scripts = npmElements
     .map(
-      (/** @type {string} */ spec) => `<script type="module" src="/node_modules/${spec}"></script>`,
+      (/** @type {string} */ spec) =>
+        `<script type="module" src="./node_modules/${spec}"></script>`,
     )
     .join("\n  ");
 

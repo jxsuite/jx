@@ -129,8 +129,8 @@ export function flattenTree(doc, path = [], depth = 0) {
   /** @type {{ node: any; path: JxPath; depth: number; nodeType: string }[]} */
   const rows = [{ node: doc, path, depth, nodeType: "element" }];
 
-  // Custom component instances are atomic in the layer tree — don't recurse into internals
-  if (doc.$props && (doc.tagName || "").includes("-")) {
+  // Custom component instances without user-authored children are atomic in the layer tree
+  if (doc.$props && (doc.tagName || "").includes("-") && !Array.isArray(doc.children)) {
     return rows;
   }
 

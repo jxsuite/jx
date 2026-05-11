@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { mdToJx, jxToMd } from "../src/markdown/md-convert.js";
+import { mdToJx, jxToMd, jxDocToMd } from "../src/markdown/md-convert.js";
 
 // ─── Helpers — build mdast nodes ─────────────────────────────────────────────
 
@@ -65,11 +65,10 @@ function thematicBreak() {
 // ─── mdToJx ──────────────────────────────────────────────────────────────
 
 describe("mdToJx", () => {
-  test("root node becomes content div", () => {
+  test("root node becomes document container", () => {
     /** @type {any} */
     const result = mdToJx(root());
-    expect(result.tagName).toBe("div");
-    expect(result.$id).toBe("content");
+    expect(result.tagName).toBeUndefined();
     expect(result.children).toEqual([]);
   });
 
@@ -392,5 +391,250 @@ describe("round-trip", () => {
     /** @type {any} */
     const back = jxToMd(jx);
     expect(back.children[0].type).toBe("thematicBreak");
+  });
+});
+
+// ─── Bare text nodes ────────────────────────────────────────────────────────
+
+describe("jxToMd bare text nodes", () => {
+  test("bare string children become mdast text nodes", () => {
+    /** @type {any} */
+    const result = jxToMd({
+      children: [
+        {
+          tagName: "p",
+          children: ["Hello ", { tagName: "strong", textContent: "world" }, "!"],
+        },
+      ],
+    });
+    const p = result.children[0];
+    expect(p.type).toBe("paragraph");
+    expect(p.children).toEqual([
+      { type: "text", value: "Hello " },
+      { type: "strong", children: [{ type: "text", value: "world" }] },
+      { type: "text", value: "!" },
+    ]);
+  });
+
+  test("bare number children become text nodes", () => {
+    /** @type {any} */
+    const result = jxToMd({
+      children: [{ tagName: "p", children: ["Score: ", 42] }],
+    });
+    const p = result.children[0];
+    expect(p.children[0]).toEqual({ type: "text", value: "Score: " });
+    expect(p.children[1]).toEqual({ type: "text", value: "42" });
+  });
+
+  test("null and undefined children are filtered out", () => {
+    /** @type {any} */
+    const result = jxToMd({
+      children: [{ tagName: "p", children: ["text", null, undefined] }],
+    });
+    expect(result.children[0].children).toEqual([{ type: "text", value: "text" }]);
+  });
+});
+
+// ─── Jx props → directive routing ───────────────────────────────────────────
+
+describe("jxToMd Jx props trigger directive", () => {
+  test("plain p stays as paragraph", () => {
+    /** @type {any} */
+    const result = jxToMd({
+      children: [{ tagName: "p", textContent: "Hello" }],
+    });
+    expect(result.children[0].type).toBe("paragraph");
+  });
+
+  test("p with style becomes container directive", () => {
+    /** @type {any} */
+    const result = jxToMd({
+      children: [{ tagName: "p", style: { color: "red" }, textContent: "Hello" }],
+    });
+    expect(result.children[0].type).toBe("containerDirective");
+    expect(result.children[0].name).toBe("p");
+    expect(result.children[0].attributes["style.color"]).toBe("red");
+  });
+
+  test("heading with style becomes container directive", () => {
+    /** @type {any} */
+    const result = jxToMd({
+      children: [{ tagName: "h2", style: { fontSize: "2em" }, textContent: "Title" }],
+    });
+    expect(result.children[0].type).toBe("containerDirective");
+    expect(result.children[0].name).toBe("h2");
+  });
+
+  test("element with $ref becomes directive", () => {
+    /** @type {any} */
+    const result = jxToMd({
+      children: [{ tagName: "p", $ref: "./components/fancy-p.json", textContent: "Hi" }],
+    });
+    expect(result.children[0].type).toBe("containerDirective");
+    expect(result.children[0].attributes.ref).toBe("./components/fancy-p.json");
+  });
+});
+
+// ─── Container directive inline content ─────────────────────────────────────
+
+describe("container directive inline content", () => {
+  test("decorated p wraps mixed children in single paragraph", () => {
+    /** @type {any} */
+    const result = jxToMd({
+      children: [
+        {
+          tagName: "p",
+          style: { color: "#b59a9a" },
+          children: [
+            "Another paragraph, just to test ",
+            { tagName: "strong", textContent: "things" },
+            " out.",
+          ],
+        },
+      ],
+    });
+    const directive = result.children[0];
+    expect(directive.type).toBe("containerDirective");
+    expect(directive.name).toBe("p");
+    // Children should be a single paragraph wrapping all inline nodes
+    expect(directive.children.length).toBe(1);
+    expect(directive.children[0].type).toBe("paragraph");
+    expect(directive.children[0].children.length).toBe(3);
+    expect(directive.children[0].children[0]).toEqual({
+      type: "text",
+      value: "Another paragraph, just to test ",
+    });
+    expect(directive.children[0].children[1].type).toBe("strong");
+    expect(directive.children[0].children[2]).toEqual({ type: "text", value: " out." });
+  });
+
+  test("decorated h1 wraps children in single paragraph", () => {
+    /** @type {any} */
+    const result = jxToMd({
+      children: [
+        {
+          tagName: "h1",
+          style: { color: "blue" },
+          children: ["Welcome to ", { tagName: "em", textContent: "Jx" }],
+        },
+      ],
+    });
+    const directive = result.children[0];
+    expect(directive.type).toBe("containerDirective");
+    expect(directive.children.length).toBe(1);
+    expect(directive.children[0].type).toBe("paragraph");
+    expect(directive.children[0].children.length).toBe(2);
+  });
+
+  test("non-inline-content tag keeps block children", () => {
+    /** @type {any} */
+    const result = jxToMd({
+      children: [
+        {
+          tagName: "my-section",
+          children: [
+            { tagName: "h1", textContent: "Title" },
+            { tagName: "p", textContent: "Body" },
+          ],
+        },
+      ],
+    });
+    const directive = result.children[0];
+    expect(directive.type).toBe("containerDirective");
+    // Block children stay as separate nodes, not wrapped in a paragraph
+    expect(directive.children.length).toBe(2);
+    expect(directive.children[0].type).toBe("heading");
+    expect(directive.children[1].type).toBe("paragraph");
+  });
+
+  test("decorated p with textContent wraps in paragraph", () => {
+    /** @type {any} */
+    const result = jxToMd({
+      children: [{ tagName: "p", style: { fontWeight: "bold" }, textContent: "Simple text" }],
+    });
+    const directive = result.children[0];
+    expect(directive.children.length).toBe(1);
+    expect(directive.children[0].type).toBe("paragraph");
+    expect(directive.children[0].children[0].value).toBe("Simple text");
+  });
+});
+
+// ─── jxDocToMd serialization ────────────────────────────────────────────────
+
+describe("jxDocToMd", () => {
+  test("undecorated elements emit standard markdown", () => {
+    const md = jxDocToMd({
+      tagName: "my-comp",
+      children: [
+        { tagName: "h1", textContent: "Title" },
+        { tagName: "p", textContent: "Paragraph." },
+      ],
+    });
+    expect(md).toContain("# Title");
+    expect(md).toContain("Paragraph.");
+    expect(md).not.toContain(":::h1");
+    expect(md).not.toContain(":::p");
+  });
+
+  test("decorated element emits directive syntax", () => {
+    const md = jxDocToMd({
+      tagName: "my-comp",
+      children: [{ tagName: "p", style: { color: "red" }, textContent: "Colored" }],
+    });
+    expect(md).toContain(':::p{style.color="red"}');
+    expect(md).toContain("Colored");
+    expect(md).toContain(":::");
+  });
+
+  test("mixed inline content in decorated p serializes on one line", () => {
+    const md = jxDocToMd({
+      tagName: "my-comp",
+      children: [
+        {
+          tagName: "p",
+          style: { color: "#b59a9a" },
+          children: [
+            "Another paragraph, just to test ",
+            { tagName: "strong", textContent: "things" },
+            " out.",
+          ],
+        },
+      ],
+    });
+    expect(md).toContain(':::p{style.color="#b59a9a"}');
+    expect(md).toContain("Another paragraph, just to test **things** out.");
+  });
+
+  test("bare text nodes serialize in standard paragraphs", () => {
+    const md = jxDocToMd({
+      tagName: "my-comp",
+      children: [
+        {
+          tagName: "p",
+          children: ["Hello ", { tagName: "strong", textContent: "world" }, "!"],
+        },
+      ],
+    });
+    expect(md).toContain("Hello **world**!");
+    expect(md).not.toContain(":::p");
+  });
+
+  test("frontmatter emitted for non-children props", () => {
+    const md = jxDocToMd({
+      tagName: "my-comp",
+      $elements: [{ $ref: "./components/hero.json" }],
+      children: [{ tagName: "p", textContent: "Hi" }],
+    });
+    expect(md).toContain("---");
+    expect(md).toContain("tagName: my-comp");
+    expect(md).toContain("Hi");
+  });
+
+  test("custom element without children emits leaf directive", () => {
+    const md = jxDocToMd({
+      tagName: "my-comp",
+      children: [{ tagName: "hero-banner" }],
+    });
+    expect(md).toContain("::hero-banner");
   });
 });

@@ -13,7 +13,7 @@
  *   proxying, and studio filesystem integration as a single createDevServer() call.
  */
 
-import { resolve, join, isAbsolute } from "node:path";
+import { resolve, join } from "node:path";
 import { buildAll } from "./build.js";
 import { createWatcher, injectSSE } from "./watch.js";
 import { handleResolve, handleServerFunction } from "./resolve.js";
@@ -198,7 +198,9 @@ export async function createDevServer(options) {
         // Activate project — tells the server which project root to use for static file fallback
         if (path === "/__studio/activate" && req.method === "POST") {
           const body = await req.json();
-          activeProjectRoot = body.root || null;
+          const raw = body.root || null;
+          // Always store as absolute path
+          activeProjectRoot = raw ? resolve(absRoot, raw) : null;
           return Response.json({ ok: true, root: activeProjectRoot });
         }
 
@@ -220,11 +222,7 @@ export async function createDevServer(options) {
       // If the URL path is an absolute filesystem path under the active project, serve directly.
       // Browsers produce "//abs/path" when an absolute path is used as a URL path — normalise.
       const fsPath = path.startsWith("//") ? path.slice(1) : path;
-      if (
-        activeProjectRoot &&
-        isAbsolute(activeProjectRoot) &&
-        fsPath.startsWith(activeProjectRoot)
-      ) {
+      if (activeProjectRoot && fsPath.startsWith(activeProjectRoot)) {
         const file = Bun.file(fsPath);
         if (await file.exists()) {
           return new Response(file);
@@ -235,15 +233,12 @@ export async function createDevServer(options) {
       if (!(await file.exists())) {
         // Try resolving relative to active studio project root
         if (activeProjectRoot) {
-          const projectBase = isAbsolute(activeProjectRoot)
-            ? activeProjectRoot
-            : resolve(absRoot, activeProjectRoot);
-          const projectFile = Bun.file(resolve(projectBase, "." + path));
+          const projectFile = Bun.file(resolve(activeProjectRoot, "." + path));
           if (await projectFile.exists()) {
             return new Response(projectFile);
           }
           // Mirror production: public/ contents are served at root
-          const publicFile = Bun.file(resolve(projectBase, "public", "." + path));
+          const publicFile = Bun.file(resolve(activeProjectRoot, "public", "." + path));
           if (await publicFile.exists()) {
             return new Response(publicFile);
           }

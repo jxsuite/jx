@@ -6,13 +6,10 @@
  */
 
 import { unified } from "unified";
-import remarkParse from "remark-parse";
 import remarkStringify from "remark-stringify";
-import remarkFrontmatter from "remark-frontmatter";
-import remarkGfm from "remark-gfm";
 import remarkDirective from "remark-directive";
-import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
-import { mdToJx, jxToMd } from "../markdown/md-convert.js";
+import { stringify as stringifyYaml } from "yaml";
+import { jxToMd, jxDocToMd } from "../markdown/md-convert.js";
 import { createState } from "../store.js";
 import { locateDocument } from "../services/code-services.js";
 import { statusMessage } from "../panels/statusbar.js";
@@ -36,7 +33,7 @@ export async function openFile({ S: _S, commit, renderToolbar: _renderToolbar })
       const text = await file.text();
 
       if (handle.name.endsWith(".md")) {
-        const newState = loadMarkdown(text, handle);
+        const newState = await loadMarkdown(text, handle);
         commit(newState);
       } else {
         const doc = JSON.parse(text);
@@ -60,7 +57,7 @@ export async function openFile({ S: _S, commit, renderToolbar: _renderToolbar })
         const text = await file.text();
 
         if (file.name.endsWith(".md")) {
-          const newState = loadMarkdown(text, null);
+          const newState = await loadMarkdown(text, null);
           commit(newState);
         } else {
           const doc = JSON.parse(text);
@@ -81,33 +78,46 @@ export async function openFile({ S: _S, commit, renderToolbar: _renderToolbar })
 /**
  * Parse a markdown string into a Jx state object (pure — no side effects).
  *
+ * All markdown goes through `transpileJxMarkdown()`. Content documents (no hyphenated `tagName`)
+ * are wrapped in a `{ tagName: "div", $id: "content" }` root to match the studio's content
+ * contract.
+ *
  * @param {any} source Markdown text
  * @param {any} fileHandle File handle (or null)
- * @returns {any} A new state object ready for commit()
+ * @returns {Promise<any>} A new state object ready for commit()
  */
-export function loadMarkdown(source, fileHandle) {
-  const processor = unified()
-    .use(remarkParse)
-    .use(remarkFrontmatter, ["yaml"])
-    .use(remarkGfm)
-    .use(remarkDirective);
+export async function loadMarkdown(source, fileHandle) {
+  const { transpileJxMarkdown } = await import("@jxsuite/parser/transpile");
+  const doc = /** @type {any} */ (transpileJxMarkdown(source));
 
-  const mdast = processor.parse(source);
+  const isComponent = doc.tagName && String(doc.tagName).includes("-");
 
-  // Extract frontmatter from the first YAML node
-  let frontmatter = {};
-  const yamlNode = mdast.children.find((n) => n.type === "yaml");
-  if (yamlNode) {
-    try {
-      frontmatter = parseYaml(yamlNode.value) ?? {};
-    } catch {}
+  if (isComponent) {
+    const newState = /** @type {any} */ (createState(doc));
+    newState.sourceFormat = "md";
+    newState.rawMarkdown = source;
+    newState.fileHandle = fileHandle;
+    newState.dirty = false;
+    return newState;
   }
 
-  const jxTree = mdToJx(mdast);
+  // Content markdown — children form the root-level document body
+  const contentDoc = {
+    children: doc.children ?? [],
+  };
 
-  const newState = createState(jxTree);
+  // Extract frontmatter keys (everything except children) as content metadata
+  /** @type {Record<string, any>} */
+  const frontmatter = {};
+  for (const [key, value] of Object.entries(doc)) {
+    if (key !== "children") frontmatter[key] = value;
+  }
+
+  const newState = /** @type {any} */ (createState(contentDoc));
+  newState.sourceFormat = "md";
   newState.mode = "content";
   newState.content = { frontmatter };
+  newState.rawMarkdown = source;
   newState.fileHandle = fileHandle;
   newState.dirty = false;
   return newState;
@@ -216,9 +226,13 @@ export async function exportFile({ S, commit, renderToolbar }) {
  * @returns {string}
  */
 function serializeDocument(S) {
+  if (S.sourceFormat === "md") {
+    return jxDocToMd(S.document);
+  }
   if (S.mode === "content") {
     const mdast = jxToMd(S.document);
     const md = unified()
+      .use(remarkDirective)
       .use(remarkStringify, { bullet: "-", emphasis: "*", strong: "*" })
       .stringify(mdast);
     const fm = S.content?.frontmatter;
