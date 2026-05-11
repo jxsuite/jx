@@ -378,6 +378,66 @@ Content
     expect(inner.tagName).toBe("inner");
   });
 
+  test("unwraps paragraph children inside phrasing-content directives", () => {
+    const source = `---
+tagName: my-comp
+---
+
+:::::::::p{style.fontSize="1.25rem" style.color="red"}
+Hello world
+:::::::::
+`;
+    const doc = /** @type {any} */ (transpileJxMarkdown(source));
+    const p = doc.children[0];
+    expect(p.tagName).toBe("p");
+    expect(p.style).toEqual({ fontSize: "1.25rem", color: "red" });
+    // Text should be textContent, NOT a nested paragraph
+    expect(p.textContent).toBe("Hello world");
+    expect(p.children).toBeUndefined();
+  });
+
+  test("unwraps paragraph children in h1 directive with mixed content", () => {
+    const source = `---
+tagName: my-comp
+---
+
+:::::::::h1{style.fontSize="3rem"}
+Design visually.
+::br
+::::span{style.color="gray"}
+Ship as static HTML.
+::::
+:::::::::
+`;
+    const doc = /** @type {any} */ (transpileJxMarkdown(source));
+    const h1 = doc.children[0];
+    expect(h1.tagName).toBe("h1");
+    expect(h1.style).toEqual({ fontSize: "3rem" });
+    // Should have mixed children: text, br, span
+    expect(h1.children.length).toBe(3);
+    expect(h1.children[0]).toBe("Design visually.");
+    expect(h1.children[1].tagName).toBe("br");
+    expect(h1.children[2].tagName).toBe("span");
+    expect(h1.children[2].style).toEqual({ color: "gray" });
+    expect(h1.children[2].textContent).toBe("Ship as static HTML.");
+  });
+
+  test("preserves paragraph children in block-level directives", () => {
+    const source = `---
+tagName: my-comp
+---
+
+:::div
+Some text
+:::
+`;
+    const doc = /** @type {any} */ (transpileJxMarkdown(source));
+    const div = doc.children[0];
+    expect(div.tagName).toBe("div");
+    // div CAN contain paragraphs, so they should NOT be unwrapped
+    expect(div.children[0].tagName).toBe("p");
+  });
+
   test("converts standard markdown nodes to Jx elements", () => {
     const source = `---
 tagName: my-comp

@@ -1555,6 +1555,9 @@ export async function defineElement(source, base) {
     }
 
     async connectedCallback() {
+      if (this._jxInitialized) return;
+      this._jxInitialized = true;
+
       const state = await buildScope(def, {}, base);
 
       // Read properties from directive encoding (markdown → data-jx-props)
@@ -1696,7 +1699,8 @@ function renderCustomElementWithProps(def, state, options, path) {
   // Append slotted children
   const children = Array.isArray(def.children) ? def.children : [];
   for (let i = 0; i < children.length; i++) {
-    el.appendChild(renderNode(children[i], state, options));
+    const childOpts = options && path ? { ...options, _path: [...path, "children", i] } : undefined;
+    el.appendChild(renderNode(children[i], state, childOpts));
   }
 
   return el;

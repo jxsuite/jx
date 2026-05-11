@@ -17,7 +17,7 @@
  * from responses.
  */
 export function createDevServerPlatform() {
-  let _projectRoot = ".";
+  let _projectRoot = "";
 
   /**
    * Prefix a project-relative path with the active project root for server API calls.
@@ -26,8 +26,9 @@ export function createDevServerPlatform() {
    */
   function serverPath(rel) {
     const r = rel.replaceAll("\\", "/");
-    if (!_projectRoot || _projectRoot === ".") return r;
-    return r === "." ? _projectRoot : `${_projectRoot}/${r}`;
+    if (!_projectRoot) return r;
+    if (r === ".") return _projectRoot;
+    return `${_projectRoot}/${r}`;
   }
 
   /**
@@ -37,21 +38,20 @@ export function createDevServerPlatform() {
    */
   function stripRoot(path) {
     const p = path.replaceAll("\\", "/");
-    if (!_projectRoot || _projectRoot === ".") return p;
+    if (!_projectRoot) return p;
     return p.startsWith(_projectRoot + "/") ? p.slice(_projectRoot.length + 1) : p;
   }
 
   return {
     id: "devserver",
 
-    /** Get or set the current project root (server-relative path). */
+    /** Get or set the current project root (absolute path). */
     get projectRoot() {
       return _projectRoot;
     },
     set projectRoot(v) {
-      _projectRoot = v || ".";
-      // Notify server so it can resolve project-relative static paths
-      this.activate(_projectRoot);
+      _projectRoot = v || "";
+      if (_projectRoot) this.activate(_projectRoot);
     },
 
     /**
@@ -229,10 +229,8 @@ export function createDevServerPlatform() {
     /** @param {string} dir */
     async discoverComponents(dir) {
       const scanDir = dir || _projectRoot;
-      const url =
-        scanDir === "."
-          ? "/__studio/components"
-          : `/__studio/components?dir=${encodeURIComponent(scanDir)}`;
+      if (!scanDir) return [];
+      const url = `/__studio/components?dir=${encodeURIComponent(scanDir)}`;
       const res = await fetch(url);
       if (!res.ok) return [];
       return await res.json();

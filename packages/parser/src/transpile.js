@@ -213,6 +213,48 @@ export function isJxMarkdown(source) {
 const HTML_ATTR_PATTERN = /^(?:aria-|data-|slot$)/;
 
 /**
+ * Elements with phrasing content model — cannot contain <p> elements. When these appear as
+ * container directives, paragraph children from the markdown parser are unwrapped (their inline
+ * children promoted directly).
+ */
+const PHRASING_ELEMENTS = new Set([
+  "p",
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "span",
+  "a",
+  "em",
+  "strong",
+  "b",
+  "i",
+  "u",
+  "s",
+  "small",
+  "sub",
+  "sup",
+  "mark",
+  "abbr",
+  "cite",
+  "q",
+  "dfn",
+  "time",
+  "var",
+  "samp",
+  "kbd",
+  "data",
+  "code",
+  "label",
+  "button",
+  "legend",
+  "summary",
+  "dt",
+]);
+
+/**
  * Route directive attributes to their correct Jx locations.
  *
  * @param {Record<string, string>} attrs
@@ -435,10 +477,19 @@ function directiveToJx(node) {
   if (node.children?.length > 0) {
     /** @type {any[]} */
     const jxChildren = [];
+    const isPhrasingParent = PHRASING_ELEMENTS.has(node.name);
 
     for (const child of node.children) {
-      const converted = mdastNodeToJx(child);
-      if (converted != null) jxChildren.push(converted);
+      if (isPhrasingParent && child.type === "paragraph") {
+        // Unwrap: promote paragraph's inline children directly
+        for (const inline of child.children ?? []) {
+          const converted = mdastNodeToJx(inline);
+          if (converted != null) jxChildren.push(converted);
+        }
+      } else {
+        const converted = mdastNodeToJx(child);
+        if (converted != null) jxChildren.push(converted);
+      }
     }
 
     // Don't overwrite children if already set as an object by dot-path attributes

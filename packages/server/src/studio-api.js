@@ -26,10 +26,7 @@ function assertAccessible(filePath, root, activeProjectRoot) {
   const rel = relative(root, filePath);
   if (!rel.startsWith("..") && !rel.startsWith("/")) return;
   if (activeProjectRoot) {
-    const activeRoot = isAbsolute(activeProjectRoot)
-      ? activeProjectRoot
-      : resolve(root, activeProjectRoot);
-    const relActive = relative(activeRoot, filePath);
+    const relActive = relative(activeProjectRoot, filePath);
     if (!relActive.startsWith("..") && !relActive.startsWith("/")) return;
   }
   throw new Error("Path outside project root");
@@ -62,15 +59,15 @@ export async function handleStudioApi(req, url, root, activeProjectRoot = null) 
 
   // Project info — probe a directory for site-project characteristics
   if (path === "/__studio/project-info" && req.method === "GET") {
-    const dir = url.searchParams.get("dir") ?? ".";
-    const absDir = resolve(root, dir);
+    const dir = url.searchParams.get("dir") || activeProjectRoot || root;
+    const absDir = isAbsolute(dir) ? dir : resolve(root, dir);
     try {
       assertAccessible(absDir, root, activeProjectRoot);
     } catch (/** @type {any} */ e) {
       return Response.json({ error: e.message }, { status: 400 });
     }
     try {
-      const projectRoot = relative(root, absDir) || ".";
+      const projectRoot = fwd(absDir);
       const conventionalDirs = [
         "pages",
         "layouts",
@@ -117,16 +114,14 @@ export async function handleStudioApi(req, url, root, activeProjectRoot = null) 
         const candidate = resolve(dir, "project.json");
         if (existsSync(candidate)) {
           const config = JSON.parse(readFileSync(candidate, "utf8"));
-          const rel = fwd(relative(root, dir));
-          // If the project is outside the server root, use the absolute path
-          const relPath = rel.startsWith("..") ? dir : rel;
+          const relPath = fwd(dir);
           const absFile = filePath.startsWith("~")
             ? filePath.replace("~", process.env.HOME || "")
             : filePath;
           const fileRelPath = fwd(relative(dir, absFile));
           return Response.json({
             sitePath: dir,
-            relPath: relPath || ".",
+            relPath: relPath,
             fileRelPath,
             projectConfig: config,
           });
@@ -177,7 +172,7 @@ export async function handleStudioApi(req, url, root, activeProjectRoot = null) 
         try {
           const raw = JSON.parse(await readFile(fp, "utf8"));
           if (typeof raw === "object" && raw !== null && !Array.isArray(raw)) {
-            const projectDir = dirname(match) === "." ? "." : fwd(dirname(match));
+            const projectDir = fwd(dirname(fp));
             sites.push({ path: projectDir, config: raw });
           }
         } catch {}
@@ -190,9 +185,9 @@ export async function handleStudioApi(req, url, root, activeProjectRoot = null) 
 
   // List files
   if (path === "/__studio/files" && req.method === "GET") {
-    const dir = url.searchParams.get("dir") ?? ".";
+    const dir = url.searchParams.get("dir") || activeProjectRoot || root;
     const pattern = url.searchParams.get("glob");
-    const absDir = resolve(root, dir);
+    const absDir = isAbsolute(dir) ? dir : resolve(root, dir);
     try {
       assertAccessible(absDir, root, activeProjectRoot);
     } catch (/** @type {any} */ e) {
@@ -201,7 +196,7 @@ export async function handleStudioApi(req, url, root, activeProjectRoot = null) 
 
     /** Report a path relative to the active project root (or server root as fallback). */
     const reportRelative = (/** @type {string} */ fp) => {
-      if (activeProjectRoot && isAbsolute(activeProjectRoot)) {
+      if (activeProjectRoot) {
         const rel = relative(activeProjectRoot, fp);
         if (!rel.startsWith("..")) return fwd(rel);
       }
@@ -251,14 +246,12 @@ export async function handleStudioApi(req, url, root, activeProjectRoot = null) 
 
   // Component discovery — scan project for custom element definitions
   if (path === "/__studio/components" && req.method === "GET") {
-    const dir = url.searchParams.get("dir");
-    const scanRoot = dir ? resolve(root, dir) : root;
-    if (dir) {
-      try {
-        assertAccessible(scanRoot, root, activeProjectRoot);
-      } catch (/** @type {any} */ e) {
-        return Response.json({ error: e.message }, { status: 400 });
-      }
+    const dir = url.searchParams.get("dir") || activeProjectRoot || root;
+    const scanRoot = isAbsolute(dir) ? dir : resolve(root, dir);
+    try {
+      assertAccessible(scanRoot, root, activeProjectRoot);
+    } catch (/** @type {any} */ e) {
+      return Response.json({ error: e.message }, { status: 400 });
     }
     try {
       const glob = new Bun.Glob("**/*.{json,md}");
@@ -293,11 +286,20 @@ export async function handleStudioApi(req, url, root, activeProjectRoot = null) 
               path: fwd(match),
               source: "jx",
               props: Object.entries(content.state || {})
-                .filter(
-                  ([, d]) =>
-                    d && typeof d === "object" && !d.$prototype && !d.$handler && !d.$compute,
-                )
-                .map(([name, d]) => ({ name, type: d.type, default: d.default })),
+                .filter(([, d]) => {
+                  if (d == null) return false;
+                  // Shorthand: "key": "value" or "key": 0 etc.
+                  if (typeof d !== "object") return true;
+                  // Full form: skip computed/handler/prototype entries
+                  return !d.$prototype && !d.$handler && !d.$compute;
+                })
+                .map(([name, d]) => {
+                  if (typeof d !== "object") {
+                    // Shorthand: infer type from value
+                    return { name, type: typeof d, default: d };
+                  }
+                  return { name, type: d.type, default: d.default };
+                }),
               hasElements: Array.isArray(content.$elements) && content.$elements.length > 0,
             });
           }
@@ -379,8 +381,8 @@ export async function handleStudioApi(req, url, root, activeProjectRoot = null) 
 
   // List CEM-bearing npm packages
   if (path === "/__studio/packages" && req.method === "GET") {
-    const dir = url.searchParams.get("dir");
-    const scanRoot = dir ? resolve(root, dir) : root;
+    const dir = url.searchParams.get("dir") || activeProjectRoot || root;
+    const scanRoot = isAbsolute(dir) ? dir : resolve(root, dir);
     try {
       const pkgPath = resolve(scanRoot, "package.json");
       if (!existsSync(pkgPath)) return Response.json([]);
@@ -417,8 +419,8 @@ export async function handleStudioApi(req, url, root, activeProjectRoot = null) 
   if (path === "/__studio/cem" && req.method === "GET") {
     const pkg = url.searchParams.get("pkg");
     if (!pkg) return new Response("Missing pkg", { status: 400 });
-    const dir = url.searchParams.get("dir");
-    const scanRoot = dir ? resolve(root, dir) : root;
+    const dir = url.searchParams.get("dir") || activeProjectRoot || root;
+    const scanRoot = isAbsolute(dir) ? dir : resolve(root, dir);
     try {
       const depPkgPath = resolve(scanRoot, "node_modules", ...pkg.split("/"), "package.json");
       const fallbackPath = resolve(root, "node_modules", ...pkg.split("/"), "package.json");
@@ -446,8 +448,8 @@ export async function handleStudioApi(req, url, root, activeProjectRoot = null) 
       const name = body.name;
       if (!name || typeof name !== "string")
         return Response.json({ error: "Missing name" }, { status: 400 });
-      const dir = body.dir;
-      const cwd = dir ? resolve(root, dir) : root;
+      const dir = body.dir || activeProjectRoot;
+      const cwd = dir ? (isAbsolute(dir) ? dir : resolve(root, dir)) : root;
       const args = ["add", name];
       if (body.dev) args.splice(1, 0, "-d");
       const proc = Bun.spawn(["bun", ...args], { cwd, stdout: "pipe", stderr: "pipe" });
@@ -472,8 +474,8 @@ export async function handleStudioApi(req, url, root, activeProjectRoot = null) 
       const name = body.name;
       if (!name || typeof name !== "string")
         return Response.json({ error: "Missing name" }, { status: 400 });
-      const dir = body.dir;
-      const cwd = dir ? resolve(root, dir) : root;
+      const dir = body.dir || activeProjectRoot;
+      const cwd = dir ? (isAbsolute(dir) ? dir : resolve(root, dir)) : root;
       const proc = Bun.spawn(["bun", "remove", name], { cwd, stdout: "pipe", stderr: "pipe" });
       const exitCode = await proc.exited;
       if (exitCode !== 0) {
@@ -489,27 +491,20 @@ export async function handleStudioApi(req, url, root, activeProjectRoot = null) 
     }
   }
 
-  // Read file (supports absolute system paths for ?open= workflow)
+  // Read file
   if (path === "/__studio/file" && req.method === "GET") {
     const fp = url.searchParams.get("path");
     if (!fp) return new Response("Missing path", { status: 400 });
-    const isAbsolute = fp.startsWith("/") || fp.startsWith("~") || /^[A-Za-z]:[/\\]/.test(fp);
-    const abs = isAbsolute
-      ? fp.startsWith("~")
-        ? fp.replace("~", process.env.HOME || "")
-        : fp
-      : resolve(root, fp);
-    if (!isAbsolute) {
-      try {
-        assertAccessible(abs, root, activeProjectRoot);
-      } catch (/** @type {any} */ e) {
-        return new Response(e.message, { status: 400 });
-      }
+    const abs = fp.startsWith("~") ? fp.replace("~", process.env.HOME || "") : fp;
+    try {
+      assertAccessible(abs, root, activeProjectRoot);
+    } catch (/** @type {any} */ e) {
+      return new Response(e.message, { status: 400 });
     }
     try {
       return Response.json({
         content: await readFile(abs, "utf8"),
-        path: isAbsolute ? fp : fwd(relative(root, abs)),
+        path: fp,
       });
     } catch (/** @type {any} */ e) {
       return e.code === "ENOENT"

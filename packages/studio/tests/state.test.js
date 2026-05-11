@@ -240,15 +240,27 @@ describe("flattenTree", () => {
     expect(refRows.length).toBe(1);
   });
 
-  test("stops recursion for custom component instances", () => {
+  test("stops recursion for custom component instances without children array", () => {
+    const doc = {
+      tagName: "my-card",
+      $props: { title: "Hi" },
+    };
+    const rows = flattenTree(doc);
+    // Should only have the root — no children to recurse
+    expect(rows.length).toBe(1);
+  });
+
+  test("recurses into children of custom components with slotted content", () => {
     const doc = {
       tagName: "my-card",
       $props: { title: "Hi" },
       children: [{ tagName: "p" }],
     };
     const rows = flattenTree(doc);
-    // Should only have the root — children are not recursed
-    expect(rows.length).toBe(1);
+    // Should have the root + the slotted p child
+    expect(rows.length).toBe(2);
+    expect(rows[1].node.tagName).toBe("p");
+    expect(rows[1].path).toEqual(["children", 0]);
   });
 
   test("leaf node returns single row", () => {

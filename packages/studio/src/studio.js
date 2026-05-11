@@ -546,7 +546,7 @@ async function renderCanvasLive(doc, canvasEl) {
 
   try {
     const root = projectState?.projectRoot || "";
-    const docPrefix = root && root !== "." ? `${root}/` : "";
+    const docPrefix = root ? `${root}/` : "";
     const docBase = S.documentPath ? `${location.origin}/${docPrefix}${S.documentPath}` : undefined;
 
     // Register custom elements so the runtime can render them
@@ -920,9 +920,9 @@ if (_openParam) {
           : { sitePath: null };
 
         if (siteCtx.sitePath) {
-          // Set PAL project root to server-relative path so file ops work
-          if (siteCtx.relPath) {
-            platform.projectRoot = siteCtx.relPath;
+          // Set PAL project root to absolute path so file ops work
+          if (siteCtx.sitePath) {
+            platform.projectRoot = siteCtx.sitePath;
             // Await activation so the server resolves project-relative static files
             if (platform.activate) await platform.activate();
           }
@@ -930,7 +930,7 @@ if (_openParam) {
           setProjectState({
             root: siteCtx.sitePath,
             name: siteCtx.projectConfig?.name || "Project",
-            projectRoot: siteCtx.relPath || ".",
+            projectRoot: siteCtx.sitePath,
             isSiteProject: true,
             projectConfig: siteCtx.projectConfig,
             projectDirs: [],
@@ -2556,9 +2556,24 @@ function findCanvasElement(path, canvasEl) {
     } else {
       el = el.children[idx];
     }
-    if (!el) return null;
+    if (!el) break;
   }
-  return el;
+
+  // Verify the result: if DOM traversal landed on the wrong element
+  // (e.g. a custom element template child instead of the intended node),
+  // fall back to scanning elToPath.
+  if (el) {
+    const elPath = elToPath.get(el);
+    if (elPath && pathsEqual(elPath, path)) return el;
+    // el has no path or wrong path — it's a template element, not the target
+  }
+
+  // Fall back: scan all descendants for an element with matching elToPath
+  for (const candidate of canvasEl.querySelectorAll("*")) {
+    const p = elToPath.get(candidate);
+    if (p && pathsEqual(p, path)) return candidate;
+  }
+  return null;
 }
 
 // ─── Per-panel click-to-select ────────────────────────────────────────────────
@@ -2613,14 +2628,16 @@ function registerPanelEvents(panel) {
 
       for (const el of elements) {
         if (canvas.contains(el) && el !== canvas) {
-          let path = elToPath.get(el);
-          if (path) {
-            path = bubbleInlinePath(S.document, path);
+          const originalPath = elToPath.get(el);
+          if (originalPath) {
+            let path = bubbleInlinePath(S.document, originalPath);
             const newMedia = mediaName === "base" ? null : (mediaName ?? null);
             S = { ...S, ui: { ...S.ui, activeMedia: newMedia } };
 
             // Find the DOM element for the bubbled path (may differ from hit element)
-            const resolvedEl = findCanvasElement(path, canvas) || el;
+            // When path didn't change (no inline bubbling), prefer the hit element directly
+            // since findCanvasElement can't navigate into custom element template DOM.
+            const resolvedEl = path === originalPath ? el : findCanvasElement(path, canvas) || el;
 
             // Re-click on selected editable block: enter inline editing
             // Edit mode / content mode → rich text editing (enterInlineEdit)
@@ -2674,10 +2691,10 @@ function registerPanelEvents(panel) {
 
       for (const el of elements) {
         if (canvas.contains(el) && el !== canvas) {
-          let path = elToPath.get(el);
-          if (path) {
-            path = bubbleInlinePath(S.document, path);
-            const resolvedEl = findCanvasElement(path, canvas) || el;
+          const originalPath = elToPath.get(el);
+          if (originalPath) {
+            const path = bubbleInlinePath(S.document, originalPath);
+            const resolvedEl = path === originalPath ? el : findCanvasElement(path, canvas) || el;
             if (isEditableBlock(resolvedEl)) {
               const newMedia = mediaName === "base" ? null : (mediaName ?? null);
               S = { ...S, ui: { ...S.ui, activeMedia: newMedia } };
