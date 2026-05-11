@@ -58,4 +58,8 @@ export default {
   scripts: {
     preBuild: "./scripts/pre-build.js",
   },
+
+  release: {
+    baseUrl: "https://github.com/jxsuite/jx/releases/download/",
+  },
 } satisfies ElectrobunConfig;

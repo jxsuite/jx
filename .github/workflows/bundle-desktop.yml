@@ -36,8 +36,8 @@ jobs:
       - name: Build workspace packages
         run: bun run build
 
-      - name: Build desktop release
-        run: bun run desktop:release
+      - name: Build desktop installer
+        run: bun run desktop:stable
         # env:
         #   # macOS code signing — store these in GitHub Actions secrets
         #   APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -51,8 +51,8 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: release-${{ matrix.platform }}
-          path: packages/desktop/build/
-          if-no-files-found: warn
+          path: packages/desktop/artifacts/
+          if-no-files-found: error
           retention-days: 7
 
   release:
@@ -75,4 +75,4 @@ jobs:
         with:
           tag_name: ${{ github.ref_name }}
           draft: true
-          files: artifacts/**
+          files: artifacts/*
