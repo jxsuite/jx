@@ -429,11 +429,10 @@ function directiveToJx(node) {
     const { props, attributes } = routeAttributes(node.attributes);
     const isCustomElement = node.name.includes("-");
     if (isCustomElement) {
-      // For custom elements, separate element-level props from component $props.
-      // Element-level: style, Jx keywords ($ref, $component, etc.), textContent, innerHTML
-      // Everything else becomes $props so the runtime merges them into component state.
-      /** @type {Record<string, any>} */
-      const componentProps = {};
+      // For custom elements:
+      //   - style, children, textContent, innerHTML, $-prefixed → element-level
+      //   - props (from props.X dot-path) → $props (component state)
+      //   - everything else → HTML attributes
       for (const [key, value] of Object.entries(props)) {
         if (
           key === "style" ||
@@ -443,18 +442,18 @@ function directiveToJx(node) {
           key.startsWith("$")
         ) {
           el[key] = value;
+        } else if (key === "props") {
+          el.$props = value;
         } else {
-          componentProps[key] = value;
+          if (!el.attributes) el.attributes = {};
+          el.attributes[key] = value;
         }
-      }
-      if (Object.keys(componentProps).length > 0) {
-        el.$props = componentProps;
       }
     } else {
       Object.assign(el, props);
     }
     if (Object.keys(attributes).length > 0) {
-      el.attributes = attributes;
+      el.attributes = { ...el.attributes, ...attributes };
     }
   }
 
