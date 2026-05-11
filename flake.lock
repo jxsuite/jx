@@ -166,11 +166,11 @@
         "rust-overlay": "rust-overlay"
       },
       "locked": {
-        "lastModified": 1778523975,
-        "narHash": "sha256-5ineNnuvHBsxvssEfVEwbM3JimikY/hRLeTWbwJ381s=",
+        "lastModified": 1778528852,
+        "narHash": "sha256-lTRV/zUm7umFzqgYy2dUFKACb5Lyb6RZvFSqnjm3u50=",
         "owner": "cachix",
         "repo": "devenv",
-        "rev": "8ab2f3e73ba3f3caf45ee671a21c174b3183d727",
+        "rev": "2eba1b44e629484d0029893a88ab71f17a39224b",
         "type": "github"
       },
       "original": {
@@ -659,6 +659,24 @@
         "type": "github"
       }
     },
+    "nix-electrobun": {
+      "inputs": {
+        "nixpkgs": "nixpkgs_6"
+      },
+      "locked": {
+        "lastModified": 1772188987,
+        "narHash": "sha256-CpqdaH8SyXZnHsxYYT6zyI4IJ1FUuX4Uhc5mwmZZrv4=",
+        "owner": "wnix",
+        "repo": "nix-electrobun",
+        "rev": "af920876f3533a7b043c038080f087dc857593ad",
+        "type": "github"
+      },
+      "original": {
+        "owner": "wnix",
+        "repo": "nix-electrobun",
+        "type": "github"
+      }
+    },
     "nix-test-runner": {
       "flake": false,
       "locked": {
@@ -821,6 +839,22 @@
       }
     },
     "nixpkgs_6": {
+      "locked": {
+        "lastModified": 1770841267,
+        "narHash": "sha256-9xejG0KoqsoKEGp2kVbXRlEYtFFcDTHjidiuX8hGO44=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "ec7c70d12ce2fc37cb92aff673dcdca89d187bae",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "ref": "nixos-unstable",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "nixpkgs_7": {
       "inputs": {
         "nixpkgs-src": "nixpkgs-src"
       },
@@ -901,7 +935,8 @@
       "inputs": {
         "devenv": "devenv",
         "flake-parts": "flake-parts_4",
-        "nixpkgs": "nixpkgs_6"
+        "nix-electrobun": "nix-electrobun",
+        "nixpkgs": "nixpkgs_7"
       }
     },
     "rust-overlay": {

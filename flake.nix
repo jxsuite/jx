@@ -6,6 +6,7 @@
       url = "github:cachix/devenv";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    nix-electrobun.url = "github:wnix/nix-electrobun";
   };
 
   nixConfig = {
@@ -28,26 +29,104 @@
       ];
 
       perSystem =
-        { config, pkgs, ... }:
+        { config, pkgs, lib, system, ... }:
+        let
+          # CEF runtime libs needed by the desktop app
+          desktopLibs = with pkgs; [
+            gtk3
+            glib
+            glib-networking
+            pango
+            cairo
+            atk
+            gdk-pixbuf
+            harfbuzz
+            nspr
+            nss
+            dbus
+            cups
+            libX11
+            libXcomposite
+            libXdamage
+            libXext
+            libXfixes
+            libXrandr
+            mesa
+            expat
+            libxcb
+            libxkbcommon
+            alsa-lib
+            at-spi2-atk
+            systemdMinimal
+            webkitgtk_4_1
+            libsoup_3
+            libayatana-appindicator
+          ];
+        in
         {
+          packages = lib.optionalAttrs pkgs.stdenv.isLinux {
+            default = pkgs.stdenv.mkDerivation {
+              pname = "jx-studio";
+              version = "0.4.1";
+
+              src = ./.;
+
+              nativeBuildInputs = with pkgs; [ bun autoPatchelfHook makeWrapper zstd patchelf which ];
+              buildInputs = desktopLibs ++ [ pkgs.stdenv.cc.cc.lib ];
+
+              autoPatchelfIgnoreMissingDeps = [
+                "libcrypt.so.1"
+              ];
+
+              # ElectroBun downloads platform binaries at build time
+              __noChroot = true;
+
+              buildPhase = ''
+                runHook preBuild
+
+                export HOME="$TMPDIR"
+                bun install --no-progress
+
+                # Patch electrobun CLI for NixOS
+                NIX_INTERP=$(patchelf --print-interpreter "$(which bun)")
+                patchelf --set-interpreter "$NIX_INTERP" node_modules/electrobun/bin/electrobun || true
+
+                # Build workspace packages (compiler, runtime, studio, schema)
+                bun run build
+
+                # Build the desktop app bundle
+                bun run desktop:stable
+
+                runHook postBuild
+              '';
+
+              installPhase = ''
+                runHook preInstall
+
+                # Extract the .tar.zst app bundle
+                mkdir -p $out/opt/jx-studio
+                tar --use-compress-program=zstd -xf packages/desktop/artifacts/stable-linux-x64-JxStudio.tar.zst -C $out/opt/jx-studio/
+                mv $out/opt/jx-studio/JxStudio/* $out/opt/jx-studio/
+                rmdir $out/opt/jx-studio/JxStudio
+
+                mkdir -p $out/bin
+                makeWrapper $out/opt/jx-studio/bin/launcher $out/bin/jx-studio \
+                  --prefix LD_LIBRARY_PATH : "${lib.makeLibraryPath desktopLibs}"
+
+                runHook postInstall
+              '';
+
+              meta = {
+                description = "Jx Studio — visual JSON component editor";
+                homepage = "https://jxsuite.com";
+                platforms = [ "x86_64-linux" ];
+              };
+            };
+          };
+
           devenv.shells.default =
             { config, pkgs, ... }:
-            let
-              desktopLibs = with pkgs; [
-                gtk3
-                glib
-                pango
-                cairo
-                atk
-                gdk-pixbuf
-                harfbuzz
-              ];
-            in
             {
-              # dotenv = {
-              #   enable = true;
-              #   filename = "$DEVENV_ROOT/.env";
-              # };
               packages = with pkgs; [
                 bun
                 google-chrome
@@ -57,7 +136,7 @@
                 procps
               ] ++ desktopLibs;
 
-              env.LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath desktopLibs;
+              env.LD_LIBRARY_PATH = lib.makeLibraryPath desktopLibs;
 
               processes = {
                 chrome-debugging.exec = ''
