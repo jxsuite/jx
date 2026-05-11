@@ -395,6 +395,7 @@ function directiveToJx(node) {
       for (const [key, value] of Object.entries(props)) {
         if (
           key === "style" ||
+          key === "children" ||
           key === "textContent" ||
           key === "innerHTML" ||
           key.startsWith("$")
