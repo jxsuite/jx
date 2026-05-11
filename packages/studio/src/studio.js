@@ -108,6 +108,7 @@ import {
 } from "./files/files.js";
 import { eventsSidebarTemplate as _eventsSidebarTemplate } from "./panels/events-panel.js";
 import { renderImportsTemplate } from "./panels/imports-panel.js";
+import { renderHeadTemplate } from "./panels/head-panel.js";
 import { exportCemManifest as _exportCemManifest } from "./services/cem-export.js";
 
 import { registerPlatform, getPlatform, hasPlatform } from "./platform.js";
@@ -3259,7 +3260,31 @@ function renderLeftPanel() {
       defCategory,
       defBadgeLabel,
     });
-  else content = nothing;
+  else if (tab === "head") {
+    // In content mode, title/$head live in S.content.frontmatter, not S.document
+    const isContent = S.mode === "content";
+    const fm = S.content?.frontmatter ?? {};
+    const headDoc = isContent ? { ...S.document, title: fm.title, $head: fm.$head } : S.document;
+    content = renderHeadTemplate({
+      document: headDoc,
+      applyMutation: isContent
+        ? (/** @type {any} */ fn) => {
+            // Apply mutation to a temporary doc, then sync title/$head back to frontmatter
+            const tmp = { title: fm.title, $head: fm.$head ? [...fm.$head] : undefined };
+            fn(tmp);
+            if (tmp.title !== fm.title) S = updateFrontmatter(S, "title", tmp.title);
+            // Always sync $head (may have been created, modified, or emptied)
+            const newHead = tmp.$head && tmp.$head.length > 0 ? tmp.$head : undefined;
+            S = updateFrontmatter(S, "$head", newHead);
+            update(S);
+          }
+        : (/** @type {any} */ fn) => {
+            S = applyMutation(S, fn);
+            update(S);
+          },
+      renderLeftPanel,
+    });
+  } else content = nothing;
 
   litRender(html`<div class="panel-body">${content}</div>`, /** @type {any} */ (leftPanel));
 

@@ -26,6 +26,8 @@ export function tabIcon(tag, size) {
       html`<sp-icon-event slot="icon" size=${s}></sp-icon-event>`,
     "sp-icon-brush": (/** @type {any} */ s) =>
       html`<sp-icon-brush slot="icon" size=${s}></sp-icon-brush>`,
+    "sp-icon-file-single-web-page": (/** @type {any} */ s) =>
+      html`<sp-icon-file-single-web-page slot="icon" size=${s}></sp-icon-file-single-web-page>`,
     "sp-icon-artboard": (/** @type {any} */ s) =>
       html`<sp-icon-artboard slot="icon" size=${s}></sp-icon-artboard>`,
     "sp-icon-box": (/** @type {any} */ s) =>
@@ -44,6 +46,7 @@ export function renderActivityBar(S) {
     { value: "blocks", icon: "sp-icon-view-grid", label: "Elements" },
     { value: "state", icon: "sp-icon-brackets", label: "State" },
     { value: "data", icon: "sp-icon-data", label: "Data" },
+    { value: "head", icon: "sp-icon-file-single-web-page", label: "Head" },
   ];
   const tpl = html`
     <sp-tabs

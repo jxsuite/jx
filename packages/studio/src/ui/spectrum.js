@@ -61,6 +61,7 @@ import { IconDocument } from "@spectrum-web-components/icons-workflow/src/elemen
 import { IconFileCode } from "@spectrum-web-components/icons-workflow/src/elements/IconFileCode.js";
 import { IconFileTxt } from "@spectrum-web-components/icons-workflow/src/elements/IconFileTxt.js";
 import { IconImage } from "@spectrum-web-components/icons-workflow/src/elements/IconImage.js";
+import { IconFileSingleWebPage } from "@spectrum-web-components/icons-workflow/src/elements/IconFileSingleWebPage.js";
 import { IconRefresh } from "@spectrum-web-components/icons-workflow/src/elements/IconRefresh.js";
 import { IconAdd } from "@spectrum-web-components/icons-workflow/src/elements/IconAdd.js";
 import { IconUpload } from "@spectrum-web-components/icons-workflow/src/elements/IconUpload.js";
@@ -189,6 +190,7 @@ const components = [
   ["sp-icon-file-code", IconFileCode],
   ["sp-icon-file-txt", IconFileTxt],
   ["sp-icon-image", IconImage],
+  ["sp-icon-file-single-web-page", IconFileSingleWebPage],
   ["sp-icon-refresh", IconRefresh],
   ["sp-icon-add", IconAdd],
   ["sp-icon-upload", IconUpload],
