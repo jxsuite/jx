@@ -317,7 +317,7 @@ tagName: my-comp
     });
   });
 
-  test("maps directive attributes to DOM properties", () => {
+  test("maps directive attributes to HTML attributes for standard elements", () => {
     const source = `---
 tagName: my-comp
 ---
@@ -327,9 +327,9 @@ tagName: my-comp
     const doc = /** @type {any} */ (transpileJxMarkdown(source));
     const input = doc.children[0];
     expect(input.tagName).toBe("input");
-    expect(input.type).toBe("text");
-    expect(input.value).toBe("${state.name}");
-    expect(input.placeholder).toBe("Enter name");
+    expect(input.attributes.type).toBe("text");
+    expect(input.attributes.value).toBe("${state.name}");
+    expect(input.attributes.placeholder).toBe("Enter name");
   });
 
   test("routes aria-* and data-* to attributes sub-object", () => {
@@ -356,8 +356,8 @@ tagName: my-comp
     const doc = /** @type {any} */ (transpileJxMarkdown(source));
     expect(doc.children[0].tagName).toBe("hr");
     expect(doc.children[1].tagName).toBe("img");
-    expect(doc.children[1].src).toBe("/photo.jpg");
-    expect(doc.children[1].alt).toBe("A photo");
+    expect(doc.children[1].attributes.src).toBe("/photo.jpg");
+    expect(doc.children[1].attributes.alt).toBe("A photo");
   });
 
   test("handles container directives with nested children", () => {

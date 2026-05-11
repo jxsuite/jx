@@ -450,7 +450,31 @@ function directiveToJx(node) {
         }
       }
     } else {
-      Object.assign(el, props);
+      // For standard HTML elements:
+      //   - Jx structural keys (style, children, textContent, innerHTML, $-prefixed) → element-level
+      //   - Known DOM properties that buildAttrs handles → element-level
+      //   - Everything else → HTML attributes (src, href, width, height, type, alt, etc.)
+      for (const [key, value] of Object.entries(props)) {
+        if (
+          key === "style" ||
+          key === "children" ||
+          key === "textContent" ||
+          key === "innerHTML" ||
+          key === "id" ||
+          key === "className" ||
+          key === "hidden" ||
+          key === "tabIndex" ||
+          key === "lang" ||
+          key === "dir" ||
+          key.startsWith("$") ||
+          key.startsWith("on")
+        ) {
+          el[key] = value;
+        } else {
+          if (!el.attributes) el.attributes = {};
+          el.attributes[key] = value;
+        }
+      }
     }
     if (Object.keys(attributes).length > 0) {
       el.attributes = { ...el.attributes, ...attributes };
