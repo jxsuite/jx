@@ -32,6 +32,17 @@
         {
           devenv.shells.default =
             { config, pkgs, ... }:
+            let
+              desktopLibs = with pkgs; [
+                gtk3
+                glib
+                pango
+                cairo
+                atk
+                gdk-pixbuf
+                harfbuzz
+              ];
+            in
             {
               # dotenv = {
               #   enable = true;
@@ -41,9 +52,12 @@
                 bun
                 google-chrome
                 husky
+                patchelf
                 pre-commit
                 procps
-              ];
+              ] ++ desktopLibs;
+
+              env.LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath desktopLibs;
 
               processes = {
                 chrome-debugging.exec = ''
@@ -71,6 +85,18 @@
                 # load the .env file if it exists
                 if [ -f "$DEVENV_ROOT/.env" ]; then
                   set -a; source "$DEVENV_ROOT/.env"; set +a
+                fi
+
+                # Patch electrobun CLI binary for NixOS
+                NIX_INTERP=$(patchelf --print-interpreter "$(which bun)" 2>/dev/null)
+                if [ -n "$NIX_INTERP" ]; then
+                  for bin in \
+                    "$DEVENV_ROOT/node_modules/electrobun/bin/electrobun" \
+                    "$DEVENV_ROOT/packages/desktop/node_modules/electrobun/bin/electrobun"; do
+                    if [ -f "$bin" ] && ! patchelf --print-interpreter "$bin" 2>/dev/null | grep -q nix; then
+                      patchelf --set-interpreter "$NIX_INTERP" "$bin" 2>/dev/null || true
+                    fi
+                  done
                 fi
               '';
             };

@@ -7,8 +7,8 @@
   "scripts": {
     "dev": "bunx electrobun dev",
     "build": "bunx electrobun build",
-    "build:release": "bunx electrobun build --release",
-    "build:stable": "bunx electrobun build:stable",
+    "build:release": "bunx electrobun build --env=canary",
+    "build:stable": "bunx electrobun build --env=stable",
     "upgrade": "bunx npm-check-updates -u && bun install"
   },
   "dependencies": {
