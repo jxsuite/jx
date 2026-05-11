@@ -20,9 +20,15 @@ jobs:
           registry-url: "https://registry.npmjs.org"
       - run: bun install
       - run: bun run build
-      - run: npm publish packages/compiler --access public --provenance
-      - run: npm publish packages/parser --access public --provenance
-      - run: npm publish packages/runtime --access public --provenance
-      - run: npm publish packages/schema --access public --provenance
-      - run: npm publish packages/server --access public --provenance
-      - run: npm publish packages/studio --access public --provenance
+      - run: npm publish --access public --provenance
+        working-directory: packages/compiler
+      - run: npm publish --access public --provenance
+        working-directory: packages/parser
+      - run: npm publish --access public --provenance
+        working-directory: packages/runtime
+      - run: npm publish --access public --provenance
+        working-directory: packages/schema
+      - run: npm publish --access public --provenance
+        working-directory: packages/server
+      - run: npm publish --access public --provenance
+        working-directory: packages/studio
