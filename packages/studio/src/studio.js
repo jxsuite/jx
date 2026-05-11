@@ -2970,7 +2970,7 @@ function enterComponentInlineEdit(el, path) {
   if (Array.isArray(node.children) && node.children.length > 0) return;
   if (node.children && typeof node.children === "object") return;
   if (tc && typeof tc === "object") return;
-  const voids = new Set(["img", "input", "br", "hr", "video", "audio", "source", "embed"]);
+  const voids = new Set(["img", "input", "br", "hr", "video", "audio", "source", "embed", "slot"]);
   if (voids.has(node.tagName)) return;
 
   // Keep overlay visible for the label, but hide selection border to not obscure editing outline.
