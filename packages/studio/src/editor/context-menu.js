@@ -6,6 +6,7 @@ import {
   insertNode,
   removeNode,
   duplicateNode,
+  wrapNode,
   getNodeAtPath,
   parentElementPath,
   childIndex,
@@ -98,6 +99,27 @@ export function showContextMenu(e, path, S, opts = {}) {
   if (path.length >= 2) {
     items.push({ label: "Cut", action: () => cutNode(S) });
     items.push({ label: "Duplicate", action: () => update(duplicateNode(S, S.selection)) });
+    items.push({ label: "—" }); // separator
+    items.push({
+      label: "Insert before",
+      action: () => {
+        const pp = /** @type {any} */ (parentElementPath(path));
+        const idx = /** @type {number} */ (childIndex(path));
+        update(insertNode(S, pp, idx, { tagName: "p", children: [] }));
+      },
+    });
+    items.push({
+      label: "Insert after",
+      action: () => {
+        const pp = /** @type {any} */ (parentElementPath(path));
+        const idx = /** @type {number} */ (childIndex(path));
+        update(insertNode(S, pp, idx + 1, { tagName: "p", children: [] }));
+      },
+    });
+    items.push({
+      label: "Wrap in Div",
+      action: () => update(wrapNode(S, S.selection)),
+    });
     if (node.tagName) {
       const isComponent =
         node.tagName.includes("-") &&

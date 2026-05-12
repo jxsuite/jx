@@ -401,6 +401,28 @@ export function duplicateNode(state, path) {
 }
 
 /**
+ * Wrap the node at `path` in a new wrapper element (e.g. a div).
+ *
+ * @param {StudioState} state
+ * @param {JxPath} path
+ * @param {string} wrapperTag
+ * @returns {StudioState}
+ */
+export function wrapNode(state, path, wrapperTag = "div") {
+  if (!path || path.length < 2) return state;
+  const node = getNodeAtPath(state.document, path);
+  if (!node) return state;
+  const elemPath = /** @type {JxPath} */ (parentElementPath(path));
+  const idx = /** @type {number} */ (childIndex(path));
+  const wrapper = { tagName: wrapperTag, children: [structuredClone(node)] };
+  const newState = applyMutation(state, (doc) => {
+    const parent = getNodeAtPath(doc, elemPath);
+    parent.children.splice(idx, 1, wrapper);
+  });
+  return selectNode(newState, [...elemPath, "children", idx]);
+}
+
+/**
  * @param {StudioState} state
  * @param {JxPath} fromPath
  * @param {JxPath} toParentPath

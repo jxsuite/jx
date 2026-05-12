@@ -94,8 +94,8 @@ let activePath = null; // JSON path to the active element
 let commitFn = null; // function(path, newChildren, newTextContent) to commit changes
 /** @type {((path: any[], beforeChildren: any, afterChildren: any) => void) | null} */
 let splitFn = null; // function(path, beforeChildren, afterChildren) to split paragraph
-/** @type {((path: any[], elementDef: any) => void) | null} */
-let insertFn = null; // function(path, elementDef) to insert after current block
+/** @type {((path: any[], elementDef: any, commitData?: any) => void) | null} */
+let insertFn = null; // function(path, elementDef, commitData?) to insert after current block
 /** @type {(() => void) | null} */
 let endFn = null; // function() called when editing stops
 
@@ -337,14 +337,26 @@ function handleEnterKey() {
 
   // Stop editing before mutating state (which will re-render)
   const path = [...activePath];
+  const split = splitFn;
+
   activeEl.contentEditable = "false";
   activeEl.removeEventListener("keydown", handleKeydown);
   activeEl.removeEventListener("input", handleInput);
   activeEl.removeEventListener("blur", handleBlur);
   activeEl.removeEventListener("paste", handlePaste);
   activeEl = null;
+  activePath = null;
+  commitFn = null;
+  splitFn = null;
+  insertFn = null;
 
-  splitFn(path, beforeChildren, afterChildren);
+  if (endFn) {
+    const fn = endFn;
+    endFn = null;
+    fn();
+  }
+
+  split(path, beforeChildren, afterChildren);
 }
 
 // ─── Content sync: DOM → Jx ────────────────────────────────────────────
@@ -582,16 +594,31 @@ function handleSlashSelect(cmd) {
     }
   }
 
-  commitChanges();
+  // Compute commit data inline instead of calling commitChanges() — avoids a separate
+  // update() call that would race with the insertFn update() (two concurrent async renders).
+  normalizeInlineContent(activeEl);
+  const commitResult = elementToJx(activeEl);
 
   const path = [...activePath];
+  const insert = insertFn;
+
   activeEl.contentEditable = "false";
   activeEl.removeEventListener("keydown", handleKeydown);
   activeEl.removeEventListener("input", handleInput);
   activeEl.removeEventListener("blur", handleBlur);
   activeEl.removeEventListener("paste", handlePaste);
   activeEl = null;
+  activePath = null;
+  commitFn = null;
+  splitFn = null;
+  insertFn = null;
 
-  // Delegate to studio.js callback which builds the element def and inserts it
-  insertFn(path, cmd);
+  if (endFn) {
+    const fn = endFn;
+    endFn = null;
+    fn();
+  }
+
+  // Pass commit data so onInsert can batch commit + insert into a single update()
+  insert(path, cmd, commitResult);
 }

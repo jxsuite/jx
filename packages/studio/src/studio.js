@@ -498,15 +498,19 @@ function prepareForEditMode(node) {
   return out;
 }
 
+/** Generation counter — stale async renders bail out when this has advanced */
+let _renderGeneration = 0;
+
 /**
  * Render a Jx document into a canvas element using the real runtime. Populates elToPath for each
  * created element via onNodeCreated callback. Returns the live state scope on success, null on
  * failure.
  *
+ * @param {number} gen - Render generation for staleness detection
  * @param {any} doc
  * @param {any} canvasEl
  */
-async function renderCanvasLive(doc, canvasEl) {
+async function renderCanvasLive(gen, doc, canvasEl) {
   canvasEl.innerHTML = "";
 
   // Apply content mode typography styling
@@ -608,6 +612,9 @@ async function renderCanvasLive(doc, canvasEl) {
       }
     }
 
+    // Bail out if a newer render started while we were importing elements
+    if (gen !== _renderGeneration) return null;
+
     // Inject site-level imports so buildScope can resolve $prototype names
     renderDoc.imports = getEffectiveImports(renderDoc.imports);
 
@@ -682,6 +689,8 @@ async function renderCanvasLive(doc, canvasEl) {
     }
 
     const $defs = await buildScope(renderDoc, {}, docBase);
+    // Bail out if a newer render started while buildScope was running
+    if (gen !== _renderGeneration) return null;
     const el = /** @type {HTMLElement} */ (
       runtimeRenderNode(renderDoc, $defs, {
         onNodeCreated(/** @type {any} */ el, /** @type {any} */ path) {
@@ -738,7 +747,7 @@ async function renderCanvasLive(doc, canvasEl) {
     }
     return $defs;
   } catch (/** @type {any} */ err) {
-    console.warn("Jx Studio: runtime render failed, falling back to structural preview", err);
+    console.warn("renderCanvasLive failed:", err.message, err);
     return null;
   }
 }
@@ -834,6 +843,40 @@ registerRenderer("overlays", () => renderOverlays());
 registerRenderer("statusbar", () => renderStatusbar(S));
 setStatusbarRenderer(() => renderStatusbar(S));
 
+function safeRenderLeftPanel() {
+  try {
+    ensureLitState(leftPanel);
+    renderLeftPanel();
+  } catch (e) {
+    console.error("renderLeftPanel error:", e);
+    try {
+      leftPanel.textContent = "";
+      // @ts-ignore
+      delete leftPanel["_$litPart$"];
+      renderLeftPanel();
+    } catch (e2) {
+      console.error("renderLeftPanel retry failed:", e2);
+    }
+  }
+}
+
+function safeRenderRightPanel() {
+  try {
+    ensureLitState(rightPanel);
+    renderRightPanel();
+  } catch (e) {
+    console.error("renderRightPanel error:", e);
+    try {
+      rightPanel.textContent = "";
+      // @ts-ignore
+      delete rightPanel["_$litPart$"];
+      renderRightPanel();
+    } catch (e2) {
+      console.error("renderRightPanel retry failed:", e2);
+    }
+  }
+}
+
 // Register the update implementation with the store
 setGetStateFn(() => S);
 setUpdateFn(function _update(/** @type {any} */ newState) {
@@ -844,14 +887,10 @@ setUpdateFn(function _update(/** @type {any} */ newState) {
   renderToolbar();
 
   if (prevDoc !== S.document) {
-    try {
-      renderCanvas();
-    } catch (e) {
-      console.warn("renderCanvas error:", e);
-    }
-    renderLeftPanel();
+    renderCanvas();
+    safeRenderLeftPanel();
   } else if (!pathsEqual(prevSel, S.selection)) {
-    renderLeftPanel();
+    safeRenderLeftPanel();
   }
 
   // Skip right-panel rebuild when an input inside it is focused (user is typing)
@@ -870,7 +909,7 @@ setUpdateFn(function _update(/** @type {any} */ newState) {
       activeTag === "SP-COMBOBOX" ||
       activeTag === "SP-SEARCH");
   if (!rightHasFocus || !pathsEqual(prevSel, S.selection)) {
-    renderRightPanel();
+    safeRenderRightPanel();
   }
   renderOverlays();
   renderStatusbar(S);
@@ -1106,7 +1145,37 @@ function applyCanvasMediaOverrides(canvasEl, activeBreakpoints) {
 
 // ─── Canvas ───────────────────────────────────────────────────────────────────
 
+function ensureLitState(/** @type {HTMLElement} */ container) {
+  // @ts-ignore — Lit stores a ChildPart on this private property
+  const part = container["_$litPart$"];
+  if (!part) return;
+  const start = part._$startNode;
+  const end = part._$endNode;
+  const startBad = start && start.parentNode !== container;
+  const endBad = end && end !== container && end.parentNode !== container;
+  if (startBad || endBad) {
+    console.warn("ensureLitState: clearing corrupted Lit state on", container.id || container);
+    container.textContent = "";
+    // @ts-ignore
+    delete container["_$litPart$"];
+  }
+}
+
 function renderCanvas() {
+  // Advance render generation so stale async renders from the previous cycle bail out
+  ++_renderGeneration;
+
+  // Always clear Lit's internal state so it builds fresh DOM. Stale async
+  // renderCanvasLive calls from a previous cycle can corrupt nested ChildPart
+  // markers (Comment nodes inside panzoom-wrap) in ways the root-only
+  // ensureLitState check cannot detect.
+  // @ts-ignore
+  if (canvasWrap["_$litPart$"]) {
+    canvasWrap.textContent = "";
+    // @ts-ignore
+    delete canvasWrap["_$litPart$"];
+  }
+
   // Function editor mode: editing a function body in Monaco (JS)
   if (S.ui.editingFunction) {
     renderFunctionEditor();
@@ -1288,14 +1357,12 @@ function renderCanvas() {
     }
 
     const { tpl: panelTpl, panel } = canvasPanelTemplate(null, null, true);
-    litRender(
-      html`
-        <div class="content-edit-canvas">
-          <div class="content-edit-column">${panelTpl}</div>
-        </div>
-      `,
-      canvasWrap,
-    );
+    const editTpl = html`
+      <div class="content-edit-canvas">
+        <div class="content-edit-column">${panelTpl}</div>
+      </div>
+    `;
+    litRender(editTpl, canvasWrap);
     canvasPanels.push(panel);
     renderCanvasIntoPanel(panel, new Set(), S.ui.featureToggles);
     return;
@@ -1419,7 +1486,10 @@ function renderCanvas() {
  * @param {any} featureToggles
  */
 function renderCanvasIntoPanel(panel, activeBreakpoints, featureToggles) {
-  renderCanvasLive(S.document, panel.canvas).then((scope) => {
+  const gen = _renderGeneration;
+  renderCanvasLive(gen, S.document, panel.canvas).then((scope) => {
+    // Skip post-render setup if a newer render has started
+    if (gen !== _renderGeneration) return;
     if (scope) {
       liveScope = scope;
       applyCanvasMediaOverrides(panel.canvas, activeBreakpoints);
@@ -2893,12 +2963,25 @@ function enterInlineEdit(el, path) {
       });
     },
 
-    onInsert(/** @type {any} */ afterPath, /** @type {any} */ cmd) {
+    onInsert(/** @type {any} */ afterPath, /** @type {any} */ cmd, /** @type {any} */ commitData) {
       // cmd comes from the shared slash menu: { label, tag, description }
       const elementDef = defaultDef(cmd.tag);
       const parentPath = /** @type {any} */ (parentElementPath(afterPath));
       const idx = /** @type {number} */ (childIndex(afterPath));
-      let s = insertNode(S, parentPath, idx + 1, structuredClone(elementDef));
+
+      // Apply pending commit from inline edit first (batched to avoid double render)
+      let s = S;
+      if (commitData) {
+        if (commitData.children) {
+          s = updateProperty(s, afterPath, "textContent", undefined);
+          s = updateProperty(s, afterPath, "children", commitData.children);
+        } else if (commitData.textContent != null) {
+          s = updateProperty(s, afterPath, "children", undefined);
+          s = updateProperty(s, afterPath, "textContent", commitData.textContent);
+        }
+      }
+
+      s = insertNode(s, parentPath, idx + 1, structuredClone(elementDef));
       const newPath = [...parentPath, "children", idx + 1];
       s = selectNode(s, newPath);
       update(s);

@@ -17,6 +17,7 @@ export {
   insertNode,
   removeNode,
   duplicateNode,
+  wrapNode,
   moveNode,
   updateProperty,
   updateStyle,

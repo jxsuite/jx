@@ -13,6 +13,7 @@
   ],
   "type": "module",
   "scripts": {
+    "all-the-things": "bun run build && bun run test && bun run lint && bun run typecheck",
     "build": "bun run build:compiler && bun run build:runtime && bun run build:studio && bun run generate:schema",
     "build:compiler": "bun run --cwd packages/compiler build",
     "build:runtime": "bun run --cwd packages/runtime build",
@@ -26,20 +27,20 @@
     "generate:schema": "bun run --cwd packages/schema schema",
     "lint": "oxlint .",
     "lint:fix": "oxlint --fix .",
+    "pack": "bun run --workspaces bun pm pack",
     "prepare": "husky",
-    "all-the-things": "bun run build && bun run test && bun run lint && bun run typecheck",
     "release": "release-it",
     "release:publish": "npm publish packages/compiler --access public && npm publish packages/parser --access public && npm publish packages/runtime --access public && npm publish packages/schema --access public && npm publish packages/server --access public && npm publish packages/studio --access public",
     "test": "bun test",
     "test:coverage": "bun test --coverage",
-    "typecheck": "tsc",
-    "upgrade": "bunx npm-check-updates -u && bun install && bun run --workspaces upgrade",
-    "pack": "bun run --workspaces bun pm pack"
+    "typecheck": "tsgo",
+    "typecheck:legacy": "tsc",
+    "upgrade": "bunx npm-check-updates -u && bun install && bun run --workspaces upgrade"
   },
   "dependencies": {},
   "devDependencies": {
-    "@commitlint/cli": "^21.0.0",
-    "@commitlint/config-conventional": "^21.0.0",
+    "@commitlint/cli": "^21.0.1",
+    "@commitlint/config-conventional": "^21.0.1",
     "@release-it/bumper": "^7.0.5",
     "@release-it/conventional-changelog": "^11.0.0",
     "@typescript/native-preview": "^7.0.0-dev.20260512.1",
@@ -52,8 +53,8 @@
   },
   "lint-staged": {
     "*.{js,ts}": [
-      "oxlint --fix",
-      "oxfmt"
+      "oxfmt",
+      "oxlint --fix"
     ],
     "*.json": [
       "oxfmt --no-error-on-unmatched-pattern"
@@ -65,8 +66,8 @@
       "tagName": "v${version}"
     },
     "github": {
-      "release": true,
-      "draft": true
+      "draft": true,
+      "release": true
     },
     "hooks": {
       "before:init": "bun test && bun run lint"
