@@ -14,9 +14,12 @@
   "type": "module",
   "exports": {
     ".": "./src/md.js",
-    "./transpile": "./src/transpile.js",
+    "./MarkdownCollection.class.json": "./src/MarkdownCollection.class.json",
     "./MarkdownFile.class.json": "./src/MarkdownFile.class.json",
-    "./MarkdownCollection.class.json": "./src/MarkdownCollection.class.json"
+    "./transpile": "./src/transpile.js"
+  },
+  "publishConfig": {
+    "provenance": true
   },
   "scripts": {
     "test": "bun test",

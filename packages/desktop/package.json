@@ -1,14 +1,18 @@
 {
   "name": "@jxsuite/desktop",
   "version": "0.4.2",
-  "private": true,
   "description": "Jx Studio — standalone desktop application built with Electrobun",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jxsuite/jx.git",
+    "directory": "packages/desktop"
+  },
   "type": "module",
   "scripts": {
-    "dev": "bunx electrobun dev",
     "build": "bunx electrobun build",
     "build:release": "bunx electrobun build --env=canary",
     "build:stable": "bunx electrobun build --env=stable",
+    "dev": "bunx electrobun dev",
     "upgrade": "bunx npm-check-updates -u && bun install"
   },
   "dependencies": {

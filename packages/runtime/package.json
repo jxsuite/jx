@@ -16,6 +16,9 @@
   "exports": {
     ".": "./src/runtime.js"
   },
+  "publishConfig": {
+    "provenance": true
+  },
   "scripts": {
     "build": "bun build ./src/runtime.js --outdir dist --target browser --sourcemap=linked",
     "test": "bun test",

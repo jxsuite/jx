@@ -18,18 +18,21 @@
   "type": "module",
   "exports": {
     ".": "./src/compiler.js",
-    "./site": "./src/site/site-build.js",
-    "./site-loader": "./src/site/site-loader.js",
-    "./pages-discovery": "./src/site/pages-discovery.js",
-    "./layout-resolver": "./src/site/layout-resolver.js",
-    "./head-merger": "./src/site/head-merger.js",
+    "./content-loader": "./src/site/content-loader.js",
     "./context-injection": "./src/site/context-injection.js",
-    "./content-loader": "./src/site/content-loader.js"
+    "./head-merger": "./src/site/head-merger.js",
+    "./layout-resolver": "./src/site/layout-resolver.js",
+    "./pages-discovery": "./src/site/pages-discovery.js",
+    "./site": "./src/site/site-build.js",
+    "./site-loader": "./src/site/site-loader.js"
+  },
+  "publishConfig": {
+    "provenance": true
   },
   "scripts": {
-    "test": "bun test",
     "build": "bun build src/compiler.js --outdir=dist --format=esm --minify",
     "build:site": "bun src/cli.js build",
+    "test": "bun test",
     "upgrade": "bunx npm-check-updates -u && bun install"
   },
   "dependencies": {

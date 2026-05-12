@@ -15,6 +15,9 @@
   "exports": {
     ".": "./src/server.js"
   },
+  "publishConfig": {
+    "provenance": true
+  },
   "scripts": {
     "upgrade": "bunx npm-check-updates -u && bun install"
   },

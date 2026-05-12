@@ -1,30 +1,33 @@
 {
-  "name": "@jxsuite/schema",
-  "version": "0.4.2",
+  "dependencies": {
+    "@webref/css": "^8.5.5",
+    "@webref/elements": "^2.7.1",
+    "@webref/idl": "^3.77.0"
+  },
   "description": "JSON Schema 2020-12 meta-schema generator for Jx documents",
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/jxsuite/jx.git",
-    "directory": "packages/schema"
+  "exports": {
+    ".": "./src/schema.js"
   },
   "files": [
     "src/",
     "*.json",
     "!package.json"
   ],
-  "type": "module",
-  "exports": {
-    ".": "./src/schema.js"
+  "license": "MIT",
+  "name": "@jxsuite/schema",
+  "publishConfig": {
+    "provenance": true
+  },
+  "repository": {
+    "directory": "packages/schema",
+    "type": "git",
+    "url": "git+https://github.com/jxsuite/jx.git"
   },
   "scripts": {
     "schema": "bun run src/schema.js",
     "test": "bun test",
     "upgrade": "bunx npm-check-updates -u && bun install"
   },
-  "dependencies": {
-    "@webref/css": "^8.5.5",
-    "@webref/elements": "^2.7.1",
-    "@webref/idl": "^3.77.0"
-  }
+  "type": "module",
+  "version": "0.4.2"
 }

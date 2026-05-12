@@ -18,11 +18,14 @@
     ".": "./src/studio.js",
     "./platform.js": "./src/platform.js"
   },
+  "publishConfig": {
+    "provenance": true
+  },
   "scripts": {
     "build": "bun build ./src/studio.js --outdir dist --target browser --sourcemap=linked",
     "gen:webdata": "bun run scripts/gen-webdata.js",
-    "upgrade": "bunx npm-check-updates -u && bun install",
-    "test": "bun test"
+    "test": "bun test",
+    "upgrade": "bunx npm-check-updates -u && bun install"
   },
   "dependencies": {
     "@atlaskit/pragmatic-drag-and-drop": "^1.8.1",
