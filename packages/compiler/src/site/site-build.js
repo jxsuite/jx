@@ -37,6 +37,7 @@ import {
 } from "../shared.js";
 import { loadCollections, loadContentConfig, resolveCollectionRefs } from "./content-loader.js";
 import { resolvePrototypes } from "./prototype-resolver.js";
+import { compileMarkdown } from "../targets/compile-markdown.js";
 
 /**
  * Build an entire Jx site from a project directory.
@@ -188,6 +189,19 @@ export async function buildSite(projectRoot, options = {}) {
       writeFileSync(outPath, result.html, "utf8");
       fileCount++;
 
+      // Write markdown export alongside HTML
+      try {
+        const md = compileMarkdown(result.doc, componentDefs);
+        if (md.content) {
+          const mdPath = outPath.replace(/\.html$/, ".md");
+          writeFileSync(mdPath, md.content, "utf8");
+          fileCount++;
+        }
+      } catch (e) {
+        const err = /** @type {any} */ (e);
+        errors.push(`Error exporting markdown for ${route.urlPattern}: ${err.message}`);
+      }
+
       // Write any additional files (island modules, etc.)
       for (const file of result.files) {
         const filePath = resolve(dirname(outPath), file.path);
@@ -252,7 +266,7 @@ export async function buildSite(projectRoot, options = {}) {
  * @param {any} projectConfig
  * @param {string} projectRoot
  * @param {Map<string, any[]>} [collections]
- * @returns {Promise<{ html: string; files: any[]; serverHandler: string | null }>}
+ * @returns {Promise<{ html: string; files: any[]; serverHandler: string | null; doc: any }>}
  */
 async function compilePage(route, projectConfig, projectRoot, collections = new Map()) {
   // Load the raw page document
@@ -362,7 +376,7 @@ async function compilePage(route, projectConfig, projectRoot, collections = new 
     // No server entries — that's fine
   }
 
-  return { html: result.html, files: result.files, serverHandler };
+  return { html: result.html, files: result.files, serverHandler, doc: layoutDoc };
 }
 
 /**
