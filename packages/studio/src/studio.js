@@ -37,7 +37,6 @@ import {
   isAncestor,
   canvasWrap,
   leftPanel,
-  rightPanel,
   toolbarEl,
   elToPath,
   canvasPanels,
@@ -100,7 +99,12 @@ import {
   varDisplayName,
   parseCemType,
 } from "./utils/studio-utils.js";
-import { renderStatusbar, statusMessage, setStatusbarRenderer } from "./panels/statusbar.js";
+import {
+  renderStatusbar,
+  statusMessage,
+  setStatusbarRenderer,
+  mountStatusbar,
+} from "./panels/statusbar.js";
 import {
   openFile as _openFile,
   loadMarkdown as _loadMarkdown,
@@ -171,7 +175,6 @@ import { renderDataExplorerTemplate } from "./panels/data-explorer.js";
 // by Bun's bundler despite sideEffects declarations in Spectrum's package.json.
 import { components as _swc } from "./ui/spectrum.js"; // eslint-disable-line no-unused-vars
 import { renderFieldRow } from "./ui/field-row.js";
-import { isColorPopoverOpen } from "./ui/color-selector.js";
 import { widgetForType as _widgetForType } from "./ui/widgets.js";
 import { computeInheritedStyle } from "./utils/inherited-style.js";
 import "./ui/panel-resize.js";
@@ -802,6 +805,7 @@ registerRenderer("rightPanel", () => rightPanelMod.render());
 registerRenderer("overlays", () => overlaysPanel.render());
 registerRenderer("statusbar", () => renderStatusbar(S));
 setStatusbarRenderer(() => renderStatusbar(S));
+mountStatusbar();
 
 function safeRenderLeftPanel() {
   try {
@@ -851,12 +855,6 @@ setUpdateFn(function _update(/** @type {any} */ newState) {
   const leftUiChanged =
     uiChanged && (prev.ui?.leftTab !== S.ui?.leftTab || prev.ui?.settingsTab !== S.ui?.settingsTab);
 
-  try {
-    renderToolbar();
-  } catch (e) {
-    console.error("renderToolbar error:", e);
-  }
-
   if (docChanged || modeChanged || canvasUiChanged) {
     try {
       renderCanvas();
@@ -870,36 +868,6 @@ setUpdateFn(function _update(/** @type {any} */ newState) {
 
   if (uiChanged && prev.ui?.activeMedia !== S.ui?.activeMedia) {
     updateActivePanelHeaders();
-  }
-
-  // Skip right-panel rebuild when an input inside it is focused (user is typing)
-  // unless the selection changed — that always needs a full re-render
-  // Also re-render when color popover is open (changes come from outside rightPanel)
-  const colorPopoverOpen = isColorPopoverOpen();
-  const activeTag = document.activeElement?.tagName;
-  const rightHasFocus =
-    !colorPopoverOpen &&
-    rightPanel.contains(document.activeElement) &&
-    (activeTag === "INPUT" ||
-      activeTag === "TEXTAREA" ||
-      activeTag === "SP-TEXTFIELD" ||
-      activeTag === "SP-NUMBER-FIELD" ||
-      activeTag === "SP-PICKER" ||
-      activeTag === "SP-COMBOBOX" ||
-      activeTag === "SP-SEARCH");
-  if (!rightHasFocus || selChanged || uiChanged) {
-    safeRenderRightPanel();
-  }
-
-  try {
-    renderOverlays();
-  } catch (e) {
-    console.error("renderOverlays error:", e);
-  }
-  try {
-    renderStatusbar(S);
-  } catch (e) {
-    console.error("renderStatusbar error:", e);
   }
 
   runPostRenderHooks(prevDoc, prevSel);
@@ -940,12 +908,6 @@ setUpdateSessionFn(function _updateSession(/** @type {any} */ patch) {
     uiChanged &&
     (prev.ui?.leftTab !== session.ui?.leftTab || prev.ui?.settingsTab !== session.ui?.settingsTab);
 
-  try {
-    renderToolbar();
-  } catch (e) {
-    console.error("renderToolbar error:", e);
-  }
-
   if (canvasUiChanged) {
     try {
       renderCanvas();
@@ -959,21 +921,6 @@ setUpdateSessionFn(function _updateSession(/** @type {any} */ patch) {
 
   if (uiChanged && prev.ui?.activeMedia !== session.ui?.activeMedia) {
     updateActivePanelHeaders();
-  }
-
-  if (selChanged || uiChanged) {
-    safeRenderRightPanel();
-  }
-
-  try {
-    renderOverlays();
-  } catch (e) {
-    console.error("renderOverlays error:", e);
-  }
-  try {
-    renderStatusbar(S);
-  } catch (e) {
-    console.error("renderStatusbar error:", e);
   }
 
   runPostRenderHooks(doc.document, prev.selection);

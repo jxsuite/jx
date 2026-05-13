@@ -4,7 +4,7 @@
  */
 
 import { html, render as litRender, nothing } from "lit-html";
-import { getState, update, updateSession, updateUi, undo, redo } from "../store.js";
+import { getState, update, updateSession, updateUi, undo, redo, subscribe } from "../store.js";
 import { getEffectiveMedia } from "../site-context.js";
 import { mediaDisplayName } from "./shared.js";
 import { view } from "../view.js";
@@ -14,6 +14,9 @@ let _rootEl = null;
 
 /** @type {any} */
 let _ctx = null;
+
+/** @type {(() => void) | null} */
+let _unsub = null;
 
 const toolbarIconMap = /** @type {Record<string, any>} */ ({
   "sp-icon-folder-open": html`<sp-icon-folder-open slot="icon"></sp-icon-folder-open>`,
@@ -56,9 +59,12 @@ function tbBtnTpl(label, onClick, iconTag) {
 export function mount(rootEl, ctx) {
   _rootEl = rootEl;
   _ctx = ctx;
+  _unsub = subscribe(() => render());
 }
 
 export function unmount() {
+  _unsub?.();
+  _unsub = null;
   _rootEl = null;
   _ctx = null;
 }

@@ -4,11 +4,14 @@
  */
 
 import { html, render as litRender, nothing } from "lit-html";
-import { getState, canvasPanels, pathsEqual } from "../store.js";
+import { getState, canvasPanels, pathsEqual, subscribe } from "../store.js";
 import { view } from "../view.js";
 
 /** @type {any} */
 let _ctx = null;
+
+/** @type {(() => void) | null} */
+let _unsub = null;
 
 /**
  * Mount the overlays panel.
@@ -18,9 +21,14 @@ let _ctx = null;
  */
 export function mount(ctx) {
   _ctx = ctx;
+  _unsub = subscribe((change) => {
+    if (change.selection || change.hover || change.mode || change.ui || change.doc) render();
+  });
 }
 
 export function unmount() {
+  _unsub?.();
+  _unsub = null;
   _ctx = null;
 }
 
