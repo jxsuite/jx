@@ -9,8 +9,6 @@ import {
   createState,
   selectNode,
   hoverNode,
-  undo,
-  redo,
   insertNode,
   removeNode,
   moveNode,
@@ -179,10 +177,14 @@ import "./ui/panel-resize.js";
 import { showContextMenu, dismissContextMenu } from "./editor/context-menu.js";
 import { convertToComponent } from "./editor/convert-to-component.js";
 import { initShortcuts } from "./editor/shortcuts.js";
-import { renderActivityBar, tabIcon } from "./panels/activity-bar.js";
+import { renderActivityBar } from "./panels/activity-bar.js";
 import { renderBrowse } from "./browse/browse.js";
 import { renderCollectionsEditor } from "./settings/collections-editor.js";
 import { renderDefsEditor } from "./settings/defs-editor.js";
+import * as toolbarPanel from "./panels/toolbar.js";
+import * as overlaysPanel from "./panels/overlays.js";
+import * as rightPanelMod from "./panels/right-panel.js";
+import { mediaDisplayName, ensureLitState } from "./panels/shared.js";
 import * as monaco from "monaco-editor/esm/vs/editor/editor.api.js";
 
 // ─── Globals ──────────────────────────────────────────────────────────────────
@@ -203,8 +205,6 @@ function createFloatingContainer() {
   (document.querySelector("sp-theme") || document.body).appendChild(el);
   return el;
 }
-
-const toolbar = toolbarEl;
 
 let canvasMode = "design";
 
@@ -737,38 +737,7 @@ let zoomIndicatorHost = document.createElement("div");
 zoomIndicatorHost.style.display = "contents";
 document.body.appendChild(zoomIndicatorHost);
 
-// ─── Icon maps & module-level UI state (must be before render() call) ─────────
-
-const toolbarIconMap = /** @type {Record<string, any>} */ ({
-  "sp-icon-folder-open": html`<sp-icon-folder-open slot="icon"></sp-icon-folder-open>`,
-  "sp-icon-save-floppy": html`<sp-icon-save-floppy slot="icon"></sp-icon-save-floppy>`,
-  "sp-icon-back": html`<sp-icon-back slot="icon"></sp-icon-back>`,
-  "sp-icon-undo": html`<sp-icon-undo slot="icon"></sp-icon-undo>`,
-  "sp-icon-redo": html`<sp-icon-redo slot="icon"></sp-icon-redo>`,
-  "sp-icon-duplicate": html`<sp-icon-duplicate slot="icon"></sp-icon-duplicate>`,
-  "sp-icon-delete": html`<sp-icon-delete slot="icon"></sp-icon-delete>`,
-  "sp-icon-edit": html`<sp-icon-edit slot="icon"></sp-icon-edit>`,
-  "sp-icon-artboard": html`<sp-icon-artboard slot="icon"></sp-icon-artboard>`,
-  "sp-icon-preview": html`<sp-icon-preview slot="icon"></sp-icon-preview>`,
-  "sp-icon-code": html`<sp-icon-code slot="icon"></sp-icon-code>`,
-  "sp-icon-brush": html`<sp-icon-brush slot="icon"></sp-icon-brush>`,
-  "sp-icon-view-list": html`<sp-icon-view-list slot="icon"></sp-icon-view-list>`,
-  "sp-icon-gears": html`<sp-icon-gears slot="icon"></sp-icon-gears>`,
-  "sp-icon-document": html`<sp-icon-document slot="icon"></sp-icon-document>`,
-});
-
-/**
- * @param {any} label
- * @param {any} onClick
- * @param {any} iconTag
- */
-function tbBtnTpl(label, onClick, iconTag) {
-  return html`
-    <sp-action-button size="s" @click=${onClick}>
-      ${iconTag ? toolbarIconMap[iconTag] : nothing} ${label}
-    </sp-action-button>
-  `;
-}
+// ─── Module-level UI state (must be before render() call) ─────────────────────
 
 let elementsCollapsed = new Set();
 let elementsFilter = "";
@@ -794,13 +763,45 @@ S = createState(structuredClone(EMPTY_DOC));
 
 // ─── Render loop ──────────────────────────────────────────────────────────────
 
+// Mount extracted panel modules
+toolbarPanel.mount(toolbarEl, {
+  navigateBack: () => navigateBack(),
+  closeFunctionEditor: () => closeFunctionEditor(),
+  openProject: () => openProject(),
+  openFile: () => openFile(),
+  saveFile: () => saveFile(),
+  parseMediaEntries,
+  getCanvasMode: () => canvasMode,
+  setCanvasMode: (/** @type {any} */ m) => {
+    canvasMode = m;
+  },
+  renderCanvas: () => renderCanvas(),
+  safeRenderRightPanel: () => safeRenderRightPanel(),
+});
+
+overlaysPanel.mount({
+  effectiveZoom,
+  getCanvasMode: () => canvasMode,
+  isEditing,
+  renderBlockActionBar,
+  findCanvasElement,
+  getActivePanel,
+});
+
+rightPanelMod.mount({
+  propertiesSidebarTemplate,
+  renderStylePanelTemplate,
+  renderCanvas: () => renderCanvas(),
+  updateForcedPseudoPreview,
+});
+
 // Register all renderers with the store so render()/renderOnly() work
-registerRenderer("toolbar", () => renderToolbar());
+registerRenderer("toolbar", () => toolbarPanel.render());
 registerRenderer("activityBar", () => renderActivityBar(S));
 registerRenderer("leftPanel", () => renderLeftPanel());
 registerRenderer("canvas", () => renderCanvas());
-registerRenderer("rightPanel", () => renderRightPanel());
-registerRenderer("overlays", () => renderOverlays());
+registerRenderer("rightPanel", () => rightPanelMod.render());
+registerRenderer("overlays", () => overlaysPanel.render());
 registerRenderer("statusbar", () => renderStatusbar(S));
 setStatusbarRenderer(() => renderStatusbar(S));
 
@@ -822,20 +823,7 @@ function safeRenderLeftPanel() {
 }
 
 function safeRenderRightPanel() {
-  try {
-    ensureLitState(rightPanel);
-    renderRightPanel();
-  } catch (e) {
-    console.error("renderRightPanel error:", e);
-    try {
-      rightPanel.textContent = "";
-      // @ts-ignore
-      delete rightPanel["_$litPart$"];
-      renderRightPanel();
-    } catch (e2) {
-      console.error("renderRightPanel retry failed:", e2);
-    }
-  }
+  rightPanelMod.render();
 }
 
 // Register the update implementation with the store
@@ -1209,22 +1197,6 @@ function applyCanvasMediaOverrides(canvasEl, activeBreakpoints) {
 }
 
 // ─── Canvas ───────────────────────────────────────────────────────────────────
-
-function ensureLitState(/** @type {HTMLElement} */ container) {
-  // @ts-ignore — Lit stores a ChildPart on this private property
-  const part = container["_$litPart$"];
-  if (!part) return;
-  const start = part._$startNode;
-  const end = part._$endNode;
-  const startBad = start && start.parentNode !== container;
-  const endBad = end && end !== container && end.parentNode !== container;
-  if (startBad || endBad) {
-    console.warn("ensureLitState: clearing corrupted Lit state on", container.id || container);
-    container.textContent = "";
-    // @ts-ignore
-    delete container["_$litPart$"];
-  }
-}
 
 function renderCanvas() {
   // Advance render generation so stale async renders from the previous cycle bail out
@@ -2093,83 +2065,7 @@ function showCanvasDropIndicator(el, elPath, isVoid, panel) {
 // ─── Overlay system ───────────────────────────────────────────────────────────
 
 function renderOverlays() {
-  // In non-interactive modes (except stylebook), hide overlays and click interceptors
-  if (canvasMode !== "design" && canvasMode !== "edit" && canvasMode !== "settings") {
-    for (const p of canvasPanels) {
-      litRender(nothing, p.overlay);
-      p.overlayClk.style.pointerEvents = "none";
-    }
-    if (view.selDragCleanup) {
-      view.selDragCleanup();
-      view.selDragCleanup = null;
-    }
-    return;
-  }
-  // Stylebook manages its own overlays
-  if (canvasMode === "settings") {
-    const enable = S.ui.stylebookTab === "elements";
-    for (const p of canvasPanels) {
-      p.overlayClk.style.pointerEvents = enable ? "" : "none";
-    }
-    return;
-  }
-  for (const p of canvasPanels) {
-    p.overlayClk.style.pointerEvents = view.componentInlineEdit || isEditing() ? "none" : "";
-  }
-
-  if (view.selDragCleanup) {
-    view.selDragCleanup();
-    view.selDragCleanup = null;
-  }
-
-  // Collect overlay boxes per panel, then render in batch
-  for (const p of canvasPanels) {
-    /**
-     * @type {{
-     *   cls: string;
-     *   top: string;
-     *   left: string;
-     *   width: string;
-     *   height: string;
-     *   border?: string;
-     * }[]}
-     */
-    const boxes = [];
-
-    // Hover overlay
-    if (S.hover && !pathsEqual(S.hover, S.selection)) {
-      const el = findCanvasElement(S.hover, p.canvas);
-      if (el) boxes.push(overlayBoxDescriptor(el, "hover", p));
-    }
-
-    // Selection overlay (only on active panel)
-    if (S.selection && p === getActivePanel()) {
-      const el = findCanvasElement(S.selection, p.canvas);
-      if (el) {
-        const desc = overlayBoxDescriptor(el, "selection", p);
-        if (view.componentInlineEdit || isEditing()) /** @type {any} */ (desc).border = "none";
-        boxes.push(desc);
-      }
-    }
-
-    litRender(
-      html`
-        ${p.dropLine}
-        ${boxes.map(
-          (b) => html`
-            <div
-              class=${b.cls}
-              style="top:${b.top};left:${b.left};width:${b.width};height:${b.height}${b.border
-                ? `;border:${b.border}`
-                : ""}"
-            ></div>
-          `,
-        )}
-      `,
-      p.overlay,
-    );
-  }
-  renderBlockActionBar();
+  overlaysPanel.render();
 }
 
 /**
@@ -5107,21 +5003,6 @@ function renderVarRow(catKey, catMeta, varName, varVal, isNew) {
 // varDisplayName, friendlyNameToVar — imported from studio-utils.js
 
 /**
- * Convert a $media key like "--tablet" to a friendly display name "Tablet". "--" returns "Base".
- *
- * @param {any} name
- */
-function mediaDisplayName(name) {
-  if (name === "--") return "Base";
-  return (
-    name
-      .replace(/^--/, "")
-      .replace(/-/g, " ")
-      .replace(/\b\w/g, (/** @type {any} */ c) => c.toUpperCase()) || name
-  );
-}
-
-/**
  * Convert a human-friendly name like "Tablet" to a $media key "--tablet"
  *
  * @param {any} name
@@ -5362,64 +5243,7 @@ function findStylebookEl(/** @type {any} */ canvasEl, /** @type {any} */ tag) {
 // ─── Right panel: Inspector ───────────────────────────────────────────────────
 
 function renderRightPanel() {
-  const tab = S.ui.rightTab;
-
-  // ── Icon tabs ──────────────────────────────────────────────────────────
-  const panelTabs = [
-    { value: "properties", icon: "sp-icon-properties", label: "Properties" },
-    { value: "events", icon: "sp-icon-event", label: "Events" },
-    { value: "style", icon: "sp-icon-brush", label: "Style" },
-  ];
-
-  const tabsT = html`
-    <div class="panel-tabs">
-      <sp-tabs
-        selected=${tab}
-        quiet
-        @change=${(/** @type {any} */ e) => {
-          const sel = e.target.selected;
-          if (sel && sel !== tab) {
-            updateUi("rightTab", sel);
-          }
-        }}
-      >
-        ${panelTabs.map(
-          (t) => html`
-            <sp-tab value=${t.value} title=${t.label} aria-label=${t.label}>
-              ${tabIcon(t.icon, "xs")}
-            </sp-tab>
-          `,
-        )}
-      </sp-tabs>
-    </div>
-  `;
-
-  // ── Panel body ────────────────────────────────────────────────────────
-  /** @type {any} */
-  let bodyT = nothing;
-  if (tab === "properties") {
-    bodyT = propertiesSidebarTemplate();
-  } else if (tab === "events") {
-    bodyT = _eventsSidebarTemplate(S, {
-      isCustomElementDoc: () => isCustomElementDoc(S),
-      renderCanvas,
-    });
-  } else if (tab === "style") {
-    try {
-      bodyT = renderStylePanelTemplate();
-    } catch (/** @type {any} */ e) {
-      console.error("[renderStylePanelTemplate]", e);
-    }
-  }
-
-  const tpl = html`
-    ${tabsT}
-    <div class="panel-body">${bodyT}</div>
-  `;
-
-  litRender(tpl, rightPanel);
-
-  updateForcedPseudoPreview();
+  rightPanelMod.render();
 }
 
 // ─── Inspector ────────────────────────────────────────────────────────────────
@@ -7850,153 +7674,10 @@ function registerFunctionCompletions() {
   });
 }
 
-// ─── Toolbar ──────────────────────────────────────────────────────────────────
+// ─── Toolbar (delegated to panels/toolbar.js) ────────────────────────────────
 
 function renderToolbar() {
-  const hasStack = S.documentStack && S.documentStack.length > 0;
-  const hasFunc = !!S.ui.editingFunction;
-
-  // Breadcrumb template
-  const breadcrumbTpl =
-    hasStack || hasFunc
-      ? html`
-          <div class="breadcrumb">
-            <sp-action-button
-              size="s"
-              title=${hasFunc ? "Close function editor" : "Return to parent document"}
-              @click=${hasFunc ? closeFunctionEditor : navigateBack}
-            >
-              ${toolbarIconMap["sp-icon-back"]}Back
-            </sp-action-button>
-            ${hasStack
-              ? S.documentStack.map(
-                  (/** @type {any} */ frame) => html`
-                    <span class="breadcrumb-item"
-                      >${frame.documentPath?.split("/").pop() || "untitled"}</span
-                    >
-                    <span class="breadcrumb-sep"> › </span>
-                  `,
-                )
-              : nothing}
-            <span
-              class="breadcrumb-item${hasFunc ? " clickable" : " current"}"
-              @click=${hasFunc ? closeFunctionEditor : nothing}
-            >
-              ${S.documentPath?.split("/").pop() || S.document.tagName || "document"}
-            </span>
-            ${hasFunc
-              ? html`
-                  <span class="breadcrumb-sep"> › </span>
-                  <span class="breadcrumb-item current"
-                    >${S.ui.editingFunction.type === "def"
-                      ? `ƒ ${S.ui.editingFunction.defName}`
-                      : `ƒ ${S.ui.editingFunction.eventKey}`}</span
-                  >
-                `
-              : nothing}
-          </div>
-        `
-      : nothing;
-
-  // Feature toggles
-  const { featureQueries } = parseMediaEntries(getEffectiveMedia(S.document.$media));
-  const togglesTpl =
-    featureQueries.length > 0
-      ? html`
-          <sp-action-group compact size="s">
-            ${featureQueries.map(
-              ({ name, query }) => html`
-                <sp-action-button
-                  toggles
-                  size="s"
-                  title=${query}
-                  ?selected=${!!S.ui.featureToggles[name]}
-                  @click=${() => {
-                    const newToggles = {
-                      ...S.ui.featureToggles,
-                      [name]: !S.ui.featureToggles[name],
-                    };
-                    updateUi("featureToggles", newToggles);
-                  }}
-                >
-                  ${mediaDisplayName(name)}
-                </sp-action-button>
-              `,
-            )}
-          </sp-action-group>
-        `
-      : nothing;
-
-  // Mode switcher
-  const modes = [
-    { key: "manage", label: "Manage", iconTag: "sp-icon-view-list" },
-    { key: "edit", label: "Edit", iconTag: "sp-icon-edit" },
-    { key: "design", label: "Design", iconTag: "sp-icon-artboard" },
-    { key: "preview", label: "Preview", iconTag: "sp-icon-preview" },
-    { key: "source", label: "Code", iconTag: "sp-icon-code" },
-    { key: "settings", label: "Settings", iconTag: "sp-icon-gears" },
-  ];
-
-  const modeSwitcherTpl = html`
-    <sp-action-group selects="single" size="s" compact>
-      ${modes.map(
-        (m) => html`
-          <sp-action-button
-            size="s"
-            ?selected=${canvasMode === m.key}
-            @click=${() => {
-              if (canvasMode === m.key) return;
-              if (S.ui.editingFunction) {
-                if (view.functionEditor) {
-                  view.functionEditor.dispose();
-                  view.functionEditor = null;
-                }
-              }
-              canvasMode = m.key;
-              view.panX = 0;
-              view.panY = 0;
-              /** @type {Record<string, any>} */
-              const uiPatch = { editingFunction: null };
-              if (m.key === "settings") uiPatch.rightTab = "style";
-              if (m.key === "manage") uiPatch.leftTab = "files";
-              updateSession({ ui: uiPatch });
-              renderCanvas();
-              safeRenderRightPanel();
-            }}
-          >
-            ${toolbarIconMap[m.iconTag]}${m.label}
-          </sp-action-button>
-        `,
-      )}
-    </sp-action-group>
-  `;
-
-  const tpl = html`
-    <sp-action-group compact size="s">
-      ${tbBtnTpl("Open Project", openProject, "sp-icon-folder-open")}
-      ${tbBtnTpl("Open File", openFile, "sp-icon-document")}
-      ${tbBtnTpl("Save", saveFile, "sp-icon-save-floppy")}
-    </sp-action-group>
-    <sp-action-group compact size="s">
-      ${tbBtnTpl("Undo", () => update(undo(S)), "sp-icon-undo")}
-      ${tbBtnTpl("Redo", () => update(redo(S)), "sp-icon-redo")}
-    </sp-action-group>
-    <div class="tb-spacer"></div>
-    ${S.documentPath
-      ? html`<span class="tb-file-title" title=${S.documentPath}
-          >${S.documentPath}${S.dirty ? html`<span class="tb-dirty">●</span>` : nothing}</span
-        >`
-      : S.fileHandle
-        ? html`<span class="tb-file-title"
-            >${S.fileHandle.name}${S.dirty ? html`<span class="tb-dirty">●</span>` : nothing}</span
-          >`
-        : nothing}
-    ${breadcrumbTpl}
-    <div class="tb-spacer"></div>
-    ${togglesTpl} ${modeSwitcherTpl}
-  `;
-
-  litRender(tpl, toolbar);
+  toolbarPanel.render();
 }
 
 // ─── File Operations (delegated to file-ops.js) ─────────────────────────────

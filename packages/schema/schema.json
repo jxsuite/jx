@@ -8894,6 +8894,16 @@
             }
           ]
         },
+        "flex-line-count": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            }
+          ]
+        },
         "flex-shrink": {
           "oneOf": [
             {
@@ -8945,6 +8955,16 @@
           ]
         },
         "flexGrow": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "flexLineCount": {
           "oneOf": [
             {
               "type": "string"
@@ -18285,6 +18305,26 @@
           ]
         },
         "willChange": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "window-drag": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "windowDrag": {
           "oneOf": [
             {
               "type": "string"

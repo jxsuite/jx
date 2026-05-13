@@ -1,0 +1,217 @@
+/**
+ * Toolbar panel — extracted from studio.js renderToolbar(). Owns rendering of breadcrumbs, file
+ * ops, feature toggles, and mode switcher.
+ */
+
+import { html, render as litRender, nothing } from "lit-html";
+import { getState, update, updateSession, updateUi, undo, redo } from "../store.js";
+import { getEffectiveMedia } from "../site-context.js";
+import { mediaDisplayName } from "./shared.js";
+import { view } from "../view.js";
+
+/** @type {HTMLElement | null} */
+let _rootEl = null;
+
+/** @type {any} */
+let _ctx = null;
+
+const toolbarIconMap = /** @type {Record<string, any>} */ ({
+  "sp-icon-folder-open": html`<sp-icon-folder-open slot="icon"></sp-icon-folder-open>`,
+  "sp-icon-save-floppy": html`<sp-icon-save-floppy slot="icon"></sp-icon-save-floppy>`,
+  "sp-icon-back": html`<sp-icon-back slot="icon"></sp-icon-back>`,
+  "sp-icon-undo": html`<sp-icon-undo slot="icon"></sp-icon-undo>`,
+  "sp-icon-redo": html`<sp-icon-redo slot="icon"></sp-icon-redo>`,
+  "sp-icon-duplicate": html`<sp-icon-duplicate slot="icon"></sp-icon-duplicate>`,
+  "sp-icon-delete": html`<sp-icon-delete slot="icon"></sp-icon-delete>`,
+  "sp-icon-edit": html`<sp-icon-edit slot="icon"></sp-icon-edit>`,
+  "sp-icon-artboard": html`<sp-icon-artboard slot="icon"></sp-icon-artboard>`,
+  "sp-icon-preview": html`<sp-icon-preview slot="icon"></sp-icon-preview>`,
+  "sp-icon-code": html`<sp-icon-code slot="icon"></sp-icon-code>`,
+  "sp-icon-brush": html`<sp-icon-brush slot="icon"></sp-icon-brush>`,
+  "sp-icon-view-list": html`<sp-icon-view-list slot="icon"></sp-icon-view-list>`,
+  "sp-icon-gears": html`<sp-icon-gears slot="icon"></sp-icon-gears>`,
+  "sp-icon-document": html`<sp-icon-document slot="icon"></sp-icon-document>`,
+});
+
+/**
+ * @param {any} label
+ * @param {any} onClick
+ * @param {any} iconTag
+ */
+function tbBtnTpl(label, onClick, iconTag) {
+  return html`
+    <sp-action-button size="s" @click=${onClick}>
+      ${iconTag ? toolbarIconMap[iconTag] : nothing} ${label}
+    </sp-action-button>
+  `;
+}
+
+/**
+ * Mount the toolbar panel.
+ *
+ * @param {HTMLElement} rootEl
+ * @param {any} ctx — { navigateBack, closeFunctionEditor, openProject, openFile, saveFile,
+ *   parseMediaEntries, getCanvasMode, setCanvasMode, renderCanvas, safeRenderRightPanel }
+ */
+export function mount(rootEl, ctx) {
+  _rootEl = rootEl;
+  _ctx = ctx;
+}
+
+export function unmount() {
+  _rootEl = null;
+  _ctx = null;
+}
+
+export function render() {
+  if (!_rootEl || !_ctx) return;
+  try {
+    litRender(toolbarTemplate(), _rootEl);
+  } catch (e) {
+    console.error("toolbar render error:", e);
+  }
+}
+
+function toolbarTemplate() {
+  const S = getState();
+  const canvasMode = _ctx.getCanvasMode();
+  const hasStack = S.documentStack && S.documentStack.length > 0;
+  const hasFunc = !!S.ui.editingFunction;
+
+  const breadcrumbTpl =
+    hasStack || hasFunc
+      ? html`
+          <div class="breadcrumb">
+            <sp-action-button
+              size="s"
+              title=${hasFunc ? "Close function editor" : "Return to parent document"}
+              @click=${hasFunc ? _ctx.closeFunctionEditor : _ctx.navigateBack}
+            >
+              ${toolbarIconMap["sp-icon-back"]}Back
+            </sp-action-button>
+            ${hasStack
+              ? S.documentStack.map(
+                  (/** @type {any} */ frame) => html`
+                    <span class="breadcrumb-item"
+                      >${frame.documentPath?.split("/").pop() || "untitled"}</span
+                    >
+                    <span class="breadcrumb-sep"> › </span>
+                  `,
+                )
+              : nothing}
+            <span
+              class="breadcrumb-item${hasFunc ? " clickable" : " current"}"
+              @click=${hasFunc ? _ctx.closeFunctionEditor : nothing}
+            >
+              ${S.documentPath?.split("/").pop() || S.document.tagName || "document"}
+            </span>
+            ${hasFunc
+              ? html`
+                  <span class="breadcrumb-sep"> › </span>
+                  <span class="breadcrumb-item current"
+                    >${S.ui.editingFunction.type === "def"
+                      ? `ƒ ${S.ui.editingFunction.defName}`
+                      : `ƒ ${S.ui.editingFunction.eventKey}`}</span
+                  >
+                `
+              : nothing}
+          </div>
+        `
+      : nothing;
+
+  const { featureQueries } = _ctx.parseMediaEntries(getEffectiveMedia(S.document.$media));
+  const togglesTpl =
+    featureQueries.length > 0
+      ? html`
+          <sp-action-group compact size="s">
+            ${featureQueries.map(
+              (/** @type {any} */ { name, query }) => html`
+                <sp-action-button
+                  toggles
+                  size="s"
+                  title=${query}
+                  ?selected=${!!S.ui.featureToggles[name]}
+                  @click=${() => {
+                    const newToggles = {
+                      ...S.ui.featureToggles,
+                      [name]: !S.ui.featureToggles[name],
+                    };
+                    updateUi("featureToggles", newToggles);
+                  }}
+                >
+                  ${mediaDisplayName(name)}
+                </sp-action-button>
+              `,
+            )}
+          </sp-action-group>
+        `
+      : nothing;
+
+  const modes = [
+    { key: "manage", label: "Manage", iconTag: "sp-icon-view-list" },
+    { key: "edit", label: "Edit", iconTag: "sp-icon-edit" },
+    { key: "design", label: "Design", iconTag: "sp-icon-artboard" },
+    { key: "preview", label: "Preview", iconTag: "sp-icon-preview" },
+    { key: "source", label: "Code", iconTag: "sp-icon-code" },
+    { key: "settings", label: "Settings", iconTag: "sp-icon-gears" },
+  ];
+
+  const modeSwitcherTpl = html`
+    <sp-action-group selects="single" size="s" compact>
+      ${modes.map(
+        (m) => html`
+          <sp-action-button
+            size="s"
+            ?selected=${canvasMode === m.key}
+            @click=${() => {
+              if (canvasMode === m.key) return;
+              if (S.ui.editingFunction) {
+                if (view.functionEditor) {
+                  view.functionEditor.dispose();
+                  view.functionEditor = null;
+                }
+              }
+              _ctx.setCanvasMode(m.key);
+              view.panX = 0;
+              view.panY = 0;
+              /** @type {Record<string, any>} */
+              const uiPatch = { editingFunction: null };
+              if (m.key === "settings") uiPatch.rightTab = "style";
+              if (m.key === "manage") uiPatch.leftTab = "files";
+              updateSession({ ui: uiPatch });
+              _ctx.renderCanvas();
+              _ctx.safeRenderRightPanel();
+            }}
+          >
+            ${toolbarIconMap[m.iconTag]}${m.label}
+          </sp-action-button>
+        `,
+      )}
+    </sp-action-group>
+  `;
+
+  return html`
+    <sp-action-group compact size="s">
+      ${tbBtnTpl("Open Project", _ctx.openProject, "sp-icon-folder-open")}
+      ${tbBtnTpl("Open File", _ctx.openFile, "sp-icon-document")}
+      ${tbBtnTpl("Save", _ctx.saveFile, "sp-icon-save-floppy")}
+    </sp-action-group>
+    <sp-action-group compact size="s">
+      ${tbBtnTpl("Undo", () => update(undo(getState())), "sp-icon-undo")}
+      ${tbBtnTpl("Redo", () => update(redo(getState())), "sp-icon-redo")}
+    </sp-action-group>
+    <div class="tb-spacer"></div>
+    ${S.documentPath
+      ? html`<span class="tb-file-title" title=${S.documentPath}
+          >${S.documentPath}${S.dirty ? html`<span class="tb-dirty">●</span>` : nothing}</span
+        >`
+      : S.fileHandle
+        ? html`<span class="tb-file-title"
+            >${S.fileHandle.name}${S.dirty ? html`<span class="tb-dirty">●</span>` : nothing}</span
+          >`
+        : nothing}
+    ${breadcrumbTpl}
+    <div class="tb-spacer"></div>
+    ${togglesTpl} ${modeSwitcherTpl}
+  `;
+}
