@@ -2922,6 +2922,44 @@ function enterInlineEdit(el, path) {
 
     onInsert(/** @type {any} */ afterPath, /** @type {any} */ cmd, /** @type {any} */ commitData) {
       // cmd comes from the shared slash menu: { label, tag, description }
+      const isEmpty =
+        !commitData ||
+        (commitData.textContent != null && commitData.textContent.trim() === "") ||
+        (commitData.children &&
+          (commitData.children.length === 0 ||
+            (commitData.children.length === 1 &&
+              typeof commitData.children[0] === "string" &&
+              commitData.children[0].trim() === "") ||
+            (commitData.children.length === 1 &&
+              typeof commitData.children[0] === "object" &&
+              commitData.children[0]?.tagName === "br")));
+
+      // If the element is empty, swap its tagName instead of inserting after
+      if (isEmpty) {
+        let s = S;
+        s = updateProperty(s, afterPath, "tagName", cmd.tag);
+        s = updateProperty(s, afterPath, "children", undefined);
+        const def = defaultDef(cmd.tag);
+        if (def.textContent && def.textContent !== "Paragraph text") {
+          s = updateProperty(s, afterPath, "textContent", def.textContent);
+        } else {
+          s = updateProperty(s, afterPath, "textContent", undefined);
+        }
+        s = selectNode(s, afterPath);
+        update(s);
+
+        requestAnimationFrame(() => {
+          const activePanel = getActivePanel();
+          if (activePanel) {
+            const el = findCanvasElement(afterPath, activePanel.canvas);
+            if (el && isEditableBlock(el)) {
+              enterInlineEdit(el, afterPath);
+            }
+          }
+        });
+        return;
+      }
+
       const elementDef = defaultDef(cmd.tag);
       const parentPath = /** @type {any} */ (parentElementPath(afterPath));
       const idx = /** @type {number} */ (childIndex(afterPath));
@@ -7800,4 +7838,3 @@ function scheduleAutosave() {
 addUpdateMiddleware((/** @type {any} */ state) => {
   if (state.dirty) scheduleAutosave();
 });
-// trigger rebuild
