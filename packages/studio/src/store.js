@@ -324,6 +324,41 @@ export function updateUi(field, value) {
   _updateSessionFn({ ui: { [field]: value } });
 }
 
+// ─── Subscription system ────────────────────────────────────────────────────
+// Panels subscribe to state changes and decide when to re-render, rather than
+// being called unconditionally from _update/_updateSession.
+
+/** @typedef {{ doc: boolean; selection: boolean; hover: boolean; ui: boolean; mode: boolean }} Change */
+
+/** @type {Set<(change: Change) => void>} */
+const _subscribers = new Set();
+
+/**
+ * Subscribe to state changes. Returns an unsubscribe function.
+ *
+ * @param {(change: Change) => void} fn
+ * @returns {() => void}
+ */
+export function subscribe(fn) {
+  _subscribers.add(fn);
+  return () => _subscribers.delete(fn);
+}
+
+/**
+ * Notify all subscribers of a state change.
+ *
+ * @param {Change} change
+ */
+export function notify(change) {
+  for (const fn of _subscribers) {
+    try {
+      fn(change);
+    } catch (e) {
+      console.error("Subscriber failed:", e);
+    }
+  }
+}
+
 /** @type {Function[]} */
 const _updateMiddleware = [];
 

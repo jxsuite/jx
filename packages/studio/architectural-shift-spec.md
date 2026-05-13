@@ -1,8 +1,20 @@
 # Jx Studio: Architecture Refactor Spec
 
-**Status:** Draft
+**Status:** In Progress
 **Scope:** `packages/studio/src/`
 **Goal:** Eliminate cross-panel failure propagation, make state changes auditable, and isolate rendering side effects — without changing user-visible behavior or rewriting working subsystems.
+
+## Implementation Status
+
+| Phase | Status | Notes |
+|-------|--------|-------|
+| 1. Error Boundaries | ✅ Complete | All renderers wrapped in try/catch with retry |
+| 2. Doc/Session Split | ✅ Complete | updateSession/updateUi in use, no ad-hoc mutations |
+| 3. Lift Transient State | ✅ Complete | All mutable view state in view.js |
+| 4. Componentize Panels | 🔄 In Progress | toolbar, overlays, right-panel, statusbar, activity-bar extracted |
+| 5. Lit Host Hygiene | ⬜ Not Started | |
+| 6. Async as State | ⬜ Not Started | |
+| 7. Selective Subscriptions | ⬜ Not Started | |
 
 ---
 

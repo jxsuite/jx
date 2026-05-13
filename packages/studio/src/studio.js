@@ -55,6 +55,7 @@ import {
   runUpdateMiddleware,
   addPostRenderHook,
   runPostRenderHooks,
+  notify,
   projectState,
   setProjectState,
   updateFrontmatter,
@@ -739,9 +740,6 @@ document.body.appendChild(zoomIndicatorHost);
 
 // ─── Module-level UI state (must be before render() call) ─────────────────────
 
-let elementsCollapsed = new Set();
-let elementsFilter = "";
-
 // ─── Bootstrap ────────────────────────────────────────────────────────────────
 
 // Register the dev server platform adapter (PAL) as default if none pre-registered
@@ -906,6 +904,14 @@ setUpdateFn(function _update(/** @type {any} */ newState) {
 
   runPostRenderHooks(prevDoc, prevSel);
   runUpdateMiddleware(S);
+
+  notify({
+    doc: docChanged,
+    selection: selChanged,
+    hover: false,
+    ui: uiChanged,
+    mode: modeChanged,
+  });
 });
 
 // Register session dispatch — lightweight path for selection/hover/ui changes
@@ -971,6 +977,9 @@ setUpdateSessionFn(function _updateSession(/** @type {any} */ patch) {
   }
 
   runPostRenderHooks(doc.document, prev.selection);
+
+  const hoverChanged = prev.hover !== session.hover;
+  notify({ doc: false, selection: selChanged, hover: hoverChanged, ui: uiChanged, mode: false });
 });
 
 // Register post-render hook for pseudo-state preview
@@ -1926,7 +1935,6 @@ function renderCanvasNode(node, path, parent, activeBreakpoints, featureToggles)
  *
  * @type {any}
  */
-let lastDragInput = null;
 
 /**
  * Register all canvas elements in a panel as DnD drop targets.
@@ -1946,12 +1954,12 @@ function registerPanelDnD(panel) {
       for (const p of canvasPanels) p.overlayClk.style.pointerEvents = "none";
     },
     onDrag({ location }) {
-      lastDragInput = location.current.input;
+      view.lastDragInput = location.current.input;
     },
     onDrop() {
       // Hide all drop lines
       for (const p of canvasPanels) p.dropLine.style.display = "none";
-      lastDragInput = null;
+      view.lastDragInput = null;
       for (const el of canvas.querySelectorAll("*")) {
         /** @type {any} */ (el).style.pointerEvents = "none";
       }
@@ -2006,8 +2014,8 @@ function registerPanelDnD(panel) {
  */
 function getCanvasDropInstruction(el, elPath, isVoid) {
   const rect = el.getBoundingClientRect();
-  if (!lastDragInput) return null;
-  const y = lastDragInput.clientY;
+  if (!view.lastDragInput) return null;
+  const y = view.lastDragInput.clientY;
   const relY = (y - rect.top) / rect.height;
 
   if (elPath.length === 0) return { type: "make-child" };
@@ -2127,15 +2135,10 @@ function onBarMousedown(e) {
   e.preventDefault();
 }
 
-/**
- * Saved selection range for format button mousedown→click flow
- *
- * @type {any}
- */
-let savedRange = null;
+/** Saved selection range for format button mousedown→click flow */
 function captureSelectionRange() {
   const sel = window.getSelection();
-  if (sel && sel.rangeCount) savedRange = sel.getRangeAt(0).cloneRange();
+  if (sel && sel.rangeCount) view.savedRange = sel.getRangeAt(0).cloneRange();
 }
 
 /**
@@ -2146,16 +2149,16 @@ function onFormatClick(e, action) {
   e.stopPropagation();
   if (action.command === "link") {
     showLinkPopover(e.target.closest("sp-action-button"));
-  } else if (savedRange) {
+  } else if (view.savedRange) {
     const sel = /** @type {any} */ (window.getSelection());
-    const anchor = savedRange.startContainer;
+    const anchor = view.savedRange.startContainer;
     const editableRoot = (
       anchor?.nodeType === Node.ELEMENT_NODE ? anchor : anchor?.parentElement
     )?.closest("[contenteditable]");
     if (editableRoot) {
       editableRoot.focus();
       sel.removeAllRanges();
-      sel.addRange(savedRange);
+      sel.addRange(view.savedRange);
       applyInlineFormat(action);
     }
   }
@@ -3683,7 +3686,7 @@ function registerLayersDnD() {
             },
             onDragStart() {
               row.classList.add("dragging");
-              layerDragSourceHeight = row.offsetHeight;
+              view.layerDragSourceHeight = row.offsetHeight;
             },
             onDrop() {
               row.classList.remove("dragging");
@@ -3787,8 +3790,6 @@ function registerComponentsDnD() {
 }
 
 /** @type {any} */
-let _currentDropTargetRow = null;
-let layerDragSourceHeight = 0;
 
 /**
  * @param {any} rowEl
@@ -3799,8 +3800,8 @@ function showLayerDropGap(rowEl, data, container) {
   const instruction = extractInstruction(data);
 
   // Clear previous drop-target highlight
-  if (_currentDropTargetRow && _currentDropTargetRow !== rowEl) {
-    _currentDropTargetRow.classList.remove("drop-target");
+  if (view._currentDropTargetRow && view._currentDropTargetRow !== rowEl) {
+    view._currentDropTargetRow.classList.remove("drop-target");
   }
 
   if (!instruction || instruction.type === "instruction-blocked") {
@@ -3811,17 +3812,17 @@ function showLayerDropGap(rowEl, data, container) {
   if (instruction.type === "make-child") {
     clearLayerDropGap(container);
     rowEl.classList.add("drop-target");
-    _currentDropTargetRow = rowEl;
+    view._currentDropTargetRow = rowEl;
     return;
   }
 
   rowEl.classList.remove("drop-target");
-  _currentDropTargetRow = rowEl;
+  view._currentDropTargetRow = rowEl;
 
   // Shift rows to create gap
   const rows = Array.from(container.querySelectorAll(".layers-tree .layer-row"));
   const targetIdx = rows.indexOf(rowEl);
-  const gap = layerDragSourceHeight;
+  const gap = view.layerDragSourceHeight;
 
   for (let i = 0; i < rows.length; i++) {
     if (rows[i].classList.contains("dragging")) continue;
@@ -3835,9 +3836,9 @@ function showLayerDropGap(rowEl, data, container) {
 
 /** @param {any} container */
 function clearLayerDropGap(container) {
-  if (_currentDropTargetRow) {
-    _currentDropTargetRow.classList.remove("drop-target");
-    _currentDropTargetRow = null;
+  if (view._currentDropTargetRow) {
+    view._currentDropTargetRow.classList.remove("drop-target");
+    view._currentDropTargetRow = null;
   }
   const rows = container.querySelectorAll(".layers-tree .layer-row");
   for (const r of rows) r.style.transform = "";
@@ -3850,25 +3851,22 @@ function clearLayerDropGap(container) {
  * @param {string | null} [media]
  */
 function selectStylebookTag(tag, media) {
-  S = {
-    ...S,
+  updateSession({
     selection: [],
     ui: {
-      ...S.ui,
       stylebookSelection: tag,
       rightTab: "style",
       activeSelector: `& ${tag}`,
       ...(media !== undefined ? { activeMedia: media } : {}),
     },
-  };
+  });
   renderStylebookOverlays();
-  renderRightPanel();
-  renderLeftPanel();
-  renderToolbar();
-  if (canvasPanels.length > 0) {
-    const el = findStylebookEl(canvasPanels[0].canvas, tag);
-    if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
-  }
+  requestAnimationFrame(() => {
+    if (canvasPanels.length > 0) {
+      const el = findStylebookEl(canvasPanels[0].canvas, tag);
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  });
 }
 
 function renderStylebookLayersTemplate() {
@@ -4121,18 +4119,18 @@ const unsafeTags = new Set(["script", "style", "link", "iframe", "object", "embe
 function renderElementsTemplate() {
   const categories = Object.entries(webdata.elements).map(
     (/** @type {any} */ [category, elements]) => {
-      const filtered = elementsFilter
-        ? elements.filter((/** @type {any} */ e) => e.tag.includes(elementsFilter))
+      const filtered = view.elementsFilter
+        ? elements.filter((/** @type {any} */ e) => e.tag.includes(view.elementsFilter))
         : elements;
       if (filtered.length === 0) return nothing;
 
       return html`
         <sp-accordion-item
           label=${category}
-          ?open=${!elementsCollapsed.has(category)}
+          ?open=${!view.elementsCollapsed.has(category)}
           @sp-accordion-item-toggle=${(/** @type {any} */ e) => {
-            if (e.target.open) elementsCollapsed.delete(category);
-            else elementsCollapsed.add(category);
+            if (e.target.open) view.elementsCollapsed.delete(category);
+            else view.elementsCollapsed.add(category);
           }}
         >
           ${filtered.map((/** @type {any} */ { tag }) => {
@@ -4184,7 +4182,7 @@ function renderElementsTemplate() {
           .filter((/** @type {any} */ c) => c.source !== "npm" || enabledTags.has(c.tagName))
           .filter(
             (/** @type {any} */ c) =>
-              !elementsFilter || c.tagName.toLowerCase().includes(elementsFilter),
+              !view.elementsFilter || c.tagName.toLowerCase().includes(view.elementsFilter),
           )
       : [];
 
@@ -4193,10 +4191,10 @@ function renderElementsTemplate() {
       ? html`
           <sp-accordion-item
             label="Components"
-            ?open=${!elementsCollapsed.has("Components")}
+            ?open=${!view.elementsCollapsed.has("Components")}
             @sp-accordion-item-toggle=${(/** @type {any} */ e) => {
-              if (e.target.open) elementsCollapsed.delete("Components");
-              else elementsCollapsed.add("Components");
+              if (e.target.open) view.elementsCollapsed.delete("Components");
+              else view.elementsCollapsed.add("Components");
             }}
           >
             <div class="components-section">
@@ -4242,9 +4240,9 @@ function renderElementsTemplate() {
     <sp-search
       size="s"
       placeholder="Filter elements…"
-      value=${elementsFilter}
+      value=${view.elementsFilter}
       @input=${(/** @type {any} */ e) => {
-        elementsFilter = e.target.value.toLowerCase();
+        view.elementsFilter = e.target.value.toLowerCase();
         renderLeftPanel();
       }}
     ></sp-search>
@@ -4283,7 +4281,6 @@ function registerElementsDnD() {
 // ─── Stylebook ───────────────────────────────────────────────────────────────
 
 /** Map from rendered stylebook DOM elements to their tag names */
-let stylebookElToTag = new WeakMap();
 
 /**
  * Build a DOM element tree from a stylebook-meta.json entry. Applies any existing tag-scoped styles
@@ -4431,7 +4428,7 @@ function renderSettings() {
   }
 
   // Stylebook tab — existing behavior
-  stylebookElToTag = new WeakMap();
+  view.stylebookElToTag = new WeakMap();
   const rootStyle = getEffectiveStyle(S.document.style);
   const filter = (S.ui.stylebookFilter || "").toLowerCase();
   const customizedOnly = S.ui.stylebookCustomizedOnly;
@@ -4626,12 +4623,12 @@ function renderStylebookElementsIntoCanvas(
           class="element-card"
           ${ref((card) => {
             if (!card) return;
-            stylebookElToTag.set(card, entry.tag);
+            view.stylebookElToTag.set(card, entry.tag);
             elToPath.set(card, ["__sb", entry.tag]);
             for (const child of el.querySelectorAll("*")) {
               const tag = child.tagName.toLowerCase();
-              if (!stylebookElToTag.has(child)) {
-                stylebookElToTag.set(child, tag);
+              if (!view.stylebookElToTag.has(child)) {
+                view.stylebookElToTag.set(child, tag);
                 elToPath.set(child, ["__sb", tag]);
               }
             }
@@ -4673,7 +4670,7 @@ function renderStylebookElementsIntoCanvas(
             style="display:inline-flex;width:auto"
             ${ref((card) => {
               if (!card) return;
-              stylebookElToTag.set(card, comp.tagName);
+              view.stylebookElToTag.set(card, comp.tagName);
               elToPath.set(card, ["__sb", comp.tagName]);
             })}
           >
@@ -5154,7 +5151,8 @@ function createUnitInput(initialValue, { onChange, size = "s" } = {}) {
 }
 
 /**
- * Click handler for stylebook canvas — selects elements via the elToPath/stylebookElToTag mapping
+ * Click handler for stylebook canvas — selects elements via the elToPath/view.stylebookElToTag
+ * mapping
  *
  * @param {any} panel
  */
@@ -5175,7 +5173,7 @@ function registerStylebookPanelEvents(panel) {
       if (!canvas.contains(el) || el === canvas) continue;
       let cur = /** @type {any} */ (el);
       while (cur && cur !== canvas) {
-        const tag = stylebookElToTag.get(cur);
+        const tag = view.stylebookElToTag.get(cur);
         if (tag) {
           const newMedia = panel.mediaName === "base" ? null : (panel.mediaName ?? null);
           selectStylebookTag(tag, newMedia);
@@ -5203,7 +5201,7 @@ function registerStylebookPanelEvents(panel) {
       if (!canvas.contains(el) || el === canvas) continue;
       let cur = /** @type {any} */ (el);
       while (cur && cur !== canvas) {
-        const tag = stylebookElToTag.get(cur);
+        const tag = view.stylebookElToTag.get(cur);
         if (tag) {
           hoverTag = tag;
           break;
@@ -5273,7 +5271,7 @@ function renderStylebookOverlays() {
 /** Find a stylebook element by tag in the canvas */
 function findStylebookEl(/** @type {any} */ canvasEl, /** @type {any} */ tag) {
   for (const child of canvasEl.querySelectorAll("*")) {
-    if (stylebookElToTag.get(child) === tag) return child;
+    if (view.stylebookElToTag.get(child) === tag) return child;
   }
   return null;
 }
@@ -5571,11 +5569,7 @@ function propertiesSidebarTemplate() {
 
   function toggleSection(/** @type {any} */ key) {
     const current = isSectionOpen(key);
-    S = {
-      ...S,
-      ui: { ...S.ui, inspectorSections: { ...S.ui.inspectorSections, [key]: !current } },
-    };
-    renderRightPanel();
+    updateUi("inspectorSections", { ...S.ui.inspectorSections, [key]: !current });
   }
 
   // ── Build section templates ─────────────────────────────────────────
@@ -6271,8 +6265,6 @@ function renderCustomAttrsFieldsTemplate(
 }
 
 /** Media breakpoint fields template */
-let showAddBreakpointForm = false;
-let addBreakpointPreview = "";
 
 function renderMediaFieldsTemplate(/** @type {any} */ node) {
   const media = node.$media || {};
@@ -6308,14 +6300,14 @@ function renderMediaFieldsTemplate(/** @type {any} */ node) {
     <div>
       <span
         class="kv-add"
-        style=${showAddBreakpointForm ? "display:none" : ""}
+        style=${view.showAddBreakpointForm ? "display:none" : ""}
         @click=${(/** @type {any} */ _e) => {
-          showAddBreakpointForm = true;
+          view.showAddBreakpointForm = true;
           renderRightPanel();
         }}
         >+ Add breakpoint</span
       >
-      ${showAddBreakpointForm
+      ${view.showAddBreakpointForm
         ? html`
             <div style="margin-top:4px">
               <div style="display:flex;gap:4px;margin-bottom:3px;align-items:center">
@@ -6324,13 +6316,13 @@ function renderMediaFieldsTemplate(/** @type {any} */ node) {
                   placeholder="Name (e.g. Tablet)"
                   style="flex:1"
                   @input=${(/** @type {any} */ e) => {
-                    addBreakpointPreview = friendlyNameToMedia(e.target.value) || "";
+                    view.addBreakpointPreview = friendlyNameToMedia(e.target.value) || "";
                     renderRightPanel();
                   }}
                 />
                 <span
                   style="font-size:10px;color:var(--fg-dim);font-family:'SF Mono','Fira Code',monospace;white-space:nowrap"
-                  >${addBreakpointPreview}</span
+                  >${view.addBreakpointPreview}</span
                 >
               </div>
               <div style="display:flex;gap:4px;margin-bottom:3px;align-items:center">
@@ -6346,8 +6338,8 @@ function renderMediaFieldsTemplate(/** @type {any} */ node) {
                     const queryVal = wrap.querySelector(".add-bp-query")?.value?.trim();
                     const key = friendlyNameToMedia(nameVal);
                     if (key && queryVal) {
-                      showAddBreakpointForm = false;
-                      addBreakpointPreview = "";
+                      view.showAddBreakpointForm = false;
+                      view.addBreakpointPreview = "";
                       update(updateMedia(S, key, queryVal));
                     }
                   }}
@@ -6358,8 +6350,8 @@ function renderMediaFieldsTemplate(/** @type {any} */ node) {
                   class="kv-add"
                   style="padding:2px 10px;cursor:pointer;color:var(--fg-dim)"
                   @click=${() => {
-                    showAddBreakpointForm = false;
-                    addBreakpointPreview = "";
+                    view.showAddBreakpointForm = false;
+                    view.addBreakpointPreview = "";
                     renderRightPanel();
                   }}
                 >
@@ -6868,14 +6860,7 @@ function renderShorthandRow(
           quiet
           @click=${(/** @type {any} */ e) => {
             e.stopPropagation();
-            S = {
-              ...S,
-              ui: {
-                ...S.ui,
-                styleShorthands: { ...S.ui.styleShorthands, [shortProp]: !isExpanded },
-              },
-            };
-            renderRightPanel();
+            updateUi("styleShorthands", { ...S.ui.styleShorthands, [shortProp]: !isExpanded });
           }}
         >
           ${isExpanded
@@ -7181,10 +7166,7 @@ function styleSidebarTemplate(
           label=${sec.label}
           .open=${isOpen}
           @sp-accordion-item-toggle=${(/** @type {any} */ e) => {
-            S = {
-              ...S,
-              ui: { ...S.ui, styleSections: { ...S.ui.styleSections, [sec.key]: e.target.open } },
-            };
+            updateUi("styleSections", { ...S.ui.styleSections, [sec.key]: e.target.open });
           }}
         >
           ${sectionActiveProps.length > 0
@@ -7225,10 +7207,7 @@ function styleSidebarTemplate(
       label="Custom"
       .open=${customIsOpen}
       @sp-accordion-item-toggle=${(/** @type {any} */ e) => {
-        S = {
-          ...S,
-          ui: { ...S.ui, styleSections: { ...S.ui.styleSections, other: e.target.open } },
-        };
+        updateUi("styleSections", { ...S.ui.styleSections, other: e.target.open });
       }}
     >
       <div>
@@ -7679,10 +7658,9 @@ function getFunctionBody(/** @type {any} */ editing) {
 }
 
 // Register Monaco JS completion provider for state scope variables (once)
-let _completionRegistered = false;
 function registerFunctionCompletions() {
-  if (_completionRegistered) return;
-  _completionRegistered = true;
+  if (view._completionRegistered) return;
+  view._completionRegistered = true;
   monaco.languages.registerCompletionItemProvider("javascript", {
     triggerCharacters: ["."],
     provideCompletionItems(model, position) {
@@ -7816,13 +7794,12 @@ initShortcuts(() => ({
 // ─── Autosave (registered as update middleware) ──────────────────────────────
 
 /** @type {any} */
-let autosaveTimer;
 const AUTO_SAVE_DELAY = 2000;
 
 function scheduleAutosave() {
   if (!S.fileHandle || !S.dirty) return;
-  clearTimeout(autosaveTimer);
-  autosaveTimer = setTimeout(async () => {
+  clearTimeout(view.autosaveTimer);
+  view.autosaveTimer = setTimeout(async () => {
     if (S.fileHandle && S.dirty && "createWritable" in S.fileHandle) {
       try {
         const writable = await S.fileHandle.createWritable();

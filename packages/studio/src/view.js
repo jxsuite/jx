@@ -42,4 +42,27 @@ export const view = {
   // Pseudo-state preview
   forcedStyleTag: null,
   forcedAttrEl: null,
+
+  // Left panel / elements UI
+  elementsCollapsed: new Set(),
+  elementsFilter: "",
+
+  // Drag interaction
+  lastDragInput: null,
+  _currentDropTargetRow: null,
+  layerDragSourceHeight: 0,
+
+  // Editor state
+  savedRange: null,
+  _completionRegistered: false,
+
+  // Canvas / stylebook
+  stylebookElToTag: new WeakMap(),
+
+  // Responsive breakpoints UI
+  showAddBreakpointForm: false,
+  addBreakpointPreview: "",
+
+  // Autosave
+  autosaveTimer: null,
 };

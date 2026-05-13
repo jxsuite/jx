@@ -1,6 +1,6 @@
 /** Statusbar — status message display for Jx Studio */
 
-import { statusbarEl, getNodeAtPath, nodeLabel } from "../store.js";
+import { statusbarEl, getNodeAtPath, nodeLabel, getState, subscribe } from "../store.js";
 
 // ─── Module state ────────────────────────────────────────────────────────────
 
@@ -9,6 +9,8 @@ let statusMsg = "";
 let statusTimeout;
 /** @type {(() => void) | null} */
 let _rerender = null;
+/** @type {(() => void) | null} */
+let _unsub = null;
 
 /**
  * Register the callback used to re-render the statusbar. Called once from studio.js during init.
@@ -17,6 +19,18 @@ let _rerender = null;
  */
 export function setStatusbarRenderer(fn) {
   _rerender = fn;
+}
+
+/** Subscribe the statusbar to state changes. */
+export function mountStatusbar() {
+  _unsub = subscribe((change) => {
+    if (change.selection || change.mode || change.doc) renderStatusbar(getState());
+  });
+}
+
+export function unmountStatusbar() {
+  _unsub?.();
+  _unsub = null;
 }
 
 // ─── Statusbar ───────────────────────────────────────────────────────────────
