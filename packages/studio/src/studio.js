@@ -63,6 +63,8 @@ import {
   updateUi,
 } from "./store.js";
 
+import { view } from "./view.js";
+
 import { renderNode as runtimeRenderNode, buildScope, defineElement } from "@jxsuite/runtime";
 
 import {
@@ -195,33 +197,6 @@ function createFloatingContainer() {
 const toolbar = toolbarEl;
 
 let canvasMode = "design";
-/** @type {string | null} */
-let prevCanvasMode = null;
-let panX = 0;
-let panY = 0;
-let needsCenter = true;
-/** @type {ResizeObserver | null} */
-let centerObserver = null;
-/** @type {any} */
-let panzoomWrap = null;
-/** @type {any} */
-let componentInlineEdit = null;
-/** @type {any} */
-let pendingInlineEdit = null;
-/** @type {any} */
-let monacoEditor = null;
-/** @type {any} */
-let functionEditor = null;
-/** @type {any} */
-let liveScope = null;
-/** @type {any} */
-let blockActionBarEl = null;
-/** @type {any} */
-let linkPopoverHost = null;
-/** @type {any} */
-let _inlineEditCleanup = null;
-/** @type {any} */
-let selDragCleanup = null;
 
 // ─── Component registry ───────────────────────────────────────────────────────
 
@@ -261,8 +236,8 @@ async function navigateBack() {
 async function closeFunctionEditor() {
   const editing = S.ui.editingFunction;
   if (!editing) return;
-  if (functionEditor) {
-    const currentCode = functionEditor.getValue();
+  if (view.functionEditor) {
+    const currentCode = view.functionEditor.getValue();
     const minResult = await codeService("minify", { code: currentCode });
     const bodyToStore = minResult?.code ?? currentCode;
     if (editing.type === "def") {
@@ -278,32 +253,11 @@ async function closeFunctionEditor() {
         }),
       );
     }
-    functionEditor.dispose();
-    functionEditor = null;
+    view.functionEditor.dispose();
+    view.functionEditor = null;
   }
   updateUi("editingFunction", null);
 }
-
-/**
- * DnD cleanup functions from previous render — called on re-render
- *
- * @type {any[]}
- */
-let dndCleanups = [];
-/**
- * Canvas DnD cleanup functions — separate from layer panel
- *
- * @type {any[]}
- */
-let canvasDndCleanups = [];
-
-/**
- * Cleanup functions for per-panel event handlers (click, dblclick, mousemove, contextmenu).
- * Re-registered on each render to keep closures fresh.
- *
- * @type {any[]}
- */
-let canvasEventCleanups = [];
 
 /**
  * Convert a template string to a displayable expression for edit mode. Replaces ${expr} with ❮ expr
@@ -497,9 +451,6 @@ function prepareForEditMode(node) {
   return out;
 }
 
-/** Generation counter — stale async renders bail out when this has advanced */
-let _renderGeneration = 0;
-
 /**
  * Render a Jx document into a canvas element using the real runtime. Populates elToPath for each
  * created element via onNodeCreated callback. Returns the live state scope on success, null on
@@ -612,7 +563,7 @@ async function renderCanvasLive(gen, doc, canvasEl) {
     }
 
     // Bail out if a newer render started while we were importing elements
-    if (gen !== _renderGeneration) return null;
+    if (gen !== view.renderGeneration) return null;
 
     // Inject site-level imports so buildScope can resolve $prototype names
     renderDoc.imports = getEffectiveImports(renderDoc.imports);
@@ -689,7 +640,7 @@ async function renderCanvasLive(gen, doc, canvasEl) {
 
     const $defs = await buildScope(renderDoc, {}, docBase);
     // Bail out if a newer render started while buildScope was running
-    if (gen !== _renderGeneration) return null;
+    if (gen !== view.renderGeneration) return null;
     const el = /** @type {HTMLElement} */ (
       runtimeRenderNode(renderDoc, $defs, {
         onNodeCreated(/** @type {any} */ el, /** @type {any} */ path) {
@@ -738,7 +689,7 @@ async function renderCanvasLive(gen, doc, canvasEl) {
         const editingEl = getActiveElement();
         for (const child of canvasEl.querySelectorAll("*")) {
           // Preserve pointer-events on the actively-edited element
-          if (componentInlineEdit && child === componentInlineEdit.el) continue;
+          if (view.componentInlineEdit && child === view.componentInlineEdit.el) continue;
           if (editingEl && child === editingEl) continue;
           /** @type {any} */ (child).style.pointerEvents = "none";
         }
@@ -960,9 +911,9 @@ addPostRenderHook(() => updateForcedPseudoPreview());
 
 // Register post-render hook for pending inline edit
 addPostRenderHook((/** @type {any} */ prevDoc) => {
-  if (pendingInlineEdit && prevDoc === S.document) {
-    const { path, mediaName: mn } = pendingInlineEdit;
-    pendingInlineEdit = null;
+  if (view.pendingInlineEdit && prevDoc === S.document) {
+    const { path, mediaName: mn } = view.pendingInlineEdit;
+    view.pendingInlineEdit = null;
     const targetPanel =
       canvasPanels.find((/** @type {any} */ p) => p.mediaName === mn) || canvasPanels[0];
     if (targetPanel) {
@@ -1197,7 +1148,7 @@ function ensureLitState(/** @type {HTMLElement} */ container) {
 
 function renderCanvas() {
   // Advance render generation so stale async renders from the previous cycle bail out
-  ++_renderGeneration;
+  ++view.renderGeneration;
 
   // Always clear Lit's internal state so it builds fresh DOM. Stale async
   // renderCanvasLive calls from a previous cycle can corrupt nested ChildPart
@@ -1217,36 +1168,36 @@ function renderCanvas() {
   }
 
   // Dispose function editor if switching away
-  if (functionEditor) {
-    functionEditor.dispose();
-    functionEditor = null;
+  if (view.functionEditor) {
+    view.functionEditor.dispose();
+    view.functionEditor = null;
   }
 
   // Source mode: update existing Monaco editor without recreating
-  if (canvasMode === "source" && monacoEditor) {
+  if (canvasMode === "source" && view.monacoEditor) {
     const jsonStr = JSON.stringify(S.document, null, 2);
-    const currentVal = monacoEditor.getValue();
+    const currentVal = view.monacoEditor.getValue();
     if (currentVal !== jsonStr) {
       // Prevent triggering the onChange handler for this programmatic update
-      monacoEditor._ignoreNextChange = true;
-      monacoEditor.setValue(jsonStr);
+      view.monacoEditor._ignoreNextChange = true;
+      view.monacoEditor.setValue(jsonStr);
     }
     return;
   }
 
   // Detect whether this is a mode transition or a content-only re-render
-  const modeChanged = canvasMode !== prevCanvasMode;
-  prevCanvasMode = canvasMode;
+  const modeChanged = canvasMode !== view.prevCanvasMode;
+  view.prevCanvasMode = canvasMode;
 
   // DnD handlers are registered on inner canvas elements that get replaced on every
   // content render, so always clean them up.
-  for (const fn of canvasDndCleanups) fn();
-  canvasDndCleanups = [];
+  for (const fn of view.canvasDndCleanups) fn();
+  view.canvasDndCleanups = [];
 
   // Panel event handlers (click, dblclick, etc.) capture closures over panel references.
   // Always re-register to keep closures fresh across document switches.
-  for (const fn of canvasEventCleanups) fn();
-  canvasEventCleanups = [];
+  for (const fn of view.canvasEventCleanups) fn();
+  view.canvasEventCleanups = [];
 
   // Panel JS objects are cheap — always clear and repopulate from templates.
   // The actual DOM elements are preserved by Lit's diffing on content-only re-renders.
@@ -1254,19 +1205,19 @@ function renderCanvas() {
 
   if (modeChanged) {
     // Full teardown on mode transitions — new panel structure needed
-    if (centerObserver) {
-      centerObserver.disconnect();
-      centerObserver = null;
+    if (view.centerObserver) {
+      view.centerObserver.disconnect();
+      view.centerObserver = null;
     }
 
     // Dispose Monaco editor if switching away from source mode
-    if (monacoEditor) {
-      monacoEditor.dispose();
-      monacoEditor = null;
+    if (view.monacoEditor) {
+      view.monacoEditor.dispose();
+      view.monacoEditor = null;
     }
 
     litRender(nothing, canvasWrap);
-    panzoomWrap = null;
+    view.panzoomWrap = null;
     // Reset inline style overrides from other modes
     canvasWrap.style.padding = "";
     canvasWrap.style.alignItems = "";
@@ -1285,7 +1236,7 @@ function renderCanvas() {
     }
 
     // Dismiss open popovers/toolbars that are no longer relevant
-    if (blockActionBarEl) litRender(nothing, blockActionBarEl);
+    if (view.blockActionBarEl) litRender(nothing, view.blockActionBarEl);
     dismissLinkPopover();
     dismissContextMenu();
     sharedDismissSlashMenu();
@@ -1335,7 +1286,7 @@ function renderCanvas() {
     );
 
     const jsonStr = JSON.stringify(S.document, null, 2);
-    monacoEditor = monaco.editor.create(/** @type {any} */ (editorContainer), {
+    view.monacoEditor = monaco.editor.create(/** @type {any} */ (editorContainer), {
       value: jsonStr,
       language: "json",
       theme: "vs-dark",
@@ -1352,15 +1303,15 @@ function renderCanvas() {
     // Debounced sync back to state
     /** @type {any} */
     let debounce;
-    monacoEditor.onDidChangeModelContent(() => {
-      if (monacoEditor._ignoreNextChange) {
-        monacoEditor._ignoreNextChange = false;
+    view.monacoEditor.onDidChangeModelContent(() => {
+      if (view.monacoEditor._ignoreNextChange) {
+        view.monacoEditor._ignoreNextChange = false;
         return;
       }
       clearTimeout(debounce);
       debounce = setTimeout(() => {
         try {
-          const parsed = JSON.parse(monacoEditor.getValue());
+          const parsed = JSON.parse(view.monacoEditor.getValue());
           update({ ...S, document: parsed, dirty: true });
         } catch {
           // Invalid JSON — don't update state
@@ -1431,7 +1382,7 @@ function renderCanvas() {
           class="panzoom-wrap"
           style="transform-origin:0 0"
           ${ref((el) => {
-            if (el) panzoomWrap = /** @type {HTMLDivElement} */ (el);
+            if (el) view.panzoomWrap = /** @type {HTMLDivElement} */ (el);
           })}
         >
           ${panelTpl}
@@ -1481,7 +1432,7 @@ function renderCanvas() {
         class="panzoom-wrap"
         style="transform-origin:0 0"
         ${ref((el) => {
-          if (el) panzoomWrap = /** @type {HTMLDivElement} */ (el);
+          if (el) view.panzoomWrap = /** @type {HTMLDivElement} */ (el);
         })}
       >
         ${panelEntries.map((e) => e.tpl)}
@@ -1517,12 +1468,12 @@ function renderCanvas() {
  * @param {any} featureToggles
  */
 function renderCanvasIntoPanel(panel, activeBreakpoints, featureToggles) {
-  const gen = _renderGeneration;
+  const gen = view.renderGeneration;
   renderCanvasLive(gen, S.document, panel.canvas).then((scope) => {
     // Skip post-render setup if a newer render has started
-    if (gen !== _renderGeneration) return;
+    if (gen !== view.renderGeneration) return;
     if (scope) {
-      liveScope = scope;
+      view.liveScope = scope;
       applyCanvasMediaOverrides(panel.canvas, activeBreakpoints);
       statusMessage("Runtime render OK", 1500);
     } else {
@@ -1534,9 +1485,9 @@ function renderCanvasIntoPanel(panel, activeBreakpoints, featureToggles) {
     renderOverlays();
 
     // Process pending inline edit now that the canvas is populated
-    if (pendingInlineEdit) {
-      const { path, mediaName: mn } = pendingInlineEdit;
-      pendingInlineEdit = null;
+    if (view.pendingInlineEdit) {
+      const { path, mediaName: mn } = view.pendingInlineEdit;
+      view.pendingInlineEdit = null;
       const targetPanel = canvasPanels.find((p) => p.mediaName === mn) || canvasPanels[0];
       if (targetPanel) {
         const el = findCanvasElement(path, targetPanel.canvas);
@@ -1640,48 +1591,48 @@ function canvasPanelTemplate(mediaName, label, fullWidth, width) {
 
 /** Center canvas in viewport. */
 function centerCanvas() {
-  if (!panzoomWrap) return;
+  if (!view.panzoomWrap) return;
   const wrapWidth = canvasWrap.clientWidth;
   const wrapHeight = canvasWrap.clientHeight;
-  const contentWidth = panzoomWrap.scrollWidth;
-  const contentHeight = panzoomWrap.scrollHeight;
+  const contentWidth = view.panzoomWrap.scrollWidth;
+  const contentHeight = view.panzoomWrap.scrollHeight;
   const scaledWidth = contentWidth * S.ui.zoom;
   const scaledHeight = contentHeight * S.ui.zoom;
-  panX = Math.max(16, (wrapWidth - scaledWidth) / 2);
+  view.panX = Math.max(16, (wrapWidth - scaledWidth) / 2);
   // Center vertically only when content fits; top-align with margin when taller
   const verticalCenter = (wrapHeight - scaledHeight) / 2;
-  panY = verticalCenter > 16 ? verticalCenter : 16;
+  view.panY = verticalCenter > 16 ? verticalCenter : 16;
 }
 
 /**
- * Attach a ResizeObserver to panzoomWrap that re-centers until the user pans. Handles async content
- * (runtime rendering, data fetching) that changes layout after initial paint.
+ * Attach a ResizeObserver to view.panzoomWrap that re-centers until the user pans. Handles async
+ * content (runtime rendering, data fetching) that changes layout after initial paint.
  */
 function observeCenterUntilStable() {
-  if (centerObserver) {
-    centerObserver.disconnect();
-    centerObserver = null;
+  if (view.centerObserver) {
+    view.centerObserver.disconnect();
+    view.centerObserver = null;
   }
-  if (!panzoomWrap) return;
-  needsCenter = true;
-  centerObserver = new ResizeObserver(() => {
-    if (!needsCenter) {
-      centerObserver?.disconnect();
-      centerObserver = null;
+  if (!view.panzoomWrap) return;
+  view.needsCenter = true;
+  view.centerObserver = new ResizeObserver(() => {
+    if (!view.needsCenter) {
+      view.centerObserver?.disconnect();
+      view.centerObserver = null;
       return;
     }
     centerCanvas();
     applyTransform();
   });
-  centerObserver.observe(panzoomWrap);
+  view.centerObserver.observe(view.panzoomWrap);
   // Also center immediately for synchronous content
   centerCanvas();
 }
 
 /** Apply the current zoom + pan transform to the panzoom wrapper. */
 function applyTransform() {
-  if (!panzoomWrap) return;
-  panzoomWrap.style.transform = `translate(${panX}px, ${panY}px) scale(${S.ui.zoom})`;
+  if (!view.panzoomWrap) return;
+  view.panzoomWrap.style.transform = `translate(${view.panX}px, ${view.panY}px) scale(${S.ui.zoom})`;
   const label = document.querySelector(".zoom-indicator-label");
   if (label) label.textContent = `${Math.round(S.ui.zoom * 100)}%`;
   renderOverlays();
@@ -1695,7 +1646,7 @@ function _applyZoom() {
 
 /** Calculate zoom + pan to fit all panels within the viewport. */
 function fitToScreen() {
-  if (!panzoomWrap) return;
+  if (!view.panzoomWrap) return;
   const wrapWidth = canvasWrap.clientWidth;
   const wrapHeight = canvasWrap.clientHeight;
   const gap = 24;
@@ -1708,7 +1659,7 @@ function fitToScreen() {
   totalPanelWidth += gap * Math.max(0, canvasPanels.length - 1) + padding;
 
   // Get actual content height from rendered panels
-  const wrapRect = panzoomWrap.getBoundingClientRect();
+  const wrapRect = view.panzoomWrap.getBoundingClientRect();
   const unscaledHeight = wrapRect.height / S.ui.zoom;
   maxPanelHeight = unscaledHeight + padding;
 
@@ -1720,8 +1671,8 @@ function fitToScreen() {
   // Center the content
   const scaledWidth = totalPanelWidth * fitZoom;
   const scaledHeight = maxPanelHeight * fitZoom;
-  panX = Math.max(0, (wrapWidth - scaledWidth) / 2);
-  panY = Math.max(0, (wrapHeight - scaledHeight) / 2);
+  view.panX = Math.max(0, (wrapWidth - scaledWidth) / 2);
+  view.panY = Math.max(0, (wrapHeight - scaledHeight) / 2);
   applyTransform();
 }
 
@@ -1954,7 +1905,7 @@ function registerPanelDnD(panel) {
       for (const p of canvasPanels) p.overlayClk.style.pointerEvents = "";
     },
   });
-  canvasDndCleanups.push(monitorCleanup);
+  view.canvasDndCleanups.push(monitorCleanup);
 
   for (const el of allEls) {
     const elPath = elToPath.get(el);
@@ -1991,7 +1942,7 @@ function registerPanelDnD(panel) {
         applyDropInstruction(instruction, source.data, elPath);
       },
     });
-    canvasDndCleanups.push(cleanup);
+    view.canvasDndCleanups.push(cleanup);
   }
 }
 
@@ -2067,9 +2018,9 @@ function renderOverlays() {
       litRender(nothing, p.overlay);
       p.overlayClk.style.pointerEvents = "none";
     }
-    if (selDragCleanup) {
-      selDragCleanup();
-      selDragCleanup = null;
+    if (view.selDragCleanup) {
+      view.selDragCleanup();
+      view.selDragCleanup = null;
     }
     return;
   }
@@ -2082,12 +2033,12 @@ function renderOverlays() {
     return;
   }
   for (const p of canvasPanels) {
-    p.overlayClk.style.pointerEvents = componentInlineEdit || isEditing() ? "none" : "";
+    p.overlayClk.style.pointerEvents = view.componentInlineEdit || isEditing() ? "none" : "";
   }
 
-  if (selDragCleanup) {
-    selDragCleanup();
-    selDragCleanup = null;
+  if (view.selDragCleanup) {
+    view.selDragCleanup();
+    view.selDragCleanup = null;
   }
 
   // Collect overlay boxes per panel, then render in batch
@@ -2115,7 +2066,7 @@ function renderOverlays() {
       const el = findCanvasElement(S.selection, p.canvas);
       if (el) {
         const desc = overlayBoxDescriptor(el, "selection", p);
-        if (componentInlineEdit || isEditing()) /** @type {any} */ (desc).border = "none";
+        if (view.componentInlineEdit || isEditing()) /** @type {any} */ (desc).border = "none";
         boxes.push(desc);
       }
     }
@@ -2312,19 +2263,19 @@ function applyInlineFormat(action) {
 }
 
 /** Show a link URL popover anchored to a toolbar button. */
-linkPopoverHost = document.createElement("div");
-linkPopoverHost.style.display = "contents";
-(document.querySelector("sp-theme") || document.body).appendChild(linkPopoverHost);
+view.linkPopoverHost = document.createElement("div");
+view.linkPopoverHost.style.display = "contents";
+(document.querySelector("sp-theme") || document.body).appendChild(view.linkPopoverHost);
 
 /** Dismiss the link popover if open. */
 function dismissLinkPopover() {
-  if (linkPopoverHost) litRender(nothing, linkPopoverHost);
+  if (view.linkPopoverHost) litRender(nothing, view.linkPopoverHost);
 }
 
 /** @param {any} anchorBtn */
 function showLinkPopover(anchorBtn) {
   // Dismiss existing
-  litRender(nothing, linkPopoverHost);
+  litRender(nothing, view.linkPopoverHost);
 
   const sel = window.getSelection();
   /** @type {any} */
@@ -2344,14 +2295,14 @@ function showLinkPopover(anchorBtn) {
   const rect = anchorBtn.getBoundingClientRect();
 
   const onApply = () => {
-    const field = linkPopoverHost.querySelector("sp-textfield");
+    const field = view.linkPopoverHost.querySelector("sp-textfield");
     const url = /** @type {any} */ (field)?.value;
     if (existingLink) {
       existingLink.setAttribute("href", url);
     } else if (url) {
       document.execCommand("createLink", false, url);
     }
-    litRender(nothing, linkPopoverHost);
+    litRender(nothing, view.linkPopoverHost);
     renderBlockActionBar();
   };
 
@@ -2359,14 +2310,14 @@ function showLinkPopover(anchorBtn) {
     const frag = document.createDocumentFragment();
     while (existingLink.firstChild) frag.appendChild(existingLink.firstChild);
     existingLink.parentNode.replaceChild(frag, existingLink);
-    litRender(nothing, linkPopoverHost);
+    litRender(nothing, view.linkPopoverHost);
     renderBlockActionBar();
   };
 
   const onKeydown = (/** @type {any} */ e) => {
     if (e.key === "Enter") onApply();
     else if (e.key === "Escape") {
-      litRender(nothing, linkPopoverHost);
+      litRender(nothing, view.linkPopoverHost);
     }
   };
 
@@ -2392,12 +2343,14 @@ function showLinkPopover(anchorBtn) {
           : nothing}
       </sp-popover>
     `,
-    linkPopoverHost,
+    view.linkPopoverHost,
   );
 
   requestAnimationFrame(
     () =>
-      /** @type {HTMLElement | null} */ (linkPopoverHost?.querySelector("sp-textfield"))?.focus(),
+      /** @type {HTMLElement | null} */ (
+        view.linkPopoverHost?.querySelector("sp-textfield")
+      )?.focus(),
   );
 }
 
@@ -2431,30 +2384,30 @@ function moveSelectionDown() {
  */
 function renderBlockActionBar() {
   // Ensure persistent render container exists
-  if (!blockActionBarEl) {
-    blockActionBarEl = createFloatingContainer();
+  if (!view.blockActionBarEl) {
+    view.blockActionBarEl = createFloatingContainer();
   }
 
   // Tear down drag if it was active
-  if (selDragCleanup) {
-    selDragCleanup();
-    selDragCleanup = null;
+  if (view.selDragCleanup) {
+    view.selDragCleanup();
+    view.selDragCleanup = null;
   }
 
   if (!S.selection || (canvasMode !== "design" && canvasMode !== "edit")) {
-    litRender(nothing, blockActionBarEl);
+    litRender(nothing, view.blockActionBarEl);
     return;
   }
 
   const activePanel = getActivePanel();
   if (!activePanel) {
-    litRender(nothing, blockActionBarEl);
+    litRender(nothing, view.blockActionBarEl);
     return;
   }
   const el = findCanvasElement(S.selection, activePanel.canvas);
   const node = el && getNodeAtPath(S.document, S.selection);
   if (!el || !node) {
-    litRender(nothing, blockActionBarEl);
+    litRender(nothing, view.blockActionBarEl);
     return;
   }
 
@@ -2539,12 +2492,12 @@ function renderBlockActionBar() {
           : nothing}
       </div>
     `,
-    blockActionBarEl,
+    view.blockActionBarEl,
   );
 
   // Post-render side effects
   requestAnimationFrame(() => {
-    const bar = blockActionBarEl?.firstElementChild;
+    const bar = view.blockActionBarEl?.firstElementChild;
     if (!bar) return;
     // Clamp to window
     const barRect = bar.getBoundingClientRect();
@@ -2555,11 +2508,11 @@ function renderBlockActionBar() {
     if (S.selection.length >= 2) {
       const handle = bar.querySelector(".bar-drag-handle");
       if (handle) {
-        if (selDragCleanup) {
-          selDragCleanup();
-          selDragCleanup = null;
+        if (view.selDragCleanup) {
+          view.selDragCleanup();
+          view.selDragCleanup = null;
         }
-        selDragCleanup = draggable({
+        view.selDragCleanup = draggable({
           element: handle,
           getInitialData: () => ({ type: "tree-node", path: S.selection }),
         });
@@ -2572,20 +2525,15 @@ function renderBlockActionBar() {
 // When a pseudo-selector (:hover, :focus, etc.) is active in the style sidebar,
 // force those styles onto the selected element so the user can see the result.
 
-/** @type {any} */
-let _forcedStyleTag = null;
-/** @type {any} */
-let _forcedAttrEl = null;
-
 function updateForcedPseudoPreview() {
   // Clean up previous
-  if (_forcedStyleTag) {
-    _forcedStyleTag.remove();
-    _forcedStyleTag = null;
+  if (view.forcedStyleTag) {
+    view.forcedStyleTag.remove();
+    view.forcedStyleTag = null;
   }
-  if (_forcedAttrEl) {
-    _forcedAttrEl.removeAttribute("data-studio-forced");
-    _forcedAttrEl = null;
+  if (view.forcedAttrEl) {
+    view.forcedAttrEl.removeAttribute("data-studio-forced");
+    view.forcedAttrEl = null;
   }
 
   const sel = S.ui?.activeSelector;
@@ -2616,12 +2564,12 @@ function updateForcedPseudoPreview() {
   if (!cssProps) return;
 
   el.setAttribute("data-studio-forced", "1");
-  _forcedAttrEl = el;
+  view.forcedAttrEl = el;
 
   const tag = document.createElement("style");
   tag.textContent = `[data-studio-forced] { ${cssProps} }`;
   document.head.appendChild(tag);
-  _forcedStyleTag = tag;
+  view.forcedStyleTag = tag;
 }
 
 /**
@@ -2700,7 +2648,7 @@ function registerPanelEvents(panel) {
   const { canvas, overlayClk, mediaName } = panel;
   const ac = new AbortController();
   const opts = { signal: ac.signal };
-  canvasEventCleanups.push(() => ac.abort());
+  view.canvasEventCleanups.push(() => ac.abort());
 
   /** @param {any} fn */
   function withPanelPointerEvents(fn) {
@@ -2720,7 +2668,7 @@ function registerPanelEvents(panel) {
     "click",
     (/** @type {any} */ e) => {
       // Don't intercept clicks meant for the block action bar
-      const barInner = blockActionBarEl?.firstElementChild;
+      const barInner = view.blockActionBarEl?.firstElementChild;
       if (barInner) {
         const r = barInner.getBoundingClientRect();
         if (
@@ -2758,7 +2706,7 @@ function registerPanelEvents(panel) {
 
             // Re-click on selected editable block: enter inline editing
             // Edit mode / content mode → rich text editing (enterInlineEdit)
-            // Design mode → plaintext component editing (enterComponentInlineEdit via pendingInlineEdit)
+            // Design mode → plaintext component editing (enterComponentInlineEdit via view.pendingInlineEdit)
             if (
               pathsEqual(path, S.selection) &&
               isEditableBlock(resolvedEl) &&
@@ -2771,7 +2719,7 @@ function registerPanelEvents(panel) {
 
             // Design mode or first click: select and schedule component inline editing
             if (canvasMode === "design" && S.mode !== "content") {
-              pendingInlineEdit = { path, mediaName };
+              view.pendingInlineEdit = { path, mediaName };
               update(selectNode(withMedia, path));
               return;
             }
@@ -2790,7 +2738,7 @@ function registerPanelEvents(panel) {
   overlayClk.addEventListener(
     "dblclick",
     (/** @type {any} */ e) => {
-      const barInner = blockActionBarEl?.firstElementChild;
+      const barInner = view.blockActionBarEl?.firstElementChild;
       if (barInner) {
         const r = barInner.getBoundingClientRect();
         if (
@@ -2830,7 +2778,7 @@ function registerPanelEvents(panel) {
   overlayClk.addEventListener(
     "contextmenu",
     (/** @type {any} */ e) => {
-      const barInner = blockActionBarEl?.firstElementChild;
+      const barInner = view.blockActionBarEl?.firstElementChild;
       if (barInner) {
         const r = barInner.getBoundingClientRect();
         if (
@@ -2862,7 +2810,7 @@ function registerPanelEvents(panel) {
   overlayClk.addEventListener(
     "mousemove",
     (/** @type {any} */ e) => {
-      const barInner = blockActionBarEl?.firstElementChild;
+      const barInner = view.blockActionBarEl?.firstElementChild;
       if (barInner) {
         const r = barInner.getBoundingClientRect();
         if (
@@ -3030,9 +2978,9 @@ function enterInlineEdit(el, path) {
 
     onEnd() {
       // Cleanup inline edit listeners
-      if (_inlineEditCleanup) {
-        _inlineEditCleanup();
-        _inlineEditCleanup = null;
+      if (view.inlineEditCleanup) {
+        view.inlineEditCleanup();
+        view.inlineEditCleanup = null;
       }
       // Restore overlays after inline editing ends
       for (const p of canvasPanels) {
@@ -3059,7 +3007,7 @@ function enterInlineEdit(el, path) {
     el.removeEventListener("mouseup", selectionHandler);
     el.removeEventListener("keyup", selectionHandler);
   };
-  _inlineEditCleanup = inlineEditCleanup;
+  view.inlineEditCleanup = inlineEditCleanup;
 }
 
 // ─── Component-mode inline text editing ──────────────────────────────────────
@@ -3070,7 +3018,7 @@ function enterInlineEdit(el, path) {
  */
 function enterComponentInlineEdit(el, path) {
   // Already editing this element
-  if (componentInlineEdit && componentInlineEdit.el === el) {
+  if (view.componentInlineEdit && view.componentInlineEdit.el === el) {
     return;
   }
 
@@ -3107,7 +3055,7 @@ function enterComponentInlineEdit(el, path) {
   const rawText = typeof tc === "string" ? tc : "";
   el.textContent = rawText;
 
-  componentInlineEdit = {
+  view.componentInlineEdit = {
     el,
     path,
     originalText: rawText,
@@ -3129,15 +3077,15 @@ function enterComponentInlineEdit(el, path) {
   // Document-level mousedown: clicking outside the editing element commits
   // the edit and selects the new target element for inline editing.
   const outsideHandler = (/** @type {any} */ evt) => {
-    if (!componentInlineEdit) {
+    if (!view.componentInlineEdit) {
       document.removeEventListener("mousedown", outsideHandler, true);
       return;
     }
-    if (componentInlineEdit.el.contains(evt.target)) return; // click within editing el — let it through
+    if (view.componentInlineEdit.el.contains(evt.target)) return; // click within editing el — let it through
     // Let clicks through when the slash command menu is open
     if (isSlashMenuOpen()) return;
     // Let clicks inside the block action bar through
-    if (blockActionBarEl && blockActionBarEl.contains(evt.target)) return;
+    if (view.blockActionBarEl && view.blockActionBarEl.contains(evt.target)) return;
     document.removeEventListener("mousedown", outsideHandler, true);
 
     // Hit-test BEFORE commit (while the current canvas DOM + elToPath are still valid)
@@ -3164,7 +3112,7 @@ function enterComponentInlineEdit(el, path) {
     }
 
     // Commit + select new element in a single state update if possible
-    const { el: editEl, path: editPath, originalText } = componentInlineEdit;
+    const { el: editEl, path: editPath, originalText } = view.componentInlineEdit;
     const newText = (editEl.textContent ?? "").trim();
     cleanupComponentInlineEdit(editEl);
 
@@ -3174,7 +3122,7 @@ function enterComponentInlineEdit(el, path) {
 
     if (hitPath) {
       const media = hitMedia === "base" ? null : (hitMedia ?? null);
-      pendingInlineEdit = { path: hitPath, mediaName: hitMedia };
+      view.pendingInlineEdit = { path: hitPath, mediaName: hitMedia };
       const withMedia = { ...S, ui: { ...S.ui, activeMedia: media } };
       if (isEmpty && pPath) {
         // Remove empty node; adjust hitPath if it shifts after removal
@@ -3185,7 +3133,7 @@ function enterComponentInlineEdit(el, path) {
         const hitParent = parentElementPath(hitPath);
         if (hitParent && pPath && hitParent.join("/") === pPath.join("/") && hitIdx > removedIdx) {
           hitPath = [...pPath, "children", hitIdx - 1];
-          pendingInlineEdit = { path: hitPath, mediaName: hitMedia };
+          view.pendingInlineEdit = { path: hitPath, mediaName: hitMedia };
         }
         update(selectNode(s, hitPath));
       } else if (newText !== originalText) {
@@ -3211,7 +3159,7 @@ function enterComponentInlineEdit(el, path) {
     }
   };
   document.addEventListener("mousedown", outsideHandler, true);
-  componentInlineEdit._outsideHandler = outsideHandler;
+  view.componentInlineEdit._outsideHandler = outsideHandler;
 
   // Re-render block action bar to show inline formatting buttons
   renderBlockActionBar();
@@ -3235,8 +3183,8 @@ function componentInlineKeydown(e) {
 }
 
 function splitParagraph() {
-  if (!componentInlineEdit) return;
-  const { el, path, mediaName } = componentInlineEdit;
+  if (!view.componentInlineEdit) return;
+  const { el, path, mediaName } = view.componentInlineEdit;
 
   // Determine cursor offset within text
   const sel = /** @type {any} */ (el.ownerDocument.defaultView?.getSelection());
@@ -3268,13 +3216,13 @@ function splitParagraph() {
   s = insertNode(s, pPath, idx + 1, newDef);
   s = selectNode(s, newPath);
 
-  pendingInlineEdit = { path: newPath, mediaName };
+  view.pendingInlineEdit = { path: newPath, mediaName };
   update(s);
 }
 
 function _commitComponentInlineEdit() {
-  if (!componentInlineEdit) return;
-  const { el, path, originalText } = componentInlineEdit;
+  if (!view.componentInlineEdit) return;
+  const { el, path, originalText } = view.componentInlineEdit;
   const newText = (el.textContent ?? "").trim();
 
   cleanupComponentInlineEdit(el);
@@ -3292,8 +3240,8 @@ function _commitComponentInlineEdit() {
 }
 
 function cancelComponentInlineEdit() {
-  if (!componentInlineEdit) return;
-  const { el } = componentInlineEdit;
+  if (!view.componentInlineEdit) return;
+  const { el } = view.componentInlineEdit;
   cleanupComponentInlineEdit(el);
   renderCanvas();
   renderOverlays();
@@ -3312,10 +3260,10 @@ function cleanupComponentInlineEdit(el) {
   el.style.pointerEvents = "";
 
   // Remove the document-level outside-click handler
-  if (componentInlineEdit?._outsideHandler) {
-    document.removeEventListener("mousedown", componentInlineEdit._outsideHandler, true);
+  if (view.componentInlineEdit?._outsideHandler) {
+    document.removeEventListener("mousedown", view.componentInlineEdit._outsideHandler, true);
   }
-  componentInlineEdit = null;
+  view.componentInlineEdit = null;
 
   // Restore overlay and click interceptor
   for (const p of canvasPanels) {
@@ -3327,8 +3275,8 @@ function cleanupComponentInlineEdit(el) {
 // ─── Component-mode slash commands (delegates to shared slash-menu.js) ────────
 
 function componentInlineInput() {
-  if (!componentInlineEdit) return;
-  const { el, originalText } = componentInlineEdit;
+  if (!view.componentInlineEdit) return;
+  const { el, originalText } = view.componentInlineEdit;
   const text = el.textContent || "";
 
   // Only trigger slash menu when the paragraph was originally empty and starts with /
@@ -3342,8 +3290,8 @@ function componentInlineInput() {
 
 /** @param {any} cmd */
 function handleComponentSlashSelect(cmd) {
-  if (!componentInlineEdit) return;
-  const { el, path, mediaName } = componentInlineEdit;
+  if (!view.componentInlineEdit) return;
+  const { el, path, mediaName } = view.componentInlineEdit;
   const pPath = parentElementPath(path);
   const idx = /** @type {number} */ (childIndex(path));
   if (!pPath) return;
@@ -3360,7 +3308,7 @@ function handleComponentSlashSelect(cmd) {
 
   // If the new element has textContent, enter inline edit on it
   const hasText = newDef.textContent != null;
-  if (hasText) pendingInlineEdit = { path: newPath, mediaName };
+  if (hasText) view.pendingInlineEdit = { path: newPath, mediaName };
   update(s);
 }
 
@@ -3387,7 +3335,7 @@ function renderLeftPanel() {
   else if (tab === "blocks") content = renderElementsTemplate();
   else if (tab === "state") content = renderSignalsTemplate(S, { renderLeftPanel, renderCanvas });
   else if (tab === "data")
-    content = renderDataExplorerTemplate(S.document.state, liveScope, {
+    content = renderDataExplorerTemplate(S.document.state, view.liveScope, {
       renderCanvas,
       renderLeftPanel,
       defCategory,
@@ -3437,8 +3385,8 @@ function renderLeftPanel() {
 /** Returns a TemplateResult — called from renderLeftPanel only when tab=layers & not stylebook */
 function renderLayersTemplate() {
   // Clean up previous DnD registrations
-  for (const fn of dndCleanups) fn();
-  dndCleanups = [];
+  for (const fn of view.dndCleanups) fn();
+  view.dndCleanups = [];
 
   const rows = flattenTree(S.document);
   const collapsed = S._collapsed || (S._collapsed = new Set());
@@ -3756,7 +3704,7 @@ function registerLayersDnD() {
             },
           }),
         );
-        dndCleanups.push(cleanup);
+        view.dndCleanups.push(cleanup);
       },
     );
 
@@ -3773,7 +3721,7 @@ function registerLayersDnD() {
         applyDropInstruction(instruction, srcData, targetPath);
       },
     });
-    dndCleanups.push(monitorCleanup);
+    view.dndCleanups.push(monitorCleanup);
   });
 }
 
@@ -3814,7 +3762,7 @@ function registerComponentsDnD() {
             return { type: "block", fragment: structuredClone(instanceDef) };
           },
         });
-        dndCleanups.push(cleanup);
+        view.dndCleanups.push(cleanup);
       },
     );
   });
@@ -4308,7 +4256,7 @@ function registerElementsDnD() {
             return { type: "block", fragment: structuredClone(def) };
           },
         });
-        dndCleanups.push(cleanup);
+        view.dndCleanups.push(cleanup);
       },
     );
   });
@@ -4600,7 +4548,7 @@ function renderSettings() {
         class="panzoom-wrap"
         style="transform-origin:0 0;padding-top:72px"
         ${ref((el) => {
-          if (el) panzoomWrap = /** @type {HTMLDivElement} */ (el);
+          if (el) view.panzoomWrap = /** @type {HTMLDivElement} */ (el);
         })}
       >
         ${panelEntries.map((e) => e.tpl)}
@@ -7654,31 +7602,31 @@ function renderFunctionEditor() {
   const editing = S.ui.editingFunction;
 
   // If editor already exists and matches current target, just sync value
-  if (functionEditor && functionEditor._editingTarget === JSON.stringify(editing)) {
+  if (view.functionEditor && view.functionEditor._editingTarget === JSON.stringify(editing)) {
     const body = getFunctionBody(editing);
-    const currentVal = functionEditor.getValue();
+    const currentVal = view.functionEditor.getValue();
     if (currentVal !== body) {
-      functionEditor._ignoreNextChange = true;
-      functionEditor.setValue(body);
+      view.functionEditor._ignoreNextChange = true;
+      view.functionEditor.setValue(body);
     }
     return;
   }
 
   // Dispose previous editors
-  if (functionEditor) {
-    functionEditor.dispose();
-    functionEditor = null;
+  if (view.functionEditor) {
+    view.functionEditor.dispose();
+    view.functionEditor = null;
   }
-  if (monacoEditor) {
-    monacoEditor.dispose();
-    monacoEditor = null;
+  if (view.monacoEditor) {
+    view.monacoEditor.dispose();
+    view.monacoEditor = null;
   }
 
   // Clean up canvas DnD and event handlers
-  for (const fn of canvasDndCleanups) fn();
-  canvasDndCleanups = [];
-  for (const fn of canvasEventCleanups) fn();
-  canvasEventCleanups = [];
+  for (const fn of view.canvasDndCleanups) fn();
+  view.canvasDndCleanups = [];
+  for (const fn of view.canvasEventCleanups) fn();
+  view.canvasEventCleanups = [];
   canvasPanels.length = 0;
 
   litRender(nothing, canvasWrap);
@@ -7703,7 +7651,7 @@ function renderFunctionEditor() {
   const body = getFunctionBody(editing);
   const args = getFunctionArgs(editing, S);
 
-  functionEditor = monaco.editor.create(/** @type {any} */ (editorContainer), {
+  view.functionEditor = monaco.editor.create(/** @type {any} */ (editorContainer), {
     value: body,
     language: "javascript",
     theme: "vs-dark",
@@ -7716,17 +7664,18 @@ function renderFunctionEditor() {
     wordWrap: "on",
     tabSize: 2,
   });
-  functionEditor._editingTarget = JSON.stringify(editing);
+  view.functionEditor._editingTarget = JSON.stringify(editing);
 
   // Format on open — show pretty-printed code, then run initial lint
   codeService("format", { code: body, args }).then((result) => {
-    if (result?.code != null && functionEditor) {
-      functionEditor._ignoreNextChange = true;
-      functionEditor.setValue(result.code);
+    if (result?.code != null && view.functionEditor) {
+      view.functionEditor._ignoreNextChange = true;
+      view.functionEditor.setValue(result.code);
     }
   });
   codeService("lint", { code: body, args }).then((result) => {
-    if (result?.diagnostics && functionEditor) setLintMarkers(functionEditor, result.diagnostics);
+    if (result?.diagnostics && view.functionEditor)
+      setLintMarkers(view.functionEditor, result.diagnostics);
   });
 
   // Debounced sync back to state + lint on edit
@@ -7735,15 +7684,15 @@ function renderFunctionEditor() {
   /** @type {any} */
   let lintDebounce;
   let lintGen = 0;
-  functionEditor.onDidChangeModelContent(() => {
-    if (functionEditor._ignoreNextChange) {
-      functionEditor._ignoreNextChange = false;
+  view.functionEditor.onDidChangeModelContent(() => {
+    if (view.functionEditor._ignoreNextChange) {
+      view.functionEditor._ignoreNextChange = false;
       return;
     }
 
     clearTimeout(syncDebounce);
     syncDebounce = setTimeout(() => {
-      const newBody = functionEditor.getValue();
+      const newBody = view.functionEditor.getValue();
       if (editing.type === "def") {
         update(updateDef(S, editing.defName, { body: newBody }));
       } else if (editing.type === "event") {
@@ -7763,11 +7712,11 @@ function renderFunctionEditor() {
     clearTimeout(lintDebounce);
     lintDebounce = setTimeout(() => {
       const gen = ++lintGen;
-      const currentCode = functionEditor.getValue();
+      const currentCode = view.functionEditor.getValue();
       codeService("lint", { code: currentCode, args }).then((result) => {
         if (gen !== lintGen) return;
-        if (result?.diagnostics && functionEditor)
-          setLintMarkers(functionEditor, result.diagnostics);
+        if (result?.diagnostics && view.functionEditor)
+          setLintMarkers(view.functionEditor, result.diagnostics);
       });
     }, 750);
   });
@@ -7914,14 +7863,14 @@ function renderToolbar() {
             @click=${() => {
               if (canvasMode === m.key) return;
               if (S.ui.editingFunction) {
-                if (functionEditor) {
-                  functionEditor.dispose();
-                  functionEditor = null;
+                if (view.functionEditor) {
+                  view.functionEditor.dispose();
+                  view.functionEditor = null;
                 }
               }
               canvasMode = m.key;
-              panX = 0;
-              panY = 0;
+              view.panX = 0;
+              view.panY = 0;
               const uiUpdates = { ...S.ui, editingFunction: null };
               if (m.key === "settings") uiUpdates.rightTab = "style";
               if (m.key === "manage") uiUpdates.leftTab = "files";
@@ -8038,16 +7987,16 @@ initShortcuts(() => ({
     S = ns;
   },
   canvasMode,
-  panX,
-  panY,
+  panX: view.panX,
+  panY: view.panY,
   setPan: (x, y) => {
-    panX = x;
-    panY = y;
-    needsCenter = false;
+    view.panX = x;
+    view.panY = y;
+    view.needsCenter = false;
   },
   applyTransform,
   positionZoomIndicator,
-  componentInlineEdit,
+  componentInlineEdit: view.componentInlineEdit,
   saveFile,
   openProject,
   enterEditOnPath(path) {

@@ -62,45 +62,6 @@ export const rightPanel = /** @type {any} */ (document.querySelector("#right-pan
 export const toolbarEl = /** @type {any} */ (document.querySelector("#toolbar"));
 export const statusbarEl = /** @type {any} */ (document.querySelector("#statusbar"));
 
-// ─── Shared mutable state container ─────────────────────────────────────────
-// A plain object so all importers share the same reference and see mutations.
-// Used by extracted modules; studio.js keeps local aliases during migration.
-
-/**
- * @type {{
- *   S: any;
- *   canvasMode: string;
- *   panX: number;
- *   panY: number;
- *   panzoomWrap: any;
- *   componentInlineEdit: any;
- *   pendingInlineEdit: any;
- *   monacoEditor: any;
- *   functionEditor: any;
- *   liveScope: any;
- *   blockActionBarEl: any;
- *   inlineEditCleanup: any;
- *   selDragCleanup: any;
- *   componentSlashMenu: any;
- * }}
- */
-export const ctx = {
-  S: undefined,
-  canvasMode: "design",
-  panX: 0,
-  panY: 0,
-  panzoomWrap: null,
-  componentInlineEdit: null,
-  pendingInlineEdit: null,
-  monacoEditor: null,
-  functionEditor: null,
-  liveScope: null,
-  blockActionBarEl: null,
-  inlineEditCleanup: null,
-  selDragCleanup: null,
-  componentSlashMenu: null,
-};
-
 // ─── Shared containers (mutated in place by owner modules) ───────────────────
 
 /** WeakMap<HTMLElement, Array> — maps rendered DOM elements to their JSON paths */
