@@ -231,6 +231,58 @@ export function createState(doc) {
   };
 }
 
+// ─── Doc/Session slice helpers ───────────────────────────────────────────────
+
+/**
+ * Compose a flat StudioState from separate doc and session slices.
+ *
+ * @param {any} doc
+ * @param {any} session
+ * @returns {StudioState}
+ */
+export function toFlat(doc, session) {
+  return { ...doc, ...session };
+}
+
+/**
+ * Decompose a flat StudioState into doc and session slices.
+ *
+ * @param {StudioState} S
+ * @returns {{ doc: any; session: any }}
+ */
+export function fromFlat(S) {
+  const {
+    document,
+    dirty,
+    fileHandle,
+    documentPath,
+    documentStack,
+    handlersSource,
+    mode,
+    content,
+    history,
+    historyIndex,
+    selection,
+    hover,
+    ui,
+  } = S;
+  return {
+    doc: {
+      document,
+      dirty,
+      fileHandle,
+      documentPath,
+      documentStack,
+      handlersSource,
+      mode,
+      content,
+      history,
+      historyIndex,
+    },
+    session: { selection, hover, ui },
+  };
+}
+
 // ─── Project state (persists across document switches) ────────────────────────
 //
 // Shape: { root, name, projectRoot, isSiteProject, projectConfig,

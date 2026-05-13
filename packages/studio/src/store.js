@@ -48,6 +48,8 @@ export {
   projectState,
   setProjectState,
   updateFrontmatter,
+  toFlat,
+  fromFlat,
 } from "./state.js";
 
 // ─── DOM shortcuts & element refs ────────────────────────────────────────────
@@ -262,17 +264,64 @@ export function update(newState) {
   _updateFn(newState);
 }
 
+// ─── Session dispatch (late-bound) ──────────────────────────────────────────
+// Lightweight dispatcher for session-only changes (selection, hover, ui).
+// Does NOT trigger autosave middleware or push history.
+
+/** @type {Function} */
+let _updateSessionFn = () => {
+  throw new Error("updateSession() called before setUpdateSessionFn() — bootstrap not complete");
+};
+
+/** @type {Function} */
+let _getDocFn = () => null;
+
+/** @type {Function} */
+let _getSessionFn = () => null;
+
+/** @param {Function} fn */
+export function setUpdateSessionFn(fn) {
+  _updateSessionFn = fn;
+}
+
+/** @param {Function} fn */
+export function setGetDocFn(fn) {
+  _getDocFn = fn;
+}
+
+/** @param {Function} fn */
+export function setGetSessionFn(fn) {
+  _getSessionFn = fn;
+}
+
+/** @returns {any} */
+export function getDoc() {
+  return _getDocFn();
+}
+
+/** @returns {any} */
+export function getSession() {
+  return _getSessionFn();
+}
+
 /**
- * Update a single UI field and re-render. Shorthand for the common pattern of `update({ ...S, ui: {
- * ...S.ui, [field]: value } })`.
+ * Dispatch a session-only state update (selection, hover, ui). Does not trigger autosave.
+ *
+ * @param {any} patch — partial session object, e.g. { ui: { zoom: 2 } }
+ */
+export function updateSession(patch) {
+  _updateSessionFn(patch);
+}
+
+/**
+ * Update a single UI field and re-render. Routes through session dispatch (no autosave, no
+ * history).
  *
  * @param {string} field
  * @param {any} value
  */
 export function updateUi(field, value) {
-  const s = _getStateFn();
-  if (!s) return;
-  _updateFn({ ...s, ui: { ...s.ui, [field]: value } });
+  _updateSessionFn({ ui: { [field]: value } });
 }
 
 /** @type {Function[]} */

@@ -207,9 +207,9 @@ export function normParam(/** @type {any} */ p) {
 
 /**
  * @param {any} S
- * @param {{ renderLeftPanel: Function; renderCanvas: Function }} ctx
+ * @param {any} ctx
  */
-export function renderSignalsTemplate(S, { renderLeftPanel, renderCanvas }) {
+export function renderSignalsTemplate(S, ctx) {
   const defs = S.document.state || {};
   const entries = Object.entries(defs);
 
@@ -243,7 +243,7 @@ export function renderSignalsTemplate(S, { renderLeftPanel, renderCanvas }) {
           @sp-accordion-item-toggle=${() => {
             if (collapsedCats.has(key)) collapsedCats.delete(key);
             else collapsedCats.add(key);
-            renderLeftPanel();
+            ctx.renderLeftPanel();
           }}
         >
           ${items.map(([name, def]) => {
@@ -254,7 +254,7 @@ export function renderSignalsTemplate(S, { renderLeftPanel, renderCanvas }) {
                 class="signal-row${isExpanded ? " expanded" : ""}"
                 @click=${() => {
                   expandedSignal = isExpanded ? null : name;
-                  renderLeftPanel();
+                  ctx.renderLeftPanel();
                 }}
               >
                 <span class="signal-badge ${defCategory(def)}">${defBadgeLabel(def)}</span>
@@ -274,7 +274,7 @@ export function renderSignalsTemplate(S, { renderLeftPanel, renderCanvas }) {
               </div>
               ${isExpanded
                 ? html`<div class="signal-editor">
-                    ${renderSignalEditorTemplate(S, name, def, { renderLeftPanel, renderCanvas })}
+                    ${renderSignalEditorTemplate(S, name, def, ctx)}
                   </div>`
                 : nothing}
             `;
@@ -306,7 +306,7 @@ export function renderSignalsTemplate(S, { renderLeftPanel, renderCanvas }) {
             }
             update(addDef(S, n, structuredClone(template)));
             expandedSignal = n;
-            renderLeftPanel();
+            ctx.renderLeftPanel();
           }}
         >
           <sp-menu-item value="state">State Signal</sp-menu-item>
@@ -334,7 +334,7 @@ function renderSignalEditorTemplate(
   /** @type {any} */ S,
   /** @type {any} */ name,
   /** @type {any} */ def,
-  /** @type {{ renderLeftPanel: Function; renderCanvas: Function }} */ ctx,
+  /** @type {any} */ ctx,
 ) {
   const cat = defCategory(def);
 
@@ -519,7 +519,7 @@ function renderDataSourceFields(
   /** @type {any} */ def,
   /** @type {any} */ textareaRow,
   /** @type {any} */ pickerRow,
-  /** @type {{ renderLeftPanel: Function; renderCanvas: Function }} */ ctx,
+  /** @type {any} */ ctx,
 ) {
   const proto = def.$prototype;
 
@@ -607,7 +607,7 @@ function renderFunctionFields(
   /** @type {any} */ name,
   /** @type {any} */ def,
   /** @type {any} */ textareaRow,
-  /** @type {{ renderLeftPanel: Function; renderCanvas: Function }} */ ctx,
+  /** @type {any} */ ctx,
 ) {
   const srcFields = def.$src
     ? html`
@@ -634,7 +634,7 @@ function renderFunctionFields(
             class="kv-add"
             style="margin-top:4px"
             @click=${() => {
-              S = { ...S, ui: { ...S.ui, editingFunction: { type: "def", defName: name } } };
+              ctx.updateSession({ ui: { editingFunction: { type: "def", defName: name } } });
               ctx.renderCanvas();
             }}
           >
@@ -655,7 +655,7 @@ function renderParameterEditorTemplate(
   /** @type {any} */ S,
   /** @type {any} */ name,
   /** @type {any} */ def,
-  /** @type {{ renderLeftPanel: Function; renderCanvas: Function }} */ ctx,
+  /** @type {any} */ ctx,
 ) {
   const params = (def.parameters || []).map(normParam);
   const isAdvanced = advancedParamOpen.has(name);
@@ -1045,7 +1045,7 @@ export function renderExternalPrototypeEditorTemplate(
   /** @type {any} */ S,
   /** @type {any} */ name,
   /** @type {any} */ def,
-  /** @type {{ renderLeftPanel: Function; renderCanvas: Function }} */ ctx,
+  /** @type {any} */ ctx,
 ) {
   // Schema-driven config fields (async with cache)
   /** @type {any} */

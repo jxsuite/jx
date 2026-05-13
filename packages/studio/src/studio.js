@@ -61,6 +61,12 @@ import {
   setProjectState,
   updateFrontmatter,
   updateUi,
+  updateSession,
+  setUpdateSessionFn,
+  setGetDocFn,
+  setGetSessionFn,
+  toFlat,
+  fromFlat,
 } from "./store.js";
 
 import { view } from "./view.js";
@@ -184,7 +190,11 @@ import * as monaco from "monaco-editor/esm/vs/editor/editor.api.js";
 // into their own modules, they will migrate to ctx in store.js.
 
 /** @type {any} */
-let S; // current state
+let S; // current state (flat compatibility view)
+/** @type {any} */
+let doc = null; // doc slice (persisted, history, autosave)
+/** @type {any} */
+let session = null; // session slice (selection, hover, ui)
 
 /** Creates a display:contents container appended to sp-theme or body, for floating popovers/menus. */
 function createFloatingContainer() {
@@ -780,6 +790,7 @@ const EMPTY_DOC = {
 };
 
 S = createState(structuredClone(EMPTY_DOC));
+({ doc, session } = fromFlat(S));
 
 // ─── Render loop ──────────────────────────────────────────────────────────────
 
@@ -834,6 +845,9 @@ setUpdateFn(function _update(/** @type {any} */ newState) {
   const prevDoc = S.document;
   const prevSel = S.selection;
   S = newState;
+
+  // Keep doc/session slices in sync with flat S
+  ({ doc, session } = fromFlat(S));
 
   const docChanged = prevDoc !== S.document;
   const selChanged = !pathsEqual(prevSel, S.selection);
@@ -904,6 +918,71 @@ setUpdateFn(function _update(/** @type {any} */ newState) {
 
   runPostRenderHooks(prevDoc, prevSel);
   runUpdateMiddleware(S);
+});
+
+// Register session dispatch — lightweight path for selection/hover/ui changes
+setGetDocFn(() => doc);
+setGetSessionFn(() => session);
+setUpdateSessionFn(function _updateSession(/** @type {any} */ patch) {
+  const prev = session;
+  session = { ...session, ...patch };
+  if (patch.ui) {
+    session.ui = { ...prev.ui, ...patch.ui };
+  }
+  S = toFlat(doc, session);
+
+  const selChanged = !pathsEqual(prev.selection, session.selection);
+  const uiChanged = prev.ui !== session.ui;
+
+  const canvasUiChanged =
+    uiChanged &&
+    (prev.ui?.editingFunction !== session.ui?.editingFunction ||
+      prev.ui?.settingsTab !== session.ui?.settingsTab ||
+      prev.ui?.stylebookTab !== session.ui?.stylebookTab ||
+      prev.ui?.stylebookFilter !== session.ui?.stylebookFilter ||
+      prev.ui?.stylebookCustomizedOnly !== session.ui?.stylebookCustomizedOnly ||
+      prev.ui?.featureToggles !== session.ui?.featureToggles);
+  const leftUiChanged =
+    uiChanged &&
+    (prev.ui?.leftTab !== session.ui?.leftTab || prev.ui?.settingsTab !== session.ui?.settingsTab);
+
+  try {
+    renderToolbar();
+  } catch (e) {
+    console.error("renderToolbar error:", e);
+  }
+
+  if (canvasUiChanged) {
+    try {
+      renderCanvas();
+    } catch (e) {
+      console.error("renderCanvas error:", e);
+    }
+    safeRenderLeftPanel();
+  } else if (selChanged || leftUiChanged) {
+    safeRenderLeftPanel();
+  }
+
+  if (uiChanged && prev.ui?.activeMedia !== session.ui?.activeMedia) {
+    updateActivePanelHeaders();
+  }
+
+  if (selChanged || uiChanged) {
+    safeRenderRightPanel();
+  }
+
+  try {
+    renderOverlays();
+  } catch (e) {
+    console.error("renderOverlays error:", e);
+  }
+  try {
+    renderStatusbar(S);
+  } catch (e) {
+    console.error("renderStatusbar error:", e);
+  }
+
+  runPostRenderHooks(doc.document, prev.selection);
 });
 
 // Register post-render hook for pseudo-state preview
@@ -995,11 +1074,12 @@ if (_openParam) {
         const fileRelPath = siteCtx.fileRelPath || _openParam;
         const content = await platform.readFile(fileRelPath);
         if (content) {
-          const doc = JSON.parse(content);
-          S = createState(doc);
+          const parsed = JSON.parse(content);
+          S = createState(parsed);
           S.dirty = false;
           S.documentPath = fileRelPath;
           S.ui = { ...S.ui, leftTab: "files" };
+          ({ doc, session } = fromFlat(S));
           render();
           statusMessage(`Opened ${_openParam}`);
         }
@@ -1667,7 +1747,8 @@ function fitToScreen() {
   const fitZoomH = wrapHeight / maxPanelHeight;
   const fitZoom = Math.min(5.0, Math.max(0.05, Math.min(fitZoomW, fitZoomH)));
 
-  S = { ...S, ui: { ...S.ui, zoom: fitZoom } };
+  session = { ...session, ui: { ...session.ui, zoom: fitZoom } };
+  S = toFlat(doc, session);
   // Center the content
   const scaledWidth = totalPanelWidth * fitZoom;
   const scaledHeight = maxPanelHeight * fitZoom;
@@ -2361,7 +2442,8 @@ function moveSelectionUp() {
   if (idx <= 0) return;
   const pPath = /** @type {any} */ (parentElementPath(S.selection));
   update(moveNode(S, S.selection, pPath, idx - 1));
-  S = { ...S, selection: [...pPath, "children", idx - 1] };
+  session = { ...session, selection: [...pPath, "children", idx - 1] };
+  S = toFlat(doc, session);
   renderOverlays();
 }
 
@@ -2374,7 +2456,8 @@ function moveSelectionDown() {
   const siblings = parentNode?.children;
   if (!siblings || idx >= siblings.length - 1) return;
   update(moveNode(S, S.selection, pPath, idx + 2));
-  S = { ...S, selection: [...pPath, "children", idx + 1] };
+  session = { ...session, selection: [...pPath, "children", idx + 1] };
+  S = toFlat(doc, session);
   renderOverlays();
 }
 
@@ -3333,7 +3416,8 @@ function renderLeftPanel() {
     });
   else if (tab === "files") content = renderFilesTemplate();
   else if (tab === "blocks") content = renderElementsTemplate();
-  else if (tab === "state") content = renderSignalsTemplate(S, { renderLeftPanel, renderCanvas });
+  else if (tab === "state")
+    content = renderSignalsTemplate(S, { renderLeftPanel, renderCanvas, updateSession });
   else if (tab === "data")
     content = renderDataExplorerTemplate(S.document.state, view.liveScope, {
       renderCanvas,
@@ -5183,9 +5267,8 @@ function registerStylebookPanelEvents(panel) {
       }
     }
     // Clicked empty area — deselect
-    S = { ...S, ui: { ...S.ui, stylebookSelection: null, activeSelector: null } };
+    updateSession({ ui: { stylebookSelection: null, activeSelector: null } });
     renderStylebookOverlays();
-    safeRenderRightPanel();
   });
 
   overlayClk.addEventListener("mousemove", (/** @type {any} */ e) => {
@@ -7154,7 +7237,8 @@ function styleSidebarTemplate(
   // Auto-open sections that have properties
   const newSections = autoOpenSections({ style: activeStyle }, S.ui.styleSections);
   if (JSON.stringify(newSections) !== JSON.stringify(S.ui.styleSections)) {
-    S = { ...S, ui: { ...S.ui, styleSections: newSections } };
+    session = { ...session, ui: { ...session.ui, styleSections: newSections } };
+    S = toFlat(doc, session);
   }
 
   // Partition properties into sections
@@ -7871,14 +7955,12 @@ function renderToolbar() {
               canvasMode = m.key;
               view.panX = 0;
               view.panY = 0;
-              const uiUpdates = { ...S.ui, editingFunction: null };
-              if (m.key === "settings") uiUpdates.rightTab = "style";
-              if (m.key === "manage") uiUpdates.leftTab = "files";
-              S = { ...S, ui: uiUpdates };
+              /** @type {Record<string, any>} */
+              const uiPatch = { editingFunction: null };
+              if (m.key === "settings") uiPatch.rightTab = "style";
+              if (m.key === "manage") uiPatch.leftTab = "files";
+              updateSession({ ui: uiPatch });
               renderCanvas();
-              renderOverlays();
-              renderToolbar();
-              safeRenderLeftPanel();
               safeRenderRightPanel();
             }}
           >
