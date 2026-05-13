@@ -227,7 +227,13 @@ export function registerRenderer(name, fn) {
 
 /** Call all registered renderers (full repaint). */
 export function render() {
-  for (const fn of _renderers.values()) fn();
+  for (const [name, fn] of _renderers.entries()) {
+    try {
+      fn();
+    } catch (e) {
+      console.error(`Renderer "${name}" failed:`, e);
+    }
+  }
 }
 
 /**
@@ -238,7 +244,12 @@ export function render() {
 export function renderOnly(...names) {
   for (const name of names) {
     const fn = _renderers.get(name);
-    if (fn) fn();
+    if (!fn) continue;
+    try {
+      fn();
+    } catch (e) {
+      console.error(`Renderer "${name}" failed:`, e);
+    }
   }
 }
 
@@ -288,6 +299,19 @@ export function getState() {
  */
 export function update(newState) {
   _updateFn(newState);
+}
+
+/**
+ * Update a single UI field and re-render. Shorthand for the common pattern of `update({ ...S, ui: {
+ * ...S.ui, [field]: value } })`.
+ *
+ * @param {string} field
+ * @param {any} value
+ */
+export function updateUi(field, value) {
+  const s = _getStateFn();
+  if (!s) return;
+  _updateFn({ ...s, ui: { ...s.ui, [field]: value } });
 }
 
 /** @type {Function[]} */

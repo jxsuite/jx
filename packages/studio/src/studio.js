@@ -60,6 +60,7 @@ import {
   projectState,
   setProjectState,
   updateFrontmatter,
+  updateUi,
 } from "./store.js";
 
 import { renderNode as runtimeRenderNode, buildScope, defineElement } from "@jxsuite/runtime";
@@ -280,9 +281,7 @@ async function closeFunctionEditor() {
     functionEditor.dispose();
     functionEditor = null;
   }
-  S = { ...S, ui: { ...S.ui, editingFunction: null } };
-  renderCanvas();
-  renderToolbar();
+  updateUi("editingFunction", null);
 }
 
 /**
@@ -880,17 +879,46 @@ function safeRenderRightPanel() {
 // Register the update implementation with the store
 setGetStateFn(() => S);
 setUpdateFn(function _update(/** @type {any} */ newState) {
+  const prev = S;
   const prevDoc = S.document;
   const prevSel = S.selection;
   S = newState;
 
-  renderToolbar();
+  const docChanged = prevDoc !== S.document;
+  const selChanged = !pathsEqual(prevSel, S.selection);
+  const modeChanged = prev.mode !== S.mode;
+  const uiChanged = prev.ui !== S.ui;
 
-  if (prevDoc !== S.document) {
-    renderCanvas();
+  const canvasUiChanged =
+    uiChanged &&
+    (prev.ui?.editingFunction !== S.ui?.editingFunction ||
+      prev.ui?.settingsTab !== S.ui?.settingsTab ||
+      prev.ui?.stylebookTab !== S.ui?.stylebookTab ||
+      prev.ui?.stylebookFilter !== S.ui?.stylebookFilter ||
+      prev.ui?.stylebookCustomizedOnly !== S.ui?.stylebookCustomizedOnly ||
+      prev.ui?.featureToggles !== S.ui?.featureToggles);
+  const leftUiChanged =
+    uiChanged && (prev.ui?.leftTab !== S.ui?.leftTab || prev.ui?.settingsTab !== S.ui?.settingsTab);
+
+  try {
+    renderToolbar();
+  } catch (e) {
+    console.error("renderToolbar error:", e);
+  }
+
+  if (docChanged || modeChanged || canvasUiChanged) {
+    try {
+      renderCanvas();
+    } catch (e) {
+      console.error("renderCanvas error:", e);
+    }
     safeRenderLeftPanel();
-  } else if (!pathsEqual(prevSel, S.selection)) {
+  } else if (selChanged || leftUiChanged) {
     safeRenderLeftPanel();
+  }
+
+  if (uiChanged && prev.ui?.activeMedia !== S.ui?.activeMedia) {
+    updateActivePanelHeaders();
   }
 
   // Skip right-panel rebuild when an input inside it is focused (user is typing)
@@ -908,16 +936,22 @@ setUpdateFn(function _update(/** @type {any} */ newState) {
       activeTag === "SP-PICKER" ||
       activeTag === "SP-COMBOBOX" ||
       activeTag === "SP-SEARCH");
-  if (!rightHasFocus || !pathsEqual(prevSel, S.selection)) {
+  if (!rightHasFocus || selChanged || uiChanged) {
     safeRenderRightPanel();
   }
-  renderOverlays();
-  renderStatusbar(S);
 
-  // Post-render hooks (pseudo-state preview, pending inline edit, etc.)
+  try {
+    renderOverlays();
+  } catch (e) {
+    console.error("renderOverlays error:", e);
+  }
+  try {
+    renderStatusbar(S);
+  } catch (e) {
+    console.error("renderStatusbar error:", e);
+  }
+
   runPostRenderHooks(prevDoc, prevSel);
-
-  // Update middleware (autosave, etc.)
   runUpdateMiddleware(S);
 });
 
@@ -1327,10 +1361,7 @@ function renderCanvas() {
       debounce = setTimeout(() => {
         try {
           const parsed = JSON.parse(monacoEditor.getValue());
-          S = { ...S, document: parsed, dirty: true };
-          renderToolbar();
-          renderLeftPanel();
-          renderRightPanel();
+          update({ ...S, document: parsed, dirty: true });
         } catch {
           // Invalid JSON — don't update state
         }
@@ -1560,9 +1591,7 @@ function canvasPanelTemplate(mediaName, label, fullWidth, width) {
             <div
               class="canvas-panel-header"
               @click=${() => {
-                S = { ...S, ui: { ...S.ui, activeMedia: mediaName === "base" ? null : mediaName } };
-                updateActivePanelHeaders();
-                renderRightPanel();
+                updateUi("activeMedia", mediaName === "base" ? null : mediaName);
               }}
             >
               ${label}
@@ -2720,7 +2749,7 @@ function registerPanelEvents(panel) {
           if (originalPath) {
             let path = bubbleInlinePath(S.document, originalPath);
             const newMedia = mediaName === "base" ? null : (mediaName ?? null);
-            S = { ...S, ui: { ...S.ui, activeMedia: newMedia } };
+            const withMedia = { ...S, ui: { ...S.ui, activeMedia: newMedia } };
 
             // Find the DOM element for the bubbled path (may differ from hit element)
             // When path didn't change (no inline bubbling), prefer the hit element directly
@@ -2735,6 +2764,7 @@ function registerPanelEvents(panel) {
               isEditableBlock(resolvedEl) &&
               (canvasMode === "edit" || S.mode === "content")
             ) {
+              S = withMedia;
               enterInlineEdit(resolvedEl, path);
               return;
             }
@@ -2742,11 +2772,11 @@ function registerPanelEvents(panel) {
             // Design mode or first click: select and schedule component inline editing
             if (canvasMode === "design" && S.mode !== "content") {
               pendingInlineEdit = { path, mediaName };
-              update(selectNode(S, path));
+              update(selectNode(withMedia, path));
               return;
             }
 
-            update(selectNode(S, path));
+            update(selectNode(withMedia, path));
             return;
           }
         }
@@ -2785,8 +2815,8 @@ function registerPanelEvents(panel) {
             const resolvedEl = path === originalPath ? el : findCanvasElement(path, canvas) || el;
             if (isEditableBlock(resolvedEl)) {
               const newMedia = mediaName === "base" ? null : (mediaName ?? null);
-              S = { ...S, ui: { ...S.ui, activeMedia: newMedia } };
-              update(selectNode(S, path));
+              const withMedia = { ...S, ui: { ...S.ui, activeMedia: newMedia } };
+              update(selectNode(withMedia, path));
               enterInlineEdit(resolvedEl, path);
               return;
             }
@@ -3145,10 +3175,10 @@ function enterComponentInlineEdit(el, path) {
     if (hitPath) {
       const media = hitMedia === "base" ? null : (hitMedia ?? null);
       pendingInlineEdit = { path: hitPath, mediaName: hitMedia };
-      S = { ...S, ui: { ...S.ui, activeMedia: media } };
+      const withMedia = { ...S, ui: { ...S.ui, activeMedia: media } };
       if (isEmpty && pPath) {
         // Remove empty node; adjust hitPath if it shifts after removal
-        let s = removeNode(S, editPath);
+        let s = removeNode(withMedia, editPath);
         // If hit path is a later sibling in the same parent, adjust index
         const removedIdx = /** @type {number} */ (childIndex(editPath));
         const hitIdx = /** @type {number} */ (childIndex(hitPath));
@@ -3160,10 +3190,13 @@ function enterComponentInlineEdit(el, path) {
         update(selectNode(s, hitPath));
       } else if (newText !== originalText) {
         update(
-          selectNode(updateProperty(S, editPath, "textContent", newText || undefined), hitPath),
+          selectNode(
+            updateProperty(withMedia, editPath, "textContent", newText || undefined),
+            hitPath,
+          ),
         );
       } else {
-        update(selectNode(S, hitPath));
+        update(selectNode(withMedia, hitPath));
       }
     } else {
       // Clicked on empty space — just commit
@@ -4400,10 +4433,7 @@ function renderSettings() {
         size="s"
         selected=${settingsTab}
         @change=${(/** @type {any} */ e) => {
-          S = { ...S, ui: { ...S.ui, settingsTab: e.target.selected } };
-          renderCanvas();
-          renderOverlays();
-          renderLeftPanel();
+          updateUi("settingsTab", e.target.selected);
         }}
       >
         <sp-tab label="Stylebook" value="stylebook"></sp-tab>
@@ -4445,22 +4475,15 @@ function renderSettings() {
 
   // Chrome bar (tabs + filter) — positioned absolutely above the panzoom surface
   const onTabClick = (/** @type {string} */ t) => {
-    S = { ...S, ui: { ...S.ui, stylebookTab: t } };
-    renderCanvas();
-    renderOverlays();
-    renderLeftPanel();
+    updateUi("stylebookTab", t);
   };
 
   const onFilterInput = (/** @type {any} */ e) => {
-    S = { ...S, ui: { ...S.ui, stylebookFilter: e.target.value } };
-    renderCanvas();
-    renderOverlays();
+    updateUi("stylebookFilter", e.target.value);
   };
 
   const onCustomizedToggle = () => {
-    S = { ...S, ui: { ...S.ui, stylebookCustomizedOnly: !S.ui.stylebookCustomizedOnly } };
-    renderCanvas();
-    renderOverlays();
+    updateUi("stylebookCustomizedOnly", !S.ui.stylebookCustomizedOnly);
   };
 
   const chromeBarTpl = html`
@@ -5214,7 +5237,7 @@ function registerStylebookPanelEvents(panel) {
     // Clicked empty area — deselect
     S = { ...S, ui: { ...S.ui, stylebookSelection: null, activeSelector: null } };
     renderStylebookOverlays();
-    renderRightPanel();
+    safeRenderRightPanel();
   });
 
   overlayClk.addEventListener("mousemove", (/** @type {any} */ e) => {
@@ -5325,9 +5348,7 @@ function renderRightPanel() {
         @change=${(/** @type {any} */ e) => {
           const sel = e.target.selected;
           if (sel && sel !== tab) {
-            S = { ...S, ui: { ...S.ui, rightTab: sel } };
-            renderRightPanel();
-            renderOverlays();
+            updateUi("rightTab", sel);
           }
         }}
       >
@@ -7064,9 +7085,7 @@ function styleSidebarTemplate(
               const val = e.target.selected;
               const newMedia = val === "base" ? null : val;
               if (newMedia !== S.ui.activeMedia) {
-                S = { ...S, ui: { ...S.ui, activeMedia: newMedia } };
-                updateActivePanelHeaders();
-                renderRightPanel();
+                updateUi("activeMedia", newMedia);
               }
             }}
           >
@@ -7118,8 +7137,7 @@ function styleSidebarTemplate(
               inp.remove();
               picker.style.display = "";
               if (accept && v && isNestedSelector(v)) {
-                S = { ...S, ui: { ...S.ui, activeSelector: v } };
-                renderRightPanel();
+                updateUi("activeSelector", v);
               }
             };
             inp.addEventListener("keydown", (ev) => {
@@ -7130,8 +7148,7 @@ function styleSidebarTemplate(
             return;
           }
           const newSelector = val === "__base__" ? null : val;
-          S = { ...S, ui: { ...S.ui, activeSelector: newSelector } };
-          renderRightPanel();
+          updateUi("activeSelector", newSelector);
         }}
       >
         <sp-menu-item value="__base__">(base)</sp-menu-item>
@@ -7612,8 +7629,7 @@ function _renderSourceView(/** @type {any} */ container) {
           @blur=${(/** @type {any} */ e) => {
             try {
               const parsed = JSON.parse(e.target.value);
-              S = { ...S, document: parsed, dirty: true };
-              render();
+              update({ ...S, document: parsed, dirty: true });
             } catch {}
           }}
         ></textarea>
@@ -7867,10 +7883,7 @@ function renderToolbar() {
                       ...S.ui.featureToggles,
                       [name]: !S.ui.featureToggles[name],
                     };
-                    S = { ...S, ui: { ...S.ui, featureToggles: newToggles } };
-                    renderCanvas();
-                    renderOverlays();
-                    renderToolbar();
+                    updateUi("featureToggles", newToggles);
                   }}
                 >
                   ${mediaDisplayName(name)}
@@ -7905,23 +7918,19 @@ function renderToolbar() {
                   functionEditor.dispose();
                   functionEditor = null;
                 }
-                S = { ...S, ui: { ...S.ui, editingFunction: null } };
               }
               canvasMode = m.key;
               panX = 0;
               panY = 0;
+              const uiUpdates = { ...S.ui, editingFunction: null };
+              if (m.key === "settings") uiUpdates.rightTab = "style";
+              if (m.key === "manage") uiUpdates.leftTab = "files";
+              S = { ...S, ui: uiUpdates };
               renderCanvas();
               renderOverlays();
               renderToolbar();
-              renderLeftPanel();
-              if (m.key === "settings") {
-                S = { ...S, ui: { ...S.ui, rightTab: "style" } };
-                renderRightPanel();
-              }
-              if (m.key === "manage") {
-                S = { ...S, ui: { ...S.ui, leftTab: "files" } };
-                renderLeftPanel();
-              }
+              safeRenderLeftPanel();
+              safeRenderRightPanel();
             }}
           >
             ${toolbarIconMap[m.iconTag]}${m.label}
@@ -8069,8 +8078,7 @@ function scheduleAutosave() {
         const writable = await S.fileHandle.createWritable();
         await writable.write(JSON.stringify(S.document, null, 2));
         await writable.close();
-        S = { ...S, dirty: false };
-        renderToolbar();
+        update({ ...S, dirty: false });
         statusMessage("Auto-saved");
       } catch {}
     }
