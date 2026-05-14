@@ -124,6 +124,13 @@ import { renderHeadTemplate } from "./panels/head-panel.js";
 import { exportCemManifest as _exportCemManifest } from "./services/cem-export.js";
 
 import { registerPlatform, getPlatform, hasPlatform } from "./platform.js";
+import {
+  parseMediaEntries,
+  activeBreakpointsForWidth,
+  applyCanvasStyle,
+  collectMediaOverrides,
+  applyOverridesToCanvas,
+} from "./utils/canvas-media.js";
 import { createDevServerPlatform } from "./platforms/devserver.js";
 import { codeService, setLintMarkers, getFunctionArgs } from "./services/code-services.js";
 import {
@@ -1041,86 +1048,6 @@ if (_openParam) {
 // ─── Media helpers ────────────────────────────────────────────────────────────
 
 /**
- * Classify $media entries into size breakpoints (get a canvas each) and feature queries (rendered
- * as toolbar toggles).
- *
- * @param {any} mediaDef
- */
-function parseMediaEntries(mediaDef) {
-  if (!mediaDef) return { sizeBreakpoints: [], featureQueries: [], baseWidth: 320 };
-  const sizes = [],
-    features = [];
-  let baseWidth = 320;
-  for (const [name, query] of Object.entries(mediaDef)) {
-    if (name === "--") {
-      const wm = String(query).match(/^(\d+)\s*px$/);
-      baseWidth = wm ? parseFloat(wm[1]) : 320;
-      continue;
-    }
-    const minMatch = query.match(/min-width:\s*([\d.]+)px/);
-    const maxMatch = query.match(/max-width:\s*([\d.]+)px/);
-    if (minMatch) sizes.push({ name, query, width: parseFloat(minMatch[1]), type: "min" });
-    else if (maxMatch) sizes.push({ name, query, width: parseFloat(maxMatch[1]), type: "max" });
-    else features.push({ name, query });
-  }
-  sizes.sort((a, b) => (a.type === "min" ? a.width - b.width : b.width - a.width));
-  return { sizeBreakpoints: sizes, featureQueries: features, baseWidth };
-}
-
-/**
- * Compute which named breakpoints are active at a given canvas width. For min-width canvases: all
- * breakpoints with min-width <= canvasWidth are active. For max-width canvases: all breakpoints
- * with max-width >= canvasWidth are active.
- *
- * @param {any} sizeBreakpoints
- * @param {any} canvasWidth
- */
-function activeBreakpointsForWidth(sizeBreakpoints, canvasWidth) {
-  const active = new Set();
-  for (const bp of sizeBreakpoints) {
-    if (bp.type === "min" && canvasWidth >= bp.width) active.add(bp.name);
-    else if (bp.type === "max" && canvasWidth <= bp.width) active.add(bp.name);
-  }
-  return active;
-}
-
-/**
- * Apply styles to a canvas element, including active media overrides. Base (flat) styles applied
- * first, then matching media overrides in source order.
- *
- * @param {any} el
- * @param {any} styleDef
- * @param {any} activeBreakpoints
- * @param {any} featureToggles
- */
-function applyCanvasStyle(el, styleDef, activeBreakpoints, featureToggles) {
-  if (!styleDef || typeof styleDef !== "object") return;
-  for (const [prop, val] of Object.entries(styleDef)) {
-    if (typeof val === "string" || typeof val === "number") {
-      try {
-        if (prop.startsWith("--")) el.style.setProperty(prop, String(val));
-        else /** @type {any} */ (el.style)[prop] = val;
-      } catch {}
-    }
-  }
-  for (const [key, val] of Object.entries(styleDef)) {
-    if (!key.startsWith("@") || typeof val !== "object") continue;
-    const mediaName = key.slice(1);
-    if (mediaName === "--") continue; // skip base canvas width key
-    if (activeBreakpoints.has(mediaName) || featureToggles[mediaName]) {
-      for (const [prop, v] of Object.entries(/** @type {any} */ (val))) {
-        if (typeof v === "string" || typeof v === "number") {
-          try {
-            if (prop.startsWith("--")) el.style.setProperty(prop, String(v));
-            else /** @type {any} */ (el.style)[prop] = v;
-          } catch {}
-        }
-      }
-    }
-  }
-}
-
-/**
  * After a runtime render, apply active media overrides as inline styles so they beat the base
  * inline styles the runtime already set. The runtime uses @media CSS rules for overrides, but those
  * can never beat inline base styles.
@@ -1130,26 +1057,13 @@ function applyCanvasStyle(el, styleDef, activeBreakpoints, featureToggles) {
  */
 function applyCanvasMediaOverrides(canvasEl, activeBreakpoints) {
   if (!activeBreakpoints.size) return;
-  for (const el of /** @type {NodeListOf<HTMLElement>} */ (canvasEl.querySelectorAll("*"))) {
-    const path = elToPath.get(el);
-    if (!path) continue;
-    const node = getNodeAtPath(S.document, path);
-    if (!node?.style) continue;
-    for (const [key, val] of Object.entries(node.style)) {
-      if (!key.startsWith("@") || typeof val !== "object") continue;
-      const mediaName = key.slice(1);
-      if (mediaName === "--") continue;
-      if (!activeBreakpoints.has(mediaName)) continue;
-      for (const [prop, v] of Object.entries(/** @type {any} */ (val))) {
-        if (typeof v === "string" || typeof v === "number") {
-          try {
-            if (prop.startsWith("--")) el.style.setProperty(prop, String(v));
-            else /** @type {any} */ (el.style)[prop] = v;
-          } catch {}
-        }
-      }
-    }
+  const docMedia = getEffectiveMedia(S.document.$media || {});
+  const validBreakpoints = new Set();
+  for (const name of activeBreakpoints) {
+    if (docMedia[name]) validBreakpoints.add(name);
   }
+  const overrides = collectMediaOverrides(document.styleSheets, validBreakpoints);
+  applyOverridesToCanvas(canvasEl, overrides);
 }
 
 // ─── Canvas ───────────────────────────────────────────────────────────────────
