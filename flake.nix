@@ -198,6 +198,33 @@
                 build-desktop.exec = ''
                   nix build --option sandbox false
                 '';
+                generate-icons = {
+                  exec = ''
+                    #!/usr/bin/env bash
+                    set -e
+                    cd "$(git rev-parse --show-toplevel 2>/dev/null || echo .)"
+
+                    SRC="branding/jx_flattened.svg"
+                    ICONSET="packages/desktop/icon.iconset"
+
+                    rm -rf "$ICONSET"
+                    mkdir -p "$ICONSET"
+
+                    # macOS iconset (required by Electrobun)
+                    for size in 16 32 128 256 512; do
+                      rsvg-convert -w $size -h $size "$SRC" -o "$ICONSET/icon_''${size}x''${size}.png"
+                      double=$((size * 2))
+                      rsvg-convert -w $double -h $double "$SRC" -o "$ICONSET/icon_''${size}x''${size}@2x.png"
+                    done
+
+                    # Windows/Linux icon (reuse 512x512 from iconset)
+                    cp "$ICONSET/icon_512x512.png" "packages/desktop/icon.png"
+
+                    echo "Generated icons in $ICONSET/ and packages/desktop/icon.png"
+                  '';
+                  packages = [ pkgs.librsvg ];
+                  description = "Generate desktop app icons from branding/jx_flattened.svg";
+                };
               };
             };
         };
