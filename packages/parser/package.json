@@ -40,6 +40,6 @@
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.9.0",
-    "@jxsuite/runtime": "workspace:*"
+    "@jxsuite/runtime": "workspace:^"
   }
 }

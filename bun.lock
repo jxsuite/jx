@@ -21,11 +21,11 @@
       "name": "@jxsuite/examples",
       "version": "1.0.0",
       "dependencies": {
-        "@jxsuite/compiler": "workspace:*",
-        "@jxsuite/parser": "workspace:*",
-        "@jxsuite/runtime": "workspace:*",
-        "@jxsuite/server": "workspace:*",
-        "@jxsuite/studio": "workspace:*",
+        "@jxsuite/compiler": "workspace:^",
+        "@jxsuite/parser": "workspace:^",
+        "@jxsuite/runtime": "workspace:^",
+        "@jxsuite/server": "workspace:^",
+        "@jxsuite/studio": "workspace:^",
       },
     },
     "packages/compiler": {
@@ -36,8 +36,8 @@
       },
       "dependencies": {
         "@apidevtools/json-schema-ref-parser": "^15.3.5",
-        "@jxsuite/parser": "workspace:*",
-        "@jxsuite/runtime": "workspace:*",
+        "@jxsuite/parser": "workspace:^",
+        "@jxsuite/runtime": "workspace:^",
         "remark-gfm": "^4.0.1",
         "remark-stringify": "^11.0.0",
         "unified": "^11.0.5",
@@ -50,8 +50,8 @@
       "name": "@jxsuite/desktop",
       "version": "0.5.0",
       "dependencies": {
-        "@jxsuite/server": "workspace:*",
-        "@jxsuite/studio": "workspace:*",
+        "@jxsuite/server": "workspace:^",
+        "@jxsuite/studio": "workspace:^",
         "electrobun": "latest",
       },
     },
@@ -73,7 +73,7 @@
       },
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.9.0",
-        "@jxsuite/runtime": "workspace:*",
+        "@jxsuite/runtime": "workspace:^",
       },
     },
     "packages/runtime": {
@@ -108,7 +108,7 @@
       "dependencies": {
         "@atlaskit/pragmatic-drag-and-drop": "^1.8.1",
         "@atlaskit/pragmatic-drag-and-drop-hitbox": "^1.1.0",
-        "@jxsuite/runtime": "workspace:*",
+        "@jxsuite/runtime": "workspace:^",
         "@spectrum-web-components/accordion": "^1.12.0",
         "@spectrum-web-components/action-bar": "1.12.0",
         "@spectrum-web-components/action-button": "^1.12.0",
@@ -157,8 +157,8 @@
     "sites/jxsuite.com": {
       "name": "@jxsuite/site-jxsuite.com",
       "dependencies": {
-        "@jxsuite/compiler": "workspace:*",
-        "@jxsuite/parser": "workspace:*",
+        "@jxsuite/compiler": "workspace:^",
+        "@jxsuite/parser": "workspace:^",
       },
     },
   },

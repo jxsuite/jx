@@ -9,10 +9,10 @@
     "upgrade": "bunx npm-check-updates -u && bun install"
   },
   "dependencies": {
-    "@jxsuite/compiler": "workspace:*",
-    "@jxsuite/parser": "workspace:*",
-    "@jxsuite/runtime": "workspace:*",
-    "@jxsuite/server": "workspace:*",
-    "@jxsuite/studio": "workspace:*"
+    "@jxsuite/compiler": "workspace:^",
+    "@jxsuite/parser": "workspace:^",
+    "@jxsuite/runtime": "workspace:^",
+    "@jxsuite/server": "workspace:^",
+    "@jxsuite/studio": "workspace:^"
   }
 }
