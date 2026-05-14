@@ -184,7 +184,7 @@ ${importmapEntries.join(",\n")}
   }
   </script>
   ${styleBlock}
-  <script type="module" src="./${modulePath}"></script>
+  <script type="module" src="/${modulePath}"></script>
 </head>
 <body>
   ${bodyContent}

@@ -512,7 +512,7 @@ function injectComponentScripts(
   // Inject CSS links in <head> for ALL components that have CSS sidecars
   const cssLinks = usedTags
     .filter((/** @type {string} */ tag) => cssMap.has(tag))
-    .map((/** @type {string} */ tag) => `<link rel="stylesheet" href="./components/${tag}.css">`)
+    .map((/** @type {string} */ tag) => `<link rel="stylesheet" href="/components/${tag}.css">`)
     .join("\n  ");
   if (cssLinks) {
     html = html.replace("</head>", `  ${cssLinks}\n</head>`);
@@ -534,7 +534,7 @@ function injectComponentScripts(
 
   const moduleScripts = jsTags
     .map(
-      (/** @type {string} */ tag) => `<script type="module" src="./components/${tag}.js"></script>`,
+      (/** @type {string} */ tag) => `<script type="module" src="/components/${tag}.js"></script>`,
     )
     .join("\n  ");
 
@@ -625,8 +625,7 @@ function injectPreRenderedComponents(html, preRendered, componentDefs) {
 function injectNpmElementScripts(html, npmElements) {
   const scripts = npmElements
     .map(
-      (/** @type {string} */ spec) =>
-        `<script type="module" src="./node_modules/${spec}"></script>`,
+      (/** @type {string} */ spec) => `<script type="module" src="/node_modules/${spec}"></script>`,
     )
     .join("\n  ");
 
