@@ -21,10 +21,27 @@ jobs:
       - run: npm install -g npm@latest
       - run: bun install
       - run: bun run build
-      - run: npm pkg fix --workspaces
-      - run: npm publish --provenance --workspace=packages/schema
-      - run: npm publish --provenance --workspace=packages/runtime
-      - run: npm publish --provenance --workspace=packages/parser
-      - run: npm publish --provenance --workspace=packages/compiler
-      - run: npm publish --provenance --workspace=packages/server
-      - run: npm publish --provenance --workspace=packages/studio
+      - run: |
+          bun pm pack
+          npm publish --provenance *.tgz
+        working-directory: packages/schema
+      - run: |
+          bun pm pack
+          npm publish --provenance *.tgz
+        working-directory: packages/runtime
+      - run: |
+          bun pm pack
+          npm publish --provenance *.tgz
+        working-directory: packages/parser
+      - run: |
+          bun pm pack
+          npm publish --provenance *.tgz
+        working-directory: packages/compiler
+      - run: |
+          bun pm pack
+          npm publish --provenance *.tgz
+        working-directory: packages/server
+      - run: |
+          bun pm pack
+          npm publish --provenance *.tgz
+        working-directory: packages/studio

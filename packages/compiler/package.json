@@ -37,8 +37,8 @@
   },
   "dependencies": {
     "@apidevtools/json-schema-ref-parser": "^15.3.5",
-    "@jxsuite/parser": "workspace:^",
-    "@jxsuite/runtime": "workspace:^",
+    "@jxsuite/parser": "workspace:*",
+    "@jxsuite/runtime": "workspace:*",
     "remark-gfm": "^4.0.1",
     "remark-stringify": "^11.0.0",
     "unified": "^11.0.5"
