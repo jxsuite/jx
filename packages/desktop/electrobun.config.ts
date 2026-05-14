@@ -16,7 +16,7 @@ export default {
 
   build: {
     bun: {
-      entrypoint: "src/main.js",
+      entrypoint: "src/index.js",
       external: [
         "@prettier/plugin-oxc",
         "@prettier/plugin-hermes",

@@ -39,7 +39,7 @@ setProjectRoot(projectRoot);
 //   /__jx_server__   → timing:"server" function proxy
 //   /__studio/*          → fallback file API (used by devserver adapter)
 
-const server = /** @type {{ port: number }} */ (
+const _server = /** @type {{ port: number }} */ (
   await startStudioServer(PATHS.VIEWS_FOLDER, projectRoot)
 );
 
@@ -70,7 +70,7 @@ const rpc = BrowserView.defineRPC({
 
 new BrowserWindow({
   title: "Jx Studio",
-  url: `http://localhost:${server.port}/studio/index.html`,
+  url: `views://studio/index.html`,
   frame: { x: 0, y: 0, width: 1400, height: 900 },
   rpc,
 });
