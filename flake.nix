@@ -29,7 +29,7 @@
       ];
 
       perSystem =
-        { config, pkgs, lib, system, ... }:
+        { pkgs, lib, ... }:
         let
           # CEF runtime libs needed by the desktop app
           desktopLibs = with pkgs; [
@@ -62,16 +62,24 @@
             libsoup_3
             libayatana-appindicator
           ];
+          data = lib.importJSON ./package.json;
         in
         {
           packages = lib.optionalAttrs pkgs.stdenv.isLinux {
             default = pkgs.stdenv.mkDerivation {
               pname = "jx-studio";
-              version = "0.4.1";
+              version = data.version;
 
               src = ./.;
 
-              nativeBuildInputs = with pkgs; [ bun autoPatchelfHook makeWrapper zstd patchelf which ];
+              nativeBuildInputs = with pkgs; [
+                bun
+                autoPatchelfHook
+                makeWrapper
+                zstd
+                patchelf
+                which
+              ];
               buildInputs = desktopLibs ++ [ pkgs.stdenv.cc.cc.lib ];
 
               autoPatchelfIgnoreMissingDeps = [
@@ -111,7 +119,8 @@
 
                 mkdir -p $out/bin
                 makeWrapper $out/opt/jx-studio/bin/launcher $out/bin/jx-studio \
-                  --prefix LD_LIBRARY_PATH : "${lib.makeLibraryPath desktopLibs}"
+                  --prefix LD_LIBRARY_PATH : "${lib.makeLibraryPath desktopLibs}" \
+                  --set GDK_BACKEND wayland
 
                 runHook postInstall
               '';
@@ -125,16 +134,19 @@
           };
 
           devenv.shells.default =
-            { config, pkgs, ... }:
+            { pkgs, ... }:
             {
-              packages = with pkgs; [
-                bun
-                google-chrome
-                husky
-                patchelf
-                pre-commit
-                procps
-              ] ++ desktopLibs;
+              packages =
+                with pkgs;
+                [
+                  bun
+                  google-chrome
+                  husky
+                  patchelf
+                  pre-commit
+                  procps
+                ]
+                ++ desktopLibs;
 
               env.LD_LIBRARY_PATH = lib.makeLibraryPath desktopLibs;
 
@@ -178,6 +190,15 @@
                   done
                 fi
               '';
+
+              # ─────────────────────────────────────────────────────────────
+              # Scripts (convenience commands)
+              # ─────────────────────────────────────────────────────────────
+              scripts = {
+                build-desktop.exec = ''
+                  nix build --option sandbox false
+                '';
+              };
             };
         };
     };
