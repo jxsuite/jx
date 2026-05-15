@@ -32,9 +32,8 @@ export default {
     mac: {
       bundleCEF: true,
       defaultRenderer: "cef",
-      icon: "icon.png",
-      codesign: true,
-      notarize: true,
+      codesign: false,
+      notarize: false,
     },
     linux: {
       bundleCEF: true,
