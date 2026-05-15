@@ -105,7 +105,7 @@ Validates `project.json` files with:
 - `state` — site-wide reactive state
 - `collections` — content collection definitions (`source`, `schema`, `$elements`)
 - `redirects` — static redirect rules
-- `build` — build configuration (`outDir`, `format`, `trailingSlash`, `adapter`)
+- `build` — build configuration (`outDir`, `format`, `trailingSlash`, `provider`)
 - `i18n` — internationalization (`defaultLocale`, `locales`, `routing`)
 
 ### 3.3 Class Schema (`class-schema.json`)

@@ -195,7 +195,8 @@ The `project.json` file at the project root defines site-wide settings. It is th
   "build": {
     "outDir": "./dist",
     "format": "directory",
-    "trailingSlash": "always"
+    "trailingSlash": "always",
+    "provider": "cloudflare"
   }
 }
 ```
@@ -215,7 +216,7 @@ The `project.json` file at the project root defines site-wide settings. It is th
 | `state`            | `object` | Site-wide state accessible to all pages and components              |
 | `redirects`        | `object` | Static redirect rules (see §11)                                     |
 | `imports`          | `object` | Import map: `$prototype` name → `.class.json` path (see spec §12.4) |
-| `build`            | `object` | Build output configuration                                          |
+| `build`            | `object` | Build output configuration (see §14)                                |
 
 ### 3.2 Inheritance
 
@@ -1133,12 +1134,17 @@ Discover pages/         → route table
 Discover content/       → content index
 Resolve $paths          → expand dynamic routes
     ↓
+Compile components/     → element modules + CSS
+Collect server entries  → from componentDefs (if provider set)
+    ↓
 For each route:
     Load page.json
     Resolve $layout     → wrap in layout
     Resolve $head       → merge site + layout + page heads
     Resolve state       → inject content entries, site state
     Compile             → existing compiler routes (static/dynamic/custom-element)
+    ↓
+Bundle server entries   → _worker.js (if provider set, else per-route _server.js)
     ↓
 Emit dist/
     ├── index.html
@@ -1149,6 +1155,7 @@ Emit dist/
     │   └── client.js
     ├── sitemap.xml
     └── _redirects
+_worker.js              (project root, if provider set)
 ```
 
 ### 12.2 Build Commands
@@ -1252,25 +1259,44 @@ The collection config can specify locale awareness:
 
 ### 14.1 Output Targets
 
-The build output is standard static files deployable anywhere. The compiler can additionally generate platform-specific files:
+The build output is standard static files deployable anywhere. When `build.provider` is set, the compiler additionally generates platform-specific files:
 
-| Platform             | Extra Output                         |
-| -------------------- | ------------------------------------ |
-| **Generic**          | Just `dist/` with HTML/CSS/JS/assets |
-| **Netlify**          | `_redirects`, `_headers`             |
-| **Vercel**           | `vercel.json` with redirects/headers |
-| **Cloudflare Pages** | `_redirects`, `_headers`             |
-| **GitHub Pages**     | `.nojekyll`, 404.html                |
+| Provider             | Extra Output                                                         |
+| -------------------- | -------------------------------------------------------------------- |
+| *(none)*             | Just `dist/` with HTML/CSS/JS/assets                                 |
+| `"cloudflare"`       | `_worker.js` (Hono server with asset fallback), `_redirects`         |
+| `"netlify"`          | `_redirects`, `_headers`                                             |
+| `"vercel"`           | `vercel.json` with redirects/headers                                 |
+| `"github-pages"`     | `.nojekyll`, 404.html                                                |
 
 Configured in `project.json`:
 
 ```json
 {
   "build": {
-    "adapter": "netlify"
+    "provider": "cloudflare"
   }
 }
 ```
+
+#### 14.1.1 `build.provider` Properties
+
+| Property        | Type             | Default          | Description                                             |
+| --------------- | ---------------- | ---------------- | ------------------------------------------------------- |
+| `outDir`        | `string`         | `"./dist"`       | Output directory for static assets                      |
+| `format`        | `string`         | `"directory"`    | URL format: `"directory"` (trailing slash) or `"file"`  |
+| `trailingSlash` | `string`         | `"always"`       | `"always"` or `"never"`                                 |
+| `provider`      | `string \| null` | `null`           | Deployment provider: `"cloudflare"`, `"netlify"`, `"vercel"`, `"github-pages"`, `"node"`, `"bun"` |
+
+When `provider` is set and the site contains `timing: "server"` entries, the compiler:
+
+1. Collects all server entries from components and pages
+2. Deduplicates by export name
+3. Skips per-route `_server.js` generation
+4. Emits a single `_worker.js` at the project root via `compileSiteServer()`
+5. Adds provider-specific boilerplate (e.g., Cloudflare asset fallback via `c.env.ASSETS.fetch()`)
+
+The generated `_worker.js` is a build artifact and should be added to `.gitignore`.
 
 ### 14.2 Build Artifacts
 
@@ -1295,6 +1321,8 @@ dist/
 ├── robots.txt                   # Copied from public/
 ├── favicon.svg                  # Copied from public/
 └── _redirects                   # Platform-specific
+
+_worker.js                       # Project root (when provider set + server entries exist)
 ```
 
 ---
@@ -1376,7 +1404,8 @@ This spec builds on existing Jx primitives wherever possible:
 - [ ] Image optimization pipeline (WebP/AVIF, responsive srcset, lazy loading)
 - [ ] Sitemap generation (`sitemap.xml` from route table)
 - [ ] Incremental builds (dependency tracking, selective recompilation)
-- [ ] Platform-specific adapters (Netlify, Vercel, Cloudflare Pages, GitHub Pages)
+- [x] Platform providers — `build.provider` for site-wide server bundling (Cloudflare implemented)
+- [ ] Platform-specific file generation (Netlify `_headers`, Vercel `vercel.json`, GitHub Pages `.nojekyll`)
 
 ### Phase 5: Advanced
 

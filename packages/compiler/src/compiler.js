@@ -22,7 +22,7 @@ import {
   DEFAULT_REACTIVITY_SRC,
   DEFAULT_LIT_HTML_SRC,
 } from "./shared.js";
-import { compileServer } from "./targets/compile-server.js";
+import { compileServer, compileSiteServer } from "./targets/compile-server.js";
 import {
   compileElement,
   compileElementPage,
@@ -32,7 +32,14 @@ import { compileStaticPage } from "./targets/compile-static.js";
 import { compileClient } from "./targets/compile-client.js";
 
 // Re-exports for consumers
-export { isDynamic, compileServer, compileElement, compileElementPage, compileClient };
+export {
+  isDynamic,
+  compileServer,
+  compileSiteServer,
+  compileElement,
+  compileElementPage,
+  compileClient,
+};
 
 // ─── Entry ────────────────────────────────────────────────────────────────────
 

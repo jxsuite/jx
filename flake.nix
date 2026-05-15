@@ -40,7 +40,6 @@
             cups
             dbus
             expat
-            gcc-libs
             gdk-pixbuf
             glib
             glib-networking
@@ -60,6 +59,7 @@
             nspr
             nss
             pango
+            stdenv.cc.cc.lib
             systemdMinimal
             vips
             webkitgtk_4_1

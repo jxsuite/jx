@@ -39,6 +39,7 @@ const DEFAULTS = {
     outDir: "./dist",
     format: "directory",
     trailingSlash: "always",
+    provider: null,
   },
 };
 

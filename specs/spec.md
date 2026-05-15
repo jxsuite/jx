@@ -862,11 +862,21 @@ Web APIs are accessed via `$prototype` in a `state` entry:
 }
 ```
 
-The referenced function must be an async export in the `$src` module:
+The referenced function must be an async export in the `$src` module. The function receives `(args, env)` — `args` is the arguments object from the caller, and `env` is the platform's environment bindings (Cloudflare Workers `env`, Node `process.env` wrapper, etc.):
 
 ```js
-export async function fetchMetrics() {
-  const { data } = await supabase.from("metrics").select("*");
+export async function fetchMetrics(args, env) {
+  const db = env.DB; // e.g., Cloudflare D1 binding
+  const { data } = await db.prepare("SELECT * FROM metrics").all();
+  return data;
+}
+```
+
+Functions that don't need platform bindings can ignore the second parameter:
+
+```js
+export async function fetchMetrics({ userId }) {
+  const { data } = await supabase.from("metrics").select("*").eq("user_id", userId);
   return data;
 }
 ```
@@ -891,9 +901,13 @@ When any `arguments` value is a signal `$ref`, the call becomes reactive.
 
 #### Security Boundary
 
-Private environment variables and server-only credentials remain in the server process. The browser receives only the function's serialized return value.
+Private environment variables and server-only credentials remain in the server process. The browser receives only the function's serialized return value. The `env` parameter gives server functions access to platform bindings (KV namespaces, D1 databases, email workers, secrets) without exposing them to the client.
 
-> **Status: Implemented.** Runtime handles `timing: "server"` entries. Dev server provides `/__jx_server__` proxy. Compiler emits Hono handler for production.
+#### Site-Wide Bundling
+
+When `build.provider` is set in `project.json`, all `timing: "server"` entries across the entire site (components and pages) are collected, deduplicated by export name, and bundled into a single `_worker.js` entry point. See compiler spec §6.3 for details.
+
+> **Status: Implemented.** Runtime handles `timing: "server"` entries. Dev server provides `/__jx_server__` proxy. Compiler emits per-route Hono handlers (`compileServer`) or a site-wide bundled worker (`compileSiteServer`) when `build.provider` is set.
 
 ---
 

@@ -23,7 +23,7 @@ import { discoverPages, expandDynamicRoutes } from "./pages-discovery.js";
 import { resolveLayout } from "./layout-resolver.js";
 import { mergeHead, renderHead } from "./head-merger.js";
 import { injectContext } from "./context-injection.js";
-import { compile, compileServer } from "../compiler.js";
+import { compile, compileServer, compileSiteServer } from "../compiler.js";
 import { compileElement } from "../targets/compile-element.js";
 import {
   buildInitialScope,
@@ -32,6 +32,7 @@ import {
   preRenderComponentHtml,
   isComponentFullyStatic,
   buildComponentCSS,
+  collectServerEntries,
   DEFAULT_REACTIVITY_SRC,
   DEFAULT_LIT_HTML_SRC,
 } from "../shared.js";
@@ -158,6 +159,19 @@ export async function buildSite(projectRoot, options = {}) {
     );
   }
 
+  // ── 5b. Collect server entries from components (for site-wide bundling) ──
+  /** @type {{ exportName: string; src: string }[]} */
+  const siteServerEntries = [];
+  if (projectConfig.build.provider) {
+    for (const [, doc] of componentDefs) {
+      const entries = collectServerEntries(doc);
+      for (const entry of entries) {
+        const resolvedSrc = "./" + join("components", entry.src.replace(/^\.\//, ""));
+        siteServerEntries.push({ exportName: entry.exportName, src: resolvedSrc });
+      }
+    }
+  }
+
   // ── 6. Compile each route ───────────────────────────────────────────────
 
   const imageCache = projectConfig.images.optimize ? loadCache(projectRoot) : null;
@@ -241,6 +255,27 @@ export async function buildSite(projectRoot, options = {}) {
     const totalImages = Object.keys(imageCache.entries).length;
     if (totalImages > 0) {
       log(`  Optimized ${totalImages} image(s)`);
+    }
+  }
+
+  // ── 6c. Generate site-wide server worker ────────────────────────────────
+  if (projectConfig.build.provider && siteServerEntries.length > 0) {
+    log("Generating site-wide server worker...");
+
+    const deduped = new Map();
+    for (const entry of siteServerEntries) {
+      if (!deduped.has(entry.exportName)) deduped.set(entry.exportName, entry);
+    }
+
+    const workerSource = compileSiteServer([...deduped.values()], {
+      provider: projectConfig.build.provider,
+    });
+
+    if (workerSource) {
+      const workerPath = resolve(projectRoot, "_worker.js");
+      writeFileSync(workerPath, workerSource, "utf8");
+      fileCount++;
+      log(`  Generated _worker.js (${deduped.size} server function(s))`);
     }
   }
 
@@ -398,16 +433,18 @@ async function compilePage(
     result.html = injectNpmElementScripts(result.html, npmElements);
   }
 
-  // Compile server handler if applicable
+  // Compile server handler if applicable (skip when provider bundles site-wide)
   /** @type {string | null} */
   let serverHandler = null;
-  try {
-    const serverResult = await compileServer(route.sourcePath);
-    if (serverResult) {
-      serverHandler = serverResult;
+  if (!projectConfig.build.provider) {
+    try {
+      const serverResult = await compileServer(route.sourcePath);
+      if (serverResult) {
+        serverHandler = serverResult;
+      }
+    } catch {
+      // No server entries — that's fine
     }
-  } catch {
-    // No server entries — that's fine
   }
 
   return { html: result.html, files: result.files, serverHandler, doc: layoutDoc };
