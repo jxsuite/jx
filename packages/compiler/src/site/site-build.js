@@ -11,6 +11,7 @@
 import {
   readFileSync,
   writeFileSync,
+  copyFileSync,
   mkdirSync,
   existsSync,
   rmSync,
@@ -271,6 +272,16 @@ export async function buildSite(projectRoot, options = {}) {
       writeFileSync(workerPath, workerSource, "utf8");
       fileCount++;
       log(`  Generated dist/worker.js (${deduped.size} server function(s))`);
+
+      // Copy server source files into dist/components/ so worker imports resolve
+      const distComponentsDir = resolve(outDir, "components");
+      for (const { src } of deduped.values()) {
+        const srcFile = resolve(projectRoot, src.replace(/^\.\//, ""));
+        const destFile = resolve(distComponentsDir, src.replace(/^\.\/components\//, ""));
+        if (existsSync(srcFile)) {
+          copyFileSync(srcFile, destFile);
+        }
+      }
     }
   }
 

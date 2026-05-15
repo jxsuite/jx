@@ -259,3 +259,75 @@ describe("buildSite", () => {
     expect(redirectHtml).toContain("/new");
   });
 });
+
+// ── Server worker generation ─────────────────────────────────────────────────
+
+describe("buildSite — server worker", () => {
+  const SERVER_TMP = resolve(import.meta.dir, "__test-site-server__");
+
+  beforeAll(() => {
+    rmSync(SERVER_TMP, { recursive: true, force: true });
+
+    const writeJ = (/** @type {string} */ p, /** @type {any} */ obj) => {
+      mkdirSync(resolve(SERVER_TMP, ...p.split("/").slice(0, -1)), { recursive: true });
+      writeFileSync(resolve(SERVER_TMP, p), JSON.stringify(obj, null, 2), "utf8");
+    };
+    const writeP = (/** @type {string} */ p, /** @type {string} */ c) => {
+      mkdirSync(resolve(SERVER_TMP, ...p.split("/").slice(0, -1)), { recursive: true });
+      writeFileSync(resolve(SERVER_TMP, p), c, "utf8");
+    };
+
+    writeJ("project.json", {
+      name: "Server Test",
+      url: "https://test.com",
+      defaults: { lang: "en" },
+      build: { outDir: "./dist", provider: "cloudflare" },
+    });
+
+    writeJ("pages/index.json", {
+      title: "Home",
+      children: [{ tagName: "test-contact", $props: {} }],
+    });
+
+    writeJ("components/test-contact.json", {
+      tagName: "test-contact",
+      state: {
+        sendForm: {
+          timing: "server",
+          $src: "./contact.server.js",
+          $export: "sendForm",
+        },
+      },
+      children: [{ tagName: "form", children: ["Contact"] }],
+    });
+
+    writeP(
+      "components/contact.server.js",
+      "export function sendForm(args) { return { ok: true }; }\n",
+    );
+  });
+
+  afterAll(() => {
+    rmSync(SERVER_TMP, { recursive: true, force: true });
+  });
+
+  it("generates worker.js in dist/", async () => {
+    await buildSite(SERVER_TMP, { verbose: false });
+
+    const workerPath = resolve(SERVER_TMP, "dist/worker.js");
+    expect(existsSync(workerPath)).toBe(true);
+
+    const content = readFileSync(workerPath, "utf8");
+    expect(content).toContain("sendForm");
+  });
+
+  it("copies server source files into dist/components/", async () => {
+    await buildSite(SERVER_TMP, { verbose: false });
+
+    const copied = resolve(SERVER_TMP, "dist/components/contact.server.js");
+    expect(existsSync(copied)).toBe(true);
+
+    const content = readFileSync(copied, "utf8");
+    expect(content).toContain("export function sendForm");
+  });
+});
