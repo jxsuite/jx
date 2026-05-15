@@ -32,8 +32,9 @@ describe("/__studio/activate + static file serving", () => {
           "bun",
           "-e",
           `
-const { createDevServer } = await import("${resolve(import.meta.dir, "../src/server.js")}");
+const { createDevServer } = await import(${JSON.stringify(resolve(import.meta.dir, "../src/server.js").replaceAll("\\", "/"))});
 const { join } = await import("node:path");
+const fwd = (p) => p.replaceAll("\\\\", "/");
 
 const FIXTURES = ${JSON.stringify(FIXTURES)};
 const server = await createDevServer({ root: FIXTURES, port: 0, builds: [], watch: false, studio: true });
@@ -59,7 +60,7 @@ res = await fetch(base + "/__studio/activate", {
 if (res.status !== 200) errors.push("activate: expected 200, got " + res.status);
 let body = await res.json();
 const expectedActiveRoot = join(FIXTURES, "sites/demo");
-if (body.root !== expectedActiveRoot) errors.push("activate root: " + JSON.stringify(body));
+if (fwd(body.root) !== fwd(expectedActiveRoot)) errors.push("activate root: " + JSON.stringify(body));
 
 // Test 4: project-relative path resolves after activation
 res = await fetch(base + "/public/image.png");
@@ -80,7 +81,7 @@ if (res.status !== 200) errors.push("resolve-site: expected 200, got " + res.sta
 else {
   body = await res.json();
   const expectedPath = join(FIXTURES, "sites/demo");
-  if (body.relPath !== expectedPath) errors.push("resolve-site relPath: " + body.relPath + " (expected " + expectedPath + ")");
+  if (body.relPath !== fwd(expectedPath)) errors.push("resolve-site relPath: " + body.relPath + " (expected " + fwd(expectedPath) + ")");
 }
 
 // Test 7: deactivation resets resolution

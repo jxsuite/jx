@@ -36,5 +36,5 @@ export async function startStudioServer(
     },
   });
 
-  return server;
+  return server as { port: number };
 }

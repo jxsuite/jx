@@ -343,7 +343,7 @@ describe("project-info", () => {
     const req = new Request(url, { method: "GET" });
     const res = await handleStudioApi(req, url, import.meta.dir);
     const data = await /** @type {any} */ (res).json();
-    expect(data.projectRoot).toBe(import.meta.dir);
+    expect(data.projectRoot).toBe(import.meta.dir.replaceAll("\\", "/"));
   });
 });
 
@@ -358,7 +358,9 @@ describe("sites discovery", () => {
     const sites = await /** @type {any} */ (res).json();
     const testSite = sites.find((/** @type {any} */ s) => s.config.name === "Test Site");
     expect(testSite).toBeDefined();
-    expect(testSite.path).toBe(resolve(import.meta.dir, "_studio_fixtures/my-site"));
+    expect(testSite.path).toBe(
+      resolve(import.meta.dir, "_studio_fixtures/my-site").replaceAll("\\", "/"),
+    );
     expect(testSite.config.url).toBe("https://test.dev");
   });
 
