@@ -331,5 +331,118 @@ export function createDevServerPlatform() {
       const { schema } = await res.json();
       return schema;
     },
+
+    // ─── Git operations ──────────────────────────────────────────────────
+
+    async gitStatus() {
+      const res = await fetch("/__studio/git/status");
+      if (!res.ok) throw new Error(await res.text());
+      return await res.json();
+    },
+
+    async gitBranches() {
+      const res = await fetch("/__studio/git/branches");
+      if (!res.ok) throw new Error(await res.text());
+      return await res.json();
+    },
+
+    /** @param {number} [limit] */
+    async gitLog(limit) {
+      const q = limit ? `?limit=${limit}` : "";
+      const res = await fetch(`/__studio/git/log${q}`);
+      if (!res.ok) throw new Error(await res.text());
+      return await res.json();
+    },
+
+    /** @param {string[]} files */
+    async gitStage(files) {
+      const res = await fetch("/__studio/git/stage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ files }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error);
+      return await res.json();
+    },
+
+    /** @param {string[]} files */
+    async gitUnstage(files) {
+      const res = await fetch("/__studio/git/unstage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ files }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error);
+      return await res.json();
+    },
+
+    /** @param {string} message */
+    async gitCommit(message) {
+      const res = await fetch("/__studio/git/commit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error);
+      return await res.json();
+    },
+
+    async gitPush() {
+      const res = await fetch("/__studio/git/push", { method: "POST" });
+      if (!res.ok) throw new Error((await res.json()).error);
+      return await res.json();
+    },
+
+    async gitPull() {
+      const res = await fetch("/__studio/git/pull", { method: "POST" });
+      if (!res.ok) throw new Error((await res.json()).error);
+      return await res.json();
+    },
+
+    async gitFetch() {
+      const res = await fetch("/__studio/git/fetch", { method: "POST" });
+      if (!res.ok) throw new Error((await res.json()).error);
+      return await res.json();
+    },
+
+    /** @param {string} branch */
+    async gitCheckout(branch) {
+      const res = await fetch("/__studio/git/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ branch }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error);
+      return await res.json();
+    },
+
+    /** @param {string} name */
+    async gitCreateBranch(name) {
+      const res = await fetch("/__studio/git/create-branch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error);
+      return await res.json();
+    },
+
+    /** @param {string} path */
+    async gitDiff(path) {
+      const res = await fetch(`/__studio/git/diff?path=${encodeURIComponent(path)}`);
+      if (!res.ok) throw new Error(await res.text());
+      return await res.json();
+    },
+
+    /** @param {string[]} files */
+    async gitDiscard(files) {
+      const res = await fetch("/__studio/git/discard", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ files }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error);
+      return await res.json();
+    },
   };
 }

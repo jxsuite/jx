@@ -32,6 +32,63 @@ function assertAccessible(filePath, root, activeProjectRoot) {
   throw new Error("Path outside project root");
 }
 
+/** @type {Record<string, string>} */
+const statusMap = { M: "M", T: "T", A: "A", D: "D", R: "R", C: "C", U: "U" };
+
+/**
+ * Parse raw `git status --porcelain=v2 --branch` output into structured data.
+ *
+ * @param {string} out
+ */
+export function parseGitStatus(out) {
+  let branch = "";
+  let ahead = 0;
+  let behind = 0;
+  /** @type {{ path: string; status: string; staged: boolean }[]} */
+  const files = [];
+
+  for (const line of out.split("\n")) {
+    if (!line) continue;
+
+    if (line.startsWith("# branch.head ")) {
+      branch = line.slice("# branch.head ".length);
+    } else if (line.startsWith("# branch.ab ")) {
+      const m = line.match(/\+(\d+) -(\d+)/);
+      if (m) {
+        ahead = parseInt(m[1], 10);
+        behind = parseInt(m[2], 10);
+      }
+    } else if (line.startsWith("1 ") || line.startsWith("2 ")) {
+      const parts = line.split(" ");
+      const xy = parts[1];
+      const stagedCode = xy[0];
+      const unstagedCode = xy[1];
+      let filePath;
+      if (line.startsWith("2 ")) {
+        const tabIdx = line.indexOf("\t");
+        const pathPart = line.slice(tabIdx + 1);
+        filePath = pathPart.split("\t").pop() || "";
+      } else {
+        filePath = parts.slice(8).join(" ");
+      }
+      if (stagedCode !== ".") {
+        files.push({ path: filePath, status: statusMap[stagedCode] || stagedCode, staged: true });
+      }
+      if (unstagedCode !== ".") {
+        files.push({
+          path: filePath,
+          status: statusMap[unstagedCode] || unstagedCode,
+          staged: false,
+        });
+      }
+    } else if (line.startsWith("? ")) {
+      files.push({ path: line.slice(2), status: "U", staged: false });
+    }
+  }
+
+  return { branch, ahead, behind, files };
+}
+
 /**
  * Handle /__studio/* requests.
  *
@@ -686,6 +743,136 @@ export async function handleStudioApi(req, url, root, activeProjectRoot = null) 
       return Response.json({ schema: ExportedClass.schema ?? null });
     } catch (/** @type {any} */ e) {
       return Response.json({ schema: null, error: e.message });
+    }
+  }
+
+  // ── Git endpoints ──────────────────────────────────────────────────────────
+
+  if (path.startsWith("/__studio/git/")) {
+    const cwd = activeProjectRoot || root;
+    const gitCmd = path.slice("/__studio/git/".length);
+
+    const runGit = async (/** @type {string[]} */ args) => {
+      const proc = Bun.spawn(["git", ...args], { cwd, stdout: "pipe", stderr: "pipe" });
+      const exitCode = await proc.exited;
+      const stdout = await new Response(proc.stdout).text();
+      const stderr = await new Response(proc.stderr).text();
+      if (exitCode !== 0) throw new Error(stderr || `git exited with ${exitCode}`);
+      return stdout;
+    };
+
+    try {
+      if (gitCmd === "status" && req.method === "GET") {
+        const out = await runGit(["status", "--porcelain=v2", "--branch"]);
+        return Response.json(parseGitStatus(out));
+      }
+
+      if (gitCmd === "branches" && req.method === "GET") {
+        const out = await runGit(["branch", "--format=%(refname:short)\t%(HEAD)"]);
+        let current = "";
+        const branches = [];
+        for (const line of out.trim().split("\n")) {
+          if (!line) continue;
+          const [name, head] = line.split("\t");
+          branches.push(name);
+          if (head === "*") current = name;
+        }
+        return Response.json({ current, branches });
+      }
+
+      if (gitCmd === "log" && req.method === "GET") {
+        const limit = url.searchParams.get("limit") || "20";
+        const out = await runGit(["log", `--max-count=${limit}`, "--format=%H\t%s\t%an\t%aI"]);
+        const entries = out
+          .trim()
+          .split("\n")
+          .filter(Boolean)
+          .map((line) => {
+            const [hash, message, author, date] = line.split("\t");
+            return { hash, message, author, date };
+          });
+        return Response.json(entries);
+      }
+
+      if (gitCmd === "stage" && req.method === "POST") {
+        const { files } = await req.json();
+        if (!Array.isArray(files) || files.length === 0)
+          return Response.json({ error: "Missing files" }, { status: 400 });
+        for (const f of files) {
+          if (f.includes("..")) return Response.json({ error: "Invalid path" }, { status: 400 });
+        }
+        await runGit(["add", "--", ...files]);
+        return Response.json({ ok: true });
+      }
+
+      if (gitCmd === "unstage" && req.method === "POST") {
+        const { files } = await req.json();
+        if (!Array.isArray(files) || files.length === 0)
+          return Response.json({ error: "Missing files" }, { status: 400 });
+        await runGit(["restore", "--staged", "--", ...files]);
+        return Response.json({ ok: true });
+      }
+
+      if (gitCmd === "commit" && req.method === "POST") {
+        const { message } = await req.json();
+        if (!message || typeof message !== "string")
+          return Response.json({ error: "Missing message" }, { status: 400 });
+        const out = await runGit(["commit", "-m", message]);
+        const hashMatch = out.match(/\[[\w/]+ ([a-f0-9]+)\]/);
+        return Response.json({ ok: true, hash: hashMatch?.[1] || "" });
+      }
+
+      if (gitCmd === "push" && req.method === "POST") {
+        await runGit(["push"]);
+        return Response.json({ ok: true });
+      }
+
+      if (gitCmd === "pull" && req.method === "POST") {
+        await runGit(["pull"]);
+        return Response.json({ ok: true });
+      }
+
+      if (gitCmd === "fetch" && req.method === "POST") {
+        await runGit(["fetch"]);
+        return Response.json({ ok: true });
+      }
+
+      if (gitCmd === "checkout" && req.method === "POST") {
+        const { branch } = await req.json();
+        if (!branch || typeof branch !== "string")
+          return Response.json({ error: "Missing branch" }, { status: 400 });
+        await runGit(["checkout", branch]);
+        return Response.json({ ok: true });
+      }
+
+      if (gitCmd === "create-branch" && req.method === "POST") {
+        const { name } = await req.json();
+        if (!name || typeof name !== "string")
+          return Response.json({ error: "Missing name" }, { status: 400 });
+        await runGit(["checkout", "-b", name]);
+        return Response.json({ ok: true });
+      }
+
+      if (gitCmd === "diff" && req.method === "GET") {
+        const fp = url.searchParams.get("path");
+        if (!fp) return Response.json({ error: "Missing path" }, { status: 400 });
+        if (fp.includes("..")) return Response.json({ error: "Invalid path" }, { status: 400 });
+        const diff = await runGit(["diff", "--", fp]);
+        return Response.json({ diff });
+      }
+
+      if (gitCmd === "discard" && req.method === "POST") {
+        const { files } = await req.json();
+        if (!Array.isArray(files) || files.length === 0)
+          return Response.json({ error: "Missing files" }, { status: 400 });
+        for (const f of files) {
+          if (f.includes("..")) return Response.json({ error: "Invalid path" }, { status: 400 });
+        }
+        await runGit(["checkout", "--", ...files]);
+        return Response.json({ ok: true });
+      }
+    } catch (/** @type {any} */ e) {
+      return Response.json({ error: e.message }, { status: 500 });
     }
   }
 

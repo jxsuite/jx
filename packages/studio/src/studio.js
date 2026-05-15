@@ -176,6 +176,7 @@ import cssMeta from "../data/css-meta.json";
 import htmlMeta from "../data/html-meta.json";
 import stylebookMeta from "../data/stylebook-meta.json";
 import { renderDataExplorerTemplate } from "./panels/data-explorer.js";
+import { renderGitPanel } from "./panels/git-panel.js";
 
 // ─── Spectrum Web Components ──────────────────────────────────────────────────
 // Explicit class imports + registration — bare side-effect imports are tree-shaken
@@ -3247,7 +3248,8 @@ function renderLeftPanel() {
           },
       renderLeftPanel,
     });
-  } else content = nothing;
+  } else if (tab === "git") content = renderGitPanel(S);
+  else content = nothing;
 
   litRender(html`<div class="panel-body">${content}</div>`, /** @type {any} */ (leftPanel));
 
