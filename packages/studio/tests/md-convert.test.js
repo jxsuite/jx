@@ -637,4 +637,25 @@ describe("jxDocToMd", () => {
     });
     expect(md).toContain("::hero-banner");
   });
+
+  test("inline HTML in markdown converts to Jx directives on save", () => {
+    const md = jxDocToMd({
+      tagName: "my-comp",
+      children: [
+        {
+          tagName: "iframe",
+          attributes: { src: "https://example.com/form", title: "Form" },
+        },
+        {
+          tagName: "script",
+          attributes: { src: "https://example.com/embed.js" },
+        },
+      ],
+    });
+    expect(md).toContain("::iframe");
+    expect(md).toContain('src="https://example.com/form"');
+    expect(md).toContain("::script");
+    expect(md).not.toContain("<iframe");
+    expect(md).not.toContain("<script");
+  });
 });

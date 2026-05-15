@@ -14,6 +14,7 @@ import { unified } from "unified";
 import remarkStringify from "remark-stringify";
 import remarkDirective from "remark-directive";
 import { MD_ALL } from "./md-allowlist.js";
+import { htmlToJx } from "@jxsuite/parser/transpile";
 
 // ─── mdast → Jx ──────────────────────────────────────────────────────────
 
@@ -40,7 +41,6 @@ const MDAST_TAG_MAP = {
   table: () => "table",
   tableRow: () => "tr",
   tableCell: (/** @type {any} */ n) => (n.isHeader ? "th" : "td"),
-  html: () => "div",
   break: () => "br",
 };
 
@@ -76,6 +76,12 @@ function convertMdastNode(node) {
     node.type === "textDirective"
   ) {
     return convertDirective(node);
+  }
+
+  if (node.type === "html") {
+    if (!node.value) return null;
+    const nodes = htmlToJx(node.value);
+    return nodes.length === 1 ? nodes[0] : { tagName: "div", children: nodes };
   }
 
   const tagFn = MDAST_TAG_MAP[node.type];
@@ -184,10 +190,6 @@ function convertMdastNode(node) {
       } else if (node.children?.length > 0) {
         el.children = node.children.map(convertMdastNode).filter(Boolean);
       }
-      break;
-
-    case "html":
-      el.innerHTML = node.value;
       break;
   }
 
