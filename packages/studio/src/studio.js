@@ -6848,64 +6848,92 @@ function styleSidebarTemplate(
 
   const _selectorVal = activeSelector || "__base__";
   const selectorT = html`
-    <div class="selector-bar">
-      <sp-picker
-        class="selector-select"
-        .value=${live(_selectorVal)}
-        @change=${(/** @type {any} */ e) => {
-          const val = e.target.value;
-          if (val === "__add_custom__") {
-            requestAnimationFrame(() => {
-              e.target.value = activeSelector || "__base__";
-            });
-            // Show inline input — imperative since it's a one-off interaction
-            const picker = e.target;
-            const bar = picker.closest(".selector-bar");
-            picker.style.display = "none";
-            const inp = document.createElement("input");
-            inp.type = "text";
-            inp.className = "selector-custom-input";
-            inp.placeholder = ":hover, .child, &.active, [attr]";
-            bar.appendChild(inp);
-            inp.focus();
-            let done = false;
-            const finish = (/** @type {any} */ accept) => {
-              if (done) return;
-              done = true;
-              const v = inp.value.trim();
-              inp.remove();
-              picker.style.display = "";
-              if (accept && v && isNestedSelector(v)) {
-                updateUi("activeSelector", v);
-              }
-            };
-            inp.addEventListener("keydown", (ev) => {
-              if (ev.key === "Enter") finish(true);
-              else if (ev.key === "Escape") finish(false);
-            });
-            inp.addEventListener("blur", () => finish(inp.value.trim().length > 0));
-            return;
-          }
-          const newSelector = val === "__base__" ? null : val;
-          updateUi("activeSelector", newSelector);
-        }}
+    <sp-picker
+      size="s"
+      class="selector-select"
+      quiet
+      .value=${live(_selectorVal)}
+      @change=${(/** @type {any} */ e) => {
+        const val = e.target.value;
+        if (val === "__add_custom__") {
+          requestAnimationFrame(() => {
+            e.target.value = activeSelector || "__base__";
+          });
+          const picker = e.target;
+          const bar = picker.closest(".style-toolbar");
+          picker.style.display = "none";
+          const inp = document.createElement("input");
+          inp.type = "text";
+          inp.className = "selector-custom-input";
+          inp.placeholder = ":hover, .child, &.active, [attr]";
+          bar.appendChild(inp);
+          inp.focus();
+          let done = false;
+          const finish = (/** @type {any} */ accept) => {
+            if (done) return;
+            done = true;
+            const v = inp.value.trim();
+            inp.remove();
+            picker.style.display = "";
+            if (accept && v && isNestedSelector(v)) {
+              updateUi("activeSelector", v);
+            }
+          };
+          inp.addEventListener("keydown", (ev) => {
+            if (ev.key === "Enter") finish(true);
+            else if (ev.key === "Escape") finish(false);
+          });
+          inp.addEventListener("blur", () => finish(inp.value.trim().length > 0));
+          return;
+        }
+        const newSelector = val === "__base__" ? null : val;
+        updateUi("activeSelector", newSelector);
+      }}
+    >
+      <sp-menu-item value="__base__">(base)</sp-menu-item>
+      <sp-menu-divider></sp-menu-divider>
+      ${COMMON_SELECTORS.map(
+        (s) => html`
+          <sp-menu-item value=${s}>${existingSet.has(s) ? `${s}  \u25CF` : s}</sp-menu-item>
+        `,
+      )}
+      ${extraSelectors.length > 0
+        ? html`
+            <sp-menu-divider></sp-menu-divider>
+            ${extraSelectors.map((s) => html` <sp-menu-item value=${s}>${s} ●</sp-menu-item> `)}
+          `
+        : nothing}
+      <sp-menu-divider></sp-menu-divider>
+      <sp-menu-item value="__add_custom__">+ Add custom…</sp-menu-item>
+    </sp-picker>
+  `;
+
+  // ── Combined toolbar (media tabs + selector) ───────────────────────────────
+  const toolbarT = html`
+    <div class="style-toolbar">
+      <div class="style-toolbar-tabs">${mediaTabsT}</div>
+      ${selectorT}
+    </div>
+  `;
+
+  // ── Filter bar ─────────────────────────────────────────────────────────────
+  const filterBarT = html`
+    <div class="style-filter-bar">
+      <sp-textfield
+        size="s"
+        class="style-filter-input"
+        placeholder="Filter properties…"
+        .value=${live(S.ui.styleFilter || "")}
+        @input=${(/** @type {any} */ e) => updateUi("styleFilter", e.target.value)}
+      ></sp-textfield>
+      <sp-action-button
+        size="xs"
+        class="style-filter-toggle"
+        ?selected=${S.ui.styleFilterActive}
+        @click=${() => updateUi("styleFilterActive", !S.ui.styleFilterActive)}
       >
-        <sp-menu-item value="__base__">(base)</sp-menu-item>
-        <sp-menu-divider></sp-menu-divider>
-        ${COMMON_SELECTORS.map(
-          (s) => html`
-            <sp-menu-item value=${s}>${existingSet.has(s) ? `${s}  \u25CF` : s}</sp-menu-item>
-          `,
-        )}
-        ${extraSelectors.length > 0
-          ? html`
-              <sp-menu-divider></sp-menu-divider>
-              ${extraSelectors.map((s) => html` <sp-menu-item value=${s}>${s} ●</sp-menu-item> `)}
-            `
-          : nothing}
-        <sp-menu-divider></sp-menu-divider>
-        <sp-menu-item value="__add_custom__">+ Add custom…</sp-menu-item>
-      </sp-picker>
+        Active
+      </sp-action-button>
     </div>
   `;
 
@@ -6969,6 +6997,11 @@ function styleSidebarTemplate(
     if (!(/** @type {Record<string, any>} */ (cssMeta.$defs)[prop])) otherProps.push(prop);
   }
 
+  // ── Filter state ─────────────────────────────────────────────────────────
+  const filterText = (S.ui.styleFilter || "").toLowerCase();
+  const filterActive = S.ui.styleFilterActive;
+  const isFiltering = filterText.length > 0 || filterActive;
+
   // ── Section templates ────────────────────────────────────────────────────
   const sectionTemplates = cssMeta.$sections
     .filter((sec) => sec.key !== "other")
@@ -6992,6 +7025,21 @@ function styleSidebarTemplate(
         const condMet = allConditionsPass(entry, activeStyle);
         const type = inferInputType(entry);
         if (!hasVal && !condMet) continue;
+
+        // Apply filter: text match
+        if (filterText) {
+          const label = propLabel(entry, prop).toLowerCase();
+          if (!prop.includes(filterText) && !label.includes(filterText)) continue;
+        }
+        // Apply filter: active-only
+        if (filterActive) {
+          if (type === "shorthand") {
+            const longhands = getLonghands(prop);
+            const hasAnySet =
+              hasVal || longhands.some((/** @type {any} */ l) => activeStyle[l.name] !== undefined);
+            if (!hasAnySet) continue;
+          } else if (!hasVal) continue;
+        }
 
         if (type === "shorthand") {
           const longhands = getLonghands(prop);
@@ -7020,7 +7068,9 @@ function styleSidebarTemplate(
         }
       }
 
-      const isOpen = S.ui.styleSections[sec.key] ?? false;
+      // When filtering, hide empty sections entirely and force-open non-empty ones
+      if (isFiltering && rows.length === 0) return nothing;
+      const isOpen = isFiltering ? true : (S.ui.styleSections[sec.key] ?? false);
 
       return html`
         <sp-accordion-item
@@ -7131,7 +7181,7 @@ function styleSidebarTemplate(
 
   return html`
     <div class="style-sidebar">
-      ${mediaTabsT} ${selectorT}
+      ${toolbarT} ${filterBarT}
       <sp-accordion allow-multiple size="s"> ${sectionTemplates} ${customSectionT} </sp-accordion>
     </div>
   `;

@@ -221,6 +221,8 @@ export function createState(doc) {
       styleSections: {}, // { layout: true, ... } — section open/closed state
       inspectorSections: {}, // { identity: true, ... } — properties panel section open/closed state
       styleShorthands: {}, // { padding: true, ... } — shorthand expand/collapse state
+      styleFilter: "", // free-text filter for CSS property names
+      styleFilterActive: false, // true = show only props with values set
       editingFunction: null, // null | { type: 'def', defName } | { type: 'event', path, eventKey }
       stylebookSelection: null, // tag name string, e.g. "h1"
       stylebookTab: "elements", // "elements" | "variables"
