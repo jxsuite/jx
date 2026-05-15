@@ -3434,7 +3434,7 @@ function renderLayersTemplate() {
                       @click=${(/** @type {any} */ e) => {
                         e.stopPropagation();
                         /** @type {HTMLElement} */ (e.currentTarget).blur();
-                        update(moveNode(S, path, parentPath, idx + 1));
+                        update(moveNode(S, path, parentPath, idx + 2));
                       }}
                     >
                       <sp-icon-arrow-down slot="icon"></sp-icon-arrow-down>
