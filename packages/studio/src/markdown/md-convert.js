@@ -55,7 +55,7 @@ export function mdToJx(mdast) {
     return {
       children: (mdast.children ?? [])
         .filter((/** @type {any} */ n) => n.type !== "yaml" && n.type !== "toml")
-        .map(convertMdastNode)
+        .flatMap(convertMdastNode)
         .filter(Boolean),
     };
   }
@@ -98,7 +98,7 @@ function convertMdastNode(node) {
       if (node.children?.length === 1 && node.children[0].type === "text") {
         el.textContent = node.children[0].value;
       } else if (node.children?.length > 0) {
-        el.children = node.children.map(convertMdastNode).filter(Boolean);
+        el.children = node.children.flatMap(convertMdastNode).filter(Boolean);
       }
       break;
     }
@@ -113,7 +113,7 @@ function convertMdastNode(node) {
       if (node.children?.length === 1 && node.children[0].type === "text") {
         el.textContent = node.children[0].value;
       } else if (node.children?.length > 0) {
-        el.children = node.children.map(convertMdastNode).filter(Boolean);
+        el.children = node.children.flatMap(convertMdastNode).filter(Boolean);
       }
       break;
     }
@@ -128,7 +128,7 @@ function convertMdastNode(node) {
       if (node.children?.length === 1 && node.children[0].type === "text") {
         el.textContent = node.children[0].value;
       } else if (node.children?.length > 0) {
-        el.children = node.children.map(convertMdastNode).filter(Boolean);
+        el.children = node.children.flatMap(convertMdastNode).filter(Boolean);
       }
       break;
 
@@ -140,13 +140,13 @@ function convertMdastNode(node) {
     case "blockquote":
     case "listItem":
       if (node.children?.length > 0) {
-        el.children = node.children.map(convertMdastNode).filter(Boolean);
+        el.children = node.children.flatMap(convertMdastNode).filter(Boolean);
       }
       break;
 
     case "list":
       if (node.children?.length > 0) {
-        el.children = node.children.map(convertMdastNode).filter(Boolean);
+        el.children = node.children.flatMap(convertMdastNode).filter(Boolean);
       }
       if (node.start != null && node.start !== 1) {
         el.attributes = { start: String(node.start) };
@@ -171,7 +171,7 @@ function convertMdastNode(node) {
 
     case "table": {
       // Mdast tables have rows directly; split into thead/tbody
-      const rows = (node.children ?? []).map(convertMdastNode).filter(Boolean);
+      const rows = (node.children ?? []).flatMap(convertMdastNode).filter(Boolean);
       const thead = rows.length > 0 ? { tagName: "thead", children: [rows[0]] } : null;
       const tbody = rows.length > 1 ? { tagName: "tbody", children: rows.slice(1) } : null;
       el.children = [thead, tbody].filter(Boolean);
@@ -180,7 +180,7 @@ function convertMdastNode(node) {
 
     case "tableRow":
       if (node.children?.length > 0) {
-        el.children = node.children.map(convertMdastNode).filter(Boolean);
+        el.children = node.children.flatMap(convertMdastNode).filter(Boolean);
       }
       break;
 
@@ -188,7 +188,7 @@ function convertMdastNode(node) {
       if (node.children?.length === 1 && node.children[0].type === "text") {
         el.textContent = node.children[0].value;
       } else if (node.children?.length > 0) {
-        el.children = node.children.map(convertMdastNode).filter(Boolean);
+        el.children = node.children.flatMap(convertMdastNode).filter(Boolean);
       }
       break;
   }
@@ -211,10 +211,10 @@ function convertDirective(node) {
     if (node.children?.length === 1 && node.children[0].type === "text") {
       el.textContent = node.children[0].value;
     } else if (node.children?.length > 0) {
-      el.children = node.children.map(convertMdastNode).filter(Boolean);
+      el.children = node.children.flatMap(convertMdastNode).filter(Boolean);
     }
   } else if (node.type === "containerDirective" && node.children?.length > 0) {
-    el.children = node.children.map(convertMdastNode).filter(Boolean);
+    el.children = node.children.flatMap(convertMdastNode).filter(Boolean);
   }
   return el;
 }
