@@ -42,16 +42,21 @@ export async function openProject(): Promise<OpenProjectResult | null> {
     allowsMultipleSelection: false,
   });
 
-  if (!paths || paths.length === 0) return null;
+  console.log("[openProject] dialog returned:", paths);
 
-  const filePath = paths[0];
-  if (basename(filePath) !== "project.json") {
+  if (!paths || paths.length === 0 || (paths.length === 1 && !paths[0])) return null;
+
+  const filePath = paths[0].trim();
+  if (!filePath) return null;
+
+  if (basename(filePath).toLowerCase() !== "project.json") {
     throw new Error("Please select a project.json file");
   }
 
   const raw = await readFile(filePath, "utf8");
   const config = JSON.parse(raw);
   projectRoot = resolve(filePath, "..");
+  console.log("[openProject] project root set to:", projectRoot);
 
   return {
     config,
