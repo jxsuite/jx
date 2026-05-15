@@ -229,6 +229,11 @@ export function createState(doc) {
       stylebookFilter: "", // search filter text
       stylebookCustomizedOnly: false, // show only customized elements
       settingsTab: "stylebook", // "stylebook" | "definitions" | "collections"
+      gitStatus: null, // { branch, ahead, behind, files: [] }
+      gitBranches: null, // { current, branches: [] }
+      gitCommitMessage: "", // commit message input
+      gitLoading: false, // loading indicator during async ops
+      gitError: null, // error message string
     },
   };
 }

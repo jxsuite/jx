@@ -490,7 +490,16 @@ export function compileStyles(doc, mediaQueries = {}, projectStyle = null) {
   if (projectStyle && typeof projectStyle === "object") {
     for (const [key, val] of Object.entries(projectStyle)) {
       if (key.startsWith(":") || key.startsWith(".") || key.startsWith("[")) {
-        // Standalone selector (e.g. `.dark`)
+        // Standalone selector (e.g. `.dark`, `:focus-visible`)
+        rules.push(`${key} { ${toCSSText(/** @type {any} */ (val))} }`);
+      } else if (
+        val !== null &&
+        typeof val === "object" &&
+        !Array.isArray(val) &&
+        !key.startsWith("@") &&
+        !key.startsWith("--")
+      ) {
+        // Element selector with object value (e.g. `html`, `*`)
         rules.push(`${key} { ${toCSSText(/** @type {any} */ (val))} }`);
       } else if (key.startsWith("@")) {
         // @media block

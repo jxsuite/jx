@@ -16,10 +16,7 @@ import {
   updateStyle,
   updateAttribute,
   updateDef,
-  updateMediaStyle,
   updateMedia,
-  updateNestedStyle,
-  updateMediaNestedStyle,
   pushDocument,
   popDocument,
   updateProp,
@@ -28,9 +25,7 @@ import {
   renameSwitchCase,
   applyMutation,
   getNodeAtPath,
-  flattenTree,
   nodeLabel,
-  pathKey,
   pathsEqual,
   parentElementPath,
   childIndex,
@@ -41,8 +36,6 @@ import {
   elToPath,
   canvasPanels,
   VOID_ELEMENTS,
-  COMMON_SELECTORS,
-  isNestedSelector,
   debouncedStyleCommit,
   stripEventHandlers,
   registerRenderer,
@@ -77,7 +70,6 @@ import {
   isEditing,
   getActiveElement,
   isEditableBlock,
-  isInlineElement,
   isInlineInContext,
   getInlineActions,
 } from "./editor/inline-edit.js";
@@ -88,10 +80,7 @@ import {
 } from "./editor/slash-menu.js";
 import { toggleInlineFormat, isTagActiveInSelection } from "./editor/inline-format.js";
 import {
-  camelToKebab,
   camelToLabel,
-  kebabToLabel,
-  propLabel,
   attrLabel,
   inferInputType,
   findCollectionSchema,
@@ -172,18 +161,16 @@ import { styleMap } from "lit-html/directives/style-map.js";
 import { ifDefined } from "lit-html/directives/if-defined.js";
 
 import webdata from "../data/webdata.json";
-import cssMeta from "../data/css-meta.json";
 import htmlMeta from "../data/html-meta.json";
 import stylebookMeta from "../data/stylebook-meta.json";
 import { renderDataExplorerTemplate } from "./panels/data-explorer.js";
+import { renderGitPanel } from "./panels/git-panel.js";
 
 // ─── Spectrum Web Components ──────────────────────────────────────────────────
 // Explicit class imports + registration — bare side-effect imports are tree-shaken
 // by Bun's bundler despite sideEffects declarations in Spectrum's package.json.
 import { components as _swc } from "./ui/spectrum.js"; // eslint-disable-line no-unused-vars
 import { renderFieldRow } from "./ui/field-row.js";
-import { widgetForType as _widgetForType } from "./ui/widgets.js";
-import { computeInheritedStyle } from "./utils/inherited-style.js";
 import "./ui/panel-resize.js";
 import { showContextMenu, dismissContextMenu } from "./editor/context-menu.js";
 import { convertToComponent } from "./editor/convert-to-component.js";
@@ -195,7 +182,10 @@ import { renderDefsEditor } from "./settings/defs-editor.js";
 import * as toolbarPanel from "./panels/toolbar.js";
 import * as overlaysPanel from "./panels/overlays.js";
 import * as rightPanelMod from "./panels/right-panel.js";
-import { mediaDisplayName, ensureLitState } from "./panels/shared.js";
+import * as leftPanelMod from "./panels/left-panel.js";
+import { mediaDisplayName } from "./panels/shared.js";
+import { initCssData, getCssInitialMap } from "./panels/style-utils.js";
+import { widgetForType } from "./panels/style-inputs.js";
 import * as monaco from "monaco-editor/esm/vs/editor/editor.api.js";
 
 // ─── Globals ──────────────────────────────────────────────────────────────────
@@ -740,8 +730,7 @@ litRender(
   datalistHost,
 );
 
-/** Map<camelCaseName, initialValue> for placeholder hints */
-const cssInitialMap = new Map(/** @type {any} */ (webdata.cssProps));
+initCssData(webdata);
 
 // Persistent render hosts for lit-html (must be before bootstrap/render)
 let zoomIndicatorHost = document.createElement("div");
@@ -798,15 +787,37 @@ overlaysPanel.mount({
 
 rightPanelMod.mount({
   propertiesSidebarTemplate,
-  renderStylePanelTemplate,
+  getCanvasMode: () => canvasMode,
   renderCanvas: () => renderCanvas(),
   updateForcedPseudoPreview,
+});
+
+leftPanelMod.mount({
+  getCanvasMode: () => canvasMode,
+  renderImportsTemplate,
+  renderFilesTemplate,
+  renderSignalsTemplate,
+  renderDataExplorerTemplate,
+  renderHeadTemplate,
+  renderGitPanel,
+  renderCanvas: () => renderCanvas(),
+  defCategory,
+  defBadgeLabel,
+  navigateToComponent,
+  selectStylebookTag,
+  stylebookMeta,
+  webdata,
+  defaultDef,
+  registerLayersDnD,
+  registerElementsDnD,
+  registerComponentsDnD,
+  setupTreeKeyboard,
 });
 
 // Register all renderers with the store so render()/renderOnly() work
 registerRenderer("toolbar", () => toolbarPanel.render());
 registerRenderer("activityBar", () => renderActivityBar(S));
-registerRenderer("leftPanel", () => renderLeftPanel());
+registerRenderer("leftPanel", () => leftPanelMod.render());
 registerRenderer("canvas", () => renderCanvas());
 registerRenderer("rightPanel", () => rightPanelMod.render());
 registerRenderer("overlays", () => overlaysPanel.render());
@@ -815,20 +826,7 @@ setStatusbarRenderer(() => renderStatusbar(S));
 mountStatusbar();
 
 function safeRenderLeftPanel() {
-  try {
-    ensureLitState(leftPanel);
-    renderLeftPanel();
-  } catch (e) {
-    console.error("renderLeftPanel error:", e);
-    try {
-      leftPanel.textContent = "";
-      // @ts-ignore
-      delete leftPanel["_$litPart$"];
-      renderLeftPanel();
-    } catch (e2) {
-      console.error("renderLeftPanel retry failed:", e2);
-    }
-  }
+  leftPanelMod.render();
 }
 
 function safeRenderRightPanel() {
@@ -3193,331 +3191,13 @@ function handleComponentSlashSelect(cmd) {
   update(s);
 }
 
-// ─── Left panel: Layers ───────────────────────────────────────────────────────
+// ─── Left panel: delegated to panels/left-panel.js ───────────────────────────
 
 function renderLeftPanel() {
-  const tab = S.ui.leftTab;
-
-  /** @type {any} */
-  let content;
-  if (tab === "layers")
-    content = canvasMode === "settings" ? renderStylebookLayersTemplate() : renderLayersTemplate();
-  else if (tab === "imports")
-    content = renderImportsTemplate({
-      renderLeftPanel,
-      documentPath: S.documentPath,
-      documentElements: S.document.$elements || [],
-      applyMutation: (/** @type {any} */ fn) => {
-        S = applyMutation(S, fn);
-        update(S);
-      },
-    });
-  else if (tab === "files") content = renderFilesTemplate();
-  else if (tab === "blocks") content = renderElementsTemplate();
-  else if (tab === "state")
-    content = renderSignalsTemplate(S, { renderLeftPanel, renderCanvas, updateSession });
-  else if (tab === "data")
-    content = renderDataExplorerTemplate(S.document.state, view.liveScope, {
-      renderCanvas,
-      renderLeftPanel,
-      defCategory,
-      defBadgeLabel,
-    });
-  else if (tab === "head") {
-    // In content mode, title/$head live in S.content.frontmatter, not S.document
-    const isContent = S.mode === "content";
-    const fm = S.content?.frontmatter ?? {};
-    const headDoc = isContent ? { ...S.document, title: fm.title, $head: fm.$head } : S.document;
-    content = renderHeadTemplate({
-      document: headDoc,
-      applyMutation: isContent
-        ? (/** @type {any} */ fn) => {
-            // Apply mutation to a temporary doc, then sync title/$head back to frontmatter
-            const tmp = { title: fm.title, $head: fm.$head ? [...fm.$head] : undefined };
-            fn(tmp);
-            if (tmp.title !== fm.title) S = updateFrontmatter(S, "title", tmp.title);
-            // Always sync $head (may have been created, modified, or emptied)
-            const newHead = tmp.$head && tmp.$head.length > 0 ? tmp.$head : undefined;
-            S = updateFrontmatter(S, "$head", newHead);
-            update(S);
-          }
-        : (/** @type {any} */ fn) => {
-            S = applyMutation(S, fn);
-            update(S);
-          },
-      renderLeftPanel,
-    });
-  } else content = nothing;
-
-  litRender(html`<div class="panel-body">${content}</div>`, /** @type {any} */ (leftPanel));
-
-  // Post-render side effects
-  if (tab === "layers" && canvasMode !== "settings") registerLayersDnD();
-  else if (tab === "imports") {
-    /* no post-render DnD needed */
-  } else if (tab === "blocks") {
-    registerElementsDnD();
-    registerComponentsDnD();
-  } else if (tab === "files") {
-    const tree = /** @type {any} */ (leftPanel)?.querySelector(".file-tree");
-    if (tree) setupTreeKeyboard(tree);
-  }
+  leftPanelMod.render();
 }
 
-/** Returns a TemplateResult — called from renderLeftPanel only when tab=layers & not stylebook */
-function renderLayersTemplate() {
-  // Clean up previous DnD registrations
-  for (const fn of view.dndCleanups) fn();
-  view.dndCleanups = [];
-
-  const rows = flattenTree(S.document);
-  const collapsed = S._collapsed || (S._collapsed = new Set());
-
-  // Build layer rows
-  /** @type {any[]} */
-  const layerRows = [];
-  for (const { node, path, depth, nodeType } of rows) {
-    // Check if any ancestor is collapsed
-    let hidden = false;
-    for (let d = 1; d <= path.length; d++) {
-      const sub = path.slice(0, d);
-      if (d < path.length && collapsed.has(pathKey(sub))) {
-        hidden = true;
-        break;
-      }
-    }
-    if (hidden) continue;
-
-    // In content mode, skip the document root row (it's not a real element)
-    if (S.mode === "content" && path.length === 0) continue;
-
-    // Text node children: display-only row with truncated preview
-    if (nodeType === "text") {
-      const textPreview = String(node).length > 40 ? String(node).slice(0, 40) + "…" : String(node);
-      layerRows.push(html`
-        <div
-          class="layer-row"
-          style="padding-left:${depth * 16 + 8}px; opacity: 0.6; font-style: italic;"
-        >
-          <span class="layer-tag" style="background: #64748b; font-size: 0.65rem;">text</span>
-          <span class="layer-label">${textPreview}</span>
-        </div>
-      `);
-      continue;
-    }
-
-    // Skip inline elements
-    if (path.length >= 2 && nodeType === "element") {
-      const pPath = parentElementPath(path);
-      const parentNode = pPath ? getNodeAtPath(S.document, pPath) : null;
-      if (parentNode && isInlineElement(node, parentNode)) continue;
-    }
-
-    const key = pathKey(path);
-    const isSelected = pathsEqual(path, S.selection);
-    const hasChildren = Array.isArray(node.children) && node.children.length > 0;
-    const hasMapChildren =
-      node.children && typeof node.children === "object" && node.children.$prototype === "Array";
-    const hasCases =
-      node.$switch &&
-      node.cases &&
-      typeof node.cases === "object" &&
-      Object.keys(node.cases).length > 0;
-    const isExpandable =
-      hasChildren || hasMapChildren || hasCases || (nodeType === "map" && node.map);
-    const isVoidEl = VOID_ELEMENTS.has((node.tagName || "div").toLowerCase());
-
-    // Badge
-    /** @type {any} */
-    let badgeClass, badgeText, badgeTitle;
-    if (nodeType === "map") {
-      badgeClass = "layer-tag map-tag";
-      badgeText = "↻";
-      badgeTitle = "Repeater (mapped array)";
-    } else if (nodeType === "case" || nodeType === "case-ref") {
-      badgeClass = "layer-tag case-tag";
-      badgeText = path[path.length - 1];
-      badgeTitle = `$switch case: ${path[path.length - 1]}`;
-    } else if (node.$switch) {
-      badgeClass = "layer-tag switch-tag";
-      badgeText = "⇄";
-      badgeTitle = "$switch";
-    } else {
-      badgeClass = "layer-tag";
-      badgeText = node.tagName || "div";
-      badgeTitle = undefined;
-    }
-
-    // Label
-    /** @type {any} */
-    let labelText, labelItalic;
-    if (nodeType === "case-ref") {
-      labelText = node.$ref || "external";
-      labelItalic = true;
-    } else {
-      labelText = nodeLabel(node);
-      labelItalic = false;
-    }
-
-    // Compute move-button availability for element nodes
-    const isElement = nodeType === "element";
-    const isRoot = S.mode === "content" ? path.length === 0 : path.length < 2;
-    const idx = isElement ? /** @type {number} */ (childIndex(path)) : 0;
-    const parentPath = isElement && !isRoot ? /** @type {any} */ (parentElementPath(path)) : null;
-    const parentNode = parentPath ? getNodeAtPath(S.document, parentPath) : null;
-    const siblingCount = parentNode?.children?.length || 0;
-    const canMoveUp = isElement && !isRoot && idx > 0;
-    const canMoveDown = isElement && !isRoot && idx < siblingCount - 1;
-    // "in" = move into the previous sibling (become its last child)
-    const prevSibling = canMoveUp && parentNode ? parentNode.children[idx - 1] : null;
-    const canMoveIn =
-      isElement &&
-      !isRoot &&
-      prevSibling &&
-      !VOID_ELEMENTS.has((prevSibling.tagName || "div").toLowerCase());
-    // "out" = move out of parent to grandparent (after parent)
-    const grandparentPath =
-      isElement && parentPath && parentPath.length >= 2
-        ? /** @type {any} */ (parentElementPath(parentPath))
-        : null;
-    const canMoveOut = isElement && !isRoot && !!grandparentPath;
-
-    layerRows.push(html`
-      <div
-        class="layer-row${isSelected ? " selected" : ""}"
-        data-path=${key}
-        data-dnd-row=${isElement ? key : nothing}
-        data-dnd-depth=${isElement ? depth : nothing}
-        data-dnd-void=${isElement && isVoidEl ? "" : nothing}
-        @click=${() => update(selectNode(S, path))}
-        @contextmenu=${isElement
-          ? (/** @type {any} */ e) =>
-              showContextMenu(e, path, S, { onEditComponent: navigateToComponent })
-          : nothing}
-      >
-        <span class="layer-indent" style="width:${depth * 16}px"></span>
-        <span class="layer-toggle"
-          >${isExpandable
-            ? html`
-                ${collapsed.has(key)
-                  ? html`<sp-icon-chevron-right></sp-icon-chevron-right>`
-                  : html`<sp-icon-chevron-down></sp-icon-chevron-down>`}
-              `
-            : nothing}</span
-        >
-        <span class=${badgeClass} title=${badgeTitle ?? nothing}>${badgeText}</span>
-        <span class="layer-label" style=${labelItalic ? "font-style:italic" : nothing}
-          >${labelText}</span
-        >
-        ${isElement && !isRoot
-          ? html`
-              <span class="layer-actions">
-                ${canMoveUp
-                  ? html`<sp-action-button
-                      quiet
-                      size="xs"
-                      title="Move up"
-                      @click=${(/** @type {any} */ e) => {
-                        e.stopPropagation();
-                        /** @type {HTMLElement} */ (e.currentTarget).blur();
-                        update(moveNode(S, path, parentPath, idx - 1));
-                      }}
-                    >
-                      <sp-icon-arrow-up slot="icon"></sp-icon-arrow-up>
-                    </sp-action-button>`
-                  : nothing}
-                ${canMoveDown
-                  ? html`<sp-action-button
-                      quiet
-                      size="xs"
-                      title="Move down"
-                      @click=${(/** @type {any} */ e) => {
-                        e.stopPropagation();
-                        /** @type {HTMLElement} */ (e.currentTarget).blur();
-                        update(moveNode(S, path, parentPath, idx + 2));
-                      }}
-                    >
-                      <sp-icon-arrow-down slot="icon"></sp-icon-arrow-down>
-                    </sp-action-button>`
-                  : nothing}
-                ${canMoveIn
-                  ? html`<sp-action-button
-                      quiet
-                      size="xs"
-                      title="Move into previous sibling"
-                      @click=${(/** @type {any} */ e) => {
-                        e.stopPropagation();
-                        /** @type {HTMLElement} */ (e.currentTarget).blur();
-                        const prevPath = [...parentPath, idx - 1];
-                        const prev = getNodeAtPath(S.document, prevPath);
-                        const len = prev?.children?.length || 0;
-                        update(moveNode(S, path, prevPath, len));
-                      }}
-                    >
-                      <sp-icon-arrow-right slot="icon"></sp-icon-arrow-right>
-                    </sp-action-button>`
-                  : nothing}
-                ${canMoveOut
-                  ? html`<sp-action-button
-                      quiet
-                      size="xs"
-                      title="Move out of parent"
-                      @click=${(/** @type {any} */ e) => {
-                        e.stopPropagation();
-                        /** @type {HTMLElement} */ (e.currentTarget).blur();
-                        const parentIdx = /** @type {number} */ (childIndex(parentPath));
-                        update(moveNode(S, path, grandparentPath, parentIdx + 1));
-                      }}
-                    >
-                      <sp-icon-arrow-left slot="icon"></sp-icon-arrow-left>
-                    </sp-action-button>`
-                  : nothing}
-                <sp-action-button
-                  quiet
-                  size="xs"
-                  class="layer-delete"
-                  title="Delete"
-                  @click=${(/** @type {any} */ e) => {
-                    e.stopPropagation();
-                    update(removeNode(S, path));
-                  }}
-                >
-                  <sp-icon-close slot="icon"></sp-icon-close>
-                </sp-action-button>
-              </span>
-            `
-          : nothing}
-      </div>
-    `);
-
-    // Collapse toggle click handler — we add it via event delegation on the layer-toggle span
-    // It's already in the template above as the toggle span, but we need the click handler
-  }
-
-  return html`
-    <div class="layers-container" style="position:relative">
-      <div
-        class="layers-tree"
-        @click=${(/** @type {any} */ e) => {
-          const toggle = e.target.closest(".layer-toggle");
-          if (!toggle) return;
-          e.stopPropagation();
-          const row = toggle.closest(".layer-row");
-          if (!row) return;
-          const key = row.dataset.path;
-          if (!key) return;
-          if (collapsed.has(key)) collapsed.delete(key);
-          else collapsed.add(key);
-          renderLeftPanel();
-        }}
-      >
-        ${layerRows}
-      </div>
-    </div>
-  `;
-}
-
-/** Register DnD on layer rows after litRender — called from renderLeftPanel */
+/** Register DnD on layer rows after litRender — called from left-panel.js */
 function registerLayersDnD() {
   requestAnimationFrame(() => {
     const container = /** @type {any} */ (leftPanel)?.querySelector(".layers-container");
@@ -3730,95 +3410,6 @@ function selectStylebookTag(tag, media) {
   });
 }
 
-function renderStylebookLayersTemplate() {
-  const rootStyle = S.document?.style || {};
-  const selectedTag = S.ui.stylebookSelection;
-
-  if (S.ui.stylebookTab === "elements") {
-    /**
-     * Render a stylebook entry row with recursive children.
-     *
-     * @param {any} entry
-     * @param {number} depth
-     * @returns {any}
-     */
-    const renderEntryRow = (entry, depth = 0) => {
-      const tag = entry.tag;
-      // Deduplicate children by tag (e.g. multiple <li> → show one "li" row)
-      const uniqueChildren = entry.children
-        ? [...new Map(entry.children.map((/** @type {any} */ c) => [c.tag, c])).values()]
-        : [];
-      return html`
-        <div
-          class="layer-row${tag === selectedTag ? " selected" : ""}"
-          style="padding-left:${8 + depth * 16}px"
-          @click=${(/** @type {any} */ e) => {
-            e.stopPropagation();
-            selectStylebookTag(tag);
-          }}
-        >
-          <span class="layer-tag">${tag}</span>
-          <span
-            class="layer-label"
-            style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1"
-            >${entry.text || `<${tag}>`}</span
-          >
-          ${hasTagStyle(rootStyle, tag)
-            ? html`<span
-                style="width:6px;height:6px;border-radius:50%;background:var(--accent);flex-shrink:0"
-              ></span>`
-            : nothing}
-        </div>
-        ${uniqueChildren.map((/** @type {any} */ child) => renderEntryRow(child, depth + 1))}
-      `;
-    };
-
-    /** @type {any[]} */
-    const elementRows = [];
-    for (const section of stylebookMeta.$sections) {
-      for (const entry of /** @type {any[]} */ (section.elements)) {
-        elementRows.push(renderEntryRow(entry, 0));
-      }
-    }
-    // Custom components
-    const compRows = componentRegistry.map(
-      /** @param {any} comp */ (comp) => html`
-        <div
-          class="layer-row${comp.tagName === selectedTag ? " selected" : ""}"
-          @click=${() => selectStylebookTag(comp.tagName)}
-        >
-          <span class="layer-tag component-tag" style="background:var(--accent)">⬡</span>
-          <span class="layer-label">${comp.tagName}</span>
-        </div>
-      `,
-    );
-    return html`${elementRows}${compRows}`;
-  } else {
-    // Variables tab
-    const style = rootStyle;
-    const vars = Object.entries(style).filter(([k]) => k.startsWith("--"));
-    if (vars.length === 0) {
-      return html`<div style="padding:16px;text-align:center;color:var(--fg-dim);font-size:12px">
-        No variables defined
-      </div>`;
-    }
-    return html`${vars.map(
-      ([k, v]) => html`
-        <div class="layer-row">
-          <span class="layer-tag" style="font-size:10px;font-family:'SF Mono','Fira Code',monospace"
-            >var</span
-          >
-          <span class="layer-label">${k}</span>
-          <span
-            style="font-size:11px;color:var(--fg-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:80px"
-            >${String(v)}</span
-          >
-        </div>
-      `,
-    )}`;
-  }
-}
-
 /**
  * Apply a DnD instruction to the state
  *
@@ -3976,142 +3567,6 @@ function defaultDef(tag) {
 }
 
 const unsafeTags = new Set(["script", "style", "link", "iframe", "object", "embed"]);
-
-function renderElementsTemplate() {
-  const categories = Object.entries(webdata.elements).map(
-    (/** @type {any} */ [category, elements]) => {
-      const filtered = view.elementsFilter
-        ? elements.filter((/** @type {any} */ e) => e.tag.includes(view.elementsFilter))
-        : elements;
-      if (filtered.length === 0) return nothing;
-
-      return html`
-        <sp-accordion-item
-          label=${category}
-          ?open=${!view.elementsCollapsed.has(category)}
-          @sp-accordion-item-toggle=${(/** @type {any} */ e) => {
-            if (e.target.open) view.elementsCollapsed.delete(category);
-            else view.elementsCollapsed.add(category);
-          }}
-        >
-          ${filtered.map((/** @type {any} */ { tag }) => {
-            const def = defaultDef(tag);
-            return html`
-              <div
-                class="element-card"
-                data-block-tag=${tag}
-                @click=${() => {
-                  const parentPath = S.selection || [];
-                  const parent = getNodeAtPath(S.document, parentPath);
-                  const idx = parent?.children ? parent.children.length : 0;
-                  update(insertNode(S, parentPath, idx, structuredClone(def)));
-                }}
-              >
-                <div class="element-card-preview"></div>
-                <div class="element-card-label">&lt;${tag}&gt;</div>
-              </div>
-            `;
-          })}
-        </sp-accordion-item>
-      `;
-    },
-  );
-
-  // Components from the component registry — only show enabled (imported) npm components
-  const effectiveEls = getEffectiveElements(S.document?.$elements);
-  /** @type {Set<string>} */
-  const enabledTags = new Set();
-  for (const entry of effectiveEls) {
-    if (typeof entry !== "string") continue;
-    // Cherry-picked subpath: match by package + modulePath
-    const comp = componentRegistry.find(
-      (/** @type {any} */ c) =>
-        c.source === "npm" && c.modulePath && entry === `${c.package}/${c.modulePath}`,
-    );
-    if (comp) {
-      enabledTags.add(comp.tagName);
-    } else {
-      // Legacy full-package import: enable all components from that package
-      for (const c of componentRegistry) {
-        if (c.source === "npm" && c.package === entry) enabledTags.add(c.tagName);
-      }
-    }
-  }
-  const compsFiltered =
-    componentRegistry.length > 0
-      ? componentRegistry
-          .filter((/** @type {any} */ c) => c.source !== "npm" || enabledTags.has(c.tagName))
-          .filter(
-            (/** @type {any} */ c) =>
-              !view.elementsFilter || c.tagName.toLowerCase().includes(view.elementsFilter),
-          )
-      : [];
-
-  const componentsAccordion =
-    compsFiltered.length > 0
-      ? html`
-          <sp-accordion-item
-            label="Components"
-            ?open=${!view.elementsCollapsed.has("Components")}
-            @sp-accordion-item-toggle=${(/** @type {any} */ e) => {
-              if (e.target.open) view.elementsCollapsed.delete("Components");
-              else view.elementsCollapsed.add("Components");
-            }}
-          >
-            <div class="components-section">
-              ${compsFiltered.map(
-                (/** @type {any} */ comp) => html`
-                  <div
-                    class="element-card"
-                    data-component-tag=${comp.tagName}
-                    title=${comp.source === "npm"
-                      ? `${comp.package}: <${comp.tagName}>`
-                      : comp.path}
-                    @click=${() => {
-                      const parentPath = S.selection || [];
-                      const parent = getNodeAtPath(S.document, parentPath);
-                      const idx = parent?.children ? parent.children.length : 0;
-                      const instanceDef = {
-                        tagName: comp.tagName,
-                        $props: Object.fromEntries(
-                          (comp.props || []).map((/** @type {any} */ p) => [
-                            p.name,
-                            p.default !== undefined ? p.default : "",
-                          ]),
-                        ),
-                      };
-                      update(insertNode(S, parentPath, idx, structuredClone(instanceDef)));
-                    }}
-                  >
-                    <div class="element-card-preview">
-                      <span style="color:var(--fg-dim);font-size:11px;font-style:italic"
-                        >&lt;${comp.tagName}&gt;</span
-                      >
-                    </div>
-                    <div class="element-card-label">${comp.tagName}</div>
-                  </div>
-                `,
-              )}
-            </div>
-          </sp-accordion-item>
-        `
-      : nothing;
-
-  return html`
-    <sp-search
-      size="s"
-      placeholder="Filter elements…"
-      value=${view.elementsFilter}
-      @input=${(/** @type {any} */ e) => {
-        view.elementsFilter = e.target.value.toLowerCase();
-        renderLeftPanel();
-      }}
-    ></sp-search>
-    <sp-accordion class="elements-list" allow-multiple
-      >${componentsAccordion}${categories}</sp-accordion
-    >
-  `;
-}
 
 function registerElementsDnD() {
   requestAnimationFrame(() => {
@@ -6284,965 +5739,8 @@ function mediaBreakpointRowTemplate(/** @type {any} */ name, /** @type {any} */ 
 
 // inferInputType — imported from studio-utils.js
 
-function conditionPasses(/** @type {any} */ cond, /** @type {any} */ styles) {
-  const val = styles[cond.prop] ?? "";
-  if (cond.values.length === 0) return val !== "" && val !== "initial";
-  return cond.values.includes(val);
-}
-
-function allConditionsPass(/** @type {any} */ entry, /** @type {any} */ styles) {
-  return (entry.$show ?? []).every((/** @type {any} */ c) => conditionPasses(c, styles));
-}
-
-function autoOpenSections(/** @type {any} */ node, /** @type {any} */ currentSections) {
-  const style = node.style || {};
-  const result = { ...currentSections };
-  for (const prop of Object.keys(style)) {
-    if (typeof style[prop] === "object") continue;
-    const entry = /** @type {Record<string, any>} */ (cssMeta.$defs)[prop];
-    const section = entry?.$section ?? "other";
-    if (!result[section]) result[section] = true;
-  }
-  return result;
-}
-
-/** Get longhands for a shorthand property from css-meta */
-function getLonghands(/** @type {any} */ shorthandProp) {
-  // Check for explicit $longhands array first (used by border-side shorthands)
-  const entry = /** @type {Record<string, any>} */ (cssMeta.$defs)[shorthandProp];
-  if (entry?.$longhands) {
-    return entry.$longhands
-      .map((/** @type {string} */ name) => ({
-        name,
-        entry: /** @type {Record<string, any>} */ (cssMeta.$defs)[name] || { $order: 0 },
-      }))
-      .sort((/** @type {any} */ a, /** @type {any} */ b) => a.entry.$order - b.entry.$order);
-  }
-  // Fallback: reverse-lookup by $shorthand reference
-  const result = [];
-  for (const [name, e] of /** @type {[string, any][]} */ (Object.entries(cssMeta.$defs))) {
-    if (e.$shorthand === shorthandProp) result.push({ name, entry: e });
-  }
-  result.sort((a, b) => a.entry.$order - b.entry.$order);
-  return result;
-}
-
-/**
- * Expand a CSS shorthand value (margin, padding, borderWidth, borderRadius) into individual
- * longhand values following the standard 1–4 value TRBL pattern. Returns an array matching the
- * longhand count (always 4 for box properties).
- */
-function expandShorthand(/** @type {string} */ shortVal, /** @type {number} */ count) {
-  if (!shortVal) return Array(count).fill("");
-  const parts = shortVal.trim().split(/\s+/);
-  if (count !== 4 || parts.length === 0) return Array(count).fill("");
-  if (parts.length === 1) return [parts[0], parts[0], parts[0], parts[0]];
-  if (parts.length === 2) return [parts[0], parts[1], parts[0], parts[1]];
-  if (parts.length === 3) return [parts[0], parts[1], parts[2], parts[1]];
-  return [parts[0], parts[1], parts[2], parts[3]];
-}
-
-/**
- * Compress 4 TRBL values back into the shortest valid CSS shorthand string. e.g.
- * ["0","auto","3rem","auto"] → "0 auto 3rem"
- */
-function compressShorthand(/** @type {string[]} */ vals) {
-  const [t, r, b, l] = vals;
-  if (t === r && r === b && b === l) return t;
-  if (t === b && r === l) return `${t} ${r}`;
-  if (r === l) return `${t} ${r} ${b}`;
-  return `${t} ${r} ${b} ${l}`;
-}
-
-// ─── Border-side shorthand parsing ────────────────────────────────────────────
-// CSS border-side shorthand: <width> || <style> || <color> (any order, all optional)
-
-const BORDER_STYLES = new Set([
-  "none",
-  "solid",
-  "dashed",
-  "dotted",
-  "double",
-  "groove",
-  "ridge",
-  "inset",
-  "outset",
-  "hidden",
-]);
-
-/**
- * Parse a border-side shorthand value into [width, style, color].
- *
- * @param {string} value — e.g. "1px solid var(--color-border)"
- * @returns {string[]} — [width, style, color]
- */
-function expandBorderSide(value) {
-  if (!value) return ["", "", ""];
-  // Tokenize respecting parenthesized values like var(...) and rgb(...)
-  const tokens = [];
-  let current = "";
-  let depth = 0;
-  for (const ch of value.trim()) {
-    if (ch === "(") depth++;
-    if (ch === ")") depth--;
-    if (ch === " " && depth === 0) {
-      if (current) tokens.push(current);
-      current = "";
-    } else {
-      current += ch;
-    }
-  }
-  if (current) tokens.push(current);
-
-  let width = "";
-  let style = "";
-  let color = "";
-
-  for (const tok of tokens) {
-    if (!style && BORDER_STYLES.has(tok)) {
-      style = tok;
-    } else if (!width && /^[\d.]/.test(tok)) {
-      width = tok;
-    } else {
-      // Remaining token(s) are color — join in case color was split (shouldn't be with paren-aware tokenizer)
-      color = color ? `${color} ${tok}` : tok;
-    }
-  }
-
-  return [width, style, color];
-}
-
-/**
- * Recompose border-side longhand values into a shorthand string.
- *
- * @param {string[]} vals — [width, style, color]
- * @returns {string}
- */
-function compressBorderSide(/** @type {string[]} */ vals) {
-  return vals.filter((v) => v && v.trim()).join(" ");
-}
-
-/** Extract --font-* CSS custom properties from the document root style. */
-function getFontVars() {
-  const style = S.document?.style;
-  if (!style) return [];
-  const vars = [];
-  for (const [k, v] of Object.entries(style)) {
-    if (k.startsWith("--font") && (typeof v === "string" || typeof v === "number")) {
-      vars.push({ name: k, value: String(v) });
-    }
-  }
-  return vars;
-}
-
-/** Typography CSS properties that should preview their values in-menu */
-const TYPO_PREVIEW_PROPS = new Set(["fontStyle", "fontVariant", "textTransform", "textDecoration"]);
-
-// camelToKebab — imported from studio-utils.js
-
-/** Resolve the current font family for typography preview (handles var() references) */
-function currentFontFamily() {
-  const node = S.selection ? getNodeAtPath(S.document, S.selection) : null;
-  const raw = node?.style?.fontFamily;
-  if (!raw) return "";
-  const m = typeof raw === "string" && raw.match(/^var\((--[^)]+)\)$/);
-  if (m) return S.document?.style?.[m[1]] || "";
-  return raw;
-}
-
-/**
- * Dual-mode keyword input — shared by select (enum) and combobox (examples) widgets.
- *
- * If the current value is one of the predefined options → renders as sp-picker with Title Case
- * labels (and typography preview when applicable). Selecting "—" clears the value, which flips to
- * combobox mode.
- *
- * If the value is empty or a custom string → renders as sp-combobox with predefined options in its
- * dropdown. Selecting one flips to picker mode.
- *
- * Note: sp-combobox recreates items in shadow DOM as plain text, so typography preview props use a
- * manual sp-textfield + sp-overlay + sp-menu instead.
- *
- * @param {any} options @param {any} prop @param {any} value @param {any} onChange
- */
-function renderKeywordInput(options, prop, value, onChange) {
-  const isTypoPreview = TYPO_PREVIEW_PROPS.has(prop) || prop === "fontWeight";
-  const font = isTypoPreview ? currentFontFamily() : "";
-  const cssProp = isTypoPreview ? camelToKebab(prop) : "";
-
-  const comboOptions = options.map((/** @type {any} */ v) => {
-    const label = v.includes("-")
-      ? kebabToLabel(v)
-      : v.replace(/^./, (/** @type {any} */ c) => c.toUpperCase());
-    const style = isTypoPreview ? `${cssProp}: ${v};${font ? ` font-family: ${font}` : ""}` : "";
-    return { value: v, label, style };
-  });
-
-  return html`<jx-value-selector
-    size="s"
-    .value=${value || ""}
-    placeholder=${cssInitialMap.get(prop) || ""}
-    .options=${comboOptions}
-    @change=${(/** @type {any} */ e) => onChange(e.target.value)}
-    @input=${debouncedStyleCommit(`kw:${prop}`, 400, (/** @type {any} */ e) =>
-      onChange(e.target.value),
-    )}
-  ></jx-value-selector>`;
-}
-
-function renderSelectInput(
-  /** @type {any} */ entry,
-  /** @type {any} */ prop,
-  /** @type {any} */ value,
-  /** @type {any} */ onChange,
-) {
-  return renderKeywordInput(entry.enum || [], prop, value, onChange);
-}
-
-function handleFontPresetSelection(/** @type {any} */ preset, /** @type {any} */ onChange) {
-  const varName = friendlyNameToVar(preset.title, "--font-");
-  if (!S.document?.style?.[varName]) {
-    S = updateStyle(S, [], varName, preset.value);
-  }
-  onChange(`var(${varName})`);
-}
-
-function handleFontSelection(
-  /** @type {any} */ val,
-  /** @type {any} */ presets,
-  /** @type {any} */ onChange,
-) {
-  if (!val) return;
-  // sp-picker returns the option's value attribute (prefixed or var name)
-  if (val.startsWith("__preset__:")) {
-    const title = val.slice("__preset__:".length);
-    const preset = presets.find((/** @type {any} */ p) => p.title === title);
-    if (preset) handleFontPresetSelection(preset, onChange);
-    return;
-  }
-  if (val.startsWith("--")) {
-    onChange(`var(${val})`);
-    return;
-  }
-  // sp-combobox returns display text — match against preset titles and font var
-  // display names before falling through to plain text
-  const preset = presets.find((/** @type {any} */ p) => p.title === val);
-  if (preset) {
-    handleFontPresetSelection(preset, onChange);
-    return;
-  }
-  const fontVars = getFontVars();
-  const matchedVar = fontVars.find(
-    (/** @type {any} */ fv) => varDisplayName(fv.name, "--font-") === val,
-  );
-  if (matchedVar) {
-    onChange(`var(${matchedVar.name})`);
-    return;
-  }
-  // Plain font family string (e.g. "serif", "Arial, sans-serif")
-  onChange(val);
-}
-
-/**
- * Build font options array for jx-value-selector. Local font vars first, divider, then unadded
- * presets.
- *
- * @param {any[]} fontVars @param {any[]} presets
- * @returns {{ value: string; label: string; style: string }[] | { divider: true }[]}
- */
-function buildFontOptions(fontVars, presets) {
-  /** @type {any[]} */
-  const opts = fontVars.map((/** @type {any} */ fv) => ({
-    value: fv.name,
-    label: varDisplayName(fv.name, "--font-"),
-    style: `font-family: ${fv.value}`,
-  }));
-  const unadded = presets.filter(
-    (/** @type {any} */ p) =>
-      !fontVars.some((/** @type {any} */ fv) => fv.name === friendlyNameToVar(p.title, "--font-")),
-  );
-  if (unadded.length > 0 && opts.length > 0) opts.push({ divider: true });
-  for (const p of unadded) {
-    opts.push({
-      value: "__preset__:" + p.title,
-      label: p.title,
-      style: `font-family: ${p.value}`,
-    });
-  }
-  return opts;
-}
-
-function renderComboboxInput(
-  /** @type {any} */ entry,
-  /** @type {any} */ prop,
-  /** @type {any} */ value,
-  /** @type {any} */ onChange,
-) {
-  const fontVars = prop === "fontFamily" ? getFontVars() : [];
-  const presets = entry.presets || [];
-  const examples = entry.examples || [];
-
-  // fontFamily: single jx-value-selector with font options
-  if (prop === "fontFamily") {
-    // Strip var() wrapper so the component can match the option value
-    const varMatch = typeof value === "string" && value.match(/^var\((--[^)]+)\)$/);
-    const comboValue = varMatch ? varMatch[1] : value || "";
-    const fontOptions = buildFontOptions(fontVars, presets);
-    return html`<jx-value-selector
-      size="s"
-      .value=${comboValue}
-      placeholder=${cssInitialMap.get("fontFamily") || ""}
-      .options=${fontOptions}
-      @change=${(/** @type {any} */ e) => handleFontSelection(e.target.value, presets, onChange)}
-      @input=${debouncedStyleCommit("combo:fontFamily", 400, (/** @type {any} */ e) =>
-        onChange(e.target.value),
-      )}
-    ></jx-value-selector>`;
-  }
-
-  // All other comboboxes: use the shared keyword dual-mode input
-  if (examples.length > 0) {
-    return renderKeywordInput(examples, prop, value, onChange);
-  }
-
-  // Fallback: plain textfield (no predefined options)
-  return html`
-    <sp-textfield
-      size="s"
-      placeholder=${cssInitialMap.get(prop) || ""}
-      .value=${live(value || "")}
-      @input=${debouncedStyleCommit(`combo:${prop}`, 400, (/** @type {any} */ e) =>
-        onChange(e.target.value),
-      )}
-    ></sp-textfield>
-  `;
-}
-
-// renderNumberInput, renderTextInput — imported from ui/widgets.js
-
-// camelToLabel, kebabToLabel, propLabel, attrLabel — imported from studio-utils.js
-
-function widgetForType(
-  /** @type {any} */ type,
-  /** @type {any} */ entry,
-  /** @type {any} */ prop,
-  /** @type {any} */ value,
-  /** @type {any} */ onCommit,
-  /** @type {any} */ opts = {},
-) {
-  return _widgetForType(type, entry, prop, value, onCommit, {
-    placeholder: opts.placeholder || cssInitialMap.get(prop) || "",
-    renderSelect: renderSelectInput,
-    renderCombobox: renderComboboxInput,
-  });
-}
-
-function renderStyleRow(
-  /** @type {any} */ entry,
-  /** @type {any} */ prop,
-  /** @type {any} */ value,
-  /** @type {any} */ onCommit,
-  /** @type {any} */ onDelete,
-  /** @type {any} */ isWarning,
-  /** @type {any} */ gridMode,
-  /** @type {any} */ inheritedValue,
-) {
-  const type = inferInputType(entry);
-  const hasVal = value !== undefined && value !== "";
-  const placeholder = !hasVal && inheritedValue ? String(inheritedValue) : "";
-  return renderFieldRow({
-    prop,
-    label: propLabel(entry, prop),
-    hasValue: hasVal,
-    onClear: onDelete,
-    widget: widgetForType(type, entry, prop, value, onCommit, { placeholder }),
-    span: gridMode && entry.$span === 2 ? 2 : undefined,
-    warning: isWarning,
-  });
-}
-
-function renderShorthandRow(
-  /** @type {any} */ shortProp,
-  /** @type {any} */ entry,
-  /** @type {any} */ style,
-  /** @type {any} */ commitFn,
-  /** @type {any} */ _deleteFn,
-  /** @type {Record<string, any>} */ inherited = {},
-) {
-  const longhands = getLonghands(shortProp);
-  const shortVal = style[shortProp];
-  const hasLonghands = longhands.some((/** @type {any} */ l) => style[l.name] !== undefined);
-  const isExpanded = S.ui.styleShorthands[shortProp] ?? hasLonghands;
-  const hasAnyVal =
-    shortVal !== undefined || longhands.some((/** @type {any} */ l) => style[l.name] !== undefined);
-
-  return html`
-    <div class="style-row" data-prop=${shortProp}>
-      <div class="style-row-label">
-        ${hasAnyVal
-          ? html`<span
-              class="set-dot"
-              title="Clear ${shortProp}"
-              @click=${(/** @type {any} */ e) => {
-                e.stopPropagation();
-                let s = S;
-                if (shortVal !== undefined) s = commitFn(s, shortProp, undefined);
-                for (const l of longhands) {
-                  if (style[l.name] !== undefined) s = commitFn(s, l.name, undefined);
-                }
-                update(s);
-              }}
-            ></span>`
-          : nothing}
-        <sp-field-label size="s" title=${shortProp}>${propLabel(entry, shortProp)}</sp-field-label>
-      </div>
-      <div class="style-shorthand-header">
-        <sp-textfield
-          size="s"
-          .value=${live(shortVal || "")}
-          placeholder=${!shortVal && hasLonghands
-            ? longhands.map((/** @type {any} */ l) => style[l.name] || "0").join(" ")
-            : !shortVal && inherited[shortProp]
-              ? inherited[shortProp]
-              : !shortVal && longhands.some((/** @type {any} */ l) => inherited[l.name])
-                ? longhands.map((/** @type {any} */ l) => inherited[l.name] || "0").join(" ")
-                : ""}
-          @input=${debouncedStyleCommit(`short:${shortProp}`, 400, (/** @type {any} */ e) => {
-            let s = S;
-            for (const l of longhands) {
-              if (style[l.name] !== undefined) s = commitFn(s, l.name, undefined);
-            }
-            s = commitFn(s, shortProp, e.target.value || undefined);
-            update(s);
-          })}
-        ></sp-textfield>
-        <sp-action-button
-          size="xs"
-          quiet
-          @click=${(/** @type {any} */ e) => {
-            e.stopPropagation();
-            updateUi("styleShorthands", { ...S.ui.styleShorthands, [shortProp]: !isExpanded });
-          }}
-        >
-          ${isExpanded
-            ? html`<sp-icon-chevron-down slot="icon"></sp-icon-chevron-down>`
-            : html`<sp-icon-chevron-right slot="icon"></sp-icon-chevron-right>`}
-        </sp-action-button>
-      </div>
-    </div>
-    ${isExpanded
-      ? (() => {
-          const isBorderSide = entry.$shorthandType === "border-side";
-          const expanded = shortVal
-            ? isBorderSide
-              ? expandBorderSide(shortVal)
-              : expandShorthand(shortVal, longhands.length)
-            : null;
-          const compress = isBorderSide ? compressBorderSide : compressShorthand;
-          const emptyVal = isBorderSide ? "" : "0";
-          return longhands.map(
-            (/** @type {any} */ { name, entry: lEntry }, /** @type {any} */ idx) => {
-              const lVal = style[name] ?? (expanded ? expanded[idx] : "");
-              return html`
-                <div class="style-row style-row--child" data-prop=${name}>
-                  <div class="style-row-label">
-                    ${lVal !== undefined && lVal !== ""
-                      ? html`<span
-                          class="set-dot"
-                          title="Clear ${name}"
-                          @click=${(/** @type {any} */ e) => {
-                            e.stopPropagation();
-                            // Recompose shorthand with this longhand cleared
-                            const vals = longhands.map(
-                              (/** @type {any} */ l, /** @type {any} */ i) =>
-                                i === idx
-                                  ? emptyVal
-                                  : (style[l.name] ?? (expanded ? expanded[i] : emptyVal)),
-                            );
-                            let s = S;
-                            for (const l of longhands) {
-                              if (style[l.name] !== undefined) s = commitFn(s, l.name, undefined);
-                            }
-                            s = commitFn(s, shortProp, compress(vals));
-                            update(s);
-                          }}
-                        ></span>`
-                      : nothing}
-                    <sp-field-label size="s" title=${name}
-                      >${propLabel(lEntry, name)}</sp-field-label
-                    >
-                  </div>
-                  ${widgetForType(
-                    inferInputType(lEntry),
-                    lEntry,
-                    name,
-                    lVal,
-                    (/** @type {any} */ newVal) => {
-                      // Recompose shorthand with this longhand updated
-                      const vals = longhands.map((/** @type {any} */ l, /** @type {any} */ i) =>
-                        i === idx
-                          ? newVal || emptyVal
-                          : (style[l.name] ?? (expanded ? expanded[i] : emptyVal)),
-                      );
-                      let s = S;
-                      for (const l of longhands) {
-                        if (style[l.name] !== undefined) s = commitFn(s, l.name, undefined);
-                      }
-                      s = commitFn(s, shortProp, compress(vals));
-                      update(s);
-                      renderRightPanel();
-                    },
-                    { placeholder: !lVal && inherited[name] ? String(inherited[name]) : "" },
-                  )}
-                </div>
-              `;
-            },
-          );
-        })()
-      : nothing}
-  `;
-}
-
-function styleSidebarTemplate(
-  /** @type {any} */ node,
-  /** @type {any} */ activeMediaTab,
-  /** @type {any} */ activeSelector,
-) {
-  const style = node.style || {};
-  const { sizeBreakpoints } = parseMediaEntries(getEffectiveMedia(S.document.$media));
-  const mediaNames = sizeBreakpoints.map((bp) => bp.name);
-  const activeTab = activeMediaTab;
-
-  // ── Media tabs template ──────────────────────────────────────────────────
-  const mediaTabsT =
-    mediaNames.length > 0
-      ? html`
-          <sp-tabs
-            size="s"
-            selected=${activeTab || "base"}
-            @change=${(/** @type {any} */ e) => {
-              const val = e.target.selected;
-              const newMedia = val === "base" ? null : val;
-              if (newMedia !== S.ui.activeMedia) {
-                updateUi("activeMedia", newMedia);
-              }
-            }}
-          >
-            <sp-tab label="Base" value="base"></sp-tab>
-            ${mediaNames.map(
-              (name) => html` <sp-tab label=${mediaDisplayName(name)} value=${name}></sp-tab> `,
-            )}
-          </sp-tabs>
-        `
-      : nothing;
-
-  // ── Selector dropdown ──────────────────────────────────────────────────────
-  const contextStyle = activeTab ? style[`@${activeTab}`] || {} : style;
-  const existingSelectors = Object.keys(contextStyle).filter(isNestedSelector);
-  const existingSet = new Set(existingSelectors);
-  const commonSet = new Set(COMMON_SELECTORS);
-  const extraSelectors = existingSelectors.filter((s) => !commonSet.has(s));
-  if (activeSelector && !commonSet.has(activeSelector) && !existingSet.has(activeSelector)) {
-    extraSelectors.unshift(activeSelector);
-  }
-
-  const _selectorVal = activeSelector || "__base__";
-  const selectorT = html`
-    <sp-picker
-      size="s"
-      class="selector-select"
-      quiet
-      .value=${live(_selectorVal)}
-      @change=${(/** @type {any} */ e) => {
-        const val = e.target.value;
-        if (val === "__add_custom__") {
-          requestAnimationFrame(() => {
-            e.target.value = activeSelector || "__base__";
-          });
-          const picker = e.target;
-          const bar = picker.closest(".style-toolbar");
-          picker.style.display = "none";
-          const inp = document.createElement("input");
-          inp.type = "text";
-          inp.className = "selector-custom-input";
-          inp.placeholder = ":hover, .child, &.active, [attr]";
-          bar.appendChild(inp);
-          inp.focus();
-          let done = false;
-          const finish = (/** @type {any} */ accept) => {
-            if (done) return;
-            done = true;
-            const v = inp.value.trim();
-            inp.remove();
-            picker.style.display = "";
-            if (accept && v && isNestedSelector(v)) {
-              updateUi("activeSelector", v);
-            }
-          };
-          inp.addEventListener("keydown", (ev) => {
-            if (ev.key === "Enter") finish(true);
-            else if (ev.key === "Escape") finish(false);
-          });
-          inp.addEventListener("blur", () => finish(inp.value.trim().length > 0));
-          return;
-        }
-        const newSelector = val === "__base__" ? null : val;
-        updateUi("activeSelector", newSelector);
-      }}
-    >
-      <sp-menu-item value="__base__">(base)</sp-menu-item>
-      <sp-menu-divider></sp-menu-divider>
-      ${COMMON_SELECTORS.map(
-        (s) => html`
-          <sp-menu-item value=${s}>${existingSet.has(s) ? `${s}  \u25CF` : s}</sp-menu-item>
-        `,
-      )}
-      ${extraSelectors.length > 0
-        ? html`
-            <sp-menu-divider></sp-menu-divider>
-            ${extraSelectors.map((s) => html` <sp-menu-item value=${s}>${s} ●</sp-menu-item> `)}
-          `
-        : nothing}
-      <sp-menu-divider></sp-menu-divider>
-      <sp-menu-item value="__add_custom__">+ Add custom…</sp-menu-item>
-    </sp-picker>
-  `;
-
-  // ── Combined toolbar (media tabs + selector) ───────────────────────────────
-  const toolbarT = html`
-    <div class="style-toolbar">
-      <div class="style-toolbar-tabs">${mediaTabsT}</div>
-      ${selectorT}
-    </div>
-  `;
-
-  // ── Filter bar ─────────────────────────────────────────────────────────────
-  const filterBarT = html`
-    <div class="style-filter-bar">
-      <sp-textfield
-        size="s"
-        class="style-filter-input"
-        placeholder="Filter properties…"
-        .value=${live(S.ui.styleFilter || "")}
-        @input=${(/** @type {any} */ e) => updateUi("styleFilter", e.target.value)}
-      ></sp-textfield>
-      <sp-action-button
-        size="xs"
-        class="style-filter-toggle"
-        ?selected=${S.ui.styleFilterActive}
-        @click=${() => updateUi("styleFilterActive", !S.ui.styleFilterActive)}
-      >
-        Active
-      </sp-action-button>
-    </div>
-  `;
-
-  // ── Determine the active style object ──────────────────────────────────────
-  /** @type {Record<string, any>} */
-  let activeStyle;
-  /** @type {any} */
-  let commitStyle;
-  if (activeSelector && activeTab && mediaNames.length > 0) {
-    activeStyle = (style[`@${activeTab}`] || {})[activeSelector] || {};
-    commitStyle = (/** @type {any} */ s, /** @type {any} */ prop, /** @type {any} */ val) =>
-      updateMediaNestedStyle(s, S.selection, activeTab, activeSelector, prop, val);
-  } else if (activeSelector) {
-    activeStyle = style[activeSelector] || {};
-    commitStyle = (/** @type {any} */ s, /** @type {any} */ prop, /** @type {any} */ val) =>
-      updateNestedStyle(s, S.selection, activeSelector, prop, val);
-  } else if (activeTab !== null && mediaNames.length > 0) {
-    activeStyle = {};
-    for (const [p, v] of Object.entries(style[`@${activeTab}`] || {})) {
-      if (typeof v !== "object") activeStyle[p] = v;
-    }
-    commitStyle = (/** @type {any} */ s, /** @type {any} */ prop, /** @type {any} */ val) =>
-      updateMediaStyle(s, S.selection, activeTab, prop, val);
-  } else {
-    activeStyle = {};
-    for (const [p, v] of Object.entries(style)) {
-      if (typeof v !== "object") activeStyle[p] = v;
-    }
-    commitStyle = (/** @type {any} */ s, /** @type {any} */ prop, /** @type {any} */ val) =>
-      updateStyle(s, S.selection, prop, val);
-  }
-
-  // ── Compute inherited style from higher breakpoints ──────────────────────
-  /** @type {Record<string, any>} */
-  const inheritedStyle = computeInheritedStyle(style, mediaNames, activeTab, activeSelector);
-
-  // Auto-open sections that have properties
-  const newSections = autoOpenSections({ style: activeStyle }, S.ui.styleSections);
-  if (JSON.stringify(newSections) !== JSON.stringify(S.ui.styleSections)) {
-    session = { ...session, ui: { ...session.ui, styleSections: newSections } };
-    S = toFlat(doc, session);
-  }
-
-  // Partition properties into sections
-  const sectionProps = /** @type {Record<string, any[]>} */ ({});
-  for (const sec of cssMeta.$sections) sectionProps[sec.key] = [];
-
-  for (const [prop, entry] of /** @type {[string, any][]} */ (Object.entries(cssMeta.$defs))) {
-    if (typeof entry.$shorthand === "string") continue;
-    const sec = entry.$section || "other";
-    sectionProps[sec].push({ prop, entry });
-  }
-  for (const sec of cssMeta.$sections) {
-    sectionProps[sec.key].sort(
-      (/** @type {any} */ a, /** @type {any} */ b) => a.entry.$order - b.entry.$order,
-    );
-  }
-
-  const otherProps = [];
-  for (const prop of Object.keys(activeStyle)) {
-    if (!(/** @type {Record<string, any>} */ (cssMeta.$defs)[prop])) otherProps.push(prop);
-  }
-
-  // ── Filter state ─────────────────────────────────────────────────────────
-  const filterText = (S.ui.styleFilter || "").toLowerCase();
-  const filterActive = S.ui.styleFilterActive;
-  const isFiltering = filterText.length > 0 || filterActive;
-
-  // ── Section templates ────────────────────────────────────────────────────
-  const sectionTemplates = cssMeta.$sections
-    .filter((sec) => sec.key !== "other")
-    .map((sec) => {
-      const entries = sectionProps[sec.key];
-
-      const sectionActiveProps = entries.filter((/** @type {any} */ { prop, entry }) => {
-        if (activeStyle[prop] !== undefined) return true;
-        if (inferInputType(entry) === "shorthand") {
-          return getLonghands(prop).some(
-            (/** @type {any} */ l) => activeStyle[l.name] !== undefined,
-          );
-        }
-        return false;
-      });
-
-      const rows = [];
-      for (const { prop, entry } of entries) {
-        const val = activeStyle[prop];
-        const hasVal = val !== undefined;
-        const condMet = allConditionsPass(entry, activeStyle);
-        const type = inferInputType(entry);
-        if (!hasVal && !condMet) continue;
-
-        // Apply filter: text match
-        if (filterText) {
-          const label = propLabel(entry, prop).toLowerCase();
-          if (!prop.includes(filterText) && !label.includes(filterText)) continue;
-        }
-        // Apply filter: active-only
-        if (filterActive) {
-          if (type === "shorthand") {
-            const longhands = getLonghands(prop);
-            const hasAnySet =
-              hasVal || longhands.some((/** @type {any} */ l) => activeStyle[l.name] !== undefined);
-            if (!hasAnySet) continue;
-          } else if (!hasVal) continue;
-        }
-
-        if (type === "shorthand") {
-          const longhands = getLonghands(prop);
-          const hasAny =
-            hasVal || longhands.some((/** @type {any} */ l) => activeStyle[l.name] !== undefined);
-          if (!hasAny && !condMet) continue;
-          rows.push(
-            renderShorthandRow(prop, entry, activeStyle, commitStyle, () => {}, inheritedStyle),
-          );
-        } else {
-          const isWarning = hasVal && !condMet;
-          if (hasVal || condMet) {
-            rows.push(
-              renderStyleRow(
-                entry,
-                prop,
-                val ?? "",
-                (/** @type {any} */ newVal) => update(commitStyle(S, prop, newVal || undefined)),
-                () => update(commitStyle(S, prop, undefined)),
-                isWarning,
-                sec.$layout === "grid",
-                inheritedStyle[prop],
-              ),
-            );
-          }
-        }
-      }
-
-      // When filtering, hide empty sections entirely and force-open non-empty ones
-      if (isFiltering && rows.length === 0) return nothing;
-      const isOpen = isFiltering ? true : (S.ui.styleSections[sec.key] ?? false);
-
-      return html`
-        <sp-accordion-item
-          label=${sec.label}
-          .open=${isOpen}
-          @sp-accordion-item-toggle=${(/** @type {any} */ e) => {
-            updateUi("styleSections", { ...S.ui.styleSections, [sec.key]: e.target.open });
-          }}
-        >
-          ${sectionActiveProps.length > 0
-            ? html`
-                <span slot="heading" style="display:flex;align-items:center;gap:6px">
-                  ${sec.label}
-                  <span
-                    class="set-dot set-dot--section"
-                    title="Clear all ${sec.label.toLowerCase()} properties"
-                    @click=${(/** @type {any} */ e) => {
-                      e.stopPropagation();
-                      e.preventDefault();
-                      let s = S;
-                      for (const { prop, entry } of sectionActiveProps) {
-                        if (activeStyle[prop] !== undefined) s = commitStyle(s, prop, undefined);
-                        if (inferInputType(entry) === "shorthand") {
-                          for (const l of getLonghands(prop)) {
-                            if (activeStyle[l.name] !== undefined)
-                              s = commitStyle(s, l.name, undefined);
-                          }
-                        }
-                      }
-                      update(s);
-                    }}
-                  ></span>
-                </span>
-              `
-            : nothing}
-          <div class=${sec.$layout === "grid" ? "style-section-body--grid" : ""}>${rows}</div>
-        </sp-accordion-item>
-      `;
-    });
-
-  // ── Custom section ─────────────────────────────────────────────────────────
-  const customIsOpen = S.ui.styleSections.other ?? otherProps.length > 0;
-  const customSectionT = html`
-    <sp-accordion-item
-      label="Custom"
-      .open=${customIsOpen}
-      @sp-accordion-item-toggle=${(/** @type {any} */ e) => {
-        updateUi("styleSections", { ...S.ui.styleSections, other: e.target.open });
-      }}
-    >
-      <div>
-        ${otherProps.map(
-          (prop) => html`
-            <div class="kv-row">
-              <sp-textfield
-                size="s"
-                class="kv-key"
-                .value=${live(prop)}
-                @change=${(/** @type {any} */ e) => {
-                  const newProp = e.target.value.trim();
-                  if (newProp && newProp !== prop) {
-                    let s = commitStyle(S, prop, undefined);
-                    s = commitStyle(s, newProp, String(activeStyle[prop]));
-                    update(s);
-                  }
-                }}
-              ></sp-textfield>
-              <sp-textfield
-                size="s"
-                class="kv-val"
-                .value=${live(String(activeStyle[prop]))}
-                placeholder=${ifDefined(cssInitialMap.get(prop))}
-                @input=${debouncedStyleCommit(`custom:${prop}`, 400, (/** @type {any} */ e) => {
-                  update(commitStyle(S, prop, e.target.value));
-                })}
-              ></sp-textfield>
-              <sp-action-button
-                size="xs"
-                quiet
-                @click=${() => update(commitStyle(S, prop, undefined))}
-              >
-                <sp-icon-close slot="icon"></sp-icon-close>
-              </sp-action-button>
-            </div>
-          `,
-        )}
-        <div style="display:flex;gap:4px;padding-top:4px">
-          <sp-textfield
-            size="s"
-            placeholder="Property name…"
-            style="flex:1"
-            @keydown=${(/** @type {any} */ e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                const prop = e.target.value.trim();
-                if (prop) {
-                  const initial = cssInitialMap.get(prop) || "";
-                  update(commitStyle(S, prop, initial || ""));
-                  e.target.value = "";
-                }
-              }
-            }}
-          ></sp-textfield>
-        </div>
-      </div>
-    </sp-accordion-item>
-  `;
-
-  return html`
-    <div class="style-sidebar">
-      ${toolbarT} ${filterBarT}
-      <sp-accordion allow-multiple size="s"> ${sectionTemplates} ${customSectionT} </sp-accordion>
-    </div>
-  `;
-}
-
-/** Top-level Style panel — returns a lit-html template */
-function renderStylePanelTemplate() {
-  if (canvasMode === "settings" && S.ui.stylebookSelection) {
-    const node = S.document;
-    if (!node) return html`<div class="empty-state">No document loaded</div>`;
-    return html`
-      <div class="stylebook-style-header">Styling: &lt;${S.ui.stylebookSelection}&gt;</div>
-      ${styleSidebarTemplate(node, S.ui.activeMedia, S.ui.activeSelector)}
-    `;
-  }
-  if (!S.selection) return html`<div class="empty-state">Select an element to style</div>`;
-  const node = getNodeAtPath(S.document, S.selection);
-  if (!node) return html`<div class="empty-state">Select an element to style</div>`;
-  return styleSidebarTemplate(node, S.ui.activeMedia, S.ui.activeSelector);
-}
-
-/** @deprecated — use renderStylePanelTemplate() for lit-html integration */
-function _renderStylePanel(/** @type {any} */ container) {
-  litRender(renderStylePanelTemplate(), container);
-}
-
-/** Single property input row */
-function _fieldRow(
-  /** @type {any} */ label,
-  /** @type {any} */ type,
-  /** @type {any} */ value,
-  /** @type {any} */ onChange,
-  /** @type {any} */ _datalistId,
-) {
-  /** @type {any} */
-  let debounceTimer;
-  const onInput = (/** @type {any} */ e) => {
-    clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(() => onChange(e.target.value), 400);
-  };
-  const inputTpl =
-    type === "textarea"
-      ? html`<sp-textfield
-          multiline
-          size="s"
-          value=${value ?? ""}
-          @input=${onInput}
-        ></sp-textfield>`
-      : type === "checkbox"
-        ? html`<sp-checkbox
-            ?checked=${!!value}
-            @change=${(/** @type {any} */ e) => onChange(e.target.checked)}
-          ></sp-checkbox>`
-        : html`<sp-textfield size="s" value=${value ?? ""} @input=${onInput}></sp-textfield>`;
-  return html`
-    <div class="field-row">
-      <sp-field-label size="s">${label}</sp-field-label>
-      ${inputTpl}
-    </div>
-  `;
-}
+// ─── Style panel ────────────────────────────────────────────────────────────
+// Extracted to panels/style-utils.js, panels/style-inputs.js, panels/style-panel.js
 
 /** Check if a selection path is inside a $map template (contains [..., "children", "map", ...]). */
 function isInsideMapTemplate(/** @type {any} */ path) {
@@ -7366,7 +5864,7 @@ function kvRow(
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => onChange(currentKey, currentVal), 400);
   };
-  const placeholder = datalistId === "css-props" ? cssInitialMap.get(key) || "" : "";
+  const placeholder = datalistId === "css-props" ? getCssInitialMap().get(key) || "" : "";
   return html`
     <div class="kv-row">
       <sp-textfield
@@ -7380,7 +5878,7 @@ function kvRow(
         @change=${datalistId === "css-props"
           ? (/** @type {any} */ e) => {
               const el = e.target.closest(".kv-row")?.querySelector(".kv-val");
-              if (el) el.setAttribute("placeholder", cssInitialMap.get(e.target.value) || "");
+              if (el) el.setAttribute("placeholder", getCssInitialMap().get(e.target.value) || "");
             }
           : nothing}
       ></sp-textfield>

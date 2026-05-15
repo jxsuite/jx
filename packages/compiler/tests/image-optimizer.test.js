@@ -156,7 +156,32 @@ describe("image-cache", () => {
 
   test("getCached returns null for missing key", () => {
     const cache = { version: 1, entries: {} };
-    expect(getCached(cache, "missing", "/tmp")).toBeNull();
+    expect(getCached(cache, "missing")).toBeNull();
+  });
+
+  test("getCached returns manifest regardless of output file existence", () => {
+    const manifest = {
+      original: { width: 800, height: 600, format: "jpeg" },
+      variants: [
+        {
+          width: 320,
+          format: "avif",
+          outputPath: "/images/_optimized/hero-320-abc.avif",
+          absolutePath: "/nonexistent/dist/images/_optimized/hero-320-abc.avif",
+        },
+      ],
+      contentHash: "abc",
+    };
+    const cache = {
+      version: 1,
+      entries: {
+        "abc:def": { source: "hero.jpg", manifest, timestamp: 1000 },
+      },
+    };
+    const result = getCached(cache, "abc:def");
+    expect(result).not.toBeNull();
+    expect(result?.original.width).toBe(800);
+    expect(result?.variants).toHaveLength(1);
   });
 
   test("setCached stores entry", () => {
@@ -297,6 +322,195 @@ describe("image-transform", () => {
     const cache = { version: 1, entries: {} };
     const result = await transformImageNodes(doc, defaultConfig, root, join(root, "dist"), cache);
     expect(result.imageRefs.size).toBe(0);
+    teardown();
+  });
+
+  test("transforms img tags inside innerHTML strings", async () => {
+    const root = setup();
+    writeFileSync(join(root, "public/images/photo.jpg"), "fake jpg data");
+
+    const distOptDir = join(root, "dist/images/_optimized");
+    mkdirSync(distOptDir, { recursive: true });
+
+    const manifest = {
+      original: { width: 1200, height: 800, format: "jpeg" },
+      variants: [
+        {
+          width: 320,
+          format: "avif",
+          outputPath: "/images/_optimized/photo-320-abc.avif",
+          absolutePath: join(distOptDir, "photo-320-abc.avif"),
+        },
+        {
+          width: 640,
+          format: "avif",
+          outputPath: "/images/_optimized/photo-640-abc.avif",
+          absolutePath: join(distOptDir, "photo-640-abc.avif"),
+        },
+      ],
+      contentHash: "abc12345",
+    };
+
+    for (const v of manifest.variants) writeFileSync(v.absolutePath, "");
+
+    const cache = { version: 1, entries: /** @type {Record<string, any>} */ ({}) };
+    setCached(
+      cache,
+      `${contentHash(join(root, "public/images/photo.jpg"))}:${configHash(defaultConfig)}`,
+      "/images/photo.jpg",
+      manifest,
+    );
+
+    const doc = {
+      tagName: "my-component",
+      innerHTML: '<img class="hero" src="/images/photo.jpg" alt="Photo">',
+    };
+
+    await transformImageNodes(doc, defaultConfig, root, join(root, "dist"), cache);
+
+    expect(doc.innerHTML).toContain("srcset=");
+    expect(doc.innerHTML).toContain("photo-320-abc.avif 320w");
+    expect(doc.innerHTML).toContain("photo-640-abc.avif 640w");
+    expect(doc.innerHTML).toContain('width="1200"');
+    expect(doc.innerHTML).toContain('height="800"');
+    expect(doc.innerHTML).toContain('sizes="');
+
+    teardown();
+  });
+
+  test("innerHTML: skips img tags that already have srcset", async () => {
+    const root = setup();
+    writeFileSync(join(root, "public/images/photo.jpg"), "fake jpg data");
+
+    const doc = {
+      tagName: "my-component",
+      innerHTML: '<img src="/images/photo.jpg" srcset="already-set" alt="Photo">',
+    };
+    const cache = { version: 1, entries: {} };
+
+    await transformImageNodes(doc, defaultConfig, root, join(root, "dist"), cache);
+    expect(doc.innerHTML).toBe('<img src="/images/photo.jpg" srcset="already-set" alt="Photo">');
+    teardown();
+  });
+
+  test("innerHTML: skips data-no-optimize img tags", async () => {
+    const root = setup();
+    writeFileSync(join(root, "public/images/photo.jpg"), "fake jpg data");
+
+    const doc = {
+      tagName: "my-component",
+      innerHTML: '<img src="/images/photo.jpg" data-no-optimize alt="Photo">',
+    };
+    const cache = { version: 1, entries: {} };
+
+    await transformImageNodes(doc, defaultConfig, root, join(root, "dist"), cache);
+    expect(doc.innerHTML).not.toContain("srcset=");
+    teardown();
+  });
+
+  test("innerHTML: skips template strings and external URLs", async () => {
+    const root = setup();
+    const doc = {
+      tagName: "my-component",
+      innerHTML:
+        '<img src="${state.image}" alt="Dynamic"><img src="https://cdn.example.com/img.jpg" alt="External">',
+    };
+    const cache = { version: 1, entries: {} };
+
+    await transformImageNodes(doc, defaultConfig, root, join(root, "dist"), cache);
+    expect(doc.innerHTML).not.toContain("srcset=");
+    teardown();
+  });
+
+  test("innerHTML: preserves existing loading and decoding attributes", async () => {
+    const root = setup();
+    writeFileSync(join(root, "public/images/hero.jpg"), "fake jpg data");
+
+    const distOptDir = join(root, "dist/images/_optimized");
+    mkdirSync(distOptDir, { recursive: true });
+
+    const manifest = {
+      original: { width: 800, height: 600, format: "jpeg" },
+      variants: [
+        {
+          width: 320,
+          format: "avif",
+          outputPath: "/images/_optimized/hero-320-abc.avif",
+          absolutePath: join(distOptDir, "hero-320-abc.avif"),
+        },
+      ],
+      contentHash: "abc12345",
+    };
+    for (const v of manifest.variants) writeFileSync(v.absolutePath, "");
+
+    const cache = { version: 1, entries: /** @type {Record<string, any>} */ ({}) };
+    setCached(
+      cache,
+      `${contentHash(join(root, "public/images/hero.jpg"))}:${configHash(defaultConfig)}`,
+      "/images/hero.jpg",
+      manifest,
+    );
+
+    const doc = {
+      tagName: "my-component",
+      innerHTML: '<img src="/images/hero.jpg" loading="eager" decoding="sync">',
+    };
+
+    await transformImageNodes(doc, defaultConfig, root, join(root, "dist"), cache);
+    expect(doc.innerHTML).toContain('loading="eager"');
+    expect(doc.innerHTML).not.toContain('loading="lazy"');
+    expect(doc.innerHTML).not.toContain('decoding="async"');
+    teardown();
+  });
+
+  test("innerHTML: handles multiple img tags in one string", async () => {
+    const root = setup();
+    writeFileSync(join(root, "public/images/a.jpg"), "fake a");
+    writeFileSync(join(root, "public/images/b.jpg"), "fake b");
+
+    const distOptDir = join(root, "dist/images/_optimized");
+    mkdirSync(distOptDir, { recursive: true });
+
+    const makeManifest = (/** @type {string} */ name) => {
+      const m = {
+        original: { width: 640, height: 480, format: "jpeg" },
+        variants: [
+          {
+            width: 320,
+            format: "avif",
+            outputPath: `/images/_optimized/${name}-320-abc.avif`,
+            absolutePath: join(distOptDir, `${name}-320-abc.avif`),
+          },
+        ],
+        contentHash: "abc12345",
+      };
+      for (const v of m.variants) writeFileSync(v.absolutePath, "");
+      return m;
+    };
+
+    const cache = { version: 1, entries: /** @type {Record<string, any>} */ ({}) };
+    setCached(
+      cache,
+      `${contentHash(join(root, "public/images/a.jpg"))}:${configHash(defaultConfig)}`,
+      "/images/a.jpg",
+      makeManifest("a"),
+    );
+    setCached(
+      cache,
+      `${contentHash(join(root, "public/images/b.jpg"))}:${configHash(defaultConfig)}`,
+      "/images/b.jpg",
+      makeManifest("b"),
+    );
+
+    const doc = {
+      tagName: "my-component",
+      innerHTML:
+        '<div><img src="/images/a.jpg" alt="A"><p>text</p><img src="/images/b.jpg" alt="B"></div>',
+    };
+
+    await transformImageNodes(doc, defaultConfig, root, join(root, "dist"), cache);
+    expect(doc.innerHTML).toContain("a-320-abc.avif");
+    expect(doc.innerHTML).toContain("b-320-abc.avif");
     teardown();
   });
 });

@@ -5,6 +5,14 @@
     "layout": "./layouts/base.json",
     "lang": "en"
   },
+  "images": {
+    "optimize": true,
+    "widths": [320, 640, 960, 1280, 1920],
+    "formats": ["webp", "avif"],
+    "quality": { "webp": 80, "avif": 65, "jpeg": 80, "png": 80 },
+    "sizes": "(max-width: 768px) 100vw, 50vw",
+    "lazyLoad": true
+  },
   "imports": {
     "MarkdownFile": "@jxsuite/parser/MarkdownFile.class.json",
     "MarkdownCollection": "@jxsuite/parser/MarkdownCollection.class.json"

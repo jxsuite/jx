@@ -17,6 +17,8 @@ import remarkFrontmatter from "remark-frontmatter";
 import remarkParseFrontmatter from "remark-parse-frontmatter";
 import remarkGfm from "remark-gfm";
 import remarkDirective from "remark-directive";
+import { htmlToJx } from "./html-to-jx.js";
+export { htmlToJx };
 
 // ─── Dot-path expansion ─────────────────────────────────────────────────────
 
@@ -333,7 +335,7 @@ export function mdastNodeToJx(node) {
   }
 
   if (node.type === "html") {
-    if (node.value) return { tagName: "div", innerHTML: node.value };
+    if (node.value) return htmlToJx(node.value);
     return null;
   }
 
@@ -542,7 +544,7 @@ function directiveToJx(node) {
  */
 export function convertChildren(children) {
   if (!children) return [];
-  return children.map(mdastNodeToJx).filter((c) => c != null);
+  return children.flatMap(mdastNodeToJx).filter((c) => c != null);
 }
 
 /**

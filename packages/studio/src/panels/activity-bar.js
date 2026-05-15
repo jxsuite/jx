@@ -3,6 +3,26 @@
 import { html, render as litRender, nothing } from "lit-html";
 import { activityBar, update, getState, renderOnly } from "../store.js";
 
+const gitBranchIcon = (/** @type {any} */ s) => html`
+  <svg
+    slot="icon"
+    xmlns="http://www.w3.org/2000/svg"
+    width=${s === "m" ? 20 : 16}
+    height=${s === "m" ? 20 : 16}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="2"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  >
+    <line x1="6" y1="3" x2="6" y2="15"></line>
+    <circle cx="18" cy="6" r="3"></circle>
+    <circle cx="6" cy="18" r="3"></circle>
+    <path d="M18 9a9 9 0 0 1-9 9"></path>
+  </svg>
+`;
+
 /**
  * @param {any} tag
  * @param {any} size
@@ -32,6 +52,7 @@ export function tabIcon(tag, size) {
       html`<sp-icon-artboard slot="icon" size=${s}></sp-icon-artboard>`,
     "sp-icon-box": (/** @type {any} */ s) =>
       html`<sp-icon-box slot="icon" size=${s}></sp-icon-box>`,
+    "sp-icon-git-branch": gitBranchIcon,
   };
   const fn = m[tag];
   return fn ? fn(size || "s") : nothing;
@@ -47,6 +68,7 @@ export function renderActivityBar(S) {
     { value: "state", icon: "sp-icon-brackets", label: "State" },
     { value: "data", icon: "sp-icon-data", label: "Data" },
     { value: "head", icon: "sp-icon-file-single-web-page", label: "Head" },
+    { value: "git", icon: "sp-icon-git-branch", label: "Source Control" },
   ];
   const tpl = html`
     <sp-tabs

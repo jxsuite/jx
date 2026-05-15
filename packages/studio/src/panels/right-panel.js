@@ -11,6 +11,7 @@ import { eventsSidebarTemplate } from "./events-panel.js";
 import { isCustomElementDoc } from "./signals-panel.js";
 import { ensureLitState } from "./shared.js";
 import { isColorPopoverOpen } from "../ui/color-selector.js";
+import { renderStylePanelTemplate } from "./style-panel.js";
 
 /** @type {any} */
 let _ctx = null;
@@ -21,7 +22,7 @@ let _unsub = null;
 /**
  * Mount the right panel.
  *
- * @param {any} ctx — { propertiesSidebarTemplate, renderStylePanelTemplate, renderCanvas,
+ * @param {any} ctx — { propertiesSidebarTemplate, getCanvasMode, renderCanvas,
  *   updateForcedPseudoPreview }
  */
 export function mount(ctx) {
@@ -117,7 +118,7 @@ function rightPanelTemplate() {
     });
   } else if (tab === "style") {
     try {
-      bodyT = _ctx.renderStylePanelTemplate();
+      bodyT = renderStylePanelTemplate({ getCanvasMode: _ctx.getCanvasMode });
     } catch (/** @type {any} */ e) {
       console.error("[renderStylePanelTemplate]", e);
     }

@@ -2,7 +2,7 @@
 
 ## Visual Builder for Jx Documents
 
-**Version:** 2.1.0-draft
+**Version:** 2.2.0-draft
 **Status:** In Progress
 **License:** MIT
 
@@ -172,14 +172,16 @@ Formatting buttons only appear in content mode (rich text `contentEditable`), no
 
 Vertical tab strip for switching panel views:
 
-| Tab        | Icon      | Panel                   |
-| ---------- | --------- | ----------------------- |
-| Files      | folder    | Project file tree       |
-| Layers     | layers    | Document structure tree |
-| Components | box       | Component library       |
-| Elements   | view-grid | HTML element palette    |
-| State      | brackets  | State definitions       |
-| Data       | data      | Data connections        |
+| Tab            | Icon       | Panel                   |
+| -------------- | ---------- | ----------------------- |
+| Files          | folder     | Project file tree       |
+| Layers         | layers     | Document structure tree |
+| Components     | box        | Component library       |
+| Elements       | view-grid  | HTML element palette    |
+| State          | brackets   | State definitions       |
+| Data           | data       | Data connections        |
+| Head           | web-page   | Page meta and head      |
+| Source Control | git-branch | Git source control      |
 
 ### 5.2 Layers Panel
 
@@ -220,6 +222,65 @@ Project component library discovered via the platform (`discoverComponents()`), 
 - **Tag label**: Component tag name below the preview
 
 Components are drag-and-drop sources for inserting into the canvas.
+
+### 5.5 Source Control Panel
+
+Git-integrated source control panel providing commit, staging, branch management, and sync operations without leaving the studio. All git operations are performed server-side via `Bun.spawn(["git", ...])` and exposed through the PAL.
+
+#### Layout (top to bottom)
+
+1. **Toolbar** — Branch picker (`sp-picker`, quiet) + action button group (Fetch, Pull, Push, Refresh)
+2. **Sync indicator** — Shows commits ahead/behind remote when applicable
+3. **Commit area** — Multi-line text field with `Ctrl+Enter` to commit + Commit button
+4. **Staged Changes** — Section with file list and per-file Unstage button; section header has Unstage All button
+5. **Changes** — Section with unstaged/untracked files; per-file Stage and Discard buttons; section header has Stage All button
+
+#### File Rows
+
+Each file row displays:
+
+- **File name** — basename of the changed file
+- **Directory** — parent path in subdued text
+- **Action buttons** — hover-revealed Stage (+), Unstage (−), Discard (↩) buttons
+- **Status badge** — single-character badge with color coding:
+
+| Badge | Color  | Meaning   |
+| ----- | ------ | --------- |
+| M     | Yellow | Modified  |
+| A     | Green  | Added     |
+| D     | Red    | Deleted   |
+| R     | Blue   | Renamed   |
+| U     | Green  | Untracked |
+
+#### Branch Management
+
+The branch picker lists all local branches and includes a "+ New branch..." option that prompts for a name and creates + checks out a new branch.
+
+#### Server Endpoints
+
+| Endpoint                    | Method | Purpose                          |
+| --------------------------- | ------ | -------------------------------- |
+| `/__studio/git/status`      | GET    | Branch info + changed files list |
+| `/__studio/git/branches`    | GET    | List local branches              |
+| `/__studio/git/log`         | GET    | Recent commit history            |
+| `/__studio/git/stage`       | POST   | Stage files                      |
+| `/__studio/git/unstage`     | POST   | Unstage files                    |
+| `/__studio/git/commit`      | POST   | Create commit with message       |
+| `/__studio/git/push`        | POST   | Push to remote                   |
+| `/__studio/git/pull`        | POST   | Pull from remote                 |
+| `/__studio/git/fetch`       | POST   | Fetch from remote                |
+| `/__studio/git/checkout`    | POST   | Switch branch                    |
+| `/__studio/git/create-branch` | POST | Create and checkout new branch   |
+| `/__studio/git/diff`        | GET    | File diff                        |
+| `/__studio/git/discard`     | POST   | Discard unstaged changes         |
+
+#### Auto-refresh
+
+Status is fetched on tab activation and after every git operation. A 30-second polling interval refreshes status while the tab is active.
+
+#### PAL Methods
+
+All git operations are exposed as PAL methods (`gitStatus()`, `gitCommit(message)`, `gitPush()`, etc.) so the desktop platform can implement them via native RPC instead of HTTP.
 
 ---
 
@@ -320,11 +381,18 @@ Properties conditionally appear based on other property values (e.g. flex proper
 
 #### Media Breakpoint Tabs
 
-Tabs for each `$media` breakpoint, allowing responsive style editing per breakpoint.
+Tabs for each `$media` breakpoint, allowing responsive style editing per breakpoint. The media tabs and pseudo-selector share a single compact toolbar row — tabs on the left, selector picker on the right (quiet `sp-picker`).
 
 #### Nested Selector Context
 
-Nested CSS selectors (`:hover`, `:focus`, `:active`, `& childTag`) are editable as separate style contexts.
+Nested CSS selectors (`:hover`, `:focus`, `:active`, `& childTag`) are editable as separate style contexts. The selector picker is inline in the media tabs toolbar bar, right-aligned.
+
+#### Property Filter Bar
+
+Below the media/selector toolbar, a filter bar provides two controls:
+
+1. **Search input** — Text field for filtering CSS properties by name or label (case-insensitive substring match). When active, only matching properties are shown and their sections are force-opened; empty sections are hidden.
+2. **Active toggle** — Button that isolates only properties with set values, providing a focused view of applied styles. When active, sections without set properties are hidden.
 
 ### 6.3 State Editor
 
@@ -428,6 +496,7 @@ All file operations go through the Platform Abstraction Layer, which maps to `@j
 - Read/write/delete/rename files
 - Discover custom element components
 - Path traversal protection
+- Git operations (status, staging, commit, push/pull/fetch, branch management) via `/__studio/git/*` endpoints
 
 ---
 
@@ -477,4 +546,4 @@ See the [Site Architecture Specification](site-architecture.md) for full design 
 
 ---
 
-_`@jxsuite/studio` Specification v2.1.0-draft_
+_`@jxsuite/studio` Specification v2.2.0-draft_

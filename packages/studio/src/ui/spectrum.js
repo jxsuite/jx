@@ -128,6 +128,8 @@ import { IconTextStrikethrough } from "@spectrum-web-components/icons-workflow/s
 import { IconTextSuperscript } from "@spectrum-web-components/icons-workflow/src/elements/IconTextSuperscript.js";
 import { IconTextSubscript } from "@spectrum-web-components/icons-workflow/src/elements/IconTextSubscript.js";
 import { IconLink } from "@spectrum-web-components/icons-workflow/src/elements/IconLink.js";
+import { IconDownload } from "@spectrum-web-components/icons-workflow/src/elements/IconDownload.js";
+import { IconCheckmark } from "@spectrum-web-components/icons-workflow/src/elements/IconCheckmark.js";
 
 // Custom studio components
 import { JxValueSelector } from "./value-selector.js";
@@ -240,6 +242,8 @@ const components = [
   ["sp-icon-text-baseline-shift", IconTextBaselineShift],
   ["sp-icon-flip-vertical", IconFlipVertical],
   ["sp-icon-remove", IconRemove],
+  ["sp-icon-download", IconDownload],
+  ["sp-icon-checkmark", IconCheckmark],
   ["sp-icon-view-column", IconViewColumn],
   ["sp-icon-box", IconBox],
   ["sp-icon-visibility", IconVisibility],

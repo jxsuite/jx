@@ -74,18 +74,11 @@ export function saveCache(projectRoot, cache) {
  *
  * @param {CacheManifest} cache
  * @param {string} key
- * @param {string} outDir - Absolute path to build output dir
  * @returns {ImageManifest | null}
  */
-export function getCached(cache, key, outDir) {
+export function getCached(cache, key) {
   const entry = cache.entries[key];
   if (!entry) return null;
-
-  const allExist = entry.manifest.variants.every((v) =>
-    existsSync(resolve(outDir, v.outputPath.slice(1))),
-  );
-  if (!allExist) return null;
-
   return entry.manifest;
 }
 

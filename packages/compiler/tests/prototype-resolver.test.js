@@ -196,6 +196,80 @@ describe("resolvePrototypes", () => {
       cleanup();
     }
   });
+
+  test("resolves MarkdownFile as a built-in prototype (no imports needed)", async () => {
+    const mdFixtures = join(import.meta.dir, "_fixtures_builtin_md");
+    mkdirSync(mdFixtures, { recursive: true });
+    writeFileSync(join(mdFixtures, "test.md"), "---\ntitle: Test Page\n---\n\nHello world\n");
+    try {
+      const doc = {
+        state: {
+          page: {
+            $prototype: "MarkdownFile",
+            src: "./test.md",
+            timing: "compiler",
+          },
+        },
+      };
+      await resolvePrototypes(doc, { sourcePath: join(mdFixtures, "page.json") }, mdFixtures);
+      const page = /** @type {any} */ (doc.state.page);
+      expect(page.frontmatter.title).toBe("Test Page");
+      expect(page.$children).toBeArray();
+      expect(page.$children.length).toBeGreaterThan(0);
+      expect(page.slug).toBe("test");
+    } finally {
+      rmSync(mdFixtures, { recursive: true, force: true });
+    }
+  });
+
+  test("resolves MarkdownCollection as a built-in prototype (no imports needed)", async () => {
+    const mdFixtures = join(import.meta.dir, "_fixtures_builtin_mdc");
+    mkdirSync(mdFixtures, { recursive: true });
+    writeFileSync(
+      join(mdFixtures, "a.md"),
+      "---\ntitle: First\ndate: 2025-01-01\n---\n\nFirst post\n",
+    );
+    writeFileSync(
+      join(mdFixtures, "b.md"),
+      "---\ntitle: Second\ndate: 2025-02-01\n---\n\nSecond post\n",
+    );
+    try {
+      const doc = {
+        state: {
+          posts: {
+            $prototype: "MarkdownCollection",
+            src: "./*.md",
+            timing: "compiler",
+          },
+        },
+      };
+      await resolvePrototypes(doc, { sourcePath: join(mdFixtures, "page.json") }, mdFixtures);
+      const posts = /** @type {any[]} */ (/** @type {unknown} */ (doc.state.posts));
+      expect(posts).toBeArray();
+      expect(posts.length).toBe(2);
+      const titles = posts.map((p) => p.frontmatter.title);
+      expect(titles).toContain("First");
+      expect(titles).toContain("Second");
+    } finally {
+      rmSync(mdFixtures, { recursive: true, force: true });
+    }
+  });
+
+  test("explicit imports override built-in prototype mappings", async () => {
+    setup();
+    try {
+      const doc = {
+        state: {
+          result: { $prototype: "MarkdownFile", a: 4, b: 9 },
+        },
+        imports: { MarkdownFile: "./Multiplier.class.json" },
+      };
+      await resolvePrototypes(doc, { sourcePath: join(FIXTURES, "page.json") }, FIXTURES);
+      expect(/** @type {any} */ (doc.state.result)).toBe(36);
+    } finally {
+      cleanup();
+    }
+  });
 });
 
 process.on("exit", () => {
