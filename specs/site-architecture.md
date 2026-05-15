@@ -217,6 +217,7 @@ The `project.json` file at the project root defines site-wide settings. It is th
 | `redirects`        | `object` | Static redirect rules (see §11)                                     |
 | `imports`          | `object` | Import map: `$prototype` name → `.class.json` path (see spec §12.4) |
 | `build`            | `object` | Build output configuration (see §14)                                |
+| `images`           | `object` | Image optimization settings (see §9.2)                              |
 
 ### 3.2 Inheritance
 
@@ -921,12 +922,95 @@ Media files live in two locations:
 
 ### 9.2 Image Optimization
 
-The compiler processes images referenced from content and components:
+The compiler includes a build-time image optimization pipeline powered by [Sharp](https://sharp.pixelplumbing.com/). When enabled, it generates responsive image variants, converts formats, and adds performance attributes automatically.
 
-- **Format conversion:** Source images converted to WebP/AVIF for production
-- **Responsive sizes:** Multiple sizes generated for `srcset`
-- **Lazy loading:** `loading="lazy"` and `decoding="async"` added automatically
-- **Dimension extraction:** `width` and `height` attributes set to prevent layout shift
+#### 9.2.1 Configuration
+
+Image optimization is configured in `project.json` under the `images` key. All properties have sensible defaults:
+
+```json
+{
+  "images": {
+    "optimize": true,
+    "widths": [320, 640, 960, 1280, 1920],
+    "formats": ["webp", "avif"],
+    "quality": { "webp": 80, "avif": 65, "jpeg": 80, "png": 80 },
+    "sizes": "(max-width: 768px) 100vw, 50vw",
+    "lazyLoad": true
+  }
+}
+```
+
+| Property   | Type       | Default                                    | Description                                                    |
+| ---------- | ---------- | ------------------------------------------ | -------------------------------------------------------------- |
+| `optimize` | `boolean`  | `true`                                     | Master switch — set to `false` to disable all image processing |
+| `widths`   | `number[]` | `[320, 640, 960, 1280, 1920]`              | Pixel widths for responsive `srcset` variants                  |
+| `formats`  | `string[]` | `["webp", "avif"]`                         | Output formats (also supports `"jpeg"`, `"png"`)               |
+| `quality`  | `object`   | `{ webp: 80, avif: 65, jpeg: 80, png: 80 }` | Per-format compression quality (0–100)                        |
+| `sizes`    | `string`   | `"(max-width: 768px) 100vw, 50vw"`         | Default CSS `sizes` attribute for responsive hints             |
+| `lazyLoad` | `boolean`  | `true`                                     | Adds `loading="lazy"` and `decoding="async"` to `<img>` tags  |
+
+#### 9.2.2 Build-Time Behavior
+
+When `optimize: true`, the compiler processes every `<img>` node during page compilation:
+
+1. **Width filtering** — Only generates variants at widths ≤ the source image's natural width. The original width is always included as a breakpoint.
+2. **Format conversion** — Each width × format combination produces an optimized variant via Sharp.
+3. **Output path** — Variants are written to `dist/images/_optimized/{stem}-{width}-{hash}.{format}` (e.g., `hero-640-a1b2c3d4.webp`).
+4. **Attribute injection** — The compiler mutates the `<img>` node to add:
+   - `srcset` — responsive variant list (e.g., `hero-320-a1b2.avif 320w, hero-640-a1b2.avif 640w, ...`)
+   - `sizes` — from config (unless the node already specifies one)
+   - `width` and `height` — original image dimensions (prevents layout shift)
+   - `loading="lazy"` and `decoding="async"` — when `lazyLoad: true` (unless `loading="eager"` is already set)
+
+Up to 4 variants are processed concurrently per image.
+
+#### 9.2.3 Which Images Are Processed
+
+The optimizer processes `<img>` nodes with:
+
+- Static `src` paths (strings, not `${...}` template expressions)
+- Local paths (relative or `/`-prefixed) that exist on disk
+- Raster formats: `.jpg`, `.jpeg`, `.png`, `.webp`, `.avif`, `.tiff`
+
+**Skipped automatically:**
+
+- External URLs (`http://`, `https://`, `//`, `data:`)
+- SVGs (`.svg`) and animated GIFs (`.gif`)
+- Dynamic `src` containing `${...}` template expressions
+- Images with `data-no-optimize` attribute
+
+#### 9.2.4 Per-Image Overrides
+
+Individual `<img>` nodes can override global defaults:
+
+```json
+{
+  "tagName": "img",
+  "attributes": {
+    "src": "/images/hero.jpg",
+    "alt": "Hero image",
+    "sizes": "(max-width: 640px) 80vw, 40vw",
+    "loading": "eager",
+    "data-no-optimize": true
+  }
+}
+```
+
+- `sizes` — overrides the global `sizes` value for this image
+- `loading="eager"` — prevents `loading="lazy"` from being added (for above-the-fold images)
+- `data-no-optimize` — skips optimization entirely for this image
+
+#### 9.2.5 Caching
+
+The optimizer caches processed images to avoid redundant re-encoding on subsequent builds:
+
+- **Cache location:** `.jx-cache/images/manifest.json`
+- **Cache key:** `{contentHash}:{configHash}` — MD5 of the source file contents combined with MD5 of the optimization config (`widths`, `formats`, `quality`)
+- **Invalidation:** A cache entry is invalidated when the source image changes (new content hash), the optimization config changes (new config hash), or the output variant files are missing from `dist/`
+- **Persistence:** The cache file survives `dist/` cleanup — only the variant files are regenerated
+
+The `.jx-cache/` directory should be added to `.gitignore` but can optionally be committed for CI build speed.
 
 ### 9.3 Referencing Media
 
@@ -1142,9 +1226,10 @@ For each route:
     Resolve $layout     → wrap in layout
     Resolve $head       → merge site + layout + page heads
     Resolve state       → inject content entries, site state
+    Transform images    → generate responsive variants, inject srcset/sizes
     Compile             → existing compiler routes (static/dynamic/custom-element)
     ↓
-Bundle server entries   → _worker.js (if provider set, else per-route _server.js)
+Bundle server entries   → dist/worker.js (if provider set, else per-route _server.js)
     ↓
 Emit dist/
     ├── index.html
@@ -1153,9 +1238,11 @@ Emit dist/
     ├── _assets/
     │   ├── styles.css
     │   └── client.js
+    ├── images/
+    │   └── _optimized/         (responsive image variants)
     ├── sitemap.xml
     └── _redirects
-_worker.js              (project root, if provider set)
+dist/worker.js              (inside dist/, if provider set)
 ```
 
 ### 12.2 Build Commands
@@ -1264,7 +1351,7 @@ The build output is standard static files deployable anywhere. When `build.provi
 | Provider             | Extra Output                                                         |
 | -------------------- | -------------------------------------------------------------------- |
 | *(none)*             | Just `dist/` with HTML/CSS/JS/assets                                 |
-| `"cloudflare"`       | `_worker.js` (Hono server with asset fallback), `_redirects`         |
+| `"cloudflare"`       | `dist/worker.js` (Hono server with asset fallback), `_redirects`     |
 | `"netlify"`          | `_redirects`, `_headers`                                             |
 | `"vercel"`           | `vercel.json` with redirects/headers                                 |
 | `"github-pages"`     | `.nojekyll`, 404.html                                                |
@@ -1293,10 +1380,10 @@ When `provider` is set and the site contains `timing: "server"` entries, the com
 1. Collects all server entries from components and pages
 2. Deduplicates by export name
 3. Skips per-route `_server.js` generation
-4. Emits a single `_worker.js` at the project root via `compileSiteServer()`
+4. Emits a single `dist/worker.js` via `compileSiteServer()`
 5. Adds provider-specific boilerplate (e.g., Cloudflare asset fallback via `c.env.ASSETS.fetch()`)
 
-The generated `_worker.js` is a build artifact and should be added to `.gitignore`.
+The generated `dist/worker.js` is a build artifact inside `dist/` and is excluded by the standard `dist/` gitignore rule.
 
 ### 14.2 Build Artifacts
 
@@ -1317,12 +1404,17 @@ dist/
 │   └── images/
 │       ├── hero.g7h8i9.webp
 │       └── hero.g7h8i9.avif
+├── images/
+│   └── _optimized/              # Responsive image variants
+│       ├── hero-320-a1b2c3d4.webp
+│       ├── hero-640-a1b2c3d4.webp
+│       ├── hero-320-a1b2c3d4.avif
+│       └── hero-640-a1b2c3d4.avif
 ├── sitemap.xml                  # Auto-generated
 ├── robots.txt                   # Copied from public/
 ├── favicon.svg                  # Copied from public/
-└── _redirects                   # Platform-specific
-
-_worker.js                       # Project root (when provider set + server entries exist)
+├── _redirects                   # Platform-specific
+└── worker.js                    # Server worker (when provider set + server entries exist)
 ```
 
 ---
@@ -1401,7 +1493,7 @@ This spec builds on existing Jx primitives wherever possible:
 
 ### Phase 4: Build Pipeline
 
-- [ ] Image optimization pipeline (WebP/AVIF, responsive srcset, lazy loading)
+- [x] Image optimization pipeline (WebP/AVIF, responsive srcset, lazy loading, caching)
 - [ ] Sitemap generation (`sitemap.xml` from route table)
 - [ ] Incremental builds (dependency tracking, selective recompilation)
 - [x] Platform providers — `build.provider` for site-wide server bundling (Cloudflare implemented)
