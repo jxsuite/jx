@@ -144,7 +144,7 @@ describe("compileElement — templates", () => {
     expect(content).toContain(">Hello</span>");
   });
 
-  test("inner styles via CSS injection", async () => {
+  test("inner styles use class names (CSS in sidecar, not JS)", async () => {
     const result = await compileElement({
       tagName: "test-style",
       state: {},
@@ -158,10 +158,9 @@ describe("compileElement — templates", () => {
 
     const content = result.files[0].content;
     expect(content).toContain('class="test-style-0"');
-    expect(content).toContain("display: flex");
-    expect(content).toContain("gap: 1em");
-    expect(content).toContain("background-color: #fff");
-    expect(content).toContain("data-jx");
+    expect(content).not.toContain("display: flex");
+    expect(content).not.toContain("background-color: #fff");
+    expect(content).not.toContain('data-jx="');
   });
 
   test("dynamic style with template expression", async () => {

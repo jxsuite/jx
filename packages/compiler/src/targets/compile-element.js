@@ -352,15 +352,6 @@ export function emitElementModule(doc, className, elementImports) {
       lines.push("    });");
     }
   }
-  if (cssRules.length > 0) {
-    const cssText = cssRules.join("\\n").replace(/'/g, "\\'");
-    lines.push(`    if (!document.querySelector('style[data-jx="${doc.tagName}"]')) {`);
-    lines.push(`      const _s = document.createElement('style');`);
-    lines.push(`      _s.setAttribute('data-jx', '${doc.tagName}');`);
-    lines.push(`      _s.textContent = '${cssText}';`);
-    lines.push(`      document.head.appendChild(_s);`);
-    lines.push(`    }`);
-  }
   const hasSlot = treeHasSlot(doc.children);
   if (hasSlot) {
     // Save light DOM children (slotted content) before clearing
