@@ -42,8 +42,6 @@ export async function openProject(): Promise<OpenProjectResult | null> {
     allowsMultipleSelection: false,
   });
 
-  console.log("[openProject] dialog returned:", paths);
-
   if (!paths || paths.length === 0 || (paths.length === 1 && !paths[0])) return null;
 
   const filePath = paths[0].trim();
@@ -56,7 +54,6 @@ export async function openProject(): Promise<OpenProjectResult | null> {
   const raw = await readFile(filePath, "utf8");
   const config = JSON.parse(raw);
   projectRoot = resolve(filePath, "..");
-  console.log("[openProject] project root set to:", projectRoot);
 
   return {
     config,
