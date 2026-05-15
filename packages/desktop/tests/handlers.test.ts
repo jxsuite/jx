@@ -1,6 +1,7 @@
 import { describe, test, expect, mock } from "bun:test";
 import { writeFileSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import type { DirEntry, ComponentMeta } from "../src/rpc-schema.ts";
 
 mock.module("electrobun/bun", () => ({
   Utils: { openFileDialog: async () => [] },
@@ -21,7 +22,7 @@ const {
   codeService,
   locateFile,
   fetchPluginSchema,
-} = await import("../src/handlers.js");
+} = await import("../src/handlers");
 
 const FIXTURES = join(import.meta.dir, "_fixtures_handlers");
 
@@ -32,7 +33,7 @@ function setup() {
 
 function cleanup() {
   rmSync(FIXTURES, { recursive: true, force: true });
-  setProjectRoot(/** @type {any} */ (null));
+  setProjectRoot(null);
 }
 
 // ─── State ──────────────────────────────────────────────────────────────────
@@ -41,7 +42,7 @@ describe("project root state", () => {
   test("setProjectRoot / getProjectRoot", () => {
     setProjectRoot("/tmp/test");
     expect(getProjectRoot()).toBe("/tmp/test");
-    setProjectRoot(/** @type {any} */ (null));
+    setProjectRoot(null);
     expect(getProjectRoot()).toBe(null);
   });
 });
@@ -50,7 +51,7 @@ describe("project root state", () => {
 
 describe("guards", () => {
   test("throws when no project root is set", async () => {
-    setProjectRoot(/** @type {any} */ (null));
+    setProjectRoot(null);
     await expect(listDirectory({ dir: "." })).rejects.toThrow("No project open");
     await expect(handleReadFile({ path: "test.txt" })).rejects.toThrow("No project open");
   });
@@ -77,14 +78,14 @@ describe("listDirectory", () => {
       mkdirSync(join(FIXTURES, "subdir"), { recursive: true });
 
       const entries = await listDirectory({ dir: "." });
-      const names = entries.map((e) => e.name);
+      const names = entries.map((e: DirEntry) => e.name);
       expect(names).toContain("test.json");
       expect(names).toContain("subdir");
 
-      const file = /** @type {any} */ (entries.find((e) => e.name === "test.json"));
+      const file = entries.find((e: DirEntry) => e.name === "test.json")!;
       expect(file.type).toBe("file");
 
-      const dir = /** @type {any} */ (entries.find((e) => e.name === "subdir"));
+      const dir = entries.find((e: DirEntry) => e.name === "subdir")!;
       expect(dir.type).toBe("directory");
     } finally {
       cleanup();
@@ -98,7 +99,7 @@ describe("listDirectory", () => {
       writeFileSync(join(FIXTURES, "visible.txt"), "hello");
 
       const entries = await listDirectory({ dir: "." });
-      const names = entries.map((e) => e.name);
+      const names = entries.map((e: DirEntry) => e.name);
       expect(names).not.toContain(".hidden");
       expect(names).toContain("visible.txt");
     } finally {
@@ -112,7 +113,7 @@ describe("listDirectory", () => {
       writeFileSync(join(FIXTURES, "data.json"), '{"x": 1}');
 
       const entries = await listDirectory({ dir: "." });
-      const file = /** @type {any} */ (entries.find((e) => e.name === "data.json"));
+      const file = entries.find((e: DirEntry) => e.name === "data.json")!;
       expect(file.size).toBeGreaterThan(0);
       expect(file.modified).toBeDefined();
       expect(file.path).toBe("data.json");
@@ -235,7 +236,7 @@ describe("handleCreateDirectory", () => {
     try {
       await handleCreateDirectory({ path: "new-dir" });
       const entries = await listDirectory({ dir: "." });
-      const names = entries.map((e) => e.name);
+      const names = entries.map((e: DirEntry) => e.name);
       expect(names).toContain("new-dir");
     } finally {
       cleanup();
@@ -247,7 +248,7 @@ describe("handleCreateDirectory", () => {
     try {
       await handleCreateDirectory({ path: "a/b/c" });
       const entries = await listDirectory({ dir: "a/b" });
-      const names = entries.map((e) => e.name);
+      const names = entries.map((e: DirEntry) => e.name);
       expect(names).toContain("c");
     } finally {
       cleanup();
@@ -278,12 +279,12 @@ describe("discoverComponents", () => {
 
       const components = await discoverComponents({ dir: "." });
       expect(components.length).toBeGreaterThanOrEqual(1);
-      const btn = /** @type {any} */ (components.find((c) => c.tagName === "my-button"));
+      const btn = components.find((c: ComponentMeta) => c.tagName === "my-button")!;
       expect(btn).toBeDefined();
       expect(btn.$id).toBe("btn-001");
       expect(btn.path).toContain("my-button.json");
-      expect(btn.props.find((/** @type {any} */ p) => p.name === "label")).toBeDefined();
-      expect(btn.props.find((/** @type {any} */ p) => p.name === "onClick")).toBeUndefined();
+      expect(btn.props!.find((p) => p.name === "label")).toBeDefined();
+      expect(btn.props!.find((p) => p.name === "onClick")).toBeUndefined();
     } finally {
       cleanup();
     }
@@ -296,7 +297,7 @@ describe("discoverComponents", () => {
       writeFileSync(join(FIXTURES, "page.json"), JSON.stringify({ tagName: "div", children: [] }));
 
       const components = await discoverComponents({ dir: "." });
-      expect(components.find((c) => c.tagName === "div")).toBeUndefined();
+      expect(components.find((c: ComponentMeta) => c.tagName === "div")).toBeUndefined();
     } finally {
       cleanup();
     }
@@ -312,7 +313,7 @@ describe("discoverComponents", () => {
       );
 
       const components = await discoverComponents({ dir: "." });
-      expect(components.find((c) => c.tagName === "my-ext")).toBeUndefined();
+      expect(components.find((c: ComponentMeta) => c.tagName === "my-ext")).toBeUndefined();
     } finally {
       cleanup();
     }
@@ -335,8 +336,8 @@ describe("discoverComponents", () => {
       );
 
       const components = await discoverComponents({ dir: "." });
-      const card = components.find((c) => c.tagName === "my-card");
-      const box = components.find((c) => c.tagName === "my-box");
+      const card = components.find((c: ComponentMeta) => c.tagName === "my-card");
+      const box = components.find((c: ComponentMeta) => c.tagName === "my-box");
       expect(card?.hasElements).toBe(true);
       expect(box?.hasElements).toBe(false);
     } finally {
@@ -422,7 +423,7 @@ describe("fetchPluginSchema", () => {
         }),
       );
 
-      const schema = /** @type {any} */ (await fetchPluginSchema({ src: "./Counter.class.json" }));
+      const schema = (await fetchPluginSchema({ src: "./Counter.class.json" })) as any;
       expect(schema).not.toBeNull();
       expect(schema.description).toBe("A counter component");
       expect(schema.properties.initial).toBeDefined();
@@ -463,12 +464,10 @@ describe("fetchPluginSchema", () => {
         }),
       );
 
-      const schema = /** @type {any} */ (
-        await fetchPluginSchema({
-          src: "./Widget.class.json",
-          base: "file:///components/page.json",
-        })
-      );
+      const schema = (await fetchPluginSchema({
+        src: "./Widget.class.json",
+        base: "file:///components/page.json",
+      })) as any;
       expect(schema).not.toBeNull();
       expect(schema.properties.size.default).toBe("md");
     } finally {
@@ -505,7 +504,7 @@ describe("fetchPluginSchema", () => {
         }),
       );
 
-      const schema = /** @type {any} */ (await fetchPluginSchema({ src: "./Child.class.json" }));
+      const schema = (await fetchPluginSchema({ src: "./Child.class.json" })) as any;
       expect(schema).not.toBeNull();
       expect(schema.properties.baseField).toBeDefined();
       expect(schema.properties.childField).toBeDefined();

@@ -16,7 +16,7 @@ export default {
 
   build: {
     bun: {
-      entrypoint: "src/index.js",
+      entrypoint: "src/index.ts",
       external: [
         "@prettier/plugin-oxc",
         "@prettier/plugin-hermes",
@@ -32,6 +32,9 @@ export default {
     mac: {
       bundleCEF: true,
       defaultRenderer: "cef",
+      icon: "icon.png",
+      codesign: true,
+      notarize: true,
     },
     linux: {
       bundleCEF: true,
@@ -58,7 +61,7 @@ export default {
   },
 
   scripts: {
-    preBuild: "./scripts/pre-build.js",
+    preBuild: "./scripts/pre-build.ts",
   },
 
   release: {

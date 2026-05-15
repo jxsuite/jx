@@ -1,51 +1,30 @@
-/**
- * Handlers.js — Bun-side PAL implementation
- *
- * Each export maps to a StudioRPCSchema bun request handler. The handlers perform direct filesystem
- * operations against the project root.
- *
- * See spec/desktop.md §7.3 for the architecture.
- */
-
 import { Utils } from "electrobun/bun";
 import { readdir, readFile, writeFile, unlink, rename, stat, mkdir } from "node:fs/promises";
 import { resolve, relative, join, basename, dirname } from "node:path";
 import { homedir } from "node:os";
 import { existsSync, readFileSync } from "node:fs";
-
-/** @typedef {import("./rpc-schema.js").DirEntry} DirEntry */
-/** @typedef {import("./rpc-schema.js").ComponentMeta} ComponentMeta */
-/** @typedef {import("./rpc-schema.js").OpenProjectResult} OpenProjectResult */
-/** @typedef {import("./rpc-schema.js").CodeServiceResult} CodeServiceResult */
+import type { DirEntry, ComponentMeta, OpenProjectResult, CodeServiceResult } from "./rpc-schema";
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
-/** @type {string | null} */
-let projectRoot = null;
+let projectRoot: string | null = null;
 
-/** @param {string} root */
-export function setProjectRoot(root) {
+export function setProjectRoot(root: string | null) {
   projectRoot = root;
 }
 
-/** @returns {string | null} */
-export function getProjectRoot() {
+export function getProjectRoot(): string | null {
   return projectRoot;
 }
 
 // ─── Guards ───────────────────────────────────────────────────────────────────
 
-/** @returns {string} */
-function requireRoot() {
+function requireRoot(): string {
   if (!projectRoot) throw new Error("No project open");
   return projectRoot;
 }
 
-/**
- * @param {string} absPath
- * @param {string} root
- */
-function assertUnderRoot(absPath, root) {
+function assertUnderRoot(absPath: string, root: string) {
   const rel = relative(root, absPath);
   if (rel.startsWith("..") || rel.startsWith("/")) {
     throw new Error("Path outside project root");
@@ -54,8 +33,7 @@ function assertUnderRoot(absPath, root) {
 
 // ─── Handlers ─────────────────────────────────────────────────────────────────
 
-/** @returns {Promise<OpenProjectResult | null>} */
-export async function openProject() {
+export async function openProject(): Promise<OpenProjectResult | null> {
   const paths = await Utils.openFileDialog({
     startingFolder: projectRoot || homedir(),
     allowedFileTypes: "json",
@@ -85,18 +63,13 @@ export async function openProject() {
   };
 }
 
-/**
- * @param {{ dir: string }} params
- * @returns {Promise<DirEntry[]>}
- */
-export async function listDirectory(params) {
+export async function listDirectory(params: { dir: string }): Promise<DirEntry[]> {
   const root = requireRoot();
   const absDir = resolve(root, params.dir);
   assertUnderRoot(absDir, root);
 
   const entries = await readdir(absDir, { withFileTypes: true });
-  /** @type {DirEntry[]} */
-  const result = [];
+  const result: DirEntry[] = [];
 
   for (const entry of entries) {
     if (entry.name.startsWith(".")) continue;
@@ -116,22 +89,14 @@ export async function listDirectory(params) {
   return result;
 }
 
-/**
- * @param {{ path: string }} params
- * @returns {Promise<string>}
- */
-export async function handleReadFile(params) {
+export async function handleReadFile(params: { path: string }): Promise<string> {
   const root = requireRoot();
   const abs = resolve(root, params.path);
   assertUnderRoot(abs, root);
   return readFile(abs, "utf8");
 }
 
-/**
- * @param {{ path: string; content: string }} params
- * @returns {Promise<void>}
- */
-export async function handleWriteFile(params) {
+export async function handleWriteFile(params: { path: string; content: string }): Promise<void> {
   const root = requireRoot();
   const abs = resolve(root, params.path);
   assertUnderRoot(abs, root);
@@ -139,22 +104,14 @@ export async function handleWriteFile(params) {
   await writeFile(abs, params.content, "utf8");
 }
 
-/**
- * @param {{ path: string }} params
- * @returns {Promise<void>}
- */
-export async function handleDeleteFile(params) {
+export async function handleDeleteFile(params: { path: string }): Promise<void> {
   const root = requireRoot();
   const abs = resolve(root, params.path);
   assertUnderRoot(abs, root);
   await unlink(abs);
 }
 
-/**
- * @param {{ from: string; to: string }} params
- * @returns {Promise<void>}
- */
-export async function handleRenameFile(params) {
+export async function handleRenameFile(params: { from: string; to: string }): Promise<void> {
   const root = requireRoot();
   const absFrom = resolve(root, params.from);
   const absTo = resolve(root, params.to);
@@ -164,29 +121,20 @@ export async function handleRenameFile(params) {
   await rename(absFrom, absTo);
 }
 
-/**
- * @param {{ path: string }} params
- * @returns {Promise<void>}
- */
-export async function handleCreateDirectory(params) {
+export async function handleCreateDirectory(params: { path: string }): Promise<void> {
   const root = requireRoot();
   const abs = resolve(root, params.path);
   assertUnderRoot(abs, root);
   await mkdir(abs, { recursive: true });
 }
 
-/**
- * @param {{ dir?: string }} params
- * @returns {Promise<ComponentMeta[]>}
- */
-export async function discoverComponents(params) {
+export async function discoverComponents(params: { dir?: string }): Promise<ComponentMeta[]> {
   const root = requireRoot();
   const scanRoot = params.dir ? resolve(root, params.dir) : root;
   if (params.dir) assertUnderRoot(scanRoot, root);
 
   const glob = new Bun.Glob("**/*.json");
-  /** @type {ComponentMeta[]} */
-  const components = [];
+  const components: ComponentMeta[] = [];
 
   for await (const match of glob.scan({ cwd: scanRoot, dot: false })) {
     if (match.includes("node_modules") || match.includes("dist/") || match.includes(".claude/"))
@@ -204,43 +152,32 @@ export async function discoverComponents(params) {
               ([, d]) =>
                 d &&
                 typeof d === "object" &&
-                !(/** @type {any} */ (d).$prototype) &&
-                !(/** @type {any} */ (d).$handler) &&
-                !(/** @type {any} */ (d).$compute),
+                !(d as any).$prototype &&
+                !(d as any).$handler &&
+                !(d as any).$compute,
             )
             .map(([name, d]) => ({
               name,
-              type: /** @type {any} */ (d).type,
-              default: /** @type {any} */ (d).default,
+              type: (d as any).type,
+              default: (d as any).default,
             })),
           hasElements: Array.isArray(content.$elements) && content.$elements.length > 0,
         });
       }
-    } catch {} // skip non-JSON or parse errors
+    } catch {}
   }
 
   return components;
 }
 
-/**
- * @param {any} _params
- * @returns {Promise<CodeServiceResult | null>}
- */
-export async function codeService(_params) {
-  // Code services run in the Bun process directly.
-  // For now, return null — oxfmt/oxlint integration is Phase 3.
+export async function codeService(_params: any): Promise<CodeServiceResult | null> {
   return null;
 }
 
-/**
- * @param {{ name: string }} params
- * @returns {Promise<string | null>}
- */
-export async function locateFile(params) {
+export async function locateFile(params: { name: string }): Promise<string | null> {
   const root = requireRoot();
   const glob = new Bun.Glob(`**/${params.name}`);
-  /** @type {string[]} */
-  const matches = [];
+  const matches: string[] = [];
 
   for await (const match of glob.scan({ cwd: root, dot: false })) {
     if (match.includes("node_modules") || match.includes("dist/")) continue;
@@ -250,15 +187,14 @@ export async function locateFile(params) {
   return matches.length > 0 ? matches[0] : null;
 }
 
-/**
- * @param {{ src: string; prototype?: string; base?: string }} params
- * @returns {Promise<unknown>}
- */
-export async function fetchPluginSchema(params) {
+export async function fetchPluginSchema(params: {
+  src: string;
+  prototype?: string;
+  base?: string;
+}): Promise<unknown> {
   const root = requireRoot();
 
-  /** @type {string} */
-  let moduleAbsPath;
+  let moduleAbsPath: string;
   try {
     if (params.base) {
       const docUrlPath = new URL(params.base).pathname;
@@ -271,7 +207,6 @@ export async function fetchPluginSchema(params) {
     return null;
   }
 
-  // .class.json: read and extract schema directly
   if (moduleAbsPath.endsWith(".class.json")) {
     try {
       const content = readFileSync(moduleAbsPath, "utf8");
@@ -282,7 +217,6 @@ export async function fetchPluginSchema(params) {
     }
   }
 
-  // Sibling .class.json auto-discovery
   const exportName = params.prototype || params.src;
   const classJsonPath = resolve(dirname(moduleAbsPath), `${exportName}.class.json`);
   if (existsSync(classJsonPath)) {
@@ -293,7 +227,6 @@ export async function fetchPluginSchema(params) {
     } catch {}
   }
 
-  // Fallback: import JS module
   try {
     const mod = await import(moduleAbsPath);
     const ExportedClass = mod[exportName] ?? mod.default?.[exportName];
@@ -306,14 +239,8 @@ export async function fetchPluginSchema(params) {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-/**
- * @param {any} classDef
- * @param {string} classJsonPath
- * @returns {any}
- */
-function extractStudioSchema(classDef, classJsonPath) {
-  /** @type {any} */
-  let parentSchema = null;
+function extractStudioSchema(classDef: any, classJsonPath: string): any {
+  let parentSchema: any = null;
   if (classDef.extends?.["$ref"]) {
     try {
       const parentPath = resolve(dirname(classJsonPath), classDef.extends["$ref"]);
@@ -325,19 +252,16 @@ function extractStudioSchema(classDef, classJsonPath) {
 
   const params = classDef.$defs?.parameters ?? {};
   const fields = classDef.$defs?.fields ?? {};
-  /** @type {Record<string, any>} */
-  const properties = {};
-  /** @type {string[]} */
-  const required = [];
+  const properties: Record<string, any> = {};
+  const required: string[] = [];
 
   if (parentSchema?.properties) Object.assign(properties, parentSchema.properties);
   if (parentSchema?.required) required.push(...parentSchema.required);
 
   for (const [key, param] of Object.entries(params)) {
-    const p = /** @type {any} */ (param);
+    const p = param as any;
     const id = p.identifier ?? key;
-    /** @type {any} */
-    const prop = {};
+    const prop: any = {};
     if (p.type && typeof p.type === "object") Object.assign(prop, p.type);
     if (p.description) prop.description = p.description;
     if (p.examples) prop.examples = p.examples;
@@ -346,12 +270,11 @@ function extractStudioSchema(classDef, classJsonPath) {
   }
 
   for (const [key, field] of Object.entries(fields)) {
-    const f = /** @type {any} */ (field);
+    const f = field as any;
     if (f.role !== "field") continue;
     if (f.access === "private") continue;
     const id = f.identifier ?? key;
-    /** @type {any} */
-    const prop = {};
+    const prop: any = {};
     if (f.type && typeof f.type === "object") Object.assign(prop, f.type);
     if (f.description) prop.description = f.description;
     if (f.default !== undefined) prop.default = f.default;
@@ -360,8 +283,7 @@ function extractStudioSchema(classDef, classJsonPath) {
     properties[id] = prop;
   }
 
-  /** @type {any[]} */
-  const ctorParams = classDef.$defs?.constructor?.parameters ?? [];
+  const ctorParams: any[] = classDef.$defs?.constructor?.parameters ?? [];
   const requiredSet = new Set(required);
   for (const p of ctorParams) {
     const name = p.$ref ? p.$ref.split("/").pop() : (p.identifier ?? p.name);
