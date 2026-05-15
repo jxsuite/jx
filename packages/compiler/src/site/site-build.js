@@ -14,6 +14,7 @@ import {
   copyFileSync,
   mkdirSync,
   existsSync,
+  renameSync,
   rmSync,
   cpSync,
   readdirSync,
@@ -71,7 +72,19 @@ export async function buildSite(projectRoot, options = {}) {
 
   // ── 2. Clean output directory ───────────────────────────────────────────
   if (clean && existsSync(outDir)) {
+    // Preserve optimized images across builds — sharp re-encoding is expensive
+    const optimizedDir = resolve(outDir, "images/_optimized");
+    const hasOptimized = existsSync(optimizedDir);
+    let tmpOptimized = "";
+    if (hasOptimized) {
+      tmpOptimized = resolve(projectRoot, ".jx-cache/_optimized_tmp");
+      renameSync(optimizedDir, tmpOptimized);
+    }
     rmSync(outDir, { recursive: true, force: true });
+    if (hasOptimized) {
+      mkdirSync(resolve(outDir, "images"), { recursive: true });
+      renameSync(tmpOptimized, optimizedDir);
+    }
   }
   mkdirSync(outDir, { recursive: true });
 
