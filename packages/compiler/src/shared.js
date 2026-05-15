@@ -751,7 +751,13 @@ const SELF_CLOSING = new Set(["input", "br", "hr", "img", "meta", "link", "area"
  * @returns {string}
  */
 export function renderStaticNode(node, scope, slotContent = null) {
-  if (typeof node === "string") return escapeHtml(node);
+  if (typeof node === "string") {
+    if (isTemplateString(node) && scope) {
+      const val = evaluateStaticTemplate(node, scope);
+      return val != null ? escapeHtml(String(val)) : escapeHtml(node);
+    }
+    return escapeHtml(node);
+  }
   if (typeof node === "number" || typeof node === "boolean") return escapeHtml(String(node));
   if (Array.isArray(node))
     return node.map((/** @type {any} */ c) => renderStaticNode(c, scope, slotContent)).join("\n");
