@@ -267,10 +267,10 @@ export async function buildSite(projectRoot, options = {}) {
     });
 
     if (workerSource) {
-      const workerPath = resolve(projectRoot, "_worker.js");
+      const workerPath = resolve(outDir, "worker.js");
       writeFileSync(workerPath, workerSource, "utf8");
       fileCount++;
-      log(`  Generated _worker.js (${deduped.size} server function(s))`);
+      log(`  Generated dist/worker.js (${deduped.size} server function(s))`);
     }
   }
 
