@@ -880,6 +880,15 @@ describe("renderStaticNode", () => {
     const node = { tagName: "span", textContent: "${state.name}" };
     expect(renderStaticNode(node, scope)).toBe("<span>World</span>");
   });
+
+  test("resolves template strings in children array", () => {
+    const scope = buildInitialScope({ status: "idle" }, null);
+    const node = {
+      tagName: "button",
+      children: ["${state.status === 'submitting' ? 'Sending...' : 'Submit'}"],
+    };
+    expect(renderStaticNode(node, scope)).toBe("<button>Submit</button>");
+  });
 });
 
 // ─── preRenderComponentHtml ────────────────────────────────────────────────
