@@ -13,9 +13,50 @@ import {
   transpileJxMarkdown,
 } from "../src/md.js";
 
+import { jxKey, mdKey } from "../src/transpile.js";
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const EXAMPLES_DIR = join(__dirname, "..", "..", "..", "examples", "markdown-todo");
+
+// ─── jxKey / mdKey ──────────────────────────────────────────────────────────
+
+describe("jxKey", () => {
+  test("adds $ to reserved keywords", () => {
+    expect(jxKey("prototype")).toBe("$prototype");
+    expect(jxKey("ref")).toBe("$ref");
+    expect(jxKey("props")).toBe("$props");
+    expect(jxKey("switch")).toBe("$switch");
+    expect(jxKey("elements")).toBe("$elements");
+    expect(jxKey("component")).toBe("$component");
+  });
+
+  test("passes through non-reserved keys", () => {
+    expect(jxKey("style")).toBe("style");
+    expect(jxKey("children")).toBe("children");
+    expect(jxKey("id")).toBe("id");
+  });
+});
+
+describe("mdKey", () => {
+  test("strips $ from reserved keywords", () => {
+    expect(mdKey("$prototype")).toBe("prototype");
+    expect(mdKey("$ref")).toBe("ref");
+    expect(mdKey("$props")).toBe("props");
+    expect(mdKey("$switch")).toBe("switch");
+    expect(mdKey("$elements")).toBe("elements");
+  });
+
+  test("passes through non-reserved $ keys", () => {
+    expect(mdKey("$schema")).toBe("$schema");
+    expect(mdKey("$id")).toBe("$id");
+  });
+
+  test("passes through non-$ keys", () => {
+    expect(mdKey("style")).toBe("style");
+    expect(mdKey("id")).toBe("id");
+  });
+});
 
 // ─── expandDotPaths ──────────────────────────────────────────────────────────
 
@@ -523,5 +564,136 @@ state:
     expect(doc.children[1].tagName).toBe("add-form");
     expect(doc.children[2].tagName).toBe("todo-list");
     expect(doc.children[3].tagName).toBe("footer");
+  });
+});
+
+// ─── transpileJxMarkdown — markdown body node conversions ───────────────────
+
+describe("transpileJxMarkdown — body nodes", () => {
+  test("inline code converts to code element", () => {
+    const source = `---
+tagName: my-comp
+---
+
+This has \`inline code\` in it.
+`;
+    const doc = /** @type {any} */ (transpileJxMarkdown(source));
+    const para = doc.children[0];
+    expect(para.tagName).toBe("p");
+    const codeNode = para.children.find((/** @type {any} */ c) => c.tagName === "code");
+    expect(codeNode).toBeDefined();
+    expect(codeNode.textContent).toBe("inline code");
+  });
+
+  test("links convert to anchor elements", () => {
+    const source = `---
+tagName: my-comp
+---
+
+Click [here](https://example.com "Example") for more.
+`;
+    const doc = /** @type {any} */ (transpileJxMarkdown(source));
+    const para = doc.children[0];
+    const link = para.children.find((/** @type {any} */ c) => c.tagName === "a");
+    expect(link).toBeDefined();
+    expect(link.attributes.href).toBe("https://example.com");
+    expect(link.attributes.title).toBe("Example");
+  });
+
+  test("images convert to img elements", () => {
+    const source = `---
+tagName: my-comp
+---
+
+![Alt text](image.png "Image title")
+`;
+    const doc = /** @type {any} */ (transpileJxMarkdown(source));
+    const para = doc.children[0];
+    const img = para.children.find((/** @type {any} */ c) => c.tagName === "img");
+    expect(img).toBeDefined();
+    expect(img.attributes.src).toBe("image.png");
+    expect(img.attributes.alt).toBe("Alt text");
+    expect(img.attributes.title).toBe("Image title");
+  });
+
+  test("ordered list converts to ol element", () => {
+    const source = `---
+tagName: my-comp
+---
+
+1. First
+2. Second
+3. Third
+`;
+    const doc = /** @type {any} */ (transpileJxMarkdown(source));
+    const list = doc.children.find((/** @type {any} */ c) => c.tagName === "ol");
+    expect(list).toBeDefined();
+    expect(list.children.length).toBe(3);
+    expect(list.children[0].tagName).toBe("li");
+  });
+
+  test("ordered list with non-1 start gets start attribute", () => {
+    const source = `---
+tagName: my-comp
+---
+
+5. Fifth
+6. Sixth
+`;
+    const doc = /** @type {any} */ (transpileJxMarkdown(source));
+    const list = doc.children.find((/** @type {any} */ c) => c.tagName === "ol");
+    expect(list).toBeDefined();
+    expect(list.attributes?.start).toBe("5");
+  });
+
+  test("fenced code block converts to pre > code", () => {
+    const source = `---
+tagName: my-comp
+---
+
+\`\`\`javascript
+const x = 42;
+\`\`\`
+`;
+    const doc = /** @type {any} */ (transpileJxMarkdown(source));
+    const pre = doc.children.find((/** @type {any} */ c) => c.tagName === "pre");
+    expect(pre).toBeDefined();
+    expect(pre.children[0].tagName).toBe("code");
+    expect(pre.children[0].className).toBe("language-javascript");
+    expect(pre.children[0].textContent).toContain("const x = 42;");
+  });
+
+  test("table converts to table with thead and tbody", () => {
+    const source = `---
+tagName: my-comp
+---
+
+| Name | Age |
+| --- | --- |
+| Alice | 30 |
+| Bob | 25 |
+`;
+    const doc = /** @type {any} */ (transpileJxMarkdown(source));
+    const table = doc.children.find((/** @type {any} */ c) => c.tagName === "table");
+    expect(table).toBeDefined();
+    const thead = table.children.find((/** @type {any} */ c) => c.tagName === "thead");
+    const tbody = table.children.find((/** @type {any} */ c) => c.tagName === "tbody");
+    expect(thead).toBeDefined();
+    expect(tbody).toBeDefined();
+  });
+
+  test("link with complex children preserves structure", () => {
+    const source = `---
+tagName: my-comp
+---
+
+[**Bold link** text](https://example.com)
+`;
+    const doc = /** @type {any} */ (transpileJxMarkdown(source));
+    const para = doc.children[0];
+    const link = para.children.find((/** @type {any} */ c) => c.tagName === "a");
+    expect(link).toBeDefined();
+    expect(link.children).toBeDefined();
+    expect(link.children.length).toBeGreaterThan(0);
   });
 });

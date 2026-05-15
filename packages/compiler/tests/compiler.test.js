@@ -455,6 +455,88 @@ describe("compile — CSS extraction", () => {
   });
 });
 
+describe("compile — Class route ($prototype: 'Class')", () => {
+  test("routes $prototype: Class to compileClassJson", async () => {
+    const classDef = {
+      $prototype: "Class",
+      title: "Counter",
+      $defs: {
+        fields: {
+          count: {
+            role: "field",
+            access: "public",
+            scope: "instance",
+            identifier: "count",
+            default: 0,
+          },
+        },
+        methods: {
+          increment: { role: "method", identifier: "increment", body: "this.count++;" },
+        },
+      },
+    };
+    const { html, files } = await compile(classDef);
+    expect(html).toBe("");
+    expect(files.length).toBe(1);
+    expect(files[0].path).toContain("Counter.js");
+    expect(files[0].content).toContain("class Counter");
+    expect(files[0].content).toContain("increment");
+  });
+
+  test("Class route uses source path for output when given string path", async () => {
+    const { writeFileSync, mkdirSync, rmSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const fixDir = join(import.meta.dir, "_fixtures_class");
+    mkdirSync(fixDir, { recursive: true });
+    const classPath = join(fixDir, "Widget.class.json");
+    writeFileSync(
+      classPath,
+      JSON.stringify({
+        $prototype: "Class",
+        title: "Widget",
+        $defs: {
+          fields: {
+            active: {
+              role: "field",
+              access: "public",
+              scope: "instance",
+              identifier: "active",
+              default: false,
+            },
+          },
+        },
+      }),
+    );
+    try {
+      const { html, files } = await compile(classPath);
+      expect(html).toBe("");
+      expect(files[0].path).toContain("Widget.js");
+      expect(files[0].content).toContain("class Widget");
+    } finally {
+      rmSync(fixDir, { recursive: true, force: true });
+    }
+  });
+});
+
+// ─── compile — file-based input ─────────────────────────────────────────────
+
+describe("compile — file-based input", () => {
+  test("reads and compiles JSON file by path", async () => {
+    const { writeFileSync, mkdirSync, rmSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const fixDir = join(import.meta.dir, "_fixtures_file");
+    mkdirSync(fixDir, { recursive: true });
+    const filePath = join(fixDir, "page.json");
+    writeFileSync(filePath, JSON.stringify({ tagName: "div", textContent: "from file" }));
+    try {
+      const { html } = await compile(filePath);
+      expect(html).toContain("from file");
+    } finally {
+      rmSync(fixDir, { recursive: true, force: true });
+    }
+  });
+});
+
 // ─── escapeHtml (exercised via compile) ───────────────────────────────────────
 
 describe("escapeHtml — via compile output", () => {

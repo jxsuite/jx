@@ -207,3 +207,336 @@ describe("compileClient", () => {
     expect(result.html).toMatch(/<span[^>]*data-bind/);
   });
 });
+
+// ─── Additional coverage: prototypes and bindings ──────────────────────────────
+
+describe("compileClient — prototypes", () => {
+  test("LocalStorage generates localStorage init with key and default", () => {
+    const doc = {
+      state: {
+        prefs: { $prototype: "LocalStorage", key: "user-prefs", default: { theme: "dark" } },
+      },
+      tagName: "div",
+      children: [],
+    };
+    const { files } = compileClient(doc, { title: "Test" });
+    const js = files[0].content;
+    expect(js).toContain("localStorage");
+    expect(js).toContain("user-prefs");
+    expect(js).toContain("JSON.parse");
+    expect(js).toContain("effect(");
+  });
+
+  test("SessionStorage generates sessionStorage init", () => {
+    const doc = {
+      state: { token: { $prototype: "SessionStorage", key: "auth-token" } },
+      tagName: "div",
+      children: [],
+    };
+    const { files } = compileClient(doc, { title: "Test" });
+    const js = files[0].content;
+    expect(js).toContain("sessionStorage");
+    expect(js).toContain("auth-token");
+  });
+
+  test("Request with headers and body generates fetch options", () => {
+    const doc = {
+      state: {
+        data: {
+          $prototype: "Request",
+          url: "/api/submit",
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: { action: "save" },
+        },
+      },
+      tagName: "div",
+      children: [],
+    };
+    const { files } = compileClient(doc, { title: "Test" });
+    const js = files[0].content;
+    expect(js).toContain("method:");
+    expect(js).toContain("POST");
+    expect(js).toContain("headers:");
+    expect(js).toContain("body:");
+  });
+
+  test("Request with template URL checks for undefined", () => {
+    const doc = {
+      state: { id: 1, user: { $prototype: "Request", url: "/api/${state.id}" } },
+      tagName: "div",
+      children: [],
+    };
+    const { files } = compileClient(doc, { title: "Test" });
+    const js = files[0].content;
+    expect(js).toContain("undefined");
+    expect(js).toContain("const url = `");
+  });
+
+  test("Cookie generates document.cookie read and parse", () => {
+    const doc = {
+      state: { session: { $prototype: "Cookie", name: "sid", default: "anon" } },
+      tagName: "div",
+      children: [],
+    };
+    const { files } = compileClient(doc, { title: "Test" });
+    const js = files[0].content;
+    expect(js).toContain("document.cookie");
+    expect(js).toContain("sid");
+    expect(js).toContain("decodeURIComponent");
+  });
+
+  test("manual Request emits only a comment", () => {
+    const doc = {
+      state: { data: { $prototype: "Request", url: "/api", manual: true } },
+      tagName: "div",
+      children: [],
+    };
+    const { files } = compileClient(doc, { title: "Test" });
+    const js = files[0].content;
+    expect(js).toContain("manual Request");
+    expect(js).not.toContain("fetch(url");
+  });
+});
+
+describe("compileClient — mapped arrays", () => {
+  test("generates lit-html imports for mapped arrays", () => {
+    const doc = {
+      state: { items: [{ name: "A" }] },
+      tagName: "div",
+      children: [
+        {
+          tagName: "ul",
+          children: {
+            $prototype: "Array",
+            items: { $ref: "#/state/items" },
+            map: { tagName: "li", textContent: "${$map.item.name}" },
+          },
+        },
+      ],
+    };
+    const { files } = compileClient(doc, { title: "Test" });
+    const js = files[0].content;
+    expect(js).toContain("import { html, render } from 'lit-html'");
+    expect(js).toContain(".map((item, index)");
+  });
+
+  test("mapped array with static items array", () => {
+    const doc = {
+      tagName: "div",
+      children: [
+        {
+          tagName: "ul",
+          children: {
+            $prototype: "Array",
+            items: ["one", "two"],
+            map: { tagName: "li", textContent: "${$map.item}" },
+          },
+        },
+      ],
+    };
+    const { files } = compileClient(doc, { title: "Test" });
+    const js = files[0].content;
+    expect(js).toContain('["one","two"]');
+  });
+
+  test("mapped array with nested children in map template", () => {
+    const doc = {
+      state: { todos: [] },
+      tagName: "div",
+      children: [
+        {
+          tagName: "div",
+          children: {
+            $prototype: "Array",
+            items: { $ref: "#/state/todos" },
+            map: {
+              tagName: "div",
+              children: [
+                { tagName: "span", textContent: "${$map.item.text}" },
+                { tagName: "button", textContent: "X" },
+              ],
+            },
+          },
+        },
+      ],
+    };
+    const { files } = compileClient(doc, { title: "Test" });
+    const js = files[0].content;
+    expect(js).toContain("<span>");
+    expect(js).toContain("<button>");
+  });
+
+  test("mapped array with style in map template", () => {
+    const doc = {
+      state: { items: [] },
+      tagName: "div",
+      children: [
+        {
+          tagName: "div",
+          children: {
+            $prototype: "Array",
+            items: { $ref: "#/state/items" },
+            map: {
+              tagName: "div",
+              style: { color: "red", fontWeight: "bold" },
+              textContent: "${$map.item}",
+            },
+          },
+        },
+      ],
+    };
+    const { files } = compileClient(doc, { title: "Test" });
+    const js = files[0].content;
+    expect(js).toContain("color: red");
+    expect(js).toContain("font-weight: bold");
+  });
+});
+
+describe("compileClient — $ref bindings and attributes", () => {
+  test("$ref attribute creates :attr binding", () => {
+    const doc = {
+      state: { link: "/home" },
+      tagName: "div",
+      children: [
+        {
+          tagName: "a",
+          attributes: { href: { $ref: "#/state/link" } },
+          textContent: "Home",
+        },
+      ],
+    };
+    const { html, files } = compileClient(doc, { title: "Test" });
+    expect(html).toContain(':attr.href="link"');
+    expect(files[0].content).toContain("() => state.link");
+  });
+
+  test("template attribute creates :attr binding", () => {
+    const doc = {
+      state: { id: 5 },
+      tagName: "div",
+      children: [
+        {
+          tagName: "a",
+          attributes: { href: "/item/${state.id}" },
+          textContent: "View",
+        },
+      ],
+    };
+    const { html } = compileClient(doc, { title: "Test" });
+    expect(html).toContain(":attr.href=");
+    expect(html).toContain("data-bind");
+  });
+
+  test("$ref on non-reserved prop creates property binding", () => {
+    const doc = {
+      state: { val: "hello" },
+      tagName: "div",
+      children: [{ tagName: "input", value: { $ref: "#/state/val" } }],
+    };
+    const { html } = compileClient(doc, { title: "Test" });
+    expect(html).toContain(':value="val"');
+  });
+
+  test("template on non-reserved prop creates property binding", () => {
+    const doc = {
+      state: { x: 10 },
+      tagName: "div",
+      children: [{ tagName: "div", title: "Position: ${state.x}" }],
+    };
+    const { html } = compileClient(doc, { title: "Test" });
+    expect(html).toContain(":title=");
+  });
+
+  test("nested $ref path uses underscore-delimited key", () => {
+    const doc = {
+      state: { user: { name: "Alice" } },
+      tagName: "div",
+      children: [{ tagName: "span", textContent: { $ref: "#/state/user/name" } }],
+    };
+    const { html, files } = compileClient(doc, { title: "Test" });
+    expect(html).toContain(':text-content="user_name"');
+    expect(files[0].content).toContain("state.user.name");
+  });
+});
+
+describe("compileClient — module structure", () => {
+  test("Function with $src generates import statement", () => {
+    const doc = {
+      state: {
+        compute: { $prototype: "Function", $src: "./helpers.js" },
+        transform: { $prototype: "Function", $src: "./helpers.js" },
+      },
+      tagName: "div",
+      children: [],
+    };
+    const { files } = compileClient(doc, { title: "Test" });
+    const js = files[0].content;
+    expect(js).toContain("import { compute, transform } from './helpers.js'");
+  });
+
+  test("includes computed import when computed entries present", () => {
+    const doc = {
+      state: { count: 0, doubled: { $prototype: "Function", body: "return state.count * 2;" } },
+      tagName: "div",
+      children: [],
+    };
+    const { files } = compileClient(doc, { title: "Test" });
+    const js = files[0].content;
+    expect(js).toContain("import { reactive, effect, computed }");
+  });
+
+  test("hydrate includes render branch when lit-html is used", () => {
+    const doc = {
+      state: { items: [] },
+      tagName: "div",
+      children: [
+        {
+          tagName: "ul",
+          children: {
+            $prototype: "Array",
+            items: { $ref: "#/state/items" },
+            map: { tagName: "li", textContent: "${$map.item}" },
+          },
+        },
+      ],
+    };
+    const { files } = compileClient(doc, { title: "Test" });
+    const js = files[0].content;
+    expect(js).toContain("'render'");
+    expect(js).toContain("render(bind[key](), el)");
+  });
+
+  test("custom modulePath reflected in output", () => {
+    const doc = { tagName: "div", children: [] };
+    const { html, files } = compileClient(doc, { title: "Test", modulePath: "scripts/main.js" });
+    expect(html).toContain('src="/scripts/main.js"');
+    expect(files[0].path).toBe("scripts/main.js");
+  });
+
+  test("null/undefined children are handled gracefully", () => {
+    const doc = { tagName: "div", children: [null, undefined, "text"] };
+    const { html } = compileClient(doc, { title: "Test" });
+    expect(html).toContain("text");
+  });
+
+  test("self-closing tags in mapped array", () => {
+    const doc = {
+      state: { images: [] },
+      tagName: "div",
+      children: [
+        {
+          tagName: "div",
+          children: {
+            $prototype: "Array",
+            items: { $ref: "#/state/images" },
+            map: { tagName: "img" },
+          },
+        },
+      ],
+    };
+    const { files } = compileClient(doc, { title: "Test" });
+    const js = files[0].content;
+    expect(js).toContain("<img>");
+  });
+});

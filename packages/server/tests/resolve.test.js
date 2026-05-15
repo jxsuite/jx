@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { handleResolve } from "../src/resolve.js";
+import { handleResolve, handleServerFunction } from "../src/resolve.js";
 import { join, resolve } from "node:path";
 import { writeFileSync, mkdirSync, rmSync } from "node:fs";
 
@@ -261,4 +261,126 @@ process.on("exit", () => {
   try {
     rmSync(FIXTURES, { recursive: true });
   } catch {}
+});
+
+// ─── handleServerFunction ──────────────────────────────────────────────────
+
+describe("handleServerFunction", () => {
+  test("returns 400 for invalid JSON body", async () => {
+    const req = new Request("http://localhost/__jx_server", {
+      method: "POST",
+      body: "bad",
+    });
+    const res = await handleServerFunction(req, import.meta.dir);
+    expect(res.status).toBe(400);
+  });
+
+  test("returns 400 when $src is missing", async () => {
+    const req = mockRequest({ $export: "fn" });
+    const res = await handleServerFunction(req, import.meta.dir);
+    expect(res.status).toBe(400);
+  });
+
+  test("returns 400 when $export is missing", async () => {
+    const req = mockRequest({ $src: "./calc.js" });
+    const res = await handleServerFunction(req, import.meta.dir);
+    expect(res.status).toBe(400);
+  });
+
+  test("calls exported function and returns result", async () => {
+    writeFileSync(
+      join(FIXTURES, "server-fn.js"),
+      "export function add(args) { return args.a + args.b; }",
+    );
+    try {
+      const req = mockRequest({
+        $src: "./_fixtures/server-fn.js",
+        $export: "add",
+        arguments: { a: 10, b: 20 },
+      });
+      const res = await handleServerFunction(req, import.meta.dir);
+      expect(res.status).toBe(200);
+      expect(await res.json()).toBe(30);
+    } finally {
+      rmSync(join(FIXTURES, "server-fn.js"), { force: true });
+    }
+  });
+
+  test("returns null for void function", async () => {
+    writeFileSync(join(FIXTURES, "noop.js"), "export function noop() {}");
+    try {
+      const req = mockRequest({ $src: "./_fixtures/noop.js", $export: "noop" });
+      const res = await handleServerFunction(req, import.meta.dir);
+      expect(res.status).toBe(200);
+      expect(await res.json()).toBeNull();
+    } finally {
+      rmSync(join(FIXTURES, "noop.js"), { force: true });
+    }
+  });
+
+  test("returns 500 when module not found", async () => {
+    const req = mockRequest({ $src: "./_fixtures/nonexistent.js", $export: "fn" });
+    const res = await handleServerFunction(req, import.meta.dir);
+    expect(res.status).toBe(500);
+    expect(await res.text()).toContain("Failed to import");
+  });
+
+  test("returns 500 when export not found in module", async () => {
+    const req = mockRequest({ $src: "./_fixtures/calc.js", $export: "nonExistent" });
+    const res = await handleServerFunction(req, import.meta.dir);
+    expect(res.status).toBe(500);
+    expect(await res.text()).toContain("not found");
+  });
+
+  test("returns error JSON when function throws", async () => {
+    writeFileSync(
+      join(FIXTURES, "throws.js"),
+      'export function boom() { throw new Error("kaboom"); }',
+    );
+    try {
+      const req = mockRequest({ $src: "./_fixtures/throws.js", $export: "boom" });
+      const res = await handleServerFunction(req, import.meta.dir);
+      expect(res.status).toBe(500);
+      const body = await res.json();
+      expect(body.error).toContain("kaboom");
+    } finally {
+      rmSync(join(FIXTURES, "throws.js"), { force: true });
+    }
+  });
+
+  test("resolves with $base for path resolution", async () => {
+    mkdirSync(join(FIXTURES, "api"), { recursive: true });
+    writeFileSync(
+      join(FIXTURES, "api", "greet.js"),
+      "export function greet(args) { return `hello ${args.name}`; }",
+    );
+    try {
+      const req = mockRequest({
+        $src: "./greet.js",
+        $export: "greet",
+        $base: `http://localhost/_fixtures/api/page.json`,
+        arguments: { name: "world" },
+      });
+      const res = await handleServerFunction(req, import.meta.dir);
+      expect(res.status).toBe(200);
+      expect(await res.json()).toBe("hello world");
+    } finally {
+      rmSync(join(FIXTURES, "api"), { recursive: true, force: true });
+    }
+  });
+
+  test("defaults arguments to empty object", async () => {
+    writeFileSync(
+      join(FIXTURES, "keys.js"),
+      "export function getKeys(args) { return Object.keys(args); }",
+    );
+    try {
+      const req = mockRequest({ $src: "./_fixtures/keys.js", $export: "getKeys" });
+      const res = await handleServerFunction(req, import.meta.dir);
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual([]);
+    } finally {
+      rmSync(join(FIXTURES, "keys.js"), { force: true });
+    }
+  });
 });

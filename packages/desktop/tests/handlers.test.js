@@ -1,0 +1,522 @@
+import { describe, test, expect, mock } from "bun:test";
+import { writeFileSync, mkdirSync, rmSync } from "node:fs";
+import { join } from "node:path";
+
+mock.module("electrobun/bun", () => ({
+  Utils: { openFileDialog: async () => [] },
+  BrowserWindow: class {},
+  Electrobun: { start: () => {} },
+}));
+
+const {
+  setProjectRoot,
+  getProjectRoot,
+  listDirectory,
+  handleReadFile,
+  handleWriteFile,
+  handleDeleteFile,
+  handleRenameFile,
+  handleCreateDirectory,
+  discoverComponents,
+  codeService,
+  locateFile,
+  fetchPluginSchema,
+} = await import("../src/handlers.js");
+
+const FIXTURES = join(import.meta.dir, "_fixtures_handlers");
+
+function setup() {
+  mkdirSync(FIXTURES, { recursive: true });
+  setProjectRoot(FIXTURES);
+}
+
+function cleanup() {
+  rmSync(FIXTURES, { recursive: true, force: true });
+  setProjectRoot(/** @type {any} */ (null));
+}
+
+// ─── State ──────────────────────────────────────────────────────────────────
+
+describe("project root state", () => {
+  test("setProjectRoot / getProjectRoot", () => {
+    setProjectRoot("/tmp/test");
+    expect(getProjectRoot()).toBe("/tmp/test");
+    setProjectRoot(/** @type {any} */ (null));
+    expect(getProjectRoot()).toBe(null);
+  });
+});
+
+// ─── Guards ─────────────────────────────────────────────────────────────────
+
+describe("guards", () => {
+  test("throws when no project root is set", async () => {
+    setProjectRoot(/** @type {any} */ (null));
+    await expect(listDirectory({ dir: "." })).rejects.toThrow("No project open");
+    await expect(handleReadFile({ path: "test.txt" })).rejects.toThrow("No project open");
+  });
+
+  test("throws for path traversal outside project root", async () => {
+    setup();
+    try {
+      await expect(handleReadFile({ path: "../../etc/passwd" })).rejects.toThrow(
+        "Path outside project root",
+      );
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+// ─── listDirectory ──────────────────────────────────────────────────────────
+
+describe("listDirectory", () => {
+  test("lists files in directory", async () => {
+    setup();
+    try {
+      writeFileSync(join(FIXTURES, "test.json"), '{"hello": true}');
+      mkdirSync(join(FIXTURES, "subdir"), { recursive: true });
+
+      const entries = await listDirectory({ dir: "." });
+      const names = entries.map((e) => e.name);
+      expect(names).toContain("test.json");
+      expect(names).toContain("subdir");
+
+      const file = /** @type {any} */ (entries.find((e) => e.name === "test.json"));
+      expect(file.type).toBe("file");
+
+      const dir = /** @type {any} */ (entries.find((e) => e.name === "subdir"));
+      expect(dir.type).toBe("directory");
+    } finally {
+      cleanup();
+    }
+  });
+
+  test("skips hidden files", async () => {
+    setup();
+    try {
+      writeFileSync(join(FIXTURES, ".hidden"), "secret");
+      writeFileSync(join(FIXTURES, "visible.txt"), "hello");
+
+      const entries = await listDirectory({ dir: "." });
+      const names = entries.map((e) => e.name);
+      expect(names).not.toContain(".hidden");
+      expect(names).toContain("visible.txt");
+    } finally {
+      cleanup();
+    }
+  });
+
+  test("includes file metadata", async () => {
+    setup();
+    try {
+      writeFileSync(join(FIXTURES, "data.json"), '{"x": 1}');
+
+      const entries = await listDirectory({ dir: "." });
+      const file = /** @type {any} */ (entries.find((e) => e.name === "data.json"));
+      expect(file.size).toBeGreaterThan(0);
+      expect(file.modified).toBeDefined();
+      expect(file.path).toBe("data.json");
+    } finally {
+      cleanup();
+    }
+  });
+
+  test("rejects directory outside project root", async () => {
+    setup();
+    try {
+      await expect(listDirectory({ dir: "../../" })).rejects.toThrow("Path outside project root");
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+// ─── handleReadFile ─────────────────────────────────────────────────────────
+
+describe("handleReadFile", () => {
+  test("reads file content", async () => {
+    setup();
+    try {
+      writeFileSync(join(FIXTURES, "hello.txt"), "Hello World");
+      const content = await handleReadFile({ path: "hello.txt" });
+      expect(content).toBe("Hello World");
+    } finally {
+      cleanup();
+    }
+  });
+
+  test("reads JSON files", async () => {
+    setup();
+    try {
+      writeFileSync(join(FIXTURES, "data.json"), '{"count": 42}');
+      const content = await handleReadFile({ path: "data.json" });
+      expect(JSON.parse(content)).toEqual({ count: 42 });
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+// ─── handleWriteFile ────────────────────────────────────────────────────────
+
+describe("handleWriteFile", () => {
+  test("writes file content", async () => {
+    setup();
+    try {
+      await handleWriteFile({ path: "output.txt", content: "test content" });
+      const content = await handleReadFile({ path: "output.txt" });
+      expect(content).toBe("test content");
+    } finally {
+      cleanup();
+    }
+  });
+
+  test("creates parent directories", async () => {
+    setup();
+    try {
+      await handleWriteFile({ path: "a/b/c/deep.txt", content: "deep" });
+      const content = await handleReadFile({ path: "a/b/c/deep.txt" });
+      expect(content).toBe("deep");
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+// ─── handleDeleteFile ───────────────────────────────────────────────────────
+
+describe("handleDeleteFile", () => {
+  test("deletes a file", async () => {
+    setup();
+    try {
+      writeFileSync(join(FIXTURES, "temp.txt"), "temporary");
+      await handleDeleteFile({ path: "temp.txt" });
+      await expect(handleReadFile({ path: "temp.txt" })).rejects.toThrow();
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+// ─── handleRenameFile ───────────────────────────────────────────────────────
+
+describe("handleRenameFile", () => {
+  test("renames a file", async () => {
+    setup();
+    try {
+      writeFileSync(join(FIXTURES, "old.txt"), "content");
+      await handleRenameFile({ from: "old.txt", to: "new.txt" });
+      const content = await handleReadFile({ path: "new.txt" });
+      expect(content).toBe("content");
+      await expect(handleReadFile({ path: "old.txt" })).rejects.toThrow();
+    } finally {
+      cleanup();
+    }
+  });
+
+  test("creates target directory if needed", async () => {
+    setup();
+    try {
+      writeFileSync(join(FIXTURES, "src.txt"), "data");
+      await handleRenameFile({ from: "src.txt", to: "newdir/dest.txt" });
+      const content = await handleReadFile({ path: "newdir/dest.txt" });
+      expect(content).toBe("data");
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+// ─── handleCreateDirectory ──────────────────────────────────────────────────
+
+describe("handleCreateDirectory", () => {
+  test("creates a directory", async () => {
+    setup();
+    try {
+      await handleCreateDirectory({ path: "new-dir" });
+      const entries = await listDirectory({ dir: "." });
+      const names = entries.map((e) => e.name);
+      expect(names).toContain("new-dir");
+    } finally {
+      cleanup();
+    }
+  });
+
+  test("creates nested directories", async () => {
+    setup();
+    try {
+      await handleCreateDirectory({ path: "a/b/c" });
+      const entries = await listDirectory({ dir: "a/b" });
+      const names = entries.map((e) => e.name);
+      expect(names).toContain("c");
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+// ─── discoverComponents ────────────────────────────────────────────────────
+
+describe("discoverComponents", () => {
+  test("discovers custom element JSON files", async () => {
+    setup();
+    try {
+      mkdirSync(join(FIXTURES, "components"), { recursive: true });
+      writeFileSync(
+        join(FIXTURES, "components", "my-button.json"),
+        JSON.stringify({
+          tagName: "my-button",
+          $id: "btn-001",
+          state: {
+            label: { type: "string", default: "Click" },
+            count: { type: "number", default: 0 },
+            onClick: { $prototype: "Function", body: "state.count++" },
+          },
+          children: [],
+        }),
+      );
+
+      const components = await discoverComponents({ dir: "." });
+      expect(components.length).toBeGreaterThanOrEqual(1);
+      const btn = /** @type {any} */ (components.find((c) => c.tagName === "my-button"));
+      expect(btn).toBeDefined();
+      expect(btn.$id).toBe("btn-001");
+      expect(btn.path).toContain("my-button.json");
+      expect(btn.props.find((/** @type {any} */ p) => p.name === "label")).toBeDefined();
+      expect(btn.props.find((/** @type {any} */ p) => p.name === "onClick")).toBeUndefined();
+    } finally {
+      cleanup();
+    }
+  });
+
+  test("skips non-component JSON files", async () => {
+    setup();
+    try {
+      writeFileSync(join(FIXTURES, "config.json"), JSON.stringify({ name: "My Project" }));
+      writeFileSync(join(FIXTURES, "page.json"), JSON.stringify({ tagName: "div", children: [] }));
+
+      const components = await discoverComponents({ dir: "." });
+      expect(components.find((c) => c.tagName === "div")).toBeUndefined();
+    } finally {
+      cleanup();
+    }
+  });
+
+  test("skips node_modules and dist directories", async () => {
+    setup();
+    try {
+      mkdirSync(join(FIXTURES, "node_modules", "pkg"), { recursive: true });
+      writeFileSync(
+        join(FIXTURES, "node_modules", "pkg", "my-ext.json"),
+        JSON.stringify({ tagName: "my-ext", children: [] }),
+      );
+
+      const components = await discoverComponents({ dir: "." });
+      expect(components.find((c) => c.tagName === "my-ext")).toBeUndefined();
+    } finally {
+      cleanup();
+    }
+  });
+
+  test("reports hasElements correctly", async () => {
+    setup();
+    try {
+      writeFileSync(
+        join(FIXTURES, "with-elements.json"),
+        JSON.stringify({
+          tagName: "my-card",
+          $elements: [{ $ref: "./icon.json" }],
+          children: [],
+        }),
+      );
+      writeFileSync(
+        join(FIXTURES, "no-elements.json"),
+        JSON.stringify({ tagName: "my-box", children: [] }),
+      );
+
+      const components = await discoverComponents({ dir: "." });
+      const card = components.find((c) => c.tagName === "my-card");
+      const box = components.find((c) => c.tagName === "my-box");
+      expect(card?.hasElements).toBe(true);
+      expect(box?.hasElements).toBe(false);
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+// ─── codeService ───────────────────────────────────────────────────────────
+
+describe("codeService", () => {
+  test("returns null (not yet implemented)", async () => {
+    const result = await codeService({});
+    expect(result).toBeNull();
+  });
+});
+
+// ─── locateFile ────────────────────────────────────────────────────────────
+
+describe("locateFile", () => {
+  test("locates a file by name", async () => {
+    setup();
+    try {
+      mkdirSync(join(FIXTURES, "deep", "nested"), { recursive: true });
+      writeFileSync(join(FIXTURES, "deep", "nested", "target.json"), "{}");
+
+      const result = await locateFile({ name: "target.json" });
+      expect(result).toContain("target.json");
+      expect(result).toContain("deep/nested");
+    } finally {
+      cleanup();
+    }
+  });
+
+  test("returns null when file not found", async () => {
+    setup();
+    try {
+      const result = await locateFile({ name: "nonexistent-xyz.json" });
+      expect(result).toBeNull();
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+// ─── fetchPluginSchema ─────────────────────────────────────────────────────
+
+describe("fetchPluginSchema", () => {
+  test("reads .class.json and extracts schema", async () => {
+    setup();
+    try {
+      writeFileSync(
+        join(FIXTURES, "Counter.class.json"),
+        JSON.stringify({
+          title: "Counter",
+          description: "A counter component",
+          $defs: {
+            parameters: {
+              initial: {
+                identifier: "initial",
+                type: { type: "number" },
+                description: "Initial count value",
+              },
+            },
+            fields: {
+              count: {
+                role: "field",
+                identifier: "count",
+                type: { type: "number" },
+                default: 0,
+              },
+              _internal: {
+                role: "field",
+                access: "private",
+                identifier: "_internal",
+                type: { type: "string" },
+              },
+            },
+            constructor: {
+              parameters: [{ $ref: "#/$defs/parameters/initial" }],
+            },
+          },
+        }),
+      );
+
+      const schema = /** @type {any} */ (await fetchPluginSchema({ src: "./Counter.class.json" }));
+      expect(schema).not.toBeNull();
+      expect(schema.description).toBe("A counter component");
+      expect(schema.properties.initial).toBeDefined();
+      expect(schema.properties.initial.type).toBe("number");
+      expect(schema.properties.count).toBeDefined();
+      expect(schema.properties.count.default).toBe(0);
+      expect(schema.properties._internal).toBeUndefined();
+      expect(schema.required).toContain("initial");
+    } finally {
+      cleanup();
+    }
+  });
+
+  test("returns null for non-existent file", async () => {
+    setup();
+    try {
+      const result = await fetchPluginSchema({ src: "./Missing.class.json" });
+      expect(result).toBeNull();
+    } finally {
+      cleanup();
+    }
+  });
+
+  test("resolves class.json with base path", async () => {
+    setup();
+    try {
+      mkdirSync(join(FIXTURES, "components"), { recursive: true });
+      writeFileSync(
+        join(FIXTURES, "components", "Widget.class.json"),
+        JSON.stringify({
+          title: "Widget",
+          $defs: {
+            parameters: {},
+            fields: {
+              size: { role: "field", identifier: "size", type: { type: "string" }, default: "md" },
+            },
+          },
+        }),
+      );
+
+      const schema = /** @type {any} */ (
+        await fetchPluginSchema({
+          src: "./Widget.class.json",
+          base: "file:///components/page.json",
+        })
+      );
+      expect(schema).not.toBeNull();
+      expect(schema.properties.size.default).toBe("md");
+    } finally {
+      cleanup();
+    }
+  });
+
+  test("resolves parent class via extends.$ref", async () => {
+    setup();
+    try {
+      writeFileSync(
+        join(FIXTURES, "Base.class.json"),
+        JSON.stringify({
+          title: "Base",
+          $defs: {
+            parameters: {},
+            fields: {
+              baseField: { role: "field", identifier: "baseField", type: { type: "string" } },
+            },
+          },
+        }),
+      );
+      writeFileSync(
+        join(FIXTURES, "Child.class.json"),
+        JSON.stringify({
+          title: "Child",
+          extends: { $ref: "./Base.class.json" },
+          $defs: {
+            parameters: {},
+            fields: {
+              childField: { role: "field", identifier: "childField", type: { type: "number" } },
+            },
+          },
+        }),
+      );
+
+      const schema = /** @type {any} */ (await fetchPluginSchema({ src: "./Child.class.json" }));
+      expect(schema).not.toBeNull();
+      expect(schema.properties.baseField).toBeDefined();
+      expect(schema.properties.childField).toBeDefined();
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+process.on("exit", () => {
+  try {
+    cleanup();
+  } catch {}
+});

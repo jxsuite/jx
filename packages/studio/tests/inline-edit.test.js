@@ -4,6 +4,7 @@ import {
   isInlineInContext,
   isInlineElement,
   getInlineActions,
+  normalizeChildren,
   startEditing,
   stopEditing,
   isEditing,
@@ -273,5 +274,69 @@ describe("Keyboard event propagation", () => {
 
     el.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     expect(isEditing()).toBe(false);
+  });
+});
+
+// ─── normalizeChildren ────────────────────────────────────────────────────────
+
+describe("normalizeChildren", () => {
+  test("returns empty textContent for empty children", () => {
+    expect(normalizeChildren({ children: [] })).toEqual({ textContent: "" });
+  });
+
+  test("returns empty textContent for no children property", () => {
+    expect(normalizeChildren({})).toEqual({ textContent: "" });
+  });
+
+  test("folds all-text children into textContent", () => {
+    expect(normalizeChildren({ children: ["hello", " ", "world"] })).toEqual({
+      textContent: "hello world",
+    });
+  });
+
+  test("merges adjacent text nodes then folds", () => {
+    expect(normalizeChildren({ children: ["a", "b", "c"] })).toEqual({
+      textContent: "abc",
+    });
+  });
+
+  test("preserves mixed content as children array", () => {
+    const result = /** @type {any} */ (
+      normalizeChildren({
+        children: ["text ", { tagName: "em", textContent: "bold" }, " more"],
+      })
+    );
+    expect(result.children).toBeDefined();
+    expect(result.children.length).toBe(3);
+    expect(result.children[0]).toBe("text ");
+    expect(result.children[1].tagName).toBe("em");
+    expect(result.children[2]).toBe(" more");
+  });
+
+  test("merges adjacent strings in mixed content", () => {
+    const result = /** @type {any} */ (
+      normalizeChildren({
+        children: ["a", "b", { tagName: "em", textContent: "x" }, "c", "d"],
+      })
+    );
+    expect(result.children.length).toBe(3);
+    expect(result.children[0]).toBe("ab");
+    expect(result.children[2]).toBe("cd");
+  });
+
+  test("single text child becomes textContent", () => {
+    expect(normalizeChildren({ children: ["hello"] })).toEqual({
+      textContent: "hello",
+    });
+  });
+
+  test("single element child stays as children", () => {
+    const result = /** @type {any} */ (
+      normalizeChildren({
+        children: [{ tagName: "strong", textContent: "bold" }],
+      })
+    );
+    expect(result.children).toBeDefined();
+    expect(result.children.length).toBe(1);
   });
 });

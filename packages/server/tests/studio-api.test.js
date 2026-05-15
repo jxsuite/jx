@@ -402,6 +402,238 @@ describe("components — scoped scan", () => {
   });
 });
 
+// ─── file read/write/delete endpoints ───────────────────────────────────────
+
+describe("file — read", () => {
+  test("reads a file within project root", async () => {
+    writeFileSync(join(FIXTURES, "hello.txt"), "world", "utf8");
+    const url = new URL(`http://localhost/__studio/file?path=${FIXTURES}/hello.txt`);
+    const req = new Request(url, { method: "GET" });
+    const res = await handleStudioApi(req, url, FIXTURES);
+    expect(/** @type {any} */ (res).status).toBe(200);
+    const data = await /** @type {any} */ (res).json();
+    expect(data.content).toBe("world");
+  });
+
+  test("returns 404 for nonexistent file", async () => {
+    const url = new URL(`http://localhost/__studio/file?path=${FIXTURES}/nonexistent.txt`);
+    const req = new Request(url, { method: "GET" });
+    const res = await handleStudioApi(req, url, FIXTURES);
+    expect(/** @type {any} */ (res).status).toBe(404);
+  });
+
+  test("returns 400 when path param is missing", async () => {
+    const url = new URL("http://localhost/__studio/file");
+    const req = new Request(url, { method: "GET" });
+    const res = await handleStudioApi(req, url, FIXTURES);
+    expect(/** @type {any} */ (res).status).toBe(400);
+  });
+
+  test("rejects path outside project root", async () => {
+    const url = new URL(`http://localhost/__studio/file?path=/etc/passwd`);
+    const req = new Request(url, { method: "GET" });
+    const res = await handleStudioApi(req, url, FIXTURES);
+    expect(/** @type {any} */ (res).status).toBe(400);
+  });
+});
+
+describe("file — write", () => {
+  test("writes a file within project root", async () => {
+    const url = new URL(`http://localhost/__studio/file?path=write-test.txt`);
+    const req = new Request(url, { method: "PUT", body: "new content" });
+    const res = await handleStudioApi(req, url, FIXTURES);
+    expect(/** @type {any} */ (res).status).toBe(200);
+    const data = await /** @type {any} */ (res).json();
+    expect(data.ok).toBe(true);
+  });
+
+  test("creates parent directories as needed", async () => {
+    const url = new URL(`http://localhost/__studio/file?path=sub/deep/new.txt`);
+    const req = new Request(url, { method: "PUT", body: "deep content" });
+    const res = await handleStudioApi(req, url, FIXTURES);
+    const data = await /** @type {any} */ (res).json();
+    expect(data.ok).toBe(true);
+  });
+
+  test("returns 400 when path is missing", async () => {
+    const url = new URL("http://localhost/__studio/file");
+    const req = new Request(url, { method: "PUT", body: "x" });
+    const res = await handleStudioApi(req, url, FIXTURES);
+    expect(/** @type {any} */ (res).status).toBe(400);
+  });
+});
+
+describe("file — delete", () => {
+  test("deletes a file within project root", async () => {
+    writeFileSync(join(FIXTURES, "to-delete.txt"), "bye", "utf8");
+    const url = new URL(`http://localhost/__studio/file?path=to-delete.txt`);
+    const req = new Request(url, { method: "DELETE" });
+    const res = await handleStudioApi(req, url, FIXTURES);
+    const data = await /** @type {any} */ (res).json();
+    expect(data.ok).toBe(true);
+  });
+
+  test("returns 404 for nonexistent file", async () => {
+    const url = new URL(`http://localhost/__studio/file?path=no-such-file.txt`);
+    const req = new Request(url, { method: "DELETE" });
+    const res = await handleStudioApi(req, url, FIXTURES);
+    expect(/** @type {any} */ (res).status).toBe(404);
+  });
+
+  test("returns 400 when path is missing", async () => {
+    const url = new URL("http://localhost/__studio/file");
+    const req = new Request(url, { method: "DELETE" });
+    const res = await handleStudioApi(req, url, FIXTURES);
+    expect(/** @type {any} */ (res).status).toBe(400);
+  });
+});
+
+describe("file — rename", () => {
+  test("renames a file within project root", async () => {
+    writeFileSync(join(FIXTURES, "old-name.txt"), "content", "utf8");
+    const url = new URL("http://localhost/__studio/file/rename");
+    const req = new Request(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ from: "old-name.txt", to: "new-name.txt" }),
+    });
+    const res = await handleStudioApi(req, url, FIXTURES);
+    const data = await /** @type {any} */ (res).json();
+    expect(data.ok).toBe(true);
+    expect(data.to).toBe("new-name.txt");
+  });
+
+  test("returns 400 for invalid JSON", async () => {
+    const url = new URL("http://localhost/__studio/file/rename");
+    const req = new Request(url, { method: "POST", body: "not json" });
+    const res = await handleStudioApi(req, url, FIXTURES);
+    expect(/** @type {any} */ (res).status).toBe(400);
+  });
+
+  test("returns 400 when from/to missing", async () => {
+    const url = new URL("http://localhost/__studio/file/rename");
+    const req = new Request(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ from: "only-from.txt" }),
+    });
+    const res = await handleStudioApi(req, url, FIXTURES);
+    expect(/** @type {any} */ (res).status).toBe(400);
+  });
+});
+
+// ─── files listing endpoint ─────────────────────────────────────────────────
+
+describe("files — listing", () => {
+  test("lists files in directory", async () => {
+    writeFileSync(join(FIXTURES, "listed.txt"), "x", "utf8");
+    const url = new URL(`http://localhost/__studio/files?dir=${FIXTURES}`);
+    const req = new Request(url, { method: "GET" });
+    const res = await handleStudioApi(req, url, FIXTURES);
+    const data = await /** @type {any} */ (res).json();
+    expect(Array.isArray(data)).toBe(true);
+    expect(data.some((/** @type {any} */ f) => f.name === "listed.txt")).toBe(true);
+  });
+
+  test("lists files using glob pattern", async () => {
+    const url = new URL(`http://localhost/__studio/files?dir=${FIXTURES}&glob=*.json`);
+    const req = new Request(url, { method: "GET" });
+    const res = await handleStudioApi(req, url, FIXTURES);
+    const data = await /** @type {any} */ (res).json();
+    expect(Array.isArray(data)).toBe(true);
+    expect(data.every((/** @type {any} */ f) => f.name.endsWith(".json"))).toBe(true);
+  });
+
+  test("rejects directory traversal", async () => {
+    const url = new URL("http://localhost/__studio/files?dir=../../etc");
+    const req = new Request(url, { method: "GET" });
+    const res = await handleStudioApi(req, url, FIXTURES);
+    expect(/** @type {any} */ (res).status).toBe(400);
+  });
+});
+
+// ─── project endpoint ───────────────────────────────────────────────────────
+
+describe("project endpoint", () => {
+  test("returns project info from package.json", async () => {
+    writeFileSync(join(FIXTURES, "package.json"), JSON.stringify({ name: "test-pkg" }), "utf8");
+    const url = new URL("http://localhost/__studio/project");
+    const req = new Request(url, { method: "GET" });
+    const res = await handleStudioApi(req, url, FIXTURES);
+    const data = await /** @type {any} */ (res).json();
+    expect(data.name).toBe("test-pkg");
+    expect(data.root).toBe(FIXTURES);
+  });
+
+  test("falls back to directory basename when no package.json", async () => {
+    const emptyDir = join(FIXTURES, "empty-proj");
+    mkdirSync(emptyDir, { recursive: true });
+    const url = new URL("http://localhost/__studio/project");
+    const req = new Request(url, { method: "GET" });
+    const res = await handleStudioApi(req, url, emptyDir);
+    const data = await /** @type {any} */ (res).json();
+    expect(data.name).toBe("empty-proj");
+  });
+});
+
+// ─── locate endpoint ────────────────────────────────────────────────────────
+
+describe("locate endpoint", () => {
+  test("locates a file by name", async () => {
+    writeFileSync(join(FIXTURES, "findme.txt"), "found", "utf8");
+    const url = new URL("http://localhost/__studio/locate");
+    const req = new Request(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "findme.txt" }),
+    });
+    const res = await handleStudioApi(req, url, FIXTURES);
+    const data = await /** @type {any} */ (res).json();
+    expect(data.path).toContain("findme.txt");
+  });
+
+  test("returns null when file not found", async () => {
+    const url = new URL("http://localhost/__studio/locate");
+    const req = new Request(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "nonexistent-xyz.txt" }),
+    });
+    const res = await handleStudioApi(req, url, FIXTURES);
+    const data = await /** @type {any} */ (res).json();
+    expect(data.path).toBeNull();
+  });
+
+  test("returns 400 for invalid JSON", async () => {
+    const url = new URL("http://localhost/__studio/locate");
+    const req = new Request(url, { method: "POST", body: "bad" });
+    const res = await handleStudioApi(req, url, FIXTURES);
+    expect(/** @type {any} */ (res).status).toBe(400);
+  });
+
+  test("returns 400 when name is missing", async () => {
+    const url = new URL("http://localhost/__studio/locate");
+    const req = new Request(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    const res = await handleStudioApi(req, url, FIXTURES);
+    expect(/** @type {any} */ (res).status).toBe(400);
+  });
+});
+
+// ─── unmatched endpoint returns null ────────────────────────────────────────
+
+describe("unmatched endpoint", () => {
+  test("returns null for unknown path", async () => {
+    const url = new URL("http://localhost/__studio/unknown-route");
+    const req = new Request(url, { method: "GET" });
+    const res = await handleStudioApi(req, url, FIXTURES);
+    expect(res).toBeNull();
+  });
+});
+
 // Cleanup
 process.on("exit", () => {
   try {
