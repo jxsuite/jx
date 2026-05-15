@@ -403,8 +403,8 @@ A function with only `body` (no `arguments`) and no event binding acts as a comp
     },
     "posts": {
       "$prototype": "MarkdownCollection",
-      "$src": "@jxsuite/md",
-      "src": "./content/posts/*.md"
+      "src": "./content/posts/*.md",
+      "timing": "compiler"
     }
   }
 }
@@ -913,31 +913,69 @@ When `build.provider` is set in `project.json`, all `timing: "server"` entries a
 
 ## 12. External Class Integration
 
-### 12.1 The `$src` Property
+### 12.1 Built-in Prototypes
 
-`$src` on any `state` entry with a non-Function `$prototype` **must** point to a `.class.json` file. The `.class.json` schema is the canonical entrypoint — it can optionally reference a JS implementation via `$implementation`. Direct JS `$src` for non-Function prototypes is not allowed.
+Jx provides several `$prototype` types that resolve automatically without any `imports` or `$src` configuration:
+
+| Prototype             | Timing     | Description                                        |
+| --------------------- | ---------- | -------------------------------------------------- |
+| `Function`            | client     | Inline handlers with `body`/`arguments`            |
+| `Array`               | client     | Reactive array wrapper                             |
+| `LocalStorage`        | client     | Persistent key-value storage                       |
+| `SessionStorage`      | client     | Session-scoped key-value storage                   |
+| `Request`             | client     | HTTP fetch with reactive URL params                |
+| `MarkdownFile`        | compiler   | Parses a single `.md` file into frontmatter + tree |
+| `MarkdownCollection`  | compiler   | Globs and parses multiple `.md` files              |
+| `ContentCollection`   | compiler   | Schema-validated multi-format content source       |
+| `ContentEntry`        | compiler   | Single entry within a content collection           |
+
+`MarkdownFile` and `MarkdownCollection` are first-class prototypes — they resolve at compile time with zero configuration:
 
 ```json
 {
   "state": {
+    "page": {
+      "$prototype": "MarkdownFile",
+      "src": "./content/about.md",
+      "timing": "compiler"
+    },
     "posts": {
       "$prototype": "MarkdownCollection",
-      "$src": "./MarkdownCollection.class.json",
-      "src": "./content/posts/*.md"
+      "src": "./content/posts/*.md",
+      "timing": "compiler"
     }
   }
 }
 ```
 
-| Specifier form                      | Example                                       | Resolution                        |
-| ----------------------------------- | --------------------------------------------- | --------------------------------- |
-| Relative `.class.json` path         | `"./lib/MyClass.class.json"`                  | Relative to the `.json` file      |
-| Absolute `.class.json` URL          | `"https://cdn.example.com/Parser.class.json"` | Fetched directly                  |
-| `$prototype: "Function"` with `.js` | `"./lib/helpers.js"`                          | Direct JS import (Functions only) |
+The compiler maps these names to their `.class.json` implementations internally (`@jxsuite/parser/MarkdownFile.class.json`, `@jxsuite/parser/MarkdownCollection.class.json`). No `imports` entry is needed.
 
-### 12.2 External Class Contract
+### 12.2 The `$src` Property
 
-**Constructor:** Receives a single configuration object containing all `state` properties except reserved keywords.
+For **third-party or project-local** classes, `$src` on any `state` entry with a non-Function `$prototype` **must** point to a `.class.json` file. The `.class.json` schema is the canonical entrypoint — it can optionally reference a JS implementation via `$implementation`. Direct JS `$src` for non-Function prototypes is not allowed.
+
+```json
+{
+  "state": {
+    "forecast": {
+      "$prototype": "WeatherForecast",
+      "$src": "./lib/WeatherForecast.class.json",
+      "location": "Lancaster, PA",
+      "days": 5
+    }
+  }
+}
+```
+
+| Specifier form                      | Example                                           | Resolution                        |
+| ----------------------------------- | ------------------------------------------------- | --------------------------------- |
+| Relative `.class.json` path         | `"./lib/WeatherForecast.class.json"`              | Relative to the `.json` file      |
+| npm package specifier               | `"@acme/weather/WeatherForecast.class.json"`      | Resolved via `node_modules`       |
+| `$prototype: "Function"` with `.js` | `"./lib/helpers.js"`                              | Direct JS import (Functions only) |
+
+### 12.3 External Class Contract
+
+**Constructor:** Receives a single configuration object containing all `state` properties except reserved keywords (`$prototype`, `$src`, `$export`, `timing`, `default`, `description`).
 
 **Value resolution:** Checked in order:
 
@@ -952,22 +990,26 @@ instance.subscribe(callback);
 instance.unsubscribe();
 ```
 
-### 12.3 `.class.json` Schema-Defined Classes
+### 12.4 `.class.json` Schema-Defined Classes
 
 All non-Function external classes **must** use a `.class.json` file as their `$src` entrypoint. These are JSON Schema 2020-12 documents describing a class structure with an optional `$implementation` key:
 
 ```json
 {
   "$schema": "https://jxsuite.com/schema/v1/class",
-  "$id": "MarkdownCollection",
-  "description": "Globs and parses markdown files",
+  "$id": "WeatherForecast",
+  "title": "WeatherForecast",
+  "description": "Fetches weather data for a location",
   "$defs": {
-    "parameters": { ... },
-    "fields": { ... },
-    "constructor": { ... },
-    "methods": { ... }
+    "parameters": {
+      "location": { "type": "string", "description": "City and state" },
+      "days": { "type": "integer", "default": 3 }
+    },
+    "fields": {
+      "forecasts": { "type": "array" }
+    }
   },
-  "$implementation": "./md.js"
+  "$implementation": "./weather.js"
 }
 ```
 
@@ -975,22 +1017,19 @@ When `$src` points to a `.class.json` file, the runtime reads the schema and fol
 
 > **Status: Implemented.** Runtime enforces `.class.json` entrypoint for all non-Function external prototypes. `$implementation` in the schema optionally redirects to a JS module. Dev server handles resolution via proxy. Compiler emits `.class.json` → ES class.
 
-### 12.4 Import Maps
+### 12.5 Import Maps
 
 To avoid repeating `$src` paths across every state entry, a document may declare a top-level `imports` key that maps `$prototype` names to `.class.json` paths:
 
 ```json
 {
   "imports": {
-    "MarkdownCollection": "../../packages/parser/MarkdownCollection.class.json",
-    "MarkdownFile": "../../packages/parser/MarkdownFile.class.json"
+    "WeatherForecast": "@acme/weather/WeatherForecast.class.json",
+    "GeoLocation": "./lib/GeoLocation.class.json"
   },
   "state": {
-    "posts": { "$prototype": "MarkdownCollection", "src": "./content/posts/*.md" },
-    "currentPost": {
-      "$prototype": "MarkdownFile",
-      "src": "./content/posts/${state.currentSlug}.md"
-    }
+    "forecast": { "$prototype": "WeatherForecast", "location": "Lancaster, PA", "days": 5 },
+    "coords": { "$prototype": "GeoLocation", "address": "123 Main St" }
   }
 }
 ```
@@ -1003,13 +1042,14 @@ To avoid repeating `$src` paths across every state entry, a document may declare
 | Explicit `$src` wins              | If a state entry already has `$src`, the import map is not consulted               |
 | `$prototype: "Function"` excluded | Function prototypes are never resolved via import map                              |
 | Built-in prototypes unchanged     | `Request`, `Set`, `Map`, `LocalStorage`, etc. are unaffected                       |
+| Import overrides built-ins        | An explicit `imports` entry takes precedence over built-in prototype mappings       |
 | Site-level cascading              | `imports` in `site.json` cascade to all pages; page-level entries win on collision |
 
-**Resolution order:** explicit `$src` → page `imports` → site `imports` → built-in prototypes → unknown prototype warning.
+**Resolution order:** explicit `$src` → page `imports` → site `imports` → built-in prototype mappings → unknown prototype warning.
 
 At runtime, `buildScope` injects the mapped `$src` into each bare `$prototype` entry before any resolution pass executes, so all downstream resolution (`resolvePrototype` → `resolveExternalPrototype` → `resolveClassJson`) works unchanged.
 
-> **Status: Implemented.** Runtime pre-processes `doc.imports` in `buildScope`. Compiler merges site-level imports into page documents via `injectContext`. Site-loader defaults include `imports: {}`.
+> **Status: Implemented.** Runtime pre-processes `doc.imports` in `buildScope`. Compiler merges site-level imports into page documents via `injectContext`. Built-in prototype mappings (`MarkdownFile`, `MarkdownCollection`) resolve at compile time without imports. Site-loader defaults include `imports: {}`.
 
 ---
 
