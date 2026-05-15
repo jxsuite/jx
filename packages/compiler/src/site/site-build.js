@@ -38,6 +38,8 @@ import {
 import { loadCollections, loadContentConfig, resolveCollectionRefs } from "./content-loader.js";
 import { resolvePrototypes } from "./prototype-resolver.js";
 import { compileMarkdown } from "../targets/compile-markdown.js";
+import { transformImageNodes } from "./image-transform.js";
+import { loadCache, saveCache } from "./image-cache.js";
 
 /**
  * Build an entire Jx site from a project directory.
@@ -158,10 +160,19 @@ export async function buildSite(projectRoot, options = {}) {
 
   // ── 6. Compile each route ───────────────────────────────────────────────
 
+  const imageCache = projectConfig.images.optimize ? loadCache(projectRoot) : null;
+
   for (const route of routes) {
     try {
       log(`  Compiling ${route.urlPattern} ...`);
-      const result = await compilePage(route, projectConfig, projectRoot, collections);
+      const result = await compilePage(
+        route,
+        projectConfig,
+        projectRoot,
+        collections,
+        imageCache,
+        outDir,
+      );
 
       // Inject pre-rendered component HTML scaffolding (instance-aware)
       // Must happen before script injection so we know which tags are fully static
@@ -224,6 +235,15 @@ export async function buildSite(projectRoot, options = {}) {
     }
   }
 
+  // ── 6b. Save image cache ─────────────────────────────────────────────
+  if (imageCache && projectConfig.images.optimize) {
+    saveCache(projectRoot, imageCache);
+    const totalImages = Object.keys(imageCache.entries).length;
+    if (totalImages > 0) {
+      log(`  Optimized ${totalImages} image(s)`);
+    }
+  }
+
   // ── 7. Generate redirects ───────────────────────────────────────────────
   if (projectConfig.redirects && Object.keys(projectConfig.redirects).length > 0) {
     log("Generating redirects...");
@@ -266,9 +286,18 @@ export async function buildSite(projectRoot, options = {}) {
  * @param {any} projectConfig
  * @param {string} projectRoot
  * @param {Map<string, any[]>} [collections]
+ * @param {import("./image-cache.js").CacheManifest | null} [imageCache]
+ * @param {string} [outDir]
  * @returns {Promise<{ html: string; files: any[]; serverHandler: string | null; doc: any }>}
  */
-async function compilePage(route, projectConfig, projectRoot, collections = new Map()) {
+async function compilePage(
+  route,
+  projectConfig,
+  projectRoot,
+  collections = new Map(),
+  imageCache = null,
+  outDir = "",
+) {
   // Load the raw page document
   let pageDoc;
   if (route.sourcePath.endsWith(".md")) {
@@ -344,6 +373,11 @@ async function compilePage(route, projectConfig, projectRoot, collections = new 
   // Merge project-level $media into the layout document so responsive queries are available
   if (projectConfig.$media) {
     layoutDoc.$media = { ...projectConfig.$media, ...layoutDoc.$media };
+  }
+
+  // Transform <img> nodes for responsive image optimization
+  if (imageCache && projectConfig.images?.optimize && outDir) {
+    await transformImageNodes(layoutDoc, projectConfig.images, projectRoot, outDir, imageCache);
   }
 
   // Compile the document using the existing compiler

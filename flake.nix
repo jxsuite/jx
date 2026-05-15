@@ -33,34 +33,36 @@
         let
           # CEF runtime libs needed by the desktop app
           desktopLibs = with pkgs; [
-            gtk3
+            alsa-lib
+            at-spi2-atk
+            atk
+            cairo
+            cups
+            dbus
+            expat
+            gcc-libs
+            gdk-pixbuf
             glib
             glib-networking
-            pango
-            cairo
-            atk
-            gdk-pixbuf
+            gtk3
             harfbuzz
-            nspr
-            nss
-            dbus
-            cups
+            libayatana-appindicator
+            libsoup_3
             libX11
+            libxcb
             libXcomposite
             libXdamage
             libXext
             libXfixes
+            libxkbcommon
             libXrandr
             mesa
-            expat
-            libxcb
-            libxkbcommon
-            alsa-lib
-            at-spi2-atk
+            nspr
+            nss
+            pango
             systemdMinimal
+            vips
             webkitgtk_4_1
-            libsoup_3
-            libayatana-appindicator
           ];
           data = lib.importJSON ./package.json;
         in

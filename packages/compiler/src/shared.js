@@ -446,6 +446,11 @@ export function buildAttrs(def, scope) {
     }
   }
 
+  if (def.tagName === "img") {
+    if (!def.attributes?.loading) out += ` loading="lazy"`;
+    if (!def.attributes?.decoding) out += ` decoding="async"`;
+  }
+
   if (def.$props && typeof def.$props === "object") {
     out += ` data-jx-props="${escapeHtml(JSON.stringify(def.$props))}"`;
   }
@@ -769,7 +774,7 @@ function _walkServerEntries(def, entries) {
 // ─── Component pre-rendering ─────────────────────────────────────────────────
 
 /** @type {Set<string>} */
-const SELF_CLOSING = new Set(["input", "br", "hr", "img", "meta", "link", "area", "col"]);
+const SELF_CLOSING = new Set(["input", "br", "hr", "img", "meta", "link", "area", "col", "source"]);
 
 /**
  * Recursively render a Jx node tree to static HTML for pre-rendering.

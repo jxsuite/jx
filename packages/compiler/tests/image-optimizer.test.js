@@ -1,0 +1,342 @@
+import { describe, test, expect } from "bun:test";
+import {
+  contentHash,
+  configHash,
+  variantFilename,
+  buildSrcset,
+} from "../src/site/image-optimizer.js";
+import { loadCache, saveCache, getCached, setCached } from "../src/site/image-cache.js";
+import { transformImageNodes } from "../src/site/image-transform.js";
+import { writeFileSync, mkdirSync, rmSync } from "node:fs";
+import { resolve, join } from "node:path";
+import { tmpdir } from "node:os";
+
+const TMP = resolve(tmpdir(), "jx-image-test-" + Date.now());
+
+function setup() {
+  rmSync(TMP, { recursive: true, force: true });
+  mkdirSync(TMP, { recursive: true });
+  mkdirSync(join(TMP, "public/images"), { recursive: true });
+  return TMP;
+}
+
+function teardown() {
+  rmSync(TMP, { recursive: true, force: true });
+}
+
+// ─── Pure utility tests (no Sharp needed) ────────────────────────────────────
+
+describe("image-optimizer utilities", () => {
+  test("variantFilename builds correct name", () => {
+    expect(variantFilename("hero", 640, "a1b2c3d4", "webp")).toBe("hero-640-a1b2c3d4.webp");
+    expect(variantFilename("photo", 1280, "deadbeef", "avif")).toBe("photo-1280-deadbeef.avif");
+  });
+
+  test("buildSrcset filters by format", () => {
+    const variants = [
+      {
+        width: 320,
+        format: "webp",
+        outputPath: "/images/_optimized/hero-320-abc.webp",
+        absolutePath: "",
+      },
+      {
+        width: 640,
+        format: "webp",
+        outputPath: "/images/_optimized/hero-640-abc.webp",
+        absolutePath: "",
+      },
+      {
+        width: 320,
+        format: "avif",
+        outputPath: "/images/_optimized/hero-320-abc.avif",
+        absolutePath: "",
+      },
+      {
+        width: 640,
+        format: "avif",
+        outputPath: "/images/_optimized/hero-640-abc.avif",
+        absolutePath: "",
+      },
+    ];
+
+    const webpSrcset = buildSrcset(variants, "webp");
+    expect(webpSrcset).toBe(
+      "/images/_optimized/hero-320-abc.webp 320w, /images/_optimized/hero-640-abc.webp 640w",
+    );
+
+    const avifSrcset = buildSrcset(variants, "avif");
+    expect(avifSrcset).toContain("avif");
+    expect(avifSrcset).not.toContain("webp");
+  });
+
+  test("buildSrcset returns empty for no matches", () => {
+    expect(buildSrcset([], "webp")).toBe("");
+  });
+});
+
+describe("contentHash and configHash", () => {
+  test("contentHash returns 8-char hex string", () => {
+    const root = setup();
+    const file = join(root, "test.bin");
+    writeFileSync(file, "hello world");
+
+    const hash = contentHash(file);
+    expect(hash).toHaveLength(8);
+    expect(hash).toMatch(/^[0-9a-f]{8}$/);
+
+    teardown();
+  });
+
+  test("contentHash changes when file content changes", () => {
+    const root = setup();
+    const file = join(root, "test.bin");
+
+    writeFileSync(file, "content A");
+    const hashA = contentHash(file);
+
+    writeFileSync(file, "content B");
+    const hashB = contentHash(file);
+
+    expect(hashA).not.toBe(hashB);
+    teardown();
+  });
+
+  test("configHash returns 8-char hex string", () => {
+    const hash = configHash({
+      optimize: true,
+      widths: [320, 640],
+      formats: ["webp"],
+      quality: { webp: 80 },
+      sizes: "100vw",
+      lazyLoad: true,
+    });
+    expect(hash).toHaveLength(8);
+    expect(hash).toMatch(/^[0-9a-f]{8}$/);
+  });
+
+  test("configHash changes with different settings", () => {
+    const base = { optimize: true, sizes: "100vw", lazyLoad: true };
+    const hashA = configHash({ ...base, widths: [320], formats: ["webp"], quality: { webp: 80 } });
+    const hashB = configHash({ ...base, widths: [640], formats: ["webp"], quality: { webp: 80 } });
+    expect(hashA).not.toBe(hashB);
+  });
+});
+
+// ─── Cache tests ─────────────────────────────────────────────────────────────
+
+describe("image-cache", () => {
+  test("loadCache returns empty manifest when no cache exists", () => {
+    const cache = loadCache("/nonexistent/path");
+    expect(cache).toEqual({ version: 1, entries: {} });
+  });
+
+  test("saveCache and loadCache round-trip", () => {
+    const root = setup();
+    const cache = {
+      version: 1,
+      entries: {
+        "abc:def": {
+          source: "test.jpg",
+          manifest: {
+            original: { width: 100, height: 100, format: "jpeg" },
+            variants: [],
+            contentHash: "abc",
+          },
+          timestamp: 1000,
+        },
+      },
+    };
+
+    saveCache(root, cache);
+    const loaded = loadCache(root);
+    expect(loaded.entries["abc:def"].source).toBe("test.jpg");
+    teardown();
+  });
+
+  test("getCached returns null for missing key", () => {
+    const cache = { version: 1, entries: {} };
+    expect(getCached(cache, "missing", "/tmp")).toBeNull();
+  });
+
+  test("setCached stores entry", () => {
+    const cache = { version: 1, entries: /** @type {Record<string, any>} */ ({}) };
+    const manifest = {
+      original: { width: 800, height: 600, format: "jpeg" },
+      variants: [],
+      contentHash: "abc",
+    };
+    setCached(cache, "key1", "test.jpg", manifest);
+    expect(cache.entries["key1"]).toBeDefined();
+    expect(cache.entries["key1"].source).toBe("test.jpg");
+  });
+});
+
+// ─── Transform tests (no Sharp — tests skip conditions and tree walking) ─────
+
+describe("image-transform", () => {
+  const defaultConfig = {
+    optimize: true,
+    widths: [320, 640],
+    formats: ["webp", "avif"],
+    quality: { webp: 80, avif: 65 },
+    sizes: "(max-width: 768px) 100vw, 50vw",
+    lazyLoad: true,
+  };
+
+  test("skips when optimize is false", async () => {
+    const doc = {
+      tagName: "div",
+      children: [
+        {
+          tagName: "img",
+          attributes: /** @type {Record<string, any>} */ ({ src: "/images/hero.jpg" }),
+        },
+      ],
+    };
+    const cache = { version: 1, entries: {} };
+    const result = await transformImageNodes(
+      doc,
+      { ...defaultConfig, optimize: false },
+      "/tmp",
+      "/tmp/dist",
+      cache,
+    );
+    expect(result.imageRefs.size).toBe(0);
+    expect(doc.children[0].attributes.srcset).toBeUndefined();
+  });
+
+  test("skips template string src", async () => {
+    const root = setup();
+    const doc = {
+      tagName: "div",
+      children: [{ tagName: "img", attributes: { src: "${state.image}" } }],
+    };
+    const cache = { version: 1, entries: {} };
+    const result = await transformImageNodes(doc, defaultConfig, root, join(root, "dist"), cache);
+    expect(result.imageRefs.size).toBe(0);
+    teardown();
+  });
+
+  test("skips external URLs", async () => {
+    const root = setup();
+    const doc = {
+      tagName: "div",
+      children: [
+        { tagName: "img", attributes: { src: "https://example.com/img.jpg" } },
+        { tagName: "img", attributes: { src: "data:image/png;base64,abc" } },
+        { tagName: "img", attributes: { src: "//cdn.example.com/img.jpg" } },
+      ],
+    };
+    const cache = { version: 1, entries: {} };
+    const result = await transformImageNodes(doc, defaultConfig, root, join(root, "dist"), cache);
+    expect(result.imageRefs.size).toBe(0);
+    teardown();
+  });
+
+  test("skips SVG and GIF files", async () => {
+    const root = setup();
+    writeFileSync(join(root, "public/images/icon.svg"), "<svg></svg>");
+    writeFileSync(join(root, "public/images/anim.gif"), "GIF89a");
+
+    const doc = {
+      tagName: "div",
+      children: [
+        { tagName: "img", attributes: { src: "/images/icon.svg" } },
+        { tagName: "img", attributes: { src: "/images/anim.gif" } },
+      ],
+    };
+    const cache = { version: 1, entries: {} };
+    const result = await transformImageNodes(doc, defaultConfig, root, join(root, "dist"), cache);
+    expect(result.imageRefs.size).toBe(0);
+    teardown();
+  });
+
+  test("skips data-no-optimize images", async () => {
+    const root = setup();
+    writeFileSync(join(root, "public/images/hero.jpg"), "fake jpg data");
+
+    const doc = {
+      tagName: "div",
+      children: [
+        { tagName: "img", attributes: { src: "/images/hero.jpg", "data-no-optimize": "" } },
+      ],
+    };
+    const cache = { version: 1, entries: {} };
+    const result = await transformImageNodes(doc, defaultConfig, root, join(root, "dist"), cache);
+    expect(result.imageRefs.size).toBe(0);
+    teardown();
+  });
+
+  test("skips when source file does not exist", async () => {
+    const root = setup();
+    const doc = {
+      tagName: "div",
+      children: [{ tagName: "img", attributes: { src: "/images/nonexistent.jpg" } }],
+    };
+    const cache = { version: 1, entries: {} };
+    const result = await transformImageNodes(doc, defaultConfig, root, join(root, "dist"), cache);
+    expect(result.imageRefs.size).toBe(0);
+    teardown();
+  });
+
+  test("walks nested children", async () => {
+    const root = setup();
+    const doc = {
+      tagName: "div",
+      children: [
+        {
+          tagName: "section",
+          children: [
+            { tagName: "p", textContent: "text" },
+            { tagName: "img", attributes: { src: "https://external.com/photo.jpg" } },
+          ],
+        },
+      ],
+    };
+    const cache = { version: 1, entries: {} };
+    const result = await transformImageNodes(doc, defaultConfig, root, join(root, "dist"), cache);
+    expect(result.imageRefs.size).toBe(0);
+    teardown();
+  });
+});
+
+// ─── Site-loader config tests ────────────────────────────────────────────────
+
+describe("site-loader images config", () => {
+  test("DEFAULTS include images config", async () => {
+    const { loadProjectConfig } = await import("../src/site/site-loader.js");
+    const root = setup();
+    writeFileSync(join(root, "project.json"), JSON.stringify({ name: "Test" }));
+
+    const { config } = loadProjectConfig(root);
+    expect(config.images).toBeDefined();
+    expect(config.images.optimize).toBe(true);
+    expect(config.images.widths).toEqual([320, 640, 960, 1280, 1920]);
+    expect(config.images.formats).toEqual(["webp", "avif"]);
+    expect(config.images.quality).toEqual({ webp: 80, avif: 65, jpeg: 80, png: 80 });
+    expect(config.images.sizes).toBe("(max-width: 768px) 100vw, 50vw");
+    expect(config.images.lazyLoad).toBe(true);
+
+    teardown();
+  });
+
+  test("project.json images config merges with defaults", async () => {
+    const { loadProjectConfig } = await import("../src/site/site-loader.js");
+    const root = setup();
+    writeFileSync(
+      join(root, "project.json"),
+      JSON.stringify({
+        name: "Test",
+        images: { widths: [400, 800], optimize: false },
+      }),
+    );
+
+    const { config } = loadProjectConfig(root);
+    expect(config.images.optimize).toBe(false);
+    expect(config.images.widths).toEqual([400, 800]);
+    expect(config.images.formats).toEqual(["webp", "avif"]);
+
+    teardown();
+  });
+});

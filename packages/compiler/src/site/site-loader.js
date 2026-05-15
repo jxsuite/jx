@@ -27,6 +27,14 @@ const DEFAULTS = {
   state: {},
   collections: {},
   redirects: {},
+  images: {
+    optimize: true,
+    widths: [320, 640, 960, 1280, 1920],
+    formats: ["webp", "avif"],
+    quality: { webp: 80, avif: 65, jpeg: 80, png: 80 },
+    sizes: "(max-width: 768px) 100vw, 50vw",
+    lazyLoad: true,
+  },
   build: {
     outDir: "./dist",
     format: "directory",
@@ -65,6 +73,7 @@ export function loadProjectConfig(projectRoot) {
     ...DEFAULTS,
     ...raw,
     defaults: { ...DEFAULTS.defaults, ...raw.defaults },
+    images: { ...DEFAULTS.images, ...raw.images },
     build: { ...DEFAULTS.build, ...raw.build },
   };
 

@@ -821,7 +821,9 @@ describe("renderStaticNode", () => {
 
   test("renders self-closing tags", () => {
     expect(renderStaticNode({ tagName: "br" }, null)).toBe("<br>");
-    expect(renderStaticNode({ tagName: "img" }, null)).toBe("<img>");
+    expect(renderStaticNode({ tagName: "img" }, null)).toBe(
+      '<img loading="lazy" decoding="async">',
+    );
     expect(renderStaticNode({ tagName: "input" }, null)).toBe("<input>");
     expect(renderStaticNode({ tagName: "hr" }, null)).toBe("<hr>");
   });
