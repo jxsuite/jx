@@ -423,9 +423,10 @@ describe("compile — CSS extraction", () => {
     expect(html).toContain(".jx-0:first-child");
   });
 
-  test("no nested styles → no <style> block emitted", async () => {
+  test("flat styles emitted as CSS rules in <style> block", async () => {
     const { html } = await compile({ tagName: "div", style: { color: "red" } });
-    expect(html).not.toContain("<style>");
+    expect(html).toContain("<style>");
+    expect(html).toContain("color: red");
   });
 
   test("nested styles in child nodes collected", async () => {

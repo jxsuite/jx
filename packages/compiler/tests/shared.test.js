@@ -531,15 +531,15 @@ describe("buildComponentCSS", () => {
     expect(css).toContain("font-size: 16px;");
   });
 
-  test("skips pseudo-selectors and media queries", () => {
+  test("skips pseudo-selectors from host rules but emits them as CSS rules", () => {
     const css = buildComponentCSS("my-comp", {
       color: "red",
       ":hover": { color: "blue" },
       "@--md": { fontSize: "20px" },
     });
     expect(css).toContain("color: red;");
-    expect(css).not.toContain(":hover");
-    expect(css).not.toContain("@--md");
+    expect(css).toContain(":hover");
+    expect(css).toContain("@media");
   });
 
   test("skips template strings", () => {
@@ -583,16 +583,14 @@ describe("buildAttrs", () => {
     expect(result).toContain('dir="ltr"');
   });
 
-  test("builds inline style from flat style object", () => {
+  test("no longer emits inline style (styles are in CSS rules)", () => {
     const result = buildAttrs({ style: { color: "red", fontSize: "16px" } }, null);
-    expect(result).toContain("style=");
-    expect(result).toContain("color: red");
-    expect(result).toContain("font-size: 16px");
+    expect(result).not.toContain("style=");
   });
 
-  test("excludes pseudo-selectors from inline style", () => {
+  test("excludes pseudo-selectors from output", () => {
     const result = buildAttrs({ style: { color: "red", ":hover": { color: "blue" } } }, null);
-    expect(result).toContain("color: red");
+    expect(result).not.toContain("style=");
     expect(result).not.toContain(":hover");
   });
 
@@ -628,8 +626,11 @@ describe("buildAttrs", () => {
 
   test("resolves scope values in attributes", () => {
     const scope = buildInitialScope({ color: "blue" }, null);
-    const result = buildAttrs({ style: { color: "${state.color}" } }, scope);
-    expect(result).toContain("color: blue");
+    const result = buildAttrs(
+      { id: "test", attributes: { "data-color": "${state.color}" } },
+      scope,
+    );
+    expect(result).toContain('data-color="blue"');
   });
 });
 
@@ -780,7 +781,7 @@ describe("compileStyles", () => {
       children: [],
     };
     const result = compileStyles(doc);
-    expect(result).toContain("#responsive { font-size: 14px }");
+    expect(result).toContain("font-size: 14px;");
     expect(result).toContain("@media (min-width: 768px)");
     expect(result).toContain("font-size: 18px");
   });

@@ -6,7 +6,7 @@
  */
 
 import { camelToKebab, RESERVED_KEYS } from "@jxsuite/runtime";
-import { escapeHtml, tagNameToClassName, isSchemaOnly } from "../shared.js";
+import { escapeHtml, tagNameToClassName, isSchemaOnly, collectStyles } from "../shared.js";
 
 /**
  * Compile a Jx custom element document to a JS module string.
@@ -282,6 +282,16 @@ export function emitElementModule(doc, className, elementImports) {
   lines.push("  }"); // end constructor
   lines.push("");
 
+  // Collect CSS rules from children tree (assigns .jx-N classes to defs)
+  /** @type {string[]} */
+  const cssRules = [];
+  if (Array.isArray(doc.children)) {
+    const counter = { n: 0 };
+    for (const child of doc.children) {
+      collectStyles(child, cssRules, doc.$media ?? {}, "", counter, doc.tagName);
+    }
+  }
+
   // Template method
   lines.push("  template() {");
   lines.push("    const s = this.state;");
@@ -312,8 +322,6 @@ export function emitElementModule(doc, className, elementImports) {
   lines.push("      }");
   lines.push("    }");
   if (doc.style && typeof doc.style === "object") {
-    /** @type {[string, any][]} */
-    const staticStyles = [];
     /** @type {[string, string][]} */
     const dynamicStyles = [];
     for (const [prop, value] of Object.entries(doc.style)) {
@@ -329,13 +337,6 @@ export function emitElementModule(doc, className, elementImports) {
       const cssProp = camelToKebab(prop);
       if (typeof value === "string" && value.includes("${")) {
         dynamicStyles.push([cssProp, value]);
-      } else {
-        staticStyles.push([cssProp, value]);
-      }
-    }
-    if (staticStyles.length > 0) {
-      for (const [cssProp, value] of staticStyles) {
-        lines.push(`    this.style['${cssProp}'] = ${JSON.stringify(value)};`);
       }
     }
     if (dynamicStyles.length > 0) {
@@ -350,6 +351,15 @@ export function emitElementModule(doc, className, elementImports) {
       }
       lines.push("    });");
     }
+  }
+  if (cssRules.length > 0) {
+    const cssText = cssRules.join("\\n").replace(/'/g, "\\'");
+    lines.push(`    if (!document.querySelector('style[data-jx="${doc.tagName}"]')) {`);
+    lines.push(`      const _s = document.createElement('style');`);
+    lines.push(`      _s.setAttribute('data-jx', '${doc.tagName}');`);
+    lines.push(`      _s.textContent = '${cssText}';`);
+    lines.push(`      document.head.appendChild(_s);`);
+    lines.push(`    }`);
   }
   const hasSlot = treeHasSlot(doc.children);
   if (hasSlot) {
@@ -646,11 +656,9 @@ function emitStyleString(styleDef) {
 
     if (value === null || typeof value === "object") continue;
 
-    const cssProp = camelToKebab(prop);
     if (typeof value === "string" && value.includes("${")) {
+      const cssProp = camelToKebab(prop);
       parts.push(`${cssProp}: ${toLitExpr(value)}`);
-    } else {
-      parts.push(`${cssProp}: ${value}`);
     }
   }
 

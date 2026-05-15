@@ -137,7 +137,7 @@ export async function buildSite(projectRoot, options = {}) {
           : JSON.parse(readFileSync(componentPath, "utf8"));
         if (doc.tagName) {
           componentDefs.set(doc.tagName, doc);
-          const css = buildComponentCSS(doc.tagName, doc.style);
+          const css = buildComponentCSS(doc.tagName, doc.style, doc, projectConfig.$media ?? {});
           if (css) {
             componentCSS.set(doc.tagName, css);
             writeFileSync(resolve(componentOutDir, `${doc.tagName}.css`), css, "utf8");

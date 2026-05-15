@@ -393,46 +393,6 @@ export function buildAttrs(def, scope) {
   if (lang) out += ` lang="${escapeHtml(lang)}"`;
   if (dir) out += ` dir="${escapeHtml(dir)}"`;
 
-  if (def.style) {
-    // Collect properties that have @media overrides — these must NOT be inline
-    // because inline styles (specificity 1,0,0,0) always beat stylesheet @media rules.
-    const mediaOverriddenProps = new Set();
-    for (const [k, v] of Object.entries(def.style)) {
-      if (k.startsWith("@") && v && typeof v === "object") {
-        for (const prop of Object.keys(/** @type {Record<string, any>} */ (v))) {
-          if (
-            !prop.startsWith(":") &&
-            !prop.startsWith(".") &&
-            !prop.startsWith("&") &&
-            !prop.startsWith("[")
-          ) {
-            mediaOverriddenProps.add(prop);
-          }
-        }
-      }
-    }
-
-    const inline = Object.entries(def.style)
-      .filter(
-        ([k, v]) =>
-          !k.startsWith(":") &&
-          !k.startsWith(".") &&
-          !k.startsWith("&") &&
-          !k.startsWith("[") &&
-          !k.startsWith("@") &&
-          !mediaOverriddenProps.has(k) &&
-          v !== null &&
-          typeof v !== "object",
-      )
-      .map(([k, v]) => {
-        const value = resolveStaticValue(v, scope);
-        return value == null ? null : `${camelToKebab(k)}: ${value}`;
-      })
-      .filter(Boolean)
-      .join("; ");
-    if (inline) out += ` style="${inline}"`;
-  }
-
   if (def.attributes) {
     for (const [k, v] of Object.entries(def.attributes)) {
       const value = resolveStaticValue(v, scope);
@@ -557,23 +517,19 @@ export function compileStyles(doc, mediaQueries = {}, projectStyle = null) {
  * @param {string} [_parentSel]
  * @param {{ n: number }} [counter]
  */
-export function collectStyles(def, rules, mediaQueries, _parentSel = "", counter = { n: 0 }) {
+export function collectStyles(
+  def,
+  rules,
+  mediaQueries,
+  _parentSel = "",
+  counter = { n: 0 },
+  prefix = "jx",
+) {
   if (!def || typeof def !== "object") return;
 
   if (def.style) {
-    // Check if this element needs CSS rules (media queries, pseudo-classes, etc.)
-    const needsCSS = Object.keys(def.style).some(
-      (k) =>
-        k.startsWith("@") ||
-        k.startsWith(":") ||
-        k.startsWith(".") ||
-        k.startsWith("&") ||
-        k.startsWith("["),
-    );
-
-    // Auto-scope elements that need CSS rules but lack a unique selector
-    if (needsCSS && !def.id && !def.className) {
-      def.className = `jx-${counter.n++}`;
+    if (!def.id && !def.className) {
+      def.className = `${prefix}-${counter.n++}`;
     }
   }
 
@@ -584,36 +540,22 @@ export function collectStyles(def, rules, mediaQueries, _parentSel = "", counter
       : (def.tagName ?? "*");
 
   if (def.style) {
-    // Collect properties that have @media overrides — these are excluded from
-    // inline styles in buildAttrs(), so we emit them as base CSS rules here.
-    const mediaOverriddenProps = new Set();
-    for (const [k, v] of Object.entries(def.style)) {
-      if (k.startsWith("@") && v && typeof v === "object") {
-        for (const p of Object.keys(/** @type {Record<string, any>} */ (v))) {
-          if (
-            !p.startsWith(":") &&
-            !p.startsWith(".") &&
-            !p.startsWith("&") &&
-            !p.startsWith("[")
-          ) {
-            mediaOverriddenProps.add(p);
-          }
-        }
-      }
+    const baseDecls = [];
+    for (const [prop, value] of Object.entries(def.style)) {
+      if (
+        prop.startsWith(":") ||
+        prop.startsWith(".") ||
+        prop.startsWith("&") ||
+        prop.startsWith("[") ||
+        prop.startsWith("@")
+      )
+        continue;
+      if (value === null || typeof value === "object") continue;
+      if (typeof value === "string" && isTemplateString(value)) continue;
+      baseDecls.push(`  ${camelToKebab(prop)}: ${value};`);
     }
-
-    // Emit base CSS rules for media-overridden properties
-    if (mediaOverriddenProps.size > 0) {
-      const baseDecls = [];
-      for (const p of mediaOverriddenProps) {
-        const v = def.style[p];
-        if (v !== null && v !== undefined && typeof v !== "object") {
-          baseDecls.push(`${camelToKebab(p)}: ${v}`);
-        }
-      }
-      if (baseDecls.length > 0) {
-        rules.push(`${selector} { ${baseDecls.join("; ")} }`);
-      }
+    if (baseDecls.length > 0) {
+      rules.push(`${selector} {\n${baseDecls.join("\n")}\n}`);
     }
 
     for (const [prop, val] of Object.entries(def.style)) {
@@ -651,7 +593,7 @@ export function collectStyles(def, rules, mediaQueries, _parentSel = "", counter
 
   if (Array.isArray(def.children)) {
     def.children.forEach((/** @type {any} */ c) => {
-      collectStyles(c, rules, mediaQueries, selector, counter);
+      collectStyles(c, rules, mediaQueries, selector, counter, prefix);
     });
   }
 }
@@ -913,30 +855,63 @@ function _isStaticNode(node) {
 }
 
 /**
- * Generate a CSS rule block for a component's root-level styles. Uses the tag name as the selector.
- * Skips pseudo-selectors, media queries, nested rules, and template strings (runtime-only).
+ * Generate CSS rules for a component: host-level styles using tag selector, plus inner element
+ * styles using .jx-N selectors via collectStyles.
  *
  * @param {string} tagName - The custom element tag name (used as CSS selector)
  * @param {any} styleDef - The component's style object
+ * @param {any} [doc] - The full component document (for walking children)
+ * @param {Record<string, any>} [mediaQueries] - Project media query definitions
  * @returns {string} CSS text, or empty string if no styles
  */
-export function buildComponentCSS(tagName, styleDef) {
-  if (!styleDef || typeof styleDef !== "object") return "";
+export function buildComponentCSS(tagName, styleDef, doc = null, mediaQueries = {}) {
   /** @type {string[]} */
-  const decls = [];
-  for (const [prop, value] of Object.entries(styleDef)) {
-    if (
-      prop.startsWith(":") ||
-      prop.startsWith(".") ||
-      prop.startsWith("&") ||
-      prop.startsWith("[") ||
-      prop.startsWith("@")
-    )
-      continue;
-    if (value === null || typeof value === "object") continue;
-    if (typeof value === "string" && isTemplateString(value)) continue;
-    decls.push(`  ${camelToKebab(prop)}: ${value};`);
+  const rules = [];
+
+  if (styleDef && typeof styleDef === "object") {
+    /** @type {string[]} */
+    const decls = [];
+    for (const [prop, value] of Object.entries(styleDef)) {
+      if (
+        prop.startsWith(":") ||
+        prop.startsWith(".") ||
+        prop.startsWith("&") ||
+        prop.startsWith("[") ||
+        prop.startsWith("@")
+      )
+        continue;
+      if (value === null || typeof value === "object") continue;
+      if (typeof value === "string" && isTemplateString(value)) continue;
+      decls.push(`  ${camelToKebab(prop)}: ${value};`);
+    }
+    if (decls.length > 0) {
+      rules.push(`${tagName} {\n${decls.join("\n")}\n}`);
+    }
+
+    for (const [prop, val] of Object.entries(styleDef)) {
+      if (prop.startsWith("@")) {
+        const query = prop.startsWith("@--")
+          ? (mediaQueries[prop.slice(1)] ?? prop.slice(1))
+          : prop.slice(1);
+        rules.push(`@media ${query} { ${tagName} { ${toCSSText(/** @type {any} */ (val))} } }`);
+      } else if (
+        prop.startsWith(":") ||
+        prop.startsWith(".") ||
+        prop.startsWith("&") ||
+        prop.startsWith("[")
+      ) {
+        const resolved = prop.startsWith("&") ? prop.replace("&", tagName) : `${tagName}${prop}`;
+        rules.push(`${resolved} { ${toCSSText(/** @type {any} */ (val))} }`);
+      }
+    }
   }
-  if (decls.length === 0) return "";
-  return `${tagName} {\n${decls.join("\n")}\n}\n`;
+
+  if (doc && Array.isArray(doc.children)) {
+    const counter = { n: 0 };
+    for (const child of doc.children) {
+      collectStyles(child, rules, mediaQueries, "", counter, tagName);
+    }
+  }
+
+  return rules.length > 0 ? rules.join("\n") + "\n" : "";
 }
