@@ -28,9 +28,7 @@ import {
   renameSwitchCase,
   applyMutation,
   getNodeAtPath,
-  flattenTree,
   nodeLabel,
-  pathKey,
   pathsEqual,
   parentElementPath,
   childIndex,
@@ -77,7 +75,6 @@ import {
   isEditing,
   getActiveElement,
   isEditableBlock,
-  isInlineElement,
   isInlineInContext,
   getInlineActions,
 } from "./editor/inline-edit.js";
@@ -196,7 +193,8 @@ import { renderDefsEditor } from "./settings/defs-editor.js";
 import * as toolbarPanel from "./panels/toolbar.js";
 import * as overlaysPanel from "./panels/overlays.js";
 import * as rightPanelMod from "./panels/right-panel.js";
-import { mediaDisplayName, ensureLitState } from "./panels/shared.js";
+import * as leftPanelMod from "./panels/left-panel.js";
+import { mediaDisplayName } from "./panels/shared.js";
 import * as monaco from "monaco-editor/esm/vs/editor/editor.api.js";
 
 // ─── Globals ──────────────────────────────────────────────────────────────────
@@ -804,10 +802,32 @@ rightPanelMod.mount({
   updateForcedPseudoPreview,
 });
 
+leftPanelMod.mount({
+  getCanvasMode: () => canvasMode,
+  renderImportsTemplate,
+  renderFilesTemplate,
+  renderSignalsTemplate,
+  renderDataExplorerTemplate,
+  renderHeadTemplate,
+  renderGitPanel,
+  renderCanvas: () => renderCanvas(),
+  defCategory,
+  defBadgeLabel,
+  navigateToComponent,
+  selectStylebookTag,
+  stylebookMeta,
+  webdata,
+  defaultDef,
+  registerLayersDnD,
+  registerElementsDnD,
+  registerComponentsDnD,
+  setupTreeKeyboard,
+});
+
 // Register all renderers with the store so render()/renderOnly() work
 registerRenderer("toolbar", () => toolbarPanel.render());
 registerRenderer("activityBar", () => renderActivityBar(S));
-registerRenderer("leftPanel", () => renderLeftPanel());
+registerRenderer("leftPanel", () => leftPanelMod.render());
 registerRenderer("canvas", () => renderCanvas());
 registerRenderer("rightPanel", () => rightPanelMod.render());
 registerRenderer("overlays", () => overlaysPanel.render());
@@ -816,20 +836,7 @@ setStatusbarRenderer(() => renderStatusbar(S));
 mountStatusbar();
 
 function safeRenderLeftPanel() {
-  try {
-    ensureLitState(leftPanel);
-    renderLeftPanel();
-  } catch (e) {
-    console.error("renderLeftPanel error:", e);
-    try {
-      leftPanel.textContent = "";
-      // @ts-ignore
-      delete leftPanel["_$litPart$"];
-      renderLeftPanel();
-    } catch (e2) {
-      console.error("renderLeftPanel retry failed:", e2);
-    }
-  }
+  leftPanelMod.render();
 }
 
 function safeRenderRightPanel() {
@@ -3194,332 +3201,13 @@ function handleComponentSlashSelect(cmd) {
   update(s);
 }
 
-// ─── Left panel: Layers ───────────────────────────────────────────────────────
+// ─── Left panel: delegated to panels/left-panel.js ───────────────────────────
 
 function renderLeftPanel() {
-  const tab = S.ui.leftTab;
-
-  /** @type {any} */
-  let content;
-  if (tab === "layers")
-    content = canvasMode === "settings" ? renderStylebookLayersTemplate() : renderLayersTemplate();
-  else if (tab === "imports")
-    content = renderImportsTemplate({
-      renderLeftPanel,
-      documentPath: S.documentPath,
-      documentElements: S.document.$elements || [],
-      applyMutation: (/** @type {any} */ fn) => {
-        S = applyMutation(S, fn);
-        update(S);
-      },
-    });
-  else if (tab === "files") content = renderFilesTemplate();
-  else if (tab === "blocks") content = renderElementsTemplate();
-  else if (tab === "state")
-    content = renderSignalsTemplate(S, { renderLeftPanel, renderCanvas, updateSession });
-  else if (tab === "data")
-    content = renderDataExplorerTemplate(S.document.state, view.liveScope, {
-      renderCanvas,
-      renderLeftPanel,
-      defCategory,
-      defBadgeLabel,
-    });
-  else if (tab === "head") {
-    // In content mode, title/$head live in S.content.frontmatter, not S.document
-    const isContent = S.mode === "content";
-    const fm = S.content?.frontmatter ?? {};
-    const headDoc = isContent ? { ...S.document, title: fm.title, $head: fm.$head } : S.document;
-    content = renderHeadTemplate({
-      document: headDoc,
-      applyMutation: isContent
-        ? (/** @type {any} */ fn) => {
-            // Apply mutation to a temporary doc, then sync title/$head back to frontmatter
-            const tmp = { title: fm.title, $head: fm.$head ? [...fm.$head] : undefined };
-            fn(tmp);
-            if (tmp.title !== fm.title) S = updateFrontmatter(S, "title", tmp.title);
-            // Always sync $head (may have been created, modified, or emptied)
-            const newHead = tmp.$head && tmp.$head.length > 0 ? tmp.$head : undefined;
-            S = updateFrontmatter(S, "$head", newHead);
-            update(S);
-          }
-        : (/** @type {any} */ fn) => {
-            S = applyMutation(S, fn);
-            update(S);
-          },
-      renderLeftPanel,
-    });
-  } else if (tab === "git") content = renderGitPanel(S);
-  else content = nothing;
-
-  litRender(html`<div class="panel-body">${content}</div>`, /** @type {any} */ (leftPanel));
-
-  // Post-render side effects
-  if (tab === "layers" && canvasMode !== "settings") registerLayersDnD();
-  else if (tab === "imports") {
-    /* no post-render DnD needed */
-  } else if (tab === "blocks") {
-    registerElementsDnD();
-    registerComponentsDnD();
-  } else if (tab === "files") {
-    const tree = /** @type {any} */ (leftPanel)?.querySelector(".file-tree");
-    if (tree) setupTreeKeyboard(tree);
-  }
+  leftPanelMod.render();
 }
 
-/** Returns a TemplateResult — called from renderLeftPanel only when tab=layers & not stylebook */
-function renderLayersTemplate() {
-  // Clean up previous DnD registrations
-  for (const fn of view.dndCleanups) fn();
-  view.dndCleanups = [];
-
-  const rows = flattenTree(S.document);
-  const collapsed = S._collapsed || (S._collapsed = new Set());
-
-  // Build layer rows
-  /** @type {any[]} */
-  const layerRows = [];
-  for (const { node, path, depth, nodeType } of rows) {
-    // Check if any ancestor is collapsed
-    let hidden = false;
-    for (let d = 1; d <= path.length; d++) {
-      const sub = path.slice(0, d);
-      if (d < path.length && collapsed.has(pathKey(sub))) {
-        hidden = true;
-        break;
-      }
-    }
-    if (hidden) continue;
-
-    // In content mode, skip the document root row (it's not a real element)
-    if (S.mode === "content" && path.length === 0) continue;
-
-    // Text node children: display-only row with truncated preview
-    if (nodeType === "text") {
-      const textPreview = String(node).length > 40 ? String(node).slice(0, 40) + "…" : String(node);
-      layerRows.push(html`
-        <div
-          class="layer-row"
-          style="padding-left:${depth * 16 + 8}px; opacity: 0.6; font-style: italic;"
-        >
-          <span class="layer-tag" style="background: #64748b; font-size: 0.65rem;">text</span>
-          <span class="layer-label">${textPreview}</span>
-        </div>
-      `);
-      continue;
-    }
-
-    // Skip inline elements
-    if (path.length >= 2 && nodeType === "element") {
-      const pPath = parentElementPath(path);
-      const parentNode = pPath ? getNodeAtPath(S.document, pPath) : null;
-      if (parentNode && isInlineElement(node, parentNode)) continue;
-    }
-
-    const key = pathKey(path);
-    const isSelected = pathsEqual(path, S.selection);
-    const hasChildren = Array.isArray(node.children) && node.children.length > 0;
-    const hasMapChildren =
-      node.children && typeof node.children === "object" && node.children.$prototype === "Array";
-    const hasCases =
-      node.$switch &&
-      node.cases &&
-      typeof node.cases === "object" &&
-      Object.keys(node.cases).length > 0;
-    const isExpandable =
-      hasChildren || hasMapChildren || hasCases || (nodeType === "map" && node.map);
-    const isVoidEl = VOID_ELEMENTS.has((node.tagName || "div").toLowerCase());
-
-    // Badge
-    /** @type {any} */
-    let badgeClass, badgeText, badgeTitle;
-    if (nodeType === "map") {
-      badgeClass = "layer-tag map-tag";
-      badgeText = "↻";
-      badgeTitle = "Repeater (mapped array)";
-    } else if (nodeType === "case" || nodeType === "case-ref") {
-      badgeClass = "layer-tag case-tag";
-      badgeText = path[path.length - 1];
-      badgeTitle = `$switch case: ${path[path.length - 1]}`;
-    } else if (node.$switch) {
-      badgeClass = "layer-tag switch-tag";
-      badgeText = "⇄";
-      badgeTitle = "$switch";
-    } else {
-      badgeClass = "layer-tag";
-      badgeText = node.tagName || "div";
-      badgeTitle = undefined;
-    }
-
-    // Label
-    /** @type {any} */
-    let labelText, labelItalic;
-    if (nodeType === "case-ref") {
-      labelText = node.$ref || "external";
-      labelItalic = true;
-    } else {
-      labelText = nodeLabel(node);
-      labelItalic = false;
-    }
-
-    // Compute move-button availability for element nodes
-    const isElement = nodeType === "element";
-    const isRoot = S.mode === "content" ? path.length === 0 : path.length < 2;
-    const idx = isElement ? /** @type {number} */ (childIndex(path)) : 0;
-    const parentPath = isElement && !isRoot ? /** @type {any} */ (parentElementPath(path)) : null;
-    const parentNode = parentPath ? getNodeAtPath(S.document, parentPath) : null;
-    const siblingCount = parentNode?.children?.length || 0;
-    const canMoveUp = isElement && !isRoot && idx > 0;
-    const canMoveDown = isElement && !isRoot && idx < siblingCount - 1;
-    // "in" = move into the previous sibling (become its last child)
-    const prevSibling = canMoveUp && parentNode ? parentNode.children[idx - 1] : null;
-    const canMoveIn =
-      isElement &&
-      !isRoot &&
-      prevSibling &&
-      !VOID_ELEMENTS.has((prevSibling.tagName || "div").toLowerCase());
-    // "out" = move out of parent to grandparent (after parent)
-    const grandparentPath =
-      isElement && parentPath && parentPath.length >= 2
-        ? /** @type {any} */ (parentElementPath(parentPath))
-        : null;
-    const canMoveOut = isElement && !isRoot && !!grandparentPath;
-
-    layerRows.push(html`
-      <div
-        class="layer-row${isSelected ? " selected" : ""}"
-        data-path=${key}
-        data-dnd-row=${isElement ? key : nothing}
-        data-dnd-depth=${isElement ? depth : nothing}
-        data-dnd-void=${isElement && isVoidEl ? "" : nothing}
-        @click=${() => update(selectNode(S, path))}
-        @contextmenu=${isElement
-          ? (/** @type {any} */ e) =>
-              showContextMenu(e, path, S, { onEditComponent: navigateToComponent })
-          : nothing}
-      >
-        <span class="layer-indent" style="width:${depth * 16}px"></span>
-        <span class="layer-toggle"
-          >${isExpandable
-            ? html`
-                ${collapsed.has(key)
-                  ? html`<sp-icon-chevron-right></sp-icon-chevron-right>`
-                  : html`<sp-icon-chevron-down></sp-icon-chevron-down>`}
-              `
-            : nothing}</span
-        >
-        <span class=${badgeClass} title=${badgeTitle ?? nothing}>${badgeText}</span>
-        <span class="layer-label" style=${labelItalic ? "font-style:italic" : nothing}
-          >${labelText}</span
-        >
-        ${isElement && !isRoot
-          ? html`
-              <span class="layer-actions">
-                ${canMoveUp
-                  ? html`<sp-action-button
-                      quiet
-                      size="xs"
-                      title="Move up"
-                      @click=${(/** @type {any} */ e) => {
-                        e.stopPropagation();
-                        /** @type {HTMLElement} */ (e.currentTarget).blur();
-                        update(moveNode(S, path, parentPath, idx - 1));
-                      }}
-                    >
-                      <sp-icon-arrow-up slot="icon"></sp-icon-arrow-up>
-                    </sp-action-button>`
-                  : nothing}
-                ${canMoveDown
-                  ? html`<sp-action-button
-                      quiet
-                      size="xs"
-                      title="Move down"
-                      @click=${(/** @type {any} */ e) => {
-                        e.stopPropagation();
-                        /** @type {HTMLElement} */ (e.currentTarget).blur();
-                        update(moveNode(S, path, parentPath, idx + 2));
-                      }}
-                    >
-                      <sp-icon-arrow-down slot="icon"></sp-icon-arrow-down>
-                    </sp-action-button>`
-                  : nothing}
-                ${canMoveIn
-                  ? html`<sp-action-button
-                      quiet
-                      size="xs"
-                      title="Move into previous sibling"
-                      @click=${(/** @type {any} */ e) => {
-                        e.stopPropagation();
-                        /** @type {HTMLElement} */ (e.currentTarget).blur();
-                        const prevPath = [...parentPath, idx - 1];
-                        const prev = getNodeAtPath(S.document, prevPath);
-                        const len = prev?.children?.length || 0;
-                        update(moveNode(S, path, prevPath, len));
-                      }}
-                    >
-                      <sp-icon-arrow-right slot="icon"></sp-icon-arrow-right>
-                    </sp-action-button>`
-                  : nothing}
-                ${canMoveOut
-                  ? html`<sp-action-button
-                      quiet
-                      size="xs"
-                      title="Move out of parent"
-                      @click=${(/** @type {any} */ e) => {
-                        e.stopPropagation();
-                        /** @type {HTMLElement} */ (e.currentTarget).blur();
-                        const parentIdx = /** @type {number} */ (childIndex(parentPath));
-                        update(moveNode(S, path, grandparentPath, parentIdx + 1));
-                      }}
-                    >
-                      <sp-icon-arrow-left slot="icon"></sp-icon-arrow-left>
-                    </sp-action-button>`
-                  : nothing}
-                <sp-action-button
-                  quiet
-                  size="xs"
-                  class="layer-delete"
-                  title="Delete"
-                  @click=${(/** @type {any} */ e) => {
-                    e.stopPropagation();
-                    update(removeNode(S, path));
-                  }}
-                >
-                  <sp-icon-close slot="icon"></sp-icon-close>
-                </sp-action-button>
-              </span>
-            `
-          : nothing}
-      </div>
-    `);
-
-    // Collapse toggle click handler — we add it via event delegation on the layer-toggle span
-    // It's already in the template above as the toggle span, but we need the click handler
-  }
-
-  return html`
-    <div class="layers-container" style="position:relative">
-      <div
-        class="layers-tree"
-        @click=${(/** @type {any} */ e) => {
-          const toggle = e.target.closest(".layer-toggle");
-          if (!toggle) return;
-          e.stopPropagation();
-          const row = toggle.closest(".layer-row");
-          if (!row) return;
-          const key = row.dataset.path;
-          if (!key) return;
-          if (collapsed.has(key)) collapsed.delete(key);
-          else collapsed.add(key);
-          renderLeftPanel();
-        }}
-      >
-        ${layerRows}
-      </div>
-    </div>
-  `;
-}
-
-/** Register DnD on layer rows after litRender — called from renderLeftPanel */
+/** Register DnD on layer rows after litRender — called from left-panel.js */
 function registerLayersDnD() {
   requestAnimationFrame(() => {
     const container = /** @type {any} */ (leftPanel)?.querySelector(".layers-container");
@@ -3732,95 +3420,6 @@ function selectStylebookTag(tag, media) {
   });
 }
 
-function renderStylebookLayersTemplate() {
-  const rootStyle = S.document?.style || {};
-  const selectedTag = S.ui.stylebookSelection;
-
-  if (S.ui.stylebookTab === "elements") {
-    /**
-     * Render a stylebook entry row with recursive children.
-     *
-     * @param {any} entry
-     * @param {number} depth
-     * @returns {any}
-     */
-    const renderEntryRow = (entry, depth = 0) => {
-      const tag = entry.tag;
-      // Deduplicate children by tag (e.g. multiple <li> → show one "li" row)
-      const uniqueChildren = entry.children
-        ? [...new Map(entry.children.map((/** @type {any} */ c) => [c.tag, c])).values()]
-        : [];
-      return html`
-        <div
-          class="layer-row${tag === selectedTag ? " selected" : ""}"
-          style="padding-left:${8 + depth * 16}px"
-          @click=${(/** @type {any} */ e) => {
-            e.stopPropagation();
-            selectStylebookTag(tag);
-          }}
-        >
-          <span class="layer-tag">${tag}</span>
-          <span
-            class="layer-label"
-            style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1"
-            >${entry.text || `<${tag}>`}</span
-          >
-          ${hasTagStyle(rootStyle, tag)
-            ? html`<span
-                style="width:6px;height:6px;border-radius:50%;background:var(--accent);flex-shrink:0"
-              ></span>`
-            : nothing}
-        </div>
-        ${uniqueChildren.map((/** @type {any} */ child) => renderEntryRow(child, depth + 1))}
-      `;
-    };
-
-    /** @type {any[]} */
-    const elementRows = [];
-    for (const section of stylebookMeta.$sections) {
-      for (const entry of /** @type {any[]} */ (section.elements)) {
-        elementRows.push(renderEntryRow(entry, 0));
-      }
-    }
-    // Custom components
-    const compRows = componentRegistry.map(
-      /** @param {any} comp */ (comp) => html`
-        <div
-          class="layer-row${comp.tagName === selectedTag ? " selected" : ""}"
-          @click=${() => selectStylebookTag(comp.tagName)}
-        >
-          <span class="layer-tag component-tag" style="background:var(--accent)">⬡</span>
-          <span class="layer-label">${comp.tagName}</span>
-        </div>
-      `,
-    );
-    return html`${elementRows}${compRows}`;
-  } else {
-    // Variables tab
-    const style = rootStyle;
-    const vars = Object.entries(style).filter(([k]) => k.startsWith("--"));
-    if (vars.length === 0) {
-      return html`<div style="padding:16px;text-align:center;color:var(--fg-dim);font-size:12px">
-        No variables defined
-      </div>`;
-    }
-    return html`${vars.map(
-      ([k, v]) => html`
-        <div class="layer-row">
-          <span class="layer-tag" style="font-size:10px;font-family:'SF Mono','Fira Code',monospace"
-            >var</span
-          >
-          <span class="layer-label">${k}</span>
-          <span
-            style="font-size:11px;color:var(--fg-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:80px"
-            >${String(v)}</span
-          >
-        </div>
-      `,
-    )}`;
-  }
-}
-
 /**
  * Apply a DnD instruction to the state
  *
@@ -3978,142 +3577,6 @@ function defaultDef(tag) {
 }
 
 const unsafeTags = new Set(["script", "style", "link", "iframe", "object", "embed"]);
-
-function renderElementsTemplate() {
-  const categories = Object.entries(webdata.elements).map(
-    (/** @type {any} */ [category, elements]) => {
-      const filtered = view.elementsFilter
-        ? elements.filter((/** @type {any} */ e) => e.tag.includes(view.elementsFilter))
-        : elements;
-      if (filtered.length === 0) return nothing;
-
-      return html`
-        <sp-accordion-item
-          label=${category}
-          ?open=${!view.elementsCollapsed.has(category)}
-          @sp-accordion-item-toggle=${(/** @type {any} */ e) => {
-            if (e.target.open) view.elementsCollapsed.delete(category);
-            else view.elementsCollapsed.add(category);
-          }}
-        >
-          ${filtered.map((/** @type {any} */ { tag }) => {
-            const def = defaultDef(tag);
-            return html`
-              <div
-                class="element-card"
-                data-block-tag=${tag}
-                @click=${() => {
-                  const parentPath = S.selection || [];
-                  const parent = getNodeAtPath(S.document, parentPath);
-                  const idx = parent?.children ? parent.children.length : 0;
-                  update(insertNode(S, parentPath, idx, structuredClone(def)));
-                }}
-              >
-                <div class="element-card-preview"></div>
-                <div class="element-card-label">&lt;${tag}&gt;</div>
-              </div>
-            `;
-          })}
-        </sp-accordion-item>
-      `;
-    },
-  );
-
-  // Components from the component registry — only show enabled (imported) npm components
-  const effectiveEls = getEffectiveElements(S.document?.$elements);
-  /** @type {Set<string>} */
-  const enabledTags = new Set();
-  for (const entry of effectiveEls) {
-    if (typeof entry !== "string") continue;
-    // Cherry-picked subpath: match by package + modulePath
-    const comp = componentRegistry.find(
-      (/** @type {any} */ c) =>
-        c.source === "npm" && c.modulePath && entry === `${c.package}/${c.modulePath}`,
-    );
-    if (comp) {
-      enabledTags.add(comp.tagName);
-    } else {
-      // Legacy full-package import: enable all components from that package
-      for (const c of componentRegistry) {
-        if (c.source === "npm" && c.package === entry) enabledTags.add(c.tagName);
-      }
-    }
-  }
-  const compsFiltered =
-    componentRegistry.length > 0
-      ? componentRegistry
-          .filter((/** @type {any} */ c) => c.source !== "npm" || enabledTags.has(c.tagName))
-          .filter(
-            (/** @type {any} */ c) =>
-              !view.elementsFilter || c.tagName.toLowerCase().includes(view.elementsFilter),
-          )
-      : [];
-
-  const componentsAccordion =
-    compsFiltered.length > 0
-      ? html`
-          <sp-accordion-item
-            label="Components"
-            ?open=${!view.elementsCollapsed.has("Components")}
-            @sp-accordion-item-toggle=${(/** @type {any} */ e) => {
-              if (e.target.open) view.elementsCollapsed.delete("Components");
-              else view.elementsCollapsed.add("Components");
-            }}
-          >
-            <div class="components-section">
-              ${compsFiltered.map(
-                (/** @type {any} */ comp) => html`
-                  <div
-                    class="element-card"
-                    data-component-tag=${comp.tagName}
-                    title=${comp.source === "npm"
-                      ? `${comp.package}: <${comp.tagName}>`
-                      : comp.path}
-                    @click=${() => {
-                      const parentPath = S.selection || [];
-                      const parent = getNodeAtPath(S.document, parentPath);
-                      const idx = parent?.children ? parent.children.length : 0;
-                      const instanceDef = {
-                        tagName: comp.tagName,
-                        $props: Object.fromEntries(
-                          (comp.props || []).map((/** @type {any} */ p) => [
-                            p.name,
-                            p.default !== undefined ? p.default : "",
-                          ]),
-                        ),
-                      };
-                      update(insertNode(S, parentPath, idx, structuredClone(instanceDef)));
-                    }}
-                  >
-                    <div class="element-card-preview">
-                      <span style="color:var(--fg-dim);font-size:11px;font-style:italic"
-                        >&lt;${comp.tagName}&gt;</span
-                      >
-                    </div>
-                    <div class="element-card-label">${comp.tagName}</div>
-                  </div>
-                `,
-              )}
-            </div>
-          </sp-accordion-item>
-        `
-      : nothing;
-
-  return html`
-    <sp-search
-      size="s"
-      placeholder="Filter elements…"
-      value=${view.elementsFilter}
-      @input=${(/** @type {any} */ e) => {
-        view.elementsFilter = e.target.value.toLowerCase();
-        renderLeftPanel();
-      }}
-    ></sp-search>
-    <sp-accordion class="elements-list" allow-multiple
-      >${componentsAccordion}${categories}</sp-accordion
-    >
-  `;
-}
 
 function registerElementsDnD() {
   requestAnimationFrame(() => {
