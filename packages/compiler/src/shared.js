@@ -393,6 +393,28 @@ export function buildAttrs(def, scope) {
   if (lang) out += ` lang="${escapeHtml(lang)}"`;
   if (dir) out += ` dir="${escapeHtml(dir)}"`;
 
+  if (def.style && scope) {
+    const inline = Object.entries(def.style)
+      .filter(
+        ([k, v]) =>
+          !k.startsWith(":") &&
+          !k.startsWith(".") &&
+          !k.startsWith("&") &&
+          !k.startsWith("[") &&
+          !k.startsWith("@") &&
+          v !== null &&
+          typeof v !== "object" &&
+          typeof v === "string" &&
+          isTemplateString(v),
+      )
+      .map(([k, v]) => {
+        const value = resolveStaticValue(v, scope);
+        return value == null ? null : `${camelToKebab(k)}: ${value}`;
+      })
+      .filter(Boolean)
+      .join("; ");
+    if (inline) out += ` style="${inline}"`;
+  }
   if (def.attributes) {
     for (const [k, v] of Object.entries(def.attributes)) {
       const value = resolveStaticValue(v, scope);

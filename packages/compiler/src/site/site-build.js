@@ -34,6 +34,7 @@ import {
   buildComponentCSS,
   collectServerEntries,
   renderStaticNode,
+  resolveStaticValue,
   DEFAULT_REACTIVITY_SRC,
   DEFAULT_LIT_HTML_SRC,
 } from "../shared.js";
@@ -611,6 +612,28 @@ function expandComponents(node, componentDefs) {
 
     node.innerHTML = innerHTML;
     delete node.children;
+
+    // Resolve template-string host styles with props (per-instance values like background-image)
+    if (def.style && node.$props) {
+      let stateDefs = { ...def.state };
+      for (const [key, value] of Object.entries(node.$props)) {
+        if (key in stateDefs) stateDefs[key] = value;
+        else stateDefs[key] = value;
+      }
+      const scope = buildInitialScope(stateDefs, null);
+      /** @type {Record<string, any>} */
+      const resolvedStyle = {};
+      for (const [prop, value] of Object.entries(def.style)) {
+        if (typeof value === "string" && isTemplateString(value)) {
+          const resolved = resolveStaticValue(value, scope);
+          if (resolved != null) resolvedStyle[prop] = resolved;
+        }
+      }
+      if (Object.keys(resolvedStyle).length > 0) {
+        node.style = { ...node.style, ...resolvedStyle };
+      }
+    }
+
     delete node.$props;
 
     if (isStatic) node.$static = true;
