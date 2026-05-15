@@ -359,12 +359,10 @@ export function emitElementModule(doc, className, elementImports) {
       "    const _slotted = Array.from(this.childNodes).filter(n => n.nodeType === 1 || (n.nodeType === 3 && n.textContent.trim()));",
     );
   }
-  // Skip clearing innerHTML if content was pre-rendered with correct props
   lines.push("    if (this.hasAttribute('data-jx-prerendered')) {");
   lines.push("      this.removeAttribute('data-jx-prerendered');");
-  lines.push("    } else {");
-  lines.push("      this.innerHTML = '';");
   lines.push("    }");
+  lines.push("    this.innerHTML = '';");
   lines.push("    this.#dispose = effect(() => render(this.template(), this));");
   if (hasSlot) {
     // Replace <slot> placeholder with saved slotted content

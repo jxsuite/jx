@@ -274,6 +274,19 @@ describe("compileElement — templates", () => {
     expect(content).toContain("s.items");
   });
 
+  test("always clears innerHTML before render (no duplicate content on hydration)", async () => {
+    const result = await compileElement({
+      tagName: "test-hydrate",
+      state: { name: "world" },
+      children: [{ tagName: "span", textContent: "${state.name}" }],
+    });
+
+    const content = result.files[0].content;
+    expect(content).toContain("this.innerHTML = '';");
+    expect(content).not.toContain("} else {");
+    expect(content).not.toContain("} else {\n      this.innerHTML = '';");
+  });
+
   test("attributes", async () => {
     const result = await compileElement({
       tagName: "test-attrs",
