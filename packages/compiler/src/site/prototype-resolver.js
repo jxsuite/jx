@@ -33,6 +33,16 @@ const SKIP_PROTOTYPES = new Set([
 ]);
 
 /**
+ * Built-in $prototype → .class.json mappings. These resolve automatically without requiring an
+ * explicit `imports` entry in project.json. Project-level imports take precedence on collision.
+ */
+/** @type {Record<string, string>} */
+const BUILTIN_CLASS_MAPPINGS = {
+  MarkdownFile: "@jxsuite/parser/MarkdownFile.class.json",
+  MarkdownCollection: "@jxsuite/parser/MarkdownCollection.class.json",
+};
+
+/**
  * Keys reserved by the Jx prototype system — stripped before passing config to the external class
  * constructor. Mirrors runtime's EXTERNAL_RESERVED.
  */
@@ -73,8 +83,8 @@ export async function resolvePrototypes(doc, route, projectRoot) {
 
     // Look up in imports if no $src already set
     if (!def.$src) {
-      const mapped = imports[def.$prototype];
-      if (!mapped) continue; // not in imports — leave for runtime
+      const mapped = imports[def.$prototype] ?? BUILTIN_CLASS_MAPPINGS[def.$prototype];
+      if (!mapped) continue;
       def.$src = mapped;
     }
 
