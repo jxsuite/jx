@@ -133,6 +133,24 @@ describe("compileElement — templates", () => {
     expect(content).toContain("${s.name}");
   });
 
+  test("template string in children array emits unescaped lit expression", async () => {
+    const result = await compileElement({
+      tagName: "test-tpl-child",
+      state: { status: "idle" },
+      children: [
+        {
+          tagName: "button",
+          children: ["${state.status === 'submitting' ? 'Sending...' : 'Submit'}"],
+        },
+      ],
+    });
+
+    const content = result.files[0].content;
+    expect(content).toContain("s.status === 'submitting' ? 'Sending...' : 'Submit'");
+    expect(content).not.toContain("&#39;");
+    expect(content).not.toContain("&amp;");
+  });
+
   test("static textContent", async () => {
     const result = await compileElement({
       tagName: "test-static-text",

@@ -418,6 +418,7 @@ function emitLitChildren(children, parentStyle, indent) {
 function emitLitNode(def, indent) {
   // String children are text nodes
   if (typeof def === "string") {
+    if (def.includes("${")) return `${indent}${toLitTextContent(def)}`;
     return `${indent}${escapeHtml(def)}`;
   }
   if (typeof def === "number" || typeof def === "boolean") {
