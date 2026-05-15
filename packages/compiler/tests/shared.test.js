@@ -616,10 +616,14 @@ describe("buildAttrs", () => {
     expect(result).toContain("&quot;alert&quot;");
   });
 
-  test("builds $props as data-jx-props", () => {
-    const result = buildAttrs({ $props: { count: 5 } }, null);
-    expect(result).toContain("data-jx-props=");
-    expect(result).toContain("count");
+  test("builds $static marker attribute", () => {
+    const result = buildAttrs({ $static: true }, null);
+    expect(result).toContain("data-jx-static");
+  });
+
+  test("builds $prerendered marker attribute", () => {
+    const result = buildAttrs({ $prerendered: true }, null);
+    expect(result).toContain("data-jx-prerendered");
   });
 
   test("resolves scope values in attributes", () => {

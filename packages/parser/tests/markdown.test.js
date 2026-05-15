@@ -1,11 +1,6 @@
 import { describe, test, expect, beforeAll, afterAll, spyOn } from "bun:test";
 import { resolve as resolvePath, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { unified } from "unified";
-import remarkParse from "remark-parse";
-import remarkDirective from "remark-directive";
-import remarkRehype from "remark-rehype";
-import rehypeStringify from "rehype-stringify";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 
 try {
@@ -15,7 +10,7 @@ try {
 }
 
 import { buildScope, resolvePrototype, isSignal, RESERVED_KEYS } from "@jxsuite/runtime";
-import { MarkdownFile, MarkdownCollection, MarkdownDirective } from "../src/md.js";
+import { MarkdownFile, MarkdownCollection } from "../src/md.js";
 import { readFileSync } from "node:fs";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -60,11 +55,11 @@ function setupClassJsonFetchMock(/** @type {Record<string, string>} */ fileMap) 
 describe("MarkdownFile", () => {
   /** @type {any} */ let result;
 
-  beforeAll(async () => {
+  beforeAll(() => {
     const mf = new MarkdownFile({
       src: join(FIXTURE_DIR, "getting-started.md"),
     });
-    result = await mf.resolve();
+    result = mf.resolve();
   });
 
   test("constructor stores config", () => {
@@ -102,37 +97,39 @@ describe("MarkdownFile", () => {
     expect(result.frontmatter.published).toBe(true);
   });
 
-  test("$body is a non-empty HTML string", () => {
-    expect(typeof result.$body).toBe("string");
-    expect(result.$body.length).toBeGreaterThan(0);
+  test("$children is a non-empty array of JX nodes", () => {
+    expect(Array.isArray(result.$children)).toBe(true);
+    expect(result.$children.length).toBeGreaterThan(0);
   });
 
-  test("$body contains rendered markdown", () => {
-    expect(result.$body).toContain("<h2>");
-    expect(result.$body).toContain("<p>");
+  test("$children contains heading nodes", () => {
+    const hasHeading = result.$children.some((/** @type {any} */ n) => n.tagName?.startsWith("h"));
+    expect(hasHeading).toBe(true);
   });
 
-  test("$body contains rendered code blocks", () => {
-    expect(result.$body).toContain("<code");
+  test("$children contains paragraph nodes", () => {
+    const hasP = result.$children.some((/** @type {any} */ n) => n.tagName === "p");
+    expect(hasP).toBe(true);
   });
 
-  test("$body contains rendered bold text", () => {
-    expect(result.$body).toContain("<strong>");
+  test("$children contains code block nodes", () => {
+    const hasPre = result.$children.some((/** @type {any} */ n) => n.tagName === "pre");
+    expect(hasPre).toBe(true);
   });
 
-  test("$body contains rendered list", () => {
-    expect(result.$body).toContain("<ol>");
-    expect(result.$body).toContain("<li>");
+  test("$children contains list nodes", () => {
+    const hasOl = result.$children.some((/** @type {any} */ n) => n.tagName === "ol");
+    expect(hasOl).toBe(true);
   });
 
-  test("$body does not contain frontmatter YAML", () => {
-    expect(result.$body).not.toContain("---");
-    expect(result.$body).not.toContain("title:");
+  test("$children does not contain frontmatter YAML nodes", () => {
+    const hasYaml = result.$children.some((/** @type {any} */ n) => n.type === "yaml");
+    expect(hasYaml).toBe(false);
   });
 
-  test("$excerpt is the first paragraph as HTML", () => {
+  test("$excerpt is the first paragraph as plain text", () => {
     expect(typeof result.$excerpt).toBe("string");
-    expect(result.$excerpt).toContain("<p>");
+    expect(result.$excerpt.length).toBeGreaterThan(0);
   });
 
   test("$toc is an array of heading entries", () => {
@@ -165,12 +162,12 @@ describe("MarkdownFile", () => {
     expect(result.$wordCount).toBeGreaterThan(0);
   });
 
-  test("basePath resolves relative src", async () => {
+  test("basePath resolves relative src", () => {
     const mf = new MarkdownFile({
       src: "getting-started.md",
       basePath: FIXTURE_DIR,
     });
-    const r = /** @type {any} */ (await mf.resolve());
+    const r = /** @type {any} */ (mf.resolve());
     expect(r.slug).toBe("getting-started");
   });
 });
@@ -180,48 +177,42 @@ describe("MarkdownFile", () => {
 describe("MarkdownFile with directives", () => {
   /** @type {any} */ let result;
 
-  beforeAll(async () => {
+  beforeAll(() => {
     const mf = new MarkdownFile({
       src: join(FIXTURE_DIR, "interactive-post.md"),
       directives: true,
     });
-    result = await mf.resolve();
+    result = mf.resolve();
   });
 
-  test("$body contains custom element from container directive", () => {
-    expect(result.$body).toContain("<info-box");
+  test("$children contains custom element from container directive", () => {
+    const infoBox = result.$children.find((/** @type {any} */ n) => n.tagName === "info-box");
+    expect(infoBox).toBeTruthy();
   });
 
-  test("$body preserves directive attributes as data-jx-props", () => {
-    expect(result.$body).toContain("data-jx-props=");
-    // The JSON is HTML-entity-encoded; decode and parse
-    const match = result.$body.match(/data-jx-props="([^"]*)"/);
-    expect(match).toBeTruthy();
-    const decoded = match[1].replace(/&#x22;/g, '"').replace(/&quot;/g, '"');
-    const props = JSON.parse(decoded);
-    expect(props.type).toBe("warning");
+  test("directive attributes become element properties via expandDotPaths", () => {
+    const infoBox = result.$children.find((/** @type {any} */ n) => n.tagName === "info-box");
+    expect(infoBox).toBeTruthy();
+    expect(infoBox.attributes?.type).toBe("warning");
   });
 
-  test("$body contains custom element from leaf directive", () => {
-    expect(result.$body).toContain("<user-card");
+  test("$children contains custom element from leaf directive", () => {
+    const userCard = result.$children.find((/** @type {any} */ n) => n.tagName === "user-card");
+    expect(userCard).toBeTruthy();
   });
 
-  test("$body contains leaf directive attributes as data-jx-props", () => {
-    // Find user-card's data-jx-props
-    const match = result.$body.match(/<user-card[^>]*data-jx-props="([^"]*)"/);
-    expect(match).toBeTruthy();
-    const decoded = match[1].replace(/&#x22;/g, '"').replace(/&quot;/g, '"');
-    const props = JSON.parse(decoded);
-    expect(props.firstName).toBe("Jane");
-    expect(props.lastName).toBe("Smith");
+  test("leaf directive attributes are on the element", () => {
+    const userCard = result.$children.find((/** @type {any} */ n) => n.tagName === "user-card");
+    expect(userCard).toBeTruthy();
+    expect(userCard.attributes?.firstName).toBe("Jane");
+    expect(userCard.attributes?.lastName).toBe("Smith");
   });
 
-  test("$body contains text directive with jx- prefix for hyphen-less names", () => {
-    expect(result.$body).toContain("jx-tooltip");
-  });
-
-  test("container directive content is rendered inside the element", () => {
-    expect(result.$body).toContain("<strong>");
+  test("container directive content is converted to JX children", () => {
+    const infoBox = result.$children.find((/** @type {any} */ n) => n.tagName === "info-box");
+    expect(infoBox).toBeTruthy();
+    const hasChildren = infoBox.children?.length > 0 || infoBox.textContent;
+    expect(hasChildren).toBeTruthy();
   });
 });
 
@@ -258,7 +249,7 @@ describe("MarkdownCollection", () => {
       expect(item).toHaveProperty("slug");
       expect(item).toHaveProperty("path");
       expect(item).toHaveProperty("frontmatter");
-      expect(item).toHaveProperty("$body");
+      expect(item).toHaveProperty("$children");
       expect(item).toHaveProperty("$excerpt");
       expect(item).toHaveProperty("$toc");
       expect(item).toHaveProperty("$readingTime");
@@ -355,99 +346,10 @@ describe("MarkdownCollection", () => {
     });
     const results = await mc.resolve();
     expect(results.length).toBe(1);
-    expect(/** @type {any} */ (results[0]).$body).toContain("<info-box");
-  });
-});
-
-// ─── MarkdownDirective (remark plugin) ────────────────────────────────────────
-
-describe("MarkdownDirective", () => {
-  /** @param {any} md @param {any} [opts] */
-  async function processWithDirectives(md, opts = {}) {
-    const result = await unified()
-      .use(remarkParse)
-      .use(remarkDirective)
-      .use(/** @type {any} */ (MarkdownDirective), opts)
-      .use(remarkRehype)
-      .use(rehypeStringify)
-      .process(md);
-    return String(result);
-  }
-
-  /**
-   * Extract decoded data-jx-props from HTML for a given tag
-   *
-   * @param {string} html @param {string} tag
-   */
-  function extractProps(html, tag) {
-    const re = new RegExp(`<${tag}[^>]*data-jx-props="([^"]*)"`, "i");
-    const match = html.match(re);
-    if (!match) return null;
-    return JSON.parse(match[1].replace(/&#x22;/g, '"').replace(/&quot;/g, '"'));
-  }
-
-  test("leaf directive → custom element tag", async () => {
-    const html = await processWithDirectives('::user-card{firstName="Jane"}');
-    expect(html).toContain("<user-card");
-    const props = extractProps(html, "user-card");
-    expect(props.firstName).toBe("Jane");
-  });
-
-  test("container directive → custom element with content", async () => {
-    const md = ':::my-callout{type="info"}\nSome **bold** content\n:::';
-    const html = await processWithDirectives(md);
-    expect(html).toContain("<my-callout");
-    const props = extractProps(html, "my-callout");
-    expect(props.type).toBe("info");
-    expect(html).toContain("<strong>bold</strong>");
-  });
-
-  test("text directive → inline custom element", async () => {
-    const html = await processWithDirectives('See :my-tooltip[the docs]{href="/docs"} here.');
-    expect(html).toContain("<my-tooltip");
-    const props = extractProps(html, "my-tooltip");
-    expect(props.href).toBe("/docs");
-    expect(html).toContain("the docs");
-  });
-
-  test("directive without hyphen gets jx- prefix", async () => {
-    const html = await processWithDirectives('::card{title="Hello"}');
-    expect(html).toContain("<jx-card");
-    const props = extractProps(html, "jx-card");
-    expect(props.title).toBe("Hello");
-  });
-
-  test("directive with hyphen keeps name as-is", async () => {
-    const html = await processWithDirectives('::my-card{title="Hello"}');
-    expect(html).toContain("<my-card");
-  });
-
-  test("custom prefix option", async () => {
-    const html = await processWithDirectives('::card{title="Hello"}', { prefix: "x-" });
-    expect(html).toContain("<x-card");
-  });
-
-  test("allowedNames whitelist filters directives", async () => {
-    const html = await processWithDirectives(
-      '::user-card{name="Jane"}\n\n::blocked-card{name="No"}',
-      { allowedNames: ["user-card"] },
+    const infoBox = /** @type {any} */ (results[0]).$children.find(
+      (/** @type {any} */ n) => n.tagName === "info-box",
     );
-    expect(html).toContain("<user-card");
-    expect(html).not.toContain("<blocked-card");
-  });
-
-  test("passContent=false strips container content", async () => {
-    const md = ':::my-callout{type="info"}\nContent here\n:::';
-    const html = await processWithDirectives(md, { passContent: false });
-    expect(html).toContain("<my-callout");
-    expect(html).not.toContain("Content here");
-  });
-
-  test("multiple directives in one document", async () => {
-    const md = '::widget-a{x="1"}\n\nSome text\n\n::widget-b{y="2"}';
-    const html = await processWithDirectives(md);
-    expect(html).toContain("<widget-a");
-    expect(html).toContain("<widget-b");
+    expect(infoBox).toBeTruthy();
   });
 });
 
@@ -476,16 +378,16 @@ describe("External class contract", () => {
     expect(mc.config).toEqual(config);
   });
 
-  test("MarkdownFile.resolve returns JSON-serializable result", async () => {
+  test("MarkdownFile.resolve returns JSON-serializable result", () => {
     const mf = new MarkdownFile({
       src: join(FIXTURE_DIR, "getting-started.md"),
     });
-    const result = /** @type {any} */ (await mf.resolve());
+    const result = /** @type {any} */ (mf.resolve());
     const serialized = JSON.stringify(result);
     const deserialized = JSON.parse(serialized);
     expect(deserialized.slug).toBe(result.slug);
     expect(deserialized.frontmatter.title).toBe(result.frontmatter.title);
-    expect(deserialized.$body).toBe(result.$body);
+    expect(deserialized.$children.length).toBe(result.$children.length);
   });
 
   test("MarkdownCollection.resolve returns JSON-serializable result", async () => {
@@ -497,10 +399,6 @@ describe("External class contract", () => {
     const serialized = JSON.stringify(results);
     const deserialized = JSON.parse(serialized);
     expect(deserialized[0].slug).toBe(/** @type {any} */ (results[0]).slug);
-  });
-
-  test("MarkdownDirective is a function (remark plugin)", () => {
-    expect(typeof MarkdownDirective).toBe("function");
   });
 });
 

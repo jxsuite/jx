@@ -126,12 +126,12 @@ async function getMarkdownModule() {
 async function loadMarkdownEntry(filePath, directiveOptions) {
   const { MarkdownFile } = await getMarkdownModule();
   const file = new MarkdownFile({ src: filePath, directiveOptions });
-  const result = await file.resolve();
+  const result = file.resolve();
   return {
     id: result.slug,
     data: result.frontmatter,
     body: readFileSync(filePath, "utf-8"),
-    rendered: result.$body,
+    $children: result.$children,
     _meta: {
       excerpt: result.$excerpt,
       toc: result.$toc,

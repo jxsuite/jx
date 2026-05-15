@@ -1,12 +1,11 @@
 /**
  * jxsuite/md — Markdown integration for Jx
  *
- * Provides three exports:
+ * Provides two exports:
  *   - MarkdownFile       — Parse a single markdown file (external class for $prototype)
  *   - MarkdownCollection — Parse a glob of markdown files as a content collection
- *   - MarkdownDirective  — Remark plugin mapping directives to custom element tags
  *
- * Built on the unified/remark/rehype ecosystem. No framework dependency.
+ * Built on the unified/remark ecosystem. Converts MDAST to JX node trees via mdastNodeToJx.
  *
  * @module @jxsuite/md
  * @license MIT
@@ -18,11 +17,10 @@ import remarkFrontmatter from "remark-frontmatter";
 import remarkParseFrontmatter from "remark-parse-frontmatter";
 import remarkGfm from "remark-gfm";
 import remarkDirective from "remark-directive";
-import remarkRehype from "remark-rehype";
-import rehypeStringify from "rehype-stringify";
 import { readFileSync } from "node:fs";
 import { basename, extname, resolve as resolvePath } from "node:path";
 import { globSync } from "glob";
+import { mdastNodeToJx } from "./transpile.js";
 
 // ─── Tree utilities (inline to avoid Bun ESM resolution issues with unist-util-*) ──
 
@@ -97,91 +95,62 @@ function extractToc(tree) {
 }
 
 /**
- * Extract first paragraph as HTML excerpt from an mdast tree.
+ * Extract first paragraph as a JX text string from an mdast tree.
  *
  * @param {object} tree - Mdast AST
- * @returns {Promise<string>} HTML string of first paragraph, or empty string
+ * @returns {string} Plain text of first paragraph, or empty string
  */
-async function extractExcerpt(tree) {
+function extractExcerpt(tree) {
   /** @type {any} */
   let firstParagraph = null;
   visit(tree, "paragraph", (/** @type {any} */ node) => {
     if (!firstParagraph) firstParagraph = node;
   });
   if (!firstParagraph) return "";
-  const excerptTree = { type: "root", children: [firstParagraph] };
-  const result = await unified()
-    .use(remarkRehype)
-    .use(rehypeStringify)
-    .stringify(
-      /** @type {any} */ (await unified().use(remarkRehype).run(/** @type {any} */ (excerptTree))),
-    );
-  return String(result);
-}
-
-/**
- * Build the unified processing pipeline with standard plugins.
- *
- * @param {object} config
- * @param {any} [config.directiveOptions]
- * @param {any[]} [config.remarkPlugins]
- * @param {any[]} [config.rehypePlugins]
- * @returns {any} Unified processor
- */
-function buildProcessor(config = {}) {
-  let processor = unified()
-    .use(remarkParse)
-    .use(remarkFrontmatter, ["yaml"])
-    .use(remarkParseFrontmatter)
-    .use(remarkGfm)
-    .use(remarkDirective)
-    .use(/** @type {any} */ (MarkdownDirective), config.directiveOptions ?? {});
-
-  for (const plugin of config.remarkPlugins ?? []) {
-    processor = Array.isArray(plugin) ? processor.use(plugin[0], plugin[1]) : processor.use(plugin);
-  }
-
-  processor = processor.use(remarkRehype, { allowDangerousHtml: true });
-
-  for (const plugin of config.rehypePlugins ?? []) {
-    processor = Array.isArray(plugin) ? processor.use(plugin[0], plugin[1]) : processor.use(plugin);
-  }
-
-  processor = /** @type {any} */ (
-    processor.use(rehypeStringify, /** @type {any} */ ({ allowDangerousHtml: true }))
-  );
-
-  return processor;
+  return mdastToString(firstParagraph);
 }
 
 /**
  * Process a single markdown source string into a MarkdownFileResult.
  *
+ * Converts the MDAST directly to JX nodes via mdastNodeToJx — no rehype/HTML intermediary.
+ *
  * @param {string} source - Raw markdown string
  * @param {string} filePath - File path (for slug derivation)
  * @param {any} config - Processing options
- * @returns {Promise<object>} MarkdownFileResult
+ * @returns {object} MarkdownFileResult
  */
-async function processMarkdown(source, filePath, config = {}) {
-  const processor = buildProcessor(config);
+function processMarkdown(source, filePath, config = {}) {
+  let processor = unified()
+    .use(remarkParse)
+    .use(remarkFrontmatter, ["yaml"])
+    .use(remarkParseFrontmatter)
+    .use(remarkGfm);
 
-  const vfile = await processor.process(source);
-  const frontmatter = /** @type {any} */ (vfile.data)?.frontmatter ?? {};
+  if (config.directives || config.directiveOptions) {
+    processor = processor.use(remarkDirective);
+  }
 
-  // Parse a separate tree for TOC/excerpt extraction (without rehype transform)
-  const mdProcessor = unified().use(remarkParse).use(remarkFrontmatter, ["yaml"]).use(remarkGfm);
-  const tree = mdProcessor.parse(source);
+  const tree = processor.parse(source);
+  const vfile = { data: {} };
+  processor.runSync(tree, /** @type {any} */ (vfile));
 
+  const frontmatter = /** @type {any} */ (vfile.data).frontmatter ?? {};
   const plainText = mdastToString(tree);
   const toc = extractToc(tree);
-  const excerpt = await extractExcerpt(tree);
+  const excerpt = extractExcerpt(tree);
   const slug = basename(filePath, extname(filePath));
+
+  const bodyNodes = tree.children.filter(
+    (/** @type {any} */ n) => n.type !== "yaml" && n.type !== "toml",
+  );
+  const $children = bodyNodes.map(mdastNodeToJx).filter(Boolean);
 
   return {
     slug,
     path: filePath,
     frontmatter,
-    $body: String(vfile),
+    $children,
     $excerpt: excerpt,
     $toc: toc,
     $readingTime: readingTime(plainText),
@@ -224,9 +193,9 @@ export class MarkdownFile {
   /**
    * Parse and resolve the markdown file.
    *
-   * @returns {Promise<object>} MarkdownFileResult
+   * @returns {object} MarkdownFileResult
    */
-  async resolve() {
+  resolve() {
     const { src, basePath, ...processorConfig } = this.config;
     const filePath = basePath ? resolvePath(basePath, src) : resolvePath(src);
     const source = readFileSync(filePath, "utf-8");
@@ -281,12 +250,10 @@ export class MarkdownCollection {
     const pattern = resolved.split("\\").join("/");
     const files = globSync(pattern, { absolute: true });
 
-    const results = await Promise.all(
-      files.map(async (filePath) => {
-        const source = readFileSync(filePath, "utf-8");
-        return processMarkdown(source, filePath, processorConfig);
-      }),
-    );
+    const results = files.map((filePath) => {
+      const source = readFileSync(filePath, "utf-8");
+      return processMarkdown(source, filePath, processorConfig);
+    });
 
     // Filter
     let filtered = results;
@@ -322,67 +289,8 @@ export {
   applyStyleKeyMapping,
   isJxMarkdown,
   transpileJxMarkdown,
+  mdastNodeToJx,
+  convertChildren,
   jxKey,
   mdKey,
 } from "./transpile.js";
-
-// ─── MarkdownDirective ────────────────────────────────────────────────────────
-
-/**
- * Remark plugin: map markdown directives to custom element tags in HTML output.
- *
- * Works with `remark-directive` — must be placed after it in the pipeline. Converts
- * ::directive-name{attrs} → <directive-name attrs> in hast output.
- *
- * @example
- *   unified()
- *     .use(remarkParse)
- *     .use(remarkDirective)
- *     .use(MarkdownDirective, { prefix: "jx-" })
- *     .use(remarkRehype)
- *     .use(rehypeStringify);
- *
- * @param {object} [options]
- * @param {string} [options.prefix] - Prefix for directives without hyphens. Default is `'jx-'`
- * @param {boolean} [options.passContent] - Pass container content as slot. Default is `true`
- * @param {string[]} [options.allowedNames] - Whitelist of allowed directive names
- * @returns {function} Remark plugin transform function
- */
-export function MarkdownDirective(options = {}) {
-  const { prefix = "jx-", passContent = true, allowedNames } = options;
-
-  return (/** @type {any} */ tree) => {
-    visit(tree, (/** @type {any} */ node) => {
-      if (
-        node.type === "leafDirective" ||
-        node.type === "containerDirective" ||
-        node.type === "textDirective"
-      ) {
-        const rawName = node.name;
-
-        // Check whitelist
-        if (allowedNames && !allowedNames.includes(rawName)) return;
-
-        // Custom element names must contain a hyphen per Web Components spec
-        const tagName = rawName.includes("-") ? rawName : `${prefix}${rawName}`;
-
-        // Set hast properties for remarkRehype
-        const data = node.data || (node.data = {});
-        data.hName = tagName;
-        const attrs = node.attributes;
-        data.hProperties =
-          attrs && Object.keys(attrs).length > 0 ? { "data-jx-props": JSON.stringify(attrs) } : {};
-
-        // For text directives, preserve label as children
-        if (node.type === "textDirective" && node.children?.length > 0) {
-          // Children are already part of the mdast node; remarkRehype handles them
-        }
-
-        // For container directives, content is already in node.children
-        if (node.type === "containerDirective" && !passContent) {
-          node.children = [];
-        }
-      }
-    });
-  };
-}

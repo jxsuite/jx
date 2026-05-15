@@ -59,7 +59,7 @@
             "type": "object",
             "description": "Shape defined by itemSchema parameter"
           },
-          "$body": { "type": "string", "description": "Rendered HTML string" },
+          "$children": { "type": "array", "description": "JX node tree" },
           "$excerpt": { "type": "string", "description": "First paragraph as plain text" },
           "$toc": {
             "type": "array",

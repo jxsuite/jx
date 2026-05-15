@@ -451,8 +451,10 @@ export function buildAttrs(def, scope) {
     if (!def.attributes?.decoding) out += ` decoding="async"`;
   }
 
-  if (def.$props && typeof def.$props === "object") {
-    out += ` data-jx-props="${escapeHtml(JSON.stringify(def.$props))}"`;
+  if (def.$static) {
+    out += ` data-jx-static`;
+  } else if (def.$prerendered) {
+    out += ` data-jx-prerendered`;
   }
 
   return out;

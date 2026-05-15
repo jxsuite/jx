@@ -118,7 +118,7 @@
         {
           "tagName": "article",
           "className": "prose",
-          "innerHTML": "${state.currentPost?.$body ?? ''}"
+          "children": "${state.currentPost?.$children ?? []}"
         }
       ]
     }

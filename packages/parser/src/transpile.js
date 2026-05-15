@@ -315,7 +315,7 @@ const JX_TAG_MAP = {
  * @param {any} node
  * @returns {any} Jx element or null
  */
-function mdastNodeToJx(node) {
+export function mdastNodeToJx(node) {
   if (!node || typeof node !== "object") return null;
 
   if (node.type === "yaml" || node.type === "toml") return null;
@@ -330,6 +330,11 @@ function mdastNodeToJx(node) {
 
   if (node.type === "text") {
     return node.value;
+  }
+
+  if (node.type === "html") {
+    if (node.value) return { tagName: "div", innerHTML: node.value };
+    return null;
   }
 
   const tagFn = JX_TAG_MAP[node.type];
@@ -535,7 +540,7 @@ function directiveToJx(node) {
  * @param {any[]} children
  * @returns {any[]}
  */
-function convertChildren(children) {
+export function convertChildren(children) {
   if (!children) return [];
   return children.map(mdastNodeToJx).filter((c) => c != null);
 }

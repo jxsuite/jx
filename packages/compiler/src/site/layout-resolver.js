@@ -54,7 +54,8 @@ export function resolveLayout(pageDoc, projectConfig, projectRoot) {
   }
 
   // Distribute page children into layout slots
-  const pageChildren = pageDoc.children ?? [];
+  const rawChildren = pageDoc.children ?? [];
+  const pageChildren = typeof rawChildren === "string" ? [rawChildren] : rawChildren;
   const merged = deepClone(layoutDoc);
 
   distributeSlots(merged, pageChildren);

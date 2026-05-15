@@ -244,7 +244,8 @@ describe("content-loader", () => {
       expect(hello).toBeDefined();
       expect(hello.data.title).toBe("Hello World");
       expect(hello.data.pubDate).toBe("2024-01-15");
-      expect(hello.rendered).toContain("<h1>Hello World</h1>");
+      expect(Array.isArray(hello.$children)).toBe(true);
+      expect(hello.$children.some((/** @type {any} */ n) => n.tagName === "h1")).toBe(true);
       expect(hello.body).toContain("# Hello World");
     });
 
@@ -432,7 +433,7 @@ describe("$prototype resolution in context-injection", () => {
     expect(doc.state.post).not.toBeNull();
     expect(doc.state.post.id).toBe("hello-world");
     expect(doc.state.post.data.title).toBe("Hello World");
-    expect(doc.state.post.rendered).toContain("<h1>Hello World</h1>");
+    expect(Array.isArray(doc.state.post.$children)).toBe(true);
   });
 
   it("returns null for missing ContentEntry", async () => {

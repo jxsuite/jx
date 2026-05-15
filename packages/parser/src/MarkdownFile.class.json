@@ -35,7 +35,7 @@
           "slug": { "type": "string", "description": "Filename without extension" },
           "path": { "type": "string", "description": "Absolute file path" },
           "frontmatter": { "type": "object", "description": "YAML frontmatter key-value pairs" },
-          "$body": { "type": "string", "description": "Rendered HTML string" },
+          "$children": { "type": "array", "description": "JX node tree" },
           "$excerpt": { "type": "string", "description": "First paragraph as plain text" },
           "$toc": {
             "type": "array",

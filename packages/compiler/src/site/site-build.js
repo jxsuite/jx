@@ -33,6 +33,7 @@ import {
   isComponentFullyStatic,
   buildComponentCSS,
   collectServerEntries,
+  renderStaticNode,
   DEFAULT_REACTIVITY_SRC,
   DEFAULT_LIT_HTML_SRC,
 } from "../shared.js";
@@ -104,8 +105,6 @@ export async function buildSite(projectRoot, options = {}) {
   /** @type {string[]} */
   const compiledComponentTags = [];
   /** @type {Map<string, string>} */
-  const preRendered = new Map(); // tagName → innerHTML (default state, fallback)
-  /** @type {Map<string, string>} */
   const componentCSS = new Map(); // tagName → CSS text
   /** @type {Map<string, any>} */
   const componentDefs = new Map(); // tagName → parsed component definition
@@ -138,9 +137,6 @@ export async function buildSite(projectRoot, options = {}) {
           : JSON.parse(readFileSync(componentPath, "utf8"));
         if (doc.tagName) {
           componentDefs.set(doc.tagName, doc);
-          const innerHTML = preRenderComponentHtml(doc);
-          if (innerHTML) preRendered.set(doc.tagName, innerHTML);
-
           const css = buildComponentCSS(doc.tagName, doc.style);
           if (css) {
             componentCSS.set(doc.tagName, css);
@@ -186,16 +182,14 @@ export async function buildSite(projectRoot, options = {}) {
         collections,
         imageCache,
         outDir,
+        componentDefs,
       );
 
-      // Inject pre-rendered component HTML scaffolding (instance-aware)
-      // Must happen before script injection so we know which tags are fully static
+      // Determine which component tags are fully static (for script omission)
       /** @type {Set<string>} */
-      let staticTags = new Set();
-      if (componentDefs.size > 0) {
-        const preResult = injectPreRenderedComponents(result.html, preRendered, componentDefs);
-        result.html = preResult.html;
-        staticTags = preResult.staticTags;
+      const staticTags = new Set();
+      for (const [tag, def] of componentDefs) {
+        if (isComponentFullyStatic(def)) staticTags.add(tag);
       }
 
       // Inject component CSS and JS scripts
@@ -332,6 +326,7 @@ async function compilePage(
   collections = new Map(),
   imageCache = null,
   outDir = "",
+  componentDefs = new Map(),
 ) {
   // Load the raw page document
   let pageDoc;
@@ -376,6 +371,9 @@ async function compilePage(
   // Resolve template strings in the document tree (innerHTML, textContent, style, attributes)
   // so that timing: "compiler" data is baked into the static HTML
   resolveDocTemplates(layoutDoc, scope);
+
+  // Expand registered custom elements (apply $props, pre-render, mark static/prerendered)
+  expandComponents(layoutDoc, componentDefs);
 
   // Strip resolved timing: "compiler" state entries — they're now baked into the tree
   // and keeping them would cause isDynamic() to misclassify the page as dynamic
@@ -551,10 +549,72 @@ function resolveDocTemplates(node, scope) {
       }
     }
   }
+  if (typeof node.children === "string" && isTemplateString(node.children)) {
+    const resolved = evaluateStaticTemplate(node.children, scope);
+    if (Array.isArray(resolved)) {
+      node.children = resolved;
+      for (const child of node.children) {
+        resolveDocTemplates(child, scope);
+      }
+    }
+  } else if (Array.isArray(node.children)) {
+    let i = 0;
+    while (i < node.children.length) {
+      const child = node.children[i];
+      if (typeof child === "string" && isTemplateString(child)) {
+        const resolved = evaluateStaticTemplate(child, scope);
+        if (Array.isArray(resolved)) {
+          node.children.splice(i, 1, ...resolved);
+          for (const spliced of resolved) {
+            resolveDocTemplates(spliced, scope);
+          }
+          i += resolved.length;
+          continue;
+        }
+      }
+      resolveDocTemplates(child, scope);
+      i++;
+    }
+  }
+}
+
+/**
+ * Walk the document tree and expand registered custom elements in-place. Applies $props via
+ * preRenderComponentHtml, marks static/prerendered.
+ *
+ * @param {any} node
+ * @param {Map<string, any>} componentDefs
+ */
+function expandComponents(node, componentDefs) {
+  if (!node || typeof node !== "object") return;
+  if (Array.isArray(node)) {
+    node.forEach((n) => expandComponents(n, componentDefs));
+    return;
+  }
+
+  // Recurse into children first (bottom-up expansion)
   if (Array.isArray(node.children)) {
     for (const child of node.children) {
-      resolveDocTemplates(child, scope);
+      expandComponents(child, componentDefs);
     }
+  }
+
+  const def = componentDefs.get(node.tagName);
+  if (def) {
+    const slotContent =
+      Array.isArray(node.children) && node.children.length > 0
+        ? node.children.map((/** @type {any} */ c) => renderStaticNode(c, {}, null)).join("\n")
+        : null;
+
+    const innerHTML = preRenderComponentHtml(def, node.$props || null, slotContent);
+    const isStatic = isComponentFullyStatic(def);
+
+    node.innerHTML = innerHTML;
+    delete node.children;
+    delete node.$props;
+
+    if (isStatic) node.$static = true;
+    else node.$prerendered = true;
   }
 }
 
@@ -614,74 +674,6 @@ function injectComponentScripts(
   const injection = (hasImportMap ? "" : `${importMap}\n  `) + moduleScripts;
 
   return html.replace("</body>", `  ${injection}\n</body>`);
-}
-
-/**
- * Inject pre-rendered HTML scaffolding into component tags, using instance-specific props.
- *
- * @param {string} html
- * @param {Map<string, string>} preRendered - TagName → default innerHTML (fallback)
- * @param {Map<string, any>} componentDefs - TagName → parsed component definition
- * @returns {{ html: string; staticTags: Set<string> }}
- */
-function injectPreRenderedComponents(html, preRendered, componentDefs) {
-  /** @type {Set<string>} */
-  const staticTags = new Set();
-  /** @type {Map<string, boolean>} */
-  const tagHasNonStaticInstance = new Map();
-
-  for (const [tag] of componentDefs) {
-    // Match both empty tags and tags with inner content (for slotted components)
-    const pattern = new RegExp(`<${tag}(\\s[^>]*?)?>([\\s\\S]*?)</${tag}>`, "g");
-    html = html.replace(pattern, (match, attrsStr, existingInner) => {
-      const attrs = attrsStr ?? "";
-      const doc = componentDefs.get(tag);
-      if (!doc) {
-        // No definition, use default pre-rendered content
-        const fallback = preRendered.get(tag) ?? "";
-        return `<${tag}${attrs}>${fallback}</${tag}>`;
-      }
-
-      // Extract data-jx-props from the attribute string
-      /** @type {Record<string, any> | null} */
-      let props = null;
-      const propsMatch = attrs.match(/\sdata-jx-props="([^"]*)"/);
-      if (propsMatch) {
-        try {
-          props = JSON.parse(
-            propsMatch[1]
-              .replace(/&quot;/g, '"')
-              .replace(/&amp;/g, "&")
-              .replace(/&lt;/g, "<")
-              .replace(/&gt;/g, ">")
-              .replace(/&#39;/g, "'"),
-          );
-        } catch {}
-      }
-
-      // Pre-render with instance-specific props
-      const slotContent = existingInner.trim() || null;
-      const innerHTML = preRenderComponentHtml(doc, props, slotContent);
-
-      const isStatic = isComponentFullyStatic(doc);
-      if (!isStatic) tagHasNonStaticInstance.set(tag, true);
-
-      if (isStatic) {
-        // Strip data-jx-props from attrs for fully static instances
-        let cleanAttrs = attrs.replace(/\s*data-jx-props="[^"]*"/, "");
-        return `<${tag}${cleanAttrs} data-jx-static>${innerHTML}</${tag}>`;
-      } else {
-        return `<${tag}${attrs} data-jx-prerendered>${innerHTML}</${tag}>`;
-      }
-    });
-
-    // Track whether ALL instances of this tag are static
-    if (componentDefs.has(tag) && !tagHasNonStaticInstance.has(tag)) {
-      staticTags.add(tag);
-    }
-  }
-
-  return { html, staticTags };
 }
 
 /**
