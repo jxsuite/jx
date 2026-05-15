@@ -3,7 +3,7 @@ import type { StudioRPC } from "./rpc-schema";
 
 export function createDesktopPlatform() {
   const rpc = Electroview.defineRPC<StudioRPC>({
-    maxRequestTime: 30000,
+    maxRequestTime: 300000,
     handlers: {
       requests: {},
       messages: {

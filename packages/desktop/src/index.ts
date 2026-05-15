@@ -24,12 +24,13 @@ setProjectRoot(projectRoot);
 
 // ─── Start embedded HTTP server ───────────────────────────────────────────────
 
-const _server = await startStudioServer(PATHS.VIEWS_FOLDER, projectRoot);
+const server = await startStudioServer(PATHS.VIEWS_FOLDER, projectRoot);
+const serverUrl = `http://localhost:${server.port}`;
 
 // ─── Register RPC handlers ────────────────────────────────────────────────────
 
 const rpc = BrowserView.defineRPC<StudioRPC>({
-  maxRequestTime: 30000,
+  maxRequestTime: 300000,
   handlers: {
     requests: {
       openProject: () => openProject(),
@@ -52,7 +53,7 @@ const rpc = BrowserView.defineRPC<StudioRPC>({
 
 new BrowserWindow({
   title: "Jx Studio",
-  url: `views://studio/index.html`,
+  url: `${serverUrl}/studio/index.html`,
   frame: { x: 0, y: 0, width: 1400, height: 900 },
   navigationRules: "views://*,^*",
   rpc,
