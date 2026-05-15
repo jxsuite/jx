@@ -62,7 +62,8 @@
   "release-it": {
     "git": {
       "requireCleanWorkingDir": false,
-      "tagName": "v${version}"
+      "tagName": "v${version}",
+      "commitMessage": "chore: release ${version}"
     },
     "github": {
       "draft": true,

@@ -13,7 +13,6 @@ export default {
         "fix",
         "perf",
         "refactor",
-        "Release",
         "revert",
         "style",
         "test",
