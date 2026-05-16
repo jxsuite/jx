@@ -7,9 +7,50 @@
 
 import { showSlashMenu } from "./slash-menu.js";
 
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+/**
+ * @typedef {Object} ObservableSubscription
+ * @property {(obj: { next: Function }) => void} subscribe - Subscribes to the observable stream.
+ */
+
+/**
+ * @typedef {Object} ObservableElement
+ * @property {(event: string, options?: Object) => ObservableSubscription} on - Creates an
+ *   observable for the given event.
+ */
+
+/**
+ * @typedef {Object} CanvasPanel
+ * @property {HTMLElement} canvas - The canvas content element.
+ * @property {HTMLElement & ObservableElement} overlayClk - The overlay click-capture layer.
+ * @property {HTMLElement} overlay - The overlay rendering layer.
+ */
+
+/**
+ * @typedef {Object} InsertionHelperContext
+ * @property {() => any} getState - Returns the current editor state.
+ * @property {(state: any) => void} update - Commits a new state.
+ * @property {() => string} getCanvasMode - Returns the active canvas mode.
+ * @property {(fn: Function) => any} withPanelPointerEvents - Executes fn with pointer-events
+ *   temporarily enabled on the canvas.
+ * @property {() => number} effectiveZoom - Returns the current zoom scale factor.
+ * @property {(tag: string) => Object} defaultDef - Creates a default element definition for a tag.
+ * @property {(s: any, path: any[], idx: number, def: Object) => any} insertNode - Inserts a node
+ *   into the document tree.
+ * @property {(s: any, path: any[]) => any} selectNode - Sets the selection to the given path.
+ * @property {(path: any[]) => any[] | null} parentElementPath - Returns the parent element path, or
+ *   null for root.
+ * @property {(path: any[]) => string | number} childIndex - Returns the child index within the
+ *   parent.
+ * @property {(doc: any, path: any[]) => any} getNodeAtPath - Retrieves the node at a document path.
+ * @property {WeakMap<any, any[]>} elToPath - Maps rendered DOM elements to their document paths.
+ * @property {CanvasPanel} panel - The active canvas panel.
+ */
+
 // ─── State ───────────────────────────────────────────────────────────────────
 
-/** @type {any} */
+/** @type {InsertionHelperContext | null} */
 let _ctx = null;
 
 /** @type {HTMLElement | null} */
@@ -32,20 +73,7 @@ const EDGE_THRESHOLD = 14;
 /**
  * Mount the insertion helper system.
  *
- * @param {object} ctx
- * @param {Function} ctx.getState
- * @param {Function} ctx.update
- * @param {Function} ctx.getCanvasMode
- * @param {Function} ctx.withPanelPointerEvents
- * @param {Function} ctx.effectiveZoom
- * @param {Function} ctx.defaultDef
- * @param {Function} ctx.insertNode
- * @param {Function} ctx.selectNode
- * @param {Function} ctx.parentElementPath
- * @param {Function} ctx.childIndex
- * @param {Function} ctx.getNodeAtPath
- * @param {WeakMap} ctx.elToPath
- * @param {object} ctx.panel
+ * @param {InsertionHelperContext} ctx
  */
 export function mount(ctx) {
   _ctx = ctx;
@@ -60,10 +88,11 @@ export function mount(ctx) {
   _abort = new AbortController();
 
   // Use Native Observable if available, fall back to addEventListener
-  if (typeof panel.overlayClk.on === "function") {
-    panel.overlayClk.on("mousemove", { signal: _abort.signal }).subscribe({ next: onMouseMove });
+  const overlayClk = /** @type {HTMLElement & ObservableElement} */ (panel.overlayClk);
+  if (typeof overlayClk.on === "function") {
+    overlayClk.on("mousemove", { signal: _abort.signal }).subscribe({ next: onMouseMove });
 
-    panel.overlayClk.on("mouseleave", { signal: _abort.signal }).subscribe({ next: hide });
+    overlayClk.on("mouseleave", { signal: _abort.signal }).subscribe({ next: hide });
   } else {
     panel.overlayClk.addEventListener("mousemove", onMouseMove, { signal: _abort.signal });
     panel.overlayClk.addEventListener("mouseleave", hide, { signal: _abort.signal });
@@ -136,6 +165,10 @@ function onMouseMove(e) {
   // Calculate relative position within element
   const rect = el.getBoundingClientRect();
   const parentPath = _ctx.parentElementPath(path);
+  if (!parentPath) {
+    hide();
+    return;
+  }
   const childIdx = /** @type {number} */ (_ctx.childIndex(path));
 
   if (isRow) {
