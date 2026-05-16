@@ -7,3 +7,6 @@
 dist/
 node_modules/
 result
+
+# Chromium profile (desktop chromium mode)
+packages/desktop/.jx/
