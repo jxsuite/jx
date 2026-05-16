@@ -175,6 +175,7 @@ import "./ui/panel-resize.js";
 import { showContextMenu, dismissContextMenu } from "./editor/context-menu.js";
 import { convertToComponent } from "./editor/convert-to-component.js";
 import { initShortcuts } from "./editor/shortcuts.js";
+import * as insertionHelper from "./editor/insertion-helper.js";
 import { renderActivityBar } from "./panels/activity-bar.js";
 import { renderBrowse } from "./browse/browse.js";
 import { renderCollectionsEditor } from "./settings/collections-editor.js";
@@ -2690,6 +2691,24 @@ function registerPanelEvents(panel) {
     },
     opts,
   );
+
+  // Mount insertion helper — positioned via CSS Anchor Positioning
+  insertionHelper.mount({
+    getState: () => S,
+    update,
+    getCanvasMode: () => canvasMode,
+    withPanelPointerEvents,
+    effectiveZoom,
+    defaultDef,
+    insertNode,
+    selectNode,
+    parentElementPath,
+    childIndex,
+    getNodeAtPath,
+    elToPath,
+    panel,
+  });
+  view.canvasEventCleanups.push(() => insertionHelper.unmount());
 }
 
 // ─── Inline editing bridge ────────────────────────────────────────────────────

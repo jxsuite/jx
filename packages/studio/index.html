@@ -900,6 +900,99 @@
         background: var(--accent-8);
       }
 
+      /* ─── Insertion helper ─────────────────────────── */
+      .insertion-helper {
+        position: absolute;
+        position-anchor: --jx-insert;
+        z-index: 12;
+        pointer-events: auto;
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        border: 1.5px solid var(--accent);
+        background: var(--bg-panel);
+        color: var(--accent);
+        font-size: 14px;
+        font-weight: 500;
+        line-height: 1;
+        cursor: pointer;
+        display: none;
+        place-items: center;
+        padding: 0;
+        opacity: 0;
+        transition: opacity 0.15s ease;
+      }
+      .insertion-helper.visible {
+        display: grid;
+        opacity: 1;
+      }
+      .insertion-helper:hover {
+        background: var(--accent);
+        color: var(--accent-fg);
+        transform: scale(1.15);
+      }
+      /* Line pseudo element — extends beyond button as a visual cue */
+      .insertion-helper::before {
+        content: "";
+        position: absolute;
+        background: var(--accent);
+        opacity: 0.5;
+        pointer-events: none;
+        border-radius: 1px;
+      }
+      /* Horizontal edges (column / block layout) */
+      .insertion-helper[data-edge="top"],
+      .insertion-helper[data-edge="bottom"] {
+        left: anchor(center);
+        translate: -50% 0;
+      }
+      .insertion-helper[data-edge="top"] {
+        bottom: anchor(top);
+        translate: -50% 50%;
+      }
+      .insertion-helper[data-edge="bottom"] {
+        top: anchor(bottom);
+        translate: -50% -50%;
+      }
+      .insertion-helper[data-edge="top"]::before,
+      .insertion-helper[data-edge="bottom"]::before {
+        width: 80px;
+        height: 2px;
+        top: 50%;
+        left: 50%;
+        translate: -50% -50%;
+        z-index: -1;
+      }
+      /* Vertical edges (row / inline layout) */
+      .insertion-helper[data-edge="left"],
+      .insertion-helper[data-edge="right"] {
+        top: anchor(center);
+        translate: 0 -50%;
+      }
+      .insertion-helper[data-edge="left"] {
+        right: anchor(left);
+        translate: 50% -50%;
+      }
+      .insertion-helper[data-edge="right"] {
+        left: anchor(right);
+        translate: -50% -50%;
+      }
+      .insertion-helper[data-edge="left"]::before,
+      .insertion-helper[data-edge="right"]::before {
+        height: 80px;
+        width: 2px;
+        top: 50%;
+        left: 50%;
+        translate: -50% -50%;
+        z-index: -1;
+      }
+      /* Empty container center */
+      .insertion-helper[data-edge="center"] {
+        top: anchor(center);
+        left: anchor(center);
+        translate: -50% -50%;
+      }
+
       /* ─── Inspector ──────────────────────────────── */
       .inspector-fields {
         padding: 4px 8px 8px;
