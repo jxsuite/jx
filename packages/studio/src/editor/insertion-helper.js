@@ -272,6 +272,7 @@ function onHelperClick(/** @type {MouseEvent} */ e) {
 
   const captured = _insertionPoint;
   showSlashMenu(_helper, "", {
+    showFilter: true,
     onSelect: (cmd) => onSlashSelect(cmd, captured),
   });
 }
