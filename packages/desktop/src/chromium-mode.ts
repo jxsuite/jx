@@ -6,7 +6,7 @@ const projectRoot = process.argv[2] || process.env.JSONSX_PROJECT_ROOT || proces
 // Use the existing dev server from @jxsuite/server
 const { createDevServer } = await import("@jxsuite/server");
 
-const studioDir = resolve(import.meta.dir, "../assets/studio");
+const studioDir = process.env.JX_STUDIO_ASSETS || resolve(import.meta.dir, "../assets/studio");
 
 const server = await createDevServer({
   root: projectRoot,

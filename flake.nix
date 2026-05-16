@@ -6,12 +6,14 @@
       url = "github:cachix/devenv";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    nix-electrobun.url = "github:wnix/nix-electrobun";
+    bun2nix = {
+      url = "github:nix-community/bun2nix";
+    };
   };
 
   nixConfig = {
-    extra-trusted-public-keys = "devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=";
-    extra-substituters = "https://devenv.cachix.org";
+    extra-trusted-public-keys = "devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw= nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs=";
+    extra-substituters = "https://devenv.cachix.org https://nix-community.cachix.org";
   };
 
   outputs =
@@ -29,9 +31,9 @@
       ];
 
       perSystem =
-        { pkgs, lib, ... }:
+        { pkgs, lib, system, ... }:
         let
-          # CEF runtime libs needed by the desktop app
+          # CEF runtime libs needed by Electrobun dev mode (X11)
           desktopLibs = with pkgs; [
             alsa-lib
             at-spi2-atk
@@ -66,76 +68,72 @@
             webkitgtk_4_1
           ];
           data = lib.importJSON ./package.json;
+          nixpkgsWithBun2nix = import inputs.nixpkgs {
+            inherit system;
+            overlays = [ inputs.bun2nix.overlays.default ];
+          };
         in
         {
           packages = lib.optionalAttrs pkgs.stdenv.isLinux {
-            default = pkgs.stdenv.mkDerivation {
-              pname = "jx-studio";
-              version = data.version;
+            default = nixpkgsWithBun2nix.callPackage (
+              { bun2nix, stdenv, bun, makeWrapper, chromium, lib }:
+              stdenv.mkDerivation {
+                pname = "jx-studio";
+                version = data.version;
 
-              src = ./.;
+                src = lib.cleanSource ./.;
 
-              nativeBuildInputs = with pkgs; [
-                bun
-                autoPatchelfHook
-                makeWrapper
-                zstd
-                patchelf
-                which
-              ];
-              buildInputs = desktopLibs ++ [ pkgs.stdenv.cc.cc.lib ];
+                nativeBuildInputs = [
+                  bun
+                  makeWrapper
+                ];
 
-              autoPatchelfIgnoreMissingDeps = [
-                "libcrypt.so.1"
-              ];
+                bunDeps = bun2nix.fetchBunDeps {
+                  bunNix = ./bun.nix;
+                };
 
-              # ElectroBun downloads platform binaries at build time
-              __noChroot = true;
+                configurePhase = ''
+                  export HOME="$TMPDIR"
+                  export BUN_INSTALL_CACHE_DIR=$(mktemp -d)
+                  cp -r "$bunDeps"/share/bun-cache/. "$BUN_INSTALL_CACHE_DIR"
+                  bun install --frozen-lockfile
+                '';
 
-              buildPhase = ''
-                runHook preBuild
+                buildPhase = ''
+                  runHook preBuild
 
-                export HOME="$TMPDIR"
-                bun install --no-progress
+                  bun run build
+                  bun run --cwd packages/desktop scripts/pre-build.ts
 
-                # Patch electrobun CLI for NixOS
-                NIX_INTERP=$(patchelf --print-interpreter "$(which bun)")
-                patchelf --set-interpreter "$NIX_INTERP" node_modules/electrobun/bin/electrobun || true
+                  runHook postBuild
+                '';
 
-                # Build workspace packages (compiler, runtime, studio, schema)
-                bun run build
+                installPhase = ''
+                  runHook preInstall
 
-                # Build the desktop app bundle
-                bun run desktop:stable
+                  mkdir -p $out/lib/jx-studio $out/bin
 
-                runHook postBuild
-              '';
+                  cp -r packages/desktop/assets $out/lib/jx-studio/
+                  cp packages/desktop/src/chromium-mode.ts $out/lib/jx-studio/
 
-              installPhase = ''
-                runHook preInstall
+                  # Copy node_modules, dereferencing workspace symlinks
+                  cp -rL node_modules $out/lib/jx-studio/
 
-                # Extract the .tar.zst app bundle
-                mkdir -p $out/opt/jx-studio
-                tar --use-compress-program=zstd -xf packages/desktop/artifacts/stable-linux-x64-JxStudio.tar.zst -C $out/opt/jx-studio/
-                mv $out/opt/jx-studio/JxStudio/* $out/opt/jx-studio/
-                rmdir $out/opt/jx-studio/JxStudio
+                  makeWrapper ${bun}/bin/bun $out/bin/jx-studio \
+                    --add-flags "run $out/lib/jx-studio/chromium-mode.ts" \
+                    --set CHROMIUM_BIN "${chromium}/bin/chromium" \
+                    --set JX_STUDIO_ASSETS "$out/lib/jx-studio/assets/studio"
 
-                mkdir -p $out/bin
-                makeWrapper $out/opt/jx-studio/bin/launcher $out/bin/jx-studio \
-                  --prefix LD_LIBRARY_PATH : "${lib.makeLibraryPath desktopLibs}" \
-                  --set GDK_BACKEND wayland \
-                  --set QT_QPA_PLATFORM wayland \
-                  --set OZONE_PLATFORM_HINT auto
+                  runHook postInstall
+                '';
 
-                runHook postInstall
-              '';
-
-              meta = {
-                description = "Jx Studio — visual JSON component editor";
-                homepage = "https://jxsuite.com";
-                platforms = [ "x86_64-linux" ];
-              };
-            };
+                meta = {
+                  description = "Jx Studio — visual JSON component editor";
+                  homepage = "https://jxsuite.com";
+                  platforms = [ "x86_64-linux" "aarch64-linux" ];
+                };
+              }
+            ) {};
           };
 
           devenv.shells.default =
@@ -145,7 +143,6 @@
                 with pkgs;
                 [
                   bun
-                  cef-binary
                   google-chrome
                   husky
                   patchelf
@@ -186,9 +183,6 @@
                   set -a; source "$DEVENV_ROOT/.env"; set +a
                 fi
 
-                # Set NIX_CEF_BINARY for desktop build
-                export NIX_CEF_BINARY="${pkgs.cef-binary}"
-
                 # Patch electrobun CLI binary for NixOS
                 NIX_INTERP=$(patchelf --print-interpreter "$(which bun)" 2>/dev/null)
                 if [ -n "$NIX_INTERP" ]; then
@@ -207,7 +201,7 @@
               # ─────────────────────────────────────────────────────────────
               scripts = {
                 build-desktop.exec = ''
-                  nix build --option sandbox false
+                  nix build
                 '';
                 generate-icons = {
                   exec = ''
