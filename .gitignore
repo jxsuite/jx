@@ -9,4 +9,5 @@ node_modules/
 result
 
 # Chromium profile (desktop chromium mode)
+.jx/
 packages/desktop/.jx/
