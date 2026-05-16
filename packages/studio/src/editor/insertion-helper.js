@@ -101,15 +101,14 @@ export function mount(ctx) {
 
   _abort = new AbortController();
 
-  // Use Native Observable if available, fall back to addEventListener
-  const overlayClk = /** @type {HTMLElement & ObservableElement} */ (panel.overlayClk);
-  if (typeof overlayClk.on === "function") {
-    overlayClk.on("mousemove", { signal: _abort.signal }).subscribe({ next: onMouseMove });
-
-    overlayClk.on("mouseleave", { signal: _abort.signal }).subscribe({ next: hide });
+  // Listen on viewport — overlayClk gets pointer-events:none during editing/selection
+  const viewport = /** @type {HTMLElement & ObservableElement} */ (panel.viewport);
+  if (typeof viewport.on === "function") {
+    viewport.on("mousemove", { signal: _abort.signal }).subscribe({ next: onMouseMove });
+    viewport.on("mouseleave", { signal: _abort.signal }).subscribe({ next: hide });
   } else {
-    panel.overlayClk.addEventListener("mousemove", onMouseMove, { signal: _abort.signal });
-    panel.overlayClk.addEventListener("mouseleave", hide, { signal: _abort.signal });
+    panel.viewport.addEventListener("mousemove", onMouseMove, { signal: _abort.signal });
+    panel.viewport.addEventListener("mouseleave", hide, { signal: _abort.signal });
   }
 }
 
