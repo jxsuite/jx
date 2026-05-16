@@ -41,6 +41,8 @@ export default {
       icon: "icon.png",
       chromiumFlags: {
         "ozone-platform-hint": "auto",
+        "enable-features": "UseOzonePlatform",
+        "disable-gpu": false,
       },
     },
     win: {

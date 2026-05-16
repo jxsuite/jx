@@ -18,7 +18,7 @@
     "build:compiler": "bun run --cwd packages/compiler build",
     "build:runtime": "bun run --cwd packages/runtime build",
     "build:studio": "bun run --cwd packages/studio build",
-    "desktop": "bun run --cwd packages/desktop dev",
+    "desktop": "./packages/desktop/scripts/launch.sh",
     "desktop:build": "bun run --cwd packages/desktop build",
     "desktop:release": "bun run --cwd packages/desktop build:release",
     "desktop:stable": "bun run --cwd packages/desktop build:stable",

@@ -46,6 +46,7 @@
             gtk3
             harfbuzz
             libayatana-appindicator
+            libgbm
             libsoup_3
             libX11
             libxcb
@@ -122,7 +123,9 @@
                 mkdir -p $out/bin
                 makeWrapper $out/opt/jx-studio/bin/launcher $out/bin/jx-studio \
                   --prefix LD_LIBRARY_PATH : "${lib.makeLibraryPath desktopLibs}" \
-                  --set GDK_BACKEND wayland
+                  --set GDK_BACKEND wayland \
+                  --set QT_QPA_PLATFORM wayland \
+                  --set OZONE_PLATFORM_HINT auto
 
                 runHook postInstall
               '';
@@ -142,6 +145,7 @@
                 with pkgs;
                 [
                   bun
+                  cef-binary
                   google-chrome
                   husky
                   patchelf
@@ -151,6 +155,8 @@
                 ++ desktopLibs;
 
               env.LD_LIBRARY_PATH = lib.makeLibraryPath desktopLibs;
+
+              env.ELECTROBUN_SKIP_CEF_CHECK = "1";
 
               processes = {
                 chrome-debugging.exec = ''
@@ -179,6 +185,9 @@
                 if [ -f "$DEVENV_ROOT/.env" ]; then
                   set -a; source "$DEVENV_ROOT/.env"; set +a
                 fi
+
+                # Set NIX_CEF_BINARY for desktop build
+                export NIX_CEF_BINARY="${pkgs.cef-binary}"
 
                 # Patch electrobun CLI binary for NixOS
                 NIX_INTERP=$(patchelf --print-interpreter "$(which bun)" 2>/dev/null)
