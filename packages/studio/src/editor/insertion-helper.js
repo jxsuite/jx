@@ -25,6 +25,8 @@ import { showSlashMenu } from "./slash-menu.js";
  * @property {HTMLElement} canvas - The canvas content element.
  * @property {HTMLElement & ObservableElement} overlayClk - The overlay click-capture layer.
  * @property {HTMLElement} overlay - The overlay rendering layer.
+ * @property {HTMLElement} viewport - The viewport container (containing block for anchor
+ *   positioning).
  */
 
 /**
@@ -65,8 +67,14 @@ let _insertionPoint = null;
 /** @type {AbortController | null} */
 let _abort = null;
 
+/** @type {ReturnType<typeof setTimeout> | null} */
+let _hideTimer = null;
+
 // Edge detection threshold in pixels
 const EDGE_THRESHOLD = 14;
+
+// Delay before hiding to allow cursor to reach the button
+const HIDE_DELAY = 300;
 
 // ─── Public API ──────────────────────────────────────────────────────────────
 
@@ -83,7 +91,13 @@ export function mount(ctx) {
   _helper.className = "insertion-helper";
   _helper.textContent = "+";
   _helper.addEventListener("click", onHelperClick);
-  panel.overlay.appendChild(_helper);
+  _helper.addEventListener("mouseenter", () => {
+    cancelHide();
+  });
+  _helper.addEventListener("mouseleave", () => {
+    scheduleHide();
+  });
+  panel.viewport.appendChild(_helper);
 
   _abort = new AbortController();
 
@@ -102,6 +116,7 @@ export function mount(ctx) {
 export function unmount() {
   _abort?.abort();
   _abort = null;
+  cancelHide();
   if (_helper?.parentElement) _helper.remove();
   clearAnchor();
   _helper = null;
@@ -214,9 +229,27 @@ function showAt(el, edge, path, parentPath, idx) {
   _helper.dataset.edge = edge;
   _helper.classList.add("visible");
   _insertionPoint = { edge, path, parentPath, idx };
+  cancelHide();
+}
+
+function scheduleHide() {
+  cancelHide();
+  _hideTimer = setTimeout(hideNow, HIDE_DELAY);
+}
+
+function cancelHide() {
+  if (_hideTimer !== null) {
+    clearTimeout(_hideTimer);
+    _hideTimer = null;
+  }
 }
 
 function hide() {
+  scheduleHide();
+}
+
+function hideNow() {
+  _hideTimer = null;
   if (!_helper) return;
   _helper.classList.remove("visible");
   clearAnchor();
@@ -238,21 +271,25 @@ function onHelperClick(/** @type {MouseEvent} */ e) {
 
   if (!_ctx || !_helper || !_insertionPoint) return;
 
+  const captured = _insertionPoint;
   showSlashMenu(_helper, "", {
-    onSelect: onSlashSelect,
+    onSelect: (cmd) => onSlashSelect(cmd, captured),
   });
 }
 
-/** @param {any} cmd */
-function onSlashSelect(cmd) {
-  if (!_ctx || !_insertionPoint) return;
+/**
+ * @param {any} cmd
+ * @param {{ edge: string; path: any[]; parentPath: any[]; idx: number }} point
+ */
+function onSlashSelect(cmd, point) {
+  if (!_ctx) return;
 
   const { getState, update, defaultDef, insertNode, selectNode } = _ctx;
   const S = getState();
-  const { parentPath, idx, edge } = _insertionPoint;
+  const { parentPath, idx, edge } = point;
 
   const newDef = defaultDef(cmd.tag);
-  const insertPath = edge === "center" ? _insertionPoint.path : parentPath;
+  const insertPath = edge === "center" ? point.path : parentPath;
   const insertIdx = edge === "center" ? 0 : idx;
 
   let s = insertNode(S, insertPath, insertIdx, newDef);
