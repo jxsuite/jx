@@ -11,7 +11,7 @@
 | 1. Error Boundaries | ✅ Complete | All renderers wrapped in try/catch with retry |
 | 2. Doc/Session Split | ✅ Complete | updateSession/updateUi in use, no ad-hoc mutations |
 | 3. Lift Transient State | ✅ Complete | All mutable view state in view.js |
-| 4. Componentize Panels | 🔄 In Progress (~60%) | Container panels: toolbar, overlays, right-panel, statusbar, activity-bar, left-panel. Sub-panels: layers, stylebook-layers, elements, imports, signals, data-explorer, head, git, files |
+| 4. Componentize Panels | 🔄 In Progress (~70%) | Container panels: toolbar, overlays, right-panel, statusbar, activity-bar, left-panel. Sub-panels: layers, stylebook-layers, elements, imports, signals, data-explorer, head, git, files, events, style-panel (style-utils, style-inputs), properties-panel |
 | 5. Lit Host Hygiene | ⬜ Not Started | |
 | 6. Async as State | ⬜ Not Started | |
 | 7. Selective Subscriptions | ⬜ Not Started | |
