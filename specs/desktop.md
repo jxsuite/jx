@@ -30,10 +30,17 @@ Jx Studio is designed for three deployment targets that share a single core code
 
 | Target              | Runtime                           | Backend                       | Storage                   | Status                      |
 | ------------------- | --------------------------------- | ----------------------------- | ------------------------- | --------------------------- |
-| **Desktop app**     | ElectroBun (Bun + native webview) | Bun process (local)           | Filesystem                | Primary target              |
-| **NixOS desktop**   | Chromium `--app` + Bun            | `@jxsuite/server` (localhost) | Filesystem via dev server | Active (packaged via `nix build`) |
+| **Desktop app**     | ElectroBun (Bun + native webview) | Bun process (local)           | Filesystem                | All platforms except NixOS  |
+| **NixOS desktop**   | Chromium `--app` + Bun            | `@jxsuite/server` (localhost) | Filesystem via dev server | NixOS only (via `nix build`) |
 | **Dev mode**        | Chrome                            | `@jxsuite/server` (localhost) | Filesystem via dev server | Active (Studio development) |
 | **SaaS/PaaS**       | Browser                           | Cloud API server              | Database / object storage | Future                      |
+
+### 1.1a Platform Strategy
+
+The desktop runtime is chosen at **build time**, not runtime:
+
+- **NixOS** → Chromium app-mode exclusively. ElectroBun cannot be built in a Nix sandbox, and Chromium provides superior Wayland support.
+- **All other platforms** (macOS, Windows, non-NixOS Linux) → ElectroBun exclusively. Provides native CEF webview with embedded Bun process.
 
 The studio package (`@jxsuite/studio`) contains all UI logic and is backend-agnostic. It communicates with its environment through a **Platform Abstraction Layer (PAL)** — an interface that each deployment target implements. The server package (`@jxsuite/server`) is one such implementation; the ElectroBun Bun process is another; a cloud API server is a third.
 
@@ -632,7 +639,7 @@ For the **desktop app**, `Utils.openFileDialog` with `canChooseFiles: true` and 
 
 > **Status: Implemented.** Available via `nix build` and `bun run desktop:chromium`.
 
-CEF (Chromium Embedded Framework) cannot initialize on pure Wayland sessions — it requires a GTK display that is unavailable without X11. On NixOS, the desktop app uses system Chromium in `--app` mode as an alternative runtime that provides a frameless, app-like window with full Wayland support.
+On NixOS, ElectroBun cannot be built in a Nix sandbox, and system Chromium provides superior Wayland support. The desktop app therefore uses Chromium in `--app` mode, which provides a frameless, app-like window.
 
 ### 9.1 Architecture
 
@@ -682,15 +689,6 @@ The flake's `packages.default` produces a fully sandboxed NixOS package:
 $ nix build
 $ ./result/bin/jx-studio [project-root]
 ```
-
-### 9.4 Auto-Detection (`launch.sh`)
-
-The script `packages/desktop/scripts/launch.sh` auto-detects the display server:
-
-- **X11 available** (`$DISPLAY` set): Launches ElectroBun/CEF via `bunx electrobun dev`
-- **Wayland only** (no `$DISPLAY`): Falls back to `bun run chromium` (chromium app-mode)
-
-This is accessible via `bun run desktop:auto`.
 
 ---
 
@@ -761,7 +759,6 @@ Package Studio as a NixOS-native app using Chromium `--app` mode:
 
 - [x] Implement `chromium-mode.ts` launcher (server + Chromium `--app`)
 - [x] Wayland support via `--ozone-platform=wayland` auto-detection
-- [x] Auto-detection script (`launch.sh`) routing X11 → ElectroBun, Wayland → Chromium
 - [x] Sandboxed `nix build` via bun2nix (no `__noChroot`, no network at build time)
 - [x] `makeWrapper` producing `jx-studio` binary with bundled Chromium and Bun
 - [x] Auto-refresh `bun.nix` via postinstall hook
