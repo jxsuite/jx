@@ -5,18 +5,7 @@
 
 import { getState, getNodeAtPath } from "../store.js";
 import { view } from "../view.js";
-
-/** @type {any} */
-let _ctx = null;
-
-/**
- * Initialize the pseudo-preview module.
- *
- * @param {{ getActivePanel: Function; findCanvasElement: Function }} ctx
- */
-export function initPseudoPreview(ctx) {
-  _ctx = ctx;
-}
+import { getActivePanel, findCanvasElement } from "../canvas/canvas-helpers.js";
 
 export function updateForcedPseudoPreview() {
   if (view.forcedStyleTag) {
@@ -32,9 +21,9 @@ export function updateForcedPseudoPreview() {
   const sel = S.ui?.activeSelector;
   if (!sel || !sel.startsWith(":") || !S.selection) return;
 
-  const panel = _ctx.getActivePanel();
+  const panel = getActivePanel();
   if (!panel) return;
-  const el = _ctx.findCanvasElement(S.selection, panel.canvas);
+  const el = findCanvasElement(S.selection, panel.canvas);
   if (!el) return;
 
   const node = getNodeAtPath(S.document, S.selection);

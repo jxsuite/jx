@@ -18,18 +18,7 @@ import {
 } from "../store.js";
 import { view } from "../view.js";
 import { applyDropInstruction } from "../panels/dnd.js";
-
-/** @type {any} */
-let _ctx = null;
-
-/**
- * Initialize the canvas DnD module.
- *
- * @param {{ effectiveZoom: () => number }} ctx
- */
-export function initCanvasDnD(ctx) {
-  _ctx = ctx;
-}
+import { effectiveZoom } from "../canvas/canvas-helpers.js";
 
 /**
  * Register all canvas elements in a panel as DnD drop targets.
@@ -133,7 +122,7 @@ function showCanvasDropIndicator(el, elPath, isVoid, panel) {
     return;
   }
 
-  const scale = _ctx.effectiveZoom();
+  const scale = effectiveZoom();
   const wrapRect = viewport.getBoundingClientRect();
   const elRect = el.getBoundingClientRect();
   const left = (elRect.left - wrapRect.left + viewport.scrollLeft) / scale;

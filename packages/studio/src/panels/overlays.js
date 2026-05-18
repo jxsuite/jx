@@ -6,6 +6,11 @@
 import { html, render as litRender, nothing } from "lit-html";
 import { getState, canvasPanels, pathsEqual, subscribe } from "../store.js";
 import { view } from "../view.js";
+import {
+  findCanvasElement,
+  getActivePanel,
+  overlayBoxDescriptor,
+} from "../canvas/canvas-helpers.js";
 
 /** @type {any} */
 let _ctx = null;
@@ -16,8 +21,7 @@ let _unsub = null;
 /**
  * Mount the overlays panel.
  *
- * @param {any} ctx — { effectiveZoom, getCanvasMode, isEditing, renderBlockActionBar,
- *   findCanvasElement, getActivePanel }
+ * @param {any} ctx — { getCanvasMode, isEditing, renderBlockActionBar }
  */
 export function mount(ctx) {
   _ctx = ctx;
@@ -30,24 +34,6 @@ export function unmount() {
   _unsub?.();
   _unsub = null;
   _ctx = null;
-}
-
-/**
- * @param {any} el
- * @param {any} type
- * @param {any} panel
- */
-function overlayBoxDescriptor(el, type, panel) {
-  const vpRect = panel.viewport.getBoundingClientRect();
-  const elRect = el.getBoundingClientRect();
-  const scale = _ctx.effectiveZoom();
-  return {
-    cls: `overlay-box overlay-${type}`,
-    top: `${(elRect.top - vpRect.top + panel.viewport.scrollTop) / scale}px`,
-    left: `${(elRect.left - vpRect.left + panel.viewport.scrollLeft) / scale}px`,
-    width: `${elRect.width / scale}px`,
-    height: `${elRect.height / scale}px`,
-  };
 }
 
 export function render() {
@@ -98,12 +84,12 @@ export function render() {
     const boxes = [];
 
     if (S.hover && !pathsEqual(S.hover, S.selection)) {
-      const el = _ctx.findCanvasElement(S.hover, p.canvas);
+      const el = findCanvasElement(S.hover, p.canvas);
       if (el) boxes.push(overlayBoxDescriptor(el, "hover", p));
     }
 
-    if (S.selection && p === _ctx.getActivePanel()) {
-      const el = _ctx.findCanvasElement(S.selection, p.canvas);
+    if (S.selection && p === getActivePanel()) {
+      const el = findCanvasElement(S.selection, p.canvas);
       if (el) {
         const desc = overlayBoxDescriptor(el, "selection", p);
         if (view.componentInlineEdit || _ctx.isEditing()) /** @type {any} */ (desc).border = "none";

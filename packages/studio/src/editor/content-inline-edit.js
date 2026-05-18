@@ -19,18 +19,7 @@ import { startEditing, isEditableBlock } from "./inline-edit.js";
 import { restoreTemplateExpressions } from "../utils/edit-display.js";
 import { renderBlockActionBar } from "../panels/block-action-bar.js";
 import { defaultDef } from "../panels/shared.js";
-
-/** @type {any} */
-let _ctx = null;
-
-/**
- * Initialize the content inline edit module.
- *
- * @param {{ findCanvasElement: Function; getActivePanel: Function }} ctx
- */
-export function initContentInlineEdit(ctx) {
-  _ctx = ctx;
-}
+import { findCanvasElement, getActivePanel } from "../canvas/canvas-helpers.js";
 
 /**
  * Enter rich-text inline editing on a canvas element (edit/content mode).
@@ -100,9 +89,9 @@ export function enterInlineEdit(el, path) {
 
       // Re-enter editing on the new element after render
       requestAnimationFrame(() => {
-        const activePanel = _ctx.getActivePanel();
+        const activePanel = getActivePanel();
         if (activePanel) {
-          const newEl = _ctx.findCanvasElement(newPath, activePanel.canvas);
+          const newEl = findCanvasElement(newPath, activePanel.canvas);
           if (newEl && isEditableBlock(newEl)) {
             enterInlineEdit(newEl, newPath);
             // Place cursor at start of new element
@@ -145,9 +134,9 @@ export function enterInlineEdit(el, path) {
         update(s);
 
         requestAnimationFrame(() => {
-          const activePanel = _ctx.getActivePanel();
+          const activePanel = getActivePanel();
           if (activePanel) {
-            const el = _ctx.findCanvasElement(afterPath, activePanel.canvas);
+            const el = findCanvasElement(afterPath, activePanel.canvas);
             if (el && isEditableBlock(el)) {
               enterInlineEdit(el, afterPath);
             }
@@ -179,9 +168,9 @@ export function enterInlineEdit(el, path) {
 
       // If the inserted element is editable, enter editing
       requestAnimationFrame(() => {
-        const activePanel = _ctx.getActivePanel();
+        const activePanel = getActivePanel();
         if (activePanel) {
-          const newEl = _ctx.findCanvasElement(newPath, activePanel.canvas);
+          const newEl = findCanvasElement(newPath, activePanel.canvas);
           if (newEl && isEditableBlock(newEl)) {
             enterInlineEdit(newEl, newPath);
           }

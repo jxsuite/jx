@@ -14,7 +14,6 @@ import {
   popDocument,
   getNodeAtPath,
   pathsEqual,
-  parentElementPath,
   canvasWrap,
   toolbarEl,
   elToPath,
@@ -44,17 +43,12 @@ import { view } from "./view.js";
 
 import { renderNode as runtimeRenderNode, buildScope, defineElement } from "@jxsuite/runtime";
 
-import {
-  isEditing,
-  getActiveElement,
-  isEditableBlock,
-  isInlineInContext,
-} from "./editor/inline-edit.js";
+import { isEditing, getActiveElement, isEditableBlock } from "./editor/inline-edit.js";
 import {
   enterComponentInlineEdit,
   initComponentInlineEdit,
 } from "./editor/component-inline-edit.js";
-import { enterInlineEdit, initContentInlineEdit } from "./editor/content-inline-edit.js";
+import { enterInlineEdit } from "./editor/content-inline-edit.js";
 import {
   initCanvasUtils,
   canvasPanelTemplate,
@@ -65,6 +59,13 @@ import {
   positionZoomIndicator,
   updateActivePanelHeaders,
 } from "./canvas/canvas-utils.js";
+import {
+  initCanvasHelpers,
+  effectiveZoom,
+  getActivePanel,
+  findCanvasElement,
+  overlayBoxDescriptor,
+} from "./canvas/canvas-helpers.js";
 import { dismissSlashMenu as sharedDismissSlashMenu } from "./editor/slash-menu.js";
 import {
   renderStatusbar,
@@ -143,8 +144,8 @@ import {
 } from "./panels/block-action-bar.js";
 import { initCssData } from "./panels/style-utils.js";
 import { renderCanvasNode } from "./panels/preview-render.js";
-import { initPseudoPreview, updateForcedPseudoPreview } from "./panels/pseudo-preview.js";
-import { initCanvasDnD, registerPanelDnD } from "./panels/canvas-dnd.js";
+import { updateForcedPseudoPreview } from "./panels/pseudo-preview.js";
+import { registerPanelDnD } from "./panels/canvas-dnd.js";
 import { initPanelEvents, registerPanelEvents } from "./panels/panel-events.js";
 import * as monaco from "monaco-editor/esm/vs/editor/editor.api.js";
 
@@ -542,24 +543,19 @@ toolbarPanel.mount(toolbarEl, {
 });
 
 overlaysPanel.mount({
-  effectiveZoom,
   getCanvasMode: () => canvasMode,
   isEditing,
   renderBlockActionBar,
-  findCanvasElement,
-  getActivePanel,
 });
 
 initBlockActionBar({
   getCanvasMode: () => canvasMode,
-  findCanvasElement,
-  getActivePanel,
   navigateToComponent,
   createFloatingContainer,
 });
 
 initComponentInlineEdit({ findCanvasElement });
-initContentInlineEdit({ findCanvasElement, getActivePanel });
+initCanvasHelpers({ getCanvasMode: () => canvasMode });
 initCanvasUtils({
   getCanvasMode: () => canvasMode,
   getZoom: () => S.ui.zoom,
@@ -569,19 +565,14 @@ initCanvasUtils({
   },
   renderStylebookOverlays,
 });
-initPseudoPreview({ getActivePanel, findCanvasElement });
-initCanvasDnD({ effectiveZoom });
 initPanelEvents({
   getState: () => S,
   setState: (s) => {
     S = s;
   },
   getCanvasMode: () => canvasMode,
-  bubbleInlinePath,
-  findCanvasElement,
   enterInlineEdit,
   navigateToComponent,
-  effectiveZoom,
 });
 
 rightPanelMod.mount({
@@ -1220,105 +1211,6 @@ function renderCanvasIntoPanel(panel, activeBreakpoints, featureToggles) {
 
 function renderOverlays() {
   overlaysPanel.render();
-}
-
-/**
- * Build an overlay box descriptor (no DOM creation).
- *
- * @param {any} el
- * @param {any} type
- * @param {any} panel
- */
-function overlayBoxDescriptor(el, type, panel) {
-  const vpRect = panel.viewport.getBoundingClientRect();
-  const elRect = el.getBoundingClientRect();
-  const scale = effectiveZoom();
-  return {
-    cls: `overlay-box overlay-${type}`,
-    top: `${(elRect.top - vpRect.top + panel.viewport.scrollTop) / scale}px`,
-    left: `${(elRect.left - vpRect.left + panel.viewport.scrollLeft) / scale}px`,
-    width: `${elRect.width / scale}px`,
-    height: `${elRect.height / scale}px`,
-  };
-}
-
-function getActivePanel() {
-  if (canvasPanels.length === 0) return null;
-  if (canvasPanels.length === 1) return canvasPanels[0];
-  for (const p of canvasPanels) {
-    if (S.ui.activeMedia === null && (p.mediaName === "base" || p.mediaName === null)) return p;
-    if (p.mediaName === S.ui.activeMedia) return p;
-  }
-  return canvasPanels[0];
-}
-
-/**
- * Walk up the tree from a path, bubbling past inline elements until we find the nearest non-inline
- * ancestor. Returns the original path if already non-inline.
- *
- * @param {any} doc
- * @param {any} path
- */
-function bubbleInlinePath(doc, path) {
-  let currentPath = path;
-  while (currentPath.length >= 2) {
-    const node = getNodeAtPath(doc, currentPath);
-    const pPath = parentElementPath(currentPath);
-    const parentNode = pPath ? getNodeAtPath(doc, pPath) : null;
-    if (!node || !parentNode) break;
-    const childTag = (node.tagName ?? "div").toLowerCase();
-    const parentTag = (parentNode.tagName ?? "div").toLowerCase();
-    if (!isInlineInContext(childTag, parentTag)) break;
-    currentPath = pPath;
-  }
-  return currentPath;
-}
-
-/** Effective zoom scale — always 1 in edit (content) mode, S.ui.zoom otherwise. */
-function effectiveZoom() {
-  return canvasMode === "edit" ? 1 : S.ui.zoom;
-}
-
-/**
- * @param {any} path
- * @param {any} canvasEl
- */
-function findCanvasElement(path, canvasEl) {
-  let el = canvasEl.firstElementChild;
-  if (!el) return null;
-  if (path.length === 0) return el;
-
-  for (let i = 0; i < path.length; i += 2) {
-    if (path[i] !== "children" && path[i] !== "cases") return null;
-    const idx = path[i + 1];
-    if (idx === undefined) {
-      // Odd-length path like ['children', 2, 'children'] — $map container
-      // The wrapper div is children[0] of the current element
-      el = el.children[0];
-    } else if (idx === "map") {
-      // $map template: wrapper is children[0], template is wrapper.children[0]
-      el = el.children[0]?.children[0];
-    } else {
-      el = el.children[idx];
-    }
-    if (!el) break;
-  }
-
-  // Verify the result: if DOM traversal landed on the wrong element
-  // (e.g. a custom element template child instead of the intended node),
-  // fall back to scanning elToPath.
-  if (el) {
-    const elPath = elToPath.get(el);
-    if (elPath && pathsEqual(elPath, path)) return el;
-    // el has no path or wrong path — it's a template element, not the target
-  }
-
-  // Fall back: scan all descendants for an element with matching elToPath
-  for (const candidate of canvasEl.querySelectorAll("*")) {
-    const p = elToPath.get(candidate);
-    if (p && pathsEqual(p, path)) return candidate;
-  }
-  return null;
 }
 
 // ─── Left panel: delegated to panels/left-panel.js ───────────────────────────

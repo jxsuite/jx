@@ -23,6 +23,7 @@ import { isEditing, getActiveElement, getInlineActions } from "../editor/inline-
 import { toggleInlineFormat, isTagActiveInSelection } from "../editor/inline-format.js";
 import { componentRegistry } from "../files/components.js";
 import { convertToComponent } from "../editor/convert-to-component.js";
+import { findCanvasElement, getActivePanel } from "../canvas/canvas-helpers.js";
 
 /** @type {any} */
 let _ctx = null;
@@ -32,8 +33,6 @@ let _ctx = null;
  *
  * @param {{
  *   getCanvasMode: () => string;
- *   findCanvasElement: Function;
- *   getActivePanel: Function;
  *   navigateToComponent: Function;
  *   createFloatingContainer: Function;
  * }} ctx
@@ -312,12 +311,12 @@ export function renderBlockActionBar() {
     return;
   }
 
-  const activePanel = _ctx.getActivePanel();
+  const activePanel = getActivePanel();
   if (!activePanel) {
     litRender(nothing, view.blockActionBarEl);
     return;
   }
-  const el = _ctx.findCanvasElement(S.selection, activePanel.canvas);
+  const el = findCanvasElement(S.selection, activePanel.canvas);
   const node = el && getNodeAtPath(S.document, S.selection);
   if (!el || !node) {
     litRender(nothing, view.blockActionBarEl);
