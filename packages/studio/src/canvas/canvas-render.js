@@ -25,6 +25,7 @@ import {
   applyOverridesToCanvas,
 } from "../utils/canvas-media.js";
 import { getEffectiveMedia } from "../site-context.js";
+import { renderCanvasLive } from "./canvas-live-render.js";
 import { renderCanvasNode } from "../panels/preview-render.js";
 import { registerPanelDnD } from "../panels/canvas-dnd.js";
 import { registerPanelEvents } from "../panels/panel-events.js";
@@ -51,7 +52,6 @@ let _ctx = null;
  *   setCanvasMode: (mode: string) => void;
  *   getState: () => any;
  *   update: (s: any) => void;
- *   renderCanvasLive: (gen: number, doc: any, canvasEl: any) => Promise<any>;
  *   openFileFromTree: (path: string) => void;
  *   exportFile: () => void;
  * }} ctx
@@ -380,7 +380,7 @@ export function renderCanvas() {
 function renderCanvasIntoPanel(panel, activeBreakpoints, featureToggles) {
   const gen = view.renderGeneration;
   const S = _ctx.getState();
-  _ctx.renderCanvasLive(gen, S.document, panel.canvas).then((/** @type {any} */ scope) => {
+  renderCanvasLive(gen, S.document, panel.canvas).then((/** @type {any} */ scope) => {
     // Skip post-render setup if a newer render has started
     if (gen !== view.renderGeneration) return;
     if (scope) {

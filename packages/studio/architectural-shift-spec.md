@@ -51,9 +51,10 @@
 - ✅ pseudo-preview (updateForcedPseudoPreview — pseudo-state CSS injection)
 - ✅ canvas-dnd (registerPanelDnD, showCanvasDropIndicator, getCanvasDropInstruction)
 - ✅ panel-events (registerPanelEvents — click/dblclick/contextmenu/mousemove/insertion helper)
-- ⬜ canvas (largest remaining; owns panzoom, inline editing, overlays, mode switching)
+- ✅ canvas-live-render (renderCanvasLive — async runtime rendering pipeline)
+- ⬜ canvas (remaining; owns panzoom, inline editing, overlays, mode switching)
 
-**studio.js line count:** ~983 (down from ~6,226 at start of Phase 4)
+**studio.js line count:** ~714 (down from ~6,226 at start of Phase 4)
 
 ---
 
@@ -155,6 +156,7 @@ export function renderFooTemplate(ctx) {
 | preview-render.js, pseudo-preview.js, canvas-dnd.js, panel-events.js | ~503 | Phase 4m |
 | canvas-helpers.js (shared canvas query/utility functions) | ~105 | Phase 4n |
 | canvas-render.js (multi-mode canvas rendering orchestrator) | ~350 | Phase 4o |
+| canvas-live-render.js (async runtime rendering pipeline) | ~269 | Phase 4p |
 
 ### Remaining: Canvas Module
 
