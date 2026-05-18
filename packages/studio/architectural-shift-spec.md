@@ -42,9 +42,10 @@
 - ✅ stylebook-panel (~680 lines extracted from studio.js)
 - ✅ dnd (registerLayersDnD, registerComponentsDnD, registerElementsDnD, applyDropInstruction)
 - ✅ editors (renderFunctionEditor, registerFunctionCompletions)
+- ✅ block-action-bar (renderBlockActionBar, dismissLinkPopover, inline formatting)
 - ⬜ canvas (largest remaining; owns panzoom, inline editing, overlays, mode switching)
 
-**studio.js line count:** ~3,340 (down from ~6,226 at start of Phase 4)
+**studio.js line count:** ~2,950 (down from ~6,226 at start of Phase 4)
 
 ---
 
@@ -138,6 +139,7 @@ export function renderFooTemplate(ctx) {
 | stylebook-panel.js | ~1,005 | Phase 4e |
 | dnd.js (+ shared.js defaultDef) | ~430 | Phase 4f |
 | editors.js (function editor + completions) | ~200 | Phase 4g |
+| block-action-bar.js (action bar + inline formatting) | ~395 | Phase 4h |
 
 ### Remaining: Canvas Module
 

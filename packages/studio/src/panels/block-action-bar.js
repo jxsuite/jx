@@ -1,0 +1,436 @@
+/**
+ * Block action bar — extracted from studio.js (Phase 4h). Floating toolbar above selected elements
+ * with parent selector, move arrows, drag handle, component actions, and inline formatting.
+ */
+
+import { html, render as litRender, nothing } from "lit-html";
+import { draggable } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
+
+import {
+  getState,
+  update,
+  updateSession,
+  renderOnly,
+  selectNode,
+  moveNode,
+  getNodeAtPath,
+  nodeLabel,
+  parentElementPath,
+  childIndex,
+} from "../store.js";
+import { view } from "../view.js";
+import { isEditing, getActiveElement, getInlineActions } from "../editor/inline-edit.js";
+import { toggleInlineFormat, isTagActiveInSelection } from "../editor/inline-format.js";
+import { componentRegistry } from "../files/components.js";
+import { convertToComponent } from "../editor/convert-to-component.js";
+
+/** @type {any} */
+let _ctx = null;
+
+/**
+ * Initialize the block action bar module.
+ *
+ * @param {{
+ *   getCanvasMode: () => string;
+ *   findCanvasElement: Function;
+ *   getActivePanel: Function;
+ *   navigateToComponent: Function;
+ *   createFloatingContainer: Function;
+ * }} ctx
+ */
+export function initBlockActionBar(ctx) {
+  _ctx = ctx;
+  view.linkPopoverHost = document.createElement("div");
+  view.linkPopoverHost.style.display = "contents";
+  (document.querySelector("sp-theme") || document.body).appendChild(view.linkPopoverHost);
+}
+
+/** Pre-built icon templates for inline format buttons (avoids unsafeStatic) */
+const formatIconMap = /** @type {Record<string, any>} */ ({
+  "sp-icon-text-bold": html`<sp-icon-text-bold slot="icon"></sp-icon-text-bold>`,
+  "sp-icon-text-italic": html`<sp-icon-text-italic slot="icon"></sp-icon-text-italic>`,
+  "sp-icon-text-underline": html`<sp-icon-text-underline slot="icon"></sp-icon-text-underline>`,
+  "sp-icon-text-strikethrough": html`<sp-icon-text-strikethrough
+    slot="icon"
+  ></sp-icon-text-strikethrough>`,
+  "sp-icon-text-superscript": html`<sp-icon-text-superscript
+    slot="icon"
+  ></sp-icon-text-superscript>`,
+  "sp-icon-text-subscript": html`<sp-icon-text-subscript slot="icon"></sp-icon-text-subscript>`,
+  "sp-icon-code": html`<sp-icon-code slot="icon"></sp-icon-code>`,
+  "sp-icon-link": html`<sp-icon-link slot="icon"></sp-icon-link>`,
+});
+
+/**
+ * Prevent the bar from stealing focus from contenteditable
+ *
+ * @param {any} e
+ */
+function onBarMousedown(e) {
+  if (e.target.closest("sp-textfield")) return;
+  if (e.target.closest(".bar-drag-handle")) return;
+  e.preventDefault();
+}
+
+/** Saved selection range for format button mousedown→click flow */
+function captureSelectionRange() {
+  const sel = window.getSelection();
+  if (sel && sel.rangeCount) view.savedRange = sel.getRangeAt(0).cloneRange();
+}
+
+/**
+ * @param {any} e
+ * @param {any} action
+ */
+function onFormatClick(e, action) {
+  e.stopPropagation();
+  if (action.command === "link") {
+    showLinkPopover(e.target.closest("sp-action-button"));
+  } else if (view.savedRange) {
+    const sel = /** @type {any} */ (window.getSelection());
+    const anchor = view.savedRange.startContainer;
+    const editableRoot = (
+      anchor?.nodeType === Node.ELEMENT_NODE ? anchor : anchor?.parentElement
+    )?.closest("[contenteditable]");
+    if (editableRoot) {
+      editableRoot.focus();
+      sel.removeAllRanges();
+      sel.addRange(view.savedRange);
+      applyInlineFormat(action);
+    }
+  }
+}
+
+function renderParentSelector() {
+  const S = getState();
+  const pPath = parentElementPath(S.selection);
+  if (!pPath) return nothing;
+  const parentNode = getNodeAtPath(S.document, pPath);
+  return html`
+    <sp-action-button
+      size="xs"
+      quiet
+      title="Select parent: ${nodeLabel(parentNode)}"
+      @click=${(/** @type {any} */ e) => {
+        e.stopPropagation();
+        const S = getState();
+        update(selectNode(S, pPath));
+      }}
+    >
+      <sp-icon-back slot="icon"></sp-icon-back>
+    </sp-action-button>
+  `;
+}
+
+function renderMoveArrows() {
+  const S = getState();
+  const idx = /** @type {number} */ (childIndex(S.selection));
+  const pPath = parentElementPath(S.selection);
+  const parentNode = getNodeAtPath(S.document, /** @type {any} */ (pPath));
+  const siblings = parentNode?.children;
+  return html`
+    <sp-action-button
+      size="xs"
+      quiet
+      title="Move up"
+      ?disabled=${idx <= 0}
+      @click=${(/** @type {any} */ e) => {
+        e.stopPropagation();
+        moveSelectionUp();
+      }}
+    >
+      <sp-icon-arrow-up slot="icon"></sp-icon-arrow-up>
+    </sp-action-button>
+    <sp-action-button
+      size="xs"
+      quiet
+      title="Move down"
+      ?disabled=${!siblings || idx >= siblings.length - 1}
+      @click=${(/** @type {any} */ e) => {
+        e.stopPropagation();
+        moveSelectionDown();
+      }}
+    >
+      <sp-icon-arrow-down slot="icon"></sp-icon-arrow-down>
+    </sp-action-button>
+  `;
+}
+
+/**
+ * Apply an inline format action.
+ *
+ * @param {any} action
+ */
+function applyInlineFormat(action) {
+  /** @type {Record<string, any>} */
+  const cmdToTag = {
+    bold: "strong",
+    italic: "em",
+    underline: "u",
+    strikethrough: "del",
+    superscript: "sup",
+    subscript: "sub",
+    code: "code",
+  };
+
+  const tag = cmdToTag[action.command];
+  if (tag) {
+    const editableRoot = getActiveElement();
+    toggleInlineFormat(tag, editableRoot);
+  }
+  requestAnimationFrame(() => renderBlockActionBar());
+}
+
+/** Dismiss the link popover if open. */
+export function dismissLinkPopover() {
+  if (view.linkPopoverHost) litRender(nothing, view.linkPopoverHost);
+}
+
+/** @param {any} anchorBtn */
+function showLinkPopover(anchorBtn) {
+  litRender(nothing, view.linkPopoverHost);
+
+  const sel = window.getSelection();
+  /** @type {any} */
+  let existingLink = null;
+  if (sel?.rangeCount) {
+    /** @type {any} */
+    let node = sel.anchorNode;
+    while (node && node !== document.body) {
+      if (node.nodeType === Node.ELEMENT_NODE && node.tagName.toLowerCase() === "a") {
+        existingLink = node;
+        break;
+      }
+      node = node.parentNode;
+    }
+  }
+
+  const rect = anchorBtn.getBoundingClientRect();
+
+  const onApply = () => {
+    const field = view.linkPopoverHost.querySelector("sp-textfield");
+    const url = /** @type {any} */ (field)?.value;
+    if (existingLink) {
+      existingLink.setAttribute("href", url);
+    } else if (url) {
+      document.execCommand("createLink", false, url);
+    }
+    litRender(nothing, view.linkPopoverHost);
+    renderBlockActionBar();
+  };
+
+  const onRemove = () => {
+    const frag = document.createDocumentFragment();
+    while (existingLink.firstChild) frag.appendChild(existingLink.firstChild);
+    existingLink.parentNode.replaceChild(frag, existingLink);
+    litRender(nothing, view.linkPopoverHost);
+    renderBlockActionBar();
+  };
+
+  const onKeydown = (/** @type {any} */ e) => {
+    if (e.key === "Enter") onApply();
+    else if (e.key === "Escape") {
+      litRender(nothing, view.linkPopoverHost);
+    }
+  };
+
+  litRender(
+    html`
+      <sp-popover
+        class="link-popover"
+        open
+        style="position:fixed; left:${rect.left}px; top:${rect.bottom + 4}px; z-index:30"
+      >
+        <sp-textfield
+          placeholder="https://..."
+          size="s"
+          style="width:200px"
+          value=${existingLink?.getAttribute("href") || ""}
+          @keydown=${onKeydown}
+        ></sp-textfield>
+        <sp-action-button size="xs" @click=${onApply}>
+          ${existingLink ? "Update" : "Apply"}
+        </sp-action-button>
+        ${existingLink
+          ? html` <sp-action-button size="xs" @click=${onRemove}>Remove</sp-action-button> `
+          : nothing}
+      </sp-popover>
+    `,
+    view.linkPopoverHost,
+  );
+
+  requestAnimationFrame(
+    () =>
+      /** @type {HTMLElement | null} */ (
+        view.linkPopoverHost?.querySelector("sp-textfield")
+      )?.focus(),
+  );
+}
+
+/** Move the selected node up (swap with previous sibling). */
+function moveSelectionUp() {
+  const S = getState();
+  if (!S.selection || S.selection.length < 2) return;
+  const idx = /** @type {number} */ (childIndex(S.selection));
+  if (idx <= 0) return;
+  const pPath = /** @type {any} */ (parentElementPath(S.selection));
+  update(moveNode(S, S.selection, pPath, idx - 1));
+  updateSession({ selection: [...pPath, "children", idx - 1] });
+  renderOnly("overlays");
+}
+
+/** Move the selected node down (swap with next sibling). */
+function moveSelectionDown() {
+  const S = getState();
+  if (!S.selection || S.selection.length < 2) return;
+  const idx = /** @type {number} */ (childIndex(S.selection));
+  const pPath = /** @type {any} */ (parentElementPath(S.selection));
+  const parentNode = getNodeAtPath(S.document, pPath);
+  const siblings = parentNode?.children;
+  if (!siblings || idx >= siblings.length - 1) return;
+  update(moveNode(S, S.selection, pPath, idx + 2));
+  updateSession({ selection: [...pPath, "children", idx + 1] });
+  renderOnly("overlays");
+}
+
+/** Render the unified block action bar above the selected element. */
+export function renderBlockActionBar() {
+  if (!view.blockActionBarEl) {
+    view.blockActionBarEl = _ctx.createFloatingContainer();
+  }
+
+  if (view.selDragCleanup) {
+    view.selDragCleanup();
+    view.selDragCleanup = null;
+  }
+
+  const S = getState();
+  const canvasMode = _ctx.getCanvasMode();
+
+  if (!S.selection || (canvasMode !== "design" && canvasMode !== "edit")) {
+    litRender(nothing, view.blockActionBarEl);
+    return;
+  }
+
+  const activePanel = _ctx.getActivePanel();
+  if (!activePanel) {
+    litRender(nothing, view.blockActionBarEl);
+    return;
+  }
+  const el = _ctx.findCanvasElement(S.selection, activePanel.canvas);
+  const node = el && getNodeAtPath(S.document, S.selection);
+  if (!el || !node) {
+    litRender(nothing, view.blockActionBarEl);
+    return;
+  }
+
+  const tag = (node.tagName ?? "div").toLowerCase();
+  const elRect = el.getBoundingClientRect();
+  const topPos = elRect.top < 80 ? elRect.bottom + 4 : elRect.top - 38;
+
+  // Inline format state
+  const inlineEditing = isEditing() || el.contentEditable === "true";
+  const actions = getInlineActions(tag) || [];
+  const showFormat = inlineEditing && actions.length > 0;
+  const activeValues = showFormat
+    ? actions.filter((a) => isTagActiveInSelection(a.tag, el)).map((a) => a.tag)
+    : [];
+
+  litRender(
+    html`
+      <div
+        class="block-action-bar"
+        style="left:${elRect.left}px; top:${topPos}px"
+        @mousedown=${onBarMousedown}
+      >
+        ${S.selection.length >= 2 ? renderParentSelector() : nothing}
+
+        <span class="bar-tag">${node.$id || (node.tagName ?? "div")}</span>
+
+        ${S.selection.length >= 2
+          ? html`<span class="bar-drag-handle" title="Drag to reorder">⡇</span>`
+          : nothing}
+        ${S.selection.length >= 2 ? renderMoveArrows() : nothing}
+        ${S.selection.length >= 2 && node.tagName
+          ? (() => {
+              const isComp =
+                node.tagName.includes("-") &&
+                componentRegistry.some((/** @type {any} */ c) => c.tagName === node.tagName);
+              if (isComp) {
+                const comp = componentRegistry.find(
+                  (/** @type {any} */ c) => c.tagName === node.tagName,
+                );
+                return html`<sp-action-button
+                  size="xs"
+                  quiet
+                  title="Edit Component"
+                  @click=${() => _ctx.navigateToComponent(comp.path)}
+                  ><sp-icon-edit slot="icon" size="xs"></sp-icon-edit
+                ></sp-action-button>`;
+              }
+              return html`<sp-action-button
+                size="xs"
+                quiet
+                title="Convert to Component"
+                @click=${() => convertToComponent(S)}
+                ><sp-icon-box slot="icon" size="xs"></sp-icon-box
+              ></sp-action-button>`;
+            })()
+          : nothing}
+        ${showFormat
+          ? html`
+              <sp-divider size="s" vertical></sp-divider>
+              <sp-action-group
+                size="xs"
+                compact
+                emphasized
+                selects="multiple"
+                selected=${activeValues.length ? JSON.stringify(activeValues) : nothing}
+              >
+                ${actions.map(
+                  (action) => html`
+                    <sp-action-button
+                      size="xs"
+                      value=${action.tag}
+                      title="${action.label}${action.shortcut ? ` (${action.shortcut})` : ""}"
+                      @mousedown=${captureSelectionRange}
+                      @click=${(/** @type {any} */ e) => onFormatClick(e, action)}
+                    >
+                      ${formatIconMap[action.icon] ?? nothing}
+                    </sp-action-button>
+                  `,
+                )}
+              </sp-action-group>
+            `
+          : nothing}
+      </div>
+    `,
+    view.blockActionBarEl,
+  );
+
+  // Post-render side effects
+  requestAnimationFrame(() => {
+    const bar = view.blockActionBarEl?.firstElementChild;
+    if (!bar) return;
+    // Clamp to window
+    const barRect = bar.getBoundingClientRect();
+    if (barRect.right > window.innerWidth) {
+      bar.style.left = `${Math.max(0, window.innerWidth - barRect.width)}px`;
+    }
+    // Attach drag handle
+    const currentS = getState();
+    if (currentS.selection?.length >= 2) {
+      const handle = bar.querySelector(".bar-drag-handle");
+      if (handle) {
+        if (view.selDragCleanup) {
+          view.selDragCleanup();
+          view.selDragCleanup = null;
+        }
+        view.selDragCleanup = draggable({
+          element: handle,
+          getInitialData: () => ({ type: "tree-node", path: getState().selection }),
+        });
+      }
+    }
+  });
+}
