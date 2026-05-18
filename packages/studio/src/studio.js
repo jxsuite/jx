@@ -8,8 +8,6 @@
 import {
   createState,
   selectNode,
-  hoverNode,
-  insertNode,
   updateProperty,
   updateDef,
   pushDocument,
@@ -17,13 +15,10 @@ import {
   getNodeAtPath,
   pathsEqual,
   parentElementPath,
-  childIndex,
-  isAncestor,
   canvasWrap,
   toolbarEl,
   elToPath,
   canvasPanels,
-  VOID_ELEMENTS,
   stripEventHandlers,
   registerRenderer,
   render,
@@ -50,7 +45,6 @@ import { view } from "./view.js";
 import { renderNode as runtimeRenderNode, buildScope, defineElement } from "@jxsuite/runtime";
 
 import {
-  stopEditing,
   isEditing,
   getActiveElement,
   isEditableBlock,
@@ -100,7 +94,6 @@ import { registerPlatform, getPlatform, hasPlatform } from "./platform.js";
 import {
   parseMediaEntries,
   activeBreakpointsForWidth,
-  applyCanvasStyle,
   collectMediaOverrides,
   applyOverridesToCanvas,
 } from "./utils/canvas-media.js";
@@ -112,22 +105,12 @@ import {
   getEffectiveElements,
   getEffectiveHead,
 } from "./site-context.js";
-import {
-  defCategory,
-  defBadgeLabel,
-  resolveDefaultForCanvas,
-  renderSignalsTemplate,
-} from "./panels/signals-panel.js";
+import { defCategory, defBadgeLabel, renderSignalsTemplate } from "./panels/signals-panel.js";
 import {
   componentRegistry,
   loadComponentRegistry,
   computeRelativePath,
 } from "./files/components.js";
-
-import {
-  dropTargetForElements,
-  monitorForElements,
-} from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
 
 import { html, render as litRender, nothing } from "lit-html";
 import { ref } from "lit-html/directives/ref.js";
@@ -141,9 +124,8 @@ import { renderGitPanel } from "./panels/git-panel.js";
 // by Bun's bundler despite sideEffects declarations in Spectrum's package.json.
 import { components as _swc } from "./ui/spectrum.js"; // eslint-disable-line no-unused-vars
 import "./ui/panel-resize.js";
-import { showContextMenu, dismissContextMenu } from "./editor/context-menu.js";
+import { dismissContextMenu } from "./editor/context-menu.js";
 import { initShortcuts } from "./editor/shortcuts.js";
-import * as insertionHelper from "./editor/insertion-helper.js";
 import { renderActivityBar } from "./panels/activity-bar.js";
 import { renderBrowse } from "./browse/browse.js";
 import * as toolbarPanel from "./panels/toolbar.js";
@@ -151,12 +133,7 @@ import * as overlaysPanel from "./panels/overlays.js";
 import * as rightPanelMod from "./panels/right-panel.js";
 import * as leftPanelMod from "./panels/left-panel.js";
 import { renderStylebookMode, renderStylebookOverlays } from "./panels/stylebook-panel.js";
-import {
-  registerLayersDnD,
-  registerComponentsDnD,
-  registerElementsDnD,
-  applyDropInstruction,
-} from "./panels/dnd.js";
+import { registerLayersDnD, registerComponentsDnD, registerElementsDnD } from "./panels/dnd.js";
 import { mediaDisplayName, defaultDef } from "./panels/shared.js";
 import { renderFunctionEditor, registerFunctionCompletions } from "./panels/editors.js";
 import {
@@ -165,6 +142,10 @@ import {
   initBlockActionBar,
 } from "./panels/block-action-bar.js";
 import { initCssData } from "./panels/style-utils.js";
+import { renderCanvasNode } from "./panels/preview-render.js";
+import { initPseudoPreview, updateForcedPseudoPreview } from "./panels/pseudo-preview.js";
+import { initCanvasDnD, registerPanelDnD } from "./panels/canvas-dnd.js";
+import { initPanelEvents, registerPanelEvents } from "./panels/panel-events.js";
 import * as monaco from "monaco-editor/esm/vs/editor/editor.api.js";
 
 // ─── Globals ──────────────────────────────────────────────────────────────────
@@ -587,6 +568,20 @@ initCanvasUtils({
     S = toFlat(doc, session);
   },
   renderStylebookOverlays,
+});
+initPseudoPreview({ getActivePanel, findCanvasElement });
+initCanvasDnD({ effectiveZoom });
+initPanelEvents({
+  getState: () => S,
+  setState: (s) => {
+    S = s;
+  },
+  getCanvasMode: () => canvasMode,
+  bubbleInlinePath,
+  findCanvasElement,
+  enterInlineEdit,
+  navigateToComponent,
+  effectiveZoom,
 });
 
 rightPanelMod.mount({
@@ -1206,6 +1201,7 @@ function renderCanvasIntoPanel(panel, activeBreakpoints, featureToggles) {
     registerPanelDnD(panel);
     registerPanelEvents(panel);
     renderOverlays();
+    updateForcedPseudoPreview();
 
     // Process pending inline edit now that the canvas is populated
     if (view.pendingInlineEdit) {
@@ -1218,244 +1214,6 @@ function renderCanvasIntoPanel(panel, activeBreakpoints, featureToggles) {
       }
     }
   });
-}
-
-/**
- * Recursively render a Jx node to the canvas DOM. Media-aware: applies base styles + active
- * breakpoint/feature overrides.
- *
- * @param {any} node
- * @param {any} path
- * @param {any} parent
- * @param {any} activeBreakpoints
- * @param {any} featureToggles
- */
-function renderCanvasNode(node, path, parent, activeBreakpoints, featureToggles) {
-  // Text node children: bare strings/numbers/booleans → DOM Text nodes
-  if (typeof node === "string" || typeof node === "number" || typeof node === "boolean") {
-    parent.appendChild(document.createTextNode(String(node)));
-    return;
-  }
-  if (!node || typeof node !== "object") return;
-
-  const tag = node.tagName || "div";
-  const el = document.createElement(tag);
-
-  elToPath.set(el, path);
-
-  if (typeof node.textContent === "string") {
-    el.textContent = node.textContent;
-  } else if (typeof node.textContent === "object" && node.textContent?.$ref) {
-    const resolved = resolveDefaultForCanvas(node.textContent, S.document.state);
-    el.textContent = resolved;
-    el.style.opacity = "0.7";
-    el.style.fontStyle = "italic";
-    el.title = `Bound: ${node.textContent.$ref}`;
-  }
-
-  if (node.id) el.id = node.id;
-  if (node.className) el.className = node.className;
-
-  applyCanvasStyle(el, node.style, activeBreakpoints, featureToggles);
-
-  if (node.attributes && typeof node.attributes === "object") {
-    for (const [attr, val] of Object.entries(node.attributes)) {
-      try {
-        if (typeof val === "object" && val?.$ref) {
-          const resolved = resolveDefaultForCanvas(val, S.document.state);
-          el.setAttribute(attr, resolved);
-        } else {
-          el.setAttribute(attr, val);
-        }
-      } catch {}
-    }
-  }
-
-  if (Array.isArray(node.children)) {
-    for (let i = 0; i < node.children.length; i++) {
-      renderCanvasNode(
-        node.children[i],
-        [...path, "children", i],
-        el,
-        activeBreakpoints,
-        featureToggles,
-      );
-    }
-  } else if (
-    node.children &&
-    typeof node.children === "object" &&
-    node.children.$prototype === "Array"
-  ) {
-    // Wrap the map template in a visual repeater perimeter
-    const template = node.children.map;
-    if (template && typeof template === "object") {
-      const wrapper = document.createElement("div");
-      wrapper.className = "repeater-perimeter";
-      elToPath.set(wrapper, [...path, "children"]);
-      renderCanvasNode(
-        template,
-        [...path, "children", "map"],
-        wrapper,
-        activeBreakpoints,
-        featureToggles,
-      );
-      el.appendChild(wrapper);
-    }
-  }
-
-  if (node.$switch && node.cases && typeof node.cases === "object") {
-    // $switch placeholder in structural preview
-    const keys = Object.keys(node.cases);
-    const placeholder = document.createElement("div");
-    placeholder.textContent = `[$switch: ${keys.join(" | ")}]`;
-    placeholder.style.cssText =
-      "font-family:monospace;font-size:11px;padding:6px 10px;background:color-mix(in srgb, var(--danger) 8%, transparent);border:1px dashed color-mix(in srgb, var(--danger) 40%, transparent);border-radius:4px;color:var(--danger);font-style:italic";
-    el.appendChild(placeholder);
-  }
-
-  el.style.pointerEvents = "none";
-  parent.appendChild(el);
-  return el;
-}
-
-/**
- * Track the last drag pointer position for canvas drop calculations
- *
- * @type {any}
- */
-
-/**
- * Register all canvas elements in a panel as DnD drop targets.
- *
- * @param {any} panel
- */
-function registerPanelDnD(panel) {
-  const { canvas, overlayClk: _overlayClk, dropLine } = panel;
-  const allEls = canvas.querySelectorAll("*");
-
-  const monitorCleanup = monitorForElements({
-    onDragStart() {
-      for (const el of canvas.querySelectorAll("*")) {
-        /** @type {any} */ (el).style.pointerEvents = "auto";
-      }
-      // Disable click layers on ALL panels during drag
-      for (const p of canvasPanels) p.overlayClk.style.pointerEvents = "none";
-    },
-    onDrag({ location }) {
-      view.lastDragInput = location.current.input;
-    },
-    onDrop() {
-      // Hide all drop lines
-      for (const p of canvasPanels) p.dropLine.style.display = "none";
-      view.lastDragInput = null;
-      for (const el of canvas.querySelectorAll("*")) {
-        /** @type {any} */ (el).style.pointerEvents = "none";
-      }
-      for (const p of canvasPanels) p.overlayClk.style.pointerEvents = "";
-    },
-  });
-  view.canvasDndCleanups.push(monitorCleanup);
-
-  for (const el of allEls) {
-    const elPath = elToPath.get(el);
-    if (!elPath) continue;
-
-    const node = getNodeAtPath(S.document, elPath);
-    const isVoid = VOID_ELEMENTS.has((node?.tagName || "div").toLowerCase());
-
-    const cleanup = dropTargetForElements({
-      element: el,
-      canDrop({ source }) {
-        const srcPath = source.data.path;
-        if (srcPath && isAncestor(/** @type {any} */ (srcPath), elPath)) return false;
-        return true;
-      },
-      getData() {
-        return { path: elPath, _isVoid: isVoid };
-      },
-      onDragEnter() {
-        showCanvasDropIndicator(el, elPath, isVoid, panel);
-      },
-      onDrag() {
-        showCanvasDropIndicator(el, elPath, isVoid, panel);
-      },
-      onDragLeave() {
-        dropLine.style.display = "none";
-        el.classList.remove("canvas-drop-target");
-      },
-      onDrop({ source }) {
-        dropLine.style.display = "none";
-        el.classList.remove("canvas-drop-target");
-        const instruction = getCanvasDropInstruction(el, elPath, isVoid);
-        if (!instruction) return;
-        applyDropInstruction(instruction, source.data, elPath);
-      },
-    });
-    view.canvasDndCleanups.push(cleanup);
-  }
-}
-
-/**
- * @param {any} el
- * @param {any} elPath
- * @param {any} isVoid
- */
-function getCanvasDropInstruction(el, elPath, isVoid) {
-  const rect = el.getBoundingClientRect();
-  if (!view.lastDragInput) return null;
-  const y = view.lastDragInput.clientY;
-  const relY = (y - rect.top) / rect.height;
-
-  if (elPath.length === 0) return { type: "make-child" };
-  if (isVoid) return relY < 0.5 ? { type: "reorder-above" } : { type: "reorder-below" };
-  if (relY < 0.25) return { type: "reorder-above" };
-  if (relY > 0.75) return { type: "reorder-below" };
-  return { type: "make-child" };
-}
-
-/**
- * @param {any} el
- * @param {any} elPath
- * @param {any} isVoid
- * @param {any} panel
- */
-function showCanvasDropIndicator(el, elPath, isVoid, panel) {
-  const instruction = getCanvasDropInstruction(el, elPath, isVoid);
-  const { dropLine, viewport } = panel;
-  if (!instruction) {
-    dropLine.style.display = "none";
-    return;
-  }
-
-  const scale = effectiveZoom();
-  const wrapRect = viewport.getBoundingClientRect();
-  const elRect = el.getBoundingClientRect();
-  const left = (elRect.left - wrapRect.left + viewport.scrollLeft) / scale;
-  const width = elRect.width / scale;
-
-  if (instruction.type === "make-child") {
-    dropLine.style.display = "block";
-    dropLine.style.top = `${(elRect.top - wrapRect.top + viewport.scrollTop) / scale}px`;
-    dropLine.style.left = `${left}px`;
-    dropLine.style.width = `${width}px`;
-    dropLine.style.height = `${elRect.height / scale}px`;
-    dropLine.className = "canvas-drop-indicator inside";
-    el.classList.add("canvas-drop-target");
-    return;
-  }
-
-  el.classList.remove("canvas-drop-target");
-  const top =
-    instruction.type === "reorder-above"
-      ? (elRect.top - wrapRect.top + viewport.scrollTop) / scale
-      : (elRect.bottom - wrapRect.top + viewport.scrollTop) / scale;
-
-  dropLine.style.display = "block";
-  dropLine.style.top = `${top}px`;
-  dropLine.style.left = `${left}px`;
-  dropLine.style.width = `${width}px`;
-  dropLine.style.height = "2px";
-  dropLine.className = "canvas-drop-indicator line";
 }
 
 // ─── Overlay system ───────────────────────────────────────────────────────────
@@ -1492,57 +1250,6 @@ function getActivePanel() {
     if (p.mediaName === S.ui.activeMedia) return p;
   }
   return canvasPanels[0];
-}
-
-// ── Pseudo-state preview ──────────────────────────────────────────────────────
-// When a pseudo-selector (:hover, :focus, etc.) is active in the style sidebar,
-// force those styles onto the selected element so the user can see the result.
-
-function updateForcedPseudoPreview() {
-  // Clean up previous
-  if (view.forcedStyleTag) {
-    view.forcedStyleTag.remove();
-    view.forcedStyleTag = null;
-  }
-  if (view.forcedAttrEl) {
-    view.forcedAttrEl.removeAttribute("data-studio-forced");
-    view.forcedAttrEl = null;
-  }
-
-  const sel = S.ui?.activeSelector;
-  if (!sel || !sel.startsWith(":") || !S.selection) return;
-
-  const panel = getActivePanel();
-  if (!panel) return;
-  const el = findCanvasElement(S.selection, panel.canvas);
-  if (!el) return;
-
-  // Read the nested style object for this selector
-  const node = getNodeAtPath(S.document, S.selection);
-  if (!node?.style) return;
-  const activeTab = S.ui.activeMedia;
-  /** @type {any} */
-  const ctx = activeTab ? node.style[`@${activeTab}`] || {} : node.style;
-  const rules = ctx[sel];
-  if (!rules || typeof rules !== "object") return;
-
-  // Build CSS text from the rules
-  const cssProps = Object.entries(rules)
-    .filter(([k]) => typeof rules[k] === "string" || typeof rules[k] === "number")
-    .map(
-      ([k, v]) =>
-        `${k.replace(/[A-Z]/g, (/** @type {any} */ c) => `-${c.toLowerCase()}`)}: ${v} !important`,
-    )
-    .join("; ");
-  if (!cssProps) return;
-
-  el.setAttribute("data-studio-forced", "1");
-  view.forcedAttrEl = el;
-
-  const tag = document.createElement("style");
-  tag.textContent = `[data-studio-forced] { ${cssProps} }`;
-  document.head.appendChild(tag);
-  view.forcedStyleTag = tag;
 }
 
 /**
@@ -1612,234 +1319,6 @@ function findCanvasElement(path, canvasEl) {
     if (p && pathsEqual(p, path)) return candidate;
   }
   return null;
-}
-
-// ─── Per-panel click-to-select ────────────────────────────────────────────────
-
-/** @param {any} panel */
-function registerPanelEvents(panel) {
-  const { canvas, overlayClk, mediaName } = panel;
-  const ac = new AbortController();
-  const opts = { signal: ac.signal };
-  view.canvasEventCleanups.push(() => ac.abort());
-
-  /** @param {any} fn */
-  function withPanelPointerEvents(fn) {
-    const els = canvas.querySelectorAll("*");
-    for (const el of els) el.style.pointerEvents = "auto";
-    overlayClk.style.display = "none";
-    const result = fn();
-    overlayClk.style.display = "";
-    for (const el of els) el.style.pointerEvents = "none";
-    return result;
-  }
-
-  // During component inline edit, the overlayClk is disabled (see enterComponentInlineEdit).
-  // No mousedown passthrough needed — native events reach the contenteditable directly.
-
-  overlayClk.addEventListener(
-    "click",
-    (/** @type {any} */ e) => {
-      // Don't intercept clicks meant for the block action bar
-      const barInner = view.blockActionBarEl?.firstElementChild;
-      if (barInner) {
-        const r = barInner.getBoundingClientRect();
-        if (
-          e.clientX >= r.left &&
-          e.clientX <= r.right &&
-          e.clientY >= r.top &&
-          e.clientY <= r.bottom
-        )
-          return;
-      }
-      // If content-mode inline editing is active, treat click outside as blur
-      if (isEditing()) {
-        stopEditing();
-      }
-
-      // Component-mode inline editing is handled by its own document-level listener
-      // (see enterComponentInlineEdit), so nothing to do here — just fall through.
-
-      const elements = withPanelPointerEvents(() =>
-        document.elementsFromPoint(e.clientX, e.clientY),
-      );
-
-      for (const el of elements) {
-        if (canvas.contains(el) && el !== canvas) {
-          const originalPath = elToPath.get(el);
-          if (originalPath) {
-            let path = bubbleInlinePath(S.document, originalPath);
-            const newMedia = mediaName === "base" ? null : (mediaName ?? null);
-            const withMedia = { ...S, ui: { ...S.ui, activeMedia: newMedia } };
-
-            // Find the DOM element for the bubbled path (may differ from hit element)
-            // When path didn't change (no inline bubbling), prefer the hit element directly
-            // since findCanvasElement can't navigate into custom element template DOM.
-            const resolvedEl = path === originalPath ? el : findCanvasElement(path, canvas) || el;
-
-            // Re-click on selected editable block: enter inline editing
-            // Edit mode / content mode → rich text editing (enterInlineEdit)
-            // Design mode → plaintext component editing (enterComponentInlineEdit via view.pendingInlineEdit)
-            if (
-              pathsEqual(path, S.selection) &&
-              isEditableBlock(resolvedEl) &&
-              (canvasMode === "edit" || S.mode === "content")
-            ) {
-              S = withMedia;
-              enterInlineEdit(resolvedEl, path);
-              return;
-            }
-
-            // Design mode or first click: select and schedule component inline editing
-            if (canvasMode === "design" && S.mode !== "content") {
-              view.pendingInlineEdit = { path, mediaName };
-              update(selectNode(withMedia, path));
-              return;
-            }
-
-            update(selectNode(withMedia, path));
-            return;
-          }
-        }
-      }
-      update(selectNode(S, null));
-    },
-    opts,
-  );
-
-  // Double-click shortcut for immediate inline editing
-  overlayClk.addEventListener(
-    "dblclick",
-    (/** @type {any} */ e) => {
-      const barInner = view.blockActionBarEl?.firstElementChild;
-      if (barInner) {
-        const r = barInner.getBoundingClientRect();
-        if (
-          e.clientX >= r.left &&
-          e.clientX <= r.right &&
-          e.clientY >= r.top &&
-          e.clientY <= r.bottom
-        )
-          return;
-      }
-      if (canvasMode !== "edit" && canvasMode !== "design") return;
-
-      const elements = withPanelPointerEvents(() =>
-        document.elementsFromPoint(e.clientX, e.clientY),
-      );
-
-      for (const el of elements) {
-        if (canvas.contains(el) && el !== canvas) {
-          const originalPath = elToPath.get(el);
-          if (originalPath) {
-            const path = bubbleInlinePath(S.document, originalPath);
-            const resolvedEl = path === originalPath ? el : findCanvasElement(path, canvas) || el;
-            if (isEditableBlock(resolvedEl)) {
-              const newMedia = mediaName === "base" ? null : (mediaName ?? null);
-              const withMedia = { ...S, ui: { ...S.ui, activeMedia: newMedia } };
-              update(selectNode(withMedia, path));
-              enterInlineEdit(resolvedEl, path);
-              return;
-            }
-          }
-        }
-      }
-    },
-    opts,
-  );
-
-  overlayClk.addEventListener(
-    "contextmenu",
-    (/** @type {any} */ e) => {
-      const barInner = view.blockActionBarEl?.firstElementChild;
-      if (barInner) {
-        const r = barInner.getBoundingClientRect();
-        if (
-          e.clientX >= r.left &&
-          e.clientX <= r.right &&
-          e.clientY >= r.top &&
-          e.clientY <= r.bottom
-        )
-          return;
-      }
-      const elements = withPanelPointerEvents(() =>
-        document.elementsFromPoint(e.clientX, e.clientY),
-      );
-      for (const el of elements) {
-        if (canvas.contains(el) && el !== canvas) {
-          let path = elToPath.get(el);
-          if (path) {
-            path = bubbleInlinePath(S.document, path);
-            showContextMenu(e, path, S, { onEditComponent: navigateToComponent });
-            return;
-          }
-        }
-      }
-      e.preventDefault();
-    },
-    opts,
-  );
-
-  overlayClk.addEventListener(
-    "mousemove",
-    (/** @type {any} */ e) => {
-      const barInner = view.blockActionBarEl?.firstElementChild;
-      if (barInner) {
-        const r = barInner.getBoundingClientRect();
-        if (
-          e.clientX >= r.left &&
-          e.clientX <= r.right &&
-          e.clientY >= r.top &&
-          e.clientY <= r.bottom
-        )
-          return;
-      }
-      const el = withPanelPointerEvents(() => document.elementFromPoint(e.clientX, e.clientY));
-      if (el && canvas.contains(el) && el !== canvas) {
-        let path = elToPath.get(el);
-        if (path) {
-          path = bubbleInlinePath(S.document, path);
-          if (!pathsEqual(path, S.hover)) {
-            S = hoverNode(S, path);
-            renderOverlays();
-          }
-        }
-      } else if (S.hover) {
-        S = hoverNode(S, null);
-        renderOverlays();
-      }
-    },
-    opts,
-  );
-
-  overlayClk.addEventListener(
-    "mouseleave",
-    () => {
-      if (S.hover) {
-        S = hoverNode(S, null);
-        renderOverlays();
-      }
-    },
-    opts,
-  );
-
-  // Mount insertion helper — positioned via CSS Anchor Positioning
-  insertionHelper.mount({
-    getState: () => S,
-    update,
-    getCanvasMode: () => canvasMode,
-    withPanelPointerEvents,
-    effectiveZoom,
-    defaultDef,
-    insertNode,
-    selectNode,
-    parentElementPath,
-    childIndex,
-    getNodeAtPath,
-    elToPath,
-    panel,
-  });
-  view.canvasEventCleanups.push(() => insertionHelper.unmount());
 }
 
 // ─── Left panel: delegated to panels/left-panel.js ───────────────────────────

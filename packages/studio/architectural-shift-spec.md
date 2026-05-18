@@ -11,7 +11,7 @@
 | 1. Error Boundaries | ✅ Complete | All renderers wrapped in try/catch with retry |
 | 2. Doc/Session Split | ✅ Complete | updateSession/updateUi in use, no ad-hoc mutations |
 | 3. Lift Transient State | ✅ Complete | All mutable view state in view.js |
-| 4. Componentize Panels | 🔄 In Progress (~80%) | See detailed status below |
+| 4. Componentize Panels | 🔄 In Progress (~85%) | See detailed status below |
 | 5. Lit Host Hygiene | ⬜ Not Started | |
 | 6. Async as State | ⬜ Not Started | |
 | 7. Selective Subscriptions | ⬜ Not Started | |
@@ -47,9 +47,13 @@
 - ✅ component-inline-edit (enterComponentInlineEdit, slash menu delegation)
 - ✅ content-inline-edit (enterInlineEdit, rich-text editing bridge for edit/content mode)
 - ✅ canvas-utils (canvasPanelTemplate, centerCanvas, applyTransform, fitToScreen, renderZoomIndicator, updateActivePanelHeaders)
+- ✅ preview-render (renderCanvasNode — structural preview fallback)
+- ✅ pseudo-preview (updateForcedPseudoPreview — pseudo-state CSS injection)
+- ✅ canvas-dnd (registerPanelDnD, showCanvasDropIndicator, getCanvasDropInstruction)
+- ✅ panel-events (registerPanelEvents — click/dblclick/contextmenu/mousemove/insertion helper)
 - ⬜ canvas (largest remaining; owns panzoom, inline editing, overlays, mode switching)
 
-**studio.js line count:** ~1,990 (down from ~6,226 at start of Phase 4)
+**studio.js line count:** ~1,487 (down from ~6,226 at start of Phase 4)
 
 ---
 
@@ -148,6 +152,7 @@ export function renderFooTemplate(ctx) {
 | component-inline-edit.js (design-mode text editing) | ~295 | Phase 4j |
 | content-inline-edit.js (rich-text editing bridge) | ~187 | Phase 4k |
 | canvas-utils.js (panzoom, zoom indicator, panel template) | ~273 | Phase 4l |
+| preview-render.js, pseudo-preview.js, canvas-dnd.js, panel-events.js | ~503 | Phase 4m |
 
 ### Remaining: Canvas Module
 
