@@ -50,13 +50,6 @@ jobs:
       - name: Build workspace packages
         run: bun run build
 
-      - name: Fix electrobun module resolution
-        shell: bash
-        run: |
-          rm -rf packages/desktop/node_modules/electrobun
-          mkdir -p packages/desktop/node_modules
-          cp -r node_modules/electrobun packages/desktop/node_modules/electrobun
-
       - name: Build desktop installer
         run: bun run desktop:stable
 
