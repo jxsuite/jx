@@ -414,10 +414,14 @@ setUpdateSessionFn(function _updateSession(/** @type {any} */ patch) {
   if (patch.ui) {
     session.ui = { ...prev.ui, ...patch.ui };
   }
+  if (patch.canvas) {
+    session.canvas = { ...prev.canvas, ...patch.canvas };
+  }
   S = toFlat(doc, session);
 
   const selChanged = !pathsEqual(prev.selection, session.selection);
   const uiChanged = prev.ui !== session.ui;
+  const canvasChanged = prev.canvas !== session.canvas;
 
   const canvasUiChanged =
     uiChanged &&
@@ -438,12 +442,24 @@ setUpdateSessionFn(function _updateSession(/** @type {any} */ patch) {
       console.error("renderCanvas error:", e);
     }
     safeRenderLeftPanel();
-  } else if (selChanged || leftUiChanged) {
+  } else if (selChanged || leftUiChanged || canvasChanged) {
     safeRenderLeftPanel();
   }
 
   if (uiChanged && prev.ui?.activeMedia !== session.ui?.activeMedia) {
     updateActivePanelHeaders();
+  }
+
+  // Process pending inline edit when canvas becomes ready
+  if (canvasChanged && session.canvas.status === "ready" && session.ui?.pendingInlineEdit) {
+    const { path, mediaName: mn } = session.ui.pendingInlineEdit;
+    updateUi("pendingInlineEdit", null);
+    const targetPanel =
+      canvasPanels.find((/** @type {any} */ p) => p.mediaName === mn) || canvasPanels[0];
+    if (targetPanel) {
+      const el = findCanvasElement(path, targetPanel.canvas);
+      if (el) enterComponentInlineEdit(el, path);
+    }
   }
 
   runPostRenderHooks(doc.document, prev.selection);
@@ -454,20 +470,6 @@ setUpdateSessionFn(function _updateSession(/** @type {any} */ patch) {
 
 // Register post-render hook for pseudo-state preview
 addPostRenderHook(() => updateForcedPseudoPreview());
-
-// Register post-render hook for pending inline edit
-addPostRenderHook((/** @type {any} */ prevDoc) => {
-  if (view.pendingInlineEdit && prevDoc === S.document) {
-    const { path, mediaName: mn } = view.pendingInlineEdit;
-    view.pendingInlineEdit = null;
-    const targetPanel =
-      canvasPanels.find((/** @type {any} */ p) => p.mediaName === mn) || canvasPanels[0];
-    if (targetPanel) {
-      const el = findCanvasElement(path, targetPanel.canvas);
-      if (el) enterComponentInlineEdit(el, path);
-    }
-  }
-});
 
 // Now that renderers and update are registered, bootstrap
 registerFunctionCompletions();

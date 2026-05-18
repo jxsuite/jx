@@ -6,6 +6,7 @@
 
 import {
   update,
+  updateUi,
   selectNode,
   hoverNode,
   elToPath,
@@ -105,7 +106,7 @@ export function registerPanelEvents(panel) {
             }
 
             if (canvasMode === "design" && S.mode !== "content") {
-              view.pendingInlineEdit = { path, mediaName };
+              updateUi("pendingInlineEdit", { path, mediaName });
               update(selectNode(withMedia, path));
               return;
             }

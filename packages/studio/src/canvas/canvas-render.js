@@ -7,7 +7,7 @@ import { html, render as litRender, nothing } from "lit-html";
 import { ref } from "lit-html/directives/ref.js";
 import * as monaco from "monaco-editor/esm/vs/editor/editor.api.js";
 
-import { canvasWrap, canvasPanels } from "../store.js";
+import { canvasWrap, canvasPanels, updateCanvas } from "../store.js";
 import { view } from "../view.js";
 import {
   canvasPanelTemplate,
@@ -17,7 +17,7 @@ import {
   resetZoomIndicator,
   updateActivePanelHeaders,
 } from "./canvas-utils.js";
-import { effectiveZoom, overlayBoxDescriptor, findCanvasElement } from "./canvas-helpers.js";
+import { effectiveZoom, overlayBoxDescriptor } from "./canvas-helpers.js";
 import {
   parseMediaEntries,
   activeBreakpointsForWidth,
@@ -34,7 +34,6 @@ import { renderStylebookMode } from "../panels/stylebook-panel.js";
 import { dismissLinkPopover, dismissBlockActionBar } from "../panels/block-action-bar.js";
 import { dismissContextMenu } from "../editor/context-menu.js";
 import { dismissSlashMenu } from "../editor/slash-menu.js";
-import { enterComponentInlineEdit } from "../editor/component-inline-edit.js";
 import { renderBrowse } from "../browse/browse.js";
 import { renderFunctionEditor } from "../panels/editors.js";
 import { mediaDisplayName } from "../panels/shared.js";
@@ -384,11 +383,12 @@ function renderCanvasIntoPanel(panel, activeBreakpoints, featureToggles) {
     // Skip post-render setup if a newer render has started
     if (gen !== view.renderGeneration) return;
     if (scope) {
-      view.liveScope = scope;
+      updateCanvas({ status: "ready", scope, error: null });
       applyCanvasMediaOverrides(panel.canvas, activeBreakpoints);
       statusMessage("Runtime render OK", 1500);
     } else {
       // Fallback to structural preview
+      updateCanvas({ status: "ready", scope: null, error: null });
       renderCanvasNode(
         _ctx.getState().document,
         [],
@@ -401,17 +401,6 @@ function renderCanvasIntoPanel(panel, activeBreakpoints, featureToggles) {
     registerPanelEvents(panel);
     renderOverlays();
     updateForcedPseudoPreview();
-
-    // Process pending inline edit now that the canvas is populated
-    if (view.pendingInlineEdit) {
-      const { path, mediaName: mn } = view.pendingInlineEdit;
-      view.pendingInlineEdit = null;
-      const targetPanel = canvasPanels.find((p) => p.mediaName === mn) || canvasPanels[0];
-      if (targetPanel) {
-        const el = findCanvasElement(path, targetPanel.canvas);
-        if (el) enterComponentInlineEdit(el, path);
-      }
-    }
   });
 }
 

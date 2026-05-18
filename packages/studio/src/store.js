@@ -324,6 +324,15 @@ export function updateUi(field, value) {
   _updateSessionFn({ ui: { [field]: value } });
 }
 
+/**
+ * Update the canvas async state (status, scope, error).
+ *
+ * @param {any} patch
+ */
+export function updateCanvas(patch) {
+  _updateSessionFn({ canvas: patch });
+}
+
 // ─── Subscription system ────────────────────────────────────────────────────
 // Panels subscribe to state changes and decide when to re-render, rather than
 // being called unconditionally from _update/_updateSession.

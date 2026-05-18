@@ -10,7 +10,6 @@
 export const view = {
   // Canvas infrastructure
   panzoomWrap: null,
-  liveScope: null,
   renderGeneration: 0,
   centerObserver: null,
   needsCenter: true,
@@ -24,7 +23,6 @@ export const view = {
 
   // Inline editing
   componentInlineEdit: null,
-  pendingInlineEdit: null,
   inlineEditCleanup: null,
 
   // Floating UI containers

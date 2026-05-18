@@ -15,7 +15,6 @@ import {
   applyMutation,
   updateFrontmatter,
 } from "../store.js";
-import { view } from "../view.js";
 import { ensureLitState } from "./shared.js";
 import { renderLayersTemplate } from "./layers-panel.js";
 import { renderStylebookLayersTemplate } from "./stylebook-layers-panel.js";
@@ -96,7 +95,7 @@ function _render() {
       updateSession,
     });
   else if (tab === "data")
-    content = _ctx.renderDataExplorerTemplate(S.document.state, view.liveScope, {
+    content = _ctx.renderDataExplorerTemplate(S.document.state, S.canvas?.scope ?? null, {
       renderCanvas: _ctx.renderCanvas,
       renderLeftPanel: render,
       defCategory: _ctx.defCategory,

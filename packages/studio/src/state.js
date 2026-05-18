@@ -29,6 +29,7 @@
  *   mode: string;
  *   content: { frontmatter: Record<string, any> };
  *   ui: Record<string, any>;
+ *   canvas: { status: string; scope: any; error: string | null };
  * }} StudioState
  */
 
@@ -234,6 +235,12 @@ export function createState(doc) {
       gitCommitMessage: "", // commit message input
       gitLoading: false, // loading indicator during async ops
       gitError: null, // error message string
+      pendingInlineEdit: null, // null | { path, mediaName } — deferred inline edit awaiting canvas readiness
+    },
+    canvas: {
+      status: "idle", // "idle" | "loading" | "ready" | "error"
+      scope: null, // $defs scope from runtime buildScope
+      error: null, // error message on failure
     },
   };
 }
@@ -272,6 +279,7 @@ export function fromFlat(S) {
     selection,
     hover,
     ui,
+    canvas,
   } = S;
   return {
     doc: {
@@ -286,7 +294,7 @@ export function fromFlat(S) {
       history,
       historyIndex,
     },
-    session: { selection, hover, ui },
+    session: { selection, hover, ui, canvas },
   };
 }
 

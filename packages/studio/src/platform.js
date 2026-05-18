@@ -5,27 +5,30 @@
  * platform adapter at startup. All file I/O, project loading, and component discovery goes through
  * this interface.
  *
+ * Uses window.__jxPlatform so the platform can be registered from a separate script bundle (e.g.
+ * init.js) before studio.js loads.
+ *
  * See spec/desktop.md §3 for the full StudioPlatform interface.
  */
 
 /** @typedef {Record<string, any>} StudioPlatform */
 
-/** @type {StudioPlatform | null} */
-let _platform = null;
+/** @type {any} */
+const g = globalThis;
 
 /** @param {StudioPlatform} platform */
 export function registerPlatform(platform) {
-  _platform = platform;
+  g.__jxPlatform = platform;
 }
 
 /** @returns {StudioPlatform} */
 export function getPlatform() {
-  if (!_platform)
+  if (!g.__jxPlatform)
     throw new Error("No platform registered. Call registerPlatform() before starting Studio.");
-  return _platform;
+  return g.__jxPlatform;
 }
 
 /** @returns {boolean} */
 export function hasPlatform() {
-  return _platform !== null;
+  return g.__jxPlatform != null;
 }

@@ -6,6 +6,7 @@
 import {
   getState,
   update,
+  updateUi,
   renderOnly,
   getNodeAtPath,
   selectNode,
@@ -135,7 +136,7 @@ export function enterComponentInlineEdit(el, path) {
 
     if (hitPath) {
       const media = hitMedia === "base" ? null : (hitMedia ?? null);
-      view.pendingInlineEdit = { path: hitPath, mediaName: hitMedia };
+      updateUi("pendingInlineEdit", { path: hitPath, mediaName: hitMedia });
       const withMedia = { ...S, ui: { ...S.ui, activeMedia: media } };
       if (isEmpty && pPath) {
         let s = removeNode(withMedia, editPath);
@@ -144,7 +145,7 @@ export function enterComponentInlineEdit(el, path) {
         const hitParent = parentElementPath(hitPath);
         if (hitParent && pPath && hitParent.join("/") === pPath.join("/") && hitIdx > removedIdx) {
           hitPath = [...pPath, "children", hitIdx - 1];
-          view.pendingInlineEdit = { path: hitPath, mediaName: hitMedia };
+          updateUi("pendingInlineEdit", { path: hitPath, mediaName: hitMedia });
         }
         update(selectNode(s, hitPath));
       } else if (newText !== originalText) {
@@ -223,7 +224,7 @@ function splitParagraph() {
   s = insertNode(s, pPath, idx + 1, newDef);
   s = selectNode(s, newPath);
 
-  view.pendingInlineEdit = { path: newPath, mediaName };
+  updateUi("pendingInlineEdit", { path: newPath, mediaName });
   update(s);
 }
 
@@ -311,6 +312,6 @@ function handleComponentSlashSelect(cmd) {
   s = selectNode(s, newPath);
 
   const hasText = newDef.textContent != null;
-  if (hasText) view.pendingInlineEdit = { path: newPath, mediaName };
+  if (hasText) updateUi("pendingInlineEdit", { path: newPath, mediaName });
   update(s);
 }
