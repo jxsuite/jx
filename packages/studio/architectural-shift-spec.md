@@ -41,9 +41,10 @@
 - ✅ properties-panel (~760 lines extracted from studio.js)
 - ✅ stylebook-panel (~680 lines extracted from studio.js)
 - ✅ dnd (registerLayersDnD, registerComponentsDnD, registerElementsDnD, applyDropInstruction)
+- ✅ editors (renderFunctionEditor, registerFunctionCompletions)
 - ⬜ canvas (largest remaining; owns panzoom, inline editing, overlays, mode switching)
 
-**studio.js line count:** ~3,544 (down from ~6,226 at start of Phase 4)
+**studio.js line count:** ~3,340 (down from ~6,226 at start of Phase 4)
 
 ---
 
@@ -136,6 +137,7 @@ export function renderFooTemplate(ctx) {
 | properties-panel.js | ~1,300 | Phase 4d |
 | stylebook-panel.js | ~1,005 | Phase 4e |
 | dnd.js (+ shared.js defaultDef) | ~430 | Phase 4f |
+| editors.js (function editor + completions) | ~200 | Phase 4g |
 
 ### Remaining: Canvas Module
 
