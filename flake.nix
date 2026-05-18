@@ -60,7 +60,11 @@
                   --no-default-browser-check \
                   --headless=new
               '';
-              dev-server.command = "${pkgs.bun}/bin/bun run dev";
+              dev-server = {
+                command = "${pkgs.bun}/bin/bun run dev";
+                availability.restart = "on_failure";
+                availability.backoff_seconds = 2;
+              };
             };
           };
 
