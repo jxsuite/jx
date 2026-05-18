@@ -3,8 +3,10 @@ import { getProjectRoot } from "./handlers";
 import type { PackageInfo } from "./rpc-schema";
 
 export async function addPackage(params: { name: string }): Promise<void> {
+  const root = getProjectRoot();
+  if (!root) throw new Error("No project open");
   const proc = Bun.spawn(["bun", "add", params.name], {
-    cwd: getProjectRoot(),
+    cwd: root,
     stdout: "pipe",
     stderr: "pipe",
   });
@@ -16,8 +18,10 @@ export async function addPackage(params: { name: string }): Promise<void> {
 }
 
 export async function removePackage(params: { name: string }): Promise<void> {
+  const root = getProjectRoot();
+  if (!root) throw new Error("No project open");
   const proc = Bun.spawn(["bun", "remove", params.name], {
-    cwd: getProjectRoot(),
+    cwd: root,
     stdout: "pipe",
     stderr: "pipe",
   });
@@ -29,7 +33,9 @@ export async function removePackage(params: { name: string }): Promise<void> {
 }
 
 export async function listPackages(): Promise<PackageInfo[]> {
-  const pkgPath = resolve(getProjectRoot(), "package.json");
+  const root = getProjectRoot();
+  if (!root) return [];
+  const pkgPath = resolve(root, "package.json");
   const file = Bun.file(pkgPath);
   if (!(await file.exists())) return [];
 
