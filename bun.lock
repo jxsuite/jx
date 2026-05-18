@@ -31,7 +31,7 @@
     },
     "packages/compiler": {
       "name": "@jxsuite/compiler",
-      "version": "0.7.0",
+      "version": "0.9.0",
       "bin": {
         "jx": "./src/cli.js",
       },
@@ -50,16 +50,18 @@
     },
     "packages/desktop": {
       "name": "@jxsuite/desktop",
-      "version": "0.7.0",
+      "version": "0.9.0",
       "dependencies": {
-        "@jxsuite/server": "workspace:^",
         "@jxsuite/studio": "workspace:^",
         "electrobun": "latest",
+      },
+      "devDependencies": {
+        "@jxsuite/server": "workspace:^",
       },
     },
     "packages/parser": {
       "name": "@jxsuite/parser",
-      "version": "0.7.0",
+      "version": "0.9.0",
       "dependencies": {
         "glob": "^13.0.6",
         "hast-util-from-html": "^2.0.3",
@@ -81,7 +83,7 @@
     },
     "packages/runtime": {
       "name": "@jxsuite/runtime",
-      "version": "0.7.0",
+      "version": "0.9.0",
       "dependencies": {
         "@vue/reactivity": "^3.5.34",
       },
@@ -91,7 +93,7 @@
     },
     "packages/schema": {
       "name": "@jxsuite/schema",
-      "version": "0.7.0",
+      "version": "0.9.0",
       "dependencies": {
         "@webref/css": "^8.5.6",
         "@webref/elements": "^2.7.1",
@@ -100,14 +102,14 @@
     },
     "packages/server": {
       "name": "@jxsuite/server",
-      "version": "0.7.0",
+      "version": "0.9.0",
       "dependencies": {
         "chokidar": "^5.0.0",
       },
     },
     "packages/studio": {
       "name": "@jxsuite/studio",
-      "version": "0.7.0",
+      "version": "0.9.0",
       "dependencies": {
         "@atlaskit/pragmatic-drag-and-drop": "^1.8.1",
         "@atlaskit/pragmatic-drag-and-drop-hitbox": "^1.1.0",
@@ -778,7 +780,7 @@
 
     "dotenv": ["dotenv@17.4.2", "", {}, "sha512-nI4U3TottKAcAD9LLud4Cb7b2QztQMUEfHbvhTH09bqXTxnSie8WnjPALV/WMCrJZ6UV/qHJ6L03OqO3LcdYZw=="],
 
-    "electrobun": ["electrobun@1.16.0", "", { "dependencies": { "@babylonjs/core": "^7.45.0", "@types/bun": "^1.3.8", "png-to-ico": "^2.1.8", "proxy-agent": "^6.5.0", "rcedit": "^4.0.1", "three": "^0.165.0" }, "bin": { "electrobun": "bin/electrobun.cjs" } }, "sha512-KO/GQO6vpWACJXizqD8F551xtRAgg83Dcfzmjo+6qqCseobttu9x+HL40n+CBnYTe+kBvFXzwso2ZrPuec78zg=="],
+    "electrobun": ["electrobun@1.18.1", "", { "dependencies": { "@babylonjs/core": "^7.45.0", "@types/bun": "^1.3.8", "png-to-ico": "^2.1.8", "proxy-agent": "^6.5.0", "rcedit": "^4.0.1", "three": "^0.165.0" }, "bin": { "electrobun": "bin/electrobun.cjs" } }, "sha512-tgZ+WKGskn/1/Y5i1mpVCCkgRa1O31Tz7MIArBTK44GfPzT43uOq9c/HvxdQGrLeZV8ZvjK1lQrwqSXCgh6tvA=="],
 
     "emoji-regex": ["emoji-regex@10.6.0", "", {}, "sha512-toUI84YS5YmxW219erniWD0CIVOo46xGKColeNQRgOzDorgBi1v4D71/OFzgD9GO2UGKIv1C3Sp8DAn0+j5w7A=="],
 

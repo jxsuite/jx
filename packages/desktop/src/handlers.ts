@@ -1,4 +1,11 @@
-import { Utils } from "electrobun/bun";
+let Utils: any = null;
+
+export async function initElectrobunUtils() {
+  try {
+    Utils = (await import("electrobun/bun")).Utils;
+  } catch {}
+}
+
 import { readdir, readFile, writeFile, unlink, rename, stat, mkdir } from "node:fs/promises";
 import { resolve, relative, join, basename, dirname } from "node:path";
 import { homedir } from "node:os";
@@ -34,6 +41,12 @@ function assertUnderRoot(absPath: string, root: string) {
 // ─── Handlers ─────────────────────────────────────────────────────────────────
 
 export async function openProject(): Promise<OpenProjectResult | null> {
+  if (!Utils) {
+    throw new Error(
+      "Native file dialog not available — pass project root via CLI argument instead",
+    );
+  }
+
   const paths = await Utils.openFileDialog({
     startingFolder: projectRoot || homedir(),
     allowedFileTypes: "json",

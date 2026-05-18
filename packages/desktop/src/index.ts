@@ -2,6 +2,7 @@ import { BrowserView, BrowserWindow } from "electrobun/bun";
 import type { StudioRPC } from "./rpc-schema";
 import {
   setProjectRoot,
+  initElectrobunUtils,
   openProject,
   listDirectory,
   handleReadFile,
@@ -38,6 +39,7 @@ import { addPackage, removePackage, listPackages } from "./packages";
 const projectRoot = process.argv[2] || process.env.JSONSX_PROJECT_ROOT || process.cwd();
 
 setProjectRoot(projectRoot);
+await initElectrobunUtils();
 
 // ─── Register RPC handlers ────────────────────────────────────────────────────
 
