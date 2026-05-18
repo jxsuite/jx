@@ -44,9 +44,10 @@
 - ✅ editors (renderFunctionEditor, registerFunctionCompletions)
 - ✅ block-action-bar (renderBlockActionBar, dismissLinkPopover, inline formatting)
 - ✅ edit-display (prepareForEditMode, restoreTemplateExpressions, templateToEditDisplay)
+- ✅ component-inline-edit (enterComponentInlineEdit, slash menu delegation)
 - ⬜ canvas (largest remaining; owns panzoom, inline editing, overlays, mode switching)
 
-**studio.js line count:** ~2,760 (down from ~6,226 at start of Phase 4)
+**studio.js line count:** ~2,460 (down from ~6,226 at start of Phase 4)
 
 ---
 
@@ -142,6 +143,7 @@ export function renderFooTemplate(ctx) {
 | editors.js (function editor + completions) | ~200 | Phase 4g |
 | block-action-bar.js (action bar + inline formatting) | ~395 | Phase 4h |
 | edit-display.js (edit-mode document transforms) | ~190 | Phase 4i |
+| component-inline-edit.js (design-mode text editing) | ~295 | Phase 4j |
 
 ### Remaining: Canvas Module
 
