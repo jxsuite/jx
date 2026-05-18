@@ -53,7 +53,7 @@
 - ✅ panel-events (registerPanelEvents — click/dblclick/contextmenu/mousemove/insertion helper)
 - ⬜ canvas (largest remaining; owns panzoom, inline editing, overlays, mode switching)
 
-**studio.js line count:** ~1,364 (down from ~6,226 at start of Phase 4)
+**studio.js line count:** ~983 (down from ~6,226 at start of Phase 4)
 
 ---
 
@@ -154,6 +154,7 @@ export function renderFooTemplate(ctx) {
 | canvas-utils.js (panzoom, zoom indicator, panel template) | ~273 | Phase 4l |
 | preview-render.js, pseudo-preview.js, canvas-dnd.js, panel-events.js | ~503 | Phase 4m |
 | canvas-helpers.js (shared canvas query/utility functions) | ~105 | Phase 4n |
+| canvas-render.js (multi-mode canvas rendering orchestrator) | ~350 | Phase 4o |
 
 ### Remaining: Canvas Module
 
