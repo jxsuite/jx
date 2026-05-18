@@ -18,8 +18,9 @@
 6. [Component Scoping](#6-component-scoping)
 7. [ElectroBun Integration](#7-electrobun-integration)
 8. [Chrome Development Mode](#8-chrome-development-mode)
-9. [SaaS / Cloud Mode](#9-saas--cloud-mode)
-10. [Implementation Roadmap](#10-implementation-roadmap)
+9. [NixOS Chromium App-Mode](#9-nixos-chromium-app-mode)
+10. [SaaS / Cloud Mode](#10-saas--cloud-mode)
+11. [Implementation Roadmap](#11-implementation-roadmap)
 
 ---
 
@@ -27,11 +28,19 @@
 
 Jx Studio is designed for three deployment targets that share a single core codebase:
 
-| Target          | Runtime                           | Backend                       | Storage                   | Status                      |
-| --------------- | --------------------------------- | ----------------------------- | ------------------------- | --------------------------- |
-| **Desktop app** | ElectroBun (Bun + native webview) | Bun process (local)           | Filesystem                | Primary target              |
-| **Dev mode**    | Chrome                            | `@jxsuite/server` (localhost) | Filesystem via dev server | Active (Studio development) |
-| **SaaS/PaaS**   | Browser                           | Cloud API server              | Database / object storage | Future                      |
+| Target              | Runtime                           | Backend                       | Storage                   | Status                      |
+| ------------------- | --------------------------------- | ----------------------------- | ------------------------- | --------------------------- |
+| **Desktop app**     | ElectroBun (Bun + native webview) | Bun process (local)           | Filesystem                | All platforms except NixOS  |
+| **NixOS desktop**   | Chromium `--app` + Bun            | `@jxsuite/server` (localhost) | Filesystem via dev server | NixOS only (via `nix build`) |
+| **Dev mode**        | Chrome                            | `@jxsuite/server` (localhost) | Filesystem via dev server | Active (Studio development) |
+| **SaaS/PaaS**       | Browser                           | Cloud API server              | Database / object storage | Future                      |
+
+### 1.1a Platform Strategy
+
+The desktop runtime is chosen at **build time**, not runtime:
+
+- **NixOS** → Chromium app-mode exclusively. ElectroBun cannot be built in a Nix sandbox, and Chromium provides superior Wayland support.
+- **All other platforms** (macOS, Windows, non-NixOS Linux) → ElectroBun exclusively. Provides native CEF webview with embedded Bun process.
 
 The studio package (`@jxsuite/studio`) contains all UI logic and is backend-agnostic. It communicates with its environment through a **Platform Abstraction Layer (PAL)** — an interface that each deployment target implements. The server package (`@jxsuite/server`) is one such implementation; the ElectroBun Bun process is another; a cloud API server is a third.
 
@@ -626,15 +635,72 @@ For the **desktop app**, `Utils.openFileDialog` with `canChooseFiles: true` and 
 
 ---
 
-## 9. SaaS / Cloud Mode
+## 9. NixOS Chromium App-Mode
+
+> **Status: Implemented.** Available via `nix build` and `bun run desktop:chromium`.
+
+On NixOS, ElectroBun cannot be built in a Nix sandbox, and system Chromium provides superior Wayland support. The desktop app therefore uses Chromium in `--app` mode, which provides a frameless, app-like window.
+
+### 9.1 Architecture
+
+```
+┌──────────────────────────────────────────────────────────┐
+│                  Chromium App-Mode                        │
+│                                                          │
+│  ┌──────────────────┐           ┌──────────────────────┐ │
+│  │   Bun Process     │  HTTP     │  Chromium --app       │ │
+│  │                   │◄────────►│                        │ │
+│  │  @jxsuite/server  │          │  @jxsuite/studio       │ │
+│  │  - File I/O       │          │  @jxsuite/runtime      │ │
+│  │  - Studio API     │          │  Lit + Spectrum        │ │
+│  │  - Code services  │          │  Monaco                │ │
+│  └──────────────────┘          └──────────────────────┘ │
+│                                                          │
+└──────────────────────────────────────────────────────────┘
+```
+
+Unlike ElectroBun (which uses WebSocket RPC between the Bun process and a native webview), the Chromium app-mode runtime reuses the `@jxsuite/server` dev server as its backend. The Bun process starts the server on a random port, then launches Chromium with `--app=<serverUrl>/studio/index.html`. Studio registers the `DevServerPlatform` adapter — the same one used in Chrome development mode.
+
+### 9.2 Launcher (`chromium-mode.ts`)
+
+The entry point (`packages/desktop/src/chromium-mode.ts`) performs:
+
+1. Starts `@jxsuite/server` on a random port with middleware for studio assets and project public files
+2. Locates a Chromium binary via `CHROMIUM_BIN` env var or PATH lookup (`chromium`, `chromium-browser`, `google-chrome`, `google-chrome-stable`)
+3. Launches Chromium with app-mode flags:
+   - `--app=<serverUrl>/studio/index.html` — frameless window
+   - `--no-first-run --no-default-browser-check` — suppress first-run prompts
+   - `--window-size=1400,900`
+   - `--user-data-dir=<projectRoot>/.jx/chromium-profile` — isolated profile
+   - `--ozone-platform=wayland --enable-features=UseOzonePlatform` — when `WAYLAND_DISPLAY` is set
+4. Exits when the browser window closes
+
+### 9.3 Nix Package
+
+The flake's `packages.default` produces a fully sandboxed NixOS package:
+
+- **Build dependencies** are fetched via [bun2nix](https://github.com/nix-community/bun2nix), which generates a `bun.nix` lockfile mapping all packages to fixed-output derivations — no network access needed during build
+- **`bun.nix` auto-refresh:** The root `package.json` postinstall script runs `bun2nix -o bun.nix` after every `bun install`, keeping the nix lockfile in sync with `bun.lock`
+- **Build phase** runs `bun run build` (compiler, runtime, studio, schema) and `pre-build.ts` (bundles the studio init bridge and copies assets)
+- **Install phase** copies `chromium-mode.ts`, studio assets, and dereferenced `node_modules` (via `cp -rL` to resolve workspace symlinks) into the nix store
+- **Wrapper** creates a `jx-studio` binary that runs `bun chromium-mode.ts` with `CHROMIUM_BIN` and `JX_STUDIO_ASSETS` pre-set to nix store paths
+
+```
+$ nix build
+$ ./result/bin/jx-studio [project-root]
+```
+
+---
+
+## 10. SaaS / Cloud Mode
 
 > **Status: Future.** This section describes the target architecture for a hosted Studio deployment.
 
-### 9.1 Cloud Platform Adapter
+### 10.1 Cloud Platform Adapter
 
 A cloud adapter replaces filesystem operations with API calls to a remote service. The project root becomes a project ID rather than a filesystem path. All PAL methods translate to REST or WebSocket calls to the cloud API.
 
-### 9.2 Storage Backend
+### 10.2 Storage Backend
 
 The cloud backend stores projects in a database with an abstraction equivalent to the filesystem:
 
@@ -647,7 +713,7 @@ The cloud backend stores projects in a database with an abstraction equivalent t
 
 The same PAL interface means Studio code doesn't change — only the adapter implementation.
 
-### 9.3 Collaboration (Future)
+### 10.3 Collaboration (Future)
 
 A cloud backend can extend the PAL with collaboration features:
 
@@ -663,29 +729,39 @@ These are additive — Studio checks for their presence and enables collaboratio
 
 ---
 
-## 10. Implementation Roadmap
+## 11. Implementation Roadmap
 
-### Phase 1: PAL Extraction (Current → Next)
+### Phase 1: PAL Extraction ✅
 
 Extract the platform abstraction from Studio's current inline `fetch()` calls:
 
-- [ ] Define `StudioPlatform` interface in `packages/studio/platform.js`
-- [ ] Implement `DevServerPlatform` wrapping current `fetch("/__studio/*")` calls
-- [ ] Replace all direct `fetch("/__studio/*")` in `studio.js` with `getPlatform().*` calls
-- [ ] Implement `showDirectoryPicker()` flow in `DevServerPlatform.openProject()`
+- [x] Define `StudioPlatform` interface in `packages/studio/src/platform.js`
+- [x] Implement `DevServerPlatform` wrapping current `fetch("/__studio/*")` calls
+- [x] Replace all direct `fetch("/__studio/*")` in `studio.js` with `getPlatform().*` calls
+- [x] Implement `showDirectoryPicker()` flow in `DevServerPlatform.openProject()`
 - [ ] Update component sidebar to implement Active/Global scoping (§6)
-- [ ] Add `GET /__studio/sites` endpoint for dev server project matching
+- [x] Add `GET /__studio/sites` endpoint for dev server project matching
 
-### Phase 2: Desktop App Skeleton
+### Phase 2: Desktop App Skeleton ✅
 
 Package Studio as an ElectroBun app:
 
-- [ ] Scaffold ElectroBun project with Studio as the main view
-- [ ] Implement `DesktopPlatform` adapter (RPC bridge to Bun process)
-- [ ] Implement Bun-side file handlers (read, write, list, delete, rename, discover)
-- [ ] Wire `Utils.openFileDialog()` for `openProject()` with `project.json` filter
-- [ ] Port code services (format, lint, minify) to run in Bun process directly
-- [ ] Verify full editing flow: open project, browse files, edit component, save
+- [x] Scaffold ElectroBun project with Studio as the main view
+- [x] Implement `DesktopPlatform` adapter (RPC bridge to Bun process)
+- [x] Implement Bun-side file handlers (read, write, list, delete, rename, discover)
+- [x] Wire `Utils.openFileDialog()` for `openProject()` with `project.json` filter
+- [ ] Port code services (format, lint, minify) to run in Bun process directly (currently stubbed)
+- [x] Verify full editing flow: open project, browse files, edit component, save
+
+### Phase 2b: NixOS Chromium App-Mode ✅
+
+Package Studio as a NixOS-native app using Chromium `--app` mode:
+
+- [x] Implement `chromium-mode.ts` launcher (server + Chromium `--app`)
+- [x] Wayland support via `--ozone-platform=wayland` auto-detection
+- [x] Sandboxed `nix build` via bun2nix (no `__noChroot`, no network at build time)
+- [x] `makeWrapper` producing `jx-studio` binary with bundled Chromium and Bun
+- [x] Auto-refresh `bun.nix` via postinstall hook
 
 ### Phase 3: Feature Parity
 

@@ -586,7 +586,9 @@ export function transpileJxMarkdown(source) {
 
   for (const node of bodyNodes) {
     const converted = mdastNodeToJx(node);
-    if (converted != null) children.push(converted);
+    if (converted == null) continue;
+    if (Array.isArray(converted)) children.push(...converted);
+    else children.push(converted);
   }
 
   if (children.length > 0) {

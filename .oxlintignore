@@ -24,3 +24,7 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Chromium profile data
+.jx/
+packages/desktop/.jx/

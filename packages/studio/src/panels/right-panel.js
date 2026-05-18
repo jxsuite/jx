@@ -12,6 +12,7 @@ import { isCustomElementDoc } from "./signals-panel.js";
 import { ensureLitState } from "./shared.js";
 import { isColorPopoverOpen } from "../ui/color-selector.js";
 import { renderStylePanelTemplate } from "./style-panel.js";
+import { renderPropertiesPanelTemplate } from "./properties-panel.js";
 
 /** @type {any} */
 let _ctx = null;
@@ -110,7 +111,7 @@ function rightPanelTemplate() {
   /** @type {any} */
   let bodyT = nothing;
   if (tab === "properties") {
-    bodyT = _ctx.propertiesSidebarTemplate();
+    bodyT = renderPropertiesPanelTemplate({ navigateToComponent: _ctx.navigateToComponent });
   } else if (tab === "events") {
     bodyT = eventsSidebarTemplate(S, {
       isCustomElementDoc: () => isCustomElementDoc(S),
