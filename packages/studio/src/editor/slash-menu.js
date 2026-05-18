@@ -34,12 +34,16 @@ const SLASH_COMMANDS = [
 const host = document.createElement("div");
 host.style.display = "contents";
 
-/** @type {{ onSelect: (cmd: any) => void } | null} */
+/** @type {{ onSelect: (cmd: any) => void; showFilter?: boolean } | null} */
 let callbacks = null;
 let activeIdx = 0;
 /** @type {any[]} */
 let filteredItems = [];
 let open = false;
+/** @type {HTMLElement | null} */
+let _anchorEl = null;
+/** @type {DOMRect | null} */
+let _anchorRect = null;
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
@@ -53,7 +57,7 @@ export function isSlashMenuOpen() {
  *
  * @param {HTMLElement} anchorEl — the element being edited (for positioning)
  * @param {string} filter — current typed filter text (after the "/")
- * @param {{ onSelect: (cmd: any) => void }} cbs
+ * @param {{ onSelect: (cmd: any) => void; showFilter?: boolean }} cbs
  */
 export function showSlashMenu(anchorEl, filter, cbs) {
   // Lazily attach host to sp-theme
@@ -62,6 +66,8 @@ export function showSlashMenu(anchorEl, filter, cbs) {
   }
 
   callbacks = cbs;
+  _anchorEl = anchorEl;
+  _anchorRect = anchorEl.getBoundingClientRect();
 
   filteredItems = filter
     ? SLASH_COMMANDS.filter(
@@ -69,49 +75,28 @@ export function showSlashMenu(anchorEl, filter, cbs) {
       )
     : SLASH_COMMANDS;
 
-  if (!filteredItems.length) {
+  if (!filteredItems.length && !cbs.showFilter) {
     dismissSlashMenu();
     return;
   }
 
   activeIdx = 0;
 
-  const rect = anchorEl.getBoundingClientRect();
-
-  litRender(
-    html`
-      <sp-popover
-        open
-        style="position:fixed;left:${rect.left}px;top:${rect.bottom +
-        4}px;z-index:9999;max-height:280px;overflow-y:auto"
-      >
-        <sp-menu style="min-width:220px">
-          ${filteredItems.map(
-            (cmd, i) => html`
-              <sp-menu-item
-                ?focused=${i === 0}
-                @click=${(/** @type {Event} */ e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  select(cmd);
-                }}
-              >
-                ${cmd.label}
-                ${cmd.description
-                  ? html`<span slot="description">${cmd.description}</span>`
-                  : nothing}
-              </sp-menu-item>
-            `,
-          )}
-        </sp-menu>
-      </sp-popover>
-    `,
-    host,
-  );
+  render(anchorEl, cbs.showFilter || false);
 
   if (!open) {
     open = true;
     document.addEventListener("keydown", onKeydown, true); // capture phase
+    requestAnimationFrame(() => {
+      document.addEventListener("mousedown", onOutsideClick, true);
+    });
+  }
+
+  if (cbs.showFilter) {
+    requestAnimationFrame(() => {
+      const input = /** @type {HTMLInputElement | null} */ (host.querySelector(".slash-filter"));
+      if (input) input.focus();
+    });
   }
 }
 
@@ -119,12 +104,74 @@ export function dismissSlashMenu() {
   if (!open) return;
   open = false;
   callbacks = null;
+  _anchorEl = null;
+  _anchorRect = null;
   filteredItems = [];
   document.removeEventListener("keydown", onKeydown, true);
+  document.removeEventListener("mousedown", onOutsideClick, true);
   litRender(nothing, host);
 }
 
 // ─── Internal ─────────────────────────────────────────────────────────────────
+
+/**
+ * @param {HTMLElement} anchorEl
+ * @param {boolean} showFilter
+ */
+function render(anchorEl, showFilter) {
+  const rect = _anchorRect || anchorEl.getBoundingClientRect();
+
+  litRender(
+    html`
+      <sp-popover
+        open
+        style="position:fixed;left:${rect.left}px;top:${rect.bottom +
+        4}px;z-index:9999;max-height:320px;overflow-y:auto"
+      >
+        ${showFilter
+          ? html`<input
+              class="slash-filter"
+              type="text"
+              placeholder="Filter…"
+              autocomplete="off"
+              style="display:block;width:100%;box-sizing:border-box;padding:6px 10px;border:none;border-bottom:1px solid var(--border, #444);outline:none;font-size:13px;background:transparent;color:inherit"
+              @input=${onFilterInput}
+            />`
+          : nothing}
+        <sp-menu style="min-width:220px">
+          ${filteredItems.length
+            ? filteredItems.map(
+                (cmd, i) => html`
+                  <sp-menu-item
+                    ?focused=${i === 0}
+                    @click=${(/** @type {Event} */ e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      select(cmd);
+                    }}
+                  >
+                    ${cmd.label}
+                    ${cmd.description
+                      ? html`<span slot="description">${cmd.description}</span>`
+                      : nothing}
+                  </sp-menu-item>
+                `,
+              )
+            : html`<sp-menu-item disabled>No matches</sp-menu-item>`}
+        </sp-menu>
+      </sp-popover>
+    `,
+    host,
+  );
+}
+
+/** @param {MouseEvent} e */
+function onOutsideClick(e) {
+  const popover = host.querySelector("sp-popover");
+  if (popover && !popover.contains(/** @type {Node} */ (e.target))) {
+    dismissSlashMenu();
+  }
+}
 
 /** @param {any} cmd */
 function select(cmd) {
@@ -133,16 +180,42 @@ function select(cmd) {
   cbs?.onSelect(cmd);
 }
 
+/** @param {Event} e */
+function onFilterInput(e) {
+  const input = /** @type {HTMLInputElement} */ (e.target);
+  const filter = input.value.toLowerCase();
+
+  filteredItems = filter
+    ? SLASH_COMMANDS.filter(
+        (c) => c.label.toLowerCase().includes(filter) || c.tag.toLowerCase().includes(filter),
+      )
+    : SLASH_COMMANDS;
+
+  activeIdx = 0;
+  if (_anchorEl) render(_anchorEl, true);
+
+  // Re-focus input after re-render
+  requestAnimationFrame(() => {
+    const el = /** @type {HTMLInputElement | null} */ (host.querySelector(".slash-filter"));
+    if (el && el !== document.activeElement) {
+      el.focus();
+      el.selectionStart = el.selectionEnd = el.value.length;
+    }
+  });
+}
+
 /** @param {KeyboardEvent} e */
 function onKeydown(e) {
   if (!open) return;
 
-  const items = /** @type {NodeListOf<Element>} */ (host.querySelectorAll("sp-menu-item"));
-  if (!items.length) return;
+  const items = /** @type {NodeListOf<Element>} */ (
+    host.querySelectorAll("sp-menu-item:not([disabled])")
+  );
 
   if (e.key === "ArrowDown") {
     e.preventDefault();
     e.stopPropagation();
+    if (!items.length) return;
     items[activeIdx]?.removeAttribute("focused");
     activeIdx = (activeIdx + 1) % items.length;
     items[activeIdx]?.setAttribute("focused", "");
@@ -150,6 +223,7 @@ function onKeydown(e) {
   } else if (e.key === "ArrowUp") {
     e.preventDefault();
     e.stopPropagation();
+    if (!items.length) return;
     items[activeIdx]?.removeAttribute("focused");
     activeIdx = (activeIdx - 1 + items.length) % items.length;
     items[activeIdx]?.setAttribute("focused", "");
