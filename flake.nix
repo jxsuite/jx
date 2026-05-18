@@ -100,6 +100,9 @@
               google-chrome
               husky
               librsvg
+              mcp-server-fetch
+              mcp-server-filesystem
+              mcp-server-memory
               pre-commit
               procps
             ];

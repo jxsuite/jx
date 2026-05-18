@@ -1,12 +1,22 @@
 {
   "servers": {
     "chrome-devtools": {
-      "command": "bunx",
-      "args": ["chrome-devtools-mcp"]
+      "args": ["chrome-devtools-mcp"],
+      "command": "bunx"
     },
     "chrome-devtools-devenv": {
-      "command": "bunx",
-      "args": ["chrome-devtools-mcp", "--browserUrl=http://127.0.0.1:9222"]
+      "args": ["chrome-devtools-mcp", "--browserUrl=http://127.0.0.1:9222"],
+      "command": "bunx"
+    },
+    "fetch": {
+      "command": "mcp-server-fetch"
+    },
+    "filesystem": {
+      "args": ["."],
+      "command": "mcp-server-filesystem"
+    },
+    "memory": {
+      "command": "mcp-server-memory"
     }
   }
 }
