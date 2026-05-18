@@ -1,4 +1,4 @@
-import { BrowserView, BrowserWindow, PATHS } from "electrobun/bun";
+import { BrowserView, BrowserWindow } from "electrobun/bun";
 import type { StudioRPC } from "./rpc-schema";
 import {
   setProjectRoot,
@@ -9,23 +9,35 @@ import {
   handleDeleteFile,
   handleRenameFile,
   handleCreateDirectory,
+  handleUploadFile,
+  handleResolveSiteContext,
   discoverComponents,
   codeService,
   locateFile,
   fetchPluginSchema,
 } from "./handlers";
-import { startStudioServer } from "./server";
+import {
+  gitStatus,
+  gitBranches,
+  gitLog,
+  gitStage,
+  gitUnstage,
+  gitCommit,
+  gitPush,
+  gitPull,
+  gitFetch,
+  gitCheckout,
+  gitCreateBranch,
+  gitDiff,
+  gitDiscard,
+} from "./git";
+import { addPackage, removePackage, listPackages } from "./packages";
 
 // ─── Determine project root ───────────────────────────────────────────────────
 
 const projectRoot = process.argv[2] || process.env.JSONSX_PROJECT_ROOT || process.cwd();
 
 setProjectRoot(projectRoot);
-
-// ─── Start embedded HTTP server ───────────────────────────────────────────────
-
-const server = await startStudioServer(PATHS.VIEWS_FOLDER, projectRoot);
-const serverUrl = `http://localhost:${server.port}`;
 
 // ─── Register RPC handlers ────────────────────────────────────────────────────
 
@@ -40,10 +52,28 @@ const rpc = BrowserView.defineRPC<StudioRPC>({
       deleteFile: (params) => handleDeleteFile(params),
       renameFile: (params) => handleRenameFile(params),
       createDirectory: (params) => handleCreateDirectory(params),
+      uploadFile: (params) => handleUploadFile(params),
+      resolveSiteContext: (params) => handleResolveSiteContext(params),
       discoverComponents: (params) => discoverComponents(params),
       codeService: (params) => codeService(params),
       locateFile: (params) => locateFile(params),
       fetchPluginSchema: (params) => fetchPluginSchema(params),
+      gitStatus: () => gitStatus(),
+      gitBranches: () => gitBranches(),
+      gitLog: (params) => gitLog(params),
+      gitStage: (params) => gitStage(params),
+      gitUnstage: (params) => gitUnstage(params),
+      gitCommit: (params) => gitCommit(params),
+      gitPush: () => gitPush(),
+      gitPull: () => gitPull(),
+      gitFetch: () => gitFetch(),
+      gitCheckout: (params) => gitCheckout(params),
+      gitCreateBranch: (params) => gitCreateBranch(params),
+      gitDiff: (params) => gitDiff(params),
+      gitDiscard: (params) => gitDiscard(params),
+      addPackage: (params) => addPackage(params),
+      removePackage: (params) => removePackage(params),
+      listPackages: () => listPackages(),
     },
     messages: {},
   },
@@ -53,7 +83,7 @@ const rpc = BrowserView.defineRPC<StudioRPC>({
 
 new BrowserWindow({
   title: "Jx Studio",
-  url: `${serverUrl}/studio/index.html`,
+  url: "views://studio/index.html",
   frame: { x: 0, y: 0, width: 1400, height: 900 },
   navigationRules: "views://*,^*",
   rpc,

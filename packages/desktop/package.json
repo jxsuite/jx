@@ -17,8 +17,10 @@
     "upgrade": "bunx npm-check-updates -u && bun install"
   },
   "dependencies": {
-    "@jxsuite/server": "workspace:^",
     "@jxsuite/studio": "workspace:^",
     "electrobun": "latest"
+  },
+  "devDependencies": {
+    "@jxsuite/server": "workspace:^"
   }
 }

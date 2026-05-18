@@ -41,6 +41,37 @@ export interface CodeServiceResult {
   [key: string]: unknown;
 }
 
+// ─── Git types ───────────────────────────────────────────────────────────────
+
+export interface GitFileStatus {
+  status: string;
+  path: string;
+}
+
+export interface GitStatusResult {
+  branch: string;
+  files: GitFileStatus[];
+  ahead: number;
+  behind: number;
+}
+
+export interface GitBranchesResult {
+  current: string;
+  branches: string[];
+}
+
+export interface GitLogEntry {
+  hash: string;
+  message: string;
+  author: string;
+  date: string;
+}
+
+export interface PackageInfo {
+  name: string;
+  version: string;
+}
+
 // ─── RPC Schema ───────────────────────────────────────────────────────────────
 
 export type StudioRPC = {
@@ -74,6 +105,14 @@ export type StudioRPC = {
         params: { path: string };
         response: void;
       };
+      uploadFile: {
+        params: { path: string; data: string };
+        response: void;
+      };
+      resolveSiteContext: {
+        params: { filePath: string };
+        response: { sitePath: string | null };
+      };
       discoverComponents: {
         params: { dir?: string };
         response: ComponentMeta[];
@@ -89,6 +128,72 @@ export type StudioRPC = {
       fetchPluginSchema: {
         params: { src: string; prototype?: string; base?: string };
         response: unknown | null;
+      };
+      // Git
+      gitStatus: {
+        params: void;
+        response: GitStatusResult;
+      };
+      gitBranches: {
+        params: void;
+        response: GitBranchesResult;
+      };
+      gitLog: {
+        params: { limit?: number };
+        response: GitLogEntry[];
+      };
+      gitStage: {
+        params: { files: string[] };
+        response: void;
+      };
+      gitUnstage: {
+        params: { files: string[] };
+        response: void;
+      };
+      gitCommit: {
+        params: { message: string };
+        response: void;
+      };
+      gitPush: {
+        params: void;
+        response: void;
+      };
+      gitPull: {
+        params: void;
+        response: void;
+      };
+      gitFetch: {
+        params: void;
+        response: void;
+      };
+      gitCheckout: {
+        params: { branch: string };
+        response: void;
+      };
+      gitCreateBranch: {
+        params: { name: string };
+        response: void;
+      };
+      gitDiff: {
+        params: { path?: string };
+        response: string;
+      };
+      gitDiscard: {
+        params: { files: string[] };
+        response: void;
+      };
+      // Packages
+      addPackage: {
+        params: { name: string };
+        response: void;
+      };
+      removePackage: {
+        params: { name: string };
+        response: void;
+      };
+      listPackages: {
+        params: void;
+        response: PackageInfo[];
       };
     };
     messages: {};

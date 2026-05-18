@@ -130,6 +130,38 @@ export async function handleCreateDirectory(params: { path: string }): Promise<v
   await mkdir(abs, { recursive: true });
 }
 
+export async function handleUploadFile(params: { path: string; data: string }): Promise<void> {
+  const root = requireRoot();
+  const abs = resolve(root, params.path);
+  assertUnderRoot(abs, root);
+  await mkdir(dirname(abs), { recursive: true });
+  const buffer = Buffer.from(params.data, "base64");
+  await Bun.write(abs, buffer);
+}
+
+export async function handleResolveSiteContext(params: {
+  filePath: string;
+}): Promise<{ sitePath: string | null }> {
+  const root = requireRoot();
+  let dir = resolve(root, dirname(params.filePath));
+
+  while (true) {
+    const rel = relative(root, dir);
+    if (rel.startsWith("..") || rel.startsWith("/")) break;
+
+    const candidate = join(dir, "project.json");
+    if (existsSync(candidate)) {
+      return { sitePath: relative(root, dir) || "." };
+    }
+
+    const parent = dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+
+  return { sitePath: null };
+}
+
 export async function discoverComponents(params: { dir?: string }): Promise<ComponentMeta[]> {
   const root = requireRoot();
   const scanRoot = params.dir ? resolve(root, params.dir) : root;

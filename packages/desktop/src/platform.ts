@@ -19,6 +19,12 @@ export function createDesktopPlatform() {
   return {
     id: "desktop" as const,
 
+    projectRoot: "",
+
+    async activate() {
+      /* no-op */
+    },
+
     async openProject() {
       return rpc.request.openProject();
     },
@@ -43,6 +49,10 @@ export function createDesktopPlatform() {
       }
     },
 
+    async resolveSiteContext(filePath: string) {
+      return rpc.request.resolveSiteContext({ filePath });
+    },
+
     async listDirectory(dir: string) {
       return rpc.request.listDirectory({ dir });
     },
@@ -53,6 +63,10 @@ export function createDesktopPlatform() {
 
     async writeFile(path: string, content: string) {
       return rpc.request.writeFile({ path, content });
+    },
+
+    async uploadFile(path: string, data: string) {
+      return rpc.request.uploadFile({ path, data });
     },
 
     async deleteFile(path: string) {
@@ -81,6 +95,72 @@ export function createDesktopPlatform() {
 
     async fetchPluginSchema(src: string, prototype?: string, base?: string) {
       return rpc.request.fetchPluginSchema({ src, prototype, base });
+    },
+
+    // Git operations — delegate to Bun-side handlers that shell out to system git
+    async gitStatus() {
+      return rpc.request.gitStatus();
+    },
+
+    async gitBranches() {
+      return rpc.request.gitBranches();
+    },
+
+    async gitLog(limit?: number) {
+      return rpc.request.gitLog({ limit });
+    },
+
+    async gitStage(files: string[]) {
+      return rpc.request.gitStage({ files });
+    },
+
+    async gitUnstage(files: string[]) {
+      return rpc.request.gitUnstage({ files });
+    },
+
+    async gitCommit(message: string) {
+      return rpc.request.gitCommit({ message });
+    },
+
+    async gitPush() {
+      return rpc.request.gitPush();
+    },
+
+    async gitPull() {
+      return rpc.request.gitPull();
+    },
+
+    async gitFetch() {
+      return rpc.request.gitFetch();
+    },
+
+    async gitCheckout(branch: string) {
+      return rpc.request.gitCheckout({ branch });
+    },
+
+    async gitCreateBranch(name: string) {
+      return rpc.request.gitCreateBranch({ name });
+    },
+
+    async gitDiff(path?: string) {
+      return rpc.request.gitDiff({ path });
+    },
+
+    async gitDiscard(files: string[]) {
+      return rpc.request.gitDiscard({ files });
+    },
+
+    // Package management
+    async addPackage(name: string) {
+      return rpc.request.addPackage({ name });
+    },
+
+    async removePackage(name: string) {
+      return rpc.request.removePackage({ name });
+    },
+
+    async listPackages() {
+      return rpc.request.listPackages();
     },
   };
 }
