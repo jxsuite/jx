@@ -11,8 +11,8 @@
 | 1. Error Boundaries | ✅ Complete | All renderers wrapped in try/catch with retry |
 | 2. Doc/Session Split | ✅ Complete | updateSession/updateUi in use, no ad-hoc mutations |
 | 3. Lift Transient State | ✅ Complete | All mutable view state in view.js |
-| 4. Componentize Panels | 🔄 In Progress (~85%) | See detailed status below |
-| 5. Lit Host Hygiene | ⬜ Not Started | |
+| 4. Componentize Panels | ✅ Complete | studio.js: 714 lines (88.5% reduction) |
+| 5. Lit Host Hygiene | ✅ Complete | Single-writer hosts, no defensive catch/replace |
 | 6. Async as State | ⬜ Not Started | |
 | 7. Selective Subscriptions | ⬜ Not Started | |
 
@@ -52,7 +52,7 @@
 - ✅ canvas-dnd (registerPanelDnD, showCanvasDropIndicator, getCanvasDropInstruction)
 - ✅ panel-events (registerPanelEvents — click/dblclick/contextmenu/mousemove/insertion helper)
 - ✅ canvas-live-render (renderCanvasLive — async runtime rendering pipeline)
-- ⬜ canvas (remaining; owns panzoom, inline editing, overlays, mode switching)
+- ✅ canvas (all canvas rendering/interaction concerns extracted)
 
 **studio.js line count:** ~714 (down from ~6,226 at start of Phase 4)
 
@@ -177,17 +177,17 @@ Suggested sub-extraction order:
 
 ---
 
-## Phase 5: Lit-html Host Hygiene
+## Phase 5: Lit-html Host Hygiene ✅
 
-**Effort:** Half a day after Phase 4 | **Status:** Not started
+**Effort:** Half a day after Phase 4 | **Status:** Complete
 
-After Phase 4, persistent floating UI (`blockActionBarEl`, `linkPopoverHost`, `zoomIndicatorHost`) is owned by the canvas module. Rules:
+After Phase 4, persistent floating UI (`blockActionBarEl`, `linkPopoverHost`, `zoomIndicatorHost`) is owned by its respective module. Rules enforced:
 
-1. Each persistent Lit host has exactly one writer.
-2. Forced-pseudo `<style>` injection moves into a dedicated container owned by the canvas module.
-3. `contentEditable` toggling must not touch DOM Lit owns.
+1. Each persistent Lit host has exactly one writer. (`dismissBlockActionBar()` export replaces direct litRender from canvas-render.js.)
+2. Forced-pseudo `<style>` injection uses a dedicated container in pseudo-preview.js (not `document.head`).
+3. `contentEditable` toggling only affects runtime-rendered DOM (never Lit-owned DOM) — verified, no change needed.
 
-Delete the `try/catch/replaceWith` defensive code in `renderZoomIndicator`.
+Deleted the `try/catch/replaceWith` defensive code in `renderZoomIndicator` and `resetZoomIndicator`.
 
 ---
 

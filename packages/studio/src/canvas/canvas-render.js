@@ -31,7 +31,7 @@ import { registerPanelDnD } from "../panels/canvas-dnd.js";
 import { registerPanelEvents } from "../panels/panel-events.js";
 import { updateForcedPseudoPreview } from "../panels/pseudo-preview.js";
 import { renderStylebookMode } from "../panels/stylebook-panel.js";
-import { dismissLinkPopover } from "../panels/block-action-bar.js";
+import { dismissLinkPopover, dismissBlockActionBar } from "../panels/block-action-bar.js";
 import { dismissContextMenu } from "../editor/context-menu.js";
 import { dismissSlashMenu } from "../editor/slash-menu.js";
 import { enterComponentInlineEdit } from "../editor/component-inline-edit.js";
@@ -145,7 +145,7 @@ export function renderCanvas() {
     resetZoomIndicator();
 
     // Dismiss open popovers/toolbars that are no longer relevant
-    if (view.blockActionBarEl) litRender(nothing, view.blockActionBarEl);
+    dismissBlockActionBar();
     dismissLinkPopover();
     dismissContextMenu();
     dismissSlashMenu();

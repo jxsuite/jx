@@ -7,6 +7,10 @@ import { getState, getNodeAtPath } from "../store.js";
 import { view } from "../view.js";
 import { getActivePanel, findCanvasElement } from "../canvas/canvas-helpers.js";
 
+const pseudoStyleHost = document.createElement("div");
+pseudoStyleHost.style.display = "contents";
+(document.querySelector("sp-theme") || document.body).appendChild(pseudoStyleHost);
+
 export function updateForcedPseudoPreview() {
   if (view.forcedStyleTag) {
     view.forcedStyleTag.remove();
@@ -48,6 +52,6 @@ export function updateForcedPseudoPreview() {
 
   const tag = document.createElement("style");
   tag.textContent = `[data-studio-forced] { ${cssProps} }`;
-  document.head.appendChild(tag);
+  pseudoStyleHost.appendChild(tag);
   view.forcedStyleTag = tag;
 }

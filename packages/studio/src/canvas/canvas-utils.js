@@ -206,14 +206,7 @@ export function fitToScreen() {
 
 /** Reset the zoom indicator (clear its content). Called when switching to non-panzoom modes. */
 export function resetZoomIndicator() {
-  try {
-    litRender(nothing, zoomIndicatorHost);
-  } catch {
-    const newHost = document.createElement("div");
-    newHost.style.display = "contents";
-    zoomIndicatorHost.replaceWith(newHost);
-    zoomIndicatorHost = newHost;
-  }
+  litRender(nothing, zoomIndicatorHost);
 }
 
 /**
@@ -221,69 +214,34 @@ export function resetZoomIndicator() {
  * computed from canvas-wrap bounds.
  */
 export function renderZoomIndicator() {
-  if (!zoomIndicatorHost.isConnected) document.body.appendChild(zoomIndicatorHost);
   const zoom = _ctx.getZoom();
-  try {
-    litRender(
-      html`
-        <div class="zoom-indicator">
-          <span class="zoom-indicator-label">${Math.round(zoom * 100)}%</span>
-          <sp-action-button
-            quiet
-            size="s"
-            class="zoom-fit-btn"
-            title="Fit to screen"
-            @click=${fitToScreen}
+  litRender(
+    html`
+      <div class="zoom-indicator">
+        <span class="zoom-indicator-label">${Math.round(zoom * 100)}%</span>
+        <sp-action-button
+          quiet
+          size="s"
+          class="zoom-fit-btn"
+          title="Fit to screen"
+          @click=${fitToScreen}
+        >
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
           >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 16 16"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.5"
-            >
-              <rect x="2" y="2" width="12" height="12" rx="1" />
-              <path d="M2 6h12M6 2v12" />
-            </svg>
-          </sp-action-button>
-        </div>
-      `,
-      zoomIndicatorHost,
-    );
-  } catch {
-    const newHost = document.createElement("div");
-    newHost.style.display = "contents";
-    zoomIndicatorHost.replaceWith(newHost);
-    zoomIndicatorHost = newHost;
-    litRender(
-      html`
-        <div class="zoom-indicator">
-          <span class="zoom-indicator-label">${Math.round(zoom * 100)}%</span>
-          <sp-action-button
-            quiet
-            size="s"
-            class="zoom-fit-btn"
-            title="Fit to screen"
-            @click=${fitToScreen}
-          >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 16 16"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.5"
-            >
-              <rect x="2" y="2" width="12" height="12" rx="1" />
-              <path d="M2 6h12M6 2v12" />
-            </svg>
-          </sp-action-button>
-        </div>
-      `,
-      zoomIndicatorHost,
-    );
-  }
+            <rect x="2" y="2" width="12" height="12" rx="1" />
+            <path d="M2 6h12M6 2v12" />
+          </svg>
+        </sp-action-button>
+      </div>
+    `,
+    zoomIndicatorHost,
+  );
   positionZoomIndicator();
 }
 

@@ -185,6 +185,11 @@ export function dismissLinkPopover() {
   if (view.linkPopoverHost) litRender(nothing, view.linkPopoverHost);
 }
 
+/** Dismiss the block action bar. */
+export function dismissBlockActionBar() {
+  if (view.blockActionBarEl) litRender(nothing, view.blockActionBarEl);
+}
+
 /** @param {any} anchorBtn */
 function showLinkPopover(anchorBtn) {
   litRender(nothing, view.linkPopoverHost);
