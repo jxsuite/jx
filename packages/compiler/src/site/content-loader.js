@@ -155,7 +155,6 @@ function loadJSONEntries(filePath) {
       id: item.id ?? basename(filePath, ".json") + "-" + i,
       data: item,
       body: null,
-      rendered: null,
     }));
   }
   // Single object file — filename is the id
@@ -164,7 +163,6 @@ function loadJSONEntries(filePath) {
       id: raw.id ?? basename(filePath, ".json"),
       data: raw,
       body: null,
-      rendered: null,
     },
   ];
 }
@@ -192,7 +190,7 @@ function loadCSVEntries(filePath, schema) {
     }
     // Use `id` column, `sku` column, or row index as the entry ID
     const id = row.id ?? row.sku ?? String(i);
-    return { id, data: row, body: null, rendered: null };
+    return { id, data: row, body: null };
   });
 }
 

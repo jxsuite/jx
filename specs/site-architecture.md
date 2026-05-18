@@ -290,7 +290,7 @@ A dynamic page must declare which paths it generates. This is done via a top-lev
     },
     {
       "tagName": "article",
-      "innerHTML": "${state.post.rendered}"
+      "children": "${state.post.$children ?? []}"
     }
   ]
 }
@@ -569,7 +569,7 @@ Collections are defined in `the `collections` key in project.json`:
 
 | Source Pattern | File Type                 | Entry ID               | Notes                           |
 | -------------- | ------------------------- | ---------------------- | ------------------------------- |
-| `**/*.md`      | Markdown with frontmatter | Filename (slugified)   | Body rendered to HTML           |
+| `**/*.md`      | Markdown with frontmatter | Filename (slugified)   | Body parsed to Jx tree (`$children`) |
 | `**/*.json`    | JSON objects              | `id` field or filename | Direct data access              |
 | `*.csv`        | CSV rows                  | Row index or ID column | Parsed via built-in CSV parser  |
 | `**/*.yaml`    | YAML documents            | `id` field or filename | Parsed via built-in YAML parser |
@@ -652,7 +652,7 @@ A `ContentEntry` resolves to:
   "id": "hello-world",
   "data": { "title": "Hello World", "pubDate": "2024-01-15", "tags": ["intro"] },
   "body": "# Hello\n\nThis is my first post.",
-  "rendered": "<h1>Hello</h1>\n<p>This is my first post.</p>"
+  "$children": [{ "tagName": "h1", "textContent": "Hello" }, { "tagName": "p", "textContent": "This is my first post." }]
 }
 ```
 

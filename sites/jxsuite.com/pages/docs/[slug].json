@@ -23,7 +23,7 @@
     {
       "tagName": "article",
       "style": { "maxWidth": "720px" },
-      "innerHTML": "${state.page.rendered}"
+      "children": "${state.page.$children ?? []}"
     }
   ]
 }
