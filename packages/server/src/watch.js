@@ -8,6 +8,7 @@ const DEFAULT_IGNORE = [
   "**/node_modules/**",
   "**/dist/**",
   "**/.git/**",
+  "**/.jx/**",
   "**/.devenv/**",
   "**/.direnv/**",
   "**/bun.lockb",

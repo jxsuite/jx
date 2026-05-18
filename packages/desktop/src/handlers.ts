@@ -40,33 +40,35 @@ function assertUnderRoot(absPath: string, root: string) {
 
 // ─── Handlers ─────────────────────────────────────────────────────────────────
 
-export async function openProject(): Promise<OpenProjectResult | null> {
-  if (!Utils) {
-    throw new Error(
-      "Native file dialog not available — pass project root via CLI argument instead",
-    );
+async function nativeFileDialog(): Promise<string | null> {
+  if (Utils) {
+    const paths = await Utils.openFileDialog({
+      startingFolder: projectRoot || homedir(),
+      allowedFileTypes: "json",
+      canChooseFiles: true,
+      canChooseDirectory: false,
+      allowsMultipleSelection: false,
+    });
+    if (!paths || paths.length === 0 || (paths.length === 1 && !paths[0])) return null;
+    return paths[0].trim() || null;
   }
 
-  const paths = await Utils.openFileDialog({
-    startingFolder: projectRoot || homedir(),
-    allowedFileTypes: "json",
-    canChooseFiles: true,
-    canChooseDirectory: false,
-    allowsMultipleSelection: false,
-  });
+  const { openFileDialog } = await import("./nixos-utils");
+  return openFileDialog();
+}
 
-  if (!paths || paths.length === 0 || (paths.length === 1 && !paths[0])) return null;
+export async function openProject(): Promise<OpenProjectResult | null> {
+  const dirPath = await nativeFileDialog();
+  if (!dirPath) return null;
 
-  const filePath = paths[0].trim();
-  if (!filePath) return null;
-
-  if (basename(filePath).toLowerCase() !== "project.json") {
-    throw new Error("Please select a project.json file");
+  const filePath = resolve(dirPath, "project.json");
+  if (!existsSync(filePath)) {
+    throw new Error("No project.json found in selected directory");
   }
 
   const raw = await readFile(filePath, "utf8");
   const config = JSON.parse(raw);
-  projectRoot = resolve(filePath, "..");
+  projectRoot = dirPath;
 
   return {
     config,

@@ -32,7 +32,7 @@ stdenv.mkDerivation {
     runHook preBuild
 
     bun run build
-    bun run --cwd packages/desktop scripts/pre-build.ts
+    bun run --cwd packages/desktop scripts/pre-build-rpc.ts
 
     runHook postBuild
   '';
@@ -43,13 +43,13 @@ stdenv.mkDerivation {
     mkdir -p $out/lib/jx-studio $out/bin
 
     cp -r packages/desktop/assets $out/lib/jx-studio/
-    cp packages/desktop/src/chromium-mode.ts $out/lib/jx-studio/
+    cp -r packages/desktop/src $out/lib/jx-studio/
 
     # Copy node_modules, dereferencing workspace symlinks
     cp -rL node_modules $out/lib/jx-studio/
 
     makeWrapper ${bun}/bin/bun $out/bin/jx-studio \
-      --add-flags "run $out/lib/jx-studio/chromium-mode.ts" \
+      --add-flags "run $out/lib/jx-studio/src/chromium-rpc-mode.ts" \
       --set CHROMIUM_BIN "${chromium}/bin/chromium" \
       --set JX_STUDIO_ASSETS "$out/lib/jx-studio/assets/studio"
 
