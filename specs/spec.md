@@ -905,9 +905,9 @@ Private environment variables and server-only credentials remain in the server p
 
 #### Site-Wide Bundling
 
-When `build.provider` is set in `project.json`, all `timing: "server"` entries across the entire site (components and pages) are collected, deduplicated by export name, and bundled into a single `_worker.js` entry point. See compiler spec §6.3 for details.
+When `build.adapter` is set in `project.json`, all `timing: "server"` entries across the entire site (components and pages) are collected, deduplicated by export name, and bundled into a single `_worker.js` entry point. See compiler spec §6.3 for details.
 
-> **Status: Implemented.** Runtime handles `timing: "server"` entries. Dev server provides `/__jx_server__` proxy. Compiler emits per-route Hono handlers (`compileServer`) or a site-wide bundled worker (`compileSiteServer`) when `build.provider` is set.
+> **Status: Implemented.** Runtime handles `timing: "server"` entries. Dev server provides `/__jx_server__` proxy. Compiler emits per-route Hono handlers (`compileServer`) or a site-wide bundled worker (`compileSiteServer`) when `build.adapter` is set.
 
 ---
 

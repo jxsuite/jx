@@ -173,7 +173,7 @@ export async function buildSite(projectRoot, options = {}) {
   // ── 5b. Collect server entries from components (for site-wide bundling) ──
   /** @type {{ exportName: string; src: string }[]} */
   const siteServerEntries = [];
-  if (projectConfig.build.provider) {
+  if (projectConfig.build.adapter) {
     for (const [, doc] of componentDefs) {
       const entries = collectServerEntries(doc);
       for (const entry of entries) {
@@ -268,7 +268,7 @@ export async function buildSite(projectRoot, options = {}) {
   }
 
   // ── 6c. Generate site-wide server worker ────────────────────────────────
-  if (projectConfig.build.provider && siteServerEntries.length > 0) {
+  if (projectConfig.build.adapter) {
     log("Generating site-wide server worker...");
 
     const deduped = new Map();
@@ -277,7 +277,7 @@ export async function buildSite(projectRoot, options = {}) {
     }
 
     const workerSource = compileSiteServer([...deduped.values()], {
-      provider: projectConfig.build.provider,
+      adapter: projectConfig.build.adapter,
     });
 
     if (workerSource) {
@@ -459,7 +459,7 @@ async function compilePage(
   // Compile server handler if applicable (skip when provider bundles site-wide)
   /** @type {string | null} */
   let serverHandler = null;
-  if (!projectConfig.build.provider) {
+  if (!projectConfig.build.adapter) {
     try {
       const serverResult = await compileServer(route.sourcePath);
       if (serverResult) {

@@ -196,7 +196,7 @@ The `project.json` file at the project root defines site-wide settings. It is th
     "outDir": "./dist",
     "format": "directory",
     "trailingSlash": "always",
-    "provider": "cloudflare"
+    "adapter": "cloudflare"
   }
 }
 ```
@@ -1219,7 +1219,7 @@ Discover content/       → content index
 Resolve $paths          → expand dynamic routes
     ↓
 Compile components/     → element modules + CSS
-Collect server entries  → from componentDefs (if provider set)
+Collect server entries  → from componentDefs (if adapter set)
     ↓
 For each route:
     Load page.json
@@ -1229,7 +1229,7 @@ For each route:
     Transform images    → generate responsive variants, inject srcset/sizes
     Compile             → existing compiler routes (static/dynamic/custom-element)
     ↓
-Bundle server entries   → dist/worker.js (if provider set, else per-route _server.js)
+Bundle server entries   → dist/worker.js (if adapter set, else per-route _server.js)
     ↓
 Emit dist/
     ├── index.html
@@ -1242,7 +1242,7 @@ Emit dist/
     │   └── _optimized/         (responsive image variants)
     ├── sitemap.xml
     └── _redirects
-dist/worker.js              (inside dist/, if provider set)
+dist/worker.js              (inside dist/, if adapter set)
 ```
 
 ### 12.2 Build Commands
@@ -1346,7 +1346,7 @@ The collection config can specify locale awareness:
 
 ### 14.1 Output Targets
 
-The build output is standard static files deployable anywhere. When `build.provider` is set, the compiler additionally generates platform-specific files:
+The build output is standard static files deployable anywhere. When `build.adapter` is set, the compiler additionally generates platform-specific files:
 
 | Provider             | Extra Output                                                         |
 | -------------------- | -------------------------------------------------------------------- |
@@ -1361,27 +1361,27 @@ Configured in `project.json`:
 ```json
 {
   "build": {
-    "provider": "cloudflare"
+    "adapter": "cloudflare"
   }
 }
 ```
 
-#### 14.1.1 `build.provider` Properties
+#### 14.1.1 `build.adapter` Properties
 
 | Property        | Type             | Default          | Description                                             |
 | --------------- | ---------------- | ---------------- | ------------------------------------------------------- |
 | `outDir`        | `string`         | `"./dist"`       | Output directory for static assets                      |
 | `format`        | `string`         | `"directory"`    | URL format: `"directory"` (trailing slash) or `"file"`  |
 | `trailingSlash` | `string`         | `"always"`       | `"always"` or `"never"`                                 |
-| `provider`      | `string \| null` | `null`           | Deployment provider: `"cloudflare"`, `"netlify"`, `"vercel"`, `"github-pages"`, `"node"`, `"bun"` |
+| `adapter`      | `string \| null` | `null`           | Deployment adapter: `"cloudflare"`, `"netlify"`, `"vercel"`, `"github-pages"`, `"node"`, `"bun"` |
 
-When `provider` is set and the site contains `timing: "server"` entries, the compiler:
+When `adapter` is set and the site contains `timing: "server"` entries, the compiler:
 
 1. Collects all server entries from components and pages
 2. Deduplicates by export name
 3. Skips per-route `_server.js` generation
 4. Emits a single `dist/worker.js` via `compileSiteServer()`
-5. Adds provider-specific boilerplate (e.g., Cloudflare asset fallback via `c.env.ASSETS.fetch()`)
+5. Adds adapter-specific boilerplate (e.g., Cloudflare asset fallback via `c.env.ASSETS.fetch()`)
 
 The generated `dist/worker.js` is a build artifact inside `dist/` and is excluded by the standard `dist/` gitignore rule.
 
@@ -1414,7 +1414,7 @@ dist/
 ├── robots.txt                   # Copied from public/
 ├── favicon.svg                  # Copied from public/
 ├── _redirects                   # Platform-specific
-└── worker.js                    # Server worker (when provider set + server entries exist)
+└── worker.js                    # Server worker (when adapter set + server entries exist)
 ```
 
 ---
@@ -1496,7 +1496,7 @@ This spec builds on existing Jx primitives wherever possible:
 - [x] Image optimization pipeline (WebP/AVIF, responsive srcset, lazy loading, caching)
 - [ ] Sitemap generation (`sitemap.xml` from route table)
 - [ ] Incremental builds (dependency tracking, selective recompilation)
-- [x] Platform providers — `build.provider` for site-wide server bundling (Cloudflare implemented)
+- [x] Platform adapters — `build.adapter` for site-wide server bundling (Cloudflare implemented)
 - [ ] Platform-specific file generation (Netlify `_headers`, Vercel `vercel.json`, GitHub Pages `.nojekyll`)
 
 ### Phase 5: Advanced

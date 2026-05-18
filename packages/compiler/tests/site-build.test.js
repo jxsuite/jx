@@ -281,7 +281,7 @@ describe("buildSite — server worker", () => {
       name: "Server Test",
       url: "https://test.com",
       defaults: { lang: "en" },
-      build: { outDir: "./dist", provider: "cloudflare" },
+      build: { outDir: "./dist", adapter: "cloudflare" },
     });
 
     writeJ("pages/index.json", {

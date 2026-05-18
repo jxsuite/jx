@@ -142,19 +142,19 @@ describe("compileSiteServer", () => {
     expect(result).toContain("ok: false");
   });
 
-  test("cloudflare provider adds asset fallback", () => {
+  test("cloudflare adapter adds asset fallback", () => {
     const entries = [{ exportName: "fn", src: "./fn.js" }];
-    const result = compileSiteServer(entries, { provider: "cloudflare" });
+    const result = compileSiteServer(entries, { adapter: "cloudflare" });
     expect(result).toContain("c.env.ASSETS.fetch(c.req.raw)");
   });
 
-  test("node provider does not add asset fallback", () => {
+  test("node adapter does not add asset fallback", () => {
     const entries = [{ exportName: "fn", src: "./fn.js" }];
-    const result = compileSiteServer(entries, { provider: "node" });
+    const result = compileSiteServer(entries, { adapter: "node" });
     expect(result).not.toContain("ASSETS.fetch");
   });
 
-  test("null provider does not add asset fallback", () => {
+  test("null adapter does not add asset fallback", () => {
     const entries = [{ exportName: "fn", src: "./fn.js" }];
     const result = compileSiteServer(entries);
     expect(result).not.toContain("ASSETS.fetch");
@@ -165,7 +165,7 @@ describe("compileSiteServer", () => {
       { exportName: "fnA", src: "./a.js" },
       { exportName: "fnB", src: "./b.js" },
     ];
-    const result = compileSiteServer(entries, { provider: "cloudflare" });
+    const result = compileSiteServer(entries, { adapter: "cloudflare" });
     expect(result).toContain("app.post('/_jx/server/fnA'");
     expect(result).toContain("app.post('/_jx/server/fnB'");
     expect(result).toContain("import { fnA } from './a.js'");

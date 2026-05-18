@@ -13,7 +13,7 @@
 | 3. Lift Transient State | ✅ Complete | All mutable view state in view.js |
 | 4. Componentize Panels | ✅ Complete | studio.js: 714 lines (88.5% reduction) |
 | 5. Lit Host Hygiene | ✅ Complete | Single-writer hosts, no defensive catch/replace |
-| 6. Async as State | ⬜ Not Started | |
+| 6. Async as State | ✅ Complete | Canvas state machine, pendingInlineEdit in session |
 | 7. Selective Subscriptions | ⬜ Not Started | |
 
 ### Phase 4 Detailed Status
@@ -191,18 +191,25 @@ Deleted the `try/catch/replaceWith` defensive code in `renderZoomIndicator` and 
 
 ---
 
-## Phase 6: Async as State
+## Phase 6: Async as State ✅
 
-**Effort:** 2–3 days | **Status:** Not started
+**Effort:** 2–3 days | **Status:** Complete
 
-Replace async-inside-renderers with a state machine:
+Canvas async state is now a first-class part of session state:
 
 ```js
 // session.canvas
-{ status: "idle" | "loading" | "ready" | "error", scope, error, pendingInlineEdit }
+{ status: "idle" | "loading" | "ready" | "error", scope, error }
+// session.ui.pendingInlineEdit
+null | { path, mediaName }
 ```
 
-Canvas renderer becomes synchronous and pure. Async work dispatches `updateSession` on completion. Eliminates `pendingInlineEdit` as a module-scoped flag and most `requestAnimationFrame` choreography.
+**Changes made:**
+- `view.liveScope` → `session.canvas.scope` (updated via `updateCanvas()`)
+- `view.pendingInlineEdit` → `session.ui.pendingInlineEdit` (set via `updateUi()`, consumed in session update handler)
+- Duplicate processing consolidated: old post-render hook in studio.js + `.then()` in canvas-render.js → single processing point in session update handler when canvas becomes "ready"
+- `left-panel.js` reads scope from `S.canvas?.scope` instead of `view.liveScope`
+- Session update handler re-renders left panel on canvas state changes (for data-explorer)
 
 ---
 
