@@ -43,9 +43,10 @@
 - ✅ dnd (registerLayersDnD, registerComponentsDnD, registerElementsDnD, applyDropInstruction)
 - ✅ editors (renderFunctionEditor, registerFunctionCompletions)
 - ✅ block-action-bar (renderBlockActionBar, dismissLinkPopover, inline formatting)
+- ✅ edit-display (prepareForEditMode, restoreTemplateExpressions, templateToEditDisplay)
 - ⬜ canvas (largest remaining; owns panzoom, inline editing, overlays, mode switching)
 
-**studio.js line count:** ~2,950 (down from ~6,226 at start of Phase 4)
+**studio.js line count:** ~2,760 (down from ~6,226 at start of Phase 4)
 
 ---
 
@@ -140,6 +141,7 @@ export function renderFooTemplate(ctx) {
 | dnd.js (+ shared.js defaultDef) | ~430 | Phase 4f |
 | editors.js (function editor + completions) | ~200 | Phase 4g |
 | block-action-bar.js (action bar + inline formatting) | ~395 | Phase 4h |
+| edit-display.js (edit-mode document transforms) | ~190 | Phase 4i |
 
 ### Remaining: Canvas Module
 
