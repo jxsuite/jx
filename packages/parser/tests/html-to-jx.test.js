@@ -89,4 +89,28 @@ describe("htmlToJx", () => {
     const result = htmlToJx("<!-- comment --><div>Text</div>");
     expect(result).toEqual([{ tagName: "div", textContent: "Text" }]);
   });
+
+  test("inline style converts to style object", () => {
+    const result = htmlToJx(
+      '<iframe src="https://example.com" style="width:100%;height:100%;border:none;border-radius:8px"></iframe>',
+    );
+    expect(result).toEqual([
+      {
+        tagName: "iframe",
+        attributes: { src: "https://example.com" },
+        style: {
+          width: "100%",
+          height: "100%",
+          border: "none",
+          "border-radius": "8px",
+        },
+      },
+    ]);
+  });
+
+  test("style-only element has no attributes key", () => {
+    const result = htmlToJx('<div style="color:red"></div>');
+    expect(result[0].attributes).toBeUndefined();
+    expect(result[0].style).toEqual({ color: "red" });
+  });
 });

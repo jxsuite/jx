@@ -42,7 +42,9 @@ function convertHastNode(node) {
     const el = { tagName: node.tagName };
 
     if (node.properties && Object.keys(node.properties).length > 0) {
-      el.attributes = hastPropsToAttributes(node.properties);
+      const { style, attrs } = hastPropsToJx(node.properties);
+      if (Object.keys(attrs).length > 0) el.attributes = attrs;
+      if (Object.keys(style).length > 0) el.style = style;
     }
 
     const kids = node.children ? convertHastChildren(node.children) : [];
@@ -61,16 +63,24 @@ function convertHastNode(node) {
 
 /**
  * @param {Record<string, any>} properties
- * @returns {Record<string, string>}
+ * @returns {{ style: Record<string, string>; attrs: Record<string, string> }}
  */
-function hastPropsToAttributes(properties) {
+function hastPropsToJx(properties) {
   /** @type {Record<string, string>} */
   const attrs = {};
+  /** @type {Record<string, string>} */
+  const style = {};
+
   for (const [key, value] of Object.entries(properties)) {
     if (value === false || value === undefined || value === null) continue;
 
     const info = find(htmlInfo, key);
     const name = info.attribute;
+
+    if (name === "style" && typeof value === "string") {
+      parseInlineStyle(value, style);
+      continue;
+    }
 
     if (value === true) {
       attrs[name] = "";
@@ -80,5 +90,19 @@ function hastPropsToAttributes(properties) {
       attrs[name] = String(value);
     }
   }
-  return attrs;
+  return { style, attrs };
+}
+
+/**
+ * @param {string} styleStr
+ * @param {Record<string, string>} out
+ */
+function parseInlineStyle(styleStr, out) {
+  for (const decl of styleStr.split(";")) {
+    const colon = decl.indexOf(":");
+    if (colon === -1) continue;
+    const prop = decl.slice(0, colon).trim();
+    const val = decl.slice(colon + 1).trim();
+    if (prop && val) out[prop] = val;
+  }
 }
