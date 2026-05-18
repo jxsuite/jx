@@ -9,6 +9,7 @@ import { styleMap } from "lit-html/directives/style-map.js";
 import { ifDefined } from "lit-html/directives/if-defined.js";
 
 import { getState, renderOnly, updateUi, canvasWrap, canvasPanels } from "../store.js";
+import { ensureLitState } from "../panels/shared.js";
 import { view } from "../view.js";
 
 /** @type {any} */
@@ -206,6 +207,7 @@ export function fitToScreen() {
 
 /** Reset the zoom indicator (clear its content). Called when switching to non-panzoom modes. */
 export function resetZoomIndicator() {
+  ensureLitState(zoomIndicatorHost);
   litRender(nothing, zoomIndicatorHost);
 }
 
@@ -215,6 +217,10 @@ export function resetZoomIndicator() {
  */
 export function renderZoomIndicator() {
   const zoom = _ctx.getZoom();
+  if (!zoomIndicatorHost.isConnected) {
+    document.body.appendChild(zoomIndicatorHost);
+  }
+  ensureLitState(zoomIndicatorHost);
   litRender(
     html`
       <div class="zoom-indicator">

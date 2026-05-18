@@ -140,11 +140,12 @@ async function navigateToComponent(componentPath) {
     const platform = getPlatform();
     const content = await platform.readFile(componentPath);
     if (!content) return;
-    const doc = JSON.parse(content);
-    S = pushDocument(S, doc, componentPath);
+    const parsed = JSON.parse(content);
+    S = pushDocument(S, parsed, componentPath);
     S.dirty = false;
+    ({ doc, session } = fromFlat(S));
     render();
-    statusMessage(`Editing component: ${doc.tagName || componentPath}`);
+    statusMessage(`Editing component: ${parsed.tagName || componentPath}`);
   } catch (/** @type {any} */ e) {
     const err = /** @type {any} */ (e);
     statusMessage(`Error: ${err.message}`);
@@ -163,6 +164,7 @@ async function navigateBack() {
     }
   }
   S = popDocument(S);
+  ({ doc, session } = fromFlat(S));
   render();
   statusMessage("Returned to parent document");
 }
@@ -278,6 +280,7 @@ initPanelEvents({
   getState: () => S,
   setState: (s) => {
     S = s;
+    ({ doc, session } = fromFlat(S));
   },
   getCanvasMode: () => canvasMode,
   enterInlineEdit,
@@ -601,6 +604,7 @@ function fileOpsCtx() {
     S,
     commit: (/** @type {any} */ ns) => {
       S = ns;
+      ({ doc, session } = fromFlat(S));
       render();
     },
     renderToolbar,
@@ -612,6 +616,7 @@ function openFile() {
 async function loadMarkdown(/** @type {any} */ source, /** @type {any} */ fileHandle) {
   const ns = await _loadMarkdown(source, fileHandle);
   S = ns;
+  ({ doc, session } = fromFlat(S));
 }
 function saveFile() {
   return _saveFile(fileOpsCtx());
@@ -630,6 +635,7 @@ function openProject() {
     S,
     commit: (/** @type {any} */ ns) => {
       S = ns;
+      ({ doc, session } = fromFlat(S));
     },
     renderActivityBar: () => renderActivityBar(S),
     renderLeftPanel,
@@ -649,6 +655,7 @@ function openFileFromTree(/** @type {any} */ path) {
       },
       commit: (/** @type {any} */ ns) => {
         S = ns;
+        ({ doc, session } = fromFlat(S));
       },
       render,
       loadMarkdown,
@@ -662,6 +669,7 @@ initShortcuts(() => ({
   S,
   setS: (ns) => {
     S = ns;
+    ({ doc, session } = fromFlat(S));
   },
   canvasMode,
   panX: view.panX,
