@@ -61,6 +61,16 @@ import {
   initComponentInlineEdit,
 } from "./editor/component-inline-edit.js";
 import { enterInlineEdit, initContentInlineEdit } from "./editor/content-inline-edit.js";
+import {
+  initCanvasUtils,
+  canvasPanelTemplate,
+  observeCenterUntilStable,
+  applyTransform,
+  renderZoomIndicator,
+  resetZoomIndicator,
+  positionZoomIndicator,
+  updateActivePanelHeaders,
+} from "./canvas/canvas-utils.js";
 import { dismissSlashMenu as sharedDismissSlashMenu } from "./editor/slash-menu.js";
 import {
   renderStatusbar,
@@ -121,8 +131,6 @@ import {
 
 import { html, render as litRender, nothing } from "lit-html";
 import { ref } from "lit-html/directives/ref.js";
-import { styleMap } from "lit-html/directives/style-map.js";
-import { ifDefined } from "lit-html/directives/if-defined.js";
 
 import webdata from "../data/webdata.json";
 import { renderDataExplorerTemplate } from "./panels/data-explorer.js";
@@ -513,11 +521,6 @@ litRender(
 
 initCssData(webdata);
 
-// Persistent render hosts for lit-html (must be before bootstrap/render)
-let zoomIndicatorHost = document.createElement("div");
-zoomIndicatorHost.style.display = "contents";
-document.body.appendChild(zoomIndicatorHost);
-
 // ─── Module-level UI state (must be before render() call) ─────────────────────
 
 // ─── Bootstrap ────────────────────────────────────────────────────────────────
@@ -576,6 +579,15 @@ initBlockActionBar({
 
 initComponentInlineEdit({ findCanvasElement });
 initContentInlineEdit({ findCanvasElement, getActivePanel });
+initCanvasUtils({
+  getCanvasMode: () => canvasMode,
+  getZoom: () => S.ui.zoom,
+  setZoomDirect: (zoom) => {
+    session = { ...session, ui: { ...session.ui, zoom } };
+    S = toFlat(doc, session);
+  },
+  renderStylebookOverlays,
+});
 
 rightPanelMod.mount({
   navigateToComponent,
@@ -614,6 +626,13 @@ registerRenderer("overlays", () => overlaysPanel.render());
 registerRenderer("statusbar", () => renderStatusbar(S));
 setStatusbarRenderer(() => renderStatusbar(S));
 mountStatusbar();
+
+// Clicking on the canvas-wrap background (outside any canvas panel) deselects the current element
+canvasWrap.addEventListener("click", (/** @type {any} */ e) => {
+  if (e.target !== canvasWrap && e.target !== view.panzoomWrap) return;
+  if (!S.selection) return;
+  update(selectNode(S, null));
+});
 
 function safeRenderLeftPanel() {
   leftPanelMod.render();
@@ -936,14 +955,7 @@ function renderCanvas() {
     canvasWrap.style.overflow = "";
 
     // Clear zoom indicator (only re-rendered by design/preview/stylebook)
-    try {
-      litRender(nothing, zoomIndicatorHost);
-    } catch {
-      const newHost = document.createElement("div");
-      newHost.style.display = "contents";
-      zoomIndicatorHost.replaceWith(newHost);
-      zoomIndicatorHost = newHost;
-    }
+    resetZoomIndicator();
 
     // Dismiss open popovers/toolbars that are no longer relevant
     if (view.blockActionBarEl) litRender(nothing, view.blockActionBarEl);
@@ -1046,14 +1058,7 @@ function renderCanvas() {
       canvasWrap.style.overflow = "hidden";
 
       // Remove zoom indicator left over from design/preview mode
-      try {
-        litRender(nothing, zoomIndicatorHost);
-      } catch {
-        const newHost = document.createElement("div");
-        newHost.style.display = "contents";
-        zoomIndicatorHost.replaceWith(newHost);
-        zoomIndicatorHost = newHost;
-      }
+      resetZoomIndicator();
     }
 
     const { tpl: panelTpl, panel } = canvasPanelTemplate(null, null, true);
@@ -1213,280 +1218,6 @@ function renderCanvasIntoPanel(panel, activeBreakpoints, featureToggles) {
       }
     }
   });
-}
-
-/**
- * Create a canvas panel DOM structure. Returns { mediaName, element, canvas, overlay, overlayClk,
- * viewport, dropLine }
- *
- * @param {any} mediaName
- * @param {any} label
- * @param {any} fullWidth
- * @param {any} [width]
- */
-function canvasPanelTemplate(mediaName, label, fullWidth, width) {
-  /**
-   * @type {{
-   *   mediaName: any;
-   *   element: Element | null;
-   *   canvas: Element | null;
-   *   overlay: Element | null;
-   *   overlayClk: Element | null;
-   *   viewport: Element | null;
-   *   dropLine: Element | null;
-   *   _width: any;
-   * }}
-   */
-  const panel = {
-    mediaName,
-    element: null,
-    canvas: null,
-    overlay: null,
-    overlayClk: null,
-    viewport: null,
-    dropLine: null,
-    _width: width || null,
-  };
-  const tpl = html`
-    <div
-      class=${`canvas-panel${fullWidth ? " full-width" : ""}`}
-      data-media=${ifDefined(mediaName !== null ? mediaName : undefined)}
-      ${ref((el) => {
-        if (el) panel.element = el;
-      })}
-    >
-      ${label
-        ? html`
-            <div
-              class="canvas-panel-header"
-              @click=${() => {
-                updateUi("activeMedia", mediaName === "base" ? null : mediaName);
-              }}
-            >
-              ${label}
-            </div>
-          `
-        : nothing}
-      <div
-        class="canvas-panel-viewport"
-        style=${styleMap({ width: width && !fullWidth ? `${width}px` : "" })}
-        ${ref((el) => {
-          if (el) panel.viewport = el;
-        })}
-      >
-        <div
-          class="canvas-panel-canvas"
-          style=${styleMap({ width: width ? `${width}px` : "" })}
-          ${ref((el) => {
-            if (el) panel.canvas = el;
-          })}
-        ></div>
-        <div
-          class="canvas-panel-overlay"
-          ${ref((el) => {
-            if (el) panel.overlay = el;
-          })}
-        >
-          <div
-            class="canvas-drop-indicator"
-            style="display:none"
-            ${ref((el) => {
-              if (el) panel.dropLine = el;
-            })}
-          ></div>
-        </div>
-        <div
-          class="canvas-panel-click"
-          ${ref((el) => {
-            if (el) panel.overlayClk = el;
-          })}
-        ></div>
-      </div>
-    </div>
-  `;
-  return { tpl, panel };
-}
-
-/** Center canvas in viewport. */
-function centerCanvas() {
-  if (!view.panzoomWrap) return;
-  const wrapWidth = canvasWrap.clientWidth;
-  const wrapHeight = canvasWrap.clientHeight;
-  const contentWidth = view.panzoomWrap.scrollWidth;
-  const contentHeight = view.panzoomWrap.scrollHeight;
-  const scaledWidth = contentWidth * S.ui.zoom;
-  const scaledHeight = contentHeight * S.ui.zoom;
-  view.panX = Math.max(16, (wrapWidth - scaledWidth) / 2);
-  // Center vertically only when content fits; top-align with margin when taller
-  const verticalCenter = (wrapHeight - scaledHeight) / 2;
-  view.panY = verticalCenter > 16 ? verticalCenter : 16;
-}
-
-/**
- * Attach a ResizeObserver to view.panzoomWrap that re-centers until the user pans. Handles async
- * content (runtime rendering, data fetching) that changes layout after initial paint.
- */
-function observeCenterUntilStable() {
-  if (view.centerObserver) {
-    view.centerObserver.disconnect();
-    view.centerObserver = null;
-  }
-  if (!view.panzoomWrap) return;
-  view.needsCenter = true;
-  view.centerObserver = new ResizeObserver(() => {
-    if (!view.needsCenter) {
-      view.centerObserver?.disconnect();
-      view.centerObserver = null;
-      return;
-    }
-    centerCanvas();
-    applyTransform();
-  });
-  view.centerObserver.observe(view.panzoomWrap);
-  // Also center immediately for synchronous content
-  centerCanvas();
-}
-
-/** Apply the current zoom + pan transform to the panzoom wrapper. */
-function applyTransform() {
-  if (!view.panzoomWrap) return;
-  view.panzoomWrap.style.transform = `translate(${view.panX}px, ${view.panY}px) scale(${S.ui.zoom})`;
-  const label = document.querySelector(".zoom-indicator-label");
-  if (label) label.textContent = `${Math.round(S.ui.zoom * 100)}%`;
-  renderOverlays();
-  if (canvasMode === "settings") renderStylebookOverlays();
-}
-
-/** Lightweight in-place zoom update — no full re-render. */
-function _applyZoom() {
-  applyTransform();
-}
-
-/** Calculate zoom + pan to fit all panels within the viewport. */
-function fitToScreen() {
-  if (!view.panzoomWrap) return;
-  const wrapWidth = canvasWrap.clientWidth;
-  const wrapHeight = canvasWrap.clientHeight;
-  const gap = 24;
-  const padding = 32;
-  let totalPanelWidth = 0;
-  let maxPanelHeight = 0;
-  for (const p of canvasPanels) {
-    totalPanelWidth += p._width || 800;
-  }
-  totalPanelWidth += gap * Math.max(0, canvasPanels.length - 1) + padding;
-
-  // Get actual content height from rendered panels
-  const wrapRect = view.panzoomWrap.getBoundingClientRect();
-  const unscaledHeight = wrapRect.height / S.ui.zoom;
-  maxPanelHeight = unscaledHeight + padding;
-
-  const fitZoomW = wrapWidth / totalPanelWidth;
-  const fitZoomH = wrapHeight / maxPanelHeight;
-  const fitZoom = Math.min(5.0, Math.max(0.05, Math.min(fitZoomW, fitZoomH)));
-
-  session = { ...session, ui: { ...session.ui, zoom: fitZoom } };
-  S = toFlat(doc, session);
-  // Center the content
-  const scaledWidth = totalPanelWidth * fitZoom;
-  const scaledHeight = maxPanelHeight * fitZoom;
-  view.panX = Math.max(0, (wrapWidth - scaledWidth) / 2);
-  view.panY = Math.max(0, (wrapHeight - scaledHeight) / 2);
-  applyTransform();
-}
-
-/**
- * Render the floating zoom indicator at the bottom center of canvas-wrap. Uses position: fixed,
- * computed from canvas-wrap bounds.
- */
-function renderZoomIndicator() {
-  // Reset lit-html state if the host was disconnected or markers were ejected
-  if (!zoomIndicatorHost.isConnected) document.body.appendChild(zoomIndicatorHost);
-  try {
-    litRender(
-      html`
-        <div class="zoom-indicator">
-          <span class="zoom-indicator-label">${Math.round(S.ui.zoom * 100)}%</span>
-          <sp-action-button
-            quiet
-            size="s"
-            class="zoom-fit-btn"
-            title="Fit to screen"
-            @click=${fitToScreen}
-          >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 16 16"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.5"
-            >
-              <rect x="2" y="2" width="12" height="12" rx="1" />
-              <path d="M2 6h12M6 2v12" />
-            </svg>
-          </sp-action-button>
-        </div>
-      `,
-      zoomIndicatorHost,
-    );
-  } catch {
-    // Lit markers were corrupted — replace the host element to fully reset Lit state
-    const newHost = document.createElement("div");
-    newHost.style.display = "contents";
-    zoomIndicatorHost.replaceWith(newHost);
-    zoomIndicatorHost = newHost;
-    litRender(
-      html`
-        <div class="zoom-indicator">
-          <span class="zoom-indicator-label">${Math.round(S.ui.zoom * 100)}%</span>
-          <sp-action-button
-            quiet
-            size="s"
-            class="zoom-fit-btn"
-            title="Fit to screen"
-            @click=${fitToScreen}
-          >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 16 16"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.5"
-            >
-              <rect x="2" y="2" width="12" height="12" rx="1" />
-              <path d="M2 6h12M6 2v12" />
-            </svg>
-          </sp-action-button>
-        </div>
-      `,
-      zoomIndicatorHost,
-    );
-  }
-  positionZoomIndicator();
-}
-
-function positionZoomIndicator() {
-  const indicator = /** @type {HTMLElement | null} */ (document.querySelector(".zoom-indicator"));
-  if (!indicator) return;
-  const rect = canvasWrap.getBoundingClientRect();
-  indicator.style.left = `${rect.left + rect.width / 2}px`;
-  indicator.style.top = `${rect.bottom - 32}px`;
-  indicator.style.transform = "translateX(-50%)";
-}
-
-function updateActivePanelHeaders() {
-  for (const p of canvasPanels) {
-    const header = p.element.querySelector(".canvas-panel-header");
-    if (header) {
-      const isActive =
-        (S.ui.activeMedia === null && p.mediaName === "base") ||
-        (S.ui.activeMedia === null && p.mediaName === null) ||
-        S.ui.activeMedia === p.mediaName;
-      header.classList.toggle("active", isActive);
-    }
-  }
 }
 
 /**

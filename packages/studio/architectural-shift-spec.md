@@ -46,9 +46,10 @@
 - ✅ edit-display (prepareForEditMode, restoreTemplateExpressions, templateToEditDisplay)
 - ✅ component-inline-edit (enterComponentInlineEdit, slash menu delegation)
 - ✅ content-inline-edit (enterInlineEdit, rich-text editing bridge for edit/content mode)
+- ✅ canvas-utils (canvasPanelTemplate, centerCanvas, applyTransform, fitToScreen, renderZoomIndicator, updateActivePanelHeaders)
 - ⬜ canvas (largest remaining; owns panzoom, inline editing, overlays, mode switching)
 
-**studio.js line count:** ~2,263 (down from ~6,226 at start of Phase 4)
+**studio.js line count:** ~1,990 (down from ~6,226 at start of Phase 4)
 
 ---
 
@@ -146,6 +147,7 @@ export function renderFooTemplate(ctx) {
 | edit-display.js (edit-mode document transforms) | ~190 | Phase 4i |
 | component-inline-edit.js (design-mode text editing) | ~295 | Phase 4j |
 | content-inline-edit.js (rich-text editing bridge) | ~187 | Phase 4k |
+| canvas-utils.js (panzoom, zoom indicator, panel template) | ~273 | Phase 4l |
 
 ### Remaining: Canvas Module
 
