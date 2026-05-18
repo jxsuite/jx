@@ -16,7 +16,6 @@ import {
   updateDef,
   pushDocument,
   popDocument,
-  applyMutation,
   getNodeAtPath,
   nodeLabel,
   pathsEqual,
@@ -24,7 +23,6 @@ import {
   childIndex,
   isAncestor,
   canvasWrap,
-  leftPanel,
   toolbarEl,
   elToPath,
   canvasPanels,
@@ -126,11 +124,6 @@ import {
   dropTargetForElements,
   monitorForElements,
 } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
-import { combine } from "@atlaskit/pragmatic-drag-and-drop/combine";
-import {
-  attachInstruction,
-  extractInstruction,
-} from "@atlaskit/pragmatic-drag-and-drop-hitbox/tree-item";
 
 import { html, render as litRender, nothing } from "lit-html";
 import { live } from "lit-html/directives/live.js";
@@ -157,12 +150,14 @@ import * as toolbarPanel from "./panels/toolbar.js";
 import * as overlaysPanel from "./panels/overlays.js";
 import * as rightPanelMod from "./panels/right-panel.js";
 import * as leftPanelMod from "./panels/left-panel.js";
+import { renderStylebookMode, renderStylebookOverlays } from "./panels/stylebook-panel.js";
 import {
-  renderStylebookMode,
-  renderStylebookOverlays,
-  renderComponentPreview,
-} from "./panels/stylebook-panel.js";
-import { mediaDisplayName } from "./panels/shared.js";
+  registerLayersDnD,
+  registerComponentsDnD,
+  registerElementsDnD,
+  applyDropInstruction,
+} from "./panels/dnd.js";
+import { mediaDisplayName, defaultDef } from "./panels/shared.js";
 import { initCssData } from "./panels/style-utils.js";
 import * as monaco from "monaco-editor/esm/vs/editor/editor.api.js";
 
@@ -3199,377 +3194,7 @@ function renderLeftPanel() {
   leftPanelMod.render();
 }
 
-/** Register DnD on layer rows after litRender — called from left-panel.js */
-function registerLayersDnD() {
-  requestAnimationFrame(() => {
-    const container = /** @type {any} */ (leftPanel)?.querySelector(".layers-container");
-    if (!container) return;
-
-    container.querySelectorAll("[data-dnd-row]").forEach(
-      /** @param {any} row */ (row) => {
-        const rowPath = /** @type {string} */ (row.dataset.path)
-          .split("/")
-          .map((/** @type {any} */ s) => (/^\d+$/.test(s) ? parseInt(s) : s));
-        const rowDepth = parseInt(/** @type {string} */ (row.dataset.dndDepth)) || 0;
-        const isVoid = row.hasAttribute("data-dnd-void");
-
-        const cleanup = combine(
-          draggable({
-            element: row,
-            canDrag(/** @type {any} */ { element: _el, input }) {
-              // Prevent drag when clicking action buttons
-              const target = /** @type {HTMLElement} */ (
-                document.elementFromPoint(input.clientX, input.clientY)
-              );
-              if (target?.closest(".layer-actions")) return false;
-              return true;
-            },
-            getInitialData() {
-              return { type: "tree-node", path: rowPath };
-            },
-            onDragStart() {
-              row.classList.add("dragging");
-              view.layerDragSourceHeight = row.offsetHeight;
-            },
-            onDrop() {
-              row.classList.remove("dragging");
-            },
-          }),
-          dropTargetForElements({
-            element: row,
-            canDrop(/** @type {any} */ { source }) {
-              const srcPath = source.data.path;
-              if (srcPath && isAncestor(srcPath, rowPath)) return false;
-              return true;
-            },
-            getData(/** @type {any} */ { input, element }) {
-              return attachInstruction(
-                { path: rowPath },
-                /** @type {any} */ ({
-                  input,
-                  element,
-                  currentLevel: rowDepth,
-                  indentPerLevel: 16,
-                  block: isVoid ? ["make-child"] : [],
-                }),
-              );
-            },
-            onDragEnter(/** @type {any} */ { self }) {
-              showLayerDropGap(row, self.data, container);
-            },
-            onDrag(/** @type {any} */ { self }) {
-              showLayerDropGap(row, self.data, container);
-            },
-            onDragLeave() {
-              clearLayerDropGap(container);
-            },
-            onDrop() {
-              clearLayerDropGap(container);
-            },
-          }),
-        );
-        view.dndCleanups.push(cleanup);
-      },
-    );
-
-    // Global monitor
-    const monitorCleanup = monitorForElements({
-      onDrop(/** @type {any} */ { source, location }) {
-        clearLayerDropGap(container);
-        const target = location.current.dropTargets[0];
-        if (!target) return;
-        const instruction = extractInstruction(target.data);
-        if (!instruction || instruction.type === "instruction-blocked") return;
-        const srcData = source.data;
-        const targetPath = target.data.path;
-        applyDropInstruction(instruction, srcData, targetPath);
-      },
-    });
-    view.dndCleanups.push(monitorCleanup);
-  });
-}
-
-/** Register DnD on component rows — called from renderLeftPanel when tab=components */
-function registerComponentsDnD() {
-  requestAnimationFrame(() => {
-    const container = /** @type {any} */ (leftPanel)?.querySelector(".components-section");
-    if (!container) return;
-
-    container.querySelectorAll("[data-component-tag]").forEach(
-      /** @param {any} row */ (row) => {
-        const tagName = row.dataset.componentTag;
-        if (!tagName) return;
-        const comp = componentRegistry.find(/** @param {any} c */ (c) => c.tagName === tagName);
-        if (!comp) return;
-
-        // Fill preview with live rendered component
-        const preview = row.querySelector(".element-card-preview");
-        if (preview && !preview.querySelector(tagName)) {
-          renderComponentPreview(comp).then((el) => {
-            preview.textContent = "";
-            preview.appendChild(el);
-          });
-        }
-
-        const instanceDef = {
-          tagName: comp.tagName,
-          $props: Object.fromEntries(
-            comp.props.map((/** @type {any} */ p) => [
-              p.name,
-              p.default !== undefined ? p.default : "",
-            ]),
-          ),
-        };
-        const cleanup = draggable({
-          element: row,
-          getInitialData() {
-            return { type: "block", fragment: structuredClone(instanceDef) };
-          },
-        });
-        view.dndCleanups.push(cleanup);
-      },
-    );
-  });
-}
-
-/** @type {any} */
-
-/**
- * @param {any} rowEl
- * @param {any} data
- * @param {any} container
- */
-function showLayerDropGap(rowEl, data, container) {
-  const instruction = extractInstruction(data);
-
-  // Clear previous drop-target highlight
-  if (view._currentDropTargetRow && view._currentDropTargetRow !== rowEl) {
-    view._currentDropTargetRow.classList.remove("drop-target");
-  }
-
-  if (!instruction || instruction.type === "instruction-blocked") {
-    clearLayerDropGap(container);
-    return;
-  }
-
-  if (instruction.type === "make-child") {
-    clearLayerDropGap(container);
-    rowEl.classList.add("drop-target");
-    view._currentDropTargetRow = rowEl;
-    return;
-  }
-
-  rowEl.classList.remove("drop-target");
-  view._currentDropTargetRow = rowEl;
-
-  // Shift rows to create gap
-  const rows = Array.from(container.querySelectorAll(".layers-tree .layer-row"));
-  const targetIdx = rows.indexOf(rowEl);
-  const gap = view.layerDragSourceHeight;
-
-  for (let i = 0; i < rows.length; i++) {
-    if (rows[i].classList.contains("dragging")) continue;
-    if (instruction.type === "reorder-above") {
-      rows[i].style.transform = i >= targetIdx ? `translateY(${gap}px)` : "";
-    } else {
-      rows[i].style.transform = i > targetIdx ? `translateY(${gap}px)` : "";
-    }
-  }
-}
-
-/** @param {any} container */
-function clearLayerDropGap(container) {
-  if (view._currentDropTargetRow) {
-    view._currentDropTargetRow.classList.remove("drop-target");
-    view._currentDropTargetRow = null;
-  }
-  const rows = container.querySelectorAll(".layers-tree .layer-row");
-  for (const r of rows) r.style.transform = "";
-}
-
-/**
- * Apply a DnD instruction to the state
- *
- * @param {any} instruction
- * @param {any} srcData
- * @param {any} targetPath
- */
-function applyDropInstruction(instruction, srcData, targetPath) {
-  if (srcData.type === "tree-node") {
-    const fromPath = srcData.path;
-    const targetParent = /** @type {any} */ (parentElementPath(targetPath));
-    const targetIdx = /** @type {number} */ (childIndex(targetPath));
-
-    switch (instruction.type) {
-      case "reorder-above":
-        update(moveNode(S, fromPath, targetParent, targetIdx));
-        break;
-      case "reorder-below":
-        update(moveNode(S, fromPath, targetParent, targetIdx + 1));
-        break;
-      case "make-child": {
-        const target = getNodeAtPath(S.document, targetPath);
-        const len = target?.children?.length || 0;
-        update(moveNode(S, fromPath, targetPath, len));
-        break;
-      }
-    }
-  } else if (srcData.type === "block") {
-    const targetParent = /** @type {any} */ (parentElementPath(targetPath));
-    const targetIdx = /** @type {number} */ (childIndex(targetPath));
-
-    switch (instruction.type) {
-      case "reorder-above":
-        update(insertNode(S, targetParent, targetIdx, structuredClone(srcData.fragment)));
-        break;
-      case "reorder-below":
-        update(insertNode(S, targetParent, targetIdx + 1, structuredClone(srcData.fragment)));
-        break;
-      case "make-child": {
-        const target = getNodeAtPath(S.document, targetPath);
-        const len = target?.children?.length || 0;
-        update(insertNode(S, targetPath, len, structuredClone(srcData.fragment)));
-        break;
-      }
-    }
-
-    // Auto-import to $elements if the dropped block is a custom component
-    const tag = srcData.fragment?.tagName;
-    if (tag && tag.includes("-")) {
-      const comp = componentRegistry.find((/** @type {any} */ c) => c.tagName === tag);
-      if (comp) {
-        const elements = S.document.$elements || [];
-        if (comp.source === "npm") {
-          // npm web component: add cherry-picked subpath specifier
-          const specifier = comp.modulePath ? `${comp.package}/${comp.modulePath}` : comp.package;
-          const alreadyImported = elements.some(
-            (/** @type {any} */ e) => e === specifier || e === comp.package,
-          );
-          if (!alreadyImported) {
-            S = applyMutation(S, (/** @type {any} */ doc) => {
-              if (!doc.$elements) doc.$elements = [];
-              doc.$elements.push(specifier);
-            });
-          }
-        } else {
-          // JX component: add $ref object
-          const alreadyImported = elements.some(
-            (/** @type {any} */ e) =>
-              e.$ref &&
-              (e.$ref === `./${comp.path}` || e.$ref.endsWith(comp.path.split("/").pop())),
-          );
-          if (!alreadyImported) {
-            const relPath = computeRelativePath(S.documentPath, comp.path);
-            S = applyMutation(S, (/** @type {any} */ doc) => {
-              if (!doc.$elements) doc.$elements = [];
-              doc.$elements.push({ $ref: relPath });
-            });
-          }
-        }
-      }
-    }
-  }
-}
-
-/**
- * Generate a sensible default Jx node for a given tag name
- *
- * @param {any} tag
- */
-function defaultDef(tag) {
-  /** @type {any} */
-  const def = { tagName: tag };
-  if (/^h[1-6]$/.test(tag)) def.textContent = "Heading";
-  else if (tag === "p") def.textContent = "Paragraph text";
-  else if (
-    tag === "span" ||
-    tag === "strong" ||
-    tag === "em" ||
-    tag === "small" ||
-    tag === "mark" ||
-    tag === "code" ||
-    tag === "abbr" ||
-    tag === "q" ||
-    tag === "sub" ||
-    tag === "sup" ||
-    tag === "time"
-  )
-    def.textContent = "Text";
-  else if (tag === "a") {
-    def.textContent = "Link";
-    def.attributes = { href: "#" };
-  } else if (tag === "button") def.textContent = "Button";
-  else if (tag === "label") def.textContent = "Label";
-  else if (tag === "legend") def.textContent = "Legend";
-  else if (tag === "caption") def.textContent = "Caption";
-  else if (tag === "summary") def.textContent = "Summary";
-  else if (
-    tag === "li" ||
-    tag === "dt" ||
-    tag === "dd" ||
-    tag === "th" ||
-    tag === "td" ||
-    tag === "option"
-  )
-    def.textContent = "Item";
-  else if (tag === "blockquote") def.textContent = "Quote";
-  else if (tag === "pre") def.textContent = "Preformatted text";
-  else if (tag === "input") def.attributes = { type: "text", placeholder: "Enter text..." };
-  else if (tag === "img") def.attributes = { src: "", alt: "Image" };
-  else if (tag === "iframe") def.attributes = { src: "" };
-  else if (tag === "select") def.children = [{ tagName: "option", textContent: "Option 1" }];
-  else if (tag === "ul" || tag === "ol") def.children = [{ tagName: "li", textContent: "Item" }];
-  else if (tag === "dl")
-    def.children = [
-      { tagName: "dt", textContent: "Term" },
-      { tagName: "dd", textContent: "Definition" },
-    ];
-  else if (tag === "table")
-    def.children = [
-      {
-        tagName: "thead",
-        children: [{ tagName: "tr", children: [{ tagName: "th", textContent: "Header" }] }],
-      },
-      {
-        tagName: "tbody",
-        children: [{ tagName: "tr", children: [{ tagName: "td", textContent: "Cell" }] }],
-      },
-    ];
-  else if (tag === "details")
-    def.children = [
-      { tagName: "summary", textContent: "Summary" },
-      { tagName: "p", textContent: "Detail content" },
-    ];
-  return def;
-}
-
-const unsafeTags = new Set(["script", "style", "link", "iframe", "object", "embed"]);
-
-function registerElementsDnD() {
-  requestAnimationFrame(() => {
-    const container = /** @type {any} */ (leftPanel)?.querySelector(".panel-body");
-    if (!container) return;
-    container.querySelectorAll("[data-block-tag]").forEach(
-      /** @param {any} row */ (row) => {
-        const tag = row.dataset.blockTag;
-        const preview = row.querySelector(".element-card-preview");
-        if (preview && !preview.firstChild) {
-          const el = document.createElement(unsafeTags.has(tag) ? "span" : tag);
-          el.textContent = tag;
-          preview.appendChild(el);
-        }
-        const def = defaultDef(tag);
-        const cleanup = draggable({
-          element: row,
-          getInitialData() {
-            return { type: "block", fragment: structuredClone(def) };
-          },
-        });
-        view.dndCleanups.push(cleanup);
-      },
-    );
-  });
-}
+// ─── DnD registration: delegated to panels/dnd.js ───────────────────────────
 
 // ─── Stylebook ───────────────────────────────────────────────────────────────
 // Extracted to panels/stylebook-panel.js

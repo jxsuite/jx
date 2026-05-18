@@ -11,7 +11,7 @@
 | 1. Error Boundaries | ✅ Complete | All renderers wrapped in try/catch with retry |
 | 2. Doc/Session Split | ✅ Complete | updateSession/updateUi in use, no ad-hoc mutations |
 | 3. Lift Transient State | ✅ Complete | All mutable view state in view.js |
-| 4. Componentize Panels | 🔄 In Progress (~75%) | See detailed status below |
+| 4. Componentize Panels | 🔄 In Progress (~80%) | See detailed status below |
 | 5. Lit Host Hygiene | ⬜ Not Started | |
 | 6. Async as State | ⬜ Not Started | |
 | 7. Selective Subscriptions | ⬜ Not Started | |
@@ -40,9 +40,10 @@
 - ✅ style-panel (style-utils, style-inputs)
 - ✅ properties-panel (~760 lines extracted from studio.js)
 - ✅ stylebook-panel (~680 lines extracted from studio.js)
+- ✅ dnd (registerLayersDnD, registerComponentsDnD, registerElementsDnD, applyDropInstruction)
 - ⬜ canvas (largest remaining; owns panzoom, inline editing, overlays, mode switching)
 
-**studio.js line count:** ~3,905 (down from ~6,226 at start of Phase 4)
+**studio.js line count:** ~3,544 (down from ~6,226 at start of Phase 4)
 
 ---
 
@@ -134,6 +135,7 @@ export function renderFooTemplate(ctx) {
 | Container panels (toolbar, overlays, etc.) | ~800 | Phase 4a–c |
 | properties-panel.js | ~1,300 | Phase 4d |
 | stylebook-panel.js | ~1,005 | Phase 4e |
+| dnd.js (+ shared.js defaultDef) | ~430 | Phase 4f |
 
 ### Remaining: Canvas Module
 
