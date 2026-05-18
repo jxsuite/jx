@@ -20,6 +20,7 @@ import { ensureLitState } from "./shared.js";
 import { renderLayersTemplate } from "./layers-panel.js";
 import { renderStylebookLayersTemplate } from "./stylebook-layers-panel.js";
 import { renderElementsTemplate } from "./elements-panel.js";
+import { selectStylebookTag, stylebookMeta } from "./stylebook-panel.js";
 
 /** @type {any} */
 let _ctx = null;
@@ -65,8 +66,8 @@ function _render() {
     content =
       _ctx.getCanvasMode() === "settings"
         ? renderStylebookLayersTemplate({
-            selectStylebookTag: _ctx.selectStylebookTag,
-            stylebookMeta: _ctx.stylebookMeta,
+            selectStylebookTag,
+            stylebookMeta,
           })
         : renderLayersTemplate({
             navigateToComponent: _ctx.navigateToComponent,
