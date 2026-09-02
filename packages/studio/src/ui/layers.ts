@@ -13,14 +13,13 @@
  * that retires a resting toast, and the transition account {@link overlayIdleBlockers} publishes.
  */
 import { html, render as litRender, nothing } from "lit-html";
-import { ref } from "lit-html/directives/ref.js";
 import { repeat } from "lit-html/directives/repeat.js";
-import { choiceField } from "./choice-field";
 import { overlayRegion, REGION_ATTR } from "./regions";
+import { openDialogSurface } from "../surfaces/dialog";
 import { dismiss, toasts } from "../services/notify";
 import { activeRegistry } from "../commands/active-registry";
 import { effect, effectScope } from "../reactivity";
-import type { ChoiceOption } from "./choice-field";
+import type { DialogChoiceOption, DialogSurfaceOptions } from "../surfaces/dialog";
 import type { Notification, Severity } from "../services/notify";
 import type { EffectScope } from "@vue/reactivity";
 import type { TemplateResult } from "lit-html";
@@ -55,7 +54,7 @@ export function initLayers() {
 }
 
 /** Anything in the modal/dialog layers that paints a viewport-wide underlay over the app. */
-const UNDERLAID = "sp-dialog-wrapper[open], sp-underlay[open]";
+const UNDERLAID = "jx-dialog[data-open], sp-dialog-wrapper[open], sp-underlay[open]";
 
 /**
  * Whether a surface with an underlay is up — a dialog from {@link showDialog}, or an
@@ -276,28 +275,30 @@ export function showConfirmDialog(
     cancelLabel?: string;
     destructive?: boolean;
   } = {},
-) {
+): Promise<boolean> {
   const { confirmLabel = "Confirm", cancelLabel = "Cancel", destructive = false } = opts;
-  // Explicit, because `done(true)` gives the generic nothing to infer from and it landed on
-  // `unknown` — which every caller happened to survive by using the answer in a truthy position.
-  return showDialog<boolean>(
-    (done) => html`
-      <sp-dialog-wrapper
-        open
-        underlay
-        headline=${headline}
-        confirm-label=${confirmLabel}
-        cancel-label=${cancelLabel}
-        size="s"
-        @confirm=${() => done(true)}
-        @cancel=${() => done(false)}
-        @close=${() => done(false)}
-        class=${destructive ? "dialog-destructive" : ""}
-      >
-        <p>${message}</p>
-      </sp-dialog-wrapper>
-    `,
-  );
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (value: boolean) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      handle.close();
+      resolve(value);
+    };
+    const handle = openDialogSurface({
+      cancelLabel,
+      confirmLabel,
+      destructive,
+      headline,
+      layer: layerHost("dialog"),
+      ...messageOptions(message),
+      onCancel: () => done(false),
+      onClosed: () => done(false),
+      onConfirm: () => done(true),
+    });
+  });
 }
 
 /**
@@ -319,25 +320,46 @@ export function showSaveDiscardDialog(
   } = {},
 ): Promise<"save" | "discard" | "cancel"> {
   const { saveLabel = "Save", discardLabel = "Discard", cancelLabel = "Cancel" } = opts;
-  return showDialog<"save" | "discard" | "cancel">(
-    (done) => html`
-      <sp-dialog-wrapper
-        open
-        underlay
-        headline=${headline}
-        confirm-label=${saveLabel}
-        secondary-label=${discardLabel}
-        cancel-label=${cancelLabel}
-        size="s"
-        @confirm=${() => done("save")}
-        @secondary=${() => done("discard")}
-        @cancel=${() => done("cancel")}
-        @close=${() => done("cancel")}
-      >
-        <p>${message}</p>
-      </sp-dialog-wrapper>
-    `,
-  );
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (value: "save" | "discard" | "cancel") => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      handle.close();
+      resolve(value);
+    };
+    const handle = openDialogSurface({
+      cancelLabel,
+      confirmLabel: saveLabel,
+      headline,
+      layer: layerHost("dialog"),
+      ...messageOptions(message),
+      onCancel: () => done("cancel"),
+      onClosed: () => done("cancel"),
+      onConfirm: () => done("save"),
+      onSecondary: () => done("discard"),
+      secondaryLabel: discardLabel,
+    });
+  });
+}
+
+/**
+ * A message as the surface takes it: a sentence, or a lit template rendered into the document's
+ * island once the element is ready — the island rule of studio-ui-guidelines §9.4.
+ */
+function messageOptions(
+  message: string | TemplateResult,
+): Pick<DialogSurfaceOptions, "message" | "island"> {
+  if (typeof message === "string") {
+    return { message };
+  }
+  return {
+    island: (host) => {
+      litRender(message, host);
+    },
+  };
 }
 
 /**
@@ -350,6 +372,17 @@ export function showSaveDiscardDialog(
  * New File dialog's format picker is exactly that case: switching from Markdown to JSON changes
  * whether the typed name is already taken, with no keystroke to notice.
  */
+/** One option of a prompt's choice, as a caller lists them. */
+export interface ChoiceOption {
+  value: string;
+  label: string;
+  /**
+   * Set a sentinel row apart from the ones before it. Kept for callers; the native select draws no
+   * divider.
+   */
+  dividerBefore?: boolean;
+}
+
 export interface PromptChoice {
   /** Label above the picker. */
   label: string;
@@ -421,8 +454,6 @@ export function showPromptDialog(
   let value = initialValue;
   let chosen = choice?.initial ?? "";
   let error = "";
-  let wrapperEl: HTMLElement | null = null;
-  let focusRequested = false;
   /*
    * Whether the reader has typed yet.
    *
@@ -432,144 +463,75 @@ export function showPromptDialog(
    * still refuses, because `confirm()` runs `check` unconditionally.
    */
   let touched = false;
+  const placeholderNow = () => (typeof placeholder === "function" ? placeholder() : placeholder);
+  const optionsNow = (): DialogChoiceOption[] =>
+    choice
+      ? choice.options().map((option) => ({
+          label: option.label,
+          selected: option.value === chosen,
+          value: option.value,
+        }))
+      : [];
 
-  return showDialog<string | null>((done) => {
-    function rerender() {
-      // Resolved lazily: lit commits element refs before inserting the fragment, so the host is
-      // Only reachable once the first render has landed.
-      const host = wrapperEl?.parentElement;
-      if (host) {
-        litRender(buildTpl(), host);
-      }
-    }
-
-    function confirm() {
-      error = check(value);
-      if (error) {
-        rerender();
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (result: string | null) => {
+      if (settled) {
         return;
       }
-      done(value.trim());
-    }
-
-    function onInput(e: Event) {
-      touched = true;
-      value = (e.target as HTMLInputElement).value || "";
-      const next = check(value);
-      if (next !== error) {
-        error = next;
-        rerender();
-      }
-    }
-
-    /**
-     * Take a pick, and re-render UNCONDITIONALLY.
-     *
-     * `onInput` re-renders only when the error string changed, which is right for a keystroke: the
-     * template it would rebuild is identical. A pick is not that. It can change the placeholder,
-     * the picker's own selected row, and — for the New File dialog — whether the composed filename
-     * is already taken, all with the error text unchanged. Comparing error strings here would leave
-     * a dialog showing "about.md already exists" after the reader switched the format to JSON.
-     */
-    function onPick(next: string) {
-      chosen = next;
-      choice?.onChange?.(next);
-      const candidate = check(value);
-      error = touched || error ? candidate : "";
-      rerender();
-    }
-
-    function onKeydown(e: KeyboardEvent) {
-      if (e.key === "Enter") {
-        confirm();
-      }
-    }
-
-    /** Capture the dialog element so validation errors can re-render in place. */
-    function onWrapperRef(el?: Element) {
-      if (el) {
-        wrapperEl = el as HTMLElement;
-      }
-    }
-
-    /** Focus (and optionally select) the field once, on first render only. */
-    function onFieldRef(el?: Element) {
-      if (!el || focusRequested) {
-        return;
-      }
-      focusRequested = true;
-      const field = el as HTMLElement;
-      requestAnimationFrame(() => {
-        field.focus();
-        const input = field.shadowRoot?.querySelector("input");
-        if (!input || select === "none") {
+      settled = true;
+      handle.close();
+      resolve(result);
+    };
+    const showError = (next: string) => {
+      error = next;
+      handle.update({ error, invalid: error !== "" });
+    };
+    const handle = openDialogSurface({
+      cancelLabel,
+      confirmLabel,
+      headline,
+      layer: layerHost("dialog"),
+      ...(message === undefined ? {} : messageOptions(message)),
+      ...(choice ? { choice: { label: choice.label, options: optionsNow() } } : {}),
+      field: { placeholder: placeholderNow(), select, value },
+      onCancel: () => done(null),
+      onClosed: () => done(null),
+      onConfirm: () => {
+        const refused = check(value);
+        if (refused) {
+          showError(refused);
           return;
         }
-        if (select === "stem") {
-          const dot = input.value.lastIndexOf(".");
-          input.setSelectionRange(0, dot > 0 ? dot : input.value.length);
-          return;
+        done(value.trim());
+      },
+      onInput: (next) => {
+        touched = true;
+        value = next;
+        const candidate = check(value);
+        // Only a CHANGED verdict repaints the message; a keystroke inside a valid value is silent.
+        if (candidate !== error) {
+          showError(candidate);
         }
-        input.select();
-      });
-    }
-
-    function buildTpl() {
-      return html`
-        <sp-dialog-wrapper
-          open
-          underlay
-          headline=${headline}
-          confirm-label=${confirmLabel}
-          cancel-label=${cancelLabel}
-          size="s"
-          @confirm=${confirm}
-          @cancel=${() => done(null)}
-          @close=${() => done(null)}
-          ${ref(onWrapperRef)}
-        >
-          ${
-            // Spectrum resets <p> margins to 0, so without this the copy sits flush on the field.
-            message ? html`<p style="margin:0 0 8px">${message}</p>` : nothing
-          }
-          ${
-            /*
-             * Above the field, and in ONE template position in every mode.
-             *
-             * The `sp-textfield` below must never move or be rebuilt by a conditional branch: lit
-             * would commit a new element, `onFieldRef` would fire again, the `focusRequested` latch
-             * would refuse to re-focus it, and the caret would be stranded mid-name. Only the
-             * placeholder, the validation rules and the help text vary between modes.
-             */
-            choice
-              ? choiceField({
-                  label: choice.label,
-                  onChange: onPick,
-                  options: choice.options(),
-                  value: chosen,
-                })
-              : nothing
-          }
-          <sp-textfield
-            style="width:100%"
-            placeholder=${typeof placeholder === "function" ? placeholder() : placeholder}
-            value=${value}
-            ?invalid=${Boolean(error)}
-            @input=${onInput}
-            @keydown=${onKeydown}
-            ${ref(onFieldRef)}
-          >
-            ${
-              error
-                ? html`<sp-help-text slot="negative-help-text">${error}</sp-help-text>`
-                : nothing
-            }
-          </sp-textfield>
-        </sp-dialog-wrapper>
-      `;
-    }
-
-    return buildTpl();
+      },
+      /*
+       * A pick refreshes UNCONDITIONALLY: it can change the placeholder, the selected option, and
+       * — for the New File dialog — whether the composed filename is already taken, all with the
+       * error text unchanged.
+       */
+      onPick: (next) => {
+        chosen = next;
+        choice?.onChange?.(next);
+        const candidate = check(value);
+        error = touched || error ? candidate : "";
+        handle.update({
+          error,
+          invalid: error !== "",
+          options: optionsNow(),
+          placeholder: placeholderNow(),
+        });
+      },
+    });
   });
 }
 

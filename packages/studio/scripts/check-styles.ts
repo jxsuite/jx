@@ -248,7 +248,6 @@ export const ALLOWED_ORPHANS = new Set<string>([
   "formula-palette-input",
   "formula-palette-overlay",
   // Owner: ui/layers.ts
-  "dialog-destructive",
   // Owner: ui/media-picker.ts
   "media-picker-browse",
   "media-picker-filter",

@@ -1,5 +1,5 @@
 /** Tests for src/panels/imports-panel.ts — context-aware import manager. */
-import { flush, installMockPlatform, renderInto, resetStudioState } from "./harness";
+import { flush, installMockPlatform, renderInto, resetStudioState, topDialog } from "./harness";
 import { beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { renderImportsTemplate } from "../src/panels/imports-panel";
 import { componentRegistry, loadComponentRegistry } from "../src/files/components";
@@ -198,7 +198,7 @@ describe("site-level imports (project.json)", () => {
     ) as HTMLElement;
     removeBtn.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     await flush();
-    const dialog = document.querySelector("#layer-dialog sp-dialog-wrapper") as HTMLElement;
+    const dialog = topDialog()!;
     expect(dialog).toBeTruthy();
     expect(dialog.getAttribute("headline")).toBe("Remove Package");
     dialog.dispatchEvent(new Event("confirm"));
@@ -217,7 +217,7 @@ describe("site-level imports (project.json)", () => {
     ) as HTMLElement;
     removeBtn.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     await flush();
-    const dialog = document.querySelector("#layer-dialog sp-dialog-wrapper") as HTMLElement;
+    const dialog = topDialog()!;
     dialog.dispatchEvent(new Event("cancel"));
     await flush(4);
     expect(calls.some((c) => c[0] === "removePackage")).toBe(false);
@@ -234,7 +234,7 @@ describe("site-level imports (project.json)", () => {
     ) as HTMLElement;
     removeBtn.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     await flush();
-    const dialog = document.querySelector("#layer-dialog sp-dialog-wrapper") as HTMLElement;
+    const dialog = topDialog()!;
     dialog.dispatchEvent(new Event("confirm"));
     await flush(4);
     expect(renders).toBe(0);

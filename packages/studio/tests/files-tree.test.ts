@@ -13,6 +13,7 @@ import {
   promptFormatOptions,
   renderInto,
   testFile,
+  topDialog,
 } from "./harness";
 import type { MockPlatformState } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
@@ -174,7 +175,7 @@ async function clickMenuItem(label: string): Promise<void> {
 }
 
 function dialogWrapper(): HTMLElement | null {
-  return document.querySelector("#layer-dialog sp-dialog-wrapper");
+  return topDialog();
 }
 
 async function dismissOutside(): Promise<void> {
@@ -469,7 +470,9 @@ describe("createNewFile (toolbar + context menu)", () => {
     expect(wrapper!.getAttribute("headline")).toBe("New File");
     expect(wrapper!.getAttribute("confirm-label")).toBe("Create");
     // A NAME, not a file name: the picker beside it owns the extension.
-    expect(wrapper!.querySelector("sp-textfield")!.getAttribute("value")).toBe("untitled");
+    expect((wrapper!.querySelector('jx-textfield [part="input"]') as HTMLInputElement).value).toBe(
+      "untitled",
+    );
     expect(promptFormatOptions()).toEqual([
       [".json", "JSON (.json)"],
       [".md", "Markdown (.md)"],
@@ -489,6 +492,7 @@ describe("createNewFile (toolbar + context menu)", () => {
     await clickNewFile(out, null);
 
     expect(state.calls.filter(([name]) => name === "writeFile")).toHaveLength(0);
+    await flush();
     expect(dialogWrapper()).toBeNull();
   });
 
@@ -502,8 +506,9 @@ describe("createNewFile (toolbar + context menu)", () => {
     await clickNewFile(out, "   ");
 
     expect(state.calls.filter(([name]) => name === "writeFile")).toHaveLength(0);
+    await flush();
     expect(dialogWrapper()).not.toBeNull();
-    expect(dialogWrapper()!.querySelector("sp-help-text")?.textContent).toContain(
+    expect(dialogWrapper()!.querySelector('[part="error"]')?.textContent).toContain(
       "Enter a file name.",
     );
 
@@ -981,7 +986,7 @@ describe("rename flow", () => {
     await flush();
     const wrapper = dialogWrapper();
     expect(wrapper).not.toBeNull();
-    const field = wrapper!.querySelector("sp-textfield") as HTMLInputElement;
+    const field = wrapper!.querySelector('jx-textfield [part="input"]') as HTMLInputElement;
     return { field, wrapper: wrapper! };
   }
 
@@ -1170,6 +1175,7 @@ describe("delete flow", () => {
     wrapper.dispatchEvent(new Event("confirm"));
     await flush();
     // No crash; dialog resolved
+    await flush();
     expect(dialogWrapper()).toBeNull();
   });
 });
@@ -1623,7 +1629,7 @@ describe("a move reports the references it could not rewrite", () => {
     await flush();
     const wrapper = dialogWrapper();
     expect(wrapper).not.toBeNull();
-    const field = wrapper!.querySelector("sp-textfield") as HTMLInputElement;
+    const field = wrapper!.querySelector('jx-textfield [part="input"]') as HTMLInputElement;
     field.value = newName;
     field.dispatchEvent(new Event("input", { bubbles: true }));
     wrapper!.dispatchEvent(new Event("confirm"));

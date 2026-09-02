@@ -1,0 +1,295 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioDialog",
+  "$description": "Studio's confirm, save-or-discard and prompt dialogs: one jx-dialog whose body is projected from the adapter's scope. `message` is a sentence; `choice` is a native select of options; `field` is the prompt's jx-textfield with its refusal. The four answers call the host's functions, and the host decides when the dialog closes.",
+  "tagName": "jx-dialog",
+  "$props": {
+    "headline": {
+      "$ref": "#/state/headline"
+    },
+    "confirmLabel": {
+      "$ref": "#/state/confirmLabel"
+    },
+    "secondaryLabel": {
+      "$ref": "#/state/secondaryLabel"
+    },
+    "cancelLabel": {
+      "$ref": "#/state/cancelLabel"
+    },
+    "destructive": {
+      "$ref": "#/state/destructive"
+    },
+    "size": {
+      "$ref": "#/state/size"
+    }
+  },
+  "attributes": {
+    "headline": "${state.headline}",
+    "confirm-label": "${state.confirmLabel || null}",
+    "secondary-label": "${state.secondaryLabel || null}",
+    "cancel-label": "${state.cancelLabel || null}",
+    "part": "dialog-host"
+  },
+  "onconfirm": {
+    "$prototype": "Function",
+    "body": [
+      {
+        "operator": "call",
+        "target": {
+          "$ref": "#/state/confirm"
+        },
+        "value": []
+      }
+    ]
+  },
+  "onsecondary": {
+    "$prototype": "Function",
+    "body": [
+      {
+        "operator": "call",
+        "target": {
+          "$ref": "#/state/secondary"
+        },
+        "value": []
+      }
+    ]
+  },
+  "oncancel": {
+    "$prototype": "Function",
+    "body": [
+      {
+        "operator": "call",
+        "target": {
+          "$ref": "#/state/cancel"
+        },
+        "value": []
+      }
+    ]
+  },
+  "onclose": {
+    "$prototype": "Function",
+    "body": [
+      {
+        "operator": "call",
+        "target": {
+          "$ref": "#/state/closed"
+        },
+        "value": []
+      }
+    ]
+  },
+  "style": {
+    "& [part=\"message\"]": {
+      "margin": "0 0 var(--jx-space-3)"
+    },
+    "& [part=\"message\"]:last-child": {
+      "margin": "0"
+    },
+    "& [part=\"island\"]:empty": {
+      "display": "none"
+    },
+    "& [part=\"message-slot\"], & [part=\"choice-slot\"], & [part=\"field-slot\"]": {
+      "display": "contents"
+    },
+    "& [part=\"choice-row\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-1)",
+      "margin": "0 0 var(--jx-space-3)"
+    },
+    "& [part=\"choice-label\"]": {
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--jx-fg-dim)"
+    },
+    "& [part=\"choice\"]": {
+      "font": "inherit",
+      "minHeight": "var(--jx-control-h)",
+      "padding": "0 var(--jx-space-2)",
+      "border": "1px solid var(--jx-border-strong)",
+      "borderRadius": "var(--jx-radius-sm)",
+      "background": "var(--jx-bg-input)",
+      "color": "var(--jx-fg)",
+      ":focus-visible": {
+        "outline": "var(--jx-focus-ring)",
+        "outlineOffset": "-1px"
+      }
+    },
+    "& jx-textfield": {
+      "width": "100%"
+    }
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "message-slot",
+        "role": "none"
+      },
+      "$switch": {
+        "$ref": "#/state/hasMessage"
+      },
+      "cases": {
+        "true": {
+          "tagName": "p",
+          "attributes": {
+            "part": "message"
+          },
+          "textContent": "${state.message}"
+        }
+      }
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "island"
+      }
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "choice-slot",
+        "role": "none"
+      },
+      "$switch": {
+        "$ref": "#/state/hasChoice"
+      },
+      "cases": {
+        "true": {
+          "tagName": "div",
+          "attributes": {
+            "part": "choice-row"
+          },
+          "children": [
+            {
+              "tagName": "span",
+              "attributes": {
+                "part": "choice-label"
+              },
+              "textContent": "${state.choiceLabel}"
+            },
+            {
+              "tagName": "select",
+              "attributes": {
+                "part": "choice",
+                "aria-label": "${state.choiceLabel}"
+              },
+              "onchange": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/pick"
+                    },
+                    "value": [
+                      {
+                        "$ref": "event#/target/value"
+                      }
+                    ]
+                  }
+                ]
+              },
+              "children": [
+                {
+                  "$prototype": "Array",
+                  "items": {
+                    "$ref": "#/state/options"
+                  },
+                  "key": {
+                    "$ref": "$map/item/value"
+                  },
+                  "map": {
+                    "tagName": "option",
+                    "attributes": {
+                      "value": "${$map.item.value}",
+                      "selected": "${$map.item.selected ? '' : null}"
+                    },
+                    "textContent": "${$map.item.label}"
+                  }
+                }
+              ],
+              "value": {
+                "$ref": "#/state/chosen"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "field-slot",
+        "role": "none"
+      },
+      "$switch": {
+        "$ref": "#/state/hasField"
+      },
+      "cases": {
+        "true": {
+          "tagName": "jx-textfield",
+          "$props": {
+            "label": {
+              "$ref": "#/state/headline"
+            },
+            "value": {
+              "$ref": "#/state/value"
+            },
+            "placeholder": {
+              "$ref": "#/state/placeholder"
+            },
+            "invalid": {
+              "$ref": "#/state/invalid"
+            },
+            "error": {
+              "$ref": "#/state/error"
+            }
+          },
+          "attributes": {
+            "part": "field"
+          },
+          "oninput": {
+            "$prototype": "Function",
+            "body": [
+              {
+                "operator": "call",
+                "target": {
+                  "$ref": "#/state/input"
+                },
+                "value": [
+                  {
+                    "$ref": "event#/target/value"
+                  }
+                ]
+              }
+            ]
+          },
+          "onkeydown": {
+            "$prototype": "Function",
+            "body": [
+              {
+                "$switch": {
+                  "$ref": "event#/key"
+                },
+                "cases": {
+                  "Enter": [
+                    {
+                      "preventDefault": true
+                    },
+                    {
+                      "operator": "call",
+                      "target": {
+                        "$ref": "#/state/confirm"
+                      },
+                      "value": []
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

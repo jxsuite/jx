@@ -9,7 +9,7 @@
  * - Context-menu: text/html clipboard content that converts to nothing (text/plain fallback) and
  *   pasting onto a dangling selection.
  */
-import { flush, resetStudioState, resetWorkspaceWithTab } from "./harness";
+import { flush, resetStudioState, resetWorkspaceWithTab, topDialog } from "./harness";
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { notifyModule } from "./notify-mock";
 import type { SlashCommand } from "../src/editor/inline-edit";
@@ -156,7 +156,7 @@ describe("convert-to-repeater gaps", () => {
 
     const done = convertToRepeater();
     await flush();
-    const dialog = document.querySelector("#layer-dialog sp-dialog-wrapper")!;
+    const dialog = topDialog()!;
     expect(dialog).not.toBeNull();
     dialog.dispatchEvent(new Event("confirm"));
     await done;
@@ -280,7 +280,7 @@ describe("context-menu conversion actions", () => {
     await openMenu();
     clickItem("Repeat...");
     await flush();
-    const dialog = document.querySelector("#layer-dialog sp-dialog-wrapper");
+    const dialog = topDialog()!;
     expect(dialog).not.toBeNull();
     dialog!.dispatchEvent(new Event("cancel"));
     await flush();
@@ -293,7 +293,7 @@ describe("context-menu conversion actions", () => {
     await openMenu();
     clickItem("Convert to Component");
     await flush();
-    const dialog = document.querySelector("#layer-dialog sp-dialog-wrapper");
+    const dialog = topDialog()!;
     expect(dialog).not.toBeNull();
     dialog!.dispatchEvent(new Event("cancel"));
     await flush();

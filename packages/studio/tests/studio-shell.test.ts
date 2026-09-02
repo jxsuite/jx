@@ -7,7 +7,7 @@
  * (navigateToComponent, openRecentProject, closeFunctionEditor, ...), which the tests then drive
  * directly.
  */
-import { flush, installMockPlatform, resetStudioState } from "./harness";
+import { flush, installMockPlatform, resetStudioState, topDialog } from "./harness";
 import { nothing } from "lit-html";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { notifyModule } from "./notify-mock";
@@ -1138,7 +1138,7 @@ describe("openRecentProject", () => {
    */
   describe("unsaved documents", () => {
     function dialog(): HTMLElement | null {
-      return document.querySelector("#layer-dialog sp-dialog-wrapper");
+      return topDialog();
     }
 
     test("Cancel abandons the switch with the workspace untouched", async () => {

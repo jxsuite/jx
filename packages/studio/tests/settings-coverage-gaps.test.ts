@@ -7,7 +7,7 @@
  * - Contributed-section: template-less newEntry, array/number template leaves, stale delete clicks,
  *   and the entry-name keydown (Enter/Escape) handling.
  */
-import { flush, installMockPlatform, key, pointer, resetStudioState } from "./harness";
+import { flush, installMockPlatform, key, pointer, resetStudioState, topDialog } from "./harness";
 import { problems, resetNotifications } from "../src/services/notify";
 import { resetActivities } from "../src/panels/activity-panel";
 import { afterEach, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
@@ -268,7 +268,7 @@ describe("jxsuite-update dismissal storage", () => {
     try {
       const pending = maybePromptJxsuiteUpdate("/proj");
       await flush();
-      const dialog = document.querySelector("#layer-dialog sp-dialog-wrapper");
+      const dialog = topDialog()!;
       expect(dialog).not.toBeNull();
       dialog!.dispatchEvent(new Event("cancel")); // Declines → setDismissed also hits the catch.
       await pending;

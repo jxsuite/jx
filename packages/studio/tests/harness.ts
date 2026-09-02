@@ -386,48 +386,64 @@ export function setValue(el: HTMLInputElement | HTMLTextAreaElement, value: stri
 
 // ─── Dialog helpers ───────────────────────────────────────────────────────────
 
-/** The topmost `sp-dialog-wrapper` currently mounted in the #layer-dialog layer, if any. */
+/**
+ * The topmost dialog mounted in the #layer-dialog layer, if any: a kit `jx-dialog` (the confirm,
+ * save-or-discard and prompt flows) or a Spectrum wrapper (the bespoke bodies still on lit).
+ */
 export function topDialog(): HTMLElement | null {
-  const wrappers = [...document.querySelectorAll("#layer-dialog sp-dialog-wrapper")];
-  return (wrappers.at(-1) as HTMLElement | undefined) ?? null;
+  const dialogs = [
+    ...document.querySelectorAll("#layer-dialog jx-dialog, #layer-dialog sp-dialog-wrapper"),
+  ];
+  return (dialogs.at(-1) as HTMLElement | undefined) ?? null;
+}
+
+/** The prompt's field control: the kit's native input, or the Spectrum field it replaced. */
+function promptField(dialog: HTMLElement): HTMLInputElement | null {
+  return (
+    dialog.querySelector<HTMLInputElement>('jx-textfield [part="input"]') ??
+    (dialog.querySelector("sp-textfield") as HTMLInputElement | null)
+  );
 }
 
 /**
- * Drive an open `showPromptDialog()`: type `value` into its field and confirm, or pass `null` to
- * cancel. Returns the dialog element it acted on, or null when no dialog is open.
- *
- * `pick` selects a row in the dialog's format picker BEFORE typing, which is the order a reader
- * works in and the order that matters: the picker re-runs `validate` against the composed name, so
- * picking after typing and picking before it exercise different code.
+ * Answer the topmost prompt dialog: `null` cancels; a string is typed into the field (after an
+ * optional format pick) and confirmed. Both flows dispatch the same `confirm`/`cancel` names on the
+ * dialog element, so the helper does not care which substrate it is.
  */
 export async function answerPromptDialog(
   value: string | null,
   pick?: string,
 ): Promise<HTMLElement | null> {
-  const wrapper = topDialog();
-  if (!wrapper) {
+  const dialog = topDialog();
+  if (!dialog) {
     return null;
   }
   if (value === null) {
-    wrapper.dispatchEvent(new Event("cancel"));
+    dialog.dispatchEvent(new Event("cancel"));
   } else {
     if (pick !== undefined) {
       await pickPromptFormat(pick);
     }
-    const field = (topDialog() ?? wrapper).querySelector("sp-textfield") as HTMLInputElement | null;
+    const field = promptField(topDialog() ?? dialog);
     if (field) {
       field.value = value;
       field.dispatchEvent(new Event("input", { bubbles: true }));
     }
-    (topDialog() ?? wrapper).dispatchEvent(new Event("confirm"));
+    (topDialog() ?? dialog).dispatchEvent(new Event("confirm"));
   }
   await flush();
-  return topDialog() ?? wrapper;
+  return topDialog() ?? dialog;
 }
 
-/** Select a row in the open prompt dialog's picker, the way `sp-picker` reports one. */
+/**
+ * Pick a format in the topmost prompt dialog's choice: the kit's native select, or the Spectrum
+ * picker.
+ */
 export async function pickPromptFormat(value: string): Promise<void> {
-  const picker = topDialog()?.querySelector("sp-picker") as HTMLInputElement | null;
+  const dialog = topDialog();
+  const picker =
+    dialog?.querySelector<HTMLSelectElement>('select[part="choice"]') ??
+    (dialog?.querySelector("sp-picker") as HTMLInputElement | null);
   if (!picker) {
     return;
   }
@@ -436,9 +452,16 @@ export async function pickPromptFormat(value: string): Promise<void> {
   await flush();
 }
 
-/** The open prompt dialog's picker rows, as `[value, label]` pairs. */
+/** The `[value, label]` pairs the topmost prompt dialog's choice offers. */
 export function promptFormatOptions(): [string, string][] {
-  return [...(topDialog()?.querySelectorAll("sp-picker sp-menu-item") ?? [])].map((el) => [
+  const dialog = topDialog();
+  const native = [
+    ...(dialog?.querySelectorAll<HTMLOptionElement>('select[part="choice"] option') ?? []),
+  ];
+  if (native.length > 0) {
+    return native.map((el) => [el.value, el.textContent?.trim() ?? ""]);
+  }
+  return [...(dialog?.querySelectorAll("sp-picker sp-menu-item") ?? [])].map((el) => [
     el.getAttribute("value") ?? "",
     el.textContent?.trim() ?? "",
   ]);

@@ -296,7 +296,6 @@ export const SPECTRUM_DEBT: Record<string, number> = {
   "ui/expression-editor.ts": 1,
   "ui/field-row.ts": 2,
   "ui/form-controls.ts": 2,
-  "ui/layers.ts": 1,
   /* The generic schema-driven form: ten controls whose shapes come from a JSON Schema rather than
      from this file, so each needs its own answer about what the reader can diverge. */
   "ui/schema-form.ts": 10,

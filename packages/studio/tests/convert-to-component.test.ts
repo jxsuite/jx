@@ -4,7 +4,13 @@
  * Drives the real lit-rendered naming dialog (sp-dialog-wrapper in #layer-dialog) and asserts the
  * document mutation, $elements ref wiring, and the platform writeFile call.
  */
-import { flush, installMockPlatform, resetStudioState, resetWorkspaceWithTab } from "./harness";
+import {
+  flush,
+  installMockPlatform,
+  resetStudioState,
+  resetWorkspaceWithTab,
+  topDialog,
+} from "./harness";
 import type { MockPlatformState } from "./harness";
 import { beforeEach, describe, expect, test } from "bun:test";
 import { convertToComponent } from "../src/editor/convert-to-component";
@@ -58,7 +64,7 @@ beforeEach(() => {
 });
 
 function dialog() {
-  return document.querySelector("#layer-dialog sp-dialog-wrapper");
+  return topDialog();
 }
 
 function textfield() {

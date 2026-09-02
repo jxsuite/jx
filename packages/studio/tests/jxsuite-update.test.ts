@@ -6,7 +6,7 @@
  * So the cases that matter are the ones a suite-wide target got wrong — packages on different
  * versions, a package with no newer publish, and a project pinned ahead of the registry.
  */
-import { flush, installMockPlatform } from "./harness";
+import { flush, installMockPlatform, topDialog } from "./harness";
 import { afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { initLayers } from "../src/ui/layers";
 import { problems, resetNotifications } from "../src/services/notify";
@@ -29,7 +29,7 @@ beforeAll(() => {
 });
 
 function dialog(): HTMLElement | null {
-  return document.querySelector("#layer-dialog sp-dialog-wrapper");
+  return topDialog();
 }
 
 /** A host whose registry lookup answers with `reported`. */

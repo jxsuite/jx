@@ -54,6 +54,15 @@ describe("jx-dialog", () => {
     expect(inner(el).getAttribute("closedby")).toBe("closerequest");
   });
 
+  test("announces jx-ready once it has rendered its native dialog", async () => {
+    const el = document.createElement("jx-dialog") as JxDialog;
+    const ready = new Promise<boolean>((resolve) => {
+      el.addEventListener("jx-ready", () => resolve(inner(el) !== null), { once: true });
+    });
+    document.body.append(el);
+    expect(await ready).toBe(true);
+  });
+
   test("showModal opens it modally, mirrors open, and close closes it", async () => {
     const el = await dialog({ headline: "Rename" });
     showModal(el);

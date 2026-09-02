@@ -4,7 +4,13 @@
  * Monaco (pulled in transitively via code-services) is mocked. The repeater config dialog is driven
  * through the real lit-rendered sp-dialog-wrapper in #layer-dialog.
  */
-import { flush, installMockPlatform, resetStudioState, resetWorkspaceWithTab } from "./harness";
+import {
+  flush,
+  installMockPlatform,
+  resetStudioState,
+  resetWorkspaceWithTab,
+  topDialog,
+} from "./harness";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import type { Tab } from "../src/tabs/tab";
 
@@ -56,7 +62,7 @@ beforeEach(() => {
 });
 
 function dialog() {
-  return document.querySelector("#layer-dialog sp-dialog-wrapper");
+  return topDialog();
 }
 
 function pickers() {
