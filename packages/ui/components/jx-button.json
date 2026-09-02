@@ -1,0 +1,310 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "JxButton",
+  "tagName": "jx-button",
+  "observedAttributes": [
+    "variant",
+    "size",
+    "quiet",
+    "disabled",
+    "loading",
+    "type",
+    "label",
+    "labelledby",
+    "describedby",
+    "popovertarget",
+    "popovertargetaction",
+    "command",
+    "commandfor"
+  ],
+  "$elements": [
+    {
+      "$ref": "./jx-icon.json"
+    }
+  ],
+  "state": {
+    "variant": {
+      "type": "string",
+      "default": "secondary",
+      "attribute": "variant",
+      "description": "How much the button asks for: accent (the one primary action on a surface), primary (a solid neutral), secondary (the default outline) or negative (a destructive action)."
+    },
+    "size": {
+      "type": "string",
+      "default": "md",
+      "attribute": "size",
+      "description": "sm, md or lg. The control height is the kit's, so a row of controls lines up."
+    },
+    "quiet": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "quiet",
+      "description": "No fill and no border until hovered: a button that sits in a toolbar or beside text."
+    },
+    "disabled": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "disabled",
+      "description": "Cannot act. Disabled, never absent; a reason belongs in the surrounding text."
+    },
+    "loading": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "loading",
+      "description": "Working on the last activation: blocks another one, keeps its width, and says so through aria-busy."
+    },
+    "type": {
+      "type": "string",
+      "default": "button",
+      "attribute": "type",
+      "description": "The native button type: button, submit or reset."
+    },
+    "label": {
+      "type": "string",
+      "default": "",
+      "attribute": "label",
+      "description": "The accessible name when the visible text is not it, or there is none. Forwarded to the inner control as aria-label."
+    },
+    "labelledby": {
+      "type": "string",
+      "default": "",
+      "attribute": "labelledby",
+      "description": "Forwarded to the inner control as aria-labelledby."
+    },
+    "describedby": {
+      "type": "string",
+      "default": "",
+      "attribute": "describedby",
+      "description": "Forwarded to the inner control as aria-describedby."
+    },
+    "popovertarget": {
+      "type": "string",
+      "default": "",
+      "attribute": "popovertarget",
+      "description": "The popover this button invokes; forwarded to the inner control, which is the element the platform reads it from."
+    },
+    "popovertargetaction": {
+      "type": "string",
+      "default": "",
+      "attribute": "popovertargetaction",
+      "description": "toggle, show or hide; forwarded with popovertarget."
+    },
+    "command": {
+      "type": "string",
+      "default": "",
+      "attribute": "command",
+      "description": "The invoker command this button sends; forwarded to the inner control."
+    },
+    "commandfor": {
+      "type": "string",
+      "default": "",
+      "attribute": "commandfor",
+      "description": "The element the command is sent to; forwarded to the inner control."
+    },
+    "notLoading": {
+      "$expression": {
+        "operator": "!",
+        "target": {
+          "$ref": "#/state/loading"
+        }
+      }
+    },
+    "onClick": {
+      "$prototype": "Function",
+      "body": [
+        {
+          "if": {
+            "$ref": "#/state/loading"
+          },
+          "then": [
+            {
+              "stopPropagation": true
+            },
+            {
+              "preventDefault": true
+            }
+          ]
+        }
+      ],
+      "description": "A loading button swallows the activation: the click stops here and its default (a form submission, a popover, a command) is cancelled. A disabled button never gets this far, because its inner control is disabled."
+    }
+  },
+  "onclick": {
+    "$ref": "#/state/onClick"
+  },
+  "attributes": {
+    "data-variant": "${state.variant}",
+    "data-size": "${state.size}",
+    "data-quiet": "${state.quiet ? '' : null}",
+    "data-loading": "${state.loading ? '' : null}"
+  },
+  "style": {
+    "display": "inline-flex",
+    "verticalAlign": "middle",
+    "&[hidden]": {
+      "display": "none"
+    },
+    "& > [part=\"control\"]": {
+      "appearance": "none",
+      "font": "inherit",
+      "fontFamily": "var(--jx-font-sans)",
+      "fontSize": "var(--jx-text-md)",
+      "lineHeight": "var(--jx-leading-md)",
+      "display": "inline-flex",
+      "alignItems": "center",
+      "justifyContent": "center",
+      "gap": "var(--jx-space-2)",
+      "minHeight": "var(--jx-control-h)",
+      "margin": "0",
+      "padding": "0 var(--jx-space-4)",
+      "border": "1px solid var(--jx-border-strong)",
+      "borderRadius": "var(--jx-radius-sm)",
+      "background": "var(--jx-bg-input)",
+      "color": "var(--jx-fg)",
+      "cursor": "pointer",
+      "whiteSpace": "nowrap",
+      "outline": "none",
+      "transition": "background var(--jx-dur-1) var(--jx-ease-out), border-color var(--jx-dur-1) var(--jx-ease-out)",
+      ":hover": {
+        "background": "var(--jx-hover-bg)"
+      },
+      ":focus-visible": {
+        "outline": "var(--jx-focus-ring)",
+        "outlineOffset": "2px"
+      },
+      ":disabled": {
+        "opacity": "0.5",
+        "cursor": "default"
+      },
+      "&[aria-busy=\"true\"]": {
+        "cursor": "progress"
+      }
+    },
+    "&[data-variant=\"accent\"] > [part=\"control\"]": {
+      "background": "var(--jx-accent-solid)",
+      "borderColor": "transparent",
+      "color": "var(--jx-accent-fg)",
+      ":hover": {
+        "background": "var(--jx-accent-hover)"
+      }
+    },
+    "&[data-variant=\"primary\"] > [part=\"control\"]": {
+      "background": "var(--jx-fg)",
+      "borderColor": "transparent",
+      "color": "var(--jx-bg)",
+      ":hover": {
+        "background": "var(--jx-fg-dim)"
+      }
+    },
+    "&[data-variant=\"negative\"] > [part=\"control\"]": {
+      "background": "var(--jx-danger)",
+      "borderColor": "transparent",
+      "color": "var(--jx-accent-fg)",
+      ":hover": {
+        "filter": "brightness(1.1)"
+      }
+    },
+    "&[data-quiet] > [part=\"control\"]": {
+      "background": "transparent",
+      "borderColor": "transparent",
+      ":hover": {
+        "background": "var(--jx-hover-bg)"
+      }
+    },
+    "&[data-size=\"sm\"] > [part=\"control\"]": {
+      "minHeight": "calc(var(--jx-control-h) - 4px)",
+      "padding": "0 var(--jx-space-3)",
+      "fontSize": "var(--jx-text-sm)"
+    },
+    "&[data-size=\"lg\"] > [part=\"control\"]": {
+      "minHeight": "calc(var(--jx-control-h) + 8px)",
+      "padding": "0 var(--jx-space-5)",
+      "fontSize": "var(--jx-text-lg)"
+    },
+    "& [part=\"icon\"]": {
+      "display": "inline-flex",
+      "color": "inherit"
+    },
+    "& [part=\"spinner\"]": {
+      "display": "inline-flex",
+      "color": "inherit"
+    },
+    "& [part=\"spinner\"][hidden]": {
+      "display": "none"
+    }
+  },
+  "children": [
+    {
+      "tagName": "button",
+      "attributes": {
+        "part": "control",
+        "type": "${state.type}",
+        "disabled": {
+          "$ref": "#/state/disabled"
+        },
+        "aria-disabled": "${state.loading ? 'true' : null}",
+        "aria-busy": "${state.loading ? 'true' : null}",
+        "aria-label": "${state.label || null}",
+        "aria-labelledby": "${state.labelledby || null}",
+        "aria-describedby": "${state.describedby || null}",
+        "popovertarget": "${state.popovertarget || null}",
+        "popovertargetaction": "${state.popovertargetaction || null}",
+        "command": "${state.command || null}",
+        "commandfor": "${state.commandfor || null}"
+      },
+      "children": [
+        {
+          "tagName": "span",
+          "attributes": {
+            "part": "icon"
+          },
+          "children": [
+            {
+              "tagName": "slot",
+              "attributes": {
+                "name": "icon",
+                "part": "icon-slot"
+              }
+            }
+          ]
+        },
+        {
+          "tagName": "span",
+          "attributes": {
+            "part": "label"
+          },
+          "children": [
+            {
+              "tagName": "slot",
+              "attributes": {
+                "part": "label-slot"
+              }
+            }
+          ]
+        },
+        {
+          "tagName": "span",
+          "attributes": {
+            "part": "spinner",
+            "aria-hidden": "true"
+          },
+          "hidden": {
+            "$ref": "#/state/notLoading"
+          },
+          "children": [
+            {
+              "tagName": "jx-icon",
+              "$props": {
+                "name": "spinner",
+                "weight": "bold"
+              },
+              "attributes": {
+                "part": "spinner-icon"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

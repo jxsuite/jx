@@ -105,6 +105,9 @@
   },
   "style": {
     "display": "flex",
+    "&[hidden]": {
+      "display": "none"
+    },
     "alignItems": "center",
     "gap": "var(--jx-space-3)",
     "minHeight": "var(--jx-control-h)",

@@ -75,6 +75,7 @@
   "sidebar-simple": ["regular", "fill"],
   "sliders-horizontal": ["regular"],
   "sparkle": ["regular", "fill"],
+  "spinner": ["regular", "bold"],
   "square": ["regular", "fill"],
   "stack": ["regular", "fill"],
   "stop": ["regular", "fill"],

@@ -2,7 +2,11 @@
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "StylebookIcon",
   "tagName": "main",
-  "$elements": [{ "$ref": "../components/jx-icon.json" }],
+  "$elements": [
+    {
+      "$ref": "../components/jx-icon.json"
+    }
+  ],
   "state": {
     "weights": ["regular", "bold", "fill"],
     "names": [
@@ -82,6 +86,7 @@
       "sidebar-simple",
       "sliders-horizontal",
       "sparkle",
+      "spinner",
       "square",
       "stack",
       "stop",
@@ -139,7 +144,10 @@
     }
   },
   "children": [
-    { "tagName": "h1", "textContent": "jx-icon" },
+    {
+      "tagName": "h1",
+      "textContent": "jx-icon"
+    },
     {
       "tagName": "p",
       "textContent": "Every glyph the kit ships, at regular weight. A label makes an icon announce itself; without one it is decorative."
@@ -149,21 +157,45 @@
       "children": [
         {
           "$prototype": "Array",
-          "items": { "$ref": "#/state/names" },
-          "key": { "$ref": "$map/item" },
+          "items": {
+            "$ref": "#/state/names"
+          },
+          "key": {
+            "$ref": "$map/item"
+          },
           "map": {
             "tagName": "li",
             "children": [
-              { "tagName": "jx-icon", "$props": { "name": { "$ref": "$map/item" } } },
               {
                 "tagName": "jx-icon",
-                "$props": { "name": { "$ref": "$map/item" }, "weight": "bold" }
+                "$props": {
+                  "name": {
+                    "$ref": "$map/item"
+                  }
+                }
               },
               {
                 "tagName": "jx-icon",
-                "$props": { "name": { "$ref": "$map/item" }, "weight": "fill" }
+                "$props": {
+                  "name": {
+                    "$ref": "$map/item"
+                  },
+                  "weight": "bold"
+                }
               },
-              { "tagName": "code", "textContent": "${$map.item}" }
+              {
+                "tagName": "jx-icon",
+                "$props": {
+                  "name": {
+                    "$ref": "$map/item"
+                  },
+                  "weight": "fill"
+                }
+              },
+              {
+                "tagName": "code",
+                "textContent": "${$map.item}"
+              }
             ]
           }
         }

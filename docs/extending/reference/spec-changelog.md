@@ -625,6 +625,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `ui.md`
 
+- **0.1.3-draft** (2026-09-02) — jx-button and jx-action-button are built: one native button each, invoker attributes forwarded, loading and toggling states (§5.1).
 - **0.1.2-draft** (2026-09-02) — jx-menu takes a floor and a submenu flips to its parent's left when it would overflow (§5.1).
 - **0.1.1-draft** (2026-09-02) — jx-menu and jx-menu-item are built (§5.1), with the popover half of the overlay model (§6) and the menu keyboard contract (§7).
 - **0.1.0-draft** (2026-09-02) — Initial release: principles, authoring model, theme and tokens, element catalogue, overlay and keyboard models, icons, build and distribution, Studio integration.

@@ -122,6 +122,16 @@ describe("kit documents", () => {
         }
       });
 
+      test("a host that declares its own display says what hidden means to it", () => {
+        // The runtime gives a custom element `display: block` only when its definition declares
+        // No display; one that does beats the UA's `[hidden]` rule, so it needs its own.
+        const style = (doc.style ?? {}) as Record<string, unknown>;
+        if ("display" in style) {
+          const hiddenRule = style["&[hidden]"] as Record<string, unknown> | undefined;
+          expect(hiddenRule?.display).toBe("none");
+        }
+      });
+
       test("documents every prop", () => {
         for (const [key, entry] of Object.entries(doc.state ?? {})) {
           if (entry && typeof entry === "object" && "default" in entry) {

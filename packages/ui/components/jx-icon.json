@@ -39,6 +39,9 @@
   },
   "style": {
     "display": "inline-flex",
+    "&[hidden]": {
+      "display": "none"
+    },
     "flex": "none",
     "width": "var(--jx-icon-size, 16px)",
     "height": "var(--jx-icon-size, 16px)",
