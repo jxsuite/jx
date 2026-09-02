@@ -648,6 +648,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `ui.md`
 
+- **0.1.10-draft** (2026-09-02) — jx-checkbox, jx-switch and jx-number-field ship (5.3); the value-stepping amendment to principle 5; jx-textfield gains clearable, grows and rows (5.1).
 - **0.1.9-draft** (2026-09-02) — jx-textfield gives its control a default value, so a form reset cannot desync it.
 - **0.1.8-draft** (2026-09-02) — the textfield's error live region is permanent, so the first refusal is announced.
 - **0.1.7-draft** (2026-09-02) — jx-textfield names its error and help sentences in aria-describedby, and forwards labelledby and describedby.

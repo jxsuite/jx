@@ -1,0 +1,253 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StylebookCheckbox",
+  "tagName": "main",
+  "$elements": [
+    {
+      "$ref": "../components/jx-checkbox.json"
+    }
+  ],
+  "state": {
+    "included": true
+  },
+  "style": {
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "color": "var(--jx-fg)",
+    "background": "var(--jx-bg)",
+    "padding": "var(--jx-space-6)",
+    "minHeight": "100vh",
+    "& > h1": {
+      "fontSize": "var(--jx-text-lg)",
+      "fontWeight": "600",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& > h2": {
+      "fontSize": "var(--jx-text-md)",
+      "fontWeight": "600",
+      "color": "var(--jx-fg-dim)",
+      "margin": "var(--jx-space-6) 0 var(--jx-space-3)"
+    },
+    "& > p": {
+      "color": "var(--jx-fg-dim)",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& [role=\"group\"]": {
+      "display": "flex",
+      "alignItems": "flex-start",
+      "flexWrap": "wrap",
+      "gap": "var(--jx-space-4)",
+      "margin": "0 0 var(--jx-space-4)"
+    },
+    "& [role=\"group\"] > span": {
+      "color": "var(--jx-fg-muted)",
+      "fontSize": "var(--jx-text-sm)"
+    },
+    "& code": {
+      "fontFamily": "var(--jx-font-mono)",
+      "color": "var(--jx-tag)"
+    }
+  },
+  "children": [
+    {
+      "tagName": "h1",
+      "textContent": "jx-checkbox"
+    },
+    {
+      "tagName": "p",
+      "textContent": "A native checkbox inside the label that names it. Ticked, clear and mixed are properties of the control, so a host write still moves the box after the reader has touched it."
+    },
+    {
+      "tagName": "h2",
+      "textContent": "Bound state"
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "role": "group",
+        "aria-label": "Bound state"
+      },
+      "children": [
+        {
+          "tagName": "jx-checkbox",
+          "$props": {
+            "checked": {
+              "$ref": "#/state/included"
+            }
+          },
+          "textContent": "Include in the build",
+          "onchange": {
+            "$prototype": "Function",
+            "body": [
+              {
+                "operator": "=",
+                "target": {
+                  "$ref": "#/state/included"
+                },
+                "value": {
+                  "$ref": "event#/target/checked"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "tagName": "span",
+          "textContent": "${state.included ? 'included' : 'left out'}"
+        }
+      ]
+    },
+    {
+      "tagName": "h2",
+      "textContent": "In a field row"
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "class": "jx-field-row",
+        "data-prop": "visible"
+      },
+      "children": [
+        {
+          "tagName": "label",
+          "attributes": {
+            "class": "jx-field-label",
+            "id": "cb-visible-label"
+          },
+          "textContent": "Visible"
+        },
+        {
+          "tagName": "jx-checkbox",
+          "$props": {
+            "labelledby": "cb-visible-label",
+            "describedby": "cb-visible-help",
+            "checked": true
+          }
+        },
+        {
+          "tagName": "p",
+          "attributes": {
+            "class": "jx-help-text",
+            "id": "cb-visible-help"
+          },
+          "textContent": "A hidden layer is still exported."
+        }
+      ]
+    },
+    {
+      "tagName": "h2",
+      "textContent": "States"
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "role": "group",
+        "aria-label": "States"
+      },
+      "children": [
+        {
+          "tagName": "jx-checkbox",
+          "textContent": "Clear"
+        },
+        {
+          "tagName": "jx-checkbox",
+          "$props": {
+            "checked": true
+          },
+          "textContent": "Ticked"
+        },
+        {
+          "tagName": "jx-checkbox",
+          "$props": {
+            "indeterminate": true
+          },
+          "textContent": "Mixed"
+        },
+        {
+          "tagName": "jx-checkbox",
+          "$props": {
+            "disabled": true
+          },
+          "textContent": "Disabled"
+        },
+        {
+          "tagName": "jx-checkbox",
+          "$props": {
+            "checked": true,
+            "disabled": true
+          },
+          "textContent": "Ticked and disabled"
+        }
+      ]
+    },
+    {
+      "tagName": "h2",
+      "textContent": "Sizes"
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "role": "group",
+        "aria-label": "Sizes"
+      },
+      "children": [
+        {
+          "tagName": "jx-checkbox",
+          "$props": {
+            "size": "sm",
+            "checked": true
+          },
+          "textContent": "Small"
+        },
+        {
+          "tagName": "jx-checkbox",
+          "$props": {
+            "checked": true
+          },
+          "textContent": "Medium"
+        },
+        {
+          "tagName": "jx-checkbox",
+          "$props": {
+            "size": "lg",
+            "checked": true
+          },
+          "textContent": "Large"
+        }
+      ]
+    },
+    {
+      "tagName": "h2",
+      "textContent": "Slotted markup, and a bare box"
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "role": "group",
+        "aria-label": "Slotted markup"
+      },
+      "children": [
+        {
+          "tagName": "jx-checkbox",
+          "children": [
+            "Register ",
+            {
+              "tagName": "code",
+              "textContent": "<my-element>"
+            }
+          ]
+        },
+        {
+          "tagName": "jx-checkbox",
+          "$props": {
+            "label": "Select every row"
+          }
+        },
+        {
+          "tagName": "span",
+          "textContent": "The bare box has no slotted text, so its label collapses and its name is the label prop."
+        }
+      ]
+    }
+  ]
+}

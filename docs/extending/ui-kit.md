@@ -5,6 +5,7 @@ spec:
   - ui.md#1 # what the kit is
   - ui.md#4 # theme and tokens
   - ui.md#5 # the element catalogue
+  - ui.md#5.3 # forms
   - ui.md#8 # icons
   - ui.md#9 # build and distribution
 code:
@@ -12,6 +13,8 @@ code:
   - packages/ui/src/theme.ts
   - packages/ui/src/icons.ts
   - packages/ui/src/behaviors/menu.ts
+  - packages/ui/src/behaviors/textfield.ts
+  - packages/ui/src/behaviors/number-field.ts
 ---
 
 # The Jx UI kit
@@ -98,6 +101,82 @@ It is `quiet` by default. `emphasized` draws the selected state in the accent. `
 ```
 
 The native `input` and `change` events bubble from the field as they always do. `invalid` marks a refused value and reaches the control as `aria-invalid`; `error` draws the sentence explaining it under the field and announces it as it changes; `help` draws a sentence of guidance. Each sentence carries an id the control names in `aria-describedby`, the error first, so a reader who tabs away and back hears why the value was refused rather than only catching the announcement once. `labelledby` and `describedby` forward to the control as well, and your own `describedby` is read after the field's own two sentences. `type` is any text-like input type, `size` is `sm`, `md` or `lg`, and `mono` draws the value in the monospace face for a path, a selector or a colour. `name`, `autocomplete`, `disabled`, `readonly` and `required` forward to the control. The control carries the field's value as its default value too, so resetting a form the field sits in leaves the control saying what the field says rather than emptying it: the value is the field's own state, and putting a different value back is a write of `value` from the host. To focus the field and select its value from a host, call `selectValue(host, "all" | "stem" | "none")` or `focusField(host)` from `@jxsuite/ui/behaviors/textfield`.
+
+`clearable` adds a clear button inside the field, shown only while there is something to clear. Clicking it empties the value, puts focus back in the control and fires `input` and `change` from the field. Escape does the same from the keyboard. Both are keyed on `clearable` rather than on `type="search"`, because Firefox draws no clear button for a search field, and both go away on a `disabled` or `readonly` field so the reader is never handed a live control that empties a field they were refused permission to edit. On a single-line search field the element also cancels Enter, which would otherwise submit the form around it; on a textarea Enter still inserts a line.
+
+`grows` hands a multiline field's height to the content in it. Give `rows` as well to set a floor. On a browser without `field-sizing`, the field falls back to the height its `rows` asks for, or to the same three-row box a fixed field gets, so turning growth on never makes a field shorter.
+
+## Checkboxes and switches
+
+`jx-checkbox` and `jx-switch` each wrap one native checkbox inside the `<label>` that names it, so a click anywhere on the label toggles it and Space works with no code. Use a checkbox for "this item is included" and a switch for "this setting is on". The switch carries `role="switch"`, which is what makes a screen reader say on and off instead of checked and unchecked.
+
+```json
+{
+  "tagName": "jx-checkbox",
+  "$props": { "label": "Include drafts", "checked": { "$ref": "#/state/drafts" } }
+}
+```
+
+Put the visible text inside the element instead of in `label` when it carries markup, and leave `label` unset: the slotted text names the box on its own, and setting both would name it twice.
+
+`indeterminate` is the checkbox's third state, for a box that stands for a set where some members are on. It is the reason this is an element at all: HTML has no `indeterminate` attribute, so a mixed box cannot be expressed in markup. Clicking a mixed box clears it and turns the box on, the way the platform does.
+
+`jx-switch` takes a `hint`, which becomes the title on the control. Both take `label`, `labelledby`, `describedby`, `name`, `disabled` and `size`.
+
+:::doc-note
+Resetting a form these controls sit in leaves them where the reader left them, rather than snapping back. They are not form-associated yet, so a reset never reaches them; the control's default is kept in step with its live value so the two can never say different things. Putting a value back is a write from the host.
+:::
+
+## Number fields
+
+`jx-number-field` wraps a native number input, so the platform supplies the spinbutton role, the announced value, arrow-key stepping and the numeric keypad on a phone. `stepper` adds a pair of buttons. Holding Shift with an arrow key moves ten steps.
+
+```json
+{
+  "tagName": "jx-number-field",
+  "$props": { "label": "Opacity", "min": "0", "max": "1", "step": "0.1", "stepper": true }
+}
+```
+
+`value`, `min`, `max` and `step` are strings, not numbers. That is deliberate: an empty string is a value a number cannot express, and a numeric prop would turn a cleared field into a zero. Read the number back with `event.target.valueAsNumber`, which is `NaN` when the field is empty.
+
+Stepping goes through the control's own `stepUp` and `stepDown`, so a value sits on the step grid measured from `min`. Adding the step yourself does not: with `min` 0 and `step` 0.3, stepping up from 0.5 gives 0.6, and 0.5 plus 0.3 gives 0.8.
+
+:::doc-warning
+A number input throws away what it cannot parse, so a half-typed `1e` and a cleared field both read as an empty string. Before deleting a value because the field is empty, check `badInput` on the element, or its `data-bad-input` attribute. It is true while the reader is mid-way through typing something the control cannot represent yet.
+:::
+
+## Field rows
+
+The kit ships plain CSS classes for the parts of a form that are not controls, so the label stays a `<label>` and the message stays a `<p>`:
+
+```json
+{
+  "tagName": "div",
+  "className": "jx-field-row",
+  "attributes": { "data-prop": "title" },
+  "children": [
+    {
+      "tagName": "label",
+      "className": "jx-field-label",
+      "attributes": { "id": "f-title" },
+      "textContent": "Title"
+    },
+    {
+      "tagName": "jx-textfield",
+      "$props": { "labelledby": "f-title", "describedby": "f-title-help" }
+    },
+    {
+      "tagName": "p",
+      "className": "jx-help-text",
+      "attributes": { "id": "f-title-help" },
+      "textContent": "Shown in search results."
+    }
+  ]
+}
+```
+
+`jx-field-row` is a two-column grid with a full-width third cell for the message. `data-span` gives the control the whole width, and `data-invalid` and `data-warning` colour the label. `jx-field-label` takes `data-required` to draw a required mark, which is drawn rather than added to the text so it stays out of the control's name. Add `jx-help-text--error` for a refusal. The other recipes are `jx-divider`, `jx-table`, `jx-kbd`, `jx-badge` and `jx-dot`.
 
 ## Dialogs
 

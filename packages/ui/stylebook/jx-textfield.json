@@ -22,6 +22,11 @@
       "fontWeight": "600",
       "margin": "0 0 var(--jx-space-5)"
     },
+    "& > h2": {
+      "fontSize": "var(--jx-text-md)",
+      "fontWeight": "600",
+      "margin": "var(--jx-space-6) 0 var(--jx-space-3)"
+    },
     "& > p": {
       "color": "var(--jx-fg-dim)",
       "margin": "0 0 var(--jx-space-5)"
@@ -188,6 +193,127 @@
             "multiline": true,
             "value": "A textarea,\nwith the same contract."
           }
+        }
+      ]
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "role": "group",
+        "aria-label": "Clearable at every size"
+      },
+      "children": [
+        {
+          "tagName": "jx-textfield",
+          "$props": {
+            "label": "Filter, small",
+            "type": "search",
+            "size": "sm",
+            "clearable": true,
+            "placeholder": "Search\u2026",
+            "value": "about"
+          }
+        },
+        {
+          "tagName": "jx-textfield",
+          "$props": {
+            "label": "Filter",
+            "type": "search",
+            "clearable": true,
+            "placeholder": "Search\u2026",
+            "value": "about"
+          }
+        },
+        {
+          "tagName": "jx-textfield",
+          "$props": {
+            "label": "Filter, large",
+            "type": "search",
+            "size": "lg",
+            "clearable": true,
+            "placeholder": "Search\u2026",
+            "value": "about"
+          }
+        },
+        {
+          "tagName": "jx-textfield",
+          "$props": {
+            "label": "Filter, disabled",
+            "type": "search",
+            "clearable": true,
+            "disabled": true,
+            "value": "about"
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "role": "group",
+        "aria-label": "Growing"
+      },
+      "children": [
+        {
+          "tagName": "jx-textfield",
+          "$props": {
+            "label": "Description",
+            "multiline": true,
+            "grows": true,
+            "rows": "2",
+            "value": "A textarea that takes the height of its text."
+          }
+        },
+        {
+          "tagName": "jx-textfield",
+          "$props": {
+            "label": "Summary",
+            "multiline": true,
+            "grows": true,
+            "clearable": true,
+            "value": "No rows asked for, so an engine without field-sizing keeps the three-row box a fixed field gets."
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "h2",
+      "textContent": "In a field row"
+    },
+    {
+      "tagName": "p",
+      "textContent": "The row, its label and its help sentence are recipes \u2014 native elements the theme sheet styles. The label is not wrapped around the control, so it names it by id through labelledby, and the help sentence describes it the same way."
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "class": "jx-field-row",
+        "data-prop": "title"
+      },
+      "children": [
+        {
+          "tagName": "label",
+          "attributes": {
+            "class": "jx-field-label",
+            "id": "sb-title-label"
+          },
+          "textContent": "Title"
+        },
+        {
+          "tagName": "jx-textfield",
+          "$props": {
+            "labelledby": "sb-title-label",
+            "describedby": "sb-title-help",
+            "placeholder": "Untitled"
+          }
+        },
+        {
+          "tagName": "p",
+          "attributes": {
+            "class": "jx-help-text",
+            "id": "sb-title-help"
+          },
+          "textContent": "Shown in the Library and in the browser tab."
         }
       ]
     }
