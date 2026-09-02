@@ -4,6 +4,9 @@ description: "How state crosses component boundaries in Jx: explicit $props, sig
 spec:
   - spec.md#13
   - spec.md#15
+  - spec.md#16.5
+code:
+  - packages/runtime/src/runtime.ts
 ---
 
 # Props and scope
@@ -89,6 +92,37 @@ When a name is looked up, scopes are consulted in order:
 3. Explicitly passed `$props`
 4. `window` globals
 5. `document` globals
+
+## Attribute props
+
+A component that lists an entry in `observedAttributes` can also be given that prop from markup, which is how a component reached from plain HTML or from another framework gets its values:
+
+```json
+{
+  "tagName": "my-card",
+  "observedAttributes": ["title", "count", "featured"],
+  "state": {
+    "title": { "type": "string", "default": "Untitled", "attribute": "title" },
+    "count": { "type": "number", "default": 1, "attribute": "count" },
+    "featured": { "type": "boolean", "default": false, "attribute": "featured" }
+  }
+}
+```
+
+An attribute is text, so it is coerced by the entry's type on the way in: a `string` is taken as written, a `number` goes through `Number()`, and a `boolean` is read by presence, where the literal text `false` counts as absent. An attribute already on the element when it connects is read before `$props` are merged, so a property a parent set still wins.
+
+**Removing an attribute restores the entry's declared default**, rather than leaving the prop holding nothing:
+
+```html
+<my-card title="Hello" count="7"></my-card>
+<!-- After removeAttribute("count"): count is 1, its declared default, not 0 -->
+```
+
+That is what makes a numeric prop able to say "unset". A component whose entry is declared in the shorthand form (`"title": "Untitled"`) has that literal as its default; a computed entry, one written with `$expression`, `$prototype`, `$ref` or `$src`, has no default and a removal leaves it alone.
+
+:::doc-tip
+Give any prop you expect a host to clear a `default` you would be happy to see. It is the value the prop returns to, and it is the value a reader gets after any code path removes the attribute.
+:::
 
 ## How it works
 

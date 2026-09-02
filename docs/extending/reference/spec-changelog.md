@@ -382,6 +382,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `spec.md`
 
+- **0.6.13-draft** (2026-09-02) — Removing an observed attribute restores the state entry's declared default (§16.5).
 - **0.6.12-draft** (2026-09-02) — a linked `area` owes an accessible name, which its `alt` supplies (§8.8).
 - **0.6.11-draft** (2026-09-02) — the container rules honour aria-owns.
 - **0.6.10-draft** (2026-09-02) — @keyframes emits as one unscoped block, with keyframe selectors taken verbatim.

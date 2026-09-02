@@ -3421,18 +3421,65 @@ function getPath(obj: unknown, path: string) {
  * (spec §16.5): a number parses, a boolean is presence (`"false"` counts as absent), and anything
  * else is the string. Shared by connection and `attributeChangedCallback` so the two cannot
  * disagree.
+ *
+ * REMOVING an attribute restores the entry's DECLARED DEFAULT rather than writing the absence
+ * through. `attributeChangedCallback` reports a removal as `null`, and writing that through gave a
+ * `type: "string"` entry the value `null` and a `type: "number"` entry `Number(null)`, which is 0 —
+ * so a numeric prop could never express "unset" and a string prop stopped matching its own declared
+ * type. The default is the value the entry had before anyone set the attribute, which is what the
+ * removal is asking to go back to.
+ *
+ * @param defaults The declared defaults by state key; a key absent from it has none.
  */
-function absorbAttribute(state: JxScope, name: string, value: string | null): void {
+function absorbAttribute(
+  state: JxScope,
+  name: string,
+  value: string | null,
+  defaults?: ReadonlyMap<string, unknown>,
+): void {
   const camelKey = name.replaceAll(/-([a-z])/g, (_: string, c: string) => c.toUpperCase());
   const current = state[camelKey];
-  if (typeof current === "number") {
-    state[camelKey] = Number(value);
-  } else if (typeof current === "boolean") {
+  if (typeof current === "boolean") {
+    // Presence IS the value for a boolean, so a removal is already spelled by the same rule.
     state[camelKey] = value !== null && value !== "false";
-  } else {
-    state[camelKey] = value;
+    return;
   }
+  if (value === null) {
+    const declared = defaults?.get(camelKey);
+    state[camelKey] = declared === undefined ? (typeof current === "number" ? 0 : "") : declared;
+    return;
+  }
+  state[camelKey] = typeof current === "number" ? Number(value) : value;
 }
+
+/**
+ * The declared default of every state entry that has one, by state key.
+ *
+ * @param def The element definition
+ * @returns {Map<string, unknown>} Key → default
+ */
+function declaredDefaults(def: JxElement): Map<string, unknown> {
+  const out = new Map<string, unknown>();
+  for (const [key, entry] of Object.entries(def.state ?? {})) {
+    if (entry !== null && typeof entry === "object") {
+      const obj = entry as Record<string, unknown>;
+      if ("default" in obj) {
+        out.set(key, obj["default"]);
+        continue;
+      }
+      // A computed entry has no default: its value is produced, and a removal leaves it alone.
+      if (COMPUTED_STATE_KEYS.some((marker) => marker in obj)) {
+        continue;
+      }
+    }
+    // The shorthand `{ "label": "none" }` IS the default, the same way `buildScope` reads it.
+    out.set(key, entry);
+  }
+  return out;
+}
+
+/** The markers that make a state entry produced rather than authored. */
+const COMPUTED_STATE_KEYS = ["$expression", "$prototype", "$ref", "$src"] as const;
 
 /** Keys already reported, so a component rendered in a loop warns once rather than per instance. */
 const _privatePropWarned = new Set<string>();
@@ -3944,7 +3991,14 @@ export async function defineElement(source: string | JxDocument, baseUrl?: strin
       if (!this._state || oldVal === newVal) {
         return;
       }
-      absorbAttribute(this._state, name, newVal);
+      // The CURRENT definition's defaults, so a redefinition (embedding.md §7) that changes one
+      // Reaches an instance that is already connected.
+      absorbAttribute(
+        this._state,
+        name,
+        newVal,
+        declaredDefaults(_elementDefs.get(tagName)?.doc ?? initialDef),
+      );
     }
   };
 
