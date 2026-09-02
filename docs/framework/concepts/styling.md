@@ -106,7 +106,33 @@ Most `@` keys wrap selectors: a [breakpoint](#named-media-breakpoints), `@suppor
 }
 ```
 
-`@keyframes` is not one of them: its body is percentage stops, which is a third shape again.
+`@keyframes` is not one of them. It is the third shape, and its own section.
+
+### Animations with `@keyframes`
+
+A `@keyframes` key holds **keyframe selectors**: `from`, `to`, a percentage, or a comma-separated list of those. They name points on a timeline rather than elements, so nothing is scoped to the element that declared the block, and the whole block is written once:
+
+```json
+{
+  "style": {
+    "animation": "toast-in 180ms ease-out",
+    "@keyframes toast-in": {
+      "from": { "opacity": "0", "translate": "0 1rem" },
+      "to": { "opacity": "1", "translate": "0 0" }
+    }
+  }
+}
+```
+
+That emits the animation declaration on the element and `@keyframes toast-in { from { … } to { … } }` into the document, exactly as you would write it in a stylesheet.
+
+Three things follow from an animation name being global to the document:
+
+- **One name, one definition.** Where two `@keyframes` rules share a name, the browser keeps the last and ignores every earlier one. Two elements declaring different bodies under one name will not both get what they asked for.
+- **The block is written once and shared.** Any number of elements may name the same animation; the rule is hoisted for the document and released when the last of them lets go.
+- **A stop cannot hold a reactive value.** A `${...}` template or a `{ "$ref": ... }` inside a stop is dropped rather than emitted. Reactive values are delivered through a custom property set on the one element that declared them, and a shared block has no such element to read from. Animate a custom property from the element instead, and let the stops reference it with `var()`.
+
+A `@keyframes` block may sit inside a breakpoint or a `@supports` block, and keeps that wrapper.
 
 ## Named media breakpoints
 

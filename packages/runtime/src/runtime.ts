@@ -32,6 +32,7 @@ import {
   buildStyleRules,
   cssPropertyName,
   hashCss,
+  isKeyframesAtRule,
   isNestedSelectorKey,
   transposeCanvasOverlaySelector,
 } from "./css.ts";
@@ -1973,6 +1974,12 @@ export function documentStyleText(doc: Document = document): string {
  * on the source rather than on the element, and it is a deep one on purpose: an inline default
  * would beat a `:hover` or `@media` `display` just as surely as a base one.
  *
+ * A `@keyframes` block is the one thing the walk does NOT descend into. A `display` in a keyframe
+ * stop is a point on a timeline, not a declaration on this element — animating `display` is the
+ * ordinary shape of an `allow-discrete` reveal — so counting one as the author's own left the
+ * element with no `display` at all, and a custom element with no `display` is `inline`. The element
+ * laid out wrongly whenever it was still, which is most of the time.
+ *
  * @param {JxStyle | undefined} style
  * @returns {boolean}
  */
@@ -1983,6 +1990,9 @@ function declaresDisplay(style: JxStyle | undefined): boolean {
   for (const [key, value] of Object.entries(style)) {
     if (key === "display") {
       return true;
+    }
+    if (isKeyframesAtRule(key)) {
+      continue;
     }
     if (value !== null && typeof value === "object" && declaresDisplay(value as JxStyle)) {
       return true;
@@ -3520,15 +3530,17 @@ export {
   cssRuleText,
   hashCss,
   isDeclarationAtRule,
+  isKeyframesAtRule,
   isNestedSelectorKey,
   pureSchemeOf,
   resolveAtQuery,
   resolveNestedSelector,
   schemeSelectors,
+  splitSelectorList,
   transposeCanvasOverlaySelector,
   transposeCanvasPopoverSelector,
 } from "./css.ts";
-export type { CssBuildOptions, CssRule, CssRuleTarget } from "./css.ts";
+export type { CssBuildOptions, CssKeyframeBlock, CssRule, CssRuleTarget } from "./css.ts";
 
 /**
  * Convert a style rules object to a CSS text string (skipping nested selectors).

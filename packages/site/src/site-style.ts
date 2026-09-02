@@ -20,6 +20,7 @@
 import {
   buildStyleRules,
   isDeclarationAtRule,
+  isKeyframesAtRule,
   isNestedSelectorKey,
   pureSchemeOf,
 } from "@jxsuite/runtime/css";
@@ -86,9 +87,11 @@ export function buildSiteStyleCSS(
   push(bodyProps, "body");
 
   for (const [atKey, block] of condBlocks) {
-    /* A declaration-body at-rule has no selector to split across, and the name it declares is
-       document-global — one block, not one per target. */
-    if (isDeclarationAtRule(atKey)) {
+    /* An unscoped at-rule has no selector to split across, and the name it declares is
+       document-global — one block, not one per target. A split `@keyframes` is the costly case:
+       each half is valid CSS, and the last definition of a name replaces every earlier one, so the
+       animation silently keeps only the stop that was emitted last. */
+    if (isDeclarationAtRule(atKey) || isKeyframesAtRule(atKey)) {
       push({ [atKey]: block }, null);
       continue;
     }

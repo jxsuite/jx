@@ -382,6 +382,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `spec.md`
 
+- **0.6.10-draft** (2026-09-02) — @keyframes emits as one unscoped block, with keyframe selectors taken verbatim.
 - **0.6.9-draft** (2026-09-02) — Accessibility rules (§8.8): nine static rules over the overlay walker, each citing its WCAG criterion, with WAI-ARIA, accname and WCAG alignment rows.
 - **0.6.8-draft** (2026-09-02) — A nested style key or its scope may be a selector list; nested blocks distribute over every member (§9.2).
 - **0.6.7-draft** (2026-09-02) — Overlays: popover, dialog and invoker commands (§8.7) — the dialog and command rules a document is held to, beside the popover ones; the WHATWG HTML row binds it.
@@ -519,6 +520,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `studio.md`
 
+- **0.10.9-draft** (2026-09-02) — A selection move fires the reveal rule, and an explicit close stays closed: the rule must not observe the open state it writes (§4.2.2).
 - **0.10.8-draft** (2026-09-02) — Dialogs, invoker commands and inert on the canvas: de-linked on stamped nodes, one open dialog per tab, canvas.setDialogOpen and the commandTargetClick report (§4.2.3).
 - **0.10.7-draft** (2026-09-02) — §1, §2 self-hosting and §11 name the UI kit; §11.2 states the shell's unsafe-eval requirement.
 - **0.10.6-draft** (2026-09-01) — Change review: node-level diff marks on both artboards, a change stepper, a code comparison for every changed file, and revalidation after a save.

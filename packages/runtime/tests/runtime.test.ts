@@ -22,6 +22,7 @@ import {
   booleanAttrValue,
   enumeratedAttrNames,
   isDeclarationAtRule,
+  isKeyframesAtRule,
   releaseElementStyles,
   resetDocumentStyles,
 } from "../src/runtime";
@@ -2528,12 +2529,18 @@ describe("applyStyle — declaration-body at-rules", () => {
     expect(elementCSS(el)).toContain("@media (min-width: 40rem) { [data-jx=");
   });
 
-  test("isDeclarationAtRule knows the four, and rejects the rule-bodied ones", () => {
+  test("isDeclarationAtRule knows the four, and rejects every other body shape", () => {
     for (const key of ["@position-try --x", "@property --y", "@font-face", "@counter-style c"]) {
       expect(isDeclarationAtRule(key)).toBe(true);
     }
-    for (const key of ["@media screen", "@supports (x: y)", "@starting-style", "@keyframes spin"]) {
+    for (const key of ["@media screen", "@supports (x: y)", "@starting-style"]) {
       expect(isDeclarationAtRule(key)).toBe(false);
     }
+    /* `@keyframes` is a THIRD shape rather than a rule-bodied one — its children are keyframe
+       selectors, not element selectors — so it has its own predicate and its own serializer.
+       Adding it here instead would emit nothing at all: every child of the block is a block,
+       `declarationsOf` skips blocks, and a rule with no declarations is never written. */
+    expect(isDeclarationAtRule("@keyframes spin")).toBe(false);
+    expect(isKeyframesAtRule("@keyframes spin")).toBe(true);
   });
 });
