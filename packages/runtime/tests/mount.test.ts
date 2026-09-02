@@ -155,6 +155,23 @@ describe("mount — the host scope", () => {
     expect(host.textContent).toBe("2");
   });
 
+  test("a reactive record handed in as the scope itself stays live, field by field", async () => {
+    const model = reactive({ label: "a", n: 1 });
+    const m = await mount(
+      { tagName: "span", textContent: "${state.label}/${state.n}", state: { n: 5 } },
+      host,
+      { scope: model },
+    );
+    // A primitive field is read through, not copied; the document's own `n` still wins.
+    expect(host.textContent).toBe("a/5");
+    model.label = "b";
+    await tick();
+    expect(host.textContent).toBe("b/5");
+    // A write through the scope reaches the host's record.
+    m.scope.label = "c";
+    expect(model.label).toBe("c");
+  });
+
   test("a document state entry wins a name clash with the host", async () => {
     await mount({ tagName: "span", textContent: "${state.n}", state: { n: 5 } }, host, {
       scope: { n: 1 },

@@ -227,6 +227,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `schema.md`
 
+- **0.4.9-draft** (2026-09-02) — ArrayNamespace gains key, a $map/item pointer.
 - **0.4.8-draft** (2026-08-16) — §3.5 documents, configs and class definitions cross the parse boundary in NFC (UAX #31 §R4).
 - **0.4.7-draft** (2026-08-16) — §3.2 language-tag keys carry a BCP 47 pattern, so author-time and build-time agree; gap:bcp47-locale-validation closed.
 - **0.4.6-draft** (2026-08-16) — §3.2 and §7: BCP 47 validation exists in the build; the schema is the half that still lacks it.
@@ -378,6 +379,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `spec.md`
 
+- **0.6.2-draft** (2026-09-02) — §10.4 Keys: mapped arrays reconcile by key, rows keep their nodes and effects, reconciliation is batched per microtask; §14.1 each switch case owns a scope.
 - **0.6.1-draft** (2026-09-02) — Lifecycle hooks at the mount boundary (§16.4) and the Studio shell as an interpreter host (§21.3).
 - **0.6.0-draft** (2026-09-01) — Styling: every declaration in a style object becomes a CSS rule; the runtime delivers them through document.adoptedStyleSheets (new 9.6). Nesting composes in either order to any depth, so 9.2's compiler limitation is gone.
 - **0.5.9-draft** (2026-08-31) — popover is enumerated and emitted through the presence branch; declaration-body at-rules (@position-try, @property) emit verbatim; all four boolean-attribute writers now defer to booleanAttrValue.

@@ -24,10 +24,10 @@ This page is generated from the `> **Status: …**` markers in the specification
 | `jx-markdown.md`          | 0.1.10-draft | Partial     | 2026-08-31 |
 | `parser.md`               | 0.2.10-draft | Partial     | 2026-08-27 |
 | `relationships.md`        | 0.1.4-draft  | Partial     | 2026-08-15 |
-| `schema.md`               | 0.4.8-draft  | Partial     | 2026-08-16 |
+| `schema.md`               | 0.4.9-draft  | Partial     | 2026-09-02 |
 | `server.md`               | 0.2.23       | Implemented | 2026-08-31 |
 | `site-architecture.md`    | 0.6.10-draft | Partial     | 2026-08-29 |
-| `spec.md`                 | 0.6.1-draft  | Partial     | 2026-09-02 |
+| `spec.md`                 | 0.6.2-draft  | Partial     | 2026-09-02 |
 | `standards.md`            | 0.1.15-draft | Partial     | 2026-08-17 |
 | `studio-ui-guidelines.md` | 0.3.16       | Implemented | 2026-08-27 |
 | `studio.md`               | 0.10.6-draft | Partial     | 2026-09-01 |

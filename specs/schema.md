@@ -2,9 +2,9 @@
 
 ## JSON Schema 2020-12 Meta-Schema Generator
 
-**Version:** 0.4.8-draft\
+**Version:** 0.4.9-draft\
 **Status:** Partial\
-**Updated:** 2026-08-16\
+**Updated:** 2026-09-02\
 **License:** MIT
 
 ---
@@ -74,7 +74,7 @@ All 13 built-in prototypes with their specific configuration properties:
 - `LocalStorage` / `SessionStorage` — key, default value
 - `Cookie` — name, maxAge, path, domain, secure, sameSite
 - `IndexedDB` — database, version, store, indexes, keyPath
-- `Array` — items, map, filter, sort
+- `Array` — items, map, filter, sort, key (a `$map/item` pointer; spec.md §10.4)
 - `Set` / `Map` — default values
 - `Blob` — parts, type
 - `ReadableStream` — (stub)
@@ -232,6 +232,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.4.9-draft** (2026-09-02) — ArrayNamespace gains key, a $map/item pointer.
 - **0.4.8-draft** (2026-08-16) — §3.5 documents, configs and class definitions cross the parse boundary in NFC (UAX #31 §R4).
 - **0.4.7-draft** (2026-08-16) — §3.2 language-tag keys carry a BCP 47 pattern, so author-time and build-time agree; gap:bcp47-locale-validation closed.
 - **0.4.6-draft** (2026-08-16) — §3.2 and §7: BCP 47 validation exists in the build; the schema is the half that still lacks it.
@@ -260,4 +261,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_`@jxsuite/schema` Specification v0.4.8-draft_
+_`@jxsuite/schema` Specification v0.4.9-draft_

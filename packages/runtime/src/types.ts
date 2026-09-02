@@ -58,6 +58,7 @@ export interface JxMountOptions {
   /** Aborting disposes the mount; an already-aborted signal mounts nothing. */
   signal?: AbortSignal;
   onNodeCreated?: JxRenderOptions["onNodeCreated"];
+  onNodeMoved?: JxRenderOptions["onNodeMoved"];
 }
 
 /** A mounted document: its live scope, its root node, and the disposer that tears it down. */
@@ -103,6 +104,12 @@ export interface JxRenderOptions {
     def: JxElement | string,
     state?: JxScope,
   ) => void;
+  /**
+   * Called when a keyed mapped-array row is reused at a new index. The node is the same one
+   * `onNodeCreated` reported; `path` is its new document path, so a host that stamped the old one
+   * can re-stamp it.
+   */
+  onNodeMoved?: (node: HTMLElement | Text, path: JxPath) => void;
 }
 
 export interface DynamicClass {
