@@ -69,6 +69,19 @@ describe("buildSiteStyleCSS", () => {
     expect(css).toBe("@font-face { font-family: Jx; src: url(/a.woff2) }");
   });
 
+  test("a project-level @keyframes is ONE block, not one rule per stop", () => {
+    /* This path decomposed an `@` block itself before the builder ever saw it, so it pushed one
+       call per sub-key with the stop as the SCOPE — output that looks like valid CSS and is not:
+       the last definition of a `@keyframes` name replaces every earlier one, so a site-wide
+       animation kept only its final stop. */
+    const css = buildSiteStyleCSS(
+      { "@keyframes toast-in": { from: { opacity: "0" }, to: { opacity: "1" } } },
+      {},
+      id,
+    );
+    expect(css).toBe("@keyframes toast-in { from { opacity: 0 } to { opacity: 1 } }");
+  });
+
   /*
    * A media TYPE is bare. `@media (print)` reads as a boolean media feature named `print`, which
    * does not exist, so the canvas silently dropped every print rule.

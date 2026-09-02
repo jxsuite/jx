@@ -17,7 +17,7 @@ import {
   transposeCanvasPopoverSelector,
   transposeCanvasUnits,
 } from "../src/runtime";
-import { elementCSS } from "./style-text.ts";
+import { adoptedCSS, elementCSS } from "./style-text.ts";
 
 try {
   GlobalRegistrator.register();
@@ -164,6 +164,72 @@ describe("applyStyle viewport transpose", () => {
     const on = document.createElement("div");
     applyStyle(on, { height: "100vh" });
     expect(elementCSS(off)).not.toBe(elementCSS(on));
+  });
+});
+
+// ─── applyStyle @keyframes ──────────────────────────────────────────────────────
+
+describe("applyStyle @keyframes", () => {
+  /** A node the studio has stamped, which is what the canvas rewrites are gated on. */
+  function stamped(tag = "div"): HTMLElement {
+    const el = document.createElement(tag);
+    el.dataset.jxPath = '["children",0]';
+    document.body.append(el);
+    return el;
+  }
+
+  test("the block reaches the document sheet whole, and the element's handle is nowhere in it", () => {
+    /* The Studio toast lost its entry animation here: the emitter walked the keyframes body
+       carrying the element scope, so the sheet got `@keyframes toast-in { [data-jx="…"] from { … } }`
+       — which a browser parses into a keyframes rule holding no keyframes at all, while the
+       `animation` declaration beside it still names a live animation. */
+    const el = document.createElement("div");
+    document.body.append(el);
+    applyStyle(el, {
+      animation: "kf-toast 180ms ease-out",
+      "@keyframes kf-toast": { from: { opacity: "0" }, to: { opacity: "1" } },
+    });
+    const adopted = adoptedCSS();
+    expect(adopted).toContain("@keyframes kf-toast { from { opacity: 0 } to { opacity: 1 } }");
+    // The animation and its keyframes both land, and the scope stays out of the stops.
+    expect(elementCSS(el)).toContain("animation: kf-toast 180ms ease-out");
+    const keyframeLine = adopted.split("\n").find((line) => line.includes("kf-toast {"));
+    expect(keyframeLine).not.toContain("data-jx");
+  });
+
+  test("two elements naming one animation hoist ONE copy, released with the last of them", () => {
+    // The `@font-face` path: document-global by name, refcounted by text.
+    const style = { "@keyframes kf-shared": { from: { opacity: "0" } } };
+    const a = document.createElement("div");
+    const b = document.createElement("div");
+    document.body.append(a, b);
+    applyStyle(a, style);
+    applyStyle(b, style);
+    const lines = adoptedCSS()
+      .split("\n")
+      .filter((line) => line.includes("kf-shared"));
+    expect(lines.length).toBe(1);
+    // Neither element carries a scoped rule set, so neither is handed a handle.
+    expect(a.dataset.jx).toBeUndefined();
+    expect(b.dataset.jx).toBeUndefined();
+  });
+
+  test("the canvas unit transpose reaches a stop; the overlay transpose never touches one", () => {
+    /* `transposeCanvasOverlaySelector` returns null for `::backdrop`, and a keyframe selector is
+       not a selector at all — handing it over would delete a stop from an otherwise sound
+       animation. The value hook still has to run, or a `10vh` stop would move the artboard. */
+    setCanvasViewportTranspose(true);
+    setCanvasDelinkPopovers(true);
+    const el = stamped();
+    applyStyle(el, {
+      "@keyframes kf-rise": {
+        "0%": { transform: "translateY(10vh)" },
+        "100%": { transform: "none" },
+      },
+    });
+    expect(adoptedCSS()).toContain(
+      "@keyframes kf-rise { 0% { transform: translateY(10cqh) } 100% { transform: none } }",
+    );
   });
 });
 

@@ -80,8 +80,11 @@ export function resolveAtQuery(atKey: string, mediaQueries: Record<string, strin
  * when the built-in flips do not fit — could not be expressed at all.
  *
  * The name is part of the key (`@position-try --flip`), so this is a PREFIX match. `@keyframes` is
- * deliberately absent: its body is neither declarations nor selectors but percentage stops, which
- * is a third shape and a separate design.
+ * deliberately absent, and stays absent: its body is neither declarations nor selectors but
+ * keyframe stops, which is a third shape with its own predicate ({@link isKeyframesAtRule}) and its
+ * own serializer. Adding it here would be the tempting one-line fix and it deletes the animation
+ * without a word — every child of a keyframes block is a block, `declarationsOf` skips blocks, and
+ * a rule with no declarations is never emitted.
  *
  * @param {string} atKey - An `@`-prefixed style key
  * @returns {boolean} True when the block is emitted verbatim, with no selector inside
@@ -94,6 +97,26 @@ export function isDeclarationAtRule(atKey: string): boolean {
     atKey.startsWith("@font-face") ||
     atKey.startsWith("@counter-style")
   );
+}
+
+/**
+ * The at-rule whose body is a list of KEYFRAME BLOCKS: `@keyframes <name>`.
+ *
+ * The third body shape, and the only one. Its children are keyframe selectors — `from`, `to`,
+ * `50%`, `"0%, 100%"` — which name a point in an animation's timeline and not an element. Scoping
+ * one produces `@keyframes toast-in { .x from { … } }`, which a browser parses without complaint
+ * into a keyframes rule holding NO keyframes: the `animation` declaration still names a live
+ * animation, and that animation animates nothing. That is how the Studio toast lost its entry
+ * animation the day it became a Jx document.
+ *
+ * The name is part of the key, so this is a PREFIX match like {@link isDeclarationAtRule}.
+ *
+ * @param {string} atKey - An `@`-prefixed style key
+ * @returns {boolean}
+ * @docs framework/concepts/styling
+ */
+export function isKeyframesAtRule(atKey: string): boolean {
+  return atKey.startsWith("@keyframes");
 }
 
 /**
@@ -146,7 +169,7 @@ function resolveOneNestedSelector(scope: string, key: string): string {
  * @param {string} selector - A selector or a selector list
  * @returns {string[]} The members, in order
  */
-function splitSelectorList(selector: string): string[] {
+export function splitSelectorList(selector: string): string[] {
   const members: string[] = [];
   let depth = 0;
   let quote: string | null = null;
@@ -310,10 +333,18 @@ export function schemeSelectors(
  * carries the scope handle. A `descendant` rule cannot be shared the moment it reads a custom
  * property, because `var()` resolves from the nearest ancestor that set it and a shared handle has
  * more than one such ancestor. `unscoped` is a declaration-body at-rule — `@font-face`,
- * `@position-try` — whose name is document-global and which is therefore hoisted once rather than
- * emitted per element.
+ * `@position-try` — or a `@keyframes` block, whose name is document-global and which is therefore
+ * hoisted once rather than emitted per element.
  */
 export type CssRuleTarget = "self" | "descendant" | "unscoped";
+
+/** One keyframe stop: its keyframe selector, verbatim as authored, and what it declares. */
+export interface CssKeyframeBlock {
+  /** `from`, `to`, `50%`, `"0%, 100%"` — a point on the timeline, never an element selector. */
+  selector: string;
+  /** Kebab-cased property/value pairs, in authored order. */
+  declarations: readonly (readonly [string, string])[];
+}
 
 /** One emitted CSS rule: its parts, its text, and a content hash of the two. */
 export interface CssRule {
@@ -321,10 +352,22 @@ export interface CssRule {
   text: string;
   /** At-rule wrappers, outermost first. Empty for a top-level rule. */
   conditions: readonly string[];
-  /** The resolved selector, or null for a declaration-body at-rule. */
+  /**
+   * The resolved selector, or null for a rule that has none: a declaration-body at-rule, or a
+   * `@keyframes` block (whose stops are in {@link CssRule.blocks} instead).
+   */
   selector: string | null;
-  /** Kebab-cased property/value pairs, in authored order. */
+  /** Kebab-cased property/value pairs, in authored order. Empty for a `@keyframes` block. */
   declarations: readonly (readonly [string, string])[];
+  /**
+   * The stops of a `@keyframes` block, in authored order. Absent for every other rule.
+   *
+   * `declarations` cannot describe N stops each with its own list, so it stays empty here and this
+   * carries the body. Nothing in the repository reads either field — `text`, `key` and `target` are
+   * the whole cross-consumer contract — but a rule that plainly has declarations must not report
+   * none without saying where they went.
+   */
+  blocks?: readonly CssKeyframeBlock[];
   /** See {@link CssRuleTarget}. */
   target: CssRuleTarget;
   /** FNV-1a base36 hash of `text` — the dedup key. */
@@ -424,6 +467,60 @@ export function cssRuleText(
 }
 
 /**
+ * Serialize one `@keyframes` block: every stop, in authored order, inside ONE at-rule, wrapped in
+ * its enclosing conditions.
+ *
+ * One rule, not one per stop, and that is a correctness requirement rather than tidiness. CSS
+ * Animations 1: where two `@keyframes` rules share a name, the last in document order wins and the
+ * earlier ones are ignored ENTIRELY. So a block split into `@keyframes fade { from { … } }` plus
+ * `@keyframes fade { to { … } }` is valid CSS that animates only its last stop, which is the shape
+ * the site-style and compiler paths emitted before this existed.
+ *
+ * @param {readonly string[]} conditions
+ * @param {string} name - The animation name, as authored
+ * @param {readonly CssKeyframeBlock[]} blocks
+ * @returns {string}
+ */
+function cssKeyframesText(
+  conditions: readonly string[],
+  name: string,
+  blocks: readonly CssKeyframeBlock[],
+): string {
+  const body = blocks
+    .map(
+      ({ selector, declarations }) =>
+        `${selector} { ${declarations.map(([property, value]) => `${property}: ${value}`).join("; ")} }`,
+    )
+    .join(" ");
+  let text = `@keyframes ${name} { ${body} }`;
+  for (let i = conditions.length - 1; i >= 0; i -= 1) {
+    text = `${conditions[i]} { ${text} }`;
+  }
+  return text;
+}
+
+/**
+ * A block with its `@keyframes` children removed, for the forced-scheme twin of a dual emission.
+ *
+ * A scheme-pure query emits twice, once media-guarded and once under the root attribute, because a
+ * SELECTOR can be re-pointed at the forced state. A `@keyframes` name cannot: it is document-global
+ * and has no selector, so a second copy would be a second definition of one name, and the
+ * unconditional copy would silently replace the media-guarded one for every visitor. The
+ * media-guarded copy is the one that keeps the author's condition, so it is the one that survives.
+ */
+function withoutKeyframes(block: JxStyle): JxStyle {
+  const keyframeKeys = Object.keys(block).filter((key) => isKeyframesAtRule(key));
+  if (keyframeKeys.length === 0) {
+    return block;
+  }
+  const rest: JxStyle = { ...block };
+  for (const key of keyframeKeys) {
+    delete rest[key];
+  }
+  return rest;
+}
+
+/**
  * Whether a nested key COMPOUNDS onto its scope rather than descending from it.
  *
  * `:hover`, `.wide`, `[open]` and their `&`-spliced spellings still match the element the style was
@@ -473,7 +570,7 @@ export function buildStyleRules(style: JxStyle, options: CssBuildOptions = {}): 
   const isBlock = (value: unknown): value is JxStyle =>
     value !== null && typeof value === "object" && !Array.isArray(value) && !isRef(value);
 
-  const declarationValue = (property: string, value: unknown): string | null => {
+  const declarationValue = (property: string, value: unknown, reactive: boolean): string | null => {
     if (value === undefined || value === null) {
       return null;
     }
@@ -481,19 +578,31 @@ export function buildStyleRules(style: JxStyle, options: CssBuildOptions = {}): 
        runtime emitted `[data-jx="…"] color { $ref: #/state/tint }` — a rule for an element named
        `color`, and a declaration whose property is `$ref`. */
     if (isRef(value)) {
-      return resolveValue?.(property, value) ?? null;
+      return reactive ? (resolveValue?.(property, value) ?? null) : null;
     }
     if (typeof value === "object") {
       return null;
     }
     const raw = String(value);
     if (isTemplateString(raw)) {
-      return resolveValue?.(property, raw) ?? null;
+      return reactive ? (resolveValue?.(property, raw) ?? null) : null;
     }
     return transposeValue(raw);
   };
 
-  const declarationsOf = (node: JxStyle, skipSelectorKeys: boolean): [string, string][] => {
+  /**
+   * `reactive: false` drops a `${…}` or `{ $ref }` instead of resolving it, and only a `@keyframes`
+   * stop passes it. The resolver's answer is `var(--jx-rN-M)`, a custom property the runtime writes
+   * INLINE on the one element that declared the style — but a keyframes block is hoisted once for
+   * the whole document, so the variable would be read where it was never set. Worse, the hoist is
+   * refcounted by rule TEXT: two elements naming one animation would produce two different texts,
+   * hence two definitions of one name, and the later would erase the earlier.
+   */
+  const declarationsOf = (
+    node: JxStyle,
+    skipSelectorKeys: boolean,
+    reactive = true,
+  ): [string, string][] => {
     const declarations: [string, string][] = [];
     for (const [key, value] of Object.entries(node)) {
       if (isBlock(value)) {
@@ -503,7 +612,7 @@ export function buildStyleRules(style: JxStyle, options: CssBuildOptions = {}): 
       if (skipSelectorKeys && (key.startsWith("@") || isNestedSelectorKey(key))) {
         continue;
       }
-      const resolved = declarationValue(key, value);
+      const resolved = declarationValue(key, value, reactive);
       if (resolved !== null) {
         declarations.push([cssPropertyName(key), resolved]);
       }
@@ -539,6 +648,53 @@ export function buildStyleRules(style: JxStyle, options: CssBuildOptions = {}): 
     });
   };
 
+  /**
+   * Emit a whole `@keyframes` block as ONE unscoped rule.
+   *
+   * The enclosing `selector` is not a parameter, which is the fix stated as a signature: a keyframe
+   * selector is a point on a timeline, so there is nothing for a scope to compound onto or descend
+   * from. Its key is therefore taken VERBATIM — no `resolveNestedSelector`, no selector-list split
+   * (`"0%, 100%"` is one valid keyframe selector already), and no `transposeSelector`, whose canvas
+   * implementation may return null and would delete a stop out of an otherwise sound animation.
+   * `transposeValue` still runs on every declaration, so a `translateY(10vh)` stop keeps the
+   * canvas's viewport-to-container rewrite.
+   *
+   * It pushes onto `rules` rather than going through `emit`, which serializes a declaration list
+   * and refuses an empty one.
+   */
+  const emitKeyframes = (atKey: string, block: JxStyle, conditions: readonly string[]) => {
+    const name = atKey.slice("@keyframes".length).trim();
+    if (name === "") {
+      return;
+    }
+    const blocks: CssKeyframeBlock[] = [];
+    for (const [key, value] of Object.entries(block)) {
+      if (!isBlock(value)) {
+        continue;
+      }
+      /* A stop holds declarations and nothing else. A nested selector or at-rule inside one is not
+         valid CSS, and `declarationsOf` drops both shapes rather than emitting a block a parser
+         would throw the whole animation away over. */
+      const declarations = declarationsOf(value, true, false);
+      if (declarations.length > 0) {
+        blocks.push({ declarations, selector: key.trim() });
+      }
+    }
+    if (blocks.length === 0) {
+      return;
+    }
+    const text = cssKeyframesText(conditions, name, blocks);
+    rules.push({
+      blocks,
+      conditions: [...conditions],
+      declarations: [],
+      key: hashCss(text),
+      selector: null,
+      target: "unscoped",
+      text,
+    });
+  };
+
   const walkAt = (
     atKey: string,
     block: JxStyle,
@@ -555,13 +711,17 @@ export function buildStyleRules(style: JxStyle, options: CssBuildOptions = {}): 
       emit([...conditions, atKey], null, declarationsOf(block, false), "unscoped");
       return;
     }
+    if (isKeyframesAtRule(atKey)) {
+      emitKeyframes(atKey, block, conditions);
+      return;
+    }
     const query = resolveAtQuery(atKey, mediaQueries);
     const atRule = query === null ? atKey : `@media ${query}`;
     const scheme = query === null ? null : pureSchemeOf(query);
     if (scheme !== null && selector !== null) {
       const { auto, forced } = schemeSelectors(selector, scheme);
       walk(block, auto, [...conditions, atRule], target);
-      walk(block, forced, conditions, target);
+      walk(withoutKeyframes(block), forced, conditions, target);
       return;
     }
     walk(block, selector, [...conditions, atRule], target);

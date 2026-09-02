@@ -622,4 +622,26 @@ describe("the custom-element display default", () => {
     const hovered = await mount({ ":hover": { display: "none" } });
     expect(hovered.style.display).toBe("");
   });
+
+  test("a display inside a keyframe stop is a timeline value, and does NOT suppress the default", async () => {
+    /*
+     * The deep scan above must stop at a `@keyframes` block. Animating `display` is the ordinary
+     * shape of an `allow-discrete` reveal, and counting a stop as the author's own declaration left
+     * the element with no `display` at all — which for a custom element means `inline`. It laid out
+     * wrongly whenever it was still, which is most of the time.
+     */
+    const el = await mount({
+      animation: "reveal 1s",
+      "@keyframes reveal": { from: { display: "none" }, to: { display: "block" } },
+    });
+    expect(el.style.display).toBe("block");
+
+    // …and a real declaration beside the animation still speaks for the author.
+    const declared = await mount({
+      animation: "reveal 1s",
+      display: "flex",
+      "@keyframes reveal": { from: { display: "none" }, to: { display: "flex" } },
+    });
+    expect(declared.style.display).toBe("");
+  });
 });

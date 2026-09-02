@@ -2,7 +2,7 @@
 
 ## Declarative Document Object Model — JSON Edition
 
-**Version:** 0.6.9-draft\
+**Version:** 0.6.10-draft\
 **Status:** Partial\
 **Updated:** 2026-09-02\
 **License:** MIT
@@ -917,9 +917,33 @@ Both the compiler and the runtime resolve nesting recursively; the component and
 }
 ```
 
-The name is part of the key, so the test is a prefix match. `@keyframes` is deliberately absent: its body is neither declarations nor selectors but percentage stops, which is a third shape.
+The name is part of the key, so the test is a prefix match.
 
-> **Status: Implemented.** Wrapping one of these in a selector produced a block the parser discards without a word, which is why an anchor-positioned panel could declare no custom fallback at all.
+**`@keyframes` is the third body shape**, and the only one: its children are neither declarations nor element selectors but **keyframe selectors** — `from`, `to`, `50%`, `"0%, 100%"` — each naming a point on an animation's timeline. Three rules follow, and each of them is a correctness requirement rather than a formatting preference:
+
+1. A keyframe selector is taken **verbatim**. It is never resolved against the enclosing scope, never distributed as a selector list (`"0%, 100%"` is already one valid keyframe selector), and never passed to a host's selector transposition. A scoped stop — `@keyframes toast-in { #box from { … } }` — is parsed into a keyframes rule holding NO keyframes, so the `animation` declaration beside it names a live animation that animates nothing.
+2. The block is emitted **once**, whole. Where two `@keyframes` rules share a name the last in document order wins and every earlier one is ignored, so a block split into one rule per stop is valid CSS that animates only its final stop.
+3. The block is **unscoped** and hoisted like a declaration-body at-rule (§9.6), because the name it declares is document-global. Two elements that declare different bodies under one name therefore collide, and the later insertion wins; that is CSS, not an emitter choice.
+
+A stop is **not a declaration on the element**, and nothing that scans a style object for what the author declared may count one. `display` is the case that bites: a custom element is `inline` until the runtime supplies `display: block`, and it withholds that default when the author declares a `display` of their own. Animating `display` is the ordinary shape of an `allow-discrete` reveal, so a scan that counted a stop left the element `inline` whenever it was still.
+
+A **reactive value inside a stop is dropped** rather than indirected through a custom property. The indirection of §9.6 writes the variable inline on the one element that declared the style, while this rule belongs to the whole document, so the `var()` would be read where nothing set it. A stop's values are still passed through a host's value transposition, so the canvas keeps rewriting viewport units inside an animation.
+
+A keyframes block nested inside `@media` or `@supports` keeps that wrapper. Inside a **scheme query** (§9.5) it is emitted once, under the media-guarded copy only: the forced-scheme twin re-points a selector, and a keyframes name has none to re-point, so a second copy would be a second definition of one name.
+
+```json
+{
+  "style": {
+    "animation": "toast-in 180ms ease-out",
+    "@keyframes toast-in": {
+      "from": { "opacity": "0", "translate": "0 1rem" },
+      "to": { "opacity": "1", "translate": "0 0" }
+    }
+  }
+}
+```
+
+> **Status: Implemented.** Wrapping a declaration-body at-rule in a selector produced a block the parser discards without a word, which is why an anchor-positioned panel could declare no custom fallback at all. Scoping a keyframe stop produced the same silence one layer down: no parse error, no warning, and a live `Animation` object with no keyframes in it.
 
 ### 9.3 Static Style Extraction
 
@@ -989,7 +1013,7 @@ The runtime delivers an element's styles as **CSS rules in a constructable style
 
 **Reactive declarations are indirected through a custom property.** A value carrying a `${…}` template or a `{ "$ref": … }` is emitted as `property: var(--jx-r<n>-<m>)`, and the element sets that variable inline as its source changes. The declaration therefore stays in the rule, where a `:hover` or `@media` block can override it, while only the variable moves. A reactive element never shares a rule set with another: a `var()` resolves from the nearest ancestor that set it, so a shared descendant rule would read the wrong element's value.
 
-**Declaration-body at-rules are hoisted.** The four at-rules of §9.2 whose body is declarations rather than rules declare a document-global NAME, so they are written once for the document and released when the last element that declares one lets go, rather than emitted per element.
+**Unscoped at-rules are hoisted.** The four declaration-body at-rules of §9.2, and `@keyframes` alongside them, declare a document-global NAME, so they are written once for the document and released when the last element that declares one lets go, rather than emitted per element.
 
 Two cascade premises hold this together, and neither is Jx's to change:
 
@@ -1689,6 +1713,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 | [CSS Scoping](https://www.w3.org/TR/css-scoping-1/)                                       | **Subset**    | §16.6       | packages/compiler/src/shared.ts, packages/compiler/tests/shadow-dom.test.ts                                                                  | `:host`, `:host()` and `::slotted()` are emitted for a shadow component, and `:host`/`:host()` are translated to the tag name in light DOM so one style object serves both modes. `:host-context()` is not offered — it never reached a second engine.                                                                                                                                                                                                                                                                                                                                                 |
 | [CSSOM](https://www.w3.org/TR/cssom-1/)                                                   | **Adopted**   | §9.1, §9.6  | packages/runtime/src/runtime.ts, packages/runtime/tests/stylesheet-engine.test.ts                                                            | `style` keys are the CSSOM camelCase IDL attribute names, so a property name needs no translation table. The runtime also builds a constructable `CSSStyleSheet` and delivers an element's rules through `document.adoptedStyleSheets`, using `insertRule`/`deleteRule`/`replaceSync` as specified; a host that cannot construct one falls back to a `<style>` element carrying the same rules.                                                                                                                                                                                                        |
 | [CSS Nesting](https://www.w3.org/TR/css-nesting-1/)                                       | **Borrowed**  | §9.2        | packages/runtime/src/css.ts, packages/runtime/tests/css.test.ts                                                                              | The shape of a nested style block is taken; conformance is not claimed and `&` is never handed to a parser. Jx flattens nesting itself, and it has to: a `.child` key COMPOUNDS onto its scope here where CSS Nesting resolves it as a descendant, so the same source would mean two different things.                                                                                                                                                                                                                                                                                                 |
+| [CSS Animations](https://www.w3.org/TR/css-animations-1/)                                 | **Subset**    | §9.2        | packages/runtime/src/css.ts, packages/runtime/tests/css.test.ts                                                                              | The `@keyframes` at-rule and its keyframe-selector grammar — `from`, `to`, a percentage, and a comma-separated list of those — are bound as authored: a stop key is copied verbatim, the block is emitted once and unscoped, and the last-definition-wins rule for a repeated name is why. None of the animation engine is implemented, and the standard's rule that `animation-*` properties and `!important` are ignored inside a keyframe block is not enforced.                                                                                                                                    |
 | [CSS Color 4](https://www.w3.org/TR/css-color-4/)                                         | **Adopted**   | §9.5        | packages/compiler/src/shared.ts, packages/compiler/tests/shared.test.ts                                                                      | `color-scheme: light dark` is emitted with per-attribute overrides, so native controls follow a forced scheme rather than only the author's own rules.                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | [RFC 6901](https://www.rfc-editor.org/rfc/rfc6901)                                        | **Divergent** | §7          | packages/runtime/src/pointer.ts                                                                                                              | Pointer syntax is implemented as written, `~0`/`~1` escapes included, with `/` as the only separator. Four enumerated deviations: a `$ref` binds a live value off the reactive scope rather than resolving a node of a JSON document; a token matching nothing yields `undefined` instead of failing evaluation (§4); the `-` array token (§4) is not special and reads a member named `-`; and the `#`-fragment schemes (`window#/`, `parent#/`, `event#/`) are Jx extensions, not the URI fragment representation of §6 — they are not percent-decoded.                                              |
 | [CSP Level 3](https://www.w3.org/TR/CSP3/)                                                | **Divergent** | §21         | packages/compiler/tests/no-eval.test.ts                                                                                                      | Compiled output contains no `new Function` and no `eval`, proven by a committed test, so it runs under a policy without `'unsafe-eval'`. The **interpreting** runtime compiles templates and function bodies at load time and therefore requires `'unsafe-eval'` permanently — §21.3 states this as a property, not a defect.                                                                                                                                                                                                                                                                          |
@@ -2494,6 +2519,7 @@ This rewrites the mutating handlers of Appendix A's idiom using `$expression`, l
 
 ## Changelog
 
+- **0.6.10-draft** (2026-09-02) — @keyframes emits as one unscoped block, with keyframe selectors taken verbatim.
 - **0.6.9-draft** (2026-09-02) — Accessibility rules (§8.8): nine static rules over the overlay walker, each citing its WCAG criterion, with WAI-ARIA, accname and WCAG alignment rows.
 - **0.6.8-draft** (2026-09-02) — A nested style key or its scope may be a selector list; nested blocks distribute over every member (§9.2).
 - **0.6.7-draft** (2026-09-02) — Overlays: popover, dialog and invoker commands (§8.7) — the dialog and command rules a document is held to, beside the popover ones; the WHATWG HTML row binds it.
@@ -2567,4 +2593,4 @@ This rewrites the mutating handlers of Appendix A's idiom using `$expression`, l
 
 ---
 
-_Jx Specification v0.6.9-draft — subject to revision_
+_Jx Specification v0.6.10-draft — subject to revision_

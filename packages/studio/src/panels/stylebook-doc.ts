@@ -17,6 +17,7 @@
  */
 
 import { serializeJxPath } from "../canvas/path-mapping";
+import { isKeyframesAtRule } from "@jxsuite/runtime/css";
 import type { StylebookEntry } from "./stylebook-panel";
 import type { ComponentEntry } from "../files/components";
 import type { JxPath } from "../state";
@@ -78,6 +79,13 @@ export function transposeStylebookStyle(effectiveStyle: JxStyle): JxStyle {
     }
     if (k === "@--") {
       continue; // Base canvas width marker, not a real query.
+    }
+    if (isKeyframesAtRule(k)) {
+      /* A keyframes body holds keyframe selectors — `from`, `to`, `50%` — which `isTagPath`
+         accepts and which re-keying would turn into `& .element-card-preview from`, a stop the
+         browser discards along with the rest of the animation. It has no selectors to confine. */
+      out[k] = v;
+      continue;
     }
     if (k.startsWith("@")) {
       // Media block: re-key tag rules inside; non-tag keys (scalars/pseudo) apply to the root.
