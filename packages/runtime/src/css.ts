@@ -199,10 +199,47 @@ function splitSelectorList(selector: string): string[] {
  * @docs framework/concepts/overlays
  */
 export function transposeCanvasPopoverSelector(selector: string): string | null {
+  return transposeCanvasOverlaySelector(selector);
+}
+
+/** What {@link transposeCanvasOverlaySelector} needs to know about the element that owns a rule. */
+export interface CanvasOverlayTransposeOptions {
+  /**
+   * The rule belongs to a `<dialog>`, so its `[open]` names the dialog's own open state and is
+   * transposed too. Nowhere else: `<details open>` keeps its attribute on the canvas, so its
+   * `[open]` must keep matching.
+   */
+  dialog?: boolean;
+}
+
+/**
+ * Studio-canvas overlay selector transposition, for dialogs as well as popovers — the style half of
+ * `setCanvasDelinkPopovers` and `setCanvasDelinkCommands` together.
+ *
+ * A dialog the canvas shows in place is not `:modal` and, its `open` renamed with the rest of the
+ * invoker machinery, not `[open]` either; `[data-jx-dialog-open]` is the stand-in for both, at the
+ * same (0,1,0) specificity. `::backdrop` is dropped for the reason given above: neither kind of
+ * overlay has one outside the top layer.
+ *
+ * @param {string} selector - A fully resolved selector, canvas-side
+ * @param {CanvasOverlayTransposeOptions} [options]
+ * @returns {string | null} The selector to emit, or null to emit nothing
+ * @docs framework/concepts/overlays
+ */
+export function transposeCanvasOverlaySelector(
+  selector: string,
+  options: CanvasOverlayTransposeOptions = {},
+): string | null {
   if (selector.includes("::backdrop")) {
     return null;
   }
-  return selector.replaceAll(":popover-open", "[data-jx-popover-open]");
+  let transposed = selector
+    .replaceAll(":popover-open", "[data-jx-popover-open]")
+    .replaceAll(":modal", "[data-jx-dialog-open]");
+  if (options.dialog) {
+    transposed = transposed.replaceAll("[open]", "[data-jx-dialog-open]");
+  }
+  return transposed;
 }
 
 // ─── Color Schemes ────────────────────────────────────────────────────────────

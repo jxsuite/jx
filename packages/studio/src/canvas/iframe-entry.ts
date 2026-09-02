@@ -9,6 +9,7 @@ import { postMessageChannel } from "./iframe-channel";
 import { rectOf } from "../utils/geometry";
 import { displayTagName } from "@jxsuite/schema/guards";
 import {
+  applyCanvasDialogOpen,
   applyCanvasPopoverOpen,
   applyPreviewColorScheme,
   applySiteStyle,
@@ -46,7 +47,13 @@ import type { JxPath } from "../state";
 // ObserveScope MUST come from the runtime: the $defs refs are created by the runtime's copy of
 // @vue/reactivity, and dep tracking is per module instance — an effect from the studio's own copy
 // Would never re-run when a dev-proxy data source settles.
-import { observeScope, reapplyStyle, resetDocumentStyles, setResolveToken } from "@jxsuite/runtime";
+import {
+  observeScope,
+  reapplyStyle,
+  redefineElement,
+  resetDocumentStyles,
+  setResolveToken,
+} from "@jxsuite/runtime";
 import type { IframeChannel } from "./iframe-channel";
 import type {
   CanvasMode,
@@ -237,6 +244,7 @@ export function startCanvasIframe(opts: {
    * and the frame must be able to put it back without a round trip to the host.
    */
   let popoverOpen: string | null = null;
+  let dialogOpen: string | null = null;
   /* The host's chord table. Empty until the first `keymap` message, which the host posts on
      `ready` — before any render, so there is nothing to type into during the gap. An empty table
      forwards nothing, which is the honest cold-start answer: the frame does not guess at what the
@@ -411,13 +419,16 @@ export function startCanvasIframe(opts: {
    * growing the frame does not move it.
    */
   function openPopoverBottom(): number {
-    const panel = container.querySelector("[data-jx-popover][data-jx-popover-open]");
-    if (!panel) {
-      return 0;
-    }
-    const box = rectOf(panel);
+    // Both overlay kinds: a dialog shown in place is positioned by the same forced rule.
+    const panels = container.querySelectorAll(
+      "[data-jx-popover][data-jx-popover-open], dialog[data-jx-dialog-open]",
+    );
     const root = rectOf(container);
-    return Math.max(0, box.bottom - root.top);
+    let bottom = 0;
+    for (const panel of panels) {
+      bottom = Math.max(bottom, rectOf(panel).bottom - root.top);
+    }
+    return bottom;
   }
 
   function postContentHeight(): void {
@@ -757,6 +768,7 @@ export function startCanvasIframe(opts: {
            `data-jx-popover-open` with it — so a style edit on the open panel would close it under
            the author's hands. Idempotent, so paying for it on every patch is a no-op. */
         applyCanvasPopoverOpen(container, popoverOpen);
+        applyCanvasDialogOpen(container, dialogOpen);
         // Put the caret back where the author left it. Restoring the SELECTION re-activates the
         // Block through the editing host's own selectionchange path — there is no separate
         // "re-enter" step, because a caret in a block IS the edit.
@@ -861,9 +873,26 @@ export function startCanvasIframe(opts: {
       }
       popoverOpen = msg.path === null ? null : serializeJxPath(msg.path);
       applyCanvasPopoverOpen(container, popoverOpen);
+      applyCanvasDialogOpen(container, dialogOpen);
       // The panel entering or leaving flow changes the content box, and the ResizeObserver only
       // Sees `#jx-canvas-root` — an absolutely positioned panel does not move it.
       postContentHeight();
+      return;
+    }
+    if (msg.kind === "setDialogOpen") {
+      // The dialog twin, refused in preview for the reason given above.
+      if (currentMode === "preview") {
+        return;
+      }
+      dialogOpen = msg.path === null ? null : serializeJxPath(msg.path);
+      applyCanvasDialogOpen(container, dialogOpen);
+      postContentHeight();
+      return;
+    }
+    if (msg.kind === "redefineElement") {
+      /* The canvas half of embedding.md §7. The definition is replaced in THIS realm; instances
+         already on the canvas keep the old one until the host's next render replaces them. */
+      void redefineElement(msg.doc as never, msg.base);
       return;
     }
     if (msg.kind === "setLocale") {
@@ -934,6 +963,7 @@ export function startCanvasIframe(opts: {
           diffMarks: msg.diffMarks ?? null,
           mode: msg.mode,
           popoverOpen: msg.popoverOpen ? serializeJxPath(msg.popoverOpen) : null,
+          dialogOpen: msg.dialogOpen ? serializeJxPath(msg.dialogOpen) : null,
           siteStyle: msg.siteStyle,
           ...(msg.allowAutoRequests ? { allowAutoRequests: true } : {}),
         });
@@ -942,7 +972,9 @@ export function startCanvasIframe(opts: {
              on the render message for exactly this reason; a frame that kept only its own copy
              would reopen the wrong panel after a tab switch. */
           popoverOpen = msg.popoverOpen ? serializeJxPath(msg.popoverOpen) : null;
+          dialogOpen = msg.dialogOpen ? serializeJxPath(msg.dialogOpen) : null;
           applyCanvasPopoverOpen(container, popoverOpen);
+          applyCanvasDialogOpen(container, dialogOpen);
           // Adopt this generation's shadow doc + render context only once it's the live render.
           shadowDoc = rawDoc;
           renderCtx = handle.ctx;

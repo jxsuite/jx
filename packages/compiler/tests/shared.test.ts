@@ -699,6 +699,26 @@ describe("buildAttrs", () => {
     expect(buildAttrs({ hidden: true }, null)).toContain("hidden");
   });
 
+  test("overlay attributes pass through verbatim: the canvas renames them, a built page never does", () => {
+    // `command`/`commandfor` are the platform's invoker; `closedby` is enumerated text; `inert` and
+    // `open` are boolean by presence. Every one reaches the page exactly as authored (spec §8.7).
+    expect(
+      buildAttrs(
+        { attributes: { command: "show-modal", commandfor: "d" }, tagName: "button" },
+        null,
+      ),
+    ).toBe(' command="show-modal" commandfor="d"');
+    expect(
+      buildAttrs(
+        { attributes: { closedby: "any", inert: true, open: true }, tagName: "dialog" },
+        null,
+      ),
+    ).toBe(' closedby="any" inert open');
+    expect(buildAttrs({ attributes: { inert: false, open: false }, tagName: "dialog" }, null)).toBe(
+      "",
+    );
+  });
+
   test("builds tabIndex attribute", () => {
     expect(buildAttrs({ tabIndex: 0 }, null)).toBe(' tabindex="0"');
   });

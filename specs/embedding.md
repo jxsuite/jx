@@ -2,7 +2,7 @@
 
 ## Mounting Documents in an Imperative Host
 
-**Version:** 0.1.1\
+**Version:** 0.1.2\
 **Status:** Implemented\
 **Updated:** 2026-09-02\
 **License:** MIT
@@ -150,7 +150,7 @@ Both are process-wide, like the caches they seed. A host that must serve one URL
 
 > **Status: Implemented.** `redefineElement(doc, base)` and `elementDefinition(tag)` in `@jxsuite/runtime`; the generated class reads its definition through the registry at connection. Exercised by `packages/runtime/tests/redefine.test.ts`.
 
-A host that authors its own components live needs to replace an element definition after it was registered and re-mount the roots that used it. `customElements.define` is one-shot, so the runtime reads a definition through a registry at connection time rather than from the class's closure, and exposes `redefineElement(doc, base)`; `mount().elements` names which roots a redefinition touches, and `elementDefinition(tag)` answers what a tag renders from now.
+A host that authors its own components live needs to replace an element definition after it was registered and re-mount the roots that used it. A host with a second realm — Studio's canvas frame — forwards the same call across its bridge (`redefineElement` in `canvas/iframe-protocol.ts`), and the instances already in that realm keep the old definition until its next render replaces them, which is why the host follows the message with a render. `customElements.define` is one-shot, so the runtime reads a definition through a registry at connection time rather than from the class's closure, and exposes `redefineElement(doc, base)`; `mount().elements` names which roots a redefinition touches, and `elementDefinition(tag)` answers what a tag renders from now.
 
 The contract has three edges, each deliberate. An instance connected after the call renders the new definition; one already on the page keeps the definition it rendered — its bindings stay live against its own state — until it is re-mounted, because tearing a connected instance down underneath its host is the host's decision, not the runtime's. `observedAttributes` stays as first defined, because the platform freezes it with the class; a changed list is reported on the console and takes effect only in a fresh realm. A tag not yet defined is defined, so a host may use one call for both.
 
@@ -172,9 +172,10 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.1.2** (2026-09-02) — A second realm forwards redefineElement across its bridge and re-renders (§7).
 - **0.1.1** (2026-09-02) — redefineElement and elementDefinition: a definition is read through the registry at connection, so a host may replace it live (§7); every section is now implemented.
 - **0.1.0-draft** (2026-09-02) — Initial release: mount() with dispose and AbortSignal, host scope, host functions through call, events out, per-mount context, preloadDocument and preloadModule.
 
 ---
 
-_Jx Embedding Specification v0.1.1_
+_Jx Embedding Specification v0.1.2_

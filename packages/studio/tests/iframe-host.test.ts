@@ -3873,3 +3873,140 @@ describe("a released host takes its edit session with it", () => {
     expect(host.insertHideTimer).toBeNull();
   });
 });
+
+// ─── An invoker's click, answered through the records ────────────────────────
+
+describe("commandTargetClick", () => {
+  const opened: { kind: "popover" | "dialog"; tab: string; path: unknown }[] = [];
+
+  async function withRegistry(document: unknown) {
+    const { createCommandRegistry } = await import("../src/commands/registry");
+    const { canvasViewCommands } = await import("../src/canvas/canvas-utils");
+    const { setActiveRegistry } = await import("../src/commands/active-registry");
+    const { makeContext } = await import("../src/commands/context");
+    const registry = createCommandRegistry({
+      getContext: () => makeContext({ document: { open: true } }),
+    });
+    registry.registerAll(
+      canvasViewCommands({
+        getCanvasMode: () => "design",
+        renderPane: () => {},
+        setCanvasMode: () => {},
+        setOpenDialog: (tab, path) => {
+          opened.push({ kind: "dialog", path, tab: tab.id });
+        },
+        setOpenPopover: (tab, path) => {
+          opened.push({ kind: "popover", path, tab: tab.id });
+        },
+        setResolvingOpen: () => {},
+      }),
+    );
+    setActiveRegistry(registry);
+    await mountReady();
+    const tab = activeTab.value!;
+    (tab.doc as { document: unknown }).document = document;
+    return { setActiveRegistry, tab };
+  }
+
+  const DIALOG_DOC = {
+    children: [
+      { attributes: { command: "show-modal", commandfor: "d" }, tagName: "button" },
+      { attributes: { id: "d" }, children: [{ tagName: "p" }], tagName: "dialog" },
+    ],
+    tagName: "div",
+  };
+
+  beforeEach(() => {
+    resetWorkspaceWithTab();
+    opened.length = 0;
+  });
+
+  test("show-modal opens the dialog; close closes only the one that is open", async () => {
+    const { setActiveRegistry, tab } = await withRegistry(DIALOG_DOC);
+    try {
+      channels[0]!.deliver({
+        command: "close",
+        kind: "commandTargetClick",
+        targetPath: ["children", 1],
+      });
+      // Nothing is open, so a close names nothing.
+      expect(opened).toEqual([]);
+      channels[0]!.deliver({
+        command: "show-modal",
+        kind: "commandTargetClick",
+        targetPath: ["children", 1],
+      });
+      expect(opened).toEqual([{ kind: "dialog", path: ["children", 1], tab: tab.id }]);
+      tab.session.ui.openDialog = ["children", 1];
+      channels[0]!.deliver({
+        command: "request-close",
+        kind: "commandTargetClick",
+        targetPath: ["children", 1],
+      });
+      expect(opened.at(-1)).toEqual({ kind: "dialog", path: null, tab: tab.id });
+    } finally {
+      setActiveRegistry(null);
+    }
+  });
+
+  test("a popover command lands on the popover verb, toggling against the model", async () => {
+    const doc = {
+      children: [
+        { attributes: { command: "toggle-popover", commandfor: "m" }, tagName: "button" },
+        { attributes: { id: "m", popover: "auto" }, tagName: "nav" },
+      ],
+      tagName: "div",
+    };
+    const { setActiveRegistry, tab } = await withRegistry(doc);
+    try {
+      channels[0]!.deliver({
+        command: "toggle-popover",
+        kind: "commandTargetClick",
+        targetPath: ["children", 1],
+      });
+      expect(opened).toEqual([{ kind: "popover", path: ["children", 1], tab: tab.id }]);
+      tab.session.ui.openPopover = ["children", 1];
+      channels[0]!.deliver({
+        command: "toggle-popover",
+        kind: "commandTargetClick",
+        targetPath: ["children", 1],
+      });
+      expect(opened.at(-1)).toEqual({ kind: "popover", path: null, tab: tab.id });
+    } finally {
+      setActiveRegistry(null);
+    }
+  });
+
+  test("postPopoverOpen and postDialogOpen reach every editable frame showing the tab", async () => {
+    const { setActiveRegistry, tab } = await withRegistry(DIALOG_DOC);
+    try {
+      const { postDialogOpen, postPopoverOpen } = await import("../src/canvas/iframe-host");
+      postPopoverOpen(tab, ["children", 1]);
+      postDialogOpen(tab, ["children", 1]);
+      postDialogOpen({ id: "some-other-tab" }, ["children", 0]);
+      const posts = channels[0]!.posts.filter(
+        (m) => m["kind"] === "setPopoverOpen" || m["kind"] === "setDialogOpen",
+      );
+      expect(posts).toEqual([
+        { kind: "setPopoverOpen", path: ["children", 1] },
+        { kind: "setDialogOpen", path: ["children", 1] },
+      ]);
+    } finally {
+      setActiveRegistry(null);
+    }
+  });
+
+  test("a custom command is the document's own business", async () => {
+    const { setActiveRegistry } = await withRegistry(DIALOG_DOC);
+    try {
+      channels[0]!.deliver({
+        command: "--rate",
+        kind: "commandTargetClick",
+        targetPath: ["children", 1],
+      });
+      expect(opened).toEqual([]);
+    } finally {
+      setActiveRegistry(null);
+    }
+  });
+});

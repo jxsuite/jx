@@ -16,6 +16,7 @@
  */
 
 import { html, nothing } from "lit-html";
+import { dialogPathFor } from "../canvas/dialog-path";
 import { getNestedStyle } from "@jxsuite/schema/guards";
 import { live } from "lit-html/directives/live.js";
 import { ifDefined } from "lit-html/directives/if-defined.js";
@@ -929,6 +930,13 @@ function styleSidebarTemplate(
            it to `:hover` and `:focus` is a larger decision and is deliberately not taken here. */
         if (value?.startsWith(":popover-open")) {
           runCommand("canvas.setPopoverOpen", { open: true });
+        }
+        // The dialog's open states, by the same rule, when the selection is in a dialog to open.
+        if (
+          (value?.startsWith("[open]") || value?.startsWith(":modal")) &&
+          dialogPathFor(activeTab.value!) !== null
+        ) {
+          runCommand("canvas.setDialogOpen", { open: true });
         }
       },
       onAddCustom: () => {

@@ -6,6 +6,7 @@ import {
   setStampPropBindings,
 } from "@jxsuite/runtime";
 import {
+  applyCanvasDialogOpen,
   applyCanvasPopoverOpen,
   applyPreviewColorScheme,
   applySiteStyle,
@@ -1137,6 +1138,40 @@ describe("asset context", () => {
       "url(https://studio.example.com/p/o/r/main/raw/public/bg.png)",
     );
     handle.dispose();
+  });
+});
+
+describe("applyCanvasDialogOpen", () => {
+  /** Two stamped dialogs and a stamped details, as a render would leave them. */
+  function twoDialogs() {
+    const root = document.createElement("div");
+    for (const path of ['["children",0]', '["children",1]']) {
+      const el = document.createElement("dialog");
+      el.dataset.jxPath = path;
+      root.append(el);
+    }
+    const details = document.createElement("details");
+    details.dataset.jxPath = '["children",2]';
+    root.append(details);
+    document.body.append(root);
+    return root;
+  }
+
+  test("opens exactly one dialog and closes the rest", () => {
+    const root = twoDialogs();
+    applyCanvasDialogOpen(root, '["children",1]');
+    const open = root.querySelectorAll("[data-jx-dialog-open]");
+    expect(open).toHaveLength(1);
+    expect((open[0] as HTMLElement).dataset.jxPath).toBe('["children",1]');
+  });
+
+  test("a path that is not a dialog opens nothing, and null closes them all", () => {
+    const root = twoDialogs();
+    applyCanvasDialogOpen(root, '["children",2]');
+    expect(root.querySelectorAll("[data-jx-dialog-open]")).toHaveLength(0);
+    applyCanvasDialogOpen(root, '["children",0]');
+    applyCanvasDialogOpen(root, null);
+    expect(root.querySelectorAll("[data-jx-dialog-open]")).toHaveLength(0);
   });
 });
 

@@ -58,6 +58,11 @@ export interface TabUi {
    * than reopening it closed.
    */
   openPopover: JxPath | null;
+  /**
+   * The `<dialog>` the canvas draws open in place, per tab and exactly one; view state like
+   * `openPopover`.
+   */
+  openDialog: JxPath | null;
   editingFunction: FunctionEditDef | null;
   /** Logic-tab formula target ($expression editing); editingFunction wins if both are set. */
   editingFormula: FormulaEditDef | null;
@@ -236,6 +241,7 @@ function createDefaultUi(canvasMode: string, preview = false) {
     activeMedia: null,
     activeSelector: null,
     openPopover: null,
+    openDialog: null,
     canvasMode,
     editZoom: 1,
     editingFormula: null,

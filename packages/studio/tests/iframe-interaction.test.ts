@@ -565,6 +565,69 @@ describe("pane focus is reported from every mode", () => {
   });
 });
 
+describe("command invoker clicks", () => {
+  /** A de-linked invoker beside the overlay it names, as a canvas render leaves them. */
+  function invokerAnd(overlayTag: "dialog" | "nav", command: string) {
+    const overlay = document.createElement(overlayTag);
+    if (overlayTag === "nav") {
+      overlay.dataset.jxPopover = "auto";
+    }
+    overlay.dataset.jxPath = '["children",1]';
+    overlay.id = "target";
+    const button = document.createElement("button");
+    button.setAttribute("command", command);
+    button.dataset.jxCommandfor = "target";
+    button.dataset.jxPath = '["children",0]';
+    document.body.append(button, overlay);
+    return button;
+  }
+
+  function clickAndCollect(button: HTMLElement) {
+    const posted: { kind: string; command?: string; targetPath?: unknown }[] = [];
+    const stop = startInteraction(
+      { post: (m: { kind: string }) => posted.push(m) } as never,
+      document,
+    );
+    button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    stop();
+    return posted;
+  }
+
+  test("a dialog invoker reports the dialog's path and its command, beside the hit", () => {
+    const posted = clickAndCollect(invokerAnd("dialog", "show-modal"));
+    const invoke = posted.find((m) => m.kind === "commandTargetClick");
+    expect(invoke?.targetPath).toEqual(["children", 1]);
+    expect(invoke?.command).toBe("show-modal");
+    expect(posted.some((m) => m.kind === "hit")).toBe(true);
+  });
+
+  test("the hit is posted BEFORE the command, so a Close button inside a dialog can close it", () => {
+    // The host reveals the overlay a selection lands in; reported after the command, the close
+    // Button's own selection would reopen the dialog it just closed.
+    const posted = clickAndCollect(invokerAnd("dialog", "close"));
+    const kinds = posted.map((m) => m.kind);
+    expect(kinds.indexOf("hit")).toBeGreaterThanOrEqual(0);
+    expect(kinds.indexOf("hit")).toBeLessThan(kinds.indexOf("commandTargetClick"));
+  });
+
+  test("a popover invoker is reported the same way, with its command normalised", () => {
+    const posted = clickAndCollect(invokerAnd("nav", " Toggle-Popover "));
+    expect(posted.find((m) => m.kind === "commandTargetClick")?.command).toBe("toggle-popover");
+  });
+
+  test("an invoker naming an overlay the studio cannot address, or carrying no command, posts nothing", () => {
+    const button = document.createElement("button");
+    button.setAttribute("command", "show-modal");
+    button.dataset.jxCommandfor = "not-here";
+    document.body.append(button);
+    expect(clickAndCollect(button).some((m) => m.kind === "commandTargetClick")).toBe(false);
+
+    document.body.innerHTML = "";
+    const mute = invokerAnd("dialog", "");
+    expect(clickAndCollect(mute).some((m) => m.kind === "commandTargetClick")).toBe(false);
+  });
+});
+
 describe("popovertarget clicks", () => {
   /** A de-popovered panel plus a trigger naming it, as a canvas render leaves them. */
   function invokerAndPanel(action?: string) {

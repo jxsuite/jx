@@ -1162,6 +1162,7 @@ describe("i18n.switchLocale", () => {
         renderPane: (paneId: string) => rendered.push(paneId),
         setCanvasMode: () => {},
         setOpenPopover: () => {},
+        setOpenDialog: () => {},
 
         setResolvingOpen: () => {},
       }),

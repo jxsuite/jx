@@ -45,6 +45,7 @@ import { setLayoutSelection, shell } from "../shell";
 import { formatEditableVerdicts } from "../format/constraints";
 import { formatByName } from "../format/format-host";
 import { collabState } from "../collab/collab-state";
+import { DIALOG_COMMANDS, POPOVER_COMMANDS } from "@jxsuite/schema/dialogs";
 import { localeDirection } from "@jxsuite/schema/locale";
 import { getPlatform, hasPlatform } from "../platform";
 import type {
@@ -128,6 +129,8 @@ interface HostState {
    * the `render` message — a render replaces the DOM, so a re-mount would otherwise lose it.
    */
   popoverOpen: JxPath | null;
+  /** The dialog this host is drawing open, kept for the same reason. */
+  dialogOpen: JxPath | null;
   /**
    * Paths the frame resolved but could not measure, as serialized keys.
    *
@@ -1237,6 +1240,23 @@ export function postPopoverOpen(tab: { id: string }, path: JxPath | null): void 
 }
 
 /**
+ * The dialog twin of {@link postPopoverOpen}: tell every editable frame showing `tab` which dialog
+ * to draw open.
+ */
+export function postDialogOpen(tab: { id: string }, path: JxPath | null): void {
+  for (const host of liveHosts) {
+    if (!host.iframe.isConnected) {
+      liveHosts.delete(host);
+      continue;
+    }
+    if (host.ready && host.tabId === tab.id && !host.preview) {
+      host.dialogOpen = path;
+      host.channel.post({ kind: "setDialogOpen", path });
+    }
+  }
+}
+
+/**
  * Post a surgical patch (value-carrying forward ops) to every ready live iframe host rendering
  * `tabId`'s document — a still-connected host showing another tab's doc must never fold a foreign
  * edit into its shadow doc. Returns how many hosts received it; the caller escalates to a full
@@ -1806,6 +1826,7 @@ function ensureHost(canvasEl: HTMLElement): HostState {
     contentHeight: null,
     hiddenPaths: new Set<string>(),
     popoverOpen: null,
+    dialogOpen: null,
     editing: false,
     editingProp: null,
     iframe,
@@ -2004,6 +2025,30 @@ function handleMessage(state: HostState, msg: IframeToParent): void {
         open,
         path: msg.targetPath,
       });
+      return;
+    }
+    case "commandTargetClick": {
+      /* An invoker's click, answered the way `popoverTargetClick` is: through the record, with a
+         toggle resolved HERE against the model. A popover command lands on the popover verb, a
+         dialog command on the dialog verb; `close` and `request-close` close only the dialog that
+         is open, and a custom command is the document's own business. */
+      const tab = hostTab(state);
+      if (!tab || state.preview) {
+        return;
+      }
+      const targeted = (open: JxPath | null) =>
+        JSON.stringify(open) === JSON.stringify(msg.targetPath);
+      if (POPOVER_COMMANDS.has(msg.command)) {
+        const open =
+          msg.command === "show-popover" ||
+          (msg.command === "toggle-popover" && !targeted(tab.session.ui.openPopover));
+        void activeRegistry()?.run("canvas.setPopoverOpen", { open, path: msg.targetPath });
+      } else if (DIALOG_COMMANDS.has(msg.command)) {
+        const open = msg.command === "show-modal";
+        if (open || targeted(tab.session.ui.openDialog)) {
+          void activeRegistry()?.run("canvas.setDialogOpen", { open, path: msg.targetPath });
+        }
+      }
       return;
     }
     case "hit": {
@@ -2996,8 +3041,10 @@ export async function mountIframeCanvas(
     // Read at POST time for the same reason `colorScheme` is: a render replaces the DOM, so a panel
     // The author opened before this pass would close under them without it.
     popoverOpen: viewTab?.session.ui.openPopover ?? null,
+    dialogOpen: viewTab?.session.ui.openDialog ?? null,
   };
   state.popoverOpen = message.popoverOpen ?? null;
+  state.dialogOpen = message.dialogOpen ?? null;
   // Preview is the fidelity view: no editing messages are honoured from it, no overlay is painted
   // Over it, and the frame stays viewport-sized so it scrolls for real. A mode switch to preview
   // Mid-split must likewise not start an edit session in the preview render. The flag and the frame

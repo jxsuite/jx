@@ -19,6 +19,7 @@ import {
   runScoped,
   setCanvasAssetResolver,
   setCanvasDelinkAnchors,
+  setCanvasDelinkCommands,
   setCanvasDelinkPopovers,
   setCanvasViewportTranspose,
   setRootMedia,
@@ -241,6 +242,9 @@ export const EDIT_PLACEHOLDER_CSS = `
   [data-jx-popover]:not([data-jx-popover-open]) {
     display: none;
   }
+  dialog[data-jx-dialog-open] {
+    display: block;
+  }
 }
 /* SHOWN IN PLACE, and the position declaration is what makes that true.
 
@@ -272,7 +276,29 @@ export const EDIT_PLACEHOLDER_CSS = `
   outline-offset: 2px;
 }
 [data-jx-popover][data-jx-popover-open]::before {
-  content: "POPOVER \\00B7 SHOWN IN PLACE";
+  content: "POPOVER \\00B7  SHOWN IN PLACE";
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 2;
+  padding: 1px 5px;
+  border-radius: 0 0 3px 0;
+  background: color-mix(in srgb, #808080 78%, transparent);
+  color: #fff;
+  font: 700 9px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.08em;
+  pointer-events: none;
+}
+dialog[data-jx-dialog-open] {
+  position: relative !important;
+  inset: auto !important;
+  align-self: start !important;
+  flex: none !important;
+  outline: 1px dashed color-mix(in srgb, #808080 55%, transparent);
+  outline-offset: 2px;
+}
+dialog[data-jx-dialog-open]::before {
+  content: "DIALOG \\00B7  SHOWN IN PLACE";
   position: absolute;
   top: 0;
   left: 0;
@@ -686,6 +712,43 @@ export function applyCanvasPopoverOpen(root: ParentNode, path: string | null): v
   }
 }
 
+/**
+ * Mark the one `<dialog>` the canvas draws open — the dialog twin of
+ * {@link applyCanvasPopoverOpen}.
+ *
+ * @param root The render container (`#jx-canvas-root`).
+ * @param path Serialized document path of the dialog to open, or null to close them all.
+ * @docs studio/interface/canvas
+ */
+/*
+ * The dialog rules in the sheet above, explained here rather than inside the template literal,
+ * because a comment inside the string ships in iframe-entry.js.
+ *
+ * `dialog[data-jx-dialog-open] { display: block }` in the `jx-canvas-ua` layer is the dialog's
+ * other half: its authored `open` is renamed away, so the browser's own
+ * `dialog:not([open]) { display: none }` keeps every dialog closed, and this is the one rule that
+ * shows the dialog the canvas opened. Layered for the reason the popover rule gives: an author
+ * `display` on the base rule beats it, and that defect (@jxsuite/schema/dialogs' base-display) has
+ * to show on the canvas rather than hide behind a stronger rule.
+ *
+ * The forced `position` block is the popover's, by the same move: the UA's absolute positioning
+ * and modal top layer are gone with the renamed attributes, so the open dialog lays out in normal
+ * flow at its document position and the artboard grows to fit it. Preview renders it modally,
+ * backdrop and all.
+ */
+export function applyCanvasDialogOpen(root: ParentNode, path: string | null): void {
+  for (const el of root.querySelectorAll("[data-jx-dialog-open]")) {
+    delete (el as HTMLElement).dataset.jxDialogOpen;
+  }
+  if (path === null) {
+    return;
+  }
+  const target = root.querySelector(`dialog${jxPathSelector(path)}`);
+  if (target) {
+    (target as HTMLElement).dataset.jxDialogOpen = "";
+  }
+}
+
 /** Inject the document's `$head` (link/meta/script) into the iframe's <head>, de-duped by href/src. */
 export function injectHead(doc: JxDocument, assets: AssetContext | null = null): void {
   const head = (doc as { $head?: HeadEntry[] }).$head;
@@ -886,6 +949,8 @@ export async function renderResolvedDocument(opts: {
   diffMarks?: WireDiffMarks | null;
   /** Serialized path of the popover to draw open, or null/absent for none. */
   popoverOpen?: string | null;
+  /** The dialog to draw open after this render, serialized; the twin of `popoverOpen`. */
+  dialogOpen?: string | null;
 }): Promise<RenderHandle> {
   /* FIRST, before anything emits CSS or an attribute. The resolver is module-global in the runtime,
      so it is set on every render — including to null — or a previous document's context would
@@ -913,6 +978,10 @@ export async function renderResolvedDocument(opts: {
      content — and which contributes to no ancestor's scrollable overflow, so the artboard could
      never grow to fit one. Preview keeps the real top layer, backdrop and all. */
   setCanvasDelinkPopovers(opts.mode !== "preview");
+  /* And de-link invoker commands, `inert` and a dialog's `open` with them: a `show-modal` invoker
+     would put its dialog in the top layer and make the rest of the page inert, which is the
+     popover problem plus an unclickable document. The frame reports the click instead. */
+  setCanvasDelinkCommands(opts.mode !== "preview");
   // Stamp `data-jx-bound-prop` on component-internal invertible text bindings in design/edit only —
   // The inline prop-edit affordance. Set every render so a preview/stylebook render in the same
   // Iframe clears it (page-level templates are inert in design/edit via prepareForEditMode, so only
@@ -947,6 +1016,7 @@ export async function renderResolvedDocument(opts: {
   );
   opts.container.replaceChildren(el);
   applyCanvasPopoverOpen(opts.container, opts.popoverOpen ?? null);
+  applyCanvasDialogOpen(opts.container, opts.dialogOpen ?? null);
   // Claim (or release) the editing host AFTER the tree lands, so the browser computes editability
   // Against the final DOM rather than an empty container.
   syncEditableRoot(opts.container, opts.mode);

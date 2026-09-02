@@ -9,6 +9,7 @@ import {
   POPOVER_COMMANDS,
   dialogDisplayRepair,
   dialogIdsIn,
+  documentHasDialog,
   findDialogDefects,
   isDialog,
 } from "../src/dialogs";
@@ -68,6 +69,18 @@ describe("constants", () => {
     expect(isDialog({ tagName: { $expression: { operator: "?:" } } } as unknown as JxElement)).toBe(
       false,
     );
+  });
+});
+
+describe("documentHasDialog", () => {
+  test("answers for a dialog anywhere in the tree, and for none", () => {
+    expect(documentHasDialog({ tagName: "div" } as never)).toBe(false);
+    expect(
+      documentHasDialog({
+        children: [{ children: [{ tagName: "dialog" }], tagName: "section" }],
+        tagName: "div",
+      } as never),
+    ).toBe(true);
   });
 });
 

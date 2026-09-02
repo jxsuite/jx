@@ -33,7 +33,7 @@ import {
   cssPropertyName,
   hashCss,
   isNestedSelectorKey,
-  transposeCanvasPopoverSelector,
+  transposeCanvasOverlaySelector,
 } from "./css.ts";
 import { evaluateExpression, evaluateOperand, isMutating } from "./expression.ts";
 import { readPath } from "./pointer.ts";
@@ -517,6 +517,36 @@ export function setCanvasDelinkPopovers(on: boolean) {
   _canvasDelinkPopovers = on;
 }
 
+/**
+ * Studio-canvas de-linking of invoker commands, `inert` and a dialog's `open` — the dialog half of
+ * {@link setCanvasDelinkPopovers}.
+ *
+ * A `<button command="show-modal" commandfor="…">` is the platform's own invoker: clicking it calls
+ * `showModal()` on its target, which puts the dialog in the top layer and makes the rest of the
+ * page INERT — the two things an editable canvas can least afford, since the first is the geometry
+ * the popover comment above describes and the second makes every other element unclickable. So on a
+ * stamped node `commandfor` is renamed to `data-jx-commandfor`: a button with `command` and no
+ * target does nothing, and the studio's frame reports the click instead, so the host's single
+ * writer of open state can answer it. `popovertarget` is left alone on purpose — its target has no
+ * `popover` attribute on the canvas, so the platform already does nothing with it.
+ *
+ * `inert` becomes `data-jx-inert` for the same reason: an author's inert region is a region the
+ * editor could not select into. And a `<dialog open>` becomes `<dialog data-jx-open>`, so the UA's
+ * `dialog:not([open]) { display: none }` keeps every dialog closed until the canvas opens ONE with
+ * `data-jx-dialog-open`, exactly as it opens one popover. `<details open>` is untouched: its `open`
+ * is content, not an overlay state.
+ *
+ * Gated on `data-jx-path` like the popover rewrite, and driving
+ * {@link transposeCanvasOverlaySelector} with it: an attribute renamed without its selectors
+ * transposed is a dialog that can never be styled open.
+ *
+ * @docs framework/concepts/overlays
+ */
+let _canvasDelinkCommands = false;
+export function setCanvasDelinkCommands(on: boolean) {
+  _canvasDelinkCommands = on;
+}
+
 /** The attribute name to stamp `key` on `el` under — `href` → `data-jx-href` on de-linked anchors. */
 function canvasAttrName(el: HTMLElement, key: string): string {
   if (_canvasDelinkAnchors && key === "href" && (el.tagName === "A" || el.tagName === "AREA")) {
@@ -528,6 +558,17 @@ function canvasAttrName(el: HTMLElement, key: string): string {
      directly rather than trusting it. */
   if (_canvasDelinkPopovers && key === "popover" && el.dataset.jxPath !== undefined) {
     return "data-jx-popover";
+  }
+  if (_canvasDelinkCommands && el.dataset.jxPath !== undefined) {
+    if (key === "commandfor") {
+      return "data-jx-commandfor";
+    }
+    if (key === "inert") {
+      return "data-jx-inert";
+    }
+    if (key === "open" && el.tagName === "DIALOG") {
+      return "data-jx-open";
+    }
   }
   return key;
 }
@@ -2024,8 +2065,9 @@ function applyStyleInto(
   /* One gate for the whole call, so every recursion answers alike. Off in production and in
      preview, where the selector is written exactly as authored. */
   const transposeSelector =
-    _canvasDelinkPopovers && el.dataset.jxPath !== undefined
-      ? transposeCanvasPopoverSelector
+    (_canvasDelinkPopovers || _canvasDelinkCommands) && el.dataset.jxPath !== undefined
+      ? (selector: string) =>
+          transposeCanvasOverlaySelector(selector, { dialog: el.tagName === "DIALOG" })
       : (selector: string) => selector;
 
   /* Reactive declarations become `var()` reads of a custom property this element sets inline. The
@@ -3483,6 +3525,7 @@ export {
   resolveAtQuery,
   resolveNestedSelector,
   schemeSelectors,
+  transposeCanvasOverlaySelector,
   transposeCanvasPopoverSelector,
 } from "./css.ts";
 export type { CssBuildOptions, CssRule, CssRuleTarget } from "./css.ts";

@@ -26,6 +26,7 @@ import { panelMediaToActiveMedia, panelOfSurface } from "./canvas-helpers";
 import { rectOf } from "../utils/geometry";
 import { EDIT_WIDTH_MIN, clearEditWidth, setEditWidth } from "./edit-width";
 import { activeDocumentHasPopover, popoverPathFor } from "./popover-path";
+import { activeDocumentHasDialog, dialogPathFor } from "./dialog-path";
 import { getEffectiveLocales, getEffectiveMedia } from "../site-context";
 import type { JxPath } from "../state";
 import { dynamicRouteParams } from "../page-params";
@@ -892,6 +893,8 @@ export interface CanvasCommandDeps {
    * this one, so reaching for it directly would close a cycle.
    */
   setOpenPopover: (tab: Tab, path: JxPath | null) => void;
+  /** The dialog twin: `dialog-state.ts`'s single writer. */
+  setOpenDialog: (tab: Tab, path: JxPath | null) => void;
 }
 
 /** A document is open in a pane — every verb here writes that pane's own view state. */
@@ -1364,6 +1367,60 @@ export function canvasViewCommands(deps: CanvasCommandDeps): AnyCommand[] {
         deps.setOpenPopover(tab, open ? path : null);
       },
       title: "Show Popover",
+      when: documentOpen,
+    },
+    {
+      /**
+       * Draw a `<dialog>` open on the canvas so it can be selected, edited and styled — the dialog
+       * twin of `canvas.setDialogOpen`, with the same one-record, setter-only shape and for the
+       * same reasons.
+       *
+       * ONE record covers open, close and switch. `open` defaults to true, and `open: false` with
+       * no path closes whatever is open — because a `toggle` cannot say which state it ends in,
+       * which `scripts/check-shot-contract.ts` rejects outright (`/\.toggle[A-Z]/`) and
+       * `services/automation.ts` throws on. A documentation screenshot of an open popover is only
+       * possible through an idempotent setter.
+       *
+       * A VIEW state: `undo: "none"`, because it writes `session.ui` and never the document.
+       */
+      args: argsSchema({
+        ...paneArg,
+        open: booleanProperty("True to draw the dialog open, false to close it."),
+        path: {
+          description:
+            "Document path of the dialog. Defaults to the dialog the selection is in or at.",
+          items: { type: ["string", "number"] },
+          type: "array",
+        },
+      }),
+      category: "View",
+      enablement: () => activeDocumentHasDialog(),
+      group: "3_canvas",
+      id: "canvas.setDialogOpen",
+      level: "document",
+      menus: ["palette"],
+      requires: "a dialog in the open document",
+      run: (_commandCtx, args) => {
+        const tab = contextTab("canvas.setDialogOpen", args);
+        const raw = (args ?? {}) as { open?: unknown; path?: JxPath };
+        const open =
+          raw.open === undefined ? true : booleanArg("canvas.setDialogOpen", args, "open");
+        if (!open && raw.path === undefined) {
+          deps.setOpenDialog(tab, null);
+          return;
+        }
+        const path = dialogPathFor(tab, raw.path);
+        /* REFUSES a path that is not a dialog, for the same reason its twin refuses a non-popover:
+           the canvas would draw it under the wrong rule and with the wrong name. */
+        if (path === null) {
+          throw new RangeError(
+            'command "canvas.setDialogOpen" argument "path": names no dialog in this document — ' +
+              "a dialog is a <dialog> element, and a popover is not one",
+          );
+        }
+        deps.setOpenDialog(tab, open ? path : null);
+      },
+      title: "Show Dialog",
       when: documentOpen,
     },
     {

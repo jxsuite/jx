@@ -2,7 +2,7 @@
 
 ## Visual Builder for Jx Documents
 
-**Version:** 0.10.7-draft\
+**Version:** 0.10.8-draft\
 **Status:** Partial\
 **Updated:** 2026-09-02\
 **License:** MIT
@@ -236,6 +236,18 @@ Two things do NOT rescue this, and both are the intuitive answer: `container-typ
 **Selecting reveals.** A selection at or inside a popover opens it, from whichever surface made the selection — the canvas, the Outline, quick search, a Problem, or an undo. The rule is asymmetric on purpose: selecting outside every popover does NOT close the open one, because reaching a colour swatch in the Inspector is a selection change and a panel that shut on every one could never be styled.
 
 Three exclusions, all consequences of the `data-jx-path` gate rather than special cases: a popover rendered inside a component's own template stays native (the studio cannot address it); a layout popover stays native while a page is open and becomes editable when the layout itself is; and `<dialog>` is refused, because its UA rules key off `open` rather than `popover`.
+
+#### 4.2.3 Dialogs, invoker commands and inert
+
+> **Status: Implemented.** `setCanvasDelinkCommands` and `transposeCanvasOverlaySelector` in `@jxsuite/runtime`; `canvas/dialog-path.ts`, `canvas/dialog-state.ts`, the `canvas.setDialogOpen` record and the `commandTargetClick` message in Studio.
+
+A `<dialog>` has the popover's problem twice over. Shown modally it is in the top layer, with the viewport as its containing block and no contribution to any ancestor's overflow; and a modal makes the rest of the page **inert**, so a `show-modal` invoker that ran inside an editable frame would leave every other element unclickable. So editable modes de-link the whole invoker family on nodes the studio can address: `commandfor` becomes `data-jx-commandfor` (a button with `command` and no target does nothing), `inert` becomes `data-jx-inert` (an author's inert region is a region the editor could not select into), and a dialog's authored `open` becomes `data-jx-open`, so the browser's own `dialog:not([open]) { display: none }` keeps every dialog closed until the canvas opens one. `<details open>` is untouched: its `open` is content. `popovertarget` is left alone, because its target has no `popover` attribute on the canvas and the platform already does nothing with it.
+
+The open dialog is `data-jx-dialog-open`, stamped by the frame exactly as `data-jx-popover-open` is, and shown by one rule in the same cascade layer — `dialog[data-jx-dialog-open] { display: block }` — so an author `display` on the base rule still beats it and the base-display defect (§16.6) shows rather than hides. The forced `position` and the **DIALOG · SHOWN IN PLACE** mark follow the popover's. `:modal` is transposed to `[data-jx-dialog-open]`, and `[open]` is transposed the same way on a dialog's OWN rules and nowhere else; `::backdrop` is dropped for the reason §4.2.2 gives. Preview renders the dialog natively: modal, backdrop, inert page and all.
+
+**Which dialog is open is per-tab view state, and exactly one**, held beside the open popover and written by one verb, `canvas.setDialogOpen` — a setter with the same shape and the same refusals as `canvas.setPopoverOpen`. The reveal rule of §4.2.2 covers dialogs from the same effect: a selection at or inside a dialog opens it, and selecting outside every dialog leaves it alone. The Style tab's `[open]` and `:modal` segments open the dialog the selection is in, as `:popover-open` opens its popover.
+
+**An invoker's click is reported, never acted on in the frame.** A click on a de-linked `<button command commandfor>` posts `commandTargetClick` with the target's path and the command; the host resolves it against the model — a popover command lands on `canvas.setPopoverOpen` with `toggle-popover` resolved there, `show-modal` opens the dialog, `close` and `request-close` close it only when it is the open one, and a custom `--command` is the document's own business. The built page carries every one of these attributes verbatim (`packages/compiler/tests/shared.test.ts`); only the canvas renames them.
 
 ---
 
@@ -1807,6 +1819,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.10.8-draft** (2026-09-02) — Dialogs, invoker commands and inert on the canvas: de-linked on stamped nodes, one open dialog per tab, canvas.setDialogOpen and the commandTargetClick report (§4.2.3).
 - **0.10.7-draft** (2026-09-02) — §1, §2 self-hosting and §11 name the UI kit; §11.2 states the shell's unsafe-eval requirement.
 - **0.10.6-draft** (2026-09-01) — Change review: node-level diff marks on both artboards, a change stepper, a code comparison for every changed file, and revalidation after a save.
 - **0.10.5-draft** (2026-08-31) — the canvas de-popovers so an open popover lays out in place and grows the artboard (4.2.2); the selector axis is element-aware and choosing :popover-open changes the rendering (6.2); a third document report checks popover correctness (16.6).
@@ -1923,4 +1936,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_`@jxsuite/studio` Specification v0.10.7-draft_
+_`@jxsuite/studio` Specification v0.10.8-draft_

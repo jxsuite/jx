@@ -18,7 +18,7 @@ This page is generated from the `> **Status: …**` markers in the specification
 | `collab.md`               | 0.2.5-draft  | Partial     | 2026-08-20 |
 | `compiler.md`             | 0.4.3-draft  | Partial     | 2026-09-01 |
 | `desktop.md`              | 0.4.10-draft | Pending     | 2026-09-02 |
-| `embedding.md`            | 0.1.1        | Implemented | 2026-09-02 |
+| `embedding.md`            | 0.1.2        | Implemented | 2026-09-02 |
 | `extensions.md`           | 0.4.3-draft  | Partial     | 2026-08-31 |
 | `imports.md`              | 0.1.10-draft | Partial     | 2026-08-27 |
 | `jx-markdown.md`          | 0.1.10-draft | Partial     | 2026-08-31 |
@@ -30,7 +30,7 @@ This page is generated from the `> **Status: …**` markers in the specification
 | `spec.md`                 | 0.6.8-draft  | Partial     | 2026-09-02 |
 | `standards.md`            | 0.1.17-draft | Partial     | 2026-09-02 |
 | `studio-ui-guidelines.md` | 0.4.6-draft  | Partial     | 2026-09-02 |
-| `studio.md`               | 0.10.7-draft | Partial     | 2026-09-02 |
+| `studio.md`               | 0.10.8-draft | Partial     | 2026-09-02 |
 | `ui.md`                   | 0.1.4-draft  | Partial     | 2026-09-02 |
 
 ## Sections not yet implemented
