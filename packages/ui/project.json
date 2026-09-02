@@ -94,6 +94,8 @@
     "--jx-handler": "light-dark(#7c3aed, #c8a2e0)",
     "--jx-map": "light-dark(#4f46b5, #8b83e6)",
     "--jx-switch-c": "var(--jx-danger)",
+    "--jx-switch-track": "var(--jx-gray-500)",
+    "--jx-switch-thumb": "light-dark(#ffffff, var(--jx-gray-100))",
     "--jx-font-sans": "\"Inter Variable\", \"Inter\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
     "--jx-font-mono": "\"JetBrains Mono\", \"SF Mono\", \"Fira Code\", monospace",
     "--jx-text-xs": "10px",
@@ -112,6 +114,7 @@
     "--jx-space-6": "24px",
     "--jx-space-7": "32px",
     "--jx-control-h": "24px",
+    "--jx-field-label-w": "80px",
     "--jx-icon-size": "16px",
     "--jx-radius-xs": "2px",
     "--jx-radius-sm": "4px",
@@ -161,7 +164,132 @@
       "syntax": "\"<time>\"",
       "inherits": "true",
       "initialValue": "200ms"
+    },
+    "& .jx-field-row": {
+      "display": "grid",
+      "gridTemplateColumns": "var(--jx-field-label-w) minmax(0, 1fr)",
+      "columnGap": "var(--jx-space-3)",
+      "rowGap": "var(--jx-space-1)",
+      "alignItems": "center",
+      "padding": "var(--jx-space-1) 0",
+      "& > .jx-help-text": {
+        "gridColumn": "1 / -1"
+      },
+      "&[data-span] > .jx-field-label": {
+        "gridColumn": "1 / -1",
+        "textAlign": "left",
+        "width": "auto"
+      },
+      "&[data-span] > :not(.jx-field-label)": {
+        "gridColumn": "1 / -1"
+      },
+      "&[data-invalid] > .jx-field-label": {
+        "color": "var(--jx-danger)"
+      },
+      "&[data-warning] > .jx-field-label": {
+        "color": "var(--jx-warning)"
+      }
+    },
+    "& .jx-field-label": {
+      "display": "block",
+      "width": "var(--jx-field-label-w)",
+      "minWidth": "0",
+      "textAlign": "right",
+      "color": "var(--jx-fg-dim)",
+      "fontSize": "var(--jx-text-md)",
+      "lineHeight": "var(--jx-leading-md)",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap",
+      "&[data-required]::after": {
+        "content": "\"*\" / \"\"",
+        "color": "var(--jx-danger)",
+        "marginInlineStart": "var(--jx-space-1)"
+      }
+    },
+    "& .jx-help-text": {
+      "margin": "0",
+      "color": "var(--jx-fg-dim)",
+      "fontSize": "var(--jx-text-sm)",
+      "lineHeight": "var(--jx-leading-sm)"
+    },
+    "& .jx-help-text--error": {
+      "color": "var(--jx-danger)"
+    },
+    "& .jx-divider": {
+      "flex": "none",
+      "margin": "var(--jx-space-1) 0",
+      "border": "0",
+      "borderTop": "1px solid var(--jx-border)",
+      "&[aria-orientation=\"vertical\"]": {
+        "alignSelf": "stretch",
+        "margin": "0 var(--jx-space-1)",
+        "borderTop": "0",
+        "borderLeft": "1px solid var(--jx-border)"
+      }
+    },
+    "& .jx-table": {
+      "width": "100%",
+      "borderCollapse": "collapse",
+      "fontSize": "var(--jx-text-md)",
+      "fontVariantNumeric": "tabular-nums",
+      "& th, & td": {
+        "padding": "var(--jx-space-2) var(--jx-space-3)",
+        "textAlign": "left",
+        "borderBottom": "1px solid var(--jx-border)"
+      },
+      "& th": {
+        "color": "var(--jx-fg-dim)",
+        "fontWeight": "500"
+      },
+      "& tbody tr:last-child > *": {
+        "borderBottom": "0"
+      }
+    },
+    "& .jx-kbd": {
+      "display": "inline-block",
+      "padding": "0 var(--jx-space-2)",
+      "border": "1px solid var(--jx-border)",
+      "borderRadius": "var(--jx-radius-xs)",
+      "background": "var(--jx-bg-panel)",
+      "color": "var(--jx-fg-dim)",
+      "fontFamily": "var(--jx-font-mono)",
+      "fontSize": "var(--jx-text-xs)",
+      "lineHeight": "var(--jx-leading-sm)"
+    },
+    "& .jx-badge": {
+      "display": "inline-flex",
+      "alignItems": "center",
+      "justifyContent": "center",
+      "minWidth": "16px",
+      "padding": "0 var(--jx-space-2)",
+      "borderRadius": "999px",
+      "background": "var(--jx-accent-solid)",
+      "color": "var(--jx-accent-fg)",
+      "fontSize": "var(--jx-text-xs)",
+      "lineHeight": "16px",
+      "fontVariantNumeric": "tabular-nums"
+    },
+    "& .jx-dot": {
+      "display": "inline-block",
+      "width": "6px",
+      "height": "6px",
+      "borderRadius": "50%",
+      "background": "var(--jx-fg-muted)",
+      "&[data-tone=\"danger\"]": {
+        "background": "var(--jx-danger)"
+      },
+      "&[data-tone=\"success\"]": {
+        "background": "var(--jx-success)"
+      },
+      "&[data-tone=\"warning\"]": {
+        "background": "var(--jx-warning)"
+      }
     }
   },
-  "$elements": [{ "$ref": "./components/jx-icon.json" }]
+  "$elements": [
+    {
+      "$ref": "./components/jx-icon.json"
+    }
+  ]
 }

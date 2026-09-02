@@ -50,6 +50,22 @@ function* internalNodes(node: JxElement, path = "root"): Generator<[string, JxEl
       yield [`${label}.map`, mapped];
       yield* internalNodes(mapped, `${label}.map`);
     }
+    // A `$switch` container's branches are real rendered nodes and were invisible here: every one
+    // Of jx-textfield's controls lives in one, so the part, token and icon rules below were only
+    // Ever checked against the containers.
+    const { cases } = el as { cases?: Record<string, unknown> };
+    for (const [key, branch] of Object.entries(cases ?? {})) {
+      for (const [branchIndex, entry] of (Array.isArray(branch) ? branch : [branch]).entries()) {
+        if (!entry || typeof entry !== "object") {
+          continue;
+        }
+        const caseLabel = `${label}.cases.${key}${Array.isArray(branch) ? `[${branchIndex}]` : ""}`;
+        if (typeof (entry as JxElement).tagName === "string") {
+          yield [caseLabel, entry as JxElement];
+        }
+        yield* internalNodes(entry as JxElement, caseLabel);
+      }
+    }
   }
 }
 
@@ -134,6 +150,23 @@ describe("kit documents", () => {
         if ("display" in style) {
           const hiddenRule = style["&[hidden]"] as Record<string, unknown> | undefined;
           expect(hiddenRule?.display).toBe("none");
+        }
+      });
+
+      test("names only glyphs the kit ships", () => {
+        // The stylebook gate below reads a page's `state.names`; nothing read an icon name inside
+        // A COMPONENT until this. A typo there renders an empty 16x16 box with every gate green,
+        // Which is how `jx-textfield`'s clear button nearly shipped one.
+        for (const [label, node] of internalNodes(doc)) {
+          if (node.tagName !== "jx-icon") {
+            continue;
+          }
+          const props = (node as { $props?: Record<string, unknown> }).$props ?? {};
+          const name = props["name"] ?? node.attributes?.["name"];
+          if (typeof name !== "string" || name.includes("${")) {
+            continue;
+          }
+          expect(ICON_NAMES, `${label} <jx-icon name="${name}">`).toContain(name);
         }
       });
 

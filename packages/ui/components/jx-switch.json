@@ -1,0 +1,250 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "JxSwitch",
+  "tagName": "jx-switch",
+  "observedAttributes": [
+    "checked",
+    "disabled",
+    "hint",
+    "label",
+    "labelledby",
+    "describedby",
+    "name",
+    "size"
+  ],
+  "state": {
+    "checked": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "checked",
+      "description": "Whether the setting is on. Bound to the control BOTH ways, and the two halves do different jobs. The PROPERTY is what keeps tracking: once the reader flips the box the checkedness dirty flag is set and the content attribute stops controlling the live state, so an attribute binding alone would look right until the first click and then silently stop. The ATTRIBUTE is written as well so the control's defaultChecked can never disagree with the element's state — the same shape jx-textfield ships for value. The cost is that defaultChecked is also the form-reset default, so until the element is form-associated (specs/ui.md §3.2) form.reset() moves this switch nowhere. That is the deliberate half of the trade: with no form association the element never hears the reset, so a working reset would move the CONTROL to the authored default and leave the element's checked state behind it, and a control that silently disagrees with its own element is worse than a reset that does nothing."
+    },
+    "disabled": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "disabled",
+      "description": "Cannot be flipped or focused. Disabled, never absent."
+    },
+    "hint": {
+      "type": "string",
+      "default": "",
+      "attribute": "hint",
+      "description": "The tooltip on the row: why the setting is off, or what turning it on does. Empty removes the title rather than writing a blank one."
+    },
+    "label": {
+      "type": "string",
+      "default": "",
+      "attribute": "label",
+      "description": "The accessible name, forwarded to the control as aria-label. Leave it empty when the slotted text is on screen: the wrapping label is then the name, and a second one would be read twice."
+    },
+    "labelledby": {
+      "type": "string",
+      "default": "",
+      "attribute": "labelledby",
+      "description": "Forwarded to the inner control as aria-labelledby, for a visible label the element does not own."
+    },
+    "describedby": {
+      "type": "string",
+      "default": "",
+      "attribute": "describedby",
+      "description": "Forwarded to the inner control as aria-describedby, for the help or error sentence on the row."
+    },
+    "name": {
+      "type": "string",
+      "default": "",
+      "attribute": "name",
+      "description": "The form field name, forwarded to the control."
+    },
+    "size": {
+      "type": "string",
+      "default": "md",
+      "attribute": "size",
+      "description": "sm, md or lg. The track scales with it so a row of controls lines up."
+    },
+    "onChange": {
+      "$prototype": "Function",
+      "body": [
+        {
+          "operator": "=",
+          "target": {
+            "$ref": "#/state/checked"
+          },
+          "value": {
+            "$ref": "event#/target/checked"
+          }
+        }
+      ],
+      "description": "Mirrors the reader's flip into checked. The native change and input events bubble from the control as they always do, so a host reads e.target.checked exactly as it would from a bare input."
+    }
+  },
+  "attributes": {
+    "data-size": "${state.size}",
+    "data-checked": "${state.checked ? '' : null}",
+    "data-disabled": "${state.disabled ? '' : null}"
+  },
+  "style": {
+    "display": "inline-flex",
+    "verticalAlign": "middle",
+    "&[hidden]": {
+      "display": "none"
+    },
+    "& > [part=\"control\"]": {
+      "display": "inline-flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-2)",
+      "minHeight": "var(--jx-control-h)",
+      "fontFamily": "var(--jx-font-sans)",
+      "fontSize": "var(--jx-text-md)",
+      "lineHeight": "var(--jx-leading-md)",
+      "color": "var(--jx-fg)",
+      "cursor": "pointer"
+    },
+    "&[data-disabled] > [part=\"control\"]": {
+      "cursor": "default",
+      "color": "var(--jx-fg-muted)"
+    },
+    "& [part=\"input\"]": {
+      "appearance": "none",
+      "boxSizing": "border-box",
+      "position": "relative",
+      "flex": "0 0 auto",
+      "width": "28px",
+      "height": "16px",
+      "margin": "0",
+      "padding": "0",
+      "border": "1px solid var(--jx-switch-track)",
+      "borderRadius": "999px",
+      "background": "var(--jx-switch-track)",
+      "cursor": "inherit",
+      "outline": "none",
+      "--jx-switch-travel": "12px",
+      "transition": "background var(--jx-dur-1) var(--jx-ease-out), border-color var(--jx-dur-1) var(--jx-ease-out)",
+      "::before": {
+        "content": "\"\"",
+        "position": "absolute",
+        "insetBlockStart": "1px",
+        "insetInlineStart": "1px",
+        "width": "12px",
+        "height": "12px",
+        "borderRadius": "50%",
+        "background": "var(--jx-switch-thumb)",
+        "transition": "translate var(--jx-dur-1) var(--jx-ease-out)"
+      },
+      ":checked": {
+        "background": "var(--jx-accent-solid)",
+        "borderColor": "var(--jx-accent-solid)",
+        "::before": {
+          "translate": "var(--jx-switch-travel) 0"
+        }
+      },
+      ":focus-visible": {
+        "outline": "var(--jx-focus-ring)",
+        "outlineOffset": "2px"
+      },
+      ":disabled": {
+        "opacity": "0.5",
+        "cursor": "default"
+      }
+    },
+    "&:dir(rtl) [part=\"input\"]:checked::before": {
+      "translate": "calc(-1 * var(--jx-switch-travel)) 0"
+    },
+    "&[data-size=\"sm\"] [part=\"input\"]": {
+      "width": "22px",
+      "height": "12px",
+      "--jx-switch-travel": "10px",
+      "::before": {
+        "width": "8px",
+        "height": "8px"
+      }
+    },
+    "&[data-size=\"lg\"] [part=\"input\"]": {
+      "width": "34px",
+      "height": "20px",
+      "--jx-switch-travel": "14px",
+      "::before": {
+        "width": "16px",
+        "height": "16px"
+      }
+    },
+    "& [part=\"label\"]": {
+      "minWidth": "0"
+    },
+    "& [part=\"label\"]:has([part=\"label-slot\"]:empty)": {
+      "display": "none"
+    },
+    "@(forced-colors: active)": {
+      "& [part=\"input\"]": {
+        "forcedColorAdjust": "none",
+        "background": "ButtonFace",
+        "borderColor": "ButtonText",
+        "::before": {
+          "background": "ButtonText"
+        },
+        ":checked": {
+          "background": "Highlight",
+          "borderColor": "Highlight",
+          "::before": {
+            "background": "ButtonFace"
+          }
+        },
+        ":disabled": {
+          "borderColor": "GrayText",
+          "opacity": "1",
+          "::before": {
+            "background": "GrayText"
+          }
+        }
+      }
+    }
+  },
+  "children": [
+    {
+      "tagName": "label",
+      "attributes": {
+        "part": "control",
+        "title": "${state.hint || null}"
+      },
+      "children": [
+        {
+          "tagName": "input",
+          "attributes": {
+            "part": "input",
+            "type": "checkbox",
+            "role": "switch",
+            "aria-label": "${state.label || null}",
+            "aria-labelledby": "${state.labelledby || null}",
+            "aria-describedby": "${state.describedby || null}",
+            "name": "${state.name || null}",
+            "disabled": {
+              "$ref": "#/state/disabled"
+            },
+            "checked": {
+              "$ref": "#/state/checked"
+            }
+          },
+          "checked": {
+            "$ref": "#/state/checked"
+          },
+          "onchange": {
+            "$ref": "#/state/onChange"
+          }
+        },
+        {
+          "tagName": "span",
+          "attributes": {
+            "part": "label"
+          },
+          "children": [
+            {
+              "tagName": "slot",
+              "attributes": {
+                "part": "label-slot"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

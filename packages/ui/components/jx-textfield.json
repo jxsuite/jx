@@ -15,18 +15,26 @@
     "required",
     "mono",
     "multiline",
+    "grows",
+    "rows",
+    "clearable",
     "size",
     "name",
     "autocomplete",
     "error",
     "help"
   ],
+  "$elements": [
+    {
+      "$ref": "./jx-icon.json"
+    }
+  ],
   "state": {
     "value": {
       "type": "string",
       "default": "",
       "attribute": "value",
-      "description": "The field's text. Written by the reader as they type, and by the host; a write equal to what is there never moves the caret."
+      "description": "The field's text. Written by the reader as they type, and by the host; a write equal to what is there never moves the caret. It is written to the control's value CONTENT attribute as well as its property, which makes the control's default value whatever the field currently says. That is deliberate: the element is not form-associated (specs/ui.md §3.2), so it never hears form.reset(), and a control whose default was the authored one would snap back while the element still said something else — an element and its own control disagreeing in silence. The cost is named rather than hidden: reset() is a no-op on this field until form association lands."
     },
     "placeholder": {
       "type": "string",
@@ -68,13 +76,13 @@
       "type": "boolean",
       "default": false,
       "attribute": "disabled",
-      "description": "Cannot be edited or focused."
+      "description": "Cannot be edited or focused. Clearing is an edit, so a disabled field draws no clear button and Escape empties nothing: a host that switched the control off hears no input or change from it."
     },
     "readonly": {
       "type": "boolean",
       "default": false,
       "attribute": "readonly",
-      "description": "Can be focused and selected, not edited."
+      "description": "Can be focused and selected, not edited. Clearing is an edit, so a read-only field draws no clear button and Escape empties nothing."
     },
     "required": {
       "type": "boolean",
@@ -93,6 +101,24 @@
       "default": false,
       "attribute": "multiline",
       "description": "A textarea rather than an input."
+    },
+    "grows": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "grows",
+      "description": "A multiline field takes the height of its text instead of scrolling inside a fixed box. field-sizing does the work, so nothing is measured and no handler runs per keystroke. Where the engine does not support it the field keeps the height rows asks for, and a growing field with no rows keeps the three-row box a fixed one gets — opting into growth never makes a field shorter than not opting in."
+    },
+    "rows": {
+      "type": "string",
+      "default": "",
+      "attribute": "rows",
+      "description": "How many lines a multiline field is tall before it grows. Forwarded to the textarea, and it is what a growing field falls back to on an engine without field-sizing."
+    },
+    "clearable": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "clearable",
+      "description": "Draws a button inside the field that empties it, shown only while there is something to clear and the field is neither disabled nor read-only. Escape empties the field on exactly the same terms. Firefox draws no clear affordance of its own for type=search, so this is the field's own rather than the platform's."
     },
     "size": {
       "type": "string",
@@ -142,6 +168,49 @@
         "value": ""
       }
     },
+    "isEmpty": {
+      "$expression": {
+        "operator": "===",
+        "target": {
+          "$ref": "#/state/value"
+        },
+        "value": ""
+      }
+    },
+    "isLocked": {
+      "$expression": {
+        "operator": "||",
+        "target": {
+          "$ref": "#/state/disabled"
+        },
+        "value": {
+          "$ref": "#/state/readonly"
+        }
+      }
+    },
+    "showClear": {
+      "$expression": {
+        "operator": "&&",
+        "target": {
+          "operator": "&&",
+          "target": {
+            "$ref": "#/state/clearable"
+          },
+          "value": {
+            "operator": "!",
+            "target": {
+              "$ref": "#/state/isEmpty"
+            }
+          }
+        },
+        "value": {
+          "operator": "!",
+          "target": {
+            "$ref": "#/state/isLocked"
+          }
+        }
+      }
+    },
     "uid": {
       "type": "string",
       "default": "",
@@ -167,30 +236,152 @@
         }
       ],
       "description": "Mirrors what the reader types into value. The native input and change events bubble from the control as they always do."
+    },
+    "onClear": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/textfield.ts",
+      "$export": "clearField",
+      "emits": [
+        {
+          "name": "input",
+          "description": "The value was emptied by the clear button; e.target is the field."
+        },
+        {
+          "name": "change",
+          "description": "The edit the clear button made is finished; e.target is the field."
+        }
+      ],
+      "description": "The clear button empties the value, puts focus back on the control the reader was in, and says so with input and then change. Both come from the element rather than from the button, so a host reading e.target.value reads the field."
+    },
+    "onClearPointerDown": {
+      "$prototype": "Function",
+      "body": [
+        {
+          "preventDefault": true
+        }
+      ],
+      "description": "Keeps focus in the control while the clear button is pressed. Without it the press moves focus to the button, the control blurs and fires its own native change carrying the value the reader is about to delete, and the clear then fires a second one: two committed edits, and two undo entries, for one gesture."
+    },
+    "onKeydown": {
+      "$prototype": "Function",
+      "body": [
+        {
+          "$switch": {
+            "$ref": "event#/key"
+          },
+          "cases": {
+            "Escape": [
+              {
+                "if": {
+                  "$ref": "#/state/showClear"
+                },
+                "then": [
+                  {
+                    "preventDefault": true
+                  },
+                  {
+                    "operator": "=",
+                    "target": {
+                      "$ref": "#/state/value"
+                    },
+                    "value": ""
+                  },
+                  {
+                    "dispatchEvent": "input",
+                    "bubbles": true
+                  },
+                  {
+                    "dispatchEvent": "change",
+                    "bubbles": true
+                  }
+                ]
+              }
+            ],
+            "Enter": [
+              {
+                "if": {
+                  "operator": "&&",
+                  "target": {
+                    "operator": "===",
+                    "target": {
+                      "$ref": "#/state/type"
+                    },
+                    "value": "search"
+                  },
+                  "value": {
+                    "operator": "!",
+                    "target": {
+                      "$ref": "#/state/multiline"
+                    }
+                  }
+                },
+                "then": [
+                  {
+                    "preventDefault": true
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "emits": [
+        {
+          "name": "input",
+          "description": "Escape emptied a clearable field; e.target is the field."
+        },
+        {
+          "name": "change",
+          "description": "Escape finished emptying a clearable field; e.target is the field."
+        }
+      ],
+      "description": "Two keys, and nothing else. Escape empties a clearable field that has something in it, and cancels so the key does not also close whatever the field sits in. Enter is cancelled on a single-line search field: a search input inside a form submits it, and a search field is the one kind that never means to — the element owns no form, so the guard lives here rather than at every call site. A textarea never submits on Enter, so a multiline field keeps the key and the reader keeps the newline."
     }
+  },
+  "onkeydown": {
+    "$ref": "#/state/onKeydown"
   },
   "attributes": {
     "data-size": "${state.size}",
     "data-invalid": "${state.invalid ? '' : null}",
     "data-mono": "${state.mono ? '' : null}",
-    "data-disabled": "${state.disabled ? '' : null}"
+    "data-disabled": "${state.disabled ? '' : null}",
+    "data-clearable": "${state.clearable ? '' : null}",
+    "data-multiline": "${state.multiline ? '' : null}",
+    "data-grows": "${state.grows ? '' : null}",
+    "data-rows": "${state.rows || null}"
   },
   "style": {
     "display": "inline-flex",
+    "position": "relative",
     "flexDirection": "column",
     "gap": "var(--jx-space-1)",
     "verticalAlign": "middle",
     "minWidth": "0",
+    "--jx-textfield-h": "var(--jx-control-h)",
+    "--jx-textfield-pad": "var(--jx-space-3)",
+    "--jx-textfield-pad-end": "var(--jx-textfield-pad)",
     "&[hidden]": {
       "display": "none"
+    },
+    "&[data-size=\"sm\"]": {
+      "--jx-textfield-h": "calc(var(--jx-control-h) - 4px)",
+      "--jx-textfield-pad": "var(--jx-space-2)"
+    },
+    "&[data-size=\"lg\"]": {
+      "--jx-textfield-h": "calc(var(--jx-control-h) + 8px)"
+    },
+    "&[data-clearable]": {
+      "--jx-textfield-pad-end": "var(--jx-textfield-h)"
     },
     "& [part=\"input\"]": {
       "appearance": "none",
       "boxSizing": "border-box",
       "width": "100%",
-      "minHeight": "var(--jx-control-h)",
+      "minHeight": "var(--jx-textfield-h)",
       "margin": "0",
-      "padding": "0 var(--jx-space-3)",
+      "paddingBlock": "0",
+      "paddingInline": "var(--jx-textfield-pad) var(--jx-textfield-pad-end)",
       "border": "1px solid var(--jx-border-strong)",
       "borderRadius": "var(--jx-radius-sm)",
       "background": "var(--jx-bg-input)",
@@ -217,9 +408,21 @@
       }
     },
     "& textarea[part=\"input\"]": {
-      "minHeight": "calc(var(--jx-control-h) * 3)",
-      "padding": "var(--jx-space-2) var(--jx-space-3)",
+      "minHeight": "calc(var(--jx-textfield-h) * 3)",
+      "paddingBlock": "var(--jx-space-2)",
       "resize": "vertical"
+    },
+    "&[data-grows] textarea[part=\"input\"]": {
+      "fieldSizing": "content",
+      "resize": "none"
+    },
+    "&[data-grows][data-rows] textarea[part=\"input\"]": {
+      "minHeight": "0"
+    },
+    "@supports (field-sizing: content)": {
+      "&[data-grows] textarea[part=\"input\"]": {
+        "minHeight": "0"
+      }
     },
     "&[data-mono] [part=\"input\"]": {
       "fontFamily": "var(--jx-font-mono)"
@@ -227,14 +430,46 @@
     "&[data-invalid] [part=\"input\"]": {
       "borderColor": "var(--jx-danger)"
     },
+    "&[data-clearable] [part=\"input\"]": {
+      "::-webkit-search-cancel-button": {
+        "appearance": "none"
+      }
+    },
     "&[data-size=\"sm\"] [part=\"input\"]": {
-      "minHeight": "calc(var(--jx-control-h) - 4px)",
-      "fontSize": "var(--jx-text-sm)",
-      "padding": "0 var(--jx-space-2)"
+      "fontSize": "var(--jx-text-sm)"
     },
     "&[data-size=\"lg\"] [part=\"input\"]": {
-      "minHeight": "calc(var(--jx-control-h) + 8px)",
       "fontSize": "var(--jx-text-lg)"
+    },
+    "& [part=\"clear\"]": {
+      "position": "absolute",
+      "insetBlockStart": "1px",
+      "insetInlineEnd": "1px",
+      "display": "inline-flex",
+      "alignItems": "center",
+      "justifyContent": "center",
+      "boxSizing": "border-box",
+      "width": "calc(var(--jx-textfield-h) - 2px)",
+      "height": "calc(var(--jx-textfield-h) - 2px)",
+      "margin": "0",
+      "padding": "0",
+      "appearance": "none",
+      "border": "0",
+      "borderRadius": "var(--jx-radius-sm)",
+      "background": "transparent",
+      "color": "var(--jx-fg-muted)",
+      "cursor": "pointer",
+      "outline": "none",
+      ":hover": {
+        "color": "var(--jx-fg)"
+      },
+      ":focus-visible": {
+        "outline": "var(--jx-focus-ring)",
+        "outlineOffset": "-1px"
+      }
+    },
+    "&[data-multiline] [part=\"clear\"]": {
+      "insetBlockStart": "calc(var(--jx-space-2) + 1px)"
     },
     "& [part=\"error\"], & [part=\"help\"]": {
       "margin": "0",
@@ -248,7 +483,7 @@
     "& [part=\"error\"]:empty": {
       "position": "absolute"
     },
-    "& > [part=\"control-slot\"], & > [part=\"help-slot\"]": {
+    "& > [part=\"control-slot\"], & > [part=\"clear-slot\"], & > [part=\"help-slot\"]": {
       "display": "contents"
     }
   },
@@ -298,6 +533,7 @@
           "attributes": {
             "part": "input",
             "placeholder": "${state.placeholder || null}",
+            "rows": "${state.rows || null}",
             "aria-label": "${state.label || null}",
             "aria-labelledby": "${state.labelledby || null}",
             "aria-describedby": "${[state.hasError && state.uid ? state.uid + '-error' : null, state.hasHelp && state.uid ? state.uid + '-help' : null, state.describedby || null].filter(Boolean).join(' ') || null}",
@@ -321,6 +557,44 @@
           "oninput": {
             "$ref": "#/state/onInput"
           }
+        }
+      }
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "role": "none",
+        "part": "clear-slot"
+      },
+      "$switch": {
+        "$ref": "#/state/showClear"
+      },
+      "cases": {
+        "true": {
+          "tagName": "button",
+          "attributes": {
+            "part": "clear",
+            "type": "button",
+            "tabindex": "-1",
+            "aria-label": "Clear"
+          },
+          "onclick": {
+            "$ref": "#/state/onClear"
+          },
+          "onpointerdown": {
+            "$ref": "#/state/onClearPointerDown"
+          },
+          "children": [
+            {
+              "tagName": "jx-icon",
+              "$props": {
+                "name": "x"
+              },
+              "attributes": {
+                "part": "clear-icon"
+              }
+            }
+          ]
         }
       }
     },

@@ -12,6 +12,7 @@
 import { defineElement, preloadDocument, preloadModule } from "@jxsuite/runtime";
 import * as dialog from "./behaviors/dialog.ts";
 import * as menu from "./behaviors/menu.ts";
+import * as numberField from "./behaviors/number-field.ts";
 import * as textfield from "./behaviors/textfield.ts";
 import { documents } from "./documents.ts";
 import * as icons from "./icons.ts";
@@ -36,6 +37,7 @@ export const KIT_BASE = "jx-ui:/components/";
 export const KIT_MODULES: Readonly<Record<string, Record<string, unknown>>> = {
   "jx-ui:/behaviors/dialog.ts": dialog,
   "jx-ui:/behaviors/menu.ts": menu,
+  "jx-ui:/behaviors/number-field.ts": numberField,
   "jx-ui:/behaviors/textfield.ts": textfield,
   "jx-ui:/icons.ts": icons,
 };

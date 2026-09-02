@@ -329,7 +329,10 @@
                   "children": [
                     {
                       "tagName": "span",
-                      "textContent": "${state.secondaryLabel}"
+                      "textContent": "${state.secondaryLabel}",
+                      "attributes": {
+                        "part": "secondary-label"
+                      }
                     }
                   ]
                 }
@@ -357,7 +360,10 @@
                   "children": [
                     {
                       "tagName": "span",
-                      "textContent": "${state.cancelLabel}"
+                      "textContent": "${state.cancelLabel}",
+                      "attributes": {
+                        "part": "cancel-label"
+                      }
                     }
                   ]
                 }
@@ -390,7 +396,10 @@
                   "children": [
                     {
                       "tagName": "span",
-                      "textContent": "${state.confirmLabel}"
+                      "textContent": "${state.confirmLabel}",
+                      "attributes": {
+                        "part": "confirm-label"
+                      }
                     }
                   ]
                 }
