@@ -22,6 +22,7 @@
     "./theme": "./src/theme.ts",
     "./icons": "./src/icons.ts",
     "./documents": "./src/documents.ts",
+    "./behaviors/menu": "./src/behaviors/menu.ts",
     "./testing/popover-shim": "./src/testing/popover-shim.ts",
     "./icons/manifest.json": "./icons/manifest.json"
   },

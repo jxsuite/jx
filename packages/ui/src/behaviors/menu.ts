@@ -21,13 +21,14 @@ export interface MenuState {
   open?: boolean;
   x?: number;
   y?: number;
+  floor?: number;
   [key: string]: unknown;
 }
 
 /** A row element with the property accessors its document installs. */
 type RowElement = HTMLElement & { expanded?: boolean; disabled?: boolean };
 /** A menu element with the property accessors its document installs. */
-type MenuElement = HTMLElement & { open?: boolean; x?: number; y?: number };
+type MenuElement = HTMLElement & { open?: boolean; x?: number; y?: number; floor?: number };
 
 /** The menu an event's `currentTarget` is. */
 function menuOf(event: Event): MenuElement | null {
@@ -296,10 +297,20 @@ export function onMenuToggle(state: MenuState, event: Event): void {
   }
 }
 
+/** The lowest edge a stack may reach: the root menu's `floor`, else the viewport's bottom. */
+function floorOf(menu: HTMLElement): number {
+  const floor = Number((rootMenuOf(menu) as MenuElement).floor ?? 0);
+  return floor > 0 ? floor : window.innerHeight;
+}
+
 /**
- * Keep a shown panel inside the viewport. Measured after a frame, because an unlaid-out panel is
- * zero wide and would never appear to overflow anything; a zero-size box (a test DOM) is left where
- * it is.
+ * Keep a shown panel inside its area. Measured after a frame, because an unlaid-out panel is zero
+ * wide and would never appear to overflow anything; a zero-size box (a test DOM) is left where it
+ * is.
+ *
+ * A submenu that would leave the viewport on the right FLIPS to its parent menu's left rather than
+ * sliding over the parent; a root menu slides. Both are floored at the stack's `floor` — the root
+ * menu's, so one floor holds for every level.
  *
  * @param {MenuState} state
  * @param {HTMLElement} menu
@@ -311,13 +322,17 @@ export function clampIntoViewport(state: MenuState, menu: HTMLElement): void {
       return;
     }
     const margin = 4;
-    const maxX = window.innerWidth - box.width - margin;
-    const maxY = window.innerHeight - box.height - margin;
+    const bottom = floorOf(menu);
     if (box.right > window.innerWidth - margin) {
-      state.x = Math.max(margin, Math.round(maxX));
+      const parent = parentRowOf(menu)?.closest<HTMLElement>(MENU) ?? null;
+      const flipped = parent ? Math.round(parent.getBoundingClientRect().left) - box.width + 2 : -1;
+      state.x =
+        flipped >= margin
+          ? flipped
+          : Math.max(margin, Math.round(window.innerWidth - box.width - margin));
     }
-    if (box.bottom > window.innerHeight - margin) {
-      state.y = Math.max(margin, Math.round(maxY));
+    if (box.bottom > bottom) {
+      state.y = Math.max(margin, Math.round(bottom - box.height));
     }
   };
   if (typeof requestAnimationFrame === "function") {
@@ -325,6 +340,36 @@ export function clampIntoViewport(state: MenuState, menu: HTMLElement): void {
   } else {
     measure();
   }
+}
+
+/**
+ * Put the caret somewhere after the rows changed under it: when focus is no longer inside `menu`,
+ * the first row of the deepest open submenu takes it — and a submenu left with no rows at all is
+ * closed, its parent row taking the caret instead.
+ *
+ * @param {HTMLElement} menu The root menu
+ */
+export function ensureCaret(menu: HTMLElement): void {
+  if (menu.contains(document.activeElement)) {
+    return;
+  }
+  let deepest = menu as MenuElement;
+  for (;;) {
+    const open = rowsOf(deepest, { includeDisabled: true })
+      .map((row) => submenuOf(row))
+      .find((sub) => sub !== null && isShowing(sub));
+    if (!open) {
+      break;
+    }
+    deepest = open;
+  }
+  const parent = parentRowOf(deepest);
+  if (rowsOf(deepest).length === 0 && parent) {
+    hideMenu(deepest);
+    parent.focus();
+    return;
+  }
+  focusRow(rowsOf(deepest), 0);
 }
 
 /**

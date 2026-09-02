@@ -844,7 +844,8 @@ describe("showContextMenu", () => {
     await flush();
     await frame();
     expect(menu.x).toBe(window.innerWidth - 300 - 4);
-    expect(menu.y).toBe(window.innerHeight - 200 - 4);
+    // The bottom edge is a floor, not a margin: flush with the viewport's bottom.
+    expect(menu.y).toBe(window.innerHeight - 200);
   });
 
   test("an unknown placement renders nothing and leaves no target behind", async () => {

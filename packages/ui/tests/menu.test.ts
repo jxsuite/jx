@@ -6,7 +6,7 @@ import { mount } from "@jxsuite/runtime";
 import type { JxDocument, JxElement } from "@jxsuite/schema/types";
 
 import { registerUi } from "../src/index.ts";
-import { rootMenuOf, rowsOf, submenuOf } from "../src/behaviors/menu.ts";
+import { ensureCaret, rootMenuOf, rowsOf, submenuOf } from "../src/behaviors/menu.ts";
 
 /** Let the popover shim's queued `toggle` and the runtime's `onMount` settle. */
 const flush = () =>
@@ -14,7 +14,7 @@ const flush = () =>
     setTimeout(r, 0);
   });
 
-type MenuEl = HTMLElement & { open: boolean; x: number; y: number };
+type MenuEl = HTMLElement & { open: boolean; x: number; y: number; floor: number };
 type RowEl = HTMLElement & { expanded: boolean };
 
 interface RowSpec {
@@ -326,5 +326,104 @@ describe("jx-menu", () => {
     dispose!();
     dispose = null;
     expect(menu.isConnected).toBe(false);
+  });
+
+  /** Give an element a box, since happy-dom lays nothing out. */
+  function stubRect(
+    el: Element,
+    rect: { left: number; top: number; width: number; height: number },
+  ) {
+    el.getBoundingClientRect = () =>
+      ({
+        ...rect,
+        bottom: rect.top + rect.height,
+        right: rect.left + rect.width,
+        x: rect.left,
+        y: rect.top,
+        toJSON: () => rect,
+      }) as DOMRect;
+  }
+
+  async function frame(): Promise<void> {
+    await new Promise((r) => {
+      requestAnimationFrame(() => r(null));
+    });
+  }
+
+  test("a submenu that would leave the viewport on the right flips to its parent's left", async () => {
+    const { menu, rows } = await open();
+    const settings = rows[3]!;
+    const sub = submenuOf(settings) as MenuEl;
+    stubRect(menu, { height: 200, left: window.innerWidth - 220, top: 100, width: 200 });
+    stubRect(settings, { height: 24, left: window.innerWidth - 220, top: 160, width: 200 });
+    key(menu, "ArrowDown");
+    key(menu, "ArrowDown");
+    key(menu, "ArrowRight");
+    // Placed beside the row first…
+    expect(sub.x).toBe(window.innerWidth - 20 - 2);
+    stubRect(sub, { height: 80, left: sub.x, top: sub.y, width: 180 });
+    await flush();
+    await frame();
+    // …then flipped to the parent menu's left once measured to overflow.
+    expect(sub.x).toBe(window.innerWidth - 220 - 180 + 2);
+  });
+
+  test("a root menu that overflows the right edge slides in; one below the floor moves up", async () => {
+    const { menu } = await open();
+    menu.floor = 500;
+    menu.hidePopover();
+    await flush();
+    stubRect(menu, { height: 300, left: window.innerWidth - 50, top: 400, width: 200 });
+    menu.showPopover();
+    await flush();
+    await frame();
+    expect(menu.x).toBe(window.innerWidth - 200 - 4);
+    expect(menu.y).toBe(500 - 300);
+  });
+
+  test("ensureCaret puts the caret back on a row after the focused one went away", async () => {
+    const { menu, rows } = await open();
+    key(menu, "ArrowDown"); // Paste is disabled, so the caret lands on Show grid
+    const grid = rows[2]!;
+    expect(document.activeElement === grid).toBe(true);
+    grid.remove();
+    ensureCaret(menu);
+    expect(document.activeElement === rows[0]).toBe(true);
+    // Inside an open submenu the caret lands on its first row…
+    key(menu, "ArrowDown"); // → Settings, now that Show grid is gone
+    expect(document.activeElement === rows[3]).toBe(true);
+    key(menu, "ArrowRight");
+    await flush();
+    const sub = submenuOf(rows[3]!) as MenuEl;
+    expect(sub.open).toBe(true);
+    (document.activeElement as HTMLElement).blur();
+    expect(menu.contains(document.activeElement)).toBe(false);
+    ensureCaret(menu);
+    expect(document.activeElement === rowsOf(sub)[0]).toBe(true);
+    // …and a submenu emptied under it closes, its parent row taking the caret.
+    for (const child of rowsOf(sub)) {
+      child.remove();
+    }
+    ensureCaret(menu);
+    await flush();
+    expect(sub.open).toBe(false);
+    expect(document.activeElement === rows[3]).toBe(true);
+  });
+
+  test("a mousedown on the invoker a menu was shown from does not light-dismiss it", async () => {
+    const { menu } = await open();
+    menu.hidePopover();
+    await flush();
+    const button = document.createElement("button");
+    document.body.append(button);
+    menu.showPopover({ source: button });
+    await flush();
+    button.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    await flush();
+    expect(menu.open).toBe(true);
+    document.body.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    await flush();
+    expect(menu.open).toBe(false);
+    button.remove();
   });
 });

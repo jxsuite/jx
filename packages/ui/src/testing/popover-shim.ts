@@ -15,6 +15,8 @@
 
 interface PopoverState {
   open: Set<HTMLElement>;
+  /** The invoker each showing popover was shown from, when `showPopover({ source })` named one. */
+  invokers: WeakMap<HTMLElement, Element>;
 }
 
 declare global {
@@ -35,14 +37,14 @@ function isAuto(el: HTMLElement): boolean {
 
 export function installPopoverShim(): void {
   const proto = HTMLElement.prototype as HTMLElement & {
-    showPopover?: () => void;
+    showPopover?: (options?: { source?: Element }) => void;
     hidePopover?: () => void;
     togglePopover?: (force?: boolean) => boolean;
   };
   if (typeof proto.showPopover === "function") {
     return;
   }
-  const state: PopoverState = { open: new Set() };
+  const state: PopoverState = { invokers: new WeakMap(), open: new Set() };
   window.__jxPopoverShim = state;
 
   const hide = (el: HTMLElement): void => {
@@ -60,12 +62,22 @@ export function installPopoverShim(): void {
     queueMicrotask(() => el.dispatchEvent(toggleEvent("toggle", "open", "closed")));
   };
 
-  proto.showPopover = function showPopover(this: HTMLElement): void {
+  proto.showPopover = function showPopover(
+    this: HTMLElement,
+    options?: { source?: Element },
+  ): void {
     if (!this.hasAttribute("popover")) {
       throw new DOMException("Not a popover element", "NotSupportedError");
     }
     if (state.open.has(this)) {
       return;
+    }
+    // An invoker is not "outside": a mousedown on the button that opened a popover leaves it to
+    // The button's own click, which is what makes a toggle a toggle.
+    if (options?.source) {
+      state.invokers.set(this, options.source);
+    } else {
+      state.invokers.delete(this);
     }
     if (isAuto(this)) {
       const showing = [...state.open];
@@ -100,7 +112,11 @@ export function installPopoverShim(): void {
     "mousedown",
     (event) => {
       for (const el of [...state.open].toReversed()) {
-        if (isAuto(el) && !(event.target instanceof Node && el.contains(event.target))) {
+        const target = event.target instanceof Node ? event.target : null;
+        const inside =
+          target !== null &&
+          (el.contains(target) || state.invokers.get(el)?.contains(target) === true);
+        if (isAuto(el) && !inside) {
           hide(el);
         }
       }

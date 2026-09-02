@@ -2,7 +2,7 @@
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "JxMenu",
   "tagName": "jx-menu",
-  "observedAttributes": ["label", "x", "y"],
+  "observedAttributes": ["label", "x", "y", "floor"],
   "state": {
     "label": {
       "type": "string",
@@ -21,6 +21,12 @@
       "default": 0,
       "attribute": "y",
       "description": "Where the panel's block-start edge sits, in viewport pixels."
+    },
+    "floor": {
+      "type": "number",
+      "default": 0,
+      "attribute": "floor",
+      "description": "The lowest edge this panel and its submenus may reach, in viewport pixels; 0 means the viewport. A menu opened from a rail that abuts a status bar sets it to the rail's bottom, so a tall submenu never runs down over the bar."
     },
     "open": {
       "type": "boolean",
@@ -47,7 +53,12 @@
     },
     "onMount": {
       "$prototype": "Function",
-      "body": [{ "dispatchEvent": "jx-ready", "bubbles": true }],
+      "body": [
+        {
+          "dispatchEvent": "jx-ready",
+          "bubbles": true
+        }
+      ],
       "description": "Announces that the element has rendered and carries its popover attribute, so a host may show it. A menu is always an auto popover: light dismiss and Escape are the platform's."
     }
   },
@@ -57,9 +68,15 @@
     "popover": "auto",
     "tabindex": "-1"
   },
-  "onkeydown": { "$ref": "#/state/onKeydown" },
-  "ontoggle": { "$ref": "#/state/onToggle" },
-  "onpointerover": { "$ref": "#/state/onPointerOver" },
+  "onkeydown": {
+    "$ref": "#/state/onKeydown"
+  },
+  "ontoggle": {
+    "$ref": "#/state/onToggle"
+  },
+  "onpointerover": {
+    "$ref": "#/state/onPointerOver"
+  },
   "style": {
     "position": "fixed",
     "insetInlineStart": "${state.x}px",
@@ -85,12 +102,21 @@
     "lineHeight": "var(--jx-leading-md)",
     "pointerEvents": "auto",
     "outline": "none",
-    ":popover-open": { "display": "flex" },
+    ":popover-open": {
+      "display": "flex"
+    },
     "& hr": {
       "border": "0",
       "borderTop": "1px solid var(--jx-border)",
       "margin": "var(--jx-space-1) 0"
     }
   },
-  "children": [{ "tagName": "slot", "attributes": { "part": "items" } }]
+  "children": [
+    {
+      "tagName": "slot",
+      "attributes": {
+        "part": "items"
+      }
+    }
+  ]
 }

@@ -2491,12 +2491,28 @@ function renderSwitch(def: JxElement, state: JxScope, options?: JxRenderOptions)
      after the discriminant moved on cannot paint over what replaced it. */
   let generation = 0;
   let live: EffectScope | null = null;
+  /* The key the rendered case was chosen by. A discriminant that re-resolves to the SAME key keeps
+     its case: the subtree, its effects and its state — an open submenu, a half-typed value —
+     survive. Without this a mapped row whose item was replaced by an equal one (a host rebuilding
+     its projection) rebuilt every switch inside it, and the popover the case rendered closed. */
+  let renderedKey: string | null = null;
   const retire = (): void => {
     live?.stop();
     live = null;
   };
 
   effect(() => {
+    if (!isRefObj(def.$switch)) {
+      retire();
+      container.replaceChildren();
+      generation += 1;
+      return;
+    }
+    const key = String(resolveRef(def.$switch.$ref, state));
+    if (key === renderedKey) {
+      return;
+    }
+    renderedKey = key;
     retire();
     /* `replaceChildren()` rather than `innerHTML = ""`: identical semantics, and it is not a
        Trusted Types injection sink — under `require-trusted-types-for 'script'` an innerHTML write
@@ -2504,10 +2520,6 @@ function renderSwitch(def: JxElement, state: JxScope, options?: JxRenderOptions)
        is four fewer things a policy has to be permissive about. */
     container.replaceChildren();
     generation += 1;
-    if (!isRefObj(def.$switch)) {
-      return;
-    }
-    const key = resolveRef(def.$switch.$ref, state) as string;
     const caseDef = def.cases?.[key];
     if (!caseDef) {
       return;

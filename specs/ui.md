@@ -2,7 +2,7 @@
 
 ## Interface Elements Authored as Jx Documents
 
-**Version:** 0.1.1-draft\
+**Version:** 0.1.2-draft\
 **Status:** Partial\
 **Updated:** 2026-09-02\
 **License:** MIT\
@@ -108,7 +108,7 @@ Each entry records: `tagName`; props (typed `state` entries); events (`emits`); 
 
 ### 5.1 Primitives
 
-> **Status: Partial.** `jx-menu` and `jx-menu-item` are built as specified below, in `packages/ui/components/`, with the menu behaviour in `src/behaviors/menu.ts`; `jx-menu` is placed by explicit viewport coordinates until anchor positioning lands (§6), and `jx-menu-group` and the recipes are pending. A `jx-menu` is always an `auto` popover; `jx-menu-item` reads `value`, `disabled`, `destructive`, `requires`, `checked` and `haspopup`, dispatches a bubbling `select` whose `detail` is its value, and stops the click at itself so a row inside a submenu does not also activate the row that owns it. Both are exercised by `packages/ui/tests/menu.test.ts`.
+> **Status: Partial.** `jx-menu` and `jx-menu-item` are built as specified below, in `packages/ui/components/`, with the menu behaviour in `src/behaviors/menu.ts`; `jx-menu` is placed by explicit viewport coordinates until anchor positioning lands (§6), and `jx-menu-group` and the recipes are pending. A `jx-menu` is always an `auto` popover; `jx-menu-item` reads `value`, `disabled`, `destructive`, `requires`, `checked` and `haspopup`, dispatches a bubbling `select` whose `detail` is its value, and stops the click at itself so a row inside a submenu does not also activate the row that owns it. `jx-menu` takes a `floor`, the lowest edge it and its submenus may reach, and a submenu that would leave the viewport on the right flips to its parent's left. Both are exercised by `packages/ui/tests/menu.test.ts`, and Studio's context and settings menus are built on them.
 
 | Element            | Owns                                                                                                                                                                                                                                                          | Replaces                        |
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
@@ -246,9 +246,10 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.1.2-draft** (2026-09-02) — jx-menu takes a floor and a submenu flips to its parent's left when it would overflow (§5.1).
 - **0.1.1-draft** (2026-09-02) — jx-menu and jx-menu-item are built (§5.1), with the popover half of the overlay model (§6) and the menu keyboard contract (§7).
 - **0.1.0-draft** (2026-09-02) — Initial release: principles, authoring model, theme and tokens, element catalogue, overlay and keyboard models, icons, build and distribution, Studio integration.
 
 ---
 
-_Jx UI Kit Specification v0.1.1-draft_
+_Jx UI Kit Specification v0.1.2-draft_

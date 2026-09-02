@@ -2,7 +2,7 @@
 
 ## Declarative Document Object Model — JSON Edition
 
-**Version:** 0.6.5-draft\
+**Version:** 0.6.6-draft\
 **Status:** Partial\
 **Updated:** 2026-09-02\
 **License:** MIT
@@ -1434,6 +1434,8 @@ Signal scope is bounded at the component (custom element) level. Child component
 
 **Discriminant.** `$switch` holds a `$ref` to a state entry — or, inside a mapped array's template, to the row's `$map/item` or `$map/index` — so a per-row conditional is a switch on the row: a divider above the row that starts a group, a chord only where one is bound. The container carries the `slot` a slotted child needs, because the case content renders inside it.
 
+**An unchanged key keeps its case.** A discriminant that re-resolves to the same key — a mapped row whose item was replaced by an equal one, a state entry rewritten with the value it had — leaves the rendered case in place: its subtree, its effects and its state survive. Only a different key empties the container.
+
 **Matching.** The resolved discriminant is matched against `cases` keys by its string form (JSON object keys are strings — the same normalization the expression-level `switch` operator applies, §19.4b). No matching case leaves the container empty.
 
 > **Status: Implemented.** Runtime `renderSwitch()` creates the container, applies properties/style/attributes to it, and reactively re-renders the active case — inline definitions in the parent scope, external `$ref` cases in an isolated scope resolved against the mount's base. Each case renders in an effect scope of its own, stopped before the next case renders, so a switch never accumulates the effects of the cases it has left; a stale external load — one that resolves after the discriminant moved on, to an inline case included — is discarded.
@@ -2451,6 +2453,7 @@ This rewrites the mutating handlers of Appendix A's idiom using `$expression`, l
 
 ## Changelog
 
+- **0.6.6-draft** (2026-09-02) — A $switch whose discriminant re-resolves to the same key keeps its rendered case (§14.1).
 - **0.6.5-draft** (2026-09-02) — A $switch may discriminate on the row's $map/item or $map/index inside a mapped array's template, and its container carries the slot its content needs (§14.1).
 - **0.6.4-draft** (2026-09-02) — Statements gain stopPropagation and preventDefault (§20.2); a definition's root-level event handlers listen on the host (§16.1); an attribute value that resolves to null or undefined removes the attribute (§8.3).
 - **0.6.3-draft** (2026-09-02) — §16.5: observed attributes present at connection are read into state before $props.
@@ -2520,4 +2523,4 @@ This rewrites the mutating handlers of Appendix A's idiom using `$expression`, l
 
 ---
 
-_Jx Specification v0.6.5-draft — subject to revision_
+_Jx Specification v0.6.6-draft — subject to revision_

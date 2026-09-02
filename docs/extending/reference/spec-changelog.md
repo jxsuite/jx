@@ -380,6 +380,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `spec.md`
 
+- **0.6.6-draft** (2026-09-02) — A $switch whose discriminant re-resolves to the same key keeps its rendered case (§14.1).
 - **0.6.5-draft** (2026-09-02) — A $switch may discriminate on the row's $map/item or $map/index inside a mapped array's template, and its container carries the slot its content needs (§14.1).
 - **0.6.4-draft** (2026-09-02) — Statements gain stopPropagation and preventDefault (§20.2); a definition's root-level event handlers listen on the host (§16.1); an attribute value that resolves to null or undefined removes the attribute (§8.3).
 - **0.6.3-draft** (2026-09-02) — §16.5: observed attributes present at connection are read into state before $props.
@@ -470,6 +471,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `studio-ui-guidelines.md`
 
+- **0.4.2-draft** (2026-09-02) — The rail's Settings menu is the second surface on the menu document: sections as a child jx-menu, live rows through a reactive scope, the rail's bottom as the stack's floor (§8.4, §9.3).
 - **0.4.1-draft** (2026-09-02) — The element context menu is the first surface built as a Jx document: surfaces/menu.json over a jx-menu, mounted through a popover layer slot (§8.4, §9.3).
 - **0.4.0-draft** (2026-09-02) — The chrome moves to the Jx UI kit: §1 foundation and the recorded reversal, §1.1 aliases of kit tokens, §6 target, §8.4 and §8.7 native overlays, §9.3 surfaces as documents, §9.4 document conventions, §10 checklist.
 - **0.3.16** (2026-08-27) — showPromptDialog carries an optional choice control beside its field.
@@ -621,5 +623,6 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `ui.md`
 
+- **0.1.2-draft** (2026-09-02) — jx-menu takes a floor and a submenu flips to its parent's left when it would overflow (§5.1).
 - **0.1.1-draft** (2026-09-02) — jx-menu and jx-menu-item are built (§5.1), with the popover half of the overlay model (§6) and the menu keyboard contract (§7).
 - **0.1.0-draft** (2026-09-02) — Initial release: principles, authoring model, theme and tokens, element catalogue, overlay and keyboard models, icons, build and distribution, Studio integration.
