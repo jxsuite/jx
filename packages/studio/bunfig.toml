@@ -20,5 +20,8 @@ coveragePathIgnorePatterns = [
   "../schema/**",
   "../server/**",
   "../site/**",
+  # The kit's files reach this run through `registerKit()`; they are gated under packages/ui's
+  # own run (0.95), and a build-only module such as `icons-build.ts` is 0% here by construction.
+  "../ui/**",
 ]
 coverageThreshold = { lines = 0.95, functions = 0.94 }

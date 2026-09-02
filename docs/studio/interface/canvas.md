@@ -10,6 +10,7 @@ code:
   - packages/studio/src/editor/shortcuts.ts
   - packages/studio/src/panels/block-action-bar.ts
   - packages/studio/src/editor/context-menu.ts
+  - packages/studio/src/surfaces/menu.ts
   - packages/studio/src/editor/insert-zone-action.ts
   - packages/studio/src/panels/canvas-dnd-bridge.ts
   - packages/studio/src/canvas/iframe-interaction.ts

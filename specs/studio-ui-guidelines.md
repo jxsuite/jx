@@ -1,6 +1,6 @@
 # Jx Studio UI/UX Interface Guidelines
 
-**Version:** 0.4.0-draft\
+**Version:** 0.4.1-draft\
 **Status:** Partial\
 **Updated:** 2026-09-02\
 **Applies to:** `packages/studio/`
@@ -441,7 +441,7 @@ The canvas render container is a single `contenteditable`; individual blocks are
 
 ### 8.4 Menus
 
-> **Status: Pending.** A menu becomes a `jx-menu` — a native `popover` panel positioned by CSS anchor positioning, its rows `jx-menu-item`s and its submenus child menus in the same hierarchy (`ui.md` §5.1, §6) — opened through the same `renderPopover` façade. Nothing below about triggers, placements, the chord, or the submenu rule changes with the element.
+> **Status: Partial.** A menu becomes a `jx-menu` — a native `popover` panel, its rows `jx-menu-item`s and its submenus child menus in the same hierarchy (`ui.md` §5.1, §6). The **element context menu is the first surface built this way**: `src/surfaces/menu.json` is the document, `src/surfaces/menu.ts` the adapter that projects a placement's records into rows and mounts the document into a `getLayerSlot("popover", "context")` slot, so the region is `overlay.menu:context` and `layers.ts` remains the only overlay API. The kit owns the keyboard contract, light dismissal and Escape through the platform's popover; the adapter owns nothing but the projection, the origin and what runs on `select`, and binds no document listener. The panel is placed by explicit viewport coordinates and clamped after a frame until CSS anchor positioning lands. The settings menu, with its submenus and live sections, and every other menu still render through `sp-menu` and follow. Nothing below about triggers, placements, the chord, or the submenu rule changes with the element.
 
 Rendered with `sp-menu` inside `sp-overlay` / `sp-popover`, mounted through `renderPopover` (§8.7). There are two triggers, and they are different contracts:
 
@@ -558,7 +558,7 @@ A batch of related edits is **one** entry, and a failed write leaves no entry at
 
 ### 9.3 Render Orchestration
 
-> **Status: Pending.** A migrated surface is a Jx document under `src/surfaces/`, mounted by an adapter through `mountSurface()` (`src/ui/surface.ts`, over `embedding.md` §2): the adapter builds a scope of host records — reactive state, computed projections of command records, plain functions — and the document projects them. One runtime effect per bound property replaces a repaint of the whole surface, which is also what retires `panel-scheduler.ts`'s focus guard with the last lit panel: nothing repaints a control the reader is typing into. `services/surface-registry.ts` records every mount by the elements it used and the document it came from, so a redefinition or a saved edit can re-mount exactly the roots it touches. Until a surface moves, everything below still describes it.
+> **Status: Partial.** The element context menu is the first migrated surface (`src/surfaces/menu.json` and `src/surfaces/menu.ts`, §8.4); every other surface below is still lit. A migrated surface is a Jx document under `src/surfaces/`, mounted by an adapter through `mountSurface()` (`src/ui/surface.ts`, over `embedding.md` §2): the adapter builds a scope of host records — reactive state, computed projections of command records, plain functions — and the document projects them. One runtime effect per bound property replaces a repaint of the whole surface, which is also what retires `panel-scheduler.ts`'s focus guard with the last lit panel: nothing repaints a control the reader is typing into. `services/surface-registry.ts` records every mount by the elements it used and the document it came from, so a redefinition or a saved edit can re-mount exactly the roots it touches. Until a surface moves, everything below still describes it.
 
 **There is no root render, and no central dispatcher.** The description this section used to carry — an `update()` that selectively re-renders three regions — has not matched the code for some time. What actually runs is about thirty independent pairs, each a module-scope `effectScope` holding one `effect()` that reads its own dependency list and calls one `litRender()` into its own host.
 
@@ -863,6 +863,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.4.1-draft** (2026-09-02) — The element context menu is the first surface built as a Jx document: surfaces/menu.json over a jx-menu, mounted through a popover layer slot (§8.4, §9.3).
 - **0.4.0-draft** (2026-09-02) — The chrome moves to the Jx UI kit: §1 foundation and the recorded reversal, §1.1 aliases of kit tokens, §6 target, §8.4 and §8.7 native overlays, §9.3 surfaces as documents, §9.4 document conventions, §10 checklist.
 - **0.3.16** (2026-08-27) — showPromptDialog carries an optional choice control beside its field.
 - **0.3.15** (2026-08-26) — §8.4 becomes Menus: menu-button triggers, submenus and the APG deviation; §12.1 gains the settings/menu placement.

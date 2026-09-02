@@ -101,6 +101,18 @@ Studio reports a boolean `popover` as a problem rather than correcting it. See [
 
 That distinction matters for accessibility: a bare `aria-hidden` is _not_ hidden, and an omitted `contenteditable` means "inherit from the parent" rather than `false`. Writing either as a presence attribute would silently invert it.
 
+**A value of `null` removes the attribute.** A `$ref` to a missing entry, or a template whose single expression yields `null` or `undefined`, takes the attribute away rather than writing an empty string. That is how one template carries an attribute that exists only in some states:
+
+```json
+{
+  "tagName": "li",
+  "attributes": {
+    "role": "menuitem",
+    "aria-haspopup": "${state.haspopup ? 'menu' : null}"
+  }
+}
+```
+
 A **string** is never reinterpreted in either family. `"aria-current": "false"` stays exactly that, which is how you write the not-the-current-page marker beside `"aria-current": "page"`.
 
 The compiled page and the live runtime apply the same rule, so a prerendered element does not change meaning when it hydrates.

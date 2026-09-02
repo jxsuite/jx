@@ -247,3 +247,35 @@ describe("compileStatements — source shapes and equivalence", () => {
     expect(interpreted.label).toBe("many");
   });
 });
+
+describe("runStatements — stopPropagation / preventDefault", () => {
+  test("stop the handler's event at the current target and cancel its default", async () => {
+    const parent = document.createElement("div");
+    const child = document.createElement("button");
+    parent.append(child);
+    let reached = 0;
+    parent.addEventListener("click", () => {
+      reached += 1;
+    });
+    child.addEventListener("click", (e) => {
+      void runStatements([{ stopPropagation: true }, { preventDefault: true }], {}, e);
+    });
+    const event = new MouseEvent("click", { bubbles: true, cancelable: true });
+    child.dispatchEvent(event);
+    expect(reached).toBe(0);
+    expect(event.defaultPrevented).toBe(true);
+  });
+
+  test("a body run without an event has nothing to stop, and does not throw", async () => {
+    await runStatements([{ stopPropagation: true }, { preventDefault: true }], {}, null);
+  });
+
+  test("both compile to the WHATWG calls on the event parameter", () => {
+    expect(compileStatements([{ stopPropagation: true }, { preventDefault: true }])).toBe(
+      "event?.stopPropagation();\nevent?.preventDefault();",
+    );
+    expect(compileStatements([{ preventDefault: true }], { eventParam: "e" })).toBe(
+      "e?.preventDefault();",
+    );
+  });
+});

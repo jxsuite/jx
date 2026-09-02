@@ -263,8 +263,8 @@ function recordDocumentListeners(log: Registration[]): () => void {
   };
 }
 
-describe("the element menu's document keydown listener", () => {
-  /** The capture-phase `keydown` bindings the menu took, in order. */
+describe("the element menu binds nothing on the document", () => {
+  /** Capture-phase keydown registrations on the document. */
   function keyBindings(log: Registration[], op: "add" | "remove"): Registration[] {
     return log.filter(
       (entry) => entry.op === op && entry.type === "keydown" && entry.capture === true,
@@ -273,8 +273,8 @@ describe("the element menu's document keydown listener", () => {
 
   /** The rows of the element menu, addressed by the menu's own accessible name. */
   function menuRows(): HTMLElement[] {
-    const menu = document.querySelector('sp-menu[aria-label="Element actions"]');
-    return menu ? [...menu.querySelectorAll<HTMLElement>("sp-menu-item[data-command-id]")] : [];
+    const menu = document.querySelector('jx-menu[aria-label="Element actions"]');
+    return menu ? [...menu.querySelectorAll<HTMLElement>("jx-menu-item[data-command-id]")] : [];
   }
 
   function openMenu(): void {
@@ -289,14 +289,14 @@ describe("the element menu's document keydown listener", () => {
     );
   }
 
-  /** Press ↓ the way the document-level capture listener would see it. */
+  /** Press ↓ where a keyboard would: at the focused row, else on the document. */
   function arrowDown(): KeyboardEvent {
     const e = new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "ArrowDown" });
-    document.dispatchEvent(e);
+    const active = document.activeElement;
+    (active?.closest("jx-menu") ? active : document).dispatchEvent(e);
     return e;
   }
 
-  /** Let the popover's outside-click listener register — it waits a frame on purpose. */
   async function frame(): Promise<void> {
     await new Promise((resolve) => {
       requestAnimationFrame(() => resolve(null));
@@ -316,7 +316,7 @@ describe("the element menu's document keydown listener", () => {
     closeAllTabs();
   });
 
-  test("the programmatic dismiss unbinds it — it is not left on the document, disarmed", async () => {
+  test("the keyboard contract lives on the menu itself, so a dismiss leaves nothing behind", async () => {
     const log: Registration[] = [];
     const stop = recordDocumentListeners(log);
     try {
@@ -324,19 +324,15 @@ describe("the element menu's document keydown listener", () => {
       await flush();
       expect(menuRows().length).toBeGreaterThan(0);
 
-      const bound = keyBindings(log, "add");
-      expect(bound).toHaveLength(1);
-      // While the menu is up it owns ↓, so the canvas's own nudge does not also fire.
+      // The menu used to own ↓ through a document-level capture listener it had to remember to
+      // Unbind. It is a `jx-menu` now: the key is handled where it lands, and the document was
+      // Never touched.
+      expect(keyBindings(log, "add")).toHaveLength(0);
+      // While the menu holds the caret it owns ↓, so the canvas's own nudge does not also fire.
       expect(arrowDown().defaultPrevented).toBe(true);
 
       dismissContextMenu();
 
-      // The SAME function, with the same capture flag: the menu handed the key back to the app
-      // Rather than staying on the document behind its own null check.
-      const released = keyBindings(log, "remove").filter(
-        (entry) => entry.handler === bound[0]!.handler,
-      );
-      expect(released).toHaveLength(1);
       expect(menuRows()).toHaveLength(0);
       expect(arrowDown().defaultPrevented).toBe(false);
     } finally {
@@ -344,27 +340,17 @@ describe("the element menu's document keydown listener", () => {
     }
   });
 
-  test("…and so does the outside click, which tears down through the popover's own hook", async () => {
-    const log: Registration[] = [];
-    const stop = recordDocumentListeners(log);
-    try {
-      openMenu();
-      await flush();
-      await frame();
-      const bound = keyBindings(log, "add");
-      expect(bound).toHaveLength(1);
-      expect(keyBindings(log, "remove")).toHaveLength(0);
+  test("…and an outside click tears down through the popover's own toggle", async () => {
+    openMenu();
+    await flush();
+    await frame();
+    expect(menuRows().length).toBeGreaterThan(0);
 
-      document.body.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    document.body.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    await flush();
 
-      expect(menuRows()).toHaveLength(0);
-      expect(
-        keyBindings(log, "remove").filter((entry) => entry.handler === bound[0]!.handler),
-      ).toHaveLength(1);
-      expect(arrowDown().defaultPrevented).toBe(false);
-    } finally {
-      stop();
-    }
+    expect(menuRows()).toHaveLength(0);
+    expect(arrowDown().defaultPrevented).toBe(false);
   });
 });
 

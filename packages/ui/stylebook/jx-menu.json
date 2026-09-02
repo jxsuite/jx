@@ -1,0 +1,302 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StylebookMenu",
+  "tagName": "main",
+  "$elements": [
+    {
+      "$ref": "../components/jx-icon.json"
+    },
+    {
+      "$ref": "../components/jx-menu-item.json"
+    },
+    {
+      "$ref": "../components/jx-menu.json"
+    }
+  ],
+  "state": {
+    "rows": [
+      {
+        "id": "edit.copy",
+        "title": "Copy",
+        "chord": "⌘C",
+        "disabled": false,
+        "requires": "",
+        "destructive": false,
+        "dividerAbove": false,
+        "haspopup": false,
+        "checked": "",
+        "noDivider": true,
+        "noChord": false,
+        "enabled": true,
+        "noPopup": true
+      },
+      {
+        "id": "edit.paste",
+        "title": "Paste",
+        "chord": "⌘V",
+        "disabled": true,
+        "requires": "something on the clipboard",
+        "destructive": false,
+        "dividerAbove": false,
+        "haspopup": false,
+        "checked": "",
+        "noDivider": true,
+        "noChord": false,
+        "enabled": false,
+        "noPopup": true
+      },
+      {
+        "id": "view.grid",
+        "title": "Show grid",
+        "chord": "",
+        "disabled": false,
+        "requires": "",
+        "destructive": false,
+        "dividerAbove": true,
+        "haspopup": false,
+        "checked": "true",
+        "noDivider": false,
+        "noChord": true,
+        "enabled": true,
+        "noPopup": true
+      },
+      {
+        "id": "settings.open",
+        "title": "Project settings",
+        "chord": "⌘,",
+        "disabled": false,
+        "requires": "",
+        "destructive": false,
+        "dividerAbove": true,
+        "haspopup": true,
+        "checked": "",
+        "noDivider": false,
+        "noChord": false,
+        "enabled": true,
+        "noPopup": false
+      },
+      {
+        "id": "selection.delete",
+        "title": "Delete",
+        "chord": "⌫",
+        "disabled": false,
+        "requires": "",
+        "destructive": true,
+        "dividerAbove": true,
+        "haspopup": false,
+        "checked": "",
+        "noDivider": false,
+        "noChord": false,
+        "enabled": true,
+        "noPopup": true
+      }
+    ],
+    "sections": [
+      {
+        "id": "general",
+        "title": "General"
+      },
+      {
+        "id": "media",
+        "title": "Media"
+      },
+      {
+        "id": "locales",
+        "title": "Locales"
+      }
+    ],
+    "last": "",
+    "note": {
+      "$prototype": "Function",
+      "parameters": ["event"],
+      "body": [
+        {
+          "operator": "=",
+          "target": {
+            "$ref": "#/state/last"
+          },
+          "value": {
+            "$ref": "event#/detail"
+          }
+        }
+      ]
+    }
+  },
+  "style": {
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "color": "var(--jx-fg)",
+    "background": "var(--jx-bg)",
+    "padding": "var(--jx-space-6)",
+    "minHeight": "100vh",
+    "& > h1": {
+      "fontSize": "var(--jx-text-lg)",
+      "fontWeight": "600",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& > p": {
+      "color": "var(--jx-fg-dim)",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& > button": {
+      "font": "inherit",
+      "color": "var(--jx-fg)",
+      "background": "var(--jx-bg-input)",
+      "border": "1px solid var(--jx-border)",
+      "borderRadius": "var(--jx-radius-sm)",
+      "padding": "var(--jx-space-2) var(--jx-space-4)"
+    }
+  },
+  "children": [
+    {
+      "tagName": "h1",
+      "textContent": "jx-menu"
+    },
+    {
+      "tagName": "p",
+      "textContent": "A menu is a native popover panel. Rows print what they are given: a title, a chord, a disabled reason. The fourth row owns a submenu and still runs its own command."
+    },
+    {
+      "tagName": "button",
+      "textContent": "Open menu",
+      "attributes": {
+        "popovertarget": "stylebook-menu"
+      }
+    },
+    {
+      "tagName": "p",
+      "textContent": "Last selected: ${state.last}"
+    },
+    {
+      "tagName": "jx-menu",
+      "id": "stylebook-menu",
+      "$props": {
+        "label": "Stylebook actions",
+        "x": 24,
+        "y": 120
+      },
+      "onselect": {
+        "$ref": "#/state/note"
+      },
+      "children": [
+        {
+          "$prototype": "Array",
+          "items": {
+            "$ref": "#/state/rows"
+          },
+          "key": {
+            "$ref": "$map/item/id"
+          },
+          "map": {
+            "tagName": "div",
+            "attributes": {
+              "role": "none"
+            },
+            "children": [
+              {
+                "tagName": "hr",
+                "hidden": {
+                  "$ref": "$map/item/noDivider"
+                }
+              },
+              {
+                "tagName": "jx-menu-item",
+                "$props": {
+                  "value": {
+                    "$ref": "$map/item/id"
+                  },
+                  "disabled": {
+                    "$ref": "$map/item/disabled"
+                  },
+                  "destructive": {
+                    "$ref": "$map/item/destructive"
+                  },
+                  "requires": {
+                    "$ref": "$map/item/requires"
+                  },
+                  "haspopup": {
+                    "$ref": "$map/item/haspopup"
+                  },
+                  "checked": {
+                    "$ref": "$map/item/checked"
+                  }
+                },
+                "attributes": {
+                  "data-command-id": "${$map.item.id}"
+                },
+                "children": [
+                  {
+                    "tagName": "span",
+                    "textContent": "${$map.item.title}"
+                  },
+                  {
+                    "tagName": "kbd",
+                    "attributes": {
+                      "slot": "value"
+                    },
+                    "hidden": {
+                      "$ref": "$map/item/noChord"
+                    },
+                    "textContent": "${$map.item.chord}"
+                  },
+                  {
+                    "tagName": "span",
+                    "attributes": {
+                      "slot": "description"
+                    },
+                    "hidden": {
+                      "$ref": "$map/item/enabled"
+                    },
+                    "textContent": "Needs ${$map.item.requires}"
+                  },
+                  {
+                    "tagName": "span",
+                    "attributes": {
+                      "slot": "submenu"
+                    },
+                    "$switch": {
+                      "$ref": "$map/item/haspopup"
+                    },
+                    "cases": {
+                      "true": {
+                        "tagName": "jx-menu",
+                        "$props": {
+                          "label": "Sections of ${$map.item.title}"
+                        },
+                        "children": [
+                          {
+                            "$prototype": "Array",
+                            "items": {
+                              "$ref": "#/state/sections"
+                            },
+                            "key": {
+                              "$ref": "$map/item/id"
+                            },
+                            "map": {
+                              "tagName": "jx-menu-item",
+                              "$props": {
+                                "value": {
+                                  "$ref": "$map/item/id"
+                                }
+                              },
+                              "children": [
+                                {
+                                  "tagName": "span",
+                                  "textContent": "${$map.item.title}"
+                                }
+                              ]
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

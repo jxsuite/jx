@@ -5,10 +5,14 @@
  */
 import type { JxDocument } from "@jxsuite/schema/types";
 import jxIcon from "../components/jx-icon.json";
+import jxMenu from "../components/jx-menu.json";
+import jxMenuItem from "../components/jx-menu-item.json";
 
 /** Tag name → document, in registration order (a document's `$elements` come before it). */
 export const documents: Readonly<Record<string, JxDocument>> = {
   "jx-icon": jxIcon as unknown as JxDocument,
+  "jx-menu-item": jxMenuItem as unknown as JxDocument,
+  "jx-menu": jxMenu as unknown as JxDocument,
 };
 
 /** Every tag the kit defines. */

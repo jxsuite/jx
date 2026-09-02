@@ -2,7 +2,7 @@
 
 ## Declarative Document Object Model — JSON Edition
 
-**Version:** 0.6.3-draft\
+**Version:** 0.6.5-draft\
 **Status:** Partial\
 **Updated:** 2026-09-02\
 **License:** MIT
@@ -706,6 +706,8 @@ Non-standard attributes are set via the `attributes` object:
 Neither form is a stylistic choice. A presence attribute counts _any_ value as true, so `<details open="false">` is an open `<details>`; an enumerated attribute reads an empty value as unset, so a bare `aria-hidden` is not hidden and an absent `contenteditable` means "inherit" rather than `false`. Writing either as the other inverts it in silence.
 
 A **string** is never reinterpreted in either family: `"aria-current": "false"` is emitted verbatim, because an enumerated attribute carries its value in its text.
+
+**Nothing is an attribute the element does not have.** A value that resolves to `null` or `undefined` — a `$ref` to a missing entry, a `${…}` template whose single expression yields one — removes the attribute rather than writing an empty string. An `aria-checked=""` or a `title=""` is not absence: the first is an invalid token on a menu item and the second is an empty tooltip. This is what lets one template carry an attribute that exists only in some states, `"aria-haspopup": "${state.haspopup ? 'menu' : null}"`, without a second binding to take it away.
 
 Every renderer applies this identically — the static compiler writing HTML source and the runtime writing live elements — so an element does not change meaning when a prerendered page hydrates.
 
@@ -1430,6 +1432,8 @@ Signal scope is bounded at the component (custom element) level. Child component
 
 **Scope.** The two forms differ in scope, mirroring §13/§15: an inline case renders in the parent component's scope, so parent `state` is directly visible to its bindings. An external case builds an isolated scope from the referenced document — a component boundary with no `$props` pass-through, so parent state is not visible inside it.
 
+**Discriminant.** `$switch` holds a `$ref` to a state entry — or, inside a mapped array's template, to the row's `$map/item` or `$map/index` — so a per-row conditional is a switch on the row: a divider above the row that starts a group, a chord only where one is bound. The container carries the `slot` a slotted child needs, because the case content renders inside it.
+
 **Matching.** The resolved discriminant is matched against `cases` keys by its string form (JSON object keys are strings — the same normalization the expression-level `switch` operator applies, §19.4b). No matching case leaves the container empty.
 
 > **Status: Implemented.** Runtime `renderSwitch()` creates the container, applies properties/style/attributes to it, and reactively re-renders the active case — inline definitions in the parent scope, external `$ref` cases in an isolated scope resolved against the mount's base. Each case renders in an effect scope of its own, stopped before the next case renders, so a switch never accumulates the effects of the cases it has left; a stale external load — one that resolves after the discriminant moved on, to an inline case included — is discarded.
@@ -1484,6 +1488,8 @@ A Jx component whose root `tagName` contains a hyphen is a custom element defini
   "children": [{ "tagName": "h3", "textContent": "${state.displayName}" }]
 }
 ```
+
+**A definition's root-level event handlers listen on the host element.** `onclick`, `onkeydown`, `ontoggle` and the rest, written beside `tagName` and `state`, attach to the element itself exactly as they would to an element inside a document, with the definition's own scope as `state` and the host as `event.currentTarget`. That is where an element's contract lives: a menu row's activation, a panel's keyboard handling and the `toggle` a popover fires all arrive at the host, and a definition that had to render an inner wrapper to hear them would be one element that looks like two. The other root-level keys — `observedAttributes`, `emits`, `description` — describe the element and are never written onto an instance.
 
 ### 16.2 Property-First Interface
 
@@ -2149,15 +2155,18 @@ Every statement kind reuses a web-platform name — §19.4's law extended to sta
 | Branch     | `{ if, then, else? }` — statement lists in then/else | JSON Schema 2020-12 conditional keywords     |
 | Multiway   | `{ $switch, cases, default? }` — statement lists     | Element-level `$switch` (§14), ECMA switch   |
 | Dispatch   | `{ dispatchEvent, detail?, bubbles?, composed? }`    | WHATWG DOM `dispatchEvent`/`CustomEventInit` |
+| Stop       | `{ stopPropagation: true }`                          | WHATWG DOM `Event.stopPropagation()`         |
+| Cancel     | `{ preventDefault: true }`                           | WHATWG DOM `Event.preventDefault()`          |
 
 - The branch `if` and the `$switch` discriminant hold **pure** operands; `$switch` matches by string form, exactly like §19.4b.
+- `stopPropagation` and `preventDefault` act on the handler's own event — the one the body is running for — and are no-ops in a body run without one (a parameterised callable, a lifecycle hook). Each is spelled as the member set to `true`, so the statement reads as the call it lowers to. They exist because bubbling composes badly with nesting: a click inside a menu row that owns a submenu is also a click on the row that owns it, and without `stopPropagation` both activate.
 - **Result capture** composes — an assignment statement whose `value` is a `call` node — so no dedicated capture field exists.
 - `dispatchEvent` dispatches from the handler's `event.currentTarget` (interpreter and client islands) or the component instance (compiled custom elements); the entry's `emits` (CEM) remains the declaration the editor autocompletes from.
 - Statements execute sequentially; a statement whose value is a thenable is awaited before the next (ECMA async/await semantics).
 
 ### 20.3 Lowering
 
-`body: Statement[]` follows the named-formula pattern (§19.4c): without `parameters` the entry lowers to an event handler `(state, event)`; with `parameters` it lowers to a positional callable whose arguments bind to `$args/` names. The engine is `runStatements` (interpreter) + `compileStatements` (JS emitter) — one module, both halves, mirroring §19.8: `if`/`else` and `switch` emit their genuine ECMAScript statement forms, and dispatch emits `dispatchEvent(new CustomEvent(type, init))`. Inline event bindings accept structured bodies through the existing Function binding form — `JxEventBinding` is unchanged.
+`body: Statement[]` follows the named-formula pattern (§19.4c): without `parameters` the entry lowers to an event handler `(state, event)`; with `parameters` it lowers to a positional callable whose arguments bind to `$args/` names. The engine is `runStatements` (interpreter) + `compileStatements` (JS emitter) — one module, both halves, mirroring §19.8: `if`/`else` and `switch` emit their genuine ECMAScript statement forms, dispatch emits `dispatchEvent(new CustomEvent(type, init))`, and the two event verbs emit `event?.stopPropagation()` and `event?.preventDefault()`. Inline event bindings accept structured bodies through the existing Function binding form — `JxEventBinding` is unchanged.
 
 ---
 
@@ -2442,6 +2451,8 @@ This rewrites the mutating handlers of Appendix A's idiom using `$expression`, l
 
 ## Changelog
 
+- **0.6.5-draft** (2026-09-02) — A $switch may discriminate on the row's $map/item or $map/index inside a mapped array's template, and its container carries the slot its content needs (§14.1).
+- **0.6.4-draft** (2026-09-02) — Statements gain stopPropagation and preventDefault (§20.2); a definition's root-level event handlers listen on the host (§16.1); an attribute value that resolves to null or undefined removes the attribute (§8.3).
 - **0.6.3-draft** (2026-09-02) — §16.5: observed attributes present at connection are read into state before $props.
 - **0.6.2-draft** (2026-09-02) — §10.4 Keys: mapped arrays reconcile by key, rows keep their nodes and effects, reconciliation is batched per microtask; §14.1 each switch case owns a scope.
 - **0.6.1-draft** (2026-09-02) — Lifecycle hooks at the mount boundary (§16.4) and the Studio shell as an interpreter host (§21.3).
@@ -2509,4 +2520,4 @@ This rewrites the mutating handlers of Appendix A's idiom using `$expression`, l
 
 ---
 
-_Jx Specification v0.6.3-draft — subject to revision_
+_Jx Specification v0.6.5-draft — subject to revision_

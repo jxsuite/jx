@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { resolve } from "node:path";
 
-import { collectSources, surfacePurityFindings } from "../scripts/check-surface-purity";
+import { collectSources, report, surfacePurityFindings } from "../scripts/check-surface-purity";
 
 const KIT = ["jx-icon", "jx-menu"];
 
@@ -63,5 +63,25 @@ describe("surface purity", () => {
     const sources = collectSources(root);
     expect(sources.length).toBeGreaterThan(100);
     expect(surfacePurityFindings(sources)).toEqual([]);
+  });
+
+  test("the report names each finding by path and line, and is green with none", () => {
+    const root = resolve(import.meta.dir, "..");
+    const red = report(
+      [
+        {
+          file: "src/surfaces/x.json",
+          line: 3,
+          text: "a surface document renders a Spectrum element",
+        },
+      ],
+      root,
+    );
+    expect(red.failed).toBe(true);
+    expect(red.lines[0]).toContain("1 finding(s)");
+    expect(red.lines[1]).toContain("src/surfaces/x.json:3");
+    const green = report([], root);
+    expect(green.failed).toBe(false);
+    expect(green.lines.join("\n")).toContain("no Spectrum tag in a surface document");
   });
 });

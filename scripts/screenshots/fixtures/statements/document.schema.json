@@ -1709,7 +1709,7 @@
           "type": "object"
         },
         "Statement": {
-          "description": "One statement of a structured function body. Either a bare expression node in statement position (a mutation like =/push, or a call — its result discarded unless captured by an assignment), an if/then/else branch (JSON Schema conditional keywords; if holds a pure expression, then/else hold statement lists), a $switch multiway branch (discriminant matched by string form against cases keys, like element-level $switch), or a dispatchEvent statement (WHATWG DOM: dispatches a CustomEvent from the handler's current target, with CustomEventInit members detail/bubbles/composed).",
+          "description": "One statement of a structured function body. Either a bare expression node in statement position (a mutation like =/push, or a call — its result discarded unless captured by an assignment), an if/then/else branch (JSON Schema conditional keywords; if holds a pure expression, then/else hold statement lists), a $switch multiway branch (discriminant matched by string form against cases keys, like element-level $switch), a dispatchEvent statement (WHATWG DOM: dispatches a CustomEvent from the handler's current target, with CustomEventInit members detail/bubbles/composed), or the two WHATWG event verbs stopPropagation and preventDefault, each spelled as the member set to true.",
           "oneOf": [
             {
               "$ref": "#/$defs/v1/$defs/ExpressionNode"
@@ -1790,6 +1790,34 @@
                 "dispatchEvent"
               ],
               "title": "dispatchEvent — emit a CustomEvent (WHATWG naming, CustomEventInit members)",
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "stopPropagation": {
+                  "const": true,
+                  "description": "Stop the handler's event at the current target (WHATWG DOM stopPropagation), so an ancestor's handler for the same event does not run. A body run without an event has nothing to stop."
+                }
+              },
+              "required": [
+                "stopPropagation"
+              ],
+              "title": "stopPropagation — stop the event here (WHATWG DOM)",
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "preventDefault": {
+                  "const": true,
+                  "description": "Cancel the handler's event's default action (WHATWG DOM preventDefault): a link's navigation, a form's submission, a key's scroll."
+                }
+              },
+              "required": [
+                "preventDefault"
+              ],
+              "title": "preventDefault — cancel the event's default action (WHATWG DOM)",
               "type": "object"
             }
           ]
@@ -6205,10 +6233,18 @@
         },
         "SwitchDef": {
           "additionalProperties": false,
-          "description": "Reactive $ref that drives which case to render.",
+          "description": "Reactive $ref that drives which case to render: a state entry, or inside a mapped array's template the row's $map/item or $map/index (spec §14.1).",
           "properties": {
             "$ref": {
-              "$ref": "#/$defs/v1/$defs/StateRef"
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/v1/$defs/StateRef"
+                },
+                {
+                  "$ref": "#/$defs/v1/$defs/MapRef"
+                }
+              ],
+              "type": "string"
             }
           },
           "required": [

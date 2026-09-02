@@ -6,3 +6,7 @@ try {
 } catch {
   /* Already registered */
 }
+
+// The popover API happy-dom lacks, for the overlays built on it.
+const { installPopoverShim } = await import("../src/testing/popover-shim.ts");
+installPopoverShim();

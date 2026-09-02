@@ -149,11 +149,23 @@ export interface JxDispatchStatement {
  * One statement of a structured function body: a bare expression node in statement position
  * (mutation or `call`), a branch, a multiway branch, or an event dispatch.
  */
+/** `{ stopPropagation: true }` — stop the handler's event at the current target (WHATWG DOM). */
+export interface JxStopPropagationStatement {
+  stopPropagation: true;
+}
+
+/** `{ preventDefault: true }` — cancel the handler's event's default action (WHATWG DOM). */
+export interface JxPreventDefaultStatement {
+  preventDefault: true;
+}
+
 export type JxStatement =
   | JxExpressionNode
   | JxIfStatement
   | JxSwitchStatement
-  | JxDispatchStatement;
+  | JxDispatchStatement
+  | JxStopPropagationStatement
+  | JxPreventDefaultStatement;
 
 /** A function declaration: inline `body` or external `$src`/`$export`. */
 export interface JxFunctionDef {
