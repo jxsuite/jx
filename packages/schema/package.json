@@ -22,6 +22,7 @@
     "./media-type": "./src/media-type.ts",
     "./overlays": "./src/overlays.ts",
     "./dialogs": "./src/dialogs.ts",
+    "./a11y": "./src/a11y.ts",
     "./ijson": "./src/ijson.ts",
     "./parse": "./src/parse.ts",
     "./defs": "./defs/index.ts",

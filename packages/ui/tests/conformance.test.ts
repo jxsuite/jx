@@ -9,6 +9,7 @@ import { resolve } from "node:path";
 
 import { validateDocument } from "@jxsuite/schema";
 import { findPopoverDefects } from "@jxsuite/schema/overlays";
+import { findA11yDefects } from "@jxsuite/schema/a11y";
 import type { JxDocument, JxElement } from "@jxsuite/schema/types";
 
 import { documents } from "../src/documents.ts";
@@ -87,6 +88,10 @@ describe("kit documents", () => {
         expect(findPopoverDefects(doc)).toEqual([]);
       });
 
+      test("passes the accessibility lint", () => {
+        expect(findA11yDefects(doc)).toEqual([]);
+      });
+
       test("names every internal node with a part", () => {
         for (const [label, node] of internalNodes(doc)) {
           expect(node.attributes?.part, `${label} <${node.tagName}>`).toBeString();
@@ -144,6 +149,13 @@ describe("kit documents", () => {
 });
 
 describe("stylebook pages", () => {
+  for (const [name, page] of Object.entries(stylebook)) {
+    test(`${name} passes the overlay and accessibility lints`, () => {
+      expect(findPopoverDefects(page)).toEqual([]);
+      expect(findA11yDefects(page)).toEqual([]);
+    });
+  }
+
   test("exist for every element", () => {
     for (const tag of Object.keys(documents)) {
       expect(Object.keys(stylebook), tag).toContain(`${tag}.json`);

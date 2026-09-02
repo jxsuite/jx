@@ -14,7 +14,11 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { emitProjectSchema } from "@jxsuite/schema/project-schemas";
 import { writeProjectSchemas } from "../src/site/schema-command";
-import { formatProjectTreeIssues, validateProjectTree } from "../src/site/validate-command";
+import {
+  formatProjectTreeIssues,
+  formatProjectTreeLint,
+  validateProjectTree,
+} from "../src/site/validate-command";
 
 const TMP = resolve(import.meta.dir, "__test-validate-command__");
 
@@ -66,6 +70,44 @@ describe("validateProjectTree", () => {
     expect(result.valid).toBe(true);
     // Project.json + 2 entry docs + 2 documents + 1 class + parser's project/document fragments.
     expect(result.checked).toBeGreaterThanOrEqual(7);
+  });
+
+  it("lints well-formed documents for overlay and accessibility defects, fatal only with strict", async () => {
+    writeFile("pages/unnamed.json", {
+      children: [{ tagName: "button" }, { attributes: { src: "/a.png" }, tagName: "img" }],
+      tagName: "main",
+    });
+    try {
+      const result = await validateProjectTree(TMP);
+      // Advisory by default: the tree is well-formed, and the findings ride beside that verdict.
+      expect(result.valid).toBe(true);
+      expect(result.lint.map((finding) => [finding.file, finding.rule, finding.severity])).toEqual([
+        ["pages/unnamed.json", "interactive-unnamed", "error"],
+        ["pages/unnamed.json", "img-alt-missing", "error"],
+      ]);
+      expect(formatProjectTreeLint(result)[0]).toBe(
+        "pages/unnamed.json: error: the <button> has no accessible name. [accessibility/interactive-unnamed, WCAG 4.1.2]",
+      );
+      const strict = await validateProjectTree(TMP, { strict: true });
+      expect(strict.valid).toBe(false);
+      expect(strict.issues).toEqual([]);
+    } finally {
+      rmSync(resolve(TMP, "pages/unnamed.json"), { force: true });
+    }
+  });
+
+  it("a clean tree carries no lint, and a document with a schema error is not linted", async () => {
+    const result = await validateProjectTree(TMP, { strict: true });
+    expect(result.lint).toEqual([]);
+    expect(result.valid).toBe(true);
+    writeFile("components/broken.json", { children: [{ tagName: "button" }], tagName: 42 });
+    try {
+      const broken = await validateProjectTree(TMP);
+      expect(broken.lint).toEqual([]);
+      expect(broken.valid).toBe(false);
+    } finally {
+      rmSync(resolve(TMP, "components/broken.json"), { force: true });
+    }
   });
 
   it("reports invalid documents and classes with file-scoped issues", async () => {

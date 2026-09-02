@@ -70,7 +70,7 @@ Some Problems are about the document rather than about Studio. Saving a file che
 
 Where the fix is mechanical the row carries a **Fix** button that performs it in one step you can undo with one press: moving `display` into `:popover-open`, removing attributes that do nothing where they are, writing `popover="auto"`. Where it is not, the row is a sentence with no button, because a button that does not do what it says is worse than none. Which panel a control should point at is your decision, not something Studio can guess.
 
-You can run the same check on demand: press :kbd[⌘K] and choose **Check Popovers**. **Check Accessibility** is its neighbour and files under **Accessibility** instead.
+You can run the same check on demand: press :kbd[⌘K] and choose **Check Popovers**. **Check Accessibility** is its neighbour and files under **Accessibility** instead, with the WCAG criterion behind each finding; the rules it applies are listed on the [Accessibility](/docs/framework/concepts/accessibility) page, and `jx validate` applies the same ones.
 
 ### Losing the backend
 
