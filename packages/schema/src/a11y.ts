@@ -85,6 +85,9 @@ function has(node: JxElement, name: string): boolean {
   return valueOf(node, name) !== undefined && valueOf(node, name) !== null;
 }
 
+/** The sentinel a reader returns for a value the document decides at run time. */
+const BOUND = "bound";
+
 /** The node's role, lowercased; `null` when it has none and `"bound"` when it is not decidable. */
 function roleOf(node: JxElement): string | null {
   const value = valueOf(node, "role");
@@ -262,17 +265,38 @@ function defect(
 }
 
 /**
+ * What the document's `<label>` elements point at, and whether any of them points somewhere
+ * unreadable.
+ */
+interface LabelTargets {
+  /** Every literal `for` value. */
+  ids: Set<string>;
+  /** A `<label for="row-${index}">` exists, so which control it names is not decidable here. */
+  bound: boolean;
+}
+
+/**
  * Whether an `<input>`, `<select>` or `<textarea>` is labelled by a `<label>`, by `for` or by
  * nesting.
+ *
+ * A BOUND id on either side answers true, which is this module's rule about not accusing an author
+ * of a defect it cannot see. `<label for="row-${index}">` beside `<input id="row-${index}">` is the
+ * only correct way to label a field inside a repeater, and both halves are templates: the id
+ * resolves to the sentinel rather than to a value, and the `for` never enters the set at all. Read
+ * literally that pairing looked like no label at all, so the one correct form was the one reported
+ * — and at `error` severity, which fails `jx validate --strict` on a document that is fine.
  */
-function labelledByLabel(id: string | null, labelledIds: Set<string>, tags: string[]): boolean {
+function labelledByLabel(id: string | null, labelledIds: LabelTargets, tags: string[]): boolean {
   if (tags.includes("label")) {
     return true;
   }
-  return id !== null && labelledIds.has(id);
+  if (id === BOUND || labelledIds.bound) {
+    return true;
+  }
+  return id !== null && labelledIds.ids.has(id);
 }
 
-function unnamedInteractive(visit: Ancestry, labelledIds: Set<string>): A11yDefect | null {
+function unnamedInteractive(visit: Ancestry, labelledIds: LabelTargets): A11yDefect | null {
   const { node, path, tags } = visit;
   const tag = tagOf(node);
   const role = roleOf(node);
@@ -295,6 +319,18 @@ function unnamedInteractive(visit: Ancestry, labelledIds: Set<string>): A11yDefe
       `A control with no name is announced as its role alone, so a reader hears "button" and nothing else. ${how}`,
       "4.1.2",
     );
+  /*
+   * The NATIVE routes, judged before any role branch.
+   *
+   * A role on a native control is redundant, legal, and for `role="combobox"` on an `<input>` it is
+   * the authoring practice the APG prescribes. Reporting the role first meant a `<label for>` was
+   * never consulted for one, so the APG combobox — and a `role="slider"` range, and a
+   * `role="spinbutton"` number — were all reported as unnamed while carrying a perfectly good name.
+   */
+  const nativeRoutes = nativeNameRoute(node, tag, labelledIds, tags);
+  if (nativeRoutes === "named" || nativeRoutes === "exempt") {
+    return null;
+  }
   if (role !== null && CONTENT_NAMED_ROLES.has(role)) {
     return hasContentName(node) ? null : fix("Give it text content, or an aria-label.");
   }
@@ -307,29 +343,50 @@ function unnamedInteractive(visit: Ancestry, labelledIds: Set<string>): A11yDefe
   if (tag === "button" || tag === "summary" || (tag === "a" && has(node, "href"))) {
     return hasContentName(node) ? null : fix("Give it text content, or an aria-label.");
   }
-  if (tag === "input") {
-    const type = (literal(node, "type") ?? "text").toLowerCase();
-    if (type === "hidden" || (has(node, "type") && literal(node, "type") === null)) {
-      return null;
-    }
-    if (VALUE_NAMED_INPUTS.has(type)) {
-      return hasNameSource(node, "value") ? null : fix("Give it a value, or an aria-label.");
-    }
-    if (type === "image") {
-      return hasNameSource(node, "alt") ? null : fix("Give it an alt, or an aria-label.");
-    }
-    if (labelledByLabel(idStateOf(node), labelledIds, tags) || hasNameSource(node, "placeholder")) {
-      return null;
-    }
+  if (nativeRoutes === "unnamed") {
     return fix("Give it a <label for> naming its id, or an aria-label.");
   }
-  if (tag === "select" || tag === "textarea") {
-    if (labelledByLabel(idStateOf(node), labelledIds, tags) || hasNameSource(node, "placeholder")) {
-      return null;
-    }
-    return fix("Give it a <label for> naming its id, or an aria-label.");
+  if (nativeRoutes === "unnamed-value") {
+    return fix("Give it a value, or an aria-label.");
+  }
+  if (nativeRoutes === "unnamed-alt") {
+    return fix("Give it an alt, or an aria-label.");
   }
   return null;
+}
+
+/**
+ * What the NATIVE labelling routes say about a form control, independently of any role it carries.
+ *
+ * `"none"` means the node is not a native control and these routes do not apply to it.
+ */
+function nativeNameRoute(
+  node: JxElement,
+  tag: string,
+  labelledIds: LabelTargets,
+  tags: string[],
+): "named" | "exempt" | "unnamed" | "unnamed-value" | "unnamed-alt" | "none" {
+  if (tag === "select" || tag === "textarea") {
+    return labelledByLabel(idStateOf(node), labelledIds, tags) || hasNameSource(node, "placeholder")
+      ? "named"
+      : "unnamed";
+  }
+  if (tag !== "input") {
+    return "none";
+  }
+  const type = (literal(node, "type") ?? "text").toLowerCase();
+  if (type === "hidden" || (has(node, "type") && literal(node, "type") === null)) {
+    return "exempt";
+  }
+  if (VALUE_NAMED_INPUTS.has(type)) {
+    return hasNameSource(node, "value") ? "named" : "unnamed-value";
+  }
+  if (type === "image") {
+    return hasNameSource(node, "alt") ? "named" : "unnamed-alt";
+  }
+  return labelledByLabel(idStateOf(node), labelledIds, tags) || hasNameSource(node, "placeholder")
+    ? "named"
+    : "unnamed";
 }
 
 function imgAltMissing(visit: Ancestry): A11yDefect | null {
@@ -528,19 +585,22 @@ function activedescendantNotFocusable(visit: Ancestry): A11yDefect | null {
 export function findA11yDefects(doc: JxElement): A11yDefect[] {
   const visits = [...walkAncestry(doc)];
   const ids = new Set<string>();
-  const labelledIds = new Set<string>();
+  const labelledIds: LabelTargets = { bound: false, ids: new Set<string>() };
   let boundIds = false;
   for (const { node } of visits) {
     const id = idStateOf(node);
-    if (id === "bound") {
+    if (id === BOUND) {
       boundIds = true;
     } else if (id !== null) {
       ids.add(id);
     }
     if (tagOf(node) === "label") {
       const target = literal(node, "for") ?? literal(node, "htmlFor");
-      if (target !== null) {
-        labelledIds.add(target);
+      if (target === null) {
+        // A `for` the document decides at run time: which control it names is not readable here.
+        labelledIds.bound ||= has(node, "for") || has(node, "htmlFor");
+      } else {
+        labelledIds.ids.add(target);
       }
     }
   }
