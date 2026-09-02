@@ -14,10 +14,12 @@ import {
   buildStyleRules,
   enumeratedAttrNames,
   isDeclarationAtRule,
+  isKeyframesAtRule,
   isNestedSelectorKey,
   camelToKebab,
   isSingleExpression,
   pureSchemeOf,
+  splitSelectorList,
 } from "@jxsuite/runtime";
 import { evaluateExpression, isMutating } from "@jxsuite/runtime/expression";
 import { runStatements } from "@jxsuite/runtime/statements";
@@ -1165,9 +1167,12 @@ export function compileStyles(
     }
 
     for (const [key, val] of conditionalBlocks) {
-      /* A declaration-body at-rule has no selector to split across, and its name is global —
-         `@font-face` at project level is one block, not one per target. */
-      if (isDeclarationAtRule(key)) {
+      /* An unscoped at-rule has no selector to split across, and its name is global —
+         `@font-face` at project level is one block, not one per target. `@keyframes` is here for
+         a stronger reason than tidiness: splitting it would emit one same-named block per stop,
+         and the last definition of a name replaces every earlier one, so the animation would keep
+         only its final stop. */
+      if (isDeclarationAtRule(key) || isKeyframesAtRule(key)) {
         pushStyleRules(rules, { [key]: val }, null, mediaQueries);
         continue;
       }
@@ -1700,8 +1705,21 @@ const SHADOW_STANDALONE = /^(?:::slotted\(|::part\()/;
  * @returns {string}
  */
 function resolveSelector(prop: string, scope: string): string {
+  /* Member by member, for the reason css.ts's `resolveNestedSelector` does it: a key may be a
+     SELECTOR LIST, and splicing one as a single string spliced only its first `&`. `"& .a, & .b"`
+     came out as `sty-card .a, & .b`, and a raw `&` in a built stylesheet is not a nesting selector
+     at all — the browser discards the list and the component silently loses those rules. This is
+     the one selector path that does not go through the shared builder, because `:host` has to be
+     translated before the scope is applied, so it needed the same fix separately. */
+  return splitSelectorList(prop)
+    .map((member) => resolveSelectorMember(member, scope))
+    .join(", ");
+}
+
+/** One member of {@link resolveSelector}'s list against the scope. */
+function resolveSelectorMember(prop: string, scope: string): string {
   if (prop.startsWith("&")) {
-    return prop.replace("&", scope);
+    return prop.replaceAll("&", scope);
   }
   if (prop.startsWith(":host")) {
     const inner = /^:host\((.*)\)$/.exec(prop)?.[1];

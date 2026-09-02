@@ -659,6 +659,33 @@ describe("buildComponentCSS", () => {
     expect(css).toContain("@media");
   });
 
+  test("a top-level selector LIST is scoped member by member, with no raw & left in it", () => {
+    /*
+     * The top level does not go through the shared builder — `:host` has to be translated before
+     * the scope is applied — so it had its own splice, and a splice of a whole list replaced only
+     * the first `&`. `"& .a, & .b"` was emitted as `my-comp .a, & .b`, and a raw `&` in a built
+     * stylesheet is not a nesting selector: the browser discards the list and the component loses
+     * those rules with no error anywhere.
+     */
+    const css = buildComponentCSS("my-comp", {
+      "& .a, & .b": { color: "red" },
+      "&.x, &.y": { margin: "0" },
+      "&:hover + &": { color: "green" },
+    });
+    expect(css).toContain("my-comp .a, my-comp .b { color: red }");
+    expect(css).toContain("my-comp.x, my-comp.y { margin: 0 }");
+    // Every `&` in a member, not just the first.
+    expect(css).toContain("my-comp:hover + my-comp { color: green }");
+    expect(css).not.toContain("&");
+  });
+
+  test("a :host list keeps its own translation, and a comma inside :host() is not a separator", () => {
+    const light = buildComponentCSS("my-comp", { ":host(.a), :host(.b)": { color: "red" } });
+    expect(light).toContain("my-comp.a, my-comp.b { color: red }");
+    const grouped = buildComponentCSS("my-comp", { ":host(:is(.a, .b))": { color: "blue" } });
+    expect(grouped).toContain("my-comp:is(.a, .b) { color: blue }");
+  });
+
   test("skips template strings", () => {
     const css = buildComponentCSS("my-comp", { color: "${state.color}" });
     expect(css).toBe("");
@@ -1328,6 +1355,33 @@ describe("compileStyles — non-media at-rules", () => {
     const result = compileStyles(doc);
     expect(result).toContain("@media print");
     expect(result).not.toContain("@media (print)");
+  });
+
+  test("a project-level @keyframes is ONE block, not one rule per stop", () => {
+    /* The project path split an `@` block into per-selector pushes with the stop as the scope. Each
+       half was valid CSS on its own, and the last definition of a `@keyframes` name replaces every
+       earlier one, so the compiled page animated only the final stop. */
+    const result = compileStyles({ children: [], id: "sheet", tagName: "div" }, {}, {
+      "@keyframes toast-in": { from: { opacity: "0" }, to: { opacity: "1" } },
+    } as never);
+    expect(result).toContain("@keyframes toast-in { from { opacity: 0 } to { opacity: 1 } }");
+    // One definition of the name, not one per stop.
+    expect(result.split("@keyframes toast-in").length - 1).toBe(1);
+  });
+
+  test("an element-level @keyframes is unscoped, and its animation lands beside it", () => {
+    const result = compileStyles({
+      children: [],
+      id: "toast",
+      style: {
+        animation: "toast-in 180ms ease-out",
+        "@keyframes toast-in": { from: { opacity: "0" }, to: { opacity: "1" } },
+      },
+      tagName: "div",
+    } as never);
+    expect(result).toContain("#toast { animation: toast-in 180ms ease-out }");
+    expect(result).toContain("@keyframes toast-in { from { opacity: 0 } to { opacity: 1 } }");
+    expect(result).not.toContain("#toast from");
   });
 
   test("@(feature: value) keeps its parentheses", () => {
