@@ -17,7 +17,14 @@ import { installTheme } from "./theme.ts";
 export { documents, KIT_TAGS } from "./documents.ts";
 export { hasIcon, ICON_NAMES, ICON_WEIGHTS, iconPath, iconViewBox } from "./icons.ts";
 export type { IconWeight } from "./icons.ts";
-export { installTheme, THEME_LAYER, themeCSS, themeInstalled, themeTokenNames } from "./theme.ts";
+export {
+  installTheme,
+  THEME_LAYER,
+  themeCSS,
+  themeInstalled,
+  themeTokenNames,
+  themeTokens,
+} from "./theme.ts";
 
 /** The base every kit document resolves its references against. */
 export const KIT_BASE = "jx-ui:/components/";

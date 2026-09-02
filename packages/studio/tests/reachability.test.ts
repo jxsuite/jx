@@ -99,8 +99,36 @@ const TEST_OBS = "observability accessor — only its own tests read the private
  * Four reasons are shared, because they are genuinely one decision made many times. The rest say
  * their own piece, and several of them name a defect somebody still has to choose about.
  */
+/**
+ * The surface façade, landed one PR ahead of its first caller.
+ *
+ * `mountSurface` is how every migrated surface mounts (studio-ui-guidelines.md §9.3); the first one
+ * — the context and settings menus — is the next change, and every one of these lines goes with it.
+ * It landed first so the contract is reviewed and tested on its own, and so the kit registers at
+ * boot before any surface exists to need it.
+ */
+const SURFACE_FACADE =
+  "the surface façade (studio-ui-guidelines.md §9.3), one change ahead of the first surface that " +
+  "mounts through it — delete this line when that surface lands";
+
 const KNOWN_UNREACHABLE: Record<string, Record<string, string>> = {
   "account-status.ts": { resetAccountStatus: TEST_RESET },
+  "services/surface-registry.ts": {
+    mountsOf: SURFACE_FACADE,
+    mountsUsing: SURFACE_FACADE,
+    registerMount: SURFACE_FACADE,
+    resetSurfaceRegistry: TEST_RESET,
+    surfaceMounts: SURFACE_FACADE,
+    unregisterMount: SURFACE_FACADE,
+  },
+  "ui/kit.ts": { kitReady: SURFACE_FACADE },
+  "ui/surface.ts": {
+    mountSurface: SURFACE_FACADE,
+    registerSurface: SURFACE_FACADE,
+    surfaceDocument: SURFACE_FACADE,
+    surfaceResolver: SURFACE_FACADE,
+    surfaceUrl: SURFACE_FACADE,
+  },
   "browse/library-layouts.ts": {
     cellTextOf:
       "row-shaped access for a caller holding grid cells rather than the typed record. The " +
@@ -469,7 +497,11 @@ const KNOWN_UNREACHABLE: Record<string, Record<string, string>> = {
  * `git-diff` editor kind, a text diff) and `canvas/nested-site-style.ts` (a nested-style-object CSS
  * builder with no producer of nested style objects) were the two, and both are gone.
  */
-const KNOWN_UNREACHABLE_MODULES = new Set<string>();
+/** Modules nothing imports yet, each with its reason in {@link KNOWN_UNREACHABLE}. */
+const KNOWN_UNREACHABLE_MODULES = new Set<string>([
+  "services/surface-registry.ts",
+  "ui/surface.ts",
+]);
 
 const LEDGER = new Map<string, string>(
   Object.entries(KNOWN_UNREACHABLE).flatMap(([file, entries]) =>

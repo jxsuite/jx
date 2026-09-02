@@ -2,9 +2,9 @@
 
 ## Platform Abstraction, Project Loading, and Component Scoping
 
-**Version:** 0.4.9-draft\
+**Version:** 0.4.10-draft\
 **Status:** Pending\
-**Updated:** 2026-08-31\
+**Updated:** 2026-09-02\
 **License:** MIT
 
 ---
@@ -530,7 +530,7 @@ When the user navigates into a sub-component (via `pushDocument()` in the state 
 │  │                  │          │                    │ │
 │  │  - File I/O      │          │  - @jxsuite/studio  │ │
 │  │  - Utils.*       │          │  - @jxsuite/runtime │ │
-│  │  - Code services │          │  - Lit + Spectrum  │ │
+│  │  - Code services │          │  - @jxsuite/ui     │ │
 │  │  - Build / SSG   │          │  - Monaco          │ │
 │  └─────────────────┘          └──────────────────┘ │
 │                                                      │
@@ -1038,6 +1038,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.4.10-draft** (2026-09-02) — §7.1 webview box names @jxsuite/ui in place of Lit + Spectrum.
 - **0.4.9-draft** (2026-08-31) — The PAL member table names listExtensionCatalog, the extension catalogue a backend answers for itself (extensions.md §9.2).
 - **0.4.8-draft** (2026-08-28) — Distinguish the window's own icon (favicon-driven, studio.md 11.2) from the taskbar/dock icon (StartupWMClass) in section 9.3.
 - **0.4.7-draft** (2026-08-27) — The files route answers in stable path order, in every backend.
@@ -1091,4 +1092,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx Studio Desktop Architecture Specification v0.4.9-draft_
+_Jx Studio Desktop Architecture Specification v0.4.10-draft_

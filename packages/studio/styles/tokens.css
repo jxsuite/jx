@@ -44,21 +44,18 @@ html,
 body {
   height: 100%;
   overflow: hidden;
-  /* html/body sit outside <sp-theme>, so the --spectrum-* tokens are not
-     in scope here; the hex fallback is the intentional pre-theme backdrop
-     shown behind the app before sp-theme fills the viewport. */
-  background: var(--spectrum-background-layer-1-color, #111111);
+  /* The kit's --jx-bg is a light-dark() pair on :root, so one declaration
+     follows the chrome theme; the hex fallback is the pre-theme backdrop
+     painted before registerKit() adopts the sheet. */
+  background: var(--jx-bg, #111114);
 }
-/* …which is why the backdrop needs an attribute to follow the chrome. It is
-   the one rule that cannot read the theme it belongs to, so a light Studio
-   used to boot behind, and rubber-band onto, the dark theme's near-black.
-   `data-theme` is stamped on <html> by applyChromeTheme() (src/shell.ts);
-   the token here is undefined at :root by the same rule as above, so the
-   fallback is what paints — it mirrors the light ramp's gray-100 in
-   src/ui/jx-theme.ts, which is the light theme's layer-1. */
+/* The fallback cannot know the theme, so a light Studio would boot behind
+   the dark backdrop for a frame. `data-theme` is stamped on <html> by
+   applyChromeTheme() (src/shell.ts) before first paint, and this rule
+   gives the light boot its own fallback, the kit's gray-50. */
 html[data-theme="light"],
 html[data-theme="light"] body {
-  background: var(--spectrum-gray-100, #f4f4f5);
+  background: var(--jx-bg, #f7f7f9);
 }
 /* Panel layout widths. These must live on :root (the <html> element),
    not on sp-theme or #app, because the resize logic in
@@ -71,59 +68,56 @@ html[data-theme="light"] body {
   --panel-w-right: 280px;
 }
 /* Studio semantic token layer.
-   Declared on sp-theme — not :root — so each var(--spectrum-*) reference
-   resolves against the tokens sp-theme exposes via its :host rules. At
-   :root (the <html> ancestor of sp-theme) every --spectrum-* is undefined,
-   so these would silently collapse to the hex fallback and the app would
-   never respond to the Spectrum theme. All studio chrome, including the
-   #layer-* overlay hosts, lives inside <sp-theme>. */
+   Every name here is an ALIAS of a kit token (packages/ui/project.json,
+   specs/ui.md §4): the kit declares --jx-* on :root as light-dark() pairs,
+   registerKit() adopts that sheet at boot, and these aliases keep the
+   names the chrome's own CSS and check-styles.ts already read. They live
+   on :root now — the kit tokens are in scope there — so the #layer-* hosts
+   and anything outside <sp-theme> read them too. The hex fallbacks are the
+   kit's DARK values (the app boots dark) and are what paints before the
+   sheet is adopted; check-styles.ts holds them to the guidelines table. */
+:root {
+  /* Surfaces */
+  --bg: var(--jx-bg, #111114);
+  --bg-panel: var(--jx-bg-panel, #17171b);
+  --bg-input: var(--jx-bg-input, #1d1d22);
+  --border: var(--jx-border, #2f2f36);
+  /* Text */
+  --fg: var(--jx-fg, #eeeef2);
+  --fg-dim: var(--jx-fg-dim, #a2a2af);
+  /* Accent and status */
+  --accent: var(--jx-accent, #3b82f6);
+  --accent-fg: var(--jx-accent-fg, #ffffff);
+  --danger: var(--jx-danger, #e86460);
+  --success: var(--jx-success, #4fb27a);
+  --tag: var(--jx-tag, #8fb5fb);
+  --signal: var(--jx-signal, #f2cc7c);
+  --handler: var(--jx-handler, #c8a2e0);
+  --warning: var(--jx-warning, #e5ae4a);
+  --map: var(--jx-map, #8b83e6);
+  --switch-c: var(--danger);
+  /* Corner radius */
+  --radius: var(--jx-radius-sm, 4px);
+  /* Monospace stack for code/source chrome: the kit's, which leads with the
+     JetBrains Mono vendored in ./fonts. */
+  --font-mono: var(--jx-font-mono, "JetBrains Mono", "SF Mono", "Fira Code", monospace);
+  /* Hover wash and accent tints, the kit's: the wash is a tint of the ink
+     so it shows on the light theme's white panels too. */
+  --hover-bg: var(--jx-hover-bg, color-mix(in oklab, var(--fg) 6%, transparent));
+  --accent-8: var(--jx-accent-8, color-mix(in oklab, var(--accent) 8%, transparent));
+  --accent-10: var(--jx-accent-10, color-mix(in oklab, var(--accent) 10%, transparent));
+  --accent-15: var(--jx-accent-15, color-mix(in oklab, var(--accent) 15%, transparent));
+  --accent-20: var(--jx-accent-20, color-mix(in oklab, var(--accent) 20%, transparent));
+  --accent-50: var(--jx-accent-50, color-mix(in oklab, var(--accent) 50%, transparent));
+}
+/* What still reads Spectrum, on sp-theme where its tokens are in scope: the
+   theme-independent canvas palette and the data-explorer syntax colours.
+   They move to kit tokens with the surfaces that use them. */
 sp-theme {
   display: block;
   height: 100%;
-  /* Surfaces. The hex fallbacks mirror the Jx brand ramp installed by
-     the 'app' theme fragment (src/ui/jx-theme.ts). */
-  --bg: var(--spectrum-background-layer-1-color, #111111);
-  --bg-panel: var(--spectrum-background-layer-2-color, #1a1a1a);
-  --bg-input: var(--spectrum-gray-100, #1a1a1a);
-  --border: var(--spectrum-gray-200, #222222);
-  /* Text */
-  --fg: var(--spectrum-neutral-content-color-default, #e4e4e7);
-  --fg-dim: var(--spectrum-gray-600, #a1a1aa);
-  /* Accent and status. Under the brand ramp (src/ui/jx-theme.ts),
-     accent-color-700 is the exact Jx brand blue and 900 is the soft
-     on-dark tint. */
-  --accent: var(--spectrum-accent-color-700, #3b82f6);
-  --accent-fg: var(--spectrum-white, #ffffff);
-  --danger: var(--spectrum-negative-color-900, #f44747);
-  --success: var(--spectrum-positive-color-900, #89d185);
-  --tag: var(--spectrum-informative-color-900, #93c5fd);
-  --signal: var(--spectrum-notice-color-900, #dcdcaa);
-  --handler: var(--spectrum-purple-900, #c586c0);
-  --warning: var(--spectrum-orange-900, #c5a332);
-  --map: var(--spectrum-indigo-900, #5b4fc7);
   --slot-c: var(--spectrum-seafoam-900, #1a8a7a);
-  --switch-c: var(--danger);
   --case-c: var(--spectrum-informative-color-800, #60a5fa);
-  /* Corner radius */
-  --radius: var(--spectrum-corner-radius-100, 3px);
-  /* Monospace stack for code/source chrome. JetBrains Mono is the Jx
-     brand mono (vendored in ./fonts); SF Mono / Fira Code remain as
-     system fallbacks ahead of the Spectrum stack (Source Code Pro /
-     Monaco). The brand fragment sets the same order on
-     --spectrum-code-font-family-stack for SWC components. */
-  --font-mono:
-    "JetBrains Mono", "SF Mono", "Fira Code", var(--spectrum-code-font-family-stack, monospace);
-  /* Hover wash and accent tints. The wash is a tint of the ramp's INK end
-     (gray-900), not a literal white: a white wash is invisible on the light
-     theme's white panels, which is the one place a row has to show that the
-     pointer is on it. gray-900 is near-white in the dark ramp, so at 5% this
-     reads the same there as the flat 4% white it replaces. */
-  --hover-bg: color-mix(in srgb, var(--spectrum-gray-900, #fafafa) 5%, transparent);
-  --accent-8: color-mix(in srgb, var(--accent) 8%, transparent);
-  --accent-10: color-mix(in srgb, var(--accent) 10%, transparent);
-  --accent-15: color-mix(in srgb, var(--accent) 15%, transparent);
-  --accent-20: color-mix(in srgb, var(--accent) 20%, transparent);
-  --accent-50: color-mix(in srgb, var(--accent) 50%, transparent);
   /* Light canvas palette (stylebook, block/element previews, content
      mode). These surfaces always render as a light "document" regardless
      of the app chrome, so the ramp is derived from the theme-independent

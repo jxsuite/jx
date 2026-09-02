@@ -83,6 +83,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `desktop.md`
 
+- **0.4.10-draft** (2026-09-02) — §7.1 webview box names @jxsuite/ui in place of Lit + Spectrum.
 - **0.4.9-draft** (2026-08-31) — The PAL member table names listExtensionCatalog, the extension catalogue a backend answers for itself (extensions.md §9.2).
 - **0.4.8-draft** (2026-08-28) — Distinguish the window's own icon (favicon-driven, studio.md 11.2) from the taskbar/dock icon (StartupWMClass) in section 9.3.
 - **0.4.7-draft** (2026-08-27) — The files route answers in stable path order, in every backend.
@@ -446,6 +447,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `standards.md`
 
+- **0.1.17-draft** (2026-09-02) — §1 no longer links the deleted adoption plan.
 - **0.1.16-draft** (2026-09-02) — §11: CSS Cascade Layers, Media Queries 5 and CSS Shadow Parts moved to ui.md §11.
 - **0.1.15-draft** (2026-08-17) — §4.1: the Standards Alignment heading is matched tolerantly and a visual-editor escape is reported as heading-escaped.
 - **0.1.14-draft** (2026-08-16) — §11 WebDriver BiDi leaves the adoption backlog — the pipeline speaks it, and studio-ui-guidelines.md §15 owns it.
@@ -466,6 +468,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `studio-ui-guidelines.md`
 
+- **0.4.0-draft** (2026-09-02) — The chrome moves to the Jx UI kit: §1 foundation and the recorded reversal, §1.1 aliases of kit tokens, §6 target, §8.4 and §8.7 native overlays, §9.3 surfaces as documents, §9.4 document conventions, §10 checklist.
 - **0.3.16** (2026-08-27) — showPromptDialog carries an optional choice control beside its field.
 - **0.3.15** (2026-08-26) — §8.4 becomes Menus: menu-button triggers, submenus and the APG deviation; §12.1 gains the settings/menu placement.
 - **0.3.14** (2026-08-22) — Template conventions (9.4) and the gate behind them; render orchestration described as it is; custom components corrected to the two that exist.
@@ -499,6 +502,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `studio.md`
 
+- **0.10.7-draft** (2026-09-02) — §1, §2 self-hosting and §11 name the UI kit; §11.2 states the shell's unsafe-eval requirement.
 - **0.10.6-draft** (2026-09-01) — Change review: node-level diff marks on both artboards, a change stepper, a code comparison for every changed file, and revalidation after a save.
 - **0.10.5-draft** (2026-08-31) — the canvas de-popovers so an open popover lays out in place and grows the artboard (4.2.2); the selector axis is element-aware and choosing :popover-open changes the rendering (6.2); a third document report checks popover correctness (16.6).
 - **0.10.4-draft** (2026-08-31) — Edit's canvas column is drag-resizable, and the active breakpoint is derived from its width.

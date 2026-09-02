@@ -17,7 +17,7 @@ This page is generated from the `> **Status: …**` markers in the specification
 | `ai.md`                   | 0.1.12-draft | Partial     | 2026-08-31 |
 | `collab.md`               | 0.2.5-draft  | Partial     | 2026-08-20 |
 | `compiler.md`             | 0.4.3-draft  | Partial     | 2026-09-01 |
-| `desktop.md`              | 0.4.9-draft  | Pending     | 2026-08-31 |
+| `desktop.md`              | 0.4.10-draft | Pending     | 2026-09-02 |
 | `embedding.md`            | 0.1.0-draft  | Partial     | 2026-09-02 |
 | `extensions.md`           | 0.4.3-draft  | Partial     | 2026-08-31 |
 | `imports.md`              | 0.1.10-draft | Partial     | 2026-08-27 |
@@ -28,9 +28,9 @@ This page is generated from the `> **Status: …**` markers in the specification
 | `server.md`               | 0.2.23       | Implemented | 2026-08-31 |
 | `site-architecture.md`    | 0.6.10-draft | Partial     | 2026-08-29 |
 | `spec.md`                 | 0.6.3-draft  | Partial     | 2026-09-02 |
-| `standards.md`            | 0.1.16-draft | Partial     | 2026-09-02 |
-| `studio-ui-guidelines.md` | 0.3.16       | Implemented | 2026-08-27 |
-| `studio.md`               | 0.10.6-draft | Partial     | 2026-09-01 |
+| `standards.md`            | 0.1.17-draft | Partial     | 2026-09-02 |
+| `studio-ui-guidelines.md` | 0.4.0-draft  | Partial     | 2026-09-02 |
+| `studio.md`               | 0.10.7-draft | Partial     | 2026-09-02 |
 | `ui.md`                   | 0.1.0-draft  | Partial     | 2026-09-02 |
 
 ## Sections not yet implemented
@@ -50,7 +50,10 @@ This page is generated from the `> **Status: …**` markers in the specification
 - `spec.md` §11.4 — Server Timing — RPC Function Boundary
 - `spec.md` §16.8 — CEM-Compatible Annotations
 - `spec.md` §21 — Evaluation Surface
+- `studio-ui-guidelines.md` §1 — Design System Foundation
+- `studio-ui-guidelines.md` §6.1 — Spectrum Components in Use
 - `studio-ui-guidelines.md` §8 — Interactive Patterns
+- `studio-ui-guidelines.md` §8.7 — Dialogs and Overlay Layers
 - `studio.md` §6.8 — The `From data…` picker addresses only what it can list
 - `studio.md` §13 — Command Registry and Context Keys
 - `studio.md` §14 — Tabs and Document Identity
@@ -68,6 +71,10 @@ This page is generated from the `> **Status: …**` markers in the specification
 - `desktop.md` §4.3 — Single File Mode
 - `embedding.md` §7 — Redefinition
 - `site-architecture.md` §12.3 — Incremental Builds
+- `studio-ui-guidelines.md` §6.2 — Custom Components
+- `studio-ui-guidelines.md` §8.4 — Menus
+- `studio-ui-guidelines.md` §9.3 — Render Orchestration
+- `studio-ui-guidelines.md` §9.4 — Template Conventions
 - `ui.md` §2 — Principles
 - `ui.md` §3 — Authoring Model
 - `ui.md` §5 — Element Catalogue

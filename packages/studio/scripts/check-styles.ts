@@ -89,8 +89,8 @@ const DATA_FILES = [
 ];
 
 /** Px values that have an exact Spectrum token and should be tokenized in new code. */
-const TOKENIZABLE_FONT_PX = new Set(["11", "12", "14"]); // Spectrum font-size-50 / -75 / -100
-const TOKENIZABLE_RADIUS_PX = new Set(["2", "4", "8"]); // Spectrum corner-radius-75 / -100 / -200
+const TOKENIZABLE_FONT_PX = new Set(["10", "11", "12", "14"]); // Kit --jx-text-xs / -sm / -md / -lg
+const TOKENIZABLE_RADIUS_PX = new Set(["2", "4", "6", "10"]); // Kit --jx-radius-xs / -sm / -md / -lg
 
 const HEX_RE = /#[0-9a-fA-F]{3,8}\b/g;
 const VAR_FALLBACK_RE = /var\(\s*--[a-z0-9-]+\s*,\s*#[0-9a-fA-F]{3,8}\s*\)/gi;
