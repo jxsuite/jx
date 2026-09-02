@@ -2,7 +2,7 @@
 
 ## Interface Elements Authored as Jx Documents
 
-**Version:** 0.1.3-draft\
+**Version:** 0.1.4-draft\
 **Status:** Partial\
 **Updated:** 2026-09-02\
 **License:** MIT\
@@ -108,7 +108,7 @@ Each entry records: `tagName`; props (typed `state` entries); events (`emits`); 
 
 ### 5.1 Primitives
 
-> **Status: Partial.** `jx-button` and `jx-action-button` are built: each wraps one native `<button part="control">` that carries the type, the accessible name (`label`, `labelledby`, `describedby` forwarded) and the invoker attributes (`popovertarget`, `popovertargetaction`, `command`, `commandfor` forwarded, because the platform reads them from the button itself); `variant`, `size` and `quiet` are host data attributes the sheet reads; a `loading` button keeps its width, says `aria-busy` and cancels the next activation with `preventDefault` in its own click handler; a toggling action button flips `selected`, carries `aria-pressed` and dispatches `change`. `jx-menu` and `jx-menu-item` are built as specified below, in `packages/ui/components/`, with the menu behaviour in `src/behaviors/menu.ts`; `jx-menu` is placed by explicit viewport coordinates until anchor positioning lands (§6), and `jx-menu-group` and the recipes are pending. A `jx-menu` is always an `auto` popover; `jx-menu-item` reads `value`, `disabled`, `destructive`, `requires`, `checked` and `haspopup`, dispatches a bubbling `select` whose `detail` is its value, and stops the click at itself so a row inside a submenu does not also activate the row that owns it. `jx-menu` takes a `floor`, the lowest edge it and its submenus may reach, and a submenu that would leave the viewport on the right flips to its parent's left. Both are exercised by `packages/ui/tests/menu.test.ts`, and Studio's context and settings menus are built on them.
+> **Status: Partial.** `jx-button` and `jx-action-button` are built: each wraps one native `<button part="control">` that carries the type, the accessible name (`label`, `labelledby`, `describedby` forwarded) and the invoker attributes (`popovertarget`, `popovertargetaction`, `command`, `commandfor` forwarded, because the platform reads them from the button itself); `variant`, `size` and `quiet` are host data attributes the sheet reads; a `loading` button keeps its width, says `aria-busy` and cancels the next activation with `preventDefault` in its own click handler; a toggling action button flips `selected`, carries `aria-pressed` and dispatches `change`; `stacked` puts the icon above a visible label (the rail's shape), `haspopup`/`expanded` reach the control as `aria-haspopup`/`aria-expanded` for a menu button, and `badge` draws a count over the corner. `jx-menu` and `jx-menu-item` are built as specified below, in `packages/ui/components/`, with the menu behaviour in `src/behaviors/menu.ts`; `jx-menu` is placed by explicit viewport coordinates until anchor positioning lands (§6), and `jx-menu-group` and the recipes are pending. A `jx-menu` is always an `auto` popover; `jx-menu-item` reads `value`, `disabled`, `destructive`, `requires`, `checked` and `haspopup`, dispatches a bubbling `select` whose `detail` is its value, and stops the click at itself so a row inside a submenu does not also activate the row that owns it. `jx-menu` takes a `floor`, the lowest edge it and its submenus may reach, and a submenu that would leave the viewport on the right flips to its parent's left. Both are exercised by `packages/ui/tests/menu.test.ts`, and Studio's context and settings menus are built on them.
 
 | Element            | Owns                                                                                                                                                                                                                                                          | Replaces                        |
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
@@ -246,6 +246,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.1.4-draft** (2026-09-02) — jx-action-button gains stacked, haspopup/expanded and badge (§5.1).
 - **0.1.3-draft** (2026-09-02) — jx-button and jx-action-button are built: one native button each, invoker attributes forwarded, loading and toggling states (§5.1).
 - **0.1.2-draft** (2026-09-02) — jx-menu takes a floor and a submenu flips to its parent's left when it would overflow (§5.1).
 - **0.1.1-draft** (2026-09-02) — jx-menu and jx-menu-item are built (§5.1), with the popover half of the overlay model (§6) and the menu keyboard contract (§7).
@@ -253,4 +254,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx UI Kit Specification v0.1.3-draft_
+_Jx UI Kit Specification v0.1.4-draft_

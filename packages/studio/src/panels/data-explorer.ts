@@ -356,7 +356,7 @@ export function registerDataPanel(): void {
     title: "Data",
     level: "document",
     dock: "navigator",
-    icon: "sp-icon-data",
+    icon: "database",
     requiresDocument: "Open a page to give it data — values it can read, compute or fetch.",
     render: (ctx) =>
       // `ctx.doc!` — `requiresDocument` means the registry renders the empty state instead of

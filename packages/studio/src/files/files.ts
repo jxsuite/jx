@@ -2293,7 +2293,7 @@ export function registerFilesPanel(): void {
     title: "Files",
     level: "project",
     dock: "navigator",
-    icon: "sp-icon-folder",
+    icon: "folder",
     render: (ctx) => ctx.deps.renderFilesTemplate(),
     afterRender: (ctx) => {
       ctx.deps.registerFileTreeDnD({ renderLeftPanel: ctx.rerender });

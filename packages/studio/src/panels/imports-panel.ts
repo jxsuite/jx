@@ -493,7 +493,7 @@ export function registerPackagesPanel(): void {
     title: "Packages",
     level: "document",
     dock: "navigator",
-    icon: "sp-icon-box",
+    icon: "cube",
     requiresDocument: "Open a page to choose which components it can use.",
     render: (ctx) =>
       ctx.deps.renderImportsTemplate({

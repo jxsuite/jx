@@ -5,7 +5,7 @@ spec:
   - studio.md#3.1
 code:
   - packages/studio/src/panels/toolbar.ts
-  - packages/studio/src/panels/activity-bar.ts
+  - packages/studio/src/surfaces/rail.ts
   - packages/studio/src/panels/right-panel.ts
   - packages/studio/src/panels/jump-bar.ts
   - packages/studio/src/panels/bottom-dock.ts

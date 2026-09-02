@@ -1250,7 +1250,7 @@ export function registerLayersPanel(): void {
     title: "Outline",
     level: "document",
     dock: "navigator",
-    icon: "sp-icon-layers",
+    icon: "stack",
     requiresDocument: "Open a page to see the elements it is built from.",
     render: (ctx) =>
       ctx.deps.getCanvasMode() === "stylebook"

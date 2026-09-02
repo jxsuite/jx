@@ -473,6 +473,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `studio-ui-guidelines.md`
 
+- **0.4.3-draft** (2026-09-02) — The Navigator rail is a surface: stacked jx-action-buttons held by the shell, the gear a menu button, panel icons as kit glyph names (§9.3).
 - **0.4.2-draft** (2026-09-02) — The rail's Settings menu is the second surface on the menu document: sections as a child jx-menu, live rows through a reactive scope, the rail's bottom as the stack's floor (§8.4, §9.3).
 - **0.4.1-draft** (2026-09-02) — The element context menu is the first surface built as a Jx document: surfaces/menu.json over a jx-menu, mounted through a popover layer slot (§8.4, §9.3).
 - **0.4.0-draft** (2026-09-02) — The chrome moves to the Jx UI kit: §1 foundation and the recorded reversal, §1.1 aliases of kit tokens, §6 target, §8.4 and §8.7 native overlays, §9.3 surfaces as documents, §9.4 document conventions, §10 checklist.
@@ -625,6 +626,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `ui.md`
 
+- **0.1.4-draft** (2026-09-02) — jx-action-button gains stacked, haspopup/expanded and badge (§5.1).
 - **0.1.3-draft** (2026-09-02) — jx-button and jx-action-button are built: one native button each, invoker attributes forwarded, loading and toggling states (§5.1).
 - **0.1.2-draft** (2026-09-02) — jx-menu takes a floor and a submenu flips to its parent's left when it would overflow (§5.1).
 - **0.1.1-draft** (2026-09-02) — jx-menu and jx-menu-item are built (§5.1), with the popover half of the overlay model (§6) and the menu keyboard contract (§7).

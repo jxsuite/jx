@@ -579,9 +579,9 @@ export function registerI18nPanel(): void {
     title: "Languages",
     level: "project",
     dock: "navigator",
-    // Inert, like every other `rail: false` panel's: `tabIcon()` is only ever called by a rail
+    // Inert, like every other `rail: false` panel's: the glyph is only ever drawn by a rail
     // Button, and `check-icons.ts` fails on a resolver row no rail panel declares.
-    icon: "sp-icon-globe",
+    icon: "globe",
     // OFF THE RAIL. `railDeclarations()` does not apply `when`, so a rail button would spend the
     // Last rail/project slot in every monolingual project — and would shift every document panel's
     // ⌘1-8 chord by one. `i18n.showParity` is how it is reached.

@@ -228,7 +228,7 @@ const KNOWN_UNREACHABLE: Record<string, Record<string, string>> = {
       "reads back the inline validation message from the last `collectDestination`. The dialog " +
       "renders the message from the value that call returned, so it never re-reads it",
   },
-  "panels/activity-bar.ts": { unmount: PANEL_TEARDOWN },
+  "surfaces/rail.ts": { unmount: PANEL_TEARDOWN },
   "panels/activity-panel.ts": { resetActivities: TEST_RESET },
   "panels/block-action-bar.ts": {
     isLinkPopoverOpen:

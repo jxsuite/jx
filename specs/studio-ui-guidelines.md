@@ -1,6 +1,6 @@
 # Jx Studio UI/UX Interface Guidelines
 
-**Version:** 0.4.2-draft\
+**Version:** 0.4.3-draft\
 **Status:** Partial\
 **Updated:** 2026-09-02\
 **Applies to:** `packages/studio/`
@@ -558,7 +558,7 @@ A batch of related edits is **one** entry, and a failed write leaves no entry at
 
 ### 9.3 Render Orchestration
 
-> **Status: Partial.** The element context menu and the rail's Settings menu are the migrated surfaces (`src/surfaces/menu.json` and `src/surfaces/menu.ts`, §8.4); every other surface below is still lit. A migrated surface is a Jx document under `src/surfaces/`, mounted by an adapter through `mountSurface()` (`src/ui/surface.ts`, over `embedding.md` §2): the adapter builds a scope of host records — reactive state, computed projections of command records, plain functions — and the document projects them. One runtime effect per bound property replaces a repaint of the whole surface, which is also what retires `panel-scheduler.ts`'s focus guard with the last lit panel: nothing repaints a control the reader is typing into. `services/surface-registry.ts` records every mount by the elements it used and the document it came from, so a redefinition or a saved edit can re-mount exactly the roots it touches. Until a surface moves, everything below still describes it.
+> **Status: Partial.** The element context menu and the rail's Settings menu (`src/surfaces/menu.json` and `src/surfaces/menu.ts`, §8.4) and the Navigator rail itself (`src/surfaces/rail.json` and `src/surfaces/rail.ts`: every rail button a stacked `jx-action-button` held by `shell`, the gear a menu button, the panel records' icons now kit glyph names) are the migrated surfaces; every other surface below is still lit. A migrated surface is a Jx document under `src/surfaces/`, mounted by an adapter through `mountSurface()` (`src/ui/surface.ts`, over `embedding.md` §2): the adapter builds a scope of host records — reactive state, computed projections of command records, plain functions — and the document projects them. One runtime effect per bound property replaces a repaint of the whole surface, which is also what retires `panel-scheduler.ts`'s focus guard with the last lit panel: nothing repaints a control the reader is typing into. `services/surface-registry.ts` records every mount by the elements it used and the document it came from, so a redefinition or a saved edit can re-mount exactly the roots it touches. Until a surface moves, everything below still describes it.
 
 **There is no root render, and no central dispatcher.** The description this section used to carry — an `update()` that selectively re-renders three regions — has not matched the code for some time. What actually runs is about thirty independent pairs, each a module-scope `effectScope` holding one `effect()` that reads its own dependency list and calls one `litRender()` into its own host.
 
@@ -863,6 +863,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.4.3-draft** (2026-09-02) — The Navigator rail is a surface: stacked jx-action-buttons held by the shell, the gear a menu button, panel icons as kit glyph names (§9.3).
 - **0.4.2-draft** (2026-09-02) — The rail's Settings menu is the second surface on the menu document: sections as a child jx-menu, live rows through a reactive scope, the rail's bottom as the stack's floor (§8.4, §9.3).
 - **0.4.1-draft** (2026-09-02) — The element context menu is the first surface built as a Jx document: surfaces/menu.json over a jx-menu, mounted through a popover layer slot (§8.4, §9.3).
 - **0.4.0-draft** (2026-09-02) — The chrome moves to the Jx UI kit: §1 foundation and the recorded reversal, §1.1 aliases of kit tokens, §6 target, §8.4 and §8.7 native overlays, §9.3 surfaces as documents, §9.4 document conventions, §10 checklist.

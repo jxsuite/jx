@@ -128,7 +128,10 @@ export interface PanelRecord {
   /** REQUIRED. The level of the state this panel WRITES. Checked against the panel matrix. */
   level: Level;
   dock: PanelDock;
-  /** Icon key, resolved through `activity-bar.ts`'s `tabIcon()` map. */
+  /**
+   * The glyph, by its name in the UI kit's icon manifest (`@jxsuite/ui`); the rail draws it through
+   * `jx-icon`.
+   */
   icon: string;
   /**
    * `false` for a panel with no rail button.

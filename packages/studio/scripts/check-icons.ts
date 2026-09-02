@@ -11,30 +11,22 @@
  *    and happy-dom is as content to render nothing as Chrome is, so a test asserting
  *    `querySelector("sp-icon-x")` is not null PASSES while the icon draws nothing. Eleven shipped
  *    that way. Three named elements Spectrum has no such thing as.
- * 2. **A key on a record** — `icon: "sp-icon-x"` — resolves through a RESOLVER MAP, and never reaches
- *    `customElements` at all. `PanelRecord.icon` goes to `activity-bar.ts`'s `tabIcon()`, whose
- *    tail is `return fn ? fn(size || "s") : nothing`. A key with no row is not a missing element;
- *    it is zero nodes. Registering the element does nothing, because nothing ever constructs the
- *    tag.
+ * 2. **A key on a record** — `icon: "folder"` — resolves through the UI KIT'S MANIFEST, and never
+ *    reaches `customElements` at all. `PanelRecord.icon` is drawn by the rail surface through
+ *    `jx-icon`, whose manifest is `@jxsuite/ui`'s: a name absent from it draws nothing above the
+ *    label and warns once in the console, which a screenshot does not show and a test that only
+ *    asks whether the button exists does not see. Three rail buttons once shipped that way, when
+ *    the keys resolved through a hand-kept map in the rail module.
  *
- * **The rule that decides which check applies is the SHAPE, not the string.** Both spaces are
- * spelled `sp-icon-*`, and one of the map's own rows — `sp-icon-git-branch` — is not a Spectrum
- * element at all but a hand-drawn inline `<svg>`, because the workflow set ships no Git family. A
- * checker that read that key as a tag would call a working, pixel-perfect glyph broken, and
- * "correcting" it to a real Spectrum name is exactly how a working icon gets deleted.
- *
- * So: tags are checked against the element registry, keys are checked against their resolver, and
- * the resolver that matters most is the one whose miss is SILENT. `commandIcon()` falls back to the
- * command's title, so a miss there degrades visibly and is a judgement call; `tabIcon()` falls back
- * to nothing, so a miss there is invisible and is a defect. Only the silent one is enforced.
- *
- * A dead ROW is checked too, and for a reason the git-branch regression demonstrated: the orphaned
- * row stayed behind and `tests/activity-bar.test.ts` went on exercising it, so the suite proved a
- * glyph rendered while the shipped panel pointed at a key nothing handled.
+ * So: tags are checked against the element registry, keys against the manifest, and the resolver
+ * that matters most is the one whose miss is SILENT. `commandIcon()` falls back to the command's
+ * title, so a miss there degrades visibly and is a judgement call; a record's key falls back to
+ * nothing.
  */
 
 import { fileURLToPath } from "node:url";
 import { existsSync, readFileSync } from "node:fs";
+import { ICON_NAMES } from "@jxsuite/ui/icons";
 import { join } from "node:path";
 import { Glob } from "bun";
 
@@ -129,29 +121,22 @@ export function iconTagsRegistered(spectrumSource: string): Set<string> {
 }
 
 /**
- * The keys `tabIcon()` has a row for.
- *
- * Scoped to the function body rather than the file, so a tag appearing in a row's VALUE — which is
- * what a row is made of — is never mistaken for a second key.
+ * The glyph names the UI kit ships — the ONE key space a panel record's `icon` resolves in. The
+ * rail draws every record's icon through `jx-icon`, whose manifest is `@jxsuite/ui`'s, so a name
+ * absent from it draws nothing and warns once.
  */
-export function resolverKeys(activityBarSource: string): Set<string> {
-  const start = activityBarSource.indexOf("export function tabIcon");
-  if (start === -1) {
-    throw new Error("check-icons: activity-bar.ts no longer exports tabIcon — update this check");
-  }
-  const body = activityBarSource.slice(start, activityBarSource.indexOf("\n}", start));
-  return new Set([...body.matchAll(/"(sp-icon-[a-z0-9-]+)":/g)].map((m) => m[1]!));
+export function manifestNames(): Set<string> {
+  return new Set(ICON_NAMES);
 }
 
 /**
  * Every `icon:` key a **panel record** declares, mapped to where it is declared.
  *
  * Scoped to `registerPanel(` calls that are ON the rail, because those are the only records whose
- * icon reaches `tabIcon()` — `railButton()` is its one caller. A command record's `icon` goes to
- * `commandIcon()`, which falls back to the title; a settings section's is documented as reserved
- * and read by nobody. Neither is silent, so neither is enforced here, and sweeping them in is what
- * inflated the first version's count to 83 icons "all registered" while three rail buttons drew
- * nothing.
+ * icon is drawn by the rail surface. A command record's `icon` goes to `commandIcon()`, which falls
+ * back to the title; a settings section's is documented as reserved and read by nobody. Neither is
+ * silent, so neither is enforced here, and sweeping them in is what inflated the first version's
+ * count to 83 icons "all registered" while three rail buttons drew nothing.
  */
 export function iconKeysDeclared(root: string): Map<string, string> {
   const declared = new Map<string, string>();
@@ -173,14 +158,14 @@ export function iconKeysDeclared(root: string): Map<string, string> {
         }
       }
       const record = text.slice(open, end);
-      // `rail: false` means no button, and `railButton()` is `tabIcon`'s only caller — so an icon
+      // `rail: false` means no button, and the rail is the only thing that draws the glyph — so an icon
       // On an off-rail panel reaches nothing at all, and demanding a row for it would be demanding
       // A row that can never run. Insert, State, Logic and Activity are all reachable by name
       // Instead of by number, which is the point of the flag.
       if (/\brail:\s*false/.test(record)) {
         continue;
       }
-      const icon = /\bicon:\s*"(sp-icon-[a-z0-9-]+)"/.exec(record);
+      const icon = /\bicon:\s*"([a-z0-9-]+)"/.exec(record);
       if (icon) {
         const line = text.slice(0, open + icon.index!).split("\n").length;
         declared.set(icon[1]!, `${rel}:${line}`);
@@ -204,7 +189,7 @@ export function iconProblems(input: {
   registered: Set<string>;
   /** Element name → the specifier it is imported from. */
   imported: Map<string, string>;
-  /** Keys `tabIcon()` has a row for. */
+  /** The glyph names the kit's manifest carries. */
   rows: Set<string>;
   /** Panel-record key → where it is declared. */
   keys: Map<string, string>;
@@ -244,17 +229,9 @@ export function iconProblems(input: {
   for (const [key, where] of [...keys].toSorted(([a], [b]) => a.localeCompare(b))) {
     if (!rows.has(key)) {
       problems.push(
-        `${where} declares icon "${key}" and tabIcon() has no row for it — the rail button ` +
-          `renders NOTHING (registering the element does not help; the tag is never constructed)`,
-      );
-    }
-  }
-
-  for (const row of [...rows].toSorted()) {
-    if (!keys.has(row)) {
-      problems.push(
-        `tabIcon() has a row for "${row}" and no RAIL panel declares it — a dead row is what lets ` +
-          `a test go on proving a glyph renders while the shipped panel points elsewhere`,
+        `${where} declares icon "${key}" and the kit's icon manifest has no glyph of that name — ` +
+          `the rail button renders NOTHING above its label (add it to packages/ui/icons/list.json ` +
+          `and run build:icons, or name a glyph the manifest has)`,
       );
     }
   }
@@ -272,13 +249,12 @@ export function checkIcons(): { problems: string[]; tagCount: number; keyCount: 
   const tags = iconTagsUsed(src);
   const keys = iconKeysDeclared(src);
   const spectrum = readFileSync(join(src, "ui/spectrum.ts"), "utf8");
-  const activityBar = readFileSync(join(src, "panels/activity-bar.ts"), "utf8");
   const problems = iconProblems({
     imported: iconImports(spectrum),
     installed: (specifier) => existsSync(join(MODULES, specifier)),
     keys,
     registered: iconTagsRegistered(spectrum),
-    rows: resolverKeys(activityBar),
+    rows: manifestNames(),
     tags,
   });
   return { keyCount: keys.size, problems, tagCount: tags.size };
@@ -301,7 +277,7 @@ export function report(problems: string[], tagCount: number, keyCount: number): 
       "\n   Two key spaces, two fixes. A TAG (`<sp-icon-x>`) needs a row in `src/ui/spectrum.ts`,\n" +
         "   and the element has to be one Spectrum ships — it has `rail-right-open`/`close` and no\n" +
         '   left-hand pair, and no Git family at all. A KEY (`icon: "sp-icon-x"` on a panel record)\n' +
-        "   needs a row in `tabIcon()` in `src/panels/activity-bar.ts`; registering the element does\n" +
+        "   needs a glyph in the kit's manifest (packages/ui/icons/list.json); registering an element does\n" +
         "   NOT help, because a key that misses returns `nothing` before any tag is constructed.\n",
     );
     return 1;

@@ -59,7 +59,7 @@ export function registerNavigatorPanels(): void {
     title: "Search",
     level: "project",
     dock: "navigator",
-    icon: "sp-icon-search",
+    icon: "magnifying-glass",
     when: NOT_YET_BUILT,
     render: () => nothingYet(),
   });

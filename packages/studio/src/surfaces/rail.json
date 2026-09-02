@@ -1,0 +1,256 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioRail",
+  "$description": "The Navigator rail: a rendering of the panel registry. The adapter hands in `groups`, every rail-able panel grouped by level with its selected state and badge, and `settingsVisible`/`settingsOpen` for the foot's gear. Nothing here is a list of panels.",
+  "tagName": "div",
+  "attributes": {
+    "part": "rail"
+  },
+  "style": {
+    "display": "flex",
+    "flexDirection": "column",
+    "height": "100%",
+    "& > [part=\"groups\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "padding": "var(--jx-space-2) 0"
+    },
+    "& [role=\"group\"]": {
+      "display": "flex",
+      "flexDirection": "column"
+    },
+    "& hr": {
+      "height": "1px",
+      "margin": "var(--jx-space-3) var(--jx-space-4)",
+      "border": "0",
+      "background": "var(--jx-border)"
+    },
+    "& > [part=\"foot\"]": {
+      "marginTop": "auto",
+      "display": "flex",
+      "flexDirection": "column",
+      "padding": "var(--jx-space-3) 0"
+    },
+    "& jx-action-button": {
+      "width": "100%"
+    },
+    "& jx-action-button > [part=\"control\"]": {
+      "borderLeft": "2px solid transparent",
+      "opacity": "0.75",
+      ":hover": {
+        "opacity": "1"
+      }
+    },
+    "& jx-action-button[data-selected] > [part=\"control\"]": {
+      "borderLeftColor": "var(--jx-accent)",
+      "background": "transparent",
+      "color": "var(--jx-fg)",
+      "opacity": "1"
+    },
+    "& jx-action-button[data-expanded] > [part=\"control\"]": {
+      "background": "var(--jx-hover-bg)",
+      "color": "var(--jx-fg)",
+      "opacity": "1"
+    }
+  },
+  "children": [
+    {
+      "tagName": "nav",
+      "attributes": {
+        "part": "groups",
+        "aria-label": "Navigator panels"
+      },
+      "children": [
+        {
+          "$prototype": "Array",
+          "items": {
+            "$ref": "#/state/groups"
+          },
+          "key": {
+            "$ref": "$map/item/level"
+          },
+          "map": {
+            "tagName": "div",
+            "attributes": {
+              "role": "none"
+            },
+            "children": [
+              {
+                "tagName": "div",
+                "attributes": {
+                  "role": "none"
+                },
+                "$switch": {
+                  "$ref": "$map/item/dividerAbove"
+                },
+                "cases": {
+                  "true": {
+                    "tagName": "hr",
+                    "attributes": {
+                      "role": "separator"
+                    }
+                  }
+                }
+              },
+              {
+                "tagName": "div",
+                "attributes": {
+                  "role": "group",
+                  "aria-label": "${$map.item.label}"
+                },
+                "children": [
+                  {
+                    "$prototype": "Array",
+                    "items": {
+                      "$ref": "$map/item/panels"
+                    },
+                    "key": {
+                      "$ref": "$map/item/id"
+                    },
+                    "map": {
+                      "tagName": "jx-action-button",
+                      "$props": {
+                        "label": {
+                          "$ref": "$map/item/title"
+                        },
+                        "icon": {
+                          "$ref": "$map/item/icon"
+                        },
+                        "stacked": true,
+                        "toggles": true,
+                        "selected": {
+                          "$ref": "$map/item/selected"
+                        },
+                        "badge": {
+                          "$ref": "$map/item/badge"
+                        }
+                      },
+                      "attributes": {
+                        "data-panel": "${$map.item.id}"
+                      },
+                      "onchange": {
+                        "$prototype": "Function",
+                        "body": [
+                          {
+                            "operator": "call",
+                            "target": {
+                              "$ref": "#/state/toggle"
+                            },
+                            "value": [
+                              {
+                                "$ref": "$map/item/id"
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      "children": [
+                        {
+                          "tagName": "span",
+                          "textContent": "${$map.item.title}"
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "foot"
+      },
+      "$switch": {
+        "$ref": "#/state/settingsVisible"
+      },
+      "cases": {
+        "true": {
+          "tagName": "jx-action-button",
+          "$props": {
+            "label": "Settings",
+            "icon": "gear",
+            "stacked": true,
+            "haspopup": "menu",
+            "expanded": {
+              "$ref": "#/state/settingsOpen"
+            }
+          },
+          "attributes": {
+            "data-rail-menu": "settings",
+            "data-expanded": "${state.settingsOpen ? '' : null}"
+          },
+          "onclick": {
+            "$prototype": "Function",
+            "body": [
+              {
+                "operator": "call",
+                "target": {
+                  "$ref": "#/state/openSettings"
+                },
+                "value": [
+                  {
+                    "$ref": "event#/currentTarget"
+                  }
+                ]
+              }
+            ]
+          },
+          "onkeydown": {
+            "$prototype": "Function",
+            "body": [
+              {
+                "$switch": {
+                  "$ref": "event#/key"
+                },
+                "cases": {
+                  "ArrowUp": [
+                    {
+                      "operator": "call",
+                      "target": {
+                        "$ref": "#/state/openSettings"
+                      },
+                      "value": [
+                        {
+                          "$ref": "event#/currentTarget"
+                        }
+                      ]
+                    },
+                    {
+                      "preventDefault": true
+                    }
+                  ],
+                  "ArrowDown": [
+                    {
+                      "operator": "call",
+                      "target": {
+                        "$ref": "#/state/openSettings"
+                      },
+                      "value": [
+                        {
+                          "$ref": "event#/currentTarget"
+                        }
+                      ]
+                    },
+                    {
+                      "preventDefault": true
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          "children": [
+            {
+              "tagName": "span",
+              "textContent": "Settings"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

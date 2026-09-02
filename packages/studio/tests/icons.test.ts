@@ -8,7 +8,6 @@
 
 import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   checkIcons,
@@ -19,7 +18,7 @@ import {
   iconTagsRegistered,
   iconTagsUsed,
   report,
-  resolverKeys,
+  manifestNames,
 } from "../scripts/check-icons";
 
 const STUDIO = fileURLToPath(new URL("..", import.meta.url));
@@ -51,27 +50,25 @@ describe("check-icons", () => {
     test("only the angle-bracket shape counts as a tag", () => {
       const src = join(STUDIO, "src");
       const tags = iconTagsUsed(src);
-      // `sp-icon-git-branch` is a KEY bound to a hand-drawn inline <svg>; the only place the tag
-      // Shape appears is nowhere, because Spectrum ships no Git family.
+      // `git-branch` is a KEY the rail draws through jx-icon; the tag shape never appears, because
+      // Spectrum ships no Git family and the kit's glyphs are never written as tags.
       expect(tags.has("sp-icon-git-branch")).toBe(false);
-      expect(resolverKeys(readActivityBar())).toContain("sp-icon-git-branch");
+      expect(manifestNames()).toContain("git-branch");
     });
 
-    test("every panel key has a row, and every row has a panel", () => {
+    test("every panel key names a glyph the kit ships", () => {
       const keys = new Set(iconKeysDeclared(join(STUDIO, "src")).keys());
-      const rows = resolverKeys(readActivityBar());
-      expect([...keys].filter((k) => !rows.has(k))).toEqual([]);
-      expect([...rows].filter((r) => !keys.has(r))).toEqual([]);
+      const glyphs = manifestNames();
+      expect([...keys].filter((k) => !glyphs.has(k))).toEqual([]);
     });
 
     test("only registerPanel keys are collected — a command's icon has a visible fallback", () => {
       const keys = iconKeysDeclared(join(STUDIO, "src"));
-      expect(keys.has("sp-icon-git-branch")).toBe(true);
-      // Declared on a settings SECTION, whose icon is documented as reserved and read by nobody,
-      // And on command records, which fall back to the title. Sweeping those in is what let the
-      // First version report 83 icons "all registered" with three rail buttons drawing nothing.
-      expect(keys.has("sp-icon-plug")).toBe(false);
+      expect(keys.has("git-branch")).toBe(true);
+      // Declared on command records, which fall back to the title. Sweeping those in is what let
+      // The first version report 83 icons "all registered" with three rail buttons drawing nothing.
       expect(keys.has("sp-icon-arrow-up")).toBe(false);
+      expect(keys.has("arrow-up")).toBe(false);
     });
   });
 
@@ -112,33 +109,19 @@ describe("check-icons", () => {
       ).toEqual(["sp-icon-ghost imports ghost/IconRailLeftOpen.js, which is not installed"]);
     });
 
-    test("THE REGRESSION: a panel key with no row says registering will not help", () => {
+    test("THE REGRESSION: a panel key the manifest lacks says registering will not help", () => {
       const [problem] = iconProblems({
         ...base,
         // Registered, imported and installed — which is exactly why the first checker passed.
         imported: new Map([["IconBranch1", "real/IconBranch1.js"]]),
-        keys: new Map([["sp-icon-branch-1", "panels/git-panel.ts:995"]]),
+        keys: new Map([["branch-1", "panels/git-panel.ts:995"]]),
         registered: new Set(["sp-icon-branch-1"]),
-        rows: new Set(["sp-icon-git-branch"]),
+        rows: new Set(["git-branch"]),
         tags: new Map([["sp-icon-branch-1", ["ui/spectrum.ts"]]]),
       });
       expect(problem).toContain("panels/git-panel.ts:995");
       expect(problem).toContain("renders NOTHING");
-      expect(problem).toContain("registering the element does not help");
-    });
-
-    test("…and the orphaned row it leaves behind is reported too", () => {
-      const problems = iconProblems({
-        ...base,
-        imported: new Map([["IconBranch1", "real/IconBranch1.js"]]),
-        keys: new Map([["sp-icon-branch-1", "panels/git-panel.ts:995"]]),
-        registered: new Set(["sp-icon-branch-1"]),
-        rows: new Set(["sp-icon-git-branch"]),
-        tags: new Map([["sp-icon-branch-1", ["ui/spectrum.ts"]]]),
-      });
-      expect(problems).toHaveLength(2);
-      expect(problems[1]).toContain("sp-icon-git-branch");
-      expect(problems[1]).toContain("dead row");
+      expect(problem).toContain("manifest");
     });
 
     test("an allow-listed orphan registration is silent; the imports still must resolve", () => {
@@ -157,17 +140,13 @@ describe("check-icons", () => {
       expect(
         iconProblems({
           ...base,
-          keys: new Map([["sp-icon-ghost", "panels/a.ts:1"]]),
+          keys: new Map([["ghost", "panels/a.ts:1"]]),
           registered: new Set(["sp-icon-ghost"]),
-          rows: new Set(["sp-icon-ghost"]),
-          tags: new Map([["sp-icon-ghost", ["panels/activity-bar.ts"]]]),
+          rows: new Set(["ghost"]),
+          tags: new Map([["sp-icon-ghost", ["panels/toolbar.ts"]]]),
         }),
       ).toEqual([]);
     });
-  });
-
-  test("resolverKeys refuses to guess if tabIcon is renamed", () => {
-    expect(() => resolverKeys("export function somethingElse() {}\n")).toThrow(/tabIcon/);
   });
 
   test("registered tags are read from the registry rows, not from prose", () => {
@@ -185,24 +164,20 @@ describe("check-icons", () => {
       console.error = (...a: unknown[]) => errors.push(a);
       console.log = (...a: unknown[]) => logs.push(a);
       try {
-        expect(report(['git-panel.ts:995 declares icon "sp-icon-branch-1"'], 3, 2)).toBe(1);
+        expect(report(['git-panel.ts:995 declares icon "branch-1"'], 3, 2)).toBe(1);
         expect(report([], 74, 11)).toBe(0);
       } finally {
         console.error = realError;
         console.log = realLog;
       }
       const said = errors.flat().join(" ");
-      expect(said).toContain("sp-icon-branch-1");
+      expect(said).toContain("branch-1");
       // The refusal has to name the RIGHT fix for each space, because "register it" is the wrong
       // Advice for a key and following it is what produced the regression.
       expect(said).toContain("src/ui/spectrum.ts");
-      expect(said).toContain("tabIcon()");
+      expect(said).toContain("manifest");
       expect(logs.flat().join(" ")).toContain("74 tag(s)");
       expect(logs.flat().join(" ")).toContain("11 panel key(s)");
     });
   });
 });
-
-function readActivityBar(): string {
-  return readFileSync(join(STUDIO, "src/panels/activity-bar.ts"), "utf8");
-}

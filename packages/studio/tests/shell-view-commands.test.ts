@@ -315,7 +315,7 @@ describe("the enums do not drift from what the shell renders", () => {
     // The rail no longer declares any ids — it renders `railGroups()`. The guard is now that the
     // Registry and this enum agree, which is asserted in `tests/panel-registry.test.ts`; here we
     // Only check that the rail really has stopped keeping its own list.
-    expect(declaredValues("../src/panels/activity-bar.ts")).toEqual([]);
+    expect(declaredValues("../src/surfaces/rail.ts")).toEqual([]);
     expect(NAVIGATOR_PANEL_IDS.length).toBe(9);
   });
 
