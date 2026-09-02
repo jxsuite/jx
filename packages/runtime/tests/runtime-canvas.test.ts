@@ -702,6 +702,52 @@ describe("setCanvasDelinkCommands", () => {
     applyStyle(details, { "&[open]": { display: "grid" } });
     expect(elementCSS(details)).toContain("[open] { display: grid }");
   });
+
+  test("[open] follows the compound it names, not the element the style hangs off", () => {
+    setCanvasDelinkCommands(true);
+    /* A wrapper styling the dialogs inside it. The canvas renamed those dialogs' `open`, so the
+       author's rule has to be transposed even though a `<div>` owns it. */
+    const wrapper = document.createElement("div");
+    wrapper.dataset.jxPath = '["children",0]';
+    document.body.append(wrapper);
+    applyStyle(wrapper, { "& dialog[open]": { display: "grid" } });
+    const wrapperCss = elementCSS(wrapper);
+    expect(wrapperCss).toContain("dialog[data-jx-dialog-open] { display: grid }");
+    expect(wrapperCss).not.toContain("[open] {");
+
+    /* An accordion inside a dialog. `<details open>` keeps its attribute on the canvas, so a rule
+       the owner's tag alone would have rewritten is left exactly as authored. */
+    const dialog = document.createElement("dialog");
+    dialog.dataset.jxPath = '["children",1]';
+    document.body.append(dialog);
+    applyStyle(dialog, {
+      "& details[open]": { color: "red" },
+      "&[open]": { display: "grid" },
+    });
+    const dialogCss = elementCSS(dialog);
+    expect(dialogCss).toContain("details[open] { color: red }");
+    expect(dialogCss).toContain("[data-jx-dialog-open] { display: grid }");
+  });
+
+  test("[inert] transposes with the attribute, so the author's rule still selects the region", () => {
+    setCanvasDelinkCommands(true);
+    const region = stampedRender({ attributes: { inert: true }, tagName: "section" });
+    document.body.append(region);
+    applyStyle(region, { "&[inert]": { opacity: "0.4" } });
+    const css = elementCSS(region);
+    expect(css).toContain("[data-jx-inert] { opacity: 0.4 }");
+    expect(css).not.toContain("[inert] {");
+    /* Text is not the point: the rule has to select the element the canvas actually rendered. */
+    expect(region.matches(css.split(" {")[0]!)).toBe(true);
+
+    /* An unstamped node — a component's own internals — keeps the native attribute, so its rule
+       must keep naming it. */
+    const inner = document.createElement("section");
+    inner.toggleAttribute("inert", true);
+    document.body.append(inner);
+    applyStyle(inner, { "&[inert]": { opacity: "0.4" } });
+    expect(elementCSS(inner)).toContain("[inert] { opacity: 0.4 }");
+  });
 });
 
 describe("transposeCanvasOverlaySelector", () => {
@@ -713,6 +759,42 @@ describe("transposeCanvasOverlaySelector", () => {
       "#d[data-jx-dialog-open]",
     );
     expect(transposeCanvasOverlaySelector("#d:modal::backdrop", { dialog: true })).toBeNull();
+  });
+
+  test("[open] is decided by its own compound, and by the owner only when it names no type", () => {
+    // A compound that names `dialog` is the dialog's open state whatever owns the rule.
+    expect(transposeCanvasOverlaySelector(".x dialog[open]", { dialog: false })).toBe(
+      ".x dialog[data-jx-dialog-open]",
+    );
+    // A compound that names anything else is content, and is left exactly as authored.
+    expect(transposeCanvasOverlaySelector(".x details[open]", { dialog: true })).toBe(
+      ".x details[open]",
+    );
+    /* A compound with NO type takes the owner's answer, both ways, which is also how the runtime's
+       own scope handle is answered: it is not a parseable type name, so the scan finds none. */
+    expect(transposeCanvasOverlaySelector("&[open]", { dialog: true })).toBe(
+      "&[data-jx-dialog-open]",
+    );
+    expect(transposeCanvasOverlaySelector("&[open]", { dialog: false })).toBe("&[open]");
+    expect(transposeCanvasOverlaySelector("\u0001jx-scope\u0001[open]", { dialog: true })).toBe(
+      "\u0001jx-scope\u0001[data-jx-dialog-open]",
+    );
+    // Two compounds in one selector are answered one at a time.
+    expect(transposeCanvasOverlaySelector("dialog[open] details[open]", { dialog: true })).toBe(
+      "dialog[data-jx-dialog-open] details[open]",
+    );
+    /* A functional pseudo between the type and the attribute defeats the backscan, so the compound
+       reads as typeless and takes the fallback. Written down rather than claimed away. */
+    expect(transposeCanvasOverlaySelector("dialog:not(.x)[open]", { dialog: false })).toBe(
+      "dialog:not(.x)[open]",
+    );
+  });
+
+  test("[inert] is transposed wherever it appears, and needs no option to be", () => {
+    expect(transposeCanvasOverlaySelector("#a[inert]")).toBe("#a[data-jx-inert]");
+    expect(transposeCanvasOverlaySelector("#a [inert] .x")).toBe("#a [data-jx-inert] .x");
+    // Already transposed, or somebody else's attribute: neither is `[inert]`.
+    expect(transposeCanvasOverlaySelector("#a[data-jx-inert]")).toBe("#a[data-jx-inert]");
   });
 });
 

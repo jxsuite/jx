@@ -7,6 +7,8 @@
     "placeholder",
     "type",
     "label",
+    "labelledby",
+    "describedby",
     "invalid",
     "disabled",
     "readonly",
@@ -43,6 +45,18 @@
       "default": "",
       "attribute": "label",
       "description": "The accessible name, forwarded to the control as aria-label. Required unless a visible label points at the control."
+    },
+    "labelledby": {
+      "type": "string",
+      "default": "",
+      "attribute": "labelledby",
+      "description": "Forwarded to the inner control as aria-labelledby."
+    },
+    "describedby": {
+      "type": "string",
+      "default": "",
+      "attribute": "describedby",
+      "description": "Forwarded to the inner control as aria-describedby, after the field's own error and help sentences."
     },
     "invalid": {
       "type": "boolean",
@@ -102,7 +116,7 @@
       "type": "string",
       "default": "",
       "attribute": "error",
-      "description": "The sentence explaining a refused value, drawn under the field and announced as it changes."
+      "description": "The sentence explaining a refused value, drawn under the field and announced as it changes. Its region is permanent and empty until there is something to say, so the first refusal is announced rather than only a later one; the empty region is taken out of flow rather than hidden, so it costs no layout and stays in the accessibility tree."
     },
     "help": {
       "type": "string",
@@ -127,6 +141,17 @@
         },
         "value": ""
       }
+    },
+    "uid": {
+      "type": "string",
+      "default": "",
+      "description": "This field's own id stem, minted on mount. The error and help sentences take their ids from it, and the control names those ids in aria-describedby."
+    },
+    "onMount": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/textfield.ts",
+      "$export": "mintFieldId",
+      "description": "Mints the field's id stem, so the sentences under it can describe the control rather than only being announced once as they change."
     },
     "onInput": {
       "$prototype": "Function",
@@ -220,7 +245,10 @@
     "& [part=\"error\"]": {
       "color": "var(--jx-danger)"
     },
-    "& > [part=\"control-slot\"], & > [part=\"error-slot\"], & > [part=\"help-slot\"]": {
+    "& [part=\"error\"]:empty": {
+      "position": "absolute"
+    },
+    "& > [part=\"control-slot\"], & > [part=\"help-slot\"]": {
       "display": "contents"
     }
   },
@@ -242,6 +270,8 @@
             "type": "${state.type}",
             "placeholder": "${state.placeholder || null}",
             "aria-label": "${state.label || null}",
+            "aria-labelledby": "${state.labelledby || null}",
+            "aria-describedby": "${[state.hasError && state.uid ? state.uid + '-error' : null, state.hasHelp && state.uid ? state.uid + '-help' : null, state.describedby || null].filter(Boolean).join(' ') || null}",
             "aria-invalid": "${state.invalid ? 'true' : null}",
             "name": "${state.name || null}",
             "autocomplete": "${state.autocomplete || null}",
@@ -253,7 +283,8 @@
             },
             "required": {
               "$ref": "#/state/required"
-            }
+            },
+            "value": "${state.value}"
           },
           "value": {
             "$ref": "#/state/value"
@@ -268,8 +299,11 @@
             "part": "input",
             "placeholder": "${state.placeholder || null}",
             "aria-label": "${state.label || null}",
+            "aria-labelledby": "${state.labelledby || null}",
+            "aria-describedby": "${[state.hasError && state.uid ? state.uid + '-error' : null, state.hasHelp && state.uid ? state.uid + '-help' : null, state.describedby || null].filter(Boolean).join(' ') || null}",
             "aria-invalid": "${state.invalid ? 'true' : null}",
             "name": "${state.name || null}",
+            "autocomplete": "${state.autocomplete || null}",
             "disabled": {
               "$ref": "#/state/disabled"
             },
@@ -280,6 +314,7 @@
               "$ref": "#/state/required"
             }
           },
+          "textContent": "${state.value}",
           "value": {
             "$ref": "#/state/value"
           },
@@ -290,24 +325,14 @@
       }
     },
     {
-      "tagName": "div",
+      "tagName": "p",
       "attributes": {
-        "role": "none",
-        "part": "error-slot"
+        "part": "error",
+        "id": "${state.uid ? state.uid + '-error' : null}",
+        "role": "status",
+        "aria-live": "polite"
       },
-      "$switch": {
-        "$ref": "#/state/hasError"
-      },
-      "cases": {
-        "true": {
-          "tagName": "p",
-          "attributes": {
-            "part": "error",
-            "aria-live": "polite"
-          },
-          "textContent": "${state.error}"
-        }
-      }
+      "textContent": "${state.error}"
     },
     {
       "tagName": "div",
@@ -322,7 +347,8 @@
         "true": {
           "tagName": "p",
           "attributes": {
-            "part": "help"
+            "part": "help",
+            "id": "${state.uid ? state.uid + '-help' : null}"
           },
           "textContent": "${state.help}"
         }

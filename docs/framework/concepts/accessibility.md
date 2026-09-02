@@ -23,17 +23,17 @@ A Jx document is a tree, and a good deal of what makes a page accessible can be 
 
 Each rule stays silent when the fact it needs is bound rather than written. A `${…}` template or a `$ref` in a name, a role or an id is a value the document decides while it runs, and a rule that accused you of a defect it could not see would teach you to ignore it.
 
-| Rule                             | What it catches                                                                                       | Criterion                    |
-| -------------------------------- | ----------------------------------------------------------------------------------------------------- | ---------------------------- |
-| `interactive-unnamed`            | A button, a link, a form control or an element with an interactive role that has no accessible name.  | 4.1.2 Name, Role, Value      |
-| `img-alt-missing`                | An `img` with no `alt` at all. An empty `alt` marks a decorative image and passes.                    | 1.1.1 Non-text Content       |
-| `aria-target-missing`            | An `aria-labelledby`, `aria-controls` or similar reference to an id that nothing in the document has. | 1.3.1 Info and Relationships |
-| `tab-outside-tablist`            | A `tab` role with no `tablist` ancestor.                                                              | 1.3.1 Info and Relationships |
-| `menuitem-outside-menu`          | A menu item role with no `menu` or `menubar` ancestor.                                                | 1.3.1 Info and Relationships |
-| `option-outside-listbox`         | An `option` role outside a `listbox`, a `select` or a `datalist`.                                     | 1.3.1 Info and Relationships |
-| `tablist-none-selected`          | A tablist whose tabs are none selected. A warning.                                                    | 4.1.2 Name, Role, Value      |
-| `dialog-unnamed`                 | A `dialog` with no `aria-label` or `aria-labelledby`. Its content does not name it.                   | 4.1.2 Name, Role, Value      |
-| `activedescendant-not-focusable` | `aria-activedescendant` on an element that cannot take focus itself.                                  | 2.1.1 Keyboard               |
+| Rule                             | What it catches                                                                                                                      | Criterion                    |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------- |
+| `interactive-unnamed`            | A button, a link, an image-map `area` that links, a form control or an element with an interactive role that has no accessible name. | 4.1.2 Name, Role, Value      |
+| `img-alt-missing`                | An `img` with no `alt` at all. An empty `alt` marks a decorative image and passes.                                                   | 1.1.1 Non-text Content       |
+| `aria-target-missing`            | An `aria-labelledby`, `aria-controls` or similar reference to an id that nothing in the document has.                                | 1.3.1 Info and Relationships |
+| `tab-outside-tablist`            | A `tab` role with no `tablist` ancestor and no `tablist` owner.                                                                      | 1.3.1 Info and Relationships |
+| `menuitem-outside-menu`          | A menu item role with no `menu` or `menubar` ancestor or owner.                                                                      | 1.3.1 Info and Relationships |
+| `option-outside-listbox`         | An `option` role outside a `listbox`, a `select` or a `datalist`, and unowned.                                                       | 1.3.1 Info and Relationships |
+| `tablist-none-selected`          | A tablist whose tabs are none selected. A warning.                                                                                   | 4.1.2 Name, Role, Value      |
+| `dialog-unnamed`                 | A `dialog` with no `aria-label` or `aria-labelledby`. Its content does not name it.                                                  | 4.1.2 Name, Role, Value      |
+| `activedescendant-not-focusable` | `aria-activedescendant` on an element that cannot take focus itself.                                                                 | 2.1.1 Keyboard               |
 
 ## Naming a control
 
@@ -56,6 +56,8 @@ A text field is named by a `label` whose `for` matches its `id`, by a `label` wr
 ## Inside a component
 
 The three container rules do not judge the root of a component definition, and they do not judge anything under a custom element on a page. A `role="tab"` row you slot into a tabs component is checked inside that component's own definition, where its `tablist` lives, not against the page that uses it.
+
+They also accept a container that claims the element through `aria-owns`. ARIA states containment where the tree cannot, so a tab a `tablist` names in `aria-owns` is that tablist's child in the accessibility tree wherever you write it. The owner's role is what counts: a `role="group"` naming a tab in `aria-owns` owns nothing a tab may belong to, so that tab is still reported. A bound `aria-owns`, or a bound id on the element, silences the check the way a bound ancestor role does.
 
 ## What is not checked
 

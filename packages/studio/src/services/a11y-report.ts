@@ -75,8 +75,23 @@ export interface A11yFinding {
   action?: string;
 }
 
-/** Elements whose whole purpose is an image, and which therefore owe alternative text. */
-const IMAGE_TAGS = new Set(["img", "area", "input-image"]);
+/**
+ * Whether the element's whole purpose is an image, so its `alt` is the text a reader hears.
+ *
+ * `<input type="image">` is one of the three elements HTML gives an `alt`, and it is a TYPE rather
+ * than a tag. The set this replaced spelled it `"input-image"` alongside `img` and `area` — a tag
+ * name no document can have — so the wording check below never once ran on a submit image.
+ *
+ * @param {JxElement} node
+ * @param {string} tag The node's lowercased tag name.
+ * @returns {boolean}
+ */
+function isImage(node: JxElement, tag: string): boolean {
+  if (tag === "img" || tag === "area") {
+    return true;
+  }
+  return tag === "input" && literal(node, "type")?.toLowerCase() === "image";
+}
 
 /** Controls that owe an accessible name. */
 const CONTROL_TAGS = new Set(["input", "select", "textarea", "button"]);
@@ -186,9 +201,13 @@ export function checkDocument(doc: JxElement): A11yFinding[] {
     const where = tag === "" ? `element ${index}` : `<${tag}>`;
 
     // ── 1.1.1 Non-text Content ────────────────────────────────────────────────
-    if (IMAGE_TAGS.has(tag)) {
+    if (isImage(node, tag)) {
       const alt = literal(node, "alt");
-      // A missing alt is the schema rule `img-alt-missing`; only the wording is judged here.
+      /*
+       * A missing alt is the schema engine's: `img-alt-missing` for an `<img>`, and
+       * `interactive-unnamed` for the two that are also controls, an `<area href>` and an
+       * `<input type="image">`. Only the WORDING is judged here, which no engine rule does.
+       */
       if (alt !== null && /^(image|photo|picture|graphic|icon)\b/i.test(alt.trim())) {
         findings.push({
           criterion: "1.1.1",
@@ -358,7 +377,28 @@ export function checkDocument(doc: JxElement): A11yFinding[] {
       severity: defect.severity,
     });
   }
-  return findings;
+  return distinctIds(findings);
+}
+
+/**
+ * Give every finding an id no other finding shares.
+ *
+ * A Problem key REPLACES rather than stacks, so two findings under one id are one row, and the
+ * author is told about the last of them and never hears about the rest. Two rules produce
+ * duplicates honestly: `aria-target-missing` files one per token that resolves to nothing, so
+ * `aria-labelledby="a b c"` is three at one rule and one path; and `duplicate-id` files one per
+ * extra element sharing an id, so three elements are two findings under one id. The ordinal is
+ * applied to every finding rather than to one loop, because "a key names a finding" is either true
+ * of all of them or it is not the rule it claims to be. The first keeps its bare id, so nothing
+ * already distinct moves and no existing key changes.
+ */
+function distinctIds(findings: A11yFinding[]): A11yFinding[] {
+  const seen = new Map<string, number>();
+  return findings.map((finding) => {
+    const before = seen.get(finding.id) ?? 0;
+    seen.set(finding.id, before + 1);
+    return before === 0 ? finding : { ...finding, id: `${finding.id}#${before}` };
+  });
 }
 
 /** A check this program cannot run, and the honest reason. */

@@ -224,6 +224,50 @@ export const EDIT_PLACEHOLDER_CSS = `
 [data-jx-layout-region] [data-jx-layout-region]::before {
   content: none;
 }
+`;
+
+/**
+ * Keep the design/edit canvas stylesheet in sync with the render mode: present (idempotently) for
+ * design/edit, removed otherwise (preview must look live; stylebook specimens must not show "Click
+ * here to add text..." placeholders).
+ */
+export function syncEditModeCss(doc: Document, mode: CanvasMode): void {
+  const existing = doc.head.querySelector(`#${EDIT_PLACEHOLDER_STYLE_ID}`);
+  if (mode !== "design" && mode !== "edit") {
+    existing?.remove();
+    return;
+  }
+  if (existing) {
+    return;
+  }
+  const style = doc.createElement("style");
+  style.id = EDIT_PLACEHOLDER_STYLE_ID;
+  style.textContent = EDIT_PLACEHOLDER_CSS;
+  doc.head.append(style);
+}
+
+/** Id of the injected canvas UA-substitute stylesheet (the overlay rules). */
+export const CANVAS_OVERLAY_STYLE_ID = "jx-canvas-overlay-css";
+
+/**
+ * The rules that stand in for the UA behaviour a de-linked overlay has just lost.
+ *
+ * **This sheet's predicate IS the predicate of `setCanvasDelinkPopovers` /
+ * `setCanvasDelinkCommands` — every mode but Preview — and that is the invariant to keep.** An
+ * attribute renamed without its substitute rule is an overlay that can never be drawn: `popover`
+ * renamed to `data-jx-popover` with no replacement hide rule lays every CLOSED panel out as
+ * ordinary in-flow content and inflates the artboard, and a dialog stamped `data-jx-dialog-open`
+ * stays hidden behind the UA `dialog:not([open])` for good. These rules used to ship inside
+ * `EDIT_PLACEHOLDER_CSS`, which is installed for design/edit alone, so Stylebook and a git-diff
+ * side de-linked without them. A read-only artboard must draw an overlay exactly as the design
+ * canvas does — a git-diff pair is read side by side, and the artboard-growth argument below is
+ * about a content-sized frame, not about editing.
+ */
+/*
+ * NOTE: this is a template literal, so a BACKTICK anywhere inside — including in a CSS comment —
+ * ends the string and produces a syntax error several lines later. Quote property names bare.
+ */
+export const CANVAS_OVERLAY_CSS = `
 /* The UA rule a de-popovered element lost, re-supplied at UA-EQUIVALENT PRECEDENCE.
 
    The cascade layer is the mechanism and it is the whole point. An unlayered author declaration
@@ -261,12 +305,12 @@ export const EDIT_PLACEHOLDER_CSS = `
    panel hangs down from its own position and the artboard grows by its full height.
 
    Forced, because a panel that DOES set position: fixed would otherwise keep it and be laid out
-   against the frame's own viewport — which in an editable mode is the document's full height, so a
+   against the frame's own viewport — which in a de-linked mode is the document's full height, so a
    drawer pinned with inset: 0 lands halfway down a long page and a short component frame clips it.
-   This is a presentation override for an editing affordance, the same kind as the layout-region
-   dimming above, and it is NOT the same move as forcing display: that would hide a real defect in
-   the document (base-display), while this hides nothing — Preview renders the panel natively, top
-   layer and all. */
+   This is a presentation override for a canvas affordance, the same kind as the layout-region
+   dimming in EDIT_PLACEHOLDER_CSS, and it is NOT the same move as forcing display: that would hide
+   a real defect in the document (base-display), while this hides nothing — Preview renders the
+   panel natively, top layer and all. */
 [data-jx-popover][data-jx-popover-open] {
   position: relative !important;
   inset: auto !important;
@@ -314,13 +358,13 @@ dialog[data-jx-dialog-open]::before {
 `;
 
 /**
- * Keep the design/edit canvas stylesheet in sync with the render mode: present (idempotently) for
- * design/edit, removed otherwise (preview must look live; stylebook specimens must not show "Click
- * here to add text..." placeholders).
+ * Keep the overlay stylesheet in sync with the render mode: present (idempotently) wherever the
+ * render de-links its overlays, removed for preview — which keeps the real `popover`/`open`
+ * attributes, so the real UA rules and the real top layer apply there.
  */
-export function syncEditModeCss(doc: Document, mode: CanvasMode): void {
-  const existing = doc.head.querySelector(`#${EDIT_PLACEHOLDER_STYLE_ID}`);
-  if (mode !== "design" && mode !== "edit") {
+export function syncCanvasOverlayCss(doc: Document, mode: CanvasMode): void {
+  const existing = doc.head.querySelector(`#${CANVAS_OVERLAY_STYLE_ID}`);
+  if (mode === "preview") {
     existing?.remove();
     return;
   }
@@ -328,8 +372,8 @@ export function syncEditModeCss(doc: Document, mode: CanvasMode): void {
     return;
   }
   const style = doc.createElement("style");
-  style.id = EDIT_PLACEHOLDER_STYLE_ID;
-  style.textContent = EDIT_PLACEHOLDER_CSS;
+  style.id = CANVAS_OVERLAY_STYLE_ID;
+  style.textContent = CANVAS_OVERLAY_CSS;
   doc.head.append(style);
 }
 
@@ -990,6 +1034,11 @@ export async function renderResolvedDocument(opts: {
   applySiteStyle(opts.siteStyle, (opts.doc as { $media?: Record<string, string> }).$media ?? {});
   injectHead(opts.doc, assets);
   syncEditModeCss(opts.container.ownerDocument, opts.mode);
+  // The substitute rules for the attributes the de-link above renamed. Same predicate as the
+  // De-link, not the narrower design/edit one: a Stylebook specimen and a git-diff side rename
+  // Their overlays too, and without this sheet a closed panel would lay out in flow and an open
+  // Dialog could never be shown.
+  syncCanvasOverlayCss(opts.container.ownerDocument, opts.mode);
   syncPreviewShell(opts.container.ownerDocument, opts.mode);
   syncStylebookCss(opts.container.ownerDocument, opts.mode);
   syncDiffCss(opts.container.ownerDocument, Boolean(opts.diffMarks?.length));

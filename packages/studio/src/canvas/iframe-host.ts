@@ -45,7 +45,8 @@ import { setLayoutSelection, shell } from "../shell";
 import { formatEditableVerdicts } from "../format/constraints";
 import { formatByName } from "../format/format-host";
 import { collabState } from "../collab/collab-state";
-import { DIALOG_COMMANDS, POPOVER_COMMANDS } from "@jxsuite/schema/dialogs";
+import { DIALOG_COMMANDS, isDialog, POPOVER_COMMANDS } from "@jxsuite/schema/dialogs";
+import { isPopover } from "@jxsuite/schema/overlays";
 import { localeDirection } from "@jxsuite/schema/locale";
 import { getPlatform, hasPlatform } from "../platform";
 import type {
@@ -2017,33 +2018,58 @@ function handleMessage(state: HostState, msg: IframeToParent): void {
       if (!tab || state.preview) {
         return;
       }
-      const open =
-        msg.action === "show" ||
-        (msg.action === "toggle" &&
-          JSON.stringify(tab.session.ui.openPopover) !== JSON.stringify(msg.targetPath));
-      void activeRegistry()?.run("canvas.setPopoverOpen", {
-        open,
-        path: msg.targetPath,
-      });
+      const targeted =
+        JSON.stringify(tab.session.ui.openPopover) === JSON.stringify(msg.targetPath);
+      const open = msg.action === "show" || (msg.action === "toggle" && !targeted);
+      /* A `hide` closes ITS OWN target and no other: `hidePopover()` on a popover that is not
+         showing does nothing, so an invoker for A must leave B alone. `show` and `toggle` still
+         always run — a toggle either opens the one it names or closes the one it names. */
+      if (open || targeted) {
+        void activeRegistry()?.run("canvas.setPopoverOpen", {
+          open,
+          path: msg.targetPath,
+        });
+      }
       return;
     }
     case "commandTargetClick": {
       /* An invoker's click, answered the way `popoverTargetClick` is: through the record, with a
          toggle resolved HERE against the model. A popover command lands on the popover verb, a
-         dialog command on the dialog verb; `close` and `request-close` close only the dialog that
-         is open, and a custom command is the document's own business. */
+         dialog command on the dialog verb; `hide-popover`, `close` and `request-close` close only
+         the overlay they name when it is the open one, and a custom command is the document's own
+         business. */
       const tab = hostTab(state);
       if (!tab || state.preview) {
         return;
       }
       const targeted = (open: JxPath | null) =>
         JSON.stringify(open) === JSON.stringify(msg.targetPath);
+      /* The command's FAMILY is not the target's KIND, and the dispatch needs both. A
+         `show-popover` aimed at a `<dialog>`, or a `show-modal` at a popover, is an authoring
+         mistake Problems already reports as `command-target-mismatch`, and the platform's answer to
+         it is to ignore the click (spec.md §8.7) — so the canvas ignores it too. Routing on the
+         family alone handed the popover verb a dialog's path, and the record REFUSES one: the
+         `RangeError` came straight back out of this message listener, taking every handler queued
+         behind that message with it. The null check is the same guard for a `targetPath` an edit
+         has since invalidated, which threw for the same reason. */
+      const target = getNodeAtPath(tab.doc.document, msg.targetPath);
+      if (!target || typeof target !== "object") {
+        return;
+      }
       if (POPOVER_COMMANDS.has(msg.command)) {
+        if (!isPopover(target)) {
+          return;
+        }
         const open =
           msg.command === "show-popover" ||
           (msg.command === "toggle-popover" && !targeted(tab.session.ui.openPopover));
-        void activeRegistry()?.run("canvas.setPopoverOpen", { open, path: msg.targetPath });
+        if (open || targeted(tab.session.ui.openPopover)) {
+          void activeRegistry()?.run("canvas.setPopoverOpen", { open, path: msg.targetPath });
+        }
       } else if (DIALOG_COMMANDS.has(msg.command)) {
+        if (!isDialog(target)) {
+          return;
+        }
         const open = msg.command === "show-modal";
         if (open || targeted(tab.session.ui.openDialog)) {
           void activeRegistry()?.run("canvas.setDialogOpen", { open, path: msg.targetPath });

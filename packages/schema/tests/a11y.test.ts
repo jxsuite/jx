@@ -202,6 +202,40 @@ describe("interactive-unnamed", () => {
     ]);
   });
 
+  test("a linked <area> is named by its alt, and one with no href is not judged", () => {
+    expect(
+      rules(
+        doc([
+          {
+            attributes: { alt: "Home", coords: "0,0,9,9", href: "/", shape: "rect" },
+            tagName: "area",
+          },
+          { attributes: { alt: "${state.alt}", href: "/a" }, tagName: "area" },
+          { attributes: { "aria-label": "Shop", href: "/b" }, tagName: "area" },
+          { attributes: { coords: "0,0,9,9", shape: "rect" }, tagName: "area" },
+        ]),
+      ),
+    ).toEqual([]);
+    /*
+     * An area IS the link text, so an empty alt is not the "decorative" decision it is on an
+     * <img> — it leaves a link a reader hears as its URL.
+     */
+    expect(
+      rules(
+        doc([
+          { attributes: { coords: "0,0,9,9", href: "/", shape: "rect" }, tagName: "area" },
+          { attributes: { alt: "", href: "/a" }, tagName: "area" },
+        ]),
+      ),
+    ).toEqual(["interactive-unnamed", "interactive-unnamed"]);
+    expect(findA11yDefects(doc([{ attributes: { href: "/" }, tagName: "area" }]))[0]).toMatchObject(
+      {
+        criterion: "4.1.2",
+        message: "the <area> has no accessible name.",
+      },
+    );
+  });
+
   test("a role that must be labelled is not named by content, and an unknown role is not judged", () => {
     expect(
       rules(doc([{ attributes: { role: "textbox" }, children: ["x"], tagName: "div" }])),
@@ -356,6 +390,67 @@ describe("roles outside their containers", () => {
             attributes: { role: "${state.role}" },
             children: [{ attributes: { role: "option" }, tagName: "div", textContent: "D" }],
             tagName: "div",
+          },
+        ]),
+      ),
+    ).toEqual([]);
+  });
+
+  test("a container that owns the element through aria-owns is its container, wherever it sits", () => {
+    expect(
+      rules(
+        doc([
+          { attributes: { "aria-owns": "t1 t2", role: "tablist" }, tagName: "div" },
+          {
+            attributes: { "aria-selected": "true", id: "t1", role: "tab" },
+            tagName: "button",
+            textContent: "A",
+          },
+          {
+            attributes: { "aria-selected": "false", id: "t2", role: "tab" },
+            tagName: "button",
+            textContent: "B",
+          },
+          {
+            attributes: { "aria-label": "Actions", "aria-owns": "m1", role: "menu" },
+            tagName: "div",
+          },
+          { attributes: { id: "m1", role: "menuitem" }, tagName: "div", textContent: "C" },
+          {
+            attributes: { "aria-label": "Choices", "aria-owns": "o1", role: "listbox" },
+            tagName: "ul",
+          },
+          { attributes: { id: "o1", role: "option" }, tagName: "li", textContent: "D" },
+        ]),
+      ),
+    ).toEqual([]);
+    // A role that may not own a tab owns nothing here, and a tab no container names is still loose.
+    expect(
+      rules(
+        doc([
+          { attributes: { "aria-owns": "t1", role: "group" }, tagName: "div" },
+          { attributes: { id: "t1", role: "tab" }, tagName: "button", textContent: "A" },
+        ]),
+      ),
+    ).toEqual(["tab-outside-tablist"]);
+    expect(
+      rules(
+        doc([
+          { attributes: { "aria-owns": "t1", role: "tablist" }, tagName: "div" },
+          { attributes: { id: "t1", role: "tab" }, tagName: "button", textContent: "A" },
+          { attributes: { id: "t2", role: "tab" }, tagName: "button", textContent: "B" },
+        ]),
+      ),
+    ).toEqual(["tab-outside-tablist"]);
+    // A bound aria-owns, and a bound id on the tab, are both pairings the lint cannot read.
+    expect(
+      rules(
+        doc([
+          { attributes: { "aria-owns": "tab-${state.i}", role: "tablist" }, tagName: "div" },
+          {
+            attributes: { id: "tab-${state.i}", role: "tab" },
+            tagName: "button",
+            textContent: "A",
           },
         ]),
       ),

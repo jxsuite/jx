@@ -3977,6 +3977,49 @@ describe("commandTargetClick", () => {
     }
   });
 
+  test("a hide invoker closes its own target, not whichever popover is open", async () => {
+    const doc = {
+      children: [
+        { attributes: { command: "hide-popover", commandfor: "a" }, tagName: "button" },
+        { attributes: { id: "a", popover: "auto" }, tagName: "nav" },
+        { attributes: { id: "b", popover: "auto" }, tagName: "nav" },
+      ],
+      tagName: "div",
+    };
+    const { setActiveRegistry, tab } = await withRegistry(doc);
+    try {
+      // B is showing; both spellings of "hide A" must leave it alone.
+      tab.session.ui.openPopover = ["children", 2];
+      channels[0]!.deliver({
+        command: "hide-popover",
+        kind: "commandTargetClick",
+        targetPath: ["children", 1],
+      });
+      channels[0]!.deliver({
+        action: "hide",
+        kind: "popoverTargetClick",
+        targetPath: ["children", 1],
+      });
+      expect(opened).toEqual([]);
+      // The same verb aimed at the popover that IS open closes it.
+      channels[0]!.deliver({
+        command: "hide-popover",
+        kind: "commandTargetClick",
+        targetPath: ["children", 2],
+      });
+      expect(opened).toEqual([{ kind: "popover", path: null, tab: tab.id }]);
+      channels[0]!.deliver({
+        action: "hide",
+        kind: "popoverTargetClick",
+        targetPath: ["children", 2],
+      });
+      expect(opened.at(-1)).toEqual({ kind: "popover", path: null, tab: tab.id });
+      expect(opened).toHaveLength(2);
+    } finally {
+      setActiveRegistry(null);
+    }
+  });
+
   test("postPopoverOpen and postDialogOpen reach every editable frame showing the tab", async () => {
     const { setActiveRegistry, tab } = await withRegistry(DIALOG_DOC);
     try {
@@ -4004,6 +4047,79 @@ describe("commandTargetClick", () => {
         kind: "commandTargetClick",
         targetPath: ["children", 1],
       });
+      expect(opened).toEqual([]);
+    } finally {
+      setActiveRegistry(null);
+    }
+  });
+
+  test("a command aimed at the other kind of overlay is ignored, not thrown", async () => {
+    // One dialog and one popover, so every built-in verb has a target of the WRONG kind to hit.
+    const doc = {
+      children: [
+        { attributes: { id: "d" }, children: [{ tagName: "p" }], tagName: "dialog" },
+        { attributes: { id: "m", popover: "auto" }, tagName: "nav" },
+      ],
+      tagName: "div",
+    };
+    const { setActiveRegistry, tab } = await withRegistry(doc);
+    const DIALOG_PATH = ["children", 0];
+    const POPOVER_PATH = ["children", 1];
+    try {
+      // Whichever overlay is showing, a mismatched click must neither open nor close anything: the
+      // Record refuses a path of the wrong kind by THROWING, and that used to escape the listener.
+      for (const command of ["show-popover", "toggle-popover", "hide-popover"]) {
+        for (const open of [null, DIALOG_PATH, POPOVER_PATH]) {
+          tab.session.ui.openPopover = open;
+          tab.session.ui.openDialog = open;
+          expect(() => {
+            channels[0]!.deliver({ command, kind: "commandTargetClick", targetPath: DIALOG_PATH });
+          }).not.toThrow();
+        }
+      }
+      for (const command of ["show-modal", "close", "request-close"]) {
+        for (const open of [null, DIALOG_PATH, POPOVER_PATH]) {
+          tab.session.ui.openPopover = open;
+          tab.session.ui.openDialog = open;
+          expect(() => {
+            channels[0]!.deliver({ command, kind: "commandTargetClick", targetPath: POPOVER_PATH });
+          }).not.toThrow();
+        }
+      }
+      expect(opened).toEqual([]);
+    } finally {
+      setActiveRegistry(null);
+    }
+  });
+
+  test("a popover verb in a document with no popover is ignored, not refused", async () => {
+    // The record's `enablement` would refuse this one before its argument was ever read, which is a
+    // Different throw with the same consequence. The kind check answers it first.
+    const { setActiveRegistry } = await withRegistry(DIALOG_DOC);
+    try {
+      expect(() => {
+        channels[0]!.deliver({
+          command: "show-popover",
+          kind: "commandTargetClick",
+          targetPath: ["children", 1],
+        });
+      }).not.toThrow();
+      expect(opened).toEqual([]);
+    } finally {
+      setActiveRegistry(null);
+    }
+  });
+
+  test("a target path an edit has invalidated is ignored", async () => {
+    const { setActiveRegistry } = await withRegistry(DIALOG_DOC);
+    try {
+      expect(() => {
+        channels[0]!.deliver({
+          command: "show-modal",
+          kind: "commandTargetClick",
+          targetPath: ["children", 7],
+        });
+      }).not.toThrow();
       expect(opened).toEqual([]);
     } finally {
       setActiveRegistry(null);

@@ -53,6 +53,62 @@ describe("images", () => {
       ids(doc([{ attributes: { alt: "Photo of a dog", src: "/a.png" }, tagName: "img" }])),
     ).toContain("img-alt-redundant");
   });
+
+  test("a linked image-map area with no alt is reported, and an unlinked one is not", () => {
+    // The engine names it: an <area href> IS its link text, so it has no other route to a name.
+    expect(
+      ids(
+        doc([
+          {
+            children: [
+              { attributes: { coords: "0,0,9,9", href: "/", shape: "rect" }, tagName: "area" },
+            ],
+            tagName: "map",
+          },
+        ]),
+      ),
+    ).toContain("interactive-unnamed");
+    expect(
+      ids(
+        doc([
+          {
+            children: [
+              {
+                attributes: { alt: "Home", coords: "0,0,9,9", href: "/", shape: "rect" },
+                tagName: "area",
+              },
+              { attributes: { coords: "9,9,9,9", shape: "rect" }, tagName: "area" },
+            ],
+            tagName: "map",
+          },
+        ]),
+      ),
+    ).toEqual([]);
+  });
+
+  test('the wording check reaches an area and an <input type="image">, not a fictional tag', () => {
+    expect(
+      ids(
+        doc([
+          {
+            attributes: { alt: "Icon of a printer", src: "/p.png", type: "image" },
+            tagName: "input",
+          },
+        ]),
+      ),
+    ).toContain("img-alt-redundant");
+    expect(
+      ids(doc([{ attributes: { alt: "Graphic of the shop", href: "/s" }, tagName: "area" }])),
+    ).toContain("img-alt-redundant");
+    // A text input is not an image, whatever its alt says.
+    expect(
+      ids(
+        doc([
+          { attributes: { "aria-label": "Q", alt: "Photo of x", type: "text" }, tagName: "input" },
+        ]),
+      ),
+    ).toEqual([]);
+  });
 });
 
 describe("headings", () => {
@@ -147,6 +203,25 @@ describe("structure", () => {
     ).toEqual([]);
   });
 
+  test("every finding gets a key of its own, hand-written ones included", () => {
+    /*
+     * A Problem key replaces rather than stacks, so two findings under one id are one row. Three
+     * elements sharing an id are TWO duplicate-id findings, and they used to collapse: the count
+     * `reportA11yProblems` returned and the number of rows the author saw disagreed.
+     */
+    const three = doc([
+      { id: "dup", tagName: "div" },
+      { id: "dup", tagName: "div" },
+      { id: "dup", tagName: "div" },
+    ]);
+    const nodeIds = checkDocument(three).map((f) => f.id);
+    expect(new Set(nodeIds).size).toBe(nodeIds.length);
+    resetNotifications();
+    const filed = reportA11yProblems(three);
+    const rows = problems.filter((p) => p.source === "Accessibility");
+    expect(rows).toHaveLength(filed);
+  });
+
   test("a duplicate id is flagged once", () => {
     const dup = doc([
       { id: "main", tagName: "div" },
@@ -216,6 +291,33 @@ describe("reportA11yProblems", () => {
     reportA11yProblems(bad);
     const filed = problems.filter((p) => p.source === "Accessibility");
     expect(filed.filter((p) => p.message.includes("alt text"))).toHaveLength(1);
+  });
+
+  test("four broken references on one node are four Problems, not one", () => {
+    /*
+     * One node, one rule, one path, four distinct dangling ids. A key of rule and path alone is the
+     * same string for all four, and a key REPLACES rather than stacks — so the author was told
+     * about the last reference and never heard about the other three.
+     */
+    const filed = reportA11yProblems(
+      doc([
+        {
+          attributes: { "aria-controls": "gone-d", "aria-labelledby": "gone-a gone-b gone-c" },
+          tagName: "button",
+          textContent: "Go",
+        },
+      ]),
+    );
+    const rows = problems.filter((p) => p.message.includes("nothing in this document has"));
+    expect(rows).toHaveLength(4);
+    expect(new Set(rows.map((p) => p.key)).size).toBe(4);
+    // Every one of them is named, not just the survivor.
+    const said = rows.map((p) => p.message).join(" ");
+    for (const id of ["#gone-a", "#gone-b", "#gone-c", "#gone-d"]) {
+      expect(said).toContain(id);
+    }
+    // And the count the command's toast reports agrees with the panel.
+    expect(filed).toBe(rows.length + unavailableChecks().length);
   });
 
   test("fixing the page clears its rows", () => {

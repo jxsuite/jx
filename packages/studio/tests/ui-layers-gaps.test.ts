@@ -356,10 +356,12 @@ describe("layers after init", () => {
       expect(layer("dialog").querySelector("jx-dialog")).not.toBeNull();
       expect(field().getAttribute("aria-invalid")).toBe("true");
       expect(errorText()).toBe("Enter a value.");
-      // Typing something valid clears the error in place, then confirm goes through.
+      /* Typing something valid empties the error in place, then confirm goes through. The region
+         itself stays: it is the field's live region, and one minted with its text already inside
+         announces nothing. `""` rather than `null` is what says it is still there. */
       type("ok");
       await flush();
-      expect(errorText()).toBeNull();
+      expect(errorText()).toBe("");
       expect(field().hasAttribute("aria-invalid")).toBe(false);
       host.dispatchEvent(new Event("confirm"));
       expect(await promise).toBe("ok");
@@ -447,15 +449,15 @@ describe("layers after init", () => {
         [".json", "JSON", false],
       ]);
       expect(field().placeholder).toBe("untitled.md");
-      // No error yet: the prefill is valid for the initial format, and nobody has typed.
-      expect(errorText()).toBeNull();
+      // Nothing said yet: the prefill is valid for the initial format, and nobody has typed.
+      expect(errorText()).toBe("");
       select.value = ".json";
       select.dispatchEvent(new Event("change", { bubbles: true }));
       await flush();
       expect(picked).toEqual([".json"]);
       expect(field().placeholder).toBe("untitled.json");
-      // A pick never mints the first error under an untouched field…
-      expect(errorText()).toBeNull();
+      // A pick never puts the first error under an untouched field…
+      expect(errorText()).toBe("");
       // …but confirm still refuses, and from then on a pick refreshes the verdict.
       host.dispatchEvent(new Event("confirm"));
       await flush();
@@ -463,7 +465,7 @@ describe("layers after init", () => {
       select.value = ".md";
       select.dispatchEvent(new Event("change", { bubbles: true }));
       await flush();
-      expect(errorText()).toBeNull();
+      expect(errorText()).toBe("");
       host.dispatchEvent(new Event("confirm"));
       expect(await promise).toBe("taken");
     });

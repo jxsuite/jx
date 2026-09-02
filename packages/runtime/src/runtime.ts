@@ -539,7 +539,9 @@ export function setCanvasDelinkPopovers(on: boolean) {
  *
  * Gated on `data-jx-path` like the popover rewrite, and driving
  * {@link transposeCanvasOverlaySelector} with it: an attribute renamed without its selectors
- * transposed is a dialog that can never be styled open.
+ * transposed is a dialog that can never be styled open, or a region that can never be styled inert.
+ * Both renames travel with their selectors there — `[open]` on a dialog's own rules, `[inert]`
+ * wherever it appears.
  *
  * @docs framework/concepts/overlays
  */
@@ -2077,7 +2079,9 @@ function applyStyleInto(
   const transposeSelector =
     (_canvasDelinkPopovers || _canvasDelinkCommands) && el.dataset.jxPath !== undefined
       ? (selector: string) =>
-          transposeCanvasOverlaySelector(selector, { dialog: el.tagName === "DIALOG" })
+          transposeCanvasOverlaySelector(selector, {
+            dialog: el.tagName === "DIALOG",
+          })
       : (selector: string) => selector;
 
   /* Reactive declarations become `var()` reads of a custom property this element sets inline. The

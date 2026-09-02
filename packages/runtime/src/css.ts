@@ -228,11 +228,43 @@ export function transposeCanvasPopoverSelector(selector: string): string | null 
 /** What {@link transposeCanvasOverlaySelector} needs to know about the element that owns a rule. */
 export interface CanvasOverlayTransposeOptions {
   /**
-   * The rule belongs to a `<dialog>`, so its `[open]` names the dialog's own open state and is
-   * transposed too. Nowhere else: `<details open>` keeps its attribute on the canvas, so its
-   * `[open]` must keep matching.
+   * The rule was authored on a `<dialog>`. It answers `[open]` only for a compound that names no
+   * element type at all (`&[open]`, `#d[open]`, `.panel[open]`) — a compound that names one is
+   * decided by that type instead, so a `<div>`'s `& dialog[open]` is transposed and a `<dialog>`'s
+   * `& details[open]` is not.
    */
   dialog?: boolean;
+}
+
+/** A character that ends the compound selector to the left of it. */
+const COMPOUND_BREAK = /[\s>+~,()]/;
+
+/** The leading type selector of a compound, if it has one. */
+const LEADING_TYPE = /^[A-Za-z_\u{00A0}-\u{FFFF}][\w\u{00A0}-\u{FFFF}-]*/u;
+
+/**
+ * Rewrite each `[open]` according to the compound it belongs to, not the element the style object
+ * hangs off. A compound naming `dialog` is the dialog's own open state and is transposed; one
+ * naming any other type (`details`, a custom element) is left alone; one naming no type — or naming
+ * the scope handle, which IS the styled element — inherits `options.dialog`.
+ */
+function transposeOpenAttribute(selector: string, options: CanvasOverlayTransposeOptions): string {
+  let out = "";
+  let from = 0;
+  for (;;) {
+    const at = selector.indexOf("[open]", from);
+    if (at === -1) {
+      return out + selector.slice(from);
+    }
+    let start = at;
+    while (start > 0 && !COMPOUND_BREAK.test(selector[start - 1] as string)) {
+      start -= 1;
+    }
+    const type = LEADING_TYPE.exec(selector.slice(start, at))?.[0]?.toLowerCase();
+    const dialog = type === undefined ? options.dialog === true : type === "dialog";
+    out += selector.slice(from, at) + (dialog ? "[data-jx-dialog-open]" : "[open]");
+    from = at + "[open]".length;
+  }
 }
 
 /**
@@ -243,6 +275,34 @@ export interface CanvasOverlayTransposeOptions {
  * invoker machinery, not `[open]` either; `[data-jx-dialog-open]` is the stand-in for both, at the
  * same (0,1,0) specificity. `::backdrop` is dropped for the reason given above: neither kind of
  * overlay has one outside the top layer.
+ *
+ * `[inert]` travels with `commandfor` and a dialog's `open`, and for the same reason: the canvas
+ * renames the attribute on every stamped node so the editor can select into an inert region, so a
+ * rule the author wrote against `[inert]` would match on the built page and silently not on the
+ * canvas. `[data-jx-inert]` is the same (0,1,0) specificity, so it wins and loses against the same
+ * neighbours. Unlike `[open]` it needs no option: `inert` is renamed whatever the tag is, where
+ * `<details open>` keeps its attribute and so its `[open]` must keep matching.
+ *
+ * **`[open]` follows the compound it is written on, not the element the style object hangs off.** A
+ * compound naming `dialog` is transposed whatever owns the rule, so a wrapper's `& dialog[open]`
+ * keeps matching; a compound naming any other type is left alone, so a dialog's `& details[open]`
+ * is not corrupted into a selector that can never match. Only a compound with no type of its own —
+ * `&[open]`, `#d[open]`, or the runtime's own scope handle — falls back to `options.dialog`. The
+ * handle needs no special case: it is not a parseable type name, so the scan finds none and the
+ * fallback is what answers for it, which is the right answer because the handle IS the styled
+ * element.
+ *
+ * Three shapes are out of reach of that scan and take the fallback: `:is(dialog)[open]`, a quoted
+ * attribute value carrying selector punctuation, and any functional pseudo between the type and the
+ * attribute — `dialog:not(.x)[open]` reads as no type, because a parenthesis breaks the backscan.
+ *
+ * **The rename is per NODE and the selector is not**, so one limitation survives whatever this
+ * does. `open` is renamed only on a node the canvas stamped, and a rule may address both stamped
+ * and unstamped dialogs at once: a stamped wrapper styling `& dialog[open]` whose dialog comes from
+ * a component's own template now emits an attribute that dialog does not carry. Before this, the
+ * same rule failed the other way round, on the stamped dialog. Whichever way it is decided one of
+ * the two is wrong, so it is decided for the addressable one and stated here rather than papered
+ * over.
  *
  * @param {string} selector - A fully resolved selector, canvas-side
  * @param {CanvasOverlayTransposeOptions} [options]
@@ -256,13 +316,11 @@ export function transposeCanvasOverlaySelector(
   if (selector.includes("::backdrop")) {
     return null;
   }
-  let transposed = selector
+  const transposed = selector
     .replaceAll(":popover-open", "[data-jx-popover-open]")
-    .replaceAll(":modal", "[data-jx-dialog-open]");
-  if (options.dialog) {
-    transposed = transposed.replaceAll("[open]", "[data-jx-dialog-open]");
-  }
-  return transposed;
+    .replaceAll(":modal", "[data-jx-dialog-open]")
+    .replaceAll("[inert]", "[data-jx-inert]");
+  return transposeOpenAttribute(transposed, options);
 }
 
 // ─── Color Schemes ────────────────────────────────────────────────────────────

@@ -176,6 +176,14 @@ async function type(query: string) {
   await flush();
 }
 
+/** One keystroke: append to what the field already holds, the way a keyboard does. */
+async function press(ch: string) {
+  const el = input();
+  el.value += ch;
+  el.dispatchEvent(new Event("input", { bubbles: true }));
+  await flush();
+}
+
 async function open(mode: Parameters<typeof openQuickSearch>[0] = "picker") {
   openQuickSearch(mode);
   await flush();
@@ -666,6 +674,24 @@ describe("the mode chip", () => {
   test("the picker shows no chip", async () => {
     await open();
     expect(document.querySelector('[part="chip"]')).toBeNull();
+  });
+
+  test("a bare prefix leaves the field empty, not holding the character the chip took", async () => {
+    await open();
+    await press(">");
+    expect(document.querySelector('[part="chip"]')?.textContent?.trim()).toContain("Commands");
+    expect(input().value).toBe("");
+  });
+
+  test("Backspace out of a mode leaves no prefix behind to re-enter it", async () => {
+    await open();
+    await press(">");
+    keydown("Backspace");
+    await flush();
+    expect(document.querySelector('[part="chip"]')).toBeNull();
+    await press("z");
+    expect(input().value).toBe("z");
+    expect(document.querySelector('[part="chip"]')?.textContent?.trim()).not.toContain("Commands");
   });
 });
 
