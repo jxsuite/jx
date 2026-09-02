@@ -372,7 +372,7 @@ describe("renderActivityBar", () => {
    * name, chord and gate, which is what lets the rail's foot offer the project's configuration
    * without an application-level control lying about what it opens.
    */
-  test("the foot is a menu trigger, not a command button", () => {
+  test("the foot is a menu trigger, not a command button", async () => {
     installPreferencesRegistry();
     renderActivityBar();
     const gear = footerButton("Settings")!;
@@ -391,19 +391,21 @@ describe("renderActivityBar", () => {
     }) as typeof registry.run;
     gear.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     registry.run = original;
+    await flush();
 
     // Clicking the gear opens the menu and runs nothing.
     expect(ran).toEqual([]);
     expect(footerButton("Settings")?.getAttribute("aria-expanded")).toBe("true");
     expect(
-      document.querySelector('#layer-popover sp-menu-item[data-command-id="app.preferences"]'),
+      document.querySelector('#layer-popover jx-menu-item[data-command-id="app.preferences"]'),
     ).not.toBeNull();
   });
 
-  test("the gear's first row is Preferences, and it runs the record", () => {
+  test("the gear's first row is Preferences, and it runs the record", async () => {
     installPreferencesRegistry();
     renderActivityBar();
     footerButton("Settings")!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await flush();
 
     const ran: string[] = [];
     const registry = activeRegistry()!;
@@ -413,7 +415,7 @@ describe("renderActivityBar", () => {
       return Promise.resolve();
     }) as typeof registry.run;
     const row = document.querySelector<HTMLElement>(
-      '#layer-popover sp-menu-item[data-command-id="app.preferences"]',
+      '#layer-popover jx-menu-item[data-command-id="app.preferences"]',
     )!;
     // Title and chord come from the record, so neither can drift from the keymap.
     expect(row.textContent).toContain("Preferences…");
@@ -422,7 +424,7 @@ describe("renderActivityBar", () => {
     registry.run = original;
 
     expect(ran).toEqual(["app.preferences"]);
-    expect(document.querySelector("#layer-popover sp-menu-item")).toBeNull();
+    expect(document.querySelector("#layer-popover jx-menu-item")).toBeNull();
   });
 
   /*

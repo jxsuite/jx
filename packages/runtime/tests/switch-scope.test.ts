@@ -166,3 +166,59 @@ describe("$switch — each case owns its effects", () => {
     expect(host.querySelector("section")!.childElementCount).toBe(0);
   });
 });
+
+describe("$switch — an unchanged key keeps its case", () => {
+  test("re-resolving to the same key leaves the rendered subtree, its effects and its state alone", async () => {
+    const mountHost = document.createElement("div");
+    document.body.append(mountHost);
+    const scope = reactive({ items: [{ id: 1, label: "a", on: true }] });
+    const handle = await mount(
+      {
+        tagName: "div",
+        children: [
+          {
+            $prototype: "Array",
+            items: { $ref: "#/state/items" },
+            key: { $ref: "$map/item/id" },
+            map: {
+              tagName: "div",
+              children: [
+                {
+                  tagName: "span",
+                  $switch: { $ref: "$map/item/on" },
+                  cases: {
+                    true: { tagName: "b", textContent: "${$map.item.label}" },
+                    false: { tagName: "i", textContent: "off" },
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      } as unknown as JxDocument,
+      mountHost,
+      { scope },
+    );
+    await tick();
+    const first = mountHost.querySelector("b")!;
+    expect(first.textContent).toBe("a");
+    first.dataset.kept = "yes";
+
+    // The host rebuilds its projection: an equal item under the same key.
+    scope.items = [{ id: 1, label: "b", on: true }];
+    await tick();
+    const again = mountHost.querySelector("b")!;
+    expect(again === first).toBe(true);
+    expect(again.dataset.kept).toBe("yes");
+    // The bindings inside the case still follow the row.
+    expect(again.textContent).toBe("b");
+
+    // A different key is what empties the container.
+    scope.items = [{ id: 1, label: "c", on: false }];
+    await tick();
+    expect(mountHost.querySelector("b")).toBeNull();
+    expect(mountHost.querySelector("i")!.textContent).toBe("off");
+    handle.dispose();
+    mountHost.remove();
+  });
+});
