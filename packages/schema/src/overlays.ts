@@ -95,29 +95,29 @@ export interface PopoverDefect {
 // ─── Reading a node ─────────────────────────────────────────────────────────────
 
 /** The attribute bag, whatever shape the author wrote it in. */
-function attrs(node: JxElement): Record<string, unknown> {
+export function attrs(node: JxElement): Record<string, unknown> {
   return isJsonObject(node.attributes) ? (node.attributes as Record<string, unknown>) : {};
 }
 
 /** An attribute's literal string value, or null when absent or bound. */
-function literalAttr(node: JxElement, name: string): string | null {
+export function literalAttr(node: JxElement, name: string): string | null {
   const value = attrs(node)[name];
   return typeof value === "string" ? value : null;
 }
 
 /** The element's tag, lowercased, or "" when it is a tag expression or absent. */
-function tagOf(node: JxElement): string {
+export function tagOf(node: JxElement): string {
   return typeof node.tagName === "string" ? node.tagName.toLowerCase() : "";
 }
 
 /** How the author addresses this node in a message: its id if it has one, else its tag. */
-function labelOf(node: JxElement): string {
+export function labelOf(node: JxElement, fallback = "the popover"): string {
   const id = typeof node.id === "string" ? node.id : literalAttr(node, "id");
   if (id) {
     return `#${id}`;
   }
   const tag = tagOf(node);
-  return tag === "" ? "the popover" : `the <${tag}>`;
+  return tag === "" ? fallback : `the <${tag}>`;
 }
 
 /**
@@ -139,7 +139,7 @@ export function isPopover(node: JxElement): boolean {
 }
 
 /** The node's own `id`, from either the top-level key or the attribute bag. */
-function idOf(node: JxElement): string | null {
+export function idOf(node: JxElement): string | null {
   if (typeof node.id === "string" && node.id !== "") {
     return node.id;
   }
@@ -149,7 +149,7 @@ function idOf(node: JxElement): string | null {
 
 // ─── Walking a document ─────────────────────────────────────────────────────────
 
-interface Visit {
+export interface Visit {
   node: JxElement;
   path: PopoverPath;
   /** The nearest enclosing popover, so an invoker can be judged against the panel it sits in. */
@@ -166,7 +166,7 @@ interface Visit {
  * @param root The document or subtree to walk.
  * @yields {Visit} Each element, its path, and the popover it is inside (if any).
  */
-function* walk(
+export function* walk(
   root: JxElement,
   path: PopoverPath = [],
   enclosing: JxElement | null = null,
@@ -254,7 +254,7 @@ function isSelector(key: string): boolean {
 }
 
 /** A scalar style value as text, or null when the key is absent or holds a nested block. */
-function scalar(style: JxStyle | undefined, prop: string): string | null {
+export function scalar(style: JxStyle | undefined, prop: string): string | null {
   const value = style?.[prop];
   if (value === undefined || isNestedStyle(value)) {
     return null;
