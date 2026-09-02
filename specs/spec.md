@@ -2,7 +2,7 @@
 
 ## Declarative Document Object Model — JSON Edition
 
-**Version:** 0.6.12-draft\
+**Version:** 0.6.13-draft\
 **Status:** Partial\
 **Updated:** 2026-09-02\
 **License:** MIT
@@ -1601,6 +1601,8 @@ Type coercion: `string` → no conversion, `number` → `Number()`, `boolean` �
 
 An observed attribute already on the element when it connects is read into state before `$props` are merged, so `<user-card username="Ada">` renders with `Ada` and a property a parent set before connection still wins (§16.2). The same coercion applies at connection and on every later change.
 
+REMOVING an observed attribute restores the state entry's declared default. The removal is reported as a null value, and writing that through gave a `string` entry the value `null` and a `number` entry `Number(null)`, which is `0` — so a numeric prop could never express "unset", and clearing one wrote a zero where the author meant to delete a key. The default is the value the entry held before anyone set the attribute, which is what the removal asks to go back to. An entry declared in the shorthand form (`"username": "Guest"`) has that literal as its default; an entry that is computed (`$expression`, `$prototype`, `$ref`, `$src`) has none and a removal leaves it alone. A `boolean` is unaffected, because presence already IS its value. An entry with no declared default falls back by type: `0` for a number, the empty string otherwise, never null.
+
 > **Status: Implemented.**
 
 ### 16.6 Light DOM Rendering
@@ -2521,6 +2523,7 @@ This rewrites the mutating handlers of Appendix A's idiom using `$expression`, l
 
 ## Changelog
 
+- **0.6.13-draft** (2026-09-02) — Removing an observed attribute restores the state entry's declared default (§16.5).
 - **0.6.12-draft** (2026-09-02) — a linked `area` owes an accessible name, which its `alt` supplies (§8.8).
 - **0.6.11-draft** (2026-09-02) — the container rules honour aria-owns.
 - **0.6.10-draft** (2026-09-02) — @keyframes emits as one unscoped block, with keyframe selectors taken verbatim.
@@ -2597,4 +2600,4 @@ This rewrites the mutating handlers of Appendix A's idiom using `$expression`, l
 
 ---
 
-_Jx Specification v0.6.12-draft — subject to revision_
+_Jx Specification v0.6.13-draft — subject to revision_

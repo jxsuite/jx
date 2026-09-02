@@ -38,6 +38,61 @@ describe("observed attributes present at connection", () => {
     el.remove();
   });
 
+  test("removing one restores the DECLARED DEFAULT, not the absence", async () => {
+    // `attributeChangedCallback` reports a removal as `null`. Writing that through left a string
+    // Prop holding `null` and coerced a number prop to `Number(null)`, which is 0 — so a numeric
+    // Prop could never say "unset" and every `${state.x}` printed "null". The default is what the
+    // Entry held before anyone set the attribute, which is what the removal asks to go back to.
+    const tag = "ca-removed";
+    await defineElement({
+      tagName: tag,
+      observedAttributes: ["label", "count", "active", "size"],
+      state: {
+        label: "none",
+        count: { type: "number", default: 1, attribute: "count" },
+        active: false,
+        size: { type: "string", default: "md", attribute: "size" },
+      },
+      textContent: "${state.label}:${state.count}:${state.active}:${state.size}",
+    });
+    const el = document.createElement(tag);
+    el.setAttribute("label", "Inbox");
+    el.setAttribute("count", "3");
+    el.setAttribute("active", "");
+    el.setAttribute("size", "lg");
+    document.body.append(el);
+    await tick();
+    expect(el.textContent).toBe("Inbox:3:true:lg");
+
+    el.removeAttribute("label");
+    el.removeAttribute("count");
+    el.removeAttribute("active");
+    el.removeAttribute("size");
+    await tick();
+    expect(el.textContent).toBe("none:1:false:md");
+    el.remove();
+  });
+
+  test("an observed attribute with no declared default falls back by type, never to null", async () => {
+    const tag = "ca-no-default";
+    await defineElement({
+      tagName: tag,
+      observedAttributes: ["note"],
+      // A computed entry is produced, so it declares no default and a removal must not invent one.
+      state: { note: "", shout: { $expression: { operator: "+", target: "!", value: "!" } } },
+      textContent: "[${state.note}]",
+    });
+    const el = document.createElement(tag);
+    el.setAttribute("note", "hi");
+    document.body.append(el);
+    await tick();
+    expect(el.textContent).toBe("[hi]");
+    el.removeAttribute("note");
+    await tick();
+    expect(el.textContent).toBe("[]");
+    el.remove();
+  });
+
   test("a property a parent set before connection still wins over the attribute", async () => {
     const tag = "ca-prop-wins";
     await defineElement({
