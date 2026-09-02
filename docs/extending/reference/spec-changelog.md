@@ -381,6 +381,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `spec.md`
 
+- **0.6.7-draft** (2026-09-02) — Overlays: popover, dialog and invoker commands (§8.7) — the dialog and command rules a document is held to, beside the popover ones; the WHATWG HTML row binds it.
 - **0.6.6-draft** (2026-09-02) — A $switch whose discriminant re-resolves to the same key keeps its rendered case (§14.1).
 - **0.6.5-draft** (2026-09-02) — A $switch may discriminate on the row's $map/item or $map/index inside a mapped array's template, and its container carries the slot its content needs (§14.1).
 - **0.6.4-draft** (2026-09-02) — Statements gain stopPropagation and preventDefault (§20.2); a definition's root-level event handlers listen on the host (§16.1); an attribute value that resolves to null or undefined removes the attribute (§8.3).

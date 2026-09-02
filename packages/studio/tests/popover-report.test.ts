@@ -122,6 +122,34 @@ describe("reportPopoverProblems", () => {
   });
 });
 
+describe("reportPopoverProblems — dialogs and invoker commands", () => {
+  test("a dialog defect files under the same source, without a repair button", () => {
+    openTab({
+      children: [
+        { attributes: { command: "show-modal", commandfor: "confirm" }, tagName: "button" },
+        {
+          attributes: { closedby: "none" },
+          children: [],
+          id: "confirm",
+          style: { display: "grid" },
+          tagName: "dialog",
+        },
+      ],
+      tagName: "div",
+    } as JxElement);
+    const count = reportPopoverProblems(activeTab.value!.doc.document as unknown as JxElement);
+    const records = problems.filter((p) => p.source === POPOVER_PROBLEM_SOURCE);
+    expect(count).toBe(records.length);
+    expect(records.map((p) => p.key)).toContain("dialog.dialog-display.children/1");
+    expect(records.map((p) => p.key)).toContain("dialog.modal-without-close.children/1");
+    for (const record of records) {
+      if (record.key?.startsWith("dialog.")) {
+        expect(record.action).toBeUndefined();
+      }
+    }
+  });
+});
+
 describe("document.repairPopoverDisplay", () => {
   test("moves the base display into :popover-open, in ONE undo entry", () => {
     const tab = openTab(docWith({ inset: "0", transition: "x", display: "flex" }));

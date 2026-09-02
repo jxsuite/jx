@@ -21,6 +21,7 @@
     "./intl": "./src/intl.ts",
     "./media-type": "./src/media-type.ts",
     "./overlays": "./src/overlays.ts",
+    "./dialogs": "./src/dialogs.ts",
     "./ijson": "./src/ijson.ts",
     "./parse": "./src/parse.ts",
     "./defs": "./defs/index.ts",

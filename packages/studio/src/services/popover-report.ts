@@ -28,6 +28,7 @@ import {
   popoverDisplayRepair,
   POPOVER_DEFAULT_MODE,
 } from "@jxsuite/schema/overlays";
+import { findDialogDefects } from "@jxsuite/schema/dialogs";
 import {
   mutateUpdateAttribute,
   mutateUpdateNestedStyle,
@@ -75,7 +76,20 @@ export function reportPopoverProblems(doc: JxElement, path?: string): number {
       ...(path === undefined ? {} : { path }),
     });
   }
-  return defects.length;
+  /* The dialog and invoker-command rules (spec §8.7) file under the same source: one report for
+     everything the platform overlays. They carry no repair button yet — the popover repairs move
+     `display` into `:popover-open`, and a dialog's open rule is a different selector. */
+  const dialogDefects = findDialogDefects(doc);
+  for (const defect of dialogDefects) {
+    notify(defect.severity, defect.message, {
+      detail: defect.detail,
+      key: `dialog.${defect.rule}.${defect.path.join("/")}`,
+      source: POPOVER_PROBLEM_SOURCE,
+      tier: "problem",
+      ...(path === undefined ? {} : { path }),
+    });
+  }
+  return defects.length + dialogDefects.length;
 }
 
 /** Read the path argument a repair command was invoked with, or throw naming the command. */
