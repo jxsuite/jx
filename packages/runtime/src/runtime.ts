@@ -3509,7 +3509,56 @@ export function toCSSText(rules: Record<string, unknown> | object) {
 // ─── Custom Element Registration ──────────────────────────────────────────────
 
 let _rootMedia: Record<string, string> = {};
-const _elementDefs = new Map();
+/**
+ * Every defined element's CURRENT definition, read at connection — which is what lets a definition
+ * be replaced.
+ */
+const _elementDefs = new Map<string, { base: string; doc: JxDocument }>();
+
+/**
+ * The definition an element tag renders from, as most recently defined or redefined.
+ *
+ * @param {string} tagName
+ * @returns {{ base: string; doc: JxDocument } | undefined}
+ */
+export function elementDefinition(tagName: string): { base: string; doc: JxDocument } | undefined {
+  return _elementDefs.get(tagName);
+}
+
+/**
+ * Replace an element's definition (embedding.md §7). `customElements.define` is one-shot, so the
+ * generated class reads its definition through the registry at connection time: an instance
+ * connected after this call renders the new document; one already on the page keeps the definition
+ * it rendered until it is re-mounted. `observedAttributes` is the one thing the platform freezes at
+ * first definition, so a changed list is reported and takes effect only in a fresh realm. A tag not
+ * yet defined is simply defined.
+ *
+ * @param {JxDocument} doc
+ * @param {string} [baseUrl]
+ * @returns {Promise<void>}
+ */
+export async function redefineElement(doc: JxDocument, baseUrl?: string): Promise<void> {
+  const base = baseUrl ?? location.href;
+  const { tagName } = doc;
+  if (!tagName || !tagName.includes("-")) {
+    throw new Error(`Jx redefineElement: tagName "${tagName}" must contain a hyphen`);
+  }
+  if (!customElements.get(tagName)) {
+    await defineElement(doc, base);
+    return;
+  }
+  if (doc.$elements) {
+    await registerElements(doc.$elements, base);
+  }
+  const before = _elementDefs.get(tagName)?.doc.observedAttributes ?? [];
+  const after = doc.observedAttributes ?? [];
+  if (JSON.stringify(before) !== JSON.stringify(after)) {
+    console.warn(
+      `Jx redefineElement: <${tagName}> keeps observedAttributes [${before.join(", ")}] as first defined; [${after.join(", ")}] takes effect only in a fresh realm`,
+    );
+  }
+  _elementDefs.set(tagName, { base, doc });
+}
 
 /**
  * Seed the module-level root `$media` map used as the fallback for components that declare their
@@ -3664,8 +3713,11 @@ export async function defineElement(source: string | JxDocument, baseUrl?: strin
 
   _elementDefs.set(tagName, { base, doc: source_ });
 
-  const def = source_;
-  const observedAttrs = def.observedAttributes ?? [];
+  // The definition as first given. The class reads the CURRENT one at connection (see
+  // `redefineElement`); only `observedAttributes` is frozen here, because the platform freezes it.
+  const initialDef = source_;
+  const initialBase = base;
+  const observedAttrs = initialDef.observedAttributes ?? [];
 
   const ElementClass = class extends HTMLElement {
     _jxInitialized = false;
@@ -3688,8 +3740,13 @@ export async function defineElement(source: string | JxDocument, baseUrl?: strin
       }
       this._jxInitialized = true;
 
+      // The definition as it stands NOW — a redefinition since this class was made is honoured.
+      const live = _elementDefs.get(tagName) ?? { base: initialBase, doc: initialDef };
+      const def = live.doc;
+      const defBase = live.base;
+
       // The element is its own dispatch root: a body run without an event emits from the host.
-      const state = await buildScope(def, {}, base, { base, media: null, root: this });
+      const state = await buildScope(def, {}, defBase, { base: defBase, media: null, root: this });
 
       // Read properties from the data-jx-props payload the site build writes on a
       // Non-static instance, so an upgrade re-renders with the authored props, not the defaults.

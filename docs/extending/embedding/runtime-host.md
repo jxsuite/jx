@@ -7,6 +7,7 @@ spec:
   - embedding.md#4 # host functions and events
   - embedding.md#5 # per-mount context
   - embedding.md#6 # preloading bundled documents and modules
+  - embedding.md#7 # redefining an element
 code:
   - packages/runtime/src/runtime.ts
 ---
@@ -120,6 +121,21 @@ Options that used to be page-wide settings are read per mount:
 | `signal`              | An `AbortSignal`; aborting disposes the mount.                          |
 
 A resolver answer is private to its mount. It never enters the shared cache, so two mounts can answer the same URL differently.
+
+## Redefine an element
+
+A host that lets people edit a component while it is in use can replace its definition without reloading the page:
+
+```ts
+import { redefineElement, elementDefinition } from "@jxsuite/runtime";
+
+await redefineElement(updatedDoc, "jx-ui:/components/");
+elementDefinition("jx-button"); // { doc: updatedDoc, base: "jx-ui:/components/" }
+```
+
+An instance created after the call renders the new definition. One already on the page keeps what it rendered, with its bindings still live, until you re-mount it. Use `mount()`'s `elements` to find the roots that used the tag and dispose and mount them again. A tag that was never defined is defined by the same call.
+
+One thing does not change: `observedAttributes`. The browser fixes that list when a custom element is first defined, so a changed list is reported on the console and only takes effect after a page load.
 
 ## Dispose
 
