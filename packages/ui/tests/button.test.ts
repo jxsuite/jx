@@ -2,6 +2,9 @@ import "./with-dom.ts";
 
 import { afterEach, beforeAll, describe, expect, test } from "bun:test";
 
+import { documentStyleText } from "@jxsuite/runtime";
+
+import { documents } from "../src/documents.ts";
 import { registerUi } from "../src/index.ts";
 
 const tick = () =>
@@ -104,22 +107,48 @@ describe("jx-button", () => {
     expect(inner.getAttribute("aria-disabled")).toBe("true");
     expect(el.dataset.loading !== undefined).toBe(true);
     expect(el.querySelector('[part="spinner"]')!.hasAttribute("hidden")).toBe(false);
-    // The click stops at the host, its default cancelled.
-    let reached = 0;
+    /* The click stops BELOW the host, its default cancelled. Measuring it at an ancestor is the
+       one path that would pass even if it did not: `stopPropagation` on the host halts the event
+       at the host and after, not the other listeners on that same node — and a listener on the
+       element is exactly how the handler's own description says a consumer takes the click. */
+    let onHost = 0;
+    let onAncestor = 0;
+    el.addEventListener("click", () => {
+      onHost += 1;
+    });
     document.body.addEventListener("click", () => {
-      reached += 1;
+      onAncestor += 1;
     });
     const click = new MouseEvent("click", { bubbles: true, cancelable: true });
     inner.dispatchEvent(click);
     expect(click.defaultPrevented).toBe(true);
-    expect(reached).toBe(0);
+    expect(onHost).toBe(0);
+    expect(onAncestor).toBe(0);
+    // Busy is also SEEN, not only announced: the pointer says the button is working.
+    expect(getComputedStyle(inner).cursor).toBe("progress");
     el.loading = false;
     await tick();
     expect(el.querySelector('[part="spinner"]')!.hasAttribute("hidden")).toBe(true);
+    expect(getComputedStyle(inner).cursor).toBe("pointer");
     const again = new MouseEvent("click", { bubbles: true, cancelable: true });
     inner.dispatchEvent(again);
     expect(again.defaultPrevented).toBe(false);
-    expect(reached).toBe(1);
+    expect(onHost).toBe(1);
+    expect(onAncestor).toBe(1);
+  });
+
+  test("a click dispatched AT the host is swallowed too, where no inner control sees it", async () => {
+    /* The control-level swallow cannot see this one, so the host keeps a guard of its own. A host
+       calling `el.click()` to re-run the action is the case. */
+    const el = await button({ loading: "" });
+    const click = new MouseEvent("click", { bubbles: true, cancelable: true });
+    el.dispatchEvent(click);
+    expect(click.defaultPrevented).toBe(true);
+    el.loading = false;
+    await tick();
+    const again = new MouseEvent("click", { bubbles: true, cancelable: true });
+    el.dispatchEvent(again);
+    expect(again.defaultPrevented).toBe(false);
   });
 
   test("an icon slots before the label", async () => {
@@ -132,5 +161,54 @@ describe("jx-button", () => {
     await tick();
     expect(el.querySelector('[part="icon"] jx-icon')).toBe(icon);
     expect(el.querySelector('[part="label"]')!.textContent!.trim()).toBe("Add");
+  });
+
+  test("the loading spinner is a jx-spinner, and it actually turns", async () => {
+    /* A kit element styles through `part` and cannot wear a class on an internal node, so
+       `[part="spinner"]` could never reach a `.jx-spinner` rule in the theme sheet — which is why
+       the shipped loading spinner was a STATIONARY glyph: jx-button's style has no `animation`
+       declaration anywhere in it, then or now. Adopting the element is what makes it move. */
+    const el = await button({ loading: "" });
+    const spinner = el.querySelector('[part="spinner"]')!;
+    expect(spinner.tagName).toBe("JX-SPINNER");
+    expect(spinner.getAttribute("role")).toBe("progressbar");
+    expect(spinner.getAttribute("aria-hidden")).toBe("true");
+
+    const style = JSON.stringify(documents["jx-button"]!.style);
+    expect(style).not.toContain("animation");
+
+    const handle = `[data-jx="${(spinner as HTMLElement).dataset["jx"] ?? ""}"]`;
+    const rule = documentStyleText()
+      .split("\n")
+      .find((line) => line.startsWith(`${handle} [part="glyph"] {`));
+    expect(rule).toContain("animation: jx-spin var(--jx-spin-dur) linear infinite");
+    expect(documentStyleText()).toContain("@keyframes jx-spin");
+  });
+
+  test("the spinner is visible ON an accent button, because it draws in the button's text", async () => {
+    /* The glyph used to declare `color: var(--jx-accent)`, which is the accent variant's own fill:
+       measured in Chrome 152 the control background and the glyph were both `rgb(37, 99, 235)`, so
+       the primary case `loading` exists for showed an empty gap. A declaration on the glyph always
+       beats a colour inherited from the control, so `color: inherit` on `[part="spinner"]` could
+       not save it — the spinner's own paint had to become `currentColor`. */
+    const el = await button({ loading: "", variant: "accent" });
+    const style = documents["jx-button"]!.style as Record<string, Record<string, string>>;
+    const accent = style['&[data-variant="accent"] > [part="control"]']!;
+    expect(accent["background"]).toBe("var(--jx-accent-solid)");
+    expect(accent["color"]).toBe("var(--jx-accent-fg)");
+    // The spinner takes THAT, rather than naming a colour of its own.
+    const spinnerGlyph = el.querySelector<HTMLElement>('[part="spinner"] [part="glyph"]')!;
+    expect(getComputedStyle(spinnerGlyph).color).toBe("currentcolor");
+    expect(JSON.stringify(documents["jx-spinner"]!.style)).not.toContain("--jx-accent");
+  });
+
+  test("jx-spinner is registered before jx-button, because jx-button renders one", async () => {
+    /* `defineElement` is awaited per document, and an element registered before a dependency it
+       renders gets an HTMLUnknownElement child instead. */
+    const order = Object.keys(documents);
+    expect(order.indexOf("jx-spinner")).toBeLessThan(order.indexOf("jx-button"));
+    expect(JSON.stringify(documents["jx-button"]!.$elements)).toContain("./jx-spinner.json");
+    const el = await button({ loading: "" });
+    expect(el.querySelector('[part="spinner"]')!.querySelector('[part="glyph"]')).not.toBeNull();
   });
 });

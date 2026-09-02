@@ -262,6 +262,7 @@
               "tagName": "jx-action-button",
               "$props": {
                 "label": "Close",
+                "hint": "Close",
                 "icon": "x",
                 "size": "sm"
               },
@@ -285,6 +286,7 @@
               "tagName": "jx-action-button",
               "$props": {
                 "label": "Minimize",
+                "hint": "Minimize",
                 "icon": "minus",
                 "size": "sm"
               },
@@ -308,6 +310,7 @@
               "tagName": "jx-action-button",
               "$props": {
                 "label": "Maximize",
+                "hint": "Maximize",
                 "icon": "square",
                 "size": "sm"
               },
@@ -345,6 +348,7 @@
           "tagName": "jx-action-button",
           "$props": {
             "label": "Studio menu",
+            "hint": "Studio menu",
             "icon": "list",
             "size": "sm",
             "haspopup": "menu",
@@ -904,6 +908,7 @@
               "tagName": "jx-action-button",
               "$props": {
                 "label": "Minimize",
+                "hint": "Minimize",
                 "icon": "minus",
                 "size": "sm"
               },
@@ -927,6 +932,7 @@
               "tagName": "jx-action-button",
               "$props": {
                 "label": "Maximize",
+                "hint": "Maximize",
                 "icon": "square",
                 "size": "sm"
               },
@@ -950,6 +956,7 @@
               "tagName": "jx-action-button",
               "$props": {
                 "label": "Close",
+                "hint": "Close",
                 "icon": "x",
                 "size": "sm"
               },

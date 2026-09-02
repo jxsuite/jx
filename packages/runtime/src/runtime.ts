@@ -2095,9 +2095,15 @@ function applyStyleInto(
   const sheetState = sheetStateFor(doc);
 
   /* One gate for the whole call, so every recursion answers alike. Off in production and in
-     preview, where the selector is written exactly as authored. */
+     preview, where the selector is written exactly as authored.
+
+     The SAME predicate the attribute rename uses, and it has to be: an attribute renamed without
+     its selectors transposed is a panel that can never be styled open. They disagreed while the
+     rename learned to reach inside a defined element and this did not, so a kit popover rendered
+     within another definition's template would have been de-linked and then left with a
+     `:popover-open` rule that could no longer match. */
   const transposeSelector =
-    (_canvasDelinkPopovers || _canvasDelinkCommands) && el.dataset.jxPath !== undefined
+    (_canvasDelinkPopovers || _canvasDelinkCommands) && canvasStamped(el)
       ? (selector: string) =>
           transposeCanvasOverlaySelector(selector, {
             dialog: el.tagName === "DIALOG",

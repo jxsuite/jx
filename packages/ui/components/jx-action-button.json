@@ -21,11 +21,17 @@
     "stacked",
     "haspopup",
     "expanded",
-    "badge"
+    "badge",
+    "loading",
+    "labelledby",
+    "describedby"
   ],
   "$elements": [
     {
       "$ref": "./jx-icon.json"
+    },
+    {
+      "$ref": "./jx-spinner.json"
     }
   ],
   "state": {
@@ -33,13 +39,13 @@
       "type": "string",
       "default": "",
       "attribute": "label",
-      "description": "The accessible name, required: an action button is icon-first, so its name is not on screen. Also its tooltip."
+      "description": "The accessible name, required: an action button is icon-first, so its name is not on screen. It is NOT also the tooltip — see hint."
     },
     "hint": {
       "type": "string",
       "default": "",
       "attribute": "hint",
-      "description": "The tooltip when it is more than the name: the name with its chord, or with why the button is off. Empty means the label is the tooltip."
+      "description": "The tooltip, and the whole of it: title is this and nothing else. It used to fall back to label, so EVERY button got a tooltip whether or not its name was already on screen and a reader heard the name twice. Now each call site decides: pass hint on an icon-only button or one whose visible label ellipses, where a tooltip carrying the name is the standard affordance and hint equal to label is the right answer; leave it empty wherever the text is already fully visible."
     },
     "icon": {
       "type": "string",
@@ -95,11 +101,29 @@
       "attribute": "disabled",
       "description": "Cannot act. Disabled, never absent."
     },
+    "loading": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "loading",
+      "description": "Working on the last activation: the click is swallowed, the glyph gives way to a spinner, and aria-busy says so. An action button draws its icon from a name and has no icon slot, so this is the only way a host can put a spinner where the glyph was."
+    },
     "stacked": {
       "type": "boolean",
       "default": false,
       "attribute": "stacked",
       "description": "Icon above the label, the label visible and small: the shape of a rail button. The label is then on screen, so it is the accessible name by itself."
+    },
+    "labelledby": {
+      "type": "string",
+      "default": "",
+      "attribute": "labelledby",
+      "description": "Forwarded to the inner control as aria-labelledby: the id of the visible text that names this button, when something on screen already does."
+    },
+    "describedby": {
+      "type": "string",
+      "default": "",
+      "attribute": "describedby",
+      "description": "Forwarded to the inner control as aria-describedby: the id of a description beside the name, which is where a jx-tooltip's id goes."
     },
     "haspopup": {
       "type": "string",
@@ -151,6 +175,45 @@
         }
       }
     },
+    "notLoading": {
+      "$expression": {
+        "operator": "!",
+        "target": {
+          "$ref": "#/state/loading"
+        }
+      }
+    },
+    "iconHidden": {
+      "$expression": {
+        "operator": "||",
+        "target": {
+          "$ref": "#/state/noIcon"
+        },
+        "value": {
+          "$ref": "#/state/loading"
+        }
+      }
+    },
+    "canToggle": {
+      "$expression": {
+        "operator": "&&",
+        "target": {
+          "$ref": "#/state/toggles"
+        },
+        "value": {
+          "operator": "&&",
+          "target": {
+            "operator": "!",
+            "target": {
+              "$ref": "#/state/disabled"
+            }
+          },
+          "value": {
+            "$ref": "#/state/notLoading"
+          }
+        }
+      }
+    },
     "hasBadge": {
       "$expression": {
         "operator": "!==",
@@ -160,21 +223,44 @@
         "value": ""
       }
     },
+    "onSwallow": {
+      "$prototype": "Function",
+      "body": [
+        {
+          "if": {
+            "$ref": "#/state/loading"
+          },
+          "then": [
+            {
+              "stopPropagation": true
+            },
+            {
+              "preventDefault": true
+            }
+          ]
+        }
+      ],
+      "description": "The swallow, on the INNER CONTROL rather than the host: stopPropagation halts an event at the node it is called on and every node after it, not the other listeners on that same node — so a swallow on the host cancels the default and then runs the host's own click listeners anyway, which is the one path a consumer actually uses. Called one node earlier, the click never reaches the host at all."
+    },
     "onClick": {
       "$prototype": "Function",
       "body": [
         {
           "if": {
-            "operator": "&&",
-            "target": {
-              "$ref": "#/state/toggles"
+            "$ref": "#/state/loading"
+          },
+          "then": [
+            {
+              "stopPropagation": true
             },
-            "value": {
-              "operator": "!",
-              "target": {
-                "$ref": "#/state/disabled"
-              }
+            {
+              "preventDefault": true
             }
+          ]
+        },
+        {
+          "if": {
+            "$ref": "#/state/canToggle"
           },
           "then": [
             {
@@ -205,7 +291,7 @@
           "description": "A toggling button flipped; detail is the new selected state."
         }
       ],
-      "description": "A toggling button flips selected and says so with change. A plain one leaves the click to the host, which listens for it on the element."
+      "description": "A toggling button flips selected and says so with change. A plain one leaves the click to the host, which listens for it on the element. The loading branch is the second half of the swallow: a click dispatched at the HOST never passes the inner control, so this is the only guard that sees it."
     }
   },
   "onclick": {
@@ -256,6 +342,9 @@
       ":disabled": {
         "opacity": "0.5",
         "cursor": "default"
+      },
+      "&[aria-busy=\"true\"]": {
+        "cursor": "progress"
       },
       "position": "relative"
     },
@@ -325,11 +414,21 @@
       "lineHeight": "16px",
       "textAlign": "center",
       "pointerEvents": "none"
+    },
+    "& [part=\"spinner\"]": {
+      "display": "inline-flex",
+      "color": "inherit"
+    },
+    "& [part=\"spinner\"][hidden]": {
+      "display": "none"
     }
   },
   "children": [
     {
       "tagName": "button",
+      "onclick": {
+        "$ref": "#/state/onSwallow"
+      },
       "attributes": {
         "part": "control",
         "type": "button",
@@ -337,14 +436,18 @@
           "$ref": "#/state/disabled"
         },
         "aria-label": "${state.label || null}",
-        "title": "${state.hint || state.label || null}",
+        "title": "${state.hint || null}",
         "aria-pressed": "${state.toggles ? (state.selected ? 'true' : 'false') : null}",
         "popovertarget": "${state.popovertarget || null}",
         "popovertargetaction": "${state.popovertargetaction || null}",
         "command": "${state.command || null}",
         "commandfor": "${state.commandfor || null}",
         "aria-haspopup": "${state.haspopup || null}",
-        "aria-expanded": "${state.haspopup ? (state.expanded ? 'true' : 'false') : null}"
+        "aria-expanded": "${state.haspopup ? (state.expanded ? 'true' : 'false') : null}",
+        "aria-labelledby": "${state.labelledby || null}",
+        "aria-describedby": "${state.describedby || null}",
+        "aria-busy": "${state.loading ? 'true' : null}",
+        "aria-disabled": "${state.loading ? 'true' : null}"
       },
       "children": [
         {
@@ -353,7 +456,7 @@
             "part": "icon"
           },
           "hidden": {
-            "$ref": "#/state/noIcon"
+            "$ref": "#/state/iconHidden"
           },
           "children": [
             {
@@ -374,6 +477,15 @@
               }
             }
           ]
+        },
+        {
+          "tagName": "jx-spinner",
+          "attributes": {
+            "part": "spinner"
+          },
+          "hidden": {
+            "$ref": "#/state/notLoading"
+          }
         },
         {
           "tagName": "span",

@@ -3,8 +3,15 @@
   "$id": "StylebookActionButton",
   "tagName": "main",
   "$elements": [
-    { "$ref": "../components/jx-icon.json" },
-    { "$ref": "../components/jx-action-button.json" }
+    {
+      "$ref": "../components/jx-icon.json"
+    },
+    {
+      "$ref": "../components/jx-spinner.json"
+    },
+    {
+      "$ref": "../components/jx-action-button.json"
+    }
   ],
   "state": {
     "bold": false,
@@ -14,8 +21,12 @@
       "body": [
         {
           "operator": "=",
-          "target": { "$ref": "#/state/bold" },
-          "value": { "$ref": "event#/detail" }
+          "target": {
+            "$ref": "#/state/bold"
+          },
+          "value": {
+            "$ref": "event#/detail"
+          }
         }
       ]
     }
@@ -32,7 +43,10 @@
       "fontWeight": "600",
       "margin": "0 0 var(--jx-space-5)"
     },
-    "& > p": { "color": "var(--jx-fg-dim)", "margin": "0 0 var(--jx-space-5)" },
+    "& > p": {
+      "color": "var(--jx-fg-dim)",
+      "margin": "0 0 var(--jx-space-5)"
+    },
     "& [role=\"toolbar\"]": {
       "display": "flex",
       "alignItems": "center",
@@ -46,34 +60,64 @@
     }
   },
   "children": [
-    { "tagName": "h1", "textContent": "jx-action-button" },
+    {
+      "tagName": "h1",
+      "textContent": "jx-action-button"
+    },
     {
       "tagName": "p",
       "textContent": "Icon-first tool buttons: quiet in a toolbar, a toggle with aria-pressed, an emphasized selection, and a text-and-icon form. Bold is ${state.bold ? 'on' : 'off'}."
     },
     {
       "tagName": "div",
-      "attributes": { "role": "toolbar", "aria-label": "Formatting" },
+      "attributes": {
+        "role": "toolbar",
+        "aria-label": "Formatting"
+      },
       "children": [
         {
           "tagName": "jx-action-button",
-          "$props": { "label": "Bold", "icon": "text-b", "toggles": true },
-          "onchange": { "$ref": "#/state/note" }
+          "$props": {
+            "label": "Bold",
+            "icon": "text-b",
+            "toggles": true
+          },
+          "onchange": {
+            "$ref": "#/state/note"
+          }
         },
         {
           "tagName": "jx-action-button",
-          "$props": { "label": "Italic", "icon": "text-italic", "toggles": true, "selected": true }
+          "$props": {
+            "label": "Italic",
+            "icon": "text-italic",
+            "toggles": true,
+            "selected": true
+          }
         },
-        { "tagName": "jx-action-button", "$props": { "label": "Link", "icon": "link" } },
         {
           "tagName": "jx-action-button",
-          "$props": { "label": "Undo", "icon": "arrow-u-up-left", "disabled": true }
+          "$props": {
+            "label": "Link",
+            "icon": "link"
+          }
+        },
+        {
+          "tagName": "jx-action-button",
+          "$props": {
+            "label": "Undo",
+            "icon": "arrow-u-up-left",
+            "disabled": true
+          }
         }
       ]
     },
     {
       "tagName": "div",
-      "attributes": { "role": "toolbar", "aria-label": "Emphasized and sized" },
+      "attributes": {
+        "role": "toolbar",
+        "aria-label": "Emphasized and sized"
+      },
       "children": [
         {
           "tagName": "jx-action-button",
@@ -87,20 +131,83 @@
         },
         {
           "tagName": "jx-action-button",
-          "$props": { "label": "Not quiet", "icon": "gear", "quiet": false }
+          "$props": {
+            "label": "Not quiet",
+            "icon": "gear",
+            "quiet": false
+          }
         },
         {
           "tagName": "jx-action-button",
-          "$props": { "label": "Small", "icon": "plus", "size": "sm" }
+          "$props": {
+            "label": "Small",
+            "icon": "plus",
+            "size": "sm"
+          }
         },
         {
           "tagName": "jx-action-button",
-          "$props": { "label": "Large", "icon": "plus", "size": "lg" }
+          "$props": {
+            "label": "Large",
+            "icon": "plus",
+            "size": "lg"
+          }
         },
         {
           "tagName": "jx-action-button",
-          "$props": { "label": "Save", "icon": "floppy-disk", "quiet": false },
-          "children": [{ "tagName": "span", "textContent": "Save" }]
+          "$props": {
+            "label": "Save",
+            "icon": "floppy-disk",
+            "quiet": false
+          },
+          "children": [
+            {
+              "tagName": "span",
+              "textContent": "Save"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "role": "toolbar",
+        "aria-label": "Working, and named from elsewhere"
+      },
+      "children": [
+        {
+          "tagName": "jx-action-button",
+          "$props": {
+            "label": "Refresh",
+            "hint": "Refresh the signal list",
+            "icon": "arrows-clockwise",
+            "loading": true
+          }
+        },
+        {
+          "tagName": "jx-action-button",
+          "$props": {
+            "label": "Refresh",
+            "hint": "Refresh the signal list",
+            "icon": "arrows-clockwise"
+          }
+        },
+        {
+          "tagName": "span",
+          "attributes": {
+            "id": "ab-desc"
+          },
+          "textContent": "Runs every signal again."
+        },
+        {
+          "tagName": "jx-action-button",
+          "$props": {
+            "label": "Rerun",
+            "icon": "play",
+            "describedby": "ab-desc",
+            "labelledby": ""
+          }
         }
       ]
     }

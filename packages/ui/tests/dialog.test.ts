@@ -168,4 +168,35 @@ describe("jx-dialog", () => {
     const plain = await dialog({ headline: "Plain" });
     expect(part(plain, "confirm")?.dataset["variant"]).toBe("accent");
   });
+
+  test("closing a dialog that is already closed does nothing", async () => {
+    /* `close(host)` is a public door: a host calls it from a command, a keystroke and a cleanup
+       path, so it is reached on an already-closed dialog routinely. Returning early is what keeps
+       it from firing a second `close` event and a second synthetic toggle, which would take the
+       element's mirrored `open` through a state it was never in. */
+    const el = await dialog({ headline: "Delete this page?" });
+    const seen: string[] = [];
+    el.addEventListener("close", () => seen.push("close"));
+    expect(inner(el).open).toBe(false);
+    close(el);
+    expect(seen).toEqual([]);
+
+    showModal(el);
+    expect(inner(el).open).toBe(true);
+    close(el, "confirm");
+    await tick();
+    expect(inner(el).open).toBe(false);
+    expect(inner(el).returnValue).toBe("confirm");
+    const after = seen.length;
+    close(el);
+    expect(seen.length).toBe(after);
+  });
+
+  test("close on a host with no inner dialog is inert", () => {
+    // A host mid-teardown, or one whose subtree a caller replaced. It must not throw.
+    const bare = document.createElement("jx-dialog");
+    expect(() => {
+      close(bare);
+    }).not.toThrow();
+  });
 });

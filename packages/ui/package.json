@@ -23,8 +23,11 @@
     "./icons": "./src/icons.ts",
     "./documents": "./src/documents.ts",
     "./behaviors/menu": "./src/behaviors/menu.ts",
+    "./behaviors/popover": "./src/behaviors/popover.ts",
+    "./behaviors/tooltip": "./src/behaviors/tooltip.ts",
     "./behaviors/dialog": "./src/behaviors/dialog.ts",
     "./behaviors/textfield": "./src/behaviors/textfield.ts",
+    "./behaviors/number-field": "./src/behaviors/number-field.ts",
     "./testing/popover-shim": "./src/testing/popover-shim.ts",
     "./icons/manifest.json": "./icons/manifest.json"
   },

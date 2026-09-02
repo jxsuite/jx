@@ -113,6 +113,9 @@
                         "label": {
                           "$ref": "$map/item/title"
                         },
+                        "hint": {
+                          "$ref": "$map/item/title"
+                        },
                         "icon": {
                           "$ref": "$map/item/icon"
                         },
@@ -172,6 +175,7 @@
           "tagName": "jx-action-button",
           "$props": {
             "label": "Settings",
+            "hint": "Settings",
             "icon": "gear",
             "stacked": true,
             "haspopup": "menu",

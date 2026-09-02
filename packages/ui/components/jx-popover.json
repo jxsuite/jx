@@ -1,0 +1,187 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "JxPopover",
+  "tagName": "jx-popover",
+  "observedAttributes": ["label", "arrow", "match-width", "x", "y", "floor"],
+  "state": {
+    "label": {
+      "type": "string",
+      "default": "",
+      "attribute": "label",
+      "description": "The panel's accessible name. Set, the panel becomes a named role=\"group\"; empty, it carries no role at all. A PANEL HOLDING CONTROLS MUST SET IT: role=\"group\" is in neither the accessibility lint's content-named roles nor its labelled roles, so an unnamed one is invisible to every gate, and a non-modal group of form controls with no role and no name announces no boundary on entry. A panel holding only a jx-menu leaves it empty, because the menu carries its own name."
+    },
+    "arrow": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "arrow",
+      "description": "Draw a pointer at the panel's block-start edge. Decorative and aria-hidden; off by default, because a panel placed by measured coordinates cannot promise the arrow lands on its anchor. THE PANEL ITSELF NEVER SCROLLS: the scroll box is [part=\"content\"], because a scroll container clips whatever hangs outside its padding box and the arrow hangs 5px above it; with overflow on the host the arrow paints nothing at all."
+    },
+    "matchWidth": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "match-width",
+      "description": "Make the panel at least as wide as the element it was opened from, the way a select's list matches its trigger. The width is re-measured on each toggle and never continuously, from whatever the toggle names as its source: a raw <button popovertarget>, a kit button forwarding popovertarget, and openAt(panel, trigger) all measure the trigger."
+    },
+    "x": {
+      "type": "number",
+      "default": 0,
+      "attribute": "x",
+      "description": "Where the panel's inline-start edge sits, in viewport pixels. Placement is by measured coordinate rather than by CSS anchor positioning: anchor positioning needs the ANCHOR to declare anchor-name, and an element may not write a style on a consumer's trigger (specs/ui.md 2)."
+    },
+    "y": {
+      "type": "number",
+      "default": 0,
+      "attribute": "y",
+      "description": "Where the panel's block-start edge sits, in viewport pixels. The gap between that edge and the anchor is the --jx-popover-offset token, not a prop: a numeric prop with a non-zero default cannot express \"unset\", because removing its attribute coerces through the current value's type and writes 0."
+    },
+    "floor": {
+      "type": "number",
+      "default": 0,
+      "attribute": "floor",
+      "description": "The lowest edge the panel may reach, in viewport pixels; 0 means the viewport's bottom. A panel opened from a rail that abuts a status bar sets it to the rail's bottom, so a tall panel never runs down over the bar."
+    },
+    "open": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether the panel is showing. THIS IS NOT A DOOR: writing el.open = true shows nothing. It follows the platform's toggle event; write it through showPopover() and hidePopover(), or through the openAt() and close() helpers in the behaviours module, not directly."
+    },
+    "settling": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether a discrete open or close transition is still running. Mirrored as data-jx-settling, so a host can wait for the panel to come to rest before measuring it."
+    },
+    "anchorWidth": {
+      "type": "number",
+      "default": 0,
+      "description": "The measured border-box width of the element the panel was opened from, in pixels. Written by the behaviour under matchWidth and read by the panel's own min-width; 0 when nothing has been measured."
+    },
+    "panelWidth": "${state.matchWidth && state.anchorWidth > 0 ? state.anchorWidth + 'px' : '180px'}",
+    "noArrow": {
+      "$expression": {
+        "operator": "===",
+        "target": {
+          "$ref": "#/state/arrow"
+        },
+        "value": false
+      }
+    },
+    "onToggle": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/popover.ts",
+      "$export": "onToggle",
+      "description": "Mirrors the platform's toggle event into open, raises settling for the transition, measures the anchor under matchWidth, and clamps a freshly shown panel into the viewport."
+    },
+    "onTransitionEnd": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/popover.ts",
+      "$export": "onTransitionEnd",
+      "description": "Clears settling when the panel's own transition finishes. A transition on a child is not the panel coming to rest, so only an event whose target is the host counts."
+    },
+    "onMount": {
+      "$prototype": "Function",
+      "body": [
+        {
+          "dispatchEvent": "jx-ready",
+          "bubbles": true
+        }
+      ],
+      "description": "Announces that the element has rendered and carries its popover attribute, so a host may show it. A panel is always an auto popover: light dismiss, Escape and focus restoration are the platform's."
+    }
+  },
+  "ontoggle": {
+    "$ref": "#/state/onToggle"
+  },
+  "ontransitionend": {
+    "$ref": "#/state/onTransitionEnd"
+  },
+  "attributes": {
+    "popover": "auto",
+    "role": "${state.label ? 'group' : null}",
+    "aria-label": "${state.label || null}",
+    "data-open": "${state.open ? '' : null}",
+    "data-jx-settling": "${state.settling ? '' : null}"
+  },
+  "style": {
+    "position": "fixed",
+    "insetInlineStart": "${state.x}px",
+    "insetBlockStart": "${state.y}px",
+    "insetInlineEnd": "auto",
+    "insetBlockEnd": "auto",
+    "margin": "0",
+    "marginBlockStart": "var(--jx-popover-offset, 4px)",
+    "padding": "var(--jx-space-2)",
+    "minWidth": "${state.panelWidth}",
+    "maxWidth": "min(360px, calc(100vw - 8px))",
+    "maxHeight": "calc(100vh - 8px)",
+    "overflow": "visible",
+    "boxSizing": "border-box",
+    "flexDirection": "column",
+    "background": "var(--jx-bg-overlay)",
+    "color": "var(--jx-fg)",
+    "border": "1px solid var(--jx-border-strong)",
+    "borderRadius": "var(--jx-radius-md)",
+    "boxShadow": "var(--jx-shadow-popover)",
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "lineHeight": "var(--jx-leading-md)",
+    "pointerEvents": "auto",
+    "outline": "none",
+    "opacity": "0",
+    "transition": "opacity var(--jx-dur-1) var(--jx-ease-out), display var(--jx-dur-1) allow-discrete, overlay var(--jx-dur-1) allow-discrete",
+    ":popover-open": {
+      "display": "flex",
+      "opacity": "1"
+    },
+    "&[hidden]:popover-open": {
+      "display": "none"
+    },
+    "&:focus-visible": {
+      "outline": "var(--jx-focus-ring)"
+    },
+    "@starting-style": {
+      "&:popover-open": {
+        "opacity": "0"
+      }
+    },
+    "& > [part=\"content\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-2)",
+      "minHeight": "0",
+      "overflow": "auto"
+    },
+    "& > [part=\"arrow\"]": {
+      "display": "block",
+      "position": "absolute",
+      "insetBlockStart": "-5px",
+      "insetInlineStart": "var(--jx-space-4)",
+      "width": "8px",
+      "height": "8px",
+      "rotate": "45deg",
+      "background": "var(--jx-bg-overlay)",
+      "borderTop": "1px solid var(--jx-border-strong)",
+      "borderInlineStart": "1px solid var(--jx-border-strong)"
+    },
+    "& > [part=\"arrow\"][hidden]": {
+      "display": "none"
+    }
+  },
+  "children": [
+    {
+      "tagName": "slot",
+      "attributes": {
+        "part": "content"
+      }
+    },
+    {
+      "tagName": "span",
+      "attributes": {
+        "part": "arrow",
+        "aria-hidden": "true"
+      },
+      "hidden": {
+        "$ref": "#/state/noArrow"
+      }
+    }
+  ]
+}

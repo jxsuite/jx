@@ -2,6 +2,7 @@ import "./with-dom.ts";
 
 import { afterEach, beforeAll, describe, expect, spyOn, test } from "bun:test";
 
+import { documents } from "../src/documents.ts";
 import { registerUi } from "../src/index.ts";
 
 const tick = () =>
@@ -44,7 +45,10 @@ describe("jx-action-button", () => {
     const el = await action({ icon: "plus", label: "Add" });
     const inner = control(el);
     expect(inner.getAttribute("aria-label")).toBe("Add");
-    expect(inner.getAttribute("title")).toBe("Add");
+    // The name is not AUTOMATICALLY the tooltip. It may still be the right tooltip — see the
+    // Hint test below — but that is now a decision at the call site rather than every button's
+    // Default, including the ones whose text is already fully on screen.
+    expect(inner.hasAttribute("title")).toBe(false);
     expect(inner.getAttribute("type")).toBe("button");
     expect(inner.hasAttribute("aria-pressed")).toBe(false);
     expect(el.dataset.quiet !== undefined).toBe(true);
@@ -145,9 +149,14 @@ describe("jx-action-button", () => {
     expect(control(plain).hasAttribute("aria-expanded")).toBe(false);
   });
 
-  test("hint is the tooltip when it says more than the name; mirror flips the glyph", async () => {
+  test("the tooltip is the hint ALONE, and absent when there is no hint; mirror flips the glyph", async () => {
+    /* `title` used to fall back to `label`, so EVERY button got a tooltip whether or not its name
+       was already visible. The name is `aria-label`; the tooltip is `hint` and nothing else. That
+       does not make `hint === label` wrong — on an icon-only button, or one whose visible label
+       ellipses, a tooltip carrying the name is the standard affordance and Studio passes exactly
+       that. What the removal bought is that each call site now decides. */
     const el = await action({ label: "Toggle Inspector Dock", icon: "sidebar-simple" });
-    expect(control(el).title).toBe("Toggle Inspector Dock");
+    expect(control(el).hasAttribute("title")).toBe(false);
     el.setAttribute("hint", "Toggle Inspector Dock (⌘I)");
     el.setAttribute("mirror", "");
     await tick();
@@ -158,7 +167,138 @@ describe("jx-action-button", () => {
     expect(icon?.mirror).toBe(true);
     el.setAttribute("hint", "");
     await tick();
-    expect(control(el).title).toBe("Toggle Inspector Dock");
+    expect(control(el).hasAttribute("title")).toBe(false);
+  });
+
+  test("describedby and labelledby reach the inner control, which is where a name is read", async () => {
+    /* An action button is icon-only, so a tooltip named onto it from the outside — a jx-tooltip's
+       id — has nowhere to land without these. */
+    const el = await action({ describedby: "tip1", icon: "gear", label: "Settings" });
+    const inner = control(el);
+    expect(inner.getAttribute("aria-describedby")).toBe("tip1");
+    expect(inner.hasAttribute("aria-labelledby")).toBe(false);
+    el.setAttribute("labelledby", "heading");
+    await tick();
+    expect(inner.getAttribute("aria-labelledby")).toBe("heading");
+    el.setAttribute("describedby", "");
+    await tick();
+    expect(inner.hasAttribute("aria-describedby")).toBe(false);
+  });
+
+  test("loading swaps the glyph for a spinner, says aria-busy and swallows the click", async () => {
+    /* An action button draws its icon from a manifest name and has no icon slot, so a host cannot
+       put a progress ring where the glyph was — which is what blocked the Refresh affordance
+       outright rather than degrading it. */
+    const el = (await action({ icon: "arrows-clockwise", label: "Refresh" })) as JxActionButton & {
+      loading: boolean;
+    };
+    const inner = control(el);
+    expect(el.querySelector('[part="spinner"]')!.hasAttribute("hidden")).toBe(true);
+    expect(el.querySelector('[part="icon"]')!.hasAttribute("hidden")).toBe(false);
+    expect(inner.hasAttribute("aria-busy")).toBe(false);
+
+    el.loading = true;
+    await tick();
+    const spinner = el.querySelector('[part="spinner"]')!;
+    expect(spinner.tagName).toBe("JX-SPINNER");
+    expect(spinner.hasAttribute("hidden")).toBe(false);
+    expect(spinner.getAttribute("role")).toBe("progressbar");
+    expect(el.querySelector('[part="icon"]')!.hasAttribute("hidden")).toBe(true);
+    expect(inner.getAttribute("aria-busy")).toBe("true");
+    expect(inner.getAttribute("aria-disabled")).toBe("true");
+    expect(inner.disabled).toBe(false);
+
+    // Busy is SEEN as well as announced, which is the affordance jx-button already had.
+    expect(getComputedStyle(inner).cursor).toBe("progress");
+
+    /* Measuring the swallow at an ancestor is the one path that passes even when it fails:
+       `stopPropagation` called on the host halts the event at the host and every node after it,
+       NOT the other listeners on that same node — and the handler's own description says a plain
+       button "leaves the click to the host, which listens for it on the element", so a listener
+       there is the documented consumer path and the one that has to see nothing. */
+    let onHost = 0;
+    let onAncestor = 0;
+    el.addEventListener("click", () => {
+      onHost += 1;
+    });
+    document.body.addEventListener("click", () => {
+      onAncestor += 1;
+    });
+    const click = new MouseEvent("click", { bubbles: true, cancelable: true });
+    inner.dispatchEvent(click);
+    await tick();
+    expect(click.defaultPrevented).toBe(true);
+    expect(onHost).toBe(0);
+    expect(onAncestor).toBe(0);
+
+    el.loading = false;
+    await tick();
+    expect(el.querySelector('[part="icon"]')!.hasAttribute("hidden")).toBe(false);
+    expect(el.querySelector('[part="spinner"]')!.hasAttribute("hidden")).toBe(true);
+    expect(getComputedStyle(inner).cursor).toBe("pointer");
+    const again = new MouseEvent("click", { bubbles: true, cancelable: true });
+    inner.dispatchEvent(again);
+    expect(again.defaultPrevented).toBe(false);
+    expect(onHost).toBe(1);
+    expect(onAncestor).toBe(1);
+  });
+
+  test("a click dispatched AT the host is swallowed too, where no inner control sees it", async () => {
+    /* The control-level swallow never runs for this one, so the host keeps a guard of its own —
+       and a toggling button must not flip on it either. */
+    const el = (await action({
+      icon: "eye",
+      label: "Show",
+      loading: "",
+      toggles: "",
+    })) as JxActionButton & { loading: boolean };
+    const click = new MouseEvent("click", { bubbles: true, cancelable: true });
+    el.dispatchEvent(click);
+    await tick();
+    expect(click.defaultPrevented).toBe(true);
+    expect(el.selected).toBe(false);
+    el.loading = false;
+    await tick();
+    const again = new MouseEvent("click", { bubbles: true, cancelable: true });
+    el.dispatchEvent(again);
+    await tick();
+    expect(again.defaultPrevented).toBe(false);
+    expect(el.selected).toBe(true);
+  });
+
+  test("a loading toggle does not flip: the activation was swallowed, not queued", async () => {
+    const el = (await action({
+      icon: "eye",
+      label: "Show",
+      loading: "",
+      toggles: "",
+    })) as JxActionButton & { loading: boolean };
+    const changes: unknown[] = [];
+    el.addEventListener("change", () => {
+      changes.push(1);
+    });
+    control(el).dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    await tick();
+    expect(el.selected).toBe(false);
+    expect(changes).toEqual([]);
+    el.loading = false;
+    await tick();
+    control(el).dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    await tick();
+    expect(el.selected).toBe(true);
+    expect(changes).toHaveLength(1);
+  });
+
+  test("the prop descriptions say the tooltip is a decision, not the name repeated", async () => {
+    /* The `title`-falls-back-to-`label` removal is a DECISION with two halves, and the next reader
+       will re-derive it as a defect unless both are written down where the props are. */
+    const state = documents["jx-action-button"]!.state as Record<string, { description?: string }>;
+    expect(state["label"]!.description).toContain("It is NOT also the tooltip");
+    // The half that says `hint === label` is often the RIGHT answer, not a double-naming bug.
+    expect(state["hint"]!.description).toContain("icon-only");
+    expect(state["hint"]!.description).toContain("hint equal to label is the right answer");
+    // And the half that says why it is no longer automatic.
+    expect(state["hint"]!.description).toContain("already fully visible");
   });
 
   test("a badge is drawn only while it has something to say", async () => {

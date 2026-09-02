@@ -1,0 +1,173 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "JxTooltip",
+  "tagName": "jx-tooltip",
+  "observedAttributes": ["delay", "for", "x", "y", "arrow"],
+  "state": {
+    "delay": {
+      "type": "number",
+      "default": 500,
+      "attribute": "delay",
+      "description": "How long the pointer must rest on the control before the tip appears, in milliseconds. Keyboard focus never waits: a reader who tabbed to the control has already committed. Read only on the FALLBACK path — where the engine implements interest invokers and the control carries interestfor, the wait is the platform's own interest-delay-start and this number is not consulted, so set the CSS property on the control if you need to change it there."
+    },
+    "for": {
+      "type": "string",
+      "default": "",
+      "attribute": "for",
+      "description": "The id of the control this tip describes, in the same root. The declarative wiring is the other way round and is preferred — interestfor on the control, naming this tip's id, and this prop left unset — and it works on every engine: where interest invokers are missing the tip binds an interestfor control's pointer and focus events itself, exactly as it does for a control this prop names. Either way the listeners come off again when the tip leaves the document. It is read once, at mount; a host that wires a tip up later calls bindTooltip from jx-ui:/behaviors/tooltip.ts itself."
+    },
+    "x": {
+      "type": "number",
+      "default": 0,
+      "attribute": "x",
+      "description": "Where the tip's inline-start edge sits, in viewport pixels. Written by the element when it opens, from the box of the control it describes; a host that places the tip itself sets it and names no control."
+    },
+    "y": {
+      "type": "number",
+      "default": 0,
+      "attribute": "y",
+      "description": "Where the tip's block-start edge sits, in viewport pixels. The tip is placed under its control, or above it when there is no room below — never over it, because a tip that covers the control it describes hides what the reader is pointing at."
+    },
+    "arrow": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "arrow",
+      "description": "Draws a pointer at the edge of the tip that faces its control — the block-start edge for a tip below it, the block-end edge for one that flipped above. Decorative, and aria-hidden: it says nothing the tip's own text does not."
+    },
+    "flipped": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether the tip landed ABOVE its control because there was no room below. Written by the element when it opens, and read by nothing but the arrow: a pointer pinned to the block-start edge of a tip that flipped points away from the control it belongs to. A host that places the tip itself sets x and y, and sets this to say which way its arrow faces."
+    },
+    "open": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether the tip is showing. Follows the platform's toggle event; write it through showPopover() and hidePopover(), not directly."
+    },
+    "noArrow": {
+      "$expression": {
+        "operator": "!",
+        "target": {
+          "$ref": "#/state/arrow"
+        }
+      }
+    },
+    "onToggle": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/tooltip.ts",
+      "$export": "onTooltipToggle",
+      "description": "Mirrors the platform's toggle into open, and places a freshly shown tip under the control it describes. Placing here rather than on the gesture is what lets the declarative path work: an interestfor control shows the tip without telling the element anything, and the toggle is the first the element hears of it."
+    },
+    "onReady": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/tooltip.ts",
+      "$export": "onTooltipReady",
+      "description": "Binds the control the tip is wired to — the one for names, or the one declaring interestfor at this tip — on the fallback path. Nothing is bound where the engine implements interest invokers and the control declares one, because there the platform owns the pair."
+    },
+    "onUnmount": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/tooltip.ts",
+      "$export": "onTooltipUnmount",
+      "description": "Takes the fallback listeners off the control again. They sit on an element the kit does not own and which outlives the tip, so without this a removed tip keeps answering its control's pointer."
+    },
+    "onMount": {
+      "$prototype": "Function",
+      "body": [
+        {
+          "dispatchEvent": "jx-ready",
+          "bubbles": true
+        }
+      ],
+      "description": "Announces that the element has rendered and carries its popover attribute, so a host may show it — and gives the element its own first sight of itself, which is how onReady reaches the control that for names."
+    }
+  },
+  "ontoggle": {
+    "$ref": "#/state/onToggle"
+  },
+  "onjx-ready": {
+    "$ref": "#/state/onReady"
+  },
+  "attributes": {
+    "role": "tooltip",
+    "popover": "hint",
+    "data-open": "${state.open ? '' : null}",
+    "data-flipped": "${state.flipped ? '' : null}"
+  },
+  "style": {
+    "position": "fixed",
+    "insetInlineStart": "${state.x}px",
+    "insetBlockStart": "${state.y}px",
+    "insetInlineEnd": "auto",
+    "insetBlockEnd": "auto",
+    "boxSizing": "border-box",
+    "margin": "0",
+    "padding": "var(--jx-space-1) var(--jx-space-3)",
+    "maxWidth": "min(280px, calc(100vw - 8px))",
+    "background": "var(--jx-bg-overlay)",
+    "color": "var(--jx-fg)",
+    "border": "1px solid var(--jx-border-strong)",
+    "borderRadius": "var(--jx-radius-sm)",
+    "boxShadow": "var(--jx-shadow-popover)",
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-sm)",
+    "lineHeight": "var(--jx-leading-sm)",
+    "textAlign": "start",
+    "opacity": "1",
+    "pointerEvents": "auto",
+    "transition": "opacity var(--jx-dur-1) var(--jx-ease-out), display var(--jx-dur-1) allow-discrete, overlay var(--jx-dur-1) allow-discrete",
+    ":popover-open": {
+      "display": "block"
+    },
+    "&[hidden]:popover-open": {
+      "display": "none"
+    },
+    "@starting-style": {
+      "&:popover-open": {
+        "opacity": "0"
+      }
+    },
+    "& > [part=\"content\"]": {
+      "display": "contents"
+    },
+    "& > [part=\"arrow\"]": {
+      "position": "absolute",
+      "insetBlockEnd": "100%",
+      "insetInlineStart": "var(--jx-space-4)",
+      "width": "8px",
+      "height": "8px",
+      "marginBlockEnd": "-5px",
+      "background": "var(--jx-bg-overlay)",
+      "borderInlineStart": "1px solid var(--jx-border-strong)",
+      "borderBlockStart": "1px solid var(--jx-border-strong)",
+      "transform": "rotate(45deg)"
+    },
+    "&[data-flipped] > [part=\"arrow\"]": {
+      "insetBlockEnd": "auto",
+      "insetBlockStart": "100%",
+      "marginBlockEnd": "0",
+      "marginBlockStart": "-5px",
+      "borderInlineStart": "none",
+      "borderBlockStart": "none",
+      "borderInlineEnd": "1px solid var(--jx-border-strong)",
+      "borderBlockEnd": "1px solid var(--jx-border-strong)"
+    }
+  },
+  "children": [
+    {
+      "tagName": "slot",
+      "attributes": {
+        "part": "content"
+      }
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "arrow",
+        "aria-hidden": "true"
+      },
+      "hidden": {
+        "$ref": "#/state/noArrow"
+      }
+    }
+  ]
+}

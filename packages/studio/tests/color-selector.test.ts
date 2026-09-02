@@ -286,3 +286,30 @@ describe("isColorPopoverOpen", () => {
     expect(isColorPopoverOpen()).toBe(false);
   });
 });
+
+describe("isColorPopoverOpen", () => {
+  test("sees a kit overlay as well as the Spectrum island", () => {
+    /* The Inspector must not repaint under either. The query is additive rather than replaced:
+       the colour popover is still a Spectrum island committing on every drag frame with no
+       debounce, so swapping it out would destroy the element mid-drag. */
+    document.body.replaceChildren();
+    expect(isColorPopoverOpen()).toBe(false);
+
+    const kit = document.createElement("jx-popover");
+    kit.dataset["open"] = "";
+    document.body.append(kit);
+    expect(isColorPopoverOpen()).toBe(true);
+
+    delete kit.dataset["open"];
+    expect(isColorPopoverOpen()).toBe(false);
+
+    const island = document.createElement("div");
+    island.className = "style-input-color";
+    const overlay = document.createElement("sp-overlay");
+    overlay.setAttribute("open", "");
+    island.append(overlay);
+    document.body.append(island);
+    expect(isColorPopoverOpen()).toBe(true);
+    document.body.replaceChildren();
+  });
+});

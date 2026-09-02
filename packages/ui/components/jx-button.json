@@ -21,6 +21,9 @@
   "$elements": [
     {
       "$ref": "./jx-icon.json"
+    },
+    {
+      "$ref": "./jx-spinner.json"
     }
   ],
   "state": {
@@ -116,6 +119,25 @@
         }
       }
     },
+    "onSwallow": {
+      "$prototype": "Function",
+      "body": [
+        {
+          "if": {
+            "$ref": "#/state/loading"
+          },
+          "then": [
+            {
+              "stopPropagation": true
+            },
+            {
+              "preventDefault": true
+            }
+          ]
+        }
+      ],
+      "description": "The swallow, on the INNER CONTROL rather than the host: stopPropagation halts an event at the node it is called on and every node after it, not the other listeners on that same node — so a swallow on the host cancels the default and then runs the host's own click listeners anyway, which is the one path a consumer actually uses. Called one node earlier, the click never reaches the host at all."
+    },
     "onClick": {
       "$prototype": "Function",
       "body": [
@@ -133,7 +155,7 @@
           ]
         }
       ],
-      "description": "A loading button swallows the activation: the click stops here and its default (a form submission, a popover, a command) is cancelled. A disabled button never gets this far, because its inner control is disabled."
+      "description": "The second half of the swallow, for a click dispatched AT the host: that one never passes the inner control, so this is the only guard that sees it. Its default (a form submission, a popover, a command) is cancelled either way. A disabled button never gets this far, because its inner control is disabled."
     }
   },
   "onclick": {
@@ -243,6 +265,9 @@
   "children": [
     {
       "tagName": "button",
+      "onclick": {
+        "$ref": "#/state/onSwallow"
+      },
       "attributes": {
         "part": "control",
         "type": "${state.type}",
@@ -293,26 +318,13 @@
           ]
         },
         {
-          "tagName": "span",
+          "tagName": "jx-spinner",
           "attributes": {
-            "part": "spinner",
-            "aria-hidden": "true"
+            "part": "spinner"
           },
           "hidden": {
             "$ref": "#/state/notLoading"
-          },
-          "children": [
-            {
-              "tagName": "jx-icon",
-              "$props": {
-                "name": "spinner",
-                "weight": "bold"
-              },
-              "attributes": {
-                "part": "spinner-icon"
-              }
-            }
-          ]
+          }
         }
       ]
     }
