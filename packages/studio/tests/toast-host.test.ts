@@ -91,22 +91,22 @@ describe("rendering", () => {
   test("a notification paints a toast, severity-classed", async () => {
     notify.success("Copied");
     await flush();
-    const toast = host().querySelector(".toast");
-    expect(toast?.classList.contains("toast--success")).toBe(true);
-    expect(toast?.querySelector(".toast-message")?.textContent).toBe("Copied");
+    const toast = host().querySelector('[part="toast"]');
+    expect(toast?.dataset["severity"] === "success").toBe(true);
+    expect(toast?.querySelector('[part="message"]')?.textContent).toBe("Copied");
   });
 
   test("only toasts are rendered — a problem never reaches this layer", async () => {
     notify.error("Could not save.");
     await flush();
-    expect(host().querySelectorAll(".toast")).toHaveLength(0);
+    expect(host().querySelectorAll('[part="toast"]')).toHaveLength(0);
   });
 
   test("several toasts stack in arrival order", async () => {
     notify.info("first");
     notify.info("second");
     await flush();
-    expect([...host().querySelectorAll(".toast-message")].map((e) => e.textContent)).toEqual([
+    expect([...host().querySelectorAll('[part="message"]')].map((e) => e.textContent)).toEqual([
       "first",
       "second",
     ]);
@@ -115,10 +115,10 @@ describe("rendering", () => {
   test("dismissing removes the record, not just the node", async () => {
     notify.info("Syncing…", { timeoutMs: 0 });
     await flush();
-    (host().querySelector(".toast-dismiss") as HTMLElement).click();
+    (host().querySelector('[part="dismiss"] [part="control"]') as HTMLElement).click();
     await flush();
     expect(toasts).toHaveLength(0);
-    expect(host().querySelectorAll(".toast")).toHaveLength(0);
+    expect(host().querySelectorAll('[part="toast"]')).toHaveLength(0);
   });
 });
 
@@ -128,13 +128,13 @@ describe("the recovery action", () => {
   test("is labelled with the COMMAND's title, not a bare Retry", async () => {
     notify.warn("Pasted", { action: "edit.undo", timeoutMs: 0 });
     await flush();
-    expect(host().querySelector(".toast-action")?.textContent?.trim()).toBe("Undo");
+    expect(host().querySelector('[part="action"]')?.textContent?.trim()).toBe("Undo");
   });
 
   test("runs the command with the record's args and retires the toast", async () => {
     notify.warn("Pasted", { action: "edit.undo", actionArgs: { steps: 2 }, timeoutMs: 0 });
     await flush();
-    (host().querySelector(".toast-action") as HTMLElement).click();
+    (host().querySelector('[part="action"] [part="control"]') as HTMLElement).click();
     await flush();
     expect(ran).toEqual([{ args: { steps: 2 }, id: "edit.undo" }]);
     expect(toasts).toHaveLength(0);
@@ -144,9 +144,10 @@ describe("the recovery action", () => {
     ctx = makeContext({ document: { open: true, canUndo: false } });
     notify.warn("Pasted", { action: "edit.undo", timeoutMs: 0 });
     await flush();
-    const button = host().querySelector(".toast-action") as HTMLButtonElement;
+    const action = host().querySelector('[part="action"]') as HTMLElement;
+    const button = action.querySelector('[part="control"]') as HTMLButtonElement;
     expect(button.disabled).toBe(true);
-    expect(button.title).toContain("something to undo");
+    expect(action.getAttribute("title")).toContain("something to undo");
   });
 
   test("an unregistered command id renders no button at all", async () => {
@@ -154,13 +155,13 @@ describe("the recovery action", () => {
     // Dead control in the meantime.
     notify.warn("Attach failed", { action: "collab.share", timeoutMs: 0 });
     await flush();
-    expect(host().querySelector(".toast-action")).toBeNull();
+    expect(host().querySelector('[part="action"]')).toBeNull();
   });
 
   test("no action named — no button", async () => {
     notify.info("Syncing…", { timeoutMs: 0 });
     await flush();
-    expect(host().querySelector(".toast-action")).toBeNull();
+    expect(host().querySelector('[part="action"]')).toBeNull();
   });
 });
 
@@ -174,7 +175,7 @@ describe("lifetime", () => {
     // Toast retires itself on a real timer; how short that timer is was never part of it.
     notify.info("brief", { timeoutMs: 250 });
     await flush();
-    expect(host().querySelectorAll(".toast")).toHaveLength(1);
+    expect(host().querySelectorAll('[part="toast"]')).toHaveLength(1);
     // Polled, not slept. The retirement runs on a REAL timer — that is the property under test —
     // And a fixed wait is a bet on the scheduler that loses whenever the suite runs files
     // Concurrently, which `--coverage` instrumentation stretches further still. The deadline exists
@@ -230,7 +231,7 @@ describe("lifetime", () => {
     notify.info("brief", { timeoutMs: 10 });
     await flush();
     unmountToastHost();
-    expect(host().querySelectorAll(".toast")).toHaveLength(0);
+    expect(host().querySelectorAll('[part="toast"]')).toHaveLength(0);
     expect(overlayIdleBlockers()).toEqual([]);
     // The record survives — the HOST was torn down, not the notification.
     expect(toasts).toHaveLength(1);

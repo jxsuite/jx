@@ -12,16 +12,19 @@
  * `services/notify.ts`'s `toasts` array and owns exactly two things that array does not: the timer
  * that retires a resting toast, and the transition account {@link overlayIdleBlockers} publishes.
  */
-import { html, render as litRender, nothing } from "lit-html";
-import { repeat } from "lit-html/directives/repeat.js";
+import { render as litRender, nothing } from "lit-html";
 import { overlayRegion, REGION_ATTR } from "./regions";
 import { openDialogSurface } from "../surfaces/dialog";
+import { mountSurface, registerSurface } from "./surface";
+import toastsDoc from "../surfaces/toasts.json";
 import { dismiss, toasts } from "../services/notify";
 import { activeRegistry } from "../commands/active-registry";
-import { effect, effectScope } from "../reactivity";
+import { effect, effectScope, reactive } from "../reactivity";
 import type { DialogChoiceOption, DialogSurfaceOptions } from "../surfaces/dialog";
 import type { Notification, Severity } from "../services/notify";
 import type { EffectScope } from "@vue/reactivity";
+import type { SurfaceHandle } from "./surface";
+import type { JxDocument } from "@jxsuite/schema/types";
 import type { TemplateResult } from "lit-html";
 
 /** The four fixed layer hosts, by name. Also the `kind` half of every overlay region id. */
@@ -850,67 +853,85 @@ function scheduleToast(record: Notification): void {
   );
 }
 
-/** The recovery button, or `nothing` when the record named no command or the command is hidden. */
-function toastActionTpl(record: Notification) {
-  const registry = record.action === undefined ? null : activeRegistry();
-  const id = record.action;
-  if (!registry || id === undefined || !registry.get(id) || !registry.isVisible(id)) {
-    return nothing;
-  }
-  const command = registry.get(id)!;
-  const reason = registry.disabledReason(id);
-  return html`
-    <button
-      class="toast-action"
-      ?disabled=${reason !== undefined}
-      title=${reason === undefined ? command.title : `${command.title} — requires ${reason}`}
-      @click=${() => {
-        retireToast(record.id);
-        void registry.run(id, record.actionArgs);
-      }}
-    >
-      ${command.title}
-    </button>
-  `;
+/** One toast, as `surfaces/toasts.json` draws it. */
+export interface ToastProjection {
+  id: string;
+  severity: Severity;
+  icon: string;
+  message: string;
+  hasAction: boolean;
+  /** The recovery command's title, so the button says what it does rather than "Retry". */
+  actionLabel: string;
+  actionDisabled: boolean;
+  /** The command's tooltip: its title, or its title with the reason it is off. */
+  actionTitle: string;
 }
 
-/** One toast. `role="status"` lives on the HOST, so a stack of them is announced as one region. */
-function toastTpl(record: Notification) {
-  return html`
-    <div class="toast toast--${record.severity}">
-      <span class="toast-icon" aria-hidden="true">${TOAST_ICON[record.severity]}</span>
-      <span class="toast-message">${record.message}</span>
-      ${toastActionTpl(record)}
-      <button
-        class="toast-dismiss"
-        title="Dismiss"
-        aria-label="Dismiss notification"
-        @click=${() => retireToast(record.id)}
-      >
-        <span aria-hidden="true">×</span>
-      </button>
-    </div>
-  `;
+interface ToastScope extends Record<string, unknown> {
+  toasts: ToastProjection[];
+  runAction: (id: string) => void;
+  dismissToast: (id: string) => void;
 }
 
-/** The whole stack, newest at the bottom — the reading order of a log, not of a menu. */
-export function toastStackTemplate() {
-  return html`
-    <div class="toast-stack">
-      ${repeat(
-        toasts,
-        (record) => record.id,
-        (record) => toastTpl(record),
-      )}
-    </div>
-  `;
+registerSurface("toasts", toastsDoc as unknown as JxDocument);
+
+let _toastState: ToastScope | null = null;
+let _toastMount: Promise<SurfaceHandle> | null = null;
+let _toastHandle: SurfaceHandle | null = null;
+
+/** The toast surface's scope: the projected rows, and the two things a row can ask the host to do. */
+function toastScope(): ToastScope {
+  _toastState ??= reactive<ToastScope>({
+    dismissToast: (id) => {
+      retireToast(id);
+    },
+    runAction: (id) => {
+      const record = toasts.find((candidate) => candidate.id === id);
+      const registry = activeRegistry();
+      if (!record?.action || !registry) {
+        return;
+      }
+      retireToast(id);
+      void registry.run(record.action, record.actionArgs);
+    },
+    toasts: [],
+  }) as ToastScope;
+  return _toastState;
 }
 
 /**
- * Subscribe the toast layer to `notify`'s store.
- *
- * Called by {@link initLayers}, so no bootstrap has to remember it, and idempotent so a second call
- * replaces the effect rather than stacking a second renderer on the same host.
+ * Project one record: the recovery button is a COMMAND, so its label, its gate and its reason all
+ * come off the record — an unregistered or hidden command renders no button, which is what lets a
+ * call site name a capability that lands next phase without shipping a dead control meanwhile.
+ */
+function projectToast(record: Notification): ToastProjection {
+  const registry = record.action === undefined ? null : activeRegistry();
+  const id = record.action;
+  // `get` before `isVisible`: an id the registry has never seen is a button that never was, not
+  // A question it can answer.
+  const known = registry && id !== undefined ? registry.get(id) : undefined;
+  const command = known && id !== undefined && registry!.isVisible(id) ? known : null;
+  const reason = command && id !== undefined ? registry!.disabledReason(id) : undefined;
+  return {
+    actionDisabled: reason !== undefined,
+    actionLabel: command?.title ?? "",
+    actionTitle:
+      command === null || command === undefined
+        ? ""
+        : reason === undefined
+          ? command.title
+          : `${command.title} — requires ${reason}`,
+    hasAction: command !== null && command !== undefined,
+    icon: TOAST_ICON[record.severity],
+    id: record.id,
+    message: record.message,
+    severity: record.severity,
+  };
+}
+
+/**
+ * Mount the toast host: the surface into the toast layer, and one effect that keeps its rows and
+ * the records' timers in step with `notify()`'s list.
  */
 export function mountToastHost(): void {
   unmountToastHost();
@@ -920,19 +941,20 @@ export function mountToastHost(): void {
   _toastScope = effectScope();
   _toastScope.run(() => {
     effect(() => {
-      // Tracked: the array itself (arrivals and retirements) and the registry holder, so a toast
-      // Raised before the bootstrap composed the registry grows its Retry button when it lands.
       void toasts.length;
       void activeRegistry();
       for (const record of toasts) {
         scheduleToast(record);
       }
-      litRender(toastStackTemplate(), _toastLayer);
+      toastScope().toasts = toasts.map((record) => projectToast(record));
     });
+  });
+  _toastMount = mountSurface("toasts", toastScope(), _toastLayer);
+  void _toastMount.then((handle) => {
+    _toastHandle = handle;
   });
 }
 
-/** Release the effect and every pending timer. Tests and a window teardown both need this. */
 export function unmountToastHost(): void {
   _toastScope?.stop();
   _toastScope = null;
@@ -941,7 +963,13 @@ export function unmountToastHost(): void {
   }
   _toastTimers.clear();
   _toastEntering.clear();
-  if (_toastLayer) {
-    litRender(nothing, _toastLayer);
+  const pending = _toastMount;
+  _toastMount = null;
+  if (_toastHandle) {
+    _toastHandle.dispose();
+    _toastHandle = null;
+  } else if (pending) {
+    void pending.then((handle) => handle.dispose());
   }
+  _toastState = null;
 }

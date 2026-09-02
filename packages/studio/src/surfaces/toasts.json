@@ -1,0 +1,188 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioToasts",
+  "$description": "The toast stack: a rendering of the notification service's toasts, newest last. Each row is projected by ui/layers.ts with its severity glyph and, where a recovery command exists, that command's title and gate; the two buttons call back into the host, which owns the records and their timers.",
+  "tagName": "div",
+  "attributes": {
+    "part": "stack"
+  },
+  "style": {
+    "position": "absolute",
+    "right": "var(--jx-space-4)",
+    "bottom": "36px",
+    "display": "flex",
+    "flexDirection": "column",
+    "gap": "var(--jx-space-3)",
+    "alignItems": "flex-end",
+    "maxWidth": "min(420px, calc(100vw - 24px))",
+    "& [part=\"toast\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-3)",
+      "pointerEvents": "auto",
+      "padding": "var(--jx-space-3)",
+      "border": "1px solid var(--jx-border)",
+      "borderLeft": "3px solid var(--jx-fg-dim)",
+      "borderRadius": "var(--jx-radius-md)",
+      "background": "var(--jx-bg-panel)",
+      "color": "var(--jx-fg)",
+      "fontSize": "var(--jx-text-sm)",
+      "lineHeight": "var(--jx-leading-sm)",
+      "boxShadow": "var(--jx-shadow-popover)"
+    },
+    "& [part=\"toast\"][data-severity=\"success\"]": {
+      "borderLeftColor": "var(--jx-success)"
+    },
+    "& [part=\"toast\"][data-severity=\"info\"]": {
+      "borderLeftColor": "var(--jx-accent)"
+    },
+    "& [part=\"toast\"][data-severity=\"warn\"]": {
+      "borderLeftColor": "var(--jx-warning)"
+    },
+    "& [part=\"toast\"][data-severity=\"error\"]": {
+      "borderLeftColor": "var(--jx-danger)"
+    },
+    "& [part=\"icon\"]": {
+      "flex": "none",
+      "width": "14px",
+      "textAlign": "center",
+      "fontWeight": "700"
+    },
+    "& [data-severity=\"success\"] [part=\"icon\"]": {
+      "color": "var(--jx-success)"
+    },
+    "& [data-severity=\"info\"] [part=\"icon\"]": {
+      "color": "var(--jx-accent)"
+    },
+    "& [data-severity=\"warn\"] [part=\"icon\"]": {
+      "color": "var(--jx-warning)"
+    },
+    "& [data-severity=\"error\"] [part=\"icon\"]": {
+      "color": "var(--jx-danger)"
+    },
+    "& [part=\"message\"]": {
+      "flex": "1",
+      "minWidth": "0",
+      "overflow": "hidden",
+      "display": "-webkit-box",
+      "WebkitBoxOrient": "vertical",
+      "WebkitLineClamp": "3"
+    },
+    "& [part=\"action-slot\"]": {
+      "display": "contents"
+    },
+    "& [part=\"action\"] > [part=\"control\"]": {
+      "color": "var(--jx-accent)"
+    }
+  },
+  "children": [
+    {
+      "$prototype": "Array",
+      "items": {
+        "$ref": "#/state/toasts"
+      },
+      "key": {
+        "$ref": "$map/item/id"
+      },
+      "map": {
+        "tagName": "div",
+        "attributes": {
+          "part": "toast",
+          "data-severity": "${$map.item.severity}"
+        },
+        "children": [
+          {
+            "tagName": "span",
+            "attributes": {
+              "part": "icon",
+              "aria-hidden": "true"
+            },
+            "textContent": "${$map.item.icon}"
+          },
+          {
+            "tagName": "span",
+            "attributes": {
+              "part": "message"
+            },
+            "textContent": "${$map.item.message}"
+          },
+          {
+            "tagName": "span",
+            "attributes": {
+              "part": "action-slot",
+              "role": "none"
+            },
+            "$switch": {
+              "$ref": "$map/item/hasAction"
+            },
+            "cases": {
+              "true": {
+                "tagName": "jx-button",
+                "$props": {
+                  "size": "sm",
+                  "quiet": true,
+                  "disabled": {
+                    "$ref": "$map/item/actionDisabled"
+                  }
+                },
+                "attributes": {
+                  "part": "action",
+                  "title": "${$map.item.actionTitle}"
+                },
+                "onclick": {
+                  "$prototype": "Function",
+                  "body": [
+                    {
+                      "operator": "call",
+                      "target": {
+                        "$ref": "#/state/runAction"
+                      },
+                      "value": [
+                        {
+                          "$ref": "$map/item/id"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "children": [
+                  {
+                    "tagName": "span",
+                    "textContent": "${$map.item.actionLabel}"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "tagName": "jx-action-button",
+            "$props": {
+              "label": "Dismiss notification",
+              "icon": "x",
+              "size": "sm"
+            },
+            "attributes": {
+              "part": "dismiss"
+            },
+            "onclick": {
+              "$prototype": "Function",
+              "body": [
+                {
+                  "operator": "call",
+                  "target": {
+                    "$ref": "#/state/dismissToast"
+                  },
+                  "value": [
+                    {
+                      "$ref": "$map/item/id"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
