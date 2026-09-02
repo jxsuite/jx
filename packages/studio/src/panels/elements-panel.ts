@@ -220,7 +220,7 @@ export function registerInsertPanel(): void {
     title: "Insert",
     level: "document",
     dock: "navigator",
-    icon: "sp-icon-view-grid",
+    icon: "grid-four",
     rail: false,
     render: (ctx) =>
       renderElementsTemplate({

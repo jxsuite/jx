@@ -127,4 +127,34 @@ describe("jx-action-button", () => {
     expect(control(el).getAttribute("command")).toBe("toggle-popover");
     expect(control(el).getAttribute("commandfor")).toBe("menu");
   });
+
+  test("stacked puts the icon above a visible label; haspopup and expanded reach the control", async () => {
+    const el = await action({
+      expanded: "",
+      haspopup: "menu",
+      icon: "gear",
+      label: "Settings",
+      stacked: "",
+    });
+    expect(el.dataset.stacked !== undefined).toBe(true);
+    const inner = control(el);
+    expect(inner.getAttribute("aria-haspopup")).toBe("menu");
+    expect(inner.getAttribute("aria-expanded")).toBe("true");
+    const plain = await action({ icon: "gear", label: "Settings" });
+    expect(control(plain).hasAttribute("aria-haspopup")).toBe(false);
+    expect(control(plain).hasAttribute("aria-expanded")).toBe(false);
+  });
+
+  test("a badge is drawn only while it has something to say", async () => {
+    const el = (await action({ icon: "git-branch", label: "Source Control" })) as JxActionButton & {
+      badge: string;
+    };
+    expect(el.querySelector('[part="badge"]')).toBeNull();
+    el.badge = "3";
+    await tick();
+    expect(el.querySelector('[part="badge"]')!.textContent).toBe("3");
+    el.badge = "";
+    await tick();
+    expect(el.querySelector('[part="badge"]')).toBeNull();
+  });
 });

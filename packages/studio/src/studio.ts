@@ -189,7 +189,7 @@ import { chordsInScopes } from "./commands/keymap";
 import { FRAME_KEY_SCOPES } from "./canvas/iframe-keys";
 import { createLiveContext } from "./commands/live-context";
 import { hasAiCredentials } from "./services/ai-models";
-import { mount as mountActivityBar } from "./panels/activity-bar";
+import { mount as mountActivityBar } from "./surfaces/rail";
 import * as toolbarPanel from "./panels/toolbar";
 import * as overlaysPanel from "./panels/overlays";
 import * as frontmatterPanelMod from "./panels/frontmatter-panel";

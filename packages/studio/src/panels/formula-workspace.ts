@@ -259,7 +259,7 @@ export function registerLogicPanel(): void {
     title: "Logic",
     level: "document",
     dock: "bottom",
-    icon: "sp-icon-event",
+    icon: "lightning",
     // No rail button: Logic has no steady state to badge. It exists while a formula or a function
     // Is open and leaves the strip when you close it, which is what `when` says below.
     rail: false,

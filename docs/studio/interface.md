@@ -11,7 +11,7 @@ spec:
 code:
   - packages/studio/src/panels/toolbar.ts
   - packages/studio/src/preview/preview-overlay.ts
-  - packages/studio/src/panels/activity-bar.ts
+  - packages/studio/src/surfaces/rail.ts
   - packages/studio/src/panels/left-panel.ts
   - packages/studio/src/files/files.ts
   - packages/studio/src/files/gitignore.ts

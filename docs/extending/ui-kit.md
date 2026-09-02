@@ -80,7 +80,7 @@ The list of shipped glyphs is `icons/list.json` in the package. Add a name there
 { "tagName": "jx-action-button", "$props": { "label": "Bold", "icon": "text-b", "toggles": true } }
 ```
 
-It is `quiet` by default. `emphasized` draws the selected state in the accent.
+It is `quiet` by default. `emphasized` draws the selected state in the accent. `stacked` puts the icon above a visible label, the shape of a rail button. A button that opens a menu rather than running a command sets `haspopup` and `expanded`, which reach the control as `aria-haspopup` and `aria-expanded`. `badge` draws a count over the button's corner, and nothing when empty.
 
 ## Show a menu
 

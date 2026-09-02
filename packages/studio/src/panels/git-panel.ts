@@ -1124,9 +1124,9 @@ export function registerGitPanel(): void {
     title: "Source Control",
     level: "project",
     dock: "navigator",
-    // A KEY into `activity-bar.ts`'s `tabIcon()` map, not a tag: this one resolves to
+    // A KEY into the kit's icon manifest, not a tag: this one resolves to
     // `gitBranchIcon`, a hand-drawn inline SVG, because the workflow set has no Git family.
-    icon: "sp-icon-git-branch",
+    icon: "git-branch",
     badge: (ctx) => ctx.git.dirtyCount || null,
     // Through `deps`, not the local binding: `studio.ts` owns the wiring (the clone action and the
     // Diff-state setter come from the bootstrap), and the Navigator has injected it all along.

@@ -224,10 +224,10 @@ export function registerProblemsPanel(): void {
     // There is one, from the status bar (`panels/statusbar.ts`), which is where ambient project
     // State already lives beside the branch and the deploy step.
     rail: false,
-    // Inert, like every other `rail: false` panel's: `PanelRecord.icon` is required and `tabIcon()`
+    // Inert, like every other `rail: false` panel's: `PanelRecord.icon` is required and the manifest
     // Is only ever called by a rail button. The row that used to resolve it is gone from
     // `activity-bar.ts`, and `check-icons.ts` is what refuses to let the two drift apart.
-    icon: "sp-icon-alert",
+    icon: "warning-circle",
     badge: () => problemCount() || null,
     render: () => renderProblemsList(),
   });

@@ -15,9 +15,17 @@
     "popovertarget",
     "popovertargetaction",
     "command",
-    "commandfor"
+    "commandfor",
+    "stacked",
+    "haspopup",
+    "expanded",
+    "badge"
   ],
-  "$elements": [{ "$ref": "./jx-icon.json" }],
+  "$elements": [
+    {
+      "$ref": "./jx-icon.json"
+    }
+  ],
   "state": {
     "label": {
       "type": "string",
@@ -73,6 +81,30 @@
       "attribute": "disabled",
       "description": "Cannot act. Disabled, never absent."
     },
+    "stacked": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "stacked",
+      "description": "Icon above the label, the label visible and small: the shape of a rail button. The label is then on screen, so it is the accessible name by itself."
+    },
+    "haspopup": {
+      "type": "string",
+      "default": "",
+      "attribute": "haspopup",
+      "description": "What the button opens instead of running a command: menu, dialog or listbox. Forwarded to the control as aria-haspopup."
+    },
+    "expanded": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "expanded",
+      "description": "Whether what haspopup names is showing. Forwarded to the control as aria-expanded, only when haspopup is set."
+    },
+    "badge": {
+      "type": "string",
+      "default": "",
+      "attribute": "badge",
+      "description": "A count or a mark drawn over the button's corner; empty for none."
+    },
     "popovertarget": {
       "type": "string",
       "default": "",
@@ -98,7 +130,21 @@
       "description": "The element the command is sent to; forwarded to the inner control."
     },
     "noIcon": {
-      "$expression": { "operator": "!", "target": { "$ref": "#/state/icon" } }
+      "$expression": {
+        "operator": "!",
+        "target": {
+          "$ref": "#/state/icon"
+        }
+      }
+    },
+    "hasBadge": {
+      "$expression": {
+        "operator": "!==",
+        "target": {
+          "$ref": "#/state/badge"
+        },
+        "value": ""
+      }
     },
     "onClick": {
       "$prototype": "Function",
@@ -106,16 +152,36 @@
         {
           "if": {
             "operator": "&&",
-            "target": { "$ref": "#/state/toggles" },
-            "value": { "operator": "!", "target": { "$ref": "#/state/disabled" } }
+            "target": {
+              "$ref": "#/state/toggles"
+            },
+            "value": {
+              "operator": "!",
+              "target": {
+                "$ref": "#/state/disabled"
+              }
+            }
           },
           "then": [
             {
               "operator": "=",
-              "target": { "$ref": "#/state/selected" },
-              "value": { "operator": "!", "target": { "$ref": "#/state/selected" } }
+              "target": {
+                "$ref": "#/state/selected"
+              },
+              "value": {
+                "operator": "!",
+                "target": {
+                  "$ref": "#/state/selected"
+                }
+              }
             },
-            { "dispatchEvent": "change", "detail": { "$ref": "#/state/selected" }, "bubbles": true }
+            {
+              "dispatchEvent": "change",
+              "detail": {
+                "$ref": "#/state/selected"
+              },
+              "bubbles": true
+            }
           ]
         }
       ],
@@ -128,17 +194,22 @@
       "description": "A toggling button flips selected and says so with change. A plain one leaves the click to the host, which listens for it on the element."
     }
   },
-  "onclick": { "$ref": "#/state/onClick" },
+  "onclick": {
+    "$ref": "#/state/onClick"
+  },
   "attributes": {
     "data-size": "${state.size}",
     "data-quiet": "${state.quiet ? '' : null}",
     "data-emphasized": "${state.emphasized ? '' : null}",
-    "data-selected": "${state.toggles && state.selected ? '' : null}"
+    "data-selected": "${state.toggles && state.selected ? '' : null}",
+    "data-stacked": "${state.stacked ? '' : null}"
   },
   "style": {
     "display": "inline-flex",
     "verticalAlign": "middle",
-    "&[hidden]": { "display": "none" },
+    "&[hidden]": {
+      "display": "none"
+    },
     "& > [part=\"control\"]": {
       "appearance": "none",
       "font": "inherit",
@@ -160,14 +231,42 @@
       "whiteSpace": "nowrap",
       "outline": "none",
       "transition": "background var(--jx-dur-1) var(--jx-ease-out), color var(--jx-dur-1) var(--jx-ease-out)",
-      ":hover": { "background": "var(--jx-hover-bg)", "color": "var(--jx-fg)" },
-      ":focus-visible": { "outline": "var(--jx-focus-ring)", "outlineOffset": "2px" },
-      ":disabled": { "opacity": "0.5", "cursor": "default" }
+      ":hover": {
+        "background": "var(--jx-hover-bg)",
+        "color": "var(--jx-fg)"
+      },
+      ":focus-visible": {
+        "outline": "var(--jx-focus-ring)",
+        "outlineOffset": "2px"
+      },
+      ":disabled": {
+        "opacity": "0.5",
+        "cursor": "default"
+      },
+      "position": "relative"
     },
     "&[data-quiet] > [part=\"control\"]": {
       "background": "transparent",
       "borderColor": "transparent",
-      ":hover": { "background": "var(--jx-hover-bg)" }
+      ":hover": {
+        "background": "var(--jx-hover-bg)"
+      }
+    },
+    "&[data-stacked] > [part=\"control\"]": {
+      "flexDirection": "column",
+      "gap": "2px",
+      "width": "100%",
+      "minWidth": "0",
+      "padding": "var(--jx-space-2) var(--jx-space-1)",
+      "borderRadius": "0",
+      "fontSize": "var(--jx-text-xs)",
+      "lineHeight": "var(--jx-leading-xs)"
+    },
+    "&[data-stacked] > [part=\"control\"] > [part=\"label\"]": {
+      "maxWidth": "100%",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap"
     },
     "&[data-selected] > [part=\"control\"]": {
       "background": "var(--jx-accent-15)",
@@ -187,9 +286,32 @@
       "minHeight": "calc(var(--jx-control-h) + 8px)",
       "padding": "0 var(--jx-space-3)"
     },
-    "& [part=\"icon\"]": { "display": "inline-flex", "color": "inherit" },
-    "& [part=\"icon\"][hidden]": { "display": "none" },
-    "& [part=\"label\"]:empty": { "display": "none" }
+    "& [part=\"icon\"]": {
+      "display": "inline-flex",
+      "color": "inherit"
+    },
+    "& [part=\"icon\"][hidden]": {
+      "display": "none"
+    },
+    "& [part=\"label\"]:empty": {
+      "display": "none"
+    },
+    "& [part=\"badge\"]": {
+      "position": "absolute",
+      "top": "2px",
+      "right": "2px",
+      "minWidth": "16px",
+      "height": "16px",
+      "padding": "0 4px",
+      "boxSizing": "border-box",
+      "borderRadius": "8px",
+      "background": "var(--jx-accent-solid)",
+      "color": "var(--jx-accent-fg)",
+      "fontSize": "var(--jx-text-xs)",
+      "lineHeight": "16px",
+      "textAlign": "center",
+      "pointerEvents": "none"
+    }
   },
   "children": [
     {
@@ -197,35 +319,77 @@
       "attributes": {
         "part": "control",
         "type": "button",
-        "disabled": { "$ref": "#/state/disabled" },
+        "disabled": {
+          "$ref": "#/state/disabled"
+        },
         "aria-label": "${state.label || null}",
         "title": "${state.label || null}",
         "aria-pressed": "${state.toggles ? (state.selected ? 'true' : 'false') : null}",
         "popovertarget": "${state.popovertarget || null}",
         "popovertargetaction": "${state.popovertargetaction || null}",
         "command": "${state.command || null}",
-        "commandfor": "${state.commandfor || null}"
+        "commandfor": "${state.commandfor || null}",
+        "aria-haspopup": "${state.haspopup || null}",
+        "aria-expanded": "${state.haspopup ? (state.expanded ? 'true' : 'false') : null}"
       },
       "children": [
         {
           "tagName": "span",
-          "attributes": { "part": "icon" },
-          "hidden": { "$ref": "#/state/noIcon" },
+          "attributes": {
+            "part": "icon"
+          },
+          "hidden": {
+            "$ref": "#/state/noIcon"
+          },
           "children": [
             {
               "tagName": "jx-icon",
               "$props": {
-                "name": { "$ref": "#/state/icon" },
-                "weight": { "$ref": "#/state/weight" }
+                "name": {
+                  "$ref": "#/state/icon"
+                },
+                "weight": {
+                  "$ref": "#/state/weight"
+                }
               },
-              "attributes": { "part": "icon-glyph" }
+              "attributes": {
+                "part": "icon-glyph"
+              }
             }
           ]
         },
         {
           "tagName": "span",
-          "attributes": { "part": "label" },
-          "children": [{ "tagName": "slot", "attributes": { "part": "label-slot" } }]
+          "attributes": {
+            "part": "label"
+          },
+          "children": [
+            {
+              "tagName": "slot",
+              "attributes": {
+                "part": "label-slot"
+              }
+            }
+          ]
+        },
+        {
+          "tagName": "span",
+          "attributes": {
+            "part": "badge-slot"
+          },
+          "$switch": {
+            "$ref": "#/state/hasBadge"
+          },
+          "cases": {
+            "true": {
+              "tagName": "span",
+              "attributes": {
+                "part": "badge",
+                "aria-hidden": "true"
+              },
+              "textContent": "${state.badge}"
+            }
+          }
         }
       ]
     }

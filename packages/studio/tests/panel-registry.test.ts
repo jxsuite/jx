@@ -1,3 +1,4 @@
+import { ICON_NAMES } from "@jxsuite/ui/icons";
 import { flush, installMockPlatform, renderInto, resetStudioState } from "./harness";
 import { afterEach, describe, expect, test } from "bun:test";
 import { html } from "lit-html";
@@ -225,7 +226,8 @@ describe("the Navigator's panel set", () => {
   test("every panel declares a level and an icon", () => {
     for (const panel of navigatorPanelSet()) {
       expect(["project", "document"]).toContain(panel.level);
-      expect(panel.icon).toMatch(/^sp-icon-/);
+      // A glyph the kit ships: the rail draws it through jx-icon, whose manifest is the kit's.
+      expect(ICON_NAMES).toContain(panel.icon);
       expect(panel.title.length).toBeGreaterThan(0);
     }
   });

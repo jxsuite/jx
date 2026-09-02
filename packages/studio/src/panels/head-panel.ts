@@ -1281,7 +1281,7 @@ export function registerPagePanel(): void {
     title: "Page",
     level: "document",
     dock: "navigator",
-    icon: "sp-icon-view-all-tags",
+    icon: "file",
     requiresDocument: "Open a page to edit its title, description and social preview.",
     render: (ctx) => {
       const doc = ctx.doc!;

@@ -471,7 +471,7 @@ export function registerActivityPanel(): void {
     title: "Activity",
     level: "project",
     dock: "bottom",
-    icon: "sp-icon-data",
+    icon: "clock-counter-clockwise",
     // No rail button: the Bottom dock's tabs are reached by ⌘J and `view.setBottomTab`, and a
     // Fifth rail slot for a surface with no steady state would spend chrome §2 principle 9 caps.
     rail: false,
