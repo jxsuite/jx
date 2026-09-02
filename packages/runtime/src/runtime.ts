@@ -550,6 +550,26 @@ export function setCanvasDelinkCommands(on: boolean) {
   _canvasDelinkCommands = on;
 }
 
+/**
+ * Raised while a defined element renders its own children, so the canvas de-link reaches them.
+ *
+ * The de-link rules gate on `data-jx-path`, which a document node carries and an element's INTERNAL
+ * node never can: the internals belong to the definition, not to the page being edited, so the
+ * studio's stamper never sees them. Without this a kit element that declares `popover` on a panel
+ * inside itself opens a genuine top-layer popover inside an editable canvas, while Studio's single
+ * writer of open state learns nothing about it.
+ *
+ * A module-scoped flag is sound here because `canvasAttrName` is called once per attribute OUTSIDE
+ * the effect that binds it, and a definition renders its children synchronously — so the flag is
+ * never read across a suspension point.
+ */
+let _canvasInsideStampedHost = false;
+
+/** Whether the node being rendered is inside a stamped host, and so part of the edited page. */
+function canvasStamped(el: HTMLElement): boolean {
+  return _canvasInsideStampedHost || el.dataset.jxPath !== undefined;
+}
+
 /** The attribute name to stamp `key` on `el` under — `href` → `data-jx-href` on de-linked anchors. */
 function canvasAttrName(el: HTMLElement, key: string): string {
   if (_canvasDelinkAnchors && key === "href" && (el.tagName === "A" || el.tagName === "AREA")) {
@@ -559,10 +579,10 @@ function canvasAttrName(el: HTMLElement, key: string): string {
      `renderNode`, and the studio's stamper writes the attribute synchronously inside it. That
      ordering is an unwritten contract between two packages, so `runtime-canvas.test.ts` asserts it
      directly rather than trusting it. */
-  if (_canvasDelinkPopovers && key === "popover" && el.dataset.jxPath !== undefined) {
+  if (_canvasDelinkPopovers && key === "popover" && canvasStamped(el)) {
     return "data-jx-popover";
   }
-  if (_canvasDelinkCommands && el.dataset.jxPath !== undefined) {
+  if (_canvasDelinkCommands && canvasStamped(el)) {
     if (key === "commandfor") {
       return "data-jx-commandfor";
     }
@@ -3961,8 +3981,17 @@ export async function defineElement(source: string | JxDocument, baseUrl?: strin
         bindProperty(this, "textContent", def.textContent, state);
       }
       const children = Array.isArray(def.children) ? def.children : [];
-      for (const childDef of children) {
-        this.append(renderNode(childDef, state));
+      /* An instance the studio stamped is part of the page being edited, so everything the
+         definition draws inside it is too — and the de-link rules cannot see that from the nodes
+         themselves. Restored rather than cleared, because one definition may render another. */
+      const wasInside = _canvasInsideStampedHost;
+      _canvasInsideStampedHost ||= this.dataset.jxPath !== undefined;
+      try {
+        for (const childDef of children) {
+          this.append(renderNode(childDef, state));
+        }
+      } finally {
+        _canvasInsideStampedHost = wasInside;
       }
 
       // Slot distribution (light DOM)

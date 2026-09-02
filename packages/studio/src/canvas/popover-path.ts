@@ -14,6 +14,7 @@
 import { activeTab } from "../workspace/workspace";
 import { getNodeAtPath } from "../state";
 import { documentHasPopover, isPopover } from "@jxsuite/schema/overlays";
+import { INVOKER_TAGS, POPOVER_TAGS } from "@jxsuite/ui";
 import { primarySelection } from "../tabs/selection";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 import type { JxPath } from "../state";
@@ -31,6 +32,13 @@ import type { Tab } from "../tabs/tab";
  * @param path The selected node's path.
  * @returns The popover's path, or null.
  */
+/**
+ * The kit's overlay elements, so one of them on the canvas counts as the popover it is. Their
+ * `popover` attribute lives in the DEFINITION, which the edited document never carries, so without
+ * this an author who drops one on a page could not open it on the canvas at all.
+ */
+const KIT_SCOPE = { invokerTags: INVOKER_TAGS, popoverTags: POPOVER_TAGS };
+
 export function ancestorPopoverPath(
   doc: JxMutableNode | null | undefined,
   path: JxPath | null | undefined,
@@ -41,7 +49,7 @@ export function ancestorPopoverPath(
   for (let end = path.length; end >= 0; end -= 1) {
     const prefix = path.slice(0, end);
     const node = getNodeAtPath(doc, prefix);
-    if (node && typeof node === "object" && isPopover(node)) {
+    if (node && typeof node === "object" && isPopover(node, KIT_SCOPE)) {
       return prefix;
     }
   }
@@ -70,7 +78,7 @@ export function popoverPathFor(tab: Tab, explicit?: JxPath): JxPath | null {
   }
   if (explicit) {
     const node = getNodeAtPath(doc, explicit);
-    return node && typeof node === "object" && isPopover(node) ? explicit : null;
+    return node && typeof node === "object" && isPopover(node, KIT_SCOPE) ? explicit : null;
   }
   return ancestorPopoverPath(doc, primarySelection(tab.session.selection));
 }
@@ -94,5 +102,5 @@ export function popoverPathFor(tab: Tab, explicit?: JxPath): JxPath | null {
  */
 export function activeDocumentHasPopover(): boolean {
   const doc = activeTab.value?.doc.document as JxMutableNode | undefined;
-  return doc ? documentHasPopover(doc) : false;
+  return doc ? documentHasPopover(doc, KIT_SCOPE) : false;
 }

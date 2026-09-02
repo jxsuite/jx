@@ -38,7 +38,7 @@ import {
   walk,
 } from "./overlays.ts";
 
-import type { PopoverPath } from "./overlays.ts";
+import type { OverlayScope, PopoverPath } from "./overlays.ts";
 import type { JxElement, JxStyle } from "../types.ts";
 
 /**
@@ -180,10 +180,10 @@ function hasCloseControl(dialog: JxElement, dialogId: string | null): boolean {
  * @param doc The document to check.
  * @returns The defects, most structural first within each node.
  */
-export function findDialogDefects(doc: JxElement): DialogDefect[] {
-  const visits = [...walk(doc)];
+export function findDialogDefects(doc: JxElement, scope?: OverlayScope): DialogDefect[] {
+  const visits = [...walk(doc, [], null, scope)];
   const dialogIds = dialogIdsIn(doc);
-  const popoverIds = popoverIdsIn(doc);
+  const popoverIds = popoverIdsIn(doc, scope);
   const hasAnyTarget = dialogIds.length > 0 || popoverIds.length > 0;
   const byId = new Map<string, JxElement>();
   const targeted = new Map<string, Set<string>>();
@@ -205,7 +205,7 @@ export function findDialogDefects(doc: JxElement): DialogDefect[] {
 
   const defects: DialogDefect[] = [];
   for (const { node, path } of visits) {
-    defects.push(...invokerDefects(node, path, byId, dialogIds, popoverIds, hasAnyTarget));
+    defects.push(...invokerDefects(node, path, byId, dialogIds, popoverIds, hasAnyTarget, scope));
     if (isDialog(node)) {
       defects.push(...dialogDefects(node, path, targeted));
     }
@@ -221,9 +221,11 @@ function invokerDefects(
   dialogIds: string[],
   popoverIds: string[],
   hasAnyTarget: boolean,
+  scope?: OverlayScope,
 ): DialogDefect[] {
   const out: DialogDefect[] = [];
   const tag = tagOf(node);
+  const forwards = scope?.invokerTags?.has(tag) ?? false;
   const command = literalAttr(node, "command");
   const target = literalAttr(node, "commandfor");
   const carries =
@@ -233,7 +235,7 @@ function invokerDefects(
   }
   const label = labelOf(node, "the element");
 
-  if (!COMMAND_INVOKER_TAGS.has(tag)) {
+  if (!COMMAND_INVOKER_TAGS.has(tag) && !forwards) {
     out.push({
       detail:
         "`command` and `commandfor` are attributes of `HTMLButtonElement` and of no other " +
@@ -294,7 +296,7 @@ function invokerDefects(
           rule: "command-target-mismatch",
           severity: "error",
         });
-      } else if (POPOVER_COMMANDS.has(command) && !isPopover(known)) {
+      } else if (POPOVER_COMMANDS.has(command) && !isPopover(known, scope)) {
         out.push({
           detail:
             `\`${command}\` acts on a popover, and "${target}" is ${targetsDialog ? "a dialog" : `a <${tagOf(known) || "element"}>`} that declares no \`popover\`. ` +

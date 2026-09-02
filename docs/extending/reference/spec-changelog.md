@@ -524,6 +524,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `studio.md`
 
+- **0.10.16-draft** (2026-09-02) — the overlay lints take a custom-element scope (16.6); the canvas de-link reaches a stamped instance's own internals (4.2.2).
 - **0.10.15-draft** (2026-09-02) — the canvas UA-substitute overlay rules are installed wherever the de-link runs, not only in design/edit.
 - **0.10.14-draft** (2026-09-02) — a canvas invoker command aimed at the other kind of overlay is ignored, not thrown (§4.2.3).
 - **0.10.13-draft** (2026-09-02) — 16.6 a Problems key is per finding, so several defects of one rule on one node are several rows.
