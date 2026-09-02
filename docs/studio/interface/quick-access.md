@@ -3,6 +3,7 @@ title: "Quick Access"
 description: "Open any file in your project by name with the Quick Access palette: how to open it, what it searches, and its keyboard controls."
 code:
   - packages/studio/src/panels/quick-search.ts
+  - packages/studio/src/surfaces/palette.json
 ---
 
 # Quick Access
