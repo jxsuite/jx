@@ -222,7 +222,7 @@ Studio reports every one of these mistakes in Problems, beside the popover ones,
 
 ## In Studio
 
-Selecting a popover opens it on the canvas and grows the artboard to fit, whether you select the panel itself or anything inside it, from the canvas or the [Outline](/docs/studio/design/layers). Clicking its trigger opens it too. See **[The canvas](/docs/studio/interface/canvas)** for what the editor does and does not simulate.
+Selecting a popover opens it on the canvas and grows the artboard to fit, whether you select the panel itself or anything inside it, from the canvas or the [Outline](/docs/studio/design/layers). Clicking its trigger opens it too. A dialog behaves the same way, shown in place rather than modally, and a `command` button that targets either one works on the canvas without locking the page. See **[The canvas](/docs/studio/interface/canvas)** for what the editor does and does not simulate.
 
 ## Next
 

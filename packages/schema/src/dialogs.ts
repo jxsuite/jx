@@ -130,6 +130,16 @@ export function dialogIdsIn(doc: JxElement): string[] {
   return ids;
 }
 
+/** Whether the document holds a `<dialog>` at all — what a "show dialog" verb's enablement asks. */
+export function documentHasDialog(doc: JxElement): boolean {
+  for (const { node } of walk(doc)) {
+    if (isDialog(node)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /** Whether a node declares an `oncommand` handler, in any of the handler spellings. */
 function handlesCommand(node: JxElement): boolean {
   const handler = (node as Record<string, unknown>).oncommand;

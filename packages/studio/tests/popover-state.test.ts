@@ -124,9 +124,13 @@ describe("the reveal rule", () => {
    */
   async function loadWithDoubles() {
     const posted: { path: unknown }[] = [];
+    const postedDialogs: { path: unknown }[] = [];
     const revealed: unknown[] = [];
     // `void`: mock.module returns a promise, and the type-aware lint rule wants it acknowledged.
     void mock.module("../src/canvas/iframe-host", () => ({
+      postDialogOpen: (_tab: unknown, path: unknown) => {
+        postedDialogs.push({ path });
+      },
       postPopoverOpen: (_tab: unknown, path: unknown) => {
         posted.push({ path });
       },
@@ -136,7 +140,7 @@ describe("the reveal rule", () => {
       },
     }));
     const mod = await import("../src/canvas/popover-state");
-    return { mod, posted, revealed };
+    return { mod, posted, postedDialogs, revealed };
   }
 
   /** A tab-shaped double: the document, a selection and the `ui` slot the rule writes. */

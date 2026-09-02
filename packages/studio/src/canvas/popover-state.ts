@@ -26,6 +26,7 @@
 
 import { activeTab } from "../workspace/workspace";
 import { ancestorPopoverPath } from "./popover-path";
+import { openDialogFor, reconcileOpenDialog } from "./dialog-state";
 import { effect } from "../reactivity";
 import { postPopoverOpen, revealCanvasPath } from "./iframe-host";
 import { primarySelection } from "../tabs/selection";
@@ -97,6 +98,7 @@ export function revealPathInCanvas(path: JxPath): void {
   const tab = activeTab.value;
   if (tab) {
     openPopoverFor(tab, path);
+    openDialogFor(tab, path);
   }
   void revealCanvasPath(path);
 }
@@ -113,6 +115,8 @@ export function ensurePopoverRevealWatch(): () => void {
   if (!watching) {
     const runner = effect(() => {
       reconcileOpenPopover(activeTab.value);
+      // The dialog rule rides the same effect: one observer of the selection, two overlay kinds.
+      reconcileOpenDialog(activeTab.value);
     });
     watching = {
       stop: () => {

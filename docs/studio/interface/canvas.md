@@ -61,6 +61,8 @@ Two things are therefore **Preview only**: the backdrop behind the panel, and th
 
 Selecting something outside the popover does not close it. Otherwise reaching for a colour in the Inspector would shut the panel you were styling. Close it from the block action bar, or by clicking its trigger again.
 
+A `<dialog>` works the same way. Select it, or anything inside it, and it opens in place with a **DIALOG · SHOWN IN PLACE** mark; a `command="show-modal"` button opens it too, and a `close` button closes it. On the canvas nothing goes modal and nothing goes inert, so the rest of the page stays editable while the dialog is up. Preview shows the dialog as a visitor sees it: modal, over a backdrop, with the page behind it locked. A region you marked `inert` is editable on the canvas for the same reason, and inert again in Preview and on the built page.
+
 :::doc-note
 A popover that lives inside a component stays closed while you are on a page that uses the component. Open the component's own file to edit it, the same rule that makes layout chrome read-only on a page.
 :::

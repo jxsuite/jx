@@ -239,6 +239,7 @@ import { invalidatePageRouteCache, registerInspectorCommands } from "./panels/pr
 import { liveElementCommands, setContextMenuNavigate } from "./editor/context-menu";
 import { registerSeoCommands, renderSeoModal } from "./panels/seo-modal";
 import { ensurePopoverRevealWatch, setOpenPopover } from "./canvas/popover-state";
+import { setOpenDialog } from "./canvas/dialog-state";
 import { registerA11yCommands } from "./services/a11y-report";
 import { registerPopoverCommands } from "./services/popover-report";
 import { registerStyleCommands } from "./panels/style-panel";
@@ -1500,6 +1501,7 @@ registerCanvasViewCommands(commandRegistry, {
   renderPane: renderCanvas,
   setCanvasMode,
   setOpenPopover,
+  setOpenDialog,
   setResolvingOpen: paneContext.setResolvingOpen,
 });
 /* A save moves the working tree under any comparison of that file, and nothing about a

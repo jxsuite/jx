@@ -123,6 +123,7 @@ export function appCommandSet(): AnyCommand[] {
       renderPane: NO_OP,
       setCanvasMode: NO_OP,
       setOpenPopover: NO_OP,
+      setOpenDialog: NO_OP,
       setResolvingOpen: NO_OP,
     }),
     ...diffCommands(),

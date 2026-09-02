@@ -153,11 +153,13 @@ const renderedPanes: string[] = [];
 /** Which pane each rendering-context verb opened or closed the resolving popover for. */
 const resolvingOpened: [string, boolean][] = [];
 const openedPopovers: [string, unknown][] = [];
+const openedDialogs: [string, unknown][] = [];
 const deps = {
   getCanvasMode: () => canvasMode,
   renderPane: (paneId: string) => renderedPanes.push(paneId),
   setCanvasMode,
   setOpenPopover: (tab: Tab, path: unknown) => openedPopovers.push([tab.id, path]),
+  setOpenDialog: (tab: Tab, path: unknown) => openedDialogs.push([tab.id, path]),
   setResolvingOpen: (paneId: string, open: boolean) => resolvingOpened.push([paneId, open]),
 };
 
@@ -186,6 +188,7 @@ beforeEach(() => {
   resetEditWidths();
   renderedPanes.length = 0;
   openedPopovers.length = 0;
+  openedDialogs.length = 0;
   surfaceForPane("primary").panzoomWrap = null;
   ctx = makeContext({ document: { open: true } });
   registry = createCommandRegistry({ getContext: () => ctx });
@@ -227,6 +230,8 @@ describe("the records themselves", () => {
       // Outright and `services/automation.ts` throws on one, so a `togglePopover` could never be
       // Driven from a documentation screenshot — which is exactly the shot this record exists for.
       "canvas.setPopoverOpen",
+      // The dialog twin, for the same reasons.
+      "canvas.setDialogOpen",
       // The route params and component test props live in a popover now, and a transient surface
       // Opens by command rather than by clicking (§13.2) — otherwise the shot that types a test
       // Value would need a CSS selector to reach it.
@@ -900,5 +905,54 @@ describe("canvas.setPopoverOpen", () => {
   test("and refuses when neither an argument nor the selection names one", () => {
     withPopover([["children", 0]]);
     expect(() => registry.run("canvas.setPopoverOpen", {})).toThrow(RangeError);
+  });
+});
+
+describe("canvas.setDialogOpen", () => {
+  /** Give the active tab a document with one dialog and select something inside it. */
+  function withDialog(selection: (string | number)[][] = []) {
+    const tab = activeTab.value!;
+    (tab.doc as { document: unknown }).document = {
+      children: [
+        { attributes: { command: "show-modal", commandfor: "d" }, tagName: "button" },
+        { attributes: { id: "d" }, children: [{ tagName: "p" }], tagName: "dialog" },
+      ],
+      tagName: "div",
+    };
+    tab.session.selection = selection as never;
+    return tab;
+  }
+
+  test("with no argument it opens the dialog the selection is in", () => {
+    const tab = withDialog([["children", 1, "children", 0]]);
+    void registry.run("canvas.setDialogOpen", {});
+    expect(openedDialogs).toEqual([[tab.id, ["children", 1]]]);
+  });
+
+  test("an explicit path opens that one, and open:false with no path closes whatever is open", () => {
+    const tab = withDialog();
+    void registry.run("canvas.setDialogOpen", { path: ["children", 1] });
+    void registry.run("canvas.setDialogOpen", { open: false });
+    expect(openedDialogs).toEqual([
+      [tab.id, ["children", 1]],
+      [tab.id, null],
+    ]);
+  });
+
+  test("it REFUSES a path that is not a dialog, and a selection outside every dialog", () => {
+    withDialog([["children", 0]]);
+    expect(() => registry.run("canvas.setDialogOpen", { path: ["children", 0] })).toThrow(
+      RangeError,
+    );
+    expect(() => registry.run("canvas.setDialogOpen", {})).toThrow(RangeError);
+    expect(openedDialogs).toEqual([]);
+  });
+
+  test("it is enabled only while the document holds a dialog", () => {
+    const tab = activeTab.value!;
+    (tab.doc as { document: unknown }).document = { children: [], tagName: "div" };
+    expect(registry.isEnabled("canvas.setDialogOpen")).toBe(false);
+    withDialog();
+    expect(registry.isEnabled("canvas.setDialogOpen")).toBe(true);
   });
 });

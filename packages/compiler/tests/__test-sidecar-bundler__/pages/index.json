@@ -1,0 +1,23 @@
+{
+  "children": [
+    {
+      "tagName": "p",
+      "textContent": "${state.magic}"
+    },
+    {
+      "tagName": "demo-widget"
+    }
+  ],
+  "state": {
+    "magic": {
+      "$prototype": "Stuff",
+      "timing": "client"
+    },
+    "pgHelper": {
+      "$prototype": "Function",
+      "$src": "./page-helpers.js",
+      "parameters": ["state"]
+    }
+  },
+  "tagName": "main"
+}

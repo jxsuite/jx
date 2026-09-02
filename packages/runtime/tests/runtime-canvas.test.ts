@@ -11,7 +11,9 @@ import {
   setCanvasDelinkPopovers,
   setCanvasViewportTranspose,
   resolveNestedSelector,
+  setCanvasDelinkCommands,
   toCSSText,
+  transposeCanvasOverlaySelector,
   transposeCanvasPopoverSelector,
   transposeCanvasUnits,
 } from "../src/runtime";
@@ -545,6 +547,106 @@ describe("setCanvasDelinkPopovers", () => {
     document.body.append(el);
     applyStyle(el, { ":popover-open": { display: "flex" } });
     expect(elementCSS(el)).toContain(":popover-open");
+  });
+});
+
+describe("setCanvasDelinkCommands", () => {
+  afterEach(() => {
+    setCanvasDelinkCommands(false);
+    setCanvasDelinkPopovers(false);
+    document.body.replaceChildren();
+  });
+
+  function stampedRender(def: Record<string, unknown>): HTMLElement {
+    return renderNode(def as never, reactive({}), {
+      _path: [],
+      onNodeCreated: (n: HTMLElement) => (n.dataset.jxPath = "[]"),
+    } as never) as HTMLElement;
+  }
+
+  test("flag on renames commandfor, inert and a dialog's open on a stamped node", () => {
+    setCanvasDelinkCommands(true);
+    const button = stampedRender({
+      attributes: { command: "show-modal", commandfor: "d" },
+      tagName: "button",
+    });
+    // `command` stays: a button with a command and no target does nothing, which is the point.
+    expect(button.getAttribute("command")).toBe("show-modal");
+    expect(button.getAttribute("commandfor")).toBeNull();
+    expect(button.dataset.jxCommandfor).toBe("d");
+
+    const region = stampedRender({ attributes: { inert: true }, tagName: "section" });
+    expect(region.hasAttribute("inert")).toBe(false);
+    expect(region.dataset.jxInert).toBeDefined();
+
+    const dialog = stampedRender({ attributes: { id: "d", open: true }, tagName: "dialog" });
+    expect(dialog.hasAttribute("open")).toBe(false);
+    expect(dialog.dataset.jxOpen).toBeDefined();
+  });
+
+  test("open on anything but a dialog is content, and stays", () => {
+    setCanvasDelinkCommands(true);
+    const details = stampedRender({ attributes: { open: true }, tagName: "details" });
+    expect(details.hasAttribute("open")).toBe(true);
+    expect(details.dataset.jxOpen).toBeUndefined();
+  });
+
+  test("an UNSTAMPED node keeps its native invoker — a component's own internals", () => {
+    setCanvasDelinkCommands(true);
+    const button = renderNode(
+      { attributes: { command: "show-modal", commandfor: "d" }, tagName: "button" } as never,
+      reactive({}),
+    );
+    expect(button.getAttribute("commandfor")).toBe("d");
+    const dialog = renderNode(
+      { attributes: { open: true }, tagName: "dialog" } as never,
+      reactive({}),
+    );
+    expect(dialog.hasAttribute("open")).toBe(true);
+  });
+
+  test("flag off leaves every one of them alone", () => {
+    const button = stampedRender({
+      attributes: { command: "close", commandfor: "d", inert: true },
+      tagName: "button",
+    });
+    expect(button.getAttribute("commandfor")).toBe("d");
+    expect(button.hasAttribute("inert")).toBe(true);
+  });
+
+  test(":modal transposes to the dialog attribute, and [open] does so only on a dialog", () => {
+    setCanvasDelinkCommands(true);
+    const dialog = document.createElement("dialog");
+    dialog.dataset.jxPath = '["children",0]';
+    document.body.append(dialog);
+    applyStyle(dialog, {
+      "&[open]": { display: "grid" },
+      ":modal": { border: "0" },
+      "::backdrop": { background: "black" },
+    });
+    const dialogCss = elementCSS(dialog);
+    expect(dialogCss).toContain("[data-jx-dialog-open] { display: grid }");
+    expect(dialogCss).toContain("[data-jx-dialog-open] { border: 0 }");
+    expect(dialogCss).not.toContain("[open]");
+    expect(dialogCss).not.toContain("backdrop");
+
+    const details = document.createElement("details");
+    details.dataset.jxPath = '["children",1]';
+    document.body.append(details);
+    applyStyle(details, { "&[open]": { display: "grid" } });
+    expect(elementCSS(details)).toContain("[open] { display: grid }");
+  });
+});
+
+describe("transposeCanvasOverlaySelector", () => {
+  test("substitutes both pseudo-classes, drops a backdrop, and treats [open] as the dialog's only when told", () => {
+    expect(transposeCanvasOverlaySelector("#a:popover-open")).toBe("#a[data-jx-popover-open]");
+    expect(transposeCanvasOverlaySelector("dialog:modal")).toBe("dialog[data-jx-dialog-open]");
+    expect(transposeCanvasOverlaySelector("#d[open]")).toBe("#d[open]");
+    expect(transposeCanvasOverlaySelector("#d[open]", { dialog: true })).toBe(
+      "#d[data-jx-dialog-open]",
+    );
+    expect(transposeCanvasOverlaySelector("#d:modal::backdrop", { dialog: true })).toBeNull();
   });
 });
 

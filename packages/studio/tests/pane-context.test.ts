@@ -170,6 +170,7 @@ function installRegistry(ran: string[]) {
       renderPane: () => {},
       setCanvasMode: () => {},
       setOpenPopover: () => {},
+      setOpenDialog: () => {},
 
       setResolvingOpen: paneContext.setResolvingOpen,
     }).filter((c) =>

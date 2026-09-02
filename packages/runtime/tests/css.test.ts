@@ -65,6 +65,7 @@ describe("the subpath carries what @jxsuite/site/site-style needs", () => {
       "resolveAtQuery",
       "resolveNestedSelector",
       "schemeSelectors",
+      "transposeCanvasOverlaySelector",
       "transposeCanvasPopoverSelector",
     ]);
   });

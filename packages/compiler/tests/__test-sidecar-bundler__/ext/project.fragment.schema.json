@@ -1,0 +1,9 @@
+{
+  "$id": "https://jxsuite.com/schema/ext/test-emitter/project/v1",
+  "properties": {
+    "stuff": {
+      "type": "object"
+    }
+  },
+  "type": "object"
+}

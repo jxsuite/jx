@@ -144,6 +144,8 @@ export type ParentToIframe =
        * every re-render would close the panel the author is editing.
        */
       popoverOpen?: (string | number)[] | null;
+      /** The dialog to draw open after this render, for the same reason. */
+      dialogOpen?: (string | number)[] | null;
       gen: number;
     }
   // Flip the forced color-scheme preview on the iframe root without re-rendering — a document-level
@@ -165,6 +167,14 @@ export type ParentToIframe =
    * the compatibility story `dist/iframe-entry.js` shipping prebuilt requires.
    */
   | { kind: "setPopoverOpen"; path: (string | number)[] | null }
+  /** The `<dialog>` to draw open in place, or none. The dialog twin of `setPopoverOpen`. */
+  | { kind: "setDialogOpen"; path: (string | number)[] | null }
+  /**
+   * Replace a custom element's definition in the frame's realm — the canvas half of
+   * `redefineElement` (embedding.md §7). Instances already on the canvas keep the old definition
+   * until the next render replaces them, which is why the host follows it with a `render`.
+   */
+  | { kind: "redefineElement"; doc: JxMutableNode; base?: string }
   /**
    * Set the language the artboard is drawn in — `lang` and `dir` on the frame's document element.
    *
@@ -666,6 +676,11 @@ export type IframeToParent =
       targetPath: (string | number)[];
       action: "toggle" | "show" | "hide";
     }
+  /**
+   * A click on a `<button command commandfor>` the canvas de-linked: the frame reports the target
+   * and the command, and the host's single writer of open state answers for a popover or a dialog.
+   */
+  | { kind: "commandTargetClick"; targetPath: (string | number)[]; command: string }
   | { kind: "paneFocus" }
   // ─── Preview navigation ─────────────────────────────────────────────────────
   // A link was clicked in PREVIEW mode. Preview keeps anchors live (design/edit de-link them onto

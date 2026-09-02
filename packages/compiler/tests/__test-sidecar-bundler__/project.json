@@ -1,0 +1,12 @@
+{
+  "build": {
+    "format": "directory",
+    "outDir": "./dist"
+  },
+  "extensions": ["./ext"],
+  "name": "Sidecar Fixture",
+  "stuff": {
+    "a": 1,
+    "b": 2
+  }
+}
