@@ -11,9 +11,9 @@
  *    is the SAME basename for a `$map` template, so it read `index.json › index.json`), and knew
  *    nothing about the project above it or the selection below it. It is deleted, and so is the
  *    stack it walked: nothing ever pushed a frame, so it could only ever draw its empty branch.
- * 2. `panels/statusbar.ts`'s selection field — a clickable ancestor trail, `selection.set` per crumb.
- *    It appeared ONLY while something was selected, and knew nothing about the document it was
- *    inside.
+ * 2. `surfaces/statusbar.ts`'s selection field — a clickable ancestor trail, `selection.set` per
+ *    crumb. It appeared ONLY while something was selected, and knew nothing about the document it
+ *    was inside.
  *
  * Between them they never rendered at the same time as each other and never rendered the whole
  * address, so neither one was a place to look. **This bar is the whole chain**, always:
@@ -105,7 +105,7 @@ export interface JumpSegment {
  *
  * Lives here rather than in `statusbar.ts`, where it started: the jump bar is the surface whose
  * whole job is naming the containment chain, and the status bar's DOCUMENT field is a second reader
- * of the same fact. Having the reader own it also kept `mock.module("panels/statusbar")` — which
+ * of the same fact. Having the reader own it also kept `mock.module("surfaces/statusbar")` — which
  * six bootstrap tests do — from deciding whether the jump bar can name a file.
  */
 export function documentLabel(path: string | null): string {

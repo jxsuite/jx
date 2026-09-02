@@ -31,7 +31,7 @@ const HOSTS: [id: string, adopter: string][] = [
   ["bottom-dock", "panels/bottom-dock.ts renders into it"],
   ["resize-right", "ui/panel-resize.ts binds the inspector splitter"],
   ["right-panel", "panels/right-panel.ts renders into it"],
-  ["statusbar", "panels/statusbar.ts renders into it"],
+  ["statusbar", "surfaces/statusbar.ts renders into it"],
   ["layer-popover", "ui/layers.ts appends popover slots"],
   ["layer-modal", "ui/layers.ts appends modal slots"],
   ["layer-dialog", "ui/layers.ts appends dialog slots"],

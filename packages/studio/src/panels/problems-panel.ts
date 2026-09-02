@@ -221,7 +221,7 @@ export function registerProblemsPanel(): void {
     // Grow a per-dock branch in three places to keep one button honest. It also made "Problems" a
     // Standing, first-class element of the shell's furniture — a product whose permanent navigation
     // Advertises a place to find things wrong with it. The count still reaches the user the moment
-    // There is one, from the status bar (`panels/statusbar.ts`), which is where ambient project
+    // There is one, from the status bar (`surfaces/statusbar.ts`), which is where ambient project
     // State already lives beside the branch and the deploy step.
     rail: false,
     // Inert, like every other `rail: false` panel's: `PanelRecord.icon` is required and the manifest

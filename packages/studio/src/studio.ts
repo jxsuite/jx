@@ -90,7 +90,7 @@ import {
 import { runInsertZoneAction } from "./editor/insert-zone-action";
 import { canvasSlashHandler } from "./editor/canvas-slash-bridge";
 import { makeCanvasContextMenuHandler } from "./editor/canvas-context-menu";
-import { mountStatusbar, renderStatusbar } from "./panels/statusbar";
+import { mountStatusbar, renderStatusbar } from "./surfaces/statusbar";
 import { mountJumpBar } from "./panels/jump-bar";
 import { cellForPane } from "./panels/pane-grid";
 import { notify } from "./services/notify";

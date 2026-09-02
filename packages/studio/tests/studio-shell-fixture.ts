@@ -101,7 +101,7 @@ export async function bootStudio(opts: {
     },
   }));
 
-  void mock.module("../src/panels/statusbar.ts", () => ({
+  void mock.module("../src/surfaces/statusbar.ts", () => ({
     forgetSavedTimes: mock(() => {}),
     mountStatusbar: mock(() => {}),
     noteDocumentSaved: mock(() => {}),

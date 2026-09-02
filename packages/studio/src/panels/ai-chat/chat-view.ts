@@ -25,7 +25,7 @@
  * closures this module received and invoked, so the capabilities existed ONLY as buttons: the
  * `Assistant` category held zero records, and nothing could reach them from the palette, a chord,
  * the automation runner or the generated commands sheet. They run {@link commandButton} now, in the
- * idiom `panels/statusbar.ts` established — the record is the definition site, and this file only
+ * idiom `surfaces/statusbar.ts` established — the record is the definition site, and this file only
  * decides where it is drawn.
  *
  * @license MIT
@@ -127,7 +127,7 @@ export interface CommandButtonOptions {
 }
 
 /**
- * One control that IS a command — `panels/statusbar.ts`'s `itemTpl`, for the assistant.
+ * One control that IS a command — `surfaces/statusbar.ts`'s `itemTpl`, for the assistant.
  *
  * A command the registry does not hold, or whose `when` is false, renders NOTHING rather than a
  * dead button; a visible-but-refused one renders disabled with its `requires` sentence in the

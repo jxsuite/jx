@@ -91,7 +91,7 @@ void mock.module("../src/panels/formula-workspace.js", () => ({
   /* The State panel's `formula.openWorkspace` reveals the dock tab instead of repainting. */
   revealLogicPanel: () => {},
 }));
-void mock.module("../src/panels/statusbar.js", () => ({
+void mock.module("../src/surfaces/statusbar.js", () => ({
   forgetSavedTimes: () => {},
   mountStatusbar: () => {},
   noteDocumentSaved: () => {},

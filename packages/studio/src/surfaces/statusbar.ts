@@ -37,13 +37,19 @@
  * is the pane context bar ⑦; a second mode picker in 24px would be the chrome duplication §2
  * principle 9 exists to prevent), the save wording once a document IS saved, and the stylebook
  * selector.
+ *
+ * The bar is the `statusbar` surface (`surfaces/statusbar.json`): this module is the projection —
+ * three fields of items, each item a button with a command or a readout without — and the surface
+ * draws it. The scope is reactive, so one effect recomputes the projection from the state the bar
+ * renders; nothing repaints.
+ *
+ * @docs studio/interface
  */
 
-import { html, render as litRender, nothing } from "lit-html";
 import { projectState, statusbarEl } from "../store";
-import { documentLabel } from "./jump-bar";
+import { documentLabel } from "../panels/jump-bar";
 import { shell } from "../shell";
-import { effect, effectScope } from "../reactivity";
+import { effect, effectScope, reactive } from "../reactivity";
 import { activeTab } from "../workspace/workspace";
 import { EDITOR_KIND_LABELS } from "../commands/context";
 import { activeRegistry } from "../commands/active-registry";
@@ -51,11 +57,16 @@ import { deployStatusItem } from "../publish/deploy-checklist";
 import { collabState } from "../collab/collab-state";
 import { problemCount, problems } from "../services/notify";
 import { now } from "../services/clock";
-import { relativeTime } from "./ai-chat/sessions-view";
+import { relativeTime } from "../panels/ai-chat/sessions-view";
+import { mountSurface, registerSurface } from "../ui/surface";
+import statusbarDoc from "./statusbar.json";
 import type { CommandRegistry } from "../commands/registry";
 import type { EditorKind } from "../commands/context";
 import type { EffectScope } from "@vue/reactivity";
-import type { TemplateResult } from "lit-html";
+import type { JxDocument } from "@jxsuite/schema/types";
+import type { SurfaceHandle } from "../ui/surface";
+
+registerSurface("statusbar", statusbarDoc as unknown as JxDocument);
 
 let _scope: EffectScope | null = null;
 
@@ -93,22 +104,51 @@ interface StatusItem {
   args?: Record<string, unknown>;
 }
 
+/** One item as the surface reads it: a button that runs a command through `run`, or a readout. */
+interface ProjectedItem {
+  /** Unique within the bar; the row's identity and what `run` receives. */
+  key: string;
+  kind: "button" | "state";
+  label: string;
+  title: string;
+  disabled: boolean;
+  /** For a button: what `run` runs. */
+  command: string | null;
+  args: Record<string, unknown> | undefined;
+}
+
+interface ProjectedField {
+  id: string;
+  region: string;
+  items: ProjectedItem[];
+}
+
 /**
- * Render one item.
+ * Project one item.
  *
- * A named command that the registry does not have, or whose `when` is false, renders NOTHING — the
- * item disappears rather than becoming a dead label. That is the whole mechanism by which the bar
- * stays a rendering of the registry instead of a second place capabilities are decided.
+ * A named command that the registry does not have, or whose `when` is false, projects to NOTHING —
+ * the item disappears rather than becoming a dead label. That is the whole mechanism by which the
+ * bar stays a rendering of the registry instead of a second place capabilities are decided.
  */
-function itemTpl(registry: CommandRegistry | null, item: StatusItem) {
+function projectItem(
+  registry: CommandRegistry | null,
+  region: string,
+  item: StatusItem,
+): ProjectedItem | null {
   if (item.command === null) {
-    return html`<span class="sb-item sb-state" title=${item.title ?? item.label}
-      >${item.label}</span
-    >`;
+    return {
+      args: undefined,
+      command: null,
+      disabled: false,
+      key: `${region}:${item.label}`,
+      kind: "state",
+      label: item.label,
+      title: item.title ?? item.label,
+    };
   }
   const id = item.command;
   if (!registry?.get(id) || !registry.isVisible(id)) {
-    return nothing;
+    return null;
   }
   const command = registry.get(id)!;
   const reason = registry.disabledReason(id);
@@ -118,28 +158,31 @@ function itemTpl(registry: CommandRegistry | null, item: StatusItem) {
     : chord
       ? `${command.title} (${chord})`
       : command.title;
-  return html`<button
-    class="sb-item"
-    ?disabled=${reason !== undefined}
-    title=${item.title ? `${item.title} · ${suffix}` : suffix}
-    @click=${() => {
-      void registry.run(id, item.args);
-    }}
-  >
-    ${item.label}
-  </button>`;
+  return {
+    args: item.args,
+    command: id,
+    disabled: reason !== undefined,
+    key: `${region}:${id}`,
+    kind: "button",
+    label: item.label,
+    title: item.title ? `${item.title} · ${suffix}` : suffix,
+  };
 }
 
-/** What {@link itemTpl} returns: a rendered item, or the absence of one. */
-type ItemResult = TemplateResult | typeof nothing;
-
-/** A field, with its region stamp. Renders nothing at all when it has no items. */
-function fieldTpl(region: string, items: readonly ItemResult[]) {
-  const live = items.filter((item): item is TemplateResult => item !== nothing);
+/** A field, with its region. Absent when it has no items. */
+function projectField(
+  registry: CommandRegistry | null,
+  id: string,
+  items: readonly (StatusItem | null)[],
+): ProjectedField | null {
+  const region = `statusbar/${id}`;
+  const live = items
+    .map((item) => (item === null ? null : projectItem(registry, region, item)))
+    .filter((item): item is ProjectedItem => item !== null);
   if (live.length === 0) {
-    return nothing;
+    return null;
   }
-  return html`<div class="sb-field" data-jx-region=${region}>${live}</div>`;
+  return { id, items: live, region };
 }
 
 // ─── ⑫a PROJECT ──────────────────────────────────────────────────────────────
@@ -149,16 +192,16 @@ export function aheadBehindLabel(ahead: number, behind: number): string {
   return `${ahead > 0 ? ` ↑${ahead}` : ""}${behind > 0 ? ` ↓${behind}` : ""}`;
 }
 
-function projectFieldTpl(registry: CommandRegistry | null) {
+function projectField_(registry: CommandRegistry | null): ProjectedField | null {
   const project = projectState;
   const { status } = shell.git;
   const count = problemCount();
   const deploy = deployStatusItem();
   const peers = activeTab.value ? collabState(activeTab.value).peers.length : 0;
-  return fieldTpl("statusbar/project", [
+  return projectField(registry, "project", [
     project
-      ? itemTpl(registry, { command: "project.openRecent", label: project.name })
-      : itemTpl(registry, { command: "project.open", label: "No project" }),
+      ? { command: "project.openRecent", label: project.name }
+      : { command: "project.open", label: "No project" },
     /* WHICH branch, when there is one — and deliberately no "not tracked" twin, though plan §12 P1
        workstream 9's "repo state becomes a persistent status-bar field" reads like a request for
        one. An untracked project already states itself in this field, one item along:
@@ -169,50 +212,38 @@ function projectFieldTpl(registry: CommandRegistry | null) {
        pins the pairing from both ends, so deleting the checklist's repo step fails there rather
        than quietly taking the state off the bar. */
     status?.isRepo === true && status.branch
-      ? itemTpl(registry, {
+      ? {
           command: "panel.focus.git",
           label: `⑂ ${status.branch}${aheadBehindLabel(status.ahead, status.behind)}`,
           title: `${status.files.length} changed file(s)`,
-        })
-      : nothing,
+        }
+      : null,
     // Where the project stands with shipping — ambient state, so it belongs beside the branch and
     // The problem count rather than in a toast. `deployStatusItem` names the NEXT missing step
     // While anything is missing, and the deployment itself once nothing is.
-    deploy
-      ? itemTpl(registry, {
-          command: deploy.command,
-          label: deploy.label,
-          title: deploy.title,
-        })
-      : nothing,
+    deploy ? { command: deploy.command, label: deploy.label, title: deploy.title } : null,
     // `view.setBottomTab`, not `panel.focus.problems`: the latter is generated from the rail
     // Roster, and Problems left the rail. That is the same verb Diff, Logic and Activity are
     // Addressed by — one door per bottom tab — and it is what keeps this readout the ONLY standing
     // Mention of problems in the chrome, which is the point of taking the rail button away.
     count > 0
-      ? itemTpl(registry, {
+      ? {
           args: { tab: "problems" },
           command: "view.setBottomTab",
           label: `⚠ ${count}`,
           title: `${count} problem(s)`,
-        })
-      : nothing,
+        }
+      : null,
     /* `collab.showStatus` — "what is happening in this document?" — because that is the question a
-       peer count raises.
-
-       This said `collab.share` and carried a comment promising the item would "appear the day the
-       `Collaborate:` family lands, with no edit to this file". The family landed, under five ids,
-       and `share` was renamed `collab.setEnabled` on the way (the set*-not-toggle* rule). `itemTpl`
-       renders `nothing` for an id the registry does not have, so the readout was permanently blank
-       and the comment said it was fine. An id is not a stable interface between two files unless
-       something checks it, which is what `tests/statusbar.test.ts` now does. */
+       peer count raises. An id is not a stable interface between two files unless something checks
+       it, which is what `tests/statusbar.test.ts` does. */
     peers > 0
-      ? itemTpl(registry, {
+      ? {
           command: "collab.showStatus",
           label: `${peers} peer${peers === 1 ? "" : "s"}`,
           title: `${peers} peer${peers === 1 ? "" : "s"} in this document`,
-        })
-      : nothing,
+        }
+      : null,
   ]);
 }
 
@@ -253,29 +284,25 @@ function saveItem(dirty: boolean, readOnly: boolean, savedAt: number | undefined
     : { command: null, label: `Saved ${relativeTime(savedAt)}` };
 }
 
-function documentFieldTpl(registry: CommandRegistry | null) {
+function documentField(registry: CommandRegistry | null): ProjectedField | null {
   const tab = activeTab.value;
   if (!tab) {
-    return nothing;
+    return null;
   }
   const ctx = registry?.context() ?? null;
   const view = ctx ? viewLabel(ctx.editor.kind, ctx.canvas.view) : "";
   const collab = collabState(tab);
   const savedAt = tab.documentPath === null ? undefined : _savedAt.get(tab.documentPath);
-  return fieldTpl("statusbar/document", [
-    itemTpl(registry, {
+  return projectField(registry, "document", [
+    {
       command: "palette.openFiles",
       label: documentLabel(tab.documentPath),
       title: tab.documentPath ?? "Not saved to disk yet",
-    }),
+    },
     view
-      ? itemTpl(registry, {
-          command: null,
-          label: view,
-          title: "The pane's view — change it on the pane context bar",
-        })
-      : nothing,
-    itemTpl(registry, saveItem(tab.doc.dirty, collab.readOnly, savedAt)),
+      ? { command: null, label: view, title: "The pane's view — change it on the pane context bar" }
+      : null,
+    saveItem(tab.doc.dirty, collab.readOnly, savedAt),
   ]);
 }
 
@@ -296,49 +323,86 @@ function documentFieldTpl(registry: CommandRegistry | null) {
  * A single selection therefore leaves this field empty. That is deliberate — the jump bar's leaf
  * segment states it permanently, with its ancestors, and a second copy at 11px says nothing new.
  */
-function selectionFieldTpl(registry: CommandRegistry | null) {
+function selectionField(registry: CommandRegistry | null): ProjectedField | null {
   const paths = activeTab.value?.session.selection ?? [];
   if (paths.length > 0) {
     // A document selection owns the field even when it prints nothing: the Stylebook's selector
     // Below would otherwise appear while an element is picked, which is two answers to one question.
     return paths.length > 1
-      ? fieldTpl("statusbar/selection", [
-          itemTpl(registry, {
+      ? projectField(registry, "selection", [
+          {
             command: null,
             label: `${paths.length} selected`,
             title: `${paths.length} elements are selected; the jump bar names the primary`,
-          }),
+          },
         ])
-      : nothing;
+      : null;
   }
   // The stylebook's own selection is a selection: it is what the Style panel is editing, and it is
   // The only thing in this field when no document node is picked.
   return shell.stylebook.selection
-    ? fieldTpl("statusbar/selection", [
-        itemTpl(registry, {
+    ? projectField(registry, "selection", [
+        {
           command: null,
           label: shell.stylebook.selection.replaceAll(" ", " › "),
           title: "The style rule being edited",
-        }),
+        },
       ])
-    : nothing;
+    : null;
 }
 
 // ─── The bar ─────────────────────────────────────────────────────────────────
 
-/** The whole bar, as one template. There is no second variant for the empty states. */
-export function statusbarTemplate() {
+/** The whole bar, as data. There is no second variant for the empty states. */
+function projectBar(): ProjectedField[] {
   const registry = activeRegistry();
-  return html`${projectFieldTpl(registry)}${documentFieldTpl(registry)}${selectionFieldTpl(
-    registry,
-  )}`;
+  return [projectField_(registry), documentField(registry), selectionField(registry)].filter(
+    (field): field is ProjectedField => field !== null,
+  );
 }
 
-/** Paint the bar. Exported because the bootstrap paints once before mounting the effect. */
-export function renderStatusbar(): void {
-  if (statusbarEl) {
-    litRender(statusbarTemplate(), statusbarEl);
+interface StatusbarScope extends Record<string, unknown> {
+  fields: ProjectedField[];
+  run: (key: string) => void;
+}
+
+let _state: StatusbarScope | null = null;
+let _mount: Promise<SurfaceHandle> | null = null;
+let _handle: SurfaceHandle | null = null;
+
+/** The reactive scope the surface reads, made once. */
+function state(): StatusbarScope {
+  _state ??= reactive({
+    fields: [],
+    run: (key: string) => {
+      const item = _state?.fields.flatMap((field) => field.items).find((i) => i.key === key);
+      const registry = activeRegistry();
+      if (item?.command && registry) {
+        void registry.run(item.command, item.args as never);
+      }
+    },
+  }) as StatusbarScope;
+  return _state;
+}
+
+/** Mount the surface into the bar's host, once. */
+function ensureMounted(): void {
+  if (_mount || !statusbarEl) {
+    return;
   }
+  _mount = mountSurface("statusbar", state(), statusbarEl);
+  void _mount.then((handle) => {
+    _handle = handle;
+  });
+}
+
+/**
+ * Recompute the projection; the surface follows. Exported because the bootstrap paints once before
+ * mounting the effect.
+ */
+export function renderStatusbar(): void {
+  state().fields = projectBar();
+  ensureMounted();
 }
 
 /** Subscribe the bar to the state it renders. Idempotent. */
@@ -373,4 +437,13 @@ export function mountStatusbar(): void {
 export function unmountStatusbar(): void {
   _scope?.stop();
   _scope = null;
+  const pending = _mount;
+  _mount = null;
+  if (_handle) {
+    _handle.dispose();
+    _handle = null;
+  } else if (pending) {
+    void pending.then((handle) => handle.dispose());
+  }
+  _state = null;
 }
