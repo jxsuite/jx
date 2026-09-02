@@ -6,9 +6,11 @@
 import type { JxDocument } from "@jxsuite/schema/types";
 import jxActionButton from "../components/jx-action-button.json";
 import jxButton from "../components/jx-button.json";
+import jxDialog from "../components/jx-dialog.json";
 import jxIcon from "../components/jx-icon.json";
 import jxMenu from "../components/jx-menu.json";
 import jxMenuItem from "../components/jx-menu-item.json";
+import jxTextfield from "../components/jx-textfield.json";
 
 /** Tag name → document, in registration order (a document's `$elements` come before it). */
 export const documents: Readonly<Record<string, JxDocument>> = {
@@ -17,6 +19,8 @@ export const documents: Readonly<Record<string, JxDocument>> = {
   "jx-action-button": jxActionButton as unknown as JxDocument,
   "jx-menu-item": jxMenuItem as unknown as JxDocument,
   "jx-menu": jxMenu as unknown as JxDocument,
+  "jx-textfield": jxTextfield as unknown as JxDocument,
+  "jx-dialog": jxDialog as unknown as JxDocument,
 };
 
 /** Every tag the kit defines. */

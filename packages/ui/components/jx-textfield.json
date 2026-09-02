@@ -1,0 +1,332 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "JxTextfield",
+  "tagName": "jx-textfield",
+  "observedAttributes": [
+    "value",
+    "placeholder",
+    "type",
+    "label",
+    "invalid",
+    "disabled",
+    "readonly",
+    "required",
+    "mono",
+    "multiline",
+    "size",
+    "name",
+    "autocomplete",
+    "error",
+    "help"
+  ],
+  "state": {
+    "value": {
+      "type": "string",
+      "default": "",
+      "attribute": "value",
+      "description": "The field's text. Written by the reader as they type, and by the host; a write equal to what is there never moves the caret."
+    },
+    "placeholder": {
+      "type": "string",
+      "default": "",
+      "attribute": "placeholder",
+      "description": "Shown while the field is empty. Not a label."
+    },
+    "type": {
+      "type": "string",
+      "default": "text",
+      "attribute": "type",
+      "description": "The native input type: text, search, email, url, password, number or tel."
+    },
+    "label": {
+      "type": "string",
+      "default": "",
+      "attribute": "label",
+      "description": "The accessible name, forwarded to the control as aria-label. Required unless a visible label points at the control."
+    },
+    "invalid": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "invalid",
+      "description": "The value is refused: the control says aria-invalid and draws in the danger colour."
+    },
+    "disabled": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "disabled",
+      "description": "Cannot be edited or focused."
+    },
+    "readonly": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "readonly",
+      "description": "Can be focused and selected, not edited."
+    },
+    "required": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "required",
+      "description": "Forwarded to the control, for the form it sits in."
+    },
+    "mono": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "mono",
+      "description": "Draws the value in the monospace face: a path, a selector, a colour."
+    },
+    "multiline": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "multiline",
+      "description": "A textarea rather than an input."
+    },
+    "size": {
+      "type": "string",
+      "default": "md",
+      "attribute": "size",
+      "description": "sm, md or lg. The control height is the kit's, so a row of controls lines up."
+    },
+    "name": {
+      "type": "string",
+      "default": "",
+      "attribute": "name",
+      "description": "The form field name, forwarded to the control."
+    },
+    "autocomplete": {
+      "type": "string",
+      "default": "",
+      "attribute": "autocomplete",
+      "description": "The autocomplete purpose, forwarded to the control."
+    },
+    "error": {
+      "type": "string",
+      "default": "",
+      "attribute": "error",
+      "description": "The sentence explaining a refused value, drawn under the field and announced as it changes."
+    },
+    "help": {
+      "type": "string",
+      "default": "",
+      "attribute": "help",
+      "description": "A sentence of guidance under the field."
+    },
+    "hasError": {
+      "$expression": {
+        "operator": "!==",
+        "target": {
+          "$ref": "#/state/error"
+        },
+        "value": ""
+      }
+    },
+    "hasHelp": {
+      "$expression": {
+        "operator": "!==",
+        "target": {
+          "$ref": "#/state/help"
+        },
+        "value": ""
+      }
+    },
+    "onInput": {
+      "$prototype": "Function",
+      "body": [
+        {
+          "operator": "=",
+          "target": {
+            "$ref": "#/state/value"
+          },
+          "value": {
+            "$ref": "event#/target/value"
+          }
+        }
+      ],
+      "description": "Mirrors what the reader types into value. The native input and change events bubble from the control as they always do."
+    }
+  },
+  "attributes": {
+    "data-size": "${state.size}",
+    "data-invalid": "${state.invalid ? '' : null}",
+    "data-mono": "${state.mono ? '' : null}",
+    "data-disabled": "${state.disabled ? '' : null}"
+  },
+  "style": {
+    "display": "inline-flex",
+    "flexDirection": "column",
+    "gap": "var(--jx-space-1)",
+    "verticalAlign": "middle",
+    "minWidth": "0",
+    "&[hidden]": {
+      "display": "none"
+    },
+    "& [part=\"input\"]": {
+      "appearance": "none",
+      "boxSizing": "border-box",
+      "width": "100%",
+      "minHeight": "var(--jx-control-h)",
+      "margin": "0",
+      "padding": "0 var(--jx-space-3)",
+      "border": "1px solid var(--jx-border-strong)",
+      "borderRadius": "var(--jx-radius-sm)",
+      "background": "var(--jx-bg-input)",
+      "color": "var(--jx-fg)",
+      "font": "inherit",
+      "fontFamily": "var(--jx-font-sans)",
+      "fontSize": "var(--jx-text-md)",
+      "lineHeight": "var(--jx-leading-md)",
+      "outline": "none",
+      "transition": "border-color var(--jx-dur-1) var(--jx-ease-out)",
+      "::placeholder": {
+        "color": "var(--jx-fg-muted)"
+      },
+      ":hover": {
+        "borderColor": "var(--jx-fg-muted)"
+      },
+      ":focus-visible": {
+        "outline": "var(--jx-focus-ring)",
+        "outlineOffset": "-1px"
+      },
+      ":disabled": {
+        "opacity": "0.5",
+        "cursor": "default"
+      }
+    },
+    "& textarea[part=\"input\"]": {
+      "minHeight": "calc(var(--jx-control-h) * 3)",
+      "padding": "var(--jx-space-2) var(--jx-space-3)",
+      "resize": "vertical"
+    },
+    "&[data-mono] [part=\"input\"]": {
+      "fontFamily": "var(--jx-font-mono)"
+    },
+    "&[data-invalid] [part=\"input\"]": {
+      "borderColor": "var(--jx-danger)"
+    },
+    "&[data-size=\"sm\"] [part=\"input\"]": {
+      "minHeight": "calc(var(--jx-control-h) - 4px)",
+      "fontSize": "var(--jx-text-sm)",
+      "padding": "0 var(--jx-space-2)"
+    },
+    "&[data-size=\"lg\"] [part=\"input\"]": {
+      "minHeight": "calc(var(--jx-control-h) + 8px)",
+      "fontSize": "var(--jx-text-lg)"
+    },
+    "& [part=\"error\"], & [part=\"help\"]": {
+      "margin": "0",
+      "fontSize": "var(--jx-text-sm)",
+      "lineHeight": "var(--jx-leading-sm)",
+      "color": "var(--jx-fg-dim)"
+    },
+    "& [part=\"error\"]": {
+      "color": "var(--jx-danger)"
+    },
+    "& > [part=\"control-slot\"], & > [part=\"error-slot\"], & > [part=\"help-slot\"]": {
+      "display": "contents"
+    }
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "attributes": {
+        "role": "none",
+        "part": "control-slot"
+      },
+      "$switch": {
+        "$ref": "#/state/multiline"
+      },
+      "cases": {
+        "false": {
+          "tagName": "input",
+          "attributes": {
+            "part": "input",
+            "type": "${state.type}",
+            "placeholder": "${state.placeholder || null}",
+            "aria-label": "${state.label || null}",
+            "aria-invalid": "${state.invalid ? 'true' : null}",
+            "name": "${state.name || null}",
+            "autocomplete": "${state.autocomplete || null}",
+            "disabled": {
+              "$ref": "#/state/disabled"
+            },
+            "readonly": {
+              "$ref": "#/state/readonly"
+            },
+            "required": {
+              "$ref": "#/state/required"
+            }
+          },
+          "value": {
+            "$ref": "#/state/value"
+          },
+          "oninput": {
+            "$ref": "#/state/onInput"
+          }
+        },
+        "true": {
+          "tagName": "textarea",
+          "attributes": {
+            "part": "input",
+            "placeholder": "${state.placeholder || null}",
+            "aria-label": "${state.label || null}",
+            "aria-invalid": "${state.invalid ? 'true' : null}",
+            "name": "${state.name || null}",
+            "disabled": {
+              "$ref": "#/state/disabled"
+            },
+            "readonly": {
+              "$ref": "#/state/readonly"
+            },
+            "required": {
+              "$ref": "#/state/required"
+            }
+          },
+          "value": {
+            "$ref": "#/state/value"
+          },
+          "oninput": {
+            "$ref": "#/state/onInput"
+          }
+        }
+      }
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "role": "none",
+        "part": "error-slot"
+      },
+      "$switch": {
+        "$ref": "#/state/hasError"
+      },
+      "cases": {
+        "true": {
+          "tagName": "p",
+          "attributes": {
+            "part": "error",
+            "aria-live": "polite"
+          },
+          "textContent": "${state.error}"
+        }
+      }
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "role": "none",
+        "part": "help-slot"
+      },
+      "$switch": {
+        "$ref": "#/state/hasHelp"
+      },
+      "cases": {
+        "true": {
+          "tagName": "p",
+          "attributes": {
+            "part": "help"
+          },
+          "textContent": "${state.help}"
+        }
+      }
+    }
+  ]
+}

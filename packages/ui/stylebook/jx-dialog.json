@@ -1,0 +1,186 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StylebookDialog",
+  "tagName": "main",
+  "$elements": [
+    {
+      "$ref": "../components/jx-icon.json"
+    },
+    {
+      "$ref": "../components/jx-button.json"
+    },
+    {
+      "$ref": "../components/jx-dialog.json"
+    }
+  ],
+  "state": {},
+  "style": {
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "color": "var(--jx-fg)",
+    "background": "var(--jx-bg)",
+    "padding": "var(--jx-space-6)",
+    "minHeight": "100vh",
+    "& > h1": {
+      "fontSize": "var(--jx-text-lg)",
+      "fontWeight": "600",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& > p": {
+      "color": "var(--jx-fg-dim)",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& [role=\"group\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-3)",
+      "margin": "0 0 var(--jx-space-4)"
+    },
+    "& [role=\"group\"] > span": {
+      "width": "80px",
+      "color": "var(--jx-fg-muted)",
+      "fontSize": "var(--jx-text-sm)"
+    }
+  },
+  "children": [
+    {
+      "tagName": "h1",
+      "textContent": "jx-dialog"
+    },
+    {
+      "tagName": "p",
+      "textContent": "A native dialog opened modally. Each button below aims a --show command at its dialog, which is how a page opens one with no script; Escape cancels, and only the dismissible one closes on a click outside."
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "role": "group",
+        "aria-label": "Openers"
+      },
+      "children": [
+        {
+          "tagName": "jx-button",
+          "$props": {
+            "variant": "accent",
+            "command": "--show",
+            "commandfor": "confirm-demo"
+          },
+          "children": [
+            {
+              "tagName": "span",
+              "textContent": "Confirm\u2026"
+            }
+          ]
+        },
+        {
+          "tagName": "jx-button",
+          "$props": {
+            "command": "--show",
+            "commandfor": "destructive-demo"
+          },
+          "children": [
+            {
+              "tagName": "span",
+              "textContent": "Delete\u2026"
+            }
+          ]
+        },
+        {
+          "tagName": "jx-button",
+          "$props": {
+            "command": "--show",
+            "commandfor": "three-demo"
+          },
+          "children": [
+            {
+              "tagName": "span",
+              "textContent": "Save or discard\u2026"
+            }
+          ]
+        },
+        {
+          "tagName": "jx-button",
+          "$props": {
+            "command": "--show",
+            "commandfor": "dismissible-demo"
+          },
+          "children": [
+            {
+              "tagName": "span",
+              "textContent": "Dismissible\u2026"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tagName": "jx-dialog",
+      "attributes": {
+        "id": "confirm-demo"
+      },
+      "$props": {
+        "headline": "Publish the site?",
+        "confirmLabel": "Publish"
+      },
+      "children": [
+        {
+          "tagName": "p",
+          "textContent": "Every page is built and uploaded. Nothing else changes."
+        }
+      ]
+    },
+    {
+      "tagName": "jx-dialog",
+      "attributes": {
+        "id": "destructive-demo"
+      },
+      "$props": {
+        "headline": "Delete about.md?",
+        "confirmLabel": "Delete",
+        "destructive": true
+      },
+      "children": [
+        {
+          "tagName": "p",
+          "textContent": "The file is removed from the project. This cannot be undone."
+        }
+      ]
+    },
+    {
+      "tagName": "jx-dialog",
+      "attributes": {
+        "id": "three-demo"
+      },
+      "$props": {
+        "headline": "Save changes to index.json?",
+        "confirmLabel": "Save",
+        "secondaryLabel": "Discard",
+        "size": "md"
+      },
+      "children": [
+        {
+          "tagName": "p",
+          "textContent": "Your changes are lost if you close without saving."
+        }
+      ]
+    },
+    {
+      "tagName": "jx-dialog",
+      "attributes": {
+        "id": "dismissible-demo"
+      },
+      "$props": {
+        "headline": "About this kit",
+        "confirmLabel": "",
+        "cancelLabel": "Close",
+        "dismissible": true
+      },
+      "children": [
+        {
+          "tagName": "p",
+          "textContent": "A dialog with nothing to answer: click outside it, press Escape, or close it."
+        }
+      ]
+    }
+  ]
+}

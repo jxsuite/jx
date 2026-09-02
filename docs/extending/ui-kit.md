@@ -82,6 +82,38 @@ The list of shipped glyphs is `icons/list.json` in the package. Add a name there
 
 It is `quiet` by default. `emphasized` draws the selected state in the accent. `stacked` puts the icon above a visible label, the shape of a rail button. A button that opens a menu rather than running a command sets `haspopup` and `expanded`, which reach the control as `aria-haspopup` and `aria-expanded`. `badge` draws a count over the button's corner, and nothing when empty.
 
+## Text fields
+
+`jx-textfield` wraps one native `<input>`, or with `multiline` a `<textarea>`, so the platform's own editing, form participation and keyboard work through it. `label` is its accessible name and reaches the control as `aria-label`; give one unless a visible label points at the control. `value` is written by whoever types and by the host, and a write equal to what is already there never moves the caret.
+
+```json
+{
+  "tagName": "jx-textfield",
+  "$props": {
+    "label": "Layout name",
+    "placeholder": "Untitled",
+    "value": { "$ref": "#/state/name" }
+  }
+}
+```
+
+The native `input` and `change` events bubble from the field as they always do. `invalid` marks a refused value and reaches the control as `aria-invalid`; `error` draws the sentence explaining it under the field and announces it as it changes; `help` draws a sentence of guidance. `type` is any text-like input type, `size` is `sm`, `md` or `lg`, and `mono` draws the value in the monospace face for a path, a selector or a colour. `name`, `autocomplete`, `disabled`, `readonly` and `required` forward to the control. To focus the field and select its value from a host, call `selectValue(host, "all" | "stem" | "none")` or `focusField(host)` from `@jxsuite/ui/behaviors/textfield`.
+
+## Dialogs
+
+`jx-dialog` is a native `<dialog>` opened modally, so the platform makes the rest of the page inert, answers Escape, and puts focus back where it was when the dialog closes. `headline` is its title and its accessible name; the body is whatever you put inside it. The buttons come from the labels: `confirm-label` (`OK` unless you say otherwise), `cancel-label` (`Cancel`), and `secondary-label` for a third answer such as Discard. An empty label removes that button.
+
+```json
+{
+  "tagName": "jx-dialog",
+  "attributes": { "id": "delete-page" },
+  "$props": { "headline": "Delete this page?", "confirmLabel": "Delete", "destructive": true },
+  "children": [{ "tagName": "p", "textContent": "The file is removed from the project." }]
+}
+```
+
+Open it from a button with no script: `{ "tagName": "jx-button", "$props": { "command": "--show", "commandfor": "delete-page" } }`. A `--close` command closes it. From code, call `showModal(host)` and `close(host)` from `@jxsuite/ui/behaviors/dialog`. The dialog dispatches `confirm`, `secondary` and `cancel` for its buttons and `close` when it has closed for any reason; after `confirm` it stays open until the host closes it, so a value the host refuses can keep the dialog up with its message. `destructive` draws the primary button in the negative variant. `dismissible` lets a click outside the dialog close it; Escape always does. `size` is `sm`, `md` or `lg`.
+
 ## Show a menu
 
 A menu is a native popover. Give it a name and a viewport position, fill it with rows, and show it with the platform's own call:
