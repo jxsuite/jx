@@ -128,6 +128,32 @@ describe("jx-dialog", () => {
     expect(inner(el).open).toBe(false);
   });
 
+  test("Enter never lands on a destructive action: focus goes to confirm, or to cancel when it destroys", async () => {
+    /*
+     * `showModal()` focuses the first focusable descendant unless something claims `autofocus`, and
+     * the footer's DOM order is secondary, cancel, confirm — so an unclaimed save-or-discard dialog
+     * opened with focus on DISCARD, and a reader answering the way people answer dialogs, with
+     * Enter, threw their work away. Measured in Chrome 152 before this attribute existed.
+     */
+    const saveOrDiscard = await dialog({
+      "cancel-label": "Cancel",
+      "confirm-label": "Save",
+      headline: "Unsaved changes",
+      "secondary-label": "Discard",
+    });
+    expect(buttonIn(saveOrDiscard, "confirm")?.hasAttribute("autofocus")).toBe(true);
+    expect(buttonIn(saveOrDiscard, "cancel")?.hasAttribute("autofocus")).toBe(false);
+
+    // A destructive primary hands it to the safe answer instead.
+    const destructive = await dialog({
+      "confirm-label": "Delete",
+      destructive: "",
+      headline: "Delete page?",
+    });
+    expect(buttonIn(destructive, "confirm")?.hasAttribute("autofocus")).toBe(false);
+    expect(buttonIn(destructive, "cancel")?.hasAttribute("autofocus")).toBe(true);
+  });
+
   test("destructive draws the primary action in the negative variant; size and empty labels", async () => {
     const el = await dialog({
       destructive: "",

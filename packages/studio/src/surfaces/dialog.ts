@@ -130,6 +130,14 @@ export function whenReady(element: HTMLElement): Promise<HTMLElement> {
  */
 export function openDialogSurface(options: DialogSurfaceOptions): DialogSurfaceHandle {
   const slot = document.createElement("div");
+  /* The layer is `pointer-events: none` so a click passes through it to the app when nothing is
+     up, and every slot in it turns them back on for its own content. `pointer-events` INHERITS,
+     and the top layer changes paint order rather than inheritance, so a modal `<dialog>` in a slot
+     that skipped this is painted above everything and hit-tests to nothing: the reader sees the
+     dialog, and the mouse goes straight through it to the page behind. The keyboard still works,
+     which is what makes it easy to miss — and a synthetic `.click()` bypasses hit-testing, which
+     is what makes it easy to miss in a test too. */
+  slot.style.pointerEvents = "auto";
   slot.setAttribute(REGION_ATTR, overlayRegion("dialog", options.region));
   options.layer.append(slot);
 

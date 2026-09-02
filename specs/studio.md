@@ -2,7 +2,7 @@
 
 ## Visual Builder for Jx Documents
 
-**Version:** 0.10.8-draft\
+**Version:** 0.10.9-draft\
 **Status:** Partial\
 **Updated:** 2026-09-02\
 **License:** MIT
@@ -234,6 +234,8 @@ Two things do NOT rescue this, and both are the intuitive answer: `container-typ
 **Which popover is open is per-tab view state, and exactly one.** It writes nothing to the document, takes no undo entry, does not replicate over collaboration, and is not restored with a session. `canvas.setPopoverOpen` is the single verb — a setter rather than a toggle, because §13.3 clause 3 requires a command to name the state it ends in, and a toggle could never drive a documentation screenshot. Three surfaces are renderings of it: the block action bar, the Style tab's selector segment (§6.2), and the trigger's own click in the canvas, which the frame reports because de-popovering removed the browser's invoker activation — leaving exactly one writer of open state instead of a race between the platform and the editor.
 
 **Selecting reveals.** A selection at or inside a popover opens it, from whichever surface made the selection — the canvas, the Outline, quick search, a Problem, or an undo. The rule is asymmetric on purpose: selecting outside every popover does NOT close the open one, because reaching a colour swatch in the Inspector is a selection change and a panel that shut on every one could never be styled.
+
+**A selection MOVE is what fires it, and an explicit close stays closed.** The rule observes the selection; it does not observe which overlay is open, and it must not, because it writes that. An implementation whose reveal effect also tracks the open state closes and reopens in one turn: the close lands, the effect re-runs on its own write, finds the selection still at or inside the panel, and opens it straight back. That defeats both of the explicit closes above — the action-bar control on a popover the reader has selected into, and a close button INSIDE a dialog, which is the ordinary shape of one. The two are indistinguishable from a control that does nothing.
 
 Three exclusions, all consequences of the `data-jx-path` gate rather than special cases: a popover rendered inside a component's own template stays native (the studio cannot address it); a layout popover stays native while a page is open and becomes editable when the layout itself is; and `<dialog>` is refused, because its UA rules key off `open` rather than `popover`.
 
@@ -1819,6 +1821,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.10.9-draft** (2026-09-02) — A selection move fires the reveal rule, and an explicit close stays closed: the rule must not observe the open state it writes (§4.2.2).
 - **0.10.8-draft** (2026-09-02) — Dialogs, invoker commands and inert on the canvas: de-linked on stamped nodes, one open dialog per tab, canvas.setDialogOpen and the commandTargetClick report (§4.2.3).
 - **0.10.7-draft** (2026-09-02) — §1, §2 self-hosting and §11 name the UI kit; §11.2 states the shell's unsafe-eval requirement.
 - **0.10.6-draft** (2026-09-01) — Change review: node-level diff marks on both artboards, a change stepper, a code comparison for every changed file, and revalidation after a save.
@@ -1936,4 +1939,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_`@jxsuite/studio` Specification v0.10.8-draft_
+_`@jxsuite/studio` Specification v0.10.9-draft_
