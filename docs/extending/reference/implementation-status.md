@@ -18,6 +18,7 @@ This page is generated from the `> **Status: …**` markers in the specification
 | `collab.md`               | 0.2.5-draft  | Partial     | 2026-08-20 |
 | `compiler.md`             | 0.4.3-draft  | Partial     | 2026-09-01 |
 | `desktop.md`              | 0.4.9-draft  | Pending     | 2026-08-31 |
+| `embedding.md`            | 0.1.0-draft  | Partial     | 2026-09-02 |
 | `extensions.md`           | 0.4.3-draft  | Partial     | 2026-08-31 |
 | `imports.md`              | 0.1.10-draft | Partial     | 2026-08-27 |
 | `jx-markdown.md`          | 0.1.10-draft | Partial     | 2026-08-31 |
@@ -26,7 +27,7 @@ This page is generated from the `> **Status: …**` markers in the specification
 | `schema.md`               | 0.4.8-draft  | Partial     | 2026-08-16 |
 | `server.md`               | 0.2.23       | Implemented | 2026-08-31 |
 | `site-architecture.md`    | 0.6.10-draft | Partial     | 2026-08-29 |
-| `spec.md`                 | 0.6.0-draft  | Partial     | 2026-09-01 |
+| `spec.md`                 | 0.6.1-draft  | Partial     | 2026-09-02 |
 | `standards.md`            | 0.1.15-draft | Partial     | 2026-08-17 |
 | `studio-ui-guidelines.md` | 0.3.16       | Implemented | 2026-08-27 |
 | `studio.md`               | 0.10.6-draft | Partial     | 2026-09-01 |
@@ -39,6 +40,7 @@ This page is generated from the `> **Status: …**` markers in the specification
 - `compiler.md` §3 — Output Tiers
 - `desktop.md` §10 — SaaS / Cloud Mode
 - `desktop.md` §10.2 — Storage Backend
+- `embedding.md` §1 — Overview
 - `parser.md` §3 — `Markdown` — the markdown format class
 - `site-architecture.md` §9.4 — Studio Media Browser
 - `site-architecture.md` §13 — Internationalization
@@ -59,6 +61,7 @@ This page is generated from the `> **Status: …**` markers in the specification
 ### Pending
 
 - `desktop.md` §4.3 — Single File Mode
+- `embedding.md` §7 — Redefinition
 - `site-architecture.md` §12.3 — Incremental Builds
 
 ### Removed

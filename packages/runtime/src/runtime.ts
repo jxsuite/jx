@@ -33,7 +33,16 @@ import {
 } from "./css.ts";
 import { evaluateExpression, evaluateOperand, isMutating } from "./expression.ts";
 import { readPath } from "./pointer.ts";
-import type { DynamicClass, JxEventHandler, JxPath, JxRenderOptions, JxScope } from "./types.ts";
+import type {
+  DynamicClass,
+  JxContext,
+  JxEventHandler,
+  JxMount,
+  JxMountOptions,
+  JxPath,
+  JxRenderOptions,
+  JxScope,
+} from "./types.ts";
 import {
   bodyReturnsValue,
   hasStructuredBody,
@@ -117,11 +126,76 @@ export async function Jx(
       ? new URL(source, location.href).href
       : location.href;
   const doc = await resolve(source);
+
+  /* The module-level fallback is still written here, on purpose: a component defined LATER with
+     `@--name` blocks and no own `$media` reads it (setRootMedia). `mount()` never writes it — a
+     mount's `$media` travels in its context, which is the whole point of having one. */
+  if (doc.$media) {
+    _rootMedia = doc.$media;
+  }
+
+  const mounted = await mount(doc, target, {
+    base,
+    ...(options?.onNodeCreated ? { onNodeCreated: options.onNodeCreated } : {}),
+    ...(options?.signal ? { signal: options.signal } : {}),
+  });
+  return mounted.scope;
+}
+
+/** Host-scope keys the runtime owns: `$media`, `$map`, the `$`-locals and `#`-private entries. */
+const HOST_SCOPE_RESERVED = /^[$#]/;
+
+function assertHostScope(scope: Record<string, unknown>): void {
+  for (const key of Object.keys(scope)) {
+    if (HOST_SCOPE_RESERVED.test(key)) {
+      throw new TypeError(
+        `Jx mount: host scope key "${key}" is reserved — names beginning with "$" or "#" are ` +
+          `runtime vocabulary`,
+      );
+    }
+  }
+}
+
+/**
+ * Mount a document into a host-owned node and hand back the live scope with a disposer.
+ *
+ * This is the embedding contract (specs/embedding.md): the host supplies its own reactive records
+ * and functions as `options.scope`, a per-mount base, `$media` and document resolver, and gets a
+ * root it can remove and a `dispose()` that stops every effect the render created. Nothing here
+ * writes a module global, so a shell can hold many roots with different needs at once.
+ *
+ * @param {JxDocument} doc - The document to render (already an object; use {@link resolve} for a
+ *   URL)
+ * @param {ParentNode} target - Where the rendered root is appended
+ * @param {JxMountOptions} [options]
+ * @returns {Promise<JxMount>}
+ * @docs extending/embedding/runtime-host
+ */
+export async function mount(
+  doc: JxDocument,
+  target: ParentNode,
+  options: JxMountOptions = {},
+): Promise<JxMount> {
+  const hostScope = options.scope ?? {};
+  assertHostScope(hostScope);
+  const base = options.base ? new URL(options.base, location.href).href : location.href;
+  const ctx: JxContext = {
+    base,
+    media: options.media ?? doc.$media ?? null,
+    root: null,
+    ...(options.resolver ? { resolver: options.resolver } : {}),
+    ...(options.skipServerFunctions === undefined
+      ? {}
+      : { skipServerFunctions: options.skipServerFunctions }),
+    ...(options.skipAutoRequests === undefined
+      ? {}
+      : { skipAutoRequests: options.skipAutoRequests }),
+  };
   checkSchemaVersion(doc.$schema);
 
   // Register custom elements declared in $elements (depth-first)
   if (doc.$elements) {
-    await registerElements(doc.$elements, base);
+    await registerElements(doc.$elements, base, ctx);
   }
 
   // Inject <head> elements declared in $head (link, meta, script, etc.)
@@ -129,25 +203,84 @@ export async function Jx(
     injectHead(doc.$head, base);
   }
 
-  if (doc.$media) {
-    _rootMedia = doc.$media;
-  }
+  const scope = await buildScope(doc, hostScope, base, ctx);
 
-  const state = await buildScope(doc, {}, base);
-  target.append(renderNode(doc, state, options));
-  if (typeof state.onMount === "function") {
-    (state.onMount as (s: JxScope) => unknown)(state);
+  const elements = new Set<string>();
+  const renderOptions: JxRenderOptions = {
+    _ctx: ctx,
+    onNodeCreated: (el, path, def, state) => {
+      if (el instanceof Element && el.tagName.includes("-")) {
+        elements.add(el.tagName.toLowerCase());
+      }
+      options.onNodeCreated?.(el, path, def, state);
+    },
+  };
+  const { result: root, stop } = runScoped(() => renderNode(doc, scope, renderOptions));
+  ctx.root = root;
+
+  let mounted = false;
+  let disposed = false;
+  const dispose = (): void => {
+    if (disposed) {
+      return;
+    }
+    disposed = true;
+    options.signal?.removeEventListener("abort", dispose);
+    stop();
+    if (mounted && typeof scope.onUnmount === "function") {
+      (scope.onUnmount as (s: JxScope) => unknown)(scope);
+    }
+    root.remove();
+  };
+
+  if (options.signal?.aborted) {
+    // Aborted before it could be attached: tear the effects down and attach nothing.
+    dispose();
+  } else {
+    options.signal?.addEventListener("abort", dispose, { once: true });
+    target.append(root);
+    mounted = true;
+    if (typeof scope.onMount === "function") {
+      (scope.onMount as (s: JxScope) => unknown)(scope);
+    }
   }
-  return state;
+  return { scope, root, elements, dispose };
 }
 
 // ─── Step 1: Resolve ──────────────────────────────────────────────────────────
 
 const _resolveCache = new Map<string, Promise<JxDocument>>();
 
-export async function resolve(source: string | JxDocument): Promise<JxDocument> {
+/**
+ * Seed the resolve cache with a document a host already holds, under the URL its references use.
+ *
+ * A bundled document — one imported as JSON rather than fetched — still names its dependencies by
+ * URL: an `$elements` entry, a `$switch` case. Preloading those under the same URLs lets every such
+ * reference resolve with no network, and lets `defineElement("<url>")` dedupe on the source it
+ * would otherwise have fetched. The key is stored as given and, when it parses as a URL, in its
+ * absolute form too, because the two lookup paths spell it differently.
+ *
+ * @param {string} url - The URL the document is known by
+ * @param {JxDocument} doc
+ */
+export function preloadDocument(url: string, doc: JxDocument): void {
+  const settled = Promise.resolve(doc);
+  _resolveCache.set(url, settled);
+  try {
+    _resolveCache.set(new URL(url, location.href).href, settled);
+  } catch {
+    // Not a URL at all — the raw key still serves the lookup that uses it.
+  }
+}
+
+export async function resolve(source: string | JxDocument, ctx?: JxContext): Promise<JxDocument> {
   if (typeof source !== "string") {
     return source;
+  }
+  // A mount's resolver answers for THIS mount and its hit never enters the shared cache.
+  const served = ctx?.resolver?.(source);
+  if (served) {
+    return served;
   }
   if (_resolveCache.has(source)) {
     return _resolveCache.get(source)!;
@@ -562,13 +695,17 @@ function boundPropKey(key: string, val: unknown, state: JxScope): string | null 
  * @param {JxDocument} doc
  * @param {JxScope} [parentScope] Default is `{}`
  * @param {string} [base] Base URL for resolving $src imports. Default is `location.href`
+ * @param {JxContext} [ctx] The mount context; absent on the legacy direct path
  * @returns {Promise<JxScope>} Reactive proxy (state)
  */
 export async function buildScope(
   doc: JxDocument,
   parentScope: JxScope = {},
   base: string = location.href,
+  ctx?: JxContext,
 ) {
+  // A body run without an event dispatches from the mount's root, read when it fires.
+  const dispatchRoot = (): EventTarget | null => ctx?.root ?? null;
   const raw: JxScope = {};
 
   // Merge parent scope properties
@@ -699,11 +836,11 @@ export async function buildScope(
                 ? p.default
                 : argValues[i];
           }
-          return runStatements(body, state, null, { args });
+          return runStatements(body, state, null, { args, target: dispatchRoot });
         };
       } else {
         const handler: JxEventHandler = (s, event) => {
-          void runStatements(body, s, event ?? null);
+          void runStatements(body, s, event ?? null, { target: dispatchRoot });
         };
         state[key] = handler;
       }
@@ -715,12 +852,12 @@ export async function buildScope(
   // Fourth pass: other $prototype entries (Request, Set, Map, etc.)
   for (const [key, def] of Object.entries(defs)) {
     if (isPrototypeDef(def)) {
-      state[key] = await resolvePrototype(def, state, key, base);
+      state[key] = await resolvePrototype(def, state, key, base, ctx);
     }
   }
 
   // Fifth pass: timing: "server" entries (dev mode — execute client-side, boundary unenforced)
-  if (!_serverFnConfig.skip) {
+  if (!(ctx?.skipServerFunctions ?? _serverFnConfig.skip)) {
     for (const [key, def] of Object.entries(defs)) {
       if (isServerFnDef(def)) {
         state[key] = await resolveServerFunction(def, state, key, base);
@@ -728,10 +865,11 @@ export async function buildScope(
     }
   }
 
+  const rootMedia = ctx?.media ?? _rootMedia;
   if (doc.$media) {
     state["$media"] = doc.$media;
-  } else if (!state["$media"] && Object.keys(_rootMedia).length > 0) {
-    state["$media"] = _rootMedia;
+  } else if (!state["$media"] && Object.keys(rootMedia).length > 0) {
+    state["$media"] = rootMedia;
   }
 
   return state;
@@ -852,6 +990,19 @@ interface ExternalClassInstance {
 
 /** Module cache for $src imports (shared with external class resolution). */
 const _moduleCache = new Map<string, ImportedModule>();
+
+/**
+ * Seed the `$src` module cache with a module the host already imported, under the specifier the
+ * document spells. A bundled document cannot have its sidecar fetched by URL — the bundler saw
+ * neither the string nor the file — so the host imports the sidecar itself and registers it here,
+ * and `$src` then resolves exactly as it would have from the network.
+ *
+ * @param {string} specifier - The `$src` value as written in the document
+ * @param {Record<string, unknown>} mod - The imported module namespace
+ */
+export function preloadModule(specifier: string, mod: Record<string, unknown>): void {
+  _moduleCache.set(specifier, mod as ImportedModule);
+}
 
 /**
  * Resolve a $prototype: "Function" entry into a function or computed.
@@ -1254,6 +1405,13 @@ function bindProperty(el: HTMLElement, key: string, val: unknown, state: JxScope
     const node = el as unknown as Element;
     if (key === "className" && !(node instanceof HTMLElement)) {
       node.setAttribute("class", resolved == null ? "" : String(resolved));
+      return;
+    }
+    /* An equal write is skipped. A binding re-runs whenever anything it read changes, not only
+       when its own result does, and re-setting `value` on a focused control is not free: it can
+       move the caret and collapse the selection. A control that already holds the value has
+       nothing to learn from being told again. */
+    if (target[key] === resolved) {
       return;
     }
     target[key] = resolved;
@@ -2143,13 +2301,14 @@ function renderSwitch(def: JxElement, state: JxScope, options?: JxRenderOptions)
       // External $ref — fetch and render asynchronously
       generation += 1;
       const gen = generation;
-      const { href } = new URL(caseDef.$ref, location.href);
-      resolve(href)
+      // A case resolves against the mount's base, so a bundled document need not live at the page URL.
+      const { href } = new URL(caseDef.$ref, options?._ctx?.base ?? location.href);
+      resolve(href, options?._ctx)
         .then(async (doc) => {
           if (gen !== generation) {
             return;
           }
-          const childScope = await buildScope(doc, {}, href);
+          const childScope = await buildScope(doc, {}, href, options?._ctx);
           if (gen !== generation) {
             return;
           }
@@ -2189,6 +2348,7 @@ export async function resolvePrototype(
   state: JxScope,
   key: string,
   base?: string,
+  ctx?: JxContext,
 ) {
   // ── External class via $src ─────────────────────────────────────────────────
   if (def.$src) {
@@ -2201,7 +2361,7 @@ export async function resolvePrototype(
       const debounceMs = def.debounce ?? 0;
       let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
-      if (!def.manual && !_autoRequestConfig.skip) {
+      if (!def.manual && !(ctx?.skipAutoRequests ?? _autoRequestConfig.skip)) {
         effect(() => {
           let url: string | undefined;
           if (isTemplateString(def.url)) {
@@ -3118,7 +3278,11 @@ export function setRootMedia(map: Record<string, string>): void {
  * @param {string} base
  * @returns {Promise<void>}
  */
-async function registerElements(elements: NonNullable<JxDocument["$elements"]>, base: string) {
+async function registerElements(
+  elements: NonNullable<JxDocument["$elements"]>,
+  base: string,
+  ctx?: JxContext,
+) {
   for (const entry of elements) {
     // Bare string: npm package side-effect import (registers custom elements)
     if (typeof entry === "string") {
@@ -3137,7 +3301,7 @@ async function registerElements(elements: NonNullable<JxDocument["$elements"]>, 
       continue;
     }
     const { href } = new URL(entry.$ref, base);
-    const doc = await resolve(href);
+    const doc = await resolve(href, ctx);
     if (!doc.tagName || !doc.tagName.includes("-")) {
       continue;
     }
@@ -3147,7 +3311,7 @@ async function registerElements(elements: NonNullable<JxDocument["$elements"]>, 
 
     // Depth-first: register sub-dependencies first
     if (doc.$elements) {
-      await registerElements(doc.$elements, href);
+      await registerElements(doc.$elements, href, ctx);
     }
 
     await defineElement(doc, href);
@@ -3269,7 +3433,8 @@ export async function defineElement(source: string | JxDocument, baseUrl?: strin
       }
       this._jxInitialized = true;
 
-      const state = await buildScope(def, {}, base);
+      // The element is its own dispatch root: a body run without an event emits from the host.
+      const state = await buildScope(def, {}, base, { base, media: null, root: this });
 
       // Read properties from the data-jx-props payload the site build writes on a
       // Non-static instance, so an upgrade re-renders with the authored props, not the defaults.

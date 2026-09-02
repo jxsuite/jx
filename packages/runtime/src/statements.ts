@@ -24,8 +24,12 @@ import type { JxScope } from "./types.ts";
 interface RunOpts {
   /** Named-formula-style arguments bound for $args/<name> refs in the body. */
   args?: Record<string, unknown>;
-  /** Dispatch target for dispatchEvent statements; defaults to event?.currentTarget. */
-  target?: EventTarget | null;
+  /**
+   * Dispatch target for dispatchEvent statements when there is no event to read `currentTarget`
+   * from — a parameterised body invoked through `call`, or a lifecycle hook. A thunk is read at
+   * dispatch time, because a mount's root does not exist yet when its scope is built.
+   */
+  target?: EventTarget | null | (() => EventTarget | null);
 }
 
 function statementKind(statement: JxStatement): "expression" | "if" | "switch" | "dispatch" {
@@ -91,7 +95,9 @@ export async function runStatements(
           bubbles?: boolean;
           composed?: boolean;
         };
-        const target = opts.target ?? event?.currentTarget;
+        // An event's own target wins; the option is the fallback for bodies run without one.
+        const fallback = typeof opts.target === "function" ? opts.target() : opts.target;
+        const target = event?.currentTarget ?? fallback;
         if (!target) {
           break;
         }
