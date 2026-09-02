@@ -387,7 +387,7 @@ describe("the bootstrap's saveDocument hook", () => {
       render: mock(() => {}),
       unmount: mock(() => {}),
     }));
-    void mock.module("../src/panels/welcome-screen.ts", () => ({
+    void mock.module("../src/surfaces/welcome.ts", () => ({
       initWelcome: mock(() => {}),
       renderWelcome: mock(() => {}),
     }));

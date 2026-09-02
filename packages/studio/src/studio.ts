@@ -228,7 +228,7 @@ import {
   settingsSettled,
   watchRemoteSettings,
 } from "./services/settings/kernel";
-import { initWelcome } from "./panels/welcome-screen";
+import { initWelcome } from "./surfaces/welcome";
 import {
   openAddRepoModal,
   openProjectPickerModal,

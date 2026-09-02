@@ -63,7 +63,7 @@ import {
   commitBufferWrites,
 } from "../services/monaco-buffer";
 import { diffModelUrisFor, modelUriFor, monacoLangForPath } from "../services/model-uri";
-import { renderWelcome } from "../panels/welcome-screen";
+import { renderWelcome } from "../surfaces/welcome";
 import { renderEmptyState } from "../panels/empty-state";
 import {
   attachDocumentHeaderHost,

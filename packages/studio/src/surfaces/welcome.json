@@ -1,0 +1,393 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioWelcome",
+  "$description": "The Start pane, shown when no project is loaded and no document is open. The adapter hands in the start actions, whether the GitHub App still needs installing, the recent projects with their distinguishing folders and last-opened labels, and the platform's catalogue; the document draws them in the order a first run needs them.",
+  "tagName": "div",
+  "attributes": { "part": "screen" },
+  "style": {
+    "width": "100%",
+    "height": "100%",
+    "display": "flex",
+    "alignItems": "flex-start",
+    "justifyContent": "center",
+    "paddingTop": "10vh",
+    "overflowY": "auto",
+    "boxSizing": "border-box",
+    "fontFamily": "var(--jx-font-sans)",
+    "color": "var(--jx-fg)",
+    "& > [part=\"content\"]": {
+      "maxWidth": "560px",
+      "width": "100%",
+      "padding": "0 var(--jx-space-6) var(--jx-space-7)",
+      "boxSizing": "border-box"
+    },
+    "& [part=\"title\"]": {
+      "fontSize": "28px",
+      "fontWeight": "300",
+      "letterSpacing": "-0.5px",
+      "margin": "0",
+      "color": "var(--jx-fg)"
+    },
+    "& [part=\"subtitle\"]": {
+      "fontSize": "var(--jx-text-lg)",
+      "color": "var(--jx-fg-dim)",
+      "margin": "2px 0 0"
+    },
+    "& [part=\"section\"]": { "marginTop": "28px" },
+    "& [part=\"section-title\"]": {
+      "fontSize": "var(--jx-text-md)",
+      "fontWeight": "600",
+      "color": "var(--jx-fg)",
+      "margin": "0 0 var(--jx-space-3)",
+      "textTransform": "uppercase",
+      "letterSpacing": "0.3px"
+    },
+    "& [part=\"section-header\"]": {
+      "display": "flex",
+      "alignItems": "baseline",
+      "justifyContent": "space-between",
+      "gap": "var(--jx-space-4)"
+    },
+    "& [part=\"actions\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "alignItems": "stretch",
+      "gap": "2px"
+    },
+    "& [part=\"actions\"] jx-button > [part=\"control\"]": {
+      "justifyContent": "flex-start",
+      "textAlign": "left",
+      "color": "var(--jx-accent)"
+    },
+    "& [part=\"link\"]": {
+      "display": "inline-flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-2)",
+      "minHeight": "var(--jx-control-h)",
+      "padding": "0 var(--jx-space-3)",
+      "borderRadius": "var(--jx-radius-sm)",
+      "color": "var(--jx-accent)",
+      "textDecoration": "none",
+      ":hover": { "background": "var(--jx-hover-bg)" },
+      ":focus-visible": { "outline": "var(--jx-focus-ring)", "outlineOffset": "2px" }
+    },
+    "& [part=\"note\"]": {
+      "margin": "var(--jx-space-2) var(--jx-space-3) 0",
+      "fontSize": "var(--jx-text-md)",
+      "color": "var(--jx-fg-dim)"
+    },
+    "& [part=\"list\"]": { "listStyle": "none", "margin": "0", "padding": "0" },
+    "& [part=\"row\"]": { "display": "flex", "alignItems": "center" },
+    "& [part=\"recent\"]": {
+      "flex": "1",
+      "minWidth": "0",
+      "display": "grid",
+      "gridTemplateColumns": "auto 1fr auto",
+      "alignItems": "baseline",
+      "gap": "var(--jx-space-4)",
+      "padding": "5px var(--jx-space-3)",
+      "margin": "0",
+      "background": "none",
+      "border": "none",
+      "borderRadius": "var(--jx-radius-sm)",
+      "font": "inherit",
+      "fontSize": "var(--jx-text-lg)",
+      "color": "var(--jx-fg)",
+      "cursor": "pointer",
+      "textAlign": "left",
+      ":hover": { "background": "var(--jx-hover-bg)" },
+      ":focus-visible": { "outline": "var(--jx-focus-ring)", "outlineOffset": "-2px" }
+    },
+    "& [part=\"name\"]": {
+      "color": "var(--jx-accent)",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap"
+    },
+    "& [part=\"path\"]": {
+      "color": "var(--jx-fg-dim)",
+      "fontSize": "var(--jx-text-md)",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap"
+    },
+    "& [part=\"when\"]": {
+      "color": "var(--jx-fg-dim)",
+      "fontSize": "var(--jx-text-md)",
+      "whiteSpace": "nowrap"
+    },
+    "& [part=\"remove\"]": { "flexShrink": "0", "opacity": "0" },
+    "& [part=\"row\"]:hover [part=\"remove\"], & [part=\"remove\"]:focus-within": { "opacity": "1" }
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "attributes": { "part": "content" },
+      "children": [
+        { "tagName": "h1", "attributes": { "part": "title" }, "textContent": "Jx Studio" },
+        {
+          "tagName": "p",
+          "attributes": { "part": "subtitle" },
+          "textContent": "Design, build, and publish websites"
+        },
+        {
+          "tagName": "section",
+          "attributes": { "part": "section" },
+          "children": [
+            { "tagName": "h2", "attributes": { "part": "section-title" }, "textContent": "Start" },
+            {
+              "tagName": "div",
+              "attributes": { "part": "actions" },
+              "children": [
+                {
+                  "$prototype": "Array",
+                  "items": { "$ref": "#/state/actions" },
+                  "key": { "$ref": "$map/item/id" },
+                  "map": {
+                    "tagName": "jx-button",
+                    "$props": { "quiet": true },
+                    "attributes": { "part": "action", "data-action": "${$map.item.id}" },
+                    "onclick": {
+                      "$prototype": "Function",
+                      "body": [
+                        {
+                          "operator": "call",
+                          "target": { "$ref": "#/state/run" },
+                          "value": [{ "$ref": "$map/item/id" }]
+                        }
+                      ]
+                    },
+                    "children": [
+                      {
+                        "tagName": "jx-icon",
+                        "attributes": { "slot": "icon" },
+                        "$props": { "name": { "$ref": "$map/item/icon" } }
+                      },
+                      { "tagName": "span", "textContent": "${$map.item.title}" }
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "tagName": "div",
+          "attributes": { "part": "install-slot" },
+          "style": { "display": "contents" },
+          "$switch": { "$ref": "#/state/installNeeded" },
+          "cases": {
+            "true": {
+              "tagName": "section",
+              "attributes": { "part": "section" },
+              "children": [
+                {
+                  "tagName": "h2",
+                  "attributes": { "part": "section-title" },
+                  "textContent": "Repository access"
+                },
+                {
+                  "tagName": "div",
+                  "attributes": { "part": "actions" },
+                  "children": [
+                    {
+                      "tagName": "a",
+                      "attributes": {
+                        "part": "link",
+                        "href": "${state.installUrl}",
+                        "target": "_blank",
+                        "rel": "noreferrer"
+                      },
+                      "children": [
+                        { "tagName": "jx-icon", "$props": { "name": "link" } },
+                        { "tagName": "span", "textContent": "Install the Jx Suite GitHub App" }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "tagName": "p",
+                  "attributes": { "part": "note" },
+                  "textContent": "Grants repository access so you can create and open projects — choose “All repositories”."
+                }
+              ]
+            }
+          }
+        },
+        {
+          "tagName": "div",
+          "attributes": { "part": "recent-slot" },
+          "style": { "display": "contents" },
+          "$switch": { "$ref": "#/state/hasRecent" },
+          "cases": {
+            "true": {
+              "tagName": "section",
+              "attributes": { "part": "section" },
+              "children": [
+                {
+                  "tagName": "div",
+                  "attributes": { "part": "section-header" },
+                  "children": [
+                    {
+                      "tagName": "h2",
+                      "attributes": { "part": "section-title" },
+                      "textContent": "Recent"
+                    },
+                    {
+                      "tagName": "jx-button",
+                      "$props": { "quiet": true, "size": "sm" },
+                      "attributes": { "part": "clear" },
+                      "onclick": {
+                        "$prototype": "Function",
+                        "body": [{ "operator": "call", "target": { "$ref": "#/state/clear" } }]
+                      },
+                      "children": [{ "tagName": "span", "textContent": "Clear all" }]
+                    }
+                  ]
+                },
+                {
+                  "tagName": "ul",
+                  "attributes": { "part": "list" },
+                  "children": [
+                    {
+                      "$prototype": "Array",
+                      "items": { "$ref": "#/state/recent" },
+                      "key": { "$ref": "$map/item/root" },
+                      "map": {
+                        "tagName": "li",
+                        "attributes": { "part": "row" },
+                        "children": [
+                          {
+                            "tagName": "button",
+                            "attributes": {
+                              "part": "recent",
+                              "type": "button",
+                              "title": "${$map.item.root}"
+                            },
+                            "onclick": {
+                              "$prototype": "Function",
+                              "body": [
+                                {
+                                  "operator": "call",
+                                  "target": { "$ref": "#/state/open" },
+                                  "value": [{ "$ref": "$map/item/root" }]
+                                }
+                              ]
+                            },
+                            "children": [
+                              {
+                                "tagName": "span",
+                                "attributes": { "part": "name" },
+                                "textContent": "${$map.item.name}"
+                              },
+                              {
+                                "tagName": "span",
+                                "attributes": { "part": "path" },
+                                "textContent": "${$map.item.location}"
+                              },
+                              {
+                                "tagName": "span",
+                                "attributes": { "part": "when" },
+                                "textContent": "${$map.item.when}"
+                              }
+                            ]
+                          },
+                          {
+                            "tagName": "jx-action-button",
+                            "$props": {
+                              "icon": "x",
+                              "size": "sm",
+                              "label": "Remove ${$map.item.name} from Recent"
+                            },
+                            "attributes": { "part": "remove" },
+                            "onclick": {
+                              "$prototype": "Function",
+                              "body": [
+                                {
+                                  "operator": "call",
+                                  "target": { "$ref": "#/state/remove" },
+                                  "value": [{ "$ref": "$map/item/root" }]
+                                }
+                              ]
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "tagName": "div",
+          "attributes": { "part": "catalogue-slot" },
+          "style": { "display": "contents" },
+          "$switch": { "$ref": "#/state/hasCatalogue" },
+          "cases": {
+            "true": {
+              "tagName": "section",
+              "attributes": { "part": "section" },
+              "children": [
+                {
+                  "tagName": "h2",
+                  "attributes": { "part": "section-title" },
+                  "textContent": "Projects"
+                },
+                {
+                  "tagName": "ul",
+                  "attributes": { "part": "list" },
+                  "children": [
+                    {
+                      "$prototype": "Array",
+                      "items": { "$ref": "#/state/catalogue" },
+                      "key": { "$ref": "$map/item/root" },
+                      "map": {
+                        "tagName": "li",
+                        "attributes": { "part": "row" },
+                        "children": [
+                          {
+                            "tagName": "button",
+                            "attributes": {
+                              "part": "recent",
+                              "data-catalogue": "",
+                              "type": "button",
+                              "title": "${$map.item.root}"
+                            },
+                            "onclick": {
+                              "$prototype": "Function",
+                              "body": [
+                                {
+                                  "operator": "call",
+                                  "target": { "$ref": "#/state/open" },
+                                  "value": [{ "$ref": "$map/item/root" }]
+                                }
+                              ]
+                            },
+                            "children": [
+                              {
+                                "tagName": "span",
+                                "attributes": { "part": "name" },
+                                "textContent": "${$map.item.name}"
+                              },
+                              {
+                                "tagName": "span",
+                                "attributes": { "part": "path" },
+                                "textContent": "${$map.item.detail}"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

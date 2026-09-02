@@ -74,7 +74,7 @@ void mock.module("../src/canvas/iframe-host.js", () => ({
   releaseCanvasHosts: () => 0,
   setToolbarRefresh: () => {},
 }));
-void mock.module("../src/panels/welcome-screen.js", () => ({
+void mock.module("../src/surfaces/welcome.js", () => ({
   initWelcome: () => {},
   renderWelcome: () => {},
 }));

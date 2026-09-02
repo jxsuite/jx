@@ -321,7 +321,7 @@ void mock.module("../src/canvas/iframe-host.js", () => ({
   setToolbarRefresh: () => {},
 }));
 
-void mock.module("../src/panels/welcome-screen.js", () => ({
+void mock.module("../src/surfaces/welcome.js", () => ({
   initWelcome: () => {},
   renderWelcome,
 }));

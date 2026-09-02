@@ -177,7 +177,7 @@ void mock.module("../src/panels/pane-context.ts", () => ({
   unmount: mock(() => {}),
 }));
 
-void mock.module("../src/panels/welcome-screen.ts", () => ({
+void mock.module("../src/surfaces/welcome.ts", () => ({
   initWelcome: (ctx: unknown) => {
     welcomeCtx = ctx;
   },
