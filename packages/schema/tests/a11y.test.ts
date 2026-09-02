@@ -113,6 +113,95 @@ describe("interactive-unnamed", () => {
     ).toEqual(Array.from({ length: 5 }, () => "interactive-unnamed"));
   });
 
+  test("a bound id/for pair is a label the rule cannot read, so it stays silent", () => {
+    /*
+     * `<label for="row-${index}">` beside `<input id="row-${index}">` is the only correct way to
+     * label a field inside a repeater, and both halves are templates. Read literally, the id
+     * resolves to the sentinel and the `for` never enters the set, so the one correct form was the
+     * one reported — at `error` severity, which fails `jx validate --strict` on a good document.
+     */
+    expect(
+      rules({
+        children: {
+          $prototype: "Array",
+          items: { $ref: "#/state/rows" },
+          map: {
+            children: [
+              { attributes: { for: "row-${$map.index}" }, children: ["Name"], tagName: "label" },
+              { attributes: { id: "row-${$map.index}" }, tagName: "input" },
+            ],
+            tagName: "li",
+          },
+        },
+        tagName: "ul",
+      } as unknown as JxElement),
+    ).toEqual([]);
+    // The flat form too, and a bound `for` alone is enough to make the pairing unreadable.
+    expect(
+      rules(
+        doc([
+          { attributes: { for: "field-${state.uid}" }, children: ["Name"], tagName: "label" },
+          { attributes: { id: "field-${state.uid}" }, tagName: "input" },
+        ]),
+      ),
+    ).toEqual([]);
+    // …and a document with no bound labelling at all still reports a genuinely unlabelled field.
+    expect(rules(doc([{ tagName: "input" }]))).toEqual(["interactive-unnamed"]);
+  });
+
+  test("a redundant role on a native control still consults the native labelling routes", () => {
+    /*
+     * A role on a native control is legal, and `role="combobox"` on an `<input>` is what the ARIA
+     * Authoring Practices prescribe. The role branch used to answer before `<label for>` was ever
+     * consulted, so the APG combobox — and a `role="slider"` range, and a `role="spinbutton"`
+     * number with a placeholder — were all reported while carrying a perfectly good name.
+     */
+    expect(
+      rules(
+        doc([
+          { attributes: { for: "q" }, children: ["Search"], tagName: "label" },
+          {
+            attributes: {
+              "aria-controls": "lb",
+              "aria-expanded": "false",
+              id: "q",
+              role: "combobox",
+            },
+            tagName: "input",
+          },
+          { attributes: { "aria-label": "Results", id: "lb", role: "listbox" }, tagName: "ul" },
+        ]),
+      ),
+    ).toEqual([]);
+    expect(
+      rules(
+        doc([
+          {
+            children: [
+              "Find",
+              { attributes: { role: "searchbox", type: "search" }, tagName: "input" },
+            ],
+            tagName: "label",
+          },
+        ]),
+      ),
+    ).toEqual([]);
+    expect(
+      rules(
+        doc([
+          {
+            attributes: { placeholder: "Qty", role: "spinbutton", type: "number" },
+            tagName: "input",
+          },
+        ]),
+      ),
+    ).toEqual([]);
+    // The role branch still speaks for an element the native routes do not cover.
+    expect(rules(doc([{ attributes: { role: "textbox" }, tagName: "div" }]))).toEqual([
+      "interactive-unnamed",
+    ]);
+  });
+
   test("a role that must be labelled is not named by content, and an unknown role is not judged", () => {
     expect(
       rules(doc([{ attributes: { role: "textbox" }, children: ["x"], tagName: "div" }])),
