@@ -9,7 +9,7 @@ code:
   - packages/studio/src/panels/right-panel.ts
   - packages/studio/src/panels/jump-bar.ts
   - packages/studio/src/panels/bottom-dock.ts
-  - packages/studio/src/panels/statusbar.ts
+  - packages/studio/src/surfaces/statusbar.ts
 ---
 
 # A tour of Jx Studio

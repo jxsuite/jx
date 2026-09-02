@@ -98,7 +98,7 @@ void mock.module("../src/panels/formula-workspace.js", () => ({
   revealLogicPanel: () => {},
 }));
 
-void mock.module("../src/panels/statusbar.js", () => ({
+void mock.module("../src/surfaces/statusbar.js", () => ({
   forgetSavedTimes: () => {},
   mountStatusbar: () => {},
   noteDocumentSaved: () => {},

@@ -21,7 +21,7 @@ import { loadMediaUsages } from "./media-usage";
 import { showConfirmDialog } from "../ui/layers";
 import { locateDocument } from "../services/code-services";
 import { errorMessage } from "@jxsuite/schema/parse";
-import { noteDocumentSaved } from "../panels/statusbar";
+import { noteDocumentSaved } from "../surfaces/statusbar";
 import { notify } from "../services/notify";
 import { validateComponentSlots } from "../services/cem-export";
 import { reportPopoverProblems } from "../services/popover-report";

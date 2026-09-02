@@ -12,7 +12,7 @@ import { mountShellTree } from "../src/shell/tree";
 import { html } from "lit-html";
 import * as leftPanelModule from "../src/panels/left-panel";
 import * as rightPanelModule from "../src/panels/right-panel";
-import { mountStatusbar, renderStatusbar, unmountStatusbar } from "../src/panels/statusbar";
+import { mountStatusbar, renderStatusbar, unmountStatusbar } from "../src/surfaces/statusbar";
 import { initShellRefs, leftPanel, rightPanel } from "../src/store";
 import { closeAllTabs } from "../src/workspace/workspace";
 import { view } from "../src/view";
@@ -202,10 +202,12 @@ describe("inspector/tab:<value>", () => {
 // ─── statusbar/selection ──────────────────────────────────────────────────────
 
 describe("statusbar/selection", () => {
-  test("the selection field is its own region, and absent when nothing is selected", () => {
+  test("the selection field is its own region, and absent when nothing is selected", async () => {
     const tab = resetWorkspaceWithTab();
     mountStatusbar();
     renderStatusbar();
+    await flush();
+    await flush();
     expect(resolveRegion("statusbar/selection")).toBeNull();
 
     // A BATCH: since region ⑥ took the ancestor trail, a single selection leaves this field empty
@@ -215,16 +217,19 @@ describe("statusbar/selection", () => {
       ["children", 1],
     ];
     renderStatusbar();
+    await flush();
     const field = resolveRegion("statusbar/selection");
     expect(field).not.toBeNull();
     expect(field!.textContent).toContain("2 selected");
     expect(resolveRegion("statusbar")!.contains(field)).toBe(true);
   });
 
-  test("the three fields are separate regions, and PROJECT is not inside SELECTION", () => {
+  test("the three fields are separate regions, and PROJECT is not inside SELECTION", async () => {
     resetWorkspaceWithTab();
     mountStatusbar();
     renderStatusbar();
+    await flush();
+    await flush();
     // Transient messages left the bar entirely for the toast host, so the only thing that can
     // Appear beside the selection is another FIELD — and each is addressable on its own. With no
     // Registry composed, every COMMAND item is absent and only the readouts survive, which is the

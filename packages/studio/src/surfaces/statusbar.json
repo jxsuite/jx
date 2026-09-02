@@ -1,0 +1,94 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioStatusbar",
+  "$description": "The status bar: ambient state in the shell's level order, PROJECT then DOCUMENT then SELECTION. The adapter hands in `fields`, each with its region and its items; an item with a command is a button that runs it through `run`, and an item without one is a readout. Nothing here decides what the bar says.",
+  "tagName": "div",
+  "attributes": { "part": "bar" },
+  "style": {
+    "display": "flex",
+    "alignItems": "stretch",
+    "flex": "1",
+    "minWidth": "0",
+    "& > [part=\"field\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "2px",
+      "minWidth": "0",
+      "padding": "0 var(--jx-space-3)"
+    },
+    "& > [part=\"field\"]:last-child": { "overflow": "hidden" },
+    "& > [part=\"field\"] + [part=\"field\"]": { "borderLeft": "1px solid var(--jx-border)" },
+    "& [part=\"item\"], & [part=\"state\"]": {
+      "maxWidth": "32ch",
+      "overflow": "hidden",
+      "margin": "0",
+      "padding": "0 var(--jx-space-2)",
+      "border": "none",
+      "borderRadius": "var(--jx-radius-xs)",
+      "background": "transparent",
+      "color": "inherit",
+      "font": "inherit",
+      "lineHeight": "1",
+      "whiteSpace": "nowrap",
+      "textOverflow": "ellipsis"
+    },
+    "& [part=\"item\"]": {
+      "cursor": "pointer",
+      ":hover:not(:disabled)": { "color": "var(--jx-fg)", "background": "var(--jx-hover-bg)" },
+      ":disabled": { "cursor": "default", "opacity": "0.6" },
+      ":focus-visible": { "outline": "var(--jx-focus-ring)", "outlineOffset": "-2px" }
+    },
+    "& [part=\"state\"]": { "cursor": "default" }
+  },
+  "children": [
+    {
+      "$prototype": "Array",
+      "items": { "$ref": "#/state/fields" },
+      "key": { "$ref": "$map/item/id" },
+      "map": {
+        "tagName": "div",
+        "attributes": { "part": "field", "data-jx-region": "${$map.item.region}" },
+        "children": [
+          {
+            "$prototype": "Array",
+            "items": { "$ref": "$map/item/items" },
+            "key": { "$ref": "$map/item/key" },
+            "map": {
+              "tagName": "span",
+              "attributes": { "part": "slot" },
+              "style": { "display": "contents" },
+              "$switch": { "$ref": "$map/item/kind" },
+              "cases": {
+                "button": {
+                  "tagName": "button",
+                  "attributes": {
+                    "part": "item",
+                    "type": "button",
+                    "title": "${$map.item.title}",
+                    "disabled": { "$ref": "$map/item/disabled" }
+                  },
+                  "textContent": "${$map.item.label}",
+                  "onclick": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": { "$ref": "#/state/run" },
+                        "value": [{ "$ref": "$map/item/key" }]
+                      }
+                    ]
+                  }
+                },
+                "state": {
+                  "tagName": "span",
+                  "attributes": { "part": "state", "title": "${$map.item.title}" },
+                  "textContent": "${$map.item.label}"
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

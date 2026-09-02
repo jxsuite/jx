@@ -23,7 +23,7 @@ code:
   - packages/studio/src/panels/jump-bar.ts
   - packages/studio/src/panels/bottom-dock.ts
   - packages/studio/src/panels/formula-workspace.ts
-  - packages/studio/src/panels/statusbar.ts
+  - packages/studio/src/surfaces/statusbar.ts
   - packages/studio/src/ui/panel-resize.ts
 ---
 

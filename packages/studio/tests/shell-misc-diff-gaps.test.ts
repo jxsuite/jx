@@ -374,7 +374,7 @@ describe("the bootstrap's saveDocument hook", () => {
         registerCompletionItemProvider: mock(() => ({ dispose: noop })),
       },
     }));
-    void mock.module("../src/panels/statusbar.ts", () => ({
+    void mock.module("../src/surfaces/statusbar.ts", () => ({
       forgetSavedTimes: mock(() => {}),
       mountStatusbar: mock(() => {}),
       noteDocumentSaved: mock(() => {}),
