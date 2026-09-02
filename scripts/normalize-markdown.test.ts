@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { formatMarkdown, isFormattable, normalizeMarkdown } from "./normalize-markdown.ts";
+import {
+  formatMarkdown,
+  isFormattable,
+  normalizeMarkdown,
+  tableDefects,
+} from "./normalize-markdown.ts";
 
 /**
  * The rules are narrow on purpose: an escape is removed only where Markdown never needed one. Most
@@ -178,5 +183,44 @@ describe("isFormattable", () => {
   // A file merely NAMED changelog is prose, not release-please's output.
   test("only a real CHANGELOG.md is skipped", () => {
     expect(isFormattable("docs/extending/reference/spec-changelog.md")).toBe(true);
+  });
+});
+
+describe("tableDefects", () => {
+  /* A renderer silently drops the surplus cells, so a row that grew one ships a mangled column to
+     the published page while every other gate stays green. Both cases below are real: the escaped
+     pipe is what a script splitting on `|` trips over (it happened to specs/ui.md's element
+     catalogue), and the unescaped one is what a generated type union produced. */
+  const table = (...rows: string[]) => ["| A | B | C |", "| - | - | - |", ...rows].join("\n");
+
+  test("accepts a row whose cells match its header", () => {
+    expect(tableDefects(table("| 1 | 2 | 3 |"))).toEqual([]);
+  });
+
+  test("names a row with one cell too many", () => {
+    expect(tableDefects(table("| 1 | 2 | 3 | 4 |"))).toEqual([3]);
+  });
+
+  test("names a row with one too few", () => {
+    expect(tableDefects(table("| 1 | 2 |"))).toEqual([3]);
+  });
+
+  test("an escaped pipe is a literal, not a cell boundary", () => {
+    // `popover="auto\|manual"` is one cell, and reading it as two is the bug this rule catches.
+    expect(tableDefects(table('| `popover="auto\\|manual"` | 2 | 3 |'))).toEqual([]);
+  });
+
+  test("a pipe inside a fenced block is not a table at all", () => {
+    const source = ["```", "| A | B |", "| - | - |", "| 1 | 2 | 3 |", "```"].join("\n");
+    expect(tableDefects(source)).toEqual([]);
+  });
+
+  test("a table ends at a blank line, so the next one sets its own width", () => {
+    const source = [table("| 1 | 2 | 3 |"), "", "| A | B |", "| - | - |", "| 1 | 2 |"].join("\n");
+    expect(tableDefects(source)).toEqual([]);
+  });
+
+  test("prose that merely contains a pipe is not judged", () => {
+    expect(tableDefects("A sentence with a | in it.\n")).toEqual([]);
   });
 });

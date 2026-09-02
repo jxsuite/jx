@@ -324,7 +324,18 @@ export function renderColorSelector(
   `;
 }
 
-/** Whether any color popover is currently open. */
+/**
+ * Whether an overlay the Inspector must not repaint under is open.
+ *
+ * ADDITIVE rather than replaced as the kit lands. The colour popover is still a Spectrum island
+ * that commits on every drag frame with no debounce, so swapping the query for the kit's would
+ * destroy the element mid-drag; and a kit overlay closing is not the same event as the Spectrum
+ * one, so the two have to be asked separately. A kit element that owns an overlay mirrors
+ * `data-open` on its host, which is the one thing every one of them agrees on — so a new one joins
+ * this list by declaring its tag here when it lands.
+ */
 export function isColorPopoverOpen() {
-  return Boolean(document.querySelector(".style-input-color sp-overlay[open]"));
+  return Boolean(
+    document.querySelector(".style-input-color sp-overlay[open], jx-popover[data-open]"),
+  );
 }

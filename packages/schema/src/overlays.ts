@@ -157,6 +157,40 @@ export interface OverlayScope {
   invokerTags?: ReadonlySet<string>;
 }
 
+/** The invoker attributes an element must observe to be forwarding them to a native button. */
+const INVOKER_ATTRS = ["popovertarget", "popovertargetaction", "command", "commandfor"] as const;
+
+/**
+ * Derive an {@link OverlayScope} from the element definitions a document may use.
+ *
+ * One definition of what makes a tag each kind, so the kit, `jx validate` and the studio cannot
+ * disagree about the same project. A definition IS a popover when its own root carries `popover`,
+ * and it FORWARDS invocation when it observes all four invoker attributes — which is the only
+ * evidence available from the document alone, and is what a forwarding element must do to receive
+ * them at all.
+ *
+ * @param definitions The element documents in scope.
+ * @returns {OverlayScope} The two tag sets, ready to pass to any rule here.
+ */
+export function overlayScopeFor(definitions: Iterable<JxElement>): OverlayScope {
+  const popoverTags = new Set<string>();
+  const invokerTags = new Set<string>();
+  for (const def of definitions) {
+    const tag = typeof def?.tagName === "string" ? def.tagName : "";
+    if (!tag.includes("-")) {
+      continue;
+    }
+    if (declaresPopover(def)) {
+      popoverTags.add(tag);
+    }
+    const observed = (def as { observedAttributes?: unknown }).observedAttributes;
+    if (Array.isArray(observed) && INVOKER_ATTRS.every((attr) => observed.includes(attr))) {
+      invokerTags.add(tag);
+    }
+  }
+  return { invokerTags, popoverTags };
+}
+
 /**
  * Whether the node ITSELF declares `popover`, however it was written.
  *

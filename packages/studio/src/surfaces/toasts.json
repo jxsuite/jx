@@ -158,6 +158,7 @@
             "tagName": "jx-action-button",
             "$props": {
               "label": "Dismiss notification",
+              "hint": "Dismiss notification",
               "icon": "x",
               "size": "sm"
             },

@@ -103,6 +103,8 @@ The formatter keeps those, and writes them for you in the two cases it can recog
 
 Two trailing spaces are also a hard break in Markdown, and the formatter rewrites them to a backslash. An invisible break is one that an editor set to trim trailing whitespace, or a careless paste, deletes without anyone noticing.
 
+**A pipe inside a table cell has to be escaped.** Write `\|`, or the renderer reads it as the start of the next cell: the row grows a column, the surplus cells are dropped, and the text after the pipe takes the place of the one that vanished. Nothing about the page looks wrong until you read the column that lost its contents. `bun run docs:markdown` refuses any row whose cell count differs from its header, so a hand edit and a generator that forgets to escape are both caught. The formatter cannot fix one for you, because a row with too many cells does not say which of them was meant.
+
 ## Callouts
 
 Three container directives render as styled asides:

@@ -31,8 +31,21 @@ function toggleEvent(type: "beforetoggle" | "toggle", oldState: string, newState
   return event;
 }
 
+/**
+ * Whether the element light-dismisses and answers Escape: `auto` and `hint` both do, `manual` does
+ * not.
+ */
 function isAuto(el: HTMLElement): boolean {
   return el.getAttribute("popover") !== "manual";
+}
+
+/** The popover's mode, defaulting the way an invalid value does — to `manual`. */
+function modeOf(el: HTMLElement): "auto" | "hint" | "manual" {
+  const raw = el.getAttribute("popover");
+  if (raw === "hint") {
+    return "hint";
+  }
+  return raw === "auto" || raw === "" ? "auto" : "manual";
 }
 
 export function installPopoverShim(): void {
@@ -79,10 +92,19 @@ export function installPopoverShim(): void {
     } else {
       state.invokers.delete(this);
     }
-    if (isAuto(this)) {
+    /* Showing an `auto` closes every other `auto` and every `hint`; showing a `hint` closes only
+       other hints. That asymmetry is the whole reason `hint` exists — a tip can sit over an open
+       menu explaining a row — and it is measured, not assumed: with an auto popover open, Chrome
+       152 accepts `hint.showPopover()` and leaves the auto one open. Modelling hint as auto here
+       made a correct element look broken, so the one assertion that would have caught a
+       regression could not be written. */
+    const mode = modeOf(this);
+    if (mode !== "manual") {
+      const closes = mode === "auto" ? ["auto", "hint"] : ["hint"];
+      // A copy, because `hide` deletes from the set being walked.
       const showing = [...state.open];
       for (const other of showing) {
-        if (isAuto(other) && !other.contains(this)) {
+        if (closes.includes(modeOf(other)) && !other.contains(this)) {
           hide(other);
         }
       }

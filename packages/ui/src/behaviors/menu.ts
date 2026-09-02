@@ -13,6 +13,10 @@
  * does not close the parent, and a click outside closes both.
  */
 
+import { clampIntoViewport, openAt } from "./popover.ts";
+
+export { clampIntoViewport } from "./popover.ts";
+
 const ROW = "jx-menu-item";
 const MENU = "jx-menu";
 
@@ -95,10 +99,22 @@ function isShowing(menu: MenuElement): boolean {
   return menu.open === true;
 }
 
-/** Show a menu panel through the platform, if it is not already showing. */
-export function showMenu(menu: MenuElement): void {
-  if (!isShowing(menu) && typeof menu.showPopover === "function") {
-    menu.showPopover();
+/**
+ * Show a menu panel through the platform, if it is not already showing.
+ *
+ * `source` is the element the panel was opened from, and it is not decoration: HTML relocates a
+ * popover's sequential focus position and restores focus relative to its INVOKER, which is
+ * established either by a `popovertarget` button or by `showPopover({ source })`. A bare
+ * `showPopover()` — which is what this did — leaves the panel with no invoker at all, so closing a
+ * submenu returned the caret to wherever the document happened to leave it, and a mousedown on the
+ * row a submenu hangs off light-dismissed the submenu as an outside click.
+ *
+ * @param menu The panel to show.
+ * @param source The element it is being opened from, if any.
+ */
+export function showMenu(menu: MenuElement, source?: Element | null): void {
+  if (!isShowing(menu)) {
+    openAt(menu, source ?? null);
   }
 }
 
@@ -143,7 +159,7 @@ export function openSubmenu(
   sub.x = Math.round(box.right) - 2;
   sub.y = Math.round(box.top) - 4;
   row.expanded = true;
-  showMenu(sub);
+  showMenu(sub, row);
   if (options.focus) {
     focusRow(rowsOf(sub), 0);
   }
@@ -291,7 +307,10 @@ export function onMenuToggle(state: MenuState, event: Event): void {
     }
     return;
   }
-  clampIntoViewport(state, menu);
+  clampIntoViewport(state, menu, {
+    flipAgainst: parent?.closest<HTMLElement>(MENU) ?? null,
+    floor: floorOf(menu),
+  });
   if (!menu.contains(document.activeElement)) {
     focusRow(rowsOf(menu), 0);
   }
@@ -301,45 +320,6 @@ export function onMenuToggle(state: MenuState, event: Event): void {
 function floorOf(menu: HTMLElement): number {
   const floor = Number((rootMenuOf(menu) as MenuElement).floor ?? 0);
   return floor > 0 ? floor : window.innerHeight;
-}
-
-/**
- * Keep a shown panel inside its area. Measured after a frame, because an unlaid-out panel is zero
- * wide and would never appear to overflow anything; a zero-size box (a test DOM) is left where it
- * is.
- *
- * A submenu that would leave the viewport on the right FLIPS to its parent menu's left rather than
- * sliding over the parent; a root menu slides. Both are floored at the stack's `floor` — the root
- * menu's, so one floor holds for every level.
- *
- * @param {MenuState} state
- * @param {HTMLElement} menu
- */
-export function clampIntoViewport(state: MenuState, menu: HTMLElement): void {
-  const measure = (): void => {
-    const box = menu.getBoundingClientRect();
-    if (box.width === 0 && box.height === 0) {
-      return;
-    }
-    const margin = 4;
-    const bottom = floorOf(menu);
-    if (box.right > window.innerWidth - margin) {
-      const parent = parentRowOf(menu)?.closest<HTMLElement>(MENU) ?? null;
-      const flipped = parent ? Math.round(parent.getBoundingClientRect().left) - box.width + 2 : -1;
-      state.x =
-        flipped >= margin
-          ? flipped
-          : Math.max(margin, Math.round(window.innerWidth - box.width - margin));
-    }
-    if (box.bottom > bottom) {
-      state.y = Math.max(margin, Math.round(bottom - box.height));
-    }
-  };
-  if (typeof requestAnimationFrame === "function") {
-    requestAnimationFrame(measure);
-  } else {
-    measure();
-  }
 }
 
 /**

@@ -2,11 +2,20 @@ import "./with-dom.ts";
 
 import { afterEach, beforeAll, describe, expect, test } from "bun:test";
 
-import { mount } from "@jxsuite/runtime";
+import { documentStyleText, mount } from "@jxsuite/runtime";
 import type { JxDocument, JxElement } from "@jxsuite/schema/types";
 
 import { registerUi } from "../src/index.ts";
-import { ensureCaret, rootMenuOf, rowsOf, submenuOf } from "../src/behaviors/menu.ts";
+import {
+  ensureCaret,
+  onMenuKeydown,
+  onMenuPointerOver,
+  onMenuToggle,
+  rootMenuOf,
+  rowsOf,
+  submenuOf,
+} from "../src/behaviors/menu.ts";
+import type { MenuState } from "../src/behaviors/menu.ts";
 
 /** Let the popover shim's queued `toggle` and the runtime's `onMount` settle. */
 const flush = () =>
@@ -408,6 +417,88 @@ describe("jx-menu", () => {
     await flush();
     expect(sub.open).toBe(false);
     expect(document.activeElement === rows[3]).toBe(true);
+  });
+
+  test("a key, a toggle or a hover that did not come from a menu is left alone", () => {
+    /* Every handler is bound by a document, and a host may bind one somewhere else — an adapter
+       delegating from a wrapper, a surface reusing the module. Each answers by doing nothing,
+       rather than by treating the stray element as a menu with no rows. */
+    const stray = document.createElement("div");
+    document.body.append(stray);
+    const state: MenuState = {};
+    let prevented = false;
+    onMenuKeydown(state, {
+      currentTarget: stray,
+      key: "ArrowDown",
+      preventDefault: () => {
+        prevented = true;
+      },
+      stopPropagation: () => {},
+      target: stray,
+    } as unknown as KeyboardEvent);
+    expect(prevented).toBe(false);
+    onMenuToggle(state, { currentTarget: stray, newState: "open" } as unknown as Event);
+    expect(state.open).toBeUndefined();
+    onMenuPointerOver(state, { currentTarget: stray, target: stray } as unknown as Event);
+    expect(stray.childElementCount).toBe(0);
+  });
+
+  test("ArrowRight on a row with no submenu, and ArrowLeft in a root menu, do nothing", async () => {
+    const { menu, rows } = await open();
+    // Both are left UNCANCELLED, so a host that binds its own meaning to them still gets the key.
+    expect(key(menu, "ArrowRight").defaultPrevented).toBe(false);
+    expect(document.activeElement).toBe(rows[0]!);
+    expect(key(menu, "ArrowLeft").defaultPrevented).toBe(false);
+    expect(menu.open).toBe(true);
+    expect(document.activeElement).toBe(rows[0]!);
+  });
+
+  test("ensureCaret leaves a caret that is already inside the menu where it is", async () => {
+    const { menu, rows } = await open();
+    key(menu, "End");
+    expect(document.activeElement).toBe(rows[5]!);
+    ensureCaret(menu);
+    // Only a caret that has GONE is put back; moving a live one would yank focus off the row the
+    // Reader is on every time the rows re-render under them.
+    expect(document.activeElement).toBe(rows[5]!);
+  });
+
+  test("a submenu is shown FROM its row, so a mousedown on that row does not dismiss it", async () => {
+    /* HTML restores focus relative to a popover's INVOKER, established by `popovertarget` or by
+       `showPopover({ source })`. The shipped sidecar called a bare `showPopover()`, so a submenu
+       had no invoker at all: the row it hangs off counted as "outside" and pressing it closed the
+       submenu it had just opened. */
+    const { menu, rows } = await open();
+    const settings = rows[3]!;
+    const sub = submenuOf(settings) as MenuEl;
+    key(menu, "ArrowDown");
+    key(menu, "ArrowDown");
+    key(menu, "ArrowRight");
+    await flush();
+    expect(sub.open).toBe(true);
+    settings.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    await flush();
+    expect(sub.open).toBe(true);
+    expect(menu.open).toBe(true);
+    document.body.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    await flush();
+    expect(sub.open).toBe(false);
+  });
+
+  test("a menu hidden by its host stays hidden even while the platform has it open", async () => {
+    /* `:popover-open` beats the UA's `[hidden] { display: none }`, so a menu given `hidden` while
+       showing kept drawing. The conformance host-display check cannot see this: it is a shallow
+       `"display" in style` on the root, and this menu's display lives in a nested rule. */
+    await open();
+    const rules = new Map<string, string>();
+    for (const line of documentStyleText().split("\n")) {
+      const match = /^(.*?) \{ (.*) \}$/.exec(line);
+      if (match) {
+        rules.set(match[1]!.replaceAll(/\[data-jx="[^"]+"\]/g, "&"), match[2]!);
+      }
+    }
+    expect(rules.get("&:popover-open")).toContain("display: flex");
+    expect(rules.get("&[hidden]:popover-open")).toContain("display: none");
   });
 
   test("a mousedown on the invoker a menu was shown from does not light-dismiss it", async () => {

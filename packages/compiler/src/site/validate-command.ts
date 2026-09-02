@@ -24,7 +24,8 @@ import { generateClassSchema } from "@jxsuite/schema";
 import { validateProjectFile } from "@jxsuite/schema/validate-project";
 import { findA11yDefects } from "@jxsuite/schema/a11y";
 import { findDialogDefects } from "@jxsuite/schema/dialogs";
-import { findPopoverDefects } from "@jxsuite/schema/overlays";
+import { findPopoverDefects, overlayScopeFor } from "@jxsuite/schema/overlays";
+import type { OverlayScope } from "@jxsuite/schema/overlays";
 import type { JxElement } from "@jxsuite/schema/types";
 import { buildProjectExtensionRegistry } from "./format-host.ts";
 import { loadProjectConfig } from "./site-loader.ts";
@@ -171,6 +172,21 @@ export async function validateProjectTree(
   const docAjv = new Ajv({ allErrors: true, ownProperties: true, strict: false });
   addFormats(docAjv);
   const validateDoc = docAjv.compile(documentSchema);
+  /* The project's own element definitions, so the overlay rules judge a custom element as what it
+     renders. A component IS a popover when its definition declares one, and a component FORWARDS
+     invocation when it observes the four invoker attributes — neither fact is visible in the page
+     that uses it, so without this the CLI reports a target mismatch on correct markup that the
+     studio, which passes the same scope, calls clean. */
+  const scope = overlayScopeFor(
+    walkClassFiles(root).flatMap((file) => {
+      try {
+        return [JSON.parse(readFileSync(file, "utf8")) as JxElement];
+      } catch {
+        // A malformed definition is reported by the class-schema pass below, not here.
+        return [];
+      }
+    }),
+  );
   for (const dir of DOCUMENT_DIRS) {
     for (const file of walkJsonFiles(resolve(root, dir))) {
       if (file.endsWith(".class.json")) {
@@ -180,7 +196,7 @@ export async function validateProjectTree(
       const doc = JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>;
       if (validateDoc(doc)) {
         // Only a well-formed document is judged; a schema error is the report for the rest.
-        lint.push(...lintDocument(doc as JxElement, relative(root, file)));
+        lint.push(...lintDocument(doc as JxElement, relative(root, file), scope));
       } else {
         issues.push({ errors: validateDoc.errors ?? [], file: relative(root, file) });
       }
@@ -233,12 +249,12 @@ export async function validateProjectTree(
 }
 
 /** The three lints over one document, as findings that name their file. */
-function lintDocument(doc: JxElement, file: string): ProjectTreeLintFinding[] {
+function lintDocument(doc: JxElement, file: string, scope: OverlayScope): ProjectTreeLintFinding[] {
   const findings: ProjectTreeLintFinding[] = [];
-  for (const defect of findPopoverDefects(doc)) {
+  for (const defect of findPopoverDefects(doc, scope)) {
     findings.push({ ...pick(defect), file, source: "popover" });
   }
-  for (const defect of findDialogDefects(doc)) {
+  for (const defect of findDialogDefects(doc, scope)) {
     findings.push({ ...pick(defect), file, source: "dialog" });
   }
   for (const defect of findA11yDefects(doc)) {

@@ -116,6 +116,7 @@
     "--jx-control-h": "24px",
     "--jx-field-label-w": "80px",
     "--jx-icon-size": "16px",
+    "--jx-popover-offset": "4px",
     "--jx-radius-xs": "2px",
     "--jx-radius-sm": "4px",
     "--jx-radius-md": "6px",

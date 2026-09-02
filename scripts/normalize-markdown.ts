@@ -96,6 +96,69 @@ export function normalizeMarkdown(source: string): NormalizeResult {
   return { lines: changed, text: out.join("\n") };
 }
 
+/** A table row: opens and closes with a pipe. */
+const TABLE_ROW = /^\s*\|.*\|\s*$/;
+/** The delimiter row under a table's header, which is what fixes its column count. */
+const TABLE_DELIM = /^\s*\|[\s:|-]+\|\s*$/;
+
+/**
+ * Cells in one row, splitting on pipes the author did not escape.
+ *
+ * `\|` inside a cell is a literal pipe — a spec row writing `popover="auto\|manual"` has one — so a
+ * naive split reports a phantom extra column, which is exactly the mistake this rule exists to
+ * catch in an edit.
+ *
+ * @param {string} row
+ * @returns {number} The cell count
+ */
+function cellCount(row: string): number {
+  const trimmed = row.trim();
+  const inner = trimmed.slice(1, trimmed.endsWith("|") ? -1 : undefined);
+  return inner.split(/(?<!\\)\|/).length;
+}
+
+/**
+ * Rows whose cell count disagrees with their own table's header.
+ *
+ * A renderer silently drops the extra cells, so a row edited by a script that split on a `\|` ships
+ * a mangled column to the published page and every other gate stays green — `docs:markdown` sees no
+ * escape, `docs:links` no broken link, `docs:prose` no banned pattern. That happened to
+ * `specs/ui.md`'s element catalogue, which is why this is a rule and not a convention.
+ *
+ * @param {string} source
+ * @returns {number[]} 1-based line numbers
+ */
+export function tableDefects(source: string): number[] {
+  const lines = source.split("\n");
+  const bad: number[] = [];
+  let inFence = false;
+  let columns = 0;
+  for (const [i, line] of lines.entries()) {
+    if (FENCE.test(line)) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) {
+      continue;
+    }
+    if (!TABLE_ROW.test(line)) {
+      columns = 0;
+      continue;
+    }
+    if (TABLE_DELIM.test(line)) {
+      columns = cellCount(line);
+      continue;
+    }
+    if (columns === 0) {
+      continue;
+    }
+    if (cellCount(line) !== columns) {
+      bad.push(i + 1);
+    }
+  }
+  return bad;
+}
+
 export interface FormatResult {
   text: string;
   /** 1-based lines carrying a visual-editor escape. */
@@ -154,12 +217,17 @@ async function main(): Promise<void> {
     named.length > 0 ? named.filter((path) => isFormattable(path)) : await defaultPaths();
 
   const offenders: { path: string; escaped: number[]; wrapped: number[] }[] = [];
+  const malformed: { path: string; rows: number[] }[] = [];
   for (const path of paths) {
     let source: string;
     try {
       source = readFileSync(path, "utf8");
     } catch {
       continue;
+    }
+    const rows = tableDefects(source);
+    if (rows.length > 0) {
+      malformed.push({ path, rows });
     }
     const result = formatMarkdown(source, { wrap });
     if (result.escaped.length === 0 && result.wrapped.length === 0) {
@@ -171,7 +239,10 @@ async function main(): Promise<void> {
     }
   }
 
-  if (offenders.length === 0) {
+  for (const t of malformed) {
+    console.log(`malformed table row ${t.path}: line ${where(t.rows)}`);
+  }
+  if (offenders.length === 0 && malformed.length === 0) {
     console.log(
       wrap
         ? `markdown: ${paths.length} file(s) are clean and write one line per paragraph.`
@@ -186,6 +257,13 @@ async function main(): Promise<void> {
     if (o.wrapped.length > 0) {
       console.log(`${check ? "wrapped" : "unwrapped"} ${o.path}: line ${where(o.wrapped)}`);
     }
+  }
+  if (malformed.length > 0) {
+    console.error(
+      `\n${malformed.length} file(s) carry a table row whose cell count differs from its header. ` +
+        "A renderer drops the extra cells, and no formatter can guess the intent — fix the row.",
+    );
+    process.exit(1);
   }
   if (check) {
     const escaped = offenders.filter((o) => o.escaped.length > 0);

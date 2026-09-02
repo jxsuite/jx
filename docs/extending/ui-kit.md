@@ -5,6 +5,7 @@ spec:
   - ui.md#1 # what the kit is
   - ui.md#4 # theme and tokens
   - ui.md#5 # the element catalogue
+  - ui.md#5.2 # overlays
   - ui.md#5.3 # forms
   - ui.md#8 # icons
   - ui.md#9 # build and distribution
@@ -15,6 +16,8 @@ code:
   - packages/ui/src/behaviors/menu.ts
   - packages/ui/src/behaviors/textfield.ts
   - packages/ui/src/behaviors/number-field.ts
+  - packages/ui/src/behaviors/popover.ts
+  - packages/ui/src/behaviors/tooltip.ts
 ---
 
 # The Jx UI kit
@@ -77,7 +80,7 @@ The list of shipped glyphs is `icons/list.json` in the package. Add a name there
 
 `variant` is `accent`, `primary`, `secondary` (the default) or `negative`. `size` is `sm`, `md` or `lg`. `quiet` drops the fill and border until hovered. `disabled` disables the control. `loading` keeps the button's width, shows a spinner, says `aria-busy` and swallows the next activation. When the visible text is not the name, or there is none, give it a `label`; `labelledby` and `describedby` forward to the control too. `autofocus` forwards as well, so a button inside a dialog can claim the focus its `showModal()` would otherwise give to whichever control comes first.
 
-`jx-action-button` is the icon-first tool button a toolbar is made of. `label` is required, because its name is not on screen; it is also the tooltip. `icon` names a glyph. `toggles` makes it a two-state button that carries `aria-pressed`, flips `selected` when activated and dispatches `change` with the new state. A host that owns the state sets `selected` itself, and the property wins.
+`jx-action-button` is the icon-first tool button a toolbar is made of. `label` is required, because its name is not on screen. It is the accessible name only: set `hint` as well if you want a tooltip, which an icon-only button usually should. They were one prop, and a button whose text is already readable does not need its own label repeated on hover. `icon` names a glyph. `toggles` makes it a two-state button that carries `aria-pressed`, flips `selected` when activated and dispatches `change` with the new state. A host that owns the state sets `selected` itself, and the property wins.
 
 ```json
 { "tagName": "jx-action-button", "$props": { "label": "Bold", "icon": "text-b", "toggles": true } }
@@ -223,12 +226,67 @@ A menu is a native popover. Give it a name and a viewport position, fill it with
 ```
 
 ```js
-document.getElementById("actions").showPopover();
+import { openAt } from "@jxsuite/ui/behaviors/popover";
+
+openAt(document.getElementById("actions"), triggerButton);
 ```
 
 Each row dispatches a bubbling `select` event whose `detail` is its `value`. Listen for it on the menu. A disabled row stays in the list and shows its `requires` text as a tooltip. Set `destructive` on a row that deletes, and `checked` to `"true"` or `"false"` on one that toggles. A row with `haspopup` takes a child menu in its `submenu` slot, which opens on hover, on ArrowRight and on the chevron; the row itself still runs its own command.
 
-Arrow keys, Home, End and typing a letter move between rows. Enter and Space activate. Escape closes one level, and a click outside closes the whole stack. Focus returns to whatever opened the menu when it closes, because the browser does that for every `auto` popover.
+Arrow keys, Home, End and typing a letter move between rows. Enter and Space activate. Escape closes one level, and a click outside closes the whole stack.
+
+Focus goes back to the button that opened the menu, but only if you say which button that was. The browser restores focus relative to a popover's invoker, and it learns the invoker from a `popovertarget` attribute or from the argument `openAt` passes for you. A bare `showPopover()` names none, so the reader who closes the menu starts again from the top of the page.
+
+## Panels, tips and spinners
+
+`jx-popover` is a panel in the top layer. Give it an id, put anything inside it, and open it with a button:
+
+```json
+{
+  "tagName": "jx-popover",
+  "attributes": { "id": "filters" },
+  "$props": { "label": "Filters" },
+  "children": [{ "tagName": "p", "textContent": "Anything at all." }]
+}
+```
+
+```json
+{
+  "tagName": "button",
+  "attributes": { "popovertarget": "filters" },
+  "textContent": "Filters"
+}
+```
+
+`popovertarget` is one of a small set of attributes HTML gives to `<button>` and `<input>` and to nothing else, so a checker refuses it on any other tag. A kit button forwards it to the button inside itself, and Studio knows that, but a checker reading your project alone only knows the components your project defines. Write it on a `<button>`, or pass it to a kit button through `$props` rather than `attributes`, and it is correct everywhere.
+
+The platform does the work: Escape closes it, a click outside closes it, Tab walks it in document order, and focus goes back to the button that opened it. Set `label` on any panel that holds controls, because a panel with no name announces no boundary when a reader enters it.
+
+To open one from code, call `openAt(panel, trigger)` from `@jxsuite/ui/behaviors/popover` rather than `showPopover()`. Passing the trigger is what tells the browser where to send focus when the panel closes; without it a reader lands back at the top of the page. `close(panel)` closes it. The `open` prop reports what the platform did and is not a way to open one: writing it shows nothing.
+
+Place it with `x` and `y` in viewport coordinates, and `floor` for the lowest edge it may reach. There is no `anchor` prop. Anchor positioning needs the anchor element to declare `anchor-name`, and the kit will not write a style on an element it does not own, so a panel over your own button could never establish it.
+
+`jx-tooltip` is a tip for a control whose meaning is not written on it. It uses the `hint` mode, which is the only one that does not close an open menu, so a tip can explain a row of one:
+
+```json
+{
+  "tagName": "jx-tooltip",
+  "attributes": { "id": "tip-save" },
+  "children": [{ "tagName": "span", "textContent": "Save this page" }]
+}
+```
+
+Name it onto its control from the control's side, with `interestfor` where the browser supports it and `aria-describedby` either way. It is never focusable, it stays up while you hover it or hold focus, and Escape dismisses it. Those three together are what WCAG 1.4.13 asks of anything that appears on hover.
+
+`jx-spinner` says work is happening. Leave `value` empty for the usual case, where nothing knows how far along it is; give it a percentage to draw a ring instead. It is a string, not a number, because an empty string is a value a number cannot express and a numeric prop would read "unset" as zero:
+
+```json
+{ "tagName": "jx-spinner", "$props": { "label": "Loading pages" } }
+```
+
+Give it a `label` when it stands alone, and leave the label off when it sits inside a button that is already named: without one the spinner hides itself from screen readers, so the button is not announced twice. A reader who asks for reduced motion gets a slower spin rather than a stopped one, because a stopped spinner reads as a hang.
+
+It draws in the colour of the text around it, so a spinner inside a button is visible on every variant without being told. Override `--jx-spin-color` and `--jx-spin-track-color` on the element or an ancestor to change that.
 
 ## Open the kit in Studio
 

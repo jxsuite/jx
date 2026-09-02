@@ -603,6 +603,36 @@ describe("setCanvasDelinkPopovers", () => {
     host.remove();
   });
 
+  test("a stamped host's internals get the selector transposed, not only the attribute", async () => {
+    /* The rename and the transposition must answer the same question. An attribute renamed
+       without its selectors transposed is a panel that can never be styled open: the runtime
+       de-links it and then leaves a `:popover-open` rule that can no longer match anything. */
+    setCanvasDelinkPopovers(true);
+    const { defineElement } = await import("../src/runtime");
+    await defineElement({
+      children: [
+        {
+          attributes: { part: "panel", popover: "auto" },
+          style: { ":popover-open": { display: "flex" }, opacity: "0" },
+          tagName: "div",
+        },
+      ],
+      tagName: "cv-styled-panel",
+    } as never);
+    const host = document.createElement("cv-styled-panel");
+    host.dataset.jxPath = "[]";
+    document.body.append(host);
+    await new Promise((r) => {
+      setTimeout(r, 0);
+    });
+    const panel = host.querySelector('[part="panel"]') as HTMLElement;
+    const css = elementCSS(panel);
+    expect(panel.dataset.jxPopover).toBe("auto");
+    expect(css).toContain("[data-jx-popover-open] { display: flex }");
+    expect(css).not.toContain(":popover-open");
+    host.remove();
+  });
+
   test("an UNstamped instance keeps its real popover, because it is not on the canvas", async () => {
     // The same definition rendered by the shell itself must still be a working popover; the flag
     // Is raised per instance, and restored after, so one stamped host cannot leak into the next.

@@ -266,4 +266,65 @@ describe("validateProjectTree", () => {
       writeFileSync(resolve(TMP, "project.schema.json"), pristine, "utf8");
     }
   });
+
+  it("judges a custom element as what its own definition renders", async () => {
+    /* A component IS a popover when its definition declares one, and it FORWARDS invocation when
+       it observes the four invoker attributes. Neither fact is visible in the page that uses it,
+       so without the project's definitions in scope the CLI reported `command-target-mismatch` and
+       `invoker-not-button` on correct markup — and Studio, which passes the same scope, called the
+       same page clean. A CLI that disagrees with the editor about a page is worse than either. */
+    writeFile("components/x-panel.class.json", {
+      $id: "XPanel",
+      attributes: { popover: "auto" },
+      children: [],
+      style: { ":popover-open": { display: "flex" }, flexDirection: "column" },
+      tagName: "x-panel",
+    });
+    writeFile("components/x-trigger.class.json", {
+      $id: "XTrigger",
+      children: [{ attributes: { part: "control" }, tagName: "button" }],
+      observedAttributes: ["popovertarget", "popovertargetaction", "command", "commandfor"],
+      tagName: "x-trigger",
+    });
+    writeFile("pages/overlay-page.json", {
+      children: [
+        { attributes: { commandfor: "p1", command: "toggle-popover" }, tagName: "x-trigger" },
+        { attributes: { popovertarget: "p1" }, tagName: "x-trigger" },
+        { attributes: { id: "p1" }, tagName: "x-panel" },
+      ],
+      tagName: "div",
+    });
+    try {
+      const result = await validateProjectTree(TMP);
+      const onPage = result.lint.filter((f) => f.file === "pages/overlay-page.json");
+      expect(onPage.map((f) => f.rule)).toEqual([]);
+    } finally {
+      rmSync(resolve(TMP, "pages/overlay-page.json"), { force: true });
+      rmSync(resolve(TMP, "components/x-panel.class.json"), { force: true });
+      rmSync(resolve(TMP, "components/x-trigger.class.json"), { force: true });
+    }
+  });
+
+  it("still refuses an invoker attribute on a tag that forwards nothing", async () => {
+    writeFile("components/x-plain.class.json", {
+      $id: "XPlain",
+      children: [{ attributes: { part: "box" }, tagName: "div" }],
+      tagName: "x-plain",
+    });
+    writeFile("pages/bad-invoker.json", {
+      children: [
+        { attributes: { popovertarget: "p2" }, tagName: "x-plain" },
+        { attributes: { popover: "auto" }, id: "p2", tagName: "div" },
+      ],
+      tagName: "div",
+    });
+    try {
+      const result = await validateProjectTree(TMP);
+      const onPage = result.lint.filter((f) => f.file === "pages/bad-invoker.json");
+      expect(onPage.map((f) => f.rule)).toContain("invoker-not-button");
+    } finally {
+      rmSync(resolve(TMP, "pages/bad-invoker.json"), { force: true });
+      rmSync(resolve(TMP, "components/x-plain.class.json"), { force: true });
+    }
+  });
 });
