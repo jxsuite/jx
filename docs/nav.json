@@ -658,6 +658,15 @@
           ]
         },
         {
+          "label": "UI kit",
+          "pages": [
+            {
+              "path": "extending/ui-kit",
+              "label": "The Jx UI kit"
+            }
+          ]
+        },
+        {
           "label": "Reference",
           "pages": [
             {

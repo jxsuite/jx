@@ -33,6 +33,12 @@
       "url": "https://www.w3.org/TR/CSP3/"
     },
     {
+      "id": "CSS Anchor Positioning",
+      "org": "W3C",
+      "title": "CSS Anchor Positioning Module Level 1",
+      "url": "https://www.w3.org/TR/css-anchor-position-1/"
+    },
+    {
       "id": "CSS Cascade Layers",
       "org": "W3C",
       "title": "CSS Cascading and Inheritance Level 5",
@@ -45,16 +51,34 @@
       "url": "https://www.w3.org/TR/css-color-4/"
     },
     {
+      "id": "CSS Color 5",
+      "org": "W3C",
+      "title": "CSS Color Module Level 5",
+      "url": "https://www.w3.org/TR/css-color-5/"
+    },
+    {
       "id": "CSS Containment 3",
       "org": "W3C",
       "title": "CSS Containment Module Level 3",
       "url": "https://www.w3.org/TR/css-contain-3/"
     },
     {
+      "id": "CSS Custom Properties for Cascading Variables",
+      "org": "W3C",
+      "title": "CSS Custom Properties for Cascading Variables Module Level 1",
+      "url": "https://www.w3.org/TR/css-variables-1/"
+    },
+    {
       "id": "CSS Nesting",
       "org": "W3C",
       "title": "CSS Nesting Module",
       "url": "https://www.w3.org/TR/css-nesting-1/"
+    },
+    {
+      "id": "CSS Properties and Values API",
+      "org": "W3C",
+      "title": "CSS Properties and Values API Level 1",
+      "url": "https://www.w3.org/TR/css-properties-values-api-1/"
     },
     {
       "id": "CSS Scoping",
@@ -67,6 +91,12 @@
       "org": "W3C",
       "title": "CSS Shadow Parts",
       "url": "https://www.w3.org/TR/css-shadow-parts-1/"
+    },
+    {
+      "id": "CSS Transitions 2",
+      "org": "W3C",
+      "title": "CSS Transitions Level 2",
+      "url": "https://www.w3.org/TR/css-transitions-2/"
     },
     {
       "id": "CSSOM",

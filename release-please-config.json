@@ -140,6 +140,11 @@
       "release-type": "node",
       "component": "extension-catalog",
       "bump-minor-pre-major": true
+    },
+    "packages/ui": {
+      "release-type": "node",
+      "component": "ui",
+      "bump-minor-pre-major": true
     }
   }
 }

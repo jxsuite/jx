@@ -916,6 +916,7 @@
   "@jxsuite/site-jxsuite.com" = copyPathToStore ./sites/jxsuite.com;
   "@jxsuite/starters" = copyPathToStore ./packages/starters;
   "@jxsuite/studio" = copyPathToStore ./packages/studio;
+  "@jxsuite/ui" = copyPathToStore ./packages/ui;
   "@lit-labs/observers@2.0.2" = fetchurl {
     url = "https://registry.npmjs.org/@lit-labs/observers/-/observers-2.0.2.tgz";
     hash = "sha512-eZb5+W9Cb0e/Y5m1DNxBSGTvGB2TAVTGMnTxL/IzFhPQEcZIAHewW1eVBhN8W07A5tirRaAmmF6fGL1V20p3gQ==";
@@ -1191,6 +1192,10 @@
   "@oxlint/binding-win32-x64-msvc@1.80.0" = fetchurl {
     url = "https://registry.npmjs.org/@oxlint/binding-win32-x64-msvc/-/binding-win32-x64-msvc-1.80.0.tgz";
     hash = "sha512-yAnO7lwBYQnz2pcfBPIGQQZWIX5zd5R/1aAKIF3oE+TVj7IhoHcROjOkz3sRDngzqhfPKfFaXqug5j5rE5dn6Q==";
+  };
+  "@phosphor-icons/core@2.1.1" = fetchurl {
+    url = "https://registry.npmjs.org/@phosphor-icons/core/-/core-2.1.1.tgz";
+    hash = "sha512-v4ARvrip4qBCImOE5rmPUylOEK4iiED9ZyKjcvzuezqMaiRASCHKcRIuvvxL/twvLpkfnEODCOJp5dM4eZilxQ==";
   };
   "@puppeteer/browsers@2.13.2" = fetchurl {
     url = "https://registry.npmjs.org/@puppeteer/browsers/-/browsers-2.13.2.tgz";

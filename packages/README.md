@@ -2,22 +2,23 @@
 
 The core packages are the Jx framework itself. [`extensions/*`](../extensions/README.md) extends Jx through the public hooks any third party can use; `packages/*` is what gets extended. The dependency edge between the two is one-way, and it is the rule that defines this directory: see [specs/extensions.md §2](../specs/extensions.md).
 
-| Package                           | What it is                                                             |
-| --------------------------------- | ---------------------------------------------------------------------- |
-| [`@jxsuite/schema`](./schema)     | JSON Schema 2020-12 meta-schema generator for Jx documents             |
-| [`@jxsuite/runtime`](./runtime)   | JSON-native reactive web component runtime: no virtual DOM, no diffing |
-| [`@jxsuite/compiler`](./compiler) | Static HTML compiler, island detector, site builder, plus the `jx` CLI |
-| [`@jxsuite/server`](./server)     | Bun dev server: live reload, proxy resolution, Studio backend          |
-| [`@jxsuite/studio`](./studio)     | The visual builder, as a backend-agnostic browser application          |
-| [`@jxsuite/desktop`](./desktop)   | Studio packaged as a desktop app on Electrobun (an app, not a library) |
-| [`@jxsuite/protocol`](./protocol) | Studio Backend Protocol: wire types and the canonical route table      |
-| [`@jxsuite/collab`](./collab)     | Co-editing primitives: Y.Doc schema, op bridge, differ, wire envelope  |
-| [`@jxsuite/ai`](./ai)             | Streaming LLM client, tool registry, reactive chat state               |
-| [`@jxsuite/create`](./create)     | Project scaffolding behind `bun create @jxsuite`                       |
-| [`@jxsuite/starters`](./starters) | Starter catalogue: `registry.json` plus one buildable project each     |
-| [`@jxsuite/import`](./import)     | Clone a live website into a Jx project                                 |
-| [`@jxsuite/markup`](./markup)     | HTML → Jx nodes, Markdown → sanitized HTML                             |
-| [`@jxsuite/formulas`](./formulas) | Composite pure formulas authored as declarative `$expression` JSON     |
+| Package                           | What it is                                                                     |
+| --------------------------------- | ------------------------------------------------------------------------------ |
+| [`@jxsuite/schema`](./schema)     | JSON Schema 2020-12 meta-schema generator for Jx documents                     |
+| [`@jxsuite/runtime`](./runtime)   | JSON-native reactive web component runtime: no virtual DOM, no diffing         |
+| [`@jxsuite/compiler`](./compiler) | Static HTML compiler, island detector, site builder, plus the `jx` CLI         |
+| [`@jxsuite/server`](./server)     | Bun dev server: live reload, proxy resolution, Studio backend                  |
+| [`@jxsuite/studio`](./studio)     | The visual builder, as a backend-agnostic browser application                  |
+| [`@jxsuite/desktop`](./desktop)   | Studio packaged as a desktop app on Electrobun (an app, not a library)         |
+| [`@jxsuite/protocol`](./protocol) | Studio Backend Protocol: wire types and the canonical route table              |
+| [`@jxsuite/collab`](./collab)     | Co-editing primitives: Y.Doc schema, op bridge, differ, wire envelope          |
+| [`@jxsuite/ai`](./ai)             | Streaming LLM client, tool registry, reactive chat state                       |
+| [`@jxsuite/create`](./create)     | Project scaffolding behind `bun create @jxsuite`                               |
+| [`@jxsuite/starters`](./starters) | Starter catalogue: `registry.json` plus one buildable project each             |
+| [`@jxsuite/import`](./import)     | Clone a live website into a Jx project                                         |
+| [`@jxsuite/markup`](./markup)     | HTML → Jx nodes, Markdown → sanitized HTML                                     |
+| [`@jxsuite/formulas`](./formulas) | Composite pure formulas authored as declarative `$expression` JSON             |
+| [`@jxsuite/ui`](./ui)             | The UI kit: interface elements authored as Jx documents, their theme and icons |
 
 ## Rules
 

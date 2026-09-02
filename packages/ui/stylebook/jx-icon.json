@@ -1,0 +1,173 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StylebookIcon",
+  "tagName": "main",
+  "$elements": [{ "$ref": "../components/jx-icon.json" }],
+  "state": {
+    "weights": ["regular", "bold", "fill"],
+    "names": [
+      "align-bottom",
+      "align-bottom-simple",
+      "align-center-horizontal",
+      "align-center-horizontal-simple",
+      "align-center-vertical",
+      "align-left",
+      "align-right",
+      "align-top",
+      "align-top-simple",
+      "arrow-down",
+      "arrow-elbow-left-up",
+      "arrow-left",
+      "arrow-right",
+      "arrow-u-up-left",
+      "arrow-u-up-right",
+      "arrow-up",
+      "arrows-clockwise",
+      "arrows-horizontal",
+      "arrows-out",
+      "arrows-out-line-horizontal",
+      "arrows-out-line-vertical",
+      "arrows-vertical",
+      "brackets-curly",
+      "browser",
+      "caret-down",
+      "caret-left",
+      "caret-right",
+      "caret-up",
+      "chat-circle",
+      "check",
+      "clipboard",
+      "clock-counter-clockwise",
+      "code",
+      "columns",
+      "copy",
+      "cube",
+      "database",
+      "dots-three",
+      "dots-three-vertical",
+      "download-simple",
+      "export",
+      "eye",
+      "eye-slash",
+      "file",
+      "file-code",
+      "file-text",
+      "flip-vertical",
+      "floppy-disk",
+      "folder",
+      "folder-open",
+      "frame-corners",
+      "gear",
+      "gear-six",
+      "git-branch",
+      "grid-four",
+      "image",
+      "info",
+      "lightning",
+      "link",
+      "list",
+      "list-bullets",
+      "magnifying-glass",
+      "minus",
+      "paint-brush",
+      "paper-plane-tilt",
+      "paperclip",
+      "pencil-simple",
+      "play",
+      "plus",
+      "question",
+      "rectangle",
+      "rows",
+      "share-network",
+      "sidebar-simple",
+      "sliders-horizontal",
+      "sparkle",
+      "square",
+      "stack",
+      "stop",
+      "tag",
+      "text-aa",
+      "text-align-center",
+      "text-align-justify",
+      "text-align-left",
+      "text-align-right",
+      "text-b",
+      "text-italic",
+      "text-strikethrough",
+      "text-subscript",
+      "text-superscript",
+      "text-underline",
+      "trash",
+      "upload-simple",
+      "warning",
+      "warning-circle",
+      "x"
+    ]
+  },
+  "style": {
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "color": "var(--jx-fg)",
+    "background": "var(--jx-bg)",
+    "padding": "var(--jx-space-6)",
+    "& > h1": {
+      "fontSize": "var(--jx-text-lg)",
+      "fontWeight": "600",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& > ul": {
+      "display": "grid",
+      "gridTemplateColumns": "repeat(auto-fill, minmax(180px, 1fr))",
+      "gap": "var(--jx-space-3)",
+      "listStyle": "none",
+      "margin": "0",
+      "padding": "0"
+    },
+    "& > ul > li": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-3)",
+      "padding": "var(--jx-space-2) var(--jx-space-3)",
+      "border": "1px solid var(--jx-border)",
+      "borderRadius": "var(--jx-radius-sm)",
+      "background": "var(--jx-bg-panel)"
+    },
+    "& code": {
+      "fontFamily": "var(--jx-font-mono)",
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--jx-fg-dim)"
+    }
+  },
+  "children": [
+    { "tagName": "h1", "textContent": "jx-icon" },
+    {
+      "tagName": "p",
+      "textContent": "Every glyph the kit ships, at regular weight. A label makes an icon announce itself; without one it is decorative."
+    },
+    {
+      "tagName": "ul",
+      "children": [
+        {
+          "$prototype": "Array",
+          "items": { "$ref": "#/state/names" },
+          "key": { "$ref": "$map/item" },
+          "map": {
+            "tagName": "li",
+            "children": [
+              { "tagName": "jx-icon", "$props": { "name": { "$ref": "$map/item" } } },
+              {
+                "tagName": "jx-icon",
+                "$props": { "name": { "$ref": "$map/item" }, "weight": "bold" }
+              },
+              {
+                "tagName": "jx-icon",
+                "$props": { "name": { "$ref": "$map/item" }, "weight": "fill" }
+              },
+              { "tagName": "code", "textContent": "${$map.item}" }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
