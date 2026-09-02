@@ -650,6 +650,10 @@
             {
               "path": "extending/embedding/dev-server",
               "label": "Dev server internals"
+            },
+            {
+              "path": "extending/embedding/runtime-host",
+              "label": "Embedding the runtime in your app"
             }
           ]
         },

@@ -134,6 +134,10 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 - **0.1.1-draft** (2026-04-15) — Rebrand to Jx / Jx Platform (`abc63f2d`).
 - **0.1.0-draft** (2026-04-15) — Implement platform abstraction (`962ba588`).
 
+## `embedding.md`
+
+- **0.1.0-draft** (2026-09-02) — Initial release: mount() with dispose and AbortSignal, host scope, host functions through call, events out, per-mount context, preloadDocument and preloadModule.
+
 ## `extensions.md`
 
 - **0.4.3-draft** (2026-08-31) — The extension catalogue (§9.2): a host answers for what it can run, with bundled and installed probed rather than declared; §2 lists feed.
@@ -374,6 +378,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `spec.md`
 
+- **0.6.1-draft** (2026-09-02) — Lifecycle hooks at the mount boundary (§16.4) and the Studio shell as an interpreter host (§21.3).
 - **0.6.0-draft** (2026-09-01) — Styling: every declaration in a style object becomes a CSS rule; the runtime delivers them through document.adoptedStyleSheets (new 9.6). Nesting composes in either order to any depth, so 9.2's compiler limitation is gone.
 - **0.5.9-draft** (2026-08-31) — popover is enumerated and emitted through the presence branch; declaration-body at-rules (@position-try, @property) emit verbatim; all four boolean-attribute writers now defer to booleanAttrValue.
 - **0.5.8-draft** (2026-08-26) — §5.3: $lazy on a $src Function defers the module to first call.

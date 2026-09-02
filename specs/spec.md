@@ -2,9 +2,9 @@
 
 ## Declarative Document Object Model — JSON Edition
 
-**Version:** 0.6.0-draft\
+**Version:** 0.6.1-draft\
 **Status:** Partial\
-**Updated:** 2026-09-01\
+**Updated:** 2026-09-02\
 **License:** MIT
 
 ---
@@ -1488,6 +1488,8 @@ Dependencies are registered depth-first before the parent.
 | `adoptedCallback`          | `onAdopted`   | Element moved to new document          |
 | `attributeChangedCallback` | (automatic)   | Observed attribute changes             |
 
+A document mounted by a host through `mount()` ([embedding.md](./embedding.md) §2) runs the same two hooks at its own boundary: `onMount` once its root is attached, `onUnmount` from `dispose()`. The names are shared on purpose, so a component and a mounted document read alike.
+
 > **Status: Implemented.**
 
 ### 16.5 Observed Attributes
@@ -2156,6 +2158,8 @@ During a build the compiler evaluates project code (resolving `timing: "compiler
 
 The interpreting runtime — the dev server, the Studio canvas, and `@jxsuite/runtime` used directly as a library — compiles `${}` templates and inline `body` functions with `new Function` on the fly (§6.6). Any page hosting the interpreter must allow `'unsafe-eval'` in its CSP. This is why the compiled path exists: ship compiled output to production and the eval requirement disappears. A future restricted evaluator (§6.6) would remove this requirement from the interpreter as well.
 
+Jx Studio's own shell is such a page: its chrome mounts documents through the interpreter ([embedding.md](./embedding.md) §8), so the shell requires `'unsafe-eval'` for as long as it does. That is a property of the shell, stated, rather than a defect of the canvas it hosts.
+
 ### 21.4 Trust Model for Documents
 
 A Jx document is **executable input**. Loading and rendering an untrusted document in the interpreting runtime runs its code; compiling an untrusted document runs its code at build time. Jx does not sandbox document code — treat a `.json` document with the same trust you would treat a `.js` file from the same source.
@@ -2413,6 +2417,7 @@ This rewrites the mutating handlers of Appendix A's idiom using `$expression`, l
 
 ## Changelog
 
+- **0.6.1-draft** (2026-09-02) — Lifecycle hooks at the mount boundary (§16.4) and the Studio shell as an interpreter host (§21.3).
 - **0.6.0-draft** (2026-09-01) — Styling: every declaration in a style object becomes a CSS rule; the runtime delivers them through document.adoptedStyleSheets (new 9.6). Nesting composes in either order to any depth, so 9.2's compiler limitation is gone.
 - **0.5.9-draft** (2026-08-31) — popover is enumerated and emitted through the presence branch; declaration-body at-rules (@position-try, @property) emit verbatim; all four boolean-attribute writers now defer to booleanAttrValue.
 - **0.5.8-draft** (2026-08-26) — §5.3: $lazy on a $src Function defers the module to first call.
@@ -2477,4 +2482,4 @@ This rewrites the mutating handlers of Appendix A's idiom using `$expression`, l
 
 ---
 
-_Jx Specification v0.6.0-draft — subject to revision_
+_Jx Specification v0.6.1-draft — subject to revision_
