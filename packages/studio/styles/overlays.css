@@ -10,7 +10,9 @@
    the source view; the empty state; the style toolbar; the git panel; the
    stylebook (and its feature toggle); inline editing; the welcome screen;
    and the Tabulator grid editor theme. */
-
+/* The quick-search classes the Inspector's formula palette (`ui/formula-palette.ts`) still
+   emits. The command palette itself is `src/surfaces/palette.json` now; these follow when the
+   formula palette does. */
 .quick-search-overlay {
   position: fixed;
   inset: 0;
@@ -32,63 +34,6 @@
   overflow: hidden;
   align-self: flex-start;
 }
-/* The mode chip sits INSIDE the input row, left of the caret, so Backspace
-   at position zero deletes it — see `chipTemplate` / `onKeydown`. */
-.palette-input-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding-left: 12px;
-  background: var(--spectrum-gray-75, #141414);
-  border-bottom: 1px solid var(--spectrum-gray-300, #393939);
-}
-.palette-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  flex-shrink: 0;
-  padding: 2px 4px 2px 8px;
-  border-radius: var(--radius);
-  background: var(--spectrum-blue-700, #0054a3);
-  color: var(--spectrum-white, #fff);
-  font-size: var(--spectrum-font-size-75, 12px);
-}
-.palette-chip-remove {
-  appearance: none;
-  border: none;
-  background: none;
-  color: inherit;
-  cursor: pointer;
-  font: inherit;
-  line-height: 1;
-  padding: 0 2px;
-  opacity: 0.7;
-}
-.palette-chip-remove:hover {
-  opacity: 1;
-}
-.palette-chord {
-  margin-left: auto;
-  flex-shrink: 0;
-  font-family: inherit;
-  font-size: var(--spectrum-font-size-50, 11px);
-  color: var(--spectrum-gray-600, #666);
-  border: 1px solid var(--spectrum-gray-300, #393939);
-  border-radius: var(--radius);
-  padding: 0 5px;
-}
-/* Every row prints its binding, and the footer prints the palette's own
-   namespace — that is how the surface teaches the keyboard it replaced. */
-.palette-hint {
-  padding: 6px 16px;
-  border-top: 1px solid var(--spectrum-gray-300, #393939);
-  color: var(--spectrum-gray-600, #666);
-  font-size: var(--spectrum-font-size-50, 11px);
-}
-.palette-hint kbd {
-  font-family: inherit;
-  color: var(--spectrum-gray-700, #999);
-}
 .quick-search-input {
   flex: 1;
   min-width: 0;
@@ -100,7 +45,6 @@
   background: none;
   color: var(--spectrum-gray-900, #e0e0e0);
 }
-
 .quick-search-input:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
@@ -125,18 +69,8 @@
 .quick-search-item:hover:not(.selected) {
   background: var(--spectrum-gray-200, #2a2a2a);
 }
-/* An unavailable command is GREYED, never hidden (§2 principle 4): the row
-   stays, its `requires` sentence becomes the subtitle, and Enter is inert. */
-.quick-search-item.disabled .quick-search-name,
-.quick-search-item.disabled .quick-search-icon {
-  opacity: 0.45;
-}
 .quick-search-item.disabled {
   cursor: default;
-}
-.quick-search-icon {
-  flex-shrink: 0;
-  opacity: 0.7;
 }
 .quick-search-name {
   font-weight: 500;

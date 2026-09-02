@@ -476,6 +476,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `studio-ui-guidelines.md`
 
+- **0.4.9-draft** (2026-09-02) — The command palette is a Jx document projected by panels/quick-search.ts (§9.3).
 - **0.4.8-draft** (2026-09-02) — The toast stack is a Jx document projected by ui/layers.ts (§9.3).
 - **0.4.7-draft** (2026-09-02) — The confirm, save-or-discard and prompt dialogs are a Jx document over jx-dialog, opened modally on the native substrate (§8.7, §9.3).
 - **0.4.6-draft** (2026-09-02) — The Command Bar is a Jx document: surfaces/commandbar.json over the registry's projections, with the Studio menu on the menu surface (§9.3).

@@ -92,7 +92,7 @@ describe("rendering", () => {
     notify.success("Copied");
     await flush();
     const toast = host().querySelector('[part="toast"]');
-    expect(toast?.dataset["severity"] === "success").toBe(true);
+    expect((toast as HTMLElement | null)?.dataset["severity"] === "success").toBe(true);
     expect(toast?.querySelector('[part="message"]')?.textContent).toBe("Copied");
   });
 

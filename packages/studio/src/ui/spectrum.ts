@@ -78,7 +78,6 @@ import { IconFileSingleWebPage } from "@spectrum-web-components/icons-workflow/s
 import { IconRefresh } from "@spectrum-web-components/icons-workflow/src/elements/IconRefresh.js";
 import { IconAdd } from "@spectrum-web-components/icons-workflow/src/elements/IconAdd.js";
 import { IconUpload } from "@spectrum-web-components/icons-workflow/src/elements/IconUpload.js";
-import { IconLayers } from "@spectrum-web-components/icons-workflow/src/elements/IconLayers.js";
 import { IconViewGrid } from "@spectrum-web-components/icons-workflow/src/elements/IconViewGrid.js";
 import { IconBrackets } from "@spectrum-web-components/icons-workflow/src/elements/IconBrackets.js";
 import { IconData } from "@spectrum-web-components/icons-workflow/src/elements/IconData.js";
@@ -113,7 +112,6 @@ import { IconTextAlignRight } from "@spectrum-web-components/icons-workflow/src/
 import { IconTextAlignJustify } from "@spectrum-web-components/icons-workflow/src/elements/IconTextAlignJustify.js";
 import { IconAlignTop } from "@spectrum-web-components/icons-workflow/src/elements/IconAlignTop.js";
 import { IconAlignBottom } from "@spectrum-web-components/icons-workflow/src/elements/IconAlignBottom.js";
-import { IconPlay } from "@spectrum-web-components/icons-workflow/src/elements/IconPlay.js";
 import { IconSearch } from "@spectrum-web-components/icons-workflow/src/elements/IconSearch.js";
 import { IconShare } from "@spectrum-web-components/icons-workflow/src/elements/IconShare.js";
 import { IconAlignMiddle } from "@spectrum-web-components/icons-workflow/src/elements/IconAlignMiddle.js";
@@ -220,7 +218,6 @@ const components = [
   ["sp-icon-refresh", IconRefresh],
   ["sp-icon-add", IconAdd],
   ["sp-icon-upload", IconUpload],
-  ["sp-icon-layers", IconLayers],
   ["sp-icon-view-grid", IconViewGrid],
   ["sp-icon-brackets", IconBrackets],
   ["sp-icon-data", IconData],
@@ -253,7 +250,6 @@ const components = [
   ["sp-icon-text-align-justify", IconTextAlignJustify],
   ["sp-icon-align-top", IconAlignTop],
   ["sp-icon-align-bottom", IconAlignBottom],
-  ["sp-icon-play", IconPlay],
   ["sp-icon-search", IconSearch],
   ["sp-icon-share", IconShare],
   ["sp-icon-align-middle", IconAlignMiddle],

@@ -1,0 +1,579 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioPalette",
+  "$description": "The command palette: a combobox over a listbox of rows the host projects. `rows` is the ranked set for the current mode and query; `selectedIndex` is the highlight, kept apart so a key moves it without the rows reconciling. Every gesture calls back into panels/quick-search.ts, which owns the modes, the recents and what a row does.",
+  "tagName": "div",
+  "attributes": {
+    "part": "palette"
+  },
+  "style": {
+    "display": "contents",
+    "& [part=\"overlay\"]": {
+      "position": "fixed",
+      "inset": "0",
+      "zIndex": "1000",
+      "display": "flex",
+      "justifyContent": "center",
+      "paddingTop": "60px",
+      "background": "rgba(0, 0, 0, 0.4)"
+    },
+    "& [part=\"panel\"]": {
+      "width": "560px",
+      "maxWidth": "calc(100vw - 32px)",
+      "maxHeight": "420px",
+      "display": "flex",
+      "flexDirection": "column",
+      "alignSelf": "flex-start",
+      "background": "var(--jx-bg-overlay)",
+      "border": "1px solid var(--jx-border)",
+      "borderRadius": "var(--jx-radius-md)",
+      "boxShadow": "var(--jx-shadow-dialog)",
+      "color": "var(--jx-fg)",
+      "fontFamily": "var(--jx-font-sans)",
+      "overflow": "hidden"
+    },
+    "& [part=\"input-row\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-3)",
+      "paddingLeft": "var(--jx-space-4)",
+      "background": "var(--jx-bg-input)",
+      "borderBottom": "1px solid var(--jx-border)"
+    },
+    "& [part=\"chip-slot\"], & [part=\"empty-slot\"], & [part=\"section-slot\"], & [part=\"trailing-slot\"]": {
+      "display": "contents"
+    },
+    "& [part=\"chip\"]": {
+      "display": "inline-flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-1)",
+      "flexShrink": "0",
+      "padding": "2px var(--jx-space-1) 2px var(--jx-space-3)",
+      "borderRadius": "var(--jx-radius-sm)",
+      "background": "var(--jx-accent-solid)",
+      "color": "var(--jx-accent-fg)",
+      "fontSize": "var(--jx-text-sm)"
+    },
+    "& [part=\"chip-remove\"] > [part=\"control\"]": {
+      "color": "inherit",
+      "opacity": "0.8",
+      ":hover": {
+        "opacity": "1",
+        "background": "transparent"
+      }
+    },
+    "& [part=\"input\"]": {
+      "flex": "1",
+      "minWidth": "0",
+      "padding": "var(--jx-space-4) var(--jx-space-5) var(--jx-space-4) var(--jx-space-1)",
+      "font": "inherit",
+      "fontSize": "var(--jx-text-lg)",
+      "border": "none",
+      "outline": "none",
+      "background": "none",
+      "color": "var(--jx-fg)",
+      "::placeholder": {
+        "color": "var(--jx-fg-muted)"
+      },
+      ":focus-visible": {
+        "outline": "var(--jx-focus-ring)",
+        "outlineOffset": "-2px"
+      }
+    },
+    "& [part=\"results\"]": {
+      "overflowY": "auto",
+      "flex": "1"
+    },
+    "& [part=\"item\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-3)",
+      "padding": "var(--jx-space-2) var(--jx-space-5)",
+      "cursor": "pointer",
+      "fontSize": "var(--jx-text-md)",
+      "color": "var(--jx-fg-dim)",
+      ":hover": {
+        "background": "var(--jx-hover-bg)"
+      }
+    },
+    "& [part=\"item\"][data-selected]": {
+      "background": "var(--jx-accent-solid)",
+      "color": "var(--jx-accent-fg)"
+    },
+    "& [part=\"item\"][data-disabled]": {
+      "cursor": "default"
+    },
+    "& [part=\"item\"][data-disabled] [part=\"name\"], & [part=\"item\"][data-disabled] [part=\"icon\"]": {
+      "opacity": "0.45"
+    },
+    "& [part=\"icon\"]": {
+      "flexShrink": "0",
+      "opacity": "0.7",
+      "display": "inline-flex"
+    },
+    "& [part=\"name\"]": {
+      "fontWeight": "500",
+      "whiteSpace": "nowrap"
+    },
+    "& [part=\"detail\"]": {
+      "opacity": "0.5",
+      "fontSize": "var(--jx-text-sm)",
+      "whiteSpace": "nowrap",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis"
+    },
+    "& [part=\"chord\"]": {
+      "marginLeft": "auto",
+      "flexShrink": "0",
+      "fontFamily": "inherit",
+      "fontSize": "var(--jx-text-xs)",
+      "color": "var(--jx-fg-muted)",
+      "border": "1px solid var(--jx-border)",
+      "borderRadius": "var(--jx-radius-sm)",
+      "padding": "0 5px"
+    },
+    "& [part=\"item\"][data-selected] [part=\"chord\"]": {
+      "color": "inherit",
+      "borderColor": "currentColor"
+    },
+    "& [part=\"badge\"]": {
+      "marginLeft": "auto",
+      "fontSize": "var(--jx-text-xs)",
+      "padding": "1px var(--jx-space-2)",
+      "borderRadius": "var(--jx-radius-sm)",
+      "background": "var(--jx-border)",
+      "color": "var(--jx-fg-dim)"
+    },
+    "& [part=\"empty\"]": {
+      "padding": "var(--jx-space-5)",
+      "textAlign": "center",
+      "color": "var(--jx-fg-muted)",
+      "fontSize": "var(--jx-text-md)"
+    },
+    "& [part=\"section-label\"]": {
+      "padding": "var(--jx-space-3) var(--jx-space-5) var(--jx-space-1)",
+      "fontSize": "var(--jx-text-xs)",
+      "textTransform": "uppercase",
+      "letterSpacing": "0.5px",
+      "color": "var(--jx-fg-muted)"
+    },
+    "& [part=\"hint\"]": {
+      "padding": "var(--jx-space-2) var(--jx-space-5)",
+      "borderTop": "1px solid var(--jx-border)",
+      "color": "var(--jx-fg-muted)",
+      "fontSize": "var(--jx-text-xs)"
+    },
+    "& [part=\"hint\"] kbd": {
+      "fontFamily": "inherit",
+      "color": "var(--jx-fg-dim)"
+    }
+  },
+  "$switch": {
+    "$ref": "#/state/open"
+  },
+  "cases": {
+    "true": {
+      "tagName": "div",
+      "attributes": {
+        "part": "overlay"
+      },
+      "onclick": {
+        "$prototype": "Function",
+        "body": [
+          {
+            "operator": "call",
+            "target": {
+              "$ref": "#/state/close"
+            },
+            "value": []
+          }
+        ]
+      },
+      "children": [
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "panel"
+          },
+          "onclick": {
+            "$prototype": "Function",
+            "body": [
+              {
+                "stopPropagation": true
+              }
+            ]
+          },
+          "children": [
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "input-row"
+              },
+              "children": [
+                {
+                  "tagName": "span",
+                  "attributes": {
+                    "part": "chip-slot",
+                    "role": "none"
+                  },
+                  "$switch": {
+                    "$ref": "#/state/hasChip"
+                  },
+                  "cases": {
+                    "true": {
+                      "tagName": "span",
+                      "attributes": {
+                        "part": "chip"
+                      },
+                      "children": [
+                        {
+                          "tagName": "span",
+                          "attributes": {
+                            "part": "chip-label"
+                          },
+                          "textContent": "${state.chipLabel}"
+                        },
+                        {
+                          "tagName": "jx-action-button",
+                          "$props": {
+                            "label": "Clear mode",
+                            "hint": "Clear mode (Backspace)",
+                            "icon": "x",
+                            "size": "sm"
+                          },
+                          "attributes": {
+                            "part": "chip-remove"
+                          },
+                          "onclick": {
+                            "$prototype": "Function",
+                            "body": [
+                              {
+                                "operator": "call",
+                                "target": {
+                                  "$ref": "#/state/clearMode"
+                                },
+                                "value": []
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "tagName": "input",
+                  "attributes": {
+                    "part": "input",
+                    "type": "text",
+                    "role": "combobox",
+                    "aria-controls": "quick-search-listbox",
+                    "aria-expanded": "${state.expanded ? 'true' : 'false'}",
+                    "aria-activedescendant": "${state.expanded ? state.activeId : null}",
+                    "aria-autocomplete": "list",
+                    "aria-label": "${state.placeholder}",
+                    "placeholder": "${state.placeholder}"
+                  },
+                  "value": {
+                    "$ref": "#/state/query"
+                  },
+                  "oninput": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/input"
+                        },
+                        "value": [
+                          {
+                            "$ref": "event#/target/value"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "onkeydown": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "$switch": {
+                          "$ref": "event#/key"
+                        },
+                        "cases": {
+                          "ArrowDown": [
+                            {
+                              "preventDefault": true
+                            },
+                            {
+                              "operator": "call",
+                              "target": {
+                                "$ref": "#/state/move"
+                              },
+                              "value": [1]
+                            }
+                          ],
+                          "ArrowUp": [
+                            {
+                              "preventDefault": true
+                            },
+                            {
+                              "operator": "call",
+                              "target": {
+                                "$ref": "#/state/move"
+                              },
+                              "value": [-1]
+                            }
+                          ],
+                          "Enter": [
+                            {
+                              "preventDefault": true
+                            },
+                            {
+                              "operator": "call",
+                              "target": {
+                                "$ref": "#/state/activate"
+                              },
+                              "value": []
+                            }
+                          ],
+                          "Escape": [
+                            {
+                              "preventDefault": true
+                            },
+                            {
+                              "operator": "call",
+                              "target": {
+                                "$ref": "#/state/close"
+                              },
+                              "value": []
+                            }
+                          ],
+                          "Backspace": [
+                            {
+                              "$switch": {
+                                "$ref": "#/state/canClearMode"
+                              },
+                              "cases": {
+                                "true": [
+                                  {
+                                    "preventDefault": true
+                                  },
+                                  {
+                                    "operator": "call",
+                                    "target": {
+                                      "$ref": "#/state/clearMode"
+                                    },
+                                    "value": []
+                                  }
+                                ]
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "results",
+                "role": "listbox",
+                "id": "quick-search-listbox",
+                "aria-label": "Results"
+              },
+              "children": [
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "empty-slot",
+                    "role": "none"
+                  },
+                  "$switch": {
+                    "$ref": "#/state/isEmpty"
+                  },
+                  "cases": {
+                    "true": {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "empty"
+                      },
+                      "textContent": "${state.emptyHint}"
+                    }
+                  }
+                },
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "section-slot",
+                    "role": "none"
+                  },
+                  "$switch": {
+                    "$ref": "#/state/showSection"
+                  },
+                  "cases": {
+                    "true": {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "section-label"
+                      },
+                      "textContent": "${state.sectionLabel}"
+                    }
+                  }
+                },
+                {
+                  "$prototype": "Array",
+                  "items": {
+                    "$ref": "#/state/rows"
+                  },
+                  "key": {
+                    "$ref": "$map/item/key"
+                  },
+                  "map": {
+                    "tagName": "div",
+                    "attributes": {
+                      "part": "item",
+                      "role": "option",
+                      "id": "quick-search-option-${$map.index}",
+                      "aria-selected": "${$map.index === state.selectedIndex ? 'true' : 'false'}",
+                      "data-selected": "${$map.index === state.selectedIndex ? '' : null}",
+                      "aria-disabled": "${$map.item.disabled ? 'true' : null}",
+                      "data-disabled": "${$map.item.disabled ? '' : null}",
+                      "data-kind": "${$map.item.kind}"
+                    },
+                    "onclick": {
+                      "$prototype": "Function",
+                      "body": [
+                        {
+                          "operator": "call",
+                          "target": {
+                            "$ref": "#/state/activateRow"
+                          },
+                          "value": [
+                            {
+                              "$ref": "$map/index"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "onmouseenter": {
+                      "$prototype": "Function",
+                      "body": [
+                        {
+                          "operator": "call",
+                          "target": {
+                            "$ref": "#/state/hover"
+                          },
+                          "value": [
+                            {
+                              "$ref": "$map/index"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "children": [
+                      {
+                        "tagName": "span",
+                        "attributes": {
+                          "part": "icon"
+                        },
+                        "children": [
+                          {
+                            "tagName": "jx-icon",
+                            "$props": {
+                              "name": {
+                                "$ref": "$map/item/icon"
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "tagName": "span",
+                        "attributes": {
+                          "part": "name"
+                        },
+                        "textContent": "${$map.item.name}"
+                      },
+                      {
+                        "tagName": "span",
+                        "attributes": {
+                          "part": "detail"
+                        },
+                        "textContent": "${$map.item.detail}"
+                      },
+                      {
+                        "tagName": "span",
+                        "attributes": {
+                          "part": "trailing-slot",
+                          "role": "none"
+                        },
+                        "$switch": {
+                          "$ref": "$map/item/trailing"
+                        },
+                        "cases": {
+                          "chord": {
+                            "tagName": "kbd",
+                            "attributes": {
+                              "part": "chord"
+                            },
+                            "textContent": "${$map.item.chord}"
+                          },
+                          "recent": {
+                            "tagName": "span",
+                            "attributes": {
+                              "part": "badge"
+                            },
+                            "textContent": "recent"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "hint"
+              },
+              "children": [
+                {
+                  "tagName": "kbd",
+                  "textContent": "↑↓"
+                },
+                " move · ",
+                {
+                  "tagName": "kbd",
+                  "textContent": "↵"
+                },
+                " run · ",
+                {
+                  "tagName": "kbd",
+                  "textContent": "?"
+                },
+                " modes · ",
+                {
+                  "tagName": "kbd",
+                  "textContent": ">"
+                },
+                " commands · ",
+                {
+                  "tagName": "kbd",
+                  "textContent": "@"
+                },
+                " elements"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
