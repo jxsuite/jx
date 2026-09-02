@@ -57,6 +57,31 @@ The tokens live in the kit's own `project.json`. Open that file in Studio to edi
 
 The list of shipped glyphs is `icons/list.json` in the package. Add a name there and run `bun run build:icons` to extend it.
 
+## Buttons
+
+`jx-button` wraps one native `<button>`, so everything the platform gives a button (a form submission, `popovertarget`, `command` and `commandfor`, focus, the keyboard) works through it. Its text is its label; `variant` says how much it asks for.
+
+```json
+{
+  "tagName": "jx-button",
+  "$props": { "variant": "accent", "command": "show-modal", "commandfor": "confirm-delete" },
+  "children": [
+    { "tagName": "jx-icon", "attributes": { "slot": "icon" }, "$props": { "name": "trash" } },
+    { "tagName": "span", "textContent": "Delete…" }
+  ]
+}
+```
+
+`variant` is `accent`, `primary`, `secondary` (the default) or `negative`. `size` is `sm`, `md` or `lg`. `quiet` drops the fill and border until hovered. `disabled` disables the control. `loading` keeps the button's width, shows a spinner, says `aria-busy` and swallows the next activation. When the visible text is not the name, or there is none, give it a `label`; `labelledby` and `describedby` forward to the control too.
+
+`jx-action-button` is the icon-first tool button a toolbar is made of. `label` is required, because its name is not on screen; it is also the tooltip. `icon` names a glyph. `toggles` makes it a two-state button that carries `aria-pressed`, flips `selected` when activated and dispatches `change` with the new state. A host that owns the state sets `selected` itself, and the property wins.
+
+```json
+{ "tagName": "jx-action-button", "$props": { "label": "Bold", "icon": "text-b", "toggles": true } }
+```
+
+It is `quiet` by default. `emphasized` draws the selected state in the accent.
+
 ## Show a menu
 
 A menu is a native popover. Give it a name and a viewport position, fill it with rows, and show it with the platform's own call:

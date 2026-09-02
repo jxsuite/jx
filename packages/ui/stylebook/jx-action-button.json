@@ -1,0 +1,108 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StylebookActionButton",
+  "tagName": "main",
+  "$elements": [
+    { "$ref": "../components/jx-icon.json" },
+    { "$ref": "../components/jx-action-button.json" }
+  ],
+  "state": {
+    "bold": false,
+    "note": {
+      "$prototype": "Function",
+      "parameters": ["event"],
+      "body": [
+        {
+          "operator": "=",
+          "target": { "$ref": "#/state/bold" },
+          "value": { "$ref": "event#/detail" }
+        }
+      ]
+    }
+  },
+  "style": {
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "color": "var(--jx-fg)",
+    "background": "var(--jx-bg)",
+    "padding": "var(--jx-space-6)",
+    "minHeight": "100vh",
+    "& > h1": {
+      "fontSize": "var(--jx-text-lg)",
+      "fontWeight": "600",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& > p": { "color": "var(--jx-fg-dim)", "margin": "0 0 var(--jx-space-5)" },
+    "& [role=\"toolbar\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-1)",
+      "padding": "var(--jx-space-1)",
+      "background": "var(--jx-bg-panel)",
+      "border": "1px solid var(--jx-border)",
+      "borderRadius": "var(--jx-radius-md)",
+      "width": "fit-content",
+      "margin": "0 0 var(--jx-space-4)"
+    }
+  },
+  "children": [
+    { "tagName": "h1", "textContent": "jx-action-button" },
+    {
+      "tagName": "p",
+      "textContent": "Icon-first tool buttons: quiet in a toolbar, a toggle with aria-pressed, an emphasized selection, and a text-and-icon form. Bold is ${state.bold ? 'on' : 'off'}."
+    },
+    {
+      "tagName": "div",
+      "attributes": { "role": "toolbar", "aria-label": "Formatting" },
+      "children": [
+        {
+          "tagName": "jx-action-button",
+          "$props": { "label": "Bold", "icon": "text-b", "toggles": true },
+          "onchange": { "$ref": "#/state/note" }
+        },
+        {
+          "tagName": "jx-action-button",
+          "$props": { "label": "Italic", "icon": "text-italic", "toggles": true, "selected": true }
+        },
+        { "tagName": "jx-action-button", "$props": { "label": "Link", "icon": "link" } },
+        {
+          "tagName": "jx-action-button",
+          "$props": { "label": "Undo", "icon": "arrow-u-up-left", "disabled": true }
+        }
+      ]
+    },
+    {
+      "tagName": "div",
+      "attributes": { "role": "toolbar", "aria-label": "Emphasized and sized" },
+      "children": [
+        {
+          "tagName": "jx-action-button",
+          "$props": {
+            "label": "Selected, emphasized",
+            "icon": "eye",
+            "toggles": true,
+            "selected": true,
+            "emphasized": true
+          }
+        },
+        {
+          "tagName": "jx-action-button",
+          "$props": { "label": "Not quiet", "icon": "gear", "quiet": false }
+        },
+        {
+          "tagName": "jx-action-button",
+          "$props": { "label": "Small", "icon": "plus", "size": "sm" }
+        },
+        {
+          "tagName": "jx-action-button",
+          "$props": { "label": "Large", "icon": "plus", "size": "lg" }
+        },
+        {
+          "tagName": "jx-action-button",
+          "$props": { "label": "Save", "icon": "floppy-disk", "quiet": false },
+          "children": [{ "tagName": "span", "textContent": "Save" }]
+        }
+      ]
+    }
+  ]
+}

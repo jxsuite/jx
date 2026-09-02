@@ -1,0 +1,233 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "JxActionButton",
+  "tagName": "jx-action-button",
+  "observedAttributes": [
+    "label",
+    "icon",
+    "weight",
+    "toggles",
+    "selected",
+    "quiet",
+    "emphasized",
+    "size",
+    "disabled",
+    "popovertarget",
+    "popovertargetaction",
+    "command",
+    "commandfor"
+  ],
+  "$elements": [{ "$ref": "./jx-icon.json" }],
+  "state": {
+    "label": {
+      "type": "string",
+      "default": "",
+      "attribute": "label",
+      "description": "The accessible name, required: an action button is icon-first, so its name is not on screen. Also its tooltip."
+    },
+    "icon": {
+      "type": "string",
+      "default": "",
+      "attribute": "icon",
+      "description": "The glyph, by its name in the kit's manifest. Empty for a text-only action button."
+    },
+    "weight": {
+      "type": "string",
+      "default": "regular",
+      "attribute": "weight",
+      "description": "The glyph's weight: regular, bold or fill. A selected toggle draws fill by convention."
+    },
+    "toggles": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "toggles",
+      "description": "A two-state button: selected flips on activation and aria-pressed says which state it is in."
+    },
+    "selected": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "selected",
+      "description": "The pressed state of a toggling button. A host may hold it: the property wins over the flip."
+    },
+    "quiet": {
+      "type": "boolean",
+      "default": true,
+      "attribute": "quiet",
+      "description": "No fill and no border until hovered, which is what a toolbar wants. Off for a standalone tool button."
+    },
+    "emphasized": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "emphasized",
+      "description": "Draws the selected state in the accent rather than a neutral fill."
+    },
+    "size": {
+      "type": "string",
+      "default": "md",
+      "attribute": "size",
+      "description": "sm, md or lg."
+    },
+    "disabled": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "disabled",
+      "description": "Cannot act. Disabled, never absent."
+    },
+    "popovertarget": {
+      "type": "string",
+      "default": "",
+      "attribute": "popovertarget",
+      "description": "The popover this button invokes; forwarded to the inner control."
+    },
+    "popovertargetaction": {
+      "type": "string",
+      "default": "",
+      "attribute": "popovertargetaction",
+      "description": "toggle, show or hide; forwarded with popovertarget."
+    },
+    "command": {
+      "type": "string",
+      "default": "",
+      "attribute": "command",
+      "description": "The invoker command this button sends; forwarded to the inner control."
+    },
+    "commandfor": {
+      "type": "string",
+      "default": "",
+      "attribute": "commandfor",
+      "description": "The element the command is sent to; forwarded to the inner control."
+    },
+    "noIcon": {
+      "$expression": { "operator": "!", "target": { "$ref": "#/state/icon" } }
+    },
+    "onClick": {
+      "$prototype": "Function",
+      "body": [
+        {
+          "if": {
+            "operator": "&&",
+            "target": { "$ref": "#/state/toggles" },
+            "value": { "operator": "!", "target": { "$ref": "#/state/disabled" } }
+          },
+          "then": [
+            {
+              "operator": "=",
+              "target": { "$ref": "#/state/selected" },
+              "value": { "operator": "!", "target": { "$ref": "#/state/selected" } }
+            },
+            { "dispatchEvent": "change", "detail": { "$ref": "#/state/selected" }, "bubbles": true }
+          ]
+        }
+      ],
+      "emits": [
+        {
+          "name": "change",
+          "description": "A toggling button flipped; detail is the new selected state."
+        }
+      ],
+      "description": "A toggling button flips selected and says so with change. A plain one leaves the click to the host, which listens for it on the element."
+    }
+  },
+  "onclick": { "$ref": "#/state/onClick" },
+  "attributes": {
+    "data-size": "${state.size}",
+    "data-quiet": "${state.quiet ? '' : null}",
+    "data-emphasized": "${state.emphasized ? '' : null}",
+    "data-selected": "${state.toggles && state.selected ? '' : null}"
+  },
+  "style": {
+    "display": "inline-flex",
+    "verticalAlign": "middle",
+    "&[hidden]": { "display": "none" },
+    "& > [part=\"control\"]": {
+      "appearance": "none",
+      "font": "inherit",
+      "fontFamily": "var(--jx-font-sans)",
+      "fontSize": "var(--jx-text-md)",
+      "display": "inline-flex",
+      "alignItems": "center",
+      "justifyContent": "center",
+      "gap": "var(--jx-space-2)",
+      "minWidth": "var(--jx-control-h)",
+      "minHeight": "var(--jx-control-h)",
+      "margin": "0",
+      "padding": "0 var(--jx-space-2)",
+      "border": "1px solid var(--jx-border-strong)",
+      "borderRadius": "var(--jx-radius-sm)",
+      "background": "var(--jx-bg-input)",
+      "color": "var(--jx-fg-dim)",
+      "cursor": "pointer",
+      "whiteSpace": "nowrap",
+      "outline": "none",
+      "transition": "background var(--jx-dur-1) var(--jx-ease-out), color var(--jx-dur-1) var(--jx-ease-out)",
+      ":hover": { "background": "var(--jx-hover-bg)", "color": "var(--jx-fg)" },
+      ":focus-visible": { "outline": "var(--jx-focus-ring)", "outlineOffset": "2px" },
+      ":disabled": { "opacity": "0.5", "cursor": "default" }
+    },
+    "&[data-quiet] > [part=\"control\"]": {
+      "background": "transparent",
+      "borderColor": "transparent",
+      ":hover": { "background": "var(--jx-hover-bg)" }
+    },
+    "&[data-selected] > [part=\"control\"]": {
+      "background": "var(--jx-accent-15)",
+      "color": "var(--jx-fg)"
+    },
+    "&[data-selected][data-emphasized] > [part=\"control\"]": {
+      "background": "var(--jx-accent-solid)",
+      "color": "var(--jx-accent-fg)"
+    },
+    "&[data-size=\"sm\"] > [part=\"control\"]": {
+      "minWidth": "calc(var(--jx-control-h) - 4px)",
+      "minHeight": "calc(var(--jx-control-h) - 4px)",
+      "padding": "0 var(--jx-space-1)"
+    },
+    "&[data-size=\"lg\"] > [part=\"control\"]": {
+      "minWidth": "calc(var(--jx-control-h) + 8px)",
+      "minHeight": "calc(var(--jx-control-h) + 8px)",
+      "padding": "0 var(--jx-space-3)"
+    },
+    "& [part=\"icon\"]": { "display": "inline-flex", "color": "inherit" },
+    "& [part=\"icon\"][hidden]": { "display": "none" },
+    "& [part=\"label\"]:empty": { "display": "none" }
+  },
+  "children": [
+    {
+      "tagName": "button",
+      "attributes": {
+        "part": "control",
+        "type": "button",
+        "disabled": { "$ref": "#/state/disabled" },
+        "aria-label": "${state.label || null}",
+        "title": "${state.label || null}",
+        "aria-pressed": "${state.toggles ? (state.selected ? 'true' : 'false') : null}",
+        "popovertarget": "${state.popovertarget || null}",
+        "popovertargetaction": "${state.popovertargetaction || null}",
+        "command": "${state.command || null}",
+        "commandfor": "${state.commandfor || null}"
+      },
+      "children": [
+        {
+          "tagName": "span",
+          "attributes": { "part": "icon" },
+          "hidden": { "$ref": "#/state/noIcon" },
+          "children": [
+            {
+              "tagName": "jx-icon",
+              "$props": {
+                "name": { "$ref": "#/state/icon" },
+                "weight": { "$ref": "#/state/weight" }
+              },
+              "attributes": { "part": "icon-glyph" }
+            }
+          ]
+        },
+        {
+          "tagName": "span",
+          "attributes": { "part": "label" },
+          "children": [{ "tagName": "slot", "attributes": { "part": "label-slot" } }]
+        }
+      ]
+    }
+  ]
+}
