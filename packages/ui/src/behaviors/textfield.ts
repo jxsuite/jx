@@ -38,3 +38,19 @@ export function selectValue(host: HTMLElement, mode: "all" | "stem" | "none" = "
 export function focusField(host: HTMLElement): void {
   controlOf(host)?.focus();
 }
+
+let minted = 0;
+
+/**
+ * Give the instance an id stem no other field in the document shares, so its error and help
+ * sentences can carry ids the control names in `aria-describedby`.
+ *
+ * A document cannot mint one: the closed operator set has no counter and no identity, and two
+ * fields on one surface must not collide. This is the sidecar case specs/ui.md §3.2 sanctions.
+ *
+ * @param state The element's reactive scope, whose `uid` this writes.
+ */
+export function mintFieldId(state: Record<string, unknown>): void {
+  minted += 1;
+  state["uid"] = `jx-tf-${minted}`;
+}

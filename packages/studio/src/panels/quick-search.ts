@@ -628,6 +628,15 @@ function onInput(raw: string) {
     _query = raw;
   }
   _selectedIndex = 0;
+  if (raw !== _query) {
+    // The field and the query have PARTED: the prefix moved to the chip, and `_query` may be
+    // Exactly what it already was — typing `>` into an empty field leaves both "". A binding only
+    // Re-runs when what it reads CHANGES, so nothing would rewrite the field, it would keep the
+    // `>` the state discarded, and the next keystroke would be parsed as a prefixed one all over
+    // Again. Announcing the raw text first makes the projection below a change the binding can
+    // See; the runtime skips a write equal to the live element, so the field still lands in one.
+    scope().query = raw;
+  }
   renderOverlay();
   void ensureFiles();
 }

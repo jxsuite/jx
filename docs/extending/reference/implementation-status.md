@@ -12,26 +12,26 @@ This page is generated from the `> **Status: …**` markers in the specification
 
 ## Specs at a glance
 
-| Spec                      | Version      | Status      | Updated    |
-| ------------------------- | ------------ | ----------- | ---------- |
-| `ai.md`                   | 0.1.12-draft | Partial     | 2026-08-31 |
-| `collab.md`               | 0.2.5-draft  | Partial     | 2026-08-20 |
-| `compiler.md`             | 0.4.3-draft  | Partial     | 2026-09-01 |
-| `desktop.md`              | 0.4.10-draft | Pending     | 2026-09-02 |
-| `embedding.md`            | 0.1.2        | Implemented | 2026-09-02 |
-| `extensions.md`           | 0.4.3-draft  | Partial     | 2026-08-31 |
-| `imports.md`              | 0.1.10-draft | Partial     | 2026-08-27 |
-| `jx-markdown.md`          | 0.1.10-draft | Partial     | 2026-08-31 |
-| `parser.md`               | 0.2.10-draft | Partial     | 2026-08-27 |
-| `relationships.md`        | 0.1.4-draft  | Partial     | 2026-08-15 |
-| `schema.md`               | 0.4.9-draft  | Partial     | 2026-09-02 |
-| `server.md`               | 0.2.23       | Implemented | 2026-08-31 |
-| `site-architecture.md`    | 0.6.10-draft | Partial     | 2026-08-29 |
-| `spec.md`                 | 0.6.10-draft | Partial     | 2026-09-02 |
-| `standards.md`            | 0.1.17-draft | Partial     | 2026-09-02 |
-| `studio-ui-guidelines.md` | 0.4.9-draft  | Partial     | 2026-09-02 |
-| `studio.md`               | 0.10.9-draft | Partial     | 2026-09-02 |
-| `ui.md`                   | 0.1.6-draft  | Partial     | 2026-09-02 |
+| Spec                      | Version       | Status      | Updated    |
+| ------------------------- | ------------- | ----------- | ---------- |
+| `ai.md`                   | 0.1.12-draft  | Partial     | 2026-08-31 |
+| `collab.md`               | 0.2.5-draft   | Partial     | 2026-08-20 |
+| `compiler.md`             | 0.4.3-draft   | Partial     | 2026-09-01 |
+| `desktop.md`              | 0.4.10-draft  | Pending     | 2026-09-02 |
+| `embedding.md`            | 0.1.2         | Implemented | 2026-09-02 |
+| `extensions.md`           | 0.4.3-draft   | Partial     | 2026-08-31 |
+| `imports.md`              | 0.1.10-draft  | Partial     | 2026-08-27 |
+| `jx-markdown.md`          | 0.1.10-draft  | Partial     | 2026-08-31 |
+| `parser.md`               | 0.2.10-draft  | Partial     | 2026-08-27 |
+| `relationships.md`        | 0.1.4-draft   | Partial     | 2026-08-15 |
+| `schema.md`               | 0.4.9-draft   | Partial     | 2026-09-02 |
+| `server.md`               | 0.2.23        | Implemented | 2026-08-31 |
+| `site-architecture.md`    | 0.6.10-draft  | Partial     | 2026-08-29 |
+| `spec.md`                 | 0.6.12-draft  | Partial     | 2026-09-02 |
+| `standards.md`            | 0.1.17-draft  | Partial     | 2026-09-02 |
+| `studio-ui-guidelines.md` | 0.4.10-draft  | Partial     | 2026-09-02 |
+| `studio.md`               | 0.10.15-draft | Partial     | 2026-09-02 |
+| `ui.md`                   | 0.1.9-draft   | Partial     | 2026-09-02 |
 
 ## Sections not yet implemented
 

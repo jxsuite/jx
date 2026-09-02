@@ -114,6 +114,27 @@ describe("reportPopoverProblems", () => {
     expect(forRule("base-display")).toHaveLength(2);
   });
 
+  test("one panel that sets display in two breakpoints files two records, not one", () => {
+    /*
+     * The other half of the same key. Two popovers with one rule was already covered; this is ONE
+     * popover with the same rule twice, which rule and path alone cannot tell apart either.
+     */
+    const count = reportPopoverProblems(
+      docWith({
+        ...GOOD,
+        "@--md": { display: "flex" },
+        "@--lg": { display: "block" },
+      }),
+    );
+    const rows = forRule("breakpoint-display");
+    expect(rows).toHaveLength(2);
+    expect(new Set(rows.map((p) => p.key)).size).toBe(2);
+    expect(rows.map((p) => p.message).join(" ")).toContain("@--md");
+    expect(rows.map((p) => p.message).join(" ")).toContain("@--lg");
+    // The count the command's toast reports agrees with the panel.
+    expect(count).toBe(filed().length);
+  });
+
   test("a re-run replaces what it filed before rather than accumulating", () => {
     reportPopoverProblems(docWith({ ...GOOD, display: "flex" }));
     expect(filed().length).toBeGreaterThan(0);

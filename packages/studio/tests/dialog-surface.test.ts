@@ -42,6 +42,33 @@ describe("the dialog surface", () => {
     handle.close();
   });
 
+  test("refusing the same value twice re-announces it, rather than writing nothing", async () => {
+    /*
+     * A live region announces a CHANGE, and the reactive write is skipped when the value is equal,
+     * so pressing confirm again on a blank field — the ordinary way to meet a refusal twice — set
+     * the same sentence, wrote nothing, and said nothing. The region is cleared first, on its own
+     * turn, so the repeat is a change like the first one.
+     */
+    const handle = open({ field: { placeholder: "", select: "none", value: "" } });
+    await handle.ready;
+    await flush();
+    const seen: string[] = [];
+    const region = layer.querySelector('[part="error"]');
+    const observer = new MutationObserver(() => seen.push(region?.textContent ?? ""));
+    observer.observe(region!, { characterData: true, childList: true, subtree: true });
+
+    handle.update({ error: "Enter a value.", invalid: true });
+    await flush();
+    handle.update({ error: "Enter a value.", invalid: true });
+    await flush();
+    observer.disconnect();
+
+    // The second refusal cleared and re-set, so the region changed again rather than staying put.
+    expect(seen.filter((text) => text === "Enter a value.")).toHaveLength(2);
+    expect(region?.textContent).toBe("Enter a value.");
+    handle.close();
+  });
+
   test("closing before the element is ready still disposes the mount, and a second close is a no-op", async () => {
     const handle = open();
     expect(layer.childElementCount).toBe(1);

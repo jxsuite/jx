@@ -248,7 +248,20 @@ export function openDialogSurface(options: DialogSurfaceOptions): DialogSurfaceH
         scope.invalid = patch.invalid;
       }
       if (patch.error !== undefined) {
-        scope.error = patch.error;
+        /* A live region announces a CHANGE, and the reactive write is skipped when the value is
+           equal, so refusing the same value twice — pressing confirm again on a blank field, which
+           is the ordinary way to meet a refusal — wrote nothing and said nothing. Cleared first, on
+           its own turn, so the second refusal is a change like the first. `announce.ts` states the
+           same rule for Studio's own regions. */
+        if (patch.error !== "" && patch.error === scope.error) {
+          scope.error = "";
+          const repeated = patch.error;
+          queueMicrotask(() => {
+            scope.error = repeated;
+          });
+        } else {
+          scope.error = patch.error;
+        }
       }
       if (patch.options !== undefined) {
         scope.options = patch.options;

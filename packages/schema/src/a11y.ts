@@ -193,6 +193,18 @@ const LABELLED_ROLES = new Set([
 /** `<input>` types named by their `value` rather than a label. */
 const VALUE_NAMED_INPUTS = new Set(["button", "reset", "submit"]);
 
+/** For each role the container rules judge, the container roles allowed to own it. */
+const OWNING_ROLES: Readonly<Record<string, readonly string[]>> = {
+  menuitem: ["menu", "menubar"],
+  menuitemcheckbox: ["menu", "menubar"],
+  menuitemradio: ["menu", "menubar"],
+  option: ["listbox"],
+  tab: ["tablist"],
+};
+
+/** Every role on the owning side of that map, so one walk can collect what each of them owns. */
+const CONTAINER_ROLES = new Set(Object.values(OWNING_ROLES).flat());
+
 // ─── Walking with ancestors ─────────────────────────────────────────────────────
 
 interface Ancestry {
@@ -356,9 +368,10 @@ function unnamedInteractive(visit: Ancestry, labelledIds: LabelTargets): A11yDef
 }
 
 /**
- * What the NATIVE labelling routes say about a form control, independently of any role it carries.
+ * What the NATIVE labelling routes say about a form control or an image-map area, independently of
+ * any role it carries.
  *
- * `"none"` means the node is not a native control and these routes do not apply to it.
+ * `"none"` means the node has no native route and these do not apply to it.
  */
 function nativeNameRoute(
   node: JxElement,
@@ -366,6 +379,22 @@ function nativeNameRoute(
   labelledIds: LabelTargets,
   tags: string[],
 ): "named" | "exempt" | "unnamed" | "unnamed-value" | "unnamed-alt" | "none" {
+  /*
+   * An image-map hotspot, whose `alt` IS its link text.
+   *
+   * HTML requires the attribute on every `<area>` that has an `href`, and there is no other route
+   * to a name: an area is a void element, so it has no content to fall back on, and no `<label>`
+   * points at one. An empty `alt` is therefore NOT the decision it is on an `<img>` — a decorative
+   * link is a contradiction — which is why this reports through the name rule rather than through
+   * `img-alt-missing`. An `<area>` with no `href` is not a link and owes nothing, so it falls
+   * through to the role branches like any other element.
+   */
+  if (tag === "area") {
+    if (!has(node, "href")) {
+      return "none";
+    }
+    return hasNameSource(node, "alt") ? "named" : "unnamed-alt";
+  }
   if (tag === "select" || tag === "textarea") {
     return labelledByLabel(idStateOf(node), labelledIds, tags) || hasNameSource(node, "placeholder")
       ? "named"
@@ -446,13 +475,61 @@ function ariaTargetsMissing(visit: Ancestry, ids: Set<string>): A11yDefect[] {
   return defects;
 }
 
-function roleOutsideContainer(visit: Ancestry): A11yDefect | null {
+/** What the containers of one role name through `aria-owns`, across the whole document. */
+interface OwnedTargets {
+  /** Every literal id such a container owns. */
+  ids: Set<string>;
+  /** One of them owns `"tab-${state.i}"`, so which elements it owns is not decidable here. */
+  bound: boolean;
+}
+
+/**
+ * Whether a container that may own this role claims it through `aria-owns`.
+ *
+ * ARIA states containment where the DOM tree cannot: an element a `tablist` names in `aria-owns` is
+ * that tablist's child in the accessibility tree wherever it sits in the markup, and the attribute
+ * exists for exactly the arrangements a subtree cannot express. Walking ancestors alone therefore
+ * reported the one correct way to write those, at `error` severity, so `jx validate --strict`
+ * failed on a document that is fine.
+ *
+ * A BOUND `aria-owns`, or a bound id on the node itself, answers true, which is this module's rule
+ * about not accusing an author of a defect it cannot see. The map is keyed by the OWNER's role, so
+ * this stays a silence rather than a hole: a `role="banner" aria-owns="t1"` over a tab owns nothing
+ * a tab may belong to, and the tab is still reported.
+ */
+function ownedByContainer(
+  id: string | null,
+  role: string,
+  owned: Map<string, OwnedTargets>,
+): boolean {
+  for (const container of OWNING_ROLES[role] ?? []) {
+    const targets = owned.get(container);
+    if (targets === undefined) {
+      continue;
+    }
+    if (targets.bound) {
+      return true;
+    }
+    if (id === BOUND && targets.ids.size > 0) {
+      return true;
+    }
+    if (id !== null && id !== BOUND && targets.ids.has(id)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function roleOutsideContainer(
+  visit: Ancestry,
+  owned: Map<string, OwnedTargets>,
+): A11yDefect | null {
   const { node, path, roles, tags } = visit;
   const role = roleOf(node);
   if (role === null || role === "bound" || path.length === 0 || underCustomElement(tags)) {
     return null;
   }
-  if (roles.includes("bound")) {
+  if (roles.includes("bound") || ownedByContainer(idStateOf(node), role, owned)) {
     return null;
   }
   const what = labelOf(node, "the element");
@@ -586,8 +663,25 @@ export function findA11yDefects(doc: JxElement): A11yDefect[] {
   const visits = [...walkAncestry(doc)];
   const ids = new Set<string>();
   const labelledIds: LabelTargets = { bound: false, ids: new Set<string>() };
+  const owned = new Map<string, OwnedTargets>();
   let boundIds = false;
   for (const { node } of visits) {
+    const role = roleOf(node);
+    if (role !== null && CONTAINER_ROLES.has(role)) {
+      const targets = owned.get(role) ?? { bound: false, ids: new Set<string>() };
+      const literalOwns = literal(node, "aria-owns");
+      if (literalOwns === null) {
+        // An `aria-owns` the document decides at run time: what it owns is not readable here.
+        targets.bound ||= has(node, "aria-owns");
+      } else {
+        for (const token of literalOwns.split(/\s+/)) {
+          if (token !== "") {
+            targets.ids.add(token);
+          }
+        }
+      }
+      owned.set(role, targets);
+    }
     const id = idStateOf(node);
     if (id === BOUND) {
       boundIds = true;
@@ -609,7 +703,7 @@ export function findA11yDefects(doc: JxElement): A11yDefect[] {
     const found = [
       unnamedInteractive(visit, labelledIds),
       imgAltMissing(visit),
-      roleOutsideContainer(visit),
+      roleOutsideContainer(visit, owned),
       tablistNoneSelected(visit),
       dialogUnnamed(visit),
       activedescendantNotFocusable(visit),

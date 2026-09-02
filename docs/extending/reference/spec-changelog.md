@@ -382,6 +382,8 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `spec.md`
 
+- **0.6.12-draft** (2026-09-02) — a linked `area` owes an accessible name, which its `alt` supplies (§8.8).
+- **0.6.11-draft** (2026-09-02) — the container rules honour aria-owns.
 - **0.6.10-draft** (2026-09-02) — @keyframes emits as one unscoped block, with keyframe selectors taken verbatim.
 - **0.6.9-draft** (2026-09-02) — Accessibility rules (§8.8): nine static rules over the overlay walker, each citing its WCAG criterion, with WAI-ARIA, accname and WCAG alignment rows.
 - **0.6.8-draft** (2026-09-02) — A nested style key or its scope may be a selector list; nested blocks distribute over every member (§9.2).
@@ -477,6 +479,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `studio-ui-guidelines.md`
 
+- **0.4.10-draft** (2026-09-02) — A surface that rewrites what the reader typed must make the rewrite visible to the binding.
 - **0.4.9-draft** (2026-09-02) — The command palette is a Jx document projected by panels/quick-search.ts (§9.3).
 - **0.4.8-draft** (2026-09-02) — The toast stack is a Jx document projected by ui/layers.ts (§9.3).
 - **0.4.7-draft** (2026-09-02) — The confirm, save-or-discard and prompt dialogs are a Jx document over jx-dialog, opened modally on the native substrate (§8.7, §9.3).
@@ -520,6 +523,12 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `studio.md`
 
+- **0.10.15-draft** (2026-09-02) — the canvas UA-substitute overlay rules are installed wherever the de-link runs, not only in design/edit.
+- **0.10.14-draft** (2026-09-02) — a canvas invoker command aimed at the other kind of overlay is ignored, not thrown (§4.2.3).
+- **0.10.13-draft** (2026-09-02) — 16.6 a Problems key is per finding, so several defects of one rule on one node are several rows.
+- **0.10.12-draft** (2026-09-02) — [inert] is transposed to [data-jx-inert] with the attribute rename, so an author's inert rule still applies on the canvas (§4.2.3).
+- **0.10.11-draft** (2026-09-02) — the canvas [open] transpose follows the selector's subject, not the styled element.
+- **0.10.10-draft** (2026-09-02) — a hide invoker closes its own target, not whichever popover is open (4.2.2, 4.2.3).
 - **0.10.9-draft** (2026-09-02) — A selection move fires the reveal rule, and an explicit close stays closed: the rule must not observe the open state it writes (§4.2.2).
 - **0.10.8-draft** (2026-09-02) — Dialogs, invoker commands and inert on the canvas: de-linked on stamped nodes, one open dialog per tab, canvas.setDialogOpen and the commandTargetClick report (§4.2.3).
 - **0.10.7-draft** (2026-09-02) — §1, §2 self-hosting and §11 name the UI kit; §11.2 states the shell's unsafe-eval requirement.
@@ -638,6 +647,9 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `ui.md`
 
+- **0.1.9-draft** (2026-09-02) — jx-textfield gives its control a default value, so a form reset cannot desync it.
+- **0.1.8-draft** (2026-09-02) — the textfield's error live region is permanent, so the first refusal is announced.
+- **0.1.7-draft** (2026-09-02) — jx-textfield names its error and help sentences in aria-describedby, and forwards labelledby and describedby.
 - **0.1.6-draft** (2026-09-02) — jx-dialog claims focus on open (confirm, or cancel when destructive) and jx-button forwards autofocus (§5.1, §5.2).
 - **0.1.5-draft** (2026-09-02) — jx-dialog and jx-textfield are built (§5.1, §5.2, §6).
 - **0.1.4-draft** (2026-09-02) — jx-action-button gains stacked, haspopup/expanded and badge (§5.1).
