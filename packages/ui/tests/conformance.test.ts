@@ -102,6 +102,26 @@ describe("kit documents", () => {
         }
       });
 
+      test("a part that is hidden by a binding says what hidden means to it", () => {
+        // The UA's `[hidden] { display: none }` loses to any authored `display`, so a part that is
+        // Both bound to `hidden` and given a display of its own needs a `[hidden]` rule, or it
+        // Never hides — the chevron on every context-menu row, verified in Chrome.
+        const style = (doc.style ?? {}) as Record<string, unknown>;
+        for (const [label, node] of internalNodes(doc)) {
+          const part = node.attributes?.part;
+          if (node.hidden === undefined || typeof part !== "string") {
+            continue;
+          }
+          const rule = style[`& > [part="${part}"]`] as Record<string, unknown> | undefined;
+          if (rule && "display" in rule) {
+            const hiddenRule = style[`& > [part="${part}"][hidden]`] as
+              | Record<string, unknown>
+              | undefined;
+            expect(hiddenRule?.display, `${label} <${node.tagName} part=${part}>`).toBe("none");
+          }
+        }
+      });
+
       test("documents every prop", () => {
         for (const [key, entry] of Object.entries(doc.state ?? {})) {
           if (entry && typeof entry === "object" && "default" in entry) {
