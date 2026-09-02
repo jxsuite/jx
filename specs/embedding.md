@@ -2,8 +2,8 @@
 
 ## Mounting Documents in an Imperative Host
 
-**Version:** 0.1.0-draft\
-**Status:** Partial\
+**Version:** 0.1.1\
+**Status:** Implemented\
 **Updated:** 2026-09-02\
 **License:** MIT
 
@@ -13,7 +13,7 @@ Companion to [spec.md](./spec.md) §4, §13 and §16. Defines how an application
 
 ## 1. Overview
 
-> **Status: Partial.** §2–§6 and §8 are implemented; §7 is pending.
+> **Status: Implemented.** §2–§8 are implemented; `redefineElement` (§7) closed the last gap.
 
 The interpreter's original entry point, `Jx(source, target)`, was written for a page that owns the whole document: it fetched, registered elements, seeded page-wide settings and appended. A host that renders many documents beside code of its own needs three things that entry point did not give:
 
@@ -148,9 +148,11 @@ Both are process-wide, like the caches they seed. A host that must serve one URL
 
 ## 7. Redefinition
 
-> **Status: Pending.** `elements` on the mount handle is implemented; replacing a definition is not.
+> **Status: Implemented.** `redefineElement(doc, base)` and `elementDefinition(tag)` in `@jxsuite/runtime`; the generated class reads its definition through the registry at connection. Exercised by `packages/runtime/tests/redefine.test.ts`.
 
-A host that authors its own components live needs to replace an element definition after it was registered and re-mount the roots that used it. `customElements.define` is one-shot, so the runtime will instead read a definition through a registry at connection time and expose `redefineElement(doc, base)`; `mount().elements` already names which roots a redefinition touches. New instances will render the new definition; existing instances keep the old one until re-mounted, and `observedAttributes` stays as first defined.
+A host that authors its own components live needs to replace an element definition after it was registered and re-mount the roots that used it. `customElements.define` is one-shot, so the runtime reads a definition through a registry at connection time rather than from the class's closure, and exposes `redefineElement(doc, base)`; `mount().elements` names which roots a redefinition touches, and `elementDefinition(tag)` answers what a tag renders from now.
+
+The contract has three edges, each deliberate. An instance connected after the call renders the new definition; one already on the page keeps the definition it rendered — its bindings stay live against its own state — until it is re-mounted, because tearing a connected instance down underneath its host is the host's decision, not the runtime's. `observedAttributes` stays as first defined, because the platform freezes it with the class; a changed list is reported on the console and takes effect only in a fresh realm. A tag not yet defined is defined, so a host may use one call for both.
 
 ## 8. Security
 
@@ -170,8 +172,9 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.1.1** (2026-09-02) — redefineElement and elementDefinition: a definition is read through the registry at connection, so a host may replace it live (§7); every section is now implemented.
 - **0.1.0-draft** (2026-09-02) — Initial release: mount() with dispose and AbortSignal, host scope, host functions through call, events out, per-mount context, preloadDocument and preloadModule.
 
 ---
 
-_Jx Embedding Specification v0.1.0-draft_
+_Jx Embedding Specification v0.1.1_

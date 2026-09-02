@@ -18,7 +18,7 @@ This page is generated from the `> **Status: …**` markers in the specification
 | `collab.md`               | 0.2.5-draft  | Partial     | 2026-08-20 |
 | `compiler.md`             | 0.4.3-draft  | Partial     | 2026-09-01 |
 | `desktop.md`              | 0.4.10-draft | Pending     | 2026-09-02 |
-| `embedding.md`            | 0.1.0-draft  | Partial     | 2026-09-02 |
+| `embedding.md`            | 0.1.1        | Implemented | 2026-09-02 |
 | `extensions.md`           | 0.4.3-draft  | Partial     | 2026-08-31 |
 | `imports.md`              | 0.1.10-draft | Partial     | 2026-08-27 |
 | `jx-markdown.md`          | 0.1.10-draft | Partial     | 2026-08-31 |
@@ -41,7 +41,6 @@ This page is generated from the `> **Status: …**` markers in the specification
 - `compiler.md` §3 — Output Tiers
 - `desktop.md` §10 — SaaS / Cloud Mode
 - `desktop.md` §10.2 — Storage Backend
-- `embedding.md` §1 — Overview
 - `parser.md` §3 — `Markdown` — the markdown format class
 - `site-architecture.md` §9.4 — Studio Media Browser
 - `site-architecture.md` §13 — Internationalization
@@ -75,7 +74,6 @@ This page is generated from the `> **Status: …**` markers in the specification
 ### Pending
 
 - `desktop.md` §4.3 — Single File Mode
-- `embedding.md` §7 — Redefinition
 - `site-architecture.md` §12.3 — Incremental Builds
 - `studio-ui-guidelines.md` §6.2 — Custom Components
 - `studio-ui-guidelines.md` §9.4 — Template Conventions
