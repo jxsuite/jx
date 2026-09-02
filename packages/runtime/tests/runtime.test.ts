@@ -1264,6 +1264,30 @@ describe("renderNode", () => {
    * element is re-used across renders, so a binding that flips back has to REMOVE the attribute.
    * Writing "false" leaves `<details open="false">`, which is an open `<details>`.
    */
+  test("a value that resolves to null or undefined removes the attribute", async () => {
+    const state = reactive({ haspopup: true, missing: undefined as string | undefined });
+    const el = renderNode(
+      {
+        attributes: {
+          "aria-haspopup": "${state.haspopup ? 'menu' : null}",
+          title: { $ref: "#/state/missing" },
+          lang: null as unknown as string,
+        },
+        tagName: "div",
+      },
+      state,
+    );
+    expect(el.getAttribute("aria-haspopup")).toBe("menu");
+    expect(el.hasAttribute("title")).toBe(false);
+    expect(el.hasAttribute("lang")).toBe(false);
+    state.haspopup = false;
+    await Promise.resolve();
+    expect(el.hasAttribute("aria-haspopup")).toBe(false);
+    state.missing = "Needs a selection";
+    await Promise.resolve();
+    expect(el.getAttribute("title")).toBe("Needs a selection");
+  });
+
   test("a boolean binding that flips to false removes the attribute", async () => {
     const state = reactive({ expanded: true });
     const el = renderNode({ attributes: { open: "${state.expanded}" }, tagName: "details" }, state);

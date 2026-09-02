@@ -27,11 +27,11 @@ This page is generated from the `> **Status: …**` markers in the specification
 | `schema.md`               | 0.4.9-draft  | Partial     | 2026-09-02 |
 | `server.md`               | 0.2.23       | Implemented | 2026-08-31 |
 | `site-architecture.md`    | 0.6.10-draft | Partial     | 2026-08-29 |
-| `spec.md`                 | 0.6.3-draft  | Partial     | 2026-09-02 |
+| `spec.md`                 | 0.6.5-draft  | Partial     | 2026-09-02 |
 | `standards.md`            | 0.1.17-draft | Partial     | 2026-09-02 |
-| `studio-ui-guidelines.md` | 0.4.0-draft  | Partial     | 2026-09-02 |
+| `studio-ui-guidelines.md` | 0.4.1-draft  | Partial     | 2026-09-02 |
 | `studio.md`               | 0.10.7-draft | Partial     | 2026-09-02 |
-| `ui.md`                   | 0.1.0-draft  | Partial     | 2026-09-02 |
+| `ui.md`                   | 0.1.1-draft  | Partial     | 2026-09-02 |
 
 ## Sections not yet implemented
 
@@ -53,7 +53,9 @@ This page is generated from the `> **Status: …**` markers in the specification
 - `studio-ui-guidelines.md` §1 — Design System Foundation
 - `studio-ui-guidelines.md` §6.1 — Spectrum Components in Use
 - `studio-ui-guidelines.md` §8 — Interactive Patterns
+- `studio-ui-guidelines.md` §8.4 — Menus
 - `studio-ui-guidelines.md` §8.7 — Dialogs and Overlay Layers
+- `studio-ui-guidelines.md` §9.3 — Render Orchestration
 - `studio.md` §6.8 — The `From data…` picker addresses only what it can list
 - `studio.md` §13 — Command Registry and Context Keys
 - `studio.md` §14 — Tabs and Document Identity
@@ -63,6 +65,10 @@ This page is generated from the `> **Status: …**` markers in the specification
 - `studio.md` §20.2 — Rendering Language
 - `ui.md` §1 — Overview
 - `ui.md` §4 — Theme and Tokens
+- `ui.md` §5 — Element Catalogue
+- `ui.md` §5.1 — Primitives
+- `ui.md` §6 — Overlay Model
+- `ui.md` §7 — Keyboard and Focus
 - `ui.md` §8 — Icons
 - `ui.md` §9 — Build and Distribution
 
@@ -72,20 +78,14 @@ This page is generated from the `> **Status: …**` markers in the specification
 - `embedding.md` §7 — Redefinition
 - `site-architecture.md` §12.3 — Incremental Builds
 - `studio-ui-guidelines.md` §6.2 — Custom Components
-- `studio-ui-guidelines.md` §8.4 — Menus
-- `studio-ui-guidelines.md` §9.3 — Render Orchestration
 - `studio-ui-guidelines.md` §9.4 — Template Conventions
 - `ui.md` §2 — Principles
 - `ui.md` §3 — Authoring Model
-- `ui.md` §5 — Element Catalogue
-- `ui.md` §5.1 — Primitives
 - `ui.md` §5.2 — Overlays
 - `ui.md` §5.3 — Forms
 - `ui.md` §5.4 — Containers
 - `ui.md` §5.5 — Builder
 - `ui.md` §5.6 — Colour
-- `ui.md` §6 — Overlay Model
-- `ui.md` §7 — Keyboard and Focus
 - `ui.md` §10 — Studio Integration
 
 ### Removed

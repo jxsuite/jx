@@ -1,0 +1,96 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "JxMenu",
+  "tagName": "jx-menu",
+  "observedAttributes": ["label", "x", "y"],
+  "state": {
+    "label": {
+      "type": "string",
+      "default": "Menu",
+      "attribute": "label",
+      "description": "The accessible name of the menu."
+    },
+    "x": {
+      "type": "number",
+      "default": 0,
+      "attribute": "x",
+      "description": "Where the panel's inline-start edge sits, in viewport pixels. A root menu is placed at the pointer or beside its opener; a submenu is placed beside its row by the menu behaviour."
+    },
+    "y": {
+      "type": "number",
+      "default": 0,
+      "attribute": "y",
+      "description": "Where the panel's block-start edge sits, in viewport pixels."
+    },
+    "open": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether the panel is showing. Follows the platform's toggle event; write it through showPopover() and hidePopover(), not directly."
+    },
+    "onKeydown": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/menu.ts",
+      "$export": "onMenuKeydown",
+      "description": "The menu keyboard contract: Arrow keys, Home, End and typeahead move; Enter and Space activate; ArrowRight opens a submenu and ArrowLeft leaves it; Escape closes one level; Tab closes the whole stack."
+    },
+    "onToggle": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/menu.ts",
+      "$export": "onMenuToggle",
+      "description": "Mirrors the platform's toggle event into open, clamps a freshly shown panel into the viewport, and moves focus to the first row."
+    },
+    "onPointerOver": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/menu.ts",
+      "$export": "onMenuPointerOver",
+      "description": "Opens the submenu of the row under the pointer and closes any sibling's."
+    },
+    "onMount": {
+      "$prototype": "Function",
+      "body": [{ "dispatchEvent": "jx-ready", "bubbles": true }],
+      "description": "Announces that the element has rendered and carries its popover attribute, so a host may show it. A menu is always an auto popover: light dismiss and Escape are the platform's."
+    }
+  },
+  "attributes": {
+    "role": "menu",
+    "aria-label": "${state.label}",
+    "popover": "auto",
+    "tabindex": "-1"
+  },
+  "onkeydown": { "$ref": "#/state/onKeydown" },
+  "ontoggle": { "$ref": "#/state/onToggle" },
+  "onpointerover": { "$ref": "#/state/onPointerOver" },
+  "style": {
+    "position": "fixed",
+    "insetInlineStart": "${state.x}px",
+    "insetBlockStart": "${state.y}px",
+    "insetInlineEnd": "auto",
+    "insetBlockEnd": "auto",
+    "margin": "0",
+    "padding": "var(--jx-space-2)",
+    "minWidth": "180px",
+    "maxWidth": "min(360px, calc(100vw - 8px))",
+    "maxHeight": "calc(100vh - 8px)",
+    "overflowY": "auto",
+    "boxSizing": "border-box",
+    "flexDirection": "column",
+    "gap": "var(--jx-space-1)",
+    "background": "var(--jx-bg-overlay)",
+    "color": "var(--jx-fg)",
+    "border": "1px solid var(--jx-border-strong)",
+    "borderRadius": "var(--jx-radius-md)",
+    "boxShadow": "var(--jx-shadow-popover)",
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "lineHeight": "var(--jx-leading-md)",
+    "pointerEvents": "auto",
+    "outline": "none",
+    ":popover-open": { "display": "flex" },
+    "& hr": {
+      "border": "0",
+      "borderTop": "1px solid var(--jx-border)",
+      "margin": "var(--jx-space-1) 0"
+    }
+  },
+  "children": [{ "tagName": "slot", "attributes": { "part": "items" } }]
+}

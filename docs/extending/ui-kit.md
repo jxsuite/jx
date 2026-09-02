@@ -4,12 +4,14 @@ description: "Register the interface elements Jx Studio is built from, use its t
 spec:
   - ui.md#1 # what the kit is
   - ui.md#4 # theme and tokens
+  - ui.md#5 # the element catalogue
   - ui.md#8 # icons
   - ui.md#9 # build and distribution
 code:
   - packages/ui/src/index.ts
   - packages/ui/src/theme.ts
   - packages/ui/src/icons.ts
+  - packages/ui/src/behaviors/menu.ts
 ---
 
 # The Jx UI kit
@@ -54,6 +56,41 @@ The tokens live in the kit's own `project.json`. Open that file in Studio to edi
 `name` is a Phosphor glyph the kit ships. `weight` is `regular`, `bold` or `fill`. `label` gives the icon an accessible name; leave it out when visible text already names the control, and the icon stays hidden from assistive technology. `mirror` flips the drawing for a right-to-left layout.
 
 The list of shipped glyphs is `icons/list.json` in the package. Add a name there and run `bun run build:icons` to extend it.
+
+## Show a menu
+
+A menu is a native popover. Give it a name and a viewport position, fill it with rows, and show it with the platform's own call:
+
+```json
+{
+  "tagName": "jx-menu",
+  "id": "actions",
+  "$props": { "label": "Actions", "x": 120, "y": 80 },
+  "children": [
+    {
+      "tagName": "jx-menu-item",
+      "$props": { "value": "copy" },
+      "children": [
+        { "tagName": "span", "textContent": "Copy" },
+        { "tagName": "kbd", "attributes": { "slot": "value" }, "textContent": "⌘C" }
+      ]
+    },
+    {
+      "tagName": "jx-menu-item",
+      "$props": { "value": "paste", "disabled": true, "requires": "something on the clipboard" },
+      "children": [{ "tagName": "span", "textContent": "Paste" }]
+    }
+  ]
+}
+```
+
+```js
+document.getElementById("actions").showPopover();
+```
+
+Each row dispatches a bubbling `select` event whose `detail` is its `value`. Listen for it on the menu. A disabled row stays in the list and shows its `requires` text as a tooltip. Set `destructive` on a row that deletes, and `checked` to `"true"` or `"false"` on one that toggles. A row with `haspopup` takes a child menu in its `submenu` slot, which opens on hover, on ArrowRight and on the chevron; the row itself still runs its own command.
+
+Arrow keys, Home, End and typing a letter move between rows. Enter and Space activate. Escape closes one level, and a click outside closes the whole stack. Focus returns to whatever opened the menu when it closes, because the browser does that for every `auto` popover.
 
 ## Open the kit in Studio
 

@@ -10,6 +10,7 @@
  * @docs extending/ui-kit
  */
 import { defineElement, preloadDocument, preloadModule } from "@jxsuite/runtime";
+import * as menu from "./behaviors/menu.ts";
 import { documents } from "./documents.ts";
 import * as icons from "./icons.ts";
 import { installTheme } from "./theme.ts";
@@ -31,6 +32,7 @@ export const KIT_BASE = "jx-ui:/components/";
 
 /** Behaviour modules, under the `$src` specifiers the documents use. */
 export const KIT_MODULES: Readonly<Record<string, Record<string, unknown>>> = {
+  "jx-ui:/behaviors/menu.ts": menu,
   "jx-ui:/icons.ts": icons,
 };
 

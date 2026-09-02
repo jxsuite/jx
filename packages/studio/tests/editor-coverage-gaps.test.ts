@@ -258,13 +258,14 @@ describe("context-menu conversion actions", () => {
   });
 
   function clickItem(label: string) {
-    const item = [...document.querySelectorAll("#layer-popover sp-menu-item")].find(
-      (el) => el.textContent?.trim() === label,
+    const item = [...document.querySelectorAll("#layer-popover jx-menu-item")].find(
+      (el) => el.querySelector('[part="label"]')?.textContent?.trim() === label,
     ) as HTMLElement;
     item.click();
   }
 
-  function openMenu() {
+  /** Right-click the first child and wait for the menu surface to mount. */
+  async function openMenu(): Promise<void> {
     const e = new MouseEvent("contextmenu", {
       bubbles: true,
       cancelable: true,
@@ -272,10 +273,11 @@ describe("context-menu conversion actions", () => {
       clientY: 20,
     });
     showContextMenu(e, ["children", 0]);
+    await flush();
   }
 
   test("Repeat... opens the repeater dialog (cancel leaves the doc untouched)", async () => {
-    openMenu();
+    await openMenu();
     clickItem("Repeat...");
     await flush();
     const dialog = document.querySelector("#layer-dialog sp-dialog-wrapper");
@@ -288,7 +290,7 @@ describe("context-menu conversion actions", () => {
   });
 
   test("Convert to Component opens the name prompt (cancel leaves the doc untouched)", async () => {
-    openMenu();
+    await openMenu();
     clickItem("Convert to Component");
     await flush();
     const dialog = document.querySelector("#layer-dialog sp-dialog-wrapper");

@@ -107,28 +107,19 @@ const TEST_OBS = "observability accessor — only its own tests read the private
  * It landed first so the contract is reviewed and tested on its own, and so the kit registers at
  * boot before any surface exists to need it.
  */
-const SURFACE_FACADE =
-  "the surface façade (studio-ui-guidelines.md §9.3), one change ahead of the first surface that " +
-  "mounts through it — delete this line when that surface lands";
+const SURFACE_REGISTRY_READERS =
+  "the surface registry's readers: the live-authoring lane that remounts a surface when its " +
+  "document is saved (studio-ui-guidelines.md §9.3) is the next change, and reads these";
 
 const KNOWN_UNREACHABLE: Record<string, Record<string, string>> = {
   "account-status.ts": { resetAccountStatus: TEST_RESET },
   "services/surface-registry.ts": {
-    mountsOf: SURFACE_FACADE,
-    mountsUsing: SURFACE_FACADE,
-    registerMount: SURFACE_FACADE,
+    mountsOf: SURFACE_REGISTRY_READERS,
+    mountsUsing: SURFACE_REGISTRY_READERS,
     resetSurfaceRegistry: TEST_RESET,
-    surfaceMounts: SURFACE_FACADE,
-    unregisterMount: SURFACE_FACADE,
+    surfaceMounts: SURFACE_REGISTRY_READERS,
   },
-  "ui/kit.ts": { kitReady: SURFACE_FACADE },
-  "ui/surface.ts": {
-    mountSurface: SURFACE_FACADE,
-    registerSurface: SURFACE_FACADE,
-    surfaceDocument: SURFACE_FACADE,
-    surfaceResolver: SURFACE_FACADE,
-    surfaceUrl: SURFACE_FACADE,
-  },
+  "ui/surface.ts": { surfaceDocument: SURFACE_REGISTRY_READERS },
   "browse/library-layouts.ts": {
     cellTextOf:
       "row-shaped access for a caller holding grid cells rather than the typed record. The " +
@@ -454,12 +445,6 @@ const KNOWN_UNREACHABLE: Record<string, Record<string, string>> = {
     hasDraft: "the predicate beside `clearDraft`, unread for the same reason",
   },
   "ui/form-controls.ts": { resetFormControlUiState: TEST_RESET },
-  "ui/layers.ts": {
-    clearLayerSlot:
-      "removes a named layer slot from the DOM and the map. Slots are reused rather than cleared " +
-      "— the same popover id is re-rendered — so nothing removes one, and a slot for a surface " +
-      "that is gone for good leaves an empty div behind",
-  },
   "ui/value-source.ts": { resetCapsCache: TEST_RESET },
   "utils/geometry.ts": {
     elementsAtPoint:
@@ -498,10 +483,7 @@ const KNOWN_UNREACHABLE: Record<string, Record<string, string>> = {
  * builder with no producer of nested style objects) were the two, and both are gone.
  */
 /** Modules nothing imports yet, each with its reason in {@link KNOWN_UNREACHABLE}. */
-const KNOWN_UNREACHABLE_MODULES = new Set<string>([
-  "services/surface-registry.ts",
-  "ui/surface.ts",
-]);
+const KNOWN_UNREACHABLE_MODULES = new Set<string>();
 
 const LEDGER = new Map<string, string>(
   Object.entries(KNOWN_UNREACHABLE).flatMap(([file, entries]) =>

@@ -35,3 +35,11 @@ if (happyDOM?.settings) {
  */
 const { setBundleBase } = await import("../src/services/bundle-base");
 setBundleBase("http://localhost:3000/packages/studio/dist/studio.js");
+
+/*
+ * The popover API happy-dom lacks, for the kit's overlays. The same shim the kit's own tests run
+ * under, so a menu closes here the way it closes there: `toggle` in a microtask, light dismissal
+ * on an outside mousedown, Escape on the topmost `auto` popover.
+ */
+const { installPopoverShim } = await import("@jxsuite/ui/testing/popover-shim");
+installPopoverShim();

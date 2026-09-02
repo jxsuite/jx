@@ -1358,44 +1358,72 @@ function applyProperties(el: HTMLElement, def: JxElement, state: JxScope) {
       continue;
     } // Scope bindings — handled in renderNode
 
-    if (key.startsWith("on")) {
-      // Event handler: $ref to a function
-      if (isRefObj(val)) {
-        const handler = resolveRef(val.$ref, state);
-        if (typeof handler === "function") {
-          const scope = state;
-          const handlerFn = handler as (s: JxScope, e: Event) => unknown;
-          el.addEventListener(key.slice(2), (e) => handlerFn(scope, e));
-        }
-        continue;
-      }
-      // Event handler: inline $prototype: "Function" with a structured body (spec §20)
-      if (hasStructuredBody(val)) {
-        const { body } = val;
-        const scope = state;
-        el.addEventListener(key.slice(2), (e) => {
-          void runStatements(body, scope, e);
-        });
-        continue;
-      }
-      // Event handler: inline $prototype: "Function"
-      if (isFunctionDef(val) && typeof val.body === "string") {
-        const params = resolveParamNames(val);
-        const fn = new Function(...params, val.body) as (s: JxScope, e: Event) => unknown;
-        const scope = state;
-        el.addEventListener(key.slice(2), (e) => fn(scope, e));
-        continue;
-      }
-      // Event handler: inline $expression
-      if (isExpressionDef(val)) {
-        const node = val.$expression;
-        const scope = state;
-        el.addEventListener(key.slice(2), (e) => evaluateExpression(node, scope, e));
-        continue;
-      }
+    if (key.startsWith("on") && bindHandler(el, key, val, state)) {
+      continue;
     }
 
     bindProperty(el, key, val, state);
+  }
+}
+
+/**
+ * Attach an `on*` key as an event listener, in any of the four spellings a handler has: a `$ref` to
+ * a function, a structured body (spec §20), a string body, or an `$expression`. Returns false for a
+ * value that is none of those, which the caller then writes as a plain property.
+ *
+ * @param {HTMLElement} el
+ * @param {string} key The `on`-prefixed key
+ * @param {unknown} val
+ * @param {JxScope} state
+ * @returns {boolean} Whether a listener was attached
+ */
+function bindHandler(el: HTMLElement, key: string, val: unknown, state: JxScope): boolean {
+  const type = key.slice(2);
+  const scope = state;
+  if (isRefObj(val)) {
+    const handler = resolveRef(val.$ref, state);
+    if (typeof handler === "function") {
+      const handlerFn = handler as (s: JxScope, e: Event) => unknown;
+      el.addEventListener(type, (e) => handlerFn(scope, e));
+    }
+    return true;
+  }
+  if (hasStructuredBody(val)) {
+    const { body } = val;
+    el.addEventListener(type, (e) => {
+      void runStatements(body, scope, e);
+    });
+    return true;
+  }
+  if (isFunctionDef(val) && typeof val.body === "string") {
+    const params = resolveParamNames(val);
+    const fn = new Function(...params, val.body) as (s: JxScope, e: Event) => unknown;
+    el.addEventListener(type, (e) => fn(scope, e));
+    return true;
+  }
+  if (isExpressionDef(val)) {
+    const node = val.$expression;
+    el.addEventListener(type, (e) => evaluateExpression(node, scope, e));
+    return true;
+  }
+  return false;
+}
+
+/**
+ * A definition's root-level `on*` keys listen on the HOST element, exactly as they would on an
+ * element in a document. Only handler keys are read here: the rest of a definition's root —
+ * `observedAttributes`, `emits`, `description` — describes the element rather than styling an
+ * instance, and is not written onto it.
+ *
+ * @param {HTMLElement} host
+ * @param {JxElement} def
+ * @param {JxScope} state
+ */
+function bindDefinitionHandlers(host: HTMLElement, def: JxElement, state: JxScope) {
+  for (const [key, val] of Object.entries(def)) {
+    if (key.startsWith("on") && !RESERVED_KEYS.has(key)) {
+      bindHandler(host, key, val, state);
+    }
   }
 }
 
@@ -2157,6 +2185,13 @@ function applyAttributes(el: HTMLElement, attrs: Record<string, JxAttributeValue
     /* Inside the effects, not before them. A `$ref` or `${…}` value is not a string until the
        effect runs — which is exactly why the document walk this replaced could never see it. */
     const write = (resolved: unknown) => {
+      if (resolved === null || resolved === undefined) {
+        /* Nothing is an attribute the element does not have. A binding that resolves to `null`
+           has to take the attribute WITH it, for the same reason a `false` does below — and an
+           `aria-checked=""` or `title=""` left behind is not absence, it is a wrong value. */
+        el.removeAttribute(attr);
+        return;
+      }
       if (typeof resolved === "boolean") {
         const text = booleanAttrValue(attr, resolved);
         /* `removeAttribute`, not `setAttribute(attr, "false")`. A binding that flips back has to
@@ -2170,7 +2205,7 @@ function applyAttributes(el: HTMLElement, attrs: Record<string, JxAttributeValue
         }
         return;
       }
-      el.setAttribute(attr, canvasAssetValue(el.tagName, k, String(resolved ?? "")));
+      el.setAttribute(attr, canvasAssetValue(el.tagName, k, String(resolved)));
     };
     if (isRefObj(v)) {
       effect(() => write(resolveRef(v.$ref, state)));
@@ -3740,6 +3775,7 @@ export async function defineElement(source: string | JxDocument, baseUrl?: strin
       // Render template into light DOM (once, not in effect — inner effects handle reactivity)
       applyStyle(this, def.style ?? {}, (state["$media"] as Record<string, string>) ?? {}, state);
       applyAttributes(this, def.attributes ?? {}, state);
+      bindDefinitionHandlers(this, def, state);
 
       /*
        * Root-level `textContent` is a definition's content just as much as `children` is — it is
@@ -3840,12 +3876,23 @@ function renderCustomElementWithProps(
   // Apply host-level style and attributes from the usage site
   applyStyle(el, def.style ?? {}, (state["$media"] as Record<string, string>) ?? {}, state);
   applyAttributes(el, def.attributes ?? {}, state);
+  /* And its ordinary properties and handlers — `id`, `hidden`, `className`, an `onselect` — exactly
+     as an ordinary element gets them. A custom element used in a document is still an element in
+     that document; only `$props` are the definition's to absorb. */
+  applyProperties(el, def, state);
 
-  // Append slotted children
+  // Append slotted children. A mapped array is not a node: its rows are rendered in place, ahead of
+  // Their anchor, exactly as they are under an ordinary element — so a `$map` of menu rows inside a
+  // `jx-menu` is a list of rows, not one `<div>` standing where the list should be.
   const children = Array.isArray(def.children) ? def.children : [];
   for (let i = 0; i < children.length; i++) {
+    const child = children[i]!;
     const childOpts = options && path ? { ...options, _path: [...path, "children", i] } : undefined;
-    el.append(renderNode(children[i]!, state, childOpts));
+    if (isMappedArray(child)) {
+      renderMappedArrayInto(el, child, state, childOpts);
+    } else {
+      el.append(renderNode(child, state, childOpts));
+    }
   }
 
   return el;

@@ -27,7 +27,9 @@ initLayers();
 const RECT = { bottom: 60, height: 20, left: 30, top: 40, width: 120 };
 
 const menuItems = () =>
-  [...document.querySelectorAll("#layer-popover sp-menu-item")] as HTMLElement[];
+  [
+    ...document.querySelectorAll("#layer-popover sp-menu-item, #layer-popover jx-menu-item"),
+  ] as HTMLElement[];
 
 beforeEach(() => {
   resetWorkspaceWithTab({
@@ -126,17 +128,20 @@ describe("makeCanvasContextMenuHandler", () => {
     handler.show({ clientX: 77, clientY: 88, path: ["children", 0, "children", 0] });
     await flush();
     expect(activeTab.value!.session.selection).toEqual([["children", 0]]);
-    const popover = document.querySelector("#layer-popover sp-popover") as HTMLElement;
-    expect(popover).toBeTruthy();
-    expect(popover.getAttribute("style")).toContain("left: 77px");
-    expect(popover.getAttribute("style")).toContain("top: 88px");
+    const menu = document.querySelector("#layer-popover jx-menu") as HTMLElement & {
+      x: number;
+      y: number;
+    };
+    expect(menu).toBeTruthy();
+    expect(menu.x).toBe(77);
+    expect(menu.y).toBe(88);
   });
 
   test("a null path (empty canvas area) is a no-op", async () => {
     const handler = makeCanvasContextMenuHandler();
     handler.show({ clientX: 5, clientY: 5, path: null });
     await flush();
-    expect(document.querySelector("#layer-popover sp-popover")).toBeNull();
+    expect(document.querySelector("#layer-popover jx-menu")).toBeNull();
   });
 
   test("dismiss closes the menu", async () => {
@@ -147,8 +152,8 @@ describe("makeCanvasContextMenuHandler", () => {
     const handler = makeCanvasContextMenuHandler();
     handler.show({ clientX: 10, clientY: 10, path: ["children", 0] });
     await flush();
-    expect(document.querySelector("#layer-popover sp-popover")).toBeTruthy();
+    expect(document.querySelector("#layer-popover jx-menu")).toBeTruthy();
     handler.dismiss();
-    expect(document.querySelector("#layer-popover sp-popover")).toBeNull();
+    expect(document.querySelector("#layer-popover jx-menu")).toBeNull();
   });
 });

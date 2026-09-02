@@ -98,17 +98,40 @@ export function collectSources(root: string): SourceFile[] {
   }));
 }
 
+/**
+ * The report a run prints and whether it failed. Separate from `import.meta.main` so a test can run
+ * it, where a `process.exit` inside the block is something nothing can.
+ *
+ * @param {PurityFinding[]} findings
+ * @param {string} root - The package root the findings are relative to
+ * @returns {{ failed: boolean; lines: string[] }}
+ */
+export function report(
+  findings: PurityFinding[],
+  root: string,
+): { failed: boolean; lines: string[] } {
+  if (findings.length > 0) {
+    return {
+      failed: true,
+      lines: [
+        `✗ check-surface-purity: ${findings.length} finding(s)`,
+        ...findings.map(
+          (f) => `   ${relative(process.cwd(), resolve(root, f.file))}:${f.line}  ${f.text}`,
+        ),
+      ],
+    };
+  }
+  return {
+    failed: false,
+    lines: [
+      "✓ check-surface-purity: no Spectrum tag in a surface document, no kit tag in a lit template, no lit import in an adapter",
+    ],
+  };
+}
+
 if (import.meta.main) {
   const root = resolve(dirname(new URL(import.meta.url).pathname), "..");
-  const findings = surfacePurityFindings(collectSources(root));
-  if (findings.length > 0) {
-    console.error(`✗ check-surface-purity: ${findings.length} finding(s)`);
-    for (const f of findings) {
-      console.error(`   ${relative(process.cwd(), resolve(root, f.file))}:${f.line}  ${f.text}`);
-    }
-    process.exit(1);
-  }
-  console.log(
-    "✓ check-surface-purity: no Spectrum tag in a surface document, no kit tag in a lit template, no lit import in an adapter",
-  );
+  const { failed, lines } = report(surfacePurityFindings(collectSources(root)), root);
+  console.log(lines.join("\n"));
+  process.exit(failed ? 1 : 0);
 }
