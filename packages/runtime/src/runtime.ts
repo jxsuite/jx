@@ -3313,6 +3313,24 @@ function getPath(obj: unknown, path: string) {
   return readPath(obj, path);
 }
 
+/**
+ * Write an observed attribute into element state, coerced by the type the state entry already holds
+ * (spec §16.5): a number parses, a boolean is presence (`"false"` counts as absent), and anything
+ * else is the string. Shared by connection and `attributeChangedCallback` so the two cannot
+ * disagree.
+ */
+function absorbAttribute(state: JxScope, name: string, value: string | null): void {
+  const camelKey = name.replaceAll(/-([a-z])/g, (_: string, c: string) => c.toUpperCase());
+  const current = state[camelKey];
+  if (typeof current === "number") {
+    state[camelKey] = Number(value);
+  } else if (typeof current === "boolean") {
+    state[camelKey] = value !== null && value !== "false";
+  } else {
+    state[camelKey] = value;
+  }
+}
+
 /** Keys already reported, so a component rendered in a loop warns once rather than per instance. */
 const _privatePropWarned = new Set<string>();
 
@@ -3628,6 +3646,16 @@ export async function defineElement(source: string | JxDocument, baseUrl?: strin
 
       // Read properties from the data-jx-props payload the site build writes on a
       // Non-static instance, so an upgrade re-renders with the authored props, not the defaults.
+      /* Observed attributes already on the element are read now. `attributeChangedCallback` fires
+         for an attribute set before connection too — but on an instance with no state yet, so it
+         had nothing to write into, and `<jx-icon name="plus">` rendered with the default. Before
+         the `$props` merges below, so a property a parent set still wins (spec §16.2). */
+      for (const attr of observedAttrs) {
+        if (this.hasAttribute(attr)) {
+          absorbAttribute(state, attr, this.getAttribute(attr));
+        }
+      }
+
       const propsAttr = this.dataset.jxProps;
       if (propsAttr) {
         try {
@@ -3752,15 +3780,7 @@ export async function defineElement(source: string | JxDocument, baseUrl?: strin
       if (!this._state || oldVal === newVal) {
         return;
       }
-      const camelKey = name.replaceAll(/-([a-z])/g, (_: string, c: string) => c.toUpperCase());
-      const current = this._state[camelKey];
-      if (typeof current === "number") {
-        this._state[camelKey] = Number(newVal);
-      } else if (typeof current === "boolean") {
-        this._state[camelKey] = newVal !== null && newVal !== "false";
-      } else {
-        this._state[camelKey] = newVal;
-      }
+      absorbAttribute(this._state, name, newVal);
     }
   };
 

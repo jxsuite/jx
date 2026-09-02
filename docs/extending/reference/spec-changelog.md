@@ -379,6 +379,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `spec.md`
 
+- **0.6.3-draft** (2026-09-02) — §16.5: observed attributes present at connection are read into state before $props.
 - **0.6.2-draft** (2026-09-02) — §10.4 Keys: mapped arrays reconcile by key, rows keep their nodes and effects, reconciliation is batched per microtask; §14.1 each switch case owns a scope.
 - **0.6.1-draft** (2026-09-02) — Lifecycle hooks at the mount boundary (§16.4) and the Studio shell as an interpreter host (§21.3).
 - **0.6.0-draft** (2026-09-01) — Styling: every declaration in a style object becomes a CSS rule; the runtime delivers them through document.adoptedStyleSheets (new 9.6). Nesting composes in either order to any depth, so 9.2's compiler limitation is gone.
@@ -445,6 +446,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `standards.md`
 
+- **0.1.16-draft** (2026-09-02) — §11: CSS Cascade Layers, Media Queries 5 and CSS Shadow Parts moved to ui.md §11.
 - **0.1.15-draft** (2026-08-17) — §4.1: the Standards Alignment heading is matched tolerantly and a visual-editor escape is reported as heading-escaped.
 - **0.1.14-draft** (2026-08-16) — §11 WebDriver BiDi leaves the adoption backlog — the pipeline speaks it, and studio-ui-guidelines.md §15 owns it.
 - **0.1.13-draft** (2026-08-16) — §11 RFC 8414 leaves the adoption backlog — the flow it would configure now exists, and it is recorded Rejected in desktop.md for the reason that remains.
@@ -609,3 +611,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 - **0.1.2-draft** (2026-04-15) — Rebrand to Jx / Jx Platform (`abc63f2d`).
 - **0.1.1-draft** (2026-04-10) — Finalize vision for site architecture (`da594993`).
 - **0.1.0-draft** (2026-04-10) — Consolidate specs (`80ca313f`).
+
+## `ui.md`
+
+- **0.1.0-draft** (2026-09-02) — Initial release: principles, authoring model, theme and tokens, element catalogue, overlay and keyboard models, icons, build and distribution, Studio integration.

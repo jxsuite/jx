@@ -27,10 +27,11 @@ This page is generated from the `> **Status: …**` markers in the specification
 | `schema.md`               | 0.4.9-draft  | Partial     | 2026-09-02 |
 | `server.md`               | 0.2.23       | Implemented | 2026-08-31 |
 | `site-architecture.md`    | 0.6.10-draft | Partial     | 2026-08-29 |
-| `spec.md`                 | 0.6.2-draft  | Partial     | 2026-09-02 |
-| `standards.md`            | 0.1.15-draft | Partial     | 2026-08-17 |
+| `spec.md`                 | 0.6.3-draft  | Partial     | 2026-09-02 |
+| `standards.md`            | 0.1.16-draft | Partial     | 2026-09-02 |
 | `studio-ui-guidelines.md` | 0.3.16       | Implemented | 2026-08-27 |
 | `studio.md`               | 0.10.6-draft | Partial     | 2026-09-01 |
+| `ui.md`                   | 0.1.0-draft  | Partial     | 2026-09-02 |
 
 ## Sections not yet implemented
 
@@ -57,12 +58,28 @@ This page is generated from the `> **Status: …**` markers in the specification
 - `studio.md` §17 — Project Documents (Settings and Styles)
 - `studio.md` §20 — Internationalization Surfaces
 - `studio.md` §20.2 — Rendering Language
+- `ui.md` §1 — Overview
+- `ui.md` §4 — Theme and Tokens
+- `ui.md` §8 — Icons
+- `ui.md` §9 — Build and Distribution
 
 ### Pending
 
 - `desktop.md` §4.3 — Single File Mode
 - `embedding.md` §7 — Redefinition
 - `site-architecture.md` §12.3 — Incremental Builds
+- `ui.md` §2 — Principles
+- `ui.md` §3 — Authoring Model
+- `ui.md` §5 — Element Catalogue
+- `ui.md` §5.1 — Primitives
+- `ui.md` §5.2 — Overlays
+- `ui.md` §5.3 — Forms
+- `ui.md` §5.4 — Containers
+- `ui.md` §5.5 — Builder
+- `ui.md` §5.6 — Colour
+- `ui.md` §6 — Overlay Model
+- `ui.md` §7 — Keyboard and Focus
+- `ui.md` §10 — Studio Integration
 
 ### Removed
 

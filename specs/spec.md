@@ -2,7 +2,7 @@
 
 ## Declarative Document Object Model — JSON Edition
 
-**Version:** 0.6.2-draft\
+**Version:** 0.6.3-draft\
 **Status:** Partial\
 **Updated:** 2026-09-02\
 **License:** MIT
@@ -1527,6 +1527,8 @@ A document mounted by a host through `mount()` ([embedding.md](./embedding.md) �
 
 Type coercion: `string` → no conversion, `number` → `Number()`, `boolean` → presence check.
 
+An observed attribute already on the element when it connects is read into state before `$props` are merged, so `<user-card username="Ada">` renders with `Ada` and a property a parent set before connection still wins (§16.2). The same coercion applies at connection and on every later change.
+
 > **Status: Implemented.**
 
 ### 16.6 Light DOM Rendering
@@ -2440,6 +2442,7 @@ This rewrites the mutating handlers of Appendix A's idiom using `$expression`, l
 
 ## Changelog
 
+- **0.6.3-draft** (2026-09-02) — §16.5: observed attributes present at connection are read into state before $props.
 - **0.6.2-draft** (2026-09-02) — §10.4 Keys: mapped arrays reconcile by key, rows keep their nodes and effects, reconciliation is batched per microtask; §14.1 each switch case owns a scope.
 - **0.6.1-draft** (2026-09-02) — Lifecycle hooks at the mount boundary (§16.4) and the Studio shell as an interpreter host (§21.3).
 - **0.6.0-draft** (2026-09-01) — Styling: every declaration in a style object becomes a CSS rule; the runtime delivers them through document.adoptedStyleSheets (new 9.6). Nesting composes in either order to any depth, so 9.2's compiler limitation is gone.
@@ -2506,4 +2509,4 @@ This rewrites the mutating handlers of Appendix A's idiom using `$expression`, l
 
 ---
 
-_Jx Specification v0.6.2-draft — subject to revision_
+_Jx Specification v0.6.3-draft — subject to revision_
