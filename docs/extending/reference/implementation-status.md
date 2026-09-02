@@ -31,7 +31,7 @@ This page is generated from the `> **Status: …**` markers in the specification
 | `standards.md`            | 0.1.17-draft | Partial     | 2026-09-02 |
 | `studio-ui-guidelines.md` | 0.4.6-draft  | Partial     | 2026-09-02 |
 | `studio.md`               | 0.10.8-draft | Partial     | 2026-09-02 |
-| `ui.md`                   | 0.1.4-draft  | Partial     | 2026-09-02 |
+| `ui.md`                   | 0.1.5-draft  | Partial     | 2026-09-02 |
 
 ## Sections not yet implemented
 
@@ -66,6 +66,7 @@ This page is generated from the `> **Status: …**` markers in the specification
 - `ui.md` §4 — Theme and Tokens
 - `ui.md` §5 — Element Catalogue
 - `ui.md` §5.1 — Primitives
+- `ui.md` §5.2 — Overlays
 - `ui.md` §6 — Overlay Model
 - `ui.md` §7 — Keyboard and Focus
 - `ui.md` §8 — Icons
@@ -79,7 +80,6 @@ This page is generated from the `> **Status: …**` markers in the specification
 - `studio-ui-guidelines.md` §9.4 — Template Conventions
 - `ui.md` §2 — Principles
 - `ui.md` §3 — Authoring Model
-- `ui.md` §5.2 — Overlays
 - `ui.md` §5.3 — Forms
 - `ui.md` §5.4 — Containers
 - `ui.md` §5.5 — Builder

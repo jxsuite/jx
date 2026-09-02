@@ -633,6 +633,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `ui.md`
 
+- **0.1.5-draft** (2026-09-02) — jx-dialog and jx-textfield are built (§5.1, §5.2, §6).
 - **0.1.4-draft** (2026-09-02) — jx-action-button gains stacked, haspopup/expanded and badge (§5.1).
 - **0.1.3-draft** (2026-09-02) — jx-button and jx-action-button are built: one native button each, invoker attributes forwarded, loading and toggling states (§5.1).
 - **0.1.2-draft** (2026-09-02) — jx-menu takes a floor and a submenu flips to its parent's left when it would overflow (§5.1).

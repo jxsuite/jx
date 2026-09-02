@@ -1,0 +1,195 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StylebookTextfield",
+  "tagName": "main",
+  "$elements": [
+    {
+      "$ref": "../components/jx-textfield.json"
+    }
+  ],
+  "state": {
+    "name": "Draft"
+  },
+  "style": {
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "color": "var(--jx-fg)",
+    "background": "var(--jx-bg)",
+    "padding": "var(--jx-space-6)",
+    "minHeight": "100vh",
+    "& > h1": {
+      "fontSize": "var(--jx-text-lg)",
+      "fontWeight": "600",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& > p": {
+      "color": "var(--jx-fg-dim)",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& [role=\"group\"]": {
+      "display": "flex",
+      "alignItems": "flex-start",
+      "flexWrap": "wrap",
+      "gap": "var(--jx-space-3)",
+      "margin": "0 0 var(--jx-space-4)"
+    },
+    "& [role=\"group\"] > span": {
+      "width": "80px",
+      "color": "var(--jx-fg-muted)",
+      "fontSize": "var(--jx-text-sm)"
+    }
+  },
+  "children": [
+    {
+      "tagName": "h1",
+      "textContent": "jx-textfield"
+    },
+    {
+      "tagName": "p",
+      "textContent": "A native input or textarea with its name, its states and its messages. The first field's value is bound to the page's state both ways."
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "role": "group",
+        "aria-label": "Bound value"
+      },
+      "children": [
+        {
+          "tagName": "jx-textfield",
+          "$props": {
+            "label": "Layout name",
+            "placeholder": "Untitled",
+            "value": {
+              "$ref": "#/state/name"
+            }
+          },
+          "oninput": {
+            "$prototype": "Function",
+            "body": [
+              {
+                "operator": "=",
+                "target": {
+                  "$ref": "#/state/name"
+                },
+                "value": {
+                  "$ref": "event#/target/value"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "tagName": "span",
+          "textContent": "${state.name}"
+        }
+      ]
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "role": "group",
+        "aria-label": "Sizes"
+      },
+      "children": [
+        {
+          "tagName": "jx-textfield",
+          "$props": {
+            "label": "Small",
+            "size": "sm",
+            "value": "sm"
+          }
+        },
+        {
+          "tagName": "jx-textfield",
+          "$props": {
+            "label": "Medium",
+            "value": "md"
+          }
+        },
+        {
+          "tagName": "jx-textfield",
+          "$props": {
+            "label": "Large",
+            "size": "lg",
+            "value": "lg"
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "role": "group",
+        "aria-label": "States"
+      },
+      "children": [
+        {
+          "tagName": "jx-textfield",
+          "$props": {
+            "label": "Refused",
+            "value": "about",
+            "invalid": true,
+            "error": "about.md already exists."
+          }
+        },
+        {
+          "tagName": "jx-textfield",
+          "$props": {
+            "label": "With help",
+            "help": "Letters, digits and dashes."
+          }
+        },
+        {
+          "tagName": "jx-textfield",
+          "$props": {
+            "label": "Disabled",
+            "value": "Cannot edit",
+            "disabled": true
+          }
+        },
+        {
+          "tagName": "jx-textfield",
+          "$props": {
+            "label": "Read only",
+            "value": "Can select",
+            "readonly": true
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "role": "group",
+        "aria-label": "Kinds"
+      },
+      "children": [
+        {
+          "tagName": "jx-textfield",
+          "$props": {
+            "label": "Selector",
+            "mono": true,
+            "value": ".card > h2"
+          }
+        },
+        {
+          "tagName": "jx-textfield",
+          "$props": {
+            "label": "Search",
+            "type": "search",
+            "placeholder": "Search\u2026"
+          }
+        },
+        {
+          "tagName": "jx-textfield",
+          "$props": {
+            "label": "Notes",
+            "multiline": true,
+            "value": "A textarea,\nwith the same contract."
+          }
+        }
+      ]
+    }
+  ]
+}
