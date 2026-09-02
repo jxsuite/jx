@@ -206,7 +206,6 @@ export const ALLOWED_ORPHANS = new Set<string>([
      `min-width: 0` a flex chain needs, so the Logic tab's operand controls were clipped by the
      right edge of the window at Inspector width. */
   // Owner: panels/welcome-screen.ts
-  "welcome-catalogue",
   // Owner: publish/publish-panel.ts
   "publish-actions",
   "publish-error",

@@ -122,7 +122,7 @@ export async function bootStudio(opts: {
     unmount: mock(() => {}),
   }));
 
-  void mock.module("../src/panels/welcome-screen.ts", () => ({
+  void mock.module("../src/surfaces/welcome.ts", () => ({
     initWelcome: (ctx: unknown) => {
       captured.welcomeCtx = ctx;
     },

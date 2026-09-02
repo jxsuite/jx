@@ -2,7 +2,7 @@
 title: "Welcome screen"
 description: "What Jx Studio shows before a project is open, and every way to start: new project, open, clone, add a repository, and your recent projects."
 code:
-  - packages/studio/src/panels/welcome-screen.ts
+  - packages/studio/src/surfaces/welcome.ts
   - packages/studio/src/new-project/add-repo-modal.ts
 ---
 

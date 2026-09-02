@@ -473,6 +473,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `studio-ui-guidelines.md`
 
+- **0.4.5-draft** (2026-09-02) — The Start pane is a surface: the first whole pane as a document (§9.3).
 - **0.4.4-draft** (2026-09-02) — The status bar is a surface: three projected fields, buttons where an item names a command (§9.3).
 - **0.4.3-draft** (2026-09-02) — The Navigator rail is a surface: stacked jx-action-buttons held by the shell, the gear a menu button, panel icons as kit glyph names (§9.3).
 - **0.4.2-draft** (2026-09-02) — The rail's Settings menu is the second surface on the menu document: sections as a child jx-menu, live rows through a reactive scope, the rail's bottom as the stack's floor (§8.4, §9.3).
