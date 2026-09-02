@@ -3,7 +3,11 @@
   "$id": "JxMenuItem",
   "tagName": "jx-menu-item",
   "observedAttributes": ["value", "disabled", "destructive", "requires", "checked", "haspopup"],
-  "$elements": [{ "$ref": "./jx-icon.json" }],
+  "$elements": [
+    {
+      "$ref": "./jx-icon.json"
+    }
+  ],
   "state": {
     "value": {
       "type": "string",
@@ -47,20 +51,43 @@
       "description": "Whether the row's submenu is showing. Written by the menu behaviour."
     },
     "noPopup": {
-      "$expression": { "operator": "!", "target": { "$ref": "#/state/haspopup" } }
+      "$expression": {
+        "operator": "!",
+        "target": {
+          "$ref": "#/state/haspopup"
+        }
+      }
     },
     "onClick": {
       "$prototype": "Function",
       "body": [
-        { "stopPropagation": true },
         {
-          "if": { "operator": "!", "target": { "$ref": "#/state/disabled" } },
+          "stopPropagation": true
+        },
+        {
+          "if": {
+            "operator": "!",
+            "target": {
+              "$ref": "#/state/disabled"
+            }
+          },
           "then": [
-            { "dispatchEvent": "select", "detail": { "$ref": "#/state/value" }, "bubbles": true }
+            {
+              "dispatchEvent": "select",
+              "detail": {
+                "$ref": "#/state/value"
+              },
+              "bubbles": true
+            }
           ]
         }
       ],
-      "emits": [{ "name": "select", "description": "The row was activated; detail is its value." }],
+      "emits": [
+        {
+          "name": "select",
+          "description": "The row was activated; detail is its value."
+        }
+      ],
       "description": "Activation dispatches select unless the row is disabled. The click stops here: a row inside a submenu is a descendant of the row that owns it, and a click that kept bubbling would activate both."
     }
   },
@@ -73,7 +100,9 @@
     "aria-expanded": "${state.haspopup ? (state.expanded ? 'true' : 'false') : null}",
     "title": "${state.disabled && state.requires ? state.requires : null}"
   },
-  "onclick": { "$ref": "#/state/onClick" },
+  "onclick": {
+    "$ref": "#/state/onClick"
+  },
   "style": {
     "display": "flex",
     "alignItems": "center",
@@ -85,10 +114,20 @@
     "userSelect": "none",
     "outline": "none",
     "color": "${state.destructive && !state.disabled ? 'var(--jx-danger)' : 'inherit'}",
-    ":hover": { "background": "var(--jx-hover-bg)" },
-    ":focus-visible": { "outline": "var(--jx-focus-ring)", "outlineOffset": "-2px" },
-    "&[aria-disabled=\"true\"]": { "opacity": "0.5" },
-    "& > [part=\"icon\"]": { "display": "inline-flex", "color": "var(--jx-fg-dim)" },
+    ":hover": {
+      "background": "var(--jx-hover-bg)"
+    },
+    ":focus-visible": {
+      "outline": "var(--jx-focus-ring)",
+      "outlineOffset": "-2px"
+    },
+    "&[aria-disabled=\"true\"]": {
+      "opacity": "0.5"
+    },
+    "& > [part=\"icon\"]": {
+      "display": "inline-flex",
+      "color": "var(--jx-fg-dim)"
+    },
     "& > [part=\"text\"]": {
       "display": "flex",
       "flexDirection": "column",
@@ -115,30 +154,62 @@
       "fontSize": "var(--jx-text-xs)",
       "color": "var(--jx-fg-dim)"
     },
-    "& > [part=\"chevron\"]": { "display": "inline-flex", "color": "var(--jx-fg-dim)" }
+    "& > [part=\"chevron\"]": {
+      "display": "inline-flex",
+      "color": "var(--jx-fg-dim)"
+    },
+    "& > [part=\"chevron\"][hidden]": {
+      "display": "none"
+    }
   },
   "children": [
     {
       "tagName": "span",
-      "attributes": { "part": "icon" },
-      "children": [{ "tagName": "slot", "attributes": { "name": "icon", "part": "icon-slot" } }]
+      "attributes": {
+        "part": "icon"
+      },
+      "children": [
+        {
+          "tagName": "slot",
+          "attributes": {
+            "name": "icon",
+            "part": "icon-slot"
+          }
+        }
+      ]
     },
     {
       "tagName": "span",
-      "attributes": { "part": "text" },
+      "attributes": {
+        "part": "text"
+      },
       "children": [
         {
           "tagName": "span",
-          "attributes": { "part": "label" },
-          "children": [{ "tagName": "slot", "attributes": { "part": "label-slot" } }]
-        },
-        {
-          "tagName": "span",
-          "attributes": { "part": "description" },
+          "attributes": {
+            "part": "label"
+          },
           "children": [
             {
               "tagName": "slot",
-              "attributes": { "name": "description", "part": "description-slot" }
+              "attributes": {
+                "part": "label-slot"
+              }
+            }
+          ]
+        },
+        {
+          "tagName": "span",
+          "attributes": {
+            "part": "description"
+          },
+          "children": [
+            {
+              "tagName": "slot",
+              "attributes": {
+                "name": "description",
+                "part": "description-slot"
+              }
             }
           ]
         }
@@ -146,21 +217,46 @@
     },
     {
       "tagName": "span",
-      "attributes": { "part": "value" },
-      "children": [{ "tagName": "slot", "attributes": { "name": "value", "part": "value-slot" } }]
-    },
-    {
-      "tagName": "span",
-      "attributes": { "part": "chevron" },
-      "hidden": { "$ref": "#/state/noPopup" },
+      "attributes": {
+        "part": "value"
+      },
       "children": [
         {
-          "tagName": "jx-icon",
-          "$props": { "name": "caret-right", "weight": "bold" },
-          "attributes": { "part": "chevron-icon" }
+          "tagName": "slot",
+          "attributes": {
+            "name": "value",
+            "part": "value-slot"
+          }
         }
       ]
     },
-    { "tagName": "slot", "attributes": { "name": "submenu", "part": "submenu-slot" } }
+    {
+      "tagName": "span",
+      "attributes": {
+        "part": "chevron"
+      },
+      "hidden": {
+        "$ref": "#/state/noPopup"
+      },
+      "children": [
+        {
+          "tagName": "jx-icon",
+          "$props": {
+            "name": "caret-right",
+            "weight": "bold"
+          },
+          "attributes": {
+            "part": "chevron-icon"
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "slot",
+      "attributes": {
+        "name": "submenu",
+        "part": "submenu-slot"
+      }
+    }
   ]
 }
