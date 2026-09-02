@@ -72,7 +72,7 @@ The list of shipped glyphs is `icons/list.json` in the package. Add a name there
 }
 ```
 
-`variant` is `accent`, `primary`, `secondary` (the default) or `negative`. `size` is `sm`, `md` or `lg`. `quiet` drops the fill and border until hovered. `disabled` disables the control. `loading` keeps the button's width, shows a spinner, says `aria-busy` and swallows the next activation. When the visible text is not the name, or there is none, give it a `label`; `labelledby` and `describedby` forward to the control too.
+`variant` is `accent`, `primary`, `secondary` (the default) or `negative`. `size` is `sm`, `md` or `lg`. `quiet` drops the fill and border until hovered. `disabled` disables the control. `loading` keeps the button's width, shows a spinner, says `aria-busy` and swallows the next activation. When the visible text is not the name, or there is none, give it a `label`; `labelledby` and `describedby` forward to the control too. `autofocus` forwards as well, so a button inside a dialog can claim the focus its `showModal()` would otherwise give to whichever control comes first.
 
 `jx-action-button` is the icon-first tool button a toolbar is made of. `label` is required, because its name is not on screen; it is also the tooltip. `icon` names a glyph. `toggles` makes it a two-state button that carries `aria-pressed`, flips `selected` when activated and dispatches `change` with the new state. A host that owns the state sets `selected` itself, and the property wins.
 
@@ -113,6 +113,8 @@ The native `input` and `change` events bubble from the field as they always do. 
 ```
 
 Open it from a button with no script: `{ "tagName": "jx-button", "$props": { "command": "--show", "commandfor": "delete-page" } }`. A `--close` command closes it. From code, call `showModal(host)` and `close(host)` from `@jxsuite/ui/behaviors/dialog`. The dialog dispatches `confirm`, `secondary` and `cancel` for its buttons and `close` when it has closed for any reason; after `confirm` it stays open until the host closes it, so a value the host refuses can keep the dialog up with its message. `destructive` draws the primary button in the negative variant. `dismissible` lets a click outside the dialog close it; Escape always does. `size` is `sm`, `md` or `lg`.
+
+**The dialog opens with its confirm button focused**, so a reader who answers the way people answer dialogs, with Enter, gets the primary action. A `destructive` dialog hands that focus to **cancel** instead, because the primary action there destroys something. Without this the browser focuses whichever button comes first in the markup, which for a Save, Discard and Cancel footer is Discard.
 
 ## Show a menu
 

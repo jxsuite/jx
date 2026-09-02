@@ -9,6 +9,7 @@
     "disabled",
     "loading",
     "type",
+    "autofocus",
     "label",
     "labelledby",
     "describedby",
@@ -58,6 +59,12 @@
       "default": "button",
       "attribute": "type",
       "description": "The native button type: button, submit or reset."
+    },
+    "autofocus": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "autofocus",
+      "description": "Takes focus when the surface it is on opens. Forwarded to the inner control, which is the element the platform reads it from: a dialog's showModal() focuses the first focusable descendant unless one claims autofocus."
     },
     "label": {
       "type": "string",
@@ -250,7 +257,10 @@
         "popovertarget": "${state.popovertarget || null}",
         "popovertargetaction": "${state.popovertargetaction || null}",
         "command": "${state.command || null}",
-        "commandfor": "${state.commandfor || null}"
+        "commandfor": "${state.commandfor || null}",
+        "autofocus": {
+          "$ref": "#/state/autofocus"
+        }
       },
       "children": [
         {

@@ -2,7 +2,7 @@
 
 ## Interface Elements Authored as Jx Documents
 
-**Version:** 0.1.5-draft\
+**Version:** 0.1.6-draft\
 **Status:** Partial\
 **Updated:** 2026-09-02\
 **License:** MIT\
@@ -123,7 +123,7 @@ Each entry records: `tagName`; props (typed `state` entries); events (`emits`); 
 
 ### 5.2 Overlays
 
-> **Status: Partial.** `jx-dialog` is built: a native `<dialog part="dialog">` opened modally through `showModal(host)` in `@jxsuite/ui/behaviors/dialog` or a `--show` invoker command aimed at the element, with `headline`, `confirm-label`, `secondary-label`, `cancel-label`, `destructive`, `dismissible` (which maps to `closedby`) and `size`; it dispatches `confirm`, `secondary`, `cancel` and `close`, leaves closing after `confirm` to the host so a refused value can keep it open, and carries a `[part="overlay-slot"]`. Its `open` state is mirrored from the platform's `toggle`, never written. `jx-popover`, `jx-tooltip`, `jx-toast-host` and `jx-spinner` are pending.
+> **Status: Partial.** `jx-dialog` is built: a native `<dialog part="dialog">` opened modally through `showModal(host)` in `@jxsuite/ui/behaviors/dialog` or a `--show` invoker command aimed at the element, with `headline`, `confirm-label`, `secondary-label`, `cancel-label`, `destructive`, `dismissible` (which maps to `closedby`) and `size`; it dispatches `confirm`, `secondary`, `cancel` and `close`, leaves closing after `confirm` to the host so a refused value can keep it open, and carries a `[part="overlay-slot"]`. Its `open` state is mirrored from the platform's `toggle`, never written. **Focus on open is claimed, not left to markup order**: the confirm button carries `autofocus`, and a `destructive` dialog gives it to cancel instead, because `showModal()` otherwise focuses the first focusable descendant — which for a Save, Discard and Cancel footer is Discard, so answering with Enter threw the reader's work away. `jx-button` forwards `autofocus` to its inner control for this. `jx-popover`, `jx-tooltip`, `jx-toast-host` and `jx-spinner` are pending.
 
 | Element         | Owns                                                                                                                                                                                                                                 | Replaces                                        |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------- |
@@ -246,6 +246,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.1.6-draft** (2026-09-02) — jx-dialog claims focus on open (confirm, or cancel when destructive) and jx-button forwards autofocus (§5.1, §5.2).
 - **0.1.5-draft** (2026-09-02) — jx-dialog and jx-textfield are built (§5.1, §5.2, §6).
 - **0.1.4-draft** (2026-09-02) — jx-action-button gains stacked, haspopup/expanded and badge (§5.1).
 - **0.1.3-draft** (2026-09-02) — jx-button and jx-action-button are built: one native button each, invoker attributes forwarded, loading and toggling states (§5.1).
@@ -255,4 +256,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx UI Kit Specification v0.1.5-draft_
+_Jx UI Kit Specification v0.1.6-draft_

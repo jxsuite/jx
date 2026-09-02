@@ -45,7 +45,7 @@
       "type": "boolean",
       "default": false,
       "attribute": "destructive",
-      "description": "The primary action destroys something: its button draws in the negative variant."
+      "description": "The primary action destroys something: its button draws in the negative variant, and the dialog opens with CANCEL focused instead of it, so a reader who answers with Enter does not destroy anything."
     },
     "dismissible": {
       "type": "boolean",
@@ -348,7 +348,8 @@
                 "true": {
                   "tagName": "jx-button",
                   "attributes": {
-                    "part": "cancel"
+                    "part": "cancel",
+                    "autofocus": "${state.destructive ? '' : null}"
                   },
                   "onclick": {
                     "$ref": "#/state/onCancelClick"
@@ -380,7 +381,8 @@
                     }
                   },
                   "attributes": {
-                    "part": "confirm"
+                    "part": "confirm",
+                    "autofocus": "${state.destructive ? null : ''}"
                   },
                   "onclick": {
                     "$ref": "#/state/onConfirm"

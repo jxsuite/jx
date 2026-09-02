@@ -27,7 +27,7 @@
 import { activeTab } from "../workspace/workspace";
 import { ancestorPopoverPath } from "./popover-path";
 import { openDialogFor, reconcileOpenDialog } from "./dialog-state";
-import { effect } from "../reactivity";
+import { effect, pauseTracking, resetTracking } from "../reactivity";
 import { postPopoverOpen, revealCanvasPath } from "./iframe-host";
 import { primarySelection } from "../tabs/selection";
 import { updateSession } from "../store";
@@ -114,9 +114,30 @@ let watching: { stop: () => void } | null = null;
 export function ensurePopoverRevealWatch(): () => void {
   if (!watching) {
     const runner = effect(() => {
-      reconcileOpenPopover(activeTab.value);
-      // The dialog rule rides the same effect: one observer of the selection, two overlay kinds.
-      reconcileOpenDialog(activeTab.value);
+      const tab = activeTab.value;
+      /* TRACKED: the selection, and the document its paths resolve against. Those are what the
+         rule depends on, and a selection move is the only thing that should fire it. The whole
+         SET is read joined, for the reason §6.5 gives: a bare property read would not re-trigger
+         when the selection changes within the array. */
+      void tab?.session.selection.map((path) => path.join("/")).join("|");
+      void tab?.doc.document;
+      /* UNTRACKED: everything that reads or writes `ui.openPopover` and `ui.openDialog`.
+         `openPopoverFor` compares its target against the open path, and reading that inside the
+         tracked scope made this effect depend on the value it writes: closing a panel re-ran the
+         rule, which found the selection still inside the panel and opened it straight back. A
+         Close button INSIDE a dialog is the ordinary shape of one, so that dialog could not be
+         closed at all, and the action-bar control could not close a popover the reader had
+         selected into — both of which studio.md §4.2.2 and §4.2.3 say are the explicit way to
+         close. The file header already warned about writing a value inside the effect that
+         tracks it; the warning was applied to the host's selection watch and not to this. */
+      pauseTracking();
+      try {
+        reconcileOpenPopover(tab);
+        // The dialog rule rides the same effect: one observer of the selection, two overlay kinds.
+        reconcileOpenDialog(tab);
+      } finally {
+        resetTracking();
+      }
     });
     watching = {
       stop: () => {

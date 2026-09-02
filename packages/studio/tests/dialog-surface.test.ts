@@ -28,6 +28,20 @@ afterEach(() => {
 });
 
 describe("the dialog surface", () => {
+  test("the slot turns pointer events back on, because the layer turns them off", async () => {
+    /*
+     * `.jx-layer` is `pointer-events: none` so a click passes through to the app when no overlay is
+     * up, and every slot in it re-enables them. `pointer-events` inherits and the top layer changes
+     * paint order rather than inheritance, so a modal dialog in a slot that skipped this hit-tests
+     * to nothing: measured in Chrome 152, `elementFromPoint` over the dialog's own button returned
+     * `<html>`. The reader sees the dialog and the mouse goes through it. Asserted here because
+     * happy-dom performs no hit-testing, so only the declaration itself can be pinned.
+     */
+    const handle = open();
+    expect(handle.host.style.pointerEvents).toBe("auto");
+    handle.close();
+  });
+
   test("closing before the element is ready still disposes the mount, and a second close is a no-op", async () => {
     const handle = open();
     expect(layer.childElementCount).toBe(1);
