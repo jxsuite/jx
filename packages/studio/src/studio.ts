@@ -177,6 +177,7 @@ import {
 // Explicit class imports + registration — bare side-effect imports are tree-shaken
 // By Bun's bundler despite sideEffects declarations in Spectrum's package.json.
 import { components as _swc } from "./ui/spectrum";
+import { registerKit } from "./ui/kit";
 import "./ui/panel-resize.js";
 // Built-in schema-form controls (schema-builder, secret) register on import
 import "./ui/form-controls.js";
@@ -459,6 +460,10 @@ if (!hasPlatform()) {
 }
 
 mountResizeEdges();
+
+// The UI kit: every jx-* element defined from bundled JSON, and its theme adopted, before any
+// Surface can mount. Registration touches no network, so nothing here waits on it.
+void registerKit();
 
 // ─── Render loop ──────────────────────────────────────────────────────────────
 

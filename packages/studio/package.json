@@ -67,6 +67,7 @@
     "@jxsuite/runtime": "workspace:^",
     "@jxsuite/schema": "workspace:^",
     "@jxsuite/site": "workspace:^",
+    "@jxsuite/ui": "workspace:^",
     "@spectrum-web-components/accordion": "^1.12.2",
     "@spectrum-web-components/action-bar": "1.12.2",
     "@spectrum-web-components/action-button": "^1.12.2",

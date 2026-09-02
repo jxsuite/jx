@@ -114,7 +114,7 @@ describe("the brand fragment values both ramps", () => {
     const css = jxTheme.cssText;
     // Gray-50 is the darkest surface in the dark ramp and the lightest in the light one — the ends
     // Swap, which is why the light ramp cannot be authored by reversing the dark one.
-    expect(css).toContain("--spectrum-gray-50-rgb: 10, 10, 10");
+    expect(css).toContain("--spectrum-gray-50-rgb: 11, 11, 13");
     expect(css).toContain("--spectrum-gray-50-rgb: 255, 255, 255");
   });
 });

@@ -2,7 +2,7 @@
 
 ## Which External Standards Jx Adopts, and How That Is Recorded
 
-**Version:** 0.1.16-draft\
+**Version:** 0.1.17-draft\
 **Status:** Partial\
 **Updated:** 2026-09-02\
 **License:** MIT
@@ -11,7 +11,7 @@
 
 ## 1. Overview
 
-> **Status: Implemented.** The parser, the gate and the generated page ship (`scripts/docs/lib/standards.ts`, `scripts/docs/check-standards.ts`, `docs/extending/reference/standards.md`), and **every spec with numbered headings carries its table** — both ratchets in the checker (`UNCITED`, `EXEMPT_UNNUMBERED`) are empty, so a new spec with no table fails on its first pull request. The program closing the gaps this registry tracks has its status board at [`STANDARDS-ADOPTION.md`](../STANDARDS-ADOPTION.md).
+> **Status: Implemented.** The parser, the gate and the generated page ship (`scripts/docs/lib/standards.ts`, `scripts/docs/check-standards.ts`, `docs/extending/reference/standards.md`), and **every spec with numbered headings carries its table** — both ratchets in the checker (`UNCITED`, `EXEMPT_UNNUMBERED`) are empty, so a new spec with no table fails on its first pull request. The gaps this registry tracks are listed by tier on the generated page, and a standard no section owns yet is a row in the backlog (§11).
 
 Jx builds on external standards, and until now it said so only in prose — unevenly, without citations, and with no way for a machine to tell a genuine conformance claim from a borrowed name. This specification defines how that is recorded instead: **each spec carries a numbered `## N. Standards Alignment` section holding one table**, and every row states what Jx does about one standard, which section of that spec it binds, and what backs the claim.
 
@@ -255,6 +255,7 @@ This section is the whole declaration. Individual specifications do not repeat t
 
 ## Changelog
 
+- **0.1.17-draft** (2026-09-02) — §1 no longer links the deleted adoption plan.
 - **0.1.16-draft** (2026-09-02) — §11: CSS Cascade Layers, Media Queries 5 and CSS Shadow Parts moved to ui.md §11.
 - **0.1.15-draft** (2026-08-17) — §4.1: the Standards Alignment heading is matched tolerantly and a visual-editor escape is reported as heading-escaped.
 - **0.1.14-draft** (2026-08-16) — §11 WebDriver BiDi leaves the adoption backlog — the pipeline speaks it, and studio-ui-guidelines.md §15 owns it.
@@ -275,4 +276,4 @@ This section is the whole declaration. Individual specifications do not repeat t
 
 ---
 
-_Jx Standards Alignment Specification v0.1.16-draft_
+_Jx Standards Alignment Specification v0.1.17-draft_

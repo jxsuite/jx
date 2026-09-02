@@ -2,16 +2,16 @@
 
 ## Visual Builder for Jx Documents
 
-**Version:** 0.10.6-draft\
+**Version:** 0.10.7-draft\
 **Status:** Partial\
-**Updated:** 2026-09-01\
+**Updated:** 2026-09-02\
 **License:** MIT
 
 ---
 
 ## 1. Overview
 
-Jx Studio is a visual IDE for the development and management of local-first, statically compiled applications and websites which are composed and deployed via the Jx schema and pipeline. It renders a live canvas via the Jx runtime, provides a layer tree for structural editing, an inspector for property/style/state management, and a code editor for function bodies. The UI is built with Adobe Spectrum Web Components.
+Jx Studio is a visual IDE for the development and management of local-first, statically compiled applications and websites which are composed and deployed via the Jx schema and pipeline. It renders a live canvas via the Jx runtime, provides a layer tree for structural editing, an inspector for property/style/state management, and a code editor for function bodies. The chrome is built from the Jx UI kit ([`ui.md`](./ui.md)) — interface elements authored as Jx documents — with Adobe Spectrum Web Components remaining for the surfaces that have not yet migrated (`studio-ui-guidelines.md` §1, §9.3).
 
 At the component level, Studio is a visual builder for individual Jx files. At the site level, it is a content management system — providing a project explorer, content collection browser, schema-driven entry editors, media management, SEO tooling, and redirect management. The full site-level architecture is specified in the companion [Site Architecture Specification](site-architecture.md).
 
@@ -22,7 +22,7 @@ At the component level, Studio is a visual builder for individual Jx files. At t
 1. **JSON is the source of truth** — Studio reads and writes `.json` files. No proprietary intermediate format.
 2. **Canvas is the runtime** — The preview canvas renders via `@jxsuite/runtime`, showing exactly what users will see.
 3. **Zero lock-in** — Studio edits produce standard Jx files. Any editor can open them.
-4. **Self-hosting** — Studio is itself a Jx application served by `@jxsuite/server`.
+4. **Self-hosting** — Studio is itself a Jx application served by `@jxsuite/server`, and its chrome is Jx documents mounted through the runtime ([`embedding.md`](./embedding.md); `studio-ui-guidelines.md` §9.3), so Studio can open and edit its own interface.
 5. **Developer-first** — Keyboard shortcuts, undo/redo, and code editing are first-class.
 
 ---
@@ -1181,15 +1181,16 @@ Where the built site is browsable is unchanged: a loopback origin rooted AT the 
 
 ## 11. Dependencies
 
-| Package                             | Purpose                                |
-| ----------------------------------- | -------------------------------------- |
-| `@jxsuite/runtime`                  | Canvas rendering                       |
-| `@atlaskit/pragmatic-drag-and-drop` | Layer tree drag-and-drop               |
-| `lit-html`                          | Studio UI template rendering           |
-| `monaco-editor`                     | Code editor (loaded on demand — §11.1) |
-| `yaml`                              | YAML frontmatter parsing               |
-| `unified` / `remark-*`              | Markdown conversion pipeline           |
-| `@spectrum-web-components/*` (15+)  | Adobe Spectrum UI components           |
+| Package                             | Purpose                                                               |
+| ----------------------------------- | --------------------------------------------------------------------- |
+| `@jxsuite/runtime`                  | Canvas rendering, and the chrome's surface documents (`embedding.md`) |
+| `@jxsuite/ui`                       | The UI kit: chrome elements, theme tokens, icons (`ui.md`)            |
+| `@atlaskit/pragmatic-drag-and-drop` | Layer tree drag-and-drop                                              |
+| `lit-html`                          | Template rendering for the surfaces not yet migrated                  |
+| `monaco-editor`                     | Code editor (loaded on demand — §11.1)                                |
+| `yaml`                              | YAML frontmatter parsing                                              |
+| `unified` / `remark-*`              | Markdown conversion pipeline                                          |
+| `@spectrum-web-components/*` (15+)  | Adobe Spectrum UI components, for the surfaces not yet migrated       |
 
 ### 11.1 Bundle Layout
 
@@ -1219,6 +1220,8 @@ Two facts the list cannot state about itself, both measured rather than reasoned
 ### 11.2 Hosting the Studio
 
 > **Status:** Implemented
+
+**The shell requires `'unsafe-eval'`.** Its chrome mounts Jx documents through the interpreter, which compiles templates and inline bodies with `new Function` (`spec.md` §21.3, `embedding.md` §8), so a host's Content Security Policy for the Studio page must allow it for as long as the shell interprets. This is a property of the shell, stated rather than worked around; the canvas iframe already carried it.
 
 A host serves the tree and supplies a platform. Both halves are the package's to describe, and before they were, four hosts described them instead — the desktop's staging, its bundler's copy block, its bundle verifier, and the cloud's asset build all carried the same list, and every one of them was missing `dist/codicon.ttf`.
 
@@ -1804,6 +1807,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.10.7-draft** (2026-09-02) — §1, §2 self-hosting and §11 name the UI kit; §11.2 states the shell's unsafe-eval requirement.
 - **0.10.6-draft** (2026-09-01) — Change review: node-level diff marks on both artboards, a change stepper, a code comparison for every changed file, and revalidation after a save.
 - **0.10.5-draft** (2026-08-31) — the canvas de-popovers so an open popover lays out in place and grows the artboard (4.2.2); the selector axis is element-aware and choosing :popover-open changes the rendering (6.2); a third document report checks popover correctness (16.6).
 - **0.10.4-draft** (2026-08-31) — Edit's canvas column is drag-resizable, and the active breakpoint is derived from its width.
@@ -1919,4 +1923,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_`@jxsuite/studio` Specification v0.10.6-draft_
+_`@jxsuite/studio` Specification v0.10.7-draft_

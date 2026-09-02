@@ -1,17 +1,23 @@
 # Jx Studio UI/UX Interface Guidelines
 
-**Version:** 0.3.16\
-**Status:** Implemented\
-**Updated:** 2026-08-27\
+**Version:** 0.4.0-draft\
+**Status:** Partial\
+**Updated:** 2026-09-02\
 **Applies to:** `packages/studio/`
 
 ---
 
 ## 1. Design System Foundation
 
-Jx Studio builds on **Adobe Spectrum Web Components** (`@spectrum-web-components/*`) at `scale="medium"`. All UI chrome uses Spectrum components; the canvas renders content via the Jx runtime on a light background in **both** chrome themes — a document is a document, and does not follow the chrome.
+> **Status: Partial.** The kit's theme is adopted at boot and Studio's token names alias it (§1.1); every surface still renders through Spectrum until it migrates (§9.3).
 
-The chrome ships two themes, `color="dark"` (the default the app boots in) and `color="light"`, chosen in Preferences → Appearance. Each is a Spectrum colour fragment, and **a theme named in `CHROME_THEMES` must have its fragment registered in `src/ui/spectrum.ts`**: `<sp-theme>` adopts the fragment registered under the `color` it is given and silently adopts none for a name it does not know, which leaves every `--spectrum-*` colour token undefined and the chrome unchanged. That is not a hypothetical — it is how Light shipped as a setting that did nothing.
+Jx Studio's chrome is built from **the Jx UI kit** (`@jxsuite/ui`, [`ui.md`](./ui.md)): interface elements authored as Jx documents and interpreted by the runtime, with one theme of design tokens and one icon set. `registerKit()` (`src/ui/kit.ts`) defines every element and adopts the theme before the shell mounts, and a surface is a Jx document mounted by an adapter (§9.3). The canvas renders content via the Jx runtime on a light background in **both** chrome themes — a document is a document, and does not follow the chrome.
+
+**During the migration, Adobe Spectrum Web Components stay registered beside the kit** (`src/ui/spectrum.ts`, `scale="medium"`) and render every surface that has not yet moved. Coexistence is surface-level: a surface is either a lit template over Spectrum or a Jx document over the kit, never a mix, and `scripts/check-surface-purity.ts` refuses the mix. The Spectrum brand fragment (`src/ui/jx-theme.ts`) is re-valued from the kit's ramp stop for stop, so the two families paint one palette; `tests/kit-tokens.test.ts` holds them together.
+
+The chrome ships two themes, dark (the default the app boots in) and light, chosen in Preferences → Appearance. The kit declares every colour token as a `light-dark()` pair on `:root`, and the shell stamps `data-theme` on `<html>` to force one (`applyChromeTheme()`, `src/shell.ts`). The Spectrum side still needs its colour fragment registered under the same name, which is why **a theme named in `CHROME_THEMES` must have its fragment registered in `src/ui/spectrum.ts`** for as long as Spectrum renders anything: `<sp-theme>` silently adopts none for a name it does not know, and that is how Light once shipped as a setting that did nothing.
+
+**This reverses a recorded decision.** The plan that preceded this one held that Studio "does not need a design system — it has a good one", and that adding a second is how the first one died. It was right about enforcement and wrong about ownership: a design system this application does not author cannot be edited on its own canvas, and the self-hosting principle (`studio.md` §2) was not true of a chrome whose components were someone else's classes. What that plan got right still binds — no string DSL for `when`, no floating docks by default, the horizontal tab strip stays, no recursive pane tree, `CANVAS_MODES` and the stylebook wire format do not change, no autosave — and the enforcement it built (`check-styles.ts`, one overlay contract, the region grammar) is what the migration is held to.
 
 ### 1.1 Theme Tokens
 
@@ -19,23 +25,23 @@ Use CSS custom properties from `:root` — never hardcode color values.
 
 > The **Fallback** column is checked against `styles/tokens.css` by `packages/studio/scripts/check-styles.ts`, and the check is why the values below are right. Seven of them had been wrong for months — this table named `#1e1e1e` for `--bg` where the app had shipped `#111111` since the brand ramp landed — so anyone designing against the documented palette was designing against one that no longer existed. A correction without a gate only resets the clock.
 >
-> Every token below is a reference to a Spectrum token, so it is the **declaration** that is the contract and the fallback that is merely checkable. The fallbacks are the dark ramp because dark is what the app boots in; under `color="light"` the same declarations resolve to the light ramp in `src/ui/jx-theme.ts` (`--bg` `#f4f4f5`, `--bg-panel` `#ffffff`, `--fg` `#27272a`, `--accent` `#2563eb`) with nothing in `tokens.css` branching on the theme. A token that has to be spelled twice, once per theme, is a token that belongs in the brand fragment instead.
+> Every token below is an **alias of a kit token** (`ui.md` §4): `--bg: var(--jx-bg, #111114)`, declared on `:root` where the kit's own declarations are in scope. The declaration is the contract and the fallback is merely checkable. The fallbacks are the dark values because dark is what the app boots in; the kit token is a `light-dark()` pair, so under `data-theme="light"` the same alias resolves to the light value (`--bg` `#f7f7f9`, `--bg-panel` `#ffffff`, `--fg` `#1d1d22`, `--accent` `#2563eb`) with nothing in `tokens.css` branching on the theme. A token that has to be spelled twice, once per theme, belongs in the kit's `project.json` instead.
 
-| Token         | Purpose                           | Fallback                                                                |
-| ------------- | --------------------------------- | ----------------------------------------------------------------------- |
-| `--bg`        | App background                    | `#111111`                                                               |
-| `--bg-panel`  | Panel background                  | `#1a1a1a`                                                               |
-| `--bg-input`  | Input field background            | `#1a1a1a`                                                               |
-| `--border`    | Borders and separators            | `#222222`                                                               |
-| `--fg`        | Primary text                      | `#e4e4e7`                                                               |
-| `--fg-dim`    | Secondary text (labels, hints)    | `#a1a1aa`                                                               |
-| `--accent`    | Interactive elements, focus rings | `#3b82f6`                                                               |
-| `--accent-fg` | Text on accent backgrounds        | `#ffffff`                                                               |
-| `--danger`    | Destructive actions, errors       | `#f44747`                                                               |
-| `--success`   | Positive states                   | `#89d185`                                                               |
-| `--warning`   | Caution states                    | `#c5a332`                                                               |
-| `--radius`    | Standard border radius            | `3px`                                                                   |
-| `--hover-bg`  | Hover overlay                     | `color-mix(in srgb, var(--spectrum-gray-900, #fafafa) 5%, transparent)` |
+| Token         | Purpose                           | Fallback                                                             |
+| ------------- | --------------------------------- | -------------------------------------------------------------------- |
+| `--bg`        | App background                    | `#111114`                                                            |
+| `--bg-panel`  | Panel background                  | `#17171b`                                                            |
+| `--bg-input`  | Input field background            | `#1d1d22`                                                            |
+| `--border`    | Borders and separators            | `#2f2f36`                                                            |
+| `--fg`        | Primary text                      | `#eeeef2`                                                            |
+| `--fg-dim`    | Secondary text (labels, hints)    | `#a2a2af`                                                            |
+| `--accent`    | Interactive elements, focus rings | `#3b82f6`                                                            |
+| `--accent-fg` | Text on accent backgrounds        | `#ffffff`                                                            |
+| `--danger`    | Destructive actions, errors       | `#e86460`                                                            |
+| `--success`   | Positive states                   | `#4fb27a`                                                            |
+| `--warning`   | Caution states                    | `#e5ae4a`                                                            |
+| `--radius`    | Standard border radius            | `var(--jx-radius-sm, 4px)`                                           |
+| `--hover-bg`  | Hover overlay                     | `var(--jx-hover-bg, color-mix(in oklab, var(--fg) 6%, transparent))` |
 
 **Accent opacity variants** for backgrounds:
 
@@ -45,10 +51,10 @@ Use CSS custom properties from `:root` — never hardcode color values.
 
 | Token        | Purpose                               |
 | ------------ | ------------------------------------- |
-| `--tag`      | Element tag names (`#93c5fd`)         |
-| `--signal`   | State signals (`#dcdcaa`)             |
-| `--handler`  | Functions/handlers (`#c586c0`)        |
-| `--map`      | Repeaters (`#5b4fc7`)                 |
+| `--tag`      | Element tag names (`#8fb5fb`)         |
+| `--signal`   | State signals (`#f2cc7c`)             |
+| `--handler`  | Functions/handlers (`#c8a2e0`)        |
+| `--map`      | Repeaters (`#8b83e6`)                 |
 | `--switch-c` | Switch conditionals (uses `--danger`) |
 
 ---
@@ -317,6 +323,8 @@ const collapsed = new Set();
 
 ### 6.1 Spectrum Components in Use
 
+> **Status: Partial.** The kit's catalogue is `ui.md` §5; the Spectrum inventory below is the migration baseline and shrinks as each surface moves (§9.3).
+
 Registered in `packages/studio/src/ui/spectrum.ts`:
 
 **Layout:** `sp-theme`, `sp-tabs`, `sp-tab`, `sp-tab-panel`, `sp-divider`\
@@ -330,6 +338,8 @@ Registered in `packages/studio/src/ui/spectrum.ts`:
 **Icons:** 58 `sp-icon-*` components (workflow set)
 
 ### 6.2 Custom Components
+
+> **Status: Pending.** The target: **Studio owns no custom elements.** Every element the chrome uses is a kit element — a Jx custom element in light DOM with `part` attributes as its only style hooks (`ui.md` §3.2) — and a surface is a document, not a class. The two `LitElement`s below remain until the surfaces that use them migrate (the inspector forms and the colour field), and are then deleted. `static styles` stays unused in Studio for the reason it always was: the design system is one cascade — now the kit's layer, with Studio's own unlayered rules above it.
 
 Studio defines exactly two custom elements, both `LitElement`, both registered from the manual table in `src/ui/spectrum.ts` — there are no decorators anywhere in the package.
 
@@ -431,6 +441,8 @@ The canvas render container is a single `contenteditable`; individual blocks are
 
 ### 8.4 Menus
 
+> **Status: Pending.** A menu becomes a `jx-menu` — a native `popover` panel positioned by CSS anchor positioning, its rows `jx-menu-item`s and its submenus child menus in the same hierarchy (`ui.md` §5.1, §6) — opened through the same `renderPopover` façade. Nothing below about triggers, placements, the chord, or the submenu rule changes with the element.
+
 Rendered with `sp-menu` inside `sp-overlay` / `sp-popover`, mounted through `renderPopover` (§8.7). There are two triggers, and they are different contracts:
 
 - **Right-click**, in the canvas or on a row. The menu appears at the pointer and is clamped into the viewport.
@@ -465,6 +477,8 @@ Fixed-position toolbar that follows the selected element:
 - Shadow: standard elevation shadow
 
 ### 8.7 Dialogs and Overlay Layers
+
+> **Status: Partial.** The contract below is built on Spectrum's dialog wrapper and stays as stated; what is pending is its substrate. `packages/studio/src/ui/layers.ts` keeps every export named below; its internals move onto native `<dialog>` and `popover` (`ui.md` §6). A dialog body becomes a surface document, `showModal()` supplies modality, focus containment and Escape, and the hand-rolled focus trap goes with the last Spectrum dialog. During coexistence `isModalOpen()` reads `dialog[open]` beside the Spectrum selectors — attribute form, because a test DOM never matches `:modal`.
 
 Studio renders every transient surface into one of three fixed, full-viewport hosts declared in `packages/studio/index.html` — `#layer-popover`, `#layer-modal`, `#layer-dialog` — bound once at boot by `initLayers()`. Each host is `pointer-events: none`; individual slots re-enable pointer events, so the layers never swallow canvas input.
 
@@ -544,6 +558,8 @@ A batch of related edits is **one** entry, and a failed write leaves no entry at
 
 ### 9.3 Render Orchestration
 
+> **Status: Pending.** A migrated surface is a Jx document under `src/surfaces/`, mounted by an adapter through `mountSurface()` (`src/ui/surface.ts`, over `embedding.md` §2): the adapter builds a scope of host records — reactive state, computed projections of command records, plain functions — and the document projects them. One runtime effect per bound property replaces a repaint of the whole surface, which is also what retires `panel-scheduler.ts`'s focus guard with the last lit panel: nothing repaints a control the reader is typing into. `services/surface-registry.ts` records every mount by the elements it used and the document it came from, so a redefinition or a saved edit can re-mount exactly the roots it touches. Until a surface moves, everything below still describes it.
+
 **There is no root render, and no central dispatcher.** The description this section used to carry — an `update()` that selectively re-renders three regions — has not matched the code for some time. What actually runs is about thirty independent pairs, each a module-scope `effectScope` holding one `effect()` that reads its own dependency list and calls one `litRender()` into its own host.
 
 `store.ts` additionally keeps a name-to-callback registry — `registerRenderer` / `render()` / `renderOnly(...)` — but it holds only seven entries, all registered from the bootstrap, and the bootstrap calls it "compat during migration". Every surface added since (statusbar, toolbar, activity bar, tab strip, jump bar, pane context, pane grid, bottom dock, the assistant, settings, library) is driven by its own effect alone. `render()` coalesces nothing: two calls in one tick paint twice.
@@ -584,12 +600,27 @@ The template is the only writer of what it renders. Both halves of that have bee
 
 **LitElement adoption is deferred, deliberately.** Four reasons, recorded so the question restarts from them: shadow DOM is already excluded (§6.2), which removes most of what the component model buys; `@vue/reactivity` owns the update model and is version-pinned to `@jxsuite/runtime`, so `@lit/context` would sit beside it rather than replace it; `probe.idle()` — the predicate that replaced 115 sleeps, and the foundation of the screenshot lane — would gain a second settling condition it cannot see in every element's `updateComplete`; and every defect found in the last audit of the template layer was fixed by a binding, a key or a ref.
 
+**Document conventions.**
+
+> **Status: Pending.** These bind every surface authored as a document (§9.3) and are checked by `scripts/check-surface-purity.ts` where a check can reach them.
+
+- A host function in handler position is named by `$ref` and receives `(scope, event)`; one that takes arguments is called through `$expression` `call`, positionally (`embedding.md` §4).
+- A key is a `$switch` on `event#/key` in a structured body; a focus move is the one thing a kit behaviour sidecar is for.
+- Every host array a document renders is a keyed `$map` (`spec.md` §10.4), so a registry tick never rebuilds a row the reader is on.
+- `data-jx-region` is written in the document's `attributes` or stamped by the adapter; `data-prop` stays on a field row.
+- No `body` strings, and no `$prototype: "Request"` in a surface: its skip flag is process-global, and data arrives through host callables over the PAL.
+- An island — Monaco, a drag handle, a measured window — attaches through `onNodeCreated`; the document renders its host node and nothing else.
+- No `sp-*` tag in a document, and no kit tag in a lit template: coexistence is surface-level.
+- `live()` has no counterpart here. A document's bindings skip an equal write, so a control the reader touched is never reset by a re-run that resolved to the value it already holds.
+
 ---
 
 ## 10. Conventions Checklist
 
 When building new UI in Studio, verify:
 
+- [ ] A new surface is a Jx document mounted through `mountSurface()` (§9.3) — never a new lit template over Spectrum; no `sp-*` inside a document and no kit tag inside a lit template (`scripts/check-surface-purity.ts`)
+- [ ] A surface's actions arrive as a projection of command records in its scope (§12) and the document prints title, chord and `requires` exactly as given
 - [ ] Uses `.style-row` vertical layout (not `.field-row` horizontal)
 - [ ] Labels are Title Case via `sp-field-label` inside `.style-row-label`
 - [ ] Inputs use `size="s"` and take full container width
@@ -820,7 +851,7 @@ Every picture in `/docs` is captured by `scripts/screenshots/`, never taken by h
 
 ## 14. Standards Alignment
 
-External standards this specification binds itself to. Vocabulary and cell grammar: [`standards.md`](./standards.md). Spectrum Web Components is a component library rather than a standard; §6 records which of its components are in use.
+External standards this specification binds itself to. Vocabulary and cell grammar: [`standards.md`](./standards.md). Spectrum Web Components is a component library rather than a standard; §6 records which of its components are in use. The Jx UI kit is a library too, and its own alignment table is [`ui.md`](./ui.md) §11.
 
 | Standard                                                                          | Class       | Binds            | Evidence                                                                                                                                                                                                                                              | Note                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | --------------------------------------------------------------------------------- | ----------- | ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -832,6 +863,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.4.0-draft** (2026-09-02) — The chrome moves to the Jx UI kit: §1 foundation and the recorded reversal, §1.1 aliases of kit tokens, §6 target, §8.4 and §8.7 native overlays, §9.3 surfaces as documents, §9.4 document conventions, §10 checklist.
 - **0.3.16** (2026-08-27) — showPromptDialog carries an optional choice control beside its field.
 - **0.3.15** (2026-08-26) — §8.4 becomes Menus: menu-button triggers, submenus and the APG deviation; §12.1 gains the settings/menu placement.
 - **0.3.14** (2026-08-22) — Template conventions (9.4) and the gate behind them; render orchestration described as it is; custom components corrected to the two that exist.
