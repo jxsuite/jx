@@ -25,16 +25,32 @@
  * them means running the page and axe-core over it, which is a different program with a different
  * lifetime. `unavailableChecks()` names them so the absence is stated rather than implied.
  *
+ * **The structural rules live in `@jxsuite/schema/a11y`** — an unnamed control, an image with no
+ * alt, an aria reference to an id nothing has, a tab, menu item or option outside its container, a
+ * tablist with no selected tab, an unnamed dialog, aria-activedescendant on an element that cannot
+ * take focus — so `jx validate`, the kit's conformance tests and this report judge a document alike
+ * (spec §8.8). What stays here is what needs the whole page rather than a node: the heading
+ * outline, duplicate ids, the document language, link wording, autocomplete purposes and media.
+ *
  * @docs studio/interface/problems-and-progress
  */
 
 import { activeTab } from "../workspace/workspace";
 import { clearProblems, notify } from "./notify";
+import { findA11yDefects } from "@jxsuite/schema/a11y";
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
 import type { JxElement } from "@jxsuite/schema/types";
 
 /** WCAG success criteria these checks bind to, by the id ATAG B.3.1 asks a report to carry. */
-export type A11yCriterion = "1.1.1" | "1.3.1" | "1.3.5" | "2.4.4" | "2.4.6" | "3.1.1" | "4.1.2";
+export type A11yCriterion =
+  | "1.1.1"
+  | "1.3.1"
+  | "1.3.5"
+  | "2.1.1"
+  | "2.4.4"
+  | "2.4.6"
+  | "3.1.1"
+  | "4.1.2";
 
 /** One thing that is wrong with the document, and — where one exists — the command that fixes it. */
 export interface A11yFinding {
@@ -172,18 +188,8 @@ export function checkDocument(doc: JxElement): A11yFinding[] {
     // ── 1.1.1 Non-text Content ────────────────────────────────────────────────
     if (IMAGE_TAGS.has(tag)) {
       const alt = literal(node, "alt");
-      if (!has(node, "alt")) {
-        findings.push({
-          criterion: "1.1.1",
-          detail:
-            "A screen reader falls back to reading the file name, which is rarely useful and " +
-            "sometimes misleading. An image that is purely decorative takes an EMPTY alt, which " +
-            "is a decision — the absent attribute is not.",
-          id: `img-no-alt:${index}`,
-          message: `${where} has no alt text.`,
-          severity: "error",
-        });
-      } else if (alt !== null && /^(image|photo|picture|graphic|icon)\b/i.test(alt.trim())) {
+      // A missing alt is the schema rule `img-alt-missing`; only the wording is judged here.
+      if (alt !== null && /^(image|photo|picture|graphic|icon)\b/i.test(alt.trim())) {
         findings.push({
           criterion: "1.1.1",
           detail:
@@ -233,19 +239,7 @@ export function checkDocument(doc: JxElement): A11yFinding[] {
     if (CONTROL_TAGS.has(tag)) {
       const type = literal(node, "type")?.toLowerCase() ?? "";
       const selfLabelling = tag === "button" || SELF_LABELLING_INPUTS.has(type);
-      const labelled = hasAccessibleName(node) || has(node, "id");
-      if (!selfLabelling && !labelled) {
-        findings.push({
-          criterion: "4.1.2",
-          detail:
-            'A control with no name is announced as its type alone — "edit", "combo box" — ' +
-            "which tells a reader nothing about what to type. Give it an aria-label, or an id a " +
-            "<label> points at.",
-          id: `control-unnamed:${index}`,
-          message: `${where} has no label.`,
-          severity: "error",
-        });
-      }
+      // An unnamed control is the schema rule `interactive-unnamed`, with `<label for>` resolved.
       // 1.3.5: a field asking for the user's own data should say which (autocomplete).
       if (tag === "input" && !selfLabelling && !has(node, "autocomplete")) {
         const name = `${literal(node, "name") ?? ""} ${literal(node, "id") ?? ""}`.toLowerCase();
@@ -269,17 +263,8 @@ export function checkDocument(doc: JxElement): A11yFinding[] {
         .toLowerCase()
         .replaceAll(/[^a-z ]/g, "")
         .trim();
-      if (!hasAccessibleName(node)) {
-        findings.push({
-          criterion: "4.1.2",
-          detail:
-            "A link with no text is announced as its URL, one character at a time in some " +
-            "readers. If the link is an icon, give it an aria-label.",
-          id: `link-unnamed:${index}`,
-          message: "A link has no text.",
-          severity: "error",
-        });
-      } else if (VAGUE_LINK_TEXT.has(text)) {
+      // A link with no text is the schema rule `interactive-unnamed`; only the wording is judged here.
+      if (hasAccessibleName(node) && VAGUE_LINK_TEXT.has(text)) {
         findings.push({
           criterion: "2.4.4",
           detail:
@@ -363,6 +348,16 @@ export function checkDocument(doc: JxElement): A11yFinding[] {
     });
   }
 
+  // The structural rules, from the engine every judge of a Jx document shares.
+  for (const defect of findA11yDefects(doc)) {
+    findings.push({
+      criterion: defect.criterion as A11yCriterion,
+      detail: defect.detail,
+      id: `${defect.rule}:${defect.path.join("/")}`,
+      message: defect.message,
+      severity: defect.severity,
+    });
+  }
   return findings;
 }
 

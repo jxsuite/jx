@@ -117,7 +117,7 @@
             "children": [
               {
                 "tagName": "input",
-                "attributes": { "type": "checkbox" },
+                "attributes": { "type": "checkbox", "aria-label": "Done" },
                 "onclick": { "$ref": "#/state/toggleItem" },
                 "style": {
                   "width": "1.1rem",

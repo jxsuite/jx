@@ -382,6 +382,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `spec.md`
 
+- **0.6.9-draft** (2026-09-02) — Accessibility rules (§8.8): nine static rules over the overlay walker, each citing its WCAG criterion, with WAI-ARIA, accname and WCAG alignment rows.
 - **0.6.8-draft** (2026-09-02) — A nested style key or its scope may be a selector list; nested blocks distribute over every member (§9.2).
 - **0.6.7-draft** (2026-09-02) — Overlays: popover, dialog and invoker commands (§8.7) — the dialog and command rules a document is held to, beside the popover ones; the WHATWG HTML row binds it.
 - **0.6.6-draft** (2026-09-02) — A $switch whose discriminant re-resolves to the same key keeps its rendered case (§14.1).

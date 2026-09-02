@@ -1,9 +1,0 @@
-{
-  "classes": {
-    "Stuff": "./Stuff.class.json"
-  },
-  "name": "test-emitter",
-  "schemas": {
-    "project": "./project.fragment.schema.json"
-  }
-}

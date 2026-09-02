@@ -29,7 +29,7 @@ function setupDocTab(children: JxElement[]): void {
 }
 
 function ids(node: JxElement): string[] {
-  return checkDocument(node).map((f) => f.id.replace(/:\d+$/, ""));
+  return checkDocument(node).map((f) => f.id.replace(/:.*$/, ""));
 }
 
 afterEach(() => {
@@ -38,7 +38,9 @@ afterEach(() => {
 
 describe("images", () => {
   test("an image with no alt is an error; an empty alt is a decision and passes", () => {
-    expect(ids(doc([{ attributes: { src: "/a.png" }, tagName: "img" }]))).toContain("img-no-alt");
+    expect(ids(doc([{ attributes: { src: "/a.png" }, tagName: "img" }]))).toContain(
+      "img-alt-missing",
+    );
     // An empty alt says "decorative" out loud. The ABSENT attribute says nothing.
     expect(ids(doc([{ attributes: { alt: "", src: "/a.png" }, tagName: "img" }]))).toEqual([]);
     expect(ids(doc([{ attributes: { alt: "A cat", src: "/a.png" }, tagName: "img" }]))).toEqual([]);
@@ -83,7 +85,7 @@ describe("headings", () => {
 describe("controls and links", () => {
   test("an unlabelled input is an error; a submit button names itself", () => {
     expect(ids(doc([{ attributes: { type: "text" }, tagName: "input" }]))).toContain(
-      "control-unnamed",
+      "interactive-unnamed",
     );
     expect(ids(doc([{ attributes: { type: "submit", value: "Go" }, tagName: "input" }]))).toEqual(
       [],
@@ -108,7 +110,9 @@ describe("controls and links", () => {
   });
 
   test("a link with no text at all is an error", () => {
-    expect(ids(doc([{ attributes: { href: "/x" }, tagName: "a" }]))).toContain("link-unnamed");
+    expect(ids(doc([{ attributes: { href: "/x" }, tagName: "a" }]))).toContain(
+      "interactive-unnamed",
+    );
   });
 
   test("a new-tab link that says so is fine", () => {
@@ -174,7 +178,7 @@ describe("structure", () => {
         tagName: "div",
       },
     ]);
-    expect(ids(switched)).toContain("img-no-alt");
+    expect(ids(switched)).toContain("img-alt-missing");
   });
 });
 

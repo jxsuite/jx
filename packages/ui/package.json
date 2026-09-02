@@ -27,7 +27,7 @@
     "./icons/manifest.json": "./icons/manifest.json"
   },
   "publishConfig": {
-    "provenance": true
+    "provenance": false
   },
   "scripts": {
     "build:icons": "bun run scripts/build-icons.ts",
