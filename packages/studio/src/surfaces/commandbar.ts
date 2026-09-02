@@ -1,43 +1,41 @@
 /// <reference lib="dom" />
 /**
- * The Command Bar — region ① of UX-REDESIGN-PLAN §3.2, rendered FROM the registry.
+ * The Command Bar — region ① of studio-ui-guidelines §6, rendered FROM the registry, as a document.
  *
- * Every control in this band used to be hand-authored twice: once in `toolbarTemplate` and once in
- * `minimalToolbarTemplate`, a retyped copy of the same buttons with `disabled` hard-coded on each
- * one for the no-project case. That second copy is the canonical example of the defect §2 principle
- * 1 names — a hand-maintained list of actions beside the definition site — and §2 principle 4 says
- * enablement is a PREDICATE with a sentence, never a duplicated template. It is deleted. With no
- * project open the same bar renders; the records' own `when` clauses empty it.
+ * `surfaces/commandbar.json` is the band; this module is its adapter. Every control in the band is
+ * a command, so what the document is handed is a PROJECTION of the registry rather than a list of
+ * buttons: `primary` is `forPlacement("commandbar/primary")` (capped at five by
+ * `scripts/check-chrome-budget.ts`), `docks` is the three dock records with the shell's state
+ * beside them, `layouts` is the project's own layout record, and the ⬢ Studio menu is
+ * `forPlacement("commandbar/overflow")` opened on the `menu` surface. With no project open the same
+ * document renders; the records' own `when` clauses empty it (§2 principle 4: enablement is a
+ * predicate with a sentence, never a second template).
  *
- * What is left is four things, none of which decides what an action is called:
+ * What is decided here, and nowhere in the document:
  *
- * - {@link tbCmd} renders one command: title, icon, `title="Save (⌘S)"` with the chord formatted for
- *   THIS platform by `keymap.format` (the predecessor hardcoded `⌘P` and showed it to Windows and
- *   Linux users), disabled state from `enablement`, and the `requires` sentence in the tooltip when
- *   it is off — so no control is ever permanently dead with no explanation.
- * - The primary verb cluster is `forPlacement("commandbar/primary")`, capped at five by
- *   `scripts/check-chrome-budget.ts`; the ⬢ menu is `forPlacement("commandbar/overflow")`.
+ * - {@link commandTooltip}: the title, plus its chord formatted for THIS platform by `keymap.format`,
+ *   or plus the `requires` sentence when the record is off — so no control is ever permanently dead
+ *   with no explanation.
  * - The **Command Center pill** (①a) is the app's address bar: `◈ project › document › selection`,
- *   right-aligned ⌘K, each segment opening the palette pre-scoped. It replaces the Open Project
- *   split button, the recents dropdown and the `Search files… ⌘P` trigger, and it gives Studio a
- *   persistent project name for the first time — today it renders only in the Files panel header,
- *   and the desktop titlebar is `titleBarStyle:"hidden"`.
- * - The window controls, which are the one thing in here that is not an action.
+ *   right-aligned ⌘K, each segment opening the palette pre-scoped. It gives Studio a persistent
+ *   project name — the desktop titlebar is `titleBarStyle:"hidden"`.
+ * - The window controls, which are the one thing in the band that is not an action, and whose ORDER
+ *   is the platform's.
  *
- * **Retired here, with a name, a chord and a residue** (§2 principle 9): Open Project + New Project
- * + recents → the pill and `Project: Open Recent…`; `Manage` → `File: Browse Library`; `Publish` →
- * the `Publish:` family; `Sync Project` → Source Control. The five-mode switcher leaves for the
- * pane context bar (region ⑦) and is reachable meanwhile as `View: Set Canvas Mode` in the palette,
- * which prompts for the mode from the record's own `args` enum.
+ * **Retired, with a name, a chord and a residue** (§2 principle 9): Open Project + New Project +
+ * recents → the pill and `Project: Open Recent…`; `Manage` → `File: Browse Library`; `Publish` →
+ * the `Publish:` family; `Sync Project` → Source Control. The five-mode switcher lives in the pane
+ * context bar and is reachable as `View: Set Canvas Mode` in the palette.
+ *
+ * @docs studio/interface
  */
 
-import { html, render as litRender, nothing } from "lit-html";
-import { presenceChipsTemplate } from "../collab/presence-chips";
-import { effect, effectScope } from "../reactivity";
+import { presenceProjection } from "../collab/presence-chips";
+import { effect, effectScope, reactive } from "../reactivity";
 import { activeTab } from "../workspace/workspace";
 import { primarySelection } from "../tabs/selection";
 import { shell } from "../shell";
-import { openQuickSearch } from "./quick-search";
+import { openQuickSearch } from "../panels/quick-search";
 import { showPromptDialog } from "../ui/layers";
 import { getPlatform, hasPlatform } from "../platform";
 import { getPreviewNavigateHandler } from "../canvas/preview-navigate";
@@ -46,19 +44,29 @@ import { documentUrlPattern, dynamicRouteParams } from "../page-params";
 import { getNodeAtPath, nodeLabel, projectState } from "../store";
 import { activeRegistry } from "../commands/active-registry";
 import { notify } from "../services/notify";
+import { mountSurface, registerSurface } from "../ui/surface";
+import { rectOf } from "../utils/geometry";
+import { openMenu } from "./menu";
+import commandbarDoc from "./commandbar.json";
+import type { PresenceProjection } from "../collab/presence-chips";
+import type { MenuHandle, MenuRowProjection } from "./menu";
+import type { SurfaceHandle } from "../ui/surface";
 import type { Tab } from "../tabs/tab";
 import type { SiteBuildResult, SitePreviewResult, StudioPlatform } from "../types";
 import type { CommandRegistry } from "../commands/registry";
 import type { EffectScope } from "@vue/reactivity";
-import type { TemplateResult } from "lit-html";
+import type { JxDocument } from "@jxsuite/schema/types";
+
+registerSurface("commandbar", commandbarDoc as unknown as JxDocument);
 
 /**
  * What the Command Bar is handed at mount.
  *
  * HANDOFF: **nothing here is read any more** — every control in the band is a command, so the bar
  * asks the registry rather than the bootstrap. The fields stay declared, and optional, so
- * `studio.ts`'s `toolbarPanel.mount(toolbarEl, { … })` object literal keeps type-checking; deleting
- * them is one edit in that file, which is another workstream's this wave.
+ * `studio.ts`'s `toolbarPanel.mount(toolbarEl, { … })` object literal keeps type-checking, and the
+ * shell tests keep driving the canvas-mode seam through it; deleting them is one edit in that
+ * file.
  */
 export interface ToolbarCtx {
   openProject?: () => void;
@@ -71,8 +79,6 @@ export interface ToolbarCtx {
   openRecentProject?: (root: string) => Promise<void>;
   closeFunctionEditor?: () => void;
 }
-
-let _rootEl: HTMLElement | null = null;
 
 /** Test override for the mac CSD layout — happy-dom forbids redefining navigator.platform. */
 let _isMacOverride: boolean | null = null;
@@ -87,34 +93,114 @@ function isMacPlatform(): boolean {
   return _isMacOverride ?? navigator.platform.startsWith("Mac");
 }
 
-let _scope: EffectScope | null = null;
+// ─── The projections ──────────────────────────────────────────────────────────
+
+/** One command of the primary cluster, as the document draws it. */
+export interface PrimaryProjection {
+  id: string;
+  title: string;
+  /** {@link commandTooltip}: the name with its chord, or with why it is off. */
+  tooltip: string;
+  /** The record's glyph, by its name in the kit's manifest; empty for a labelled button. */
+  icon: string;
+  hasIcon: boolean;
+  disabled: boolean;
+}
+
+/** One dock toggle: the record, with the dock's state beside it. */
+export interface DockProjection {
+  id: string;
+  title: string;
+  tooltip: string;
+  icon: string;
+  /** The right-hand dock draws the left-hand glyph mirrored: one shipped shape, two sides. */
+  mirror: boolean;
+  /** Pressed while the dock is open. */
+  selected: boolean;
+  disabled: boolean;
+}
+
+/** One layout tab. */
+export interface LayoutTabProjection {
+  id: string;
+  name: string;
+  active: boolean;
+  title: string;
+}
+
+/** One segment of the address bar. */
+export interface SegmentProjection {
+  key: "project" | "document" | "selection";
+  label: string;
+  title: string;
+  /** Every segment but the first is preceded by `›`. */
+  sepBefore: boolean;
+}
 
 /**
- * Icon key → Spectrum icon, for the `icon` a command record declares.
- *
- * The RECORD names the icon; this map only knows how to draw one. Keys are the record's vocabulary
- * ("save", "undo"), not Spectrum tag names, so swapping the icon set is a change here and nowhere
- * else — and a record that names an icon this bar cannot draw renders as a labelled button rather
- * than as an empty one.
+ * Which window-control layout the band draws: none in a browser, mac leading, everything else
+ * trailing.
  */
-const COMMAND_ICONS: Readonly<Record<string, TemplateResult>> = {
-  browser: html`<sp-icon-export slot="icon"></sp-icon-export>`,
-  redo: html`<sp-icon-redo slot="icon"></sp-icon-redo>`,
-  save: html`<sp-icon-save-floppy slot="icon"></sp-icon-save-floppy>`,
-  undo: html`<sp-icon-undo slot="icon"></sp-icon-undo>`,
+export type WindowControlLayout = "none" | "mac" | "other";
+
+/** The document's scope: the projections, and the host functions its handlers `call`. */
+interface CommandBarScope extends Record<string, unknown> {
+  csd: WindowControlLayout;
+  menuVisible: boolean;
+  menuOpen: boolean;
+  layoutsVisible: boolean;
+  layouts: LayoutTabProjection[];
+  segments: SegmentProjection[];
+  chord: string;
+  hasChord: boolean;
+  primary: PrimaryProjection[];
+  presenceVisible: boolean;
+  presence: PresenceProjection;
+  docks: DockProjection[];
+  run: (id: string) => void;
+  openSegment: (key: SegmentProjection["key"]) => void;
+  openPicker: () => void;
+  setLayout: (id: string) => void;
+  renameLayout: (id: string) => void;
+  saveLayout: () => void;
+  openStudioMenu: (opener: HTMLElement) => void;
+  windowControl: (action: keyof WindowControls) => void;
+}
+
+/** What the presence cluster holds while there is nothing to say — the `$switch` hides it. */
+const NO_PRESENCE: PresenceProjection = {
+  frozen: false,
+  label: "",
+  peers: [],
+  readOnly: false,
+  status: "unavailable",
+  title: "",
 };
 
-// ─── One command, one control ─────────────────────────────────────────────────
+/* The window, with THIS dock's rail marked — one shipped glyph per side.
 
-/** How {@link tbCmd} draws a record. Presentation only — never what the record means. */
-export interface TbCmdOptions {
-  /** Icon-only, with the title as the accessible name. Used by the dock toggles. */
-  compact?: boolean;
-  /** Rendered pressed. The dock toggles are the only controls with an on-state. */
-  selected?: boolean;
-  /** Override the record's icon — a dock toggle's glyph depends on which way the dock is. */
-  icon?: TemplateResult;
-}
+   The pair these replace was `rail-right-open`/`close` under `scaleX(-1)`, because the left-hand
+   pair looked absent. Spectrum's two right-hand glyphs were exact mirror images OF EACH OTHER, so
+   flipping the wrong member of the pair landed on the other member's appearance — a real, crisp
+   arrow pointing the wrong way, looking entirely deliberate. It shipped crossed and nothing could
+   see it. Here the glyph is one shape and `mirror` is one boolean, asserted by name.
+
+   State stays where it already was and where it is already asserted: `selected` on the button. */
+const DOCKS = [
+  { dock: "left", icon: "sidebar-simple", id: "view.toggleNavigator", mirror: false },
+  { dock: "right", icon: "sidebar-simple", id: "view.toggleInspector", mirror: true },
+  { dock: "bottom", icon: "rows", id: "view.toggleBottomDock", mirror: false },
+] as const;
+
+/** The palette mode each segment of the address opens. */
+const SEGMENT_MODES = { document: "files", project: "projects", selection: "nodes" } as const;
+
+let _rootEl: HTMLElement | null = null;
+let _scope: EffectScope | null = null;
+let _state: CommandBarScope | null = null;
+let _mount: Promise<SurfaceHandle> | null = null;
+let _handle: SurfaceHandle | null = null;
+let _menu: MenuHandle | null = null;
 
 /**
  * The tooltip a control shows: the action's name, plus its chord, or plus WHY it is off.
@@ -134,38 +220,6 @@ export function commandTooltip(registry: CommandRegistry, id: string): string {
   }
   const chord = registry.keymap.formatBinding(id);
   return chord ? `${command.title} (${chord})` : command.title;
-}
-
-/**
- * Render one command as a Command Bar button, or `nothing` when its `when` hides it.
- *
- * This is the whole of §5.5's first row: label, icon, tooltip, chord, disabled state and disabled
- * reason all come off the record, so the bar cannot disagree with the palette, the keymap or the
- * agent about any of them.
- */
-export function tbCmd(registry: CommandRegistry, id: string, options: TbCmdOptions = {}) {
-  const command = registry.get(id);
-  if (!command || !registry.isVisible(id)) {
-    return nothing;
-  }
-  const enabled = registry.isEnabled(id);
-  const icon = options.icon ?? (command.icon ? COMMAND_ICONS[command.icon] : undefined);
-  return html`
-    <sp-action-button
-      size="s"
-      ?quiet=${options.compact === true}
-      ?selected=${options.selected === true}
-      title=${commandTooltip(registry, id)}
-      aria-label=${command.title}
-      ?disabled=${!enabled}
-      @click=${() => {
-        void registry.run(id);
-      }}
-    >
-      ${icon ?? nothing}
-      ${options.compact ? nothing : html`<span class="tb-label">${command.title}</span>`}
-    </sp-action-button>
-  `;
 }
 
 // ─── View: Open in Browser ───────────────────────────────────────────────────
@@ -430,16 +484,6 @@ function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-// ─── ①a The Command Center pill ──────────────────────────────────────────────
-
-/** One segment of the address, and the palette mode it opens. */
-interface PillSegment {
-  key: string;
-  label: string;
-  title: string;
-  onClick: () => void;
-}
-
 /** The document's label: its path without the project root, which is already segment one. */
 export function documentSegmentLabel(tab: Tab | null): string {
   const path = tab?.documentPath;
@@ -469,124 +513,6 @@ export function selectionSegmentLabel(tab: Tab | null): string {
   return nodeLabel(getNodeAtPath(tab.doc.document, selection));
 }
 
-/**
- * `◈ project › document › selection`, right-aligned ⌘K.
- *
- * Four facts about where you are, in non-collapsible chrome (§4.4), each one click-through to the
- * surface that owns it. The empty space between the segments opens the mode picker, which is what
- * makes the pill an address bar rather than three buttons.
- */
-function commandCenterTpl(registry: CommandRegistry | null) {
-  const tab = activeTab.value ?? null;
-  const chord = registry?.keymap.formatBinding("palette.open") ?? "";
-  const selection = selectionSegmentLabel(tab);
-  const segments: PillSegment[] = [
-    {
-      key: "project",
-      label: projectState?.name ?? "No project",
-      title: "Switch project — opens Project: Open Recent…",
-      onClick: () => openQuickSearch("projects"),
-    },
-    {
-      key: "document",
-      label: documentSegmentLabel(tab),
-      title: "Go to a file",
-      onClick: () => openQuickSearch("files"),
-    },
-  ];
-  if (selection) {
-    segments.push({
-      key: "selection",
-      label: selection,
-      title: "Go to an element in this document",
-      onClick: () => openQuickSearch("nodes"),
-    });
-  }
-  return html`
-    <div
-      class="tb-center"
-      role="group"
-      aria-label="Command Center"
-      @click=${() => openQuickSearch("picker")}
-    >
-      <span class="tb-center-mark" aria-hidden="true">◈</span>
-      ${segments.map(
-        (segment, index) => html`
-          ${index > 0 ? html`<span class="tb-center-sep" aria-hidden="true">›</span>` : nothing}
-          <button
-            class="tb-center-seg"
-            type="button"
-            title=${segment.title}
-            @click=${(e: Event) => {
-              e.stopPropagation();
-              segment.onClick();
-            }}
-          >
-            ${segment.label}
-          </button>
-        `,
-      )}
-      ${chord ? html`<kbd class="tb-center-chord">${chord}</kbd>` : nothing}
-    </div>
-  `;
-}
-
-// ─── ①b Layout tabs ──────────────────────────────────────────────────────────
-
-/**
- * `Write · Design · Build · Ship · +` — named arrangements, as plain-text tabs.
- *
- * The 80% of a workspace switcher that costs a segmented control and none of the re-architecture
- * (§3.2 ①b). Each tab RUNS `view.setLayout`, so the click, the palette row and an agent all take
- * the same path; double-clicking one renames it, and `+` saves whatever is on screen now.
- *
- * **A layout reconfigures; it never removes.** Nothing here hides a panel: every one stays on the
- * rail, on its chord and in the palette after any layout is applied — §13 is explicit that
- * workspaces which gate features hand the non-technical user the affordance they are least likely
- * to reach for.
- */
-function layoutTabsTpl(registry: CommandRegistry) {
-  // `get` first, like {@link tbCmd}: a registry that has not been handed the shell's records yet
-  // (the skeleton the bar paints before the bootstrap composes them) has no verb to ask about.
-  if (!registry.get("view.setLayout") || !registry.isEnabled("view.setLayout")) {
-    return nothing;
-  }
-  return html`
-    <div class="tb-layouts" role="tablist" aria-label="Layouts">
-      ${shell.layouts.map(
-        (preset) => html`
-          <button
-            class=${preset.id === shell.layout ? "tb-layout active" : "tb-layout"}
-            type="button"
-            role="tab"
-            aria-selected=${preset.id === shell.layout ? "true" : "false"}
-            title=${`${preset.name} layout — double-click to rename`}
-            @click=${() => {
-              void registry.run("view.setLayout", { layout: preset.id });
-            }}
-            @dblclick=${() => {
-              void renameLayoutPrompt(registry, preset.id, preset.name);
-            }}
-          >
-            ${preset.name}
-          </button>
-        `,
-      )}
-      <button
-        class="tb-layout-add"
-        type="button"
-        title="Save the current arrangement as a layout"
-        aria-label="Save layout"
-        @click=${() => {
-          void saveLayoutPrompt(registry);
-        }}
-      >
-        +
-      </button>
-    </div>
-  `;
-}
-
 /** Ask for a name, then run the command. Exported for the same reason `runOpenInBrowser` is. */
 export async function saveLayoutPrompt(registry: CommandRegistry): Promise<void> {
   const name = await showPromptDialog("Save layout", {
@@ -611,50 +537,6 @@ export async function renameLayoutPrompt(
   }
 }
 
-// ─── The ⬢ app menu (commandbar/overflow) ────────────────────────────────────
-
-/**
- * Everything that declared `commandbar/overflow` — the chrome's residue for retired controls.
- *
- * Rendered as a menu of the records themselves, so a command that moves from the primary cluster to
- * the overflow keeps its name, its chord and its gate, and the move is one edit to its `menus`.
- */
-function appMenuTpl(registry: CommandRegistry) {
-  const commands = registry.forPlacement("commandbar/overflow");
-  return html`
-    <overlay-trigger placement="bottom-start" triggered-by="click">
-      <sp-action-button size="s" quiet slot="trigger" title="Studio menu" aria-label="Studio menu">
-        <sp-icon-show-menu slot="icon"></sp-icon-show-menu>
-      </sp-action-button>
-      <sp-popover slot="click-content" tip>
-        <sp-menu
-          @change=${(e: Event) => {
-            const id = (e.target as unknown as HTMLInputElement).value;
-            if (registry.isEnabled(id)) {
-              void registry.run(id);
-            }
-          }}
-        >
-          ${commands.map(
-            (command) => html`
-              <sp-menu-item
-                value=${command.id}
-                ?disabled=${!registry.isEnabled(command.id)}
-                title=${commandTooltip(registry, command.id)}
-              >
-                ${command.title}
-                <span slot="value">${registry.keymap.formatBinding(command.id) ?? ""}</span>
-              </sp-menu-item>
-            `,
-          )}
-        </sp-menu>
-      </sp-popover>
-    </overlay-trigger>
-  `;
-}
-
-// ─── Window controls ──────────────────────────────────────────────────────────
-
 interface WindowControls {
   minimize: () => void;
   maximize: () => void;
@@ -666,97 +548,254 @@ function windowControls(): WindowControls | undefined {
     .__jxPlatform?.windowControls;
 }
 
-/** Client-side decorations. Mac puts them leading and close-first; everything else trailing. */
-function csdTpl(controls: WindowControls, mac: boolean) {
-  const minimize = html`
-    <sp-action-button
-      quiet
-      size="s"
-      title="Minimize"
-      class="csd-minimize"
-      @click=${() => controls.minimize()}
-    >
-      <sp-icon-remove slot="icon"></sp-icon-remove>
-    </sp-action-button>
-  `;
-  const maximize = html`
-    <sp-action-button
-      quiet
-      size="s"
-      title="Maximize"
-      class="csd-maximize"
-      @click=${() => controls.maximize()}
-    >
-      <sp-icon-rectangle slot="icon"></sp-icon-rectangle>
-    </sp-action-button>
-  `;
-  const close = html`
-    <sp-action-button
-      quiet
-      size="s"
-      title="Close"
-      class="csd-close"
-      @click=${() => controls.close()}
-    >
-      <sp-icon-close slot="icon"></sp-icon-close>
-    </sp-action-button>
-  `;
-  return mac
-    ? html`<sp-action-group class="window-controls mac" size="s">
-        ${close}${minimize}${maximize}
-      </sp-action-group>`
-    : html`<sp-action-group class="window-controls" size="s">
-        ${minimize}${maximize}${close}
-      </sp-action-group>`;
-}
-
-// ─── The three dock toggles ───────────────────────────────────────────────────
-
-/* The window, with THIS dock's rail marked — one shipped glyph per region.
-
-   The pair these replace was `rail-right-open`/`close` under `scaleX(-1)`, because the left-hand
-   pair looked absent. It is not: `rail-left`, `rail-right` and `rail-bottom` are all in the
-   workflow set, and they are a better vocabulary than an arrow besides. An arrow says which way
-   something will move and nothing about what or where, which is why the Bottom dock could never
-   join the set and carried a static `align-bottom` instead.
-
-   The mirror was also worth deleting on its own terms. Spectrum's two right-hand glyphs are exact
-   mirror images OF EACH OTHER, so flipping the wrong member of the pair lands on the other
-   member's appearance — a real, crisp arrow pointing the wrong way, looking entirely deliberate.
-   It shipped crossed and nothing could see it. Three distinct glyphs cannot fail that way.
-
-   State stays where it already was and where it is already asserted: `?selected` on the button. */
-const DOCK_ICONS = {
-  bottom: html`<sp-icon-rail-bottom slot="icon"></sp-icon-rail-bottom>`,
-  left: html`<sp-icon-rail-left slot="icon"></sp-icon-rail-left>`,
-  right: html`<sp-icon-rail-right slot="icon"></sp-icon-rail-right>`,
-} as const;
+// ─── The Command Center pill, the layout tabs and the docks, projected ───────
 
 /**
- * ▤▥▦ — the three docks, each rendered from its own record.
+ * `◈ project › document › selection`: four facts about where you are, in non-collapsible chrome
+ * (§4.4).
+ */
+function projectSegments(tab: Tab | null): SegmentProjection[] {
+  const segments: SegmentProjection[] = [
+    {
+      key: "project",
+      label: projectState?.name ?? "No project",
+      sepBefore: false,
+      title: "Switch project — opens Project: Open Recent…",
+    },
+    { key: "document", label: documentSegmentLabel(tab), sepBefore: true, title: "Go to a file" },
+  ];
+  const selection = selectionSegmentLabel(tab);
+  if (selection) {
+    segments.push({
+      key: "selection",
+      label: selection,
+      sepBefore: true,
+      title: "Go to an element in this document",
+    });
+  }
+  return segments;
+}
+
+/**
+ * `Write · Design · Build · Ship · +` — named arrangements, as plain-text tabs.
  *
- * The glyph flips with the dock's state and `?selected` reports it, so the control says which way
- * it will go; the NAME and the chord still come from the record, which is why ⌘B and this button
+ * Each tab RUNS `view.setLayout`, so the click, the palette row and an agent all take the same
+ * path; double-clicking one renames it, and `+` saves whatever is on screen now. **A layout
+ * reconfigures; it never removes**: every panel stays on the rail, on its chord and in the palette
+ * after any layout is applied.
+ */
+function projectLayouts(registry: CommandRegistry | null): LayoutTabProjection[] {
+  // `get` first: a registry that has not been handed the shell's records yet (the skeleton the bar
+  // Paints before the bootstrap composes them) has no verb to ask about.
+  if (!registry?.get("view.setLayout") || !registry.isEnabled("view.setLayout")) {
+    return [];
+  }
+  return shell.layouts.map((preset) => ({
+    active: preset.id === shell.layout,
+    id: preset.id,
+    name: preset.name,
+    title: `${preset.name} layout — double-click to rename`,
+  }));
+}
+
+/** The primary verb cluster: exactly what declared `commandbar/primary`, in the registry's order. */
+function projectPrimary(registry: CommandRegistry | null): PrimaryProjection[] {
+  if (!registry) {
+    return [];
+  }
+  return registry
+    .forPlacement("commandbar/primary")
+    .filter((command) => registry.isVisible(command.id))
+    .map((command) => ({
+      disabled: !registry.isEnabled(command.id),
+      hasIcon: Boolean(command.icon),
+      icon: command.icon ?? "",
+      id: command.id,
+      title: command.title,
+      tooltip: commandTooltip(registry, command.id),
+    }));
+}
+
+/**
+ * ▤▥▦ — the three docks, each projected from its own record.
+ *
+ * The glyph names the region and `selected` reports its state, so the control says which way it
+ * will go; the NAME and the chord still come from the record, which is why ⌘B and this button
  * cannot drift apart the way ⌘W and the tab strip's × did.
  */
-function dockTogglesTpl(registry: CommandRegistry) {
-  return html`
-    ${tbCmd(registry, "view.toggleNavigator", {
-      compact: true,
-      icon: DOCK_ICONS.left,
-      selected: !shell.docks.left.collapsed,
-    })}
-    ${tbCmd(registry, "view.toggleInspector", {
-      compact: true,
-      icon: DOCK_ICONS.right,
-      selected: !shell.docks.right.collapsed,
-    })}
-    ${tbCmd(registry, "view.toggleBottomDock", {
-      compact: true,
-      icon: DOCK_ICONS.bottom,
-      selected: !shell.docks.bottom.collapsed,
-    })}
-  `;
+function projectDocks(registry: CommandRegistry | null): DockProjection[] {
+  if (!registry) {
+    return [];
+  }
+  return DOCKS.flatMap((dock) => {
+    const command = registry.get(dock.id);
+    if (!command || !registry.isVisible(dock.id)) {
+      return [];
+    }
+    return [
+      {
+        disabled: !registry.isEnabled(dock.id),
+        icon: dock.icon,
+        id: dock.id,
+        mirror: dock.mirror,
+        selected: !shell.docks[dock.dock].collapsed,
+        title: command.title,
+        tooltip: commandTooltip(registry, dock.id),
+      },
+    ];
+  });
+}
+
+// ─── The ⬢ Studio menu (commandbar/overflow) ─────────────────────────────────
+
+/**
+ * Everything that declared `commandbar/overflow` — the chrome's residue for retired controls —
+ * projected as rows for the `menu` surface, so a command that moves from the primary cluster to the
+ * overflow keeps its name, its chord and its gate, and the move is one edit to its `menus`.
+ */
+function overflowRows(registry: CommandRegistry): MenuRowProjection[] {
+  let group: string | undefined;
+  return registry.forPlacement("commandbar/overflow").map((command, index) => {
+    const dividerAbove = index > 0 && command.group !== group;
+    ({ group } = command);
+    const enabled = registry.isEnabled(command.id);
+    const chord = registry.keymap.formatBinding(command.id);
+    const reason = enabled ? undefined : registry.disabledReason(command.id);
+    const row: MenuRowProjection = {
+      destructive: command.destructive === true,
+      disabled: !enabled,
+      dividerAbove,
+      id: command.id,
+      title: command.title,
+    };
+    if (chord) {
+      row.chord = chord;
+    }
+    if (reason) {
+      row.requires = reason;
+    }
+    return row;
+  });
+}
+
+/** Open the Studio menu under its button, or close the one that is up: the button is a toggle. */
+function openStudioMenu(opener: HTMLElement): void {
+  if (_menu) {
+    _menu.close();
+    return;
+  }
+  const registry = activeRegistry();
+  if (!registry) {
+    return;
+  }
+  const scope = state();
+  const handle = openMenu({
+    label: "Studio menu",
+    onClosed: (closed) => {
+      if (_menu !== closed) {
+        return;
+      }
+      _menu = null;
+      scope.menuOpen = false;
+    },
+    opener,
+    place: () => {
+      const box = rectOf(opener);
+      return { x: box.left, y: box.bottom + 4 };
+    },
+    region: "studio",
+    rows: overflowRows(registry),
+    run: (id) => {
+      if (registry.isEnabled(id)) {
+        void registry.run(id);
+      }
+    },
+  });
+  _menu = handle;
+  scope.menuOpen = true;
+}
+
+// ─── The scope ────────────────────────────────────────────────────────────────
+
+/**
+ * The one reactive scope the document is mounted over: rebuilt on mount, re-projected by the
+ * effect.
+ */
+function state(): CommandBarScope {
+  _state ??= reactive<CommandBarScope>({
+    chord: "",
+    csd: "none",
+    docks: [],
+    hasChord: false,
+    layouts: [],
+    layoutsVisible: false,
+    menuOpen: false,
+    menuVisible: false,
+    openPicker: () => {
+      openQuickSearch("picker");
+    },
+    openSegment: (key) => {
+      openQuickSearch(SEGMENT_MODES[key]);
+    },
+    openStudioMenu,
+    presence: NO_PRESENCE,
+    presenceVisible: false,
+    primary: [],
+    renameLayout: (id) => {
+      const registry = activeRegistry();
+      const preset = shell.layouts.find((layout) => layout.id === id);
+      if (registry && preset) {
+        void renameLayoutPrompt(registry, id, preset.name);
+      }
+    },
+    run: (id) => {
+      const registry = activeRegistry();
+      if (registry?.isEnabled(id)) {
+        void registry.run(id);
+      }
+    },
+    saveLayout: () => {
+      const registry = activeRegistry();
+      if (registry) {
+        void saveLayoutPrompt(registry);
+      }
+    },
+    segments: [],
+    setLayout: (id) => {
+      void activeRegistry()?.run("view.setLayout", { layout: id });
+    },
+    windowControl: (action) => {
+      windowControls()?.[action]();
+    },
+  }) as CommandBarScope;
+  return _state;
+}
+
+/**
+ * Re-project the registry, the shell and the tab onto the scope. Every write is keyed, so the DOM
+ * reconciles in place.
+ */
+function project(): void {
+  const scope = state();
+  const registry = activeRegistry();
+  const tab = activeTab.value ?? null;
+  const controls = windowControls();
+  scope.csd = controls ? (isMacPlatform() ? "mac" : "other") : "none";
+  scope.menuVisible = registry !== null;
+  scope.layouts = projectLayouts(registry);
+  scope.layoutsVisible = scope.layouts.length > 0;
+  scope.segments = projectSegments(tab);
+  scope.chord = registry?.keymap.formatBinding("palette.open") ?? "";
+  scope.hasChord = scope.chord !== "";
+  scope.primary = projectPrimary(registry);
+  const presence = presenceProjection(tab);
+  // The object before the flag, so the case that reads it never renders against the empty one.
+  scope.presence = presence ?? NO_PRESENCE;
+  scope.presenceVisible = presence !== null;
+  scope.docks = projectDocks(registry);
+  if (_menu && registry) {
+    _menu.setRows(overflowRows(registry));
+  }
 }
 
 // ─── Mount ────────────────────────────────────────────────────────────────────
@@ -767,7 +806,8 @@ function dockTogglesTpl(registry: CommandRegistry) {
  * @param rootEl The `#toolbar` host, stamped `commandbar` by the frame (`shell/tree.ts`).
  * @param _ctx Ignored — see {@link ToolbarCtx}.
  */
-export function mount(rootEl: HTMLElement, _ctx: ToolbarCtx = {}) {
+export function mount(rootEl: HTMLElement, _ctx: ToolbarCtx = {}): void {
+  unmount();
   _rootEl = rootEl;
   if (windowControls()) {
     rootEl.classList.add("electrobun-webkit-app-region-drag");
@@ -777,14 +817,14 @@ export function mount(rootEl: HTMLElement, _ctx: ToolbarCtx = {}) {
     effect(() => {
       // Dock visibility, source control and the project are shell state, tracked here so the band
       // Follows a flip made from anywhere — the automation runner, the New Project agent hand-off,
-      // The boot-time restore — not just this module's click handlers.
+      // The boot-time restore — not just this document's handlers.
       void shell.docks.left.collapsed;
       void shell.docks.right.collapsed;
       void shell.docks.bottom.collapsed;
       void shell.git.status;
       void shell.layoutSelection;
-      // The layout tabs are a rendering of the project's own record (§3.2 ①b), so the band
-      // Repaints when a layout is saved, renamed or deleted from anywhere.
+      // The layout tabs are a rendering of the project's own record, so the band repaints when a
+      // Layout is saved, renamed or deleted from anywhere.
       void shell.layout;
       void shell.layouts;
       // The registry itself is reactive state: it is composed AFTER this mount runs, and reading it
@@ -804,56 +844,41 @@ export function mount(rootEl: HTMLElement, _ctx: ToolbarCtx = {}) {
         void tab.history.index;
         void tab.history.snapshots.length;
       }
-      render();
+      try {
+        project();
+      } catch (error) {
+        console.error("command bar projection error:", error);
+      }
     });
+  });
+  _mount = mountSurface("commandbar", state(), rootEl);
+  void _mount.then((handle) => {
+    _handle = handle;
   });
 }
 
-export function unmount() {
+export function unmount(): void {
+  _menu?.close();
   _scope?.stop();
   _scope = null;
+  const pending = _mount;
+  _mount = null;
+  if (_handle) {
+    _handle.dispose();
+    _handle = null;
+  } else if (pending) {
+    void pending.then((handle) => handle.dispose());
+  }
+  _state = null;
   _rootEl = null;
 }
 
-export function render() {
-  if (!_rootEl) {
-    return;
-  }
-  try {
-    litRender(toolbarTemplate(), _rootEl);
-  } catch (error) {
-    console.error("toolbar render error:", error);
-  }
-}
-
 /**
- * The band.
- *
- * ONE template for every state. With no project open the records' `when` clauses empty the primary
- * cluster and the pill reads "No project"; there is no second variant to keep in step.
+ * Re-project now. The effect does this on its own; the bootstrap calls it after a store it does not
+ * track hydrates.
  */
-function toolbarTemplate() {
-  const registry = activeRegistry();
-  const controls = windowControls();
-  const mac = isMacPlatform();
-  const csd = controls ? csdTpl(controls, mac) : nothing;
-  const tab = activeTab.value ?? null;
-  return html`
-    ${mac ? csd : nothing} ${registry ? appMenuTpl(registry) : nothing}
-    ${registry ? layoutTabsTpl(registry) : nothing}
-    <div class="tb-spacer"></div>
-    ${commandCenterTpl(registry)}
-    <div class="tb-spacer"></div>
-    ${
-      registry
-        ? html`<sp-action-group compact size="s">
-            ${registry
-              .forPlacement("commandbar/primary")
-              .map((command) => tbCmd(registry, command.id))}
-          </sp-action-group>`
-        : nothing
-    }
-    ${tab ? presenceChipsTemplate(tab) : nothing} ${registry ? dockTogglesTpl(registry) : nothing}
-    ${mac ? nothing : csd}
-  `;
+export function render(): void {
+  if (_rootEl) {
+    project();
+  }
 }

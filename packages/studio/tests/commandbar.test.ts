@@ -10,7 +10,7 @@
  *   pre-scoped — the one place Studio now states which project is open.
  * - **`openInBrowserTarget` is a pure function** and is tested as one, route by route.
  */
-import { flush, installMockPlatform } from "./harness";
+import { flush, installMockPlatform, mountOverlayLayers, pointer } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { notifyModule } from "./notify-mock";
 import type { Tab } from "../src/tabs/tab";
@@ -25,7 +25,7 @@ void mock.module("../src/panels/quick-search.js", () => ({ openQuickSearch }));
 const notified = mock((_message: string) => {});
 void mock.module("../src/services/notify.js", () => notifyModule((call) => notified(call.message)));
 
-const toolbar = await import("../src/panels/toolbar");
+const toolbar = await import("../src/surfaces/commandbar");
 const { shell, resetProjectShell } = await import("../src/shell");
 // The assistant's toggle reports a TAB selection, so the bar reads it where the Inspector keeps it.
 const { setInspectorTab } = await import("../src/panels/right-panel");
@@ -36,7 +36,9 @@ const { createCommandRegistry } = await import("../src/commands/registry");
 const { defaultCommands, noopCommandDeps } = await import("../src/commands/defaults");
 const { shellViewCommands } = await import("../src/shell");
 const { makeContext } = await import("../src/commands/context");
+const { collabState } = await import("../src/collab/collab-state");
 const { setActiveRegistry } = await import("../src/commands/active-registry");
+const { initLayers } = await import("../src/ui/layers");
 
 type CommandRegistry = ReturnType<typeof createCommandRegistry>;
 type CommandContext = ReturnType<typeof makeContext>;
@@ -123,9 +125,15 @@ function openTestTab(documentPath = "/project/index.json"): Tab {
 }
 
 /** Find the first sp-action-button whose accessible name is exactly `label`. */
+/** The native control inside a kit button — what carries the name, the tooltip and the state. */
+function control(el: Element): HTMLButtonElement {
+  return el.querySelector<HTMLButtonElement>('[part="control"]')!;
+}
+
+/** A kit button of the band by its accessible name; the HOST element, whose control names it. */
 function btn(label: string): HTMLElement {
-  const match = [...root.querySelectorAll("sp-action-button")].find(
-    (b) => b.getAttribute("aria-label") === label,
+  const match = [...root.querySelectorAll("jx-button, jx-action-button")].find(
+    (b) => control(b)?.getAttribute("aria-label") === label,
   );
   if (!match) {
     throw new Error(`no button labelled ${label}`);
@@ -134,11 +142,18 @@ function btn(label: string): HTMLElement {
 }
 
 function click(el: Element): void {
-  el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+  pointer(el, "click");
 }
 
 function segments(): string[] {
-  return [...root.querySelectorAll(".tb-center-seg")].map((el) => el.textContent?.trim() ?? "");
+  return [...root.querySelectorAll('[part="segment"]')].map((el) => el.textContent?.trim() ?? "");
+}
+
+/** Mount the band and let the document mount and paint. */
+async function mountBar(): Promise<void> {
+  toolbar.mount(root);
+  await flush();
+  await flush();
 }
 
 function stageProject() {
@@ -171,6 +186,8 @@ beforeEach(() => {
   setPreviewNavigateHandler(null);
   installMockPlatform();
   installRegistry();
+  mountOverlayLayers();
+  initLayers();
   root = document.createElement("div");
   document.body.append(root);
 });
@@ -184,36 +201,34 @@ afterEach(() => {
   delete (globalThis as Record<string, unknown>).__jxPlatform;
 });
 
-// ─── tbCmd: the record IS the control ────────────────────────────────────────
+// ─── The record IS the control ───────────────────────────────────────────────
 
-describe("tbCmd", () => {
+describe("the primary cluster", () => {
   test("with no project open the same bar renders, gated by `when`", async () => {
-    toolbar.mount(root);
-    await flush();
-    // No second template: Save simply is not visible, because `file.save` needs a document.
-    expect(root.querySelector("sp-action-button[aria-label='Save']")).toBeNull();
+    await mountBar();
+    // No second template: Save simply is not projected, because `file.save` needs a document.
+    expect(root.querySelector('[data-command-id="file.save"]')).toBeNull();
     expect(segments()).toEqual(["No project", "No document"]);
   });
 
-  test("a live record renders its title, its icon and its chord in the tooltip", async () => {
+  test("a live record renders its title, its glyph and its chord in the tooltip", async () => {
     ctx = makeContext({ document: { open: true, canUndo: true } });
-    toolbar.mount(root);
-    await flush();
+    await mountBar();
 
     const save = btn("Save");
     expect(save.getAttribute("title")).toBe("Save (⌘S)");
-    expect(save.querySelector("sp-icon-save-floppy")).not.toBeNull();
+    const icon = save.querySelector("jx-icon") as (HTMLElement & { name: string }) | null;
+    expect(icon?.name).toBe("floppy-disk");
     expect(save.textContent).toContain("Save");
-    click(save);
+    click(control(save));
     expect(ran).toEqual(["save"]);
   });
 
   test("a disabled record states WHY in the tooltip instead of vanishing", async () => {
     ctx = makeContext({ document: { open: true, canUndo: false } });
-    toolbar.mount(root);
-    await flush();
+    await mountBar();
     const undo = btn("Undo");
-    expect(undo.hasAttribute("disabled")).toBe(true);
+    expect(control(undo).disabled).toBe(true);
     expect(undo.getAttribute("title")).toBe("Undo — requires a change to undo");
   });
 
@@ -231,24 +246,30 @@ describe("tbCmd", () => {
     expect(toolbar.commandTooltip(registry, "palette.openNodes")).toBe("Go to Symbol in Document…");
   });
 
-  test("an invisible command renders the same nothing as an unknown one", () => {
-    const registry = installRegistry();
-    expect(toolbar.tbCmd(registry, "file.save")).toBe(toolbar.tbCmd(registry, "nope.missing"));
-  });
-
   test("the primary cluster is exactly what declares commandbar/primary", async () => {
     ctx = makeContext({
       project: { open: true, isSite: true },
       document: { open: true, canUndo: true, canRedo: true },
     });
-    toolbar.mount(root);
-    await flush();
-    const cluster = root.querySelector("sp-action-group[compact]")!;
-    const labels = [...cluster.querySelectorAll("sp-action-button")].map((b) =>
-      b.getAttribute("aria-label"),
+    await mountBar();
+    const labels = [...root.querySelectorAll('[part="primary"] jx-button')].map((b) =>
+      control(b).getAttribute("aria-label"),
     );
-    // Sorted by `group` then title, which is the registry's ordering, not the template's.
+    // Sorted by `group` then title, which is the registry's ordering, not the document's.
     expect(labels).toEqual(["Save", "Redo", "Undo", "Open in Browser"]);
+  });
+
+  test("a gate flipped from outside the bar reaches the buttons in place", async () => {
+    ctx = makeContext({ document: { open: true, canUndo: false } });
+    await mountBar();
+    const undo = btn("Undo");
+    ctx = makeContext({ document: { open: true, canUndo: true } });
+    toolbar.render();
+    await flush();
+    // The keyed row reconciles: the same element, now enabled.
+    expect(btn("Undo") === undo).toBe(true);
+    expect(control(undo).disabled).toBe(false);
+    expect(undo.getAttribute("title")).toBe("Undo (⌘Z)");
   });
 });
 
@@ -259,25 +280,26 @@ describe("the Command Center pill", () => {
     stageProject();
     const tab = openTestTab("/acme/pages/blog/index.md");
     tab.session.selection = [["children", 0]];
-    toolbar.mount(root);
-    await flush();
+    await mountBar();
 
     // The selection segment is the Outline's own `nodeLabel`, so the two cannot disagree.
     expect(segments()).toEqual(["acme", "pages/blog/index.md", "p — Hi"]);
-    expect(root.querySelector(".tb-center-chord")?.textContent).toBe("⌘K");
+    expect(root.querySelector('[part="chord"]')?.textContent).toBe("⌘K");
+    // Two separators for three segments: the first has none.
+    expect(root.querySelectorAll('[part="sep"]')).toHaveLength(2);
   });
 
   test("each segment opens the palette pre-scoped, and the gap opens the mode picker", async () => {
     stageProject();
     const tab = openTestTab("/acme/pages/index.md");
     tab.session.selection = [["children", 0]];
-    toolbar.mount(root);
-    await flush();
+    await mountBar();
 
-    const [project, document_, selection] = [...root.querySelectorAll(".tb-center-seg")];
+    const [project, document_, selection] = [...root.querySelectorAll('[part="segment"]')];
     click(project!);
     click(document_!);
     click(selection!);
+    await flush();
     expect(openQuickSearch.mock.calls.map(([mode]) => mode)).toEqual([
       "projects",
       "files",
@@ -286,14 +308,14 @@ describe("the Command Center pill", () => {
 
     // The segment click stops there — the pill's own handler must not also fire.
     openQuickSearch.mockClear();
-    click(root.querySelector(".tb-center")!);
+    click(root.querySelector('[part="center"]')!);
+    await flush();
     expect(openQuickSearch.mock.calls.map(([mode]) => mode)).toEqual(["picker"]);
   });
 
   test("the selection segment is absent with nothing selected, and reads layout for chrome", async () => {
     openTestTab();
-    toolbar.mount(root);
-    await flush();
+    await mountBar();
     expect(segments()).toHaveLength(2);
 
     shell.layoutSelection = { path: [], tagName: "header" } as never;
@@ -328,51 +350,80 @@ describe("the Command Center pill", () => {
   });
 });
 
-// ─── The ⬢ app menu ───────────────────────────────────────────────────────────
+// ─── The ⬢ Studio menu ────────────────────────────────────────────────────────
 
-describe("the ⬢ overflow menu", () => {
-  test("lists what declared commandbar/overflow, with chords, and runs the picked one", async () => {
+type MenuEl = HTMLElement & { open: boolean };
+
+const studioMenu = () =>
+  document.querySelector<MenuEl>('#layer-popover jx-menu[aria-label="Studio menu"]');
+const menuRows = () => [
+  ...(studioMenu()?.querySelectorAll<HTMLElement>("jx-menu-item[data-command-id]") ?? []),
+];
+const rowFor = (id: string) => menuRows().find((el) => el.dataset["commandId"] === id);
+
+async function openStudioMenu(): Promise<HTMLElement> {
+  const button = root.querySelector<HTMLElement>('[data-menu="studio"]')!;
+  click(control(button));
+  await flush();
+  await flush();
+  return button;
+}
+
+describe("the ⬢ Studio menu", () => {
+  test("is the `menu` surface over what declared commandbar/overflow, with chords, and runs the picked one", async () => {
     ctx = makeContext({ project: { open: true } });
-    toolbar.mount(root);
+    await mountBar();
+    const button = await openStudioMenu();
+
+    const menu = studioMenu()!;
+    expect(menu.parentElement!.dataset["jxRegion"]).toBe("overlay.menu:studio");
+    expect(control(button).getAttribute("aria-expanded")).toBe("true");
+    const ids = menuRows().map((el) => el.dataset["commandId"]);
+    expect(ids).toContain("project.open");
+    expect(ids).toContain("view.toggleNavigator");
+    expect(rowFor("view.zen")!.querySelector('[slot="value"]')?.textContent?.trim()).toBe("⌘.");
+
+    pointer(rowFor("project.open")!, "click");
     await flush();
-
-    const values = [...root.querySelectorAll("sp-menu-item")].map((i) => i.getAttribute("value"));
-    expect(values).toContain("project.open");
-    expect(values).toContain("view.toggleNavigator");
-    const zen = [...root.querySelectorAll("sp-menu-item")].find(
-      (i) => i.getAttribute("value") === "view.zen",
-    )!;
-    expect(zen.querySelector("[slot='value']")?.textContent).toBe("⌘.");
-
-    const menu = root.querySelector("sp-menu") as HTMLElement & { value: string };
-    menu.value = "project.open";
-    menu.dispatchEvent(new Event("change", { bubbles: true }));
     expect(ran).toEqual(["openProject"]);
+    // Running a row closes the menu, and the button says so.
+    expect(studioMenu()).toBeNull();
+    expect(control(button).getAttribute("aria-expanded")).toBe("false");
   });
 
-  test("a gated row is listed disabled, then vanishes when `when` turns false", async () => {
+  test("the button is a toggle: a second click closes the menu it opened", async () => {
     ctx = makeContext({ project: { open: true } });
-    toolbar.mount(root);
+    await mountBar();
+    const button = await openStudioMenu();
+    expect(studioMenu()).not.toBeNull();
+    click(control(button));
     await flush();
-    const gated = [...root.querySelectorAll("sp-menu-item")].find(
-      (i) => i.getAttribute("value") === "test.overflowGated",
-    )!;
+    await flush();
+    expect(studioMenu()).toBeNull();
+  });
+
+  test("a gated row is listed disabled, then vanishes in place when `when` turns false", async () => {
+    ctx = makeContext({ project: { open: true } });
+    await mountBar();
+    await openStudioMenu();
+    const gated = rowFor("test.overflowGated")!;
     // Visible but disabled, with the `requires` sentence in the tooltip — never a silent absence.
-    expect(gated.hasAttribute("disabled")).toBe(true);
-    expect(gated.getAttribute("title")).toBe("Gated Overflow — requires an open document");
+    expect(gated.getAttribute("aria-disabled")).toBe("true");
+    expect(gated.getAttribute("title")).toBe("an open document");
 
-    const menu = root.querySelector("sp-menu") as HTMLElement & { value: string };
-    menu.value = "test.overflowGated";
-    menu.dispatchEvent(new Event("change", { bubbles: true }));
+    pointer(gated, "click");
+    await flush();
     expect(ran).toEqual([]);
+    expect(studioMenu()).not.toBeNull();
 
+    // The menu stays up while its rows reconcile: the gated row leaves, the rest stay.
     ctx = makeContext();
     toolbar.render();
-    expect(
-      [...root.querySelectorAll("sp-menu-item")].some(
-        (i) => i.getAttribute("value") === "test.overflowGated",
-      ),
-    ).toBe(false);
+    await flush();
+    await flush();
+    expect(studioMenu()).not.toBeNull();
+    expect(rowFor("test.overflowGated")).toBeUndefined();
+    expect(rowFor("project.open")).toBeDefined();
   });
 });
 
@@ -382,125 +433,164 @@ describe("dock toggles", () => {
   /*
    * `querySelector` PROVES NOTHING ABOUT AN ICON.
    *
-   * These three assertions read `sp-icon-rail-left-open` / `-close` and passed for as long as the
+   * Three earlier assertions read `sp-icon-rail-left-open` / `-close` and passed for as long as the
    * Navigator's toggle rendered nothing at all: an unregistered custom element is still an element,
-   * so lit puts the tag in the DOM and the query finds it, upgraded or not. Spectrum ships no
-   * left-hand rail pair — only `rail-right-open`/`close` and a plain `IconRailLeft` — so those two
-   * tags could never resolve, and the button was an empty box from the day it was written.
-   *
-   * So these assert WHICH glyph the bar renders, mirrored or not — a question this file can answer.
-   * Whether that glyph is a registered element is a different question and a static one:
-   * `scripts/check-icons.ts` asks it of the whole package, and `tests/icons.test.ts` pins it. It
-   * cannot be asked here, because this file never loads `ui/spectrum.ts` and every icon would read
-   * as unregistered, including the ones that work.
-   */
-  /**
-   * A dock toggle's glyph, by tag.
-   *
-   * A tag name is a weak assertion when two glyphs are lookalikes — it is what let the mirrored
-   * `rail-right-*` pair ship crossed, since both spellings named a real element and only the
-   * arrow's direction differed. It is a fine assertion for `rail-left` / `rail-right` /
-   * `rail-bottom`, which are three visibly distinct shapes; the STATE is `?selected`, asserted
-   * separately on every one of them below.
+   * so the tag was in the DOM and the query found it, upgraded or not. So these assert WHICH glyph
+   * the bar names, and whether it is mirrored — a question the projection answers by name. Whether
+   * that name is a shipped glyph is a static question: `scripts/check-icons.ts` asks it of every
+   * `jx-icon` name in the surfaces, and `tests/icons.test.ts` pins it.
    */
   function glyph(el: Element): string {
-    const icon = el.querySelector("[slot='icon']");
+    const icon = el.querySelector("jx-icon") as
+      | (HTMLElement & { name: string; mirror: boolean })
+      | null;
     if (!icon) {
       return "none";
     }
-    return icon.tagName.toLowerCase();
+    return icon.mirror ? `${icon.name} mirrored` : icon.name;
   }
+  const pressed = (el: Element) => control(el).getAttribute("aria-pressed") === "true";
 
   test("each dock's glyph and pressed state follow the record it renders", async () => {
-    toolbar.mount(root);
-    await flush();
+    await mountBar();
     const navigatorToggle = btn("Toggle Navigator Dock");
-    expect(navigatorToggle.hasAttribute("selected")).toBe(true);
-    // Three regions, three distinct shipped glyphs — including the Bottom dock, which used to
-    // Carry `align-bottom` and so named no region at all.
-    expect(glyph(navigatorToggle)).toBe("sp-icon-rail-left");
-    expect(glyph(btn("Toggle Inspector Dock"))).toBe("sp-icon-rail-right");
-    expect(glyph(btn("Toggle Bottom Dock"))).toBe("sp-icon-rail-bottom");
-    // …and no two of them are the same element, which is the property the mirrored pair lacked.
+    expect(pressed(navigatorToggle)).toBe(true);
+    // Three regions, one shipped shape for the two sides and a third for the Bottom dock, which
+    // Used to carry `align-bottom` and so named no region at all.
+    expect(glyph(navigatorToggle)).toBe("sidebar-simple");
+    expect(glyph(btn("Toggle Inspector Dock"))).toBe("sidebar-simple mirrored");
+    expect(glyph(btn("Toggle Bottom Dock"))).toBe("rows");
+    // …and no two of them read the same, which is the property the mirrored pair lacked.
     const shapes = [
       glyph(navigatorToggle),
       glyph(btn("Toggle Inspector Dock")),
       glyph(btn("Toggle Bottom Dock")),
     ];
     expect(new Set(shapes).size).toBe(shapes.length);
-    expect(navigatorToggle.getAttribute("title")).toBe("Toggle Navigator Dock (⌘B)");
+    expect(control(navigatorToggle).getAttribute("title")).toBe("Toggle Navigator Dock (⌘B)");
 
-    click(navigatorToggle);
+    click(control(navigatorToggle));
+    await flush();
     expect(ran).toEqual(["toggleDock:navigator"]);
   });
 
-  test("a flip made from outside the bar reaches its icons", async () => {
-    toolbar.mount(root);
-    await flush();
-    expect(btn("Toggle Bottom Dock").hasAttribute("selected")).toBe(false);
+  test("a flip made from outside the bar reaches its buttons", async () => {
+    await mountBar();
+    expect(pressed(btn("Toggle Bottom Dock"))).toBe(false);
 
     // A bare state write, with no repaint call beside it: the band's effect tracks all three dock
     // Records, so a flip made by the automation runner, a layout preset or the boot-time restore
-    // Reaches the icons the same way a click does. The third toggle reports the BOTTOM dock —
+    // Reaches the buttons the same way a click does. The third toggle reports the BOTTOM dock —
     // Naming ⌘J while drawing a chat glyph and reporting the Assistant's tab selection was a
     // Control that announced one surface and answered for another.
     shell.docks.bottom.collapsed = false;
     await flush();
-    expect(btn("Toggle Bottom Dock").hasAttribute("selected")).toBe(true);
-    expect(glyph(btn("Toggle Bottom Dock"))).toBe("sp-icon-rail-bottom");
+    expect(pressed(btn("Toggle Bottom Dock"))).toBe(true);
+    expect(glyph(btn("Toggle Bottom Dock"))).toBe("rows");
 
     // The Assistant is an Inspector tab now, and the Bottom dock does not answer for it.
     setInspectorTab("assistant");
     await flush();
-    expect(btn("Toggle Bottom Dock").hasAttribute("selected")).toBe(true);
+    expect(pressed(btn("Toggle Bottom Dock"))).toBe(true);
 
     shell.docks.right.collapsed = true;
     shell.docks.bottom.collapsed = true;
     await flush();
-    expect(btn("Toggle Bottom Dock").hasAttribute("selected")).toBe(false);
-    // Three docks in three different states at once: the glyph names the region, `selected` the
-    // State, and the two must not be confused for one another.
-    expect(glyph(btn("Toggle Inspector Dock"))).toBe("sp-icon-rail-right");
-    expect(btn("Toggle Inspector Dock").hasAttribute("selected")).toBe(false);
-    expect(glyph(btn("Toggle Navigator Dock"))).toBe("sp-icon-rail-left");
-    expect(btn("Toggle Navigator Dock").hasAttribute("selected")).toBe(true);
-
-    toolbar.unmount();
-    setInspectorTab("properties");
-    await flush();
-    expect(btn("Toggle Bottom Dock").hasAttribute("selected")).toBe(false);
+    expect(pressed(btn("Toggle Bottom Dock"))).toBe(false);
+    // Three docks in three different states at once: the glyph names the region, `aria-pressed`
+    // The state, and the two must not be confused for one another.
+    expect(glyph(btn("Toggle Inspector Dock"))).toBe("sidebar-simple mirrored");
+    expect(pressed(btn("Toggle Inspector Dock"))).toBe(false);
+    expect(glyph(btn("Toggle Navigator Dock"))).toBe("sidebar-simple");
+    expect(pressed(btn("Toggle Navigator Dock"))).toBe(true);
   });
 
   test("the navigator button reports a closed dock without changing what it names", async () => {
     shell.docks.left.collapsed = true;
-    toolbar.mount(root);
+    await mountBar();
+    expect(pressed(btn("Toggle Navigator Dock"))).toBe(false);
+    expect(glyph(btn("Toggle Navigator Dock"))).toBe("sidebar-simple");
+  });
+});
+
+// ─── Presence ─────────────────────────────────────────────────────────────────
+
+describe("presence", () => {
+  test("is absent while the platform offers no collaboration, and draws the peers when it does", async () => {
+    const tab = openTestTab();
+    await mountBar();
+    expect(root.querySelector('[part="presence"]')).toBeNull();
+
+    const state = collabState(tab);
+    state.status = "synced";
+    state.active = true;
+    state.peers = [
+      {
+        clientId: 1,
+        state: {
+          focusedPath: tab.documentPath,
+          structuralSelection: null,
+          user: { color: "#e5484d", login: "octocat", name: "Octo Cat" },
+        },
+      },
+      {
+        clientId: 2,
+        state: {
+          focusedPath: "pages/other.json",
+          structuralSelection: null,
+          user: { avatarUrl: "https://example.test/v.png", color: "#30a46c", login: "viewer" },
+        },
+      },
+    ];
     await flush();
-    expect(btn("Toggle Navigator Dock").hasAttribute("selected")).toBe(false);
-    expect(glyph(btn("Toggle Navigator Dock"))).toBe("sp-icon-rail-left");
+    const status = root.querySelector<HTMLElement>('[part="status"]')!;
+    expect(status.textContent).toBe("Live");
+    expect(status.dataset["status"]).toBe("synced");
+    const chips = [...root.querySelectorAll<HTMLElement>('[part="chip"]')];
+    expect(chips).toHaveLength(2);
+    expect(chips[0]!.getAttribute("title")).toContain("Octo Cat");
+    expect(chips[0]!.textContent?.trim()).toBe("O");
+    expect(chips[0]!.getAttribute("style")).toContain("#e5484d");
+    // A peer with an avatar draws it, with the initial as its alt text.
+    expect(chips[1]!.querySelector("img")?.getAttribute("alt")).toBe("V");
+
+    state.readOnly = true;
+    state.sourceCanonical = true;
+    await flush();
+    expect(root.querySelector('[part="flag"][data-flag="read-only"]')?.textContent).toBe(
+      "Read-only",
+    );
+    const frozen = root.querySelector('[part="flag"][data-flag="frozen"]')!;
+    expect(frozen.textContent).toBe("Code view held");
+    expect(frozen.getAttribute("title")).toContain("This is not an error");
   });
 });
 
 // ─── Window controls ──────────────────────────────────────────────────────────
 
 describe("window controls", () => {
+  const titles = (group: Element) =>
+    [...group.querySelectorAll("jx-action-button")].map((b) => control(b).getAttribute("title"));
+
   test("non-mac order is minimize, maximize, close — and they sit at the end", async () => {
     const controls = { close: mock(() => {}), maximize: mock(() => {}), minimize: mock(() => {}) };
     (globalThis as Record<string, unknown>).__jxPlatform = { windowControls: controls };
-    toolbar.mount(root);
-    await flush();
+    await mountBar();
 
     expect(root.classList.contains("electrobun-webkit-app-region-drag")).toBe(true);
-    const group = root.querySelector(".window-controls")!;
-    expect(group.classList.contains("mac")).toBe(false);
-    const buttons = [...group.querySelectorAll("sp-action-button")];
-    expect(buttons.map((b) => b.getAttribute("title"))).toEqual(["Minimize", "Maximize", "Close"]);
-    click(buttons[0]!);
-    click(buttons[1]!);
-    click(buttons[2]!);
+    const group = root.querySelector<HTMLElement>('[part="window-controls"]')!;
+    expect(group.dataset["mac"] !== undefined).toBe(false);
+    expect(titles(group)).toEqual(["Minimize", "Maximize", "Close"]);
+    const buttons = [...group.querySelectorAll("jx-action-button")];
+    click(control(buttons[0]!));
+    click(control(buttons[1]!));
+    click(control(buttons[2]!));
+    await flush();
     expect(controls.minimize).toHaveBeenCalledTimes(1);
     expect(controls.maximize).toHaveBeenCalledTimes(1);
     expect(controls.close).toHaveBeenCalledTimes(1);
-    expect(root.lastElementChild?.classList.contains("window-controls")).toBe(true);
+    const bar = root.querySelector('[part="bar"]')!;
+    expect(bar.lastElementChild?.contains(group)).toBe(true);
   });
 
   test("mac puts them first, close leading", async () => {
@@ -512,17 +602,21 @@ describe("window controls", () => {
         minimize: mock(() => {}),
       };
       (globalThis as Record<string, unknown>).__jxPlatform = { windowControls: controls };
-      toolbar.mount(root);
-      await flush();
-      const group = root.querySelector(".window-controls")!;
-      expect(group.classList.contains("mac")).toBe(true);
-      expect(
-        [...group.querySelectorAll("sp-action-button")].map((b) => b.getAttribute("title")),
-      ).toEqual(["Close", "Minimize", "Maximize"]);
-      expect(root.firstElementChild?.classList.contains("window-controls")).toBe(true);
+      await mountBar();
+      const group = root.querySelector<HTMLElement>('[part="window-controls"]')!;
+      expect(group.dataset["mac"] !== undefined).toBe(true);
+      expect(titles(group)).toEqual(["Close", "Minimize", "Maximize"]);
+      const bar = root.querySelector('[part="bar"]')!;
+      expect(bar.firstElementChild?.contains(group)).toBe(true);
     } finally {
       toolbar.setMacPlatformForTests(null);
     }
+  });
+
+  test("a browser has no window controls, and the band does not claim a drag region", async () => {
+    await mountBar();
+    expect(root.querySelector('[part="window-controls"]')).toBeNull();
+    expect(root.classList.contains("electrobun-webkit-app-region-drag")).toBe(false);
   });
 });
 
@@ -973,33 +1067,34 @@ describe("lifecycle", () => {
 
   test("the band paints a skeleton before the bootstrap composes the registry", async () => {
     setActiveRegistry(null);
-    toolbar.mount(root);
-    await flush();
+    await mountBar();
     // The pill is still there — "where am I" does not depend on the registry — but no verbs are.
-    expect(root.querySelector(".tb-center")).not.toBeNull();
-    expect(root.querySelector("sp-action-button")).toBeNull();
+    expect(root.querySelector('[part="center"]')).not.toBeNull();
+    expect(root.querySelector("jx-button")).toBeNull();
+    expect(root.querySelector('[data-menu="studio"]')).toBeNull();
 
     // Publishing the registry repaints, with no render() call beside it.
     ctx = makeContext({ document: { open: true } });
     installRegistry();
     await flush();
     expect(btn("Save")).toBeTruthy();
+    expect(root.querySelector('[data-menu="studio"]')).not.toBeNull();
   });
 
-  test("unmount stops the reactive effect", async () => {
+  test("unmount disposes the document and stops the reactive effect", async () => {
     ctx = makeContext({ document: { open: true, canUndo: false } });
-    toolbar.mount(root);
-    await flush();
-    expect(btn("Undo").hasAttribute("disabled")).toBe(true);
+    await mountBar();
+    expect(control(btn("Undo")).disabled).toBe(true);
 
     toolbar.unmount();
+    expect(root.querySelector('[part="bar"]')).toBeNull();
     ctx = makeContext({ document: { open: true, canUndo: true } });
     openTestTab();
     await flush();
-    expect(btn("Undo").hasAttribute("disabled")).toBe(true);
+    expect(root.childElementCount).toBe(0);
   });
 
-  test("template errors are caught and logged, not thrown", async () => {
+  test("a projection that throws is logged, not thrown out of the bootstrap", async () => {
     const registry = installRegistry();
     setActiveRegistry({
       ...registry,
@@ -1017,7 +1112,7 @@ describe("lifecycle", () => {
         toolbar.mount(root);
       }).not.toThrow();
       await flush();
-      expect(errors.some(([first]) => first === "toolbar render error:")).toBe(true);
+      expect(errors.some(([first]) => first === "command bar projection error:")).toBe(true);
     } finally {
       console.error = originalError;
     }

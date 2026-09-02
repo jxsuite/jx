@@ -68,9 +68,6 @@ import { TableRow } from "@spectrum-web-components/table/src/TableRow.js";
 import { TableCell } from "@spectrum-web-components/table/src/TableCell.js";
 
 // Icons
-import { IconRailBottom } from "@spectrum-web-components/icons-workflow/src/elements/IconRailBottom.js";
-import { IconRailLeft } from "@spectrum-web-components/icons-workflow/src/elements/IconRailLeft.js";
-import { IconRailRight } from "@spectrum-web-components/icons-workflow/src/elements/IconRailRight.js";
 import { IconFolder } from "@spectrum-web-components/icons-workflow/src/elements/IconFolder.js";
 import { IconFolderOpen } from "@spectrum-web-components/icons-workflow/src/elements/IconFolderOpen.js";
 import { IconDocument } from "@spectrum-web-components/icons-workflow/src/elements/IconDocument.js";
@@ -91,9 +88,7 @@ import { IconDelete } from "@spectrum-web-components/icons-workflow/src/elements
 import { IconClose } from "@spectrum-web-components/icons-workflow/src/elements/IconClose.js";
 import { IconChevronRight } from "@spectrum-web-components/icons-workflow/src/elements/IconChevronRight.js";
 import { IconEdit } from "@spectrum-web-components/icons-workflow/src/elements/IconEdit.js";
-import { IconSaveFloppy } from "@spectrum-web-components/icons-workflow/src/elements/IconSaveFloppy.js";
 import { IconUndo } from "@spectrum-web-components/icons-workflow/src/elements/IconUndo.js";
-import { IconRedo } from "@spectrum-web-components/icons-workflow/src/elements/IconRedo.js";
 import { IconDuplicate } from "@spectrum-web-components/icons-workflow/src/elements/IconDuplicate.js";
 import { IconCopy } from "@spectrum-web-components/icons-workflow/src/elements/IconCopy.js";
 import { IconExport } from "@spectrum-web-components/icons-workflow/src/elements/IconExport.js";
@@ -121,7 +116,6 @@ import { IconAlignBottom } from "@spectrum-web-components/icons-workflow/src/ele
 import { IconPlay } from "@spectrum-web-components/icons-workflow/src/elements/IconPlay.js";
 import { IconSearch } from "@spectrum-web-components/icons-workflow/src/elements/IconSearch.js";
 import { IconShare } from "@spectrum-web-components/icons-workflow/src/elements/IconShare.js";
-import { IconShowMenu } from "@spectrum-web-components/icons-workflow/src/elements/IconShowMenu.js";
 import { IconAlignMiddle } from "@spectrum-web-components/icons-workflow/src/elements/IconAlignMiddle.js";
 import { IconAlignLeft } from "@spectrum-web-components/icons-workflow/src/elements/IconAlignLeft.js";
 import { IconAlignRight } from "@spectrum-web-components/icons-workflow/src/elements/IconAlignRight.js";
@@ -148,7 +142,6 @@ import { IconStop } from "@spectrum-web-components/icons-workflow/src/elements/I
 import { IconHistory } from "@spectrum-web-components/icons-workflow/src/elements/IconHistory.js";
 import { IconAttach } from "@spectrum-web-components/icons-workflow/src/elements/IconAttach.js";
 import { IconViewList } from "@spectrum-web-components/icons-workflow/src/elements/IconViewList.js";
-import { IconRectangle } from "@spectrum-web-components/icons-workflow/src/elements/IconRectangle.js";
 
 // Inline formatting icons
 import { IconTextBold } from "@spectrum-web-components/icons-workflow/src/elements/IconTextBold.js";
@@ -217,9 +210,6 @@ const components = [
   ["sp-table-body", TableBody],
   ["sp-table-row", TableRow],
   ["sp-table-cell", TableCell],
-  ["sp-icon-rail-bottom", IconRailBottom],
-  ["sp-icon-rail-left", IconRailLeft],
-  ["sp-icon-rail-right", IconRailRight],
   ["sp-icon-folder", IconFolder],
   ["sp-icon-folder-open", IconFolderOpen],
   ["sp-icon-document", IconDocument],
@@ -240,9 +230,7 @@ const components = [
   ["sp-icon-delete", IconDelete],
   ["sp-icon-close", IconClose],
   ["sp-icon-edit", IconEdit],
-  ["sp-icon-save-floppy", IconSaveFloppy],
   ["sp-icon-undo", IconUndo],
-  ["sp-icon-redo", IconRedo],
   ["sp-icon-duplicate", IconDuplicate],
   ["sp-icon-copy", IconCopy],
   ["sp-icon-export", IconExport],
@@ -268,7 +256,6 @@ const components = [
   ["sp-icon-play", IconPlay],
   ["sp-icon-search", IconSearch],
   ["sp-icon-share", IconShare],
-  ["sp-icon-show-menu", IconShowMenu],
   ["sp-icon-align-middle", IconAlignMiddle],
   ["sp-icon-align-left", IconAlignLeft],
   ["sp-icon-align-right", IconAlignRight],
@@ -287,7 +274,6 @@ const components = [
   ["sp-icon-download", IconDownload],
   ["sp-icon-checkmark", IconCheckmark],
   ["sp-icon-view-column", IconViewColumn],
-  ["sp-icon-rectangle", IconRectangle],
   ["sp-icon-box", IconBox],
   ["sp-icon-visibility", IconVisibility],
   ["sp-icon-visibility-off", IconVisibilityOff],

@@ -143,7 +143,7 @@ describe("check-icons", () => {
           keys: new Map([["ghost", "panels/a.ts:1"]]),
           registered: new Set(["sp-icon-ghost"]),
           rows: new Set(["ghost"]),
-          tags: new Map([["sp-icon-ghost", ["panels/toolbar.ts"]]]),
+          tags: new Map([["sp-icon-ghost", ["panels/files.ts"]]]),
         }),
       ).toEqual([]);
     });

@@ -109,13 +109,72 @@ export function isDeclarationAtRule(atKey: string): boolean {
  * @returns {string} The resolved selector
  */
 export function resolveNestedSelector(scope: string, key: string): string {
+  const resolved: string[] = [];
+  for (const scopePart of splitSelectorList(scope)) {
+    for (const keyPart of splitSelectorList(key)) {
+      resolved.push(resolveOneNestedSelector(scopePart, keyPart));
+    }
+  }
+  return resolved.join(", ");
+}
+
+/** One member of a scope against one member of a key — the four-branch decision itself. */
+function resolveOneNestedSelector(scope: string, key: string): string {
   if (key.startsWith("&")) {
-    return key.replace("&", scope);
+    return key.replaceAll("&", scope);
   }
   if (key.startsWith("[") || key.startsWith(":") || key.startsWith(".")) {
     return `${scope}${key}`;
   }
   return `${scope} ${key}`;
+}
+
+/**
+ * Split a selector list on its top-level commas.
+ *
+ * A comma inside `:is()`, `:where()`, `:not()`, an attribute value or a quoted string separates
+ * nothing, so depth and quotes are tracked. Members are trimmed and an empty member is dropped; a
+ * selector with no top-level comma comes back as itself, so callers never special-case the single
+ * form.
+ *
+ * Why this exists: a nested key was spliced onto its scope as ONE string, so `"& .a, & .b"` with a
+ * `":hover"` inside it emitted `#x .a, #x .b:hover` — the first member got the hover rule with no
+ * hover — and the second `&` of the key was never replaced at all. CSS Nesting distributes a nested
+ * selector over every member of the parent list (its implicit `:is()`); the flattener now does the
+ * same, member by member.
+ *
+ * @param {string} selector - A selector or a selector list
+ * @returns {string[]} The members, in order
+ */
+function splitSelectorList(selector: string): string[] {
+  const members: string[] = [];
+  let depth = 0;
+  let quote: string | null = null;
+  let start = 0;
+  for (let i = 0; i < selector.length; i += 1) {
+    const ch = selector[i]!;
+    if (quote) {
+      if (ch === "\\") {
+        i += 1;
+      } else if (ch === quote) {
+        quote = null;
+      }
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+    } else if (ch === "(" || ch === "[") {
+      depth += 1;
+    } else if (ch === ")" || ch === "]") {
+      depth = Math.max(0, depth - 1);
+    } else if (ch === "," && depth === 0) {
+      members.push(selector.slice(start, i));
+      start = i + 1;
+    }
+  }
+  members.push(selector.slice(start));
+  const trimmed = members.map((member) => member.trim()).filter((member) => member !== "");
+  return trimmed.length > 0 ? trimmed : [selector];
 }
 
 /**

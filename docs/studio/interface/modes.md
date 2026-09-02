@@ -4,7 +4,8 @@ description: "The Editor and View controls in Jx Studio: what each editor and ea
 spec:
   - studio.md#4.2
 code:
-  - packages/studio/src/panels/toolbar.ts
+  - packages/studio/src/surfaces/commandbar.json
+  - packages/studio/src/surfaces/commandbar.ts
   - packages/studio/src/commands/context.ts
   - packages/studio/src/tabs/tab.ts
   - packages/studio/src/panels/pane-context.ts

@@ -2,7 +2,7 @@
 
 ## Declarative Document Object Model — JSON Edition
 
-**Version:** 0.6.7-draft\
+**Version:** 0.6.8-draft\
 **Status:** Partial\
 **Updated:** 2026-09-02\
 **License:** MIT
@@ -865,6 +865,8 @@ CSS nesting is supported via special keys. Keys beginning with `:`, `.`, `&`, or
 Base and nested declarations alike become rules in one stylesheet, keyed on a handle the emitter chooses: the compiler prefers the element's own `#id`, then a **generated class** `.<tagName>-<n>` assigned in the compiled HTML; the runtime uses `data-jx` (§9.6). Base rules are emitted before nested ones, so an equal-specificity override wins by source order. (`data-jx-static` and `data-jx-prerendered` exist on emitted elements but are hydration markers, never CSS selectors.)
 
 Nesting is **flattened by the emitter**, never handed to the browser as CSS Nesting: `&` is resolved before anything is written, and no `&` reaches the output. This is deliberate rather than incidental. A key like `.child` COMPOUNDS onto its scope here (`#box.child`), where CSS Nesting resolves the same key as a descendant, so a style object handed to a nesting parser would silently mean something else.
+
+A **selector list** on either side distributes, member by member, as CSS Nesting's implicit `:is()` would: a key `"& .a, & .b"` holding a `":hover"` block yields `#box .a:hover, #box .b:hover`, and every `&` in a member is the scope. A comma inside `:is()`, `:where()`, `:not()`, an attribute value or a quoted string is not a separator.
 
 Nesting is **recursive**: selector groups and at-rule groups (`@`-prefixed keys — named breakpoints per §9.4, or standard at-rules like `@starting-style`) may nest to arbitrary depth, e.g. breakpoint → selector → pseudo-class:
 
@@ -2467,6 +2469,7 @@ This rewrites the mutating handlers of Appendix A's idiom using `$expression`, l
 
 ## Changelog
 
+- **0.6.8-draft** (2026-09-02) — A nested style key or its scope may be a selector list; nested blocks distribute over every member (§9.2).
 - **0.6.7-draft** (2026-09-02) — Overlays: popover, dialog and invoker commands (§8.7) — the dialog and command rules a document is held to, beside the popover ones; the WHATWG HTML row binds it.
 - **0.6.6-draft** (2026-09-02) — A $switch whose discriminant re-resolves to the same key keeps its rendered case (§14.1).
 - **0.6.5-draft** (2026-09-02) — A $switch may discriminate on the row's $map/item or $map/index inside a mapped array's template, and its container carries the slot its content needs (§14.1).
@@ -2538,4 +2541,4 @@ This rewrites the mutating handlers of Appendix A's idiom using `$expression`, l
 
 ---
 
-_Jx Specification v0.6.7-draft — subject to revision_
+_Jx Specification v0.6.8-draft — subject to revision_

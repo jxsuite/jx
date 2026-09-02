@@ -49,6 +49,8 @@ Keys beginning with `:`, `.`, `&`, or `[` are treated as nested selectors:
 }
 ```
 
+A key may be a selector list, and so may the scope it sits in. Each nested block then applies to every member: `"& .a, & .b"` holding a `":hover"` block styles both `.a` and `.b` on hover, the way native nesting's implicit `:is()` would.
+
 Every declaration becomes a CSS rule, the base ones and the nested ones alike. The build scopes them with a **generated class**, `.<tagName>-<n>`, which it also puts on the element:
 
 ```html

@@ -4,7 +4,9 @@
   "tagName": "jx-action-button",
   "observedAttributes": [
     "label",
+    "hint",
     "icon",
+    "mirror",
     "weight",
     "toggles",
     "selected",
@@ -33,11 +35,23 @@
       "attribute": "label",
       "description": "The accessible name, required: an action button is icon-first, so its name is not on screen. Also its tooltip."
     },
+    "hint": {
+      "type": "string",
+      "default": "",
+      "attribute": "hint",
+      "description": "The tooltip when it is more than the name: the name with its chord, or with why the button is off. Empty means the label is the tooltip."
+    },
     "icon": {
       "type": "string",
       "default": "",
       "attribute": "icon",
       "description": "The glyph, by its name in the kit's manifest. Empty for a text-only action button."
+    },
+    "mirror": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "mirror",
+      "description": "Draw the glyph flipped horizontally: one shipped glyph serves both sides of a pair."
     },
     "weight": {
       "type": "string",
@@ -323,7 +337,7 @@
           "$ref": "#/state/disabled"
         },
         "aria-label": "${state.label || null}",
-        "title": "${state.label || null}",
+        "title": "${state.hint || state.label || null}",
         "aria-pressed": "${state.toggles ? (state.selected ? 'true' : 'false') : null}",
         "popovertarget": "${state.popovertarget || null}",
         "popovertargetaction": "${state.popovertargetaction || null}",
@@ -350,6 +364,9 @@
                 },
                 "weight": {
                   "$ref": "#/state/weight"
+                },
+                "mirror": {
+                  "$ref": "#/state/mirror"
                 }
               },
               "attributes": {

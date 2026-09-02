@@ -155,7 +155,7 @@ void mock.module("../src/services/notify.ts", () =>
 /** Calls the `view.openInBrowser` hook forwards to the toolbar's own implementation. */
 const openInBrowserRuns = mock(() => {});
 
-void mock.module("../src/panels/toolbar.ts", () => ({
+void mock.module("../src/surfaces/commandbar.ts", () => ({
   mount: (_el: HTMLElement, ctx: unknown) => {
     toolbarCtx = ctx;
   },

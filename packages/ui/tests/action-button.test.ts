@@ -145,6 +145,22 @@ describe("jx-action-button", () => {
     expect(control(plain).hasAttribute("aria-expanded")).toBe(false);
   });
 
+  test("hint is the tooltip when it says more than the name; mirror flips the glyph", async () => {
+    const el = await action({ label: "Toggle Inspector Dock", icon: "sidebar-simple" });
+    expect(control(el).title).toBe("Toggle Inspector Dock");
+    el.setAttribute("hint", "Toggle Inspector Dock (⌘I)");
+    el.setAttribute("mirror", "");
+    await tick();
+    // The name stays the name; only the tooltip carries the chord.
+    expect(control(el).getAttribute("aria-label")).toBe("Toggle Inspector Dock");
+    expect(control(el).title).toBe("Toggle Inspector Dock (⌘I)");
+    const icon = el.querySelector("jx-icon") as (HTMLElement & { mirror: boolean }) | null;
+    expect(icon?.mirror).toBe(true);
+    el.setAttribute("hint", "");
+    await tick();
+    expect(control(el).title).toBe("Toggle Inspector Dock");
+  });
+
   test("a badge is drawn only while it has something to say", async () => {
     const el = (await action({ icon: "git-branch", label: "Source Control" })) as JxActionButton & {
       badge: string;
