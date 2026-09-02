@@ -76,6 +76,7 @@ import {
 import { getPlatform } from "../platform";
 import htmlMeta from "../../data/html-meta.json";
 import { popoverIdsIn } from "@jxsuite/schema/overlays";
+import { POPOVER_TAGS } from "@jxsuite/ui";
 import { showPromptDialog } from "../ui/layers";
 
 import type {
@@ -552,7 +553,9 @@ export function invalidatePageRouteCache() {
  */
 function renderPopoverTargetField(value: unknown, commit: (v?: JsonValue) => void) {
   const current = typeof value === "string" ? value : "";
-  const ids = popoverIdsIn((activeTab.value?.doc.document ?? {}) as JxElement);
+  const ids = popoverIdsIn((activeTab.value?.doc.document ?? {}) as JxElement, {
+    popoverTags: POPOVER_TAGS,
+  });
   const unlisted = current !== "" && !ids.includes(current);
   return html`
     <sp-picker

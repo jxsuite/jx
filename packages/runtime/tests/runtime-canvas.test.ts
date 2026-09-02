@@ -572,6 +572,64 @@ describe("setCanvasDelinkPopovers", () => {
     expect(seen).toEqual([false]);
   });
 
+  test("a defined element's own internals are de-linked when its instance is stamped", async () => {
+    // The de-link gates on `data-jx-path`, which an INTERNAL node of a definition can never carry:
+    // The internals belong to the definition, not to the page being edited, so the studio's
+    // Stamper never sees them. Without this a kit element that declares `popover` on a panel
+    // Inside itself opens a genuine top-layer popover inside an editable canvas, while Studio's
+    // Single writer of open state learns nothing about it.
+    setCanvasDelinkPopovers(true);
+    setCanvasDelinkCommands(true);
+    const { defineElement } = await import("../src/runtime");
+    await defineElement({
+      children: [
+        { attributes: { part: "panel", popover: "auto" }, tagName: "div" },
+        { attributes: { commandfor: "x", part: "trigger" }, tagName: "button" },
+      ],
+      tagName: "cv-panel",
+    } as never);
+    const host = document.createElement("cv-panel");
+    host.dataset.jxPath = '["children",0]';
+    document.body.append(host);
+    await new Promise((r) => {
+      setTimeout(r, 0);
+    });
+    const panel = host.querySelector('[part="panel"]') as HTMLElement;
+    const trigger = host.querySelector('[part="trigger"]') as HTMLElement;
+    expect(panel.hasAttribute("popover")).toBe(false);
+    expect(panel.dataset.jxPopover).toBe("auto");
+    expect(trigger.hasAttribute("commandfor")).toBe(false);
+    expect(trigger.dataset.jxCommandfor).toBe("x");
+    host.remove();
+  });
+
+  test("an UNstamped instance keeps its real popover, because it is not on the canvas", async () => {
+    // The same definition rendered by the shell itself must still be a working popover; the flag
+    // Is raised per instance, and restored after, so one stamped host cannot leak into the next.
+    setCanvasDelinkPopovers(true);
+    setCanvasDelinkCommands(true);
+    const { defineElement } = await import("../src/runtime");
+    await defineElement({
+      children: [{ attributes: { part: "panel", popover: "auto" }, tagName: "div" }],
+      tagName: "cv-shell-panel",
+    } as never);
+    const stampedHost = document.createElement("cv-shell-panel");
+    stampedHost.dataset.jxPath = "[]";
+    const plainHost = document.createElement("cv-shell-panel");
+    document.body.append(stampedHost, plainHost);
+    await new Promise((r) => {
+      setTimeout(r, 0);
+    });
+    expect(
+      (stampedHost.querySelector('[part="panel"]') as HTMLElement).hasAttribute("popover"),
+    ).toBe(false);
+    expect((plainHost.querySelector('[part="panel"]') as HTMLElement).getAttribute("popover")).toBe(
+      "auto",
+    );
+    stampedHost.remove();
+    plainHost.remove();
+  });
+
   test(":popover-open transposes to the attribute selector, at the same specificity", () => {
     setCanvasDelinkPopovers(true);
     const el = stamped();

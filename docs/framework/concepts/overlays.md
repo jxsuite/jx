@@ -220,6 +220,30 @@ Three things to know. Only a `<button>` carries these attributes: not an `<input
 
 Studio reports every one of these mistakes in Problems, beside the popover ones, and `jx validate` names them too.
 
+## Custom elements that are overlays
+
+A component can be a popover, and a component can be the button that opens one. Both work, and both need the tools to know it.
+
+A component is a popover when its own definition carries `popover`, the way `jx-menu` does. Where you use it you write only the id:
+
+```json
+{ "tagName": "jx-menu", "attributes": { "id": "actions" } }
+```
+
+The `popover` attribute is nowhere in your page, so a checker reading your page alone sees an ordinary unknown tag. Studio and `jx validate` are told which of the components in scope are popovers, so a command aimed at one resolves, Problems stays quiet, and selecting it on the canvas opens it. A component of your own gets the same treatment once the project registers it.
+
+A component is an invoker when it forwards `popovertarget` or `command` and `commandfor` to a native button inside itself, which is what `jx-button` does. Write the attributes on the component and they reach the button that acts on them:
+
+```json
+{
+  "tagName": "jx-button",
+  "attributes": { "command": "show-modal", "commandfor": "confirm-delete" },
+  "children": [{ "tagName": "span", "textContent": "Delete…" }]
+}
+```
+
+A component that forwards nothing is still refused, and so are a `<div>` and a link, because on those the attributes parse and do nothing.
+
 ## In Studio
 
 Selecting a popover opens it on the canvas and grows the artboard to fit, whether you select the panel itself or anything inside it, from the canvas or the [Outline](/docs/studio/design/layers). Clicking its trigger opens it too. A dialog behaves the same way, shown in place rather than modally, and a `command` button that targets either one works on the canvas without locking the page. See **[The canvas](/docs/studio/interface/canvas)** for what the editor does and does not simulate.

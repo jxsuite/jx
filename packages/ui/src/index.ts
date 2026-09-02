@@ -18,7 +18,7 @@ import { documents } from "./documents.ts";
 import * as icons from "./icons.ts";
 import { installTheme } from "./theme.ts";
 
-export { documents, KIT_TAGS } from "./documents.ts";
+export { documents, INVOKER_TAGS, KIT_TAGS, POPOVER_TAGS } from "./documents.ts";
 export { hasIcon, ICON_NAMES, ICON_WEIGHTS, iconPath, iconViewBox } from "./icons.ts";
 export type { IconWeight } from "./icons.ts";
 export {

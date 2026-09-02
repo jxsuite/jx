@@ -324,3 +324,43 @@ describe("dialog-display, and its repair", () => {
     expect(dialogDisplayRepair()).toBeNull();
   });
 });
+
+describe("a command aimed at a custom element whose definition declares popover", () => {
+  test("is a target mismatch without the scope and correct with it", () => {
+    /* The measured consequence of the schema not knowing the kit: an author drops a jx-popover on
+       a page, points a button at it the way the docs say to, and gets an error naming their own
+       correct markup. */
+    const page = {
+      children: [
+        { attributes: { command: "toggle-popover", commandfor: "p1" }, tagName: "button" },
+        { attributes: { id: "p1" }, tagName: "jx-popover" },
+      ],
+      tagName: "div",
+    } as unknown as JxElement;
+    expect(findDialogDefects(page).map((d) => d.rule)).toEqual(["command-target-mismatch"]);
+    expect(findDialogDefects(page, { popoverTags: new Set(["jx-popover"]) })).toEqual([]);
+  });
+});
+
+describe("a custom element that forwards command and commandfor", () => {
+  const scope = { invokerTags: new Set(["jx-button"]), popoverTags: new Set(["jx-popover"]) };
+  const page = (tag: string): JxElement =>
+    ({
+      children: [
+        { attributes: { command: "toggle-popover", commandfor: "p1" }, tagName: tag },
+        { attributes: { id: "p1" }, tagName: "jx-popover" },
+      ],
+      tagName: "div",
+    }) as unknown as JxElement;
+
+  test("is an invoker with the scope, and a defect without it", () => {
+    expect(findDialogDefects(page("jx-button")).map((d) => d.rule)).toEqual(["invoker-not-button"]);
+    expect(findDialogDefects(page("jx-button"), scope)).toEqual([]);
+  });
+
+  test("a plain div is still refused", () => {
+    expect(findDialogDefects(page("div"), scope).map((d) => d.rule)).toContain(
+      "invoker-not-button",
+    );
+  });
+});

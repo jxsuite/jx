@@ -536,3 +536,67 @@ describe("documentHasPopover", () => {
     expect(documentHasPopover(plain)).toBe(false);
   });
 });
+
+describe("a custom element whose DEFINITION declares popover", () => {
+  /* A kit popover's `popover` attribute lives in its definition, so a consumer writes
+     `<jx-popover id="p1">` and every structural rule read it as an ordinary div: a command aimed
+     at it was a target mismatch, `documentHasPopover` was false, so Studio's "reveal the popover
+     you selected" never fired and the open command refused. The tags come in from the caller. */
+  const scope = { popoverTags: new Set(["jx-popover"]) };
+  const consumer = (): JxElement =>
+    ({
+      attributes: { id: "p1" },
+      children: [{ tagName: "p" }],
+      tagName: "jx-popover",
+    }) as JxElement;
+
+  test("is invisible without the scope, and is a popover with it", () => {
+    const page = doc(consumer());
+    expect(documentHasPopover(page)).toBe(false);
+    expect(popoverIdsIn(page)).toEqual([]);
+    expect(documentHasPopover(page, scope)).toBe(true);
+    expect(popoverIdsIn(page, scope)).toEqual(["p1"]);
+  });
+
+  test("the style rules stay off it, because the definition owns the style", () => {
+    /* `no-open-rule` is a warning that fires on a popover with no `:popover-open` rule, and a
+       consumer carries no style at all. Reporting it here would put a warning on every correct
+       use — and the kit's own conformance suites assert `toEqual([])`, so a warning is fatal. */
+    const page = doc(consumer());
+    expect(findPopoverDefects(page, scope)).toEqual([]);
+    expect(findPopoverDefects(page)).toEqual([]);
+  });
+
+  test("a panel that declares popover ITSELF is still judged, scope or no scope", () => {
+    const bad = { attributes: { popover: "auto" }, style: { display: "flex" }, tagName: "div" };
+    const found = findPopoverDefects(doc(bad as JxElement), scope);
+    expect(found.map((d) => d.rule)).toContain("base-display");
+  });
+
+  test("an unknown tag is still not a popover", () => {
+    const page = doc(consumer());
+    expect(documentHasPopover(page, { popoverTags: new Set(["jx-menu"]) })).toBe(false);
+  });
+});
+
+describe("a custom element that forwards the invoker attributes", () => {
+  /* `popovertarget` comes from an IDL mixin HTML includes into <button> and <input> and nothing
+     else, which is what `invoker-not-button` is for. A kit button observes it and passes it to its
+     own inner <button>, so the natural spelling is correct and the rule fired on it anyway. */
+  const scope = { invokerTags: new Set(["jx-button"]), popoverTags: new Set(["jx-popover"]) };
+  const page = (invoker: JxElement): JxElement =>
+    doc(invoker, { attributes: { id: "p1" }, tagName: "jx-popover" } as JxElement);
+
+  test("is an invoker with the scope, and a defect without it", () => {
+    const node = { attributes: { popovertarget: "p1" }, tagName: "jx-button" } as JxElement;
+    expect(findPopoverDefects(page(node)).map((d) => d.rule)).toEqual(["invoker-not-button"]);
+    expect(findPopoverDefects(page(node), scope)).toEqual([]);
+  });
+
+  test("a tag that forwards nothing is still refused, scope or no scope", () => {
+    const node = { attributes: { href: "#", popovertarget: "p1" }, tagName: "a" } as JxElement;
+    expect(findPopoverDefects(page(node), scope).map((d) => d.rule)).toContain(
+      "invoker-not-button",
+    );
+  });
+});

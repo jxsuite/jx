@@ -2,7 +2,7 @@
 
 ## Visual Builder for Jx Documents
 
-**Version:** 0.10.15-draft\
+**Version:** 0.10.16-draft\
 **Status:** Partial\
 **Updated:** 2026-09-02\
 **License:** MIT
@@ -228,6 +228,8 @@ So **every mode but Preview de-popovers**: the runtime stamps `popover` onto `da
 Two things do NOT rescue this, and both are the intuitive answer: `container-type: size` on the canvas's query container does not make it a containing block for fixed descendants (measured in Chrome 151: `contain` computes to `none`, and a fixed child measures the window), and leaving the top layer is necessary but not sufficient, because a fixed box contributes nothing to an ancestor's overflow either.
 
 **The studio re-supplies one UA rule and no more** — `display: none` while closed — inside a cascade LAYER, so an author declaration still beats it exactly as it beats the real UA rule on the shipped page. That is deliberate rather than an oversight: a popover whose base rule sets `display` is laid out on every page whether open or not, and the canvas has to SHOW that defect. §16.6's report names it and offers the repair. **The substitute rules ship with the de-link, not with the editing affordances** — same predicate, one stylesheet — because an attribute renamed without its substitute rule is an overlay that can never be drawn: a closed panel would lay out in flow and inflate the artboard, and an opened dialog would stay hidden behind the UA `dialog:not([open])`. So a read-only artboard renders an overlay exactly as the design canvas does, which is what a Stylebook specimen and a git-diff side, read beside its pair, both require.
+
+**The de-link reaches inside a defined element, and it has to.** The gate is `data-jx-path`, which only a node of the edited document carries: an element's INTERNAL nodes belong to its definition, so the studio's stamper never sees them and never could. A kit element that declares `popover` on a panel inside itself would therefore keep a real one on the canvas, opening a genuine top-layer popover inside an editable page while the single writer of open state learned nothing about it. So the runtime raises a render-scoped flag while a STAMPED instance renders its own children, and the de-link accepts that in place of a per-node path. It is restored rather than cleared, because one definition may render another, and an unstamped instance — the same definition rendered by the shell itself — keeps its real popover.
 
 `:popover-open` is transposed to `[data-jx-popover-open]` — the same specificity, so a block still wins and loses against the same neighbours. **`::backdrop` is dropped rather than emitted inert**: there is no backdrop pseudo-element outside the top layer, synthesising one would paint a scrim over the document being edited, and a rule that can never match would mark the selector as styled in the Style tab while doing nothing. Preview renders all of it natively.
 
@@ -1599,6 +1601,10 @@ Three checks run over the document rather than over the app, and all file their 
 
 Its rules live in `@jxsuite/schema/overlays` rather than in the studio, because three surfaces judge the same documents — this report, `jx build`, and the starter conformance test — and three copies of "what is wrong with a popover" is three chances to disagree in front of an author. It runs at the one chokepoint every edit passes through, a successful SAVE, beside the component-slot check that is already there; a render-time lint would re-file a record every frame, which is the noise a notification key exists to prevent.
 
+**The lints are told which custom elements are which, or they misjudge the app's own idioms.** A component's `popover` attribute lives in its DEFINITION, so a page writes only `<jx-menu id="actions">` and every structural rule read it as an unknown tag: a command aimed at it was reported as a target mismatch, "does this document have a popover?" answered no, so selecting one never revealed it and the open command refused. The same asymmetry runs the other way for invokers: `popovertarget` and `commandfor` come from an IDL mixin HTML includes into `<button>` and `<input>` and nothing else, and a component that observes them and forwards them to its own inner button is the exception the rule cannot see. So the rules take an optional scope naming the tags that ARE popovers and the tags that forward invocation. The studio passes the kit's, derived from the kit's own documents rather than listed; a project's registered definitions answer the same question for `jx validate`. The rules keep no knowledge of any particular kit.
+
+The scope decides STRUCTURE only. The style rules — a base `display`, a missing `:popover-open`, a transition that cuts the exit — still judge only a node that declares `popover` ITSELF, because they read the style that node carries and a component's use site carries none. Judging a use site by them would report a warning on every correct one.
+
 Every finding that can be repaired carries the command that repairs it, and the ones that cannot carry none. Moving `display` into `:popover-open`, removing two attributes that do nothing on the element they are written on, and writing the house spelling of `popover` are all mechanical, and each is ONE transaction so undo takes one press. "Point this invoker at the right panel" is not — which panel is the author's decision — so that finding is a sentence.
 
 **Why Problems and not a panel of their own.** Problems is where this app keeps the records that outlive the frame the reader was not watching, and both of these are exactly that: a page shipped with no description, or with an unlabelled image, is a fact worth knowing whether or not the author thought to open a window. The Search appearance window keeps rendering its own list — the previews are what that window is for — and files the same warnings, keyed by warning id, so the two surfaces are naming one thing rather than two.
@@ -1825,6 +1831,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.10.16-draft** (2026-09-02) — the overlay lints take a custom-element scope (16.6); the canvas de-link reaches a stamped instance's own internals (4.2.2).
 - **0.10.15-draft** (2026-09-02) — the canvas UA-substitute overlay rules are installed wherever the de-link runs, not only in design/edit.
 - **0.10.14-draft** (2026-09-02) — a canvas invoker command aimed at the other kind of overlay is ignored, not thrown (§4.2.3).
 - **0.10.13-draft** (2026-09-02) — 16.6 a Problems key is per finding, so several defects of one rule on one node are several rows.
@@ -1949,4 +1956,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_`@jxsuite/studio` Specification v0.10.15-draft_
+_`@jxsuite/studio` Specification v0.10.16-draft_

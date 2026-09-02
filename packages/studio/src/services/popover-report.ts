@@ -29,6 +29,7 @@ import {
   POPOVER_DEFAULT_MODE,
 } from "@jxsuite/schema/overlays";
 import { findDialogDefects } from "@jxsuite/schema/dialogs";
+import { INVOKER_TAGS, POPOVER_TAGS } from "@jxsuite/ui";
 import {
   mutateUpdateAttribute,
   mutateUpdateNestedStyle,
@@ -43,6 +44,12 @@ import type { JxPath } from "../state";
 import type { PopoverFix, PopoverPath } from "@jxsuite/schema/overlays";
 
 /** The `source` every record here files under, so a re-run clears exactly its own. */
+/**
+ * What the kit's own elements are, so the lints judge them as what they render rather than as
+ * unknown tags: an overlay element IS a popover, and a kit button IS an invoker.
+ */
+const KIT_SCOPE = { invokerTags: INVOKER_TAGS, popoverTags: POPOVER_TAGS };
+
 export const POPOVER_PROBLEM_SOURCE = "Popover";
 
 /** The command that repairs each fix kind. A finding with no fix carries no action. */
@@ -90,7 +97,7 @@ function problemKey(
 export function reportPopoverProblems(doc: JxElement, path?: string): number {
   clearProblems((record) => record.source === POPOVER_PROBLEM_SOURCE);
   const seen = new Map<string, number>();
-  const defects = findPopoverDefects(doc);
+  const defects = findPopoverDefects(doc, KIT_SCOPE);
   for (const defect of defects) {
     const action = defect.fix === undefined ? undefined : REPAIR_COMMAND[defect.fix];
     notify(defect.severity, defect.message, {
@@ -109,7 +116,7 @@ export function reportPopoverProblems(doc: JxElement, path?: string): number {
   /* The dialog and invoker-command rules (spec §8.7) file under the same source: one report for
      everything the platform overlays. They carry no repair button yet — the popover repairs move
      `display` into `:popover-open`, and a dialog's open rule is a different selector. */
-  const dialogDefects = findDialogDefects(doc);
+  const dialogDefects = findDialogDefects(doc, KIT_SCOPE);
   for (const defect of dialogDefects) {
     notify(defect.severity, defect.message, {
       detail: defect.detail,
