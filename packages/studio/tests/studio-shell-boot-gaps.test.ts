@@ -84,7 +84,7 @@ void mock.module("../src/surfaces/statusbar.ts", () => ({
 
 void mock.module("../src/services/notify.ts", () => notifyModule(() => {}));
 
-void mock.module("../src/panels/toolbar.ts", () => ({
+void mock.module("../src/surfaces/commandbar.ts", () => ({
   mount: mock(() => {}),
   render: mock(() => {}),
   unmount: mock(() => {}),

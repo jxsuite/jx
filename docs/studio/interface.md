@@ -9,7 +9,8 @@ spec:
   - studio.md#16
   - studio.md#18
 code:
-  - packages/studio/src/panels/toolbar.ts
+  - packages/studio/src/surfaces/commandbar.json
+  - packages/studio/src/surfaces/commandbar.ts
   - packages/studio/src/preview/preview-overlay.ts
   - packages/studio/src/surfaces/rail.ts
   - packages/studio/src/panels/left-panel.ts
@@ -39,7 +40,7 @@ The bar across the top of the window. Everything in it is a command, so what you
 
 From left to right:
 
-- The **⬢ menu** holds the commands that don't need a permanent button, each with its own keyboard shortcut printed beside it: **Open Project…**, **Open Recent…**, **New Project…**, **Open Library**, **Preferences…**, **Zen Mode**, and the rest.
+- The **Studio menu** (the ≡ button at the left edge) holds the commands that don't need a permanent button, each with its own keyboard shortcut printed beside it: **Open Project…**, **Open Recent…**, **New Project…**, **Open Library**, **Preferences…**, **Zen Mode**, and the rest.
 - The **layout tabs** (**Write · Design · Build · Ship**) are named arrangements of the workspace. Clicking one sets the Navigator panel, the dock widths, the Inspector tab and the Bottom dock in a single step. Double-click a tab to rename it, and press **+** to save whatever is on screen now as a layout of your own. Layouts are remembered per project.
 - The **Command Center pill** sits in the middle: `◈ project › document › selection`, with :kbd[⌘K] at its right end. It names the project you're in, the document you're editing and the element you have selected, and each segment is a button that opens the palette already scoped to that level. Click the pill's empty space to open the palette with nothing pre-picked. The pill is where you go to _search_ for a place; the [jump bar](#the-jump-bar) over the pane is where you _step_ to one.
 - The **verb cluster** on the right holds the four actions worth a permanent button: **Save**, **Open in Browser**, **Undo** and **Redo**. A greyed-out one tells you in its tooltip what it is waiting for.
@@ -55,7 +56,7 @@ Press it again and you get **the same tab**, moved to whatever page you're on no
 
 It is always there. When the open file has no route it's disabled and its tooltip says why: a component isn't a page, a `[slug]` route needs a value picked in the pane context bar's **resolving with** popover first, and a project that doesn't build a site has nothing to serve.
 
-**Build Site** is the other half, and it answers a different question: not "what does this page look like?" but "does my site build?" It's in the ⬢ menu and the Command Center. It runs the real compiler (bundling, image variants, the sitemap and the rest) and reports what it produced. That's the one to reach for before you publish; Open in Browser is the one for everything else.
+**Build Site** is the other half, and it answers a different question: not "what does this page look like?" but "does my site build?" It's in the Studio menu and the Command Center. It runs the real compiler (bundling, image variants, the sitemap and the rest) and reports what it produced. That's the one to reach for before you publish; Open in Browser is the one for everything else.
 
 :::doc-tip
 A layout reconfigures the workspace; it never takes anything away. Every panel stays on the rail, on its shortcut and in the palette after any layout is applied.

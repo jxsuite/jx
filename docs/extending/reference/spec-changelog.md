@@ -381,6 +381,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `spec.md`
 
+- **0.6.8-draft** (2026-09-02) — A nested style key or its scope may be a selector list; nested blocks distribute over every member (§9.2).
 - **0.6.7-draft** (2026-09-02) — Overlays: popover, dialog and invoker commands (§8.7) — the dialog and command rules a document is held to, beside the popover ones; the WHATWG HTML row binds it.
 - **0.6.6-draft** (2026-09-02) — A $switch whose discriminant re-resolves to the same key keeps its rendered case (§14.1).
 - **0.6.5-draft** (2026-09-02) — A $switch may discriminate on the row's $map/item or $map/index inside a mapped array's template, and its container carries the slot its content needs (§14.1).
@@ -473,6 +474,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `studio-ui-guidelines.md`
 
+- **0.4.6-draft** (2026-09-02) — The Command Bar is a Jx document: surfaces/commandbar.json over the registry's projections, with the Studio menu on the menu surface (§9.3).
 - **0.4.5-draft** (2026-09-02) — The Start pane is a surface: the first whole pane as a document (§9.3).
 - **0.4.4-draft** (2026-09-02) — The status bar is a surface: three projected fields, buttons where an item names a command (§9.3).
 - **0.4.3-draft** (2026-09-02) — The Navigator rail is a surface: stacked jx-action-buttons held by the shell, the gear a menu button, panel icons as kit glyph names (§9.3).

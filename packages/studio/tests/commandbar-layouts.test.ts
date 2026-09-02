@@ -23,7 +23,7 @@ const showPromptDialog = mock((headline: string) => {
 const realLayers = await import("../src/ui/layers");
 void mock.module("../src/ui/layers.js", () => ({ ...realLayers, showPromptDialog }));
 
-const toolbar = await import("../src/panels/toolbar");
+const toolbar = await import("../src/surfaces/commandbar");
 const { applyLayout, registerShellViewCommands, resetProjectShell, shell, syncProjectLayouts } =
   await import("../src/shell");
 const { setInspectorTab } = await import("../src/panels/right-panel");
@@ -47,7 +47,7 @@ function installRegistry() {
 }
 
 function tabs(): HTMLElement[] {
-  return [...root.querySelectorAll(".tb-layout")] as HTMLElement[];
+  return [...root.querySelectorAll('[part="layout"]')] as HTMLElement[];
 }
 
 function tabNamed(name: string): HTMLElement {
@@ -95,6 +95,7 @@ describe("the tabs", () => {
   test("render the project's layouts as plain text, with the active one marked", async () => {
     toolbar.mount(root);
     await flush();
+    await flush();
     expect(tabs().map((el) => el.textContent?.trim())).toEqual([
       "Write",
       "Design",
@@ -107,6 +108,7 @@ describe("the tabs", () => {
 
   test("are a rendering of the record — a saved layout appears without a second list", async () => {
     toolbar.mount(root);
+    await flush();
     await flush();
     shell.layouts.push({
       bottomTab: "problems",
@@ -127,6 +129,7 @@ describe("the tabs", () => {
   test("clicking one adopts it, and the band repaints from the shell record", async () => {
     toolbar.mount(root);
     await flush();
+    await flush();
     click(tabNamed("Ship"));
     await flush();
     expect(shell.layout).toBe("ship");
@@ -136,6 +139,7 @@ describe("the tabs", () => {
 
   test("applying a layout reconfigures without removing — the tabs all stay", async () => {
     toolbar.mount(root);
+    await flush();
     await flush();
     click(tabNamed("Ship"));
     await flush();
@@ -148,7 +152,8 @@ describe("the tabs", () => {
     projectOpen = false;
     toolbar.mount(root);
     await flush();
-    expect(root.querySelector(".tb-layouts")).toBeNull();
+    await flush();
+    expect(root.querySelector('[part="layouts"]')).toBeNull();
   });
 });
 
@@ -158,8 +163,9 @@ describe("+ saves the current arrangement", () => {
     promptResult = "Triage";
     toolbar.mount(root);
     await flush();
+    await flush();
 
-    click(root.querySelector(".tb-layout-add")!);
+    click(root.querySelector('[part="layout-add"]')!);
     await flush();
     await flush();
     expect(promptHeadlines).toEqual(["Save layout"]);
@@ -172,7 +178,8 @@ describe("+ saves the current arrangement", () => {
     promptResult = null;
     toolbar.mount(root);
     await flush();
-    click(root.querySelector(".tb-layout-add")!);
+    await flush();
+    click(root.querySelector('[part="layout-add"]')!);
     await flush();
     await flush();
     expect(shell.layouts).toHaveLength(4);
@@ -183,6 +190,7 @@ describe("double-click renames", () => {
   test("prompts with the current name and runs view.renameLayout", async () => {
     promptResult = "Draft";
     toolbar.mount(root);
+    await flush();
     await flush();
 
     click(tabNamed("Write"), "dblclick");
@@ -196,6 +204,7 @@ describe("double-click renames", () => {
   test("cancelling leaves the name alone", async () => {
     promptResult = null;
     toolbar.mount(root);
+    await flush();
     await flush();
     click(tabNamed("Build"), "dblclick");
     await flush();

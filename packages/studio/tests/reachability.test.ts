@@ -295,7 +295,7 @@ const KNOWN_UNREACHABLE: Record<string, Record<string, string>> = {
   },
   "panels/tab-strip.ts": { unmount: PANEL_TEARDOWN },
   "panels/target-line.ts": { resetSelectorTrigger: TEST_RESET },
-  "panels/toolbar.ts": { setMacPlatformForTests: TEST_SEAM, unmount: PANEL_TEARDOWN },
+  "surfaces/commandbar.ts": { setMacPlatformForTests: TEST_SEAM },
   "project-list.ts": { resetProjectList: TEST_RESET },
   "publish/deploy-checklist.ts": {
     forgetDeployment: "test reset, and the project-close half of the memory below",

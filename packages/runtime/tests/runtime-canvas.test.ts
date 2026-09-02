@@ -565,4 +565,29 @@ describe("resolveNestedSelector", () => {
     expect(resolveNestedSelector("#a", ".child")).toBe("#a.child");
     expect(resolveNestedSelector("#a", "> li")).toBe("#a > li");
   });
+
+  test("a selector list on either side distributes, as CSS Nesting's implicit :is() does", () => {
+    expect(resolveNestedSelector("#a, #b", ":hover")).toBe("#a:hover, #b:hover");
+    expect(resolveNestedSelector("#a", "& .x, & .y")).toBe("#a .x, #a .y");
+    expect(resolveNestedSelector("#a .x, #a .y", ":focus-visible")).toBe(
+      "#a .x:focus-visible, #a .y:focus-visible",
+    );
+    expect(resolveNestedSelector("#a, #b", "& .x, .y")).toBe("#a .x, #a.y, #b .x, #b.y");
+    // Every `&` in a member is the scope, not just the first.
+    expect(resolveNestedSelector("#a", "& + &")).toBe("#a + #a");
+  });
+
+  test("a comma inside :is(), :not() or a quoted attribute value separates nothing", () => {
+    expect(resolveNestedSelector("#a", "&:is(.x, .y)")).toBe("#a:is(.x, .y)");
+    expect(resolveNestedSelector("#a", "&:not(.x, .y) .z")).toBe("#a:not(.x, .y) .z");
+    expect(resolveNestedSelector("#a", '&[title="x, y"]')).toBe('#a[title="x, y"]');
+    // An empty member is dropped, and whitespace around a member is not part of it.
+    expect(resolveNestedSelector("#a", "& .x, , & .y ")).toBe("#a .x, #a .y");
+    // A blank scope is a member of its own: nothing to distribute over, nothing dropped.
+    expect(resolveNestedSelector("   ", ":hover")).toBe("   :hover");
+    // An escaped quote inside a quoted value does not end the string early.
+    expect(resolveNestedSelector("#a", String.raw`&[x="q\"z, w"], & .b`)).toBe(
+      String.raw`#a[x="q\"z, w"], #a .b`,
+    );
+  });
 });

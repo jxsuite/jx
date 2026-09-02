@@ -114,7 +114,7 @@ export async function bootStudio(opts: {
     notifyModule((call) => statusMessages.push(call.message)),
   );
 
-  void mock.module("../src/panels/toolbar.ts", () => ({
+  void mock.module("../src/surfaces/commandbar.ts", () => ({
     mount: (_el: HTMLElement, ctx: unknown) => {
       captured.toolbarCtx = ctx;
     },

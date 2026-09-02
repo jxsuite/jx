@@ -22,7 +22,7 @@ function frame(): HTMLElement {
 /** Every host the application adopts by id, and who adopts it. */
 const HOSTS: [id: string, adopter: string][] = [
   ["app", "shell.ts projects the dock record onto this grid"],
-  ["toolbar", "panels/toolbar.ts mounts into it"],
+  ["toolbar", "surfaces/commandbar.ts mounts into it"],
   ["pane-grid", "panels/pane-grid.ts reconciles a cell per pane"],
   ["activity-bar", "panels/activity-bar.ts renders into it"],
   ["left-panel", "panels/left-panel.ts renders into it"],

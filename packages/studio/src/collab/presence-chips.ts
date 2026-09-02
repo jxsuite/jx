@@ -72,56 +72,60 @@ export function statusTitle(status: CollabTabStatus, attachError: string): strin
 }
 
 /** Chips + status pill for the toolbar; `nothing` while the tab has no collaboration to report. */
-export function presenceChipsTemplate(tab: Tab | null): TemplateResult | typeof nothing {
+/** One peer, as the Command Bar draws it: a coloured chip with the person's initial or avatar. */
+export interface PresencePeerProjection {
+  /** The awareness client id, the row key. */
+  key: number;
+  color: string;
+  /** Who, and where they are when it is not this document. */
+  title: string;
+  initial: string;
+  avatarUrl: string;
+  hasAvatar: boolean;
+}
+
+/** The presence cluster, projected for the `commandbar` surface. */
+export interface PresenceProjection {
+  status: CollabTabStatus;
+  /** The status word: Live, Solo, Offline… */
+  label: string;
+  /** The sentence behind the cluster, from {@link statusTitle}. */
+  title: string;
+  readOnly: boolean;
+  /** Someone holds the code view, so structural edits are paused. */
+  frozen: boolean;
+  peers: PresencePeerProjection[];
+}
+
+/**
+ * The presence cluster for a tab, or null when there is nothing to say.
+ *
+ * "unavailable" is the only silent state: this build has no collaboration, so there is nothing to
+ * be honest ABOUT. Every other state — including solo and failed — says which one it is.
+ */
+export function presenceProjection(tab: Tab | null): PresenceProjection | null {
   if (!tab) {
-    return nothing;
+    return null;
   }
   const state = collabState(tab);
-  /* "unavailable" is the only silent state: this build has no collaboration, so there is nothing to
-     be honest ABOUT. Every other state — including solo and failed — says which one it is. */
   if (state.status === "unavailable") {
-    return nothing;
+    return null;
   }
-  const label = STATUS_LABEL[state.status] || state.status;
-  return html`
-    <div class="jx-presence" title=${statusTitle(state.status, state.attachError)}>
-      <span class="jx-presence-status" data-status=${state.status}>${label}</span>
-      ${
-        state.readOnly
-          ? html`<span
-              class="jx-presence-flag"
-              data-flag="read-only"
-              title="You have read access to this session. Your edits show here but are not published to the others."
-              >Read-only</span
-            >`
-          : nothing
-      }
-      ${
-        state.sourceCanonical
-          ? html`<span
-              class="jx-presence-flag"
-              data-flag="frozen"
-              title="Someone is editing the code view. Structural edits are paused until they stop — this is not an error."
-              >Code view held</span
-            >`
-          : nothing
-      }
-      ${state.peers.map(
-        (peer) => html`
-          <span
-            class="jx-presence-chip"
-            style="background:${peer.state.user.color}"
-            title=${titleOf(peer, tab.documentPath)}
-            >${
-              peer.state.user.avatarUrl
-                ? html`<img src=${peer.state.user.avatarUrl} alt=${initialOf(peer)} />`
-                : initialOf(peer)
-            }</span
-          >
-        `,
-      )}
-    </div>
-  `;
+  return {
+    frozen: state.sourceCanonical,
+    label: STATUS_LABEL[state.status] || state.status,
+    peers: state.peers.map((peer) => ({
+      avatarUrl: peer.state.user.avatarUrl ?? "",
+      color: peer.state.user.color,
+      hasAvatar: Boolean(peer.state.user.avatarUrl),
+      initial: initialOf(peer),
+      key: peer.clientId,
+      title: titleOf(peer, tab.documentPath),
+    })),
+    readOnly: state.readOnly,
+    status: state.status,
+    title: statusTitle(state.status, state.attachError),
+  };
 }
 
 /**
