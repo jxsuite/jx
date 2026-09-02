@@ -17,11 +17,15 @@ import {
   computed,
   effect,
   effectScope,
+  isReactive,
   isRef,
   onEffectCleanup,
   onScopeDispose,
+  pauseTracking,
   reactive,
   ref,
+  resetTracking,
+  shallowReactive,
   toRaw,
 } from "@vue/reactivity";
 import {
@@ -75,7 +79,7 @@ import type {
   JxServerFnDef,
   JxStyle,
 } from "@jxsuite/schema/types";
-import type { Ref } from "@vue/reactivity";
+import type { EffectScope, Ref } from "@vue/reactivity";
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
@@ -214,6 +218,7 @@ export async function mount(
       }
       options.onNodeCreated?.(el, path, def, state);
     },
+    ...(options.onNodeMoved ? { onNodeMoved: options.onNodeMoved } : {}),
   };
   const { result: root, stop } = runScoped(() => renderNode(doc, scope, renderOptions));
   ctx.root = root;
@@ -707,13 +712,28 @@ export async function buildScope(
   // A body run without an event dispatches from the mount's root, read when it fires.
   const dispatchRoot = (): EventTarget | null => ctx?.root ?? null;
   const raw: JxScope = {};
-
-  // Merge parent scope properties
-  for (const [key, val] of Object.entries(parentScope)) {
-    raw[key] = val;
-  }
-
   const defs = doc.state ?? {};
+
+  /* Merge parent scope properties. A REACTIVE parent stays live: its members are read through
+     accessors rather than copied, so a host that hands in a reactive record as the scope sees the
+     document follow every field of it, not a snapshot of the primitives it held at mount time. A
+     member the document declares itself is copied instead, so the document's own entry can still
+     overwrite it — the document wins (embedding.md §3). */
+  const linked = isReactive(parentScope);
+  for (const key of Object.keys(parentScope)) {
+    if (linked && !(key in defs)) {
+      Object.defineProperty(raw, key, {
+        configurable: true,
+        enumerable: true,
+        get: () => parentScope[key],
+        set: (value: unknown) => {
+          parentScope[key] = value;
+        },
+      });
+    } else {
+      raw[key] = parentScope[key];
+    }
+  }
 
   // Pass 0: resolve bare $prototype names via import map
   const imports = doc.imports ?? {};
@@ -2167,12 +2187,24 @@ function applyAttributes(el: HTMLElement, attrs: Record<string, JxAttributeValue
 /**
  * Render a mapped array (repeater) wrapper-less: its item instances are inserted directly into
  * `parentEl`, in place, ahead of an anchor comment that marks the array's position among the
- * parent's other children. Re-renders reactively when `items` (or the filter/sort sources) change;
- * each generation's item renders live in their own detached effect scope so nested arrays and
- * template bindings are disposed — not leaked or double-fired — on the next change.
+ * parent's other children.
+ *
+ * Rows are RECONCILED, not rebuilt. Each row is keyed — by the `key` pointer the array declares,
+ * else by its index — and owns a detached effect scope and a reactive `$map` context. When `items`
+ * (or the filter/sort sources, or a key) change, a row whose key survives keeps its node and its
+ * effects: a reorder moves the node, an insertion creates only the new rows, a removal stops only
+ * the removed ones, and a moved row's `$map.index` is updated in place. That is what lets focus,
+ * scroll position and a half-typed value survive a change to the list.
+ *
+ * Reads made while a row is constructed are made with tracking PAUSED. `effectScope.run()` does not
+ * reset the active subscriber, so without this every top-level read a row performs — a `$props`
+ * write, a tag discriminant, a `$`-local — subscribed the LIST effect, and one row's data changing
+ * rebuilt the whole list. The bindings inside a row are effects of their own and re-enable tracking
+ * when they run, so a row still updates itself.
  *
  * `options._path` is the array node's own document path (`[…, "children", i]`, or `[…, "children"]`
- * for a legacy whole-children repeater); item instances render at `[…that…, "map", index]`.
+ * for a legacy whole-children repeater); item instances render at `[…that…, "map", index]`, and a
+ * row that moves reports its new path through `options.onNodeMoved`.
  *
  * @param {HTMLElement} parentEl
  * @param {import("@jxsuite/schema/types").JxMappedArray} arrayDef
@@ -2188,9 +2220,82 @@ function renderMappedArrayInto(
   const path = options?._path ?? [];
   const anchor = document.createComment("jx-array");
   parentEl.append(anchor);
-  const { items: itemsSrc, map: mapDef, filter: filterRef, sort: sortRef } = arrayDef;
+  const { items: itemsSrc, map: mapDef, filter: filterRef, sort: sortRef, key: keyRef } = arrayDef;
+  const keyPointer = isRefObj(keyRef) ? keyRef.$ref : null;
 
-  effect(() => {
+  let warned = false;
+  const warnOnce = (message: string): void => {
+    if (!warned) {
+      warned = true;
+      console.warn(`Jx $map: ${message}`);
+    }
+  };
+
+  /** The rows currently rendered, in DOM order. */
+  let rows: MappedRow[] = [];
+
+  const teardown = (row: MappedRow): void => {
+    row.scope.stop();
+    row.node.remove();
+  };
+
+  const createRow = (key: unknown, item: unknown, index: number): MappedRow => {
+    const map = shallowReactive({ index, item });
+    const child = Object.create(state) as JxScope;
+    child.$map = map;
+    // The flat aliases stay readable by legacy readers, and follow the reactive context.
+    Object.defineProperty(child, "$map/item", { enumerable: true, get: () => map.item });
+    Object.defineProperty(child, "$map/index", { enumerable: true, get: () => map.index });
+    const scope = effectScope(true);
+    const childOpts = options ? { ...options, _path: [...path, "map", index] } : undefined;
+    const node = scope.run(() => renderNode(mapDef!, child, childOpts))!;
+    return { key, map, node, scope };
+  };
+
+  const reconcile = (list: unknown[], keys: unknown[]): void => {
+    const previous = new Map<unknown, MappedRow>();
+    for (const row of rows) {
+      previous.set(row.key, row);
+    }
+    const next: MappedRow[] = [];
+    for (let index = 0; index < list.length; index++) {
+      const key = keys[index];
+      const item = list[index];
+      const existing = previous.get(key);
+      if (existing) {
+        previous.delete(key);
+        if (existing.map.item !== item) {
+          existing.map.item = item;
+        }
+        if (existing.map.index !== index) {
+          existing.map.index = index;
+          options?.onNodeMoved?.(existing.node, [...path, "map", index]);
+        }
+        next.push(existing);
+      } else {
+        next.push(createRow(key, item, index));
+      }
+    }
+    // Whatever was not claimed is gone.
+    for (const row of previous.values()) {
+      teardown(row);
+    }
+    /* Order in one forward pass. The cursor walks the kept nodes in their current order; a row
+       already under the cursor is in place, anything else is inserted before it — a new node, or
+       a kept node moved forward. Only rows that are out of place move, and a move is the one thing
+       that can cost a focused element its focus. */
+    let cursor: ChildNode = rows.find((row) => !previous.has(row.key))?.node ?? anchor;
+    for (const row of next) {
+      if (row.node === cursor) {
+        cursor = cursor.nextSibling ?? anchor;
+        continue;
+      }
+      cursor.before(row.node);
+    }
+    rows = next;
+  };
+
+  const update = (): void => {
     let items: unknown = isRefObj(itemsSrc) ? resolveRef(itemsSrc.$ref, state) : itemsSrc;
     if (Array.isArray(items) && isRefObj(filterRef)) {
       const fn = resolveRef(filterRef.$ref, state);
@@ -2204,33 +2309,98 @@ function renderMappedArrayInto(
         items = [...(items as unknown[])].toSorted(fn as (a: unknown, b: unknown) => number);
       }
     }
-    if (!Array.isArray(items) || !mapDef) {
-      return;
+    const list = Array.isArray(items) && mapDef ? (items as unknown[]) : [];
+
+    // Keys are read HERE, tracked, so a key that changes reconciles the list.
+    const keys = list.map((item, index) => mappedRowKey(keyPointer, item, index, warnOnce));
+    const seen = new Set<unknown>();
+    for (let i = 0; i < keys.length; i++) {
+      if (seen.has(keys[i])) {
+        warnOnce(
+          `duplicate key ${String(keys[i])} — every occurrence after the first is rebuilt on each change`,
+        );
+        keys[i] = { duplicate: i };
+      } else {
+        seen.add(keys[i]);
+      }
     }
 
-    // Render this generation's items inside a detached scope; the cleanup (run before the next
-    // Re-render and when the enclosing render scope stops) tears it down and removes its nodes.
-    const scope = effectScope(true);
-    const nodes: ChildNode[] = [];
-    scope.run(() => {
-      for (const [index, item] of (items as unknown[]).entries()) {
-        const child = Object.create(state) as JxScope;
-        child.$map = { index, item };
-        child["$map/item"] = item;
-        child["$map/index"] = index;
-        const childOpts = options ? { ...options, _path: [...path, "map", index] } : undefined;
-        const node = renderNode(mapDef, child, childOpts);
-        anchor.before(node);
-        nodes.push(node);
+    pauseTracking();
+    try {
+      reconcile(list, keys);
+    } finally {
+      resetTracking();
+    }
+  };
+
+  /* The first render is synchronous; every re-render is coalesced into ONE microtask. A reactive
+     array mutated in place — `reverse()`, `sort()`, an index write — triggers once per element it
+     touches, and an effect run between two of those writes sees an array that is half of each
+     state: a row that is transiently absent would be torn down and then rebuilt, which is exactly
+     the identity loss keys exist to prevent. Deferring to a microtask is what a framework scheduler
+     does for the same reason; a row's own bindings stay synchronous. */
+  let queued = false;
+  let stopped = false;
+  const runner = effect(update, {
+    scheduler: () => {
+      if (queued) {
+        return;
       }
-    });
-    onEffectCleanup(() => {
-      scope.stop();
-      for (const n of nodes) {
-        n.remove();
-      }
-    });
+      queued = true;
+      queueMicrotask(() => {
+        queued = false;
+        if (!stopped) {
+          runner();
+        }
+      });
+    },
   });
+
+  onScopeDispose(() => {
+    stopped = true;
+    for (const row of rows) {
+      teardown(row);
+    }
+    rows = [];
+  }, true);
+}
+
+/** A rendered row of a mapped array. */
+interface MappedRow {
+  key: unknown;
+  /** The row's `$map` context; `item` and `index` are written in place when the row is reused. */
+  map: { index: number; item: unknown };
+  node: HTMLElement | Text;
+  scope: EffectScope;
+}
+
+/**
+ * The identity a `key` pointer names for one item: the item itself for `$map/item`, a value read
+ * off it for `$map/item/<path>`. Anything else is not a key — an index names a position, not a row
+ * — and a key that evaluates to nothing cannot tell rows apart, so both fall back to the index.
+ */
+function mappedRowKey(
+  pointer: string | null,
+  item: unknown,
+  index: number,
+  warnOnce: (message: string) => void,
+): unknown {
+  if (pointer === null) {
+    return index;
+  }
+  if (pointer === "$map/item") {
+    return item;
+  }
+  if (pointer.startsWith("$map/item/")) {
+    const key = readPath(item, pointer.slice("$map/item/".length));
+    if (key === undefined || key === null) {
+      warnOnce(`key "${pointer}" is empty for some items — those rows fall back to their index`);
+      return index;
+    }
+    return key;
+  }
+  warnOnce(`key "${pointer}" is not a $map/item pointer — rows fall back to their index`);
+  return index;
 }
 
 /**
@@ -2280,14 +2450,25 @@ function renderSwitch(def: JxElement, state: JxScope, options?: JxRenderOptions)
   applyProperties(container, def, state);
   applyStyle(container, def.style ?? {}, (state["$media"] as Record<string, string>) ?? {}, state);
   applyAttributes(container, def.attributes ?? {}, state);
+  /* Every case renders in a detached scope of its own, stopped before the next case renders and
+     when the container's own scope stops. A generation counter names the case a pending external
+     load belongs to; it moves on EVERY change — an inline case included — so a load that resolves
+     after the discriminant moved on cannot paint over what replaced it. */
   let generation = 0;
+  let live: EffectScope | null = null;
+  const retire = (): void => {
+    live?.stop();
+    live = null;
+  };
 
   effect(() => {
+    retire();
     /* `replaceChildren()` rather than `innerHTML = ""`: identical semantics, and it is not a
        Trusted Types injection sink — under `require-trusted-types-for 'script'` an innerHTML write
        needs a policy even when the string is empty. Four sinks that were never injecting anything
        is four fewer things a policy has to be permissive about. */
     container.replaceChildren();
+    generation += 1;
     if (!isRefObj(def.$switch)) {
       return;
     }
@@ -2296,12 +2477,14 @@ function renderSwitch(def: JxElement, state: JxScope, options?: JxRenderOptions)
     if (!caseDef) {
       return;
     }
+    const gen = generation;
+    const scope = effectScope(true);
+    live = scope;
+    const childOpts = options ? { ...options, _path: [...path, "cases", key] } : undefined;
 
     if (isRefObj(caseDef)) {
-      // External $ref — fetch and render asynchronously
-      generation += 1;
-      const gen = generation;
-      // A case resolves against the mount's base, so a bundled document need not live at the page URL.
+      // External $ref — fetch and render asynchronously, against the mount's base so a bundled
+      // Document need not live at the page URL.
       const { href } = new URL(caseDef.$ref, options?._ctx?.base ?? location.href);
       resolve(href, options?._ctx)
         .then(async (doc) => {
@@ -2313,8 +2496,7 @@ function renderSwitch(def: JxElement, state: JxScope, options?: JxRenderOptions)
             return;
           }
           container.replaceChildren();
-          const childOpts = options ? { ...options, _path: [...path, "cases", key] } : undefined;
-          container.append(renderNode(doc, childScope, childOpts));
+          scope.run(() => container.append(renderNode(doc, childScope, childOpts)));
         })
         .catch((error: unknown) =>
           console.error("Jx $switch: failed to load external case", caseDef.$ref, error),
@@ -2322,9 +2504,17 @@ function renderSwitch(def: JxElement, state: JxScope, options?: JxRenderOptions)
       return;
     }
 
-    const childOpts = options ? { ...options, _path: [...path, "cases", key] } : undefined;
-    container.append(renderNode(caseDef, state, childOpts));
+    // Tracking is paused for the same reason it is for a mapped row: a top-level read the case
+    // Makes while it renders must not subscribe THIS effect, or the case re-renders on every
+    // Change to anything it read. The bindings inside it track for themselves.
+    pauseTracking();
+    try {
+      scope.run(() => container.append(renderNode(caseDef, state, childOpts)));
+    } finally {
+      resetTracking();
+    }
   });
+  onScopeDispose(retire, true);
 
   return container;
 }

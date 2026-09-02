@@ -6178,6 +6178,20 @@
                 }
               ]
             },
+            "key": {
+              "additionalProperties": false,
+              "description": "The identity of each rendered row: a $map/item pointer read per item. A row whose key survives a change keeps its DOM node and its effects across reorders, insertions and removals; without a key, rows are keyed by index. $map/index is not a key — an index names a position, not a row.",
+              "properties": {
+                "$ref": {
+                  "pattern": "^\\$map/item(/.+)?$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "$ref"
+              ],
+              "type": "object"
+            },
             "map": {
               "$ref": "#/$defs/v1/$defs/ElementDef"
             },

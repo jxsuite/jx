@@ -313,6 +313,11 @@ export interface JxMappedArray {
   map?: JxElement;
   filter?: Bindable<string>;
   sort?: Bindable<string>;
+  /**
+   * A `$map/item` pointer naming each row's identity (spec §10.4). Keyed rows keep their DOM node
+   * and effects across reorders, insertions and removals; absent, rows are keyed by index.
+   */
+  key?: JxRef;
 }
 
 export interface JxDocument extends JxElement {

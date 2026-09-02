@@ -2,7 +2,7 @@
 
 ## Declarative Document Object Model — JSON Edition
 
-**Version:** 0.6.1-draft\
+**Version:** 0.6.2-draft\
 **Status:** Partial\
 **Updated:** 2026-09-02\
 **License:** MIT
@@ -1012,6 +1012,29 @@ Template strings inside the map read the same context as `${$map.item…}` and `
 
 > **Status: Implemented.** The runtime renders array members inline (wrapper-less) via `renderMappedArrayInto()`, handling items, filter, sort, `$map/item`, and `$map/index`.
 
+### 10.4 Keys
+
+A mapped array MAY declare a `key`: a `$map/item` pointer evaluated once per item that names the row's identity.
+
+```json
+{
+  "$prototype": "Array",
+  "items": { "$ref": "#/state/rows" },
+  "key": { "$ref": "$map/item/id" },
+  "map": { "tagName": "li", "textContent": "${$map.item.title}" }
+}
+```
+
+Rows are reconciled by key. A row whose key survives a change keeps its DOM node and its effects: a reorder moves the node, an insertion creates only the new rows, a removal tears down only the removed ones, and `$map/index` updates in place on a row that moved. Focus, scroll position, an open `<details>` and a half-typed value therefore survive a change to the list, which is what makes a mapped array usable for a tree, a menu or a table the author is interacting with. Without `key`, rows are keyed by their index: the same reconciliation applies, so identity is preserved by position, and an insertion in the middle rewrites every row after it.
+
+`{ "$ref": "$map/item" }` keys by the item itself — identity for an object, value for a primitive. A key that evaluates to nothing falls back to the index; a duplicate key is reported once, and every occurrence after the first is rebuilt on each change. `$map/index` is not a key, and the schema rejects it: an index names a position rather than a row.
+
+Each row's bindings live in an effect scope of their own, stopped when the row is removed, and reads made while a row is constructed do not subscribe the list: a change to one row's data re-runs that row's bindings, never the list. A host may observe a move through `JxRenderOptions.onNodeMoved`, which reports the reused node and its new document path.
+
+The first render of a list is synchronous; every later reconciliation is coalesced into one microtask. An array mutated in place — `reverse()`, `sort()`, an index write — notifies once per element it touches, and a reconciliation run between two of those writes would see an array that is half of each state, tearing down a row that is only transiently absent. A row's own bindings stay synchronous.
+
+> **Status: Implemented.** Runtime `renderMappedArrayInto()` reconciles by key in one forward pass, moving only the rows that are out of place. The compiler's `repeat()` lowering for keyed lists is pending.
+
 ---
 
 ## 11. Web API Namespaces
@@ -1409,7 +1432,7 @@ Signal scope is bounded at the component (custom element) level. Child component
 
 **Matching.** The resolved discriminant is matched against `cases` keys by its string form (JSON object keys are strings — the same normalization the expression-level `switch` operator applies, §19.4b). No matching case leaves the container empty.
 
-> **Status: Implemented.** Runtime `renderSwitch()` creates the container, applies properties/style/attributes to it, and reactively re-renders the active case — inline definitions in the parent scope, external `$ref` cases in an isolated scope.
+> **Status: Implemented.** Runtime `renderSwitch()` creates the container, applies properties/style/attributes to it, and reactively re-renders the active case — inline definitions in the parent scope, external `$ref` cases in an isolated scope resolved against the mount's base. Each case renders in an effect scope of its own, stopped before the next case renders, so a switch never accumulates the effects of the cases it has left; a stale external load — one that resolves after the discriminant moved on, to an inline case included — is discarded.
 
 ---
 
@@ -2417,6 +2440,7 @@ This rewrites the mutating handlers of Appendix A's idiom using `$expression`, l
 
 ## Changelog
 
+- **0.6.2-draft** (2026-09-02) — §10.4 Keys: mapped arrays reconcile by key, rows keep their nodes and effects, reconciliation is batched per microtask; §14.1 each switch case owns a scope.
 - **0.6.1-draft** (2026-09-02) — Lifecycle hooks at the mount boundary (§16.4) and the Studio shell as an interpreter host (§21.3).
 - **0.6.0-draft** (2026-09-01) — Styling: every declaration in a style object becomes a CSS rule; the runtime delivers them through document.adoptedStyleSheets (new 9.6). Nesting composes in either order to any depth, so 9.2's compiler limitation is gone.
 - **0.5.9-draft** (2026-08-31) — popover is enumerated and emitted through the presence branch; declaration-body at-rules (@position-try, @property) emit verbatim; all four boolean-attribute writers now defer to booleanAttrValue.
@@ -2482,4 +2506,4 @@ This rewrites the mutating handlers of Appendix A's idiom using `$expression`, l
 
 ---
 
-_Jx Specification v0.6.1-draft — subject to revision_
+_Jx Specification v0.6.2-draft — subject to revision_
