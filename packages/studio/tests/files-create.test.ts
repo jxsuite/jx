@@ -90,17 +90,17 @@ function install(overrides: Record<string, unknown> = {}) {
 
 /** The validation message the open dialog is currently showing for `value`. */
 async function validationFor(value: string): Promise<string> {
-  const field = topDialog()!.querySelector("sp-textfield") as HTMLInputElement;
+  const field = topDialog()!.querySelector('jx-textfield [part="input"]') as HTMLInputElement;
   field.value = value;
   field.dispatchEvent(new Event("input", { bubbles: true }));
   await flush();
-  const help = topDialog()!.querySelector("sp-help-text");
+  const help = topDialog()!.querySelector('[part="error"]');
   return help?.textContent?.trim() ?? "";
 }
 
 /** The validation message currently showing, without touching the field. */
 function currentValidation(): string {
-  return topDialog()?.querySelector("sp-help-text")?.textContent?.trim() ?? "";
+  return topDialog()?.querySelector('[part="error"]')?.textContent?.trim() ?? "";
 }
 
 beforeEach(() => {
@@ -119,7 +119,7 @@ describe("naming", () => {
   test("with no `format` the field is a FILE NAME and is taken verbatim — the i18n contract", async () => {
     const pending = createFileIn({ dir: "pages", suggestedName: "untitled.json" });
     await flush();
-    expect(topDialog()!.querySelector("sp-picker")).toBeNull();
+    expect(topDialog()!.querySelector('select[part="choice"]')).toBeNull();
     await answerPromptDialog("About Us.json");
     expect(await pending).toBe("pages/About Us.json");
   });
@@ -132,7 +132,7 @@ describe("naming", () => {
     });
     await flush();
     expect(topDialog()!.textContent).toContain("Creating in content/");
-    expect(topDialog()!.querySelector("sp-picker")).toBeNull();
+    expect(topDialog()!.querySelector('select[part="choice"]')).toBeNull();
     await answerPromptDialog("My First Post!");
     expect(await pending).toBe("content/my-first-post.md");
   });

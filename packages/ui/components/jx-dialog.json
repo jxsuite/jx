@@ -167,6 +167,16 @@
       "$src": "jx-ui:/behaviors/dialog.ts",
       "$export": "onCancelClick",
       "description": "The cancel button: dispatches cancel and closes the dialog."
+    },
+    "onMount": {
+      "$prototype": "Function",
+      "body": [
+        {
+          "dispatchEvent": "jx-ready",
+          "bubbles": true
+        }
+      ],
+      "description": "Announces that the element has rendered and carries its native dialog, so a host may open it."
     }
   },
   "oncommand": {

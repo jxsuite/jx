@@ -2,7 +2,7 @@
  * Tab strip — reactive rendering of open tabs, activation, dirty indicator, the close flow
  * (including the unsaved-changes confirm dialog), and the `context/tab` menu.
  */
-import { flush, installMockPlatform, resetStudioState } from "./harness";
+import { flush, installMockPlatform, resetStudioState, topDialog } from "./harness";
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { confirmCloseAll, mount, unmount } from "../src/panels/tab-strip";
 import { collabState } from "../src/collab/collab-state";
@@ -161,7 +161,7 @@ describe("tab strip interactions", () => {
     await flush();
     expect(workspace.tabs.has("a")).toBe(false);
     expect(tabs().length).toBe(1);
-    expect(document.querySelector("#layer-dialog sp-dialog-wrapper")).toBeNull();
+    expect(topDialog()).toBeNull();
   });
 
   test("middle-click (auxclick) closes the tab", async () => {
@@ -191,7 +191,7 @@ describe("tab strip interactions", () => {
     await flush();
     (tabs()[0]!.querySelector(".tab-strip-close") as HTMLElement).click();
     await flush();
-    const dialog = document.querySelector("#layer-dialog sp-dialog-wrapper") as HTMLElement;
+    const dialog = topDialog()!;
     expect(dialog).not.toBeNull();
     expect(dialog.getAttribute("headline")).toBe("Unsaved Changes");
     expect(dialog.textContent).toContain("a.json");
@@ -203,7 +203,7 @@ describe("tab strip interactions", () => {
     dialog.dispatchEvent(new Event("cancel"));
     await flush();
     expect(workspace.tabs.has("a")).toBe(true);
-    expect(document.querySelector("#layer-dialog sp-dialog-wrapper")).toBeNull();
+    expect(topDialog()).toBeNull();
   });
 
   test("dirty tab prompts; Close Without Saving discards the work", async () => {
@@ -212,7 +212,7 @@ describe("tab strip interactions", () => {
     await flush();
     (tabs()[0]!.querySelector(".tab-strip-close") as HTMLElement).click();
     await flush();
-    const dialog = document.querySelector("#layer-dialog sp-dialog-wrapper") as HTMLElement;
+    const dialog = topDialog()!;
     dialog.dispatchEvent(new Event("secondary"));
     await flush();
     expect(workspace.tabs.has("a")).toBe(false);
@@ -225,9 +225,7 @@ describe("tab strip interactions", () => {
     await flush();
     (tabs()[0]!.querySelector(".tab-strip-close") as HTMLElement).click();
     await flush();
-    (document.querySelector("#layer-dialog sp-dialog-wrapper") as HTMLElement).dispatchEvent(
-      new Event("confirm"),
-    );
+    (topDialog() as HTMLElement).dispatchEvent(new Event("confirm"));
     await flush(6);
     expect(state.files.get("/project/a.json")).toContain('"tagName": "div"');
     expect(workspace.tabs.has("a")).toBe(false);
@@ -244,9 +242,7 @@ describe("tab strip interactions", () => {
     await flush();
     (tabs()[0]!.querySelector(".tab-strip-close") as HTMLElement).click();
     await flush();
-    (document.querySelector("#layer-dialog sp-dialog-wrapper") as HTMLElement).dispatchEvent(
-      new Event("confirm"),
-    );
+    (topDialog() as HTMLElement).dispatchEvent(new Event("confirm"));
     await flush(6);
     // Closing on top of a failed write is the loss the prompt exists to prevent.
     expect(workspace.tabs.has("a")).toBe(true);
@@ -263,7 +259,7 @@ describe("tab strip interactions", () => {
     (tabs()[0]!.querySelector(".tab-strip-close") as HTMLElement).click();
     await flush();
     // The shared session lives on with the remaining peer — closing is safe, no prompt.
-    expect(document.querySelector("#layer-dialog sp-dialog-wrapper")).toBeNull();
+    expect(topDialog()).toBeNull();
     expect(workspace.tabs.has("a")).toBe(false);
   });
 
@@ -277,7 +273,7 @@ describe("tab strip interactions", () => {
     await flush();
     (tabs()[0]!.querySelector(".tab-strip-close") as HTMLElement).click();
     await flush();
-    expect(document.querySelector("#layer-dialog sp-dialog-wrapper")).not.toBeNull();
+    expect(topDialog()).not.toBeNull();
     expect(workspace.tabs.has("a")).toBe(true);
   });
 
@@ -302,7 +298,7 @@ describe("tab strip interactions", () => {
       await flush();
       (tabs()[0]!.querySelector(".tab-strip-close") as HTMLElement).click();
       await flush();
-      expect(document.querySelector("#layer-dialog sp-dialog-wrapper")).not.toBeNull();
+      expect(topDialog()).not.toBeNull();
       expect(workspace.tabs.has("a")).toBe(true);
     });
 
@@ -311,7 +307,7 @@ describe("tab strip interactions", () => {
       await flush();
       (tabs()[0]!.querySelector(".tab-strip-close") as HTMLElement).click();
       await flush();
-      const dialog = document.querySelector("#layer-dialog sp-dialog-wrapper") as HTMLElement;
+      const dialog = topDialog()!;
       expect(dialog.getAttribute("headline")).toBe("Changes Cannot Be Saved");
       expect(dialog.textContent).toContain("read access");
       // The three-way dialog's Save would have called `saveFile`, which refuses this tab. A button
@@ -331,9 +327,7 @@ describe("tab strip interactions", () => {
       await flush();
       (tabs()[0]!.querySelector(".tab-strip-close") as HTMLElement).click();
       await flush();
-      (document.querySelector("#layer-dialog sp-dialog-wrapper") as HTMLElement).dispatchEvent(
-        new Event("confirm"),
-      );
+      (topDialog() as HTMLElement).dispatchEvent(new Event("confirm"));
       await flush(6);
       expect(workspace.tabs.has("a")).toBe(false);
       // The old flow's Save wrote nothing and said "Saved just now" anyway; this one writes nothing
@@ -389,7 +383,7 @@ describe("tab strip interactions", () => {
 
       // The commit landed WHILE the tab was still open — which is the only moment it could.
       expect((a.doc.document as unknown as { body?: string }).body).toBe("typed();");
-      expect(document.querySelector("#layer-dialog sp-dialog-wrapper")).not.toBeNull();
+      expect(topDialog()).not.toBeNull();
       expect(workspace.tabs.has("a")).toBe(true);
     });
 
@@ -404,7 +398,7 @@ describe("tab strip interactions", () => {
       await flush();
 
       expect((a.doc.document as unknown as { body?: string }).body).toBe("# Never saved");
-      expect(document.querySelector("#layer-dialog sp-dialog-wrapper")).not.toBeNull();
+      expect(topDialog()).not.toBeNull();
       expect(workspace.tabs.has("a")).toBe(true);
     });
 
@@ -425,7 +419,7 @@ describe("tab strip interactions", () => {
       await flush();
 
       expect(a.doc.dirty).toBe(false); // Nothing made it dirty, and it is still unsaved work
-      expect(document.querySelector("#layer-dialog sp-dialog-wrapper")).not.toBeNull();
+      expect(topDialog()).not.toBeNull();
       expect(workspace.tabs.has("a")).toBe(true);
     });
 
@@ -454,7 +448,8 @@ describe("tab strip interactions", () => {
       (tabs()[0]!.querySelector(".tab-strip-close") as HTMLElement).click();
       await flush();
 
-      const dialog = document.querySelector("#layer-dialog sp-dialog-wrapper") as HTMLElement;
+      await flush();
+      const dialog = topDialog()!;
       expect(dialog.getAttribute("headline")).toBe("Changes Cannot Be Saved");
       expect(dialog.getAttribute("secondary-label")).toBeNull();
       expect(dialog.getAttribute("confirm-label")).toBe("Close Without Saving");
@@ -487,7 +482,7 @@ describe("tab strip interactions", () => {
       await flush();
 
       expect(workspace.tabs.has("a")).toBe(false);
-      expect(document.querySelector("#layer-dialog sp-dialog-wrapper")).toBeNull();
+      expect(topDialog()).toBeNull();
     });
 
     /**
@@ -521,7 +516,7 @@ describe("tab strip interactions", () => {
       await flush();
 
       expect(a.doc.dirty).toBe(false);
-      expect(document.querySelector("#layer-dialog sp-dialog-wrapper")).not.toBeNull();
+      expect(topDialog()).not.toBeNull();
       expect(workspace.tabs.has("a")).toBe(true);
     });
 
@@ -541,7 +536,7 @@ describe("tab strip interactions", () => {
       (tabs()[0]!.querySelector(".tab-strip-close") as HTMLElement).click();
       await flush();
 
-      expect(document.querySelector("#layer-dialog sp-dialog-wrapper")).toBeNull();
+      expect(topDialog()).toBeNull();
       expect(workspace.tabs.has("a")).toBe(false);
     });
   });
@@ -565,7 +560,7 @@ describe("tab strip interactions", () => {
       open("b");
       await flush();
       expect(await confirmCloseAll("Opening another project")).toBe(true);
-      expect(document.querySelector("#layer-dialog sp-dialog-wrapper")).toBeNull();
+      expect(topDialog()).toBeNull();
     });
 
     test("one prompt for the set, naming how many documents are unsaved", async () => {
@@ -575,9 +570,9 @@ describe("tab strip interactions", () => {
       await flush();
       const answering = confirmCloseAll("Opening another project");
       await flush();
-      const dialog = document.querySelector("#layer-dialog sp-dialog-wrapper") as HTMLElement;
+      const dialog = topDialog()!;
       // ONE dialog for three tabs, and it counts only the two that would lose work.
-      expect(document.querySelectorAll("#layer-dialog sp-dialog-wrapper")).toHaveLength(1);
+      expect(document.querySelectorAll("#layer-dialog jx-dialog")).toHaveLength(1);
       expect(dialog.textContent).toContain("2 documents have unsaved changes");
       expect(dialog.getAttribute("confirm-label")).toBe("Save All");
 
@@ -592,7 +587,7 @@ describe("tab strip interactions", () => {
       await flush();
       const answering = confirmCloseAll("Opening another project");
       await flush();
-      const dialog = document.querySelector("#layer-dialog sp-dialog-wrapper") as HTMLElement;
+      const dialog = topDialog()!;
       expect(dialog.textContent).toContain('"a.json" has unsaved changes');
       dialog.dispatchEvent(new Event("secondary"));
       expect(await answering).toBe(true);
@@ -605,9 +600,7 @@ describe("tab strip interactions", () => {
       await flush();
       let answering = confirmCloseAll("Opening another project");
       await flush();
-      (document.querySelector("#layer-dialog sp-dialog-wrapper") as HTMLElement).dispatchEvent(
-        new Event("confirm"),
-      );
+      (topDialog() as HTMLElement).dispatchEvent(new Event("confirm"));
       expect(await answering).toBe(true);
       expect(state.files.has("/project/a.json")).toBe(true);
       expect(state.files.has("/project/b.json")).toBe(true);
@@ -622,9 +615,7 @@ describe("tab strip interactions", () => {
       await flush();
       answering = confirmCloseAll("Opening another project");
       await flush();
-      (document.querySelector("#layer-dialog sp-dialog-wrapper") as HTMLElement).dispatchEvent(
-        new Event("confirm"),
-      );
+      (topDialog() as HTMLElement).dispatchEvent(new Event("confirm"));
       expect(await answering).toBe(false);
     });
 
@@ -660,7 +651,7 @@ describe("tab strip interactions", () => {
       await flush();
       const answering = confirmCloseAll("Opening another project");
       await flush();
-      const dialog = document.querySelector("#layer-dialog sp-dialog-wrapper") as HTMLElement;
+      const dialog = topDialog()!;
 
       expect(dialog.getAttribute("headline")).toBe("Unsaved Changes");
       expect(dialog.getAttribute("confirm-label")).toBe("Save 2 of 3");
@@ -690,7 +681,7 @@ describe("tab strip interactions", () => {
       await flush();
       const answering = confirmCloseAll("Opening another project");
       await flush();
-      const dialog = document.querySelector("#layer-dialog sp-dialog-wrapper") as HTMLElement;
+      const dialog = topDialog()!;
       expect(dialog.getAttribute("confirm-label")).toBe("Save 1 of 3");
       expect(dialog.textContent).toContain("2 of them cannot be saved at all");
       expect(dialog.textContent).toContain("saving writes the other 1 and discards those");
@@ -720,7 +711,8 @@ describe("tab strip interactions", () => {
       await flush();
       // Without the freeze fix there is no prompt at all: the peer count answered for text the
       // Room was never told about, and the switch took it silently.
-      const dialog = document.querySelector("#layer-dialog sp-dialog-wrapper") as HTMLElement;
+      await flush();
+      const dialog = topDialog()!;
       expect(dialog).not.toBeNull();
       expect(dialog.textContent).toContain('"a.json" has unsaved changes');
       // And Save is not on offer, because the document does not contain the buffer's text either.
@@ -734,7 +726,7 @@ describe("tab strip interactions", () => {
       await flush();
       const answering = confirmCloseAll("Opening another project");
       await flush();
-      const dialog = document.querySelector("#layer-dialog sp-dialog-wrapper") as HTMLElement;
+      const dialog = topDialog()!;
       expect(dialog.getAttribute("headline")).toBe("Changes Cannot Be Saved");
       expect(dialog.getAttribute("secondary-label")).toBeNull();
       expect(dialog.textContent).toContain('"b.json" cannot be saved at all');
@@ -765,7 +757,8 @@ describe("tab strip interactions", () => {
       // The armed commit ran while the tab was still open, so the prompt is about a document that
       // Really does hold the typing — and Save All can therefore honour it.
       expect(a.doc.dirty).toBe(true);
-      const dialog = document.querySelector("#layer-dialog sp-dialog-wrapper") as HTMLElement;
+      await flush();
+      const dialog = topDialog()!;
       expect(dialog.getAttribute("confirm-label")).toBe("Save All");
       dialog.dispatchEvent(new Event("secondary"));
       expect(await answering).toBe(true);
@@ -781,7 +774,7 @@ describe("tab strip interactions", () => {
     workspace.tabs.delete("a");
     closeBtn.click();
     await flush();
-    expect(document.querySelector("#layer-dialog sp-dialog-wrapper")).toBeNull();
+    expect(topDialog()).toBeNull();
   });
 });
 

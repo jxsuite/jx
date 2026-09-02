@@ -20,7 +20,7 @@
  * `packages/server/tests/refactor-find-refs.test.ts` and `refactor-parity.test.ts`.
  */
 
-import { resetStudioState, mountOverlayLayers } from "./harness";
+import { mountOverlayLayers, resetStudioState, topDialog } from "./harness";
 import { beforeEach, describe, expect, test } from "bun:test";
 import { render } from "lit-html";
 import { registerPlatform } from "../src/platform";
@@ -62,8 +62,7 @@ function dialogText(): string {
 
 /** Click the dialog's confirm or cancel button, whichever is asked for. */
 function settle(kind: "confirm" | "cancel"): void {
-  const dialog = document.querySelector("sp-dialog-wrapper");
-  dialog?.dispatchEvent(new Event(kind));
+  topDialog()?.dispatchEvent(new Event(kind));
 }
 
 /** Let the usage query settle and the dialog mount (macrotask turns, as the harness does). */

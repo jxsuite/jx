@@ -89,7 +89,7 @@ import {
 import type { TemplateResult } from "lit-html";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 import type { ResolvedI18n } from "@jxsuite/schema/locale";
-import type { ChoiceOption } from "../ui/choice-field";
+import type { ChoiceOption } from "../ui/layers";
 import type { DirEntry, RenameResult } from "../types";
 import type { ListWindowWatch } from "../ui/virtual-window";
 import { rectOf } from "../utils/geometry";

@@ -19,6 +19,7 @@ import {
   resetStudioState,
   resetWorkspaceWithTab,
   stubRect,
+  topDialog,
 } from "./harness";
 import { beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { mountShellTree } from "../src/shell/tree";
@@ -580,7 +581,7 @@ describe("the old dispatch — twelve modifier chords", () => {
     tab.doc.dirty = true;
     pressDoc("w", { ctrlKey: true });
     await flush();
-    const dialog = document.querySelector("#layer-dialog sp-dialog-wrapper");
+    const dialog = topDialog()!;
     expect(dialog?.getAttribute("headline")).toBe("Unsaved Changes");
     // ⌘W calls `requestClose` rather than re-implementing it, so it is the SAME dialog the × opens
     // — Save included. Copying the ×'s wording into this file is how the two drifted last time.
@@ -596,7 +597,7 @@ describe("the old dispatch — twelve modifier chords", () => {
     tab.doc.dirty = true;
     pressDoc("w", { ctrlKey: true });
     await flush();
-    document.querySelector("#layer-dialog sp-dialog-wrapper")!.dispatchEvent(new Event("cancel"));
+    topDialog()!.dispatchEvent(new Event("cancel"));
     await flush();
     expect(workspace.tabOrder).toEqual(["test-tab", "dirty-tab"]);
   });
