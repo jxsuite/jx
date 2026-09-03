@@ -133,6 +133,7 @@ describe("theme", () => {
       "jx-help-text",
       "jx-help-text--error",
       "jx-divider",
+      "jx-accordion",
       "jx-table",
       "jx-kbd",
       "jx-badge",
@@ -141,6 +142,8 @@ describe("theme", () => {
       expect(css, cls).toContain(`.${cls}`);
     }
     expect(css).toContain(":root .jx-field-row { display: grid;");
+    // The rule between sections, never above the first one.
+    expect(css).toContain(":root .jx-accordion > * + * { border-block-start: 1px solid");
     // The required mark is drawn, never appended to the label's text, so it stays out of the name.
     expect(css).toContain('.jx-field-label[data-required]::after { content: "*" / ""');
   });

@@ -1,0 +1,138 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StylebookTab",
+  "tagName": "main",
+  "$elements": [
+    {
+      "$ref": "../components/jx-icon.json"
+    },
+    {
+      "$ref": "../components/jx-tab.json"
+    },
+    {
+      "$ref": "../components/jx-tabs.json"
+    }
+  ],
+  "style": {
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "color": "var(--jx-fg)",
+    "background": "var(--jx-bg)",
+    "padding": "var(--jx-space-6)",
+    "minHeight": "100vh",
+    "& > h1": {
+      "fontSize": "var(--jx-text-lg)",
+      "fontWeight": "600",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& > h2": {
+      "fontSize": "var(--jx-text-md)",
+      "fontWeight": "600",
+      "margin": "var(--jx-space-6) 0 var(--jx-space-3)"
+    },
+    "& > p": {
+      "color": "var(--jx-fg-dim)",
+      "margin": "0 0 var(--jx-space-5)",
+      "maxWidth": "60ch"
+    }
+  },
+  "children": [
+    {
+      "tagName": "h1",
+      "textContent": "jx-tab"
+    },
+    {
+      "tagName": "p",
+      "textContent": "A tab is a string with a role. It has no slots on purpose: a dock tab is a label, and a default slot would invite back the icon-only tabs one Studio panel removed along with three hover probes. Write label as an ATTRIBUTE — a property write does not reflect, and selectors read the attribute."
+    },
+    {
+      "tagName": "h2",
+      "textContent": "States"
+    },
+    {
+      "tagName": "p",
+      "textContent": "Selected, plain, dirty, closable, and a label longer than the tab is wide."
+    },
+    {
+      "tagName": "jx-tabs",
+      "attributes": {
+        "label": "Tab states",
+        "selected": "one"
+      },
+      "children": [
+        {
+          "tagName": "jx-tab",
+          "attributes": {
+            "value": "one",
+            "label": "Selected"
+          }
+        },
+        {
+          "tagName": "jx-tab",
+          "attributes": {
+            "value": "two",
+            "label": "Plain"
+          }
+        },
+        {
+          "tagName": "jx-tab",
+          "attributes": {
+            "value": "three",
+            "label": "Unsaved",
+            "dirty": ""
+          }
+        },
+        {
+          "tagName": "jx-tab",
+          "attributes": {
+            "value": "four",
+            "label": "Closable",
+            "closable": ""
+          }
+        },
+        {
+          "tagName": "jx-tab",
+          "attributes": {
+            "value": "five",
+            "label": "A label far longer than the tab it sits in",
+            "closable": "",
+            "dirty": ""
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "h2",
+      "textContent": "The close affordance"
+    },
+    {
+      "tagName": "p",
+      "textContent": "It is a plain button with a jx-icon inside, never a nested kit button: a defined element that ships its own default slot would capture the host's slot distribution. The click stops at the button, so closing never also selects."
+    },
+    {
+      "tagName": "jx-tabs",
+      "attributes": {
+        "label": "Open documents",
+        "selected": "index"
+      },
+      "children": [
+        {
+          "tagName": "jx-tab",
+          "attributes": {
+            "value": "index",
+            "label": "index.page.json",
+            "closable": ""
+          }
+        },
+        {
+          "tagName": "jx-tab",
+          "attributes": {
+            "value": "about",
+            "label": "about.page.json",
+            "closable": ""
+          }
+        }
+      ]
+    }
+  ]
+}

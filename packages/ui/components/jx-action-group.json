@@ -1,0 +1,126 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "JxActionGroup",
+  "tagName": "jx-action-group",
+  "observedAttributes": ["selects", "compact", "label", "orientation"],
+  "state": {
+    "selects": {
+      "type": "string",
+      "default": "none",
+      "attribute": "selects",
+      "description": "Which ARIA pattern the row is: none is a toolbar of unrelated tools, single is a radiogroup of mutually exclusive choices, multiple is a plain group of independent toggles. It chooses the pattern and the keyboard; it does NOT own the selection. Every shipped call site keeps the selected value in the host, so in single the group clicks the child an arrow lands on and lets the host decide what that means. In single the host must also give every child a checked prop of \"true\" or \"false\": a radiogroup's required owned element is a radio, and jx-action-button becomes one only when checked is non-empty — a group of bare buttons is announced as a radiogroup with no checked member at all."
+    },
+    "compact": {
+      "type": "boolean",
+      "default": true,
+      "attribute": "compact",
+      "description": "Draw the children joined into one segmented control, sharing their inner borders and rounding only the outer corners. Off leaves them as separate buttons with a gap. This is the one thing no button can do about itself: joining N of them needs selectors about a child's position among its siblings. The seam reaches this group's OWN children — those the slot distributes — so a nested group keeps its own compact, and a button a surface wraps in a div of its own is roved but not joined."
+    },
+    "label": {
+      "type": "string",
+      "default": "",
+      "attribute": "label",
+      "description": "The accessible name of the group, and it is not optional in practice: a toolbar, a radiogroup and a group are all containers a reader is told they have entered, and an unnamed one is announced by its role alone. Nothing lints its absence — a bound role switches the naming rules off — so the element's own test pins it instead."
+    },
+    "orientation": {
+      "type": "string",
+      "default": "horizontal",
+      "attribute": "orientation",
+      "description": "horizontal or vertical. It chooses which arrow pair moves the caret, and it turns both the layout and the segmented seam through 90 degrees off data-orientation. It also sets aria-orientation, but only where ARIA permits one: role=group — what selects=\"multiple\" resolves to — supports neither aria-orientation nor its inheritance, and Chrome drops the attribute there, so writing it anyway would be an aria-allowed-attr violation in a consumer's own axe run."
+    },
+    "onKeydown": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/action-group.ts",
+      "$export": "onGroupKeydown",
+      "description": "The group keyboard contract: the arrow along its own axis moves the roving caret between enabled children with wrap, Home and End go to the ends, and in selects=single the child that takes the caret is clicked."
+    },
+    "onReady": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/action-group.ts",
+      "$export": "onGroupReady",
+      "description": "Collapses the group to one tab stop once it has rendered, and keeps it collapsed to one as children come and go. It listens for the element's own jx-ready because onMount is handed the reactive scope alone, and placing a caret needs the host."
+    },
+    "onMount": {
+      "$prototype": "Function",
+      "body": [
+        {
+          "dispatchEvent": "jx-ready",
+          "bubbles": true
+        }
+      ],
+      "emits": [
+        {
+          "name": "jx-ready",
+          "description": "The group has rendered and distributed its children, so its caret can be placed."
+        }
+      ],
+      "description": "Announces that the element has rendered. The group's own onReady listens for it, and a host may too."
+    }
+  },
+  "attributes": {
+    "role": "${state.selects === 'single' ? 'radiogroup' : (state.selects === 'multiple' ? 'group' : 'toolbar')}",
+    "aria-label": "${state.label || null}",
+    "aria-orientation": "${state.selects === 'multiple' ? null : state.orientation}",
+    "data-orientation": "${state.orientation}",
+    "data-compact": "${state.compact ? '' : null}"
+  },
+  "onkeydown": {
+    "$ref": "#/state/onKeydown"
+  },
+  "onjx-ready": {
+    "$ref": "#/state/onReady"
+  },
+  "style": {
+    "display": "inline-flex",
+    "&[hidden]": {
+      "display": "none"
+    },
+    "verticalAlign": "middle",
+    "alignItems": "center",
+    "gap": "var(--jx-space-1)",
+    "&[data-orientation=\"vertical\"]": {
+      "flexDirection": "column",
+      "alignItems": "stretch"
+    },
+    "&[data-compact]": {
+      "gap": "0"
+    },
+    "&[data-compact] > [part=\"items\"] > jx-action-button > [part=\"control\"]": {
+      "borderRadius": "0"
+    },
+    "&[data-compact] > [part=\"items\"] > jx-action-button + jx-action-button > [part=\"control\"]": {
+      "marginInlineStart": "-1px"
+    },
+    "&[data-compact] > [part=\"items\"] > jx-action-button:first-of-type > [part=\"control\"]": {
+      "borderStartStartRadius": "var(--jx-radius-sm)",
+      "borderEndStartRadius": "var(--jx-radius-sm)"
+    },
+    "&[data-compact] > [part=\"items\"] > jx-action-button:last-of-type > [part=\"control\"]": {
+      "borderStartEndRadius": "var(--jx-radius-sm)",
+      "borderEndEndRadius": "var(--jx-radius-sm)"
+    },
+    "&[data-compact][data-orientation=\"vertical\"] > [part=\"items\"] > jx-action-button + jx-action-button > [part=\"control\"]": {
+      "marginInlineStart": "0",
+      "marginBlockStart": "-1px"
+    },
+    "&[data-compact][data-orientation=\"vertical\"] > [part=\"items\"] > jx-action-button:first-of-type > [part=\"control\"]": {
+      "borderEndStartRadius": "0",
+      "borderStartEndRadius": "var(--jx-radius-sm)"
+    },
+    "&[data-compact][data-orientation=\"vertical\"] > [part=\"items\"] > jx-action-button:last-of-type > [part=\"control\"]": {
+      "borderStartEndRadius": "0",
+      "borderEndStartRadius": "var(--jx-radius-sm)"
+    },
+    "&[data-compact] > [part=\"items\"] > jx-action-button > [part=\"control\"]:focus-visible": {
+      "zIndex": "1"
+    }
+  },
+  "children": [
+    {
+      "tagName": "slot",
+      "attributes": {
+        "part": "items"
+      }
+    }
+  ]
+}

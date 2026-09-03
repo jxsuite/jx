@@ -13,7 +13,9 @@ import { defineElement, preloadDocument, preloadModule } from "@jxsuite/runtime"
 import * as dialog from "./behaviors/dialog.ts";
 import * as menu from "./behaviors/menu.ts";
 import * as numberField from "./behaviors/number-field.ts";
+import * as actionGroup from "./behaviors/action-group.ts";
 import * as popover from "./behaviors/popover.ts";
+import * as tabs from "./behaviors/tabs.ts";
 import * as tooltip from "./behaviors/tooltip.ts";
 import * as textfield from "./behaviors/textfield.ts";
 import { documents } from "./documents.ts";
@@ -40,7 +42,9 @@ export const KIT_MODULES: Readonly<Record<string, Record<string, unknown>>> = {
   "jx-ui:/behaviors/dialog.ts": dialog,
   "jx-ui:/behaviors/menu.ts": menu,
   "jx-ui:/behaviors/number-field.ts": numberField,
+  "jx-ui:/behaviors/action-group.ts": actionGroup,
   "jx-ui:/behaviors/popover.ts": popover,
+  "jx-ui:/behaviors/tabs.ts": tabs,
   "jx-ui:/behaviors/tooltip.ts": tooltip,
   "jx-ui:/behaviors/textfield.ts": textfield,
   "jx-ui:/icons.ts": icons,

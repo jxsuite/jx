@@ -1,0 +1,238 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "JxTab",
+  "tagName": "jx-tab",
+  "observedAttributes": ["value", "label", "selected", "panel", "closable", "dirty"],
+  "$elements": [
+    {
+      "$ref": "./jx-icon.json"
+    }
+  ],
+  "state": {
+    "value": {
+      "type": "string",
+      "default": "",
+      "attribute": "value",
+      "description": "What the tab stands for: the detail of the events it dispatches, and what the strip's selected is compared against."
+    },
+    "label": {
+      "type": "string",
+      "default": "",
+      "attribute": "label",
+      "description": "The words on the tab, and its accessible name — written to aria-label as well as drawn, because a tab naming itself from its content would swallow the close button's own name and announce the label twice. Write it as an ATTRIBUTE: the runtime does not reflect a property write back to an attribute, so a host that sets el.label breaks every getAttribute(\"label\") selector aimed at the strip while looking correct. A count belongs in this string, not in a badge of its own."
+    },
+    "selected": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "selected",
+      "description": "Whether this is the current tab. The strip writes it — jx-tabs is the single writer of every child's selected — so a host moves the selection by writing the strip's selected, never a tab's."
+    },
+    "panel": {
+      "type": "string",
+      "default": "",
+      "attribute": "panel",
+      "description": "The id of the jx-tab-panel this tab controls, announced as aria-controls. Nothing checks the pairing: both ids live in the consumer's document, so mint the tab's id and this one from one key."
+    },
+    "closable": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "closable",
+      "description": "Draws a close button on the tab, which dispatches close with this tab's value. It is a real button: Enter and Space on it close, Delete on the focused tab is the same path, and its target is 24px square though it draws 16. It carries its own name, and the tab carries its own, so neither is heard twice."
+    },
+    "dirty": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "dirty",
+      "description": "Marks the tab as holding unsaved work. Purely visual, and hidden from assistive technology: a reader is told about unsaved work by the page, not by a dot."
+    },
+    "onClick": {
+      "$prototype": "Function",
+      "body": [
+        {
+          "dispatchEvent": "select",
+          "detail": {
+            "$ref": "#/state/value"
+          },
+          "bubbles": true
+        }
+      ],
+      "emits": [
+        {
+          "name": "select",
+          "description": "The tab was activated; detail is its value. The strip listens for it and answers with change."
+        }
+      ],
+      "description": "Activation dispatches select, which the tablist turns into its own selection and one change. A click that started on the close button never reaches here."
+    },
+    "onClose": {
+      "$prototype": "Function",
+      "body": [
+        {
+          "stopPropagation": true
+        },
+        {
+          "dispatchEvent": "close",
+          "detail": {
+            "$ref": "#/state/value"
+          },
+          "bubbles": true
+        }
+      ],
+      "emits": [
+        {
+          "name": "close",
+          "description": "The tab was asked to close; detail is its value. Closing is the host's to do."
+        }
+      ],
+      "description": "The click stops at the close button, so closing a tab does not also select it."
+    }
+  },
+  "attributes": {
+    "role": "tab",
+    "tabindex": "-1",
+    "aria-label": "${state.label || null}",
+    "aria-selected": "${state.selected ? 'true' : 'false'}",
+    "aria-controls": "${state.panel || null}"
+  },
+  "onclick": {
+    "$ref": "#/state/onClick"
+  },
+  "style": {
+    "display": "inline-flex",
+    "&[hidden]": {
+      "display": "none"
+    },
+    "alignItems": "center",
+    "gap": "var(--jx-space-2)",
+    "boxSizing": "border-box",
+    "minHeight": "var(--jx-control-h)",
+    "maxWidth": "220px",
+    "padding": "var(--jx-space-1) var(--jx-space-3)",
+    "marginBlockEnd": "-1px",
+    "borderBlockEnd": "2px solid transparent",
+    "color": "inherit",
+    "cursor": "default",
+    "userSelect": "none",
+    "whiteSpace": "nowrap",
+    "outline": "none",
+    ":hover": {
+      "background": "var(--jx-hover-bg)",
+      "color": "var(--jx-fg)"
+    },
+    ":focus-visible": {
+      "outline": "var(--jx-focus-ring)",
+      "outlineOffset": "-2px"
+    },
+    "&[aria-selected=\"true\"]": {
+      "color": "var(--jx-fg)",
+      "borderBlockEndColor": "var(--jx-accent-solid)"
+    },
+    "& > [part=\"label\"]": {
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap"
+    },
+    "& [part=\"dirty-slot\"], & [part=\"close-slot\"]": {
+      "display": "contents"
+    },
+    "& [part=\"dirty\"]": {
+      "display": "inline-block",
+      "width": "6px",
+      "height": "6px",
+      "borderRadius": "50%",
+      "background": "var(--jx-accent-solid)"
+    },
+    "& [part=\"close\"]": {
+      "appearance": "none",
+      "font": "inherit",
+      "display": "inline-flex",
+      "alignItems": "center",
+      "justifyContent": "center",
+      "position": "relative",
+      "width": "16px",
+      "height": "16px",
+      "padding": "0",
+      "border": "0",
+      "borderRadius": "var(--jx-radius-xs)",
+      "background": "transparent",
+      "color": "var(--jx-fg-muted)",
+      "cursor": "pointer",
+      "::before": {
+        "content": "\"\"",
+        "position": "absolute",
+        "insetBlock": "-4px",
+        "insetInline": "-4px"
+      },
+      ":hover": {
+        "background": "var(--jx-hover-bg)",
+        "color": "var(--jx-fg)"
+      },
+      ":focus-visible": {
+        "outline": "var(--jx-focus-ring)",
+        "outlineOffset": "1px"
+      }
+    }
+  },
+  "children": [
+    {
+      "tagName": "span",
+      "attributes": {
+        "part": "label"
+      },
+      "textContent": "${state.label}"
+    },
+    {
+      "tagName": "span",
+      "attributes": {
+        "part": "dirty-slot"
+      },
+      "$switch": {
+        "$ref": "#/state/dirty"
+      },
+      "cases": {
+        "true": {
+          "tagName": "span",
+          "attributes": {
+            "part": "dirty",
+            "aria-hidden": "true"
+          }
+        }
+      }
+    },
+    {
+      "tagName": "span",
+      "attributes": {
+        "part": "close-slot"
+      },
+      "$switch": {
+        "$ref": "#/state/closable"
+      },
+      "cases": {
+        "true": {
+          "tagName": "button",
+          "attributes": {
+            "part": "close",
+            "type": "button",
+            "aria-label": "Close ${state.label}",
+            "tabindex": "${state.selected ? '0' : '-1'}"
+          },
+          "onclick": {
+            "$ref": "#/state/onClose"
+          },
+          "children": [
+            {
+              "tagName": "jx-icon",
+              "$props": {
+                "name": "x",
+                "weight": "bold"
+              },
+              "attributes": {
+                "part": "close-icon"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

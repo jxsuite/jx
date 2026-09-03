@@ -649,6 +649,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `ui.md`
 
+- **0.1.13-draft** (2026-09-03) — jx-tabs, jx-tab, jx-tab-panel, jx-accordion-item and jx-action-group ship (5.4); jx-accordion becomes a recipe.
 - **0.1.12-draft** (2026-09-02) — the loading button's refusal is stopPropagation as well as preventDefault; the spinner and popover override tokens join the semantic list.
 - **0.1.11-draft** (2026-09-02) — jx-popover, jx-tooltip and jx-spinner ship (5.2); the anchor prop is dropped with its reason; SC 1.4.13 joins the WCAG subset.
 - **0.1.10-draft** (2026-09-02) — jx-checkbox, jx-switch and jx-number-field ship (5.3); the value-stepping amendment to principle 5; jx-textfield gains clearable, grows and rows (5.1).

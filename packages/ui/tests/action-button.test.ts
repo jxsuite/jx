@@ -1,9 +1,15 @@
 import "./with-dom.ts";
 
 import { afterEach, beforeAll, describe, expect, spyOn, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
+import { buildStyleRules } from "@jxsuite/runtime/css";
+import type { JxDocument, JxElement, JxStyle } from "@jxsuite/schema/types";
 
 import { documents } from "../src/documents.ts";
 import { registerUi } from "../src/index.ts";
+import { themeCSS } from "../src/theme.ts";
 
 const tick = () =>
   new Promise((r) => {
@@ -18,6 +24,23 @@ type JxActionButton = HTMLElement & {
   disabled: boolean;
   emphasized: boolean;
   quiet: boolean;
+  tabindex: string;
+  checked: string;
+  badge: string;
+};
+
+/** Every rule the element's own style block emits, under a stand-in scope handle. */
+const sheet = (): string[] =>
+  buildStyleRules(documents["jx-action-button"]!.style as JxStyle, { scope: "S" }).map(
+    (rule) => rule.text,
+  );
+
+/** The `.jx-badge` recipe ALONE — up to its own closing brace, never the rest of the sheet. */
+const badgeRecipe = (): string => {
+  const css = themeCSS();
+  const start = css.indexOf(".jx-badge {");
+  expect(start, "the theme sheet declares a .jx-badge recipe").toBeGreaterThan(-1);
+  return css.slice(start, css.indexOf("}", start) + 1);
 };
 
 beforeAll(async () => {
@@ -39,6 +62,12 @@ async function action(attrs: Record<string, string> = {}): Promise<JxActionButto
 }
 
 const control = (el: Element) => el.querySelector<HTMLButtonElement>('[part="control"]')!;
+
+/** The stylebook page for this element, read off disk the way the conformance suite reads them. */
+const stylebookPage = (): JxDocument =>
+  JSON.parse(
+    readFileSync(resolve(import.meta.dir, "../stylebook/jx-action-button.json"), "utf8"),
+  ) as JxDocument;
 
 describe("jx-action-button", () => {
   test("is a named, icon-first native button, quiet by default", async () => {
@@ -301,6 +330,19 @@ describe("jx-action-button", () => {
     expect(state["hint"]!.description).toContain("already fully visible");
   });
 
+  test("the selection props describe the selection the element actually has", async () => {
+    /* `selected` used to read "the pressed state of a TOGGLING button", which is the contract the
+       host-owned pressed state overturned — a porter reading it would conclude that host-owned
+       selection needs `toggles`, which is exactly the mistake that costs a `change` the call site
+       cannot absorb. And `checked` has to say which way the refusal goes, since a document setting
+       both gets one answer rather than an error. */
+    const state = documents["jx-action-button"]!.state as Record<string, { description?: string }>;
+    expect(state["selected"]!.description).toContain("whoever wrote it");
+    expect(state["selected"]!.description).not.toContain("The pressed state of a toggling button");
+    expect(state["checked"]!.description).toContain("checked wins");
+    expect(state["checked"]!.description).toContain("role=none");
+  });
+
   test("a badge is drawn only while it has something to say", async () => {
     const el = (await action({ icon: "git-branch", label: "Source Control" })) as JxActionButton & {
       badge: string;
@@ -312,5 +354,272 @@ describe("jx-action-button", () => {
     el.badge = "";
     await tick();
     expect(el.querySelector('[part="badge"]')).toBeNull();
+  });
+
+  test("the roving caret writes a tabindex on the CONTROL, which is the focusable node", async () => {
+    /* A group moving focus has to write a tabindex somewhere, and the host is not it: the host is
+       an undefined-role wrapper and the thing a browser focuses is the `<button>` inside. Without
+       this prop the only way to move the caret would be for the group's sidecar to reach into a
+       child's internals, which is the foreign write §2 principle 5 forbids. */
+    const el = await action({ icon: "text-b", label: "Bold" });
+    const inner = control(el);
+    expect(inner.hasAttribute("tabindex")).toBe(false);
+    el.tabindex = "0";
+    await tick();
+    expect(inner.getAttribute("tabindex")).toBe("0");
+    // The prop is the door; a property write leaves the HOST alone, so one control is one tab stop.
+    expect(el.hasAttribute("tabindex")).toBe(false);
+    el.tabindex = "-1";
+    await tick();
+    expect(inner.getAttribute("tabindex")).toBe("-1");
+    el.tabindex = "";
+    await tick();
+    expect(inner.hasAttribute("tabindex")).toBe(false);
+  });
+
+  test("tabindex is a property and NOT an observed attribute, because the attribute is harmful", async () => {
+    /* Every other prop here is spelled both ways, so a consumer reaches for the attribute first —
+       and that one lands on the HOST as well, which is then focusable itself. Measured in Chrome
+       152 while `tabindex` was observed: `<jx-action-button tabindex="0">` gave the host
+       `tabIndex === 0` AND the control `tabindex="0"`, so the strip's tab stops read
+       `[BUTTON, BUTTON, BUTTON, JX-ACTION-BUTTON, BUTTON]` — the roving caret's one tab stop
+       became two on the segment holding it. Not advertising the attribute is what removes the
+       trap: writing it now means what the platform means and nothing reaches the control. */
+    const doc = documents["jx-action-button"]!;
+    expect(doc.observedAttributes).not.toContain("tabindex");
+    const state = doc.state as Record<string, { attribute?: string; description?: string }>;
+    expect(state["tabindex"]!.attribute).toBeUndefined();
+    expect(state["tabindex"]!.description).toContain("PROPERTY ONLY");
+    const el = await action({ icon: "text-b", label: "Bold", tabindex: "0" });
+    expect(control(el).hasAttribute("tabindex")).toBe(false);
+    // And the property still works on the same element, which is what the group writes.
+    el.tabindex = "0";
+    await tick();
+    expect(control(el).getAttribute("tabindex")).toBe("0");
+  });
+
+  test("checked makes one segment a radio, on the control and nowhere else", async () => {
+    /* A radiogroup owns `radio` children. Reaching into a child from the group's sidecar to stamp
+       the role there is the write principle 5 forbids, so the child declares it about itself. */
+    const el = await action({ checked: "true", icon: "align-left", label: "Left" });
+    const inner = control(el);
+    expect(inner.getAttribute("role")).toBe("radio");
+    expect(inner.getAttribute("aria-checked")).toBe("true");
+    /* And the HOST steps out of the tree. `radiogroup`'s required owned element is `radio`, and the
+       role is on the inner button, so an un-roled host between the two makes every segment a
+       GRANDCHILD behind a generic — the same shape this kit forbids between a tablist and its tabs.
+       `role="none"` promotes the radio to the radiogroup's own child: measured in Chrome 152 with
+       `Accessibility.getFullAXTree`, the stylebook's five segments report `parentRole=radiogroup`,
+       matching a control group of native `role="radio"` buttons, where before they read `generic`. */
+    expect(el.getAttribute("role")).toBe("none");
+    el.checked = "false";
+    await tick();
+    expect(inner.getAttribute("aria-checked")).toBe("false");
+    expect(inner.getAttribute("role")).toBe("radio");
+    el.checked = "";
+    await tick();
+    expect(inner.hasAttribute("role")).toBe(false);
+    expect(inner.hasAttribute("aria-checked")).toBe(false);
+    // A plain button is a plain button: nothing to promote, so the host keeps its own identity.
+    expect(el.hasAttribute("role")).toBe(false);
+  });
+
+  test("a checked segment is DRAWN checked, with nothing else written", async () => {
+    /* The two halves used to disagree: `checked` announced the choice and `selected` drew it, and
+       nothing coupled them — so a radiogroup segment written the natural way (`checked` alone) was
+       announced selected and painted like its unselected siblings. Measured in Chrome 152 before
+       this: `aria-checked="true"` with `background-color: rgba(0, 0, 0, 0)`, pixel-identical to the
+       `checked="false"` segments. Both stylebook pages worked around it by writing the state twice. */
+    const el = await action({ checked: "true", icon: "align-left", label: "Left" });
+    expect(el.dataset.selected !== undefined).toBe(true);
+    expect(el.selected).toBe(false);
+    el.checked = "false";
+    await tick();
+    expect(el.dataset.selected !== undefined).toBe(false);
+    // `selected` still stands on its own, for a group whose segments are not radios.
+    el.selected = true;
+    await tick();
+    expect(el.dataset.selected !== undefined).toBe(true);
+  });
+
+  test("checked REFUSES toggles rather than announcing both", async () => {
+    /* `aria-pressed` is not a state of `role="radio"`, so a button that is both would tell a screen
+       reader two things at once — measured in Chrome 152 before this fix, one control carried
+       `role="radio" aria-checked="true" aria-pressed="true"` together. The prop description says
+       the two are alternatives; this is what makes that true rather than advisory. checked wins:
+       no `aria-pressed`, and no self-flip either, since a radio in a group whose host owns the
+       selection must not answer the host's own click with a second, disagreeing `change`. */
+    const el = await action({ checked: "true", icon: "text-b", label: "Bold", toggles: "" });
+    const inner = control(el);
+    expect(inner.getAttribute("role")).toBe("radio");
+    expect(inner.getAttribute("aria-checked")).toBe("true");
+    expect(inner.hasAttribute("aria-pressed")).toBe(false);
+    const changes: unknown[] = [];
+    el.addEventListener("change", () => {
+      changes.push(1);
+    });
+    inner.click();
+    await tick();
+    expect(el.selected).toBe(false);
+    expect(changes).toEqual([]);
+    // Clear `checked` and the same button is a toggle again, aria-pressed and all.
+    el.checked = "";
+    await tick();
+    expect(inner.getAttribute("aria-pressed")).toBe("false");
+    inner.click();
+    await tick();
+    expect(el.selected).toBe(true);
+    expect(changes).toEqual([1]);
+  });
+
+  test("a host may own the pressed state without the button flipping itself", async () => {
+    /* `data-selected` used to be gated on `toggles`, so a segment whose host owns the selection —
+       clicking the selected one CLEARS the property, and a body-mode switch REPLACES a function
+       body — rendered unstyled and unannounced. Turning `toggles` on to get the styling made the
+       button flip itself and emit `change` on top of the host's own click, which is the answer
+       neither call site can take. The visual now follows `selected` whoever wrote it; only the
+       FLIP is still gated. */
+    const el = await action({ icon: "align-left", label: "Left", selected: "" });
+    expect(el.dataset.selected !== undefined).toBe(true);
+    expect(control(el).hasAttribute("aria-pressed")).toBe(false);
+    const changes: unknown[] = [];
+    el.addEventListener("change", () => {
+      changes.push(1);
+    });
+    control(el).click();
+    await tick();
+    // The host writes the selection; the button neither flips nor announces one.
+    expect(el.selected).toBe(true);
+    expect(el.dataset.selected !== undefined).toBe(true);
+    expect(changes).toEqual([]);
+    // And in a radiogroup that same host-owned segment IS announced, through `checked`.
+    el.checked = "true";
+    await tick();
+    expect(control(el).getAttribute("aria-checked")).toBe("true");
+    expect(el.dataset.selected !== undefined).toBe(true);
+  });
+
+  test("toggles still owns the flip, once per activation", async () => {
+    const el = await action({ icon: "text-b", label: "Bold", toggles: "" });
+    const changes: unknown[] = [];
+    el.addEventListener("change", (e) => {
+      changes.push((e as CustomEvent).detail);
+    });
+    control(el).click();
+    await tick();
+    expect(el.selected).toBe(true);
+    expect(el.dataset.selected !== undefined).toBe(true);
+    expect(control(el).getAttribute("aria-pressed")).toBe("true");
+    expect(changes).toEqual([true]);
+  });
+
+  test("an icon-only button generates no label box and no badge box, whitespace or not", async () => {
+    /* No `:empty` rule can decide this. `distributeSlots` copies EVERY child node into the emulated
+       `<slot>`, whitespace included, so the same button written across two lines has a "\n  " text
+       node inside `[part="label-slot"]` and `:empty` stops matching — while `[part="badge-slot"]`,
+       the `$switch` host, is in the tree unconditionally and was never covered by such a rule at
+       all. Both are `display: contents` instead: they generate no box, so the control's
+       `gap: var(--jx-space-2)` counts only what a consumer actually slotted, and a whitespace-only
+       slot contributes nothing because flex layout does not render a whitespace-only text run.
+       Measured in Chrome 152 on an icon-only button against `--jx-control-h: 24px`: 29.60px with
+       the old `:has(:empty)` rule, 33.60px when authored across two lines, 25.60px now for both.
+       happy-dom computes `display` from the same emitted sheet, which is what this asserts — it
+       cannot lay the button out, so the widths above are the browser's word and not this test's. */
+    const el = await action({ icon: "plus", label: "Add" });
+    const label = el.querySelector('[part="label"]')!;
+    const slot = el.querySelector('[part="label-slot"]')!;
+    expect(getComputedStyle(label).display).toBe("contents");
+    expect(getComputedStyle(slot).display).toBe("contents");
+    expect(getComputedStyle(el.querySelector('[part="badge-slot"]')!).display).toBe("contents");
+    // The two-line spelling, which is the one a hand-written page produces.
+    slot.append(document.createTextNode("\n  "));
+    await tick();
+    expect(getComputedStyle(label).display).toBe("contents");
+    expect(sheet().join("\n")).not.toContain('[part="label"]:empty');
+  });
+
+  test("stacked is the one shape that keeps a label BOX, because it ellipses", () => {
+    /* A rail button puts the label under the glyph and clips it, which needs a box with
+       `overflow: hidden` — so `display: contents` is overridden there, and the empty case comes
+       back (rail.json's Settings button is stacked with no slotted label). Asserted as rule text:
+       the collapse is a `:has(:empty)` match and happy-dom answers that selector the same way with
+       or without a text node in the slot, so only a browser can judge it — Chrome 152 gives the
+       stacked Settings button a 25.60px-tall control with the label collapsed, 27.60px without. */
+    const rules = sheet();
+    expect(rules).toContain(
+      'S[data-stacked] > [part="control"] > [part="label"] { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }',
+    );
+    expect(rules).toContain(
+      'S[data-stacked] > [part="control"] > [part="label"]:has([part="label-slot"]:empty) { display: none }',
+    );
+  });
+
+  test("the stylebook page demonstrates the element, rather than working around it", () => {
+    /* Two things the page got wrong while the element was wrong, and both were evidence of it.
+       (1) Its `change` handler declared `parameters: ["event"]`; a parameters-declaring inline
+       function is handed positional arguments, so the well-known `event` binding is shadowed and
+       `event#/detail` resolves to `undefined`. Measured in Chrome 152: clicking Bold flipped
+       `aria-pressed` to true while the page's own sentence stayed "Bold is off"; with the line
+       gone it reads "Bold is on". (2) Every radiogroup segment carried a `checked` AND a matching
+       `selected`, which is how a page hides an element whose announcement and drawing disagree.
+       `checked` now draws it, so the state is written once and the page fails if it stops being
+       true of the element. */
+    const page = stylebookPage();
+    const note = (page.state as Record<string, Record<string, unknown>>)["note"]!;
+    expect(note["parameters"]).toBeUndefined();
+    const segments = (page.children as JxElement[])
+      .filter((child) => child.attributes?.["role"] === "radiogroup")
+      .flatMap((group) => (group.children ?? []) as JxElement[]);
+    expect(segments.length).toBeGreaterThan(1);
+    for (const segment of segments) {
+      const props = segment.$props as Record<string, unknown>;
+      expect(typeof props["checked"], String(props["label"])).toBe("string");
+      expect(props["selected"], String(props["label"])).toBeUndefined();
+    }
+  });
+
+  test("the badge wears the recipe rather than a second drawing of it", async () => {
+    /* The badge visual belongs to `.jx-badge` in the theme sheet. The element used to redraw it
+       inline with its own radius, padding, fill and type, so the two could drift with nothing to
+       catch it. It now declares only WHERE the badge sits; the recipe declares what it looks like.
+       Both halves are checked here: the element's rule carries none of the drawing, and the
+       recipe's OWN rule — sliced at its closing brace, so a sibling recipe cannot satisfy this —
+       carries all of it. */
+    const el = (await action({ badge: "3", icon: "git-branch", label: "Source Control" }))!;
+    const badge = el.querySelector('[part="badge"]')!;
+    expect(badge.classList.contains("jx-badge")).toBe(true);
+    const rule = sheet().find((text) => text.startsWith('S [part="badge"] '))!;
+    expect(rule).toContain("position: absolute");
+    for (const forked of [
+      "border-radius",
+      "background",
+      "padding",
+      "font-size",
+      "color",
+      "min-width",
+      "line-height",
+      "height",
+    ]) {
+      expect(rule, forked).not.toContain(forked);
+    }
+    /* `box-sizing` is the one property the element still says, and it is fit rather than drawing:
+       the recipe is written for a badge in the flow, where `min-width: 16px` plus `padding: 0 4px`
+       is a 24px pill. In a 24px button's corner that pill covers the glyph completely — measured in
+       Chrome 152 on both shipped shapes, a 25.6px toolbar button and a 56px rail button, the icon
+       disappears behind it. `border-box` makes the recipe's own `min-width` the disc's diameter, so
+       "3" is 16×16 and "12" grows to 21×16 rather than the element restating a size. */
+    expect(rule).toContain("box-sizing: border-box");
+    const recipe = badgeRecipe();
+    for (const drawn of [
+      "min-width: 16px",
+      "padding: 0 var(--jx-space-2)",
+      "border-radius: 999px",
+      "background: var(--jx-accent-solid)",
+      "color: var(--jx-accent-fg)",
+      "font-size: var(--jx-text-xs)",
+      "line-height: 16px",
+    ]) {
+      expect(recipe, drawn).toContain(drawn);
+    }
   });
 });

@@ -87,6 +87,32 @@ function* styleValues(style: unknown): Generator<string> {
   }
 }
 
+/**
+ * The state keys a document binds to an `on*` key, anywhere in its tree.
+ *
+ * @param node The document or subtree.
+ * @returns {Set<string>} The state key names, without their pointer prefix.
+ */
+function handlerKeys(node: unknown, out = new Set<string>()): Set<string> {
+  if (Array.isArray(node)) {
+    for (const item of node) {
+      handlerKeys(item, out);
+    }
+    return out;
+  }
+  if (!node || typeof node !== "object") {
+    return out;
+  }
+  for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
+    const ref = (value as { $ref?: string })?.$ref;
+    if (key.startsWith("on") && typeof ref === "string") {
+      out.add(ref.split("/").pop() ?? "");
+    }
+    handlerKeys(value, out);
+  }
+  return out;
+}
+
 const HEX = /#[0-9a-f]{3,8}\b/i;
 
 describe("kit documents", () => {
@@ -170,6 +196,24 @@ describe("kit documents", () => {
         }
       });
 
+      test("no event handler declares parameters", () => {
+        /* A `$prototype: "Function"` WITH `parameters` is a callable the `call` operator invokes
+           with positional arguments; WITHOUT them it is an event handler receiving the scope and
+           the event. Bound to an `on*` key, the parameterised form is handed the scope as its
+           first argument, so `$args/event` — and `event#/…` — resolve to undefined and the
+           handler silently does nothing. Measured: a click through the parameterised form wrote
+           "undefined" where the plain form wrote "click". No lint sees it and the page looks
+           right until someone presses the control. */
+        const bound = handlerKeys(doc);
+        for (const [key, entry] of Object.entries(doc.state ?? {})) {
+          if (!bound.has(key)) {
+            continue;
+          }
+          const params = (entry as { parameters?: unknown }).parameters;
+          expect(params, `state.${key} is bound to an on* key`).toBeUndefined();
+        }
+      });
+
       test("documents every prop", () => {
         for (const [key, entry] of Object.entries(doc.state ?? {})) {
           if (entry && typeof entry === "object" && "default" in entry) {
@@ -211,6 +255,18 @@ describe("stylebook pages", () => {
       for (const iconName of names) {
         expect(ICON_NAMES, iconName).toContain(iconName);
         expect(Object.keys(list), iconName).toContain(iconName);
+      }
+    });
+  }
+
+  for (const [name, page] of Object.entries(stylebook)) {
+    test(`${name} binds no parameterised body to an event`, () => {
+      const bound = handlerKeys(page);
+      for (const [key, entry] of Object.entries(page.state ?? {})) {
+        if (!bound.has(key)) {
+          continue;
+        }
+        expect((entry as { parameters?: unknown }).parameters, `state.${key}`).toBeUndefined();
       }
     });
   }

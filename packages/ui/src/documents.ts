@@ -5,7 +5,9 @@
  */
 import { overlayScopeFor } from "@jxsuite/schema/overlays";
 import type { JxDocument, JxElement } from "@jxsuite/schema/types";
+import jxAccordionItem from "../components/jx-accordion-item.json";
 import jxActionButton from "../components/jx-action-button.json";
+import jxActionGroup from "../components/jx-action-group.json";
 import jxButton from "../components/jx-button.json";
 import jxCheckbox from "../components/jx-checkbox.json";
 import jxDialog from "../components/jx-dialog.json";
@@ -17,6 +19,9 @@ import jxSpinner from "../components/jx-spinner.json";
 import jxTooltip from "../components/jx-tooltip.json";
 import jxNumberField from "../components/jx-number-field.json";
 import jxSwitch from "../components/jx-switch.json";
+import jxTab from "../components/jx-tab.json";
+import jxTabPanel from "../components/jx-tab-panel.json";
+import jxTabs from "../components/jx-tabs.json";
 import jxTextfield from "../components/jx-textfield.json";
 
 /** Tag name → document, in registration order (a document's `$elements` come before it). */
@@ -33,6 +38,11 @@ export const documents: Readonly<Record<string, JxDocument>> = {
   "jx-checkbox": jxCheckbox as unknown as JxDocument,
   "jx-switch": jxSwitch as unknown as JxDocument,
   "jx-number-field": jxNumberField as unknown as JxDocument,
+  "jx-action-group": jxActionGroup as unknown as JxDocument,
+  "jx-tab": jxTab as unknown as JxDocument,
+  "jx-tab-panel": jxTabPanel as unknown as JxDocument,
+  "jx-tabs": jxTabs as unknown as JxDocument,
+  "jx-accordion-item": jxAccordionItem as unknown as JxDocument,
   "jx-dialog": jxDialog as unknown as JxDocument,
 };
 

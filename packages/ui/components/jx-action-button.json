@@ -24,7 +24,8 @@
     "badge",
     "loading",
     "labelledby",
-    "describedby"
+    "describedby",
+    "checked"
   ],
   "$elements": [
     {
@@ -75,7 +76,18 @@
       "type": "boolean",
       "default": false,
       "attribute": "selected",
-      "description": "The pressed state of a toggling button. A host may hold it: the property wins over the flip."
+      "description": "The pressed or chosen state, and the ONLY thing the selected drawing follows — whoever wrote it. A host that owns the selection sets it with toggles off and the button draws selected without flipping itself or emitting change; with toggles on the button also flips it on activation. What selected does NOT do is announce anything by itself: aria-pressed comes from toggles and aria-checked from checked, so a host-owned segment that must be announced is a checked radio (and setting checked also draws it selected, so the two never disagree)."
+    },
+    "checked": {
+      "type": "string",
+      "default": "",
+      "attribute": "checked",
+      "description": "Empty for a plain button; true or false for one segment of a radio group, which then carries role=radio and aria-checked on its control, is drawn selected while it is true, and puts role=none on the HOST so the radio is the radiogroup's own child rather than a grandchild behind a generic. It is the ALTERNATIVE to toggles, not a companion: a button that is one of several mutually exclusive choices is a radio, a button that is independently on or off is a toggle. Setting both is not a second opinion but a refusal — checked wins, so no aria-pressed is written on a radio (it is not a state of that role) and the button does not flip itself either."
+    },
+    "tabindex": {
+      "type": "string",
+      "default": "",
+      "description": "Forwarded to the inner control as its tabindex, which is what makes a roving caret possible: the focusable node is the button inside, not the host, so a group moving focus writes this rather than reaching into a child's internals. It is a PROPERTY ONLY (el.tabindex = \"0\") and deliberately not an observed attribute: written as an attribute it would land on the host as well, and a host carrying tabindex is itself focusable, so the one control would become two tab stops. Write tabindex on the host and you get the platform's meaning — the host is the tab stop and nothing reaches the control."
     },
     "quiet": {
       "type": "boolean",
@@ -194,6 +206,14 @@
         }
       }
     },
+    "notRadio": {
+      "$expression": {
+        "operator": "!",
+        "target": {
+          "$ref": "#/state/checked"
+        }
+      }
+    },
     "canToggle": {
       "$expression": {
         "operator": "&&",
@@ -203,13 +223,19 @@
         "value": {
           "operator": "&&",
           "target": {
-            "operator": "!",
-            "target": {
-              "$ref": "#/state/disabled"
-            }
+            "$ref": "#/state/notRadio"
           },
           "value": {
-            "$ref": "#/state/notLoading"
+            "operator": "&&",
+            "target": {
+              "operator": "!",
+              "target": {
+                "$ref": "#/state/disabled"
+              }
+            },
+            "value": {
+              "$ref": "#/state/notLoading"
+            }
           }
         }
       }
@@ -298,10 +324,11 @@
     "$ref": "#/state/onClick"
   },
   "attributes": {
+    "role": "${state.checked ? 'none' : null}",
     "data-size": "${state.size}",
     "data-quiet": "${state.quiet ? '' : null}",
     "data-emphasized": "${state.emphasized ? '' : null}",
-    "data-selected": "${state.toggles && state.selected ? '' : null}",
+    "data-selected": "${state.selected || state.checked === 'true' ? '' : null}",
     "data-stacked": "${state.stacked ? '' : null}"
   },
   "style": {
@@ -366,10 +393,14 @@
       "lineHeight": "var(--jx-leading-xs)"
     },
     "&[data-stacked] > [part=\"control\"] > [part=\"label\"]": {
+      "display": "block",
       "maxWidth": "100%",
       "overflow": "hidden",
       "textOverflow": "ellipsis",
       "whiteSpace": "nowrap"
+    },
+    "&[data-stacked] > [part=\"control\"] > [part=\"label\"]:has([part=\"label-slot\"]:empty)": {
+      "display": "none"
     },
     "&[data-selected] > [part=\"control\"]": {
       "background": "var(--jx-accent-15)",
@@ -396,23 +427,20 @@
     "& [part=\"icon\"][hidden]": {
       "display": "none"
     },
-    "& [part=\"label\"]:empty": {
-      "display": "none"
+    "& [part=\"label\"]": {
+      "display": "contents"
+    },
+    "& [part=\"label-slot\"]": {
+      "display": "contents"
+    },
+    "& [part=\"badge-slot\"]": {
+      "display": "contents"
     },
     "& [part=\"badge\"]": {
       "position": "absolute",
       "top": "2px",
       "right": "2px",
-      "minWidth": "16px",
-      "height": "16px",
-      "padding": "0 4px",
       "boxSizing": "border-box",
-      "borderRadius": "8px",
-      "background": "var(--jx-accent-solid)",
-      "color": "var(--jx-accent-fg)",
-      "fontSize": "var(--jx-text-xs)",
-      "lineHeight": "16px",
-      "textAlign": "center",
       "pointerEvents": "none"
     },
     "& [part=\"spinner\"]": {
@@ -437,7 +465,10 @@
         },
         "aria-label": "${state.label || null}",
         "title": "${state.hint || null}",
-        "aria-pressed": "${state.toggles ? (state.selected ? 'true' : 'false') : null}",
+        "role": "${state.checked ? 'radio' : null}",
+        "aria-checked": "${state.checked || null}",
+        "aria-pressed": "${state.toggles && !state.checked ? (state.selected ? 'true' : 'false') : null}",
+        "tabindex": "${state.tabindex || null}",
         "popovertarget": "${state.popovertarget || null}",
         "popovertargetaction": "${state.popovertargetaction || null}",
         "command": "${state.command || null}",
@@ -514,6 +545,7 @@
               "tagName": "span",
               "attributes": {
                 "part": "badge",
+                "class": "jx-badge",
                 "aria-hidden": "true"
               },
               "textContent": "${state.badge}"
