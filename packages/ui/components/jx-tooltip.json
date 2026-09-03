@@ -94,6 +94,10 @@
     "data-flipped": "${state.flipped ? '' : null}"
   },
   "style": {
+    "display": "revert-layer",
+    "&[hidden]": {
+      "display": "none"
+    },
     "position": "fixed",
     "insetInlineStart": "${state.x}px",
     "insetBlockStart": "${state.y}px",
@@ -126,9 +130,6 @@
         "opacity": "0"
       }
     },
-    "& > [part=\"content\"]": {
-      "display": "contents"
-    },
     "& > [part=\"arrow\"]": {
       "position": "absolute",
       "insetBlockEnd": "100%",
@@ -154,10 +155,7 @@
   },
   "children": [
     {
-      "tagName": "slot",
-      "attributes": {
-        "part": "content"
-      }
+      "tagName": "slot"
     },
     {
       "tagName": "div",

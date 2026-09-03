@@ -240,8 +240,9 @@ describe("jx-action-group", () => {
        operable buttons. Both are the ordinary life of a Studio toolbar. */
     const el = await group({ label: "Tools" }, ["A", "B", "C"]);
     expect(carets(el)).toEqual(["0", "-1", "-1"]);
-    const slot = el.querySelector('[part="items"]')!;
-    slot.append(makeItem("D"));
+    // Appended to the GROUP: a distributed child is the group's own child, so that is where a
+    // Host adding one puts it, and it is what the observer watches.
+    el.append(makeItem("D"));
     await settle();
     expect(carets(el)).toEqual(["0", "-1", "-1", "-1"]);
     // Disabling the caret-holder hands the caret on rather than stranding it.
@@ -255,7 +256,7 @@ describe("jx-action-group", () => {
     // Exactly one, always: never two, never none.
     expect(carets(el).filter((t) => t === "0")).toHaveLength(1);
     // And a mutation that changes nothing about the answer writes nothing.
-    slot.append(document.createElement("span"));
+    el.append(document.createElement("span"));
     await settle();
     expect(carets(el)).toEqual(["-1", "0", "-1"]);
   });
@@ -381,37 +382,49 @@ describe("jx-action-group", () => {
     expect(carets(el)).toEqual(before);
   });
 
-  test("the segmented seam crosses the emulated slot, and a middle segment really is square", async () => {
-    /* `distributeSlots` leaves a `<slot>` in the tree between the group and its buttons, so the
-       plain child form matches nothing and the joining silently does not happen — the seam has to
-       reach THROUGH the slot. Nothing else asserts the specificity either, so this reads the
-       COMPUTED value: a segment with no seam rule falls back to the button's own
-       `var(--jx-radius-sm)`, which is not `0px`. */
+  test("the segmented seam is a DIRECT-CHILD rule, and a middle segment really is square", async () => {
+    /* The seam used to be written `> [part="items"] > jx-action-button`, reaching THROUGH the
+       emulated `<slot>` that stood between the group and its buttons — a workaround for a node
+       that no longer exists. A slot is now replaced by the children it matched, so a distributed
+       button IS the group's own child and the seam is the plain child rule it always wanted to be.
+       The `[part="items"]` form is not merely longer now, it is dead: it names no node, so every
+       segment falls back to the button's own `var(--jx-radius-sm)` and the joining silently does
+       not happen (measured in Chrome 152 before this: `border-radius: 4px` on the middle segment
+       and a 0px seam between neighbours; after: `0px` and a `-1px` overlap). Nothing else asserts
+       the specificity either, which is why this reads the COMPUTED value. */
     const el = await group({ label: "Align" }, ["A", "B", "C"]);
     expect(el.dataset.compact).toBe("");
-    const slot = el.querySelector('[part="items"]')!;
-    expect(slot.tagName).toBe("SLOT");
-    expect(slot.contains(buttons(el)[1]!)).toBe(true);
+    // No slot stands between them: the group's own children ARE the three buttons.
+    expect([...el.children].map((child) => child.localName)).toEqual([
+      "jx-action-button",
+      "jx-action-button",
+      "jx-action-button",
+    ]);
     const middle = controlOf(buttons(el)[1]!);
     expect(getComputedStyle(middle).borderRadius).toBe("0px");
     const rules = sheet();
     expect(rules).toContain(
-      'S[data-compact] > [part="items"] > jx-action-button > [part="control"] { border-radius: 0 }',
+      'S[data-compact] > jx-action-button > [part="control"] { border-radius: 0 }',
     );
-    // Every seam rule goes through the slot: none of them is a loose descendant selector.
+    // Every seam rule is that shape: none of them crosses a part that no longer names a node, and
+    // None of them is a loose descendant selector either — see the nested-group test below.
     for (const rule of rules) {
       if (rule.includes("jx-action-button")) {
-        expect(rule, rule).toContain('> [part="items"] > jx-action-button');
+        expect(rule, rule).toContain("S[data-compact]");
+        expect(rule, rule).toMatch(/S\[data-compact\](\[[^\]]+\])* > jx-action-button/u);
       }
+      expect(rule, rule).not.toContain('[part="items"]');
     }
   });
 
-  test("a NESTED group keeps its own compact, because the seam is scoped to the slot's children", async () => {
+  test("a NESTED group keeps its own compact, because the seam reaches only direct children", async () => {
     /* Measured in Chrome with the descendant form: an outer compact group welded the buttons of a
        nested `compact="false"` group into its own row — half-rounded corners and a `-1px` seam
        margin on children of a group that says it draws none, while that group kept its own gap,
        so it drew as neither joined nor separate. The sidecar already refuses a nested group's
-       children (`itemsOf`); the stylesheet has to refuse them too. */
+       children (`itemsOf`); the stylesheet has to refuse them too. Re-measured in Chrome 152 on
+       the direct-child form: `4px 0px 0px 4px` on O1, `0px 4px 4px 0px` on O2, a flat `4px` on
+       both of the inner group's, and no seam margin on I2. */
     const outer = build({ label: "Outer" }, ["O1"]);
     const inner = build({ label: "Inner", compact: "false" }, ["I1", "I2"]);
     outer.append(inner);
@@ -456,19 +469,25 @@ describe("jx-action-group", () => {
     expect(getComputedStyle(middle).borderRadius).not.toBe("0px");
   });
 
-  test("the slot is given no display: the container role owns its children directly", () => {
+  test("the container role owns its children directly, with no box of its own between", async () => {
     /* A generic with a box between a container role and the elements it owns is the trap this
-       family is most likely to fall into. The HOST is the flex row. */
+       family is most likely to fall into, and it used to be a question about the `<slot>`: does
+       the node between the group and its buttons declare a display? There is no such node now — a
+       slot is replaced by what it matched — so the trap is answered by the DOM rather than by
+       reading the definition. The HOST is the flex row, and the definition still authors exactly
+       one internal node with no style of its own, so a second one cannot arrive unnoticed. */
     const style = documents["jx-action-group"]!.style as Record<string, unknown>;
     expect(style["display"]).toBe("inline-flex");
-    for (const key of Object.keys(style)) {
-      if (key.endsWith('[part="items"]')) {
-        expect(style[key], key).not.toHaveProperty("display");
-      }
-    }
-    const slot = (documents["jx-action-group"]!.children as JxElement[])[0]!;
-    expect(slot.tagName).toBe("slot");
-    expect(slot.style).toBeUndefined();
+    const el = await group({ label: "Tools" }, ["A", "B"]);
+    expect([...el.children].map((child) => child.localName)).toEqual([
+      "jx-action-button",
+      "jx-action-button",
+    ]);
+    expect(buttons(el).every((button) => button.parentElement === el)).toBe(true);
+    const children = documents["jx-action-group"]!.children as JxElement[];
+    expect(children).toHaveLength(1);
+    expect(children[0]!.tagName).toBe("slot");
+    expect(children[0]!.style).toBeUndefined();
   });
 
   test("the group owns no selection and emits no event of its own", () => {

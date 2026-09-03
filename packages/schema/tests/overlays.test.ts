@@ -600,3 +600,36 @@ describe("a custom element that forwards the invoker attributes", () => {
     );
   });
 });
+
+describe("display: revert is the one base display that is not a defect", () => {
+  /* The rule exists because any author `display` beats the UA's `[popover]:not(:popover-open)
+     { display: none }` at any specificity, so the panel lays out on every page. `revert` is the
+     exception by definition: it rolls the cascade back TO the UA value. Measured in Chrome 152 —
+     closed computes `none`, open computes the `:popover-open` value. It is also what an author
+     must write when the interpreter would otherwise inject a default `display` on a custom
+     element, so refusing it would refuse the fix for this very defect. */
+  const panel = (display: string): JxElement =>
+    ({
+      attributes: { "aria-label": "Menu", popover: "auto" },
+      id: "menu",
+      style: { display, flexDirection: "column", ":popover-open": { display: "flex" } },
+      tagName: "div",
+    }) as JxElement;
+
+  test("accepts revert and revert-layer", () => {
+    const plain = doc(trigger(), panel("revert"));
+    const layered = doc(trigger(), panel("revert-layer"));
+    expect(findPopoverDefects(plain)).toEqual([]);
+    expect(findPopoverDefects(layered)).toEqual([]);
+  });
+
+  test("still refuses every value that really does beat the UA rule", () => {
+    for (const value of ["block", "flex", "grid", "inline-flex", "none"]) {
+      const found = findPopoverDefects(doc(trigger(), panel(value)));
+      expect(
+        found.map((d) => d.rule),
+        value,
+      ).toContain("base-display");
+    }
+  });
+});

@@ -2,9 +2,9 @@
 
 ## Declarative Document Object Model — JSON Edition
 
-**Version:** 0.6.13-draft\
+**Version:** 0.6.14-draft\
 **Status:** Partial\
-**Updated:** 2026-09-02\
+**Updated:** 2026-09-03\
 **License:** MIT
 
 ---
@@ -1013,6 +1013,10 @@ The runtime delivers an element's styles as **CSS rules in a constructable style
 
 **The handle is `data-jx`, and its value is a content hash.** A rule is scoped by `[data-jx="jx-<hash>"]`, specificity (0,1,0), stamped on the element by the runtime. It is not a generated class, because a class handle would be destroyed by a static `attributes: { "class": … }` applied after the style; and it is not random, because the hash is what lets two elements that style alike SHARE one rule set and what makes the handle stable across a server render and the client render that follows it. Everything that can vary per call site is an input to that hash: the authored object, the resolved `$media` map, and any host-specific value or selector transposition.
 
+**A custom element carries TWO style objects, and they merge.** Its definition's, and the one written at the usage site — and the usage site wins where the two collide, at equal specificity by source order, the same promise this section already makes for a base block before a nested one. The merge is deep: a call site declaring `&:hover` replaces only the declarations it repeats inside it, never the definition's whole block. This has to be a merge rather than two applications, because each application releases what the last one interned; before it was one, the call site's rules were written while the element was detached and deleted the moment it connected, so a document could not style an element instance at all.
+
+**A custom element with no `display` in its BASE block gets `display: block` in its own rule.** Not inline: an inline declaration is beaten only by `!important`, and a default is meant to be the weakest thing in the cascade rather than the strongest. At (0,1,0) a consumer's rule, a cascade layer or a parent's descendant rule all override it normally. Only the base block is consulted — a `display` appearing solely inside `&:hover` or a breakpoint is not the author supplying one, and reading it as such left the element `inline` at rest and a block on hover, which is wrong whenever it is still. An author who wants the platform's own value writes `display: revert-layer` in the base block, which this sees and which rolls the cascade back one layer rather than beating anything — the spelling that lets an element whose visibility the UA owns, such as a `popover`, keep it. Plain `revert` is weaker and is a trap: it rolls back to the user-agent ORIGIN, so it works on a shipped page and fails wherever a host has re-supplied the UA rule in a cascade layer of its own, which is exactly what an editing canvas does when it de-links an overlay (studio.md §4.2.2). `revert-layer` holds in both.
+
 **Reactive declarations are indirected through a custom property.** A value carrying a `${…}` template or a `{ "$ref": … }` is emitted as `property: var(--jx-r<n>-<m>)`, and the element sets that variable inline as its source changes. The declaration therefore stays in the rule, where a `:hover` or `@media` block can override it, while only the variable moves. A reactive element never shares a rule set with another: a `var()` resolves from the nearest ancestor that set it, so a shared descendant rule would read the wrong element's value.
 
 **Unscoped at-rules are hoisted.** The four declaration-body at-rules of §9.2, and `@keyframes` alongside them, declare a document-global NAME, so they are written once for the document and released when the last element that declares one lets go, rather than emitted per element.
@@ -1081,6 +1085,8 @@ Template strings inside the map read the same context as `${$map.item…}` and `
 ### 10.4 Keys
 
 A mapped array MAY declare a `key`: a `$map/item` pointer evaluated once per item that names the row's identity.
+
+Both spellings of a `$map` pointer resolve: the bare `$map/item/x` and the `#/$map/item/x` form that matches how every other pointer in the schema is written. Only the bare one used to, and the other returned null — so a mapped array over it rendered no rows and reported nothing.
 
 ```json
 {
@@ -1583,6 +1589,8 @@ Dependencies are registered depth-first before the parent.
 | `adoptedCallback`          | `onAdopted`   | Element moved to new document          |
 | `attributeChangedCallback` | (automatic)   | Observed attribute changes             |
 
+`onMount` receives `(state, host)` — the element's scope and the element itself. A behaviour sidecar that has to reach the element it belongs to gets it as an argument; before it did not, and elements dispatched an event at themselves purely so a root handler could read `currentTarget`, which was a round trip standing in for a missing parameter. The other three hooks take `(state)`.
+
 A document mounted by a host through `mount()` ([embedding.md](./embedding.md) §2) runs the same two hooks at its own boundary: `onMount` once its root is attached, `onUnmount` from `dispose()`. The names are shared on purpose, so a component and a mounted document read alike.
 
 > **Status: Implemented.**
@@ -1608,6 +1616,8 @@ REMOVING an observed attribute restores the state entry's declared default. The 
 ### 16.6 Light DOM Rendering
 
 Custom elements render to the light DOM by default. No shadow root is attached there, and none of the shadow-scoped styling primitives apply: no `attachShadow`, no `shadowrootmode`, no `::part`.
+
+**A `<slot>` leaves no node.** Distribution replaces the literal `<slot>` with its matched children, or, when nothing matches it, with its own fallback children. The slot element itself is gone from the rendered tree. It used to survive and hold its matches, which looked right — a slot is `display: contents`, so the box tree was unaffected — and was wrong in the SELECTOR tree: a definition's `& > x` rule addressed a grandchild and silently stopped matching, so a component could not style what a consumer gave it. A consequence worth stating on its own: **a `part` written on a `<slot>` names nothing**, and a rule asking whether a slot received anything asks it of the containing part, whose `:empty` is now true exactly when nothing was slotted.
 
 Scoping is therefore selector-based, in two parts: a component's own rules are prefixed with its **tag name** (`sty-card { … }`, `sty-card .inner { … }`), and a nested element carrying its own `style` gets a **generated class**, `.<tagName>-<n>`. `data-jx-static` and `data-jx-prerendered` appear on emitted elements but mark hydration state and are never used as selectors.
 
@@ -2523,6 +2533,7 @@ This rewrites the mutating handlers of Appendix A's idiom using `$expression`, l
 
 ## Changelog
 
+- **0.6.14-draft** (2026-09-03) — a custom element's call-site style merges with its definition's; a slot leaves no node; the display default is a rule decided by the base block, with display revert as the opt-out; onMount receives the host; #/$map resolves.
 - **0.6.13-draft** (2026-09-02) — Removing an observed attribute restores the state entry's declared default (§16.5).
 - **0.6.12-draft** (2026-09-02) — a linked `area` owes an accessible name, which its `alt` supplies (§8.8).
 - **0.6.11-draft** (2026-09-02) — the container rules honour aria-owns.
@@ -2600,4 +2611,4 @@ This rewrites the mutating handlers of Appendix A's idiom using `$expression`, l
 
 ---
 
-_Jx Specification v0.6.13-draft — subject to revision_
+_Jx Specification v0.6.14-draft — subject to revision_

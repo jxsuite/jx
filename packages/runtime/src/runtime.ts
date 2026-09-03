@@ -32,7 +32,6 @@ import {
   buildStyleRules,
   cssPropertyName,
   hashCss,
-  isKeyframesAtRule,
   isNestedSelectorKey,
   transposeCanvasOverlaySelector,
 } from "./css.ts";
@@ -1364,6 +1363,12 @@ export function renderNode(
   }
 
   applyProperties(el, def, localState);
+  /* A custom element's own definition applies its style at connection, through the same interning
+     path — which releases whatever is already on the element. So the call site's style is
+     remembered here and merged there; see {@link callSiteStyles}. */
+  if (def.style && tagName.includes("-")) {
+    callSiteStyles.set(el, def.style);
+  }
   applyStyle(
     el,
     def.style ?? {},
@@ -2006,21 +2011,48 @@ export function documentStyleText(doc: Document = document): string {
  * @returns {boolean}
  */
 function declaresDisplay(style: JxStyle | undefined): boolean {
-  if (!style || typeof style !== "object") {
-    return false;
+  /* The BASE block only. A deep walk read a `display` that exists solely inside `&:hover` or an
+     `@media` block as "the author supplied one", so the element stayed `inline` at rest and
+     became a block on hover — a live trap rather than a subtlety. An author who wants the
+     platform's own default writes `display: revert` in the base block, which this sees. */
+  return Boolean(style) && typeof style === "object" && "display" in style;
+}
+
+/**
+ * The `style` object a USAGE SITE wrote on a custom element, kept until the element connects.
+ *
+ * Weak in the element, so an instance that is never connected is collected with its entry.
+ */
+const callSiteStyles = new WeakMap<HTMLElement, JxStyle>();
+
+/**
+ * Merge two style objects, `over` winning.
+ *
+ * Deep, because a nested selector block is a rule of its own: a call site that declares `&:hover`
+ * must not delete the definition's `&:hover`, only the declarations it repeats inside it. A scalar
+ * always replaces, which is what "the call site wins" means.
+ *
+ * @param base The definition's style.
+ * @param over The usage site's, if any.
+ * @returns {JxStyle} A new object; neither argument is mutated.
+ */
+function mergeStyle(base: JxStyle, over: JxStyle | undefined): JxStyle {
+  if (!over) {
+    return base;
   }
-  for (const [key, value] of Object.entries(style)) {
-    if (key === "display") {
-      return true;
-    }
-    if (isKeyframesAtRule(key)) {
-      continue;
-    }
-    if (value !== null && typeof value === "object" && declaresDisplay(value as JxStyle)) {
-      return true;
-    }
+  const out: Record<string, unknown> = { ...(base as Record<string, unknown>) };
+  for (const [key, value] of Object.entries(over as Record<string, unknown>)) {
+    const prior = out[key];
+    out[key] =
+      prior !== null &&
+      typeof prior === "object" &&
+      value !== null &&
+      typeof value === "object" &&
+      !Array.isArray(value)
+        ? mergeStyle(prior as JxStyle, value as JxStyle)
+        : value;
   }
-  return false;
+  return out as JxStyle;
 }
 
 /**
@@ -3382,8 +3414,11 @@ export function resolveRef(refPath: string, state: JxScope) {
   if (typeof refPath !== "string") {
     return refPath;
   }
-  if (refPath.startsWith("$map/")) {
-    const parts = refPath.split("/");
+  if (refPath.startsWith("$map/") || refPath.startsWith("#/$map/")) {
+    /* Both spellings. `#/` is the documented JSON Pointer prefix everywhere else in the schema,
+       so a `#/$map/item/x` fell through to `readPath`, returned null, and a `$map` over it
+       rendered ZERO rows with no warning. */
+    const parts = (refPath.startsWith("#/") ? refPath.slice(2) : refPath).split("/");
     const [, key] = parts; // "item" or "index"
     const map = state.$map as Record<string, unknown> | undefined;
     const base = map?.[key!] ?? state[`$map/${key}`];
@@ -3967,14 +4002,19 @@ export async function defineElement(source: string | JxDocument, baseUrl?: strin
       this.replaceChildren();
 
       /* Custom elements default to `display: inline`; a Jx container behaves like a `<div>`, so
-         one is supplied. The test is on the DEFINITION rather than on `this.style`, because the
-         author's own `display` is a rule now and an inline default would beat it at any depth. */
-      if (!declaresDisplay(def.style)) {
-        this.style.display = "block";
-      }
+         one is supplied. It goes in the element's OWN RULE rather than inline: an inline
+         declaration is beaten only by `!important`, so a consumer could not override the default
+         without one. At (0,1,0) a consumer's rule, a cascade layer or a parent's descendant rule
+         all win normally, and the definition's own `display` still wins because it is written into
+         the same rule after this. */
+      const defStyle = declaresDisplay(def.style) ? def.style : { display: "block", ...def.style };
+      /* Definition first, call site second, so the call site wins at equal specificity by source
+         order — the promise §9.2 already makes for base-before-nested. Merged into ONE call
+         because each `applyStyle` releases what the last one interned. */
+      const hostStyle = mergeStyle(defStyle as JxStyle, callSiteStyles.get(this));
 
       // Render template into light DOM (once, not in effect — inner effects handle reactivity)
-      applyStyle(this, def.style ?? {}, (state["$media"] as Record<string, string>) ?? {}, state);
+      applyStyle(this, hostStyle, (state["$media"] as Record<string, string>) ?? {}, state);
       applyAttributes(this, def.attributes ?? {}, state);
       bindDefinitionHandlers(this, def, state);
 
@@ -4003,10 +4043,14 @@ export async function defineElement(source: string | JxDocument, baseUrl?: strin
       // Slot distribution (light DOM)
       distributeSlots(this, slottedChildren);
 
-      // Lifecycle: onMount
+      /* Lifecycle: onMount, with the HOST as its second argument.
+         A sidecar that must reach the element it belongs to had no way to: the runtime handed it
+         the scope alone, so elements resorted to dispatching a `jx-ready` event at themselves and
+         catching it with a root handler purely to learn `currentTarget`. The host is what the
+         callback needed; the event round trip was the workaround. */
       const { onMount } = state;
       if (typeof onMount === "function") {
-        queueMicrotask(() => (onMount as (s: JxScope) => unknown)(state));
+        queueMicrotask(() => (onMount as (s: JxScope, host: HTMLElement) => unknown)(state, this));
       }
     }
 
@@ -4090,7 +4134,14 @@ function renderCustomElementWithProps(
     }
   }
 
-  // Apply host-level style and attributes from the usage site
+  /* Apply host-level style and attributes from the usage site.
+     Also REMEMBERED, because `connectedCallback` applies the definition's style through the same
+     interning path and `applyStyleInto` releases the element's existing rules first — so without
+     this the call site's declarations were written here and deleted a moment later, and a document
+     could not style an element instance at all. See {@link callSiteStyles}. */
+  if (def.style) {
+    callSiteStyles.set(el, def.style);
+  }
   applyStyle(el, def.style ?? {}, (state["$media"] as Record<string, string>) ?? {}, state);
   applyAttributes(el, def.attributes ?? {}, state);
   /* And its ordinary properties and handlers — `id`, `hidden`, `className`, an `onselect` — exactly
@@ -4122,10 +4173,11 @@ function renderCustomElementWithProps(
  * @param {ChildNode[]} slottedChildren
  */
 function distributeSlots(host: HTMLElement, slottedChildren: ChildNode[]) {
-  if (slottedChildren.length === 0) {
-    return;
-  }
-
+  /* No early return when nothing was slotted. A slot leaves no node WHETHER OR NOT it received
+     anything — an unmatched one unwraps to its own fallback children, and a host given nothing at
+     all is just every slot unmatched. Returning early here left the slot standing in exactly the
+     case an element most wants to detect: `[part="label"]:empty` answered false for a control with
+     no label, because the surviving slot was still a child. */
   const slots = host.querySelectorAll("slot");
   if (slots.length === 0) {
     return;
@@ -4146,14 +4198,16 @@ function distributeSlots(host: HTMLElement, slottedChildren: ChildNode[]) {
     }
   }
 
+  /* A `<slot>` UNWRAPS: its matches stand in its place and the slot itself leaves no node.
+     It used to survive, holding its matches as children. The box tree looked right, because a
+     slot is `display: contents` — but the SELECTOR tree did not, so every `& > x` rule in a
+     definition silently stopped matching a slotted child, which is now a grandchild. Measured on
+     the field row: 68.40px where the class form gives 88.40px, and its help text 80px wide
+     instead of 260px, with `[data-span]` dead. An unmatched slot unwraps to its own fallback
+     children, which is what the platform's slot does when nothing is assigned to it. */
   for (const slot of slots) {
     const name = slot.getAttribute("name");
     const matches = name ? (named.get(name) ?? []) : unnamed;
-    if (matches.length > 0) {
-      slot.replaceChildren();
-      for (const child of matches) {
-        slot.append(child);
-      }
-    }
+    slot.replaceWith(...(matches.length > 0 ? matches : [...slot.childNodes]));
   }
 }

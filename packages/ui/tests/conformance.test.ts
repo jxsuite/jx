@@ -136,6 +136,14 @@ describe("kit documents", () => {
 
       test("names every internal node with a part", () => {
         for (const [label, node] of internalNodes(doc)) {
+          /* Except a `<slot>`, which leaves NO NODE once its content is distributed (spec.md
+             §16.6). A `part` there names nothing at runtime, so requiring one would require every
+             element to carry a provably dead attribute — and worse, would make a reader think the
+             slot is addressable. Its CONTAINER is what a rule keys on. */
+          if (node.tagName === "slot") {
+            expect(node.attributes?.part, `${label} <slot> must NOT carry a part`).toBeUndefined();
+            continue;
+          }
           expect(node.attributes?.part, `${label} <${node.tagName}>`).toBeString();
         }
       });

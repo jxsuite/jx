@@ -168,6 +168,20 @@ Use `@--name` keys in any style object:
 
 A `$media` entry whose value is exactly a `prefers-color-scheme` query (like `--dark` above) is a _scheme query_: its `@--dark` blocks respond both to the OS preference and to a visitor-forced scheme, and the compiler wires up `color-scheme` and no-flash persistence automatically. See [Color schemes](/docs/framework/concepts/color-schemes) for the full contract and how to build a switcher.
 
+## Styling a component from outside it
+
+A component carries two style objects: the one in its definition, and the one you write where you use it. Both apply, and yours wins where the two set the same property.
+
+```json
+{ "tagName": "my-card", "style": { "color": "blue", "&:hover": { "color": "teal" } } }
+```
+
+The merge goes property by property, into nested blocks as well. Writing `&:hover` at the use site replaces only the declarations you repeat there, and the rest of the component's own `&:hover` block still applies.
+
+A component with no `display` in the top level of its style gets `display: block`, because a custom element is otherwise inline and a component usually behaves like a `<div>`. It is an ordinary rule, so any rule of yours overrides it without `!important`. Only the top level counts: a `display` you set under `&:hover` or inside a breakpoint is for that state, not a declaration that the component is laid out that way at rest.
+
+Write `"display": "revert-layer"` when the browser should decide instead. That is the right answer for anything the platform hides and shows on its own, such as a popover or a dialog, where a `display` of your own would keep it laid out while it is closed. Prefer it over plain `revert`, which looks identical on a published page and differs inside the Studio canvas: the editor supplies its own hiding rule in a cascade layer, and only `revert-layer` rolls back onto it.
+
 ## Static style extraction
 
 The compiler extracts every static `style` definition into a single `<style>` block in the document `<head>`, so a page carries one stylesheet rather than a rule per element.

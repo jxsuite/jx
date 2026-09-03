@@ -75,7 +75,8 @@
     "role": "tablist",
     "aria-label": "${state.label}",
     "aria-orientation": "${state.orientation}",
-    "tabindex": "-1"
+    "tabindex": "-1",
+    "data-selection": "${state.sync}"
   },
   "onkeydown": {
     "$ref": "#/state/onKeydown"
@@ -104,24 +105,20 @@
       "flexDirection": "column",
       "borderBlockEnd": "0",
       "borderInlineEnd": "1px solid var(--jx-border)",
-      "& jx-tab": {
+      "& > jx-tab": {
         "marginBlockEnd": "0",
         "marginInlineEnd": "-1px",
         "borderBlockEnd": "0",
         "borderInlineEnd": "2px solid transparent"
       },
-      "& jx-tab[aria-selected=\"true\"]": {
+      "& > jx-tab[aria-selected=\"true\"]": {
         "borderInlineEndColor": "var(--jx-accent-solid)"
       }
     }
   },
   "children": [
     {
-      "tagName": "slot",
-      "attributes": {
-        "part": "tabs",
-        "data-selection": "${state.sync}"
-      }
+      "tagName": "slot"
     }
   ]
 }

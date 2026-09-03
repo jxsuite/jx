@@ -102,6 +102,10 @@
     "data-jx-settling": "${state.settling ? '' : null}"
   },
   "style": {
+    "display": "revert-layer",
+    "&[hidden]": {
+      "display": "none"
+    },
     "position": "fixed",
     "insetInlineStart": "${state.x}px",
     "insetBlockStart": "${state.y}px",
@@ -168,10 +172,15 @@
   },
   "children": [
     {
-      "tagName": "slot",
+      "tagName": "div",
       "attributes": {
         "part": "content"
-      }
+      },
+      "children": [
+        {
+          "tagName": "slot"
+        }
+      ]
     },
     {
       "tagName": "span",

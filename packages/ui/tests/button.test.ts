@@ -3,6 +3,8 @@ import "./with-dom.ts";
 import { afterEach, beforeAll, describe, expect, test } from "bun:test";
 
 import { documentStyleText } from "@jxsuite/runtime";
+import { buildStyleRules } from "@jxsuite/runtime/css";
+import type { JxStyle } from "@jxsuite/schema/types";
 
 import { documents } from "../src/documents.ts";
 import { registerUi } from "../src/index.ts";
@@ -44,6 +46,12 @@ async function button(attrs: Record<string, string> = {}, text = "Save"): Promis
 }
 
 const control = (el: Element) => el.querySelector<HTMLButtonElement>('[part="control"]')!;
+
+/** Every rule the element's own style block emits, under a stand-in scope handle. */
+const sheet = (): string[] =>
+  buildStyleRules(documents["jx-button"]!.style as JxStyle, { scope: "S" }).map(
+    (rule) => rule.text,
+  );
 
 describe("jx-button", () => {
   test("wraps one native button that carries the type, the text and the variant", async () => {
@@ -149,6 +157,34 @@ describe("jx-button", () => {
     const again = new MouseEvent("click", { bubbles: true, cancelable: true });
     el.dispatchEvent(again);
     expect(again.defaultPrevented).toBe(false);
+  });
+
+  test("the icon wrapper generates no box, so a button with no icon pays nothing for one", async () => {
+    /* `[part="icon"]` is the home of a NAMED slot, and a slot leaves no node: a button that slots
+       only its label ends up with that wrapper empty. It was `display: inline-flex`, so an empty
+       one was still a flex item of the control's `gap: var(--jx-space-2)` row — 4px of dead
+       leading space on the commonest button the kit has, with the text visibly 2px off centre.
+       Measured in Chrome 152 on `<jx-button>Save</jx-button>`: a 57.10px control against 53.10px
+       with the box gone, and 68.31px either way once an icon IS slotted, its glyph still 16×16.
+       `display: contents` is the same answer `jx-action-button` gives its label wrapper.
+
+       The rule is written down to the control rather than as a loose descendant, and that is not
+       tidiness: `display: contents` on a stray match would flatten the `[part="icon"]` of a
+       `jx-action-button` a consumer slotted in here, whose own rule sits at the same specificity
+       and would then be decided by source order. */
+    const el = await button();
+    const icon = el.querySelector('[part="icon"]')!;
+    expect(icon.childNodes).toHaveLength(0);
+    expect(getComputedStyle(icon).display).toBe("contents");
+    expect(sheet()).toContain('S > [part="control"] > [part="icon"] { display: contents }');
+    for (const rule of sheet()) {
+      if (rule.includes('[part="icon"]')) {
+        expect(rule, rule).toContain('S > [part="control"] > [part="icon"]');
+      }
+    }
+    // And no rule keys on a slot's own part: those name no node once anything is distributed, so
+    // A rule written against one is dead and nothing else would say so.
+    expect(sheet().filter((rule) => rule.includes("-slot"))).toEqual([]);
   });
 
   test("an icon slots before the label", async () => {

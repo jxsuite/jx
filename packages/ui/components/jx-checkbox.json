@@ -132,11 +132,8 @@
       "textOverflow": "ellipsis",
       "whiteSpace": "nowrap"
     },
-    "& [part=\"label\"]:has([part=\"label-slot\"]:empty)": {
+    "& [part=\"label\"]:empty": {
       "display": "none"
-    },
-    "& [part=\"label-slot\"]": {
-      "display": "contents"
     },
     "&[data-disabled] > [part=\"control\"]": {
       "opacity": "0.5",
@@ -202,10 +199,7 @@
           },
           "children": [
             {
-              "tagName": "slot",
-              "attributes": {
-                "part": "label-slot"
-              }
+              "tagName": "slot"
             }
           ]
         }

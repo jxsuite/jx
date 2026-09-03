@@ -259,21 +259,34 @@ describe("how a consumer opens one", () => {
 });
 
 describe("jx-popover the sheet", () => {
-  test("has no display in its base rule and turns the flex box on only when open", async () => {
+  test("declares display: revert-layer in its base rule, and the flex box only when open", async () => {
     await panel();
     const emitted = rules(documentStyleText());
     const base = emitted.find((rule) => rule.selector === "&");
     expect(base?.block).toContain("flex-direction: column");
-    // The UA's `[popover]:not(:popover-open) { display: none }` is UA-origin, so ANY author
-    // `display` here beats it and lays the panel out on every page.
-    expect(base?.block).not.toContain("display:");
+    /* The base block MUST declare a display, and it must be `revert`. It must declare one because
+       `declaresDisplay` now reads the base block alone: a definition that leaves it out has
+       `display: block` written into its own rule at (0,1,0), which is an author value and
+       therefore beats the UA's `[popover]:not(:popover-open) { display: none }` at any
+       specificity — the panel is then laid out on every page whether it is open or not. And it
+       must be `revert-layer` rather than plain `revert`, and the difference shows only in the
+       Studio canvas. On a shipped page both roll back past the author origin to the UA rule. In
+       the canvas the runtime renames `popover` to `data-jx-popover`, so the UA rule matches
+       nothing and Studio re-supplies it inside `@layer jx-canvas-ua`: `revert` rolls back to the
+       UA origin, where the element has no popover attribute and nothing hides it, and the closed
+       panel is drawn over the artboard (measured in Chrome 152: `inline`, 35x17). `revert-layer`
+       rolls back one layer onto Studio's own rule and measures `none` at 0x0 in both places. */
+    expect(base?.block).toContain("display: revert-layer");
+    expect(base?.block?.match(/display:/g)).toHaveLength(1);
+    for (const value of ["block", "flex", "grid", "inline", "contents", "flow-root", "revert;"]) {
+      expect(base?.block, value).not.toContain(`display: ${value}`);
+    }
     expect(base?.block).not.toContain("visibility:");
 
     const open = emitted.find((rule) => rule.selector === "&:popover-open");
     expect(open?.block).toContain("display: flex");
-    // And the open rule must exist for a second reason: `declaresDisplay` is a DEEP test, so a
-    // Definition with no display ANYWHERE gets `display: block` injected by `defineElement`, and
-    // The injected rule would beat the UA's too.
+    // And nothing may sneak a display in through an at-rule either, which is the same defect
+    // Arriving at one viewport width and therefore harder to see.
     for (const rule of emitted) {
       if (rule.selector.startsWith("@")) {
         expect(rule.block, rule.selector).not.toContain("display:");
@@ -288,6 +301,12 @@ describe("jx-popover the sheet", () => {
     const hidden = emitted.findIndex((rule) => rule.selector === "&[hidden]:popover-open");
     expect(hidden).toBeGreaterThan(-1);
     expect(emitted[hidden]!.block).toContain("display: none");
+    /* And a plain `&[hidden]`, for the closed panel. `display: revert` in the base rule cannot in
+       fact beat the UA's `[hidden] { display: none }` — it reverts to it — but a base rule that
+       declares a display owes a reader an answer to "what does hidden mean here", and the kit
+       contract asks every one of them for it. */
+    const rest = emitted.find((rule) => rule.selector === "&[hidden]");
+    expect(rest?.block).toContain("display: none");
     // The UA's `[hidden] { display: none }` is (0,1,0) and loses to a `:popover-open` rule, and
     // The conformance host-display check is a SHALLOW `"display" in style` on the root, so it
     // Cannot see this. The repair is one rule that is strictly more specific and later.
@@ -380,17 +399,29 @@ describe("jx-popover on the page", () => {
     expect(bare.hasAttribute("aria-label")).toBe(false);
   });
 
-  test("shows one unnamed slot and an arrow only when asked for one", async () => {
+  test("projects any content into a real scroll box, and an arrow only when asked for one", async () => {
     const plain = await panel();
-    expect(plain.querySelectorAll("slot").length).toBe(1);
-    const slot = plain.querySelector('[part="content"]')!;
-    expect(slot.tagName.toLowerCase()).toBe("slot");
+    /* A `<slot>` leaves NO NODE — distribution replaces it with its matches — so the scroll box
+       cannot be the slot. It is a real `<div>`, because `& > [part="content"]` has to address
+       something: on a slot that part named nothing and the panel's own overflow would have had to
+       do the scrolling, which is the defect the arrow test below measures. */
+    expect(plain.querySelectorAll("slot").length).toBe(0);
+    const content = plain.querySelector('[part="content"]')!;
+    expect(content.tagName.toLowerCase()).toBe("div");
+    // The projected child is a DIRECT child of the box, not a grandchild behind a slot, which is
+    // What `& > [part="content"]` and its flex column need.
+    expect(content.firstElementChild?.tagName.toLowerCase()).toBe("p");
+    expect(content.textContent).toBe("Panel content");
     /* UNNAMED, and that is the whole content contract: any shape projects, from the colour
        popover's area+slider+swatches to the grid form. Naming it destroys every consumer's
        children silently — `distributeSlots` matches on `slot="…"`, so nothing goes in and the
-       panel renders empty with every gate green. */
-    expect(slot.hasAttribute("name")).toBe(false);
-    expect(slot.querySelector("p")?.textContent).toBe("Panel content");
+       panel renders empty with every gate green. The slot is gone from the DOM, so the document
+       is where that is asserted. */
+    const box = (documents["jx-popover"]!.children as JxElement[])[0]!;
+    expect(box.attributes?.["part"]).toBe("content");
+    const slot = (box.children as JxElement[])[0]!;
+    expect(slot.tagName).toBe("slot");
+    expect(slot.attributes?.["name"]).toBeUndefined();
     expect(plain.querySelector('[part="arrow"]')!.hasAttribute("hidden")).toBe(true);
 
     const pointed = await panel({ arrow: true });

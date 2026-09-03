@@ -399,7 +399,7 @@
       "textOverflow": "ellipsis",
       "whiteSpace": "nowrap"
     },
-    "&[data-stacked] > [part=\"control\"] > [part=\"label\"]:has([part=\"label-slot\"]:empty)": {
+    "&[data-stacked] > [part=\"control\"] > [part=\"label\"]:empty, &[data-stacked] > [part=\"control\"] > [part=\"label\"]:has([part=\"label-slot\"]:empty)": {
       "display": "none"
     },
     "&[data-selected] > [part=\"control\"]": {
@@ -525,10 +525,7 @@
           },
           "children": [
             {
-              "tagName": "slot",
-              "attributes": {
-                "part": "label-slot"
-              }
+              "tagName": "slot"
             }
           ]
         },
