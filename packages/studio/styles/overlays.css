@@ -1166,9 +1166,6 @@
   align-items: center;
   gap: 6px;
 }
-.settings-top-chrome {
-  z-index: 16 !important;
-}
 
 /* ─── Schema field cards ─── */
 .schema-field-list {
@@ -1701,67 +1698,6 @@
   flex-direction: column;
   gap: 6px;
 }
-
-/* Variable rows — unified layout for existing + add-new */
-.sb-var-row {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--canvas-rule);
-}
-.sb-var-row:last-child {
-  border-bottom: none;
-}
-.sb-var-row-header {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  min-height: 18px;
-  flex-wrap: wrap;
-}
-.sb-var-row-title {
-  font-weight: 600;
-  font-size: var(--spectrum-font-size-75, 12px);
-  color: var(--canvas-fg-2);
-  white-space: nowrap;
-}
-.sb-var-row-ref {
-  font-size: 10px;
-  color: var(--canvas-muted);
-  font-family: var(--font-mono);
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.sb-var-row-header .sb-var-del {
-  margin-left: auto;
-}
-.sb-var-row sp-textfield {
-  pointer-events: auto;
-}
-/* Existing variable: horizontal swatch + value */
-.sb-var-input-row {
-  display: flex;
-  align-items: flex-end;
-  gap: 8px;
-}
-.sb-var-col-name {
-  min-width: 0;
-}
-.sb-var-col-value {
-  flex: 1;
-  min-width: 0;
-}
-.sb-var-col-name sp-textfield,
-.sb-var-col-value sp-textfield {
-  width: 100%;
-}
-.sb-var-col-label {
-  font-size: 10px;
-  color: var(--canvas-dim);
-  margin-bottom: 2px;
-  font-weight: 500;
-}
 /* Add-new form: horizontal layout matching existing rows */
 .sb-var-row.is-new .sb-var-input-row {
   flex-wrap: nowrap;
@@ -1778,119 +1714,6 @@
 .sb-var-row.is-new .sb-var-swatch {
   align-self: flex-end;
   margin-bottom: 2px;
-}
-.sb-var-swatch {
-  width: 28px;
-  height: 28px;
-  border-radius: var(--radius);
-  border: 1px solid var(--canvas-border);
-  cursor: pointer;
-  position: relative;
-  flex-shrink: 0;
-  align-self: flex-end;
-  margin-bottom: 2px;
-}
-.sb-var-swatch input[type="color"] {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  opacity: 0;
-  cursor: pointer;
-  pointer-events: auto;
-}
-.sb-var-preview {
-  margin-top: 2px;
-  padding: 8px;
-  background: var(--canvas-bg-1);
-  border-radius: var(--radius);
-  border: 1px solid var(--canvas-rule);
-}
-.sb-var-font-preview {
-  font-size: var(--spectrum-font-size-100, 14px);
-  line-height: 1.4;
-  color: var(--canvas-fg-2);
-}
-.sb-var-size-track {
-  background: var(--canvas-track);
-  height: 8px;
-  border-radius: var(--radius);
-  width: 100%;
-  overflow: hidden;
-}
-.sb-var-size-bar {
-  height: 100%;
-  background: var(--accent, #3b82f6);
-  transition: width 0.3s;
-  border-radius: var(--radius);
-}
-.sb-var-del {
-  opacity: 0;
-  transition: opacity 0.15s;
-  flex-shrink: 0;
-}
-.sb-var-row:hover .sb-var-del {
-  opacity: 1;
-}
-.sb-var-empty {
-  padding: 16px 8px;
-  text-align: center;
-  color: var(--canvas-light);
-  font-size: var(--spectrum-font-size-75, 12px);
-  font-style: italic;
-}
-.sb-var-add-btn {
-  margin-top: 6px;
-  pointer-events: auto;
-  background: none;
-  border: 1px dashed var(--canvas-border);
-  border-radius: var(--radius);
-  padding: 5px 10px;
-  font-size: var(--spectrum-font-size-75, 12px);
-  color: var(--canvas-fg-3);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  transition: all 0.15s;
-}
-.sb-var-add-btn:hover {
-  border-color: var(--canvas-muted);
-  color: var(--canvas-fg-2);
-  background: var(--canvas-bg-1);
-}
-.sb-var-add-icon {
-  font-size: var(--spectrum-font-size-100, 14px);
-  font-weight: 600;
-}
-.sb-var-add-actions {
-  display: flex;
-  gap: 4px;
-  align-items: center;
-  flex-shrink: 0;
-  align-self: flex-end;
-  margin-bottom: 2px;
-}
-.sb-unit-input {
-  position: relative;
-  display: flex;
-  align-items: center;
-  width: 100%;
-}
-.sb-unit-input sp-textfield {
-  width: 100%;
-}
-.sb-unit-input sp-picker {
-  position: absolute;
-  right: 2px;
-  --mod-picker-border-width: 0;
-  --mod-picker-min-width: 56px;
-}
-.sb-var-add-preview {
-  font-size: 10px;
-  color: var(--canvas-muted);
-  font-family: var(--font-mono);
-  min-height: 14px;
 }
 
 /* ─── Inline editing ─────────────────────────── */
@@ -2419,12 +2242,6 @@
   gap: 8px;
   padding-left: 24px;
   color: var(--fg-dim);
-}
-
-.settings-submenu {
-  max-height: min(60vh, 480px);
-  overflow-y: auto;
-  overscroll-behavior: contain;
 }
 
 /* ─── Media viewer ────────────────────────────────────────────────────────────
