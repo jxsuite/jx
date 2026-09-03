@@ -179,6 +179,45 @@ describe("jx-menu", () => {
     expect(copy!.getAttribute("style")).toContain("inherit");
   });
 
+  test("a row's five slots leave no node, and the parts its rules key on still do", async () => {
+    /* Five `-slot` parts on jx-menu-item, and every one of them is a real `<slot>`, so after
+       distribution none of them names a node. Nothing is lost, because no rule ever keyed on one:
+       The rules key on the WRAPPERS — `& > [part="text"] > [part="label"]` and its siblings — and
+       those are ordinary spans that still stand exactly where they stood, now with the projected
+       content as their own direct children rather than behind a slot. Measured in Chrome 152: a
+       row is 171x28 with its label and its "⌘C" both inside it. */
+    const { rows } = await open();
+    const copy = rows[0]!;
+    const settings = rows[3]!;
+    expect(copy.querySelectorAll("slot").length).toBe(0);
+    for (const name of [
+      "icon-slot",
+      "label-slot",
+      "description-slot",
+      "value-slot",
+      "submenu-slot",
+    ]) {
+      expect(copy.querySelector(`[part="${name}"]`), name).toBeNull();
+    }
+    // The label's text is a child of `[part="label"]`, which is a child of `[part="text"]` — the
+    // Exact two-hop shape `& > [part="text"] > [part="label"]` addresses.
+    const label = copy.querySelector('[part="label"]')!;
+    expect(label.parentElement?.getAttribute("part")).toBe("text");
+    expect(label.parentElement?.parentElement).toBe(copy);
+    expect(label.textContent).toBe("Copy");
+    expect(label.firstElementChild?.localName).toBe("span");
+    // And the chord lands in `[part="value"]`, whose `& > [part="value"] kbd` rule is a descendant
+    // Selector and so survived the slot either way.
+    const value = copy.querySelector('[part="value"]')!;
+    expect(value.firstElementChild?.localName).toBe("kbd");
+    expect(value.parentElement).toBe(copy);
+    /* The submenu is the one whose disappearance is load-bearing: `submenuOf` walks descendants,
+       but the platform's popover hierarchy is a DOM-ancestor relation, so the submenu must remain
+       inside the row it belongs to. It now hangs directly off it. */
+    const sub = submenuOf(settings)!;
+    expect(sub.parentElement).toBe(settings);
+  });
+
   test("showing moves the caret to the first row", async () => {
     const { rows } = await open();
     expect(document.activeElement).toBe(rows[0]!);
@@ -487,18 +526,67 @@ describe("jx-menu", () => {
 
   test("a menu hidden by its host stays hidden even while the platform has it open", async () => {
     /* `:popover-open` beats the UA's `[hidden] { display: none }`, so a menu given `hidden` while
-       showing kept drawing. The conformance host-display check cannot see this: it is a shallow
-       `"display" in style` on the root, and this menu's display lives in a nested rule. */
-    await open();
+       showing kept drawing. One rule that is strictly more specific and later is the repair. */
+    const { menu } = await open();
+    /* Scoped to THIS element. `documentStyleText()` is the whole page and the normalisation below
+       erases the scope id, so a map built over all of it answers `&[hidden]` with jx-menu-item's
+       rule and stays green with the menu's own deleted. */
+    const scope = `[data-jx="${menu.dataset["jx"]}"]`;
     const rules = new Map<string, string>();
     for (const line of documentStyleText().split("\n")) {
       const match = /^(.*?) \{ (.*) \}$/.exec(line);
-      if (match) {
+      if (match && match[1]!.includes(scope)) {
         rules.set(match[1]!.replaceAll(/\[data-jx="[^"]+"\]/g, "&"), match[2]!);
       }
     }
     expect(rules.get("&:popover-open")).toContain("display: flex");
     expect(rules.get("&[hidden]:popover-open")).toContain("display: none");
+    expect(rules.get("&[hidden]")).toContain("display: none");
+  });
+
+  test("declares display: revert-layer in its base rule, so a closed menu is not laid out", async () => {
+    /* `declaresDisplay` reads the BASE BLOCK alone, so a panel that declares its display only in
+       `:popover-open` has `display: block` written into its own rule — an author value, which
+       beats the UA's `[popover]:not(:popover-open) { display: none }` at any specificity, so the
+       menu is laid out on every page whether it is open or not. `revert` reverts TO that rule
+       rather than beating it. Measured in Chrome 152 on the emitted sheet: closed computes `none`
+       at 0x0 and open computes `flex` at 180x67; the same rule carrying `display: block` measures
+       the CLOSED menu at 180x65. */
+    const { menu } = await open();
+    const scope = `[data-jx="${menu.dataset["jx"]}"]`;
+    const base = documentStyleText()
+      .split("\n")
+      .find((line) => line.startsWith(`${scope} {`))!;
+    expect(base).toContain("display: revert-layer");
+    expect(base.match(/display:/g)).toHaveLength(1);
+    for (const value of ["block", "flex", "grid", "inline", "contents"]) {
+      expect(base, value).not.toContain(`display: ${value}`);
+    }
+  });
+
+  test("puts the rows straight into the panel, with no slot node between", async () => {
+    /* A `<slot>` leaves NO NODE: distribution replaces it with its matches. That matters here more
+       than anywhere else in the kit, because the panel IS the flex column — with a slot in the way
+       the rows were its grandchildren, laid out by a `display: contents` box rather than by
+       `flex-direction: column` and `gap`. Measured in Chrome 152: two rows, each 171x28 inside a
+       180x67 panel. */
+    const { menu, rows } = await open();
+    expect(menu.querySelectorAll("slot").length).toBe(0);
+    expect(menu.querySelector('[part="items-slot"]')).toBeNull();
+    for (const item of rows) {
+      expect(item.parentElement).toBe(menu);
+    }
+    // The separator too: `& hr` is a descendant selector, but the row order the keyboard walks is
+    // The panel's own child order.
+    expect(menu.querySelector("hr")?.parentElement).toBe(menu);
+    expect([...menu.children].map((child) => child.localName)).toEqual([
+      "jx-menu-item",
+      "jx-menu-item",
+      "hr",
+      "jx-menu-item",
+      "jx-menu-item",
+      "jx-menu-item",
+    ]);
   });
 
   test("a mousedown on the invoker a menu was shown from does not light-dismiss it", async () => {

@@ -192,7 +192,10 @@ describe("a definition's root-level event handlers", () => {
       { scope },
     );
     await tick();
-    const rows = [...host.querySelectorAll<HTMLElement>(`${tag} slot > [role="none"]`)];
+    // The slot unwrapped, so the rows are direct children of the host element rather than of a
+    // Surviving `<slot>` — which is what lets a definition address them with `& > …`.
+    expect(host.querySelector("slot")).toBeNull();
+    const rows = [...host.querySelectorAll<HTMLElement>(`${tag} > [role="none"]`)];
     expect(rows.map((row) => row.dataset.id)).toEqual(["a", "b"]);
     expect(rows.map((row) => row.textContent)).toEqual(["A", "B"]);
     handle.dispose();

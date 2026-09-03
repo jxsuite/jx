@@ -292,10 +292,7 @@
           },
           "children": [
             {
-              "tagName": "slot",
-              "attributes": {
-                "part": "body-slot"
-              }
+              "tagName": "slot"
             }
           ]
         },

@@ -1,5 +1,8 @@
 import "./with-dom.ts";
 import { afterEach, beforeAll, describe, expect, test } from "bun:test";
+import type { JxElement } from "@jxsuite/schema/types";
+
+import { documents } from "../src/documents.ts";
 import { registerUi } from "../src/index.ts";
 import { close, showModal } from "../src/behaviors/dialog.ts";
 
@@ -190,6 +193,49 @@ describe("jx-dialog", () => {
     const after = seen.length;
     close(el);
     expect(seen.length).toBe(after);
+  });
+
+  test("its slot leaves no node, and the -slot parts that survive are the $switch cells", async () => {
+    /* Eight `-slot` names in the document and two kinds behind them. `body-slot` is a real
+       `<slot>`: distribution replaces it with its matches, so it names nothing at runtime and the
+       reader's content is a DIRECT child of `[part="body"]`, which is what the padding rule
+       expects. The other five are ordinary elements — three `$switch` containers for the footer's
+       buttons, whose `display: contents` rule still has something to address, and the plain
+       `[part="overlay-slot"]` div that specs/ui.md §7 gives a popover opened from inside a modal
+       dialog. Measured in Chrome 152: the body box is 383x66 and holds the paragraph itself. */
+    const el = await dialog({ headline: "Save?", "secondary-label": "Discard" }, "Are you sure?");
+    expect(el.querySelectorAll("slot").length).toBe(0);
+    expect(part(el, "body-slot")).toBeNull();
+    const body = part(el, "body")!;
+    expect(body.textContent).toBe("Are you sure?");
+    expect(body.childNodes.length).toBe(1);
+    expect(body.firstChild?.nodeType).toBe(3);
+    for (const name of ["secondary-slot", "cancel-slot", "confirm-slot", "overlay-slot"]) {
+      expect(part(el, name), name).not.toBeNull();
+      expect(part(el, name)!.localName, name).toBe("div");
+    }
+    // Each `$switch` cell holds its own button, so `display: contents` is what keeps the footer's
+    // Flex row measuring the buttons rather than the cells.
+    expect(part(el, "secondary-slot")!.firstElementChild?.localName).toBe("jx-button");
+    expect(part(el, "confirm-slot")!.firstElementChild?.localName).toBe("jx-button");
+  });
+
+  test("needs no display opt-out: it declares contents, and the UA hides the inner dialog", async () => {
+    /* The `display: revert` the three popovers carry is not for this one. The host already
+       declares `display: contents` in its base block, so `declaresDisplay` is satisfied and
+       nothing is injected — and the element the UA's `dialog:not([open]) { display: none }` rule
+       hides is the inner `<dialog>`, an ordinary element that never receives an injected display
+       at all. Measured in Chrome 152: the host computes `contents`, and the inner dialog computes
+       `none` at 0x0 closed and `block` at 384x143 open. */
+    const doc = documents["jx-dialog"]!;
+    const style = doc.style as Record<string, unknown>;
+    expect(style["display"]).toBe("contents");
+    expect((style["&[hidden]"] as Record<string, unknown>)["display"]).toBe("none");
+    const root = (doc.children as JxElement[])[0]!;
+    expect(root.tagName).toBe("dialog");
+    expect(JSON.stringify(style)).not.toContain("revert");
+    const el = await dialog({ headline: "Rename" });
+    expect(inner(el).localName).toBe("dialog");
   });
 
   test("close on a host with no inner dialog is inert", () => {

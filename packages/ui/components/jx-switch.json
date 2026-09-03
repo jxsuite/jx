@@ -170,7 +170,7 @@
     "& [part=\"label\"]": {
       "minWidth": "0"
     },
-    "& [part=\"label\"]:has([part=\"label-slot\"]:empty)": {
+    "& [part=\"label\"]:empty": {
       "display": "none"
     },
     "@(forced-colors: active)": {
@@ -237,10 +237,7 @@
           },
           "children": [
             {
-              "tagName": "slot",
-              "attributes": {
-                "part": "label-slot"
-              }
+              "tagName": "slot"
             }
           ]
         }

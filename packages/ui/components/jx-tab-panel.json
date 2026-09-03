@@ -52,10 +52,7 @@
   },
   "children": [
     {
-      "tagName": "slot",
-      "attributes": {
-        "part": "body"
-      }
+      "tagName": "slot"
     }
   ]
 }

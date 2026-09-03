@@ -250,9 +250,8 @@
       "padding": "0 var(--jx-space-5)",
       "fontSize": "var(--jx-text-lg)"
     },
-    "& [part=\"icon\"]": {
-      "display": "inline-flex",
-      "color": "inherit"
+    "& > [part=\"control\"] > [part=\"icon\"]": {
+      "display": "contents"
     },
     "& [part=\"spinner\"]": {
       "display": "inline-flex",
@@ -297,8 +296,7 @@
             {
               "tagName": "slot",
               "attributes": {
-                "name": "icon",
-                "part": "icon-slot"
+                "name": "icon"
               }
             }
           ]
@@ -310,10 +308,7 @@
           },
           "children": [
             {
-              "tagName": "slot",
-              "attributes": {
-                "part": "label-slot"
-              }
+              "tagName": "slot"
             }
           ]
         },

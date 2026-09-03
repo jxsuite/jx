@@ -4,6 +4,7 @@ import { reactive } from "@vue/reactivity";
 
 import {
   defineElement,
+  Jx,
   renderNode as _renderNode,
   buildScope,
   RESERVED_KEYS,
@@ -587,9 +588,10 @@ describe("a reflected property name does not clobber the declared default", () =
 describe("the custom-element display default", () => {
   /**
    * A custom element is `display: inline` by default and a Jx container behaves like a `<div>`, so
-   * the runtime supplies `display: block`. It used to check `this.style.display` — a correct test
-   * only while the author's own `display` went inline. With every declaration in a rule, an inline
-   * default beats the author at any specificity, so the test moved to the definition.
+   * the runtime supplies `display: block`. It goes in the element's OWN RULE, not inline: an inline
+   * declaration is beaten only by `!important`, so a consumer could not override the default
+   * without one, and the default is meant to be the weakest thing in the cascade rather than the
+   * strongest.
    */
   async function mount(style: Record<string, unknown>): Promise<HTMLElement> {
     const tag = uniqueTag();
@@ -602,9 +604,10 @@ describe("the custom-element display default", () => {
     return el;
   }
 
-  test("a component with no display of its own gets the block default", async () => {
+  test("the default is a rule the author can beat, never an inline write", async () => {
     const el = await mount({ color: "red" });
-    expect(el.style.display).toBe("block");
+    expect(el.style.display).toBe("");
+    expect(elementCSS(el)).toBe(`[data-jx="${el.dataset.jx}"] { display: block; color: red }`);
   });
 
   test("a base display is left to the author", async () => {
@@ -615,26 +618,31 @@ describe("the custom-element display default", () => {
     });
   });
 
-  test("a display declared only under a state or a query still suppresses the default", async () => {
-    // An inline `display: block` would beat both of these, so the scan has to be a deep one.
-    const el = await mount({ "@(min-width: 40rem)": { display: "grid" } });
-    expect(el.style.display).toBe("");
+  test("a display declared ONLY under a state or a query no longer suppresses the default", async () => {
+    /*
+     * This inverts a previous contract, deliberately. The scan was a deep one, so a `display` that
+     * exists only inside `&:hover` or a breakpoint read as "the author supplied one" — and the
+     * element was left `inline` at rest and became a block on hover. It laid out wrongly whenever
+     * it was still, which is most of the time. The base block is now the whole test, so both of
+     * these get the default AND keep their conditional declaration.
+     */
+    const queried = await mount({ "@(min-width: 40rem)": { display: "grid" } });
+    expect(elementCSS(queried)).toContain(`[data-jx="${queried.dataset.jx}"] { display: block }`);
+    expect(elementCSS(queried)).toContain("display: grid");
+
     const hovered = await mount({ ":hover": { display: "none" } });
-    expect(hovered.style.display).toBe("");
+    expect(elementCSS(hovered)).toContain(`[data-jx="${hovered.dataset.jx}"] { display: block }`);
+    expect(elementCSS(hovered)).toContain("display: none");
   });
 
-  test("a display inside a keyframe stop is a timeline value, and does NOT suppress the default", async () => {
-    /*
-     * The deep scan above must stop at a `@keyframes` block. Animating `display` is the ordinary
-     * shape of an `allow-discrete` reveal, and counting a stop as the author's own declaration left
-     * the element with no `display` at all — which for a custom element means `inline`. It laid out
-     * wrongly whenever it was still, which is most of the time.
-     */
+  test("a keyframe stop is a timeline value and never speaks for the author", async () => {
+    // Animating `display` is the ordinary shape of an `allow-discrete` reveal. It needs no
+    // Carve-out now: only the base block is read, and a `@keyframes` block is not one.
     const el = await mount({
       animation: "reveal 1s",
       "@keyframes reveal": { from: { display: "none" }, to: { display: "block" } },
     });
-    expect(el.style.display).toBe("block");
+    expect(elementCSS(el)).toContain("display: block");
 
     // …and a real declaration beside the animation still speaks for the author.
     const declared = await mount({
@@ -642,6 +650,33 @@ describe("the custom-element display default", () => {
       display: "flex",
       "@keyframes reveal": { from: { display: "none" }, to: { display: "flex" } },
     });
+    expect(elementCSS(declared)).toContain("animation: reveal 1s; display: flex");
     expect(declared.style.display).toBe("");
+  });
+
+  test("a usage site's own style survives being connected, and wins", async () => {
+    /* R1: the call site's style was applied while the element was detached and then RELEASED by
+       the definition's own `applyStyle` a moment later, so a document could not style an element
+       instance at all. Definition first, call site second. */
+    const tag = uniqueTag();
+    await defineElement({
+      state: {},
+      style: { color: "red", padding: "4px" },
+      tagName: tag,
+    } as never);
+    const host = document.createElement("div");
+    document.body.append(host);
+    await Jx(
+      { children: [{ style: { color: "blue" }, tagName: tag }], tagName: "div" } as never,
+      host,
+    );
+    await new Promise((r) => {
+      setTimeout(r, 0);
+    });
+    const el = host.querySelector(tag) as HTMLElement;
+    const css = elementCSS(el);
+    expect(css).toContain("padding: 4px");
+    expect(css).toContain("color: blue");
+    expect(css).not.toContain("color: red");
   });
 });

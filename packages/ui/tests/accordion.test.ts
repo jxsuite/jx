@@ -266,14 +266,33 @@ describe("jx-accordion-item", () => {
     /* The `<span>` stays in the tree whether or not anything is slotted, so as a flex item of the
        summary's `gap` row it costs `--jx-space-2` of label width on every section that has no
        actions — and `[part="label"]` ellipsises, so it truncates that much early. Measured in
-       Chrome: 4px between the label's right edge and an EMPTY row. The rule is the same `:has`
-       shape `jx-action-button`'s label uses, asserted as text because happy-dom's `:has` matches
-       an occupied row too. */
+       Chrome 152: the label is 841.33px wide beside an empty row and 845.33px with the row gone.
+
+       TWO selectors, because an emptiness question now has two shapes and the section that a
+       consumer actually writes is the SECOND. A `<slot>` is replaced by what it matched, so an
+       item with body content has no `[part="actions-slot"]` node left to ask about and `:has`
+       stops matching — the phantom gap came straight back on every real section. `:empty` is the
+       honest question there. But `distributeSlots` returns before it unwraps anything when the
+       host was given NO children at all, so a bare item keeps its slot and is not `:empty`; that
+       is the case `:has` still answers, and it is the one every test in this file that passes no
+       children is in. Asserted as text as well as measured, because happy-dom's `:has` matches an
+       occupied row too. */
     expect(sheet()).toContain(
-      'S > [part="details"] > [part="summary"] > [part="actions"]:has([part="actions-slot"]:empty) { display: none }',
+      'S > [part="details"] > [part="summary"] > [part="actions"]:empty { display: none }',
     );
-    const el = await item({ label: "Layout" });
-    expect(el.querySelector('[part="actions-slot"]')!.children).toHaveLength(0);
+    /* One branch, not two. The rule carried a `:has([part="actions-slot"]:empty)` half because a
+       slot used to survive distribution and keep `:empty` false. Slots now unwrap whether or not
+       they matched, so an actions row with nothing slotted into it is simply empty. */
+    expect(sheet()).not.toContain("actions-slot");
+    const bare = await item({ label: "Layout" });
+    expect(bare.querySelector("slot")).toBeNull();
+    expect(bare.querySelector('[part="actions"]')!.matches(":empty")).toBe(true);
+
+    const action = document.createElement("button");
+    action.slot = "actions";
+    action.textContent = "Reset";
+    const filled = await item({ label: "Layout" }, [action]);
+    expect(filled.querySelector('[part="actions"]')!.childNodes.length).toBeGreaterThan(0);
   });
 
   test("open is a boolean ATTRIBUTE on the details: removed, never written false", async () => {
@@ -384,17 +403,26 @@ describe("jx-accordion-item", () => {
     expect(summaryOf(bare).hasAttribute("aria-label")).toBe(false);
   });
 
-  test("a slotted heading mark lands inside the summary and stays in the document", async () => {
+  test("a slotted heading mark STANDS WHERE THE SLOT STOOD, inside the summary", async () => {
     /* `[slot="heading"]` is for INERT marks — properties-panel's section dot — and losing the slot
        does not misplace such a mark, it DROPS it: a `<span slot="heading">` appended to an element
-       whose document has no matching slot comes back `isConnected: false`. */
+       whose document has no matching slot comes back `isConnected: false`.
+
+       This used to assert that the mark landed INSIDE `[part="heading-slot"]`. That node is gone:
+       a slot is replaced by what it matched, so the mark is the summary's own child at the slot's
+       own position — which is the position that matters, because it is what puts the mark after
+       the label and before the actions row rather than anywhere in the subtree. Confirmed in
+       Chrome 152: the summary's children read marker, label, dot, actions. */
     const dot = document.createElement("span");
     dot.slot = "heading";
     dot.className = "jx-dot";
     const el = await item({ label: "Typography" }, [dot]);
     expect(dot.isConnected).toBe(true);
-    expect(summaryOf(el).contains(dot)).toBe(true);
-    expect(el.querySelector('[part="heading-slot"]')!.contains(dot)).toBe(true);
+    expect(dot.parentElement).toBe(summaryOf(el));
+    expect(
+      [...summaryOf(el).children].map((child) => child.getAttribute("part") ?? child.className),
+    ).toEqual(["marker", "label", "jx-dot", "actions"]);
+    expect(el.querySelector('[part="heading-slot"]')).toBeNull();
     // And it is not swallowed into the body, which is where a missing slot would NOT put it.
     expect(el.querySelector('[part="body"]')!.contains(dot)).toBe(false);
   });

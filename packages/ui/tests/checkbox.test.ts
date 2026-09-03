@@ -48,6 +48,9 @@ async function box(attrs: Record<string, string> = {}, markup = ""): Promise<JxC
 
 const control = (el: Element) => el.querySelector<HTMLInputElement>('[part="input"]')!;
 
+/** The whole collapse rule, as the sheet spells it under the test scope. */
+const COLLAPSE = 'S [part="label"]:empty { display: none }';
+
 describe("jx-checkbox", () => {
   test("is a real native checkbox inside the label that is the click target", async () => {
     const el = await box({}, "Include in the build");
@@ -58,7 +61,11 @@ describe("jx-checkbox", () => {
     const wrapper = input.parentElement!;
     expect(wrapper.tagName).toBe("LABEL");
     expect(wrapper.getAttribute("part")).toBe("control");
-    expect(el.querySelector('[part="label-slot"]')?.textContent).toBe("Include in the build");
+    /* The slotted text stands in the SLOT'S OWN PLACE: `distributeSlots` calls
+       `slot.replaceWith(...matches)`, so `[part="label"]` holds the consumer's nodes directly and
+       `[part="label-slot"]` names nothing once anything has been slotted. */
+    expect(el.querySelector('[part="label"]')?.textContent).toBe("Include in the build");
+    expect(el.querySelector('[part="label-slot"]')).toBeNull();
   });
 
   test("checked is a property the host writes, before and after the reader touches it", async () => {
@@ -179,15 +186,15 @@ describe("jx-checkbox", () => {
     await tick();
     // Removed, not emptied: an empty aria-label would name the box nothing and hide its own text.
     expect(control(el).hasAttribute("aria-label")).toBe(false);
-    expect(el.querySelector('[part="label-slot"]')?.textContent).toBe("Reflects");
+    expect(el.querySelector('[part="label"]')?.textContent).toBe("Reflects");
   });
 
   test("labelledby and describedby forward to the control, and are absent when unset", async () => {
     const el = await box({ describedby: "row-help", labelledby: "row-label" });
     expect(control(el).getAttribute("aria-labelledby")).toBe("row-label");
     expect(control(el).getAttribute("aria-describedby")).toBe("row-help");
-    // A bare box slots nothing, so the label's slot is empty and the CSS collapses it.
-    expect(el.querySelector('[part="label-slot"]')?.childNodes.length).toBe(0);
+    // A bare box slots nothing, so its label has nothing to show and the CSS collapses it.
+    expect(el.querySelector('[part="label"]')?.textContent).toBe("");
 
     /* The `|| null` half, which the write-and-read-back above cannot see. Dropped, every box that
        names nothing ships a live empty `aria-labelledby` — a reference to no element at all, which
@@ -234,11 +241,13 @@ describe("jx-checkbox", () => {
 
   test("slotted markup survives into the label slot rather than being stringified", async () => {
     const el = await box({}, "Register <code>&lt;my-element&gt;</code>");
-    const slot = el.querySelector('[part="label-slot"]')!;
-    const code = slot.querySelector("code")!;
+    const label = el.querySelector<HTMLElement>('[part="label"]')!;
+    const code = label.querySelector("code")!;
     expect(code).not.toBeNull();
     expect(code.textContent).toBe("<my-element>");
-    expect(slot.textContent).toBe("Register <my-element>");
+    expect(label.textContent).toBe("Register <my-element>");
+    // The `<code>` is a CHILD of the label, not a grandchild behind a slot that no longer exists.
+    expect(code.parentElement).toBe(label);
   });
 
   test("disabled reaches the control and takes it out of the tab order", async () => {
@@ -289,7 +298,7 @@ describe("jx-checkbox", () => {
     expect(state["indeterminate"]?.description).toMatch(/reset/i);
   });
 
-  test("the box is the platform's own, and the empty label collapses on the slot", () => {
+  test("the box is the platform's own, and an empty label collapses", () => {
     const rules = buildStyleRules(checkboxDoc.style as JxStyle, { scope: "S" }).map(
       (rule) => rule.text,
     );
@@ -298,8 +307,35 @@ describe("jx-checkbox", () => {
     const input = rules.find((text) => text.startsWith('S [part="input"] '))!;
     expect(input).toContain("accent-color: var(--jx-accent-solid)");
     expect(rules.join("\n")).not.toContain("appearance");
-    /* `:empty` on the span is dead code: `distributeSlots` leaves the `<slot>` element in the tree,
-       so the span always has a child. The slot is what is empty. */
-    expect(rules).toContain('S [part="label"]:has([part="label-slot"]:empty) { display: none }');
+    expect(rules).toContain(COLLAPSE);
+  });
+
+  test("an empty label collapses, because a slot leaves no node to fill it", async () => {
+    /* Simplified, not patched. The rule used to be `:has([part="label-slot"]:empty)` because the
+       slot survived distribution and made `:empty` false on the span — so `:empty` was dead code
+       and the `:has()` form was the working one. Slots now unwrap whether or not they matched
+       anything, so a label span with nothing slotted into it is simply empty, and `:empty` is both
+       correct and the only rule needed. */
+    const rules = buildStyleRules(checkboxDoc.style as JxStyle, { scope: "S" }).map((r) => r.text);
+    expect(rules).toContain(COLLAPSE);
+    expect(rules.join("\n")).not.toContain("label-slot");
+
+    // Nothing slotted at all: the slot unwrapped to its absent fallback and left the span empty.
+    const bare = await box({ label: "Select every row" });
+    expect(bare.querySelector("slot")).toBeNull();
+    expect(bare.querySelector('[part="label"]')!.matches(":empty")).toBe(true);
+
+    // Slotted somewhere else: the unnamed slot matched nothing, same outcome.
+    const elsewhere = await box({ label: "Select every row" }, '<span slot="nowhere">x</span>');
+    expect(elsewhere.querySelector('[part="label"]')!.matches(":empty")).toBe(true);
+
+    /* And a box that was given text keeps its label box. Asserted through the content rather than
+       through `:empty`, because happy-dom counts ELEMENT children only and calls a label holding
+       one text node empty where CSS does not. Measured in Chrome 152 instead: this box computes
+       `display: block` on the label at 127.26px wide, against the bare box's 16px. */
+    const labelled = await box({}, "Include in the build");
+    const label = labelled.querySelector('[part="label"]')!;
+    expect(label.textContent).toBe("Include in the build");
+    expect(label.childNodes.length).toBeGreaterThan(0);
   });
 });

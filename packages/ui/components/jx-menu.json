@@ -78,6 +78,10 @@
     "$ref": "#/state/onPointerOver"
   },
   "style": {
+    "display": "revert-layer",
+    "&[hidden]": {
+      "display": "none"
+    },
     "position": "fixed",
     "insetInlineStart": "${state.x}px",
     "insetBlockStart": "${state.y}px",
@@ -116,10 +120,7 @@
   },
   "children": [
     {
-      "tagName": "slot",
-      "attributes": {
-        "part": "items"
-      }
+      "tagName": "slot"
     }
   ]
 }

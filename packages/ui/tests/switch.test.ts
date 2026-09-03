@@ -42,6 +42,8 @@ async function toggle(attrs: Record<string, string> = {}, text = "Wrap"): Promis
 const input = (el: Element) => el.querySelector<HTMLInputElement>('[part="input"]')!;
 const control = (el: Element) => el.querySelector<HTMLLabelElement>('[part="control"]')!;
 
+/** The selector half that answers "the slot is still here, holding nothing". */
+
 /** Flip the control the way a reader does, so the checkedness dirty flag is set. */
 function flip(el: Element) {
   const box = input(el);
@@ -92,7 +94,11 @@ describe("jx-switch", () => {
     expect(input(el).getAttribute("role")).toBe("switch");
     expect(control(el).tagName).toBe("LABEL");
     expect(control(el).contains(input(el))).toBe(true);
-    expect(el.querySelector('[part="label-slot"]')).not.toBeNull();
+    /* The slotted span stands in the SLOT'S place — `distributeSlots` calls
+       `slot.replaceWith(...matches)` — so `[part="label"]` holds it directly and the slot itself
+       names no node once anything has been slotted at all. */
+    expect(el.querySelector('[part="label"]')?.textContent).toBe("Wrap");
+    expect(el.querySelector('[part="label-slot"]')).toBeNull();
   });
 
   test("the on/off state is the platform's own checkedness, and no aria-checked is ever written", async () => {
@@ -243,6 +249,32 @@ describe("jx-switch", () => {
     const slotted = el.querySelector('[part="label"] span');
     expect(slotted).toBe(span);
     expect(slotted?.textContent).toBe("<my-element>");
+  });
+
+  test("an empty label collapses, because a slot leaves no node to fill it", async () => {
+    /* Simplified. The rule was `:has([part="label-slot"]:empty)` ALONE, because the slot survived
+       distribution and made `:empty` on the span permanently false. Slots now unwrap whether or
+       not they matched anything — including when the host has no light children at all, which is
+       exactly the unlabelled switch this rule exists for — so `:empty` is correct and sufficient.
+       Each of the three cases below cost the row's 4px gap for a zero-width label before. */
+    const bare = await toggle({ label: "Unlabelled switch" }, "");
+    expect(bare.querySelector("slot")).toBeNull();
+    expect(bare.querySelector('[part="label"]')!.matches(":empty")).toBe(true);
+
+    // Light children that match no slot: the slot unwrapped to its absent fallback.
+    const elsewhere = document.createElement("jx-switch") as JxSwitch;
+    elsewhere.innerHTML = '<span slot="nowhere">x</span>';
+    document.body.append(elsewhere);
+    await tick();
+    expect(elsewhere.querySelector('[part="label"]')!.matches(":empty")).toBe(true);
+
+    // A labelled switch keeps its label box and its gap.
+    const labelled = await toggle();
+    expect(labelled.querySelector('[part="label"]')!.childNodes.length).toBeGreaterThan(0);
+
+    // And the sheet spells the one rule, so deleting it is a red test here.
+    expect(rules(documentStyleText()).get('& [part="label"]:empty')).toBe("display: none");
+    expect(documentStyleText()).not.toContain("label-slot");
   });
 
   test("size scales the track and the thumb, and re-derives the travel for each size", async () => {

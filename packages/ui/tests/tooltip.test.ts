@@ -126,10 +126,44 @@ describe("the document", () => {
 });
 
 describe("the emitted sheet", () => {
-  test("keeps display out of the base rule and puts it in :popover-open", async () => {
+  test("declares display: revert-layer in the base rule and the real one in :popover-open", async () => {
     const { tip } = await scene();
-    expect(baseRule(tip)).not.toContain("display:");
+    /* The base block has to declare a display, because `declaresDisplay` reads it and nothing
+       else: leave it out and the interpreter writes `display: block` into the tip's own rule,
+       which is an author value and therefore beats the UA's
+       `[popover]:not(:popover-open) { display: none }` at any specificity — a tip laid out over
+       the page at all times. `revert` is the one value that reverts TO that rule instead of
+       beating it. Measured in Chrome 152 on the emitted sheet: closed computes `none` at 0x0,
+       open computes `block` at 81x21; the same rule carrying `display: block` measures the
+       CLOSED tip at 81x21. */
+    expect(baseRule(tip)).toContain("display: revert-layer");
+    expect(baseRule(tip).match(/display:/g)).toHaveLength(1);
+    for (const value of ["block", "flex", "grid", "inline", "contents"]) {
+      expect(baseRule(tip), value).not.toContain(`display: ${value}`);
+    }
     expect(ruleFor(tip, ":popover-open")).toContain("display: block");
+    /* A base rule that declares a display owes a reader an answer for `[hidden]`, and the kit
+       contract asks every element that declares one for it. The selector has to be matched
+       exactly: `&[hidden]:popover-open` carries the same substring, so a `find` on it is green
+       whether or not the rest-state rule exists at all. */
+    const scope = `[data-jx="${tip.dataset["jx"]}"]`;
+    expect(rules(tip).find((line) => line.startsWith(`${scope}[hidden] {`))).toContain(
+      "display: none",
+    );
+  });
+
+  test("puts nothing between the tip and the text it was given", async () => {
+    const { tip } = await scene();
+    /* A `<slot>` leaves NO NODE, so the `& > [part="content"] { display: contents }` rule that
+       used to flatten it away has nothing left to address and is gone. Distribution now does what
+       that declaration was written to undo: the tip's own text is its own child, and the arrow —
+       which is `position: absolute` against the tip — is its only element child. */
+    expect(tip.querySelectorAll("slot").length).toBe(0);
+    expect(tip.querySelector('[part="content"]')).toBeNull();
+    expect(tip.firstChild?.nodeType).toBe(3);
+    expect(tip.textContent?.trim()).toBe("Save the file");
+    expect([...tip.children].map((child) => child.getAttribute("part"))).toEqual(["arrow"]);
+    expect(rules(tip).some((rule) => rule.includes('[part="content"]'))).toBe(false);
   });
 
   test("hides a [hidden] tip that is showing", async () => {

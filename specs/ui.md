@@ -2,7 +2,7 @@
 
 ## Interface Elements Authored as Jx Documents
 
-**Version:** 0.1.13-draft\
+**Version:** 0.1.14-draft\
 **Status:** Partial\
 **Updated:** 2026-09-03\
 **License:** MIT\
@@ -50,7 +50,8 @@ Every element document declares, and its catalogue entry in §5 records:
 
 - **`tagName`** with a hyphen, and **typed `state` entries** for its props: `type`, `default`, `attribute`, `description` (spec.md §5.2). The interpreter installs a property accessor per entry and reads an observed attribute into state when the element connects, before `$props` merge, so a property a parent set wins (spec.md §16.2, §16.5).
 - **`part`** on every internal node. In light DOM a consumer addresses `jx-x > [part="control"]`; should an element ever opt into a shadow root the same names become `::part()` with no consumer change.
-- **Slots** by the names the catalogue lists: `icon`, `value`, `description`, `submenu`, `prefix`, `suffix`, `end`. The interpreter's light-DOM slot distribution is real for named slots (spec.md §16.6).
+- **Slots** by the names the catalogue lists: `icon`, `value`, `description`, `submenu`, `prefix`, `suffix`, `end`. The interpreter's light-DOM slot distribution is real for named slots, and a `<slot>` UNWRAPS: its matches stand in its place and it leaves no node (spec.md §16.6). So a `part` on a `<slot>` names nothing, and an element asks whether a slot received anything by asking `:empty` of the part CONTAINING it.
+- **A `display` in the base block, or the default.** An element whose base block declares no `display` is given `display: block` in its own rule (spec.md §9.6). An element whose visibility the platform owns must opt out with `"display": "revert-layer"` in that block — a popover, a `hint` tooltip, a menu. It rolls the cascade back one layer instead of beating anything, so a closed panel still computes `none` and an open one still takes its own `:popover-open` value. **Plain `revert` is not good enough, and the difference is invisible on a shipped page.** Both roll back past the author origin to the UA rule there. On the Studio canvas the runtime renames `popover` to `data-jx-popover`, so the UA rule matches nothing and Studio re-supplies it inside `@layer jx-canvas-ua`: `revert` rolls back to the user-agent origin, finds no popover attribute and nothing hiding the element, and the closed panel is drawn over the artboard — measured in Chrome 152 at `inline`, 35x17. `revert-layer` lands on Studio's own rule and measures `none` in both places. Any other value is the `base-display` defect `@jxsuite/schema/overlays` reports.
 - **ARIA forwarding.** A control observes `aria-label`, `aria-labelledby` and `aria-describedby` and forwards them to its inner native control, which is what names it until form association exists.
 - **Events.** Native events bubble from inner native controls. A custom event is declared with `emits` on the function that dispatches it, and is dispatched with `bubbles: true, composed: true`.
 - **Tokens.** An element's style references `--jx-*` tokens and never a raw colour. A conformance test refuses a hex in an element's style.
@@ -58,7 +59,7 @@ Every element document declares, and its catalogue entry in §5 records:
 
 ### 3.3 Behaviours
 
-A behaviour is a pure `(state, event)` function exported from a module under `packages/ui/src/behaviors/`, registered through `preloadModule` under the `$src` specifier the documents use (embedding.md §6). The kit ships roving focus, typeahead, menu navigation, the anchor-position fallback measurement, label scrubbing, split dragging, overflow measurement, tree drag and drop, and colour math. Each is named in the catalogue entry of the element that uses it.
+A behaviour is a pure `(state, event)` function exported from a module under `packages/ui/src/behaviors/` — except `onMount`, which receives `(state, host)`, the element itself being what a sidecar most often needs (spec.md §16.4), registered through `preloadModule` under the `$src` specifier the documents use (embedding.md §6). The kit ships roving focus, typeahead, menu navigation, the anchor-position fallback measurement, label scrubbing, split dragging, overflow measurement, tree drag and drop, and colour math. Each is named in the catalogue entry of the element that uses it.
 
 ### 3.4 Composition from a host
 
@@ -280,6 +281,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.1.14-draft** (2026-09-03) — slots leave no node, and an overlay opts out of the display default with display revert (3.2).
 - **0.1.13-draft** (2026-09-03) — jx-tabs, jx-tab, jx-tab-panel, jx-accordion-item and jx-action-group ship (5.4); jx-accordion becomes a recipe.
 - **0.1.12-draft** (2026-09-02) — the loading button's refusal is stopPropagation as well as preventDefault; the spinner and popover override tokens join the semantic list.
 - **0.1.11-draft** (2026-09-02) — jx-popover, jx-tooltip and jx-spinner ship (5.2); the anchor prop is dropped with its reason; SC 1.4.13 joins the WCAG subset.
@@ -297,4 +299,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx UI Kit Specification v0.1.13-draft_
+_Jx UI Kit Specification v0.1.14-draft_

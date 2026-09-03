@@ -161,14 +161,14 @@ function rules(el?: HTMLElement): Map<string, string> {
 const carets = (rows: TabEl[]) => rows.map((row) => row.getAttribute("tabindex"));
 
 /**
- * What the `sync` computed last wrote, read where it lives: the internal `<slot part="tabs">`.
+ * What the `sync` computed last wrote, read where it lives: the HOST's own `data-selection`.
  *
- * It is on the slot rather than the host on purpose — the host already publishes `selected`, and a
- * second host attribute saying the same thing is public surface a consumer can read and be misled
- * by. Reading it here is how the test proves the effect ran at all.
+ * It rode the internal `<slot part="tabs">` until slot distribution stopped leaving a node. The
+ * slot is now REPLACED by the tabs it matched, so the binding's element was detached the moment the
+ * strip had a tab — the effect went on firing at an orphan, which nothing in the document can see
+ * and no test can read. Reading it on the host is how the test proves the effect ran at all.
  */
-const mirror = (tabs: TabsEl) =>
-  tabs.querySelector<HTMLElement>('slot[part="tabs"]')!.dataset["selection"];
+const mirror = (tabs: TabsEl) => tabs.dataset["selection"];
 
 /** Put the keyboard where a Tab press would: on the one tab holding the caret. */
 function enter(rows: TabEl[]): TabEl {
@@ -189,28 +189,36 @@ afterEach(() => {
 });
 
 describe("jx-tabs", () => {
-  test("the host IS the tablist, and the slot between it and its tabs declares no display", async () => {
+  test("the host IS the tablist, and the tablist owns its tabs DIRECTLY", async () => {
+    /* This asked whether the `<slot>` between the strip and its tabs declared a display, because a
+       generic box between a container role and the elements it owns is the trap this family is
+       most likely to fall into. There is no node to ask about any more: a slot is REPLACED by the
+       children it matched, so the question is answerable outright — the tabs are the tablist's own
+       children, in the accessibility tree and in the selector tree, and the flex row is the
+       HOST's. */
     const { tabs } = await render(strip());
     expect(tabs.getAttribute("role")).toBe("tablist");
     expect(tabs.getAttribute("aria-label")).toBe("Inspector sections");
     expect(tabs.getAttribute("aria-orientation")).toBe("horizontal");
     expect(tabs.getAttribute("tabindex")).toBe("-1");
 
-    // A generic box between a container role and its owned elements is the trap: the tabs must be
-    // The tablist's own children in the accessibility tree, so the flex row is the HOST's.
-    const slot = tabs.querySelector('slot[part="tabs"]');
-    expect(slot).not.toBeNull();
-    expect(slot!.parentElement).toBe(tabs);
-    expect(tabsOf(tabs).every((row) => row.parentElement === slot)).toBe(true);
+    const rows = tabsOf(tabs);
+    expect(rows).toHaveLength(3);
+    expect(rows.every((row) => row.parentElement === tabs)).toBe(true);
+    // No node stands between them: the strip's own children ARE the three tabs.
+    expect([...tabs.children].map((child) => child.localName)).toEqual([
+      "jx-tab",
+      "jx-tab",
+      "jx-tab",
+    ]);
+    // The definition still authors one, and it still declares nothing of its own: a `display` on
+    // It would have been the box, and a document that grows a second internal node must not
+    // Quietly become one either.
     const doc = documents["jx-tabs"]!;
     const slotDef = (doc.children as JxElement[])[0]!;
     expect(slotDef.tagName).toBe("slot");
     expect(slotDef.style).toBeUndefined();
-    for (const [selector, body] of rules(tabs)) {
-      if (selector.includes('[part="tabs"]')) {
-        expect(`${selector} { ${body} }`).not.toContain("display");
-      }
-    }
+    expect(doc.children).toHaveLength(1);
     expect(rules(tabs).get("&")).toContain("display: flex");
   });
 
@@ -472,7 +480,9 @@ describe("jx-tabs", () => {
     const late = document.createElement("jx-tab");
     late.setAttribute("value", "logic");
     late.setAttribute("label", "Logic");
-    tabs.querySelector('slot[part="tabs"]')!.append(late);
+    // Appended to the STRIP: a distributed tab is the strip's own child, so that is where a host
+    // Adding one puts it, and it is what the observer watches.
+    tabs.append(late);
     await flush();
     const now = tabsOf(tabs) as TabEl[];
     expect(now).toHaveLength(2);
@@ -509,21 +519,31 @@ describe("jx-tabs", () => {
     const { tabs, rows } = await render(strip({ orientation: "vertical" }));
     const own = rules(rows[0]!);
     // The tab draws its own mark on the block edge and CANNOT see the strip's orientation from its
-    // Own sheet, so the strip is what corrects it — the descendant form, which crosses the emulated
-    // Slot, and at a specificity that beats the tab's own rule.
+    // Own sheet, so the strip is what corrects it, at a specificity that beats the tab's own rule.
     expect(own.get("&")).toContain("border-block-end: 2px solid transparent");
     expect(own.get('&[aria-selected="true"]')).toContain("border-block-end-color");
 
     const strip_ = rules(tabs);
     expect(strip_.get('&[aria-orientation="vertical"]')).toContain("flex-direction: column");
     expect(strip_.get('&[aria-orientation="vertical"]')).toContain("border-inline-end: 1px solid");
-    expect(strip_.get('&[aria-orientation="vertical"] jx-tab')).toContain(
+    /* A DIRECT-CHILD form, and that is the whole of what a slot leaving no node bought here. It
+       was a descendant selector because it had to cross the emulated `<slot>`, which meant a
+       vertical strip also turned the marks of a HORIZONTAL strip nested inside it — the same
+       defect `jx-action-group`'s seam had, and measured the same way in Chrome 152: with the loose
+       form the nested strip's selected tab drew a 2px `rgb(37, 99, 235)` INLINE-end mark and no
+       block-end mark at all, and with this form it keeps its own block-end one. */
+    expect(strip_.get('&[aria-orientation="vertical"] > jx-tab')).toContain(
       "border-inline-end: 2px solid transparent",
     );
-    expect(strip_.get('&[aria-orientation="vertical"] jx-tab')).toContain("border-block-end: 0");
-    expect(strip_.get('&[aria-orientation="vertical"] jx-tab[aria-selected="true"]')).toContain(
+    expect(strip_.get('&[aria-orientation="vertical"] > jx-tab')).toContain("border-block-end: 0");
+    expect(strip_.get('&[aria-orientation="vertical"] > jx-tab[aria-selected="true"]')).toContain(
       "border-inline-end-color: var(--jx-accent-solid)",
     );
+    for (const selector of strip_.keys()) {
+      if (selector.includes("jx-tab")) {
+        expect(selector, selector).toContain("> jx-tab");
+      }
+    }
   });
 
   test("focusTab and syncTabs on an empty strip are no-ops", async () => {

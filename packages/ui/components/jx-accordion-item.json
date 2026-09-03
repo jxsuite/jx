@@ -175,11 +175,11 @@
       "alignItems": "center",
       "gap": "var(--jx-space-1)"
     },
-    "& > [part=\"details\"] > [part=\"summary\"] > [part=\"actions\"]:has([part=\"actions-slot\"]:empty)": {
-      "display": "none"
-    },
     "& > [part=\"details\"] > [part=\"body\"]": {
       "padding": "var(--jx-space-2)"
+    },
+    "& > [part=\"details\"] > [part=\"summary\"] > [part=\"actions\"]:empty": {
+      "display": "none"
     }
   },
   "children": [
@@ -242,8 +242,7 @@
             {
               "tagName": "slot",
               "attributes": {
-                "name": "heading",
-                "part": "heading-slot"
+                "name": "heading"
               }
             },
             {
@@ -258,8 +257,7 @@
                 {
                   "tagName": "slot",
                   "attributes": {
-                    "name": "actions",
-                    "part": "actions-slot"
+                    "name": "actions"
                   }
                 }
               ]
@@ -273,10 +271,7 @@
           },
           "children": [
             {
-              "tagName": "slot",
-              "attributes": {
-                "part": "body-slot"
-              }
+              "tagName": "slot"
             }
           ]
         }

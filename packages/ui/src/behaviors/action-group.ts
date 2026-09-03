@@ -49,10 +49,10 @@ function ownsNode(group: HTMLElement, node: EventTarget | null): boolean {
 /**
  * The action buttons of one group, in order, excluding those of any group nested inside it.
  *
- * Children sit inside the emulated `<slot>` and may sit inside wrappers a surface adds, so this
- * walks descendants and keeps the ones whose nearest group is this one. THE SEAM IS NARROWER: the
- * segmented rules in `jx-action-group.json` reach the slot's own children only, so a button a
- * surface has wrapped is roved but not joined, and a nested group's buttons are neither.
+ * A distributed child is a DIRECT child of the group — a `<slot>` leaves no node — but a surface
+ * may still wrap one, so this walks descendants and keeps the ones whose nearest group is this one.
+ * THE SEAM IS NARROWER: the segmented rules in `jx-action-group.json` are direct-child rules, so a
+ * button a surface has wrapped is roved but not joined, and a nested group's buttons are neither.
  *
  * @param group The `jx-action-group` element.
  * @returns Its own action buttons, in document order.

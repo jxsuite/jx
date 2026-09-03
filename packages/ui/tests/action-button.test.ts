@@ -514,43 +514,67 @@ describe("jx-action-button", () => {
   });
 
   test("an icon-only button generates no label box and no badge box, whitespace or not", async () => {
-    /* No `:empty` rule can decide this. `distributeSlots` copies EVERY child node into the emulated
-       `<slot>`, whitespace included, so the same button written across two lines has a "\n  " text
-       node inside `[part="label-slot"]` and `:empty` stops matching — while `[part="badge-slot"]`,
-       the `$switch` host, is in the tree unconditionally and was never covered by such a rule at
-       all. Both are `display: contents` instead: they generate no box, so the control's
+    /* No `:empty` rule can decide this, and neither can a `:has(:empty)` one. The same button
+       written across two lines slots a "\n  " text node, which stands in the slot's own place
+       inside `[part="label"]` — so the label is not `:empty`, and every emptiness selector there
+       is stops matching. `[part="badge-slot"]`, the `$switch` host,
+       is in the tree unconditionally and was never covered by such a rule at all. `display:
+       contents` is what decides it instead: those wrappers generate no box, so the control's
        `gap: var(--jx-space-2)` counts only what a consumer actually slotted, and a whitespace-only
-       slot contributes nothing because flex layout does not render a whitespace-only text run.
-       Measured in Chrome 152 on an icon-only button against `--jx-control-h: 24px`: 29.60px with
-       the old `:has(:empty)` rule, 33.60px when authored across two lines, 25.60px now for both.
-       happy-dom computes `display` from the same emitted sheet, which is what this asserts — it
-       cannot lay the button out, so the widths above are the browser's word and not this test's. */
+       run contributes nothing because flex layout does not render one. Measured in Chrome 152
+       against `--jx-control-h: 24px`: 25.33px for the icon-only button on one line AND for the
+       same button written across two, against 52.31px once a real label is slotted. happy-dom
+       computes `display` from the same emitted sheet, which is what this asserts — it cannot lay
+       the button out, so the widths above are the browser's word and not this test's. */
     const el = await action({ icon: "plus", label: "Add" });
     const label = el.querySelector('[part="label"]')!;
-    const slot = el.querySelector('[part="label-slot"]')!;
     expect(getComputedStyle(label).display).toBe("contents");
-    expect(getComputedStyle(slot).display).toBe("contents");
+    // The slot itself leaves no node, so there is nothing between the label and what was slotted.
+    expect(el.querySelector("slot")).toBeNull();
     expect(getComputedStyle(el.querySelector('[part="badge-slot"]')!).display).toBe("contents");
-    // The two-line spelling, which is the one a hand-written page produces.
-    slot.append(document.createTextNode("\n  "));
+    // The two-line spelling, which is the one a hand-written page produces: the whitespace is a
+    // Slotted child, so it REPLACES the slot rather than sitting inside it.
+    const spaced = document.createElement("jx-action-button") as JxActionButton;
+    spaced.setAttribute("icon", "plus");
+    spaced.setAttribute("label", "Add");
+    spaced.append(document.createTextNode("\n  "));
+    document.body.append(spaced);
     await tick();
-    expect(getComputedStyle(label).display).toBe("contents");
-    expect(sheet().join("\n")).not.toContain('[part="label"]:empty');
+    const spacedLabel = spaced.querySelector('[part="label"]')!;
+    expect(spacedLabel.querySelector("slot")).toBeNull();
+    expect(spacedLabel.textContent).toBe("\n  ");
+    expect(getComputedStyle(spacedLabel).display).toBe("contents");
+    // And the emptiness selectors that CANNOT decide it are confined to `stacked`, which is the
+    // One shape that keeps a box at all.
+    for (const rule of sheet()) {
+      if (rule.includes(":empty")) {
+        expect(rule, rule).toContain("[data-stacked]");
+      }
+    }
   });
 
   test("stacked is the one shape that keeps a label BOX, because it ellipses", () => {
     /* A rail button puts the label under the glyph and clips it, which needs a box with
        `overflow: hidden` — so `display: contents` is overridden there, and the empty case comes
        back (rail.json's Settings button is stacked with no slotted label). Asserted as rule text:
-       the collapse is a `:has(:empty)` match and happy-dom answers that selector the same way with
-       or without a text node in the slot, so only a browser can judge it — Chrome 152 gives the
-       stacked Settings button a 25.60px-tall control with the label collapsed, 27.60px without. */
+       the collapse is a selector match happy-dom answers the same way with or without a text node
+       in the slot, so only a browser can judge it.
+
+       TWO selectors, because "did the consumer slot a label" now has two shapes and BOTH are
+       reachable. `distributeSlots` returns before it unwraps anything when the host was given no
+       children at all, so a rail button keeps its `[part="label-slot"]` node and only `:has` sees
+       it. Every other route — a slotted label a host later clears, or one that only ever matched a
+       named slot — leaves no slot node behind at all, and only `:empty` sees that. Measured in
+       Chrome 152 on the stacked Settings button: 25.33px tall with no children (the `:has`
+       branch), 41.33px with "Settings" slotted, and back to 25.33px the moment that text is
+       removed (the `:empty` branch), where a `:has`-only rule left it at 41.33px with an empty
+       label box. */
     const rules = sheet();
     expect(rules).toContain(
       'S[data-stacked] > [part="control"] > [part="label"] { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }',
     );
     expect(rules).toContain(
-      'S[data-stacked] > [part="control"] > [part="label"]:has([part="label-slot"]:empty) { display: none }',
+      'S[data-stacked] > [part="control"] > [part="label"]:empty, S[data-stacked] > [part="control"] > [part="label"]:has([part="label-slot"]:empty) { display: none }',
     );
   });
 

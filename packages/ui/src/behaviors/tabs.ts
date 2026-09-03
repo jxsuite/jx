@@ -13,7 +13,7 @@
  * `syncTabs` is the single writer of each child's `selected` and `tabIndex`. It is reached three
  * ways and they are all the same call: once from `onTabsMount`, because `defineElement` runs
  * `applyAttributes` BEFORE `distributeSlots` and no tab exists when the root's bindings first
- * evaluate; again from the `sync` computed the slot reads through `data-selection`, which is what
+ * evaluate; again from the `sync` computed the HOST reads through `data-selection`, which is what
  * makes a HOST write of `.selected` re-sync with no method call; and again from the observer
  * `onTabsMount` installs, because the tab SET moves too. Closing a tab is the whole reason
  * `closable` exists, and a strip that does not answer it is left with no `tabindex="0"` at all —
@@ -96,9 +96,11 @@ function ownsNode(host: HTMLElement, node: EventTarget | null): boolean {
 }
 
 /**
- * The tabs of one tablist, in order, excluding the tabs of any tablist nested inside it. Tabs sit
- * inside the host's emulated `<slot>`, so this walks descendants and keeps the ones whose nearest
- * tablist is this one.
+ * The tabs of one tablist, in order, excluding the tabs of any tablist nested inside it.
+ *
+ * The strip's own tabs are its direct children — a `<slot>` leaves no node, so a distributed tab
+ * stands where the slot stood — but a surface may still wrap one, so this walks descendants and
+ * keeps the ones whose nearest tablist is this one. That is also what excludes a nested strip's.
  *
  * @param host The `jx-tabs` element.
  * @returns Its own tabs, in document order.
@@ -159,13 +161,16 @@ export function syncTabs(host: HTMLElement): void {
 /**
  * The `sync` computed's body: read the selection, and put it on the tabs.
  *
- * The internal `<slot part="tabs">` reads it as `data-selection`, so it is an effect of `selected`
- * and re-runs whenever anything writes that — a click, a key, or a host assigning `el.selected`
- * from the outside. It rides an INTERNAL part rather than the host on purpose: a fifth host
- * attribute mirroring `selected` would be public surface a consumer could read, write and be misled
- * by, for a value the element already publishes as `selected`. Before mount the element does not
- * yet know itself, and there are no tabs to write to either; the value still comes back, so the
- * attribute is right from the first paint.
+ * The HOST reads it as `data-selection`, so it is an effect of `selected` and re-runs whenever
+ * anything writes that — a click, a key, or a host assigning `el.selected` from the outside.
+ *
+ * It rode the internal `<slot part="tabs">` until slot distribution stopped leaving a node: the
+ * slot is now REPLACED by the tabs it matched, so the binding's element was detached the moment the
+ * strip had any tabs at all. The effect went on firing at an orphan, which is a mechanism nothing
+ * in the document can see and no test can read. `data-orientation` and `data-compact` on
+ * `jx-action-group` are the same shape — a `data-` mirror of state the element already publishes —
+ * and this one is that. Before mount the element does not yet know itself, and there are no tabs to
+ * write to either; the value still comes back, so the attribute is right from the first paint.
  *
  * It takes the SCOPE rather than the selected value the plan spelled, because the runtime hands a
  * `$src` function only its declared positional arguments and the element is reachable only through

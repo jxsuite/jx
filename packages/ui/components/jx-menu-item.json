@@ -175,8 +175,7 @@
         {
           "tagName": "slot",
           "attributes": {
-            "name": "icon",
-            "part": "icon-slot"
+            "name": "icon"
           }
         }
       ]
@@ -194,10 +193,7 @@
           },
           "children": [
             {
-              "tagName": "slot",
-              "attributes": {
-                "part": "label-slot"
-              }
+              "tagName": "slot"
             }
           ]
         },
@@ -210,8 +206,7 @@
             {
               "tagName": "slot",
               "attributes": {
-                "name": "description",
-                "part": "description-slot"
+                "name": "description"
               }
             }
           ]
@@ -227,8 +222,7 @@
         {
           "tagName": "slot",
           "attributes": {
-            "name": "value",
-            "part": "value-slot"
+            "name": "value"
           }
         }
       ]
@@ -257,8 +251,7 @@
     {
       "tagName": "slot",
       "attributes": {
-        "name": "submenu",
-        "part": "submenu-slot"
+        "name": "submenu"
       }
     }
   ]

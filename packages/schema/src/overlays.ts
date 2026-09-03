@@ -641,7 +641,12 @@ function panelDefects(
   }
 
   const baseDisplay = scalar(style, "display");
-  if (baseDisplay !== null) {
+  /* `revert` is the one value that does NOT beat the UA rule — it rolls the cascade back TO it, so
+     a closed panel still computes `display: none` and an open one still takes its `:popover-open`
+     declaration (measured in Chrome 152: closed `none`, open `flex`). It is what an author writes
+     when the interpreter would otherwise inject a default `display` on a custom element, which is
+     exactly the defect this rule is about — so refusing it would refuse the fix. */
+  if (baseDisplay !== null && baseDisplay !== "revert" && baseDisplay !== "revert-layer") {
     out.push({
       detail:
         "A closed popover is hidden by the browser's own `[popover]:not(:popover-open) { display: " +
