@@ -108,7 +108,6 @@
     "last": "",
     "note": {
       "$prototype": "Function",
-      "parameters": ["event"],
       "body": [
         {
           "operator": "=",

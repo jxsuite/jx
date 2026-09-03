@@ -17,7 +17,6 @@
     "bold": false,
     "note": {
       "$prototype": "Function",
-      "parameters": ["event"],
       "body": [
         {
           "operator": "=",
@@ -47,7 +46,7 @@
       "color": "var(--jx-fg-dim)",
       "margin": "0 0 var(--jx-space-5)"
     },
-    "& [role=\"toolbar\"]": {
+    "& [role=\"toolbar\"], & [role=\"radiogroup\"]": {
       "display": "flex",
       "alignItems": "center",
       "gap": "var(--jx-space-1)",
@@ -66,7 +65,7 @@
     },
     {
       "tagName": "p",
-      "textContent": "Icon-first tool buttons: quiet in a toolbar, a toggle with aria-pressed, an emphasized selection, and a text-and-icon form. Bold is ${state.bold ? 'on' : 'off'}."
+      "textContent": "Icon-first tool buttons: quiet in a toolbar, a toggle with aria-pressed, an emphasized selection, a text-and-icon form, and a segmented radiogroup whose selection the HOST owns — one checked segment both announces itself and is drawn selected, tabindex roves, and the button never flips itself. Bold is ${state.bold ? 'on' : 'off'}."
     },
     {
       "tagName": "div",
@@ -172,6 +171,60 @@
     {
       "tagName": "div",
       "attributes": {
+        "role": "radiogroup",
+        "aria-label": "Horizontal alignment"
+      },
+      "children": [
+        {
+          "tagName": "jx-action-button",
+          "$props": {
+            "label": "Space between",
+            "icon": "arrows-out-line-horizontal",
+            "checked": "true",
+            "tabindex": "0"
+          }
+        },
+        {
+          "tagName": "jx-action-button",
+          "$props": {
+            "label": "Space around",
+            "icon": "arrows-in-line-horizontal",
+            "checked": "false",
+            "tabindex": "-1"
+          }
+        },
+        {
+          "tagName": "jx-action-button",
+          "$props": {
+            "label": "Space evenly",
+            "icon": "arrows-horizontal",
+            "checked": "false",
+            "tabindex": "-1"
+          }
+        },
+        {
+          "tagName": "jx-action-button",
+          "$props": {
+            "label": "Baseline",
+            "icon": "text-a-underline",
+            "checked": "false",
+            "tabindex": "-1"
+          }
+        },
+        {
+          "tagName": "jx-action-button",
+          "$props": {
+            "label": "Stretch",
+            "icon": "arrows-out-line-vertical",
+            "checked": "false",
+            "tabindex": "-1"
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "div",
+      "attributes": {
         "role": "toolbar",
         "aria-label": "Working, and named from elsewhere"
       },
@@ -207,6 +260,14 @@
             "icon": "play",
             "describedby": "ab-desc",
             "labelledby": ""
+          }
+        },
+        {
+          "tagName": "jx-action-button",
+          "$props": {
+            "label": "Problems",
+            "icon": "warning-circle",
+            "badge": "3"
           }
         }
       ]

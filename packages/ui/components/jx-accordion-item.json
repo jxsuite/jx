@@ -1,0 +1,286 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "JxAccordionItem",
+  "tagName": "jx-accordion-item",
+  "observedAttributes": ["label", "open", "name", "level"],
+  "$elements": [
+    {
+      "$ref": "./jx-icon.json"
+    }
+  ],
+  "state": {
+    "label": {
+      "type": "string",
+      "default": "",
+      "attribute": "label",
+      "description": "The section's title, printed in the summary row, and the disclosure control's accessible name — it is written as aria-label on the summary rather than left to name-from-content, because the actions row lives inside the summary and would otherwise be read as part of the section's name (measured in Chrome: \"Typography Clear typography overrides\"). It is not optional: with no label the summary is a control a reader hears as \"collapsed, button\" and nothing else, and no lint asks for it, so the element's own test pins it instead."
+    },
+    "open": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "open",
+      "description": "Whether the section is disclosed. It is a two-way value: the platform writes it when the reader opens the section, and a host may write it to open or close one. Written as a property it does NOT reflect back onto the host's own open attribute, so read it as a property (or from the toggle event) rather than with getAttribute."
+    },
+    "name": {
+      "type": "string",
+      "default": "",
+      "attribute": "name",
+      "description": "Forwarded to the inner details as its name, which is how the platform makes a group of sections mutually exclusive: every item carrying the same name closes the others when it opens. Empty means the item is independent, which is what every shipped accordion in Studio wants."
+    },
+    "level": {
+      "type": "string",
+      "default": "",
+      "attribute": "level",
+      "description": "Opt in to heading semantics: a number here exposes the section's label as a heading at that level, so a long settings panel can be skimmed by heading navigation. It is a visually hidden [part=\"heading\"] carrying the label, NOT a role on the summary — measured in Chrome, role=heading on a summary REPLACES the disclosure, which loses expandable and the expanded state, and a heading nested inside the summary is pruned out of the tree entirely. The cost of the shape that works is that the label text is announced twice when reading linearly, once as the heading and once as the disclosure; that is the trade, and it is why the prop is opt-in."
+    },
+    "onToggle": {
+      "$prototype": "Function",
+      "body": [
+        {
+          "if": {
+            "operator": "!==",
+            "target": {
+              "$ref": "event#/detail"
+            },
+            "value": {
+              "$ref": "event#/target/open"
+            }
+          },
+          "then": [
+            {
+              "operator": "=",
+              "target": {
+                "$ref": "#/state/open"
+              },
+              "value": {
+                "$ref": "event#/target/open"
+              }
+            },
+            {
+              "dispatchEvent": "toggle",
+              "detail": {
+                "$ref": "#/state/open"
+              },
+              "bubbles": true
+            }
+          ]
+        }
+      ],
+      "emits": [
+        {
+          "name": "toggle",
+          "description": "The section opened or closed; detail is the new open state. The PLATFORM's event name, so a host that already reads e.target.open off a native details toggle changes nothing but the element it listens on — e.target is the inner details element, not the host, and details.open is the state that just changed. It bubbles out of the details as far as the host and stops there (see onHostToggle), so bind it ON the jx-accordion-item rather than on a container."
+        }
+      ],
+      "description": "Mirrors the platform's own toggle into open and re-announces it as an event that reaches the host, because a native toggle does not bubble and would never leave the inner details. The guard is what makes that safe: the re-announcement is dispatched from the same details the handler listens on, so an unguarded body would hear its own event and recurse forever. A toggle whose detail already equals the details' own open state is that echo and is dropped."
+    },
+    "onHostToggle": {
+      "$prototype": "Function",
+      "body": [
+        {
+          "stopPropagation": true
+        }
+      ],
+      "description": "Stops the re-announced toggle at the element's own boundary. The platform's toggle never bubbles, and the kit's overlays rely on that: jx-popover, jx-menu, jx-tooltip and jx-dialog all bind ontoggle on their own root and read event.newState with no target guard, so a toggle arriving from a descendant would be read as the overlay's own. Measured in Chrome before this existed: opening a section inside a shown jx-popover flipped the panel's open to false and dropped its data-open styling while it was still in the top layer. Listeners bound on this element still run — stopPropagation does not stop the other listeners on the node it is called from — so a host's ontoggle on the jx-accordion-item is unaffected; only ancestors stop hearing it."
+    },
+    "onActions": {
+      "$prototype": "Function",
+      "body": [
+        {
+          "stopPropagation": true
+        },
+        {
+          "if": {
+            "operator": "===",
+            "target": {
+              "$ref": "event#/target"
+            },
+            "value": {
+              "$ref": "event#/currentTarget"
+            }
+          },
+          "then": [
+            {
+              "preventDefault": true
+            }
+          ]
+        }
+      ],
+      "description": "The actions row sits INSIDE the summary, so that it stays visible while the section is closed — a sibling of summary inside details is hidden by the UA whenever the section is shut. The cost is that a click on the row's own space would also toggle the section, so the row cancels the activation, and a click on the row that reached nothing else toggles nothing: that is the intended trade. It cancels ONLY that click. A slotted control does not need cancelling — it is the click's own activation target, so the summary never toggles for it (measured: a button inside a summary leaves details.open alone) — and cancelling there would kill the control's own default, which is exactly what it did before this guard: a slotted link did not navigate and a popovertarget invoker did not open its popover. The residue is a non-interactive element slotted into the actions row, which still toggles the section; inert marks belong in [slot=\"heading\"], which is what that slot is for."
+    }
+  },
+  "ontoggle": {
+    "$ref": "#/state/onHostToggle"
+  },
+  "style": {
+    "display": "block",
+    "&[hidden]": {
+      "display": "none"
+    },
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "lineHeight": "var(--jx-leading-md)",
+    "color": "var(--jx-fg)",
+    "& > [part=\"heading\"]": {
+      "position": "absolute",
+      "width": "1px",
+      "height": "1px",
+      "margin": "-1px",
+      "overflow": "hidden",
+      "clipPath": "inset(50%)",
+      "whiteSpace": "nowrap"
+    },
+    "& > [part=\"details\"] > [part=\"summary\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-2)",
+      "minHeight": "var(--jx-control-h)",
+      "padding": "var(--jx-space-1) var(--jx-space-2)",
+      "borderRadius": "var(--jx-radius-sm)",
+      "cursor": "default",
+      "userSelect": "none",
+      "outline": "none",
+      "listStyle": "none",
+      ":hover": {
+        "background": "var(--jx-hover-bg)"
+      },
+      ":focus-visible": {
+        "outline": "var(--jx-focus-ring)",
+        "outlineOffset": "-2px"
+      },
+      "&::-webkit-details-marker": {
+        "display": "none"
+      }
+    },
+    "& > [part=\"details\"] > [part=\"summary\"] > [part=\"marker\"]": {
+      "display": "inline-flex",
+      "flex": "none",
+      "color": "var(--jx-fg-dim)",
+      "transition": "transform var(--jx-dur-1) var(--jx-ease-out)"
+    },
+    "& > [part=\"details\"][open] > [part=\"summary\"] > [part=\"marker\"]": {
+      "transform": "rotate(90deg)"
+    },
+    "& > [part=\"details\"] > [part=\"summary\"] > [part=\"label\"]": {
+      "flex": "1",
+      "minWidth": "0",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap",
+      "fontWeight": "500"
+    },
+    "& > [part=\"details\"] > [part=\"summary\"] > [part=\"actions\"]": {
+      "display": "inline-flex",
+      "flex": "none",
+      "alignItems": "center",
+      "gap": "var(--jx-space-1)"
+    },
+    "& > [part=\"details\"] > [part=\"summary\"] > [part=\"actions\"]:has([part=\"actions-slot\"]:empty)": {
+      "display": "none"
+    },
+    "& > [part=\"details\"] > [part=\"body\"]": {
+      "padding": "var(--jx-space-2)"
+    }
+  },
+  "children": [
+    {
+      "tagName": "span",
+      "attributes": {
+        "part": "heading",
+        "role": "${state.level ? 'heading' : null}",
+        "aria-level": "${state.level || null}",
+        "hidden": "${state.level ? null : ''}"
+      },
+      "textContent": "${state.label}"
+    },
+    {
+      "tagName": "details",
+      "attributes": {
+        "part": "details",
+        "open": {
+          "$ref": "#/state/open"
+        },
+        "name": "${state.name || null}"
+      },
+      "ontoggle": {
+        "$ref": "#/state/onToggle"
+      },
+      "children": [
+        {
+          "tagName": "summary",
+          "attributes": {
+            "part": "summary",
+            "aria-label": "${state.label || null}"
+          },
+          "children": [
+            {
+              "tagName": "span",
+              "attributes": {
+                "part": "marker",
+                "aria-hidden": "true"
+              },
+              "children": [
+                {
+                  "tagName": "jx-icon",
+                  "$props": {
+                    "name": "caret-right",
+                    "weight": "bold"
+                  },
+                  "attributes": {
+                    "part": "marker-icon"
+                  }
+                }
+              ]
+            },
+            {
+              "tagName": "span",
+              "attributes": {
+                "part": "label"
+              },
+              "textContent": "${state.label}"
+            },
+            {
+              "tagName": "slot",
+              "attributes": {
+                "name": "heading",
+                "part": "heading-slot"
+              }
+            },
+            {
+              "tagName": "span",
+              "attributes": {
+                "part": "actions"
+              },
+              "onclick": {
+                "$ref": "#/state/onActions"
+              },
+              "children": [
+                {
+                  "tagName": "slot",
+                  "attributes": {
+                    "name": "actions",
+                    "part": "actions-slot"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "body"
+          },
+          "children": [
+            {
+              "tagName": "slot",
+              "attributes": {
+                "part": "body-slot"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

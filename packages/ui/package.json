@@ -23,6 +23,8 @@
     "./icons": "./src/icons.ts",
     "./documents": "./src/documents.ts",
     "./behaviors/menu": "./src/behaviors/menu.ts",
+    "./behaviors/tabs": "./src/behaviors/tabs.ts",
+    "./behaviors/action-group": "./src/behaviors/action-group.ts",
     "./behaviors/popover": "./src/behaviors/popover.ts",
     "./behaviors/tooltip": "./src/behaviors/tooltip.ts",
     "./behaviors/dialog": "./src/behaviors/dialog.ts",

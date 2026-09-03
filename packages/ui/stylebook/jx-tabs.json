@@ -1,0 +1,281 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StylebookTabs",
+  "tagName": "main",
+  "$elements": [
+    {
+      "$ref": "../components/jx-icon.json"
+    },
+    {
+      "$ref": "../components/jx-tab.json"
+    },
+    {
+      "$ref": "../components/jx-tab-panel.json"
+    },
+    {
+      "$ref": "../components/jx-tabs.json"
+    }
+  ],
+  "state": {
+    "sections": [
+      {
+        "id": "design",
+        "title": "Design",
+        "body": "Size, spacing and colour for the selected node."
+      },
+      {
+        "id": "content",
+        "title": "Content",
+        "body": "The text and media this node renders."
+      },
+      {
+        "id": "logic",
+        "title": "Logic",
+        "body": "Bindings, conditions and the handlers they run."
+      }
+    ],
+    "current": "design",
+    "manual": "content",
+    "onChange": {
+      "$prototype": "Function",
+      "body": [
+        {
+          "operator": "=",
+          "target": {
+            "$ref": "#/state/current"
+          },
+          "value": {
+            "$ref": "event#/detail"
+          }
+        }
+      ]
+    },
+    "onManual": {
+      "$prototype": "Function",
+      "body": [
+        {
+          "operator": "=",
+          "target": {
+            "$ref": "#/state/manual"
+          },
+          "value": {
+            "$ref": "event#/detail"
+          }
+        }
+      ]
+    }
+  },
+  "style": {
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "color": "var(--jx-fg)",
+    "background": "var(--jx-bg)",
+    "padding": "var(--jx-space-6)",
+    "minHeight": "100vh",
+    "& > h1": {
+      "fontSize": "var(--jx-text-lg)",
+      "fontWeight": "600",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& > h2": {
+      "fontSize": "var(--jx-text-md)",
+      "fontWeight": "600",
+      "margin": "var(--jx-space-6) 0 var(--jx-space-3)"
+    },
+    "& > p": {
+      "color": "var(--jx-fg-dim)",
+      "margin": "0 0 var(--jx-space-5)",
+      "maxWidth": "60ch"
+    },
+    "& > .row": {
+      "display": "flex",
+      "alignItems": "flex-start",
+      "gap": "var(--jx-space-5)"
+    }
+  },
+  "children": [
+    {
+      "tagName": "h1",
+      "textContent": "jx-tabs"
+    },
+    {
+      "tagName": "p",
+      "textContent": "The strip IS the tablist: the host carries role=\"tablist\" and its tabs are its own children, with nothing generic between them. A tab and the panel it controls are paired by two ids the consumer mints from one key, which is what this page does."
+    },
+    {
+      "tagName": "h2",
+      "textContent": "Automatic activation"
+    },
+    {
+      "tagName": "p",
+      "textContent": "Arrow keys move the caret and select as they land. Selected: ${state.current}"
+    },
+    {
+      "tagName": "jx-tabs",
+      "attributes": {
+        "label": "Inspector sections",
+        "activation": "auto",
+        "selected": "${state.current}"
+      },
+      "onchange": {
+        "$ref": "#/state/onChange"
+      },
+      "children": [
+        {
+          "$prototype": "Array",
+          "items": {
+            "$ref": "#/state/sections"
+          },
+          "key": {
+            "$ref": "$map/item/id"
+          },
+          "map": {
+            "tagName": "jx-tab",
+            "attributes": {
+              "id": "tab-${$map.item.id}",
+              "value": "${$map.item.id}",
+              "label": "${$map.item.title}",
+              "panel": "panel-${$map.item.id}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "$prototype": "Array",
+      "items": {
+        "$ref": "#/state/sections"
+      },
+      "key": {
+        "$ref": "$map/item/id"
+      },
+      "map": {
+        "tagName": "jx-tab-panel",
+        "attributes": {
+          "id": "panel-${$map.item.id}",
+          "labelledby": "tab-${$map.item.id}",
+          "active": "${$map.item.id === state.current}"
+        },
+        "children": [
+          {
+            "tagName": "p",
+            "textContent": "${$map.item.body}"
+          }
+        ]
+      }
+    },
+    {
+      "tagName": "h2",
+      "textContent": "Manual activation"
+    },
+    {
+      "tagName": "p",
+      "textContent": "The caret moves alone; Enter or Space commits. Selected: ${state.manual}"
+    },
+    {
+      "tagName": "jx-tabs",
+      "attributes": {
+        "label": "Dock panes",
+        "activation": "manual",
+        "selected": "${state.manual}"
+      },
+      "onchange": {
+        "$ref": "#/state/onManual"
+      },
+      "children": [
+        {
+          "$prototype": "Array",
+          "items": {
+            "$ref": "#/state/sections"
+          },
+          "key": {
+            "$ref": "$map/item/id"
+          },
+          "map": {
+            "tagName": "jx-tab",
+            "attributes": {
+              "value": "${$map.item.id}",
+              "label": "${$map.item.title}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "h2",
+      "textContent": "Vertical"
+    },
+    {
+      "tagName": "p",
+      "textContent": "Up and Down move the caret, and the rule moves to the inline edge."
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "class": "row"
+      },
+      "children": [
+        {
+          "tagName": "jx-tabs",
+          "attributes": {
+            "label": "Settings groups",
+            "orientation": "vertical",
+            "selected": "design"
+          },
+          "children": [
+            {
+              "$prototype": "Array",
+              "items": {
+                "$ref": "#/state/sections"
+              },
+              "key": {
+                "$ref": "$map/item/id"
+              },
+              "map": {
+                "tagName": "jx-tab",
+                "attributes": {
+                  "value": "${$map.item.id}",
+                  "label": "${$map.item.title}"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tagName": "h2",
+      "textContent": "Closable and dirty"
+    },
+    {
+      "tagName": "p",
+      "textContent": "A closable tab draws a close button that dispatches close with the tab's value; Delete on the focused tab is the same path. The dot marks unsaved work and is hidden from assistive technology."
+    },
+    {
+      "tagName": "jx-tabs",
+      "attributes": {
+        "label": "Open documents",
+        "selected": "index"
+      },
+      "children": [
+        {
+          "tagName": "jx-tab",
+          "attributes": {
+            "value": "index",
+            "label": "index.page.json",
+            "closable": "",
+            "dirty": ""
+          }
+        },
+        {
+          "tagName": "jx-tab",
+          "attributes": {
+            "value": "about",
+            "label": "about.page.json",
+            "closable": ""
+          }
+        }
+      ]
+    }
+  ]
+}

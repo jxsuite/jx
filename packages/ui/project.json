@@ -229,6 +229,14 @@
         "borderLeft": "1px solid var(--jx-border)"
       }
     },
+    "& .jx-accordion": {
+      "display": "flex",
+      "flexDirection": "column",
+      "minWidth": "0",
+      "& > * + *": {
+        "borderBlockStart": "1px solid var(--jx-border)"
+      }
+    },
     "& .jx-table": {
       "width": "100%",
       "borderCollapse": "collapse",

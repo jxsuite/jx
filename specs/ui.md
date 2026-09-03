@@ -2,9 +2,9 @@
 
 ## Interface Elements Authored as Jx Documents
 
-**Version:** 0.1.12-draft\
+**Version:** 0.1.13-draft\
 **Status:** Partial\
-**Updated:** 2026-09-02\
+**Updated:** 2026-09-03\
 **License:** MIT\
 **Applies to:** `packages/ui/`, `packages/studio/src/surfaces/`
 
@@ -168,14 +168,28 @@ Each of the three wraps ONE native control and writes none of the ARIA the platf
 
 ### 5.4 Containers
 
-> **Status: Pending.**
+> **Status: Partial.** `jx-tabs`, `jx-tab`, `jx-tab-panel`, `jx-accordion-item` and `jx-action-group` are built, with the tab keyboard in `src/behaviors/tabs.ts` and the group's roving caret in `src/behaviors/action-group.ts`. `jx-accordion` is a recipe rather than an element (below). The table recipe is built and shipped with §5.3's.
+
+**`jx-tabs` closes the gap `studio-ui-guidelines.md` §14 logs**, which is that Studio's tab strips carry no tab semantics at all: the host IS the `tablist`, each `jx-tab` is a `tab` naming its panel through `aria-controls`, and exactly one holds `tabindex="0"` so Tab enters and leaves the strip in one step. The slot carries no `display`, so it stays `display: contents` and the tablist owns its tabs directly — a generic box between a container role and its required owned elements is the trap, and it is the same one §5.4's own `jx-action-group` has to avoid for `radiogroup`.
+
+**The keyboard is the element's, because the platform gives a role-carrying custom element none of it**: arrows with wrap, Home and End, `activation="auto"` selecting as the caret moves against `"manual"` waiting for Enter or Space, and Delete closing a `closable` tab, which is the APG's answer and a path Studio's own × has never had. **A key pressed on a control INSIDE a tab belongs to that control**: the close button is a real button, and Enter or Space on it must close the tab rather than select it — a focusable control with no keyboard operation of its own is a failure of SC 2.1.1, not a rough edge.
+
+**Nothing lints a missing `label` on a tablist**, because a bound role makes the naming rules stand down and `tablist` is in neither named-role set, so the element's own test asserts it. The same absence is why `jx-tabs` re-syncs when its tab set changes: a strip that loses the tab holding `tabindex="0"` drops out of the tab order entirely, and no gate would have said so.
+
+**`jx-accordion` is a recipe, `div.jx-accordion`, and only `jx-accordion-item` is an element.** The item earns its keep on the native `<details>` and `<summary>` beneath it and on `name`, which makes a group exclusive with no script; the container earns nothing, because six of six surveyed consumers allow more than one section open at once, which is what an un-named `<details>` already is.
+
+**The re-announced `toggle` stops at the element.** A native `toggle` does not bubble, but the element re-announces one so a host can bind `ontoggle` on the element it wrote — and that re-announcement DOES bubble, so an item nested inside a `jx-popover` closed the popover, and an inner section's toggle was read as its container's. One `stopPropagation` on the host closes both; it does not stop the other listeners on the host, so a consumer's own handler still runs.
+
+**`jx-action-group` is the `radiogroup` case that forced two props onto `jx-action-button`.** Roving focus has to write a `tabindex`, and the focusable node is the inner control rather than the host; a radio segment has to carry `role="radio"` and `aria-checked` on that same control. Reaching in from the group's sidecar to write either is the foreign-attribute write §2 principle 5 forbids, so the button observes them and the group only sets props. **`checked` REFUSES `toggles`** rather than honouring both: a `role="radio"` that also announced `aria-pressed` is invalid ARIA, and a radio that flipped itself would fight the host that owns the value.
+
+**A host may own the pressed state without the button flipping itself.** `selected` drives the visual whoever wrote it, `aria-pressed` stays gated on `toggles`, `aria-checked` on `checked`, and only the FLIP is gated on `toggles` — two Studio call sites need a segment that looks pressed and does not self-toggle, because clicking the selected one clears the property rather than re-setting it.
 
 | Element                             | Owns                                                                                                                              | Replaces                                   |
 | ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
 | `jx-tabs`, `jx-tab`, `jx-tab-panel` | real `tablist`/`tab`/`tabpanel`, `aria-selected`, `aria-controls`, roving focus, `activation="auto\|manual"`, `closable`, `dirty` | `sp-tabs`, and Studio's hand-rolled strips |
-| `jx-accordion`, `jx-accordion-item` | a native `<details>`/`<summary>`; `name` for an exclusive group; the native `toggle` event                                        | `sp-accordion`, `sp-accordion-item`        |
+| `jx-accordion-item`                 | a native `<details>`/`<summary>`; `name` for an exclusive group; a re-announced `toggle` that stops at the element                | `sp-accordion`, `sp-accordion-item`        |
 | `jx-action-group`                   | `selects="none\|single\|multiple"` → `toolbar`/`radiogroup`/`group`; `compact` with `single` is the segmented control             | `sp-action-group`                          |
-| recipe                              | `table.jx-table`                                                                                                                  | `sp-table`                                 |
+| recipes                             | `table.jx-table`, and `div.jx-accordion` — a container earns nothing when every consumer allows more than one section open        | `sp-table`, `sp-accordion`                 |
 
 ### 5.5 Builder
 
@@ -266,6 +280,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.1.13-draft** (2026-09-03) — jx-tabs, jx-tab, jx-tab-panel, jx-accordion-item and jx-action-group ship (5.4); jx-accordion becomes a recipe.
 - **0.1.12-draft** (2026-09-02) — the loading button's refusal is stopPropagation as well as preventDefault; the spinner and popover override tokens join the semantic list.
 - **0.1.11-draft** (2026-09-02) — jx-popover, jx-tooltip and jx-spinner ship (5.2); the anchor prop is dropped with its reason; SC 1.4.13 joins the WCAG subset.
 - **0.1.10-draft** (2026-09-02) — jx-checkbox, jx-switch and jx-number-field ship (5.3); the value-stepping amendment to principle 5; jx-textfield gains clearable, grows and rows (5.1).
@@ -282,4 +297,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx UI Kit Specification v0.1.12-draft_
+_Jx UI Kit Specification v0.1.13-draft_

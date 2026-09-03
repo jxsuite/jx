@@ -7,6 +7,7 @@ spec:
   - ui.md#5 # the element catalogue
   - ui.md#5.2 # overlays
   - ui.md#5.3 # forms
+  - ui.md#5.4 # containers
   - ui.md#8 # icons
   - ui.md#9 # build and distribution
 code:
@@ -18,6 +19,8 @@ code:
   - packages/ui/src/behaviors/number-field.ts
   - packages/ui/src/behaviors/popover.ts
   - packages/ui/src/behaviors/tooltip.ts
+  - packages/ui/src/behaviors/tabs.ts
+  - packages/ui/src/behaviors/action-group.ts
 ---
 
 # The Jx UI kit
@@ -287,6 +290,71 @@ Name it onto its control from the control's side, with `interestfor` where the b
 Give it a `label` when it stands alone, and leave the label off when it sits inside a button that is already named: without one the spinner hides itself from screen readers, so the button is not announced twice. A reader who asks for reduced motion gets a slower spin rather than a stopped one, because a stopped spinner reads as a hang.
 
 It draws in the colour of the text around it, so a spinner inside a button is visible on every variant without being told. Override `--jx-spin-color` and `--jx-spin-track-color` on the element or an ancestor to change that.
+
+## Tabs
+
+`jx-tabs` is a real tab strip: the platform's roles, the arrow keys, and one stop in the tab order for the whole strip.
+
+```json
+{
+  "tagName": "jx-tabs",
+  "$props": { "label": "Inspector", "selected": "style" },
+  "children": [
+    {
+      "tagName": "jx-tab",
+      "$props": { "value": "content", "label": "Content", "panel": "p-content" }
+    },
+    { "tagName": "jx-tab", "$props": { "value": "style", "label": "Style", "panel": "p-style" } }
+  ]
+}
+```
+
+Give it a `label`. A tab strip with no name is announced as a bare group, and nothing will tell you: the naming rules stand down for an element that carries its role from a binding, so no checker sees the omission.
+
+Each tab names its panel with `panel`, and each `jx-tab-panel` points back with `labelledby`. Arrow keys move along the strip and wrap, Home and End jump to the ends, and Tab enters and leaves in one press. `activation` decides whether moving the caret selects as it goes, which is the usual behaviour, or waits for Enter or Space, which is right when selecting a tab is expensive. The strip fires `change` with the new value, and `selected` is already written when it does.
+
+`closable` adds a close button and Delete closes the focused tab. Enter and Space on the close button close it too, rather than selecting the tab it sits in. `dirty` draws the unsaved dot.
+
+## Sections
+
+`jx-accordion-item` is a native `<details>` with a heading you can style:
+
+```json
+{
+  "tagName": "jx-accordion-item",
+  "$props": { "label": "Advanced", "open": true },
+  "children": [{ "tagName": "p", "textContent": "Anything." }]
+}
+```
+
+Give several of them the same `name` to make the group exclusive, so opening one closes the rest. That is the platform's own behaviour and needs no script. There is no `jx-accordion` element, because a container that only holds sections earns nothing: a plain `<div class="jx-accordion">` styles the stack, and letting more than one section stay open is what these already do.
+
+The element fires `toggle` when a section opens or closes, and that event stops at the element. A native `toggle` does not travel up the page, so a section inside a menu or a panel cannot close the thing around it by opening.
+
+## Button groups
+
+`jx-action-group` gives a row of `jx-action-button`s the right role and one tab stop:
+
+```json
+{
+  "tagName": "jx-action-group",
+  "$props": { "selects": "single", "label": "Text alignment", "compact": true },
+  "children": [
+    {
+      "tagName": "jx-action-button",
+      "$props": { "icon": "text-align-left", "label": "Left", "checked": "true" }
+    },
+    {
+      "tagName": "jx-action-button",
+      "$props": { "icon": "text-align-center", "label": "Centre", "checked": "false" }
+    }
+  ]
+}
+```
+
+`selects` decides what the row is: `"none"` is a toolbar of separate actions, `"single"` is a set of choices where one wins, and `"multiple"` is a set of independent switches. Arrow keys move within the row and Tab leaves it, so a toolbar of ten buttons costs one tab stop rather than ten. `compact` joins the buttons into one segmented control.
+
+For a single-choice row, set `checked` to `"true"` or `"false"` on each button rather than `selected`, and do not set `toggles`. A button that both announces a chosen state and flips itself would fight the host that owns the value, so the element refuses the combination.
 
 ## Open the kit in Studio
 
