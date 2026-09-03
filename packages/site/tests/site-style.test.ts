@@ -29,6 +29,22 @@ describe("buildSiteStyleCSS", () => {
     expect(css).not.toContain("color-scheme");
   });
 
+  test("color-scheme lands on :root, where light-dark() can see it", () => {
+    /* The one non-custom property that must not go to `body`. Every semantic token is a
+       `light-dark()` pair, and `light-dark()` resolves against the element carrying
+       `color-scheme` — so declared on `body` it leaves every token on `:root` resolving against
+       the wrong element. It is also what made the site builder and `installTheme`, which puts the
+       same authored block on `:root`, disagree about one project. */
+    const css = buildSiteStyleCSS(
+      { "--bg": "light-dark(#fff, #111)", colorScheme: "light dark", margin: "0" },
+      {},
+      id,
+    );
+    expect(css).toContain(":root { --bg: light-dark(#fff, #111); color-scheme: light dark }");
+    expect(css).toContain("body { margin: 0 }");
+    expect(css).not.toContain("body { color-scheme");
+  });
+
   test("dual-emits scheme blocks with the §9.5 selector contract", () => {
     const css = buildSiteStyleCSS(
       { "--bg": "#fff", "@--dark": { "--bg": "#000", ".card": { borderColor: "#333" } } },

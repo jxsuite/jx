@@ -168,6 +168,28 @@ Use `@--name` keys in any style object:
 
 A `$media` entry whose value is exactly a `prefers-color-scheme` query (like `--dark` above) is a _scheme query_: its `@--dark` blocks respond both to the OS preference and to a visitor-forced scheme, and the compiler wires up `color-scheme` and no-flash persistence automatically. See [Color schemes](/docs/framework/concepts/color-schemes) for the full contract and how to build a switcher.
 
+## Values that come from your data
+
+A declaration value can be a template or a binding, so a style follows state:
+
+```json
+{
+  "tagName": "li",
+  "style": { "--row-face": { "$ref": "$map/item/face" } },
+  "textContent": "${$map.item.name}"
+}
+```
+
+That is how a row renders in the thing it names: a font row set in its own face, a colour row showing its own colour. Put the binding on a custom property and read it from the rule that lays the rows out:
+
+```json
+{ "tagName": "ul", "style": { "& > li": { "fontFamily": "var(--row-face, inherit)" } } }
+```
+
+Written that way every row shares one rule and sets one variable of its own, so a list of two hundred costs one rule rather than two hundred. Bind a normal property directly if you prefer, and a single element will do the right thing either way.
+
+A built page is the exception. These values resolve against live state, which a built page has only where the runtime is present, so the compiler leaves them out and tells you which ones it left out. A project's own `style` block cannot use them at all, because it becomes the site stylesheet before there is any state to read.
+
 ## Styling a component from outside it
 
 A component carries two style objects: the one in its definition, and the one you write where you use it. Both apply, and yours wins where the two set the same property.

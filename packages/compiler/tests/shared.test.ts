@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   buildAttrs,
   buildComponentCSS,
+  takeDroppedReactiveStyles,
   buildInitialScope,
   buildInner,
   cloneValue,
@@ -1630,5 +1631,47 @@ describe("compileStyles — declaration-body at-rules", () => {
       tagName: "div",
     });
     expect(result).not.toContain("@position-try");
+  });
+});
+
+describe("a static build says what it drops", () => {
+  /* A reactive style declaration resolves against a live scope, which a built page has only where
+     the runtime is present — so a static emitter has always dropped one. Silently, which is the
+     defect: the document is correct in Studio and simply unstyled in the built page. The recorder
+     returns `null` exactly as the absent hook did, so no emitted byte moves. */
+  test("names the property, its source and its selector, and changes no output", () => {
+    takeDroppedReactiveStyles();
+    const style = {
+      color: "${state.tint}",
+      fontFamily: { $ref: "#/state/face" },
+      padding: "4px",
+    };
+    const css = buildComponentCSS("x-card", style as never);
+    // The bytes: only the static declaration survives, exactly as before.
+    expect(css).toContain("padding: 4px");
+    expect(css).not.toContain("state.tint");
+    expect(css).not.toContain("var(--jx-r");
+
+    const dropped = takeDroppedReactiveStyles();
+    expect(dropped).toHaveLength(2);
+    expect(dropped[0]).toContain("color: ${state.tint}");
+    expect(dropped[1]).toContain("fontFamily: #/state/face");
+    for (const line of dropped) {
+      expect(line).toContain("x-card");
+      expect(line).toContain("the runtime is present");
+    }
+  });
+
+  test("draining clears, so one build does not inherit another's", () => {
+    takeDroppedReactiveStyles();
+    buildComponentCSS("x-a", { color: "${state.c}" } as never);
+    expect(takeDroppedReactiveStyles()).toHaveLength(1);
+    expect(takeDroppedReactiveStyles()).toEqual([]);
+  });
+
+  test("a wholly static style records nothing", () => {
+    takeDroppedReactiveStyles();
+    buildComponentCSS("x-b", { color: "red", ":hover": { color: "blue" } } as never);
+    expect(takeDroppedReactiveStyles()).toEqual([]);
   });
 });

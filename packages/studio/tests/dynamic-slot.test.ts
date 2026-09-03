@@ -23,7 +23,7 @@ describe("slotMode", () => {
 
 describe("slotCaps", () => {
   test("a named position is derived from the document schema", () => {
-    expect(slotCaps("styleProperty")).toEqual(["literal", "template"]);
+    expect(slotCaps("styleProperty")).toEqual(["literal", "ref", "template"]);
     expect(slotCaps("attribute")).toEqual(["literal", "ref", "template"]);
   });
 
@@ -254,13 +254,17 @@ describe("renderDynamicSlot", () => {
     expect((onChange.mock.calls[0] as unknown[])[0]).toBeUndefined();
   });
 
-  test("a style position derives its rungs and never offers from-data", async () => {
+  test("a style position derives its rungs, including binding to state", async () => {
+    /* `ref` is derived from the document schema, which now admits a `{ $ref }` as a style
+       declaration value (spec.md §9.1) — so the Inspector offers "bind to state" on a CSS property
+       the same way it does on an attribute, and a row can render in the face its own data names.
+       It still offers no from-data rung: that is the repeater's, not a declaration's. */
     const container = await renderSlot({
       caps: "styleProperty",
       stateDefs: ["count"],
       value: "12px",
     });
-    expect(offered(container)).toEqual(["literal", "template"]);
+    expect(offered(container)).toEqual(["literal", "ref", "template"]);
   });
 
   // ─── Mode switches stash the previous representation ───────────────────────

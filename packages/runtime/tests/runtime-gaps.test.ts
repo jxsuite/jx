@@ -170,15 +170,60 @@ describe("applyStyle gaps", () => {
       state,
     );
     const uid = el.dataset.jx as string;
+    /* The `:hover` declaration keeps the indirection, because a rule is where it has to live.
+       `--accent` does NOT: a reactive value on a custom property, in a rule targeting the element
+       itself, is written inline under the AUTHOR'S name and emits no declaration. That keeps
+       everything per-element out of the rule text, so two elements styled alike share one interned
+       rule — which the serial in `--jx-rN-M` otherwise makes impossible. */
     expect(elementCSS(el).split("\n")).toEqual([
-      `[data-jx="${uid}"] { --accent: var(--jx-r0-0) }`,
-      `[data-jx="${uid}"]:hover { color: var(--jx-r0-1) }`,
+      `[data-jx="${uid}"]:hover { color: var(--jx-r0-0) }`,
     ]);
+    expect(el.style.getPropertyValue("--accent")).toBe("red");
     expect(el.style.cssText).toContain("--jx-r0-0: red");
     state.c = "blue";
     await wait();
+    expect(el.style.getPropertyValue("--accent")).toBe("blue");
     expect(el.style.getPropertyValue("--jx-r0-0")).toBe("blue");
-    expect(el.style.getPropertyValue("--jx-r0-1")).toBe("blue");
+  });
+
+  test("two elements with the same reactive custom property share ONE interned rule", async () => {
+    /* The point of writing it under the author's name. Before, the variable was `--jx-rN-M` with a
+       per-element serial, that name was in the rule text, and the interning handle is a hash of
+       the text — so a repeater of 200 rows each carrying its own font produced 200 handles and 200
+       rules. The declaration that READS the variable is identical across rows and interns once. */
+    const rows = ["Charter, serif", "system-ui, sans-serif", "ui-monospace, monospace"].map(
+      (face) => {
+        const el = document.createElement("div");
+        document.body.append(el);
+        const scope = reactive({ face });
+        applyStyle(
+          el,
+          { "--row-face": "${state.face}", fontFamily: "var(--row-face, inherit)" } as never,
+          {},
+          scope,
+        );
+        return el;
+      },
+    );
+    const handles = new Set(rows.map((el) => el.dataset.jx));
+    expect(handles.size).toBe(1);
+    expect(elementCSS(rows[0]!)).toContain("font-family: var(--row-face, inherit)");
+    expect(rows.map((el) => el.style.getPropertyValue("--row-face"))).toEqual([
+      "Charter, serif",
+      "system-ui, sans-serif",
+      "ui-monospace, monospace",
+    ]);
+  });
+
+  test("a DESCENDANT rule keeps the indirection, because its variable must not be set here", async () => {
+    /* A `var()` resolves from the nearest ancestor that set it. A descendant rule's variable
+       written inline on the element carrying the rule would be read by every matching descendant
+       of every element sharing that rule, which is the wrong element's value. */
+    const scope = reactive({ tint: "red" });
+    const el = document.createElement("div");
+    document.body.append(el);
+    applyStyle(el, { "& > b": { "--tint": "${state.tint}" } } as never, {}, scope);
+    expect(elementCSS(el)).toContain("--tint: var(--jx-r");
   });
 
   test("nested selectors recurse (&, [attr], :pseudo, .class, descendant, and @media too)", () => {

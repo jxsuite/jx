@@ -144,7 +144,10 @@ describe("capsForPosition", () => {
     repeaterFilter: ["ref"],
     repeaterItems: ["literal", "ref"],
     repeaterSort: ["ref"],
-    styleProperty: ["literal", "template"],
+    /* `ref` is derived, not listed: a style declaration value may be a `{ $ref }` (spec.md §9.1),
+       so the Inspector offers "bind to state" on a CSS property the same way it does on an
+       attribute. That is what lets a row render in the face its own data names. */
+    styleProperty: ["literal", "ref", "template"],
     switchDiscriminant: ["ref"],
     textProperty: ["literal", "ref", "template"],
   };
@@ -176,9 +179,13 @@ describe("capsForPosition", () => {
     }
   });
 
-  test("an event handler is never a fixed value, and a CSS declaration is never a signal", () => {
+  test("an event handler is never a fixed value, and a tag is never a template", () => {
+    /* The two halves that stay asymmetric. A CSS declaration used to be the second example — it
+       could not be a signal — but a style value may now be a `{ $ref }` (spec.md §9.1), which is
+       what a row rendering in the face it names requires. The tag position replaces it: a
+       `TagName` is a constrained string, so a `${…}` there is refused by the same derivation. */
     expect(capsForPosition("eventHandler")).not.toContain("literal" as never);
-    expect(capsForPosition("styleProperty")).not.toContain("ref" as never);
+    expect(capsForPosition("elementTag")).not.toContain("template" as never);
   });
 
   test("the derivation is cached and the cache is droppable", () => {
