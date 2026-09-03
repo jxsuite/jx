@@ -40,14 +40,6 @@
     border-left: 2px solid Highlight;
   }
 
-  /* A media-picker or grid selection ring, redrawn as an outline. */
-  .media-item--selected,
-  .media-tile--selected,
-  [aria-selected="true"] {
-    outline: 2px solid Highlight;
-    outline-offset: -2px;
-  }
-
   /* The drop target. A 3px translucent ring is invisible here twice over — shadow and alpha. */
   .drop-target,
   .is-drop-target {

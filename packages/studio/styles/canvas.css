@@ -442,17 +442,6 @@
   border: none;
   background: transparent;
 }
-.function-editor-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 4px 8px;
-  background: var(--bg-panel);
-  border-bottom: 1px solid var(--border);
-  font-size: var(--spectrum-font-size-75, 12px);
-  color: var(--fg);
-  font-family: var(--font-mono);
-}
 .canvas-panel-header {
   padding: 4px 8px;
   font-size: var(--spectrum-font-size-50, 11px);
@@ -579,23 +568,6 @@
 .overlay-layout {
   border-style: dashed !important;
   border-color: var(--spectrum-purple-600, #9256d9) !important;
-}
-.overlay-layout-badge {
-  position: absolute;
-  top: -16px;
-  left: 0;
-  max-width: 100%;
-  overflow: hidden;
-  font-size: 9px;
-  padding: 1px 5px;
-  background: var(--spectrum-purple-600, #9256d9);
-  color: white;
-  border-radius: var(--radius);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  pointer-events: none;
 }
 .overlay-label {
   position: absolute;

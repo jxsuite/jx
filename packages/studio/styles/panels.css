@@ -333,10 +333,6 @@
   outline: 2px solid var(--accent);
   outline-offset: -1px;
 }
-.layer-dot {
-  font-size: 9px;
-  flex-shrink: 0;
-}
 /* One rule for every registry-rendered row verb; `.layer-delete` is the `destructive: true` half. */
 .layer-action {
   flex-shrink: 0;
@@ -1153,10 +1149,6 @@
   font-size: var(--spectrum-font-size-75, 12px);
   color: var(--fg);
   overflow-wrap: anywhere;
-}
-.settings-extension-name {
-  flex: 1;
-  min-width: 0;
 }
 .settings-build-adapter {
   max-width: 320px;
