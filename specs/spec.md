@@ -2,7 +2,7 @@
 
 ## Declarative Document Object Model — JSON Edition
 
-**Version:** 0.6.14-draft\
+**Version:** 0.6.15-draft\
 **Status:** Partial\
 **Updated:** 2026-09-03\
 **License:** MIT
@@ -869,6 +869,10 @@ The `style` property accepts an object with camelCase CSS property names:
 
 Every declaration in that object becomes a **CSS rule**, not an inline style attribute — see §9.6 for the runtime and §9.3 for the compiler. That is what makes the nested blocks of §9.2 work: an inline declaration beats any non-`!important` rule, so a base property written inline could never be overridden by the `:hover` or `@media` block beside it. A custom property (`--name`) is a declaration like any other and keeps its exact spelling, because custom property names are case-sensitive.
 
+**A declaration value may be reactive**: a `"${…}"` template, or a `{ "$ref": … }`. Both mean the same thing — a value the runtime resolves against the live scope and keeps current — and both are how a component renders in a value it cannot know until it runs, such as a row drawn in the typeface it names. The mechanism is §9.6.
+
+A **reactive value on a custom property, in a rule targeting the element itself**, is written inline under the author's own name and contributes no declaration to the rule. That is deliberate and it is what makes a repeater affordable: the indirection §9.6 describes puts a per-element variable name INTO the rule text, and rules are interned by their text, so a hundred rows each carrying their own value would be a hundred rules. Writing the author's own name inline leaves the rule text identical across rows, so they share one. The declaration that READS the variable — `font-family: var(--row-face, inherit)` — belongs to the element that owns the layout, and interns once. A rule targeting a DESCENDANT keeps the indirection, because a `var()` resolves from the nearest ancestor that set it and a shared descendant rule would otherwise read the wrong element's value.
+
 An author's own `attributes: { "style": "…" }` is untouched by any of this; it remains a literal attribute, at inline precedence, and overrides the object.
 
 ### 9.2 Nested CSS Selectors
@@ -951,6 +955,8 @@ A keyframes block nested inside `@media` or `@supports` keeps that wrapper. Insi
 
 The compiler extracts all static `style` definitions into a single `<style>` block in the document `<head>`.
 
+**A reactive declaration is a runtime declaration, and a static emitter drops it.** It resolves against a live scope, which a built page has only where the runtime is present, so there is nothing for the compiler to write. That is correct, and it was silent — a document was right in the editor and simply unstyled in the built page. The compiler now reports each dropped declaration by property, source and selector. A project's own `style` block cannot carry one at all: it becomes the site stylesheet at build time, with no scope to resolve against, so the project schema does not admit a reactive value where the document schema does.
+
 ### 9.4 Named Media Breakpoints (`$media`)
 
 Named breakpoints are declared at root level using `$media`, following the CSS `@custom-media` convention:
@@ -990,6 +996,9 @@ A `$media` entry whose value is a _pure_ `prefers-color-scheme` query — exactl
 Declaring a scheme query in `$media` opts a document (or site) into the color-scheme contract. Two normative constants define the visitor-facing override mechanism:
 
 - **`data-color-scheme`** — attribute on the root element (`<html>`). Value `"light"` or `"dark"` forces that scheme; an absent attribute means _auto_ (follow the OS `prefers-color-scheme`).
+
+`color-scheme` declared in a project's `style` block lands on `:root`, not on `body`. The site builder otherwise routes a custom property to `:root` and every other declaration to `body`, and this is the one property that must not follow that rule: `light-dark()` resolves against the element carrying `color-scheme`, so a scheme on `body` leaves every token declared on `:root` resolving against the wrong element. It is also what made the site builder and the runtime's own theme installer, which puts the same authored block on `:root`, disagree about one project.
+
 - **`jx-color-scheme`** — `localStorage` key a site switcher persists the visitor's forced scheme under. Values `"light"` or `"dark"`; absent means auto.
 
 **Dual emission.** Every style block keyed by a scheme query (`@--dark { … }` or a literal `@(prefers-color-scheme: …) { … }`) is emitted twice:
@@ -2533,6 +2542,7 @@ This rewrites the mutating handlers of Appendix A's idiom using `$expression`, l
 
 ## Changelog
 
+- **0.6.15-draft** (2026-09-03) — a style declaration value may be a ref; a reactive custom property on a self-target rule is written inline so rows share one rule; a static build reports what it drops; color-scheme lands on :root.
 - **0.6.14-draft** (2026-09-03) — a custom element's call-site style merges with its definition's; a slot leaves no node; the display default is a rule decided by the base block, with display revert as the opt-out; onMount receives the host; #/$map resolves.
 - **0.6.13-draft** (2026-09-02) — Removing an observed attribute restores the state entry's declared default (§16.5).
 - **0.6.12-draft** (2026-09-02) — a linked `area` owes an accessible name, which its `alt` supplies (§8.8).
@@ -2611,4 +2621,4 @@ This rewrites the mutating handlers of Appendix A's idiom using `$expression`, l
 
 ---
 
-_Jx Specification v0.6.14-draft — subject to revision_
+_Jx Specification v0.6.15-draft — subject to revision_

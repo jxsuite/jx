@@ -2149,15 +2149,36 @@ function applyStyleInto(
      `--jx-r0` with its own. It also makes the rule text — and so the scope handle hashed from it —
      unique per element, which is exactly the sharing a reactive rule set must not have. */
   let serial = -1;
+  let indirect = 0;
   const sources: { name: string; value: string | JxRef }[] = [];
   const rules = buildStyleRules(styleDef, {
     mediaQueries,
-    resolveValue: (_property, value) => {
+    resolveValue: (property, value, target) => {
+      /* A reactive value on a CUSTOM PROPERTY, in a rule targeting the element itself, is written
+         inline under the AUTHOR'S OWN NAME and contributes no declaration. That keeps the rule
+         text free of anything per-element, so every row of a repeater interns ONE rule instead of
+         one each: the serial below is in the rule text, the interning handle is a hash of that
+         text, and so no two reactive elements could ever share a rule set. Measured before this:
+         three font rows produced three handles and three rules.
+         The declaration that READS the variable — `font-family: var(--row-face, inherit)` — lives
+         in the owning element's own style, is identical across rows, and interns once.
+         Only a SELF-target rule qualifies. A descendant rule keeps the indirection, because its
+         variable must not be set on the element that carries the rule: a `var()` resolves from the
+         nearest ancestor that set it, and a shared descendant rule would read the wrong one. */
+      if (target === "self" && property.startsWith("--")) {
+        sources.push({ name: property, value });
+        return null;
+      }
       if (serial < 0) {
         ({ serial } = sheetState);
         sheetState.serial += 1;
       }
-      const name = `--jx-r${serial}-${sources.length}`;
+      /* Counted separately from `sources`, so an inline custom property before it cannot shift the
+         name of an indirected one. The name is IN the rule text, and the interning handle is a
+         hash of that text — a number that moved with unrelated declarations would give two
+         otherwise identical styles two rules. */
+      const name = `--jx-r${serial}-${indirect}`;
+      indirect += 1;
       sources.push({ name, value });
       return `var(${name})`;
     },
@@ -2165,7 +2186,10 @@ function applyStyleInto(
     transposeSelector,
     transposeValue: canvasStyleValue,
   });
-  if (rules.length === 0) {
+  /* `sources.length` too, not `rules.length` alone: a style whose ONLY reactive declaration is a
+     custom property on the element itself emits no rule at all, and returning here would install
+     no effect, so the variable would be written once and never track its source again. */
+  if (rules.length === 0 && sources.length === 0) {
     return;
   }
 

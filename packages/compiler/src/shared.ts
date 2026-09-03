@@ -1065,9 +1065,45 @@ function pushStyleRules(
   selector: string | null,
   mediaQueries: Record<string, string>,
 ) {
-  for (const rule of buildStyleRules(style, { mediaQueries, scope: selector })) {
+  for (const rule of buildStyleRules(style, {
+    mediaQueries,
+    /* Records what a STATIC build drops, and returns `null` so it drops exactly as before — the
+       emitted bytes are unchanged. A reactive declaration is a runtime declaration: it resolves
+       against a live scope, which a compiled page has only where the runtime is present, so a
+       static emitter has always dropped it. Silently, which is the defect: a document is correct
+       in Studio and simply unstyled in the built page, with nothing said. */
+    resolveValue: (property, value) => {
+      const source = typeof value === "string" ? value : (value as { $ref: string }).$ref;
+      _droppedReactive.push({ property, selector, source });
+      return null;
+    },
+    scope: selector,
+  })) {
     rules.push(rule.text);
   }
+}
+
+/** One entry per reactive declaration a static build dropped, since the last drain. */
+const _droppedReactive: { property: string; selector: string | null; source: string }[] = [];
+
+/**
+ * Take the reactive declarations dropped since the last call, as warning lines, and clear them.
+ *
+ * A build drains this once and reports what it finds. Draining is what keeps two builds in one
+ * process from inheriting each other's, and what keeps the list from growing without bound.
+ *
+ * @returns {string[]} One line per dropped declaration, naming the property and where it was.
+ */
+export function takeDroppedReactiveStyles(): string[] {
+  const lines = _droppedReactive.map(
+    ({ property, selector, source }) =>
+      `A static build drops the reactive style declaration \`${property}: ${source}\`` +
+      `${selector ? ` on \`${selector}\`` : ""}. It resolves against a live scope, which a ` +
+      "built page has only where the runtime is present, so the declaration is absent from the " +
+      "page. Give it a static value, or move it to an element the runtime renders.",
+  );
+  _droppedReactive.length = 0;
+  return lines;
 }
 
 /**
@@ -1761,7 +1797,13 @@ export function buildComponentCSS(
     const own: JxStyle = {};
     const blocks: [string, JxStyle][] = [];
     for (const [prop, value] of Object.entries(styleDef)) {
-      if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+      /* `isRef` first, and it is the whole point: an object carrying `$ref` is a reactive VALUE,
+         not a nested block (spec.md §9.1). Sorted into `blocks` it matched neither branch below —
+         not an at-rule, not a nested selector — and was dropped without reaching the builder at
+         all, so the one emitter that could have reported it never saw it. */
+      if (isRef(value)) {
+        own[prop] = value as never;
+      } else if (value !== null && typeof value === "object" && !Array.isArray(value)) {
         blocks.push([prop, value]);
       } else if (!prop.startsWith("@") && !isNestedSelectorKey(prop)) {
         own[prop] = value;

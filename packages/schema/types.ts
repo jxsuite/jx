@@ -262,7 +262,7 @@ export interface CemEvent {
 export type RefObject = FromSchema<typeof refObjectSchema>;
 
 export interface JxStyle {
-  [property: string]: string | number | JxStyle | undefined;
+  [property: string]: string | number | RefObject | JxStyle | undefined;
 }
 
 /**

@@ -76,7 +76,12 @@ export function buildSiteStyleCSS(
     if (isNestedSelectorKey(key) || key.startsWith("@")) {
       continue;
     }
-    if (key.startsWith("--")) {
+    /* Custom properties go to `:root`; so does `color-scheme`, which is the one non-custom
+       property that has to. Every semantic token is a `light-dark()` pair, and `light-dark()`
+       resolves against the element carrying `color-scheme` — so a scheme declared on `body` leaves
+       every token on `:root` resolving against the wrong element, and the site builder disagreeing
+       with `installTheme`, which puts the same authored block on `:root`. */
+    if (key.startsWith("--") || key === "colorScheme" || key === "color-scheme") {
       rootProps[key] = value as string;
     } else {
       bodyProps[key] = value as string;

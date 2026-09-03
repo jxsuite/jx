@@ -458,7 +458,12 @@ export interface CssBuildOptions {
    * is dropped — which is what the compiler already did for template strings, and what the runtime
    * should always have done with a `$ref` it was instead reading as a nested selector.
    */
-  resolveValue?: (property: string, value: string | JxRef) => string | null;
+  /**
+   * Resolve a reactive value to what the declaration should say, or `null` to emit no declaration
+   * at all. `target` is the rule's own target, so a resolver can treat a value on the element
+   * itself differently from one on a descendant.
+   */
+  resolveValue?: (property: string, value: string | JxRef, target: CssRuleTarget) => string | null;
 }
 
 /** A style-object key that names a nested selector rather than a CSS property. */
@@ -628,7 +633,12 @@ export function buildStyleRules(style: JxStyle, options: CssBuildOptions = {}): 
   const isBlock = (value: unknown): value is JxStyle =>
     value !== null && typeof value === "object" && !Array.isArray(value) && !isRef(value);
 
-  const declarationValue = (property: string, value: unknown, reactive: boolean): string | null => {
+  const declarationValue = (
+    property: string,
+    value: unknown,
+    reactive: boolean,
+    target: CssRuleTarget,
+  ): string | null => {
     if (value === undefined || value === null) {
       return null;
     }
@@ -636,14 +646,14 @@ export function buildStyleRules(style: JxStyle, options: CssBuildOptions = {}): 
        runtime emitted `[data-jx="…"] color { $ref: #/state/tint }` — a rule for an element named
        `color`, and a declaration whose property is `$ref`. */
     if (isRef(value)) {
-      return reactive ? (resolveValue?.(property, value) ?? null) : null;
+      return reactive ? (resolveValue?.(property, value, target) ?? null) : null;
     }
     if (typeof value === "object") {
       return null;
     }
     const raw = String(value);
     if (isTemplateString(raw)) {
-      return reactive ? (resolveValue?.(property, raw) ?? null) : null;
+      return reactive ? (resolveValue?.(property, raw, target) ?? null) : null;
     }
     return transposeValue(raw);
   };
@@ -660,6 +670,7 @@ export function buildStyleRules(style: JxStyle, options: CssBuildOptions = {}): 
     node: JxStyle,
     skipSelectorKeys: boolean,
     reactive = true,
+    target: CssRuleTarget = "self",
   ): [string, string][] => {
     const declarations: [string, string][] = [];
     for (const [key, value] of Object.entries(node)) {
@@ -670,7 +681,7 @@ export function buildStyleRules(style: JxStyle, options: CssBuildOptions = {}): 
       if (skipSelectorKeys && (key.startsWith("@") || isNestedSelectorKey(key))) {
         continue;
       }
-      const resolved = declarationValue(key, value, reactive);
+      const resolved = declarationValue(key, value, reactive, target);
       if (resolved !== null) {
         declarations.push([cssPropertyName(key), resolved]);
       }
@@ -733,7 +744,7 @@ export function buildStyleRules(style: JxStyle, options: CssBuildOptions = {}): 
       /* A stop holds declarations and nothing else. A nested selector or at-rule inside one is not
          valid CSS, and `declarationsOf` drops both shapes rather than emitting a block a parser
          would throw the whole animation away over. */
-      const declarations = declarationsOf(value, true, false);
+      const declarations = declarationsOf(value, true, false, "unscoped");
       if (declarations.length > 0) {
         blocks.push({ declarations, selector: key.trim() });
       }
@@ -766,7 +777,12 @@ export function buildStyleRules(style: JxStyle, options: CssBuildOptions = {}): 
       return;
     }
     if (isDeclarationAtRule(atKey)) {
-      emit([...conditions, atKey], null, declarationsOf(block, false), "unscoped");
+      emit(
+        [...conditions, atKey],
+        null,
+        declarationsOf(block, false, true, "unscoped"),
+        "unscoped",
+      );
       return;
     }
     if (isKeyframesAtRule(atKey)) {
@@ -791,7 +807,7 @@ export function buildStyleRules(style: JxStyle, options: CssBuildOptions = {}): 
     conditions: readonly string[],
     target: CssRuleTarget,
   ) {
-    emit(conditions, selector, declarationsOf(node, true), target);
+    emit(conditions, selector, declarationsOf(node, true, true, target), target);
     for (const [key, value] of Object.entries(node)) {
       if (!isBlock(value)) {
         continue;
