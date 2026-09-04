@@ -1,25 +1,16 @@
 {
   "$schema": "https://jxsuite.com/schema/v1",
-  "$id": "StylebookAccordionItem",
+  "$id": "StylebookAccordion",
   "tagName": "main",
   "$elements": [
     {
       "$ref": "../components/jx-icon.json"
     },
     {
-      "$ref": "../components/jx-spinner.json"
-    },
-    {
-      "$ref": "../components/jx-action-button.json"
-    },
-    {
       "$ref": "../components/jx-accordion-item.json"
     },
     {
       "$ref": "../components/jx-accordion.json"
-    },
-    {
-      "$ref": "../components/jx-dot.json"
     }
   ],
   "state": {
@@ -60,22 +51,16 @@
     "& > p": {
       "color": "var(--jx-fg-dim)",
       "margin": "0 0 var(--jx-space-5)"
-    },
-    "& jx-accordion": {
-      "maxWidth": "420px",
-      "border": "1px solid var(--jx-border)",
-      "borderRadius": "var(--jx-radius-md)",
-      "background": "var(--jx-bg-panel)"
     }
   },
   "children": [
     {
       "tagName": "h1",
-      "textContent": "jx-accordion-item"
+      "textContent": "jx-accordion"
     },
     {
       "tagName": "p",
-      "textContent": "A native details and summary pair made one addressable thing: the platform owns the toggle, Enter and Space, find-in-page reveal and print, and the element adds a label, a caret, an actions row that stays visible while the section is shut, and an open a host can both write and read back. The stack around it is jx-accordion, which draws the seam between one section and the next. Last toggle said: ${state.last}."
+      "textContent": "The stack a panel of sections stands in: a column that clips its children's width and draws one hairline BETWEEN them, so a rule falls in every seam and never above the first VISIBLE section. The first stack below opens with a section a panel has bound away, and no hairline is drawn across the top of what is left. The rule is the container's because it is a rule about a child's POSITION among its siblings, which no section can see about itself. Last toggle said: ${state.last}."
     },
     {
       "tagName": "h2",
@@ -83,7 +68,28 @@
     },
     {
       "tagName": "jx-accordion",
+      "style": {
+        "maxWidth": "420px",
+        "border": "1px solid var(--jx-border)",
+        "borderRadius": "var(--jx-radius-md)",
+        "background": "var(--jx-bg-panel)"
+      },
       "children": [
+        {
+          "tagName": "jx-accordion-item",
+          "attributes": {
+            "hidden": ""
+          },
+          "$props": {
+            "label": "Bound away"
+          },
+          "children": [
+            {
+              "tagName": "p",
+              "textContent": "A panel that binds hidden on a section is why the seam asks for the first VISIBLE child rather than the first child. Unhide this in the inspector and the hairline moves to the section below it."
+            }
+          ]
+        },
         {
           "tagName": "jx-accordion-item",
           "$props": {
@@ -96,7 +102,7 @@
           "children": [
             {
               "tagName": "p",
-              "textContent": "Display, position and the box model."
+              "textContent": "Display, position and the box model. The panel's frame is written on the usage site rather than in the element, because a border and a background are this page's idea of a panel and not the stack's."
             }
           ]
         },
@@ -110,35 +116,15 @@
           },
           "children": [
             {
-              "tagName": "jx-dot",
-              "attributes": {
-                "slot": "heading",
-                "aria-hidden": "true"
-              }
-            },
-            {
-              "tagName": "jx-action-button",
-              "attributes": {
-                "slot": "actions"
-              },
-              "$props": {
-                "label": "Clear typography overrides",
-                "hint": "Clear typography overrides",
-                "icon": "arrow-u-up-left",
-                "size": "sm"
-              }
-            },
-            {
               "tagName": "p",
-              "textContent": "The interactive control in the actions row does not toggle the section, and it is still there while the section is closed."
+              "textContent": "The hairline above this section is the container's rule, and the first section a reader sees has none — the hidden one above it does not count."
             }
           ]
         },
         {
           "tagName": "jx-accordion-item",
           "$props": {
-            "label": "Custom",
-            "level": "3"
+            "label": "Nesting"
           },
           "ontoggle": {
             "$ref": "#/state/note"
@@ -146,7 +132,36 @@
           "children": [
             {
               "tagName": "p",
-              "textContent": "This one opts in to heading semantics with level=\"3\", so it is reachable by heading navigation."
+              "textContent": "A stack inside a section keeps its own seams, because the rule reaches direct children only."
+            },
+            {
+              "tagName": "jx-accordion",
+              "children": [
+                {
+                  "tagName": "jx-accordion-item",
+                  "$props": {
+                    "label": "Inner first"
+                  },
+                  "children": [
+                    {
+                      "tagName": "p",
+                      "textContent": "No rule above this one either."
+                    }
+                  ]
+                },
+                {
+                  "tagName": "jx-accordion-item",
+                  "$props": {
+                    "label": "Inner second"
+                  },
+                  "children": [
+                    {
+                      "tagName": "p",
+                      "textContent": "One seam, in the inner stack."
+                    }
+                  ]
+                }
+              ]
             }
           ]
         }
@@ -157,9 +172,19 @@
       "textContent": "One at a time"
     },
     {
+      "tagName": "p",
+      "textContent": "multiple=\"false\" is the container writing down what the panel is for; the platform's own switch is name on each section, and only the section may carry it."
+    },
+    {
       "tagName": "jx-accordion",
       "$props": {
         "multiple": false
+      },
+      "style": {
+        "maxWidth": "420px",
+        "border": "1px solid var(--jx-border)",
+        "borderRadius": "var(--jx-radius-md)",
+        "background": "var(--jx-bg-panel)"
       },
       "children": [
         {

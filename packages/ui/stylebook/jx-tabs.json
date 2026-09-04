@@ -86,11 +86,6 @@
       "color": "var(--jx-fg-dim)",
       "margin": "0 0 var(--jx-space-5)",
       "maxWidth": "60ch"
-    },
-    "& > .row": {
-      "display": "flex",
-      "alignItems": "flex-start",
-      "gap": "var(--jx-space-5)"
     }
   },
   "children": [
@@ -211,8 +206,10 @@
     },
     {
       "tagName": "div",
-      "attributes": {
-        "class": "row"
+      "style": {
+        "display": "flex",
+        "alignItems": "flex-start",
+        "gap": "var(--jx-space-5)"
       },
       "children": [
         {

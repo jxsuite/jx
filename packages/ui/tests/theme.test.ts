@@ -123,29 +123,19 @@ describe("theme", () => {
     }
   });
 
-  test("ships every recipe class, which no document gate can see", () => {
-    // A recipe is a rule on a native element, so conformance.test.ts — which walks documents and
-    // Stylebook pages — never reads one. This is the only gate a recipe has.
+  test("the theme sheet is tokens and nothing else", () => {
+    /* REPLACES the recipe-class test, which is deleted with the recipes. The kit shipped nine CSS
+       classes and this was the only gate any of them had; each is now an element, and every
+       declaration lives in the `style` object of the definition that owns the box it paints
+       (ui.md §3.1). So the assertion inverts: a class in this sheet is the defect now.
+       The replacement gate for the elements is `conformance.test.ts`, which walks each document. */
     const css = themeCSS();
-    for (const cls of [
-      "jx-field-row",
-      "jx-field-label",
-      "jx-help-text",
-      "jx-help-text--error",
-      "jx-divider",
-      "jx-accordion",
-      "jx-table",
-      "jx-kbd",
-      "jx-badge",
-      "jx-dot",
-    ]) {
-      expect(css, cls).toContain(`.${cls}`);
-    }
-    expect(css).toContain(":root .jx-field-row { display: grid;");
-    // The rule between sections, never above the first one.
-    expect(css).toContain(":root .jx-accordion > * + * { border-block-start: 1px solid");
-    // The required mark is drawn, never appended to the label's text, so it stays out of the name.
-    expect(css).toContain('.jx-field-label[data-required]::after { content: "*" / ""');
+    const classes = [...css.matchAll(/\.([a-zA-Z][\w-]*)/g)].map((m) => m[1]);
+    expect(classes).toEqual([]);
+    // What it does carry: the tokens, on :root, in the layer.
+    expect(css.startsWith(`@layer ${THEME_LAYER} {`)).toBe(true);
+    expect(css).toContain(":root { --jx-gray-50:");
+    expect(css).toContain("--jx-field-label-w: 80px");
   });
 
   test("the switch track keeps 3:1 against the page and against its own thumb, in both schemes", () => {

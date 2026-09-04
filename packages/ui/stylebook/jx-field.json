@@ -1,0 +1,313 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StylebookField",
+  "tagName": "main",
+  "$elements": [
+    {
+      "$ref": "../components/jx-field.json"
+    },
+    {
+      "$ref": "../components/jx-textfield.json"
+    },
+    {
+      "$ref": "../components/jx-checkbox.json"
+    },
+    {
+      "$ref": "../components/jx-switch.json"
+    },
+    {
+      "$ref": "../components/jx-number-field.json"
+    }
+  ],
+  "style": {
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "color": "var(--jx-fg)",
+    "background": "var(--jx-bg)",
+    "padding": "var(--jx-space-6)",
+    "minHeight": "100vh",
+    "& > h1": {
+      "fontSize": "var(--jx-text-lg)",
+      "fontWeight": "600",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& > h2": {
+      "fontSize": "var(--jx-text-md)",
+      "fontWeight": "600",
+      "color": "var(--jx-fg-dim)",
+      "margin": "var(--jx-space-6) 0 var(--jx-space-3)"
+    },
+    "& > p": {
+      "color": "var(--jx-fg-dim)",
+      "margin": "0 0 var(--jx-space-5)",
+      "maxWidth": "60ch"
+    },
+    "& code": {
+      "fontFamily": "var(--jx-font-mono)",
+      "color": "var(--jx-tag)"
+    }
+  },
+  "children": [
+    {
+      "tagName": "h1",
+      "textContent": "jx-field"
+    },
+    {
+      "tagName": "p",
+      "textContent": "One row of a settings panel: a label, the control it names, and the sentence under both. The row mints its own ids and hands them to the control as labelledby, and as describedby when the help line has something in it — the Visible row below has no sentence, so its box is named and described by nothing. Nothing on this page writes an id."
+    },
+    {
+      "tagName": "h2",
+      "textContent": "A row per control"
+    },
+    {
+      "tagName": "div",
+      "style": {
+        "display": "flex",
+        "flexDirection": "column",
+        "maxWidth": "420px",
+        "margin": "0 0 var(--jx-space-5)"
+      },
+      "children": [
+        {
+          "tagName": "jx-field",
+          "$props": {
+            "label": "Title",
+            "description": "Shown in the Library and in the browser tab."
+          },
+          "children": [
+            {
+              "tagName": "jx-textfield",
+              "$props": {
+                "placeholder": "Untitled"
+              }
+            }
+          ]
+        },
+        {
+          "tagName": "jx-field",
+          "$props": {
+            "label": "Columns",
+            "description": "Between 1 and 12."
+          },
+          "children": [
+            {
+              "tagName": "jx-number-field",
+              "$props": {
+                "min": "1",
+                "max": "12",
+                "step": "1",
+                "stepper": true,
+                "value": "3"
+              }
+            }
+          ]
+        },
+        {
+          "tagName": "jx-field",
+          "$props": {
+            "label": "Visible"
+          },
+          "children": [
+            {
+              "tagName": "jx-checkbox",
+              "$props": {
+                "checked": true
+              }
+            }
+          ]
+        },
+        {
+          "tagName": "jx-field",
+          "$props": {
+            "label": "Minify",
+            "description": "Strips whitespace from the built CSS and JavaScript."
+          },
+          "children": [
+            {
+              "tagName": "jx-switch"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tagName": "h2",
+      "textContent": "Required, invalid and warning"
+    },
+    {
+      "tagName": "p",
+      "textContent": "The required mark is drawn in content with an empty alt string, so it never reaches the control's accessible name. Invalid tints the label and the sentence; warning tints the label alone."
+    },
+    {
+      "tagName": "div",
+      "style": {
+        "display": "flex",
+        "flexDirection": "column",
+        "maxWidth": "420px",
+        "margin": "0 0 var(--jx-space-5)"
+      },
+      "children": [
+        {
+          "tagName": "jx-field",
+          "$props": {
+            "label": "Slug",
+            "required": true,
+            "description": "The path this page is published at."
+          },
+          "children": [
+            {
+              "tagName": "jx-textfield",
+              "$props": {
+                "value": "about"
+              }
+            }
+          ]
+        },
+        {
+          "tagName": "jx-field",
+          "$props": {
+            "label": "Slug",
+            "required": true,
+            "invalid": true,
+            "description": "A slug cannot contain a space."
+          },
+          "children": [
+            {
+              "tagName": "jx-textfield",
+              "$props": {
+                "value": "about us",
+                "invalid": true
+              }
+            }
+          ]
+        },
+        {
+          "tagName": "jx-field",
+          "$props": {
+            "label": "Alt text",
+            "warning": true,
+            "description": "An image with no alt text is skipped by a screen reader."
+          },
+          "children": [
+            {
+              "tagName": "jx-textfield",
+              "$props": {
+                "placeholder": "Describe the image"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tagName": "h2",
+      "textContent": "Spanned"
+    },
+    {
+      "tagName": "p",
+      "textContent": "span collapses the row to one column: the label sits above the control and reads from the left. It is the shape a long label or a wide control needs."
+    },
+    {
+      "tagName": "div",
+      "style": {
+        "display": "flex",
+        "flexDirection": "column",
+        "maxWidth": "420px",
+        "margin": "0 0 var(--jx-space-5)"
+      },
+      "children": [
+        {
+          "tagName": "jx-field",
+          "$props": {
+            "span": true,
+            "label": "Description used by search engines",
+            "description": "Around 155 characters. Longer is truncated in the result."
+          },
+          "children": [
+            {
+              "tagName": "jx-textfield",
+              "$props": {
+                "multiline": true,
+                "rows": "3",
+                "placeholder": "A sentence about this page"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tagName": "h2",
+      "textContent": "Slotted help, and a native control"
+    },
+    {
+      "tagName": "p",
+      "textContent": "Anything slotted into help replaces the description rather than stacking with it. A native control slotted straight in is the one case the row cannot name: nothing in its definition observes labelledby, so it must carry its own aria-labelledby."
+    },
+    {
+      "tagName": "div",
+      "style": {
+        "display": "flex",
+        "flexDirection": "column",
+        "maxWidth": "420px"
+      },
+      "children": [
+        {
+          "tagName": "jx-field",
+          "$props": {
+            "label": "Selector",
+            "description": "This sentence is replaced by the slotted one."
+          },
+          "children": [
+            {
+              "tagName": "jx-textfield",
+              "$props": {
+                "mono": true,
+                "value": "main > .card"
+              }
+            },
+            {
+              "tagName": "span",
+              "attributes": {
+                "slot": "help"
+              },
+              "children": [
+                "Any selector ",
+                {
+                  "tagName": "code",
+                  "textContent": "querySelector"
+                },
+                " accepts."
+              ]
+            }
+          ]
+        },
+        {
+          "tagName": "jx-field",
+          "$props": {
+            "label": "Language"
+          },
+          "children": [
+            {
+              "tagName": "select",
+              "attributes": {
+                "aria-label": "Language"
+              },
+              "children": [
+                {
+                  "tagName": "option",
+                  "textContent": "English"
+                },
+                {
+                  "tagName": "option",
+                  "textContent": "Português"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

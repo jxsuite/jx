@@ -13,6 +13,7 @@ import { findA11yDefects } from "@jxsuite/schema/a11y";
 import type { JxDocument, JxElement } from "@jxsuite/schema/types";
 
 import { documents } from "../src/documents.ts";
+import { themeCSS } from "../src/theme.ts";
 import { ICON_NAMES } from "../src/icons.ts";
 import type { IconList } from "../src/icons-build.ts";
 
@@ -177,14 +178,21 @@ describe("kit documents", () => {
         }
       });
 
-      test("a host that declares its own display says what hidden means to it", () => {
-        // The runtime gives a custom element `display: block` only when its definition declares
-        // No display; one that does beats the UA's `[hidden]` rule, so it needs its own.
+      test("every element says what hidden means to it", () => {
+        /* EVERY element, not only one that declares a display. The runtime now writes
+           `display: block` into the element's OWN RULE when its base block declares none
+           (spec.md §9.6), and an author declaration beats the UA's `[hidden] { display: none }`
+           at any specificity — so an element gets a box it cannot hide either way, and which one
+           it is makes no difference.
+
+           This gate used to be written `if ("display" in style)`, which made it SELF-DISABLING:
+           deleting an element's base display did not redden it, it silenced it. The one check
+           that touched the base display was the one check its absence turned off. */
         const style = (doc.style ?? {}) as Record<string, unknown>;
-        if ("display" in style) {
-          const hiddenRule = style["&[hidden]"] as Record<string, unknown> | undefined;
-          expect(hiddenRule?.display).toBe("none");
-        }
+        const hiddenRule = style["&[hidden]"] as Record<string, unknown> | undefined;
+        expect(hiddenRule?.display, `${doc.tagName} needs "&[hidden]": { "display": "none" }`).toBe(
+          "none",
+        );
       });
 
       test("names only glyphs the kit ships", () => {
@@ -231,6 +239,68 @@ describe("kit documents", () => {
       });
     });
   }
+});
+
+describe("the kit ships no CSS class", () => {
+  /* The rule, in the project owner's words: "HTML and CSS are entirely eclipsed and contained
+     within the Jx schema." Every declaration lives in the `style` object of the definition that
+     owns the box it paints (ui.md §3.1), so a `class` attribute is a rule reached by name from
+     somewhere else — which is the shape that has nowhere to live. The kit carried nine of them and
+     now carries none; this is what keeps it there.
+
+     The one legal reason for a class is a platform or third-party contract the schema does not
+     own. There is no such case in the kit today, so the allowance is empty rather than notional:
+     an entry has to be added deliberately, with its owner named. */
+  const PLATFORM_CLASSES: readonly string[] = [];
+
+  /**
+   * Every `class` a document writes, however it is spelled.
+   *
+   * @param node The document or subtree.
+   * @yields {[string, string]} A label for messages, and the class value.
+   */
+  function* classAttributes(node: unknown, path = "root"): Generator<[string, string]> {
+    if (Array.isArray(node)) {
+      for (const [i, item] of node.entries()) {
+        yield* classAttributes(item, `${path}[${i}]`);
+      }
+      return;
+    }
+    if (!node || typeof node !== "object") {
+      return;
+    }
+    for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
+      // `className` is the DOM property spelling; `class` the attribute one. Both are a class.
+      if ((key === "class" || key === "className") && typeof value === "string") {
+        yield [`${path}.${key}`, value];
+      }
+      yield* classAttributes(value, `${path}.${key}`);
+    }
+  }
+
+  for (const [tag, doc] of Object.entries(documents)) {
+    test(`${tag} writes no class`, () => {
+      for (const [where, value] of classAttributes(doc)) {
+        for (const name of value.split(/\s+/).filter(Boolean)) {
+          expect(PLATFORM_CLASSES, `${where}: ${name}`).toContain(name);
+        }
+      }
+    });
+  }
+
+  for (const [name, page] of Object.entries(stylebook)) {
+    test(`${name} writes no class`, () => {
+      for (const [where, value] of classAttributes(page)) {
+        for (const cls of value.split(/\s+/).filter(Boolean)) {
+          expect(PLATFORM_CLASSES, `${where}: ${cls}`).toContain(cls);
+        }
+      }
+    });
+  }
+
+  test("and the theme sheet declares none either", () => {
+    expect([...themeCSS().matchAll(/\.([a-zA-Z][\w-]*)/g)].map((m) => m[1])).toEqual([]);
+  });
 });
 
 describe("stylebook pages", () => {

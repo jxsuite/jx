@@ -154,35 +154,21 @@ A number input throws away what it cannot parse, so a half-typed `1e` and a clea
 
 ## Field rows
 
-The kit ships plain CSS classes for the parts of a form that are not controls, so the label stays a `<label>` and the message stays a `<p>`:
+`jx-field` is a label, a control and a help line as one thing. It positions them and it names the control for you:
 
 ```json
 {
-  "tagName": "div",
-  "className": "jx-field-row",
-  "attributes": { "data-prop": "title" },
-  "children": [
-    {
-      "tagName": "label",
-      "className": "jx-field-label",
-      "attributes": { "id": "f-title" },
-      "textContent": "Title"
-    },
-    {
-      "tagName": "jx-textfield",
-      "$props": { "labelledby": "f-title", "describedby": "f-title-help" }
-    },
-    {
-      "tagName": "p",
-      "className": "jx-help-text",
-      "attributes": { "id": "f-title-help" },
-      "textContent": "Shown in search results."
-    }
-  ]
+  "tagName": "jx-field",
+  "$props": { "label": "Title", "description": "Shown in search results." },
+  "children": [{ "tagName": "jx-textfield" }]
 }
 ```
 
-`jx-field-row` is a two-column grid with a full-width third cell for the message. `data-span` gives the control the whole width, and `data-invalid` and `data-warning` colour the label. `jx-field-label` takes `data-required` to draw a required mark, which is drawn rather than added to the text so it stays out of the control's name. Add `jx-help-text--error` for a refusal. The other recipes are `jx-divider`, `jx-table`, `jx-kbd`, `jx-badge` and `jx-dot`.
+Nothing here writes an id, and nothing writes `labelledby`. The field mints one and hands it to whatever you put inside it, which is the reason it is an element rather than three things you assemble each time.
+
+`required` draws a mark beside the label, drawn rather than added to the text so it stays out of the control's name. `invalid` turns the help line red, and `warning` colours it amber. `span` gives the control the whole width instead of the two-column row.
+
+A control the kit does not ship cannot be named this way, because the field hands the label's id to a property and a plain `<input>` has none. Name it yourself in that case, with `aria-labelledby` pointing at the field's label.
 
 ## Dialogs
 
@@ -327,7 +313,9 @@ Each tab names its panel with `panel`, and each `jx-tab-panel` points back with 
 }
 ```
 
-Give several of them the same `name` to make the group exclusive, so opening one closes the rest. That is the platform's own behaviour and needs no script. There is no `jx-accordion` element, because a container that only holds sections earns nothing: a plain `<div class="jx-accordion">` styles the stack, and letting more than one section stay open is what these already do.
+Give several of them the same `name` to make the group exclusive, so opening one closes the rest. That is the platform's own behaviour and needs no script.
+
+Put them in a `jx-accordion` to draw them as one stack, with a hairline between sections and none above the first.
 
 The element fires `toggle` when a section opens or closes, and that event stops at the element. A native `toggle` does not travel up the page, so a section inside a menu or a panel cannot close the thing around it by opening.
 

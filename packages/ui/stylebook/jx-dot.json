@@ -1,0 +1,92 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StylebookDot",
+  "tagName": "main",
+  "$elements": [
+    { "$ref": "../components/jx-dot.json" },
+    { "$ref": "../components/jx-divider.json" }
+  ],
+  "style": {
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "color": "var(--jx-fg)",
+    "background": "var(--jx-bg)",
+    "padding": "var(--jx-space-6)",
+    "minHeight": "100vh",
+    "& > h1": {
+      "fontSize": "var(--jx-text-lg)",
+      "fontWeight": "600",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& > p": { "color": "var(--jx-fg-dim)", "margin": "0 0 var(--jx-space-5)" },
+    "& [role=\"group\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-3)",
+      "margin": "0 0 var(--jx-space-4)"
+    },
+    "& [role=\"group\"] > span": {
+      "width": "120px",
+      "color": "var(--jx-fg-muted)",
+      "fontSize": "var(--jx-text-sm)"
+    },
+    "& [data-crowded]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-2)",
+      "width": "140px",
+      "padding": "var(--jx-space-1) var(--jx-space-2)",
+      "border": "1px solid var(--jx-border)",
+      "borderRadius": "var(--jx-radius-sm)",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& [data-crowded] > span": {
+      "whiteSpace": "nowrap",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis"
+    }
+  },
+  "children": [
+    { "tagName": "h1", "textContent": "jx-dot" },
+    {
+      "tagName": "p",
+      "textContent": "A six-pixel status disc. tone recolours it and nothing else; it carries no name of its own, so a row that means something by it says so in its own text or names the dot at the usage site."
+    },
+    {
+      "tagName": "div",
+      "attributes": { "role": "group", "aria-label": "Every tone" },
+      "children": [
+        { "tagName": "span", "textContent": "tones" },
+        { "tagName": "jx-dot" },
+        { "tagName": "jx-dot", "$props": { "tone": "danger" } },
+        { "tagName": "jx-dot", "$props": { "tone": "success" } },
+        { "tagName": "jx-dot", "$props": { "tone": "warning" } },
+        { "tagName": "jx-dot", "$props": { "tone": "unknown" } }
+      ]
+    },
+    {
+      "tagName": "div",
+      "attributes": { "role": "group", "aria-label": "Beside a label" },
+      "children": [
+        { "tagName": "span", "textContent": "in a row" },
+        { "tagName": "jx-dot", "$props": { "tone": "success" } },
+        { "tagName": "span", "textContent": "Connected" },
+        { "tagName": "jx-divider", "$props": { "orientation": "vertical" } },
+        { "tagName": "jx-dot", "$props": { "tone": "danger" } },
+        { "tagName": "span", "textContent": "Three errors" }
+      ]
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "data-crowded": "",
+        "role": "group",
+        "aria-label": "Crowded out of its own row"
+      },
+      "children": [
+        { "tagName": "span", "textContent": "A section title far too long for this box" },
+        { "tagName": "jx-dot", "$props": { "tone": "warning" } }
+      ]
+    }
+  ]
+}

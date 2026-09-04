@@ -5,12 +5,17 @@
  */
 import { overlayScopeFor } from "@jxsuite/schema/overlays";
 import type { JxDocument, JxElement } from "@jxsuite/schema/types";
+import jxAccordion from "../components/jx-accordion.json";
 import jxAccordionItem from "../components/jx-accordion-item.json";
 import jxActionButton from "../components/jx-action-button.json";
 import jxActionGroup from "../components/jx-action-group.json";
 import jxButton from "../components/jx-button.json";
 import jxCheckbox from "../components/jx-checkbox.json";
 import jxDialog from "../components/jx-dialog.json";
+import jxDivider from "../components/jx-divider.json";
+import jxDot from "../components/jx-dot.json";
+import jxField from "../components/jx-field.json";
+import jxKbd from "../components/jx-kbd.json";
 import jxIcon from "../components/jx-icon.json";
 import jxMenu from "../components/jx-menu.json";
 import jxMenuItem from "../components/jx-menu-item.json";
@@ -43,6 +48,11 @@ export const documents: Readonly<Record<string, JxDocument>> = {
   "jx-tab-panel": jxTabPanel as unknown as JxDocument,
   "jx-tabs": jxTabs as unknown as JxDocument,
   "jx-accordion-item": jxAccordionItem as unknown as JxDocument,
+  "jx-accordion": jxAccordion as unknown as JxDocument,
+  "jx-divider": jxDivider as unknown as JxDocument,
+  "jx-kbd": jxKbd as unknown as JxDocument,
+  "jx-dot": jxDot as unknown as JxDocument,
+  "jx-field": jxField as unknown as JxDocument,
   "jx-dialog": jxDialog as unknown as JxDocument,
 };
 
