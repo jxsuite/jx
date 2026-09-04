@@ -29,6 +29,29 @@ describe("buildSiteStyleCSS", () => {
     expect(css).not.toContain("color-scheme");
   });
 
+  test("a &-prefixed block is a state of the root, and reaches the sheet", () => {
+    /* `&[data-theme="light"]` means `:root[data-theme="light"]` — a project forcing a scheme. It
+       used to fall in with every other nested selector under "page-content styling, the resolved
+       document covers those" and was dropped in SILENCE, so a site declaring a forced-theme
+       override shipped a sheet without one. A bare element or class key really is page content and
+       is still skipped, which is the half that made the old rule look right. */
+    const css = buildSiteStyleCSS(
+      {
+        "--bg": "light-dark(#fff, #111)",
+        '&[data-theme="dark"]': { colorScheme: "dark" },
+        '&[data-theme="light"]': { "--bg": "#fff", colorScheme: "light" },
+        ".card": { color: "red" },
+        colorScheme: "light dark",
+      },
+      {},
+      id,
+    );
+    expect(css).toContain(':root[data-theme="light"] { --bg: #fff; color-scheme: light }');
+    expect(css).toContain(':root[data-theme="dark"] { color-scheme: dark }');
+    // Page content stays the document's own business.
+    expect(css).not.toContain(".card");
+  });
+
   test("color-scheme lands on :root, where light-dark() can see it", () => {
     /* The one non-custom property that must not go to `body`. Every semantic token is a
        `light-dark()` pair, and `light-dark()` resolves against the element carrying

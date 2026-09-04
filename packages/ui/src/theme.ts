@@ -16,16 +16,40 @@ import project from "../project.json";
 /** The cascade layer every kit stylesheet lives in. */
 export const THEME_LAYER = "jx-ui";
 
-/** The token block as authored: `project.json`'s `style`. */
-export const themeTokens = project.style as JxStyle;
+/** The `style` block as authored: one key, the cascade layer, holding every declaration. */
+const themeStyle = project.style as JxStyle;
 
-/** The theme as CSS text: every token on `:root`, inside `@layer jx-ui`. */
+/**
+ * The tokens themselves, from inside the layer.
+ *
+ * Every caller wants the declarations, never the wrapper — so this names them and `themeStyle`
+ * stays private. Pointing it at the raw block instead would hand each caller one key called `@layer
+ * jx-ui` and let it look up a token that is one level down, which returns `undefined` rather than
+ * failing.
+ */
+export const themeTokens = (themeStyle[`@layer ${THEME_LAYER}`] ?? {}) as JxStyle;
+
+/**
+ * The theme as CSS text: every token on `:root`, inside `@layer jx-ui`.
+ *
+ * Not one character of this is written here. The layer used to be a template literal wrapped around
+ * the builder's output, which made this module a THIRD reader of the same `style` block — beside
+ * the runtime and the site builder — and the three could disagree about what the block meant. The
+ * layer is now an authored `"@layer jx-ui"` key, so the builder emits it like any other at-rule and
+ * this function is the builder and nothing else.
+ */
 export function themeCSS(): string {
-  const rules = buildStyleRules(themeTokens, { scope: ":root" }).map((rule) => rule.text);
-  return `@layer ${THEME_LAYER} {\n${rules.join("\n")}\n}\n`;
+  return `${buildStyleRules(themeStyle, { scope: ":root" })
+    .map((rule) => rule.text)
+    .join("\n")}\n`;
 }
 
-/** The custom-property names the theme declares at the root, in declaration order. */
+/**
+ * The custom-property names the theme declares at the root, in declaration order.
+ *
+ * Read from inside the layer, like every other token access — a filter over the raw `style` block
+ * would return an empty array rather than fail, which is the shape of silence this slice is about.
+ */
 export function themeTokenNames(): string[] {
   return Object.keys(themeTokens).filter((key) => key.startsWith("--"));
 }

@@ -63,14 +63,22 @@ export function buildSiteStyleCSS(
   const rootProps: JxStyle = {};
   const bodyProps: JxStyle = {};
   const condBlocks: [string, JxStyle][] = [];
+  const rootBlocks: [string, JxStyle][] = [];
 
   for (const [key, value] of Object.entries(siteStyle)) {
     if (value !== null && typeof value === "object" && !Array.isArray(value)) {
       if (key.startsWith("@")) {
         condBlocks.push([key, value as JxStyle]);
+      } else if (key.startsWith("&")) {
+        /* A `&`-prefixed key is a STATE OF THE ROOT, not page content: `&[data-theme="light"]`
+           means `:root[data-theme="light"]`, which is how a project forces a scheme. It used to
+           fall into the skip below with every other nested selector and was dropped in silence, so
+           a site declaring a forced-theme override got a sheet without one. A bare element or
+           class key IS page content and is still the resolved document's own business. */
+        rootBlocks.push([key, value as JxStyle]);
       }
-      // Non-@ objects (nested element selectors) are page-content styling — the resolved doc's
-      // Own style pass covers those; the site sheet handles tokens + conditional overrides.
+      // A nested ELEMENT selector is page-content styling — the resolved doc's own style pass
+      // Covers those; the site sheet handles tokens and root-level conditional overrides.
       continue;
     }
     if (isNestedSelectorKey(key) || key.startsWith("@")) {
@@ -90,6 +98,10 @@ export function buildSiteStyleCSS(
 
   push(rootProps, ":root");
   push(bodyProps, "body");
+
+  for (const [key, block] of rootBlocks) {
+    push({ [key]: block } as JxStyle, ":root");
+  }
 
   for (const [atKey, block] of condBlocks) {
     /* An unscoped at-rule has no selector to split across, and the name it declares is
