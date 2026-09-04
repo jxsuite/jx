@@ -1,0 +1,122 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StylebookDivider",
+  "tagName": "main",
+  "$elements": [
+    { "$ref": "../components/jx-icon.json" },
+    { "$ref": "../components/jx-divider.json" },
+    { "$ref": "../components/jx-action-button.json" }
+  ],
+  "style": {
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "color": "var(--jx-fg)",
+    "background": "var(--jx-bg)",
+    "padding": "var(--jx-space-6)",
+    "minHeight": "100vh",
+    "& > h1": {
+      "fontSize": "var(--jx-text-lg)",
+      "fontWeight": "600",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& > p": { "color": "var(--jx-fg-dim)", "margin": "0 0 var(--jx-space-5)" },
+    "& [data-toolbar]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-1)",
+      "height": "var(--jx-control-h)",
+      "padding": "0 var(--jx-space-2)",
+      "width": "320px",
+      "border": "1px solid var(--jx-border)",
+      "borderRadius": "var(--jx-radius-sm)",
+      "background": "var(--jx-bg-panel)",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& [data-stack]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "width": "220px",
+      "padding": "var(--jx-space-2)",
+      "border": "1px solid var(--jx-border)",
+      "borderRadius": "var(--jx-radius-sm)",
+      "background": "var(--jx-bg-panel)",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& [data-stack] > div": {
+      "padding": "var(--jx-space-1) var(--jx-space-2)",
+      "lineHeight": "var(--jx-leading-md)"
+    }
+  },
+  "children": [
+    { "tagName": "h1", "textContent": "jx-divider" },
+    {
+      "tagName": "p",
+      "textContent": "A hairline, drawn by an inner hr the platform already announces as a separator. orientation turns it: the vertical branch makes the host a flex box exactly as wide as the rule it holds, so it stretches to a toolbar's height and takes no width beyond the hairline. The host still HAS a box: one client rect, coincident with the rule, which is what the canvas selects and drops onto. display: contents would measure the same and leave nothing to select."
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "data-stack": "",
+        "role": "group",
+        "aria-label": "Horizontal, between menu rows"
+      },
+      "children": [
+        { "tagName": "div", "textContent": "Cut" },
+        { "tagName": "div", "textContent": "Copy" },
+        { "tagName": "jx-divider" },
+        { "tagName": "div", "textContent": "Paste" },
+        { "tagName": "jx-divider", "$props": { "orientation": "horizontal" } },
+        { "tagName": "div", "textContent": "Delete" }
+      ]
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "data-toolbar": "",
+        "role": "toolbar",
+        "aria-label": "Vertical, between tool groups"
+      },
+      "children": [
+        { "tagName": "jx-action-button", "$props": { "icon": "arrow-u-up-left", "label": "Undo" } },
+        {
+          "tagName": "jx-action-button",
+          "$props": { "icon": "arrow-u-up-right", "label": "Redo" }
+        },
+        { "tagName": "jx-divider", "$props": { "orientation": "vertical" } },
+        { "tagName": "jx-action-button", "$props": { "icon": "trash", "label": "Delete" } },
+        { "tagName": "jx-divider", "$props": { "orientation": "vertical" } },
+        { "tagName": "jx-action-button", "$props": { "icon": "gear", "label": "Settings" } }
+      ]
+    },
+    {
+      "tagName": "p",
+      "textContent": "hidden removes the hairline AND its advance, in either orientation. The host declares a display of its own, so it re-states the hiding the UA rule would otherwise have done. The vertical branch declares one too, which is why there is a second, more specific rule for it."
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "data-toolbar": "",
+        "role": "toolbar",
+        "aria-label": "Hidden, between the same two buttons"
+      },
+      "children": [
+        { "tagName": "jx-action-button", "$props": { "icon": "arrow-u-up-left", "label": "Undo" } },
+        { "tagName": "jx-divider", "$props": { "orientation": "vertical" }, "hidden": true },
+        { "tagName": "jx-action-button", "$props": { "icon": "trash", "label": "Delete" } }
+      ]
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "data-stack": "",
+        "role": "group",
+        "aria-label": "Hidden, between the same two rows"
+      },
+      "children": [
+        { "tagName": "div", "textContent": "Cut" },
+        { "tagName": "jx-divider", "hidden": true },
+        { "tagName": "div", "textContent": "Paste" }
+      ]
+    }
+  ]
+}

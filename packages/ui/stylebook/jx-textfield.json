@@ -4,6 +4,9 @@
   "tagName": "main",
   "$elements": [
     {
+      "$ref": "../components/jx-field.json"
+    },
+    {
       "$ref": "../components/jx-textfield.json"
     }
   ],
@@ -183,7 +186,7 @@
           "$props": {
             "label": "Search",
             "type": "search",
-            "placeholder": "Search\u2026"
+            "placeholder": "Search…"
           }
         },
         {
@@ -210,7 +213,7 @@
             "type": "search",
             "size": "sm",
             "clearable": true,
-            "placeholder": "Search\u2026",
+            "placeholder": "Search…",
             "value": "about"
           }
         },
@@ -220,7 +223,7 @@
             "label": "Filter",
             "type": "search",
             "clearable": true,
-            "placeholder": "Search\u2026",
+            "placeholder": "Search…",
             "value": "about"
           }
         },
@@ -231,7 +234,7 @@
             "type": "search",
             "size": "lg",
             "clearable": true,
-            "placeholder": "Search\u2026",
+            "placeholder": "Search…",
             "value": "about"
           }
         },
@@ -282,38 +285,23 @@
     },
     {
       "tagName": "p",
-      "textContent": "The row, its label and its help sentence are recipes \u2014 native elements the theme sheet styles. The label is not wrapped around the control, so it names it by id through labelledby, and the help sentence describes it the same way."
+      "textContent": "The row is jx-field: one element where the label, the row and the help sentence used to be three classes and four hand-written ids. It mints its own ids and hands them to the field as labelledby and describedby."
     },
     {
-      "tagName": "div",
+      "tagName": "jx-field",
+      "$props": {
+        "label": "Title",
+        "description": "Shown in the Library and in the browser tab."
+      },
       "attributes": {
-        "class": "jx-field-row",
         "data-prop": "title"
       },
       "children": [
         {
-          "tagName": "label",
-          "attributes": {
-            "class": "jx-field-label",
-            "id": "sb-title-label"
-          },
-          "textContent": "Title"
-        },
-        {
           "tagName": "jx-textfield",
           "$props": {
-            "labelledby": "sb-title-label",
-            "describedby": "sb-title-help",
             "placeholder": "Untitled"
           }
-        },
-        {
-          "tagName": "p",
-          "attributes": {
-            "class": "jx-help-text",
-            "id": "sb-title-help"
-          },
-          "textContent": "Shown in the Library and in the browser tab."
         }
       ]
     }

@@ -14,6 +14,12 @@
     },
     {
       "$ref": "../components/jx-accordion-item.json"
+    },
+    {
+      "$ref": "../components/jx-accordion.json"
+    },
+    {
+      "$ref": "../components/jx-dot.json"
     }
   ],
   "state": {
@@ -55,7 +61,7 @@
       "color": "var(--jx-fg-dim)",
       "margin": "0 0 var(--jx-space-5)"
     },
-    "& .jx-accordion": {
+    "& jx-accordion": {
       "maxWidth": "420px",
       "border": "1px solid var(--jx-border)",
       "borderRadius": "var(--jx-radius-md)",
@@ -69,17 +75,14 @@
     },
     {
       "tagName": "p",
-      "textContent": "A native details and summary pair made one addressable thing: the platform owns the toggle, Enter and Space, find-in-page reveal and print, and the element adds a label, a caret, an actions row that stays visible while the section is shut, and an open a host can both write and read back. The container is the div.jx-accordion RECIPE, not an element — it owns no state and no keyboard, so a class is the whole of it. Last toggle said: ${state.last}."
+      "textContent": "A native details and summary pair made one addressable thing: the platform owns the toggle, Enter and Space, find-in-page reveal and print, and the element adds a label, a caret, an actions row that stays visible while the section is shut, and an open a host can both write and read back. The stack around it is jx-accordion, which draws the seam between one section and the next. Last toggle said: ${state.last}."
     },
     {
       "tagName": "h2",
       "textContent": "A panel of sections"
     },
     {
-      "tagName": "div",
-      "attributes": {
-        "class": "jx-accordion"
-      },
+      "tagName": "jx-accordion",
       "children": [
         {
           "tagName": "jx-accordion-item",
@@ -107,10 +110,9 @@
           },
           "children": [
             {
-              "tagName": "span",
+              "tagName": "jx-dot",
               "attributes": {
                 "slot": "heading",
-                "class": "jx-dot",
                 "aria-hidden": "true"
               }
             },
@@ -155,9 +157,9 @@
       "textContent": "One at a time"
     },
     {
-      "tagName": "div",
-      "attributes": {
-        "class": "jx-accordion"
+      "tagName": "jx-accordion",
+      "$props": {
+        "multiple": false
       },
       "children": [
         {

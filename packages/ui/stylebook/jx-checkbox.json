@@ -4,6 +4,9 @@
   "tagName": "main",
   "$elements": [
     {
+      "$ref": "../components/jx-field.json"
+    },
+    {
       "$ref": "../components/jx-checkbox.json"
     }
   ],
@@ -102,35 +105,24 @@
       "textContent": "In a field row"
     },
     {
-      "tagName": "div",
+      "tagName": "p",
+      "textContent": "The row is jx-field. It mints the id its label carries and hands it to the box as labelledby, so nothing here writes an id."
+    },
+    {
+      "tagName": "jx-field",
+      "$props": {
+        "label": "Visible",
+        "description": "A hidden layer is still exported."
+      },
       "attributes": {
-        "class": "jx-field-row",
         "data-prop": "visible"
       },
       "children": [
         {
-          "tagName": "label",
-          "attributes": {
-            "class": "jx-field-label",
-            "id": "cb-visible-label"
-          },
-          "textContent": "Visible"
-        },
-        {
           "tagName": "jx-checkbox",
           "$props": {
-            "labelledby": "cb-visible-label",
-            "describedby": "cb-visible-help",
             "checked": true
           }
-        },
-        {
-          "tagName": "p",
-          "attributes": {
-            "class": "jx-help-text",
-            "id": "cb-visible-help"
-          },
-          "textContent": "A hidden layer is still exported."
         }
       ]
     },

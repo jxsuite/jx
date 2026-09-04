@@ -2,7 +2,7 @@
 
 ## Interface Elements Authored as Jx Documents
 
-**Version:** 0.1.14-draft\
+**Version:** 0.1.15-draft\
 **Status:** Partial\
 **Updated:** 2026-09-03\
 **License:** MIT\
@@ -34,15 +34,29 @@ The kit is **interpreter-first**. Its elements register through `defineElement` 
 
 > **Status: Pending.** The contract below is followed by `jx-icon` (§8); it becomes normative for every element as §5 lands.
 
-### 3.1 Element, recipe, surface
+### 3.1 Element, part, surface
 
-| Kind        | Where                                 | Registers as                         | Owns                                                                           |
-| ----------- | ------------------------------------- | ------------------------------------ | ------------------------------------------------------------------------------ |
-| **Element** | `packages/ui/components/jx-*.json`    | a custom element via `defineElement` | local interaction state no store should hold, a keyboard contract, ARIA states |
-| **Recipe**  | the theme sheet (§4)                  | CSS rules on native elements         | nothing — the platform owns the semantics and the state                        |
-| **Surface** | `packages/studio/src/surfaces/*.json` | a document a host mounts             | the projection of host state into elements                                     |
+| Kind        | Where                                 | Registers as                         | Owns                                                                                                                            |
+| ----------- | ------------------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| **Element** | `packages/ui/components/jx-*.json`    | a custom element via `defineElement` | its own box and every declaration that paints it, plus whatever local state, keyboard contract and ARIA contract that box needs |
+| **Part**    | a `part`-named node in one template   | nothing; addressed as `[part="…"]`   | a named region of its element, styled from that element's own `style` object                                                    |
+| **Surface** | `packages/studio/src/surfaces/*.json` | a document a host mounts             | the projection of host state into elements                                                                                      |
 
-An element earns its keep when it owns local state no store should hold, a keyboard or ARIA contract, or must be addressable by the Library pane and the canvas as one thing. A `<kbd>`, a divider, a field label and a help line own none of those and are recipes.
+There is no fourth kind. **The kit ships no CSS class and no stylesheet.** Every declaration lives in the `style` object of the definition that owns the box it paints, or of the document node that writes it. The only sheet the kit emits is the token block of its own `project.json` (§4.2), and that block holds design tokens and nothing else.
+
+The kind is decided by **how many definitions draw the box**, never by how much behaviour it has:
+
+- A box **two or more definitions draw** is an **element**. It gets a tag, a `style` object and a catalogue entry (§5), even when it owns no state, no keyboard contract and no ARIA role. `jx-kbd` and `jx-divider` are exactly that. They are elements not because they earn one but because a definition is the only place a declaration is allowed to live, and there is no shared definition for them to live in until one exists.
+- A box **exactly one definition draws** is a **part** of that definition, and its declarations go under `& [part="…"]` in that definition's own style. A badge drawn only by `jx-action-button` is `[part="badge"]`, not `jx-badge`.
+- A part is **promoted** to an element the first time a second definition needs it. The promotion moves declarations and mints a tag; nothing is rewritten.
+
+An element that would once have been called a recipe still owes §3.2 everything §3.2 asks for. What it does not owe is behaviour it does not have: a `jx-divider` declaring `role="separator"` and nothing else is a complete element, and the absence of state is not evidence that it should have been a class.
+
+**`className` is never a look.** A `class` attribute in a document is legal for one reason: a platform or third-party contract the schema does not own, such as `electrobun-webkit-app-region-drag` or Tabulator's own class names. A runtime handle is `part`, which `regions.ts` resolves identically. A class written to reach a rule is a defect.
+
+**Host position is a contract too**, because some parents accept only particular children. §3.5 states the legal table shapes and the forbidden one; the general rule is that an element which cannot legally stand where its box must appear is redesigned to BE that box, never wrapped around it.
+
+The sentence this replaces — _"A `<kbd>`, a divider, a field label and a help line own none of those and are recipes"_ — was true of a schema that could not express them. It can: a definition's own `style` object reaches every box it draws, a usage site's style merges with it, and a declaration value may read state (spec.md §9.1). A recipe was the answer to a question the schema now answers, so the kind no longer exists.
 
 ### 3.2 The element contract
 
@@ -65,9 +79,21 @@ A behaviour is a pure `(state, event)` function exported from a module under `pa
 
 A host mounts a surface with `mount()` (embedding.md §2) and hands its records and functions in as scope. A surface `$map`s a host array with a `key` (spec.md §10.4), calls a host function through `call` with positional arguments, and reports back with `dispatchEvent`. Which records a surface receives, and what they are projections of, is the Studio half of the contract (studio-ui-guidelines.md §9).
 
+### 3.5 Host position
+
+An element's box has to stand somewhere, and some parents accept only particular children. Where the two conflict, **the element is redesigned to BE the box, never wrapped around it.**
+
+A table is the case that decides the rule. Three shapes, and only the first two are legal:
+
+- **The element IS the table.** `jx-table` declares `display: table` and `role="table"`, with `jx-tr` as `display: table-row` and `role="row"`, and `jx-th`/`jx-td` as `display: table-cell` with `role="columnheader"` and `role="cell"`. The roles are not optional: a role-less CSS table is announced as a layout table, and the semantics are the whole reason a table is a table. There is no native `<table>` in this shape, so the HTML parser has nothing to foster-parent and a prerendered page survives.
+- **The element is INSIDE a cell.** Anything may sit in a `<td>`; nothing about it is special.
+- **The element WRAPS a native `<table>` and its rows are slotted through it.** Forbidden. Anything at all between `<table>` and its row groups — a custom element, a `<slot>`, or a plain `<div style="display: contents">` — demotes the table's semantics, and no `display` on the intruder rescues it.
+
+The same reasoning governs an element in running text, which must declare `display: inline-block` or `inline` rather than take the block default (spec.md §9.6), and an element inside a flex or grid row that must generate no box of its own, which declares `display: contents`. Each is a declaration the definition makes deliberately, and each is the answer to "where does this box have to stand".
+
 ## 4. Theme and Tokens
 
-> **Status: Partial.** The token sheet is built and adopted (`packages/ui/project.json`, `src/theme.ts`); recipes and the density and forced-colour rules for individual elements land with those elements.
+> **Status: Partial.** The token sheet is built and adopted (`packages/ui/project.json`, `src/theme.ts`), and it holds design tokens and nothing else — the recipe classes that once shared it are elements now (§3.1). The density and forced-colour rules for individual elements land with those elements.
 
 ### 4.1 Three layers
 
@@ -120,7 +146,9 @@ Each entry records: `tagName`; props (typed `state` entries); events (`emits`); 
 | `jx-menu`          | `role="menu"`, roving focus, typeahead, a submenu stack as child menus in `slot="submenu"`                                                                                                                                                                    | `sp-menu`                       |
 | `jx-menu-item`     | `menuitem`/`menuitemcheckbox`/`menuitemradio`; `destructive`; `requires` (the disabled reason, as `title`); `slot="value"` for a chord; **a row that owns a submenu still runs its own command** — the deviation studio-ui-guidelines.md §8.4 makes normative | `sp-menu-item`                  |
 | `jx-menu-group`    | `role="group"` labelled by its heading                                                                                                                                                                                                                        | `sp-menu-group`                 |
-| recipes            | `hr.jx-divider` (`aria-orientation` for a toolbar), `kbd.jx-kbd`, `.jx-badge`, `.jx-dot`                                                                                                                                                                      | `sp-menu-divider`, `sp-divider` |
+| `jx-divider`       | a hairline `<hr part="rule" role="separator">`; `orientation` turns it and drops its own box inside a toolbar                                                                                                                                                 | `sp-menu-divider`, `sp-divider` |
+| `jx-kbd`           | a key cap in running text: `display: inline-block`, so it breaks with the words around it                                                                                                                                                                     | —                               |
+| `jx-dot`           | a status disc; `tone` selects the colour                                                                                                                                                                                                                      | —                               |
 
 ### 5.2 Overlays
 
@@ -158,18 +186,18 @@ Each of the three wraps ONE native control and writes none of the ARIA the platf
 
 **The platform's own events reach the host unchanged**, and the element synthesises `input` and `change` from itself only on the two paths where the platform fires nothing: a stepper press and a Shift-step. So `e.target` on the reader's own typing is the native control and `e.target.valueAsNumber`, `.validity` and `.form` are live. `<input type="number">` sanitizes what it cannot parse, so a half-typed `1e` and a cleared field both read as the empty string; the element mirrors `validity.badInput` into a `badInput` prop and a `data-bad-input` attribute on itself, so a host that deletes a key on empty can tell "still typing" from "cleared" by reading the ELEMENT, never an event detail.
 
-| Element                   | Owns                                                                                                                                                                                                                                                                                                                                                                                                                                                             | Replaces                               |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- |
-| `jx-checkbox`             | an inner native checkbox; `indeterminate` as a property                                                                                                                                                                                                                                                                                                                                                                                                          | `sp-checkbox`                          |
-| `jx-switch`               | an inner native checkbox with `role="switch"`                                                                                                                                                                                                                                                                                                                                                                                                                    | `sp-switch`                            |
-| `jx-number-field`         | `inputmode="decimal"`, a stepper, Arrow ±step and Shift ±10×                                                                                                                                                                                                                                                                                                                                                                                                     | `sp-number-field`                      |
-| `jx-combobox`             | an editable combobox over `jx-listbox` with `aria-activedescendant`; option rows may carry a style preview                                                                                                                                                                                                                                                                                                                                                       | `sp-combobox`, Studio's value selector |
-| `jx-listbox`, `jx-option` | the shared popup of select, combobox and the palette                                                                                                                                                                                                                                                                                                                                                                                                             | —                                      |
-| recipes                   | `label.jx-field-label` (a native `<label id>` the control forwards as `aria-labelledby`; `[data-required]` draws its mark rather than appending one to the text), `p.jx-help-text` and `.jx-help-text--error` on a PERMANENT region that is empty until it has something to say, `role="status" aria-live="polite"`, and `div.jx-field-row` (`data-prop`, `data-span`, `data-invalid`, `data-warning`) positioning the two around a control the kit did not draw | `sp-field-label`, `sp-help-text`       |
+| Element                   | Owns                                                                                                                                                                                                                                                                                                           | Replaces                               |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- |
+| `jx-checkbox`             | an inner native checkbox; `indeterminate` as a property                                                                                                                                                                                                                                                        | `sp-checkbox`                          |
+| `jx-switch`               | an inner native checkbox with `role="switch"`                                                                                                                                                                                                                                                                  | `sp-switch`                            |
+| `jx-number-field`         | `inputmode="decimal"`, a stepper, Arrow ±step and Shift ±10×                                                                                                                                                                                                                                                   | `sp-number-field`                      |
+| `jx-combobox`             | an editable combobox over `jx-listbox` with `aria-activedescendant`; option rows may carry a style preview                                                                                                                                                                                                     | `sp-combobox`, Studio's value selector |
+| `jx-listbox`, `jx-option` | the shared popup of select, combobox and the palette                                                                                                                                                                                                                                                           | —                                      |
+| `jx-field`                | the label, the control and the help line as ONE element: a two-column grid, `required` drawing its mark rather than appending one to the text, `invalid` recolouring the help line as a STATE rather than a second class, and the label-to-control naming contract the four classes it replaces could not hold | `sp-field-label`, `sp-help-text`       |
 
 ### 5.4 Containers
 
-> **Status: Partial.** `jx-tabs`, `jx-tab`, `jx-tab-panel`, `jx-accordion-item` and `jx-action-group` are built, with the tab keyboard in `src/behaviors/tabs.ts` and the group's roving caret in `src/behaviors/action-group.ts`. `jx-accordion` is a recipe rather than an element (below). The table recipe is built and shipped with §5.3's.
+> **Status: Partial.** `jx-tabs`, `jx-tab`, `jx-tab-panel`, `jx-accordion-item` and `jx-action-group` are built, with the tab keyboard in `src/behaviors/tabs.ts` and the group's roving caret in `src/behaviors/action-group.ts`. `jx-accordion` is an element too (below). `jx-table` is not built: it has no consumer, and §3.5 records the shape it must take when one appears, along with the shape it must never take.
 
 **`jx-tabs` closes the gap `studio-ui-guidelines.md` §14 logs**, which is that Studio's tab strips carry no tab semantics at all: the host IS the `tablist`, each `jx-tab` is a `tab` naming its panel through `aria-controls`, and exactly one holds `tabindex="0"` so Tab enters and leaves the strip in one step. The slot carries no `display`, so it stays `display: contents` and the tablist owns its tabs directly — a generic box between a container role and its required owned elements is the trap, and it is the same one §5.4's own `jx-action-group` has to avoid for `radiogroup`.
 
@@ -177,7 +205,7 @@ Each of the three wraps ONE native control and writes none of the ARIA the platf
 
 **Nothing lints a missing `label` on a tablist**, because a bound role makes the naming rules stand down and `tablist` is in neither named-role set, so the element's own test asserts it. The same absence is why `jx-tabs` re-syncs when its tab set changes: a strip that loses the tab holding `tabindex="0"` drops out of the tab order entirely, and no gate would have said so.
 
-**`jx-accordion` is a recipe, `div.jx-accordion`, and only `jx-accordion-item` is an element.** The item earns its keep on the native `<details>` and `<summary>` beneath it and on `name`, which makes a group exclusive with no script; the container earns nothing, because six of six surveyed consumers allow more than one section open at once, which is what an un-named `<details>` already is.
+**`jx-accordion` and `jx-accordion-item` are both elements, and they own different things.** The item earns its keep on the native `<details>` and `<summary>` beneath it and on `name`, which makes a group exclusive with no script. The container draws a stack: one hairline between sections and never above the first, which is a declaration and therefore belongs to a definition (§3.1). It was a recipe while the kit still had them, and the reason given — that a container "earns nothing" when every consumer allows more than one section open — measured behaviour rather than boxes; the kind is decided by how many definitions draw the box.
 
 **The re-announced `toggle` stops at the element.** A native `toggle` does not bubble, but the element re-announces one so a host can bind `ontoggle` on the element it wrote — and that re-announcement DOES bubble, so an item nested inside a `jx-popover` closed the popover, and an inner section's toggle was read as its container's. One `stopPropagation` on the host closes both; it does not stop the other listeners on the host, so a consumer's own handler still runs.
 
@@ -190,7 +218,7 @@ Each of the three wraps ONE native control and writes none of the ARIA the platf
 | `jx-tabs`, `jx-tab`, `jx-tab-panel` | real `tablist`/`tab`/`tabpanel`, `aria-selected`, `aria-controls`, roving focus, `activation="auto\|manual"`, `closable`, `dirty` | `sp-tabs`, and Studio's hand-rolled strips |
 | `jx-accordion-item`                 | a native `<details>`/`<summary>`; `name` for an exclusive group; a re-announced `toggle` that stops at the element                | `sp-accordion`, `sp-accordion-item`        |
 | `jx-action-group`                   | `selects="none\|single\|multiple"` → `toolbar`/`radiogroup`/`group`; `compact` with `single` is the segmented control             | `sp-action-group`                          |
-| recipes                             | `table.jx-table`, and `div.jx-accordion` — a container earns nothing when every consumer allows more than one section open        | `sp-table`, `sp-accordion`                 |
+| `jx-accordion`                      | the stack: one hairline between sections, never above the first                                                                   | `sp-accordion`                             |
 
 ### 5.5 Builder
 
@@ -281,6 +309,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.1.15-draft** (2026-09-03) — the recipe kind is gone: 3.1 decides element or part by how many definitions draw the box, 3.5 states host position, and the catalogue rows are redistributed.
 - **0.1.14-draft** (2026-09-03) — slots leave no node, and an overlay opts out of the display default with display revert (3.2).
 - **0.1.13-draft** (2026-09-03) — jx-tabs, jx-tab, jx-tab-panel, jx-accordion-item and jx-action-group ship (5.4); jx-accordion becomes a recipe.
 - **0.1.12-draft** (2026-09-02) — the loading button's refusal is stopPropagation as well as preventDefault; the spinner and popover override tokens join the semantic list.
@@ -299,4 +328,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx UI Kit Specification v0.1.14-draft_
+_Jx UI Kit Specification v0.1.15-draft_

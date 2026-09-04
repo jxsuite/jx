@@ -4,6 +4,9 @@
   "tagName": "main",
   "$elements": [
     {
+      "$ref": "../components/jx-field.json"
+    },
+    {
       "$ref": "../components/jx-switch.json"
     }
   ],
@@ -219,34 +222,17 @@
       ]
     },
     {
-      "tagName": "div",
+      "tagName": "jx-field",
+      "$props": {
+        "label": "Minify",
+        "description": "Strips whitespace from the built CSS and JavaScript."
+      },
       "attributes": {
-        "class": "jx-field-row",
         "data-prop": "minify"
       },
       "children": [
         {
-          "tagName": "label",
-          "attributes": {
-            "class": "jx-field-label",
-            "id": "sb-switch-minify-label"
-          },
-          "textContent": "Minify"
-        },
-        {
-          "tagName": "jx-switch",
-          "$props": {
-            "labelledby": "sb-switch-minify-label",
-            "describedby": "sb-switch-minify-help"
-          }
-        },
-        {
-          "tagName": "p",
-          "attributes": {
-            "class": "jx-help-text",
-            "id": "sb-switch-minify-help"
-          },
-          "textContent": "Strips whitespace from the built CSS and JavaScript."
+          "tagName": "jx-switch"
         }
       ]
     }

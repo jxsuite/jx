@@ -35,14 +35,6 @@ const sheet = (): string[] =>
     (rule) => rule.text,
   );
 
-/** The `.jx-badge` recipe ALONE — up to its own closing brace, never the rest of the sheet. */
-const badgeRecipe = (): string => {
-  const css = themeCSS();
-  const start = css.indexOf(".jx-badge {");
-  expect(start, "the theme sheet declares a .jx-badge recipe").toBeGreaterThan(-1);
-  return css.slice(start, css.indexOf("}", start) + 1);
-};
-
 beforeAll(async () => {
   await registerUi();
 });
@@ -602,38 +594,20 @@ describe("jx-action-button", () => {
     }
   });
 
-  test("the badge wears the recipe rather than a second drawing of it", async () => {
-    /* The badge visual belongs to `.jx-badge` in the theme sheet. The element used to redraw it
-       inline with its own radius, padding, fill and type, so the two could drift with nothing to
-       catch it. It now declares only WHERE the badge sits; the recipe declares what it looks like.
-       Both halves are checked here: the element's rule carries none of the drawing, and the
-       recipe's OWN rule — sliced at its closing brace, so a sibling recipe cannot satisfy this —
-       carries all of it. */
+  test("the badge is drawn by the element, with no class and no recipe", async () => {
+    /* INVERTED, deliberately: this used to assert the opposite. The badge visual lived in a
+       `.jx-badge` recipe in the theme sheet and the element wore the class, which is the one
+       element-to-recipe edge the kit had. A component internalizes its own structure and styling,
+       so the eleven declarations moved into the element's own rule and the class is gone. The
+       drift the old split risked is gone with it: there is now one place the badge is drawn. */
     const el = (await action({ badge: "3", icon: "git-branch", label: "Source Control" }))!;
     const badge = el.querySelector('[part="badge"]')!;
-    expect(badge.classList.contains("jx-badge")).toBe(true);
+    expect(badge.getAttribute("class")).toBeNull();
+    expect(themeCSS()).not.toContain(".jx-badge");
+    expect(JSON.stringify(documents["jx-action-button"])).not.toContain('"class"');
+
     const rule = sheet().find((text) => text.startsWith('S [part="badge"] '))!;
-    expect(rule).toContain("position: absolute");
-    for (const forked of [
-      "border-radius",
-      "background",
-      "padding",
-      "font-size",
-      "color",
-      "min-width",
-      "line-height",
-      "height",
-    ]) {
-      expect(rule, forked).not.toContain(forked);
-    }
-    /* `box-sizing` is the one property the element still says, and it is fit rather than drawing:
-       the recipe is written for a badge in the flow, where `min-width: 16px` plus `padding: 0 4px`
-       is a 24px pill. In a 24px button's corner that pill covers the glyph completely — measured in
-       Chrome 152 on both shipped shapes, a 25.6px toolbar button and a 56px rail button, the icon
-       disappears behind it. `border-box` makes the recipe's own `min-width` the disc's diameter, so
-       "3" is 16×16 and "12" grows to 21×16 rather than the element restating a size. */
-    expect(rule).toContain("box-sizing: border-box");
-    const recipe = badgeRecipe();
+    // What it looks like, which the recipe used to own…
     for (const drawn of [
       "min-width: 16px",
       "padding: 0 var(--jx-space-2)",
@@ -642,8 +616,17 @@ describe("jx-action-button", () => {
       "color: var(--jx-accent-fg)",
       "font-size: var(--jx-text-xs)",
       "line-height: 16px",
+      "font-variant-numeric: tabular-nums",
     ]) {
-      expect(recipe, drawn).toContain(drawn);
+      expect(rule, drawn).toContain(drawn);
     }
+    // …and where it sits, which the element always owned.
+    expect(rule).toContain("position: absolute");
+    /* `box-sizing` is fit rather than drawing: `min-width: 16px` plus `padding: 0 4px` is a 24px
+       pill, and in a 24px button's corner that pill covers the glyph completely — measured in
+       Chrome 152 on both shipped shapes, a 25.6px toolbar button and a 56px rail button, the icon
+       disappears behind it. `border-box` makes `min-width` the disc's diameter, so "3" is 16x16
+       and "12" grows to 21x16. */
+    expect(rule).toContain("box-sizing: border-box");
   });
 });

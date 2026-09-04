@@ -4,6 +4,9 @@
   "tagName": "main",
   "$elements": [
     {
+      "$ref": "../components/jx-field.json"
+    },
+    {
       "$ref": "../components/jx-number-field.json"
     }
   ],
@@ -172,42 +175,27 @@
     },
     {
       "tagName": "p",
-      "textContent": "The row, its label and its help sentence are recipes — native elements the theme sheet styles. The label names the control by id through labelledby, and the help sentence describes it the same way."
+      "textContent": "The row is jx-field. It mints the ids its label and its help sentence carry, and hands them to the field as labelledby and describedby, so nothing on this page writes an id."
     },
     {
-      "tagName": "div",
+      "tagName": "jx-field",
+      "$props": {
+        "label": "Columns",
+        "description": "Between 1 and 12. Hold Shift with an Arrow key to move ten at a time."
+      },
       "attributes": {
-        "class": "jx-field-row",
         "data-prop": "columns"
       },
       "children": [
         {
-          "tagName": "label",
-          "attributes": {
-            "class": "jx-field-label",
-            "id": "sb-columns-label"
-          },
-          "textContent": "Columns"
-        },
-        {
           "tagName": "jx-number-field",
           "$props": {
-            "labelledby": "sb-columns-label",
-            "describedby": "sb-columns-help",
             "min": "1",
             "max": "12",
             "step": "1",
             "stepper": true,
             "value": "3"
           }
-        },
-        {
-          "tagName": "p",
-          "attributes": {
-            "class": "jx-help-text",
-            "id": "sb-columns-help"
-          },
-          "textContent": "Between 1 and 12. Hold Shift with an Arrow key to move ten at a time."
         }
       ]
     }

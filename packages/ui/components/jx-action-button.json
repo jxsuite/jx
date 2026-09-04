@@ -437,6 +437,17 @@
       "display": "contents"
     },
     "& [part=\"badge\"]": {
+      "display": "inline-flex",
+      "alignItems": "center",
+      "justifyContent": "center",
+      "minWidth": "16px",
+      "padding": "0 var(--jx-space-2)",
+      "borderRadius": "999px",
+      "background": "var(--jx-accent-solid)",
+      "color": "var(--jx-accent-fg)",
+      "fontSize": "var(--jx-text-xs)",
+      "lineHeight": "16px",
+      "fontVariantNumeric": "tabular-nums",
       "position": "absolute",
       "top": "2px",
       "right": "2px",
@@ -542,7 +553,6 @@
               "tagName": "span",
               "attributes": {
                 "part": "badge",
-                "class": "jx-badge",
                 "aria-hidden": "true"
               },
               "textContent": "${state.badge}"

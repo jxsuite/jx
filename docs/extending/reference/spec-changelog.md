@@ -651,6 +651,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `ui.md`
 
+- **0.1.15-draft** (2026-09-03) — the recipe kind is gone: 3.1 decides element or part by how many definitions draw the box, 3.5 states host position, and the catalogue rows are redistributed.
 - **0.1.14-draft** (2026-09-03) — slots leave no node, and an overlay opts out of the display default with display revert (3.2).
 - **0.1.13-draft** (2026-09-03) — jx-tabs, jx-tab, jx-tab-panel, jx-accordion-item and jx-action-group ship (5.4); jx-accordion becomes a recipe.
 - **0.1.12-draft** (2026-09-02) — the loading button's refusal is stopPropagation as well as preventDefault; the spinner and popover override tokens join the semantic list.

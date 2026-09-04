@@ -1,0 +1,90 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StylebookKbd",
+  "tagName": "main",
+  "$elements": [
+    { "$ref": "../components/jx-kbd.json" },
+    { "$ref": "../components/jx-icon.json" },
+    { "$ref": "../components/jx-divider.json" }
+  ],
+  "state": {
+    "chord": ["Ctrl", "Shift", "P"]
+  },
+  "style": {
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "color": "var(--jx-fg)",
+    "background": "var(--jx-bg)",
+    "padding": "var(--jx-space-6)",
+    "minHeight": "100vh",
+    "& > h1": {
+      "fontSize": "var(--jx-text-lg)",
+      "fontWeight": "600",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& > p": { "color": "var(--jx-fg-dim)", "margin": "0 0 var(--jx-space-5)" },
+    "& [role=\"group\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-3)",
+      "margin": "0 0 var(--jx-space-4)"
+    },
+    "& [role=\"group\"] > span": {
+      "width": "120px",
+      "color": "var(--jx-fg-muted)",
+      "fontSize": "var(--jx-text-sm)"
+    },
+    "& [data-narrow]": {
+      "width": "240px",
+      "lineHeight": "var(--jx-leading-md)",
+      "padding": "var(--jx-space-3)",
+      "border": "1px solid var(--jx-border)",
+      "borderRadius": "var(--jx-radius-sm)"
+    }
+  },
+  "children": [
+    { "tagName": "h1", "textContent": "jx-kbd" },
+    {
+      "tagName": "p",
+      "textContent": "A key cap. It is an atomic inline box, so it sits on the text baseline and a line break falls between caps rather than through one — which is the whole reason it declares inline-block instead of taking the runtime's block default."
+    },
+    {
+      "tagName": "div",
+      "attributes": { "role": "group", "aria-label": "One chord, spelled out" },
+      "children": [
+        { "tagName": "span", "textContent": "a chord" },
+        {
+          "$prototype": "Array",
+          "items": { "$ref": "#/state/chord" },
+          "key": { "$ref": "$map/item" },
+          "map": { "tagName": "jx-kbd", "textContent": "${$map.item}" }
+        }
+      ]
+    },
+    {
+      "tagName": "div",
+      "attributes": { "role": "group", "aria-label": "Beside a menu label" },
+      "children": [
+        { "tagName": "span", "textContent": "in a row" },
+        { "tagName": "jx-icon", "$props": { "name": "magnifying-glass" } },
+        { "tagName": "span", "textContent": "Find in files" },
+        { "tagName": "jx-divider", "$props": { "orientation": "vertical" } },
+        { "tagName": "jx-kbd", "textContent": "Ctrl" },
+        { "tagName": "jx-kbd", "textContent": "F" }
+      ]
+    },
+    {
+      "tagName": "p",
+      "attributes": { "data-narrow": "" },
+      "children": [
+        "Press ",
+        { "tagName": "jx-kbd", "textContent": "Ctrl" },
+        " then ",
+        { "tagName": "jx-kbd", "textContent": "Shift" },
+        " and finally ",
+        { "tagName": "jx-kbd", "textContent": "Enter" },
+        " to run the command that is showing."
+      ]
+    }
+  ]
+}
