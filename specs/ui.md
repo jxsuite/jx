@@ -2,9 +2,9 @@
 
 ## Interface Elements Authored as Jx Documents
 
-**Version:** 0.1.15-draft\
+**Version:** 0.1.16-draft\
 **Status:** Partial\
-**Updated:** 2026-09-03\
+**Updated:** 2026-09-04\
 **License:** MIT\
 **Applies to:** `packages/ui/`, `packages/studio/src/surfaces/`
 
@@ -103,7 +103,7 @@ The same reasoning governs an element in running text, which must declare `displ
 
 ### 4.2 Declaration
 
-The tokens are the `style` block of the kit's `project.json`, which is where a site keeps its design tokens (site-architecture.md §10.2), so opening the kit in Studio shows the values the shell runs on. `themeCSS()` builds them into one `:root` rule with the runtime's own style builder and `installTheme(document)` adopts the result once per document, inside `@layer jx-ui` (§9).
+The tokens are the `style` block of the kit's `project.json`, which is where a site keeps its design tokens (site-architecture.md §10.2), so opening the kit in Studio shows the values the shell runs on. That block's one top-level key is `"@layer jx-ui"`, authored like any other at-rule, and `themeCSS()` is `buildStyleRules` over it and nothing else — it writes no CSS text of its own. The layer used to be a template literal wrapped around the builder's output, which made this module a THIRD reader of the same block beside the runtime and the site builder, and three readers of one block can disagree about what it means. They did: the site builder dropped every `&`-prefixed block as page content, so a project forcing a colour scheme shipped a sheet without it. A test now asserts the two agree declaration by declaration.
 
 `color-scheme: light dark` follows the operating system; `:root[data-theme="light"]` and `:root[data-theme="dark"]` force one, and `light-dark()` resolves against whichever applies. The attribute is deliberately not `data-color-scheme` (spec.md §9.5), which is the **document's** axis: a dark builder editing a light page is the ordinary case, and two axes need two attributes. `data-density="compact"` and `"comfortable"` re-declare the control height and body size.
 
@@ -309,6 +309,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.1.16-draft** (2026-09-04) — the theme layer is an authored key, so themeCSS writes no CSS text and agrees with the site builder about the same block (4.2).
 - **0.1.15-draft** (2026-09-03) — the recipe kind is gone: 3.1 decides element or part by how many definitions draw the box, 3.5 states host position, and the catalogue rows are redistributed.
 - **0.1.14-draft** (2026-09-03) — slots leave no node, and an overlay opts out of the display default with display revert (3.2).
 - **0.1.13-draft** (2026-09-03) — jx-tabs, jx-tab, jx-tab-panel, jx-accordion-item and jx-action-group ship (5.4); jx-accordion becomes a recipe.
@@ -328,4 +329,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx UI Kit Specification v0.1.15-draft_
+_Jx UI Kit Specification v0.1.16-draft_

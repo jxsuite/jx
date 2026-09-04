@@ -1,5 +1,8 @@
 import "./with-dom.ts";
 
+import { buildSiteStyleCSS } from "@jxsuite/site/site-style";
+import project from "../project.json";
+
 import { describe, expect, test } from "bun:test";
 
 import {
@@ -75,6 +78,25 @@ function contrast(a: string, b: string): number {
   return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
 }
 
+/** Every `property: value` pair in a sheet, flattened out of its rules. */
+function declarationsIn(css: string): [string, string][] {
+  const out: [string, string][] = [];
+  for (const match of css.matchAll(/\{([^{}]*)\}/g)) {
+    for (const decl of match[1]!.split(";")) {
+      const at = decl.indexOf(":");
+      if (at > 0) {
+        out.push([decl.slice(0, at).trim(), decl.slice(at + 1).trim()]);
+      }
+    }
+  }
+  return out;
+}
+
+/** The raw `style` block, to prove the layer is a key in the document rather than a string here. */
+function themeStyleBlock(): Record<string, unknown> {
+  return project.style as Record<string, unknown>;
+}
+
 describe("theme", () => {
   test("is one layered sheet of tokens on :root", () => {
     const css = themeCSS();
@@ -121,6 +143,38 @@ describe("theme", () => {
         expect(ramp.has(hex), `${name} hard-codes ramp colour ${hex}`).toBe(false);
       }
     }
+  });
+
+  test("the layer is AUTHORED, so this module writes no CSS text at all", async () => {
+    /* `themeCSS` used to wrap the builder's output in a template literal — which made it a THIRD
+       reader of the same `style` block, beside the runtime and the site builder, and three readers
+       of one block can disagree about what it means. The layer is now an authored key, so the
+       builder emits it like any other at-rule and this function is the builder and nothing else. */
+    const source = await Bun.file(new URL("../src/theme.ts", import.meta.url)).text();
+    const body = source.slice(source.indexOf("export function themeCSS"));
+    const fn = body.slice(0, body.indexOf("\n}"));
+    expect(fn).not.toContain("@layer");
+    expect(fn).toContain("buildStyleRules");
+    // And the wrapper really is in the document.
+    expect(Object.keys(themeStyleBlock())).toEqual([`@layer ${THEME_LAYER}`]);
+  });
+
+  test("this module and the site builder agree about the same block", () => {
+    /* The divergence that made this a third emitter. Both read `project.json`'s `style`; the site
+       builder splits it by target (`--` and `color-scheme` to `:root`, the rest to `body`), and
+       this one puts it all on `:root`. What must never differ is WHICH DECLARATIONS survive and
+       what each one says — a token dropped or renamed by one and not the other is a page that
+       looks different from the editor that made it. */
+    const ours = declarationsIn(themeCSS());
+    const theirs = declarationsIn(buildSiteStyleCSS(themeTokens, {}, (value: string) => value));
+    for (const [prop, value] of ours) {
+      // A scheme block is emitted twice by the site builder (§9.5), so compare membership.
+      expect(
+        theirs.some(([p, v]) => p === prop && v === value),
+        `${prop}: ${value}`,
+      ).toBe(true);
+    }
+    expect(ours.length).toBeGreaterThan(100);
   });
 
   test("the theme sheet is tokens and nothing else", () => {
