@@ -94,13 +94,13 @@ async function validationFor(value: string): Promise<string> {
   field.value = value;
   field.dispatchEvent(new Event("input", { bubbles: true }));
   await flush();
-  const help = topDialog()!.querySelector('[part="error"]');
+  const help = topDialog()!.querySelector('jx-textfield [part="error"]');
   return help?.textContent?.trim() ?? "";
 }
 
 /** The validation message currently showing, without touching the field. */
 function currentValidation(): string {
-  return topDialog()?.querySelector('[part="error"]')?.textContent?.trim() ?? "";
+  return topDialog()?.querySelector('jx-textfield [part="error"]')?.textContent?.trim() ?? "";
 }
 
 beforeEach(() => {
@@ -119,7 +119,7 @@ describe("naming", () => {
   test("with no `format` the field is a FILE NAME and is taken verbatim — the i18n contract", async () => {
     const pending = createFileIn({ dir: "pages", suggestedName: "untitled.json" });
     await flush();
-    expect(topDialog()!.querySelector('select[part="choice"]')).toBeNull();
+    expect(topDialog()!.querySelector('[part="choice"]')).toBeNull();
     await answerPromptDialog("About Us.json");
     expect(await pending).toBe("pages/About Us.json");
   });
@@ -132,7 +132,7 @@ describe("naming", () => {
     });
     await flush();
     expect(topDialog()!.textContent).toContain("Creating in content/");
-    expect(topDialog()!.querySelector('select[part="choice"]')).toBeNull();
+    expect(topDialog()!.querySelector('[part="choice"]')).toBeNull();
     await answerPromptDialog("My First Post!");
     expect(await pending).toBe("content/my-first-post.md");
   });

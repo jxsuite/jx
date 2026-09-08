@@ -310,7 +310,7 @@ describe("layers after init", () => {
       field().dispatchEvent(new Event("input", { bubbles: true }));
     }
     const errorText = () =>
-      layer("dialog").querySelector('[part="error"]')?.textContent?.trim() ?? null;
+      layer("dialog").querySelector('jx-textfield [part="error"]')?.textContent?.trim() ?? null;
 
     test("confirm resolves the trimmed value; defaults render OK/Cancel", async () => {
       const promise = showPromptDialog("Name it");
@@ -442,12 +442,18 @@ describe("layers after init", () => {
         value: "taken",
       });
       const host = await dialog();
-      const select = host.querySelector<HTMLSelectElement>('select[part="choice"]')!;
+      /* The part is on the `jx-select`; the `<select>` inside it is what a reader drives, and what
+         carries the name the element forwarded. Selectedness is read off the CONTROL rather than
+         off an option's attribute — no option carries one, which is the whole point (ui.md §5.1). */
+      const choice = host.querySelector<HTMLElement>('jx-select[part="choice"]')!;
+      const select = choice.querySelector<HTMLSelectElement>("select")!;
       expect(select.getAttribute("aria-label")).toBe("Format");
-      expect([...select.options].map((o) => [o.value, o.textContent, o.selected])).toEqual([
-        [".md", "Markdown", true],
-        [".json", "JSON", false],
+      expect([...select.options].map((o) => [o.value, o.textContent?.trim()])).toEqual([
+        [".md", "Markdown"],
+        [".json", "JSON"],
       ]);
+      expect(select.value).toBe(".md");
+      expect(host.querySelector("option[selected]")).toBeNull();
       expect(field().placeholder).toBe("untitled.md");
       // Nothing said yet: the prefill is valid for the initial format, and nobody has typed.
       expect(errorText()).toBe("");

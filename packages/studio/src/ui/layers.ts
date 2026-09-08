@@ -380,8 +380,9 @@ export interface ChoiceOption {
   value: string;
   label: string;
   /**
-   * Set a sentinel row apart from the ones before it. Kept for callers; the native select draws no
-   * divider.
+   * Set a sentinel row apart from the ones before it. Kept for callers; `jx-select` draws a
+   * delimiter for a GROUP, which carries a heading, and this is a bare rule between two rows of one
+   * list — so nothing draws it yet and `files.ts`'s "Other…" row reads as an ordinary row.
    */
   dividerBefore?: boolean;
 }
@@ -468,13 +469,7 @@ export function showPromptDialog(
   let touched = false;
   const placeholderNow = () => (typeof placeholder === "function" ? placeholder() : placeholder);
   const optionsNow = (): DialogChoiceOption[] =>
-    choice
-      ? choice.options().map((option) => ({
-          label: option.label,
-          selected: option.value === chosen,
-          value: option.value,
-        }))
-      : [];
+    choice ? choice.options().map((option) => ({ label: option.label, value: option.value })) : [];
 
   return new Promise((resolve) => {
     let settled = false;
@@ -496,7 +491,7 @@ export function showPromptDialog(
       headline,
       layer: layerHost("dialog"),
       ...(message === undefined ? {} : messageOptions(message)),
-      ...(choice ? { choice: { label: choice.label, options: optionsNow() } } : {}),
+      ...(choice ? { choice: { chosen, label: choice.label, options: optionsNow() } } : {}),
       field: { placeholder: placeholderNow(), select, value },
       onCancel: () => done(null),
       onClosed: () => done(null),
@@ -528,6 +523,7 @@ export function showPromptDialog(
         const candidate = check(value);
         error = touched || error ? candidate : "";
         handle.update({
+          chosen,
           error,
           invalid: error !== "",
           options: optionsNow(),

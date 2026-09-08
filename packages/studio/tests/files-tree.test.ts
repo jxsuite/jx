@@ -508,7 +508,7 @@ describe("createNewFile (toolbar + context menu)", () => {
     expect(state.calls.filter(([name]) => name === "writeFile")).toHaveLength(0);
     await flush();
     expect(dialogWrapper()).not.toBeNull();
-    expect(dialogWrapper()!.querySelector('[part="error"]')?.textContent).toContain(
+    expect(dialogWrapper()!.querySelector('jx-textfield [part="error"]')?.textContent).toContain(
       "Enter a file name.",
     );
 

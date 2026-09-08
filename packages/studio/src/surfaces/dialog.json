@@ -1,7 +1,7 @@
 {
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "StudioDialog",
-  "$description": "Studio's confirm, save-or-discard and prompt dialogs: one jx-dialog whose body is projected from the adapter's scope. `message` is a sentence; `choice` is a native select of options; `field` is the prompt's jx-textfield with its refusal. The four answers call the host's functions, and the host decides when the dialog closes.",
+  "$description": "Studio's confirm, save-or-discard and prompt dialogs: one jx-dialog whose body is projected from the adapter's scope. `message` is a sentence; `choice` is a `jx-select` over the options; `field` is the prompt's jx-textfield with its refusal. The four answers call the host's functions, and the host decides when the dialog closes.",
   "tagName": "jx-dialog",
   "$props": {
     "headline": {
@@ -101,19 +101,6 @@
       "fontSize": "var(--jx-text-sm)",
       "color": "var(--jx-fg-dim)"
     },
-    "& [part=\"choice\"]": {
-      "font": "inherit",
-      "minHeight": "var(--jx-control-h)",
-      "padding": "0 var(--jx-space-2)",
-      "border": "1px solid var(--jx-border-strong)",
-      "borderRadius": "var(--jx-radius-sm)",
-      "background": "var(--jx-bg-input)",
-      "color": "var(--jx-fg)",
-      ":focus-visible": {
-        "outline": "var(--jx-focus-ring)",
-        "outlineOffset": "-1px"
-      }
-    },
     "& jx-textfield": {
       "width": "100%"
     }
@@ -168,10 +155,20 @@
               "textContent": "${state.choiceLabel}"
             },
             {
-              "tagName": "select",
+              "tagName": "jx-select",
+              "$props": {
+                "label": {
+                  "$ref": "#/state/choiceLabel"
+                },
+                "options": {
+                  "$ref": "#/state/options"
+                },
+                "value": {
+                  "$ref": "#/state/chosen"
+                }
+              },
               "attributes": {
-                "part": "choice",
-                "aria-label": "${state.choiceLabel}"
+                "part": "choice"
               },
               "onchange": {
                 "$prototype": "Function",
@@ -188,28 +185,6 @@
                     ]
                   }
                 ]
-              },
-              "children": [
-                {
-                  "$prototype": "Array",
-                  "items": {
-                    "$ref": "#/state/options"
-                  },
-                  "key": {
-                    "$ref": "$map/item/value"
-                  },
-                  "map": {
-                    "tagName": "option",
-                    "attributes": {
-                      "value": "${$map.item.value}",
-                      "selected": "${$map.item.selected ? '' : null}"
-                    },
-                    "textContent": "${$map.item.label}"
-                  }
-                }
-              ],
-              "value": {
-                "$ref": "#/state/chosen"
               }
             }
           ]

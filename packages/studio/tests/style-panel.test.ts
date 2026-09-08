@@ -404,7 +404,7 @@ describe("the Target Line", () => {
     expect(topDialog()!.getAttribute("headline")).toBe("Add Selector");
     // A value that is not a nested selector is refused in place.
     await answerPromptDialog("notASelector");
-    expect(topDialog()!.querySelector('[part="error"]')?.textContent).toContain(
+    expect(topDialog()!.querySelector('jx-textfield [part="error"]')?.textContent).toContain(
       'must start with ":"',
     );
     await answerPromptDialog(".fancy");
@@ -947,7 +947,7 @@ describe("relative styling section", () => {
     await clickAdd(c);
     await answerPromptDialog("   ");
     expect(topDialog()).not.toBeNull();
-    expect(topDialog()!.querySelector('[part="error"]')?.textContent).toContain(
+    expect(topDialog()!.querySelector('jx-textfield [part="error"]')?.textContent).toContain(
       "Enter a selector.",
     );
     await answerPromptDialog(null);

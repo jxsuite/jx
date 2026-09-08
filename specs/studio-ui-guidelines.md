@@ -1,6 +1,6 @@
 # Jx Studio UI/UX Interface Guidelines
 
-**Version:** 0.4.11-draft\
+**Version:** 0.4.12-draft\
 **Status:** Partial\
 **Updated:** 2026-09-08\
 **Applies to:** `packages/studio/`
@@ -478,7 +478,7 @@ Fixed-position toolbar that follows the selected element:
 
 ### 8.7 Dialogs and Overlay Layers
 
-> **Status: Partial.** The three flows — `showConfirmDialog`, `showSaveDiscardDialog` and `showPromptDialog` — are on the native substrate: one document, `src/surfaces/dialog.json`, over the kit's `jx-dialog`, mounted by `src/surfaces/dialog.ts` into the dialog layer and opened with `showModal()`, so the platform owns inertness, focus restoration and Escape, and the flows keep only their state machines (which answer resolves what, when a prompt's value is refused). A prompt's format choice is still a native `<select part="choice">`, and it is now the one place in Studio carrying both spellings `ui.md` §5.1 forbids: a `selected` attribute on each mapped option, and a `value` property binding on the control. `jx-select` has landed and is what this becomes; until it does, the choice is right up to the reader's first pick and wrong after it, because the pick sets the option's dirtiness flag and the attribute stops moving selectedness from that moment. `showDialog` (a lit body), `openModal` and `renderPopover` still stand on Spectrum's wrapper and follow with their callers; `isModalOpen()` answers for both substrates. The contract below stays as stated. `packages/studio/src/ui/layers.ts` keeps every export named below; its internals move onto native `<dialog>` and `popover` (`ui.md` §6). A dialog body becomes a surface document, `showModal()` supplies modality, focus containment and Escape, and the hand-rolled focus trap goes with the last Spectrum dialog. During coexistence `isModalOpen()` reads `dialog[open]` beside the Spectrum selectors — attribute form, because a test DOM never matches `:modal`.
+> **Status: Partial.** The three flows — `showConfirmDialog`, `showSaveDiscardDialog` and `showPromptDialog` — are on the native substrate: one document, `src/surfaces/dialog.json`, over the kit's `jx-dialog`, mounted by `src/surfaces/dialog.ts` into the dialog layer and opened with `showModal()`, so the platform owns inertness, focus restoration and Escape, and the flows keep only their state machines (which answer resolves what, when a prompt's value is refused). A prompt's format choice is `jx-select part="choice"` (`ui.md` §5.1), and the projection it takes carries no `selected` at all: the flow names the chosen row's VALUE beside the list, once, and the element's sidecar keeps the control on it. The `selected` attribute it replaced was right up to the reader's first pick and wrong after it, because the pick sets the option's dirtiness flag and the attribute stops moving selectedness from that moment — and the `value` property binding beside it needed the caller to defer its write a microtask so the option it named would exist. Neither ordering is a caller's problem now. A choice's rows are its `options`; a `dividerBefore` on one of them still draws nothing, because a delimiter in that element belongs to a GROUP and carries a heading. `showDialog` (a lit body), `openModal` and `renderPopover` still stand on Spectrum's wrapper and follow with their callers; `isModalOpen()` answers for both substrates. The contract below stays as stated. `packages/studio/src/ui/layers.ts` keeps every export named below; its internals move onto native `<dialog>` and `popover` (`ui.md` §6). A dialog body becomes a surface document, `showModal()` supplies modality, focus containment and Escape, and the hand-rolled focus trap goes with the last Spectrum dialog. During coexistence `isModalOpen()` reads `dialog[open]` beside the Spectrum selectors — attribute form, because a test DOM never matches `:modal`.
 
 Studio renders every transient surface into one of three fixed, full-viewport hosts declared in `packages/studio/index.html` — `#layer-popover`, `#layer-modal`, `#layer-dialog` — bound once at boot by `initLayers()`. Each host is `pointer-events: none`; individual slots re-enable pointer events, so the layers never swallow canvas input.
 
@@ -865,6 +865,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.4.12-draft** (2026-09-08) — the prompt's format choice is jx-select, and its projection names the chosen value rather than marking a row.
 - **0.4.11-draft** (2026-09-08) — the prompt's format select is a named defect rather than a pending promise: jx-select has landed and that control carries both spellings ui.md forbids.
 - **0.4.10-draft** (2026-09-02) — A surface that rewrites what the reader typed must make the rewrite visible to the binding.
 - **0.4.9-draft** (2026-09-02) — The command palette is a Jx document projected by panels/quick-search.ts (§9.3).

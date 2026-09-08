@@ -436,13 +436,19 @@ export async function answerPromptDialog(
 }
 
 /**
- * Pick a format in the topmost prompt dialog's choice: the kit's native select, or the Spectrum
+ * Pick a format in the topmost prompt dialog's choice: the kit's `jx-select`, or the Spectrum
  * picker.
+ *
+ * The write goes to the NATIVE control inside the element, and the event is dispatched from there,
+ * because that is what a reader's pick is: `jx-select` hears its own control's `change`, writes the
+ * value into its state, and lets the event bubble on to the host. Setting the element's `value`
+ * property instead would move the control without ever telling the surface anything, which is a
+ * pick no reader can perform.
  */
 export async function pickPromptFormat(value: string): Promise<void> {
   const dialog = topDialog();
   const picker =
-    dialog?.querySelector<HTMLSelectElement>('select[part="choice"]') ??
+    dialog?.querySelector<HTMLSelectElement>('[part="choice"] select') ??
     (dialog?.querySelector("sp-picker") as HTMLInputElement | null);
   if (!picker) {
     return;
@@ -455,9 +461,13 @@ export async function pickPromptFormat(value: string): Promise<void> {
 /** The `[value, label]` pairs the topmost prompt dialog's choice offers. */
 export function promptFormatOptions(): [string, string][] {
   const dialog = topDialog();
+  /* `[part="choice"] option`, not `select[part="choice"] option`: the part is on the `jx-select`
+     element and the `<select>` inside it carries `part="control"`. Rows the element stands in for a
+     value no list holds are excluded — they are the element saying it holds something unlisted,
+     never an offer. */
   const native = [
-    ...(dialog?.querySelectorAll<HTMLOptionElement>('select[part="choice"] option') ?? []),
-  ];
+    ...(dialog?.querySelectorAll<HTMLOptionElement>('[part="choice"] option') ?? []),
+  ].filter((el) => el.getAttribute("part") !== "unlisted");
   if (native.length > 0) {
     return native.map((el) => [el.value, el.textContent?.trim() ?? ""]);
   }
