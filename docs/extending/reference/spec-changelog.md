@@ -482,6 +482,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `studio-ui-guidelines.md`
 
+- **0.4.11-draft** (2026-09-08) — the prompt's format select is a named defect rather than a pending promise: jx-select has landed and that control carries both spellings ui.md forbids.
 - **0.4.10-draft** (2026-09-02) — A surface that rewrites what the reader typed must make the rewrite visible to the binding.
 - **0.4.9-draft** (2026-09-02) — The command palette is a Jx document projected by panels/quick-search.ts (§9.3).
 - **0.4.8-draft** (2026-09-02) — The toast stack is a Jx document projected by ui/layers.ts (§9.3).
@@ -651,6 +652,8 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `ui.md`
 
+- **0.1.18-draft** (2026-09-08) — jx-select: the default slot and its once-at-mount distribution, the slotted hr separator, and the property-only rows.
+- **0.1.17-draft** (2026-09-04) — jx-select is a native select under appearance: base-select — the four things a document must never author, the sidecar that keeps selectedness alive, and why the kit ships no jx-option.
 - **0.1.16-draft** (2026-09-04) — the theme layer is an authored key, so themeCSS writes no CSS text and agrees with the site builder about the same block (4.2).
 - **0.1.15-draft** (2026-09-03) — the recipe kind is gone: 3.1 decides element or part by how many definitions draw the box, 3.5 states host position, and the catalogue rows are redistributed.
 - **0.1.14-draft** (2026-09-03) — slots leave no node, and an overlay opts out of the display default with display revert (3.2).

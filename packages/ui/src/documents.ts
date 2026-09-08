@@ -20,6 +20,7 @@ import jxIcon from "../components/jx-icon.json";
 import jxMenu from "../components/jx-menu.json";
 import jxMenuItem from "../components/jx-menu-item.json";
 import jxPopover from "../components/jx-popover.json";
+import jxSelect from "../components/jx-select.json";
 import jxSpinner from "../components/jx-spinner.json";
 import jxTooltip from "../components/jx-tooltip.json";
 import jxNumberField from "../components/jx-number-field.json";
@@ -43,6 +44,7 @@ export const documents: Readonly<Record<string, JxDocument>> = {
   "jx-checkbox": jxCheckbox as unknown as JxDocument,
   "jx-switch": jxSwitch as unknown as JxDocument,
   "jx-number-field": jxNumberField as unknown as JxDocument,
+  "jx-select": jxSelect as unknown as JxDocument,
   "jx-action-group": jxActionGroup as unknown as JxDocument,
   "jx-tab": jxTab as unknown as JxDocument,
   "jx-tab-panel": jxTabPanel as unknown as JxDocument,

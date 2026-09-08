@@ -26,6 +26,7 @@
     "./behaviors/tabs": "./src/behaviors/tabs.ts",
     "./behaviors/action-group": "./src/behaviors/action-group.ts",
     "./behaviors/popover": "./src/behaviors/popover.ts",
+    "./behaviors/select": "./src/behaviors/select.ts",
     "./behaviors/tooltip": "./src/behaviors/tooltip.ts",
     "./behaviors/dialog": "./src/behaviors/dialog.ts",
     "./behaviors/textfield": "./src/behaviors/textfield.ts",
