@@ -368,10 +368,10 @@ describe("choosing the target", () => {
     );
     setFormats([MARKDOWN_FORMAT, MARKDOWN_TWO, CSV_FORMAT]);
     const pending = convertFile("pages/about.md");
-    for (let i = 0; i < 50 && !topDialog()?.querySelector('select[part="choice"]'); i += 1) {
+    for (let i = 0; i < 50 && !topDialog()?.querySelector('[part="choice"] select'); i += 1) {
       await flush();
     }
-    const picker = topDialog()!.querySelector('select[part="choice"]') as HTMLElement & {
+    const picker = topDialog()!.querySelector('[part="choice"] select') as HTMLElement & {
       value: string;
     };
     expect(

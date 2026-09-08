@@ -5,10 +5,14 @@
  *
  * This is the adapter. `ui/layers.ts` keeps the three flows' signatures and their state machines —
  * which answer resolves what, when a prompt's value is refused — and hands this module a
- * projection: the labels, a sentence, a choice's options with the chosen one marked, a field's
+ * projection: the labels, a sentence, a choice's options and which of them is chosen, a field's
  * value with its refusal. The document renders that; the platform's `<dialog>` owns modality, focus
  * restoration, Escape and `closedby`; and nothing here binds a document listener or traps Tab,
  * because a modal dialog makes the rest of the page inert by itself.
+ *
+ * The choice is the kit's `jx-select`, which is a native `<select>` under `appearance:
+ * base-select`. Nothing here marks a row as selected: the element takes the chosen VALUE and its
+ * sidecar keeps the control on it, which is the one spelling that survives a real pick.
  *
  * A message that is a lit template (three callers still pass one) is rendered by the caller into
  * the document's `[part="island"]` through {@link DialogSurfaceOptions.island}, which is the island
@@ -29,11 +33,18 @@ import type { JxDocument } from "@jxsuite/schema/types";
 
 registerSurface("dialog", dialogDoc as unknown as JxDocument);
 
-/** One option of a prompt's choice, with the chosen one marked. */
+/**
+ * One option of a prompt's choice.
+ *
+ * There is no `selected` here, and its absence is the contract rather than an omission: `jx-select`
+ * is a native `<select>`, and the reader's first pick sets an option's dirtiness flag, after which
+ * the `selected` content attribute stops moving selectedness (`ui.md` §5.1). A projection that
+ * marked a row would be right until the first pick and wrong after it. The chosen row is named by
+ * `chosen`, once, beside the list.
+ */
 export interface DialogChoiceOption {
   value: string;
   label: string;
-  selected: boolean;
 }
 
 /** What a flow hands the surface. Everything is a projection; the flow keeps the state machine. */
@@ -50,8 +61,8 @@ export interface DialogSurfaceOptions {
   message?: string;
   /** Render a richer body into the document's island, once the element is ready. */
   island?: (host: HTMLElement) => void;
-  /** A native select above the field. */
-  choice?: { label: string; options: DialogChoiceOption[] };
+  /** A `jx-select` above the field, and which of its rows is chosen. */
+  choice?: { label: string; options: DialogChoiceOption[]; chosen: string };
   /** The prompt's field. */
   field?: { value: string; placeholder: string; select: "all" | "stem" | "none" };
   region?: string;
@@ -71,6 +82,7 @@ export interface DialogSurfacePatch {
   invalid?: boolean;
   error?: string;
   options?: DialogChoiceOption[];
+  chosen?: string;
 }
 
 export interface DialogSurfaceHandle {
@@ -96,10 +108,7 @@ interface DialogScope extends Record<string, unknown> {
   choiceLabel: string;
   options: DialogChoiceOption[];
   hasField: boolean;
-  /**
-   * The chosen option's value, so the select's own value follows a patch as well as its options'
-   * marks.
-   */
+  /** The chosen row's value, which is the only thing that decides what the select shows. */
   chosen: string;
   value: string;
   placeholder: string;
@@ -141,15 +150,13 @@ export function openDialogSurface(options: DialogSurfaceOptions): DialogSurfaceH
   slot.setAttribute(REGION_ATTR, overlayRegion("dialog", options.region));
   options.layer.append(slot);
 
-  const chosenOf = (choices: DialogChoiceOption[]) =>
-    choices.find((choice) => choice.selected)?.value ?? "";
   const scope = reactive<DialogScope>({
     cancel: () => {
       options.onCancel();
     },
     cancelLabel: options.cancelLabel,
     choiceLabel: options.choice?.label ?? "",
-    chosen: chosenOf(options.choice?.options ?? []),
+    chosen: options.choice?.chosen ?? "",
     closed: () => {
       options.onClosed();
     },
@@ -265,11 +272,14 @@ export function openDialogSurface(options: DialogSurfaceOptions): DialogSurfaceH
       }
       if (patch.options !== undefined) {
         scope.options = patch.options;
-        // After the keyed rows reconcile (a microtask), so the option the value names exists.
-        const chosen = chosenOf(patch.options);
-        queueMicrotask(() => {
-          scope.chosen = chosen;
-        });
+      }
+      if (patch.chosen !== undefined) {
+        /* Written straight through, in any order relative to the list. It used to be deferred a
+           microtask so the option the value names would exist by the time it landed — the ordering
+           trap of a bare `value` binding on a `<select>`. `jx-select` owns that now: its sidecar
+           re-asserts selectedness whenever the option list changes, and stands in a row for a value
+           no option holds, so neither this module nor its caller sequences the two. */
+        scope.chosen = patch.chosen;
       }
     },
   };

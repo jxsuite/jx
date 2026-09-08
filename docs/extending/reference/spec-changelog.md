@@ -482,6 +482,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `studio-ui-guidelines.md`
 
+- **0.4.12-draft** (2026-09-08) — the prompt's format choice is jx-select, and its projection names the chosen value rather than marking a row.
 - **0.4.11-draft** (2026-09-08) — the prompt's format select is a named defect rather than a pending promise: jx-select has landed and that control carries both spellings ui.md forbids.
 - **0.4.10-draft** (2026-09-02) — A surface that rewrites what the reader typed must make the rewrite visible to the binding.
 - **0.4.9-draft** (2026-09-02) — The command palette is a Jx document projected by panels/quick-search.ts (§9.3).

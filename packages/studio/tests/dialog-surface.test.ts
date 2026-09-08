@@ -53,7 +53,7 @@ describe("the dialog surface", () => {
     await handle.ready;
     await flush();
     const seen: string[] = [];
-    const region = layer.querySelector('[part="error"]');
+    const region = layer.querySelector('jx-textfield [part="error"]');
     const observer = new MutationObserver(() => seen.push(region?.textContent ?? ""));
     observer.observe(region!, { characterData: true, childList: true, subtree: true });
 
@@ -87,8 +87,9 @@ describe("the dialog surface", () => {
   test("update patches the live dialog: value, placeholder, refusal and options", async () => {
     const handle = open({
       choice: {
+        chosen: ".md",
         label: "Format",
-        options: [{ label: "Markdown", selected: true, value: ".md" }],
+        options: [{ label: "Markdown", value: ".md" }],
       },
       field: { placeholder: "untitled.md", select: "none", value: "draft" },
     });
@@ -98,11 +99,12 @@ describe("the dialog surface", () => {
     expect(input.value).toBe("draft");
     expect(input.placeholder).toBe("untitled.md");
     handle.update({
+      chosen: ".json",
       error: "draft.json exists.",
       invalid: true,
       options: [
-        { label: "Markdown", selected: false, value: ".md" },
-        { label: "JSON", selected: true, value: ".json" },
+        { label: "Markdown", value: ".md" },
+        { label: "JSON", value: ".json" },
       ],
       placeholder: "untitled.json",
       value: "draft-2",
@@ -111,13 +113,17 @@ describe("the dialog surface", () => {
     expect(input.value).toBe("draft-2");
     expect(input.placeholder).toBe("untitled.json");
     expect(input.getAttribute("aria-invalid")).toBe("true");
-    expect(layer.querySelector('[part="error"]')?.textContent).toBe("draft.json exists.");
-    const select = layer.querySelector<HTMLSelectElement>('select[part="choice"]')!;
-    expect([...select.options].map((o) => [o.value, o.hasAttribute("selected")])).toEqual([
-      [".md", false],
-      [".json", true],
-    ]);
+    expect(layer.querySelector('jx-textfield [part="error"]')?.textContent).toBe(
+      "draft.json exists.",
+    );
+    const select = layer.querySelector<HTMLSelectElement>('[part="choice"] select')!;
+    expect([...select.options].map((o) => o.value)).toEqual([".md", ".json"]);
+    /* The control holds the chosen row, and NO option carries a `selected` attribute — the two
+       halves of the contract `ui.md` §5.1 makes normative. The attribute is what a projection used
+       to mark, and it is right up to the reader's first pick and wrong after it, so the element
+       must be shown to have moved selectedness without ever writing one. */
     expect(select.value).toBe(".json");
+    expect(layer.querySelector("option[selected]")).toBeNull();
     handle.close();
   });
 
