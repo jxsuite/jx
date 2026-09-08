@@ -1,0 +1,407 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StylebookSelect",
+  "tagName": "main",
+  "$elements": [
+    {
+      "$ref": "../components/jx-field.json"
+    },
+    {
+      "$ref": "../components/jx-select.json"
+    }
+  ],
+  "state": {
+    "face": "\"Courier New\", monospace",
+    "swatch": "danger",
+    "faces": [
+      {
+        "id": "project",
+        "label": "This project",
+        "rows": [
+          {
+            "face": "Georgia, serif",
+            "label": "Georgia",
+            "value": "Georgia, serif"
+          },
+          {
+            "face": "\"Courier New\", monospace",
+            "label": "Courier New",
+            "value": "\"Courier New\", monospace"
+          },
+          {
+            "face": "\"Times New Roman\", serif",
+            "label": "Times New Roman",
+            "value": "\"Times New Roman\", serif"
+          }
+        ]
+      },
+      {
+        "id": "generic",
+        "label": "Generic",
+        "rows": [
+          {
+            "description": "system",
+            "face": "system-ui",
+            "label": "system-ui",
+            "value": "system-ui"
+          },
+          {
+            "face": "serif",
+            "label": "serif",
+            "value": "serif"
+          },
+          {
+            "face": "monospace",
+            "label": "monospace",
+            "value": "monospace"
+          },
+          {
+            "disabled": true,
+            "face": "fantasy",
+            "label": "fantasy",
+            "value": "fantasy"
+          }
+        ]
+      }
+    ],
+    "swatches": [
+      {
+        "label": "Danger",
+        "swatch": "var(--jx-danger)",
+        "value": "danger"
+      },
+      {
+        "label": "Success",
+        "swatch": "var(--jx-success)",
+        "value": "success"
+      },
+      {
+        "label": "Warning",
+        "swatch": "var(--jx-warning)",
+        "value": "warning"
+      },
+      {
+        "label": "Accent",
+        "swatch": "var(--jx-accent)",
+        "value": "accent"
+      }
+    ],
+    "lines": [
+      {
+        "label": "Solid",
+        "line": "solid",
+        "value": "solid"
+      },
+      {
+        "label": "Dashed",
+        "line": "dashed",
+        "value": "dashed"
+      },
+      {
+        "label": "Dotted",
+        "line": "dotted",
+        "value": "dotted"
+      },
+      {
+        "label": "Double",
+        "line": "double",
+        "value": "double"
+      }
+    ],
+    "note": {
+      "$prototype": "Function",
+      "body": [
+        {
+          "operator": "=",
+          "target": {
+            "$ref": "#/state/face"
+          },
+          "value": {
+            "$ref": "event#/target/value"
+          }
+        }
+      ]
+    }
+  },
+  "style": {
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "color": "var(--jx-fg)",
+    "background": "var(--jx-bg)",
+    "padding": "var(--jx-space-6)",
+    "minHeight": "100vh",
+    "& > h1": {
+      "fontSize": "var(--jx-text-lg)",
+      "fontWeight": "600",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& > h2": {
+      "fontSize": "var(--jx-text-md)",
+      "fontWeight": "600",
+      "margin": "var(--jx-space-6) 0 var(--jx-space-3)"
+    },
+    "& > p": {
+      "color": "var(--jx-fg-dim)",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& [role=\"group\"]": {
+      "display": "flex",
+      "alignItems": "flex-start",
+      "flexWrap": "wrap",
+      "gap": "var(--jx-space-3)",
+      "margin": "0 0 var(--jx-space-4)"
+    },
+    "& [role=\"group\"] > span": {
+      "width": "160px",
+      "color": "var(--jx-fg-muted)",
+      "fontSize": "var(--jx-text-sm)"
+    }
+  },
+  "children": [
+    {
+      "tagName": "h1",
+      "textContent": "jx-select"
+    },
+    {
+      "tagName": "p",
+      "textContent": "A native select with appearance: base-select. The platform brings typeahead, the arrow keys, disabled-row skipping, form participation and the top-layer picker; the document brings the rows, their faces, their swatches and the heading that delimits one group from the next."
+    },
+    {
+      "tagName": "h2",
+      "textContent": "A font picker, grouped"
+    },
+    {
+      "tagName": "p",
+      "textContent": "Each row draws in its own face, in the picker and in the closed trigger. The legend inside each optgroup is what draws the heading; the optgroup's own label is what names the group to a reader."
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "role": "group",
+        "aria-label": "Bound value"
+      },
+      "children": [
+        {
+          "tagName": "jx-select",
+          "$props": {
+            "label": "Font",
+            "groups": {
+              "$ref": "#/state/faces"
+            },
+            "value": {
+              "$ref": "#/state/face"
+            }
+          },
+          "onchange": {
+            "$ref": "#/state/note"
+          }
+        },
+        {
+          "tagName": "span",
+          "textContent": "${state.face}"
+        }
+      ]
+    },
+    {
+      "tagName": "h2",
+      "textContent": "Swatches, rules, and a row that is only a value"
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "role": "group",
+        "aria-label": "Drawing channels"
+      },
+      "children": [
+        {
+          "tagName": "jx-select",
+          "$props": {
+            "label": "Colour",
+            "options": {
+              "$ref": "#/state/swatches"
+            },
+            "value": {
+              "$ref": "#/state/swatch"
+            }
+          }
+        },
+        {
+          "tagName": "jx-select",
+          "$props": {
+            "label": "Border style",
+            "options": {
+              "$ref": "#/state/lines"
+            },
+            "value": "dashed"
+          }
+        },
+        {
+          "tagName": "jx-select",
+          "$props": {
+            "label": "Unlisted value",
+            "options": {
+              "$ref": "#/state/lines"
+            },
+            "value": "groove",
+            "help": "groove is in no row, so the element stands one in rather than falling silently to the first."
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "h2",
+      "textContent": "Static rows, from the call site"
+    },
+    {
+      "tagName": "p",
+      "textContent": "The default slot takes native option and optgroup elements. Slotted rows are distributed once, at mount, which is why the data path above exists. The first row's value is the empty string: a real, arrow-reachable choice that means inherit, not a placeholder."
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "role": "group",
+        "aria-label": "Slotted"
+      },
+      "children": [
+        {
+          "tagName": "jx-select",
+          "$props": {
+            "label": "Alignment"
+          },
+          "children": [
+            {
+              "tagName": "option",
+              "attributes": {
+                "value": ""
+              },
+              "textContent": "Inherit"
+            },
+            {
+              "tagName": "option",
+              "attributes": {
+                "value": "start"
+              },
+              "textContent": "Start"
+            },
+            {
+              "tagName": "option",
+              "attributes": {
+                "value": "center"
+              },
+              "textContent": "Center"
+            },
+            {
+              "tagName": "option",
+              "attributes": {
+                "value": "end"
+              },
+              "textContent": "End"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tagName": "h2",
+      "textContent": "Sizes and states"
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "role": "group",
+        "aria-label": "Sizes"
+      },
+      "children": [
+        {
+          "tagName": "jx-select",
+          "$props": {
+            "label": "Small",
+            "size": "sm",
+            "options": {
+              "$ref": "#/state/lines"
+            },
+            "value": "solid"
+          }
+        },
+        {
+          "tagName": "jx-select",
+          "$props": {
+            "label": "Medium",
+            "options": {
+              "$ref": "#/state/lines"
+            },
+            "value": "solid"
+          }
+        },
+        {
+          "tagName": "jx-select",
+          "$props": {
+            "label": "Large",
+            "size": "lg",
+            "options": {
+              "$ref": "#/state/lines"
+            },
+            "value": "solid"
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "role": "group",
+        "aria-label": "States"
+      },
+      "children": [
+        {
+          "tagName": "jx-select",
+          "$props": {
+            "label": "Refused",
+            "invalid": true,
+            "error": "Pick a font this project ships.",
+            "options": {
+              "$ref": "#/state/lines"
+            },
+            "value": "dotted"
+          }
+        },
+        {
+          "tagName": "jx-select",
+          "$props": {
+            "label": "Disabled",
+            "disabled": true,
+            "options": {
+              "$ref": "#/state/lines"
+            },
+            "value": "solid"
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "h2",
+      "textContent": "In a field row"
+    },
+    {
+      "tagName": "jx-field",
+      "$props": {
+        "label": "Heading font",
+        "description": "Used for every heading in this layout."
+      },
+      "attributes": {
+        "data-prop": "headingFont"
+      },
+      "children": [
+        {
+          "tagName": "jx-select",
+          "$props": {
+            "groups": {
+              "$ref": "#/state/faces"
+            },
+            "value": "system-ui"
+          }
+        }
+      ]
+    }
+  ]
+}

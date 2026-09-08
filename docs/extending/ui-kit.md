@@ -6,6 +6,7 @@ spec:
   - ui.md#4 # theme and tokens
   - ui.md#5 # the element catalogue
   - ui.md#5.2 # overlays
+  - ui.md#5.1 # primitives
   - ui.md#5.3 # forms
   - ui.md#5.4 # containers
   - ui.md#8 # icons
@@ -17,6 +18,7 @@ code:
   - packages/ui/src/behaviors/menu.ts
   - packages/ui/src/behaviors/textfield.ts
   - packages/ui/src/behaviors/number-field.ts
+  - packages/ui/src/behaviors/select.ts
   - packages/ui/src/behaviors/popover.ts
   - packages/ui/src/behaviors/tooltip.ts
   - packages/ui/src/behaviors/tabs.ts
@@ -150,6 +152,44 @@ Stepping goes through the control's own `stepUp` and `stepDown`, so a value sits
 
 :::doc-warning
 A number input throws away what it cannot parse, so a half-typed `1e` and a cleared field both read as an empty string. Before deleting a value because the field is empty, check `badInput` on the element, or its `data-bad-input` attribute. It is true while the reader is mid-way through typing something the control cannot represent yet.
+:::
+
+## Selects
+
+`jx-select` is a native `<select>`, not a rebuilt dropdown, so typeahead, scrolling the list to the current row, form participation and the accessibility tree all come from the platform. What the element adds is drawing: a row can carry its own font face, a colour swatch or a sample of a border style, and rows can sit under headings you can see.
+
+```json
+{
+  "tagName": "jx-select",
+  "$props": {
+    "label": "Font",
+    "value": "Georgia, serif",
+    "groups": [
+      {
+        "id": "project",
+        "label": "This project",
+        "rows": [{ "value": "Georgia, serif", "label": "Georgia", "face": "Georgia, serif" }]
+      },
+      {
+        "id": "generic",
+        "label": "Generic",
+        "rows": [{ "value": "system-ui", "label": "system-ui", "description": "system" }]
+      }
+    ]
+  }
+}
+```
+
+A row is a `value` and a `label`, plus any of `description`, `disabled`, `face`, `swatch` and `line`. `face` sets that row's font, `swatch` fills a small block of colour beside it, and `line` draws a sample of a border style such as `dashed`. Give `options` instead of `groups` for a flat list, or give both: the ungrouped rows are drawn first.
+
+`value` is a string, and the empty string is one of its values rather than the absence of one, so a blank row can mean "inherit". Set `value` to something no row holds and the element adds a row for it instead of quietly selecting the first one.
+
+Read the answer from `change`, the way you would from any select. The event comes from the inner control, so `event.target.value` is the row the reader picked.
+
+You can also write rows yourself, as children: native `option` and `optgroup` elements, and an `<hr>` between them for a separator. Children are placed once, when the element is set up, so use them for rows that never change and `options` or `groups` for rows that do.
+
+:::doc-note
+The drawing needs a browser with customizable select: Chrome or Edge 135 and later. In an older engine the control still works, still submits and still reads correctly, but the browser draws the list and the faces, swatches and group headings do not show.
 :::
 
 ## Field rows

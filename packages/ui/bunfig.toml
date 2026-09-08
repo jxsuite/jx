@@ -7,5 +7,10 @@ coveragePathIgnorePatterns = [
   "./result/**",
   "../runtime/**",
   "../schema/**",
+  # A sibling workspace's sources are gated by that workspace's own bunfig, not by this one. The
+  # theme test imports the site builder to prove the two agree about one style block, and without
+  # this line that import drags `site-style.ts` into the kit's report, where it trips a per-file
+  # bar it was never measured against — a red gate in `packages/ui` owned by `packages/site`.
+  "../site/**",
 ]
 coverageThreshold = { lines = 0.96, functions = 1.0 }

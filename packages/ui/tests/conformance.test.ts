@@ -7,6 +7,7 @@ import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
+import { splitSelectorList } from "@jxsuite/runtime/css";
 import { validateDocument } from "@jxsuite/schema";
 import { findPopoverDefects } from "@jxsuite/schema/overlays";
 import { findA11yDefects } from "@jxsuite/schema/a11y";
@@ -159,21 +160,54 @@ describe("kit documents", () => {
       });
 
       test("a part that is hidden by a binding says what hidden means to it", () => {
-        // The UA's `[hidden] { display: none }` loses to any authored `display`, so a part that is
-        // Both bound to `hidden` and given a display of its own needs a `[hidden]` rule, or it
-        // Never hides — the chevron on every context-menu row, verified in Chrome.
+        /* The UA's `[hidden] { display: none }` loses to any authored `display`, so a part that is
+           both bound to `hidden` and given a display of its own needs a `[hidden]` rule, or it
+           never hides — the chevron on every context-menu row, verified in Chrome.
+
+           Three things this gate used to miss, each of which is how a document escapes it rather
+           than how it fails. It read `node.hidden` only, so a part bound through
+           `attributes.hidden` — the only spelling available inside a `$map` row — was invisible to
+           it: `jx-select` has six such parts and the gate saw none of them. It looked up
+           `& > [part="X"]` by exact key, so a part styled as a DESCENDANT rather than a child was
+           invisible too. And it compared the whole key, so a rule written as a selector LIST —
+           three parts hidden by one rule, which is the compact and correct way to write it — was
+           invisible a third time. Each blind spot passes silently, which is the shape the `[hidden]`
+           defect itself has. */
         const style = (doc.style ?? {}) as Record<string, unknown>;
-        for (const [label, node] of internalNodes(doc)) {
-          const part = node.attributes?.part;
-          if (node.hidden === undefined || typeof part !== "string") {
+        /* Every selector member in the block, mapped to the declarations written for it. A key is
+           a selector LIST, so it is split before anything is looked up. */
+        const members = new Map<string, Record<string, unknown>>();
+        for (const [key, value] of Object.entries(style)) {
+          if (!value || typeof value !== "object" || Array.isArray(value)) {
             continue;
           }
-          const rule = style[`& > [part="${part}"]`] as Record<string, unknown> | undefined;
+          for (const member of splitSelectorList(key)) {
+            const at = members.get(member) ?? {};
+            Object.assign(at, value as Record<string, unknown>);
+            members.set(member, at);
+          }
+        }
+        /** Declarations for a member selecting `part`, `combinator` being `""` or `"[hidden]"`. */
+        const forPart = (part: string, suffix: string) => {
+          const wanted = `[part="${part}"]${suffix}`;
+          const hit = [...members].find(([member]) => {
+            const rest = member.startsWith("&") ? member.slice(1).trimStart() : member;
+            return (rest.startsWith(">") ? rest.slice(1).trimStart() : rest) === wanted;
+          });
+          return hit?.[1];
+        };
+        for (const [label, node] of internalNodes(doc)) {
+          const part = node.attributes?.part;
+          const bound = node.hidden !== undefined || node.attributes?.hidden !== undefined;
+          if (!bound || typeof part !== "string") {
+            continue;
+          }
+          const rule = forPart(part, "");
           if (rule && "display" in rule) {
-            const hiddenRule = style[`& > [part="${part}"][hidden]`] as
-              | Record<string, unknown>
-              | undefined;
-            expect(hiddenRule?.display, `${label} <${node.tagName} part=${part}>`).toBe("none");
+            expect(
+              forPart(part, "[hidden]")?.["display"],
+              `${label} <${node.tagName} part=${part}> declares a display and binds hidden, so it needs a [hidden] rule`,
+            ).toBe("none");
           }
         }
       });
