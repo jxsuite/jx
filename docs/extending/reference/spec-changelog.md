@@ -484,6 +484,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `studio-ui-guidelines.md`
 
+- **0.4.18-draft** (2026-09-09) — the About dialog is a document: the pattern a converted surface follows, and the readiness trap it hit.
 - **0.4.17-draft** (2026-09-09) — the shell frame is a Jx document, and mounting it is asynchronous because initShellRefs reads its cells on the next line.
 - **0.4.16-draft** (2026-09-09) — the shell frame's stylesheet is generated from a style block; its markup waits because initShellRefs reads the hosts synchronously.
 - **0.4.15-draft** (2026-09-09) — forced-colors.css is generated from a style block with its reasoning intact; the keyframes stay put and gain the duplicate-name gate.

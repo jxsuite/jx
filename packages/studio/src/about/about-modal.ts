@@ -1,66 +1,33 @@
 /// <reference lib="dom" />
 /**
- * About modal — shows app version, build metadata, external links, the resolved `@jxsuite/*`
- * package versions, and (on desktop) the release channel / update status.
+ * About — the app's version, build metadata, external links, the resolved `@jxsuite/*` package
+ * versions, and (on desktop) the release channel and update status.
  *
- * Build metadata comes from src/version.ts (injected at bundle time). Package versions are fetched
- * lazily via the platform; desktop update info is shown only when the active platform implements
- * the optional `getAppInfo` method.
+ * The dialog itself is `src/surfaces/about.json`, a `jx-dialog`; this module is the flow around it.
+ * It used to be a lit template with module-level `_packages` and `_appInfo` and a `renderModal()`
+ * that redrew the whole thing whenever either landed — the surface is reactive now, so a list that
+ * arrives late appears without anything else being touched.
+ *
+ * Build metadata comes from `src/version.ts`, injected at bundle time. Both platform reads are
+ * OPTIONAL: `listPackages` failing still leaves the app able to state its own version, and
+ * `getAppInfo` is implemented only by the desktop, so its absence is a missing row rather than an
+ * error to report.
+ *
+ * @docs studio/interface
  */
 
-import { html } from "lit-html";
-import type { TemplateResult } from "lit-html";
-import { openModal } from "../ui/layers";
+import { openAboutSurface } from "../surfaces/about";
+import { layerHost } from "../ui/layers";
 import { getPlatform } from "../platform";
 import { APP_NAME, BUILD_DATE, GIT_COMMIT, LINKS, VERSION } from "../version";
-import type { AppInfo, PackageInfo } from "../types";
+import type { AboutRow, AboutSurfaceHandle } from "../surfaces/about";
+import type { AppInfo } from "../types";
 import type { Command, CommandRegistry } from "../commands/registry";
 
-let _handle: ReturnType<typeof openModal> | null = null;
+let _handle: AboutSurfaceHandle | null = null;
 
-let _packages: PackageInfo[] | null = null;
-let _appInfo: AppInfo | null = null;
-
-export function openAboutModal() {
-  if (_handle) {
-    return;
-  }
-  _packages = null;
-  _appInfo = null;
-  renderModal();
-  void loadDetails();
-}
-
-export function closeAboutModal() {
-  if (!_handle) {
-    return;
-  }
-  _handle.close();
-  _handle = null;
-  _packages = null;
-  _appInfo = null;
-}
-
-async function loadDetails() {
-  const platform = getPlatform();
-  try {
-    _packages = await platform.listPackages();
-  } catch {
-    _packages = [];
-  }
-  if (platform.getAppInfo) {
-    try {
-      _appInfo = await platform.getAppInfo();
-    } catch {
-      _appInfo = null;
-    }
-  }
-  if (_handle) {
-    renderModal();
-  }
-}
-
-function formatBuildDate(iso: string) {
+/** `—` rather than an empty cell: a row with nothing in it reads as a missing row. */
+function formatBuildDate(iso: string): string {
   if (!iso) {
     return "—";
   }
@@ -68,94 +35,76 @@ function formatBuildDate(iso: string) {
   return Number.isNaN(date.getTime()) ? iso : date.toLocaleString();
 }
 
-function metaRows() {
-  const rows: [string, string][] = [
-    ["Version", VERSION],
-    ["Build date", formatBuildDate(BUILD_DATE)],
-    ["Commit", GIT_COMMIT],
+/** The metadata rows, with the desktop's two appended when the platform reported them. */
+function metaRows(info: AppInfo | null): AboutRow[] {
+  const rows: AboutRow[] = [
+    { label: "Version", value: VERSION },
+    { label: "Build date", value: formatBuildDate(BUILD_DATE) },
+    { label: "Commit", value: GIT_COMMIT },
   ];
-  if (_appInfo) {
-    rows.push(["Channel", _appInfo.channel]);
-    if (_appInfo.updateStatus) {
-      rows.push(["Updates", _appInfo.updateStatus]);
+  if (info) {
+    rows.push({ label: "Channel", value: info.channel });
+    if (info.updateStatus) {
+      rows.push({ label: "Updates", value: info.updateStatus });
     }
   }
   return rows;
 }
 
-function renderPackages(): TemplateResult {
-  if (_packages === null) {
-    return html`<p class="about-muted">Loading packages…</p>`;
+/** Ask the platform for what it can tell us, and patch whatever comes back. */
+async function loadDetails(handle: AboutSurfaceHandle): Promise<void> {
+  const platform = getPlatform();
+  let packages: { name: string; version: string }[] = [];
+  try {
+    packages = await platform.listPackages();
+  } catch {
+    packages = [];
   }
-  if (_packages.length === 0) {
-    return html`<p class="about-muted">No packages reported.</p>`;
+  let info: AppInfo | null = null;
+  if (platform.getAppInfo) {
+    try {
+      info = await platform.getAppInfo();
+    } catch {
+      info = null;
+    }
   }
-  return html`
-    <ul class="about-packages">
-      ${_packages.map(
-        (p) => html`
-          <li class="about-package-row">
-            <span class="about-package-name">${p.name}</span>
-            <span class="about-package-version">${p.version}</span>
-          </li>
-        `,
-      )}
-    </ul>
-  `;
+  if (_handle === handle) {
+    handle.update({ packages, rows: metaRows(info) });
+  }
 }
 
-function renderModal() {
-  const tpl = html`
-    <sp-underlay open @close=${closeAboutModal}></sp-underlay>
-    <div class="about-modal">
-      <div class="settings-modal-header">
-        <h2 class="settings-modal-title">About ${APP_NAME}</h2>
-        <sp-action-button quiet size="s" @click=${closeAboutModal} title="Close">
-          <sp-icon-close slot="icon"></sp-icon-close>
-        </sp-action-button>
-      </div>
-      <div class="about-modal-body">
-        <dl class="about-meta">
-          ${metaRows().map(
-            ([label, value]) => html`
-              <div class="about-meta-row">
-                <dt class="about-meta-label">${label}</dt>
-                <dd class="about-meta-value">${value}</dd>
-              </div>
-            `,
-          )}
-        </dl>
-
-        <div class="about-links">
-          <a href=${LINKS.github} target="_blank" rel="noreferrer noopener">GitHub</a>
-          <a href=${LINKS.docs} target="_blank" rel="noreferrer noopener">Documentation</a>
-          <a href=${LINKS.license} target="_blank" rel="noreferrer noopener">License</a>
-        </div>
-
-        <section class="about-section">
-          <h3 class="about-section-title">Packages</h3>
-          ${renderPackages()}
-        </section>
-      </div>
-    </div>
-  `;
-
+export function openAboutModal(): void {
   if (_handle) {
-    _handle.update(tpl);
-  } else {
-    _handle = openModal(tpl, { label: `About ${APP_NAME}`, onDismiss: closeAboutModal });
+    return;
   }
+  const handle = openAboutSurface({
+    headline: `About ${APP_NAME}`,
+    layer: layerHost("dialog"),
+    links: [
+      { href: LINKS.github, label: "GitHub" },
+      { href: LINKS.docs, label: "Documentation" },
+      { href: LINKS.license, label: "License" },
+    ],
+    onClosed: () => {
+      if (_handle === handle) {
+        _handle = null;
+      }
+    },
+    rows: metaRows(null),
+  });
+  _handle = handle;
+  void loadDetails(handle);
 }
 
 /**
- * `Help: About` — the record the rail footer's hand-authored button used to be.
+ * There is no `closeAboutModal`, and its absence is the conversion rather than an omission.
  *
- * The rail foot carries **Preferences** and nothing else (plan §3.2 ②). About is not a view you
- * switch to and it is opened roughly once in an app's lifetime, so it costs a rail slot it cannot
- * repay; instead it sits at the bottom of the ⬢ Studio menu (`commandbar/overflow`, `group:
- * "9_help"` sorts after every other group there) and stays reachable by name from the palette
- * besides.
+ * The dialog dismisses ITSELF now — Escape and the Close button are the platform's and the kit's,
+ * and both arrive as events the document hands back to this module. An exported closer had no
+ * caller left in the running app, which `tests/reachability.test.ts` said out loud: built, tested,
+ * and reachable from nothing.
  */
+
 export function aboutCommands(): Command[] {
   return [
     {

@@ -257,9 +257,9 @@ function render() {
 
       ${
         _packages === null
-          ? html`<p class="about-muted">Loading…</p>`
+          ? html`<p class="settings-muted">Loading…</p>`
           : pkgs.length === 0
-            ? html`<p class="about-muted">No dependencies.</p>`
+            ? html`<p class="settings-muted">No dependencies.</p>`
             : html`
                 <sp-table size="s">
                   <sp-table-head>
