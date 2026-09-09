@@ -441,6 +441,56 @@ describe("buildStyleRules on selectors", () => {
   });
 });
 
+describe("buildStyleRules on a block that documents itself", () => {
+  const build = (style: unknown) => css.buildStyleRules(style as never, { scope: ":root" });
+
+  test("$description reaches the rule and stays out of its text", () => {
+    /* Out of `text` is the load-bearing half. `text` is what a sheet inserts and what `hashCss`
+       interns, so prose there would make two otherwise identical rules two rules, and would put a
+       paragraph into every adopted sheet at runtime. */
+    const [rule] = build({ $description: "why this exists", color: "red" });
+    expect(rule!.text).toBe(":root { color: red }");
+    expect(rule!.description).toBe("why this exists");
+    expect(rule!.key).toBe(css.hashCss(":root { color: red }"));
+  });
+
+  test("two rules alike but for their prose intern as one", () => {
+    const [a] = build({ $description: "one reason", color: "red" });
+    const [b] = build({ $description: "a different reason", color: "red" });
+    expect(a!.key).toBe(b!.key);
+  });
+
+  test("a nested block and a declaration at-rule each carry their own", () => {
+    const rules = build({
+      "&:hover": { $description: "the hover", color: "blue" },
+      "@font-face": { $description: "the face", fontFamily: "A" },
+    });
+    expect(rules.map((rule) => rule.description)).toEqual(["the hover", "the face"]);
+  });
+
+  test("a rule that documents nothing carries no description at all", () => {
+    const [rule] = build({ color: "red" });
+    expect(rule!.description).toBeUndefined();
+    expect("description" in rule!).toBe(false);
+  });
+
+  test("every $-prefixed key is metadata, and none is a declaration", () => {
+    /* The prefix rather than the one name: no CSS property begins with `$` — a custom property
+       begins with `--` — so a document's metadata can never be mistaken for styling. It used to
+       emit `$description: why this exists;`, an invalid declaration the parser drops in silence. */
+    expect(build({ $description: "a", $anything: "b", color: "red" })[0]!.text).toBe(
+      ":root { color: red }",
+    );
+    // A block that is nothing BUT metadata emits no rule, rather than an empty one.
+    expect(build({ $description: "a" })).toEqual([]);
+  });
+
+  test("an empty or non-string description is not carried", () => {
+    expect(build({ $description: "", color: "red" })[0]!.description).toBeUndefined();
+    expect(build({ $description: 42, color: "red" })[0]!.description).toBeUndefined();
+  });
+});
+
 describe("buildStyleRules on a key written more than once", () => {
   const rules = (style: unknown) =>
     css.buildStyleRules(style as never, { scope: ":root" }).map((rule) => rule.text);

@@ -135,6 +135,7 @@ describe("report", () => {
     contrast: [],
     guidelineTokens: [],
     underScrim: [],
+    duplicateAnimations: [],
   };
   const logs: string[] = [];
   const sink = (...args: unknown[]): void => {

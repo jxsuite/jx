@@ -2,7 +2,7 @@
 
 ## Declarative Document Object Model — JSON Edition
 
-**Version:** 0.6.16-draft\
+**Version:** 0.6.17-draft\
 **Status:** Partial\
 **Updated:** 2026-09-09\
 **License:** MIT
@@ -937,6 +937,8 @@ The name is part of the key, so the test is a prefix match.
   }
 }
 ```
+
+**A block may document itself.** A `$description` in a style block is prose — why the rule exists, in the author's words — and is never a declaration. It is carried on the emitted rule rather than inside its text, because the text is what a sheet inserts and what the runtime interns rules by: prose there would make two otherwise identical rules two rules, and would put a paragraph into every adopted sheet. A static build renders it as a comment above the rule; every other consumer ignores it. **Every `$`-prefixed key in a style block is metadata** for the same reason it is everywhere else in a document, and no CSS property begins with `$` — a custom property begins with `--` — so the prefix can be refused whole. Writing one used to emit `$description: why this exists;`, an invalid declaration the parser drops in silence.
 
 **Only these four keys take the form**, and the narrowness is deliberate. They are leaves — their bodies are declarations and nothing recurses into them — so a list there teaches no other reader anything new. Under a selector key an array would say what one block already says, while every style walker outside the emitter assumes a block key holds ONE block; admitting it there would leave those readers stepping past it in silence. A validator refuses the array under any other key, so the schema and the emitters agree about what a document means rather than one of them dropping what the other accepted.
 
@@ -2557,6 +2559,7 @@ This rewrites the mutating handlers of Appendix A's idiom using `$expression`, l
 
 ## Changelog
 
+- **0.6.17-draft** (2026-09-09) — a style block may document itself: $description is prose carried on the rule, and every $-prefixed key is metadata rather than a declaration.
 - **0.6.16-draft** (2026-09-09) — a declaration at-rule may be written more than once, as an array of blocks — the only spelling @font-face has for a family's second weight.
 - **0.6.15-draft** (2026-09-03) — a style declaration value may be a ref; a reactive custom property on a self-target rule is written inline so rows share one rule; a static build reports what it drops; color-scheme lands on :root.
 - **0.6.14-draft** (2026-09-03) — a custom element's call-site style merges with its definition's; a slot leaves no node; the display default is a rule decided by the base block, with display revert as the opt-out; onMount receives the host; #/$map resolves.
@@ -2637,4 +2640,4 @@ This rewrites the mutating handlers of Appendix A's idiom using `$expression`, l
 
 ---
 
-_Jx Specification v0.6.16-draft — subject to revision_
+_Jx Specification v0.6.17-draft — subject to revision_

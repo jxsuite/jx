@@ -42,6 +42,21 @@ export const styleObjectSchema = {
       ],
     },
   },
-  properties: {},
+  properties: {
+    /*
+     * Prose, not a declaration: why the rule exists, in the author's words.
+     *
+     * A style block had nowhere to say that, and writing it anyway emitted
+     * `$description: why this exists;` — an invalid declaration the parser drops in silence, with
+     * the prose inside the text the runtime interns rules by. Every `$`-prefixed key is metadata
+     * here for the same reason it is everywhere else in a document, and no CSS property begins with
+     * `$`. A static emitter renders it as a comment; the runtime ignores it.
+     */
+    $description: {
+      description:
+        "Why this rule exists. Emitted as a comment by static builds, ignored at runtime.",
+      type: "string",
+    },
+  },
   type: "object",
 } as const;

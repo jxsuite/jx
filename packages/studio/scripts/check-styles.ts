@@ -504,6 +504,37 @@ export function scanHex(rel: string, source: string): { errors: Finding[]; warni
   return { errors, warnings };
 }
 
+/* ---------------------------------------------------------------------- animation names --- */
+
+/**
+ * Every `@keyframes` name a stylesheet or a document defines, with where it was defined.
+ *
+ * A name is document-GLOBAL, and CSS resolves a duplicate by keeping the LAST one and ignoring
+ * every earlier definition entirely — silently, with no parse error and a live `Animation` object
+ * either way. Two surfaces that each define `pulse` therefore leave one of them animating the
+ * other's timeline.
+ *
+ * That is a latent trap today, when the three animations live one per stylesheet, and a certain one
+ * once the surfaces carry their own: the runtime hoists a declaration-body at-rule ONCE PER RULE
+ * TEXT (`spec.md` §9.6), so two documents naming one animation with different bodies produce two
+ * definitions of one name rather than a collision anybody notices.
+ *
+ * @param source A stylesheet, or a surface document's raw text
+ * @returns Each name and the line it is defined on
+ */
+export function keyframeNames(source: string): [string, number][] {
+  const found: [string, number][] = [];
+  /* Both spellings: `@keyframes name {` in CSS, and `"@keyframes name": {` in a document, where the
+     key carries the name exactly as the runtime's own prefix match reads it. */
+  const re = /(?:"@keyframes\s+([^"\s]+)"|@keyframes\s+([\w-]+))/g;
+  let match: RegExpExecArray | null = re.exec(source);
+  while (match !== null) {
+    found.push([match[1] ?? match[2]!, source.slice(0, match.index).split("\n").length]);
+    match = re.exec(source);
+  }
+  return found;
+}
+
 /* ------------------------------------------------------------------ surface-document scanning --- */
 
 /**
@@ -1372,6 +1403,8 @@ export interface StyleCheckResult {
   focusRings: Finding[];
   /** FOCUS_RING_ALLOWANCES entries that suppress nothing any more — the ratchet. */
   staleFocusRings: string[];
+  /** Animation names defined more than once. Every definition of the name, so both sites are named. */
+  duplicateAnimations: Finding[];
   /** Modal cards opened beside an `sp-underlay` that no rule lifts above it. */
   underScrim: Finding[];
   /** Required token pairs that miss the ratio WCAG 2.2 asks of them. */
@@ -1407,6 +1440,15 @@ export async function collect(root: string): Promise<StyleCheckResult> {
   const read = (rel: string): Promise<string> => Bun.file(join(root, rel)).text();
 
   const focusRings: Finding[] = [];
+  /** Animation name → every place it is defined. More than one is the finding. */
+  const animations = new Map<string, Finding[]>();
+  const scanAnimations = (rel: string, source: string): void => {
+    for (const [name, line] of keyframeNames(source)) {
+      const at = animations.get(name) ?? [];
+      at.push({ file: rel, line, text: name });
+      animations.set(name, at);
+    }
+  };
   const suppressedRings = new Set<string>();
   /** Classes some rule gives a positive z-index — the underlay-stacking rule's evidence. */
   const stacked = new Set<string>();
@@ -1453,6 +1495,7 @@ export async function collect(root: string): Promise<StyleCheckResult> {
     pxWarnings.push(...warnings);
     scanRings(rel, source);
     scanStacking(source);
+    scanAnimations(rel, source);
     for (const name of extractDefinedClasses(source)) {
       defined.add(name);
     }
@@ -1518,6 +1561,7 @@ export async function collect(root: string): Promise<StyleCheckResult> {
     const { errors, warnings } = scanJsonStyle(rel, source);
     hexErrors.push(...errors);
     pxWarnings.push(...warnings);
+    scanAnimations(rel, source);
     for (const [name, line] of surfaceClasses(source)) {
       if (!emitted.has(name)) {
         emitted.set(name, { file: rel, line, text: name });
@@ -1590,6 +1634,7 @@ export async function collect(root: string): Promise<StyleCheckResult> {
     focusRings,
     staleFocusRings,
     underScrim,
+    duplicateAnimations: [...animations.values()].filter((at) => at.length > 1).flat(),
   };
 }
 
@@ -1597,6 +1642,7 @@ export async function collect(root: string): Promise<StyleCheckResult> {
 export function report(result: StyleCheckResult): number {
   const { hexErrors, pxWarnings, orphans, staleAllowed, banned, silentCatches } = result;
   const { focusRings, staleFocusRings, underScrim, contrast, guidelineTokens } = result;
+  const { duplicateAnimations } = result;
 
   if (pxWarnings.length > 0) {
     console.warn(
@@ -1683,6 +1729,18 @@ export function report(result: StyleCheckResult): number {
     }
   }
 
+  if (duplicateAnimations.length > 0) {
+    const names = [...new Set(duplicateAnimations.map((finding) => finding.text))];
+    console.error(
+      `\n❌ ${names.length} animation name(s) defined more than once. A @keyframes name is ` +
+        `document-global: CSS keeps the LAST definition and ignores every earlier one, with no ` +
+        `parse error either way, so one of these animates the other's timeline.`,
+    );
+    for (const finding of duplicateAnimations) {
+      console.error(`   ${finding.file}:${finding.line}  ${finding.text}`);
+    }
+  }
+
   if (staleFocusRings.length > 0) {
     console.error(
       `\n❌ ${staleFocusRings.length} stale FOCUS_RING_ALLOWANCES entry(ies) — these selectors no ` +
@@ -1737,7 +1795,8 @@ export function report(result: StyleCheckResult): number {
     banned.length > 0 ||
     silentCatches.length > 0 ||
     focusRings.length > 0 ||
-    staleFocusRings.length > 0
+    staleFocusRings.length > 0 ||
+    duplicateAnimations.length > 0
   ) {
     return 1;
   }
@@ -1752,7 +1811,8 @@ export function report(result: StyleCheckResult): number {
       `:focus-visible restore, every underlay-bearing card stacked above its scrim, ` +
       `${CONTRAST_PAIRS.length} contrast pair(s) checked ` +
       `(${Object.keys(CONTRAST_DEBT).length} on the debt list), ` +
-      `and studio-ui-guidelines.md §1.1 agrees with tokens.css${pxNote}.`,
+      `and studio-ui-guidelines.md §1.1 agrees with tokens.css, ` +
+      `every animation name defined once${pxNote}.`,
   );
   return 0;
 }

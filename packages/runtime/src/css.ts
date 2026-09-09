@@ -426,6 +426,16 @@ export interface CssRule {
    * none without saying where they went.
    */
   blocks?: readonly CssKeyframeBlock[];
+  /**
+   * The block's `$description`, if it wrote one: why the rule exists, in the author's words.
+   *
+   * It is NOT in {@link CssRule.text}, and that is the point. `text` is what a sheet inserts and
+   * what {@link hashCss} interns, so prose there would make two identical rules two rules and put a
+   * paragraph in every adopted sheet at runtime. A static emitter — the one writing a stylesheet a
+   * person will read — renders it as a comment; every other consumer ignores it, exactly as a
+   * document's own `$description` is ignored.
+   */
+  description?: string;
   /** See {@link CssRuleTarget}. */
   target: CssRuleTarget;
   /** FNV-1a base36 hash of `text` — the dedup key. */
@@ -708,6 +718,14 @@ export function buildStyleRules(style: JxStyle, options: CssBuildOptions = {}): 
       if (skipSelectorKeys && (key.startsWith("@") || isNestedSelectorKey(key))) {
         continue;
       }
+      /* `$`-prefixed keys are METADATA, the way they are everywhere else in a document. No CSS
+         property begins with `$` — a custom property begins with `--` — so this can refuse the
+         whole prefix rather than name one key. `$description` used to emit
+         `$description: why this exists;`: an invalid declaration the parser drops in silence, which
+         also put the prose inside the text `hashCss` interns. */
+      if (key.startsWith("$")) {
+        continue;
+      }
       const resolved = declarationValue(key, value, reactive, target);
       if (resolved !== null) {
         declarations.push([cssPropertyName(key), resolved]);
@@ -721,6 +739,7 @@ export function buildStyleRules(style: JxStyle, options: CssBuildOptions = {}): 
     selector: string | null,
     declarations: readonly (readonly [string, string])[],
     target: CssRuleTarget,
+    description?: unknown,
   ) => {
     if (declarations.length === 0) {
       return;
@@ -741,6 +760,7 @@ export function buildStyleRules(style: JxStyle, options: CssBuildOptions = {}): 
       declarations,
       target,
       key: hashCss(text),
+      ...(typeof description === "string" && description !== "" ? { description } : {}),
     });
   };
 
@@ -809,6 +829,7 @@ export function buildStyleRules(style: JxStyle, options: CssBuildOptions = {}): 
         null,
         declarationsOf(block, false, true, "unscoped"),
         "unscoped",
+        block["$description"],
       );
       return;
     }
@@ -834,7 +855,13 @@ export function buildStyleRules(style: JxStyle, options: CssBuildOptions = {}): 
     conditions: readonly string[],
     target: CssRuleTarget,
   ) {
-    emit(conditions, selector, declarationsOf(node, true, true, target), target);
+    emit(
+      conditions,
+      selector,
+      declarationsOf(node, true, true, target),
+      target,
+      node["$description"],
+    );
     for (const [key, value] of Object.entries(node)) {
       for (const block of blocksOf(key, value)) {
         if (key.startsWith("@")) {

@@ -54,3 +54,28 @@ describe("a declaration at-rule may hold several blocks", () => {
     expect(await accepts({ color: [{ a: "b" }] })).toBe(false);
   });
 });
+
+describe("a style block may document itself", () => {
+  const accepts = async (style: Record<string, unknown>): Promise<boolean> => {
+    const result = await validateDocument(doc(style));
+    return result.valid;
+  };
+
+  test("$description is prose, at any depth", async () => {
+    expect(await accepts({ $description: "why this rule exists", color: "red" })).toBe(true);
+    expect(await accepts({ "&:hover": { $description: "why the hover", color: "blue" } })).toBe(
+      true,
+    );
+    expect(await accepts({ "@font-face": [{ $description: "the face", fontFamily: "A" }] })).toBe(
+      true,
+    );
+  });
+
+  test("it is a string, and the generator carries the constraint to every depth", async () => {
+    /* `buildCssProperties` REPLACES the block's properties rather than adding to them, so the
+       authored `$description` entry was dropped and a number validated. The generated schema is the
+       one every consumer reads, so the constraint has to survive generation to exist at all. */
+    expect(await accepts({ $description: 42 })).toBe(false);
+    expect(await accepts({ "&:hover": { $description: 42 } })).toBe(false);
+  });
+});
