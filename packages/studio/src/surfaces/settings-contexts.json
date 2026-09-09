@@ -1,0 +1,538 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioSettingsContexts",
+  "$description": "Project Settings › Contexts: the base width, and the three groups of `$media` entries — size breakpoints, colour schemes and feature queries — a project's pages may be rendered under. The adapter hands in `groups`, already classified and already carrying each row's refusal, plus the base width and the two whole-file messages; nothing here decides what a context IS. Every control is the kit's, so the `+` that used to be typed into an add button's text and the `×` that stood in for a remove icon are glyphs now rather than characters.",
+  "tagName": "div",
+  "attributes": {
+    "part": "contexts"
+  },
+  "style": {
+    "$description": "What `.settings-media-list`, `.settings-media-row`, `.settings-media-name`, `.settings-media-name-fixed`, `.settings-media-value` and `.settings-section-notice` used to say in `styles/overlays.css`, keyed on `part` and re-pointed at the studio token layer. Those six were this section's alone and go with it. `.settings-section-title`, `.settings-field`, `.settings-field-label`, `.settings-field-desc` and `.settings-field-error` are NOT deleted with them: nine other settings sections are still lit and still name them, so those rules keep their stylesheet and this document carries its own copy of each until the last of those sections converts.",
+    "display": "block",
+    "& [part=\"title\"]": {
+      "margin": "0 0 16px",
+      "fontSize": "16px",
+      "fontWeight": "600",
+      "color": "var(--fg)"
+    },
+    "& [part=\"intro\"], & [part=\"field-desc\"], & [part=\"empty\"]": {
+      "$description": "The 12px secondary line, three times: the section's own sentence, a group's sentence, and the sentence a group shows instead of rows. It read `var(--spectrum-font-size-75, 12px)`, which resolved only inside `<sp-theme>` — a document is mounted in the pane, where that name is not in scope and every one of them would have taken the hard-coded fallback.",
+      "margin": "0 0 6px",
+      "fontSize": "var(--jx-text-md)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"empty\"]": {
+      "margin": "0"
+    },
+    "& [part=\"field\"]": {
+      "marginBottom": "20px"
+    },
+    "& [part=\"field-label\"]": {
+      "$description": "A heading, where the lit section had a `<label>` that named nothing: a group label sits over a LIST of controls, so `for` had nowhere to point and the element was a label in class name only. Each control carries its own name instead, and the reader gets a heading they can navigate by.",
+      "display": "block",
+      "margin": "0 0 2px",
+      "fontSize": "13px",
+      "fontWeight": "500",
+      "color": "var(--fg)"
+    },
+    "& [part=\"list\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "6px"
+    },
+    "& [part=\"row\"]": {
+      "display": "flex",
+      "gap": "6px",
+      "alignItems": "center"
+    },
+    "& [part=\"name-fixed\"]": {
+      "$description": "The base width's name column, which is a word rather than a field. It is the same 80px the editable name fields below it are, so the base row and the group rows line up down one edge.",
+      "width": "var(--jx-field-label-w)",
+      "fontSize": "var(--jx-text-md)",
+      "fontWeight": "500",
+      "color": "var(--fg-dim)",
+      "padding": "0 8px"
+    },
+    "& [part=\"name\"]": {
+      "width": "var(--jx-field-label-w)",
+      "flex": "none"
+    },
+    "& [part=\"value\"]": {
+      "flex": "1",
+      "minWidth": "0",
+      "width": "100%"
+    },
+    "& [part=\"value-slot\"]": {
+      "$description": "The one cell a size row fills with a text field and a scheme row fills with a select. It is the `$switch` container, so it — not the control — is what the row's flex line measures.",
+      "display": "flex",
+      "flex": "1",
+      "minWidth": "0"
+    },
+    "& [part=\"row-error\"]": {
+      "margin": "6px 0 0",
+      "fontSize": "var(--jx-text-md)",
+      "color": "var(--danger)"
+    },
+    "& [part=\"section-error\"]": {
+      "margin": "6px 0 0",
+      "fontSize": "var(--jx-text-md)",
+      "color": "var(--danger)"
+    },
+    "& [part=\"notice\"]": {
+      "$description": "A problem `project.json` already had, said once at section level. Deliberately not the danger colour: it refused nothing and it belongs to no control, so it is a warning about the file rather than a rejection of an edit.",
+      "margin": "6px 0 0",
+      "fontSize": "var(--jx-text-md)",
+      "color": "var(--warning)"
+    }
+  },
+  "children": [
+    {
+      "tagName": "h3",
+      "attributes": {
+        "part": "title"
+      },
+      "textContent": "Contexts"
+    },
+    {
+      "tagName": "p",
+      "attributes": {
+        "part": "intro"
+      },
+      "textContent": "The conditions this project's pages are rendered under. Define them once here; choose between them on the pane's context control while you edit."
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "section-error-slot",
+        "role": "none"
+      },
+      "$switch": {
+        "$ref": "#/state/hasSectionError"
+      },
+      "cases": {
+        "true": {
+          "tagName": "p",
+          "attributes": {
+            "part": "section-error",
+            "role": "alert"
+          },
+          "textContent": "${state.sectionError}"
+        }
+      }
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "notice-slot",
+        "role": "none"
+      },
+      "$switch": {
+        "$ref": "#/state/hasNotice"
+      },
+      "cases": {
+        "true": {
+          "tagName": "p",
+          "attributes": {
+            "part": "notice",
+            "role": "status"
+          },
+          "textContent": "${state.notice}"
+        }
+      }
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "field"
+      },
+      "children": [
+        {
+          "tagName": "h4",
+          "attributes": {
+            "part": "field-label"
+          },
+          "textContent": "Base width"
+        },
+        {
+          "tagName": "p",
+          "attributes": {
+            "part": "field-desc"
+          },
+          "textContent": "How wide the canvas is when no other context applies. Styles written here apply everywhere."
+        },
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "row"
+          },
+          "children": [
+            {
+              "tagName": "span",
+              "attributes": {
+                "part": "name-fixed"
+              },
+              "textContent": "Base"
+            },
+            {
+              "tagName": "jx-textfield",
+              "$props": {
+                "label": "Base width",
+                "value": {
+                  "$ref": "#/state/base"
+                },
+                "placeholder": "1280px",
+                "invalid": {
+                  "$ref": "#/state/baseInvalid"
+                },
+                "size": "sm"
+              },
+              "attributes": {
+                "part": "value",
+                "data-context": "base"
+              },
+              "onchange": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/setBase"
+                    },
+                    "value": [
+                      {
+                        "$ref": "event#/target/value"
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "base-error-slot",
+            "role": "none"
+          },
+          "$switch": {
+            "$ref": "#/state/baseInvalid"
+          },
+          "cases": {
+            "true": {
+              "tagName": "p",
+              "attributes": {
+                "part": "row-error",
+                "role": "alert"
+              },
+              "textContent": "${state.baseError}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "$prototype": "Array",
+      "items": {
+        "$ref": "#/state/groups"
+      },
+      "key": {
+        "$ref": "$map/item/kind"
+      },
+      "map": {
+        "tagName": "div",
+        "attributes": {
+          "part": "field",
+          "data-context-group": "${$map.item.kind}"
+        },
+        "children": [
+          {
+            "tagName": "h4",
+            "attributes": {
+              "part": "field-label"
+            },
+            "textContent": "${$map.item.label}"
+          },
+          {
+            "tagName": "p",
+            "attributes": {
+              "part": "field-desc"
+            },
+            "textContent": "${$map.item.desc}"
+          },
+          {
+            "tagName": "div",
+            "attributes": {
+              "part": "list-slot",
+              "role": "none"
+            },
+            "$switch": {
+              "$ref": "$map/item/hasRows"
+            },
+            "cases": {
+              "false": {
+                "tagName": "p",
+                "attributes": {
+                  "part": "empty"
+                },
+                "textContent": "${$map.item.empty}"
+              },
+              "true": {
+                "tagName": "div",
+                "attributes": {
+                  "part": "list"
+                },
+                "children": [
+                  {
+                    "$prototype": "Array",
+                    "items": {
+                      "$ref": "$map/item/rows"
+                    },
+                    "key": {
+                      "$ref": "$map/item/key"
+                    },
+                    "map": {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "row-block",
+                        "data-context": "${$map.item.key}"
+                      },
+                      "children": [
+                        {
+                          "tagName": "div",
+                          "attributes": {
+                            "part": "row"
+                          },
+                          "children": [
+                            {
+                              "tagName": "jx-textfield",
+                              "$props": {
+                                "label": {
+                                  "$ref": "$map/item/nameLabel"
+                                },
+                                "value": {
+                                  "$ref": "$map/item/name"
+                                },
+                                "placeholder": "name",
+                                "invalid": {
+                                  "$ref": "$map/item/invalid"
+                                },
+                                "size": "sm"
+                              },
+                              "attributes": {
+                                "part": "name"
+                              },
+                              "onchange": {
+                                "$prototype": "Function",
+                                "body": [
+                                  {
+                                    "operator": "call",
+                                    "target": {
+                                      "$ref": "#/state/rename"
+                                    },
+                                    "value": [
+                                      {
+                                        "$ref": "$map/item/key"
+                                      },
+                                      {
+                                        "$ref": "event#/target/value"
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            },
+                            {
+                              "tagName": "div",
+                              "attributes": {
+                                "part": "value-slot",
+                                "role": "none"
+                              },
+                              "$switch": {
+                                "$ref": "$map/item/control"
+                              },
+                              "cases": {
+                                "query": {
+                                  "tagName": "jx-textfield",
+                                  "$props": {
+                                    "label": {
+                                      "$ref": "$map/item/valueLabel"
+                                    },
+                                    "value": {
+                                      "$ref": "$map/item/query"
+                                    },
+                                    "placeholder": {
+                                      "$ref": "#/state/queryPlaceholder"
+                                    },
+                                    "invalid": {
+                                      "$ref": "$map/item/invalid"
+                                    },
+                                    "size": "sm"
+                                  },
+                                  "attributes": {
+                                    "part": "value"
+                                  },
+                                  "onchange": {
+                                    "$prototype": "Function",
+                                    "body": [
+                                      {
+                                        "operator": "call",
+                                        "target": {
+                                          "$ref": "#/state/setQuery"
+                                        },
+                                        "value": [
+                                          {
+                                            "$ref": "$map/item/key"
+                                          },
+                                          {
+                                            "$ref": "event#/target/value"
+                                          }
+                                        ]
+                                      }
+                                    ]
+                                  }
+                                },
+                                "scheme": {
+                                  "tagName": "jx-select",
+                                  "$props": {
+                                    "label": {
+                                      "$ref": "$map/item/valueLabel"
+                                    },
+                                    "options": [
+                                      { "value": "light", "label": "Light" },
+                                      { "value": "dark", "label": "Dark" }
+                                    ],
+                                    "value": {
+                                      "$ref": "$map/item/scheme"
+                                    },
+                                    "size": "sm"
+                                  },
+                                  "attributes": {
+                                    "part": "value"
+                                  },
+                                  "onchange": {
+                                    "$prototype": "Function",
+                                    "body": [
+                                      {
+                                        "operator": "call",
+                                        "target": {
+                                          "$ref": "#/state/setScheme"
+                                        },
+                                        "value": [
+                                          {
+                                            "$ref": "$map/item/key"
+                                          },
+                                          {
+                                            "$ref": "event#/target/value"
+                                          }
+                                        ]
+                                      }
+                                    ]
+                                  }
+                                }
+                              }
+                            },
+                            {
+                              "tagName": "jx-action-button",
+                              "$props": {
+                                "label": {
+                                  "$ref": "$map/item/removeLabel"
+                                },
+                                "hint": {
+                                  "$ref": "$map/item/removeLabel"
+                                },
+                                "icon": "x",
+                                "quiet": true,
+                                "size": "sm"
+                              },
+                              "attributes": {
+                                "part": "remove",
+                                "data-remove": "${$map.item.key}"
+                              },
+                              "onclick": {
+                                "$prototype": "Function",
+                                "body": [
+                                  {
+                                    "operator": "call",
+                                    "target": {
+                                      "$ref": "#/state/remove"
+                                    },
+                                    "value": [
+                                      {
+                                        "$ref": "$map/item/key"
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            }
+                          ]
+                        },
+                        {
+                          "tagName": "div",
+                          "attributes": {
+                            "part": "row-error-slot",
+                            "role": "none"
+                          },
+                          "$switch": {
+                            "$ref": "$map/item/invalid"
+                          },
+                          "cases": {
+                            "true": {
+                              "tagName": "p",
+                              "attributes": {
+                                "part": "row-error",
+                                "role": "alert"
+                              },
+                              "textContent": "${$map.item.error}"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "tagName": "jx-action-button",
+            "$props": {
+              "label": {
+                "$ref": "$map/item/addLabel"
+              },
+              "icon": "plus",
+              "size": "sm"
+            },
+            "attributes": {
+              "part": "add",
+              "data-add": "${$map.item.kind}"
+            },
+            "onclick": {
+              "$prototype": "Function",
+              "body": [
+                {
+                  "operator": "call",
+                  "target": {
+                    "$ref": "#/state/add"
+                  },
+                  "value": [
+                    {
+                      "$ref": "$map/item/kind"
+                    }
+                  ]
+                }
+              ]
+            },
+            "children": [
+              {
+                "tagName": "span",
+                "textContent": "${$map.item.addLabel}"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

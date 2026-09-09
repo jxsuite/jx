@@ -1,0 +1,420 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioSettingsLocales",
+  "$description": "Project Settings → Locales: the languages this site is written in, which of them a page is written in when its file carries no locale directory, and how a locale is spelled in a URL. The adapter (`surfaces/settings-locales.ts`) hands in the declared list AS THE AUTHOR WROTE IT, the two option lists, what the pending tag refuses to be and whatever the last write left to say; the document draws them and hands every edit straight back. Nothing here reads `project.json` — a section that re-read the config while drawing would be a second opinion about a file one module already owns.",
+  "tagName": "section",
+  "attributes": {
+    "part": "locales"
+  },
+  "style": {
+    "$description": "The Locales section's own look. Three of the rules it used to borrow are gone rather than moved: `.settings-field-label` and `.settings-field-desc` are what `jx-field` draws for a labelled row (and it also names the control the label belongs to, which a bare `<label class=…>` never did), and the refusal under the tag field is `jx-textfield`'s own `error` sentence, whose region is permanent so the FIRST refusal is announced rather than only a later one.",
+    "display": "block",
+    "& [part=\"title\"]": {
+      "margin": "0 0 16px",
+      "fontSize": "16px",
+      "fontWeight": "600",
+      "color": "var(--fg)"
+    },
+    "& [part=\"intro\"]": {
+      "margin": "0 0 16px",
+      "fontSize": "var(--jx-text-md)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"error\"]": {
+      "$description": "A write that failed, said under the section title rather than pinned to a control: settings save on change, so a silent rejection would read as \"my edit just vanished\", and the whole file failed rather than one field.",
+      "margin": "6px 0 0",
+      "fontSize": "var(--jx-text-md)",
+      "color": "var(--danger)"
+    },
+    "& [part=\"field\"]": {
+      "marginBottom": "20px"
+    },
+    "& [part=\"panel\"]": {
+      "$description": "The language list. It used to borrow `.settings-list-panel`, whose `width: 200px` is the LEFT NAV of the two-column editors that class was written for — a fixed 200px column is not what a list of languages under a 320px picker wants, so the width it takes here is the one that lines up with the two controls below it. Its `overflow-y: auto` went the same way: nothing constrains this panel's height, so the declaration could never do anything.",
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "4px",
+      "padding": "12px",
+      "maxWidth": "320px",
+      "background": "var(--bg-panel)",
+      "borderRadius": "var(--radius)"
+    },
+    "& [part=\"row\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "justifyContent": "space-between",
+      "gap": "8px",
+      "padding": "4px 8px"
+    },
+    "& [part=\"name\"]": {
+      "fontSize": "var(--jx-text-md)",
+      "color": "var(--fg)",
+      "overflowWrap": "anywhere"
+    },
+    "& [part=\"tag\"]": {
+      "$description": "The raw BCP 47 tag beside the language's own name. Both are shown because they answer different questions — \"which language is this\" is the autonym, \"what do I type in a path\" is the tag — and a row showing only one of them sends the author to the docs to find the other.",
+      "marginInlineStart": "auto",
+      "fontFamily": "var(--font-mono)",
+      "fontSize": "var(--jx-text-md)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"empty\"]": {
+      "$description": "Drawn as a row rather than as a centred panel: `.settings-empty-state` centres itself because in a two-column editor it fills the whole right pane, and this one is a line where the first language will be.",
+      "padding": "4px 8px",
+      "fontSize": "var(--jx-text-md)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"add\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "6px"
+    },
+    "& [part=\"add-field\"]": {
+      "flex": "1",
+      "minWidth": "0"
+    },
+    "& [part=\"default\"], & [part=\"routing\"]": {
+      "maxWidth": "320px"
+    }
+  },
+  "children": [
+    {
+      "tagName": "h3",
+      "attributes": {
+        "part": "title"
+      },
+      "textContent": "Locales"
+    },
+    {
+      "tagName": "p",
+      "attributes": {
+        "part": "intro"
+      },
+      "textContent": "The languages this site is written in. A translation is a file under the locale's directory — pages/fr/about.json beside pages/about.json — so declaring a language here is what makes that directory mean something to the build and to Studio."
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "error-slot",
+        "role": "none"
+      },
+      "$switch": {
+        "$ref": "#/state/hasError"
+      },
+      "cases": {
+        "true": {
+          "tagName": "p",
+          "attributes": {
+            "part": "error",
+            "role": "alert"
+          },
+          "textContent": "${state.error}"
+        }
+      }
+    },
+    {
+      "tagName": "jx-field",
+      "attributes": {
+        "part": "field"
+      },
+      "$props": {
+        "label": "Languages",
+        "span": true
+      },
+      "children": [
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "panel"
+          },
+          "children": [
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "list",
+                "role": "none"
+              },
+              "style": {
+                "display": "contents"
+              },
+              "$switch": {
+                "$ref": "#/state/listState"
+              },
+              "cases": {
+                "empty": {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "empty"
+                  },
+                  "textContent": "No languages declared."
+                },
+                "listed": {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "rows",
+                    "role": "none"
+                  },
+                  "style": {
+                    "display": "contents"
+                  },
+                  "children": [
+                    {
+                      "$prototype": "Array",
+                      "items": {
+                        "$ref": "#/state/locales"
+                      },
+                      "key": {
+                        "$ref": "$map/item/tag"
+                      },
+                      "map": {
+                        "tagName": "div",
+                        "attributes": {
+                          "part": "row"
+                        },
+                        "children": [
+                          {
+                            "tagName": "span",
+                            "attributes": {
+                              "part": "name"
+                            },
+                            "textContent": "${$map.item.label}"
+                          },
+                          {
+                            "tagName": "span",
+                            "attributes": {
+                              "part": "tag"
+                            },
+                            "textContent": "${$map.item.tag}"
+                          },
+                          {
+                            "tagName": "jx-action-button",
+                            "attributes": {
+                              "part": "remove"
+                            },
+                            "$props": {
+                              "icon": "trash",
+                              "size": "sm",
+                              "label": "Remove ${$map.item.tag}",
+                              "hint": "Remove ${$map.item.tag}"
+                            },
+                            "onclick": {
+                              "$prototype": "Function",
+                              "body": [
+                                {
+                                  "operator": "call",
+                                  "target": {
+                                    "$ref": "#/state/remove"
+                                  },
+                                  "value": [
+                                    {
+                                      "$ref": "$map/item/tag"
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "add"
+              },
+              "children": [
+                {
+                  "tagName": "jx-textfield",
+                  "attributes": {
+                    "part": "add-field"
+                  },
+                  "$props": {
+                    "label": "Language tag",
+                    "placeholder": "fr-CA",
+                    "size": "sm",
+                    "value": {
+                      "$ref": "#/state/pending"
+                    },
+                    "invalid": {
+                      "$ref": "#/state/invalid"
+                    },
+                    "error": {
+                      "$ref": "#/state/refusal"
+                    }
+                  },
+                  "oninput": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/edit"
+                        },
+                        "value": [
+                          {
+                            "$ref": "event#/target/value"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "onkeydown": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "$switch": {
+                          "$ref": "event#/key"
+                        },
+                        "cases": {
+                          "Enter": [
+                            {
+                              "preventDefault": true
+                            },
+                            {
+                              "operator": "call",
+                              "target": {
+                                "$ref": "#/state/add"
+                              },
+                              "value": []
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "tagName": "jx-button",
+                  "attributes": {
+                    "part": "add-button"
+                  },
+                  "$props": {
+                    "size": "sm"
+                  },
+                  "onclick": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/add"
+                        },
+                        "value": []
+                      }
+                    ]
+                  },
+                  "children": [
+                    {
+                      "tagName": "span",
+                      "textContent": "Add"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tagName": "jx-field",
+      "attributes": {
+        "part": "field"
+      },
+      "$props": {
+        "label": "Default Language",
+        "description": "The language a page is written in when its file carries no locale directory.",
+        "span": true
+      },
+      "children": [
+        {
+          "tagName": "jx-select",
+          "attributes": {
+            "part": "default"
+          },
+          "$props": {
+            "label": "Default Language",
+            "size": "sm",
+            "options": {
+              "$ref": "#/state/localeOptions"
+            },
+            "value": {
+              "$ref": "#/state/defaultLocale"
+            },
+            "disabled": {
+              "$ref": "#/state/noLocales"
+            }
+          },
+          "onchange": {
+            "$prototype": "Function",
+            "body": [
+              {
+                "operator": "call",
+                "target": {
+                  "$ref": "#/state/chooseDefault"
+                },
+                "value": [
+                  {
+                    "$ref": "event#/target/value"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "jx-field",
+      "attributes": {
+        "part": "field"
+      },
+      "$props": {
+        "label": "URL Routing",
+        "description": "Whether the default language owns the unprefixed URLs, or every language is named in its own.",
+        "span": true
+      },
+      "children": [
+        {
+          "tagName": "jx-select",
+          "attributes": {
+            "part": "routing"
+          },
+          "$props": {
+            "label": "URL Routing",
+            "size": "sm",
+            "options": {
+              "$ref": "#/state/routings"
+            },
+            "value": {
+              "$ref": "#/state/routing"
+            },
+            "disabled": {
+              "$ref": "#/state/noLocales"
+            }
+          },
+          "onchange": {
+            "$prototype": "Function",
+            "body": [
+              {
+                "operator": "call",
+                "target": {
+                  "$ref": "#/state/chooseRouting"
+                },
+                "value": [
+                  {
+                    "$ref": "event#/target/value"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

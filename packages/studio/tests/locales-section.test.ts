@@ -1,10 +1,17 @@
 /**
- * Tests for src/settings/locales-section.ts — the Locales settings section and `addProjectLocale`.
+ * Tests for the Locales settings section — `src/settings/locales-section.ts`, the flow, and
+ * `src/surfaces/settings-locales.json`, the document it mounts.
  *
  * Every write is asserted TWICE: against the live config and against `project.json` as it was
  * serialized. The two can disagree — `commitProjectConfig` merges at the top level only — and the
  * failure mode that matters here is a patch that lands in memory having quietly dropped
  * `defaultLocale` or `routing` from the file.
+ *
+ * Everything is addressed by `part`, because the section is a document: there is no
+ * `.settings-locale-tag` or `.settings-field-error` to find any more. The refusal under the tag
+ * field is `jx-textfield`'s own `error` sentence and the two pickers are `jx-select`s, so a
+ * reader's edit is performed on the NATIVE control inside each element — writing the host's
+ * property instead would move a control no reader can move.
  */
 import {
   flush,
@@ -13,7 +20,7 @@ import {
   resetStudioState,
   resetWorkspaceWithTab,
 } from "./harness";
-import { beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { projectState } from "../src/store";
 import {
   addProjectLocale,
@@ -26,15 +33,23 @@ import type { StudioPlatform } from "../src/types";
 
 type AnyConfig = Record<string, any>;
 
-function setup(
+/**
+ * Draw the section into a fresh container and let the surface mount.
+ *
+ * Two flushes rather than one: `mountSurface` settles when the DOCUMENT has rendered, and each kit
+ * element's own template is one `connectedCallback` later — so a single turn finds `jx-textfield`
+ * with no `input` inside it.
+ */
+async function setup(
   cfg: AnyConfig | null,
   overrides: Partial<StudioPlatform> = {},
-): { container: HTMLElement; state: MockPlatformState } {
+): Promise<{ container: HTMLElement; state: MockPlatformState }> {
   const { state } = installMockPlatform(overrides);
   resetStudioState({ projectConfig: cfg as unknown });
   const container = document.createElement("div");
   document.body.append(container);
   renderLocalesSection(container);
+  await flush(4);
   return { container, state };
 }
 
@@ -46,20 +61,52 @@ function written(state: MockPlatformState): AnyConfig {
   return JSON.parse(state.files.get("project.json")!) as AnyConfig;
 }
 
-function errorText(container: HTMLElement): string | undefined {
-  return container.querySelector(".settings-field-error")?.textContent?.trim();
+/** The refusal drawn under the tag field — the kit's own error sentence, permanently present. */
+function refusal(container: HTMLElement): string {
+  return container.querySelector('[part="add-field"] [part="error"]')?.textContent?.trim() ?? "";
+}
+
+/** The whole-file write failure, said under the section title rather than beside a control. */
+function alertText(container: HTMLElement): string | undefined {
+  return container.querySelector('[role="alert"]')?.textContent?.trim();
+}
+
+/** The tag field's native control, which is where a reader types. */
+function tagInput(container: HTMLElement): HTMLInputElement {
+  return container.querySelector('[part="add-field"] [part="input"]') as HTMLInputElement;
 }
 
 /** Type into the add field, the way the author does. */
-function typeTag(container: HTMLElement, value: string): void {
-  const input = container.querySelector(".settings-locale-name")!;
-  (input as unknown as { value: string }).value = value;
+async function typeTag(container: HTMLElement, value: string): Promise<void> {
+  const input = tagInput(container);
+  input.value = value;
   input.dispatchEvent(new Event("input", { bubbles: true }));
+  await flush(2);
 }
 
-/** Press Add. Re-queried after every render — the button is a new element each time. */
+/** Press Add. */
 function pressAdd(container: HTMLElement): void {
-  pointer([...container.querySelectorAll("sp-action-button")].at(-1)!, "click");
+  pointer(container.querySelector('[part="add-button"]')!, "click");
+}
+
+/** Pick a value in one of the two pickers, from the native control the reader operates. */
+async function pick(container: HTMLElement, part: string, value: string): Promise<void> {
+  const select = container.querySelector(`[part="${part}"] select`) as HTMLSelectElement;
+  select.value = value;
+  select.dispatchEvent(new Event("change", { bubbles: true }));
+  await flush(4);
+}
+
+/** The `[value, label]` pairs a picker offers. */
+function options(container: HTMLElement, part: string): [string, string][] {
+  return [...container.querySelectorAll(`[part="${part}"] option[part="option"]`)].map((o) => [
+    o.getAttribute("value") ?? "",
+    o.textContent?.trim() ?? "",
+  ]);
+}
+
+function texts(container: HTMLElement, part: string): (string | null)[] {
+  return [...container.querySelectorAll(`[part="${part}"]`)].map((n) => n.textContent);
 }
 
 /** A platform whose every write is refused. */
@@ -73,47 +120,57 @@ beforeEach(() => {
   clearProblems();
 });
 
+afterEach(async () => {
+  document.body.replaceChildren();
+  await flush();
+});
+
 describe("the Locales section", () => {
-  test("lists each declared language by its own name, beside its tag", () => {
-    const { container } = setup({ i18n: { defaultLocale: "en", locales: ["en", "fr"] } });
-    expect([...container.querySelectorAll(".settings-row-name")].map((n) => n.textContent)).toEqual(
-      ["English", "français"],
-    );
-    expect(
-      [...container.querySelectorAll(".settings-locale-tag")].map((n) => n.textContent),
-    ).toEqual(["en", "fr"]);
+  test("lists each declared language by its own name, beside its tag", async () => {
+    const { container } = await setup({ i18n: { defaultLocale: "en", locales: ["en", "fr"] } });
+    expect(texts(container, "name")).toEqual(["English", "français"]);
+    expect(texts(container, "tag")).toEqual(["en", "fr"]);
   });
 
-  test("a project with no i18n block is the empty case, not a crash", () => {
-    const { container } = setup({});
-    expect(container.querySelector(".settings-empty-state")?.textContent).toContain("No languages");
-    expect(container.querySelector("sp-picker")?.hasAttribute("disabled")).toBe(true);
+  test("a project with no i18n block is the empty case, not a crash", async () => {
+    const { container } = await setup({});
+    expect(container.querySelector('[part="empty"]')?.textContent).toContain("No languages");
+    // Nothing to choose between, said to the control rather than only drawn.
+    expect((container.querySelector('[part="default"] select') as HTMLSelectElement).disabled).toBe(
+      true,
+    );
+    expect((container.querySelector('[part="routing"] select') as HTMLSelectElement).disabled).toBe(
+      true,
+    );
   });
 
   test("Add appends the canonical tag to the live config and to project.json", async () => {
-    const { container, state } = setup({ i18n: { locales: ["en"] } });
-    typeTag(container, "  FR-ca  ");
+    const { container, state } = await setup({ i18n: { locales: ["en"] } });
+    await typeTag(container, "  FR-ca  ");
     pressAdd(container);
     await flush(4);
     expect(config().i18n.locales).toEqual(["en", "fr-CA"]);
     expect(written(state).i18n.locales).toEqual(["en", "fr-CA"]);
+    // The row reconciles in place, and the field it was typed in is empty again.
+    expect(texts(container, "tag")).toEqual(["en", "fr-CA"]);
+    expect(tagInput(container).value).toBe("");
   });
 
   test("Enter in the field adds it too", async () => {
-    const { container } = setup({ i18n: { locales: ["en"] } });
-    typeTag(container, "de");
-    container
-      .querySelector(".settings-locale-name")!
-      .dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }));
+    const { container } = await setup({ i18n: { locales: ["en"] } });
+    await typeTag(container, "de");
+    tagInput(container).dispatchEvent(
+      new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }),
+    );
     await flush(4);
     expect(config().i18n.locales).toEqual(["en", "de"]);
   });
 
   test("the sibling keys survive the add — the merge is top-level only", async () => {
-    const { container, state } = setup({
+    const { container, state } = await setup({
       i18n: { defaultLocale: "en", locales: ["en"], routing: "prefix-always" },
     });
-    typeTag(container, "fr");
+    await typeTag(container, "fr");
     pressAdd(container);
     await flush(4);
     expect(written(state).i18n).toEqual({
@@ -124,10 +181,9 @@ describe("the Locales section", () => {
   });
 
   test("a malformed tag is refused with words and writes nothing", async () => {
-    const { container, state } = setup({ i18n: { locales: ["en"] } });
-    typeTag(container, "en_US");
-    await flush(2);
-    expect(errorText(container)).toContain("not a well-formed language tag");
+    const { container, state } = await setup({ i18n: { locales: ["en"] } });
+    await typeTag(container, "en_US");
+    expect(refusal(container)).toContain("not a well-formed language tag");
     pressAdd(container);
     await flush(4);
     expect(config().i18n.locales).toEqual(["en"]);
@@ -135,28 +191,37 @@ describe("the Locales section", () => {
   });
 
   test("a tag already declared says so and is not added twice", async () => {
-    const { container, state } = setup({ i18n: { locales: ["en"] } });
-    typeTag(container, "EN");
-    await flush(2);
-    expect(errorText(container)).toContain("already declared");
+    const { container, state } = await setup({ i18n: { locales: ["en"] } });
+    await typeTag(container, "EN");
+    expect(refusal(container)).toContain("already declared");
     pressAdd(container);
     await flush(4);
     expect(config().i18n.locales).toEqual(["en"]);
     expect(state.files.has("project.json")).toBe(false);
   });
 
-  test("a blank field adds nothing and shows nothing", async () => {
-    const { container, state } = setup({ i18n: { locales: ["en"] } });
-    typeTag(container, "   ");
-    await flush(2);
-    expect(errorText(container)).toBeUndefined();
+  test("a blank field adds nothing and says nothing", async () => {
+    const { container, state } = await setup({ i18n: { locales: ["en"] } });
+    await typeTag(container, "   ");
+    expect(refusal(container)).toBe("");
     pressAdd(container);
     await flush(4);
     expect(state.files.has("project.json")).toBe(false);
   });
 
+  test("the refusal goes away when the tag becomes one this project can take", async () => {
+    const { container } = await setup({ i18n: { locales: ["en"] } });
+    await typeTag(container, "en_US");
+    expect(refusal(container)).not.toBe("");
+    /* The whole point of a live verdict: the sentence follows the word being typed, and the field
+       it describes keeps the caret because the document writes back the value it already holds. */
+    await typeTag(container, "en-US");
+    expect(refusal(container)).toBe("");
+    expect(tagInput(container).value).toBe("en-US");
+  });
+
   test("removing a language keeps the rest and the block", async () => {
-    const { container, state } = setup({
+    const { container, state } = await setup({
       i18n: { defaultLocale: "en", locales: ["en", "fr", "de"] },
     });
     pointer(container.querySelector('[title="Remove fr"]')!, "click");
@@ -166,7 +231,9 @@ describe("the Locales section", () => {
   });
 
   test("removing the default language moves the default rather than orphaning it", async () => {
-    const { container, state } = setup({ i18n: { defaultLocale: "en", locales: ["en", "fr"] } });
+    const { container, state } = await setup({
+      i18n: { defaultLocale: "en", locales: ["en", "fr"] },
+    });
     pointer(container.querySelector('[title="Remove en"]')!, "click");
     await flush(4);
     // Left alone, `resolveI18n` would unshift "en" back into the list and the removal would do
@@ -175,70 +242,92 @@ describe("the Locales section", () => {
   });
 
   test("removing the last language removes the whole block", async () => {
-    const { container, state } = setup({
+    const { container, state } = await setup({
       i18n: { defaultLocale: "fr", locales: ["fr"], routing: "prefix-always" },
     });
     pointer(container.querySelector('[title="Remove fr"]')!, "click");
     await flush(4);
     expect(config().i18n).toBeUndefined();
     expect("i18n" in written(state)).toBe(false);
+    expect(container.querySelector('[part="empty"]')).not.toBeNull();
   });
 
   test("the default picker offers the declared list and persists a choice", async () => {
-    const { container, state } = setup({ i18n: { locales: ["en", "fr"] } });
-    const picker = container.querySelector(".settings-default-locale")!;
-    expect(
-      [...picker.querySelectorAll("sp-menu-item")].map((m) => m.getAttribute("value")),
-    ).toEqual(["en", "fr"]);
-    (picker as unknown as { value: string }).value = "fr";
-    picker.dispatchEvent(new Event("change", { bubbles: true }));
-    await flush(4);
+    const { container, state } = await setup({ i18n: { locales: ["en", "fr"] } });
+    expect(options(container, "default")).toEqual([
+      ["en", "English"],
+      ["fr", "français"],
+    ]);
+    await pick(container, "default", "fr");
     expect(config().i18n.defaultLocale).toBe("fr");
     expect(written(state).i18n).toEqual({ defaultLocale: "fr", locales: ["en", "fr"] });
   });
 
   test("the routing picker offers both modes and persists a choice", async () => {
-    const { container, state } = setup({ i18n: { defaultLocale: "en", locales: ["en", "fr"] } });
-    const picker = container.querySelector(".settings-locale-routing")!;
-    expect(
-      [...picker.querySelectorAll("sp-menu-item")].map((m) => m.getAttribute("value")),
-    ).toEqual(LOCALE_ROUTINGS.map((r) => r.value));
-    (picker as unknown as { value: string }).value = "prefix-always";
-    picker.dispatchEvent(new Event("change", { bubbles: true }));
-    await flush(4);
+    const { container, state } = await setup({
+      i18n: { defaultLocale: "en", locales: ["en", "fr"] },
+    });
+    expect(options(container, "routing").map(([value]) => value)).toEqual(
+      LOCALE_ROUTINGS.map((r) => r.value),
+    );
+    await pick(container, "routing", "prefix-always");
     expect(config().i18n.routing).toBe("prefix-always");
     expect(written(state).i18n.defaultLocale).toBe("en");
   });
 
   test("a rejected write is shown under the title instead of being dropped", async () => {
-    const { container } = setup({ i18n: { locales: ["en", "fr"] } }, failing);
+    const { container } = await setup({ i18n: { locales: ["en", "fr"] } }, failing);
     pointer(container.querySelector('[title="Remove fr"]')!, "click");
     await flush(4);
-    const shown = container.querySelector('[role="alert"]')!;
-    expect(shown.textContent).toContain("EROFS: read-only file system");
-    // A direct child of the section, not of a field: the whole file failed to save, so the message
-    // Belongs under the title rather than pinned to one control.
-    expect(shown.parentElement?.className).toBe("settings-section");
+    expect(alertText(container)).toContain("EROFS: read-only file system");
+    /* Not inside a field: the whole file failed to save, so the message belongs under the title
+       rather than pinned to one control — which is what `jx-textfield`'s own `error` is for. */
+    expect(container.querySelector('[role="alert"]')!.closest("jx-field")).toBeNull();
   });
 
   test("a later success clears the parked error", async () => {
-    const { container, state } = setup({ i18n: { locales: ["en", "fr"] } }, failing);
+    const { container, state } = await setup({ i18n: { locales: ["en", "fr"] } }, failing);
     pointer(container.querySelector('[title="Remove fr"]')!, "click");
     await flush(4);
-    expect(container.querySelector('[role="alert"]')).not.toBeNull();
+    expect(alertText(container)).not.toBeUndefined();
 
     /* The failed remove still landed in MEMORY — `commitProjectConfig` mutates and then writes, so
        the parked error is the only thing telling the author that the file disagrees. */
     expect(config().i18n.locales).toEqual(["en"]);
 
     const { state: writable } = installMockPlatform();
-    typeTag(container, "de");
+    await typeTag(container, "de");
     pressAdd(container);
     await flush(4);
     expect(container.querySelector('[role="alert"]')).toBeNull();
     expect(config().i18n.locales).toEqual(["en", "de"]);
     expect(written(writable).i18n.locales).toEqual(["en", "de"]);
     expect(state.files.has("project.json")).toBe(false);
+  });
+
+  test("a container emptied under the section is drawn into again, not left blank", async () => {
+    const { container } = await setup({ i18n: { locales: ["en"] } });
+    /* What a pane rebuilding its body does. The mounted document is gone but the container is the
+       same one, so the section has to notice its own root has left rather than assign into a scope
+       nothing is reading. */
+    container.replaceChildren();
+    renderLocalesSection(container);
+    await flush(4);
+    expect(texts(container, "tag")).toEqual(["en"]);
+  });
+
+  test("a second draw into the same container keeps what is typed in it", async () => {
+    const { container } = await setup({ i18n: { locales: ["en"] } });
+    await typeTag(container, "fr");
+    renderLocalesSection(container);
+    await flush(4);
+    expect(tagInput(container).value).toBe("fr");
+    // And a fresh container is a fresh form, because both are keyed by the container.
+    const second = document.createElement("div");
+    document.body.append(second);
+    renderLocalesSection(second);
+    await flush(4);
+    expect(tagInput(second).value).toBe("");
   });
 });
 

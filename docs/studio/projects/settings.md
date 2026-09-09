@@ -147,3 +147,11 @@ Every section edits `project.json` at the root of your project, the same file th
 
 - **[Content types](/docs/studio/projects/content-types)**: model your content in the Content Types section
 - **[Dependencies and imports](/docs/studio/projects/dependencies)**: packages and component imports in depth
+  - packages/studio/src/surfaces/settings-overview.json
+  - packages/studio/src/surfaces/settings-overview.ts
+  - packages/studio/src/surfaces/settings-contexts.json
+  - packages/studio/src/surfaces/settings-contexts.ts
+  - packages/studio/src/surfaces/settings-head.json
+  - packages/studio/src/surfaces/settings-head.ts
+  - packages/studio/src/surfaces/settings-locales.json
+  - packages/studio/src/surfaces/settings-locales.ts
