@@ -185,10 +185,26 @@ function dialogButton(label: string) {
   ) as HTMLElement | undefined;
 }
 
-/** Open Preferences › Assistant from the in-panel notice and settle its first render. */
+/**
+ * The managed-connect offer inside Preferences › Assistant.
+ *
+ * It is a mounted Jx document rather than part of the sheet's own template, so it is addressed by
+ * `part` and its button is the kit's native control rather than an `<sp-button>`.
+ */
+function managedConnect() {
+  return d('[part="managed-connect"]');
+}
+
+/**
+ * Open Preferences › Assistant from the in-panel notice and settle its first render.
+ *
+ * Six turns rather than three: the managed-connect offer on that sheet is a mounted document, and
+ * `mountSurface` settles when the document has rendered, with each kit element's own template one
+ * `connectedCallback` after that.
+ */
 async function openSettingsFromNotice() {
   pointer(q(".ai-setup-notice sp-button")!, "click");
-  await flush(3);
+  await flush(6);
 }
 
 /** Dismiss whatever Preferences sheet is up, and let the panel repaint. */
@@ -277,7 +293,7 @@ describe("ai-panel", () => {
     await flush(3);
     await openSettingsFromNotice();
     // Both real paths show: the managed connect CTA above the BYOK form.
-    expect(d(".ai-managed-connect")).not.toBeNull();
+    expect(managedConnect()).not.toBeNull();
     expect(d(".ai-creds-form")).not.toBeNull();
 
     // Connecting flips /models to configured — the notice retires.
@@ -286,10 +302,10 @@ describe("ai-panel", () => {
         { models: [{ id: "@cf/meta/llama-4" }], configured: true, managed: true },
         { status: 200 },
       );
-    pointer(dialogButton("Connect Cloudflare")!, "click");
+    pointer(d('[part="managed-connect"] [part="connect"] [part="control"]')!, "click");
     await flush(6);
     expect(cfConnect).toHaveBeenCalledTimes(1);
-    expect(d(".ai-managed-connect")).toBeNull();
+    expect(managedConnect()).toBeNull();
     expect(q(".ai-setup-notice")).toBeNull();
     expect(q(".ai-composer textarea")).not.toBeNull();
 

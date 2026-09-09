@@ -43,7 +43,7 @@ import { setBottomTab } from "../shell";
 import { chipSummary, renderFormulaChips } from "../ui/formula-chips";
 import { renderExpressionEditor } from "../ui/expression-editor";
 import { applyCatalogPick, formulaCatalog } from "../ui/formula-catalog";
-import { openFormulaPalette } from "../ui/formula-palette";
+import { openFormulaPalette } from "../surfaces/formula-palette";
 import { livePreviewExpression } from "../services/live-preview";
 import { closeFunctionEditor, functionEditorTemplate, syncFunctionEditor } from "./editors";
 import { registerPanel } from "./panel-registry";

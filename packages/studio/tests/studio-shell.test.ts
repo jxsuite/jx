@@ -259,7 +259,6 @@ void mock.module("../src/new-project/new-project-modal.ts", () => ({
 }));
 
 void mock.module("../src/new-project/add-repo-modal.ts", () => ({
-  closeAddRepoModal: mock(() => {}),
   openAddRepoModal: mock(async () => addRepoResult),
   openProjectPickerModal: mock(async () => pickerResult),
   platformSupportsAddRepo: mock(() => true),

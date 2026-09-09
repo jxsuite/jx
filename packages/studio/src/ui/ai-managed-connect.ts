@@ -9,6 +9,13 @@
  * gate on credentials (the assistant sidebar and the New Project modal's Import/Agent tabs) embed
  * this alongside the form so both real paths are always on offer.
  *
+ * This module is the FLOW; `surfaces/ai-managed-connect.json` is what it draws. It decides whether
+ * the offer applies, what a finished OAuth round trip meant, and the words a fresh grant and a
+ * lapsed one get; the surface renders those words and reports the click. `render()` hands back the
+ * surface's own host element rather than a template, because every gate is still a lit template
+ * that interpolates the offer beside the key form — see `surfaces/ai-managed-connect.ts` for why
+ * that element is the mount point and why re-rendering the gate cannot disturb it.
+ *
  * State is per-instance (closure-scoped) like the credentials form; the capability probe behind
  * `ensureProbe` is shared module-wide by services/ai-models.ts.
  *
@@ -16,8 +23,6 @@
  * @license MIT
  */
 
-import { html, nothing } from "lit-html";
-import type { TemplateResult } from "lit-html";
 import { getPlatform, hasPlatform } from "../platform";
 import {
   ensureProxyProbe,
@@ -27,6 +32,8 @@ import {
   proxyStateCode,
   resetModelCache,
 } from "../services/ai-models";
+import { createManagedConnectSurface } from "../surfaces/ai-managed-connect";
+import type { ManagedConnectSurface, ManagedConnectView } from "../surfaces/ai-managed-connect";
 import type { CfConnectOutcome } from "../types";
 
 export interface ManagedConnectOptions {
@@ -39,9 +46,26 @@ export interface ManagedConnect {
   canOffer: () => boolean;
   /** Fire the shared capability probe, repainting the host when it settles. */
   ensureProbe: () => void;
-  /** The CTA block, or `nothing` when the platform cannot broker AI. */
-  render: () => TemplateResult | typeof nothing;
+  /**
+   * The CTA block's host element, or `null` when the platform cannot broker AI.
+   *
+   * A gate interpolates it into its own lit template, which inserts a Node it is handed as-is;
+   * `null` clears that position exactly as `nothing` did.
+   */
+  render: () => HTMLElement | null;
 }
+
+/**
+ * A lede that says which path is recommended, and one that explains why the button is back.
+ *
+ * A lapsed grant and a fresh one get different words. The backend distinguishes them because
+ * "connect" is an invitation and "reconnect" is an explanation — and on a managed platform the
+ * lapsed case is the common one: a Cloudflare access token lives an hour.
+ */
+const LEDE_FRESH =
+  "Recommended — run the assistant on Workers AI in your own Cloudflare account. No API key to create, copy or rotate.";
+const LEDE_LAPSED =
+  "Your Cloudflare connection has expired. Reconnect to keep using the assistant.";
 
 /**
  * Create a managed-connect controller bound to a host's render scheduler.
@@ -52,6 +76,8 @@ export interface ManagedConnect {
 export function createManagedConnect(opts: ManagedConnectOptions): ManagedConnect {
   let busy = false;
   let connectError = "";
+  /** Made on the first render that offers, and kept for the life of the controller. */
+  let surface: ManagedConnectSurface | null = null;
 
   /*
    * Offer the keyless path when the proxy is managed and the platform can run the hosted OAuth flow
@@ -137,40 +163,32 @@ export function createManagedConnect(opts: ManagedConnectOptions): ManagedConnec
     opts.requestRender();
   }
 
-  function render(): TemplateResult | typeof nothing {
-    if (!canOffer()) {
-      return nothing;
-    }
-    /*
-     * A lapsed grant and a fresh one get different words. The backend distinguishes them because
-     * "connect" is an invitation and "reconnect" is an explanation — and on a managed platform the
-     * lapsed case is the common one: a Cloudflare access token lives an hour.
-     */
+  /** What the offer says right now — the whole of what the surface is told. */
+  function view(): ManagedConnectView {
     const lapsed = proxyStateCode() === "cf_reconnect_required";
-    const busyLabel = lapsed ? "Reconnecting…" : "Connecting…";
-    return html`
-      <div class="ai-managed-connect" data-jx-recommended="cloudflare">
-        <div class="ai-managed-connect-lede">
-          ${
-            lapsed
-              ? "Your Cloudflare connection has expired. Reconnect to keep using the assistant."
-              : "Recommended — run the assistant on Workers AI in your own Cloudflare account. No API key to create, copy or rotate."
-          }
-        </div>
-        <sp-button
-          size="s"
-          variant="accent"
-          ?disabled=${busy}
-          @click=${() => {
-            void connect();
-          }}
-        >
-          ${busy ? busyLabel : lapsed ? "Reconnect Cloudflare" : "Connect Cloudflare"}
-        </sp-button>
-        ${connectError ? html`<div class="ai-managed-connect-error">${connectError}</div>` : nothing}
-        <div class="ai-managed-connect-divider">— or bring your own key —</div>
-      </div>
-    `;
+    const idleLabel = lapsed ? "Reconnect Cloudflare" : "Connect Cloudflare";
+    return {
+      buttonLabel: busy ? (lapsed ? "Reconnecting…" : "Connecting…") : idleLabel,
+      busy,
+      error: connectError,
+      intro: lapsed ? LEDE_LAPSED : LEDE_FRESH,
+    };
+  }
+
+  function render(): HTMLElement | null {
+    if (!canOffer()) {
+      return null;
+    }
+    if (surface) {
+      surface.update(view());
+    } else {
+      surface = createManagedConnectSurface(view(), {
+        connect: () => {
+          void connect();
+        },
+      });
+    }
+    return surface.host;
   }
 
   return { canOffer, ensureProbe, render };

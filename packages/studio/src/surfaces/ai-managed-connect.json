@@ -1,0 +1,108 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioAiManagedConnect",
+  "$description": "The keyless \"Connect Cloudflare\" offer every AI credentials gate draws above the key form: a lede that says which of the two paths is recommended, the button that runs the hosted OAuth flow, whatever the last attempt refused with, and the line that hands the reader down to the key form beneath. Everything here is a projection — `ui/ai-managed-connect.ts` keeps the flow, decides whether the offer applies at all, and words the lede and the button for a fresh grant or a lapsed one. This document never learns what `cf_reconnect_required` is.",
+  "tagName": "div",
+  "attributes": {
+    "part": "managed-connect",
+    "data-jx-recommended": "cloudflare"
+  },
+  "style": {
+    "$description": "The four `.ai-managed-connect*` rules from `styles/shell.css`, keyed on `part` and repaired on the way. Both font sizes read `--spectrum-font-size-75` / `--spectrum-font-size-50`, which resolve only inside `<sp-theme>`; this document is mounted into a plain host inside the gate, outside that element, so every one of them would silently have taken its hard-coded fallback. The two off-scale gaps (10px and 6px) come onto the kit's spacing scale, which is what they were approximating.",
+    "display": "flex",
+    "flexDirection": "column",
+    "alignItems": "center",
+    "gap": "var(--jx-space-4)",
+    "width": "100%",
+    "& [part=\"intro\"]": {
+      "$description": "The lede reads as the recommendation, so it carries the primary foreground the divider beneath it does not. It is centred and narrow because it sits over a centred button rather than in a column of prose.",
+      "margin": "0",
+      "color": "var(--fg)",
+      "fontSize": "var(--jx-text-md)",
+      "maxWidth": "280px",
+      "textAlign": "center"
+    },
+    "& [part=\"error\"]": {
+      "$description": "Why the last attempt did not finish, said under the button that would try it again. Narrower than the lede: a refusal is a sentence to read once, not the thing the surface is about.",
+      "margin": "0",
+      "color": "var(--danger)",
+      "fontSize": "var(--jx-text-sm)",
+      "maxWidth": "260px"
+    },
+    "& [part=\"divider\"]": {
+      "$description": "The hand-off to the key form below. It is a label rather than a rule because both paths stay on offer — this is not a separator between a choice and its alternative, it is the second choice being introduced.",
+      "margin": "var(--jx-space-3) 0 0",
+      "color": "var(--fg-dim)",
+      "fontSize": "var(--jx-text-sm)"
+    }
+  },
+  "children": [
+    {
+      "tagName": "p",
+      "attributes": {
+        "part": "intro"
+      },
+      "textContent": "${state.intro}"
+    },
+    {
+      "tagName": "jx-button",
+      "attributes": {
+        "part": "connect"
+      },
+      "$props": {
+        "size": "sm",
+        "variant": "accent",
+        "disabled": {
+          "$ref": "#/state/busy"
+        }
+      },
+      "onclick": {
+        "$prototype": "Function",
+        "body": [
+          {
+            "operator": "call",
+            "target": {
+              "$ref": "#/state/connect"
+            },
+            "value": []
+          }
+        ]
+      },
+      "children": [
+        {
+          "tagName": "span",
+          "textContent": "${state.buttonLabel}"
+        }
+      ]
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "error-slot",
+        "role": "none"
+      },
+      "style": {
+        "display": "contents"
+      },
+      "$switch": {
+        "$ref": "#/state/hasError"
+      },
+      "cases": {
+        "true": {
+          "tagName": "p",
+          "attributes": {
+            "part": "error"
+          },
+          "textContent": "${state.error}"
+        }
+      }
+    },
+    {
+      "tagName": "p",
+      "attributes": {
+        "part": "divider"
+      },
+      "textContent": "— or bring your own key —"
+    }
+  ]
+}

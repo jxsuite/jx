@@ -1,32 +1,29 @@
 /**
- * Tests for src/browse/library-layouts.ts — the five arrangements over one row set.
+ * Tests for src/browse/library-layouts.ts — the geometry and the projections behind five layouts.
  *
- * Two properties matter beyond "it renders": the grouped layouts CAP what they draw and SAY what
- * they left out (a silently truncated list is the same lie as "No files found"), and the geometry
- * table is the single place the window's row height comes from.
+ * The markup moved to `surfaces/library-pane.json` and the assertions moved with it: what is left
+ * here is what a document cannot express. Two properties matter beyond "it projects": the grouped
+ * layouts CAP what they draw and SAY what they left out (a silently truncated list is the same lie
+ * as "No files found"), and the geometry table is the single place the window's row height comes
+ * from.
  */
-import { renderInto } from "./harness";
+import "./with-dom.js";
 import { describe, expect, test } from "bun:test";
-import { html } from "lit-html";
 import {
   BOARD_COLUMN_LIMIT,
   CALENDAR_DAY_LIMIT,
   LAYOUT_METRICS,
-  boardTpl,
-  calendarTpl,
-  cardsTpl,
+  boardView,
+  calendarView,
   cellText,
   cellTextOf,
   columnsAt,
   formatModified,
   formatSize,
-  mediaTpl,
-  tableHeadTpl,
-  tableRowsTpl,
+  libraryRow,
 } from "../src/browse/library-layouts";
 import { LIBRARY_LAYOUTS } from "../src/browse/library-model";
 import { libraryColumns } from "../src/browse/library-source";
-import type { LayoutContext } from "../src/browse/library-layouts";
 import type { LibraryFile } from "../src/browse/library-model";
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
@@ -58,16 +55,6 @@ const SCRIPT: LibraryFile = {
   path: "bin/deploy.sh",
   type: ".sh",
 };
-
-function context(overrides: Partial<LayoutContext> = {}): LayoutContext {
-  return {
-    columns: libraryColumns(),
-    contextMenu: () => {},
-    mountPreview: () => {},
-    openFile: () => {},
-    ...overrides,
-  };
-}
 
 // ─── Geometry ────────────────────────────────────────────────────────────────
 
@@ -146,96 +133,39 @@ describe("cell text", () => {
   });
 });
 
-// ─── Table ───────────────────────────────────────────────────────────────────
+// ─── Rows ────────────────────────────────────────────────────────────────────
 
-describe("Table", () => {
-  test("its header comes from the SOURCE's columns, not from a second hand-written list", async () => {
-    const host = await renderInto(html`${tableHeadTpl(libraryColumns())}`);
-    expect(
-      [...host.querySelectorAll("[role=columnheader]")].map((c) => c.textContent?.trim()),
-    ).toEqual(["Name", "Category", "Locale", "Type", "Size", "Modified", "Path"]);
+describe("a row", () => {
+  test("an image is the image itself, whether or not the layout draws live previews", () => {
+    for (const live of [true, false]) {
+      const row = libraryRow(IMAGE, [], live);
+      expect(row.art).toBe("image");
+      expect(row.src).not.toBe("");
+    }
   });
 
-  test("draws one row per file, and opens on click", async () => {
-    const opened: string[] = [];
-    const host = await renderInto(
-      html`${tableRowsTpl([page(1), page(2)], context({ openFile: (p) => opened.push(p) }))}`,
-    );
-    const rows = [...host.querySelectorAll(".library-table-row")];
-    expect(rows.length).toBe(2);
-    (rows[0] as HTMLElement).click();
-    expect(opened).toEqual(["pages/page-1.json"]);
+  test("a previewable document claims the island only where the layout draws one", () => {
+    // Cards may; a Media tile is a thumbnail of an asset, and a live runtime render inside one is
+    // The whole cost that layout exists to avoid.
+    expect(libraryRow(page(1), [], true).art).toBe("doc");
+    expect(libraryRow(page(1), [], false).art).toBe("glyph");
   });
 
-  test("an empty slice draws no rows at all", async () => {
-    const host = await renderInto(html`${tableRowsTpl([], context())}`);
-    expect(host.querySelectorAll(".library-table-row").length).toBe(0);
+  test("a file nothing can preview gets a glyph rather than an empty box", () => {
+    expect(libraryRow(SCRIPT, [], true).art).toBe("glyph");
+    expect(libraryRow(SCRIPT, [], true).src).toBe("");
   });
 
-  test("right-clicking a row raises the context menu for that file", async () => {
-    const seen: string[] = [];
-    const host = await renderInto(
-      html`${tableRowsTpl([page(1)], context({ contextMenu: (_e, f) => seen.push(f.path) }))}`,
-    );
-    host
-      .querySelector(".library-table-row")!
-      .dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
-    expect(seen).toEqual(["pages/page-1.json"]);
-  });
-});
-
-// ─── Cards and Media ─────────────────────────────────────────────────────────
-
-describe("Cards", () => {
-  test("a previewable document gets a slot; an image gets the image itself", async () => {
-    const asked: string[] = [];
-    const ctx = context({ mountPreview: (_el, file) => asked.push(file.path) });
-    const host = await renderInto(html`${cardsTpl([page(1), IMAGE], ctx)}`);
-    expect(asked).toEqual(["pages/page-1.json"]);
-    expect(host.querySelectorAll("img.library-thumb").length).toBe(1);
+  test("its cells are the SOURCE's columns, in order, not a second hand-written list", () => {
+    const columns = libraryColumns();
+    const row = libraryRow({ ...page(1), locale: "fr" }, columns, true);
+    expect(row.cells.map((cell) => cell.field)).toEqual(columns.map((c) => c.field));
+    expect(row.cells.find((cell) => cell.field === "name")?.text).toBe("page-1.json");
+    expect(row.cells.find((cell) => cell.field === "locale")?.text).toBe("français");
   });
 
-  test("a file nothing can preview gets a glyph rather than an empty box", async () => {
-    const host = await renderInto(html`${cardsTpl([SCRIPT], context())}`);
-    expect(host.querySelector("sp-icon-document")).not.toBeNull();
-    expect(host.querySelector(".library-preview-slot")).toBeNull();
-  });
-
-  test("clicking a card opens its file", async () => {
-    const opened: string[] = [];
-    const host = await renderInto(
-      html`${cardsTpl([page(3)], context({ openFile: (p) => opened.push(p) }))}`,
-    );
-    (host.querySelector(".library-card") as HTMLElement).click();
-    expect(opened).toEqual(["pages/page-3.json"]);
-  });
-});
-
-describe("Media", () => {
-  test("draws image tiles and never a live document render", async () => {
-    const asked: string[] = [];
-    const host = await renderInto(
-      html`${mediaTpl([IMAGE, page(1)], context({ mountPreview: (_e, f) => asked.push(f.path) }))}`,
-    );
-    expect(asked).toEqual([]);
-    expect(host.querySelectorAll(".library-tile").length).toBe(2);
-    expect(host.querySelectorAll("img.library-thumb").length).toBe(1);
-  });
-
-  test("a tile opens and context-menus like every other item", async () => {
-    const opened: string[] = [];
-    const menued: string[] = [];
-    const host = await renderInto(
-      html`${mediaTpl(
-        [IMAGE],
-        context({ contextMenu: (_e, f) => menued.push(f.path), openFile: (p) => opened.push(p) }),
-      )}`,
-    );
-    const tile = host.querySelector(".library-tile") as HTMLElement;
-    tile.click();
-    tile.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
-    expect(opened).toEqual(["public/logo.png"]);
-    expect(menued).toEqual(["public/logo.png"]);
+  test("a layout with no cells asks for none, so a card costs no table text", () => {
+    expect(libraryRow(page(1), [], true).cells).toEqual([]);
   });
 });
 
@@ -246,77 +176,79 @@ describe("Calendar", () => {
     return { ...page(index), name: `${date}-post-${index}.md` };
   }
 
-  test("groups by day, newest first", async () => {
-    const host = await renderInto(
-      html`${calendarTpl([dated("2024-01-01", 1), dated("2024-05-05", 2)], context())}`,
-    );
-    expect([...host.querySelectorAll(".library-day-date")].map((n) => n.textContent)).toEqual([
-      "2024-05-05",
-      "2024-01-01",
-    ]);
+  test("groups by day, newest first", () => {
+    const { groups } = calendarView([dated("2024-01-01", 1), dated("2024-05-05", 2)]);
+    expect(groups.map((g) => g.title)).toEqual(["2024-05-05", "2024-01-01"]);
+    expect(groups[0]!.files.map((f) => f.name)).toEqual(["2024-05-05-post-2.md"]);
   });
 
-  test("caps the days it draws and STATES how many it did not", async () => {
+  test("caps the days it draws and STATES how many it did not", () => {
     const files = Array.from({ length: CALENDAR_DAY_LIMIT + 5 }, (_v, i) =>
       dated(
         `20${String(10 + Math.floor(i / 12)).padStart(2, "0")}-01-${String((i % 12) + 1).padStart(2, "0")}`,
         i,
       ),
     );
-    const host = await renderInto(html`${calendarTpl(files, context())}`);
-    expect(host.querySelectorAll(".library-day:not(.library-day-undated)").length).toBe(
-      CALENDAR_DAY_LIMIT,
-    );
-    expect(host.querySelector(".library-truncated")?.textContent).toContain("5 older");
+    const { groups, truncated } = calendarView(files);
+    expect(groups.filter((g) => g.undated === "false")).toHaveLength(CALENDAR_DAY_LIMIT);
+    expect(truncated).toContain("5 older");
   });
 
-  test("undated files are set apart and counted, never parked on today", async () => {
-    const undated: LibraryFile = { ...SCRIPT };
-    const host = await renderInto(
-      html`${calendarTpl([dated("2024-01-01", 1), undated], context())}`,
-    );
-    const section = host.querySelector(".library-day-undated")!;
-    expect(section.querySelector(".library-day-date")?.textContent).toBe("No date");
-    expect(section.querySelector(".library-day-note")?.textContent).toContain("1 file");
+  test("undated files are set apart and counted, never parked on today", () => {
+    const { groups } = calendarView([dated("2024-01-01", 1), { ...SCRIPT }]);
+    const section = groups.at(-1)!;
+    expect(section.title).toBe("No date");
+    expect(section.undated).toBe("true");
+    expect(section.noteState).toBe("shown");
+    expect(section.note).toContain("1 file");
   });
 
-  test("with no undated file there is no undated section", async () => {
-    const host = await renderInto(html`${calendarTpl([dated("2024-01-01", 1)], context())}`);
-    expect(host.querySelector(".library-day-undated")).toBeNull();
-    expect(host.querySelector(".library-truncated")).toBeNull();
+  test("the undated section's id can never collide with a day's", () => {
+    // The id is what keeps a section's node across a repaint, and `groupByDate` can produce a day
+    // Called anything of the form YYYY-MM-DD, and never a pair of underscores.
+    const { groups } = calendarView([{ ...SCRIPT }]);
+    expect(groups.map((g) => g.id)).toEqual(["__undated"]);
+  });
+
+  test("with no undated file there is no undated section and nothing truncated", () => {
+    const { groups, truncated } = calendarView([dated("2024-01-01", 1)]);
+    expect(groups.every((g) => g.undated === "false")).toBe(true);
+    expect(truncated).toBe("");
   });
 });
 
 // ─── Board ───────────────────────────────────────────────────────────────────
 
 describe("Board", () => {
-  test("one column per category, each printing its own total", async () => {
-    const host = await renderInto(html`${boardTpl([page(1), page(2), IMAGE], context())}`);
-    const columns = [...host.querySelectorAll(".library-board-column")];
-    expect(columns.length).toBe(2);
-    expect(columns[0]!.querySelector(".library-board-count")?.textContent).toBe("2");
+  test("one column per category, each printing its own total", () => {
+    const groups = boardView([page(1), page(2), IMAGE]);
+    expect(groups).toHaveLength(2);
+    expect(groups[0]!.title).toBe("Pages");
+    expect(groups[0]!.count).toBe("2");
   });
 
-  test("caps a column and states the remainder rather than truncating in silence", async () => {
-    const files = Array.from({ length: BOARD_COLUMN_LIMIT + 3 }, (_v, i) => page(i));
-    const host = await renderInto(html`${boardTpl(files, context())}`);
-    expect(host.querySelectorAll(".library-list-item").length).toBe(BOARD_COLUMN_LIMIT);
-    expect(host.querySelector(".library-truncated")?.textContent).toContain("3 more");
+  test("caps a column and states the remainder rather than truncating in silence", () => {
+    const groups = boardView(Array.from({ length: BOARD_COLUMN_LIMIT + 3 }, (_v, i) => page(i)));
+    expect(groups[0]!.files).toHaveLength(BOARD_COLUMN_LIMIT);
+    // The count is the honest TOTAL, not what the column drew.
+    expect(groups[0]!.count).toBe(String(BOARD_COLUMN_LIMIT + 3));
+    expect(groups[0]!.noteState).toBe("shown");
+    expect(groups[0]!.note).toContain("3 more");
   });
 
-  test("a list item opens its file and offers its context menu", async () => {
-    const opened: string[] = [];
-    const menued: string[] = [];
-    const host = await renderInto(
-      html`${boardTpl(
-        [page(1)],
-        context({ contextMenu: (_e, f) => menued.push(f.path), openFile: (p) => opened.push(p) }),
-      )}`,
-    );
-    const item = host.querySelector(".library-list-item") as HTMLElement;
-    item.click();
-    item.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
-    expect(opened).toEqual(["pages/page-1.json"]);
-    expect(menued).toEqual(["pages/page-1.json"]);
+  test("a column that fits says nothing about what it left out", () => {
+    const groups = boardView([page(1)]);
+    expect(groups[0]!.noteState).toBe("hidden");
+    expect(groups[0]!.note).toBe("");
+  });
+
+  test("a grouped item is text only — no live render, however many files it groups", () => {
+    const groups = boardView([page(1), IMAGE]);
+    for (const group of groups) {
+      for (const file of group.files) {
+        expect(file.art).toBe("glyph");
+        expect(file.cells).toEqual([]);
+      }
+    }
   });
 });

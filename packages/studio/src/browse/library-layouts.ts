@@ -1,6 +1,5 @@
-/// <reference lib="dom" />
 /**
- * The Library's five layouts.
+ * The Library's five layouts, as geometry and projections rather than as markup.
  *
  * All five draw the SAME rows — one scan, one filter — so switching layout is a repaint, never a
  * re-read. What differs is the geometry, and the geometry is data ({@link LAYOUT_METRICS}) rather
@@ -11,20 +10,21 @@
  * **Two of them are grouped, and grouped lists are bounded differently.** Table, Cards and Media
  * are flat and uniform, so they window. Calendar and Board are grouped, and a window over a grouped
  * list either breaks the groups or needs variable-height measurement; both draw text only (no live
- * preview, so an item costs a `<div>`), and each caps what it draws and SAYS what it left out. A
+ * preview, so an item costs one `<li>`), and each caps what it draws and SAYS what it left out. A
  * layout that silently truncated would be the same class of lie as "No files found".
+ *
+ * The markup itself is `surfaces/library-pane.json`. What is left here is what a document cannot
+ * express: how tall a row is, how many fit across, how many a group may draw, and what a file's
+ * fields say once they are text.
  */
 
-import { html, nothing } from "lit-html";
-import { repeat } from "lit-html/directives/repeat.js";
-import { ref } from "lit-html/directives/ref.js";
 import { isImage } from "../files/media-upload";
 import { previewFileSrc } from "../files/media-paths";
 import { localeLabel } from "@jxsuite/schema/locale";
 import { groupByCategory, groupByDate } from "./library-model";
 import type { LibraryFile, LibraryLayout } from "./library-model";
 import type { GridColumn, GridCellValue } from "../grid/grid-source";
-import type { TemplateResult } from "lit-html";
+import type { LibraryGroup, LibraryRow } from "../surfaces/library-pane";
 
 /** The geometry a layout scrolls at. `itemWidth` of 0 means one item per row. */
 export interface LayoutMetric {
@@ -39,9 +39,9 @@ export interface LayoutMetric {
 /**
  * Per-layout geometry.
  *
- * These are nominal sizes that must match `styles/`'s Library rules. They are approximate on
- * purpose: the window's job is to keep the rendered count proportional to the viewport, and being
- * one row out costs one row of overscan, not correctness.
+ * These are nominal sizes that must match the Library surface's own style block. They are
+ * approximate on purpose: the window's job is to keep the rendered count proportional to the
+ * viewport, and being one row out costs one row of overscan, not correctness.
  */
 export const LAYOUT_METRICS: Readonly<Record<LibraryLayout, LayoutMetric>> = {
   board: { itemWidth: 0, rowHeight: 0, windowed: false },
@@ -64,20 +64,6 @@ export function columnsAt(layout: LibraryLayout, width: number): number {
     return 1;
   }
   return Math.max(1, Math.floor(width / metric.itemWidth));
-}
-
-// ─── What a layout is handed ─────────────────────────────────────────────────
-
-export interface LayoutContext {
-  /** The source's columns — the Table layout's headers and cell order come from the GridSource. */
-  columns: readonly GridColumn[];
-  openFile: (path: string) => void;
-  contextMenu: (event: MouseEvent, file: LibraryFile) => void;
-  /**
-   * Register a card's preview slot for lazy mounting. Called from a lit `ref`, so it receives
-   * `undefined` on unmount and must tolerate it.
-   */
-  mountPreview: (element: Element | undefined, file: LibraryFile) => void;
 }
 
 // ─── Cell text ───────────────────────────────────────────────────────────────
@@ -146,138 +132,42 @@ export function cellTextOf(value: GridCellValue): string {
   return value === null || value === undefined ? "" : String(value);
 }
 
-// ─── Shared pieces ───────────────────────────────────────────────────────────
+// ─── Rows ────────────────────────────────────────────────────────────────────
 
-/** A file's thumbnail: the real image for media, a lazily-mounted live preview for a document. */
-function previewTpl(file: LibraryFile, ctx: LayoutContext): TemplateResult {
-  if (isImage(file.ext)) {
-    return html`<img
-      class="library-thumb"
-      loading="lazy"
-      src=${previewFileSrc(file.path)}
-      alt=""
-    />`;
-  }
-  const previewable =
-    file.category === "Components" ||
-    file.category === "Pages" ||
-    file.category === "Layouts" ||
-    file.category === "Content";
-  if (!previewable) {
-    return html`<sp-icon-document size="xl"></sp-icon-document>`;
-  }
-  return html`<div
-    class="library-preview-slot"
-    ${ref((element) => ctx.mountPreview(element, file))}
-  ></div>`;
-}
+/** The four categories whose files are documents the runtime can render a preview of. */
+const PREVIEWABLE = new Set(["Components", "Content", "Layouts", "Pages"]);
 
-/** One clickable item, in whichever wrapper the layout wants. */
-function itemAttrs(file: LibraryFile, ctx: LayoutContext) {
+/**
+ * One file, as the surface reads it.
+ *
+ * `live` is whether this layout may draw a real document render at all: Cards may, Media never
+ * does. Getting that from the caller rather than from the file is what keeps a tile cheap — a
+ * thumbnail of an asset is an `<img>`, and a live runtime render inside one is the whole cost the
+ * Media layout exists to avoid.
+ *
+ * @param file The scanned file.
+ * @param columns The Table's columns, from the grid source. Empty for a layout with no cells.
+ * @param live Whether a previewable document may claim the `doc` island.
+ */
+export function libraryRow(
+  file: LibraryFile,
+  columns: readonly GridColumn[],
+  live: boolean,
+): LibraryRow {
+  const image = isImage(file.ext);
   return {
-    contextmenu: (event: MouseEvent) => ctx.contextMenu(event, file),
-    open: () => ctx.openFile(file.path),
+    art: image ? "image" : live && PREVIEWABLE.has(file.category) ? "doc" : "glyph",
+    cells: columns.map((column) => ({ field: column.field, text: cellText(file, column.field) })),
+    meta: file.type,
+    name: file.name,
+    path: file.path,
+    src: image ? previewFileSrc(file.path) : "",
   };
 }
 
-// ─── Table ───────────────────────────────────────────────────────────────────
-
-/** The Table layout's header, from the source's own columns. */
-export function tableHeadTpl(columns: readonly GridColumn[]): TemplateResult {
-  return html`<div class="library-table-head" role="row">
-    ${columns.map(
-      (column) =>
-        html`<div class="library-table-cell" role="columnheader" data-field=${column.field}>
-          ${column.title}
-        </div>`,
-    )}
-  </div>`;
-}
-
-/** The windowed slice of table rows. */
-export function tableRowsTpl(
-  files: readonly LibraryFile[],
-  ctx: LayoutContext,
-): TemplateResult | typeof nothing {
-  if (files.length === 0) {
-    return nothing;
-  }
-  return html`${repeat(
-    files,
-    (file) => file.path,
-    (file) => {
-      const attrs = itemAttrs(file, ctx);
-      return html`<div
-        class="library-table-row"
-        role="row"
-        data-path=${file.path}
-        @click=${attrs.open}
-        @contextmenu=${attrs.contextmenu}
-      >
-        ${ctx.columns.map(
-          (column) =>
-            html`<div class="library-table-cell" role="cell" data-field=${column.field}>
-              ${cellText(file, column.field)}
-            </div>`,
-        )}
-      </div>`;
-    },
-  )}`;
-}
-
-// ─── Cards and Media ─────────────────────────────────────────────────────────
-
-/** Cards: a preview, a name, and the category beneath it. */
-export function cardsTpl(files: readonly LibraryFile[], ctx: LayoutContext): TemplateResult {
-  return html`${repeat(
-    files,
-    (file) => file.path,
-    (file) => {
-      const attrs = itemAttrs(file, ctx);
-      return html`<div
-        class="library-card"
-        data-path=${file.path}
-        @click=${attrs.open}
-        @contextmenu=${attrs.contextmenu}
-      >
-        <div class="library-card-preview">${previewTpl(file, ctx)}</div>
-        <div class="library-card-label" title=${file.path}>${file.name}</div>
-        <div class="library-card-meta">${file.type}</div>
-      </div>`;
-    },
-  )}`;
-}
-
-/** Media: tighter tiles, image-first, no live document renders at all. */
-export function mediaTpl(files: readonly LibraryFile[], ctx: LayoutContext): TemplateResult {
-  return html`${repeat(
-    files,
-    (file) => file.path,
-    (file) => {
-      const attrs = itemAttrs(file, ctx);
-      return html`<div
-        class="library-tile"
-        data-path=${file.path}
-        title=${file.path}
-        @click=${attrs.open}
-        @contextmenu=${attrs.contextmenu}
-      >
-        <div class="library-tile-preview">
-          ${
-            isImage(file.ext)
-              ? html`<img
-                  class="library-thumb"
-                  loading="lazy"
-                  src=${previewFileSrc(file.path)}
-                  alt=""
-                />`
-              : html`<sp-icon-document size="l"></sp-icon-document>`
-          }
-        </div>
-        <div class="library-tile-label">${file.name}</div>
-      </div>`;
-    },
-  )}`;
+/** The text-only row both grouped layouts draw: a name, and the path it opens. */
+function nameRow(file: LibraryFile): LibraryRow {
+  return { art: "glyph", cells: [], meta: file.type, name: file.name, path: file.path, src: "" };
 }
 
 // ─── Calendar ────────────────────────────────────────────────────────────────
@@ -288,82 +178,61 @@ export function mediaTpl(files: readonly LibraryFile[], ctx: LayoutContext): Tem
  * A file's day comes from a `YYYY-MM-DD` filename prefix or the filesystem's mtime — never from
  * "now". Files with neither are listed under "No date" rather than parked on today, because a
  * calendar that invents dates is worse than one that admits it cannot place a file.
+ *
+ * @returns The day sections, and the sentence naming the older days it did not draw.
  */
-export function calendarTpl(files: readonly LibraryFile[], ctx: LayoutContext): TemplateResult {
+export function calendarView(files: readonly LibraryFile[]): {
+  groups: LibraryGroup[];
+  truncated: string;
+} {
   const { days, undated } = groupByDate(files);
   const shown = days.slice(0, CALENDAR_DAY_LIMIT);
   const hiddenDays = days.length - shown.length;
-  return html`<div class="library-calendar">
-    ${shown.map(
-      (day) => html`<section class="library-day">
-        <h3 class="library-day-date">${day.date}</h3>
-        ${listTpl(day.files, ctx)}
-      </section>`,
-    )}
-    ${
+  const groups: LibraryGroup[] = shown.map((day) => ({
+    count: "",
+    files: day.files.map((file) => nameRow(file)),
+    id: day.date,
+    note: "",
+    noteState: "hidden",
+    title: day.date,
+    undated: "false",
+  }));
+  if (undated.length > 0) {
+    groups.push({
+      count: "",
+      files: undated.slice(0, BOARD_COLUMN_LIMIT).map((file) => nameRow(file)),
+      /* Not a date, and it must never collide with one: the section's identity is what keeps its
+         node across a repaint, and a day is always `YYYY-MM-DD`, so a leading underscore pair cannot be one. */
+      id: "__undated",
+      note: `${undated.length} file${undated.length === 1 ? "" : "s"} with no dated name and no modification time.`,
+      noteState: "shown",
+      title: "No date",
+      undated: "true",
+    });
+  }
+  return {
+    groups,
+    truncated:
       hiddenDays > 0
-        ? html`<p class="library-truncated">
-            ${hiddenDays} older ${hiddenDays === 1 ? "day is" : "days are"} not shown — filter, or
-            switch to Table.
-          </p>`
-        : nothing
-    }
-    ${
-      undated.length > 0
-        ? html`<section class="library-day library-day-undated">
-            <h3 class="library-day-date">No date</h3>
-            <p class="library-day-note">
-              ${undated.length} file${undated.length === 1 ? "" : "s"} with no dated name and no
-              modification time.
-            </p>
-            ${listTpl(undated.slice(0, BOARD_COLUMN_LIMIT), ctx)}
-          </section>`
-        : nothing
-    }
-  </div>`;
+        ? `${hiddenDays} older ${hiddenDays === 1 ? "day is" : "days are"} not shown — filter, or switch to Table.`
+        : "",
+  };
 }
 
 // ─── Board ───────────────────────────────────────────────────────────────────
 
 /** Board: one column per category present, each capped and each stating its own total. */
-export function boardTpl(files: readonly LibraryFile[], ctx: LayoutContext): TemplateResult {
-  const groups = groupByCategory(files);
-  return html`<div class="library-board">
-    ${groups.map((group) => {
-      const hidden = group.files.length - BOARD_COLUMN_LIMIT;
-      return html`<section class="library-board-column">
-        <h3 class="library-board-title">
-          ${group.group} <span class="library-board-count">${group.files.length}</span>
-        </h3>
-        ${listTpl(group.files.slice(0, BOARD_COLUMN_LIMIT), ctx)}
-        ${
-          hidden > 0
-            ? html`<p class="library-truncated">${hidden} more — switch to Table to see them.</p>`
-            : nothing
-        }
-      </section>`;
-    })}
-  </div>`;
-}
-
-/** The plain name list both grouped layouts draw. Text only: a group must stay cheap. */
-function listTpl(files: readonly LibraryFile[], ctx: LayoutContext): TemplateResult {
-  return html`<ul class="library-list">
-    ${repeat(
-      files,
-      (file) => file.path,
-      (file) => {
-        const attrs = itemAttrs(file, ctx);
-        return html`<li
-          class="library-list-item"
-          data-path=${file.path}
-          title=${file.path}
-          @click=${attrs.open}
-          @contextmenu=${attrs.contextmenu}
-        >
-          ${file.name}
-        </li>`;
-      },
-    )}
-  </ul>`;
+export function boardView(files: readonly LibraryFile[]): LibraryGroup[] {
+  return groupByCategory(files).map((group) => {
+    const hidden = group.files.length - BOARD_COLUMN_LIMIT;
+    return {
+      count: String(group.files.length),
+      files: group.files.slice(0, BOARD_COLUMN_LIMIT).map((file) => nameRow(file)),
+      id: group.group,
+      note: hidden > 0 ? `${hidden} more — switch to Table to see them.` : "",
+      noteState: hidden > 0 ? "shown" : "hidden",
+      title: group.group,
+      undated: "false",
+    };
+  });
 }
