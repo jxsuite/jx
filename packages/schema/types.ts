@@ -262,7 +262,14 @@ export interface CemEvent {
 export type RefObject = FromSchema<typeof refObjectSchema>;
 
 export interface JxStyle {
-  [property: string]: string | number | RefObject | JxStyle | undefined;
+  /**
+   * A declaration's value, a nested block, or SEVERAL blocks under one key.
+   *
+   * The array is what `@font-face` needs: an object's keys are unique, so a key can name a rule
+   * once, and that at-rule's identity is not in its key — a family with three weights has no other
+   * spelling. It means what writing the key that many times would mean, in order (spec.md §9.4).
+   */
+  [property: string]: string | number | RefObject | JxStyle | JxStyle[] | undefined;
 }
 
 /**

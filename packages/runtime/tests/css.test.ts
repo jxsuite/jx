@@ -441,6 +441,53 @@ describe("buildStyleRules on selectors", () => {
   });
 });
 
+describe("buildStyleRules on a key written more than once", () => {
+  const rules = (style: unknown) =>
+    css.buildStyleRules(style as never, { scope: ":root" }).map((rule) => rule.text);
+
+  test("a declaration at-rule may hold several blocks, emitted in order", () => {
+    /* An object's keys are unique, so `@font-face` — the at-rule whose identity is NOT in its key —
+       had no spelling for a family's second weight. Studio ships three JetBrains Mono faces. */
+    expect(
+      rules({
+        "@font-face": [
+          { fontFamily: "JetBrains Mono", fontWeight: "400", src: 'url("a.woff2")' },
+          { fontFamily: "JetBrains Mono", fontWeight: "700", src: 'url("b.woff2")' },
+        ],
+      }),
+    ).toEqual([
+      '@font-face { font-family: JetBrains Mono; font-weight: 400; src: url("a.woff2") }',
+      '@font-face { font-family: JetBrains Mono; font-weight: 700; src: url("b.woff2") }',
+    ]);
+  });
+
+  test("every declaration at-rule takes the form, and each block is its own rule", () => {
+    for (const key of ["@font-face", "@property --a", "@position-try --p", "@counter-style c"]) {
+      expect(rules({ [key]: [{ syntax: "a" }, { syntax: "b" }] }).length, key).toBe(2);
+    }
+  });
+
+  test("one block under the same key still means one rule", () => {
+    expect(rules({ "@font-face": { fontFamily: "A" } })).toEqual(["@font-face { font-family: A }"]);
+  });
+
+  test("a SELECTOR key takes no array, and is unchanged by this", () => {
+    /* Deliberately still dropped. Under a selector an array says what one block already says, and
+       every other style walker in the repo — the overlay lint, the a11y lint, the canvas — assumes
+       a block key holds one block. Admitting it there would leave those reading past it in
+       silence. */
+    expect(rules({ "&:hover": [{ color: "red" }] })).toEqual([]);
+    expect(rules({ "@media (min-width: 40em)": [{ color: "red" }] })).toEqual([]);
+  });
+
+  test("an array is never read as a declaration value", () => {
+    // It used to reach `String(value)` and emit `@font-face: [object Object]` as a declaration.
+    expect(rules({ color: [{ a: "1" }] })).toEqual([]);
+    expect(rules({ "@font-face": [] })).toEqual([]);
+    expect(rules({ "@font-face": [{ fontFamily: "A" }, "not-a-block"] })).toEqual([]);
+  });
+});
+
 describe("hashCss keys a rule by what it says", () => {
   test("identical style objects produce identical keys", () => {
     const of = () => css.buildStyleRules({ ":hover": { color: "b" }, color: "a" }, { scope: ".s" });

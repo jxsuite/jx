@@ -53,6 +53,35 @@ describe("interactive-unnamed", () => {
     ).toEqual([]);
   });
 
+  test("every shape `textContent` and `children` can take names a control", () => {
+    /* The conservative branches of `hasContentName`, each of which is a SILENCE the lint owes an
+       author: it may not accuse what it cannot read. They were reachable and unmeasured, so the
+       one gate that says whether the lint stays quiet had nothing holding it. */
+    expect(
+      rules(
+        doc([
+          // A bound `textContent` — an object rather than a string, so its text is unknown.
+          { tagName: "button", textContent: { $ref: "#/state/label" } },
+          // A child element that carries the name, found by the recursive walk.
+          { children: [{ tagName: "span", textContent: "Go" }], tagName: "button" },
+          // `children` that is not an array at all: a mapped array, whose rows the document decides.
+          { children: { $ref: "#/state/rows" }, tagName: "button" },
+          // A `map` block, which is the same answer written the other way.
+          { items: { $ref: "#/state/rows" }, map: { tagName: "span" }, tagName: "button" },
+        ]),
+      ),
+    ).toEqual([]);
+  });
+
+  test("an empty string is not content, in either position", () => {
+    // The mirror of the branches above: present, readable, and says nothing.
+    expect(rules(doc([{ tagName: "button", textContent: "   " }]))).toEqual([
+      "interactive-unnamed",
+    ]);
+    expect(rules(doc([{ children: ["  "], tagName: "button" }]))).toEqual(["interactive-unnamed"]);
+    expect(rules(doc([{ children: [], tagName: "button" }]))).toEqual(["interactive-unnamed"]);
+  });
+
   test("a bound name, role or content is not judged", () => {
     expect(
       rules(

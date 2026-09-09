@@ -192,9 +192,17 @@ export function bodyReturnsValue(body: string): boolean {
 
 // ─── Style guards & accessors ───────────────────────────────────────────────────
 
-/** A nested style object (selector/media block), as opposed to a scalar CSS value. */
-export function isNestedStyle(value: string | number | JxStyle | undefined): value is JxStyle {
-  return typeof value === "object" && value !== null;
+/**
+ * A nested style object (selector/media block), as opposed to a scalar CSS value.
+ *
+ * An ARRAY of blocks is not one: it is a key written more than once (`@font-face`, spec.md §9.4),
+ * and every caller here reads or edits a single block. Answering true for it would hand a caller an
+ * array to look properties up on, which finds nothing and reports nothing.
+ */
+export function isNestedStyle(
+  value: string | number | JxStyle | JxStyle[] | undefined,
+): value is JxStyle {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /** Read a nested style block (`:hover`, `@--md`, `& > li`, …), if present. */

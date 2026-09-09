@@ -200,7 +200,13 @@ export function overlayScopeFor(definitions: Iterable<JxElement>): OverlayScope 
  * warning the conformance suites assert away entirely.
  */
 export function declaresPopover(node: JxElement): boolean {
-  return "popover" in attrs(node);
+  /* BOTH spellings, which is what "however it was written" has to mean. `popover` is not a reserved
+     key, so a top-level `"popover": "auto"` reaches `bindProperty` and is set as the DOM PROPERTY —
+     a real popover, reflected back to the attribute — and reading only the bag left one invisible
+     to every rule here: no `base-display` finding, no `no-open-rule` finding, and its tag missing
+     from the scope, so consumers of that definition went unrecognised too. `idOf` below already
+     reads a key either way, for the same reason. */
+  return "popover" in attrs(node) || "popover" in (node as Record<string, unknown>);
 }
 
 /**
@@ -337,7 +343,10 @@ function isSelector(key: string): boolean {
 /** A scalar style value as text, or null when the key is absent or holds a nested block. */
 export function scalar(style: JxStyle | undefined, prop: string): string | null {
   const value = style?.[prop];
-  if (value === undefined || isNestedStyle(value)) {
+  /* `Array.isArray` as well as the block guard: several blocks under one key is a rule written more
+     than once (spec.md §9.4), and stringifying it gives `[object Object]` — a declaration value
+     that is not one, which every caller here would then compare against. */
+  if (value === undefined || isNestedStyle(value) || Array.isArray(value)) {
     return null;
   }
   return String(value);

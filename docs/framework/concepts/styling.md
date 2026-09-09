@@ -106,6 +106,21 @@ Most `@` keys wrap selectors: a [breakpoint](#named-media-breakpoints), `@suppor
 }
 ```
 
+One of those four can be written more than once: give the key a **list** of blocks and each is emitted in turn. A font family with several weights is the case that needs it, since `@font-face` is the only one of the four whose name is not part of the key:
+
+```json
+{
+  "style": {
+    "@font-face": [
+      { "font-family": "Inter", "font-weight": "400", "src": "url(\"inter-400.woff2\")" },
+      { "font-family": "Inter", "font-weight": "700", "src": "url(\"inter-700.woff2\")" }
+    ]
+  }
+}
+```
+
+Only those four keys take a list. Anywhere else a list is refused, because one block already says the same thing.
+
 `@keyframes` is not one of them. It is the third shape, and its own section.
 
 ### Animations with `@keyframes`
