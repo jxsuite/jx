@@ -199,7 +199,10 @@ function buildEventHandlerProperties(eventHandlers: string[]) {
 }
 
 function buildCssProperties(cssProps: string[]) {
-  const properties: Record<string, unknown> = {};
+  /* The authored `properties` come first so a `$`-prefixed metadata key survives: this function
+     REPLACES the block's properties rather than adding to them, so anything the hand-written schema
+     declared there was silently dropped — which is how `$description` validated as a number. */
+  const properties: Record<string, unknown> = { ...styleObjectSchema.properties };
   for (const name of cssProps) {
     /* A `{ $ref }` is a reactive VALUE, which the runtime has always resolved (spec.md §9.6) and
        only the validator refused: `style: { fontFamily: { $ref: "$map/item/face" } }` reported

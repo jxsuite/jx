@@ -1,5 +1,5 @@
 /* GENERATED FILE — do not edit.
-   Source: styles/tokens.json. Regenerate with `bun run tokens:sync`.
+   Source: styles/tokens.json. Regenerate with `bun run styles:sync`.
 
    Studio's global base and semantic token layer. It is a linked stylesheet rather than part of the
    kit's adopted theme because every declaration here is PRE-PAINT: the kit's sheet is adopted from

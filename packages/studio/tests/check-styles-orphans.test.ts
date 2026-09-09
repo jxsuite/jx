@@ -34,6 +34,7 @@ import {
   scanBannedIdentifiers,
   scanHex,
   scanJsonStyle,
+  keyframeNames,
   jsonStyleBlocks,
   surfaceClasses,
   stackedClasses,
@@ -402,9 +403,15 @@ describe("collect", () => {
     );
     /* Two modal bodies, identical but for one declaration: the scrim paints at z-index 1, so the
        one with no z-index is under it — visible through the scrim, and unclickable. */
+    /* One animation name in two sheets. CSS keeps the LAST and ignores the first, in silence. */
+    writeFileSync(
+      join(root, "styles", "anim.css"),
+      "@keyframes pulse { 50% { opacity: 0.4 } }\n@keyframes solo { to { opacity: 1 } }",
+    );
     writeFileSync(
       join(root, "styles", "modals.css"),
-      ".lifted { position: fixed; z-index: 1000 }\n.sunken { position: fixed }",
+      ".lifted { position: fixed; z-index: 1000 }\n.sunken { position: fixed }\n" +
+        "@keyframes pulse { 50% { opacity: 0.9 } }",
     );
     writeFileSync(
       join(root, "src", "modals.ts"),
@@ -507,6 +514,18 @@ describe("collect", () => {
     expect(px).toEqual(['"fontSize": "12px",', '"borderRadius": "4px",']);
   });
 
+  test("an animation name defined twice is reported at BOTH sites", () => {
+    /* A `@keyframes` name is document-global: CSS keeps the LAST definition and ignores every
+       earlier one, with no parse error either way. Both sites are named because neither is wrong on
+       its own — the reader has to choose which to delete, and naming one hides half the problem. */
+    const sites = result.duplicateAnimations.filter((f) => f.text === "pulse");
+    expect(sites.map((f) => f.file).toSorted()).toEqual(["styles/anim.css", "styles/modals.css"]);
+  });
+
+  test("an animation name defined once is not reported", () => {
+    expect(result.duplicateAnimations.some((f) => f.text === "solo")).toBe(false);
+  });
+
   test("a class a surface names is held to the orphan rule, and a computed one is not", () => {
     const orphaned = new Set(result.allOrphans.map((o) => o.text));
     expect(orphaned.has("surface-orphan")).toBe(true);
@@ -569,6 +588,7 @@ describe("report", () => {
     contrast: [],
     guidelineTokens: [],
     underScrim: [],
+    duplicateAnimations: [],
   };
   const finding = (text: string): { file: string; line: number; text: string } => ({
     file: "src/a.ts",
@@ -969,5 +989,25 @@ describe("surfaceClasses", () => {
 
   test("finds nothing in a document that names no class, which is every one of them", () => {
     expect(surfaceClasses('{ "tagName": "div", "attributes": { "part": "row" } }')).toEqual([]);
+  });
+});
+
+describe("keyframeNames", () => {
+  test("reads a stylesheet's names, with the line each is on", () => {
+    expect(keyframeNames("a { b: 1 }\n@keyframes pulse {\n}\n@keyframes fade-in {\n}")).toEqual([
+      ["pulse", 2],
+      ["fade-in", 4],
+    ]);
+  });
+
+  test("reads a surface document's spelling too", () => {
+    // The name is in the KEY there, exactly as the runtime's own prefix match reads it.
+    expect(keyframeNames('{ "style": { "@keyframes toast-in": { "from": {} } } }')).toEqual([
+      ["toast-in", 1],
+    ]);
+  });
+
+  test("finds nothing where nothing is defined", () => {
+    expect(keyframeNames("a { animation: pulse 1s }")).toEqual([]);
   });
 });

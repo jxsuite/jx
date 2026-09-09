@@ -121,6 +121,21 @@ One of those four can be written more than once: give the key a **list** of bloc
 
 Only those four keys take a list. Anywhere else a list is refused, because one block already says the same thing.
 
+### Explaining a rule
+
+Any style block can carry a `$description`: why the rule is there, in your own words.
+
+```json
+{
+  "style": {
+    "$description": "The panel fills its column so a short list still shows the border under it.",
+    "height": "100%"
+  }
+}
+```
+
+It is prose, never a declaration, so it changes nothing about what the rule does. A build that writes a stylesheet puts it in a comment above the rule; everywhere else it is ignored. Every key starting with `$` works this way, and no CSS property starts with `$`, so nothing you write as styling can be mistaken for a note.
+
 `@keyframes` is not one of them. It is the third shape, and its own section.
 
 ### Animations with `@keyframes`

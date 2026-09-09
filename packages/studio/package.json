@@ -51,9 +51,9 @@
     "eval": "bun run evals/cli.ts",
     "eval:headless": "bun run tests/harness/run-eval.ts",
     "lint:styles": "bun run scripts/check-styles.ts",
-    "tokens:check": "bun run scripts/build-tokens.ts",
-    "tokens:sync": "bun run scripts/build-tokens.ts --fix",
-    "test": "bun run lint:styles && bun run tokens:check && bun test --isolate",
+    "styles:check": "bun run scripts/build-styles.ts",
+    "styles:sync": "bun run scripts/build-styles.ts --fix",
+    "test": "bun run lint:styles && bun run styles:check && bun test --isolate",
     "test:coverage": "bun test --isolate --coverage",
     "upgrade": "bun update --latest && bun install"
   },

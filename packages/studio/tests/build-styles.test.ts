@@ -8,20 +8,27 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { expandRule, readSource, run, tokensCSS } from "../scripts/build-tokens";
+import {
+  commentOf,
+  expandRule,
+  readSource,
+  run,
+  sheetCSS,
+  tokensCSS,
+} from "../scripts/build-styles";
 
 const ROOT = join(import.meta.dir, "..");
 const css = readFileSync(join(ROOT, "styles/tokens.css"), "utf8");
 
 describe("the committed stylesheet is what its source means", () => {
-  test("tokens.css matches tokens.json, which is the gate CI runs", async () => {
+  test("both sheets match their sources, which is the gate CI runs", async () => {
     expect(await run(ROOT, false)).toBe(true);
   });
 
   test("it says it is generated, and names the file to edit instead", () => {
     expect(css).toContain("GENERATED FILE — do not edit.");
     expect(css).toContain("styles/tokens.json");
-    expect(css).toContain("tokens:sync");
+    expect(css).toContain("styles:sync");
   });
 });
 
@@ -126,5 +133,122 @@ describe("the source", () => {
     const after = tokensCSS({ color: "blue" });
     expect(before).not.toBe(after);
     expect(after).toContain("color: blue;");
+  });
+});
+
+const forced = readFileSync(join(ROOT, "styles/forced-colors.css"), "utf8");
+
+describe("the forced-colours sheet", () => {
+  test("its rules are UNSCOPED, so each reaches the elements it always did", () => {
+    /* `:root` is right for the token layer and wrong here: a `.pane-tab` key under `:root` resolves
+       to `:root.pane-tab`, which matches nothing, because a class key compounds onto its scope. */
+    expect(forced).not.toContain(":root.");
+    expect(forced).not.toContain(":root ");
+    for (const selector of ['.pane-tab[aria-selected="true"]', ":focus-visible", ".artboard"]) {
+      expect(forced, selector).toContain(selector);
+    }
+  });
+
+  test("every affordance the mode deletes is redrawn, with a system colour", () => {
+    // Each pair is one affordance from the file's own list: what vanishes, and what replaces it.
+    const cases: [string, string][] = [
+      [".tab--active", "border-bottom: 2px solid Highlight;"],
+      [".problem-row", "border-left: 2px solid Highlight;"],
+      [".is-drop-target", "outline: 3px solid Highlight;"],
+      [":focus-visible", "outline: 2px solid Highlight;"],
+      [".severity-dot", "border: 1px solid CanvasText;"],
+      ['[aria-disabled="true"]', "color: GrayText;"],
+    ];
+    for (const [what, redrawn] of cases) {
+      expect(forced, what).toContain(what);
+      expect(forced, redrawn).toContain(redrawn);
+    }
+    // The artboard opts OUT, because it renders the reader's own document rather than the chrome.
+    expect(forced).toContain("forced-color-adjust: none;");
+  });
+
+  test("every rule sits inside the forced-colours query and nowhere else", () => {
+    /* A rule that escaped the query would repaint the ordinary UI. The builder emits one wrapper
+       per rule rather than one around all of them — valid CSS and the same condition either way —
+       so the count is the check that none slipped out. */
+    const rules = forced.match(/^ {2}[^ @}].*\{$/gm) ?? [];
+    expect(forced.match(/@media \(forced-colors: active\) \{/g)?.length).toBe(7);
+    expect(rules.length).toBe(7);
+  });
+
+  test("every rule carries the reasoning that was written beside it", () => {
+    /* The point of `$description`. The sentences in the stylesheet this replaced are the most
+       valuable thing in it, and a migration that moved the declarations and dropped the reasoning
+       would be a loss no gate could see. */
+    expect(forced.match(/^\/\* /gm)?.length).toBeGreaterThanOrEqual(7);
+    // Whitespace-collapsed, because a wrapped comment breaks a sentence across lines by design.
+    const prose = forced.replaceAll(/\s+/g, " ");
+    for (const phrase of [
+      "box-shadow: inset",
+      "invisible here twice over",
+      "palette's own focus colour",
+      "USER'S OWN DOCUMENT",
+      "whole meaning is its fill",
+      "Opacity is not a colour",
+    ]) {
+      expect(prose, phrase).toContain(phrase);
+    }
+  });
+});
+
+describe("commentOf", () => {
+  test("wraps prose and indents its continuation under the opener", () => {
+    const long = "word ".repeat(40).trim();
+    const out = commentOf(long);
+    expect(out.startsWith("/* ")).toBe(true);
+    expect(out.endsWith(" */")).toBe(true);
+    for (const line of out.split("\n")) {
+      expect(line.length).toBeLessThanOrEqual(100);
+    }
+    expect(
+      out
+        .split("\n")
+        .slice(1)
+        .every((line) => line.startsWith("   ")),
+    ).toBe(true);
+  });
+
+  test("a short reason stays on one line", () => {
+    expect(commentOf("short reason")).toBe("/* short reason */");
+  });
+});
+
+describe("expandRule on a wrapper", () => {
+  test("expands the rule INSIDE a query rather than reading it as a declaration", () => {
+    /* It used to split on the outermost braces only, so an inner rule was read as one declaration
+       — semicolon and all — and emitted `@media (…) { .a { … }; }`, with its selector list never
+       split. */
+    expect(expandRule("@media (x) { .a, .b { c: 1; d: 2 } }")).toBe(
+      "@media (x) {\n  .a,\n  .b {\n    c: 1;\n    d: 2;\n  }\n}",
+    );
+  });
+
+  test("expands every stop of a keyframes block", () => {
+    expect(expandRule("@keyframes n { from { opacity: 0 } to { opacity: 1 } }")).toBe(
+      "@keyframes n {\n  from {\n    opacity: 0;\n  }\n  to {\n    opacity: 1;\n  }\n}",
+    );
+  });
+
+  test("a brace inside a value closes nothing", () => {
+    expect(expandRule(`a { content: "{" }`)).toBe(`a {\n  content: "{";\n}`);
+  });
+});
+
+describe("sheetCSS", () => {
+  test("puts a block's $description above the rule it explains", () => {
+    expect(sheetCSS({ $description: "why", color: "red" } as never, ":root", "/* h */")).toBe(
+      "/* h */\n/* why */\n:root {\n  color: red;\n}\n",
+    );
+  });
+
+  test("a block with no prose gets no comment", () => {
+    expect(sheetCSS({ color: "red" } as never, ":root", "/* h */")).toBe(
+      "/* h */\n:root {\n  color: red;\n}\n",
+    );
   });
 });

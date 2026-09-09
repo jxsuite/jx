@@ -1,6 +1,6 @@
 # Jx Studio UI/UX Interface Guidelines
 
-**Version:** 0.4.14-draft\
+**Version:** 0.4.15-draft\
 **Status:** Partial\
 **Updated:** 2026-09-09\
 **Applies to:** `packages/studio/`
@@ -29,7 +29,11 @@ Use CSS custom properties from `:root` — never hardcode color values.
 >
 > **`styles/tokens.css` is a BUILD OUTPUT.** Its source is `styles/tokens.json`, a Jx style block like any surface's, and `scripts/build-tokens.ts` writes the stylesheet from it: `bun run tokens:check` is the gate and `bun run tokens:sync` is the fixer, the same pair `schema:verify` and `schema:sync` are for the committed schemas. Never hand-edit the CSS; the fix belongs in the JSON.
 >
-> **It stays a linked stylesheet, and that is the design rather than an exception to it.** Every declaration in it is PRE-PAINT — the kit's own theme is adopted from JavaScript at boot, so these hex fallbacks are what paints the shell before that lands, and the `@font-face` rules are what keep the first frame out of a fallback face. Moving them into the adopted sheet would delete the thing they exist to be. So the SOURCE moves into the schema and the artifact stays a `<link>`, which is the only arrangement that is both. The one stylesheet still hand-written is `styles/spectrum.css`, which holds what is declared ON `<sp-theme>` and cannot be expressed at `:root` while Spectrum is here; it is deleted whole with the last Spectrum component.
+> **It stays a linked stylesheet, and that is the design rather than an exception to it.** Every declaration in it is PRE-PAINT — the kit's own theme is adopted from JavaScript at boot, so these hex fallbacks are what paints the shell before that lands, and the `@font-face` rules are what keep the first frame out of a fallback face. Moving them into the adopted sheet would delete the thing they exist to be. So the SOURCE moves into the schema and the artifact stays a `<link>`, which is the only arrangement that is both. `styles/forced-colors.css` is generated the same way, from `styles/forced-colors.json`, and its rules are emitted UNSCOPED — a `.pane-tab` key under `:root` would resolve to `:root.pane-tab` and match nothing, because a class key compounds onto its scope — so each selector still reaches what it always did, and the sheet is still linked last so it wins a specificity tie without `!important`. Each of its rules carries the sentence that was written beside it as a `$description` (`spec.md` §9.2): the reasoning in the stylesheets being replaced is the most valuable thing in them, and a migration that moved the declarations and dropped it would be a loss no gate could see.
+>
+> **The three `@keyframes` blocks stay where they are**, in `shell.css` and `inspector.css`, until the surfaces that use them become documents. Moving them now would delete no stylesheet — both files remain — and would separate each animation from its only consumer. What did land is the gate the move will need: a `@keyframes` name is document-global, and CSS keeps the LAST definition while ignoring every earlier one with no parse error either way, so `check-styles.ts` now fails when a name is defined twice and names both sites. That is a latent trap while the three sit one per stylesheet and a certain one once each surface hoists its own by rule text (`spec.md` §9.6).
+>
+> The one stylesheet still hand-written is `styles/spectrum.css`, which holds what is declared ON `<sp-theme>` and cannot be expressed at `:root` while Spectrum is here; it is deleted whole with the last Spectrum component.
 
 | Token         | Purpose                           | Fallback                                                             |
 | ------------- | --------------------------------- | -------------------------------------------------------------------- |
@@ -871,6 +875,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.4.15-draft** (2026-09-09) — forced-colors.css is generated from a style block with its reasoning intact; the keyframes stay put and gain the duplicate-name gate.
 - **0.4.14-draft** (2026-09-09) — tokens.css is a build output generated from tokens.json, and stays a linked stylesheet because everything in it is pre-paint.
 - **0.4.13-draft** (2026-09-09) — the styling gate reads a surface document's style object and the classes it names, so a converted surface cannot leave the rules behind.
 - **0.4.12-draft** (2026-09-08) — the prompt's format choice is jx-select, and its projection names the chosen value rather than marking a row.

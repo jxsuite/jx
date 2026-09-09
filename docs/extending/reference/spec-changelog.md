@@ -382,6 +382,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `spec.md`
 
+- **0.6.17-draft** (2026-09-09) — a style block may document itself: $description is prose carried on the rule, and every $-prefixed key is metadata rather than a declaration.
 - **0.6.16-draft** (2026-09-09) — a declaration at-rule may be written more than once, as an array of blocks — the only spelling @font-face has for a family's second weight.
 - **0.6.15-draft** (2026-09-03) — a style declaration value may be a ref; a reactive custom property on a self-target rule is written inline so rows share one rule; a static build reports what it drops; color-scheme lands on :root.
 - **0.6.14-draft** (2026-09-03) — a custom element's call-site style merges with its definition's; a slot leaves no node; the display default is a rule decided by the base block, with display revert as the opt-out; onMount receives the host; #/$map resolves.
@@ -483,6 +484,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `studio-ui-guidelines.md`
 
+- **0.4.15-draft** (2026-09-09) — forced-colors.css is generated from a style block with its reasoning intact; the keyframes stay put and gain the duplicate-name gate.
 - **0.4.14-draft** (2026-09-09) — tokens.css is a build output generated from tokens.json, and stays a linked stylesheet because everything in it is pre-paint.
 - **0.4.13-draft** (2026-09-09) — the styling gate reads a surface document's style object and the classes it names, so a converted surface cannot leave the rules behind.
 - **0.4.12-draft** (2026-09-08) — the prompt's format choice is jx-select, and its projection names the chosen value rather than marking a row.

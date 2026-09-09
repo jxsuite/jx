@@ -6258,6 +6258,10 @@
         }
       },
       "properties": {
+        "$description": {
+          "description": "Why this rule exists. Emitted as a comment by static builds, ignored at runtime.",
+          "type": "string"
+        },
         "-webkit-align-content": {
           "oneOf": [
             {
