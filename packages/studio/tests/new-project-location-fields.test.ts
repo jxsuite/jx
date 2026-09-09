@@ -1,24 +1,47 @@
 /**
- * Destination fields of the New Project Parameters step (specs/desktop.md §4.5).
+ * The destination half of the New Project wizard's second step (specs/desktop.md §4.5).
  *
- * The modal suites exercise the `"path"` shape end-to-end through the wizard; this file drives
- * `location-fields.ts` directly so the `"repo"` shape — which only the cloud platform selects, and
- * which the modal tests' mock platform therefore never renders — is covered too, along with the
- * owner-loading, collision-hint, and separator edge cases.
+ * The wizard suite exercises the `"path"` shape end-to-end; this file drives `location-fields.ts`
+ * directly so the `"repo"` shape — which only the cloud platform selects — is covered too, along
+ * with the owner-loading, collision-hint and separator edge cases, and then opens the wizard once
+ * on a repo platform so the document's own branch is drawn rather than only projected.
+ *
+ * The projection is what a test reads now: `locationView()` is the record the document renders
+ * from, so "the owner field is a picker" is `owners.length > 0` here and a `[part="owner"]` that is
+ * a `jx-select` there. There is no `.new-project-owner` to find — the module draws nothing.
  */
-import { flush, installMockPlatform, renderInto } from "./harness";
-import { beforeEach, describe, expect, test } from "bun:test";
+import {
+  flush,
+  installMockPlatform,
+  mountOverlayLayers,
+  npDismiss,
+  npName,
+  npPart,
+  npPress,
+  npSlug,
+  npType,
+} from "./harness";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { RepoInfo, StudioPlatform } from "../src/types";
 
 const {
+  browseLocation,
   collectDestination,
   destinationPath,
   loadLocationOptions,
   locationError,
-  renderLocationFields,
+  locationView,
   resetLocationFields,
+  setLocationOwner,
+  setLocationParent,
+  setLocationVisibility,
   slugFieldLabel,
 } = await import("../src/new-project/location-fields");
+const { openNewProjectModal } = await import("../src/new-project/new-project-modal");
+const { initLayers } = await import("../src/ui/layers");
+
+mountOverlayLayers(document.body);
+initLayers();
 
 const REPOS: RepoInfo[] = [
   {
@@ -46,19 +69,12 @@ function installRepoPlatform(overrides: Partial<StudioPlatform> = {}) {
   return installMockPlatform({ createDestination: "repo", ...overrides });
 }
 
-/** Set an sp-picker's value and fire the `change` event the fields listen for. */
-function setPickerValue(el: Element, value: string) {
-  (el as HTMLElement & { value: string }).value = value;
-  el.dispatchEvent(new Event("change", { bubbles: true }));
-}
-
-/** Render the destination block into a detached container and return it. */
-async function renderFields(slug: string) {
-  return renderInto(renderLocationFields({ onSlugInput: () => {}, rerender: () => {}, slug }));
-}
-
 beforeEach(() => {
   resetLocationFields();
+});
+
+afterEach(() => {
+  npDismiss();
 });
 
 // ─── Path destinations ────────────────────────────────────────────────────────
@@ -69,6 +85,71 @@ describe("path destinations", () => {
     expect(slugFieldLabel()).toBe("Directory");
     expect(collectDestination("my-site")).toBeNull();
     expect(locationError()).toBe("Choose a location for the project folder");
+    expect(locationView("my-site").error).toBe("Choose a location for the project folder");
+  });
+
+  test("the view says which shape to draw, and what the Location field offers", () => {
+    installMockPlatform({ createDestination: "path" });
+    const view = locationView("my-site");
+    expect(view.destination).toBe("path");
+    expect(view.slugLabel).toBe("Directory");
+    expect(view.previewLabel).toBe("Creates");
+    expect(view.preview).toBe("…/my-site");
+    // No native dialog on this platform, so the path is typed and the hint says so.
+    expect(view.canBrowse).toBe(false);
+    expect(view.parentPlaceholder).toBe("/absolute/path/to/your/projects");
+  });
+
+  test("a platform with a directory dialog offers Browse…, and says so while it is open", async () => {
+    let release: (value: string | null) => void = () => {};
+    let picks = 0;
+    installMockPlatform({
+      createDestination: "path",
+      pickDirectory: (() => {
+        picks += 1;
+        return new Promise<string | null>((resolve) => {
+          release = resolve;
+        });
+      }) as never,
+    });
+    expect(locationView("s").canBrowse).toBe(true);
+    expect(locationView("s").browseLabel).toBe("Browse…");
+
+    let repaints = 0;
+    const run = browseLocation(() => {
+      repaints += 1;
+    });
+    expect(locationView("s").browsing).toBe(true);
+    expect(locationView("s").browseLabel).toBe("Choosing…");
+    // A second press while the native dialog is up asks for nothing.
+    await browseLocation(() => {});
+    expect(picks).toBe(1);
+
+    release("/Users/dev/Projects");
+    await run;
+    expect(locationView("s").browsing).toBe(false);
+    expect(locationView("s").parent).toBe("/Users/dev/Projects");
+    expect(repaints).toBe(2);
+  });
+
+  test("a cancelled Browse… leaves the typed Location untouched", async () => {
+    installMockPlatform({
+      createDestination: "path",
+      pickDirectory: (async () => null) as never,
+    });
+    setLocationParent("/home/dev/Sites");
+    await browseLocation(() => {});
+    expect(locationView("s").parent).toBe("/home/dev/Sites");
+  });
+
+  test("browseLocation is a no-op on a platform with no directory dialog", async () => {
+    installMockPlatform({ createDestination: "path" });
+    let repaints = 0;
+    await browseLocation(() => {
+      repaints += 1;
+    });
+    expect(repaints).toBe(0);
+    expect(locationView("s").parent).toBe("");
   });
 
   test("destinationPath joins with the parent's own separator", () => {
@@ -110,6 +191,7 @@ describe("repo destinations", () => {
   test("labels the slug field Repository", () => {
     installRepoPlatform();
     expect(slugFieldLabel()).toBe("Repository");
+    expect(locationView("my-site").slugLabel).toBe("Repository");
   });
 
   test("refuses a missing owner, then a missing repository name", () => {
@@ -156,15 +238,15 @@ describe("repo destinations", () => {
     await flush();
     expect(rerenders).toBe(1);
 
-    const container = await renderFields("my-site");
-    const options = [...container.querySelectorAll("sp-menu-item")].map((o) =>
-      o.getAttribute("value"),
-    );
-    // "zoe" appears in both sources and must not be duplicated; visibility adds its own two items.
-    expect(options.slice(0, 3)).toEqual(["acme", "beta-org", "zoe"]);
+    // "zoe" appears in both sources and must not be duplicated.
+    expect(locationView("my-site").owners).toEqual([
+      { label: "acme", value: "acme" },
+      { label: "beta-org", value: "beta-org" },
+      { label: "zoe", value: "zoe" },
+    ]);
   });
 
-  test("a failing owner source leaves a free-text owner field rather than erroring", async () => {
+  test("a failing owner source leaves an empty owner list, which the document draws as free text", async () => {
     installRepoPlatform({
       getAccountStatus: async () => {
         throw new Error("offline");
@@ -175,10 +257,8 @@ describe("repo destinations", () => {
     });
     loadLocationOptions(() => {});
     await flush();
-
-    const container = await renderFields("my-site");
-    expect(container.querySelector("sp-picker.new-project-owner")).toBeNull();
-    expect(container.querySelector("sp-textfield.new-project-owner")).not.toBeNull();
+    expect(locationView("my-site").owners).toEqual([]);
+    expect(locationView("my-site").owner).toBe("");
   });
 
   test("warns when the chosen owner already has a repo of that name", async () => {
@@ -187,69 +267,131 @@ describe("repo destinations", () => {
     await flush();
 
     // The default owner is "acme", which already owns "site".
-    const clashing = await renderFields("site");
-    expect(clashing.textContent).toContain("already exists");
-
-    const free = await renderFields("brand-new");
-    expect(free.textContent).not.toContain("already exists");
+    expect(locationView("site").repoTaken).toContain("already exists");
+    expect(locationView("brand-new").repoTaken).toBe("");
   });
 
   test("previews the repository rather than a filesystem path", async () => {
     installRepoPlatform({ listRepos: async () => REPOS });
     loadLocationOptions(() => {});
     await flush();
-
-    const container = await renderFields("my-site");
-    const preview = container.querySelector(".new-project-destination-preview");
-    expect(preview?.textContent).toContain("Repository");
-    expect(preview?.textContent).toContain("acme/my-site");
+    const view = locationView("my-site");
+    expect(view.previewLabel).toBe("Repository");
+    expect(view.preview).toBe("acme/my-site");
   });
 
-  test("renders the visibility picker defaulting to private", async () => {
-    installRepoPlatform();
-    const container = await renderFields("my-site");
-    const visibility = container.querySelector("sp-picker.new-project-visibility");
-    expect(visibility).not.toBeNull();
-    expect((visibility as HTMLInputElement).value).toBe("private");
-  });
-
-  test("switching visibility to public is carried into the destination, and back", async () => {
+  test("visibility defaults to private, and switching it is carried into the destination", async () => {
     installRepoPlatform({ listRepos: async () => REPOS });
     loadLocationOptions(() => {});
     await flush();
+    expect(locationView("my-site").visibility).toBe("private");
 
-    const container = await renderFields("my-site");
-    const visibility = container.querySelector("sp-picker.new-project-visibility")!;
-    setPickerValue(visibility, "public");
+    setLocationVisibility("public");
+    expect(locationView("my-site").visibility).toBe("public");
     expect(collectDestination("my-site")).toMatchObject({ private: false });
 
-    setPickerValue(visibility, "private");
+    setLocationVisibility("private");
     expect(collectDestination("my-site")).toMatchObject({ private: true });
   });
 
-  test("choosing an owner from the picker clears the pending error", async () => {
+  test("choosing an owner clears the pending error", async () => {
     installRepoPlatform({ listRepos: async () => REPOS });
     loadLocationOptions(() => {});
     await flush();
 
-    const container = await renderFields("my-site");
-    setPickerValue(container.querySelector("sp-picker.new-project-owner")!, "zoe");
+    setLocationOwner("zoe");
     expect(collectDestination("my-site")).toMatchObject({ owner: "zoe" });
   });
 
   test("typing an owner into the free-text field is collected", async () => {
-    // No owner sources, so the field falls back to free text.
+    // No owner sources, so the document draws free text and the write lands the same way.
     installRepoPlatform();
-    const container = await renderFields("my-site");
-    const owner = container.querySelector("sp-textfield.new-project-owner") as HTMLInputElement;
-
     // Prove the error is cleared by the edit, not merely absent.
     expect(collectDestination("my-site")).toBeNull();
     expect(locationError()).not.toBe("");
-    owner.value = "hand-typed-org";
-    owner.dispatchEvent(new Event("input", { bubbles: true }));
+    setLocationOwner("hand-typed-org");
     expect(locationError()).toBe("");
     expect(collectDestination("my-site")).toMatchObject({ owner: "hand-typed-org" });
+  });
+});
+
+// ─── The document's repo branch ───────────────────────────────────────────────
+
+describe("the wizard on a repo platform", () => {
+  test("draws an owner picker, a Repository slug, visibility, and the collision hint", async () => {
+    installRepoPlatform({ listRepos: async () => REPOS });
+    void openNewProjectModal();
+    await flush(4);
+    npPress("Confirm");
+    await flush(3);
+
+    // The owner field is the kit's select once the owner list has landed.
+    expect(npPart("owner")?.localName).toBe("jx-select");
+    expect(npPart("location")).toBeNull();
+    expect(npPart("visibility")?.localName).toBe("jx-select");
+    expect(npPart("slug-row")?.querySelector('[part="label"]')?.textContent).toBe("Repository");
+
+    npType(npSlug(), "site");
+    await flush(2);
+    // "acme" already owns "site", so the wizard says so rather than letting the create fail.
+    expect(npPart("destination-failure")?.textContent).toContain("already exists");
+    expect(npPart("destination-preview")?.textContent).toContain("acme/site");
+
+    npType(npSlug(), "brand-new");
+    await flush(2);
+    expect(npPart("destination-failure")).toBeNull();
+  });
+
+  test("the owner and visibility pickers write through to the destination", async () => {
+    installRepoPlatform({ listRepos: async () => REPOS });
+    void openNewProjectModal();
+    await flush(4);
+    npPress("Confirm");
+    await flush(3);
+
+    const owner = npPart("owner")!.querySelector('[part="control"]') as HTMLSelectElement;
+    owner.value = "zoe";
+    owner.dispatchEvent(new Event("change", { bubbles: true }));
+    const visibility = npPart("visibility")!.querySelector('[part="control"]') as HTMLSelectElement;
+    visibility.value = "public";
+    visibility.dispatchEvent(new Event("change", { bubbles: true }));
+    await flush(2);
+
+    npType(npSlug(), "picked");
+    await flush(2);
+    expect(npPart("destination-preview")?.textContent).toContain("zoe/picked");
+    expect(collectDestination("picked")).toEqual({
+      kind: "repo",
+      owner: "zoe",
+      private: false,
+      repo: "picked",
+    });
+  });
+
+  test("a typed Location clears the standing refusal, from the document's own field", async () => {
+    installMockPlatform({ createDestination: "path" });
+    void openNewProjectModal();
+    await flush(4);
+    npPress("Confirm");
+    await flush(3);
+    npType(npName(), "Typed Site");
+    await flush();
+    npPress("Confirm");
+    await flush(2);
+    expect(npPart("destination-failure")?.textContent).toContain("Choose a location");
+
+    npType(npPart("location")!.querySelector('[part="input"]') as HTMLInputElement, "/tmp/sites");
+    await flush(2);
+    expect(npPart("destination-failure")).toBeNull();
+  });
+
+  test("with no owner list the owner field is free text", async () => {
+    installRepoPlatform();
+    void openNewProjectModal();
+    await flush(4);
+    npPress("Confirm");
+    await flush(3);
+    expect(npPart("owner")?.localName).toBe("jx-textfield");
   });
 });
 

@@ -477,14 +477,18 @@ export function promptFormatOptions(): [string, string][] {
   ]);
 }
 
-// ─── New Project modal field accessors ───────────────────────────────────────
-// The Parameters step renders a destination block between the name and description whose shape
-// Depends on the platform's `createDestination` (specs/desktop.md §4.5), so positional indexing
-// Into the textfield list is not stable. Address the identity/destination fields by class.
+// ─── New Project wizard field accessors ──────────────────────────────────────
+/* The second step renders a destination block between the name and the note whose shape depends on
+   the platform's `createDestination` (specs/desktop.md §4.5), so positional indexing into the field
+   list is not stable. Address each field by its `part` — the wizard is a document now
+   (`src/surfaces/new-project.json`), so it lives in the dialog layer and emits no classes at all,
+   and what a test reaches for is the native control the kit's field draws inside itself. */
 
-/** A New Project Parameters-step field by its stable class suffix. */
-function npField(suffix: string): HTMLInputElement {
-  return document.querySelector(`#layer-modal .new-project-${suffix}`) as HTMLInputElement;
+/** A New Project second-step control by the `part` of the kit field around it. */
+function npField(part: string): HTMLInputElement {
+  return document.querySelector(
+    `#layer-dialog [part="${part}"] [part="input"], #layer-dialog [part="${part}"] [part="control"]`,
+  ) as HTMLInputElement;
 }
 
 /** The Project Name textfield. */
@@ -500,13 +504,13 @@ export const npOwner = () => npField("owner");
 export function npPreview(): string {
   return (
     document
-      .querySelector("#layer-modal .new-project-destination-preview")
+      .querySelector('#layer-dialog [part="destination-preview"]')
       ?.textContent?.trim()
       .replaceAll(/\s+/g, " ") ?? ""
   );
 }
 
-/** Set a New Project textfield's value and fire the input event the modal listens for. */
+/** Set a New Project field's value and fire the input event the wizard listens for. */
 export function npType(el: HTMLInputElement, value: string): void {
   el.value = value;
   el.dispatchEvent(new Event("input", { bubbles: true }));
@@ -518,6 +522,69 @@ export function npType(el: HTMLInputElement, value: string): void {
  */
 export function npFillLocation(parent = "/home/dev/Sites"): void {
   npType(npLocation(), parent);
+}
+
+/** One node of the wizard's document, addressed by `part`. */
+export function npPart<T extends Element = HTMLElement>(part: string): T | null {
+  return document.querySelector(`#layer-dialog [part="${part}"]`) as T | null;
+}
+
+/** Every node of the wizard's document carrying a `part`. */
+export function npParts<T extends Element = HTMLElement>(part: string): T[] {
+  return [...document.querySelectorAll(`#layer-dialog [part="${part}"]`)] as T[];
+}
+
+/** The wizard's dialog element, or null when it is not up. */
+export function npDialog(): HTMLElement | null {
+  return document.querySelector('#layer-dialog jx-dialog[part="new-project"]');
+}
+
+/** The dialog's headline, which is also its accessible name. */
+export function npHeadline(): string {
+  return npPart("headline")?.textContent?.trim() ?? "";
+}
+
+/**
+ * The footer's answers, in the order the kit draws them: Back, Cancel, then the primary. Absent
+ * labels are absent buttons — `jx-dialog` draws a button only for a label it was given.
+ */
+export function npFooter(): string[] {
+  return ["secondary-label", "cancel-label", "confirm-label"]
+    .map((part) => npPart(part)?.textContent?.trim() ?? "")
+    .filter((label) => label !== "");
+}
+
+/** Press one of the footer's answers, from the native control the kit's button draws. */
+export function npPress(label: "Back" | "Cancel" | "Confirm"): void {
+  const part = label === "Back" ? "secondary" : label === "Cancel" ? "cancel" : "confirm";
+  npPart(`${part}`)
+    ?.querySelector('[part="control"]')
+    ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+}
+
+/** The starter gallery's cards, in order. */
+export function npCards(): HTMLElement[] {
+  return npParts("card");
+}
+
+/** The source tabs' values, in strip order. */
+export function npTabValues(): string[] {
+  return npParts("tab").map((tab) => tab.getAttribute("value") ?? "");
+}
+
+/** Choose a source tab the way a reader does: a click on the tab itself. */
+export function npPickTab(value: string): void {
+  document
+    .querySelector(`#layer-dialog jx-tab[value="${value}"]`)
+    ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+}
+
+/**
+ * Dismiss the wizard the way a reader does: the platform's `cancel`, which is what Escape raises on
+ * a modal `<dialog>` and what the kit's Cancel button dispatches. A no-op with nothing up.
+ */
+export function npDismiss(): void {
+  npDialog()?.dispatchEvent(new Event("cancel", { bubbles: true }));
 }
 
 // ─── Pane stages ──────────────────────────────────────────────────────────────

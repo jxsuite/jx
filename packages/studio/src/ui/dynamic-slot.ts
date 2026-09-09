@@ -168,14 +168,38 @@ export interface DynamicSlotOpts {
   seedFor?: (mode: SlotMode) => JsonValue | undefined;
 }
 
-function defaultForSlotMode(mode: SlotMode, opts: DynamicSlotOpts): JsonValue | undefined {
+/** Where a rung's seed value comes from — the subset of a slot's options that decides one. */
+export interface SlotSeedSources {
+  /** State keys the position may point at; the first is what a fresh binding lands on. */
+  stateDefs: readonly string[];
+  /** Extra pointers beyond `#/state/*` — route params, `$map/item`. */
+  extraSignals?: readonly SignalOption[] | null;
+  /** What Fixed value restores to. */
+  literalDefault?: JsonValue | undefined;
+}
+
+/**
+ * The value a field takes when it arrives at a rung with nothing remembered there.
+ *
+ * Exported because the drawing of the ladder is not the only thing that switches it:
+ * `ui/schema-form.ts` offers the same rungs in a document rather than in this module's lit
+ * template, and a second table of seeds is how a fresh binding ends up meaning two different things
+ * in two panels.
+ *
+ * @param {SlotMode} mode
+ * @param {SlotSeedSources} sources
+ * @returns {JsonValue | undefined}
+ */
+export function slotModeSeed(mode: SlotMode, sources: SlotSeedSources): JsonValue | undefined {
   switch (mode) {
     case "ref": {
-      const [first] = opts.stateDefs;
-      return first ? { $ref: `#/state/${first}` } : { $ref: opts.extraSignals?.[0]?.value ?? "" };
+      const [first] = sources.stateDefs;
+      return first
+        ? { $ref: `#/state/${first}` }
+        : { $ref: sources.extraSignals?.[0]?.value ?? "" };
     }
     case "template": {
-      const [first] = opts.stateDefs;
+      const [first] = sources.stateDefs;
       return first ? `\${state.${first}}` : "${}";
     }
     case "expression": {
@@ -185,7 +209,7 @@ function defaultForSlotMode(mode: SlotMode, opts: DynamicSlotOpts): JsonValue | 
       return { $prototype: "Function", body: "", parameters: [] };
     }
     default: {
-      return opts.literalDefault;
+      return sources.literalDefault;
     }
   }
 }
@@ -348,7 +372,7 @@ function renderModeChip(mode: SlotMode, caps: SlotMode[], opts: DynamicSlotOpts)
         mode,
         next,
         cloneValue(opts.value as JsonValue | undefined),
-        opts.seedFor?.(next) ?? defaultForSlotMode(next, opts),
+        opts.seedFor?.(next) ?? slotModeSeed(next, opts),
       ),
     );
   };

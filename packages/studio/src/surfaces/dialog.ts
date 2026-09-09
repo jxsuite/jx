@@ -122,13 +122,30 @@ interface DialogScope extends Record<string, unknown> {
   pick: (value: string) => void;
 }
 
-/** Wait for the element's `jx-ready`, or return at once when it has already rendered. */
+/**
+ * Wait for the element's OWN `jx-ready`, or return at once when it has already rendered.
+ *
+ * The target check is load-bearing rather than defensive: `jx-ready` BUBBLES, and four kit elements
+ * announce themselves with it — `jx-tabs`, `jx-menu`, `jx-popover` and `jx-action-group`. A dialog
+ * whose body contains any of them was therefore told it was ready by a descendant, one microtask
+ * before its own template existed, and everything the caller does with that answer — stamping the
+ * screenshot region on `dialog[part="dialog"]`, calling `showModal()` — found no `<dialog>` and
+ * silently did nothing: the body was all there, correctly styled, and never shown. The wizard in
+ * `surfaces/new-project.json` is the first document to put a tab strip inside a dialog, which is
+ * why this only surfaced now.
+ */
 export function whenReady(element: HTMLElement): Promise<HTMLElement> {
   if (element.querySelector('[part="dialog"]')) {
     return Promise.resolve(element);
   }
   return new Promise((resolve) => {
-    element.addEventListener("jx-ready", () => resolve(element), { once: true });
+    element.addEventListener("jx-ready", function ready(event: Event) {
+      if (event.target !== element && !element.querySelector('[part="dialog"]')) {
+        return;
+      }
+      element.removeEventListener("jx-ready", ready);
+      resolve(element);
+    });
   });
 }
 

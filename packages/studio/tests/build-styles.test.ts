@@ -345,7 +345,10 @@ describe("the shell frame", () => {
       expect(frame, selector).toContain(selector);
     }
     expect(overlays).not.toContain(".jx-layer {");
-    // The AI chat panel stayed: it is a lit surface, and it moves with its surface, not with this.
-    expect(shell).toContain(".ai-chat-header");
+    /* The tab strip stayed: it is a lit surface, and it moves with its surface, not with this.
+       This used to name `.ai-chat-header`, which said the same thing until the assistant became
+       a document and took its rules with it — the class to name here is whichever one is still
+       drawn by a lit template. */
+    expect(shell).toContain(".tab-strip-tab");
   });
 });

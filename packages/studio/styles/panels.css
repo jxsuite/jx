@@ -852,15 +852,6 @@
   min-width: 0;
 }
 
-/* ─── The Document Header card's SEO block ───────────────────────────────────
-   Two rendered previews of the MERGED site → layout → page $head, the resolved fields with their
-   character counters and provenance chips, and the named warnings. No score: there is deliberately
-   no rule here that can render a total (plan §9.2, §14).
-
-   The card itself is styled in styles/canvas.css, beside .doc-header — it is drawn in the stage,
-   not in a panel. These rules live here because the SEO block landed in the phase that owns this
-   stylesheet;
-
 /* ─── ⑪ · Logic — the formula workspace and the function editor ──────── */
 /* Both surfaces moved out of their canvas takeovers into the Bottom dock (plan §12 P8.5), and a
    dock is not a stage: the whole surface has to fit ~240px with the page still rendering above it.

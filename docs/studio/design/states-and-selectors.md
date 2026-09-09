@@ -4,7 +4,7 @@ description: "Style hover, focus, and other states in Jx Studio from the selecto
 spec:
   - studio.md#6.2
 code:
-  - packages/studio/src/panels/target-line.ts
+  - packages/studio/src/surfaces/target-line.ts
   - packages/studio/src/panels/style-panel.ts
   - packages/studio/src/store.ts
 ---
@@ -28,7 +28,7 @@ The same choice is available from the command palette: press :kbd[⌘K] and run 
 
 ## The built-in states
 
-The menu offers the common ones: **:hover**, **:focus**, **:active**, **:focus-within**, **:focus-visible**, **:disabled**, **:first-child**, **:last-child**, and the **::before**, **::after**, and **::placeholder** extras. A **●** after an entry means the element already has styles there. That is your map of where to look when something styles unexpectedly.
+The menu offers the common ones: **:hover**, **:focus**, **:active**, **:focus-within**, **:focus-visible**, **:disabled**, **:first-child**, **:last-child**, and the **::before**, **::after**, and **::placeholder** extras. An entry is ticked when the element already has styles there. That is your map of where to look when something styles unexpectedly.
 
 They mean what they mean on the web: `:hover` while the pointer is over the element, `:focus` while it holds keyboard focus, `:first-child` / `:last-child` when it's the first or last among its siblings, `::placeholder` for an input's hint text.
 
@@ -57,7 +57,7 @@ Choose **+ Add custom…** at the bottom of the menu. A dialog asks for a state 
 - `&.active`: only when the element itself carries the `active` class.
 - `[disabled]`: only when the element has that attribute.
 
-A selector must start with `:`, `.`, `&`, or `[`. Anything else is refused in the dialog, with the reason under the field, so a typo never reaches the file. Accepting the dialog only points the Style tab at the selector; nothing is written until you set your first property. From then on the selector stays in the menu for that element, marked with **●** while it has styles.
+A selector must start with `:`, `.`, `&`, or `[`. Anything else is refused in the dialog, with the reason under the field, so a typo never reaches the file. Accepting the dialog only points the Style tab at the selector; nothing is written until you set your first property. From then on the selector stays in the menu for that element, ticked while it has styles.
 
 Rules for elements _inside_ the selection are the inspector's **Relative Styling** section instead. Clicking a rule there drills into it through this same selector segment.
 

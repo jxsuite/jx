@@ -157,6 +157,17 @@ function linkPopoverHost(): HTMLElement | null {
   return document.querySelector("#layer-popover sp-popover.link-popover")?.parentElement ?? null;
 }
 
+/**
+ * The slash menu's rows, once its document has reconciled.
+ *
+ * The menu is a listbox (`surfaces/slash-menu.json`) rather than a `jx-menu`: it filters a caret
+ * that stays in the canvas, so it marks its active row instead of taking focus.
+ */
+async function slashRows(): Promise<HTMLElement[]> {
+  await flush(3);
+  return [...document.querySelectorAll<HTMLElement>('#layer-popover [part="option"]')];
+}
+
 /** Put the bar into the editing state with a snapshot (default: non-collapsed, no active tags). */
 function startEditingState(snapshot: Partial<SelectionSnapshot> = {}) {
   host.editing = true;
@@ -568,21 +579,25 @@ describe("block action bar", () => {
     const targets = getConvertTargets("p", false);
     (bar()!.querySelector(".bar-tag--interactive") as HTMLElement).click();
     expect(isSlashMenuOpen()).toBe(true);
-    expect(document.querySelectorAll("sp-menu-item").length).toBe(targets.length);
+    // The slash menu is a listbox document now (`surfaces/slash-menu.json`): its rows are
+    // `[part="option"]`, and they land a couple of turns after the press that asked for them.
+    const shown = await slashRows();
+    expect(shown.length).toBe(targets.length);
 
     document.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }));
     await flush();
     expect((doc().children as JxMutableNode[])[0]!.tagName).toBe(targets[0]!.tag);
   });
 
-  test("empty nodes (no children or a lone br) offer the wider when-empty target set", () => {
+  test("empty nodes (no children or a lone br) offer the wider when-empty target set", async () => {
     const emptyTargets = getConvertTargets("p", true);
     expect(emptyTargets.length).toBeGreaterThan(getConvertTargets("p", false).length);
 
     setup({ children: [{ children: [], tagName: "p" }], tagName: "div" }, ["children", 0]);
     renderBlockActionBar();
     (bar()!.querySelector(".bar-tag--interactive") as HTMLElement).click();
-    expect(document.querySelectorAll("sp-menu-item").length).toBe(emptyTargets.length);
+    const shown = await slashRows();
+    expect(shown.length).toBe(emptyTargets.length);
     dismissSlashMenu();
 
     setup({ children: [{ children: [{ tagName: "br" }], tagName: "p" }], tagName: "div" }, [
@@ -591,7 +606,8 @@ describe("block action bar", () => {
     ]);
     renderBlockActionBar();
     (bar()!.querySelector(".bar-tag--interactive") as HTMLElement).click();
-    expect(document.querySelectorAll("sp-menu-item").length).toBe(emptyTargets.length);
+    const shown2 = await slashRows();
+    expect(shown2.length).toBe(emptyTargets.length);
   });
 
   // ─── Component nodes ───────────────────────────────────────────────────────
@@ -780,7 +796,7 @@ describe("block action bar", () => {
     expect(bar()!.querySelector('sp-action-button[title="Insert data"]')).not.toBeNull();
   });
 
-  test("Insert data button appears while editing and opens a merge-tag menu", () => {
+  test("Insert data button appears while editing and opens a merge-tag menu", async () => {
     setupEditingWithState({ count: 5, title: "Hello" });
     const btn = barButton("Insert data");
     expect(btn.querySelector("sp-icon-data")).not.toBeNull();
@@ -788,7 +804,8 @@ describe("block action bar", () => {
     btn.click();
     expect(isSlashMenuOpen()).toBe(true);
     // Two top-level state names → two merge tags (no live scope → no nested walk).
-    expect(document.querySelectorAll("sp-menu-item").length).toBe(2);
+    const shown = await slashRows();
+    expect(shown.length).toBe(2);
   });
 
   test("selecting a merge tag posts an insertData intent", async () => {
@@ -801,7 +818,7 @@ describe("block action bar", () => {
     expect(host.posted).toEqual([{ command: "insertData", token: "state.title" }]);
   });
 
-  test("merge-tag menu offers repeater item.data.<field> tokens when editing inside a repeater", () => {
+  test("merge-tag menu offers repeater item.data.<field> tokens when editing inside a repeater", async () => {
     // Doc: div > ul > Array(items:#/state/$docs) whose map template is <li>${item.data.title}</li>.
     const arrayNode = {
       $prototype: "Array",
@@ -830,9 +847,8 @@ describe("block action bar", () => {
 
     barButton("Insert data").click();
     expect(isSlashMenuOpen()).toBe(true);
-    const labels = [...document.querySelectorAll("sp-menu-item")].map((el) =>
-      el.textContent!.trim(),
-    );
+    const slashed = await slashRows();
+    const labels = slashed.map((el) => el.querySelector('[part="name"]')!.textContent!.trim());
     expect(labels).toContain("item");
     expect(labels).toContain("index");
     expect(labels).toContain("item.data.title");

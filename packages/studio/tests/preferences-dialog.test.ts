@@ -1,5 +1,5 @@
 /**
- * Preferences (⌘,) — src/settings/preferences-dialog.ts.
+ * Preferences (⌘,) — `src/settings/preferences-dialog.ts` and `src/surfaces/preferences.json`.
  *
  * The surface Studio did not have. Four sections, and one assertion each for the hole it closes:
  * Appearance renders the theme nothing else rendered; Assistant hosts the provider form that used
@@ -10,6 +10,12 @@
  * §13.5 forbids a screenshot of generated content, so the keyboard sheet's guarantee is checked
  * here instead: the rows come from the registry, and a record registered after this file was
  * written appears without this file knowing about it.
+ *
+ * Everything is addressed by `part`, because the sheet is a document now: there is no `.prefs-nav`
+ * or `.prefs-key` to find, and no `sp-dialog-wrapper` to dispatch at — the box, the underlay,
+ * Escape, focus restoration and the Close button all belong to `jx-dialog`. The Assistant section's
+ * two islands are surfaces of their own mounted inside this one, which is why opening on that
+ * section settles in six turns rather than three.
  */
 import { flush, installMockPlatform, key, pointer, seedSettings } from "./harness";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
@@ -54,6 +60,11 @@ const { setActiveRegistry } = await import("../src/commands/active-registry");
 const { checkPlacements } = await import("../src/commands/levels");
 const { shell } = await import("../src/shell");
 
+/** The sheet itself, which is the surface's own root. */
+function sheet(): HTMLElement | null {
+  return document.querySelector<HTMLElement>('#layer-dialog jx-dialog[part="preferences"]');
+}
+
 function d<T extends Element = HTMLElement>(sel: string): T | null {
   return document.querySelector(`#layer-dialog ${sel}`) as T | null;
 }
@@ -62,8 +73,20 @@ function dAll(sel: string): HTMLElement[] {
   return [...document.querySelectorAll(`#layer-dialog ${sel}`)] as HTMLElement[];
 }
 
-function navItem(title: string): HTMLElement {
-  return dAll(".prefs-nav-item").find((el) => el.textContent?.trim() === title)!;
+function part<T extends Element = HTMLElement>(name: string): T | null {
+  return d<T>(`[part="${name}"]`);
+}
+
+function navItem(id: string): HTMLElement {
+  return d(`[part="nav-item"][data-section="${id}"]`)!;
+}
+
+/**
+ * Dismiss it the way a reader would: the platform's `close`, which is what a native `<dialog>`
+ * raises however it was closed — Escape, the Close button, or a script.
+ */
+function dismiss(): void {
+  sheet()?.dispatchEvent(new Event("close", { bubbles: true }));
 }
 
 /** A registry with two bound records, as the Keyboard sheet reads it. */
@@ -129,32 +152,43 @@ function editorRegistry() {
 
 /** The command ids the sheet is currently showing, in sheet order. */
 function boundIds(): string[] {
-  return dAll(".prefs-key").map((el) => el.dataset.command!);
+  return dAll('[part="key"]').map((el) => el.dataset.command!);
 }
 
 function keyRow(id: string): HTMLElement {
-  return d(`.prefs-key[data-command="${id}"]`)!;
+  return d(`[part="key"][data-command="${id}"]`)!;
 }
 
+/** The verbs one row offers, in the order it offers them. */
 function rowButtons(id: string): string[] {
-  return [...keyRow(id).querySelectorAll("sp-action-button")].map(
+  return [...keyRow(id).querySelectorAll('[part="change"], [part="reset"]')].map(
     (el) => el.textContent?.trim() ?? "",
   );
 }
 
 function rowButton(id: string, label: string): HTMLElement {
-  return [...keyRow(id).querySelectorAll("sp-action-button")].find(
+  return [...keyRow(id).querySelectorAll('[part="change"], [part="reset"]')].find(
     (el) => el.textContent?.trim() === label,
   ) as HTMLElement;
 }
 
+/** Whether a kit button is drawing its pressed state, which it reflects as `data-selected`. */
+function isSelected(el: HTMLElement): boolean {
+  return el.dataset.selected !== undefined;
+}
+
 /** The "search by keystroke" toggle — the only action button outside a row. */
 function keystrokeButton(): HTMLElement {
-  return d(".prefs-keys .prefs-field sp-action-button")!;
+  return part("keystroke")!;
+}
+
+/** The search box's native control, which is the element a reader actually types into. */
+function searchInput(): HTMLInputElement {
+  return d<HTMLInputElement>('[part="key-search"] [part="input"]')!;
 }
 
 async function search(value: string): Promise<void> {
-  const field = d<HTMLInputElement>("sp-search")!;
+  const field = searchInput();
   field.value = value;
   field.dispatchEvent(new Event("input", { bubbles: true }));
   await flush(3);
@@ -191,31 +225,34 @@ describe("the section list", () => {
 });
 
 describe("opening and closing", () => {
-  test("opens as a focus-managed dialog, not an inset blackout", async () => {
+  test("opens as a platform dialog, not an inset blackout", async () => {
     void openPreferences();
     await flush(3);
     expect(isPreferencesOpen()).toBe(true);
-    expect(d("sp-dialog-wrapper")!.getAttribute("headline")).toBe("Preferences");
-    expect(d(".prefs-sheet")).not.toBeNull();
-    expect(d(".prefs-title")!.textContent).toBe("Appearance");
+    expect(part("headline")!.textContent).toBe("Preferences");
+    // The platform owns the box, the backdrop and the focus: the surface renders a body into it.
+    expect(sheet()!.querySelector('dialog[part="dialog"]')).not.toBeNull();
+    expect(part("sheet")).not.toBeNull();
+    expect(part("title")!.textContent).toBe("Appearance");
     closePreferences();
     await flush(2);
-    expect(d(".prefs-sheet")).toBeNull();
+    expect(part("sheet")).toBeNull();
     expect(isPreferencesOpen()).toBe(false);
   });
 
   test("resolves when dismissed, and Escape's `close` event is the dismissal", async () => {
     const done = openPreferences("accounts");
     await flush(3);
-    d("sp-dialog-wrapper")!.dispatchEvent(new Event("close", { bubbles: true }));
+    dismiss();
     expect(await done).toBeNull();
-    expect(d(".prefs-sheet")).toBeNull();
+    await flush(2);
+    expect(part("sheet")).toBeNull();
   });
 
   test("`cancel` dismisses too — the Close button fires it", async () => {
     const done = openPreferences();
     await flush(3);
-    d("sp-dialog-wrapper")!.dispatchEvent(new Event("cancel", { bubbles: true }));
+    sheet()!.dispatchEvent(new Event("cancel", { bubbles: true }));
     expect(await done).toBeNull();
   });
 
@@ -223,7 +260,7 @@ describe("opening and closing", () => {
     void openPreferences("updates");
     await flush(3);
     expect(preferencesSection()).toBe("appearance");
-    expect(d(".prefs-title")!.textContent).toBe("Appearance");
+    expect(part("title")!.textContent).toBe("Appearance");
   });
 
   test("re-opening while up SELECTS the section instead of stacking a second sheet", async () => {
@@ -231,19 +268,27 @@ describe("opening and closing", () => {
     await flush(3);
     void openPreferences("accounts");
     await flush(3);
-    expect(dAll("sp-dialog-wrapper")).toHaveLength(1);
-    expect(d(".prefs-title")!.textContent).toBe("Accounts");
+    expect(dAll('jx-dialog[part="preferences"]')).toHaveLength(1);
+    expect(part("title")!.textContent).toBe("Accounts");
   });
 
   test("the nav switches sections in place", async () => {
     void openPreferences();
     await flush(3);
-    pointer(navItem("Accounts"), "click");
+    pointer(navItem("accounts"), "click");
     await flush(3);
     expect(preferencesSection()).toBe("accounts");
-    expect(navItem("Accounts").classList.contains("active")).toBe(true);
-    expect(navItem("Accounts").getAttribute("aria-current")).toBe("true");
-    expect(navItem("Appearance").getAttribute("aria-current")).toBe("false");
+    // The selected row is marked once, in the accessibility tree, and drawn from that.
+    expect(navItem("accounts").getAttribute("aria-current")).toBe("true");
+    expect(navItem("appearance").getAttribute("aria-current")).toBe("false");
+  });
+
+  test("the nav names every section, in sheet order", async () => {
+    void openPreferences();
+    await flush(3);
+    expect(dAll('[part="nav-item"]').map((el) => el.textContent?.trim())).toEqual(
+      PREFERENCES_SECTIONS.map((section) => section.title),
+    );
   });
 
   test("closing when nothing is open is inert", () => {
@@ -255,27 +300,27 @@ describe("Appearance", () => {
   test("renders the theme the shell record holds, and writing it paints <sp-theme>", async () => {
     void openPreferences("appearance");
     await flush(3);
-    const buttons = dAll("sp-action-button");
-    expect(buttons.map((el) => el.getAttribute("value"))).toEqual(["light", "dark"]);
-    expect(buttons[1]!.hasAttribute("selected")).toBe(true);
+    const buttons = dAll('[part="theme"]');
+    expect(buttons.map((el) => el.dataset.theme)).toEqual(["light", "dark"]);
+    expect(isSelected(buttons[1]!)).toBe(true);
 
     pointer(buttons[0]!, "click");
     await flush(3);
     expect(shell.theme).toBe("light");
     expect(localStorage.getItem("jx-studio-theme")).toBe("light");
     // And the sheet repaints so the pressed state is not a lie.
-    expect(dAll("sp-action-button")[0]!.hasAttribute("selected")).toBe(true);
+    expect(isSelected(dAll('[part="theme"]')[0]!)).toBe(true);
   });
 });
 
 describe("Assistant", () => {
   test("hosts the provider form that used to be locked inside the assistant panel", async () => {
     void openPreferences("assistant");
-    /* Six turns: the provider form is a mounted Jx document, so it is addressed by `part` and it is
-       not there on the turn the sheet renders. */
+    /* Six turns: the provider form is a mounted Jx document inside a mounted Jx document, so it is
+       addressed by `part` and it is not there on the turn the sheet renders. */
     await flush(6);
-    expect(d(".prefs-assistant")).not.toBeNull();
-    expect(d('[part="ai-creds-form"]')).not.toBeNull();
+    expect(part("assistant")).not.toBeNull();
+    expect(part("ai-creds-form")).not.toBeNull();
     // Kit controls, not raw inputs with inline styles.
     expect(dAll('[part="ai-creds-form"] jx-textfield').length).toBeGreaterThan(0);
     // And the key is masked, which is the one thing about this form that must never regress.
@@ -288,15 +333,33 @@ describe("Assistant", () => {
     const field = d<HTMLInputElement>('[part="key"] [part="input"]')!;
     field.value = "sk-from-preferences";
     field.dispatchEvent(new Event("input", { bubbles: true }));
-    pointer(d('[part="save"]')!, "click");
+    pointer(part("save")!, "click");
     await flush(3);
     expect(localStorage.getItem("jx.ai.openaiKey")).toBe("sk-from-preferences");
     // The sheet stays up — Preferences is a place, not a wizard step.
-    expect(d(".prefs-assistant")).not.toBeNull();
+    expect(part("assistant")).not.toBeNull();
 
-    pointer(navItem("Accounts"), "click");
+    pointer(navItem("accounts"), "click");
     await flush(3);
-    expect(d('.prefs-account[data-account="ai"]')!.textContent).toContain("Key stored");
+    expect(d('[part="account"][data-account="ai"]')!.textContent).toContain("Key stored");
+  });
+
+  test("the form survives leaving the section and coming back, drafts and all", async () => {
+    void openPreferences("assistant");
+    await flush(6);
+    const field = d<HTMLInputElement>('[part="key"] [part="input"]')!;
+    field.value = "sk-half-typed";
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+    await flush(3);
+
+    pointer(navItem("accounts"), "click");
+    await flush(3);
+    expect(part("ai-creds-form")).toBeNull();
+    pointer(navItem("assistant"), "click");
+    await flush(6);
+    /* The island is MOVED rather than rebuilt: the element belongs to the controller, and a sheet
+       that rebuilt it would take the caret out of a field the reader is typing in. */
+    expect(d<HTMLInputElement>('[part="key"] [part="input"]')!.value).toBe("sk-half-typed");
   });
 });
 
@@ -305,24 +368,24 @@ describe("Accounts", () => {
     localStorage.setItem("jx_github_token", "gho_x");
     void openPreferences("accounts");
     await flush(3);
-    expect(dAll(".prefs-account").map((el) => el.dataset.account)).toEqual([
+    expect(dAll('[part="account"]').map((el) => el.dataset.account)).toEqual([
       "github",
       "ai",
       "cloudflare",
     ]);
-    expect(d('.prefs-account[data-account="github"] sp-button')).not.toBeNull();
-    expect(d('.prefs-account[data-account="cloudflare"] sp-button')).toBeNull();
+    expect(d('[part="account"][data-account="github"] [part="account-action"]')).not.toBeNull();
+    expect(d('[part="account"][data-account="cloudflare"] [part="account-action"]')).toBeNull();
   });
 
   test("Disconnect forgets the credential — the call `clearGithubToken` never had", async () => {
     localStorage.setItem("jx_github_token", "gho_x");
     void openPreferences("accounts");
     await flush(3);
-    pointer(d('.prefs-account[data-account="github"] sp-button')!, "click");
+    pointer(d('[part="account"][data-account="github"] [part="account-action"]')!, "click");
     await flush(3);
     expect(localStorage.getItem("jx_github_token")).toBeNull();
-    expect(d('.prefs-account[data-account="github"] sp-button')).toBeNull();
-    expect(d('.prefs-account[data-account="github"]')!.textContent).toContain("Not signed in");
+    expect(d('[part="account"][data-account="github"] [part="account-action"]')).toBeNull();
+    expect(d('[part="account"][data-account="github"]')!.textContent).toContain("Not signed in");
   });
 });
 
@@ -331,20 +394,22 @@ describe("Keyboard", () => {
     setActiveRegistry(registryWithChords());
     void openPreferences("keyboard");
     await flush(3);
-    expect(d(".prefs-keys")).not.toBeNull();
-    expect(dAll(".prefs-keys-scope").map((el) => el.textContent)).toEqual(["Anywhere"]);
-    const rows = dAll(".prefs-key");
+    expect(part("keys")).not.toBeNull();
+    expect(dAll('[part="scope"]').map((el) => el.textContent)).toEqual(["Anywhere"]);
+    const rows = dAll('[part="key"]');
     // One row per BINDING: the chordless record is not listed, because there is nothing to press.
     expect(rows).toHaveLength(1);
     expect(rows[0]!.textContent).toContain("Save Everything");
-    expect(d(".prefs-key-chord")!.textContent).toBeTruthy();
+    expect(part("chord")!.textContent).toBeTruthy();
   });
 
   test("with no registry composed it says so rather than rendering an empty table", async () => {
     setActiveRegistry(null);
     void openPreferences("keyboard");
     await flush(3);
-    expect(d(".prefs-empty")!.textContent).toContain("No commands are registered");
+    expect(part("empty")!.textContent).toContain("No commands are registered");
+    // And there is no search box over a sheet that has nothing in it.
+    expect(part("keys")).toBeNull();
   });
 });
 
@@ -353,7 +418,7 @@ describe("Keyboard — finding a shortcut", () => {
     setActiveRegistry(editorRegistry());
     void openPreferences("keyboard");
     await flush(3);
-    expect(dAll(".prefs-key")).toHaveLength(3);
+    expect(dAll('[part="key"]')).toHaveLength(3);
 
     await search("redo");
     expect(boundIds()).toEqual(["edit.redo"]);
@@ -362,7 +427,7 @@ describe("Keyboard — finding a shortcut", () => {
     await search("⌘S");
     expect(boundIds()).toEqual(["file.save"]);
     await search("");
-    expect(dAll(".prefs-key")).toHaveLength(3);
+    expect(dAll('[part="key"]')).toHaveLength(3);
   });
 
   test("by pressing it — the question a list cannot answer by being read", async () => {
@@ -371,14 +436,14 @@ describe("Keyboard — finding a shortcut", () => {
     await flush(3);
     pointer(keystrokeButton(), "click");
     await flush(3);
-    expect(keystrokeButton().hasAttribute("selected")).toBe(true);
+    expect(isSelected(keystrokeButton())).toBe(true);
 
     key(keystrokeButton(), "s", { metaKey: true });
     await flush(3);
     expect(boundIds()).toEqual(["file.save"]);
     // One press answers and stops listening: the sheet is not a keylogger.
-    expect(keystrokeButton().hasAttribute("selected")).toBe(false);
-    expect(d<HTMLInputElement>("sp-search")!.value).toBe("⌘S");
+    expect(isSelected(keystrokeButton())).toBe(false);
+    expect(searchInput().value).toBe("⌘S");
   });
 
   test("a chord nothing is bound to says so, which is the honest answer", async () => {
@@ -389,8 +454,8 @@ describe("Keyboard — finding a shortcut", () => {
     await flush(3);
     key(keystrokeButton(), "j", { metaKey: true, altKey: true });
     await flush(3);
-    expect(dAll(".prefs-key")).toHaveLength(0);
-    expect(d(".prefs-empty")!.textContent).toContain("Nothing is bound to ⌘⌥J");
+    expect(dAll('[part="key"]')).toHaveLength(0);
+    expect(part("empty")!.textContent).toContain("Nothing is bound to ⌘⌥J");
   });
 
   test("a name that matches nothing does not pretend the keyboard is empty", async () => {
@@ -398,7 +463,7 @@ describe("Keyboard — finding a shortcut", () => {
     void openPreferences("keyboard");
     await flush(3);
     await search("xyzzy");
-    expect(d(".prefs-empty")!.textContent).toContain("No shortcut matches that");
+    expect(part("empty")!.textContent).toContain("No shortcut matches that");
   });
 });
 
@@ -465,19 +530,17 @@ describe("Keyboard — rebinding", () => {
     await flush(3);
     key(keyRow("file.save"), "y", { metaKey: true });
     await flush(3);
-    expect(d("sp-help-text")!.textContent).toContain("⌘Y is already Redo.");
+    expect(part("refusal-reason")!.textContent).toContain("⌘Y is already Redo.");
     // Neither silently winning nor silently losing: nothing moved.
     expect(registry.keymap.bindingsFor("file.save")).toEqual(["mod+s"]);
     expect(registry.keymap.bindingsFor("edit.redo")).toEqual(["mod+y"]);
     expect(localStorage.getItem("jx.keybindings")).toBeNull();
 
-    pointer(
-      dAll("sp-button").find((el) => el.textContent?.includes("Show Redo"))!,
-      "click",
-    );
+    expect(part("show-conflict")!.textContent).toContain("Show Redo");
+    pointer(part("show-conflict")!, "click");
     await flush(3);
     expect(boundIds()).toEqual(["edit.redo"]);
-    expect(d("sp-help-text")).toBeNull();
+    expect(part("refusal-reason")).toBeNull();
   });
 
   test("a bare printable key is refused with what to do instead", async () => {
@@ -488,9 +551,9 @@ describe("Keyboard — rebinding", () => {
     await flush(3);
     key(keyRow("file.save"), "k");
     await flush(3);
-    expect(d("sp-help-text")!.textContent).toContain("would fire while you type");
+    expect(part("refusal-reason")!.textContent).toContain("would fire while you type");
     // No conflict, so nothing to jump to.
-    expect(dAll("sp-button").some((el) => el.textContent?.includes("Show"))).toBe(false);
+    expect(part("show-conflict")).toBeNull();
   });
 
   test("Reset is offered only where there is something to reset, and restores every chord", async () => {
@@ -552,7 +615,7 @@ describe("Keyboard — rebinding", () => {
     key(keyRow("file.save"), "s", { metaKey: true, altKey: true });
     await flush(3);
     expect(localStorage.getItem("jx.keybindings")).toBeNull();
-    expect(d(".prefs-empty")!.textContent).toContain("No commands are registered");
+    expect(part("empty")!.textContent).toContain("No commands are registered");
   });
 
   test("leaving the section abandons the capture rather than arming the next visit", async () => {
@@ -562,11 +625,11 @@ describe("Keyboard — rebinding", () => {
     pointer(rowButton("file.save", "Change"), "click");
     await search("save");
     await flush(3);
-    pointer(navItem("Accounts"), "click");
+    pointer(navItem("accounts"), "click");
     await flush(3);
-    pointer(navItem("Keyboard"), "click");
+    pointer(navItem("keyboard"), "click");
     await flush(3);
-    expect(d<HTMLInputElement>("sp-search")!.value).toBe("");
+    expect(searchInput().value).toBe("");
     expect(rowButtons("file.save")).toEqual(["Change"]);
   });
 
@@ -581,7 +644,7 @@ describe("Keyboard — rebinding", () => {
     await flush(2);
     void openPreferences("keyboard");
     await flush(3);
-    expect(d<HTMLInputElement>("sp-search")!.value).toBe("");
+    expect(searchInput().value).toBe("");
     expect(rowButtons("file.save")).toEqual(["Change"]);
   });
 });
@@ -656,19 +719,23 @@ describe("Accounts, when the platform brokers Cloudflare", () => {
 
     void openPreferences("accounts");
     await flush(3);
-    const row = () => d('.prefs-account[data-account="cloudflare"]')!;
+    const row = () => d('[part="account"][data-account="cloudflare"]')!;
     expect(row().textContent).toContain("expired");
     expect(
-      dAll('.prefs-account[data-account="cloudflare"] sp-button').map((el) => el.dataset.action),
+      dAll('[part="account"][data-account="cloudflare"] [part="account-action"]').map(
+        (el) => el.dataset.action,
+      ),
     ).toEqual(["reconnect", "disconnect"]);
 
-    pointer(d('.prefs-account[data-account="cloudflare"] [data-action="reconnect"]')!, "click");
+    pointer(d('[part="account"][data-account="cloudflare"] [data-action="reconnect"]')!, "click");
     await flush(3);
     expect(cfConnect).toHaveBeenCalledTimes(1);
     // The row re-read itself: a Reconnect that leaves "expired" on screen is the defect this fixes.
     expect(row().textContent).toContain("Acme");
     expect(
-      dAll('.prefs-account[data-account="cloudflare"] sp-button').map((el) => el.dataset.action),
+      dAll('[part="account"][data-account="cloudflare"] [part="account-action"]').map(
+        (el) => el.dataset.action,
+      ),
     ).toEqual(["disconnect"]);
     installMockPlatform();
   });

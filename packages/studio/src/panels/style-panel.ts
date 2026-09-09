@@ -20,6 +20,7 @@ import { dialogPathFor } from "../canvas/dialog-path";
 import { getNestedStyle } from "@jxsuite/schema/guards";
 import { live } from "lit-html/directives/live.js";
 import { ifDefined } from "lit-html/directives/if-defined.js";
+import { ref } from "lit-html/directives/ref.js";
 import {
   debouncedStyleCommit,
   getNodeAtPath,
@@ -55,10 +56,11 @@ import { loadUsages, peekUsages, usageFiles } from "../services/references";
 import { mediaDisplayName } from "./shared";
 import { countProvenance, renderProvenanceChip, renderProvenanceDots } from "./provenance";
 import {
+  attachTargetLine,
   openSelectorMenu,
-  renderTargetLine,
-  resetSelectorTrigger as resetTargetSelector,
-} from "./target-line";
+  resetTargetLine as resetTargetSelector,
+  setTargetLine,
+} from "../surfaces/target-line";
 import {
   clickAnythingTo,
   openPageAction,
@@ -79,7 +81,7 @@ import {
 import { widgetForType } from "./style-inputs";
 
 import type { FieldProvenance, ProvenanceState } from "./provenance";
-import type { TargetScope, TargetSegment } from "./target-line";
+import type { TargetScope, TargetSegment } from "../surfaces/target-line";
 import type { Tab } from "../tabs/tab";
 import type { JxPath } from "../state";
 import type { JsonValue } from "../types";
@@ -915,7 +917,7 @@ function styleSidebarTemplate(
   const stylebookTag = stylebookTagOf(stylebookSelector);
   const elementLabel =
     stylebookTag ?? (typeof node.tagName === "string" ? node.tagName : "element");
-  const targetLineT = renderTargetLine({
+  setTargetLine({
     segments: targetSegments(elementLabel, mediaTab, mediaNames.length > 0, schemeLayer),
     selector: {
       value: activeSelector,
@@ -958,6 +960,11 @@ function styleSidebarTemplate(
     },
     scope: resolveScope(tab, stylebookTag),
   });
+  /* An EMPTY host, and that is the seam rather than an omission: a document clears the node it is
+     given and lit renders beside foreign children, so the two can never share a container. The
+     `ref` is the hand-over — lit gives this module the element when the node is made and takes it
+     back when the part is torn down. */
+  const targetLineT = html`<div ${ref(attachTargetLine)}></div>`;
 
   // ── Filter bar ─────────────────────────────────────────────────────────────
   // One control. The "Active" toggle is gone: it existed only because provenance was invisible

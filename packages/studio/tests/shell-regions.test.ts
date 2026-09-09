@@ -152,10 +152,20 @@ describe("navigator/panel:<id>", () => {
   });
 
   test("a leaf inside a panel is hand-stamped and nests under the derived one", async () => {
+    /* The leaf is `surfaces/git-panel.json`'s own `data-jx-region`, so the panel has to draw its
+       repository body to have one — and a mounted document needs more turns than a lit render. */
     resetWorkspaceWithTab();
     shell.leftTab = "git";
+    shell.git.status = {
+      ahead: 0,
+      behind: 0,
+      branch: "main",
+      files: [],
+      isRepo: true,
+      remotes: [],
+    } as never;
     leftPanelModule.mount(leftCtx() as never);
-    await flush(3);
+    await flush(6);
     const commit = resolveRegion("navigator/panel:git/commit");
     expect(commit).not.toBeNull();
     expect(resolveRegion("navigator/panel:git")!.contains(commit)).toBe(true);

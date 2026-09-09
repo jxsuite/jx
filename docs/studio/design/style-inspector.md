@@ -6,7 +6,7 @@ spec:
   - studio.md#6.7
 code:
   - packages/studio/src/panels/style-panel.ts
-  - packages/studio/src/panels/target-line.ts
+  - packages/studio/src/surfaces/target-line.ts
   - packages/studio/src/panels/provenance.ts
   - packages/studio/src/panels/style-inputs.ts
   - packages/studio/src/utils/inherited-style.ts

@@ -1,0 +1,489 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioSettingsContributed",
+  "$description": "The generic settings section behind `$studio.settings` (specs/extensions.md §9.1), as a Jx document over the kit. One document serves both layouts an extension may declare: \"form\" is a single schema form over the whole section value, \"map\" is master-detail — the entry keys on the left, the selected entry's form on the right. The adapter (`surfaces/settings-contributed.ts`) hands in the title, the layout, the entry rows already marked as selected, and whatever the reader is part-way through typing; `settings/contributed-section.ts` decides what an entry may be named, what reaches `project.json`, and what the validator said about it. The schema form itself is an ISLAND: this document renders `form-host` and nothing inside it, because a form built from a JSON Schema is `ui/schema-form.ts`'s surface rather than this one's — the section places the element that surface hands back. The actions row is the second island: `panels/data-grid.ts` contributes it, and that one is still lit over Spectrum.",
+  "tagName": "section",
+  "attributes": {
+    "part": "contributed"
+  },
+  "style": {
+    "$description": "What `.settings-section-title`, `.settings-two-col`, `.settings-list-panel`, `.settings-editor-panel`, `.settings-editor-header`, `.settings-empty-state` and `.settings-inline-form` said in `styles/overlays.css`, keyed on `part` and re-pointed at the studio token layer. This section was the LAST emitter of every one of them except `.settings-empty-state`, which `panels/settings-pane.ts` still writes when a project closes with the editor open — so those rules are dead in the stylesheet from here, and a central sweep removes them rather than this change, which owns no stylesheet. Two values could not come across. `.settings-editor-header h3` read `var(--spectrum-font-size-100, 14px)`, and a document is mounted in the pane rather than inside `<sp-theme>`, so it would have taken its hard-coded fallback every time; the entry name is a kit textfield now and carries the kit's own type ramp. And `.entry-name-input`, `.settings-form-panel`, `.settings-section` and `.contributed-section` had no rule anywhere at all — they were four entries on `check-styles.ts`'s orphan ledger, which is the ledger's point.",
+    "display": "block",
+    "& [part=\"title\"]": {
+      "margin": "0 0 16px",
+      "fontSize": "16px",
+      "fontWeight": "600",
+      "color": "var(--fg)"
+    },
+    "& [part=\"actions\"]": {
+      "$description": "The host-contributed actions row — Test Connection, Push Schema, Open Data Grid on the data sections. `.data-section-actions` never had a rule anywhere, so the row was whatever the buttons stacked up to; it is a row with a gap under it now.",
+      "display": "flex",
+      "alignItems": "center",
+      "flexWrap": "wrap",
+      "gap": "8px",
+      "marginBottom": "12px"
+    },
+    "& [part=\"columns\"]": {
+      "$description": "The 1px gap over the border colour is the divider between the two columns: two panels on `--bg-panel` with `--border` showing through the gap, so nothing draws a rule of its own.",
+      "display": "flex",
+      "height": "100%",
+      "gap": "1px",
+      "background": "var(--border)"
+    },
+    "& [part=\"list\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "4px",
+      "padding": "12px",
+      "width": "200px",
+      "minWidth": "200px",
+      "background": "var(--bg-panel)",
+      "overflowY": "auto"
+    },
+    "& [part=\"entry\"], & [part=\"new-open\"]": {
+      "width": "100%"
+    },
+    "& [part=\"entry\"] > [part=\"control\"], & [part=\"new-open\"] > [part=\"control\"]": {
+      "$description": "`.settings-list-panel sp-action-button` said `width: 100%; justify-content: flex-start`, and both halves belong to the button the row is made of rather than to the row: a kit action button centres its glyph and its label, which reads as a list of centred names.",
+      "width": "100%",
+      "justifyContent": "flex-start"
+    },
+    "& [part=\"new-form\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "6px"
+    },
+    "& [part=\"new-field\"]": {
+      "flex": "1",
+      "minWidth": "0"
+    },
+    "& [part=\"empty\"]": {
+      "flex": "1",
+      "display": "flex",
+      "alignItems": "center",
+      "justifyContent": "center",
+      "background": "var(--bg-panel)",
+      "color": "var(--fg-dim)",
+      "fontSize": "13px"
+    },
+    "& [part=\"editor\"]": {
+      "$description": "`min-width: 0` is the one line `.settings-editor-panel` did not have and needed: a flex child's floor is its content, and the schema form inside this one is a whole form rather than the short cards Data Shapes puts here — so a long pointer or a wide row pushed the column past the right edge of the pane instead of scrolling inside it.",
+      "flex": "1",
+      "padding": "16px",
+      "background": "var(--bg-panel)",
+      "overflowY": "auto",
+      "minWidth": "0"
+    },
+    "& [part=\"editor-header\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "12px",
+      "marginBottom": "16px"
+    },
+    "& [part=\"entry-name\"]": {
+      "flex": "1",
+      "minWidth": "0",
+      "maxWidth": "220px"
+    }
+  },
+  "children": [
+    {
+      "tagName": "h3",
+      "attributes": {
+        "part": "title"
+      },
+      "textContent": "${state.title}"
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "actions-slot",
+        "role": "none"
+      },
+      "style": {
+        "display": "contents"
+      },
+      "$switch": {
+        "$ref": "#/state/actionsState"
+      },
+      "cases": {
+        "slot": {
+          "$description": "An island: the host renders its own actions into this node and the document renders nothing inside it.",
+          "tagName": "div",
+          "attributes": {
+            "part": "actions"
+          }
+        }
+      }
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "body-slot",
+        "role": "none"
+      },
+      "style": {
+        "display": "contents"
+      },
+      "$switch": {
+        "$ref": "#/state/layout"
+      },
+      "cases": {
+        "form": {
+          "$description": "An island: `ui/schema-form.ts` draws the whole section value into this node.",
+          "tagName": "div",
+          "attributes": {
+            "part": "form-host"
+          }
+        },
+        "map": {
+          "tagName": "div",
+          "attributes": {
+            "part": "columns"
+          },
+          "children": [
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "list"
+              },
+              "children": [
+                {
+                  "$prototype": "Array",
+                  "items": {
+                    "$ref": "#/state/entries"
+                  },
+                  "key": {
+                    "$ref": "$map/item/key"
+                  },
+                  "map": {
+                    "tagName": "jx-action-button",
+                    "attributes": {
+                      "part": "entry",
+                      "data-entry": "${$map.item.key}",
+                      "data-jx-region": "${$map.item.region}"
+                    },
+                    "$props": {
+                      "label": "${$map.item.key}",
+                      "selected": {
+                        "$ref": "$map/item/selected"
+                      },
+                      "quiet": true,
+                      "size": "sm"
+                    },
+                    "onclick": {
+                      "$prototype": "Function",
+                      "body": [
+                        {
+                          "operator": "call",
+                          "target": {
+                            "$ref": "#/state/select"
+                          },
+                          "value": [
+                            {
+                              "$ref": "$map/item/key"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "children": [
+                      {
+                        "tagName": "span",
+                        "textContent": "${$map.item.key}"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "new-slot",
+                    "role": "none"
+                  },
+                  "style": {
+                    "display": "contents"
+                  },
+                  "$switch": {
+                    "$ref": "#/state/newState"
+                  },
+                  "cases": {
+                    "closed": {
+                      "tagName": "jx-action-button",
+                      "attributes": {
+                        "part": "new-open"
+                      },
+                      "$props": {
+                        "label": "New Entry",
+                        "icon": "plus",
+                        "quiet": true,
+                        "size": "sm"
+                      },
+                      "onclick": {
+                        "$prototype": "Function",
+                        "body": [
+                          {
+                            "operator": "call",
+                            "target": {
+                              "$ref": "#/state/openNew"
+                            },
+                            "value": []
+                          }
+                        ]
+                      },
+                      "children": [
+                        {
+                          "tagName": "span",
+                          "textContent": "New Entry"
+                        }
+                      ]
+                    },
+                    "open": {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "new-form"
+                      },
+                      "children": [
+                        {
+                          "tagName": "jx-textfield",
+                          "attributes": {
+                            "part": "new-field"
+                          },
+                          "$props": {
+                            "label": "New entry name",
+                            "placeholder": "entry-name",
+                            "size": "sm",
+                            "value": {
+                              "$ref": "#/state/newName"
+                            }
+                          },
+                          "oninput": {
+                            "$prototype": "Function",
+                            "body": [
+                              {
+                                "operator": "call",
+                                "target": {
+                                  "$ref": "#/state/editNew"
+                                },
+                                "value": [
+                                  {
+                                    "$ref": "event#/target/value"
+                                  }
+                                ]
+                              }
+                            ]
+                          },
+                          "onkeydown": {
+                            "$prototype": "Function",
+                            "body": [
+                              {
+                                "$switch": {
+                                  "$ref": "event#/key"
+                                },
+                                "cases": {
+                                  "Enter": [
+                                    {
+                                      "preventDefault": true
+                                    },
+                                    {
+                                      "operator": "call",
+                                      "target": {
+                                        "$ref": "#/state/createNew"
+                                      },
+                                      "value": []
+                                    }
+                                  ],
+                                  "Escape": [
+                                    {
+                                      "preventDefault": true
+                                    },
+                                    {
+                                      "operator": "call",
+                                      "target": {
+                                        "$ref": "#/state/cancelNew"
+                                      },
+                                      "value": []
+                                    }
+                                  ]
+                                }
+                              }
+                            ]
+                          }
+                        },
+                        {
+                          "tagName": "jx-button",
+                          "attributes": {
+                            "part": "new-create"
+                          },
+                          "$props": {
+                            "size": "sm"
+                          },
+                          "onclick": {
+                            "$prototype": "Function",
+                            "body": [
+                              {
+                                "operator": "call",
+                                "target": {
+                                  "$ref": "#/state/createNew"
+                                },
+                                "value": []
+                              }
+                            ]
+                          },
+                          "children": [
+                            {
+                              "tagName": "span",
+                              "textContent": "Create"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "editor-slot",
+                "role": "none"
+              },
+              "style": {
+                "display": "contents"
+              },
+              "$switch": {
+                "$ref": "#/state/editorState"
+              },
+              "cases": {
+                "empty": {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "empty"
+                  },
+                  "textContent": "Select or create an entry"
+                },
+                "editing": {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "editor",
+                    "data-jx-region": "${state.editorRegion}"
+                  },
+                  "children": [
+                    {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "editor-header"
+                      },
+                      "children": [
+                        {
+                          "tagName": "jx-textfield",
+                          "attributes": {
+                            "part": "entry-name"
+                          },
+                          "$props": {
+                            "label": "Entry name",
+                            "size": "sm",
+                            "value": {
+                              "$ref": "#/state/entryName"
+                            }
+                          },
+                          "onchange": {
+                            "$prototype": "Function",
+                            "body": [
+                              {
+                                "operator": "call",
+                                "target": {
+                                  "$ref": "#/state/renameEntry"
+                                },
+                                "value": [
+                                  {
+                                    "$ref": "event#/target/value"
+                                  }
+                                ]
+                              }
+                            ]
+                          },
+                          "onkeydown": {
+                            "$prototype": "Function",
+                            "body": [
+                              {
+                                "$switch": {
+                                  "$ref": "event#/key"
+                                },
+                                "cases": {
+                                  "Enter": [
+                                    {
+                                      "operator": "call",
+                                      "target": {
+                                        "$ref": "#/state/renameEntry"
+                                      },
+                                      "value": [
+                                        {
+                                          "$ref": "event#/target/value"
+                                        }
+                                      ]
+                                    }
+                                  ],
+                                  "Escape": [
+                                    {
+                                      "operator": "call",
+                                      "target": {
+                                        "$ref": "#/state/cancelRename"
+                                      },
+                                      "value": [
+                                        {
+                                          "$ref": "event#/target/value"
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              }
+                            ]
+                          }
+                        },
+                        {
+                          "tagName": "jx-action-button",
+                          "attributes": {
+                            "part": "delete-entry"
+                          },
+                          "$props": {
+                            "label": "Delete entry",
+                            "hint": "Delete entry",
+                            "icon": "trash",
+                            "quiet": true,
+                            "size": "sm"
+                          },
+                          "onclick": {
+                            "$prototype": "Function",
+                            "body": [
+                              {
+                                "operator": "call",
+                                "target": {
+                                  "$ref": "#/state/removeEntry"
+                                },
+                                "value": []
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "$description": "An island: `ui/schema-form.ts` draws the selected entry into this node.",
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "form-host"
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

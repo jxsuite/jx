@@ -1,24 +1,21 @@
-/// <reference lib="dom" />
 /**
- * Sessions-view.js — the full-pane chat history list (VSCode-Copilot style).
+ * Sessions-view.ts — the chat history pane's projection.
  *
- * Renders the session rows (title, relative time, message count) with per-row delete,
- * a header with a New Chat action, and an empty state. State and storage live in
- * ai-panel / document-assistant; the row callbacks address ONE session each, which is
- * why they stay callbacks.
+ * Turns the stored session metadata into the rows the assistant surface draws: a title, and one
+ * sentence saying when the chat was last touched and how big it is. State and storage live in
+ * ai-panel / document-assistant; what a row DOES — open, delete — is a pair of actions the panel
+ * hands the surface, because each addresses one session.
  *
- * New Chat is the exception, and it is `assistant.newChat` — the same record the chat
- * header runs ({@link commandButton}). The two headers draw the same button, so a
- * second definition site is exactly how they would come to disagree about its name, its
- * chord, or when it is offered.
+ * New Chat is not here at all, and that is the point: it is `assistant.newChat`, the same record
+ * the chat header runs, projected once by `panels/ai-panel.ts`. The two headers draw the same
+ * button, so a second definition site is exactly how they would come to disagree about its name,
+ * its chord, or when it is offered.
  *
  * @license MIT
  */
 
-import { html } from "lit-html";
 import { now } from "../../services/clock";
-import { commandButton } from "./chat-view";
-import type { TemplateResult } from "lit-html";
+import type { ChatSessionView } from "../../surfaces/ai-chat";
 import type { SessionMeta } from "../../services/ai-session-store";
 
 const MINUTE = 60_000;
@@ -53,55 +50,27 @@ export function relativeTime(ts: number, at: number = now()): string {
   return new Date(ts).toLocaleDateString();
 }
 
-export interface SessionsListOptions {
-  sessions: SessionMeta[];
-  onOpen: (id: string) => void;
-  onDelete: (id: string) => void;
+/**
+ * One stored session, as the surface reads it.
+ *
+ * @param {SessionMeta} session
+ * @returns {ChatSessionView}
+ */
+export function projectSession(session: SessionMeta): ChatSessionView {
+  const count = session.messageCount;
+  return {
+    key: session.id,
+    meta: `${relativeTime(session.updatedAt)} · ${count} ${count === 1 ? "message" : "messages"}`,
+    title: session.title,
+  };
 }
 
-function renderRow(s: SessionMeta, opts: SessionsListOptions): TemplateResult {
-  return html`
-    <div class="ai-session-row" @click=${() => opts.onOpen(s.id)}>
-      <div class="ai-session-text">
-        <div class="ai-session-title">${s.title}</div>
-        <div class="ai-session-meta">
-          ${relativeTime(s.updatedAt)} · ${s.messageCount}
-          ${s.messageCount === 1 ? "message" : "messages"}
-        </div>
-      </div>
-      <sp-action-button
-        quiet
-        size="s"
-        class="ai-session-delete"
-        title="Delete chat"
-        @click=${(e: Event) => {
-          e.stopPropagation();
-          opts.onDelete(s.id);
-        }}
-      >
-        <sp-icon-delete slot="icon"></sp-icon-delete>
-      </sp-action-button>
-    </div>
-  `;
-}
-
-/** The sessions pane: header ("Chats" + New Chat) above the scrollable session rows. */
-export function renderSessionsList(opts: SessionsListOptions): TemplateResult {
-  return html`
-    <div class="ai-chat-header">
-      <span class="ai-chat-title">Chats</span>
-      <span class="ai-header-spacer"></span>
-      ${commandButton("assistant.newChat", {
-        content: html`<sp-icon-add slot="icon"></sp-icon-add>New Chat`,
-        quiet: true,
-      })}
-    </div>
-    <div class="ai-sessions">
-      ${
-        opts.sessions.length === 0
-          ? html`<div class="ai-sessions-empty">No previous chats</div>`
-          : opts.sessions.map((s) => renderRow(s, opts))
-      }
-    </div>
-  `;
+/**
+ * The chat history, in the order the store keeps it.
+ *
+ * @param {readonly SessionMeta[]} sessions
+ * @returns {ChatSessionView[]}
+ */
+export function projectSessions(sessions: readonly SessionMeta[]): ChatSessionView[] {
+  return sessions.map((session) => projectSession(session));
 }

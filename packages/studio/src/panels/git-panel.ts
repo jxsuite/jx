@@ -1,32 +1,68 @@
 /// <reference lib="dom" />
 /**
- * Git panel — Source control sidebar with sync status, branch selector, Local Changes / History
- * tabs, commit form, and changed-components view.
+ * Source Control — the Navigator panel: sync status, the branch, Local Changes and History.
+ *
+ * **The body is a Jx document** (`surfaces/git-panel.json`, mounted by `surfaces/git-panel.ts`), so
+ * this module draws no markup: it projects. What stays here is everything that is a DECISION — what
+ * git is asked and in what order, what a comparison is and which file has one, how changed files
+ * group into components, what a status letter reads aloud, what a commit does before it runs, and
+ * which of the four moods the panel is in. The surface reads values.
+ *
+ * Three consequences worth knowing before editing it.
+ *
+ * The first is that the panel keeps ITSELF up to date. A lit body was redrawn because the Navigator
+ * repainted, and the Navigator repainted on this panel's own badge — a coincidence that happened to
+ * cover most changes to `shell.git`. {@link mountGitPanel} owns an `effect()` instead, so a
+ * finished fetch, a typed commit message and a poll that noticed a change made outside Studio each
+ * reach the document whether or not anything else on screen moved. `renderOnly("leftPanel")` is
+ * gone with it.
+ *
+ * The second is that the split button's dropdown is the KIT MENU. It was a hand-built `<div>` with
+ * a module-level `_splitMenuOpen` flag, and the flag existed only because the template declared the
+ * menu `hidden` unconditionally and the two were fighting. `openMenu()` already owns roving focus,
+ * light dismissal and Escape, so both the markup and the flag go.
+ *
+ * The third is the empty states. `panels/empty-state.ts` is a lit template a document cannot call,
+ * so the three this panel used to render are drawn in the document — under the same §11 copy rules,
+ * and, for the two that offer buttons, with the buttons still real. This was the last caller that
+ * passed `EmptyStateAction.icon`, which is a `TemplateResult` of `sp-icon-*`.
+ *
+ * @docs studio/publish/source-control
  */
 
-import { html, nothing } from "lit-html";
+import { nothing } from "lit-html";
 import { errorMessage } from "@jxsuite/schema/parse";
+import { effect, effectScope } from "../reactivity";
 import { flushAllCollab } from "../collab/collab-session";
 import type { GitDiffState, GitFileStatus, StudioPlatform } from "../types";
-import { live } from "lit-html/directives/live.js";
-import { repeat } from "lit-html/directives/repeat.js";
-import { getPlatform } from "../platform";
+import { getPlatform, hasPlatform } from "../platform";
 import { now } from "../services/clock";
 import { formatForPath } from "../format/format-host";
-import { projectState, renderOnly } from "../store";
+import { projectState } from "../store";
 import { comparisonRefusal, openComparisonTab } from "./git-diff-open";
 import type { Tab } from "../tabs/tab";
 import { shell } from "../shell";
 import type { GitLogEntry } from "../shell";
 import { showConfirmDialog, showPromptDialog } from "../ui/layers";
 import { POLL_GIT } from "../ui/timing";
-import { renderEmptyState } from "./empty-state";
 import { registerPanel } from "./panel-registry";
 import { notify } from "../services/notify";
 import { authenticateGithub } from "../github/github-auth";
 import { createGithubRepository } from "../github/github-publish";
 import { pullWithPackageSync } from "../packages/pull-package-sync";
+import { mountGitPanelSurface } from "../surfaces/git-panel";
+import { rectOf } from "../utils/geometry";
+import type {
+  GitCommitView,
+  GitFileRowView,
+  GitGroupView,
+  GitPanelActions,
+  GitPanelSurfaceHandle,
+  GitPanelValues,
+} from "../surfaces/git-panel";
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
+import type { EffectScope } from "../reactivity";
+import type { PanelBody } from "./panel-registry";
 
 type GitFileEntry = GitFileStatus;
 
@@ -162,9 +198,16 @@ export async function cloneRepository(ctx: { openRecentProject: (root: string) =
   }
 }
 
-/** @returns {boolean} */
-export function platformSupportsClone() {
-  return Boolean(getPlatform().gitClone);
+/**
+ * Whether this platform can clone at all.
+ *
+ * `hasPlatform()` first, because the question is asked on every projection of the panel and
+ * `getPlatform()` THROWS when nothing has registered one. "There is no platform" is an answer to
+ * this question — no, it cannot clone — rather than a failure, and a projection that threw would
+ * take the whole Navigator's render down with it.
+ */
+export function platformSupportsClone(): boolean {
+  return hasPlatform() && Boolean(getPlatform().gitClone);
 }
 
 /**
@@ -334,16 +377,6 @@ async function doPull() {
  */
 let _pollTimer = null as ReturnType<typeof setInterval> | null;
 
-/**
- * Whether the commit button's split menu is showing.
- *
- * State rather than a `hidden` attribute toggled on a node found by selector. The two were fighting
- * by construction: the template declared the menu `hidden` unconditionally, so lit had committed
- * that attribute, and every repaint of the panel — the 30-second git poll among them — would leave
- * whatever the handler had last done to it standing, with no way for the template to take it back.
- */
-let _splitMenuOpen = false;
-
 async function fetchGitLog() {
   const plat = getPlatform();
   try {
@@ -354,619 +387,538 @@ async function fetchGitLog() {
 }
 
 /**
- * Render the Source Control panel.
+ * What the panel is drawn against, and the two writes a row click makes outside `shell.git`.
  *
- * Takes no state argument: everything it reads is project-level and lives on `shell.git`, which is
- * the whole point of the hoist — the panel renders identically with no document open.
- *
- * @param {{
- *   setCanvasMode?: (tab: Tab | null, mode: string) => void;
- *   setGitDiffState?: (state: GitDiffState | null) => void;
- *   cloneRepository?: () => void;
- * }} ctx
+ * A subset of `NavigatorPanelDeps`, named here so the projection and the actions state what they
+ * use rather than taking the Navigator's whole injection list.
  */
-export function renderGitPanel(ctx: {
+export interface GitPanelDeps {
   setCanvasMode?: (tab: Tab | null, mode: string) => void;
   setGitDiffState?: (state: GitDiffState | null) => void;
   cloneRepository?: () => void;
-}) {
-  if (!projectState) {
-    return html`<div class="git-panel git-panel-empty">
-      ${renderEmptyState({
-        actions: platformSupportsClone()
-          ? [
-              {
-                icon: html`<sp-icon-download slot="icon"></sp-icon-download>`,
-                label: "Clone Git Repository",
-                run: () => ctx.cloneRepository?.(),
-              },
-            ]
-          : [],
-        message:
-          "Source control keeps every version of a project, so any change can be undone. " +
-          "Open a project to see its history.",
-      })}
-    </div>`;
-  }
-  const { branches, loading, status } = shell.git;
+}
 
-  // First paint kicks off the fetch. A refresh that already failed must NOT re-arm it here, or the
-  // Render it triggers becomes the next render's reason to fetch again; the Refresh button and the
-  // Poll timer are the ways back.
-  if (!status && !loading && !shell.git.error) {
-    void refreshGitStatus();
-    return html`<div class="git-panel">
-      <div class="git-loading">Loading...</div>
-    </div>`;
-  }
+/**
+ * What the panel was mounted with, held at module scope rather than closed over.
+ *
+ * The standing surface outlives the repaint that mounted it — a row clicked ten repaints later must
+ * reach the CURRENT diff-state setter — so the seat is rewritten on every `afterRender` and the
+ * actions read it (`panels/elements-panel.ts` states the rule at its definition site).
+ */
+let _deps: GitPanelDeps = {};
 
-  if (status && !status.isRepo) {
-    return html`<div class="git-panel git-panel-empty">
-      ${renderEmptyState({
-        actions: [
-          {
-            disabled: Boolean(loading),
-            icon: html`<sp-icon-add slot="icon"></sp-icon-add>`,
-            label: "Initialize Repository",
-            run: () => {
-              void initRepository();
-            },
-          },
-          {
-            disabled: Boolean(loading),
-            icon: html`<sp-icon-share slot="icon"></sp-icon-share>`,
-            label: "Create GitHub repository",
-            run: () => {
-              void createGithubRepository({ projectName: projectState?.name || "my-project" });
-            },
-          },
-        ],
-        message:
-          "This project is not tracked by git yet. Start tracking it to keep a history " +
-          "of every change and to publish it anywhere.",
-      })}
-    </div>`;
-  }
+/**
+ * What the branch picker is showing, when that is not the branch that is checked out.
+ *
+ * A `<select>` always holds one of its options, and picking "New branch…" must put the control back
+ * on the current branch when the dialog is dismissed. A document's binding only writes when the
+ * SCOPE MOVES (guidelines §9.3), so writing the current branch over a scope that already said it
+ * would be a no-op and the control would keep saying "New branch…". Announcing what the reader
+ * actually chose first is what makes putting it back a change.
+ */
+let _branchOverride: string | null = null;
 
-  if (!_pollTimer) {
-    _pollTimer = setInterval(() => {
-      if (shell.leftTab === "git" && !shell.git.loading) {
-        void refreshGitStatus();
-      }
-    }, POLL_GIT);
-  }
-
-  const stagedFiles = status?.files?.filter((f: GitFileEntry) => f.staged) || [];
-  const unstagedFiles = status?.files?.filter((f: GitFileEntry) => !f.staged) || [];
-  const totalChanges = status?.files?.length || 0;
-
-  const doCommit = async () => {
-    const msg = shell.git.commitMessage.trim();
-    if (!msg) {
-      return;
-    }
-    shell.git.commitMessage = "";
-    // Fold co-editing sessions into the backend's tree first so the commit never misses
-    // Trailing keystrokes (the mirror is debounced).
-    await flushAllCollab();
-    await gitAction("gitCommit", msg);
+/**
+ * One changed file, as the document draws it.
+ *
+ * The path is split HERE rather than in the surface, because "the name and the folder it is in" is
+ * a decision about paths and the document only lays out two spans. The label is the same fact said
+ * aloud: the badge beside it is one letter and a colour, which a screen reader cannot read.
+ */
+function fileRowView(file: GitFileEntry): GitFileRowView {
+  const parts = file.path.split("/");
+  const name = parts.pop() ?? file.path;
+  const dir = parts.join("/");
+  return {
+    cannotDiscard: file.status === "U",
+    dir,
+    hasDir: dir !== "",
+    key: file.path,
+    label: `${file.path}, ${STATUS_WORDS[file.status] ?? "changed"}`,
+    name,
+    path: file.path,
+    staged: Boolean(file.staged),
+    status: file.status,
   };
+}
 
-  const doCommitAndSync = async () => {
-    const msg = shell.git.commitMessage.trim();
-    if (!msg) {
-      return;
+/**
+ * Group files by component — the parent directory for anything the app can render, "Other" for the
+ * rest.
+ */
+function groupFilesByComponent(files: GitFileEntry[]): GitGroupView[] {
+  const groups = new Map<string, GitFileEntry[]>();
+  for (const f of files) {
+    const parts = f.path.split("/");
+    let component;
+    if (f.path.endsWith(".json") || f.path.endsWith(".class.json") || formatForPath(f.path)) {
+      component = parts.length > 1 ? `/${parts.at(-2)}` : `/${parts[0]}`;
+    } else {
+      component = "Other";
     }
-    shell.git.commitMessage = "";
-    shell.git.loading = true;
-    shell.git.error = null;
-    await flushAllCollab();
-    const plat = getPlatform();
-    try {
-      await plat.gitCommit(msg);
-      await plat.gitPush();
-      await refreshGitStatus();
-    } catch (error) {
-      shell.git.error = errorMessage(error);
-      shell.git.loading = false;
+    if (!groups.has(component)) {
+      groups.set(component, []);
     }
+    (groups.get(component) as GitFileEntry[]).push(f);
+  }
+  return [...groups.entries()].map(([name, entries]) => ({
+    files: entries.map((entry) => fileRowView(entry)),
+    key: name,
+    name,
+  }));
+}
+
+/** One commit, as the log draws it. The clock is read here, which is why {@link relativeDate} is. */
+function commitView(entry: GitLogEntry): GitCommitView {
+  return {
+    hash: entry.hash.slice(0, 7),
+    key: entry.hash,
+    message: entry.message,
+    meta: `${entry.author} · ${relativeDate(entry.date)}`,
   };
+}
 
-  // ─── 1. Sync status bar ──────────────────────────────────────────────────
-  const isUpToDate = !status?.ahead && !status?.behind;
-  const syncLabel = isUpToDate
-    ? "Up to date"
-    : `${status?.ahead ? `${status.ahead} ahead` : ""}${status?.ahead && status?.behind ? ", " : ""}${status?.behind ? `${status.behind} behind` : ""}`;
-  const lastUpdatedStr = shell.git.lastUpdated
-    ? new Date(shell.git.lastUpdated).toLocaleTimeString([], {
+/** The moment of the last successful refresh, as the sync bar prints it. */
+function lastUpdatedLabel(stamp: number | null): string {
+  return stamp
+    ? `Last updated ${new Date(stamp).toLocaleTimeString([], {
         hour: "2-digit",
         minute: "2-digit",
-      })
+      })}`
     : "";
+}
 
-  const hasRemotes = (status?.remotes?.length ?? 0) > 0;
+/**
+ * Which of the four moods the panel is in.
+ *
+ * Exactly the four branches the lit template took, in the order it took them — and the second is
+ * the one with a side effect somewhere else: `loading` means nothing has been read yet, and
+ * {@link mountGitPanel} is what starts the read. A refresh that already FAILED must not land here,
+ * or the render it triggers becomes the next render's reason to fetch again.
+ */
+function panelView(): GitPanelValues["view"] {
+  if (!projectState) {
+    return "no-project";
+  }
+  const { error, loading, status } = shell.git;
+  if (!status && !loading && !error) {
+    return "loading";
+  }
+  return status && !status.isRepo ? "no-repo" : "repo";
+}
 
-  const syncBarT = hasRemotes
-    ? html`
-        <div class="git-sync-bar">
-          <sp-action-button
-            size="s"
-            quiet
-            class="git-sync-icon"
-            title="Refresh"
-            @click=${() => refreshGitStatus()}
-            ?disabled=${loading}
-          >
-            <sp-icon-refresh slot="icon"></sp-icon-refresh>
-          </sp-action-button>
-          <div class="git-sync-text">
-            <span class="git-sync-label">${syncLabel}</span>
-            ${
-              lastUpdatedStr
-                ? html`<span class="git-sync-time">Last updated ${lastUpdatedStr}</span>`
-                : nothing
-            }
-          </div>
-          <sp-action-group size="xs" quiet class="git-sync-actions">
-            <sp-action-button
-              title="Fetch"
-              @click=${() => gitAction("gitFetch")}
-              ?disabled=${loading}
-            >
-              <sp-icon-download slot="icon" size="xs"></sp-icon-download>
-            </sp-action-button>
-            <sp-action-button
-              title="Pull${status?.behind ? ` (${status.behind} behind)` : ""}"
-              @click=${() => {
-                void doPull();
-              }}
-              ?disabled=${loading}
-            >
-              <sp-icon-arrow-down slot="icon" size="xs"></sp-icon-arrow-down>
-            </sp-action-button>
-            <sp-action-button
-              title="Push${status?.ahead ? ` (${status.ahead} ahead)` : ""}"
-              @click=${() => gitAction("gitPush")}
-              ?disabled=${loading}
-            >
-              <sp-icon-arrow-up slot="icon" size="xs"></sp-icon-arrow-up>
-            </sp-action-button>
-          </sp-action-group>
-        </div>
-      `
-    : html`
-        <div class="git-sync-bar git-sync-bar--no-remote">
-          <sp-action-button
-            size="s"
-            quiet
-            class="git-sync-icon"
-            title="Refresh"
-            @click=${() => refreshGitStatus()}
-            ?disabled=${loading}
-          >
-            <sp-icon-refresh slot="icon"></sp-icon-refresh>
-          </sp-action-button>
-          <div class="git-sync-text">
-            <span class="git-sync-label">Local only (no remote)</span>
-          </div>
-          <sp-action-button
-            size="s"
-            @click=${() =>
-              createGithubRepository({
-                projectName: projectState?.name || "my-project",
-              })}
-            ?disabled=${loading}
-          >
-            <sp-icon-share slot="icon"></sp-icon-share>
-            Create GitHub repository
-          </sp-action-button>
-        </div>
-      `;
-
-  // ─── 2. Branch selector ──────────────────────────────────────────────────
-  const branchSelectorT = html`
-    <div class="git-branch-row">
-      <svg
-        class="git-branch-icon"
-        xmlns="http://www.w3.org/2000/svg"
-        width="18"
-        height="18"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      >
-        <line x1="6" y1="3" x2="6" y2="15"></line>
-        <circle cx="18" cy="6" r="3"></circle>
-        <circle cx="6" cy="18" r="3"></circle>
-        <path d="M18 9a9 9 0 0 1-9 9"></path>
-      </svg>
-      <div class="git-branch-text">
-        <span class="git-branch-label">Active branch</span>
-        <span class="git-branch-name">${branches?.current || status?.branch || "—"}</span>
-      </div>
-      <sp-picker
-        size="s"
-        quiet
-        class="git-branch-picker"
-        .value=${live(branches?.current || "")}
-        @change=${async (e: Event) => {
-          const val = (e.target as HTMLInputElement).value;
-          if (val === "__new__") {
-            (e.target as HTMLInputElement).value = branches?.current || "";
-            const name = await showPromptDialog("New Branch", {
-              confirmLabel: "Create",
-              message: `Branching from ${branches?.current || status?.branch || "the current branch"}.`,
-              placeholder: "feature/my-change",
-              validate: (v) => (v.trim() ? "" : "Enter a branch name."),
-            });
-            if (name) {
-              await gitAction("gitCreateBranch", name);
-            }
-            return;
-          }
-          if (val !== branches?.current) {
-            await gitAction("gitCheckout", val);
-          }
-        }}
-      >
-        ${(branches?.branches || []).map(
-          (b: string) => html`<sp-menu-item value=${b}>${b}</sp-menu-item>`,
-        )}
-        <sp-menu-divider></sp-menu-divider>
-        <sp-menu-item value="__new__">+ New branch...</sp-menu-item>
-      </sp-picker>
-    </div>
-  `;
-
-  // ─── 3. Tabs: Local Changes / History ────────────────────────────────────
-  const switchTab = (tab: string) => {
-    shell.git.subTab = tab;
-    if (tab === "history" && !shell.git.logEntries) {
-      void fetchGitLog();
-    }
+/**
+ * What the surface should be showing right now.
+ *
+ * Exported because it is the whole of this module that is worth testing on its own: a pure function
+ * of `projectState`, the hoisted `shell.git` record and the platform's capabilities. Read inside
+ * {@link mountGitPanel}'s effect, so every reactive read it makes is a reason for the document to be
+ * brought up to date.
+ */
+export function gitPanelValues(): GitPanelValues {
+  const { branches, commitMessage, error, lastUpdated, loading, logEntries, status, subTab } =
+    shell.git;
+  const files = status?.files ?? [];
+  const staged = files.filter((f: GitFileEntry) => f.staged);
+  const unstaged = files.filter((f: GitFileEntry) => !f.staged);
+  const all = [...staged, ...unstaged];
+  const upToDate = !status?.ahead && !status?.behind;
+  const ahead = status?.ahead ? `${status.ahead} ahead` : "";
+  const behind = status?.behind ? `${status.behind} behind` : "";
+  const commits = logEntries ?? [];
+  const current = branches?.current ?? status?.branch ?? "";
+  return {
+    branchName: current || "—",
+    branchOptions: [
+      ...(branches?.branches ?? []).map((branch: string) => ({ label: branch, value: branch })),
+      { label: "+ New branch…", value: NEW_BRANCH },
+    ],
+    branchValue: _branchOverride ?? branches?.current ?? "",
+    busy: Boolean(loading),
+    canClone: platformSupportsClone(),
+    changedCount: String(all.length),
+    changesLabel: all.length > 0 ? `Local Changes (${all.length})` : "Local Changes",
+    commitMessage,
+    commits: commits.map((entry: GitLogEntry) => commitView(entry)),
+    error: error ?? "",
+    filesState: all.length > 0 ? "listed" : "empty",
+    groups: groupFilesByComponent(all),
+    hasError: Boolean(error),
+    hasLastUpdated: Boolean(lastUpdated),
+    hasStaged: staged.length > 0,
+    hasUnstaged: unstaged.length > 0,
+    historyState: commits.length > 0 ? "listed" : "empty",
+    lastUpdated: lastUpdatedLabel(lastUpdated),
+    pullLabel: behind ? `Pull (${behind})` : "Pull",
+    pushLabel: ahead ? `Push (${ahead})` : "Push",
+    remoteState: (status?.remotes?.length ?? 0) > 0 ? "remote" : "local",
+    stagedCount: String(staged.length),
+    stagedFiles: staged.map((file: GitFileEntry) => fileRowView(file)),
+    subTab,
+    syncLabel: upToDate ? "Up to date" : `${ahead}${ahead && behind ? ", " : ""}${behind}`,
+    view: panelView(),
   };
+}
 
-  const tabsT = html`
-    <div class="git-tabs">
-      <button
-        class="git-tab ${shell.git.subTab === "changes" ? "active" : ""}"
-        @click=${() => switchTab("changes")}
-      >
-        Local Changes${totalChanges > 0 ? ` (${totalChanges})` : ""}
-      </button>
-      <button
-        class="git-tab ${shell.git.subTab === "history" ? "active" : ""}"
-        @click=${() => switchTab("history")}
-      >
-        History
-      </button>
-    </div>
-  `;
+/** The picker row that means "make a new branch" rather than "check this one out". */
+const NEW_BRANCH = "__new__";
 
-  // ─── 4. Commit form ──────────────────────────────────────────────────────
-  // `navigator/panel:git/commit` is a HAND-STAMPED leaf: the panel host derives
-  // `navigator/panel:git`, but nothing derives the parts inside a panel body. Leaves are the one
-  // Category of region id that is authored, and they are counted for exactly that reason.
-  const commitT = html`
-    <div class="git-commit-area" data-jx-region="navigator/panel:git/commit">
-      <label class="git-commit-label">Please write a commit message</label>
-      <sp-textfield
-        size="s"
-        multiline
-        class="git-commit-input"
-        placeholder="Describe your changes"
-        .value=${live(shell.git.commitMessage)}
-        @input=${(e: Event) => {
-          shell.git.commitMessage = (e.target as HTMLInputElement).value;
-        }}
-        @keydown=${(e: KeyboardEvent) => {
-          if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
-            e.preventDefault();
+/** The changed file at this path, as the last status read saw it. */
+function fileAt(path: string): GitFileEntry | undefined {
+  return shell.git.status?.files.find((file: GitFileEntry) => file.path === path);
+}
+
+/** Commit the message the field holds, if it holds one. Never a commit of nothing. */
+async function doCommit(): Promise<void> {
+  const message = shell.git.commitMessage.trim();
+  if (!message) {
+    return;
+  }
+  shell.git.commitMessage = "";
+  // Fold co-editing sessions into the backend's tree first so the commit never misses trailing
+  // Keystrokes (the mirror is debounced).
+  await flushAllCollab();
+  await gitAction("gitCommit", message);
+}
+
+/** Commit and push, as one operation with one loading state and one error. */
+async function doCommitAndSync(): Promise<void> {
+  const message = shell.git.commitMessage.trim();
+  if (!message) {
+    return;
+  }
+  shell.git.commitMessage = "";
+  shell.git.loading = true;
+  shell.git.error = null;
+  await flushAllCollab();
+  const plat = getPlatform();
+  try {
+    await plat.gitCommit(message);
+    await plat.gitPush();
+    await refreshGitStatus();
+  } catch (error) {
+    shell.git.error = errorMessage(error);
+    shell.git.loading = false;
+  }
+}
+
+/**
+ * Check a branch out, or mint one.
+ *
+ * The override is what puts the control back: see {@link _branchOverride}.
+ */
+async function chooseBranch(value: string): Promise<void> {
+  const { branches, status } = shell.git;
+  if (value === NEW_BRANCH) {
+    _branchOverride = NEW_BRANCH;
+    syncGitPanel();
+    const name = await showPromptDialog("New Branch", {
+      confirmLabel: "Create",
+      message: `Branching from ${branches?.current || status?.branch || "the current branch"}.`,
+      placeholder: "feature/my-change",
+      validate: (v) => (v.trim() ? "" : "Enter a branch name."),
+    });
+    _branchOverride = null;
+    syncGitPanel();
+    if (name) {
+      await gitAction("gitCreateBranch", name);
+    }
+    return;
+  }
+  if (value !== branches?.current) {
+    await gitAction("gitCheckout", value);
+  }
+}
+
+/**
+ * Open one changed file's comparison.
+ *
+ * EVERY changed row opens something, and it opens the file it names. Two silent returns used to
+ * live here, and between them they made most of this panel inert: a status that was not `M`/`A`
+ * returned, and then a path that was not `.json` and had no format class returned again. So a
+ * changed `.ts`, `.css` or `.yaml` row did nothing at all when clicked, and neither did any deleted
+ * or untracked file. Renderability now decides which VIEW opens, not whether the row responds; only
+ * `R` is refused, and it is refused out loud.
+ *
+ * **And it opens the file's OWN tab.** This used to end in `setCanvasMode(activeTab.value,
+ * "git-diff")` — the focused tab, whatever it was. Clicking `components/card.json` while
+ * `pages/index.md` was open flipped the index.md TAB into git-diff and drew card.json's comparison
+ * on it: the strip named one file and the stage drew another, which is the §14.1 identity defect
+ * this repository has paid off three times elsewhere.
+ */
+async function openFileComparison(path: string): Promise<void> {
+  const file = fileAt(path);
+  if (!file) {
+    return;
+  }
+  const refusal = isDiffableStatus(file.status)
+    ? comparisonRefusal(file.path, file.status)
+    : `"${file.path}" has no change this view can open.`;
+  if (refusal) {
+    shell.git.error = refusal;
+    return;
+  }
+  try {
+    shell.git.loading = true;
+    const diffState = await readGitDiff(file.path, file.status);
+    shell.git.diffState = diffState;
+    /* The tab this comparison belongs to. A renderable document opens (or re-activates) the
+       ordinary path-keyed tab it would have had anyway; anything else gets a stub tab keyed by the
+       same path, the way a media file does. Either way the id is the path, so the strip and the
+       stage agree. */
+    const tab = await openComparisonTab(file.path);
+    _deps.setGitDiffState?.(diffState);
+    if (tab) {
+      _deps.setCanvasMode?.(tab, "git-diff");
+    }
+  } catch (error) {
+    shell.git.error = `Failed to load diff: ${errorMessage(error)}`;
+  } finally {
+    shell.git.loading = false;
+  }
+}
+
+/**
+ * Discard one file's changes, once the reader has said so. An untracked file has nothing to go back
+ * to.
+ */
+async function discardFile(path: string): Promise<void> {
+  if (fileAt(path)?.status === "U") {
+    return;
+  }
+  const confirmed = await showConfirmDialog("Discard Changes", `Discard changes to ${path}?`, {
+    confirmLabel: "Discard",
+    destructive: true,
+  });
+  if (!confirmed) {
+    return;
+  }
+  await gitAction("gitDiscard", [path]);
+}
+
+/**
+ * The split button's second half.
+ *
+ * The kit menu, not a `<div>` of this panel's own: `openMenu()` owns the popover, the roving focus,
+ * the light dismissal and Escape, and it is the answer this shell already settled on (§8.4). One
+ * row, because there is one thing "Commit and sync" can do differently.
+ */
+function openCommitMenu(anchor: HTMLElement): void {
+  /* Lazily imported for the reason `panels/problems-panel.ts` and `panels/empty-state.ts` already
+     are: this module is on the static import path of the command registry, the rail and the Start
+     pane, and a static edge would drag the whole overlay layer stack into each of them for a
+     dropdown that only exists once somebody clicks it. */
+  void import("../surfaces/menu.js").then(({ openMenu }) => {
+    openMenu({
+      label: "Commit options",
+      opener: anchor,
+      place: (box) => {
+        const rect = rectOf(anchor);
+        return { x: Math.max(4, rect.right - box.width), y: rect.bottom + 4 };
+      },
+      region: "git-commit",
+      rows: [
+        {
+          destructive: false,
+          disabled: false,
+          dividerAbove: false,
+          id: "git.commitWithoutSync",
+          run: () => {
             void doCommit();
-          }
-        }}
-      ></sp-textfield>
-      <div class="git-commit-actions">
-        <div class="git-split-btn">
-          <sp-action-button
-            class="git-commit-btn"
-            size="s"
-            @click=${doCommitAndSync}
-            ?disabled=${loading}
-          >
-            Commit and sync
-          </sp-action-button>
-          <sp-action-button
-            class="git-split-trigger"
-            size="s"
-            @click=${() => {
-              _splitMenuOpen = !_splitMenuOpen;
-              renderOnly("leftPanel");
-            }}
-          >
-            <sp-icon-chevron-down slot="icon" size="xs"></sp-icon-chevron-down>
-          </sp-action-button>
-          <div class="git-split-menu" ?hidden=${!_splitMenuOpen}>
-            <button
-              class="git-split-menu-item"
-              @click=${() => {
-                _splitMenuOpen = false;
-                void doCommit();
-              }}
-            >
-              Commit (don't sync)
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  `;
+          },
+          title: "Commit (don't sync)",
+        },
+      ],
+    });
+  });
+}
 
-  // ─── 5. Changed Components ───────────────────────────────────────────────
-  const fileRowT = (file: GitFileEntry) => {
-    const parts = file.path.split("/");
-    const name = parts.pop();
-    const dir = parts.join("/");
+/** Move to the other sub-tab, fetching the log the first time History is asked for. */
+function selectTab(tab: string): void {
+  shell.git.subTab = tab;
+  if (tab === "history" && !shell.git.logEntries) {
+    void fetchGitLog();
+  }
+}
 
-    /*
-     * EVERY changed row opens something, and it opens the file it names.
-     *
-     * Two silent returns used to live here, and between them they made most of this panel inert: a
-     * status that was not `M`/`A` returned, and then a path that was not `.json` and had no format
-     * class returned again. So a changed `.ts`, `.css` or `.yaml` row did nothing at all when
-     * clicked, and neither did any deleted or untracked file. Renderability now decides which VIEW
-     * opens, not whether the row responds; only `R` is refused, and it is refused out loud.
-     *
-     * **And it opens the file's OWN tab.** This used to end in
-     * `ctx.setCanvasMode(activeTab.value, "git-diff")` — the focused tab, whatever it was. Clicking
-     * `components/card.json` while `pages/index.md` was open flipped the index.md TAB into git-diff
-     * and drew card.json's comparison on it: the strip named one file and the stage drew another,
-     * which is the §14.1 identity defect this repository has paid off three times elsewhere.
-     */
-    const onFileClick = async () => {
-      const refusal = isDiffableStatus(file.status)
-        ? comparisonRefusal(file.path, file.status)
-        : `"${file.path}" has no change this view can open.`;
-      if (refusal) {
-        shell.git.error = refusal;
-        return;
-      }
-      try {
-        shell.git.loading = true;
-        const diffState = await readGitDiff(file.path, file.status);
-        shell.git.diffState = diffState;
-        /* The tab this comparison belongs to. A renderable document opens (or re-activates) the
-           ordinary path-keyed tab it would have had anyway; anything else gets a stub tab keyed by
-           the same path, the way a media file does. Either way the id is the path, so the strip and
-           the stage agree. */
-        const tab = await openComparisonTab(file.path);
-        if (ctx?.setGitDiffState) {
-          ctx.setGitDiffState(diffState);
-        }
-        if (tab) {
-          ctx?.setCanvasMode?.(tab, "git-diff");
-        }
-      } catch (error) {
-        shell.git.error = `Failed to load diff: ${errorMessage(error)}`;
-      } finally {
-        shell.git.loading = false;
-      }
-    };
+/**
+ * Everything a control can ask for, defined once.
+ *
+ * Every entry is a decision this module owns; the document only names it, and hands back the one
+ * value it has — a path, a branch, the field's text.
+ */
+const ACTIONS: GitPanelActions = {
+  chooseBranch: (value) => {
+    void chooseBranch(value);
+  },
+  clone: () => {
+    _deps.cloneRepository?.();
+  },
+  commit: () => {
+    void doCommit();
+  },
+  commitAndSync: () => {
+    void doCommitAndSync();
+  },
+  createRepository: () => {
+    void createGithubRepository({ projectName: projectState?.name || "my-project" });
+  },
+  discard: (path) => {
+    void discardFile(path);
+  },
+  editMessage: (value) => {
+    shell.git.commitMessage = value;
+  },
+  fetch: () => {
+    void gitAction("gitFetch");
+  },
+  initRepository: () => {
+    void initRepository();
+  },
+  openCommitMenu,
+  openFile: (path) => {
+    void openFileComparison(path);
+  },
+  pull: () => {
+    void doPull();
+  },
+  push: () => {
+    void gitAction("gitPush");
+  },
+  refresh: () => {
+    void refreshGitStatus();
+  },
+  selectTab,
+  stage: (path) => {
+    void gitAction("gitStage", [path]);
+  },
+  stageAll: () => {
+    const paths = (shell.git.status?.files ?? [])
+      .filter((file: GitFileEntry) => !file.staged)
+      .map((file: GitFileEntry) => file.path);
+    void gitAction("gitStage", paths);
+  },
+  unstage: (path) => {
+    void gitAction("gitUnstage", [path]);
+  },
+  unstageAll: () => {
+    const paths = (shell.git.status?.files ?? [])
+      .filter((file: GitFileEntry) => file.staged)
+      .map((file: GitFileEntry) => file.path);
+    void gitAction("gitUnstage", paths);
+  },
+};
 
-    return html`
-      <div class="git-file-row">
-        <!-- A REAL CONTROL, because it does something. It was a bare span with a cursor and a title:
-             not focusable, no role, and Enter did nothing — so the panel's primary verb was
-             mouse-only. The label carries the path and the status in words, since the badge beside
-             it is a single letter and colour. -->
-        <span
-          class="git-file-info"
-          role="button"
-          tabindex="0"
-          aria-label=${`${file.path}, ${STATUS_WORDS[file.status] ?? "changed"}`}
-          title="Open this file's comparison"
-          @click=${onFileClick}
-          @keydown=${(event: KeyboardEvent) => {
-            if (event.key === "Enter" || event.key === " ") {
-              event.preventDefault();
-              void onFileClick();
-            }
-          }}
-        >
-          <span class="git-file-name" title=${file.path}>${name}</span>
-          ${dir ? html`<span class="git-file-dir">${dir}</span>` : nothing}
-        </span>
-        <span class="git-file-actions">
-          ${
-            file.staged
-              ? html`
-                  <sp-action-button
-                    size="xs"
-                    quiet
-                    title="Unstage"
-                    @click=${() => gitAction("gitUnstage", [file.path])}
-                  >
-                    <sp-icon-remove slot="icon" size="xs"></sp-icon-remove>
-                  </sp-action-button>
-                `
-              : html`
-                  <sp-action-button
-                    size="xs"
-                    quiet
-                    title="Discard changes"
-                    @click=${async () => {
-                      if (file.status === "U") {
-                        return;
-                      }
-                      const confirmed = await showConfirmDialog(
-                        "Discard Changes",
-                        `Discard changes to ${file.path}?`,
-                        { confirmLabel: "Discard", destructive: true },
-                      );
-                      if (!confirmed) {
-                        return;
-                      }
-                      await gitAction("gitDiscard", [file.path]);
-                    }}
-                    ?disabled=${file.status === "U"}
-                  >
-                    <sp-icon-undo slot="icon" size="xs"></sp-icon-undo>
-                  </sp-action-button>
-                  <sp-action-button
-                    size="xs"
-                    quiet
-                    title="Stage"
-                    @click=${() => gitAction("gitStage", [file.path])}
-                  >
-                    <sp-icon-add slot="icon" size="xs"></sp-icon-add>
-                  </sp-action-button>
-                `
-          }
-        </span>
-        <span class="git-file-badge git-status-${file.status}">${file.status}</span>
-      </div>
-    `;
-  };
+/** A mounted document, the node it is standing in, and the effect feeding it. */
+interface Standing {
+  host: HTMLElement;
+  handle: GitPanelSurfaceHandle;
+  scope: EffectScope;
+}
 
-  /** Group files by component (parent directory for .json/.class.json, or "Other") */
-  const groupFilesByComponent = (files: GitFileEntry[]) => {
-    const groups = new Map<string, GitFileEntry[]>();
-    for (const f of files) {
-      const parts = f.path.split("/");
-      let component;
-      if (f.path.endsWith(".json") || f.path.endsWith(".class.json") || formatForPath(f.path)) {
-        component = parts.length > 1 ? `/${parts.at(-2)}` : `/${parts[0]}`;
-      } else {
-        component = "Other";
-      }
-      if (!groups.has(component)) {
-        groups.set(component, []);
-      }
-      (groups.get(component) as GitFileEntry[]).push(f);
+/**
+ * The one surface this panel has out, if any.
+ *
+ * One slot rather than a per-host map, because there is one Navigator: a mount into a DIFFERENT
+ * node is the old one being replaced, and holding both would leave the first one's effect running
+ * against a scope nobody reads any more.
+ */
+let _standing: Standing | null = null;
+
+/** Take the document down and stop the effect feeding it. Safe to call when there is none. */
+function unmountStanding(): void {
+  if (!_standing) {
+    return;
+  }
+  _standing.scope.stop();
+  _standing.handle.dispose();
+  _standing = null;
+}
+
+/**
+ * Push a fresh projection at the standing document, now.
+ *
+ * The effect covers every reactive input; this covers the one that is not, {@link _branchOverride},
+ * which is module state precisely because it is about the CONTROL rather than about the
+ * repository.
+ */
+function syncGitPanel(): void {
+  _standing?.handle.update(gitPanelValues());
+}
+
+/** Arm the background refresh, once. Idempotent — the effect calls it on every projection. */
+function armPoll(): void {
+  if (_pollTimer) {
+    return;
+  }
+  _pollTimer = setInterval(() => {
+    if (shell.leftTab === "git" && !shell.git.loading) {
+      void refreshGitStatus();
     }
-    return groups;
-  };
+  }, POLL_GIT);
+}
 
-  const allFiles = [...stagedFiles, ...unstagedFiles];
-  const componentGroups = groupFilesByComponent(allFiles);
-
-  const changesT = html`
-    ${
-      stagedFiles.length > 0
-        ? html`
-            <div class="git-section">
-              <div class="git-section-header">
-                <span>Staged Changes</span>
-                <span class="git-count">${stagedFiles.length}</span>
-                <sp-action-button
-                  size="xs"
-                  quiet
-                  title="Unstage all"
-                  @click=${() =>
-                    gitAction(
-                      "gitUnstage",
-                      stagedFiles.map((f: GitFileEntry) => f.path),
-                    )}
-                >
-                  <sp-icon-remove slot="icon" size="xs"></sp-icon-remove>
-                </sp-action-button>
-              </div>
-              ${repeat(stagedFiles, (f: GitFileEntry) => f.path, fileRowT)}
-            </div>
-          `
-        : nothing
-    }
-    <div class="git-section">
-      <div class="git-section-header">
-        <span>Changed Components</span>
-        <span class="git-count">${allFiles.length}</span>
-        ${
-          unstagedFiles.length > 0
-            ? html`
-                <sp-action-button
-                  size="xs"
-                  quiet
-                  title="Stage all"
-                  @click=${() =>
-                    gitAction(
-                      "gitStage",
-                      unstagedFiles.map((f: GitFileEntry) => f.path),
-                    )}
-                >
-                  <sp-icon-add slot="icon" size="xs"></sp-icon-add>
-                </sp-action-button>
-              `
-            : nothing
-        }
-      </div>
-      ${
-        allFiles.length > 0
-          ? html`
-              ${[...componentGroups.entries()].map(
-                ([comp, files]) => html`
-                  <div class="git-component-group">
-                    <div class="git-component-header">
-                      <sp-action-button
-                        size="xs"
-                        quiet
-                        class="git-component-overflow"
-                        title="Actions"
-                      >
-                        <sp-icon-more slot="icon" size="xs"></sp-icon-more>
-                      </sp-action-button>
-                      <span class="git-component-name">${comp}</span>
-                    </div>
-                    ${repeat(files, (f: GitFileEntry) => f.path, fileRowT)}
-                  </div>
-                `,
-              )}
-            `
-          : renderEmptyState({
-              compact: true,
-              message: "Nothing to commit. Files you edit and save show up here.",
-            })
+/**
+ * Draw the panel — mounting the document the first time, and letting its own effect keep it current
+ * every time after.
+ *
+ * The document goes into `.panel-content`, not into the `.panel-body` this is handed, for the
+ * reason `panels/elements-panel.ts` states: only one of them is the node lit renders this panel's
+ * body into, and appending to the other would leave the panel drawn under whatever the Navigator
+ * paints next.
+ *
+ * The first mount is also what starts the first read. A refresh that already failed must NOT re-arm
+ * it — the Refresh button and the poll are the ways back — which is what {@link panelView}'s
+ * `loading` branch means.
+ *
+ * @param {HTMLElement} host - The painted `.panel-body`
+ * @param {GitPanelDeps} deps - What `studio.ts` injects through the Navigator
+ */
+export function mountGitPanel(host: HTMLElement, deps: GitPanelDeps): void {
+  _deps = deps;
+  const container = host.querySelector<HTMLElement>(".panel-content") ?? host;
+  /* `hasPlatform()` first, because the Navigator can paint before the bootstrap registers one and
+     `getPlatform()` THROWS: a panel painted that early has nothing to ask, and a rejected read here
+     would come back as a render failure of the whole dock. The poll and the Refresh button are the
+     ways back, exactly as they are after a read that failed. */
+  if (hasPlatform() && panelView() === "loading") {
+    void refreshGitStatus();
+  }
+  if (_standing && (_standing.host !== container || !_standing.handle.connected())) {
+    unmountStanding();
+  }
+  if (_standing) {
+    return;
+  }
+  const handle = mountGitPanelSurface(container, gitPanelValues(), ACTIONS);
+  const scope = effectScope();
+  scope.run(() => {
+    effect(() => {
+      const values = gitPanelValues();
+      /* Armed from inside the projection rather than at mount, because the mount usually happens
+         one branch earlier: the first paint has no status yet, and "there is a repository here" is
+         something only a finished read can say. */
+      if (values.view === "repo") {
+        armPoll();
       }
-    </div>
-  `;
+      handle.update(values);
+    });
+  });
+  _standing = { handle, host: container, scope };
+}
 
-  // ─── 6. History tab content ──────────────────────────────────────────────
-  const logEntries = shell.git.logEntries || [];
-  const historyT = html`
-    <div class="git-history">
-      ${
-        logEntries.length === 0
-          ? renderEmptyState({
-              compact: true,
-              message: "No commits yet. Each commit you make is a version you can come back to.",
-            })
-          : repeat(
-              logEntries,
-              (e: GitLogEntry) => e.hash,
-              (entry: GitLogEntry) => html`
-                <div class="git-history-entry">
-                  <span class="git-history-hash">${entry.hash.slice(0, 7)}</span>
-                  <span class="git-history-message">${entry.message}</span>
-                  <span class="git-history-meta"
-                    >${entry.author} · ${relativeDate(entry.date)}</span
-                  >
-                </div>
-              `,
-            )
-      }
-    </div>
-  `;
-
-  return html`
-    <div class="git-panel">
-      ${syncBarT} ${branchSelectorT} ${tabsT}
-      ${shell.git.subTab === "changes" ? html`${commitT}${changesT}` : historyT}
-      ${loading ? html`<div class="git-loading">Loading...</div>` : nothing}
-      ${shell.git.error ? html`<div class="git-error">${shell.git.error}</div>` : nothing}
-    </div>
-  `;
+/**
+ * The Navigator no longer draws this panel with lit.
+ *
+ * The record below returns `nothing` and mounts its document in `afterRender`, so this is a stub:
+ * it survives only because `NavigatorPanelDeps` still declares the injection and `studio.ts` still
+ * passes it. Both go in the change that deletes this.
+ *
+ * @deprecated The panel is `surfaces/git-panel.json`; call {@link mountGitPanel}.
+ * @returns {typeof nothing}
+ */
+export function renderGitPanel(_against: GitPanelDeps): typeof nothing {
+  return nothing;
 }
 
 /**
@@ -1101,12 +1053,20 @@ export function registerSourceControlCommands(registry: CommandRegistry): void {
   registry.registerAll(sourceControlCommands());
 }
 
-/** Stop the background refresh. Called on unmount and whenever a different project is opened. */
+/**
+ * Stop the background refresh and take the document down. Called on unmount and whenever a
+ * different project is opened.
+ *
+ * The surface goes with the timer, and for the same reason: everything it projects belongs to ONE
+ * repository, so a document left standing over a project switch would draw the previous project's
+ * branch and changed files until the Navigator next repainted the panel.
+ */
 export function cleanupGitPanel() {
   if (_pollTimer) {
     clearInterval(_pollTimer);
     _pollTimer = null;
   }
+  unmountStanding();
 }
 
 /**
@@ -1128,8 +1088,13 @@ export function registerGitPanel(): void {
     // `gitBranchIcon`, a hand-drawn inline SVG, because the workflow set has no Git family.
     icon: "git-branch",
     badge: (ctx) => ctx.git.dirtyCount || null,
-    // Through `deps`, not the local binding: `studio.ts` owns the wiring (the clone action and the
+    // The body is a document, so lit draws nothing and the mount happens against the painted DOM.
+    // `afterRender` runs on every repaint; {@link mountGitPanel} is idempotent.
+    render: (): PanelBody => nothing,
+    // Through `deps`, not a local binding: `studio.ts` owns the wiring (the clone action and the
     // Diff-state setter come from the bootstrap), and the Navigator has injected it all along.
-    render: (ctx) => ctx.deps.renderGitPanel(ctx.deps),
+    afterRender: (ctx, host) => {
+      mountGitPanel(host, ctx.deps);
+    },
   });
 }

@@ -133,20 +133,13 @@ export const ALLOWED_ORPHANS = new Set<string>([
   /* Owner: collab/presence-chips.ts — jx-presence, -chip, -status and the two new flags now have
      rules in styles/shell.css. The flagship co-editing affordance shipped unstyled (§7.4). */
   // Owner: editor/slash-menu.ts
-  "slash-filter",
   // Owner: grid/grid-open.ts
   "jx-grid-picker",
   // Owner: grid/grid-panel.ts
   "jx-grid-replace-popover",
   // Owner: new-project/location-fields.ts
-  "new-project-error--destination",
-  "new-project-owner",
-  "new-project-slug",
-  "new-project-visibility",
   // Owner: new-project/new-project-modal.ts
-  "new-project-name",
   // Owner: panels/ai-chat/composer.ts
-  "ai-send-btn",
   // Owner: panels/data-grid.ts
   "data-action-grid",
   "data-action-push",
@@ -199,10 +192,6 @@ export const ALLOWED_ORPHANS = new Set<string>([
      right edge of the window at Inspector width. */
   // Owner: panels/welcome-screen.ts
   // Owner: settings/contributed-section.ts
-  "contributed-section",
-  "entry-name-input",
-  "settings-form-panel",
-  "settings-section",
   // Owner: settings/css-vars-editor.ts
   /* "css-vars-enable-dark" retired with the button: this section overrides tokens per scheme, it
      no longer DEFINES a scheme — that is Settings › Contexts (§2 principle 5). */
@@ -229,7 +218,6 @@ export const ALLOWED_ORPHANS = new Set<string>([
   "media-picker-filter",
   "media-picker-upload",
   // Owner: ui/schema-form.ts
-  "schema-param-editor",
   // Owner: ui/value-selector.ts
   "jx-combobox-picker",
   "jx-combobox-popover",
@@ -278,13 +266,6 @@ export interface FocusRingAllowance {
  * them.
  */
 export const FOCUS_RING_ALLOWANCES: readonly FocusRingAllowance[] = [
-  /* The AI composer's textarea. The only one of the six scoped to `:focus:not(:focus-visible)`
-     rather than to the bare element, which is the same bargain said in CSS instead of in a pair. */
-  {
-    file: "styles/shell.css",
-    restoredBy: ".ai-composer-input:focus-visible",
-    selector: ".ai-composer-input:focus:not(:focus-visible)",
-  },
   // The Source view textarea, which fills its pane edge to edge.
   {
     file: "styles/overlays.css",
@@ -344,7 +325,6 @@ export const SILENT_CATCH_BUDGET: Readonly<Record<string, number>> = {
   // Owner: panels/signals-panel.ts — a JSON default typed one character at a time.
   "src/panels/signals-panel.ts": 1,
   // Owner: ui/schema-form.ts — two debounced JSON fields, mid-keystroke parse failures.
-  "src/ui/schema-form.ts": 2,
 };
 
 /**

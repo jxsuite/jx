@@ -1,40 +1,45 @@
 /// <reference lib="dom" />
 /**
- * Composer.js — the sticky bottom chat input (VSCode-Copilot style).
+ * Composer.ts — the sticky bottom chat input, as state and decisions.
  *
- * Auto-growing textarea (Enter sends, Shift+Enter newline) above a control row with a
- * context-attach menu, model picker, settings button, and a Send button that morphs
- * into Stop while streaming. Closure factory (precedent: createAiCredentialsForm) so
- * draft state never leaks between hosts.
+ * The draft, the attached-context chips, the attach menu and the model picker. Enter sends and
+ * Shift+Enter opens a line; the button morphs into Stop while a turn is in flight. Closure factory
+ * (precedent: createAiCredentialsForm) so draft state never leaks between hosts.
  *
- * The textarea is intentionally uncontrolled (no .value binding): lit re-renders reuse
- * the DOM node, so streaming updates never clobber the draft, focus, or caret — the
- * reason this panel can re-render without the panel-scheduler's focus guard.
+ * **There is no markup here.** `surfaces/ai-chat.json` draws the composer and this module says what
+ * it holds — which is what let the auto-grow go entirely: the textarea grows with
+ * `field-sizing: content`, where this file used to write `scrollHeight` back into `style.height` on
+ * every keystroke.
+ *
+ * **The draft is a controlled value now, and that is safe for the reason it was not before.** The
+ * lit textarea had to be uncontrolled, because a streaming repaint re-rendered the whole panel and
+ * would have clobbered the caret; a document's binding re-runs only when what it reads CHANGES, and
+ * a write equal to what the field already says is skipped. So a token arriving mid-stream touches
+ * one text node in the transcript and nothing at all down here.
+ *
+ * The attach menu is `surfaces/menu.ts`, the kit menu every other menu in Studio opens. It was an
+ * `overlay-trigger` + `sp-popover` + `sp-menu` of its own, which is a second answer to a settled
+ * question — and the one that did not get roving focus, typeahead or light dismissal.
  *
  * @license MIT
  */
 
-import { html, nothing } from "lit-html";
 import { displayTagName } from "@jxsuite/schema/guards";
-import type { TemplateResult } from "lit-html";
-import { ref } from "lit-html/directives/ref.js";
 import { getNodeAtPath } from "../../state";
 import { createModelPicker } from "../../ui/ai-model-picker";
+import { openMenu } from "../../surfaces/menu";
+import { rectOf } from "../../utils/geometry";
 import { activeTab } from "../../workspace/workspace";
 import { primarySelection } from "../../tabs/selection";
 import { buildMessageWithContext } from "./attached-context";
 import type { ContextChip } from "./attached-context";
+import type { ChatComposerChip } from "../../surfaces/ai-chat";
+import type { MenuHandle } from "../../surfaces/menu";
 import type { JxMutableNode } from "@jxsuite/schema/types";
-
-/** Tallest the textarea auto-grows before it scrolls internally. */
-const MAX_INPUT_HEIGHT = 120;
 
 export interface ComposerOptions {
   /** Receives the full message content (typed text + serialized context). */
   onSend: (text: string) => void;
-  onStop: () => void;
-  /** Opens the credentials form. */
-  onOpenSettings: () => void;
   isStreaming: () => boolean;
   /**
    * Whether the turn is suspended on a question. The composer becomes the answer field: Enter still
@@ -43,14 +48,39 @@ export interface ComposerOptions {
    * Optional so the evals harness and tests that predate `ask_user` keep compiling.
    */
   isAwaiting?: () => boolean;
-  /** Host re-render scheduler — called whenever composer state changes. */
+  /** Host re-projection scheduler — called whenever composer state changes. */
   requestRender: () => void;
 }
 
+/** What the composer contributes to the surface's projection. */
+export interface ComposerView {
+  draft: string;
+  placeholder: string;
+  composerChips: ChatComposerChip[];
+  hasComposerChips: boolean;
+  /** `send` or `stop`. */
+  sendState: string;
+  sendLabel: string;
+  sendDisabled: boolean;
+  note: string;
+  noteState: string;
+  awaiting: boolean;
+}
+
 export interface Composer {
-  render: () => TemplateResult;
-  focus: () => void;
+  /** What the composer says right now, for the panel's projection. */
+  view: () => ComposerView;
+  /** The reader typed. */
+  edit: (text: string) => void;
+  /** Send what is typed, if anything is and nothing is already in flight. */
+  send: () => void;
   clear: () => void;
+  /** Open the attach menu under the button that was pressed. */
+  openAttachMenu: (anchor: unknown) => void;
+  /** Take a chip off, by its kind. */
+  dropChip: (kind: string) => void;
+  /** The model picker's host is in the page; put the picker's own element in it. */
+  pickerSlot: (host: HTMLElement) => void;
   /**
    * Attach the canvas selection as a context chip, as the attach menu's second item does.
    *
@@ -64,17 +94,19 @@ export interface Composer {
 }
 
 /**
- * Create a composer instance bound to a host's render scheduler.
+ * Create a composer instance bound to a host's projection scheduler.
  *
  * @param {ComposerOptions} opts
  * @returns {Composer}
  */
 export function createComposer(opts: ComposerOptions): Composer {
-  let textareaEl: HTMLTextAreaElement | null = null;
-  let hasText = false;
+  let draft = "";
   let chips: ContextChip[] = [];
+  let menu: MenuHandle | null = null;
+  /** The slot the document rendered for the picker, once it has. */
+  let pickerHost: HTMLElement | null = null;
 
-  /* The model picker is `ui/ai-model-picker.ts` now, not forty lines here: the New Project Import
+  /* The model picker is `ui/ai-model-picker.ts`, not forty lines here: the New Project Import
      source chooses a model too, and the "never hold the list privately" invariant is the kind that
      only breaks in the copy nobody looked at. */
   const modelPicker = createModelPicker({ requestRender: opts.requestRender });
@@ -117,7 +149,7 @@ export function createComposer(opts: ComposerOptions): Composer {
     opts.requestRender();
   }
 
-  function removeChip(kind: ContextChip["kind"]) {
+  function dropChip(kind: string) {
     chips = chips.filter((c) => c.kind !== kind);
     opts.requestRender();
   }
@@ -132,167 +164,147 @@ export function createComposer(opts: ComposerOptions): Composer {
     return true;
   }
 
-  function renderAttachMenu(): TemplateResult {
-    const { pageChip, selectionChip } = contextCandidates();
-    return html`
-      <overlay-trigger placement="top-start" triggered-by="click">
-        <sp-action-button size="s" quiet slot="trigger" title="Attach context">
-          <sp-icon-attach slot="icon"></sp-icon-attach>
-        </sp-action-button>
-        <sp-popover slot="click-content" tip>
-          <sp-menu
-            @change=${(e: Event) => {
-              const { value } = e.target as unknown as HTMLInputElement;
-              if (value === "page" && pageChip) {
-                addChip(pageChip);
-              } else if (value === "selection" && selectionChip) {
-                addChip(selectionChip);
-              }
-            }}
-          >
-            <sp-menu-item value="page" ?disabled=${!pageChip}>
-              Current page${pageChip ? ` — ${pageChip.label}` : ""}
-            </sp-menu-item>
-            <sp-menu-item value="selection" ?disabled=${!selectionChip}>
-              Selected element${selectionChip ? ` — ${selectionChip.label}` : ""}
-            </sp-menu-item>
-          </sp-menu>
-        </sp-popover>
-      </overlay-trigger>
-    `;
-  }
-
-  function renderChips(): TemplateResult | typeof nothing {
-    if (chips.length === 0) {
-      return nothing;
+  /**
+   * The attach menu, under its own button. A second press closes it: the button is a toggle.
+   *
+   * `openMenu` rather than a popover of this module's own — the kit menu is the settled answer, and
+   * it brings roving focus, typeahead, Escape and light dismissal with it.
+   */
+  function openAttachMenu(anchor: unknown): void {
+    if (menu) {
+      menu.close();
+      menu = null;
+      return;
     }
-    return html`
-      <div class="ai-composer-chips">
-        ${chips.map(
-          (c) => html`
-            <span class="ai-context-chip" title=${c.detail}>
-              ${c.label}
-              <sp-action-button quiet size="s" title="Remove" @click=${() => removeChip(c.kind)}>
-                <sp-icon-close slot="icon"></sp-icon-close>
-              </sp-action-button>
-            </span>
-          `,
-        )}
-      </div>
-    `;
+    const opener = anchor instanceof HTMLElement ? anchor : null;
+    const { pageChip, selectionChip } = contextCandidates();
+    menu = openMenu({
+      label: "Attach context",
+      onClosed: (handle) => {
+        if (menu === handle) {
+          menu = null;
+        }
+      },
+      ...(opener ? { opener } : {}),
+      ...(opener
+        ? {
+            place: () => {
+              const box = rectOf(opener);
+              return { x: box.left, y: box.top - 4 };
+            },
+          }
+        : { origin: { x: 0, y: 0 } }),
+      region: "assistant-attach",
+      rows: [
+        {
+          destructive: false,
+          disabled: pageChip === null,
+          dividerAbove: false,
+          id: "attach.page",
+          requires: "a page open in this pane",
+          run: () => {
+            if (pageChip) {
+              addChip(pageChip);
+            }
+          },
+          title: pageChip ? `Current page — ${pageChip.label}` : "Current page",
+        },
+        {
+          destructive: false,
+          disabled: selectionChip === null,
+          dividerAbove: false,
+          id: "attach.selection",
+          requires: "an element selected on the canvas",
+          run: () => {
+            if (selectionChip) {
+              addChip(selectionChip);
+            }
+          },
+          title: selectionChip ? `Selected element — ${selectionChip.label}` : "Selected element",
+        },
+      ],
+    });
   }
 
   // ── Input ─────────────────────────────────────────────────────────────
 
-  function autoGrow() {
-    if (!textareaEl) {
-      return;
-    }
-    textareaEl.style.height = "auto";
-    textareaEl.style.height = `${Math.min(textareaEl.scrollHeight, MAX_INPUT_HEIGHT)}px`;
-  }
-
-  function onInput() {
-    autoGrow();
-    const nowHasText = Boolean(textareaEl?.value.trim());
-    if (nowHasText !== hasText) {
-      hasText = nowHasText;
-      // Only re-render on the empty↔non-empty flip so typing stays cheap.
+  function edit(text: string) {
+    const had = draft.trim().length > 0;
+    draft = text;
+    if (had !== draft.trim().length > 0) {
+      // Only re-project on the empty↔non-empty flip: the send button is the only thing that moves,
+      // And the field itself is bound to `draft`, which the document already has.
       opts.requestRender();
     }
   }
 
-  function onKeydown(e: KeyboardEvent) {
-    if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
-      e.preventDefault();
-      trySend();
-    }
-  }
-
-  function trySend() {
-    const text = textareaEl?.value ?? "";
-    if (!text.trim() || opts.isStreaming()) {
+  function send() {
+    if (!draft.trim() || opts.isStreaming()) {
       return;
     }
-    opts.onSend(buildMessageWithContext(text, chips));
+    const text = buildMessageWithContext(draft, chips);
     clear();
+    opts.onSend(text);
     opts.requestRender();
   }
 
   function clear() {
-    if (textareaEl) {
-      textareaEl.value = "";
-      textareaEl.style.height = "auto";
-    }
-    hasText = false;
+    draft = "";
     chips = [];
   }
 
-  function focus() {
-    textareaEl?.focus();
+  /**
+   * Bring the picker up to date and keep its host element in the slot.
+   *
+   * `createModelPicker().render()` is both the update and the element: it re-reads the catalogue
+   * for the CURRENT credentials on every call, which is the invariant that stops one provider's
+   * models being offered while another is configured. Re-appending a node already in place is a
+   * no-op, so this costs nothing on a repaint.
+   */
+  function refreshPicker(): void {
+    const element = modelPicker.render();
+    if (pickerHost && element.parentNode !== pickerHost) {
+      pickerHost.append(element);
+    }
   }
 
-  // ── Template ──────────────────────────────────────────────────────────
-
-  function render(): TemplateResult {
+  function view(): ComposerView {
+    refreshPicker();
     const streaming = opts.isStreaming();
     const awaiting = opts.isAwaiting?.() ?? false;
-    return html`
-      <div class="ai-composer" ?data-awaiting=${awaiting}>
-        ${renderChips()}
-        <textarea
-          class="ai-composer-input"
-          rows="1"
-          placeholder=${
-            awaiting
-              ? "Answer the assistant… (Enter to reply)"
-              : "Ask the assistant… (Enter to send)"
-          }
-          ${ref((el) => {
-            textareaEl = (el as HTMLTextAreaElement | null) || null;
-          })}
-          @input=${onInput}
-          @keydown=${onKeydown}
-        ></textarea>
-        <div class="ai-composer-row">
-          ${renderAttachMenu()} ${modelPicker.render()}
-          <span class="ai-header-spacer"></span>
-          <sp-action-button size="s" quiet title="API key & endpoint" @click=${opts.onOpenSettings}>
-            <sp-icon-settings slot="icon"></sp-icon-settings>
-          </sp-action-button>
-          ${
-            streaming
-              ? html`
-                  <sp-action-button size="s" class="ai-send-btn" title="Stop" @click=${opts.onStop}>
-                    <sp-icon-stop slot="icon"></sp-icon-stop>
-                  </sp-action-button>
-                `
-              : html`
-                  <sp-action-button
-                    size="s"
-                    class="ai-send-btn"
-                    title=${awaiting ? "Answer" : "Send"}
-                    ?disabled=${!hasText}
-                    @click=${trySend}
-                  >
-                    <sp-icon-send slot="icon"></sp-icon-send>
-                  </sp-action-button>
-                `
-          }
-        </div>
-        ${
-          /* Said once, quietly, under the picker that caused it. A chat-only model still answers,
-             so this is not a gate — but the agent loop it silently disables is the whole reason
-             the panel exists, and nothing else on screen would have mentioned it. */
-          modelPicker.selectedLacksTools()
-            ? html`<div class="ai-composer-note">
-                This model can't use editing tools — the assistant will answer but not edit.
-              </div>`
-            : nothing
-        }
-      </div>
-    `;
+    /* Said once, quietly, under the picker that caused it. A chat-only model still answers, so this
+       is not a gate — but the agent loop it silently disables is the whole reason the panel exists,
+       and nothing else on screen would have mentioned it. */
+    const note = modelPicker.selectedLacksTools()
+      ? "This model can't use editing tools — the assistant will answer but not edit."
+      : "";
+    return {
+      awaiting,
+      composerChips: chips.map((c) => ({ hint: c.detail, key: c.kind, label: c.label })),
+      draft,
+      hasComposerChips: chips.length > 0,
+      note,
+      noteState: note ? "shown" : "hidden",
+      placeholder: awaiting
+        ? "Answer the assistant… (Enter to reply)"
+        : "Ask the assistant… (Enter to send)",
+      sendDisabled: draft.trim().length === 0,
+      sendLabel: awaiting ? "Answer" : "Send",
+      sendState: streaming ? "stop" : "send",
+    };
   }
 
-  return { attachSelection, clear, focus, render };
+  return {
+    attachSelection,
+    clear,
+    dropChip,
+    edit,
+    openAttachMenu,
+    pickerSlot: (host: HTMLElement) => {
+      pickerHost = host;
+      refreshPicker();
+    },
+    send,
+    view,
+  };
 }
