@@ -505,21 +505,6 @@
   font-family: var(--font-mono, monospace);
   font-size: 10px;
 }
-.import-mono {
-  font-family: var(--font-mono, monospace);
-}
-.import-add-form {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px;
-}
-.import-add-form sp-textfield {
-  flex: 1;
-}
-.import-picker {
-  width: 100%;
-}
 /* Head panel */
 .head-section-body {
   padding: 0 4px;
@@ -589,13 +574,6 @@
   background: var(--bg-input);
   text-align: center;
   font-family: var(--font-mono);
-}
-.elements-list {
-  border: none;
-}
-.elements-list sp-accordion-item {
-  --spectrum-accordion-item-header-font-size: var(--spectrum-font-size-50, 11px);
-  border-bottom: 1px solid var(--border);
 }
 
 /* ─── Teaching empty states ──────────────────── */
@@ -770,20 +748,6 @@
   translate: -50% -50%;
 }
 
-/* ─── ⑪ Problems ──────────────────────────────────────────────────────────────
-   The same body in two hosts: the Navigator dock (rail button, badge, ⌘4) and the Bottom dock's
-   first tab. Grouped by SOURCE with the severity as a glyph, because a reader who has just saved
-   wants the save's failures together and a list that reorders as it grows cannot be read. */
-.problems-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 8px;
-}
-.problems-actions {
-  display: flex;
-  justify-content: flex-end;
-}
 .problems-clear,
 .activity-clear {
   padding: 2px 8px;
@@ -799,21 +763,6 @@
 .activity-clear:hover {
   color: var(--fg);
   background: var(--hover-bg);
-}
-/* One source's rows, under its heading. A section rather than a run of rows so the heading and
-   the problems it names cannot be separated by a scroll position. */
-.problem-group {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.problem-group-title {
-  margin: 0 0 2px;
-  color: var(--fg-dim);
-  font-size: var(--spectrum-font-size-50, 11px);
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
 }
 .problem-list,
 .activity-list {
@@ -837,18 +786,6 @@
   color: var(--fg);
   font-size: var(--spectrum-font-size-75, 12px);
 }
-.problem-row--success {
-  border-left-color: var(--success);
-}
-.problem-row--info {
-  border-left-color: var(--accent);
-}
-.problem-row--warn {
-  border-left-color: var(--warning);
-}
-.problem-row--error {
-  border-left-color: var(--danger);
-}
 .problem-icon,
 .activity-icon {
   flex: none;
@@ -857,18 +794,6 @@
   font-weight: 700;
   line-height: 1.5;
 }
-.problem-row--success .problem-icon {
-  color: var(--success);
-}
-.problem-row--info .problem-icon {
-  color: var(--accent);
-}
-.problem-row--warn .problem-icon {
-  color: var(--warning);
-}
-.problem-row--error .problem-icon {
-  color: var(--danger);
-}
 .problem-body,
 .activity-body {
   flex: 1;
@@ -876,30 +801,6 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
-}
-.problem-message {
-  overflow-wrap: anywhere;
-}
-/* The path is a control, not a label: it opens the file the problem is about, which is the
-   click-through §7.1 asks for. Underlined on hover only — a permanently underlined path in a
-   dense list reads as a paragraph of links. */
-.problem-path {
-  align-self: flex-start;
-  max-width: 100%;
-  overflow: hidden;
-  padding: 0;
-  border: none;
-  background: none;
-  color: var(--accent);
-  font: inherit;
-  font-family: var(--font-mono);
-  font-size: var(--spectrum-font-size-50, 11px);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  cursor: pointer;
-}
-.problem-path:hover {
-  text-decoration: underline;
 }
 /* The captured log the progress modal used to own. It scrolls inside the row rather than growing
    it, so one 400-line `bun install` failure does not become the whole panel. */
@@ -931,52 +832,12 @@
 .activity-cancel:hover:not(:disabled) {
   background: var(--hover-bg);
 }
-.problem-action:disabled {
-  color: var(--fg-dim);
-  cursor: default;
-}
-.problem-dismiss {
-  flex: none;
-  width: 18px;
-  height: 18px;
-  padding: 0;
-  border: none;
-  border-radius: var(--spectrum-corner-radius-75, 2px);
-  background: transparent;
-  color: var(--fg-dim);
-  font: inherit;
-  line-height: 1;
-  cursor: pointer;
-}
-.problem-dismiss:hover {
-  color: var(--fg);
-  background: var(--hover-bg);
-}
 
-/* ─── ⑪ Activity ──────────────────────────────────────────────────────────────
-   One row per operation, newest LAST, because this is a log and not a menu: an install that starts
-   while you are reading the clone above it must not push that clone off the top. */
-.activity-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 8px;
-}
-.activity-actions {
-  display: flex;
-  justify-content: flex-end;
-}
 .activity-row--running {
   border-left-color: var(--accent);
 }
 .activity-row--done {
   border-left-color: var(--success);
-}
-.activity-row--failed {
-  border-left-color: var(--danger);
-}
-.activity-row--cancelled {
-  border-left-color: var(--fg-dim);
 }
 .activity-row--running .activity-icon {
   color: var(--accent);
@@ -1000,11 +861,6 @@
   white-space: nowrap;
 }
 .activity-source,
-.activity-duration {
-  flex: none;
-  color: var(--fg-dim);
-  font-size: var(--spectrum-font-size-50, 11px);
-}
 /* The duration is pushed to the far edge so a column of rows reads as a column of times. */
 .activity-duration {
   margin-left: auto;
@@ -1029,9 +885,6 @@
   gap: 6px;
   color: var(--fg-dim);
 }
-.activity-step--running {
-  color: var(--fg);
-}
 .activity-step--done .activity-step-icon {
   color: var(--success);
 }
@@ -1042,19 +895,6 @@
   flex: none;
   width: 10px;
   text-align: center;
-}
-.activity-log-toggle {
-  align-self: flex-start;
-  padding: 0;
-  border: none;
-  background: none;
-  color: var(--accent);
-  font: inherit;
-  font-size: var(--spectrum-font-size-50, 11px);
-  cursor: pointer;
-}
-.activity-log-toggle:hover {
-  text-decoration: underline;
 }
 
 /* ─── The one blocking progress surface ───────────────────────────────────────
@@ -1442,136 +1282,4 @@
    the formula surface spends on all three. */
 .formula-workspace--code {
   overflow: hidden;
-}
-
-/* ─── Languages (parity grid) ─────────────────────────────────────────────────
-   A grid over ABSENCE: one row per translation key, one column per declared locale, and a cell
-   that is a button whichever of the three states it is in. The glyph carries the state and the
-   colour repeats it, the way `.problem-row--*` does, because a column of squares is read by
-   scanning rather than by reading. */
-.i18n-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 8px;
-  min-width: 0;
-}
-.i18n-actions {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-}
-.i18n-summary {
-  margin: 0;
-  min-width: 0;
-  color: var(--fg-dim);
-  font-size: var(--spectrum-font-size-50, 11px);
-}
-.i18n-rescan {
-  flex: none;
-  padding: 2px 8px;
-  border: 1px solid var(--border);
-  border-radius: var(--spectrum-corner-radius-75, 2px);
-  background: transparent;
-  color: var(--fg-dim);
-  font: inherit;
-  font-size: var(--spectrum-font-size-50, 11px);
-  cursor: pointer;
-}
-.i18n-rescan:hover {
-  color: var(--fg);
-  background: var(--hover-bg);
-}
-/* A directory the scan could not read makes the whole grid a partial answer, so it says so above
-   the table rather than letting an unreadable `content/` read as a project with no content. */
-.i18n-incomplete {
-  margin: 0;
-  padding: 4px 6px;
-  border-left: 3px solid var(--warning);
-  border-radius: var(--radius);
-  background: var(--bg-panel);
-  color: var(--fg-dim);
-  font-size: var(--spectrum-font-size-50, 11px);
-}
-/* The Navigator is narrow and a key is a path, so the table scrolls sideways rather than wrapping
-   every path onto four lines. */
-.i18n-parity {
-  display: block;
-  overflow-x: auto;
-  border-collapse: collapse;
-  font-size: var(--spectrum-font-size-75, 12px);
-}
-.i18n-key-head,
-.i18n-locale-head {
-  padding: 2px 6px;
-  border-bottom: 1px solid var(--border);
-  color: var(--fg-dim);
-  font-size: var(--spectrum-font-size-50, 11px);
-  font-weight: 700;
-  text-align: start;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  white-space: nowrap;
-}
-.i18n-default-mark {
-  margin-inline-start: 4px;
-  color: var(--accent);
-  font-weight: 400;
-  text-transform: none;
-  letter-spacing: normal;
-}
-.i18n-row:hover {
-  background: var(--hover-bg);
-}
-.i18n-key {
-  max-width: 220px;
-  overflow: hidden;
-  padding: 2px 6px;
-  color: var(--fg);
-  font-family: var(--font-mono);
-  font-size: var(--spectrum-font-size-50, 11px);
-  font-weight: 400;
-  text-align: start;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.i18n-cell {
-  padding: 2px 6px;
-  text-align: center;
-}
-.i18n-cell-button {
-  inline-size: 22px;
-  block-size: 18px;
-  border: 1px solid var(--border);
-  border-radius: var(--spectrum-corner-radius-75, 2px);
-  background: transparent;
-  color: var(--fg-dim);
-  font: inherit;
-  font-size: var(--spectrum-font-size-75, 12px);
-  line-height: 1;
-  cursor: pointer;
-}
-.i18n-cell-button:hover:not(:disabled) {
-  background: var(--hover-bg);
-}
-.i18n-cell-button:disabled {
-  cursor: default;
-  opacity: 0.45;
-}
-.i18n-cell-button--present {
-  color: var(--success);
-}
-.i18n-cell-button--stale {
-  color: var(--warning);
-  border-color: var(--warning);
-}
-.i18n-cell-button--missing {
-  color: var(--accent);
-  border-style: dashed;
-}
-.i18n-truncated {
-  margin: 0;
-  color: var(--fg-dim);
-  font-size: var(--spectrum-font-size-50, 11px);
 }

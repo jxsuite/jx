@@ -27,18 +27,28 @@
  *
  * `services/idle.ts` reads {@link activityIdleBlockers}: an open operation means the app is not
  * settled, which is the §13.6 S4 obligation every phase's checklist carries.
+ *
+ * **The feed itself is a Jx document** (`surfaces/panel-activity.json`, mounted by
+ * `surfaces/panel-activity.ts`). What stays here is the record and the vocabulary a row is written
+ * in — the state glyphs, the duration, and {@link activityView}, which flattens the store into the
+ * booleans a document can switch on. The tab's `render` paints the deploy checklist and the
+ * container the document mounts into; nothing in this file draws a row any more.
  */
 
-import { html, nothing } from "lit-html";
+import { html } from "lit-html";
 import { renderDeployChecklist } from "../publish/deploy-checklist";
-import { repeat } from "lit-html/directives/repeat.js";
+import { disposeActivitySurface, mountActivitySurface } from "../surfaces/panel-activity";
 import { reactive } from "../reactivity";
 import { now } from "../services/clock";
 import { notify } from "../services/notify";
 import { registerPanel } from "./panel-registry";
-import { renderEmptyState } from "./empty-state";
 import type { PanelBody } from "./panel-registry";
-import type { TemplateResult } from "lit-html";
+import type {
+  ActivityRowView,
+  ActivityStepView,
+  ActivitySurfaceDeps,
+  ActivityView,
+} from "../surfaces/panel-activity";
 
 /** How an operation ended, or that it has not. */
 export const ACTIVITY_STATES = ["running", "done", "failed", "cancelled"] as const;
@@ -323,7 +333,7 @@ export function activityIdleBlockers(): readonly string[] {
   );
 }
 
-// ─── Rendering ────────────────────────────────────────────────────────────────
+// ─── The surface ──────────────────────────────────────────────────────────────
 
 /** The state glyphs. One character each: the row's job is a line of text, not an illustration. */
 const STATE_ICON: Readonly<Record<ActivityState, string>> = {
@@ -350,112 +360,128 @@ export function activityDuration(entry: ActivityEntry, at: number = now()): stri
   return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
 }
 
-function stepsTpl(entry: ActivityEntry): TemplateResult | typeof nothing {
-  if (entry.steps.length === 0) {
-    return nothing;
-  }
-  return html`<ol class="activity-steps">
-    ${entry.steps.map(
-      (step) => html`<li class="activity-step activity-step--${step.state}">
-        <span class="activity-step-icon" aria-hidden="true">${STEP_ICON[step.state]}</span>
-        ${step.label}
-      </li>`,
-    )}
-  </ol>`;
+/** One step, as the document reads it. */
+function stepView(step: ActivityStep, index: number): ActivityStepView {
+  return {
+    icon: STEP_ICON[step.state],
+    // The label alone is not unique — an operation may append an unplanned step it already ran —
+    // So the position is what keeps a key stable across a re-projection.
+    key: `${index}:${step.label}`,
+    label: step.label,
+    state: step.state,
+  };
 }
 
-function logTpl(entry: ActivityEntry): TemplateResult | typeof nothing {
-  if (entry.log.length === 0) {
-    return nothing;
-  }
-  return html`<button
-      class="activity-log-toggle"
-      aria-expanded=${entry.expanded ? "true" : "false"}
-      @click=${() => {
-        entry.expanded = !entry.expanded;
-      }}
-    >
-      ${entry.expanded ? "Hide log" : `Show log (${entry.log.length} line(s))`}
-    </button>
-    ${entry.expanded ? html`<pre class="activity-log">${entry.log.join("\n")}</pre>` : nothing}`;
-}
-
-/** One operation. */
-function activityTpl(entry: ActivityEntry): TemplateResult {
-  return html`
-    <li class="activity-row activity-row--${entry.state}">
-      <span class="activity-icon" aria-hidden="true">${STATE_ICON[entry.state]}</span>
-      <div class="activity-body">
-        <div class="activity-head">
-          <span class="activity-title">${entry.title}</span>
-          ${entry.source ? html`<span class="activity-source">${entry.source}</span>` : nothing}
-          <span class="activity-duration">${activityDuration(entry)}</span>
-        </div>
-        ${entry.status ? html`<div class="activity-status">${entry.status}</div>` : nothing}
-        ${stepsTpl(entry)} ${logTpl(entry)}
-      </div>
-      ${
-        entry.cancellable
-          ? html`<button
-              class="activity-cancel"
-              title="Stop this operation"
-              @click=${() => {
-                cancelActivity(entry.id);
-              }}
-            >
-              Cancel
-            </button>`
-          : nothing
-      }
-    </li>
-  `;
+/** One operation, as the document reads it. */
+function rowView(entry: ActivityEntry): ActivityRowView {
+  const lines = entry.log.length;
+  return {
+    cancellable: entry.cancellable,
+    duration: activityDuration(entry),
+    expanded: entry.expanded,
+    hasLog: lines > 0,
+    hasSource: (entry.source ?? "") !== "",
+    hasStatus: entry.status !== "",
+    hasSteps: entry.steps.length > 0,
+    icon: STATE_ICON[entry.state],
+    id: entry.id,
+    logLabel: entry.expanded ? "Hide log" : `Show log (${lines} line(s))`,
+    logText: entry.log.join("\n"),
+    showLog: entry.expanded && lines > 0,
+    source: entry.source ?? "",
+    state: entry.state,
+    status: entry.status,
+    steps: entry.steps.map((step, index) => stepView(step, index)),
+    title: entry.title,
+  };
 }
 
 /**
- * The Activity tab's body.
+ * What the Activity surface shows right now.
  *
  * Newest LAST, like a log and unlike a menu: an operation that starts while you are reading one
  * that is already running must not push it off the top.
+ *
+ * Read from inside the surface's own effect, which is what makes every field here live: the array,
+ * each entry's state and status, its steps and the length of its log are all tracked on the way
+ * through, so a chunk appended to an open row updates that row's `<pre>` and nothing else.
+ *
+ * @returns {ActivityView}
  */
-export function renderActivityList(): PanelBody {
-  // The Deploy checklist lives here because a deploy IS a long operation with a log — which is why
-  // P4 folded Deploy into Activity rather than giving it a fifth dock tab. It renders above the
-  // Run log and before any operation has started, because its whole job is to say what is missing
-  // BEFORE you begin.
-  const checklist = renderDeployChecklist();
-  if (activities.length === 0) {
-    return html`${checklist}${renderEmptyState({
-      detail: "Installs, clones, publishes and imports report here while they run.",
-      message: "Long operations show their progress, their log and their Cancel button here.",
-    })}`;
-  }
+export function activityView(): ActivityView {
   const finished = activities.filter((entry) => isFinished(entry)).length;
-  return html`
-    ${checklist}
-    <div class="activity-panel">
-      ${
-        finished > 0
-          ? html`<div class="activity-actions">
-              <button
-                class="activity-clear"
-                @click=${() => {
-                  clearFinishedActivities();
-                }}
-              >
-                Clear ${finished} finished
-              </button>
-            </div>`
-          : nothing
-      }
-      <ul class="activity-list">
-        ${repeat(
-          activities,
-          (entry) => entry.id,
-          (entry) => activityTpl(entry),
-        )}
-      </ul>
-    </div>
-  `;
+  return {
+    clearLabel: `Clear ${finished} finished`,
+    hasFinished: finished > 0,
+    hasRows: activities.length > 0,
+    rows: activities.map((entry) => rowView(entry)),
+  };
+}
+
+/**
+ * The three decisions a click on the feed can ask for, beside the projection it reads.
+ *
+ * Every one of them is the panel's: the surface knows an entry's id and nothing else about it, so
+ * "what does Cancel do to a running install" is answered here and cannot drift into markup.
+ */
+const ACTIVITY_SURFACE: ActivitySurfaceDeps = {
+  cancel: (id: string) => {
+    cancelActivity(id);
+  },
+  clearFinished: () => {
+    clearFinishedActivities();
+  },
+  project: activityView,
+  toggleLog: (id: string) => {
+    const entry = activityById(id);
+    if (entry) {
+      // Through the reactive proxy `activityById` returns, so the effect that projects the feed
+      // Re-runs and the row's `<pre>` appears without anything repainting the panel.
+      entry.expanded = !entry.expanded;
+    }
+  },
+};
+
+/**
+ * The Activity tab's body: the deploy checklist, then the container the feed mounts into.
+ *
+ * The checklist is still a lit template and still belongs to `publish/deploy-checklist.ts` — a
+ * deploy is a long operation with a log, which is why P4 folded it in here rather than giving it a
+ * fifth dock tab. It renders above the feed and before any operation has started, because its whole
+ * job is to say what is missing BEFORE you begin. It converts with its own module; this tab hosts
+ * it either way.
+ *
+ * **`data-activity-surface` is the marker, and it is an attribute rather than a class for two
+ * reasons.** Nothing styles it, and a class no stylesheet defines is an orphan the styling gate is
+ * right to refuse. And the dock runs EVERY tab's `afterRender` against the same painted body
+ * whether or not that tab is showing (`panels/bottom-dock.ts`), so a marker lit paints only for
+ * this tab is also the answer to "am I on screen?" — which is the question the Logic tab settles
+ * the same way, with its own empty `.fw-code` container.
+ *
+ * @returns {PanelBody}
+ */
+export function renderActivityBody(): PanelBody {
+  return html`${renderDeployChecklist()}
+    <div data-activity-surface></div>`;
+}
+
+/**
+ * Bring the feed up to date with what has just been painted.
+ *
+ * The panel's `afterRender`, so it runs against the DOM lit has committed — and it runs on every
+ * paint of the dock, including the ones where another tab is showing. No container means this tab
+ * is not on screen, and the document standing in DOM that lit has already thrown away is disposed
+ * rather than left holding an effect.
+ *
+ * @param {HTMLElement} host The dock body element the tab was rendered into.
+ */
+export function syncActivitySurface(host: HTMLElement): void {
+  const container = host.querySelector<HTMLElement>("[data-activity-surface]");
+  if (!container) {
+    disposeActivitySurface();
+    return;
+  }
+  mountActivitySurface(container, ACTIVITY_SURFACE);
 }
 
 /**
@@ -476,6 +502,9 @@ export function registerActivityPanel(): void {
     // Fifth rail slot for a surface with no steady state would spend chrome §2 principle 9 caps.
     rail: false,
     badge: () => (runningActivities().length > 0 ? runningActivities().length : null),
-    render: () => renderActivityList(),
+    render: () => renderActivityBody(),
+    afterRender: (_ctx, host) => {
+      syncActivitySurface(host);
+    },
   });
 }

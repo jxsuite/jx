@@ -655,19 +655,6 @@ jx-styled-combobox sp-picker {
   color: var(--fg-dim);
   flex-shrink: 0;
 }
-/* A truncation marker is a control, not a caption — it shows more of what the panel already has.
-   Styled as the text it replaced so the tree does not sprout buttons, but focusable and hoverable
-   so it reads as pressable. */
-.data-more {
-  display: block;
-  width: 100%;
-  text-align: left;
-  background: none;
-  border: none;
-  font: inherit;
-  color: inherit;
-  cursor: pointer;
-}
 .data-more:hover,
 .data-more:focus-visible {
   color: var(--accent);
@@ -703,24 +690,6 @@ jx-styled-combobox sp-picker {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-.data-key {
-  color: var(--data-key);
-}
-.data-value {
-  color: var(--fg);
-}
-.data-null {
-  color: var(--fg-dim);
-  font-style: italic;
-}
-.data-object-label {
-  color: var(--fg-dim);
-  font-style: italic;
-}
-.data-ellipsis {
-  color: var(--fg-dim);
-  font-style: italic;
 }
 /* PENDING IS A RESTING STATE, not progress. While you are editing, an automatic `Request` is
    deliberately not fetched — so a value that has not arrived is dim and STILL, and the pulse is

@@ -1,0 +1,141 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioPanelData",
+  "$description": "Navigator › Data: the value tree under one state entry — what the canvas resolved that entry to, a line per key. The rows arrive FLAT. JSON nests to any depth and a document's one repeater is `$prototype: \"Array\"` over a list, so `panels/data-explorer.ts` walks the value once, applies the item, key and depth caps, and hands over rows that already carry their own indent; recursion is a property of the walk rather than of the markup. Two kinds of line come out of it: a key and the value beside it, and a truncation marker, which is a real button because the reader opened this panel BECAUSE item 40 was the surprising one. The adapter decides what a value reads as and what a marker raises; nothing here knows about the canvas.",
+  "tagName": "div",
+  "attributes": {
+    "part": "tree"
+  },
+  "style": {
+    "$description": "The whole of the tree's look, and two things about it are the conversion. THE SYNTAX COLOURS MOVED: `--data-key` was declared on `<sp-theme>` in `styles/spectrum.css`, where Spectrum's own ramp is in scope, and this document is mounted in the Navigator — outside that element every `var(--data-key)` would have silently taken its hex fallback and stopped following the theme, so the key colour is `var(--accent)`, which is the studio token `--spectrum-blue-700` was chosen to match. Its three neighbours (`--data-string`, `--data-number`, `--data-boolean`) are NOT re-pointed, because no rule ever read them: they were declared for a palette nobody wrote, and inventing one here would be a visual change nobody asked for. `data-tone` still carries the type on every value, so the day that palette is designed it has somewhere to land. AND THE INDENT IS A VARIABLE: a row's depth used to be an inline `style=\"padding-left:…\"`, which is one rule per row once the padding is a declaration; `--row-indent` is written inline under its own name and read by one shared rule, so a hundred-row tree interns one.",
+    "display": "block",
+    "& [part=\"row\"], & [part=\"more\"]": {
+      "$description": "Every line, whichever kind. One line high and clipped rather than wrapped: a tree that reflows a long string across three lines stops being a column of keys you can scan.",
+      "display": "block",
+      "boxSizing": "border-box",
+      "width": "100%",
+      "paddingTop": "1px",
+      "paddingBottom": "1px",
+      "paddingRight": "8px",
+      "paddingLeft": "var(--row-indent, 8px)",
+      "fontSize": "var(--jx-text-sm)",
+      "fontFamily": "var(--font-mono, monospace)",
+      "lineHeight": "1.5",
+      "whiteSpace": "nowrap",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis"
+    },
+    "& [part=\"key\"]": {
+      "$description": "The key or index this line is under. Empty for the single line a primitive value renders as, which is why it is always drawn: a span with nothing in it takes no width, and switching it in and out would cost a wrapper element per row to save nothing.",
+      "color": "var(--accent)"
+    },
+    "& [part=\"value\"]": {
+      "color": "var(--fg)"
+    },
+    "& [part=\"value\"][data-tone=\"null\"], & [part=\"value\"][data-tone=\"object\"]": {
+      "$description": "Not a value you are reading: an absence, or a summary standing in for the lines underneath it. Both are dimmed and italic so the eye passes over them on the way to what is real.",
+      "color": "var(--fg-dim)",
+      "fontStyle": "italic"
+    },
+    "& [part=\"more\"]": {
+      "$description": "A truncation marker is a CONTROL, not a caption — it shows more of what the panel already has in hand. Dressed as the text it replaced so the tree does not sprout buttons, and stripped of the chrome a `<button>` brings with it, but focusable and hoverable so that it reads as pressable.",
+      "textAlign": "left",
+      "background": "none",
+      "border": "none",
+      "color": "var(--fg-dim)",
+      "fontStyle": "italic",
+      "cursor": "pointer"
+    },
+    "& [part=\"more\"]:hover, & [part=\"more\"]:focus-visible": {
+      "color": "var(--accent)",
+      "textDecoration": "underline"
+    }
+  },
+  "children": [
+    {
+      "$prototype": "Array",
+      "items": {
+        "$ref": "#/state/rows"
+      },
+      "key": {
+        "$ref": "$map/item/key"
+      },
+      "map": {
+        "tagName": "div",
+        "attributes": {
+          "part": "line-slot",
+          "role": "none"
+        },
+        "style": {
+          "display": "contents"
+        },
+        "$switch": {
+          "$ref": "$map/item/kind"
+        },
+        "cases": {
+          "row": {
+            "tagName": "div",
+            "attributes": {
+              "part": "row"
+            },
+            "style": {
+              "--row-indent": {
+                "$ref": "$map/item/indent"
+              }
+            },
+            "children": [
+              {
+                "tagName": "span",
+                "attributes": {
+                  "part": "key"
+                },
+                "textContent": "${$map.item.label}"
+              },
+              {
+                "tagName": "span",
+                "attributes": {
+                  "part": "value",
+                  "data-tone": "${$map.item.tone}"
+                },
+                "textContent": "${$map.item.text}"
+              }
+            ]
+          },
+          "more": {
+            "tagName": "button",
+            "attributes": {
+              "part": "more",
+              "type": "button",
+              "title": "${$map.item.title}"
+            },
+            "style": {
+              "--row-indent": {
+                "$ref": "$map/item/indent"
+              }
+            },
+            "textContent": "${$map.item.text}",
+            "onclick": {
+              "$prototype": "Function",
+              "body": [
+                {
+                  "operator": "call",
+                  "target": {
+                    "$ref": "#/state/showMore"
+                  },
+                  "value": [
+                    {
+                      "$ref": "$map/item/path"
+                    },
+                    {
+                      "$ref": "$map/item/limit"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  ]
+}

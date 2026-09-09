@@ -1,11 +1,27 @@
-import { flush, installMockPlatform, renderInto, resetStudioState } from "./harness";
+/**
+ * Tests for the Languages panel — `src/panels/i18n-panel.ts`, which decides, and
+ * `src/surfaces/panel-i18n.json`, the document it mounts.
+ *
+ * Two halves, and they are different kinds of test. `parityRows` is a pure fold over a scan and is
+ * exercised directly; everything below it goes through the real seam — a `.panel-body` painted by
+ * lit with `nothing` in its `.panel-content`, exactly as `panels/left-panel.ts` paints one —
+ * because the panel's whole mounting contract is about what lit does to that node. A repaint must
+ * leave the standing document alone and a switch to another panel must take it out.
+ *
+ * Everything is addressed by `part`: the body is a document, so there is no `.i18n-parity` or
+ * `.i18n-cell-button` to find any more, and a cell's state is the `data-state` it carries rather
+ * than a modifier class. Every paint is awaited — `mountSurface` settles when the DOCUMENT has
+ * rendered and each kit element's own template is one `connectedCallback` later.
+ */
+import { flush, installMockPlatform, resetStudioState } from "./harness";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { html, nothing, render } from "lit-html";
 import {
   PARITY_ROW_LIMIT,
+  mountI18nPanel,
   parityRows,
   refreshParityScan,
   registerI18nPanel,
-  renderI18nPanel,
 } from "../src/panels/i18n-panel";
 import { getPanel, resetPanels } from "../src/panels/panel-registry";
 import { createCommandRegistry } from "../src/commands/registry";
@@ -20,7 +36,6 @@ import type { LibraryFile } from "../src/browse/library-model";
 import type { NavigatorPanelContext, NavigatorPanelDeps } from "../src/panels/panel-registry";
 import type { ResolvedI18n } from "@jxsuite/schema/locale";
 import type { StudioPlatform } from "../src/types";
-import type { TemplateResult } from "lit-html";
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -272,11 +287,29 @@ function panelCtx(): NavigatorPanelContext {
   };
 }
 
+/**
+ * The Navigator's host as `left-panel.ts` paints it.
+ *
+ * Written as the same lit template rather than as hand-built DOM, because the thing under test is
+ * what lit does to `.panel-content`: it commits `nothing` for this panel, which is a no-op that
+ * leaves the mounted document standing, and a real template for any other, which clears to the end
+ * of the parent and takes the document with it.
+ */
+const panelFrame = (content: unknown) =>
+  html`<div class="panel-body">
+    <header class="panel-header">Languages</header>
+    <div class="panel-content">${content}</div>
+  </div>`;
+
+/** The Navigator root each test paints into. */
+let root: HTMLElement;
+
 /** Draw the body once. The first call kicks the scan off; the second draws what it found. */
 async function paint(): Promise<HTMLElement> {
-  const body = renderI18nPanel(panelCtx());
-  const host = await renderInto(body as TemplateResult);
-  await flush();
+  render(panelFrame(nothing), root);
+  const host = root.querySelector(".panel-body") as HTMLElement;
+  mountI18nPanel(panelCtx(), host);
+  await flush(4);
   return host;
 }
 
@@ -284,6 +317,21 @@ async function paint(): Promise<HTMLElement> {
 async function paintSettled(): Promise<HTMLElement> {
   await paint();
   return paint();
+}
+
+/** The one element carrying `part`, or null. */
+function part(host: HTMLElement, name: string): HTMLElement | null {
+  return host.querySelector(`[part="${name}"]`);
+}
+
+/** Every element carrying `part`. */
+function parts(host: HTMLElement, name: string): HTMLElement[] {
+  return [...host.querySelectorAll(`[part="${name}"]`)] as HTMLElement[];
+}
+
+/** A kit button's native control, which is what carries `disabled` and takes the click. */
+function control(host: HTMLElement, name: string): HTMLButtonElement | null {
+  return (part(host, name)?.querySelector('[part="control"]') ?? null) as HTMLButtonElement | null;
 }
 
 const SEED: Record<string, string> = {
@@ -312,6 +360,10 @@ beforeEach(() => {
   installMockPlatform({}, SEED);
   publish([stub("i18n.openTranslation"), stub("i18n.createTranslation")]);
   openBilingualProject();
+  /* A fresh root per test, connected, because the surface is mounted into the DOM the frame paints
+     and the panel drops the standing document the moment it is handed a different node. */
+  root = document.createElement("div");
+  document.body.append(root);
 });
 
 afterEach(() => {
@@ -319,6 +371,7 @@ afterEach(() => {
   setProjectState(null as never);
   resetPanels();
   refreshParityScan();
+  root.remove();
 });
 
 describe("the empty states", () => {
@@ -326,7 +379,7 @@ describe("the empty states", () => {
     resetStudioState({ projectConfig: { name: "Demo" }, projectRoot: "/demo" });
     const host = await paint();
     expect(host.textContent).toContain("written in one language");
-    expect(host.querySelector(".i18n-parity")).toBeNull();
+    expect(part(host, "parity")).toBeNull();
   });
 
   test("one declared locale is still one language", async () => {
@@ -341,13 +394,14 @@ describe("the empty states", () => {
   test("its action opens Settings through the registry, and is dead when nothing declares it", async () => {
     resetStudioState({ projectConfig: { name: "Demo" }, projectRoot: "/demo" });
     const cold = await paint();
-    expect(cold.querySelector(".empty-state-action")?.hasAttribute("disabled")).toBe(true);
+    // `jx-button` draws the native control; `disabled` is what that control carries.
+    expect(control(cold, "settings")?.disabled).toBe(true);
 
     publish([stub("settings.open", { level: "project" })]);
     const live = await paint();
-    const action = live.querySelector(".empty-state-action") as HTMLElement;
-    expect(action.hasAttribute("disabled")).toBe(false);
-    action.click();
+    const action = control(live, "settings");
+    expect(action?.disabled).toBe(false);
+    action?.click();
     await flush();
     expect(ran).toEqual([{ args: {}, id: "settings.open" }]);
   });
@@ -356,48 +410,44 @@ describe("the empty states", () => {
     installMockPlatform({}, {});
     const host = await paintSettled();
     expect(host.textContent).toContain("nothing to translate yet");
-    expect(host.querySelector(".i18n-parity")).toBeNull();
+    expect(part(host, "parity")).toBeNull();
   });
 });
 
 describe("the grid", () => {
   test("draws one column per declared locale and one row per key", async () => {
     const host = await paintSettled();
-    const heads = [...host.querySelectorAll(".i18n-locale-head")].map((el) =>
-      el.getAttribute("title"),
-    );
+    const heads = parts(host, "locale-head").map((el) => el.getAttribute("title"));
     expect(heads).toEqual(["en", "fr"]);
-    const keys = [...host.querySelectorAll(".i18n-key")].map((el) => el.textContent?.trim());
+    const keys = parts(host, "key").map((el) => el.textContent?.trim());
     expect(keys).toEqual(["content/blog/hello.md", "pages/about.json", "pages/index.json"]);
   });
 
   test("names the source column, so `stale` has a referent on screen", async () => {
     const host = await paintSettled();
-    expect(host.querySelector(".i18n-default-mark")?.textContent).toBe("source");
+    expect(part(host, "default-mark")?.textContent).toBe("source");
   });
 
   test("its summary counts what is outstanding rather than only what exists", async () => {
     const host = await paintSettled();
-    expect(host.querySelector(".i18n-summary")?.textContent).toContain("3 pages");
-    expect(host.querySelector(".i18n-summary")?.textContent).toContain("not written");
+    expect(part(host, "summary")?.textContent).toContain("3 pages");
+    expect(part(host, "summary")?.textContent).toContain("not written");
   });
 
   test("a fully translated project's summary says so", async () => {
     installMockPlatform({}, { "pages/about.json": "{}", "pages/fr/about.json": "{}" });
     const host = await paintSettled();
-    expect(host.querySelector(".i18n-summary")?.textContent).toContain(
-      "translated into every declared language",
-    );
+    expect(part(host, "summary")?.textContent).toContain("translated into every declared language");
   });
 });
 
 describe("a cell is a command, run by id", () => {
   /** The button in the row whose key is `key`, under the `index`-th locale column. */
   function cell(host: HTMLElement, key: string, index: number): HTMLButtonElement {
-    const row = [...host.querySelectorAll(".i18n-row")].find(
-      (candidate) => candidate.querySelector(".i18n-key")?.textContent?.trim() === key,
+    const row = parts(host, "row").find(
+      (candidate) => part(candidate, "key")?.textContent?.trim() === key,
     );
-    return [...(row?.querySelectorAll(".i18n-cell-button") ?? [])][index] as HTMLButtonElement;
+    return (row ? parts(row, "cell-button") : [])[index] as HTMLButtonElement;
   }
 
   test("an existing translation opens, addressed by the row's own file", async () => {
@@ -428,7 +478,7 @@ describe("a cell is a command, run by id", () => {
     const rows = parityRows([], EN_FR);
     expect(rows).toEqual([]);
     const host = await paintSettled();
-    expect(host.querySelector(".i18n-parity")).toBeNull();
+    expect(part(host, "parity")).toBeNull();
   });
 
   test("a row the default locale has no file for is addressed by whichever file it does have", async () => {
@@ -519,7 +569,9 @@ describe("a cell is a command, run by id", () => {
       {},
     );
     const host = await paintSettled();
-    const button = host.querySelector(".i18n-cell-button--stale") as HTMLButtonElement;
+    const button = host.querySelector(
+      '[part="cell-button"][data-state="stale"]',
+    ) as HTMLButtonElement;
     expect(button.getAttribute("title")).toBe("Open pages/fr/a.json — older than pages/a.json");
   });
 });
@@ -532,11 +584,11 @@ describe("the scan", () => {
 
   test("Rescan re-reads the project", async () => {
     const host = await paintSettled();
-    expect(host.querySelectorAll(".i18n-row")).toHaveLength(3);
+    expect(parts(host, "row")).toHaveLength(3);
     installMockPlatform({}, { "pages/index.json": "{}" });
-    (host.querySelector(".i18n-rescan") as HTMLButtonElement).click();
+    (part(host, "rescan") as HTMLButtonElement).click();
     const after = await paintSettled();
-    expect(after.querySelectorAll(".i18n-row")).toHaveLength(1);
+    expect(parts(after, "row")).toHaveLength(1);
   });
 
   test("a project switch re-reads rather than drawing the previous project's files", async () => {
@@ -547,7 +599,7 @@ describe("the scan", () => {
       projectRoot: "/other",
     });
     const host = await paintSettled();
-    const keys = [...host.querySelectorAll(".i18n-key")].map((el) => el.textContent?.trim());
+    const keys = parts(host, "key").map((el) => el.textContent?.trim());
     expect(keys).toEqual(["pages/only.json"]);
   });
 
@@ -563,13 +615,13 @@ describe("the scan", () => {
       },
     } as unknown as Partial<StudioPlatform>);
     const host = await paintSettled();
-    expect(host.querySelector(".i18n-incomplete")?.textContent).toContain("content (EACCES)");
+    expect(part(host, "incomplete")?.textContent).toContain("content (EACCES)");
   });
 
   test("a window with no platform records the failure instead of throwing at render", async () => {
     registerPlatform(undefined as never);
     const host = await paintSettled();
-    expect(host.querySelector(".i18n-incomplete")?.textContent).toContain("No platform registered");
+    expect(part(host, "incomplete")?.textContent).toContain("No platform registered");
     installMockPlatform({}, SEED);
   });
 
@@ -580,8 +632,8 @@ describe("the scan", () => {
     }
     installMockPlatform({}, many);
     const host = await paintSettled();
-    expect(host.querySelectorAll(".i18n-row")).toHaveLength(PARITY_ROW_LIMIT);
-    expect(host.querySelector(".i18n-truncated")?.textContent).toContain("3 more pages are not");
+    expect(parts(host, "row")).toHaveLength(PARITY_ROW_LIMIT);
+    expect(part(host, "truncated")?.textContent).toContain("3 more pages are not");
   });
 
   test("a remainder of one is said in the singular", async () => {
@@ -591,7 +643,7 @@ describe("the scan", () => {
     }
     installMockPlatform({}, many);
     const host = await paintSettled();
-    expect(host.querySelector(".i18n-truncated")?.textContent).toContain("1 more page is not");
+    expect(part(host, "truncated")?.textContent).toContain("1 more page is not");
   });
 });
 
@@ -610,11 +662,57 @@ describe("the record", () => {
     expect(panel?.when?.(multilingual)).toBe(true);
   });
 
-  test("its render draws the panel body, and reads no document", async () => {
+  test("draws nothing itself and mounts its document afterwards, reading no document", async () => {
     registerI18nPanel();
     const panel = getPanel("i18n");
-    const body = panel?.render(panelCtx()) as TemplateResult;
-    const host = await renderInto(body);
+    // The body is a Jx document, so lit is handed `nothing` and the markup arrives from the mount.
+    const body = panel?.render(panelCtx());
+    expect(body).toBe(nothing);
+    render(panelFrame(body), root);
+    const host = root.querySelector(".panel-body") as HTMLElement;
+    panel?.afterRender?.(panelCtx(), host);
+    await flush(4);
     expect(host.textContent).toContain("Looking for translations");
+  });
+});
+
+describe("the mount", () => {
+  test("a repaint leaves the standing document alone rather than drawing a second one", async () => {
+    const host = await paintSettled();
+    const table = part(host, "parity");
+    const again = await paint();
+    expect(parts(again, "parity")).toHaveLength(1);
+    // The same node, not a re-mounted copy: a rebuild would lose the reader's scroll position.
+    expect(part(again, "parity")).toBe(table);
+  });
+
+  test("a switch to another panel takes the document out, and coming back mounts a new one", async () => {
+    const host = await paintSettled();
+    const table = part(host, "parity") as HTMLElement;
+    // What `left-panel.ts` does when the rail moves: the same frame, another panel's body in it.
+    render(panelFrame(html`<p class="other-panel">Files</p>`), root);
+    expect(table.isConnected).toBe(false);
+    expect(part(root, "parity")).toBeNull();
+
+    const back = await paint();
+    expect(part(back, "parity")).not.toBeNull();
+    expect(part(back, "parity")).not.toBe(table);
+  });
+
+  test("a switch while the mount is still in flight lands nothing in the abandoned host", async () => {
+    render(panelFrame(nothing), root);
+    mountI18nPanel(panelCtx(), root.querySelector(".panel-body") as HTMLElement);
+
+    /* No flush: `mountSurface` has not settled, so nothing is in the DOM yet. The rail moves and
+       the Navigator is repainted into a different node before it does. */
+    const other = document.createElement("div");
+    document.body.append(other);
+    render(panelFrame(nothing), other);
+    mountI18nPanel(panelCtx(), other.querySelector(".panel-body") as HTMLElement);
+    await flush(4);
+
+    expect(part(root, "empty")).toBeNull();
+    expect(part(other, "empty")?.textContent).toContain("Looking for translations");
+    other.remove();
   });
 });

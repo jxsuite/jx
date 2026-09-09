@@ -23,6 +23,24 @@
  * callback could carry none of, and the reason `NotifyOptions.action` is a command id. A row whose
  * command the registry does not have renders no button at all, rather than a dead one.
  *
+ * **The body is a Jx document** (`surfaces/panel-problems.json`, mounted by
+ * `surfaces/panel-problems.ts`), so this module no longer draws markup: it projects. Two
+ * consequences worth knowing before editing it.
+ *
+ * The first is that the list keeps ITSELF up to date. A lit body was redrawn because the dock
+ * repainted, and the dock repainted on this panel's own badge — a coincidence that happened to
+ * cover every change to the list. {@link syncProblemsSurface} owns an `effect()` instead, so a
+ * dismissed row, an arriving problem and a registry that has just been published each reach the
+ * document whether or not anything else on screen moved.
+ *
+ * The second is {@link _painted}, and it is the answer to a question the Bottom dock asks of every
+ * tab. `panels/bottom-dock.ts` runs EVERY registered panel's `afterRender` against the body it just
+ * painted, showing or not — Logic needs that, because a Monaco instance outlives its own markup —
+ * so "was I the tab that was drawn?" is a question each surface answers for itself. A lit panel
+ * answered it by looking for its own markup in the host. This one has no markup in the host until
+ * it mounts, so it answers with the call the dock already made: `render` runs for the active tab
+ * only, and `afterRender` consumes what it left.
+ *
  * **One record, one host.** Problems lives in the BOTTOM DOCK — plan §7.2's table says so outright
  * ("Problems | Bottom dock ⑪, badge on the rail") and §3.2 ⑪ makes it the dock's first tab. §3.2 ③
  * also lists it among the Navigator's panels; that line loses, because a list open in two docks at
@@ -37,15 +55,21 @@
  * verb Diff, Logic and Activity are reached by.
  */
 
-import { html, nothing } from "lit-html";
-import { repeat } from "lit-html/directives/repeat.js";
+import { nothing } from "lit-html";
+import { effect, effectScope } from "../reactivity";
 import { activeRegistry } from "../commands/active-registry";
 import { clearProblems, dismiss, problemCount, problems } from "../services/notify";
+import { mountProblemsSurface } from "../surfaces/panel-problems";
 import { registerPanel } from "./panel-registry";
-import { renderEmptyState } from "./empty-state";
 import type { Notification, Severity } from "../services/notify";
-import type { PanelBody } from "./panel-registry";
-import type { TemplateResult } from "lit-html";
+import type {
+  ProblemGroupView,
+  ProblemRowView,
+  ProblemsActions,
+  ProblemsSurfaceHandle,
+  ProblemsValues,
+} from "../surfaces/panel-problems";
+import type { EffectScope } from "../reactivity";
 
 /** The severity glyphs — the same four `ui/layers.ts` gives the toasts, for the same reason. */
 const SEVERITY_ICON: Readonly<Record<Severity, string>> = {
@@ -96,106 +120,151 @@ function openProblemPath(path: string): void {
   void import("../files/files.js").then((m) => m.openFileInTab(path));
 }
 
-/** The recovery button, or `nothing` when the record named no command or the registry lacks it. */
-function actionTpl(record: Notification): TemplateResult | typeof nothing {
+/**
+ * Project one record for the document.
+ *
+ * The recovery button is a COMMAND, so its label, its gate and its reason all come off the registry
+ * — an unregistered or hidden command projects `hasAction: false`, which is what lets a call site
+ * name a capability that lands next phase without shipping a dead control meanwhile.
+ */
+function projectRow(record: Notification): ProblemRowView {
   const id = record.action;
+  // `get` before `isVisible`: an id the registry has never seen is a button that never was, not a
+  // Question it can answer.
   const registry = id === undefined ? null : activeRegistry();
-  if (!registry || id === undefined || !registry.get(id) || !registry.isVisible(id)) {
-    return nothing;
-  }
-  const command = registry.get(id)!;
-  const reason = registry.disabledReason(id);
-  return html`<button
-    class="problem-action"
-    ?disabled=${reason !== undefined}
-    title=${reason === undefined ? command.title : `${command.title} — requires ${reason}`}
-    @click=${() => {
-      void registry.run(id, record.actionArgs);
-    }}
-  >
-    ${command.title}
-  </button>`;
-}
-
-/** One problem. */
-function problemTpl(record: Notification): TemplateResult {
-  return html`
-    <li class="problem-row problem-row--${record.severity}">
-      <span class="problem-icon" aria-hidden="true">${SEVERITY_ICON[record.severity]}</span>
-      <div class="problem-body">
-        <div class="problem-message">${record.message}</div>
-        ${
-          record.path
-            ? html`<button
-                class="problem-path"
-                title=${`Open ${record.path}`}
-                @click=${() => {
-                  openProblemPath(record.path!);
-                }}
-              >
-                ${record.path}
-              </button>`
-            : nothing
-        }
-        ${record.detail ? html`<pre class="problem-detail">${record.detail}</pre>` : nothing}
-      </div>
-      ${actionTpl(record)}
-      <button
-        class="problem-dismiss"
-        title="Dismiss"
-        aria-label=${`Dismiss: ${record.message}`}
-        @click=${() => {
-          dismiss(record.id);
-        }}
-      >
-        <span aria-hidden="true">×</span>
-      </button>
-    </li>
-  `;
+  const known = registry && id !== undefined ? registry.get(id) : undefined;
+  const command = known && id !== undefined && registry!.isVisible(id) ? known : null;
+  const reason = command && id !== undefined ? registry!.disabledReason(id) : undefined;
+  return {
+    actionDisabled: reason !== undefined,
+    actionLabel: command?.title ?? "",
+    actionTitle:
+      command === null
+        ? ""
+        : reason === undefined
+          ? command.title
+          : `${command.title} — requires ${reason}`,
+    detail: record.detail ?? "",
+    dismissLabel: `Dismiss: ${record.message}`,
+    hasAction: command !== null,
+    hasDetail: Boolean(record.detail),
+    hasPath: Boolean(record.path),
+    icon: SEVERITY_ICON[record.severity],
+    id: record.id,
+    message: record.message,
+    path: record.path ?? "",
+    pathTitle: `Open ${record.path ?? ""}`,
+    severity: record.severity,
+  };
 }
 
 /**
- * The Problems body — the Bottom dock's first tab, and the only place this list is drawn.
+ * The whole list, as the document reads it.
  *
- * Exported separately from the record so a test (and the empty state below it) can be rendered
- * without a dock: the record's `render` is this function with the panel context thrown away,
- * because a list of problems reads nothing about the focused document.
+ * Read inside {@link syncProblemsSurface}'s effect, so every reactive read it makes — the store,
+ * each record, the published registry — is a reason for the surface to be brought up to date.
  */
-export function renderProblemsList(): PanelBody {
-  if (problems.length === 0) {
-    return renderEmptyState({
-      detail: "Failed writes, validation errors and render failures are listed here until fixed.",
-      message: "Nothing needs fixing.",
-    });
+export function projectProblems(): ProblemsValues {
+  const groups: ProblemGroupView[] = groupProblems().map((group) => ({
+    rows: group.records.map((record) => projectRow(record)),
+    source: group.source,
+  }));
+  return { clearLabel: `Clear ${problemCount()}`, groups, hasProblems: groups.length > 0 };
+}
+
+/** What a row can ask for. Each one is a decision this module owns; the document only names it. */
+const ACTIONS: ProblemsActions = {
+  clearAll: () => {
+    clearProblems();
+  },
+  dismissRow: (id) => {
+    dismiss(id);
+  },
+  openPath: (path) => {
+    openProblemPath(path);
+  },
+  /* By id, because a document can only hand back a value: the record and the registry are both
+     looked up at the moment of the click, which is also the moment the gate was last checked. */
+  runAction: (id) => {
+    const record = problems.find((candidate) => candidate.id === id);
+    const registry = activeRegistry();
+    if (record?.action === undefined || !registry) {
+      return;
+    }
+    void registry.run(record.action, record.actionArgs);
+  },
+};
+
+/** A mounted document, the body it is standing in, and the effect feeding it. */
+interface Standing {
+  host: HTMLElement;
+  handle: ProblemsSurfaceHandle;
+  scope: EffectScope;
+}
+
+/**
+ * The one surface this panel has out, if any.
+ *
+ * One, and not a `WeakMap` keyed by host, because the HOST is what goes away: a collapsing dock
+ * paints `nothing` over its whole body and then runs `afterRender` against the DOCK, so a map keyed
+ * by the body that just left would never be asked about it again — and the effect inside it would
+ * go on projecting into a document nobody can see, once per open-and-close. "One record, one host"
+ * is this panel's own doctrine (see above); this is the same sentence, in state.
+ */
+let _standing: Standing | null = null;
+
+/**
+ * Whether the dock drew THIS tab in the pass whose `afterRender` is about to run.
+ *
+ * Set by `render` — which the dock calls for the active tab only — and consumed by `afterRender`,
+ * which the dock calls for every tab. See the module docstring: it is the "am I on screen?" answer
+ * for a panel whose body is a document rather than markup in the host.
+ */
+let _painted = false;
+
+/** Take the document down and stop the effect feeding it. Safe to call when there is none. */
+function unmountStanding(): void {
+  if (!_standing) {
+    return;
   }
-  return html`
-    <div class="problems-panel">
-      <div class="problems-actions">
-        <button
-          class="problems-clear"
-          @click=${() => {
-            clearProblems();
-          }}
-        >
-          Clear ${problemCount()}
-        </button>
-      </div>
-      ${groupProblems().map(
-        (group) => html`
-          <section class="problem-group">
-            <h3 class="problem-group-title">${group.source}</h3>
-            <ul class="problem-list">
-              ${repeat(
-                group.records,
-                (record) => record.id,
-                (record) => problemTpl(record),
-              )}
-            </ul>
-          </section>
-        `,
-      )}
-    </div>
-  `;
+  _standing.scope.stop();
+  _standing.handle.dispose();
+  _standing = null;
+}
+
+/**
+ * Mount, update or take down the Problems document for the body the dock just painted.
+ *
+ * Idempotent by construction: the standing surface is kept while it is still in the host it was
+ * given, and the effect beside it is what keeps it current, so a repaint with this tab showing does
+ * nothing at all.
+ *
+ * @param {HTMLElement} host The panel body the dock painted, whichever tab it painted into it.
+ */
+export function syncProblemsSurface(host: HTMLElement): void {
+  const painted = _painted;
+  _painted = false;
+  if (!painted) {
+    // Another tab is showing, or the dock is collapsed. Either way this document is standing in
+    // Somebody else's body, or in one nobody can see.
+    unmountStanding();
+    return;
+  }
+  if (_standing?.host === host && _standing.handle.connected()) {
+    return;
+  }
+  unmountStanding();
+  const handle = mountProblemsSurface(host, projectProblems(), ACTIONS);
+  const scope = effectScope();
+  scope.run(() => {
+    effect(() => {
+      // Tracked whether or not a row names a command: publishing a registry is what turns every
+      // Recovery button on, and a list drawn before the bootstrap composed one has none.
+      void activeRegistry();
+      handle.update(projectProblems());
+    });
+  });
+  _standing = { handle, host, scope };
 }
 
 /**
@@ -229,6 +298,15 @@ export function registerProblemsPanel(): void {
     // `activity-bar.ts`, and `check-icons.ts` is what refuses to let the two drift apart.
     icon: "warning-circle",
     badge: () => problemCount() || null,
-    render: () => renderProblemsList(),
+    // The body is a document, so there is nothing for lit to draw. What this call DOES is leave a
+    // Mark saying the dock chose this tab — the whole of the seam, and the reason the record is
+    // Still the one place the panel is defined.
+    render: () => {
+      _painted = true;
+      return nothing;
+    },
+    afterRender: (_ctx, host) => {
+      syncProblemsSurface(host);
+    },
   });
 }

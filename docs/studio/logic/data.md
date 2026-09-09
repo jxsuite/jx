@@ -129,3 +129,5 @@ Test values are a preview aid. They live with your editing session, not in the c
 - Feed these entries from files, APIs, and the browser with **[Data sources](/docs/studio/logic/data-sources)**
 - Bind them to clicks and keystrokes in the Inspector's **[Logic tab](/docs/studio/logic/events)**
 - The same live values ride along in the **[formula workspace](/docs/studio/logic/formula-workspace)**'s data rail
+  - packages/studio/src/surfaces/panel-data.json
+  - packages/studio/src/surfaces/panel-data.ts
