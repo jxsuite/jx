@@ -504,6 +504,144 @@ export function scanHex(rel: string, source: string): { errors: Finding[]; warni
   return { errors, warnings };
 }
 
+/* ------------------------------------------------------------------ surface-document scanning --- */
+
+/**
+ * The same two rules, over a SURFACE DOCUMENT's `style` blocks.
+ *
+ * A surface is a Jx document, and its styling is a `style` object inside JSON rather than a rule in
+ * a stylesheet — so `styles/*.css`, `src/**` + '/' + `*.css` and `src/**` + '/' + `*.ts`, which is
+ * everything this gate walked, do not contain it. Every surface converted from lit takes its
+ * declarations out of a file this gate reads and puts them in one it does not, which means the
+ * raw-hex rule and the tokenizable-px nudge stop watching the studio one surface at a time, in
+ * silence, with the gate still reporting success.
+ *
+ * That is why this landed while the migration was two dead rules rather than after it, when it is
+ * thousands of live ones: a gate added late has to be argued past whatever drifted in while it was
+ * off, and this one has nothing to forgive yet.
+ *
+ * A style value is the only thing read. A hex in a `textContent`, a `$description` or a document's
+ * own prose is data or commentary, not chrome styling, and flagging it would make the gate
+ * something to switch off.
+ *
+ * @param rel Repo-relative path, for the finding
+ * @param source The document's raw text, so a finding carries the line it is on
+ */
+export function scanJsonStyle(
+  rel: string,
+  source: string,
+): { errors: Finding[]; warnings: Finding[] } {
+  const errors: Finding[] = [];
+  const warnings: Finding[] = [];
+  for (const block of jsonStyleBlocks(source)) {
+    const lines = block.text.split("\n");
+    for (const [offset, line] of lines.entries()) {
+      const stripped = line.replace(VAR_FALLBACK_RE, "");
+      const at = block.line + offset;
+      const bad = (stripped.match(HEX_RE) ?? []).filter((h) => !ALLOWED_HEX.has(h.toLowerCase()));
+      if (bad.length > 0) {
+        errors.push({ file: rel, line: at, text: line.trim() });
+      }
+      for (const [re, set] of [
+        [JSON_FONT_PX_RE, TOKENIZABLE_FONT_PX],
+        [JSON_RADIUS_PX_RE, TOKENIZABLE_RADIUS_PX],
+      ] as const) {
+        re.lastIndex = 0;
+        let match: RegExpExecArray | null = re.exec(stripped);
+        while (match !== null) {
+          if (set.has(match[1]!)) {
+            warnings.push({ file: rel, line: at, text: line.trim() });
+          }
+          match = re.exec(stripped);
+        }
+      }
+    }
+  }
+  return { errors, warnings };
+}
+
+/** A style declaration as JSON writes it: `"fontSize": "12px"`, or the hyphenated spelling. */
+const JSON_FONT_PX_RE = /"font-?[sS]ize"\s*:\s*"(\d+)px"/g;
+const JSON_RADIUS_PX_RE = /"border-?[rR]adius"\s*:\s*"(\d+)px"/g;
+
+/**
+ * Every `"style": { … }` block in a document, as a slice of the raw text and the line it opens on.
+ *
+ * Brace-matched over the SOURCE rather than walked over `JSON.parse`, for one reason: a finding
+ * needs the line it is on, and a parsed object has forgotten where it came from. Strings and their
+ * escapes are tracked, so a `}` inside a value — `"content": "}"`, or a `${…}` template — closes
+ * nothing.
+ *
+ * Nested selector keys are inside the slice by construction, so `&:hover` and `@media` blocks are
+ * read without knowing anything about them.
+ */
+export function jsonStyleBlocks(source: string): { line: number; text: string }[] {
+  const blocks: { line: number; text: string }[] = [];
+  const key = /"style"\s*:\s*\{/g;
+  let match: RegExpExecArray | null = key.exec(source);
+  while (match !== null) {
+    const open = match.index + match[0].length - 1;
+    let depth = 0;
+    let inString = false;
+    let end = source.length;
+    for (let i = open; i < source.length; i += 1) {
+      const c = source[i];
+      if (inString) {
+        if (c === "\\") {
+          i += 1;
+        } else if (c === '"') {
+          inString = false;
+        }
+        continue;
+      }
+      if (c === '"') {
+        inString = true;
+      } else if (c === "{") {
+        depth += 1;
+      } else if (c === "}") {
+        depth -= 1;
+        if (depth === 0) {
+          end = i + 1;
+          break;
+        }
+      }
+    }
+    blocks.push({
+      line: source.slice(0, open).split("\n").length,
+      text: source.slice(open, end),
+    });
+    key.lastIndex = end;
+    match = key.exec(source);
+  }
+  return blocks;
+}
+
+/**
+ * Class names a surface document puts on an element, with the line each is on.
+ *
+ * A document should name none — the kit's elements carry `part` and the document styles them
+ * through it (`ui.md` §3.1) — so this exists to make an exception VISIBLE rather than to support
+ * one. A name here is held to the same orphan rule as one emitted by a lit template: give it a rule
+ * in a stylesheet, or it is a surface opting out of the design system.
+ *
+ * A token carrying a `${…}` is dropped, because a computed name is not a name this gate can check.
+ */
+export function surfaceClasses(source: string): [string, number][] {
+  const found: [string, number][] = [];
+  const re = /"class(?:Name)?"\s*:\s*"([^"]*)"/g;
+  let match: RegExpExecArray | null = re.exec(source);
+  while (match !== null) {
+    const line = source.slice(0, match.index).split("\n").length;
+    for (const name of match[1]!.split(/\s+/).filter(Boolean)) {
+      if (!name.includes("$")) {
+        found.push([name, line]);
+      }
+    }
+    match = re.exec(source);
+  }
+  return found;
+}
+
 /* --------------------------------------------------------------------- source-text scanning --- */
 
 /** Stands in for a `${…}` span so a partially-interpolated token can be recognised and dropped. */
@@ -1361,6 +1499,26 @@ export async function collect(root: string): Promise<StyleCheckResult> {
       underlayCards.push({ classes: card.classes, file: rel, line: card.line });
     }
     for (const [name, line] of extractEmittedClasses(source)) {
+      if (!emitted.has(name)) {
+        emitted.set(name, { file: rel, line, text: name });
+      }
+    }
+  }
+
+  /*
+   * The surfaces: Jx documents whose styling is a `style` object rather than a stylesheet rule.
+   * They are subject to the hex and px rules like any other chrome, and to the orphan rule for the
+   * classes they should not be naming at all. Nothing here DEFINES a class — a document's style
+   * object is scoped to the element it hangs off, so it can never be the answer to somebody else's
+   * class — which is why this walk only ever adds to `emitted`.
+   */
+  for await (const raw of new Glob("src/surfaces/**/*.json").scan(root)) {
+    const rel = scanned(raw);
+    const source = await read(rel);
+    const { errors, warnings } = scanJsonStyle(rel, source);
+    hexErrors.push(...errors);
+    pxWarnings.push(...warnings);
+    for (const [name, line] of surfaceClasses(source)) {
       if (!emitted.has(name)) {
         emitted.set(name, { file: rel, line, text: name });
       }

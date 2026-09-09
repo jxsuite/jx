@@ -2223,27 +2223,6 @@
    than a short window. The menu's own placement floors `top` at 4px so the first rows can never be
    pushed off the top edge; this is the other half — the list scrolls inside itself rather than
    demanding a viewport it cannot have. */
-/* The gear menu's rows.
-
-   A min-width so the widest title and its chord are not crushed into each other: the rows are
-   `Preferences… ⌘,` and `Open Project Settings ⌘⇧,`, and Spectrum sizes a menu to its content. */
-.settings-menu {
-  min-width: 260px;
-}
-
-/* One flex cell for the trailing chord and chevron.
-
-   They must be a SINGLE slotted node. Spectrum's menu-item grid gives `[slot=value]` one cell with
-   `justify-self: end`, applied per assigned node — so a chord and a chevron slotted separately are
-   both pinned to the same right edge, on top of each other. */
-.settings-menu-value {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding-left: 24px;
-  color: var(--fg-dim);
-}
-
 /* ─── Media viewer ────────────────────────────────────────────────────────────
    A pane that SHOWS a file rather than editing one (`media/media-pane.ts`). The stage takes the
    room and the details column stays a fixed width, so the asset is the thing you are looking at

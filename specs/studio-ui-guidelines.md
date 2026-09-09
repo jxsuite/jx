@@ -1,8 +1,8 @@
 # Jx Studio UI/UX Interface Guidelines
 
-**Version:** 0.4.12-draft\
+**Version:** 0.4.13-draft\
 **Status:** Partial\
-**Updated:** 2026-09-08\
+**Updated:** 2026-09-09\
 **Applies to:** `packages/studio/`
 
 ---
@@ -598,6 +598,8 @@ The template is the only writer of what it renders. Both halves of that have bee
 
 **Hyphenated `styleMap` keys are load-bearing.** `check-styles.ts` finds `font-size:` and `border-radius:` textually, so `styleMap({ fontSize: "12px" })` is invisible to the token nudge while `styleMap({ "font-size": "12px" })` is not. Converting a literal class name to a computed one has the mirror effect on the orphan rule.
 
+**The gate reads a surface's `style` object too, and it had to before the surfaces arrived rather than after.** A surface is a Jx document, so its declarations live in JSON rather than in a stylesheet — and the walk was `styles/*.css`, `src/**/*.css` and `src/**/*.ts`, none of which is that. Every surface converted from lit would have taken its colours out of a file the gate reads and put them in one it does not, so the raw-hex rule and the token nudge would have stopped watching Studio one surface at a time, in silence, with the gate still reporting success. `scanJsonStyle` reads only STYLE VALUES — a hex in a `textContent` or a `$description` is content or commentary, and a gate that flagged those is a gate somebody switches off — and it accepts both spellings, so `"fontSize"` is no more invisible than `"font-size"`. `surfaceClasses` holds a class a document names to the same orphan rule, which is how the rule that a document styles through `part` rather than through a class (`ui.md` §3.1) stays enforced rather than remembered.
+
 **Where the rules stop.** `src/canvas/**` is imperative by design, not by neglect: the patcher exists so that nothing re-renders on an edit, the overlay places boxes per pointer-move against measured geometry, and the iframe modules run in a realm lit does not reach. Those modules are named in the gate's `EXCLUDED` map with the reason, so the exemption is a statement rather than a gap.
 
 **LitElement adoption is deferred, deliberately.** Four reasons, recorded so the question restarts from them: shadow DOM is already excluded (§6.2), which removes most of what the component model buys; `@vue/reactivity` owns the update model and is version-pinned to `@jxsuite/runtime`, so `@lit/context` would sit beside it rather than replace it; `probe.idle()` — the predicate that replaced 115 sleeps, and the foundation of the screenshot lane — would gain a second settling condition it cannot see in every element's `updateComplete`; and every defect found in the last audit of the template layer was fixed by a binding, a key or a ref.
@@ -865,6 +867,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.4.13-draft** (2026-09-09) — the styling gate reads a surface document's style object and the classes it names, so a converted surface cannot leave the rules behind.
 - **0.4.12-draft** (2026-09-08) — the prompt's format choice is jx-select, and its projection names the chosen value rather than marking a row.
 - **0.4.11-draft** (2026-09-08) — the prompt's format select is a named defect rather than a pending promise: jx-select has landed and that control carries both spellings ui.md forbids.
 - **0.4.10-draft** (2026-09-02) — A surface that rewrites what the reader typed must make the rewrite visible to the binding.

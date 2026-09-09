@@ -33,6 +33,9 @@ import {
   tokenFallbacks,
   scanBannedIdentifiers,
   scanHex,
+  scanJsonStyle,
+  jsonStyleBlocks,
+  surfaceClasses,
   stackedClasses,
   extractUnderlayCards,
   stripCommentsAndStrings,
@@ -420,6 +423,33 @@ describe("collect", () => {
         "el.style.color = '#123456';",
       ].join("\n"),
     );
+    /* A surface: a Jx document whose styling is a `style` object. Nothing else in this fixture
+       reaches the rules through JSON, so each finding below is proof the walk happens at all. */
+    mkdirSync(join(root, "src", "surfaces"), { recursive: true });
+    writeFileSync(
+      join(root, "src", "surfaces", "panel.json"),
+      JSON.stringify(
+        {
+          tagName: "div",
+          $description: "A hex here is prose, not chrome: #abcdef",
+          style: {
+            color: "#654321",
+            fontSize: "12px",
+            borderRadius: "4px",
+            gap: "12px",
+            background: "var(--bg, #001122)",
+            "&:hover": { color: "#fedcba" },
+          },
+          children: [
+            { tagName: "span", attributes: { class: "from-css surface-orphan" } },
+            { tagName: "span", className: "computed-${state.kind}" },
+            { tagName: "span", textContent: "not a colour: #ff0000" },
+          ],
+        },
+        null,
+        2,
+      ),
+    );
     result = await collect(root);
   });
 
@@ -428,7 +458,11 @@ describe("collect", () => {
   });
 
   test("reports only classes that no stylesheet defines", () => {
-    expect(result.allOrphans.map((o) => o.text)).toEqual(["orphan-one", "orphan-two"]);
+    expect(result.allOrphans.map((o) => o.text)).toEqual([
+      "orphan-one",
+      "orphan-two",
+      "surface-orphan",
+    ]);
   });
 
   test("credits definitions from index.html, canvas.html, .css files and injected CSS", () => {
@@ -450,8 +484,35 @@ describe("collect", () => {
   });
 
   test("still runs the hex and px rules over html and ts", () => {
-    expect(result.hexErrors.map((e) => e.file)).toEqual(["src/app.ts"]);
-    expect(result.pxWarnings.map((w) => w.file)).toEqual(["index.html"]);
+    expect(result.hexErrors.map((e) => e.file)).toEqual([
+      "src/app.ts",
+      "src/surfaces/panel.json",
+      "src/surfaces/panel.json",
+    ]);
+    expect(result.pxWarnings.map((w) => w.file)).toEqual([
+      "index.html",
+      "src/surfaces/panel.json",
+      "src/surfaces/panel.json",
+    ]);
+  });
+
+  test("runs both rules over a surface document's style block, and over nothing else in it", () => {
+    /* The three hexes NOT reported are the whole point: a `$description`, a `textContent` and a
+       `var()` fallback are prose, content and a token reference. A gate that flagged them would be
+       a gate somebody switches off. */
+    const hexes = result.hexErrors.filter((e) => e.file.endsWith("panel.json")).map((e) => e.text);
+    expect(hexes).toEqual(['"color": "#654321",', '"color": "#fedcba"']);
+    // `gap: 12px` is not reported: only font-size and border-radius have exact tokens.
+    const px = result.pxWarnings.filter((w) => w.file.endsWith("panel.json")).map((w) => w.text);
+    expect(px).toEqual(['"fontSize": "12px",', '"borderRadius": "4px",']);
+  });
+
+  test("a class a surface names is held to the orphan rule, and a computed one is not", () => {
+    const orphaned = new Set(result.allOrphans.map((o) => o.text));
+    expect(orphaned.has("surface-orphan")).toBe(true);
+    // Defined in src/a.css, so naming it from a document is not an escape.
+    expect(orphaned.has("from-css")).toBe(false);
+    expect([...orphaned].some((name) => name.startsWith("computed-"))).toBe(false);
   });
 
   test("reports every allow-listed name that is no longer orphaned as stale", () => {
@@ -823,5 +884,90 @@ describe("contrastFindings", () => {
     const outgrown = findings.find((f) => f.text.includes("--accent-fg on --accent"));
     expect(outgrown?.text).toContain("now meets 4.5:1 (21.00)");
     expect(outgrown?.text).toContain("delete its CONTRAST_DEBT entry");
+  });
+});
+
+describe("jsonStyleBlocks", () => {
+  test("takes the whole block, nested selectors and at-rules with it", () => {
+    const src = '{\n  "style": {\n    "color": "red",\n    "&:hover": { "color": "blue" }\n  }\n}';
+    const blocks = jsonStyleBlocks(src);
+    expect(blocks.length).toBe(1);
+    expect(blocks[0]!.line).toBe(2);
+    expect(blocks[0]!.text).toContain('"&:hover"');
+    expect(blocks[0]!.text).toContain('"color": "blue"');
+  });
+
+  test("a brace inside a string closes nothing", () => {
+    /* The reason this is brace-matched over the source rather than walked over `JSON.parse`: a
+       finding needs its line, and a parsed object has forgotten where it came from. So the string
+       tracking has to be real. */
+    const src = String.raw`{ "style": { "content": "\"}\"", "color": "#123456" }, "after": 1 }`;
+    const blocks = jsonStyleBlocks(src);
+    expect(blocks.length).toBe(1);
+    expect(blocks[0]!.text).toContain("#123456");
+    expect(blocks[0]!.text).not.toContain("after");
+  });
+
+  test("finds every block in a document, not only the first", () => {
+    const src = '{ "style": { "a": "1" }, "children": [{ "style": { "b": "2" } }] }';
+    expect(jsonStyleBlocks(src).length).toBe(2);
+  });
+
+  test("a `style` string attribute is not a block", () => {
+    expect(jsonStyleBlocks('{ "attributes": { "style": "color: red" } }')).toEqual([]);
+  });
+});
+
+describe("scanJsonStyle", () => {
+  const at = (src: string) => scanJsonStyle("s.json", src);
+
+  test("reports a raw hex in a style value, at its own line", () => {
+    const src = '{\n  "style": {\n    "color": "#654321"\n  }\n}';
+    expect(at(src).errors).toEqual([{ file: "s.json", line: 3, text: '"color": "#654321"' }]);
+  });
+
+  test("forgives an allow-listed hex and a var() fallback", () => {
+    expect(at('{ "style": { "background": "#ff5f57" } }').errors).toEqual([]);
+    expect(at('{ "style": { "color": "var(--fg, #123456)" } }').errors).toEqual([]);
+  });
+
+  test("reads a style value and nothing else in the document", () => {
+    const src = '{ "textContent": "#123456", "$description": "#abcdef", "style": { "gap": "0" } }';
+    expect(at(src).errors).toEqual([]);
+  });
+
+  test("nudges a tokenizable font-size and border-radius, in either spelling", () => {
+    expect(at('{ "style": { "fontSize": "12px" } }').warnings.length).toBe(1);
+    expect(at('{ "style": { "font-size": "12px" } }').warnings.length).toBe(1);
+    expect(at('{ "style": { "borderRadius": "4px" } }').warnings.length).toBe(1);
+    expect(at('{ "style": { "border-radius": "4px" } }').warnings.length).toBe(1);
+  });
+
+  test("leaves a px with no exact token alone, and a non-tokenizable property alone", () => {
+    expect(at('{ "style": { "fontSize": "13px" } }').warnings).toEqual([]);
+    expect(at('{ "style": { "gap": "12px" } }').warnings).toEqual([]);
+    expect(at('{ "style": { "width": "4px" } }').warnings).toEqual([]);
+  });
+});
+
+describe("surfaceClasses", () => {
+  test("reads both spellings, with the line each is on", () => {
+    const src = '{\n  "attributes": { "class": "row wide" },\n  "className": "tail"\n}';
+    expect(surfaceClasses(src)).toEqual([
+      ["row", 2],
+      ["wide", 2],
+      ["tail", 3],
+    ]);
+  });
+
+  test("drops a computed token and keeps its literal siblings", () => {
+    expect(surfaceClasses('{ "class": "tab tab-${state.kind} active" }')).toEqual([
+      ["tab", 1],
+      ["active", 1],
+    ]);
+  });
+
+  test("finds nothing in a document that names no class, which is every one of them", () => {
+    expect(surfaceClasses('{ "tagName": "div", "attributes": { "part": "row" } }')).toEqual([]);
   });
 });
