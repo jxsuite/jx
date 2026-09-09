@@ -1,34 +1,175 @@
 /// <reference lib="dom" />
 /**
- * Definitions — the visual editor for project-level `$defs` (JSON Schema type definitions).
+ * Data Shapes — the editor for project-level `$defs` (JSON Schema type definitions).
  *
  * Manages entries in project.json `$defs` — reusable type schemas for external datasets, API
  * responses, CMS payloads, etc. Same concept as component-level `$defs` but scoped to the entire
- * project. The on-disk key stays `$defs` and the section key stays `definitions`.
+ * project. The on-disk key stays `$defs` and the section key stays `definitions`; the surface is
+ * named for neither, because a surface is named for what it draws.
  *
- * **The reference field type is complete here for the first time.** `schema-field-ui.ts` has always
- * been able to draw the target picker, and `ui/form-controls.ts` (the content-types builder) has
- * always passed it the available content types — this editor never did, so choosing "reference"
- * emitted a bare `#/content/` that pointed at nothing and offered no way to say what it pointed at.
- * The list is read straight off the live config's `content` map, which is where a
- * `#/content/<type>` pointer resolves.
+ * **The reference field type is complete here.** `schema-field-ui.ts` has always been able to draw
+ * the target picker, and `ui/form-controls.ts` (the content-types builder) has always passed it the
+ * available content types — this editor never did, so choosing "reference" emitted a bare
+ * `#/content/` that pointed at nothing and offered no way to say what it pointed at. The list is
+ * read straight off the live config's `content` map, which is where a `#/content/<type>` pointer
+ * resolves.
+ *
+ * **The markup left.** The section is the `settings-defs` surface (`surfaces/settings-defs.json`),
+ * mounted by `surfaces/settings-defs.ts`; what is here is the section itself — what a shape is,
+ * what a field may be renamed to, and what reaches `project.json`. `renderDefsEditor` is unchanged
+ * as a contract: the registry hands a container to a `render`, and this one mounts a document into
+ * it instead of rendering lit.
+ *
+ * Three things the conversion settled, and each was a defect rather than a translation:
+ *
+ * - **The field cards are this section's own now.** They were `schema-field-ui.ts`'s lit templates,
+ *   shared with the content-types builder, and that sharing is what made every card a Spectrum one.
+ *   That module is untouched and still draws the builder's cards; this section draws its own out of
+ *   the kit, so the two surfaces can move one at a time. Nothing was deleted from it.
+ * - **The nested add row no longer reads itself.** It found its own name field and its own picker
+ *   with `closest()` and `querySelector` at click time — a node found by selector is real only
+ *   until the next render — so what the reader had typed lived in the DOM and nowhere else. Each
+ *   object field now carries its draft in this section's own state ({@link DefsUi.drafts}), which
+ *   is what lets a redraw arrive mid-typing without taking the half-typed name away.
+ * - **A refused rename snaps back because the scope moves, not because a handler writes to an
+ *   input.** The lit version assigned `target.value = fieldName` from inside the change handler. A
+ *   document's binding only writes when the scope value CHANGES, and after a refusal the scope
+ *   still holds what is on disk — so every setter says what the control now holds first
+ *   ({@link say}), and the snap-back is then a real move.
+ *
+ * @docs studio/projects/settings
  */
 
-import { html, render as litRender } from "lit-html";
 import { projectState } from "../store";
 import { commitProjectConfig } from "../tabs/project-config";
-import { addFieldFormTpl, detectFieldFormat, fieldCardTpl, schemaForType } from "./schema-field-ui";
+import { camelToLabel } from "../utils/studio-utils";
+import {
+  FIELD_TYPES,
+  FORMAT_OPTIONS,
+  detectFieldFormat,
+  detectFieldType,
+  schemaForType,
+} from "./schema-field-ui";
+import { mountDefsSurface } from "../surfaces/settings-defs";
 
-import type { FieldHandlers, SchemaProperty } from "./schema-field-ui.js";
+import type { SchemaProperty } from "./schema-field-ui";
+import type {
+  DefsActions,
+  DefsChoice,
+  DefsFieldView,
+  DefsSurfaceHandle,
+  DefsView,
+  NestedFieldView,
+} from "../surfaces/settings-defs";
 import type { ContentTypeSchema, ContentTypeSchemaField } from "@jxsuite/schema/types";
 
-// ─── Module state ─────────────────────────────────────────────────────────────
+// ─── The pickers ──────────────────────────────────────────────────────────────
 
-let selectedDef: string | null = null;
-let showAddField = false;
-let newFieldState = { format: "", name: "", required: false, type: "string" };
-let showNewDef = false;
-let newDefName = "";
+/** The field types, as picker rows. One array, made once: an equal write re-runs no binding. */
+const TYPE_ROWS: DefsChoice[] = FIELD_TYPES.map((type) => ({ label: type, value: type }));
+
+/** The formats, with the empty one named: a blank row says nothing about what choosing it does. */
+const FORMAT_ROWS: DefsChoice[] = FORMAT_OPTIONS.map((format) => ({
+  label: format || "(none)",
+  value: format,
+}));
+
+/** What a new field starts as. */
+const BLANK_FIELD = { format: "", name: "", required: false, type: "string" };
+
+// ─── Per-container state ──────────────────────────────────────────────────────
+
+/** One object field's unsubmitted nested field. */
+interface Draft {
+  name: string;
+  type: string;
+}
+
+/**
+ * What the reader is part-way through, per rendered container.
+ *
+ * Per container rather than per module, for the reason `general-settings.ts` and
+ * `contexts-section.ts` keep their errors that way: Project Settings is a pane document and a pane
+ * can be split, so two containers may be showing this section at once. Module state would make the
+ * second one take the first one's selection away the moment either was redrawn.
+ */
+interface DefsUi {
+  selected: string | null;
+  newOpen: boolean;
+  newName: string;
+  addOpen: boolean;
+  add: { format: string; name: string; required: boolean; type: string };
+  /** Each object field's nested add row, by the field's name on disk. */
+  drafts: Map<string, Draft>;
+  /**
+   * The ONE control whose value has parted from what is on disk, and what it holds.
+   *
+   * One at a time is the whole truth of it: a `change` commits one control, and the decision about
+   * it is synchronous, so there is never a second control in flight. See {@link say}.
+   */
+  echo: { id: string; value: string | boolean } | null;
+}
+
+const uis = new WeakMap<HTMLElement, DefsUi>();
+
+/** The mounted surface, per container — see {@link renderDefsEditor}. */
+const mounts = new WeakMap<HTMLElement, DefsSurfaceHandle>();
+
+/** This container's state, made on first use. */
+function uiFor(container: HTMLElement): DefsUi {
+  let ui = uis.get(container);
+  if (!ui) {
+    ui = {
+      add: { ...BLANK_FIELD },
+      addOpen: false,
+      drafts: new Map(),
+      echo: null,
+      newName: "",
+      newOpen: false,
+      selected: null,
+    };
+    uis.set(container, ui);
+  }
+  return ui;
+}
+
+/** The id of a field's name control. */
+function nameId(key: string): string {
+  return `name:${key}`;
+}
+
+/** The id of a field's required switch. */
+function requiredId(key: string): string {
+  return `required:${key}`;
+}
+
+/** A child is addressed by both halves, because two objects may hold the same child name. */
+function nestedId(parent: string, key: string): string {
+  return `${parent} ${key}`;
+}
+
+/**
+ * Say what a control now holds, before anything is decided about it.
+ *
+ * This is what `live()` did for the lit templates. A document's binding writes only when the SCOPE
+ * value changes, and after a refusal the scope still holds the value on disk — so without this
+ * nothing is written back and the refused text stays in the field. Echoing first makes the
+ * projection that follows a real change.
+ */
+function say(container: HTMLElement, id: string, value: string | boolean): void {
+  uiFor(container).echo = { id, value };
+  renderDefsEditor(container);
+}
+
+/** Forget the echo: every control shows what the file says again. */
+function hush(container: HTMLElement): void {
+  uiFor(container).echo = null;
+}
+
+/** What a control shows: what it was last told it holds, or what is on disk. */
+function shown<T extends string | boolean>(ui: DefsUi, id: string, disk: T): T {
+  return ui.echo?.id === id ? (ui.echo.value as T) : disk;
+}
 
 // ─── Persistence ──────────────────────────────────────────────────────────────
 
@@ -49,19 +190,27 @@ function persist(): void {
   void commitProjectConfig();
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// ─── The project, as it stands now ────────────────────────────────────────────
 
-/** Get the selected $def schema object. */
-function getSelectedDef(): ContentTypeSchema | undefined {
-  const config = projectState?.projectConfig;
-  return config?.$defs?.[selectedDef as string] as ContentTypeSchema | undefined;
+/**
+ * The live `$defs`, read at the moment it is needed.
+ *
+ * The lit version closed over the config at render time and rebuilt every handler on every render,
+ * so a stale closure was impossible only because there were no long-lived ones. The handlers now
+ * outlive a projection, which makes reading through to the store the thing that keeps them honest.
+ */
+function currentDefs(): Record<string, ContentTypeSchema> | undefined {
+  return projectState?.projectConfig?.$defs as Record<string, ContentTypeSchema> | undefined;
+}
+
+/** The selected shape's schema, or `undefined` when nothing is selected or it has gone. */
+function selectedDef(ui: DefsUi): ContentTypeSchema | undefined {
+  return ui.selected === null ? undefined : currentDefs()?.[ui.selected];
 }
 
 /**
  * The content types a `reference` field can point at — the same list the content-types builder
  * resolves through `#/$context/content`, read here without a schema-form context to go through.
- *
- * @returns {string[]}
  */
 function contentTypeNames(): string[] {
   const content = (projectState?.projectConfig as Record<string, unknown> | null | undefined)
@@ -71,546 +220,434 @@ function contentTypeNames(): string[] {
     : [];
 }
 
-// ─── Handlers ─────────────────────────────────────────────────────────────────
+/** The last target list, so an unchanged one is the same array and re-runs no binding. */
+let targetRows: DefsChoice[] = [];
+let targetNames = " ";
 
-/** @param {() => void} rerender */
-function handleNewDef(rerender: () => void) {
-  const name = newDefName.trim();
-  if (!name) {
-    return;
+/** The reference targets, as picker rows. */
+function targets(): DefsChoice[] {
+  const names = contentTypeNames();
+  const id = names.join(" ");
+  if (id !== targetNames) {
+    targetNames = id;
+    targetRows = names.map((name) => ({ label: name, value: name }));
   }
+  return targetRows;
+}
 
-  const config = projectState?.projectConfig;
-  if (!config) {
-    return;
-  }
-  if (!config.$defs) {
-    config.$defs = {};
-  }
-  if (config.$defs[name]) {
-    return;
-  } // Already exists
+// ─── Projection ───────────────────────────────────────────────────────────────
 
-  config.$defs[name] = {
-    properties: {},
-    required: [],
-    type: "object",
+/** Whether a type carries a format at all — only `string` and `array` do. */
+function takesFormat(type: string): boolean {
+  return type === "string" || type === "array";
+}
+
+/** One child of an object field, as the document draws it. */
+function nestedView(
+  ui: DefsUi,
+  parent: string,
+  key: string,
+  schema: SchemaProperty,
+  required: boolean,
+): NestedFieldView {
+  const id = nestedId(parent, key);
+  const type = detectFieldType(schema);
+  return {
+    format: detectFieldFormat(schema),
+    hasFormat: takesFormat(type),
+    key,
+    name: shown(ui, nameId(id), key),
+    parent,
+    required: shown(ui, requiredId(id), required),
+    type,
+  };
+}
+
+/** One field of the selected shape, as the document draws it. */
+function fieldView(
+  ui: DefsUi,
+  key: string,
+  schema: SchemaProperty,
+  required: boolean,
+  hasTargets: boolean,
+): DefsFieldView {
+  const type = detectFieldType(schema);
+  const nested = type === "object";
+  const draft = ui.drafts.get(key);
+  const childRequired = schema.required ?? [];
+  return {
+    children: nested
+      ? Object.entries(schema.properties ?? {}).map(([child, sub]) =>
+          nestedView(ui, key, child, sub, childRequired.includes(child)),
+        )
+      : [],
+    draftName: draft?.name ?? "",
+    draftType: draft?.type ?? "string",
+    /* A reference with nothing to point at draws no picker: a control whose list is empty offers
+       the reader no answer, which is why the lit card gated on the same thing. */
+    extra: type === "reference" && hasTargets ? "reference" : nested ? "nested" : "none",
+    format: detectFieldFormat(schema),
+    hasFormat: takesFormat(type),
+    key,
+    label: camelToLabel(key),
+    name: shown(ui, nameId(key), key),
+    refTarget: schema.$ref ? schema.$ref.replace(/^#\/[^/]+\//, "") : "",
+    required: shown(ui, requiredId(key), required),
+    type,
+  };
+}
+
+/** The whole section, as one value the document can be handed. */
+function project(container: HTMLElement): DefsView {
+  const ui = uiFor(container);
+  const defs = currentDefs() ?? {};
+  const def = selectedDef(ui);
+  const rows = targets();
+  const properties = def?.properties ?? {};
+  const required = def?.required ?? [];
+  return {
+    addFormat: ui.add.format,
+    addHasFormat: takesFormat(ui.add.type),
+    addName: ui.add.name,
+    addRequired: ui.add.required,
+    addState: ui.addOpen && def ? "open" : "closed",
+    addType: ui.add.type,
+    editorState: def ? "editing" : "empty",
+    fields: Object.entries(properties).map(([key, schema]) =>
+      fieldView(ui, key, schema as SchemaProperty, required.includes(key), rows.length > 0),
+    ),
+    formatOptions: FORMAT_ROWS,
+    newName: ui.newName,
+    newState: ui.newOpen ? "open" : "closed",
+    selected: def && ui.selected !== null ? ui.selected : "",
+    shapes: Object.keys(defs).map((name) => ({ name, selected: name === ui.selected })),
+    targets: rows,
+    typeOptions: TYPE_ROWS,
+  };
+}
+
+// ─── The decisions ────────────────────────────────────────────────────────────
+
+/**
+ * What every control in one container does. Built once, when that container's surface is mounted,
+ * and read through to the store on every call.
+ */
+function actionsFor(container: HTMLElement): DefsActions {
+  const ui = uiFor(container);
+  const redraw = (): void => renderDefsEditor(container);
+
+  /** The parent object a nested edit is about, or `undefined` when it has gone underneath. */
+  const parentOf = (parent: string): SchemaProperty | undefined =>
+    selectedDef(ui)?.properties?.[parent] as SchemaProperty | undefined;
+
+  /** One object field's add-row draft, made on first use. */
+  const draftOf = (parent: string): Draft => {
+    let draft = ui.drafts.get(parent);
+    if (!draft) {
+      draft = { name: "", type: "string" };
+      ui.drafts.set(parent, draft);
+    }
+    return draft;
   };
 
-  selectedDef = name;
-  showNewDef = false;
-  newDefName = "";
-  rerender();
-  persist();
-}
-
-/** @param {() => void} rerender */
-function handleAddField(rerender: () => void) {
-  const name = newFieldState.name.trim();
-  if (!name || !selectedDef) {
-    return;
-  }
-
-  const def = getSelectedDef();
-  if (!def) {
-    return;
-  }
-
-  if (!def.properties) {
-    def.properties = {};
-  }
-  def.properties[name] = schemaForType(newFieldState.type, newFieldState.format || undefined);
-
-  if (newFieldState.required) {
-    if (!def.required) {
-      def.required = [];
+  /** A property map with one key renamed, rebuilt in place so a rename never reorders the list. */
+  const renameKey = <T>(properties: Record<string, T>, from: string, to: string): void => {
+    const next: Record<string, T> = {};
+    for (const [key, value] of Object.entries(properties)) {
+      next[key === from ? to : key] = value;
+      delete properties[key];
     }
-    if (!def.required.includes(name)) {
-      def.required.push(name);
+    Object.assign(properties, next);
+  };
+
+  /** Add or remove a name from a `required` list, made on first use. */
+  const markRequired = (
+    holder: { required?: string[] | undefined },
+    key: string,
+    required: boolean,
+  ): void => {
+    if (!holder.required) {
+      holder.required = [];
     }
-  }
-
-  showAddField = false;
-  newFieldState = { format: "", name: "", required: false, type: "string" };
-  rerender();
-  persist();
-}
-
-/**
- * @param {string} fieldName
- * @param {() => void} rerender
- */
-function handleDeleteField(fieldName: string, rerender: () => void) {
-  const def = getSelectedDef();
-  if (!def?.properties) {
-    return;
-  }
-
-  delete def.properties[fieldName];
-  if (def.required) {
-    def.required = def.required.filter((r: string) => r !== fieldName);
-  }
-
-  rerender();
-  persist();
-}
-
-/**
- * @param {string} fieldName
- * @param {() => void} rerender
- */
-function handleToggleRequired(fieldName: string, rerender: () => void) {
-  const def = getSelectedDef();
-  if (!def) {
-    return;
-  }
-  if (!def.required) {
-    def.required = [];
-  }
-
-  const idx = def.required.indexOf(fieldName);
-  if (idx !== -1) {
-    def.required.splice(idx, 1);
-  } else {
-    def.required.push(fieldName);
-  }
-
-  rerender();
-  persist();
-}
-
-/**
- * @param {string} oldName
- * @param {string} newName
- * @param {() => void} rerender
- */
-function handleRenameField(oldName: string, newName: string, rerender: () => void) {
-  const def = getSelectedDef();
-  if (!def?.properties || !newName || def.properties[newName]) {
-    return;
-  }
-
-  const newProps: Record<string, ContentTypeSchemaField> = {};
-  for (const [key, val] of Object.entries(def.properties)) {
-    newProps[key === oldName ? newName : key] = val;
-  }
-  def.properties = newProps;
-
-  if (def.required) {
-    def.required = def.required.map((r: string) => (r === oldName ? newName : r));
-  }
-
-  rerender();
-  persist();
-}
-
-/**
- * @param {string} fieldName
- * @param {string} newType
- * @param {() => void} rerender
- */
-function handleChangeType(fieldName: string, newType: string, rerender: () => void) {
-  const def = getSelectedDef();
-  if (!def?.properties?.[fieldName]) {
-    return;
-  }
-
-  const oldFormat =
-    newType === "string" || newType === "array"
-      ? detectFieldFormat(def.properties[fieldName])
-      : undefined;
-  def.properties[fieldName] = schemaForType(newType, oldFormat || undefined);
-  rerender();
-  persist();
-}
-
-/**
- * Point a reference field at a content type. The pointer form is `#/content/<type>` — the same one
- * `ui/form-controls.ts` writes, so a reference authored here and one authored in the content-types
- * builder are the same value.
- *
- * @param {string} fieldName
- * @param {string} target
- * @param {() => void} rerender
- */
-function handleChangeRefTarget(fieldName: string, target: string, rerender: () => void) {
-  const def = getSelectedDef();
-  if (!def?.properties?.[fieldName]) {
-    return;
-  }
-  def.properties[fieldName] = { $ref: `#/content/${target}` } as ContentTypeSchemaField;
-  rerender();
-  persist();
-}
-
-/**
- * @param {string} fieldName
- * @param {string} format
- * @param {() => void} rerender
- */
-function handleChangeFormat(fieldName: string, format: string, rerender: () => void) {
-  const def = getSelectedDef();
-  if (!def?.properties?.[fieldName]) {
-    return;
-  }
-
-  const prop = def.properties[fieldName];
-  const type = prop.type || "string";
-  def.properties[fieldName] = schemaForType(type, format || undefined);
-  rerender();
-  persist();
-}
-
-// ─── Nested field handlers ───────────────────────────────────────────────────
-
-/**
- * @param {string} parentName
- * @param {{ name: string; type: string; required: boolean }} fieldState
- * @param {() => void} rerender
- */
-function handleAddNestedField(
-  parentName: string,
-  fieldState: { name: string; type: string; required: boolean },
-  rerender: () => void,
-) {
-  const def = getSelectedDef();
-  const parent = def?.properties?.[parentName];
-  if (!parent) {
-    return;
-  }
-
-  if (!parent.properties) {
-    parent.properties = {};
-  }
-  parent.properties[fieldState.name] = schemaForType(fieldState.type);
-
-  if (fieldState.required) {
-    if (!parent.required) {
-      parent.required = [];
+    const at = holder.required.indexOf(key);
+    if (required && at === -1) {
+      holder.required.push(key);
     }
-    if (!parent.required.includes(fieldState.name)) {
-      parent.required.push(fieldState.name);
+    if (!required && at !== -1) {
+      holder.required.splice(at, 1);
     }
-  }
+  };
 
-  rerender();
-  persist();
-}
+  /** A refusal: the control goes back to what the file says, and nothing is written. */
+  const refuse = (): void => {
+    hush(container);
+    redraw();
+  };
 
-/**
- * @param {string} parentName
- * @param {string} childName
- * @param {() => void} rerender
- */
-function handleDeleteNested(parentName: string, childName: string, rerender: () => void) {
-  const def = getSelectedDef();
-  const parent = def?.properties?.[parentName];
-  if (!parent?.properties) {
-    return;
-  }
+  /** A write went through: forget the echo, redraw from the file, and commit it. */
+  const done = (): void => {
+    hush(container);
+    redraw();
+    persist();
+  };
 
-  delete parent.properties[childName];
-  if (parent.required) {
-    parent.required = parent.required.filter((r: string) => r !== childName);
-  }
-
-  rerender();
-  persist();
-}
-
-/**
- * @param {string} parentName
- * @param {string} childName
- * @param {() => void} rerender
- */
-function handleToggleNestedRequired(parentName: string, childName: string, rerender: () => void) {
-  const def = getSelectedDef();
-  const parent = def?.properties?.[parentName];
-  if (!parent) {
-    return;
-  }
-  if (!parent.required) {
-    parent.required = [];
-  }
-
-  const idx = parent.required.indexOf(childName);
-  if (idx !== -1) {
-    parent.required.splice(idx, 1);
-  } else {
-    parent.required.push(childName);
-  }
-
-  rerender();
-  persist();
-}
-
-/**
- * @param {string} parentName
- * @param {string} oldChild
- * @param {string} newChild
- * @param {() => void} rerender
- */
-function handleRenameNested(
-  parentName: string,
-  oldChild: string,
-  newChild: string,
-  rerender: () => void,
-) {
-  const def = getSelectedDef();
-  const parent = def?.properties?.[parentName];
-  if (!parent?.properties || !newChild || parent.properties[newChild]) {
-    return;
-  }
-
-  const newProps: Record<string, ContentTypeSchemaField> = {};
-  for (const [key, val] of Object.entries(parent.properties)) {
-    newProps[key === oldChild ? newChild : key] = val;
-  }
-  parent.properties = newProps;
-
-  if (parent.required) {
-    parent.required = parent.required.map((r: string) => (r === oldChild ? newChild : r));
-  }
-
-  rerender();
-  persist();
-}
-
-/**
- * @param {string} parentName
- * @param {string} childName
- * @param {string} newType
- * @param {() => void} rerender
- */
-function handleChangeNestedType(
-  parentName: string,
-  childName: string,
-  newType: string,
-  rerender: () => void,
-) {
-  const def = getSelectedDef();
-  const parent = def?.properties?.[parentName];
-  if (!parent?.properties?.[childName]) {
-    return;
-  }
-
-  const oldFormat =
-    newType === "string" || newType === "array"
-      ? detectFieldFormat(parent.properties[childName])
-      : undefined;
-  parent.properties[childName] = schemaForType(newType, oldFormat || undefined);
-  rerender();
-  persist();
-}
-
-/**
- * @param {string} parentName
- * @param {string} childName
- * @param {string} format
- * @param {() => void} rerender
- */
-function handleChangeNestedFormat(
-  parentName: string,
-  childName: string,
-  format: string,
-  rerender: () => void,
-) {
-  const def = getSelectedDef();
-  const parent = def?.properties?.[parentName];
-  if (!parent?.properties?.[childName]) {
-    return;
-  }
-
-  const prop = parent.properties[childName];
-  const type = prop.type || "string";
-  parent.properties[childName] = schemaForType(type, format || undefined);
-  rerender();
-  persist();
-}
-
-/** @param {() => void} rerender */
-function handleDeleteDef(rerender: () => void) {
-  if (!selectedDef) {
-    return;
-  }
-  const config = projectState?.projectConfig;
-  if (!config?.$defs?.[selectedDef]) {
-    return;
-  }
-
-  delete config.$defs[selectedDef];
-  selectedDef = null;
-
-  rerender();
-  persist();
+  return {
+    addNested(parent) {
+      const draft = draftOf(parent);
+      const name = draft.name.trim();
+      const holder = parentOf(parent);
+      if (!name || !holder) {
+        return;
+      }
+      if (!holder.properties) {
+        holder.properties = {};
+      }
+      holder.properties[name] = schemaForType(draft.type || "string");
+      /* The name clears and the type does not: adding three strings in a row is the ordinary case,
+         and re-choosing the type each time would be the editor asking what it just heard. */
+      draft.name = "";
+      done();
+    },
+    cancelAdd() {
+      ui.addOpen = false;
+      ui.add = { ...BLANK_FIELD };
+      redraw();
+    },
+    cancelNew() {
+      ui.newOpen = false;
+      ui.newName = "";
+      redraw();
+    },
+    confirmAdd() {
+      const name = ui.add.name.trim();
+      const def = selectedDef(ui);
+      if (!name || !def) {
+        return;
+      }
+      if (!def.properties) {
+        def.properties = {};
+      }
+      def.properties[name] = schemaForType(ui.add.type, ui.add.format || undefined);
+      if (ui.add.required) {
+        markRequired(def, name, true);
+      }
+      ui.addOpen = false;
+      ui.add = { ...BLANK_FIELD };
+      done();
+    },
+    createNew() {
+      const name = ui.newName.trim();
+      const config = projectState?.projectConfig;
+      if (!name || !config) {
+        return;
+      }
+      if (!config.$defs) {
+        config.$defs = {};
+      }
+      if (config.$defs[name]) {
+        return;
+      }
+      config.$defs[name] = { properties: {}, required: [], type: "object" };
+      ui.selected = name;
+      ui.newOpen = false;
+      ui.newName = "";
+      done();
+    },
+    editAddFormat(value) {
+      ui.add.format = value;
+      redraw();
+    },
+    editAddName(value) {
+      ui.add.name = value;
+      redraw();
+    },
+    editAddRequired(required) {
+      ui.add.required = required;
+      redraw();
+    },
+    editAddType(value) {
+      ui.add.type = value;
+      redraw();
+    },
+    editDraftName(parent, value) {
+      draftOf(parent).name = value;
+      redraw();
+    },
+    editDraftType(parent, value) {
+      draftOf(parent).type = value;
+      redraw();
+    },
+    editNew(value) {
+      ui.newName = value;
+      redraw();
+    },
+    openAdd() {
+      ui.addOpen = true;
+      ui.add = { ...BLANK_FIELD };
+      redraw();
+    },
+    openNew() {
+      ui.newOpen = true;
+      ui.newName = "";
+      redraw();
+    },
+    removeField(key) {
+      const def = selectedDef(ui);
+      if (!def?.properties) {
+        return;
+      }
+      delete def.properties[key];
+      if (def.required) {
+        def.required = def.required.filter((name) => name !== key);
+      }
+      done();
+    },
+    removeNested(parent, key) {
+      const holder = parentOf(parent);
+      if (!holder?.properties) {
+        return;
+      }
+      delete holder.properties[key];
+      if (holder.required) {
+        holder.required = holder.required.filter((name) => name !== key);
+      }
+      done();
+    },
+    removeShape() {
+      const defs = currentDefs();
+      if (ui.selected === null || !defs?.[ui.selected]) {
+        return;
+      }
+      delete defs[ui.selected];
+      ui.selected = null;
+      ui.addOpen = false;
+      done();
+    },
+    renameField(key, value) {
+      say(container, nameId(key), value);
+      const def = selectedDef(ui);
+      const name = value.trim();
+      if (!def?.properties || !name || name === key || def.properties[name]) {
+        refuse();
+        return;
+      }
+      renameKey(def.properties, key, name);
+      if (def.required) {
+        def.required = def.required.map((entry) => (entry === key ? name : entry));
+      }
+      done();
+    },
+    renameNested(parent, key, value) {
+      say(container, nameId(nestedId(parent, key)), value);
+      const holder = parentOf(parent);
+      const name = value.trim();
+      if (!holder?.properties || !name || name === key || holder.properties[name]) {
+        refuse();
+        return;
+      }
+      renameKey(holder.properties, key, name);
+      if (holder.required) {
+        holder.required = holder.required.map((entry) => (entry === key ? name : entry));
+      }
+      done();
+    },
+    select(name) {
+      ui.selected = name;
+      ui.addOpen = false;
+      redraw();
+    },
+    setFormat(key, value) {
+      const def = selectedDef(ui);
+      const property = def?.properties?.[key];
+      if (!def?.properties || !property) {
+        return;
+      }
+      def.properties[key] = schemaForType(property.type || "string", value || undefined);
+      done();
+    },
+    setNestedFormat(parent, key, value) {
+      const holder = parentOf(parent);
+      const property = holder?.properties?.[key];
+      if (!holder?.properties || !property) {
+        return;
+      }
+      holder.properties[key] = schemaForType(property.type || "string", value || undefined);
+      done();
+    },
+    setNestedRequired(parent, key, required) {
+      say(container, requiredId(nestedId(parent, key)), required);
+      const holder = parentOf(parent);
+      if (!holder) {
+        refuse();
+        return;
+      }
+      markRequired(holder, key, required);
+      done();
+    },
+    setNestedType(parent, key, value) {
+      const holder = parentOf(parent);
+      const property = holder?.properties?.[key];
+      if (!holder?.properties || !property) {
+        return;
+      }
+      /* A format survives a move between the two types that carry one, and is dropped by any type
+         that does not: `schemaForType` is handed the old format only when the new type takes it. */
+      const format = takesFormat(value) ? detectFieldFormat(property) : undefined;
+      holder.properties[key] = schemaForType(value, format || undefined);
+      done();
+    },
+    setRequired(key, required) {
+      say(container, requiredId(key), required);
+      const def = selectedDef(ui);
+      if (!def) {
+        refuse();
+        return;
+      }
+      markRequired(def, key, required);
+      done();
+    },
+    setTarget(key, value) {
+      const def = selectedDef(ui);
+      if (!def?.properties?.[key]) {
+        return;
+      }
+      /* The pointer form is `#/content/<type>` — the same one `ui/form-controls.ts` writes, so a
+         reference authored here and one authored in the content-types builder are the same value. */
+      def.properties[key] = { $ref: `#/content/${value}` } as ContentTypeSchemaField;
+      done();
+    },
+    setType(key, value) {
+      const def = selectedDef(ui);
+      const property = def?.properties?.[key];
+      if (!def?.properties || !property) {
+        return;
+      }
+      const format = takesFormat(value) ? detectFieldFormat(property) : undefined;
+      def.properties[key] = schemaForType(value, format || undefined);
+      done();
+    },
+  };
 }
 
 // ─── Render ───────────────────────────────────────────────────────────────────
 
 /**
- * Render the Data Shapes editor.
+ * Render Project Settings › Data Shapes into `container`.
+ *
+ * One mount per container, re-used for every subsequent call. The host calls this again for any
+ * change it notices, and a section whose container has meanwhile been given to a DIFFERENT section
+ * finds its document gone — `litRender` into the same node replaces everything in it — so the mount
+ * is rebuilt exactly when it has actually been evicted, and disposed on the way out rather than
+ * left running over detached nodes.
  *
  * @param {HTMLElement} container
  */
-export function renderDefsEditor(container: HTMLElement) {
-  const rerender = () => renderDefsEditor(container);
-  const config = projectState?.projectConfig;
-  const defs = config?.$defs || {};
-  const defNames = Object.keys(defs);
-
-  // Left column — def list
-  const listTpl = html`
-    <div class="settings-list-panel">
-      ${defNames.map(
-        (name) => html`
-          <sp-action-button
-            size="s"
-            ?selected=${selectedDef === name}
-            @click=${() => {
-              selectedDef = name;
-              showAddField = false;
-              rerender();
-            }}
-          >
-            ${name}
-          </sp-action-button>
-        `,
-      )}
-      ${
-        showNewDef
-          ? html`
-              <div class="settings-inline-form">
-                <sp-textfield
-                  size="s"
-                  placeholder="ProductReview"
-                  .value=${newDefName}
-                  @input=${(e: Event) => {
-                    newDefName = (e.target as HTMLInputElement).value;
-                  }}
-                  @keydown=${(e: KeyboardEvent) => {
-                    if (e.key === "Enter") {
-                      handleNewDef(rerender);
-                    }
-                    if (e.key === "Escape") {
-                      showNewDef = false;
-                      rerender();
-                    }
-                  }}
-                ></sp-textfield>
-                <sp-action-button size="s" @click=${() => handleNewDef(rerender)}>
-                  Create
-                </sp-action-button>
-              </div>
-            `
-          : html`
-              <sp-action-button
-                size="s"
-                quiet
-                @click=${() => {
-                  showNewDef = true;
-                  rerender();
-                }}
-              >
-                <sp-icon-add slot="icon"></sp-icon-add> New Data Shape
-              </sp-action-button>
-            `
-      }
-    </div>
-  `;
-
-  // Right column — schema editor
-  let editorTpl;
-  if (!selectedDef || !defs[selectedDef]) {
-    editorTpl = html`<div class="settings-empty-state">
-      Pick a data shape on the left, or create one.
-    </div>`;
-  } else {
-    const def = defs[selectedDef] as ContentTypeSchema;
-    const properties = def.properties || {};
-    const required = def.required || [];
-
-    const handlers: FieldHandlers = {
-      onAddNestedField: (p: string, s: { name: string; type: string; required: boolean }) =>
-        handleAddNestedField(p, s, rerender),
-      onChangeFormat: (n: string, f: string) => handleChangeFormat(n, f, rerender),
-      onChangeNestedFormat: (p: string, c: string, f: string) =>
-        handleChangeNestedFormat(p, c, f, rerender),
-      onChangeNestedType: (p: string, c: string, t: string) =>
-        handleChangeNestedType(p, c, t, rerender),
-      onChangeRefTarget: (n: string, t: string) => handleChangeRefTarget(n, t, rerender),
-      onChangeType: (n: string, t: string) => handleChangeType(n, t, rerender),
-      onDelete: (n: string) => handleDeleteField(n, rerender),
-      onDeleteNested: (p: string, c: string) => handleDeleteNested(p, c, rerender),
-      onRename: (oldN: string, newN: string) => handleRenameField(oldN, newN, rerender),
-      onRenameNested: (p: string, o: string, n: string) => handleRenameNested(p, o, n, rerender),
-      onToggleNestedRequired: (p: string, c: string) => handleToggleNestedRequired(p, c, rerender),
-      onToggleRequired: (n: string) => handleToggleRequired(n, rerender),
-    };
-
-    const targets = contentTypeNames();
-    const fieldCards = Object.entries(properties).map(([name, fieldDef]) =>
-      fieldCardTpl(name, fieldDef as SchemaProperty, required.includes(name), handlers, targets),
-    );
-
-    editorTpl = html`
-      <div class="settings-editor-panel">
-        <div class="settings-editor-header">
-          <h3>${selectedDef}</h3>
-          <sp-action-button
-            size="xs"
-            quiet
-            title="Delete data shape"
-            @click=${() => handleDeleteDef(rerender)}
-          >
-            <sp-icon-delete slot="icon"></sp-icon-delete>
-          </sp-action-button>
-        </div>
-        <div class="schema-field-list">${fieldCards}</div>
-        ${
-          showAddField
-            ? addFieldFormTpl(newFieldState, {
-                onCancel: () => {
-                  showAddField = false;
-                  newFieldState = {
-                    format: "",
-                    name: "",
-                    required: false,
-                    type: "string",
-                  };
-                  rerender();
-                },
-                onConfirm: () => handleAddField(rerender),
-                onInput: (field, value) => {
-                  newFieldState = { ...newFieldState, [field]: value };
-                  rerender();
-                },
-              })
-            : html`
-                <sp-action-button
-                  size="s"
-                  quiet
-                  @click=${() => {
-                    showAddField = true;
-                    rerender();
-                  }}
-                >
-                  <sp-icon-add slot="icon"></sp-icon-add> Add Field
-                </sp-action-button>
-              `
-        }
-      </div>
-    `;
+export function renderDefsEditor(container: HTMLElement): void {
+  let handle = mounts.get(container);
+  if (!handle?.attached()) {
+    handle?.dispose();
+    handle = mountDefsSurface(container, actionsFor(container));
+    mounts.set(container, handle);
   }
-
-  // Every section names itself in an <h3> matching its nav entry (Overview, Contexts, Head,
-  // Packages, Extensions, Deploy, Raw JSON). This one did not, so it was the only section whose
-  // Body never said what the reader had clicked.
-  const tpl = html`
-    <div class="settings-section">
-      <h3 class="settings-section-title">Data Shapes</h3>
-      <div class="settings-two-col">${listTpl} ${editorTpl}</div>
-    </div>
-  `;
-
-  litRender(tpl, container);
+  handle.update(project(container));
 }

@@ -196,7 +196,7 @@ describe("the settings document", () => {
     expect(navLabels()).toEqual(BUILTIN_LABELS);
     expect(navButton("Overview").classList.contains("active")).toBe(true);
     expect(navButton("Overview").getAttribute("aria-current")).toBe("page");
-    expect(body().querySelector('[part="heading"]')?.textContent).toBe("Overview");
+    expect(body().querySelector('[part="title"]')?.textContent).toBe("Overview");
   });
 
   test("the host says whether it is mounted, and stops saying so once detached", async () => {
@@ -228,9 +228,11 @@ describe("the settings document", () => {
     await mount();
     setSettingsSection("extensions");
     await flush(3);
-    expect(body().querySelector(".settings-section-title")?.textContent).toBe("Extensions");
-    expect(body().querySelector(".settings-toggle-package")?.textContent).toBe("@jxsuite/parser");
-    expect(body().querySelector("sp-switch")).not.toBeNull();
+    expect(body().querySelector('[part="title"]')?.textContent).toBe("Extensions");
+    /* A document now: the package name is `[part="package"]` and the install control is the kit's
+       `jx-switch`, not `sp-switch`. */
+    expect(body().querySelector('[part="package"]')?.textContent).toBe("@jxsuite/parser");
+    expect(body().querySelector("jx-switch")).not.toBeNull();
   });
 
   test("mounting twice on the same host does not rebuild the section body", async () => {
@@ -246,18 +248,21 @@ describe("the settings document", () => {
     await flush();
     expect(navButton("Data Shapes").classList.contains("active")).toBe(true);
     expect(navButton("Overview").classList.contains("active")).toBe(false);
-    const labels = [...body().querySelectorAll(".settings-list-panel sp-action-button")].map((b) =>
+    /* Data Shapes is a document now, so the shape list is `[part="shape"]` rather than a panel of
+       Spectrum buttons — the same reader-visible answer, addressed the way a document is. */
+    await flush();
+    const labels = [...body().querySelectorAll('[part="list"] [part="shape"]')].map((b) =>
       b.textContent?.trim(),
     );
-    expect(labels).toContain("Author");
+    expect(labels.some((l) => l?.includes("Author"))).toBe(true);
   });
 
   test("the CSS Variables section survives P6.2 and renders the project's vars", async () => {
     await mount();
     pointer(navButton("CSS Variables"), "click");
     await flush();
-    expect(body().querySelector(".settings-section-title")?.textContent).toBe("CSS Variables");
-    expect(body().querySelectorAll(".css-var-row").length).toBe(1);
+    expect(body().querySelector('[part="title"]')?.textContent).toBe("CSS Variables");
+    expect(body().querySelectorAll('[part="row"]').length).toBe(1);
   });
 
   test("a $studio.settings contribution lands at its declared order", async () => {

@@ -18,13 +18,23 @@
  *
  * A row shows `—` only where there is genuinely nothing to show: a `workspace:`/`file:`/git spec, a
  * package the registry does not answer for, or a host with no registry lookup at all.
+ *
+ * **The markup left.** The section is the `settings-packages` surface
+ * (`surfaces/settings-packages.json`), mounted by `surfaces/settings-packages.ts`; what is here is
+ * the section itself — what the platform is asked, which of two versions is newer, what each verb
+ * runs and what it says when it fails. `renderDependenciesEditor` is unchanged as a contract: the
+ * registry hands a container to a `render`, and this one mounts a document into it instead of
+ * rendering lit.
+ *
+ * @docs studio/projects/settings
  */
 
-import { html, render as litRender } from "lit-html";
 import { getPlatform } from "../platform";
 import { notify } from "../services/notify";
 import { showProgressModal } from "../ui/progress-modal";
 import { isUpgrade, stripRange } from "../packages/semver";
+import { renderPackagesSurface } from "../surfaces/settings-packages";
+import type { PackageRow, PackagesActions, PackagesView } from "../surfaces/settings-packages";
 import type { PackageInfo } from "../types";
 
 interface Update {
@@ -54,6 +64,11 @@ function latestFor(p: PackageInfo): string | null {
 function upgradeFor(p: PackageInfo): string | null {
   const latest = latestFor(p);
   return latest && isUpgrade(p.version, latest) ? latest : null;
+}
+
+/** The package a row's button names, or undefined when the list has moved on since it was drawn. */
+function packageNamed(name: string): PackageInfo | undefined {
+  return (_packages ?? []).find((p) => p.name === name);
 }
 
 async function load() {
@@ -106,16 +121,18 @@ async function onAdd() {
   });
 }
 
-async function onRemove(p: PackageInfo) {
+async function onRemove(name: string) {
   await withBusy(async () => {
-    await getPlatform().removePackage(p.name);
-    notify.success(`Removed ${p.name}.`);
+    await getPlatform().removePackage(name);
+    notify.success(`Removed ${name}.`);
   });
 }
 
-async function onUpdate(p: PackageInfo, latest: string) {
+async function onUpdate(name: string) {
   const platform = getPlatform();
-  if (!platform.setPackageVersions) {
+  const p = packageNamed(name);
+  const latest = p ? upgradeFor(p) : null;
+  if (!platform.setPackageVersions || !p || !latest) {
     return;
   }
   await withBusy(async () => {
@@ -169,113 +186,68 @@ async function onReinstall() {
   });
 }
 
-function row(p: PackageInfo) {
-  const latest = latestFor(p);
-  const upgrade = upgradeFor(p);
-  return html`
-    <sp-table-row>
-      <sp-table-cell>
-        ${p.name}${
-          p.dev ? html`<span style="color:var(--fg-dim);font-size:10px"> · dev</span>` : ""
-        }
-      </sp-table-cell>
-      <sp-table-cell>${p.version}</sp-table-cell>
-      <sp-table-cell>${latest ?? "—"}</sp-table-cell>
-      <sp-table-cell>
-        ${
-          upgrade
-            ? html`<sp-action-button
-                size="s"
-                quiet
-                ?disabled=${_busy}
-                title="Update to ${upgrade}"
-                @click=${() => onUpdate(p, upgrade)}
-              >
-                <sp-icon-refresh slot="icon"></sp-icon-refresh>
-              </sp-action-button>`
-            : ""
-        }
-        <sp-action-button
-          size="s"
-          quiet
-          ?disabled=${_busy}
-          title="Remove"
-          @click=${() => onRemove(p)}
-        >
-          <sp-icon-delete slot="icon"></sp-icon-delete>
-        </sp-action-button>
-      </sp-table-cell>
-    </sp-table-row>
-  `;
+/**
+ * One dependency as the surface draws it.
+ *
+ * The two version columns are answered separately on purpose. `latest` is what the registry said
+ * and is shown whatever it says, `—` when it said nothing at all; `upgrade` is the far narrower
+ * claim that the row is BEHIND that version, and it is the only one an update button may act on.
+ */
+function row(p: PackageInfo): PackageRow {
+  return {
+    dev: Boolean(p.dev),
+    latest: latestFor(p) ?? "—",
+    name: p.name,
+    upgrade: upgradeFor(p) ?? "",
+    version: p.version,
+  };
 }
+
+/** What the section shows right now. */
+function view(): PackagesView {
+  return {
+    addName: _addName,
+    busy: _busy,
+    loading: _packages === null,
+    rows: (_packages ?? []).map((p) => row(p)),
+  };
+}
+
+/**
+ * What the reader may do. One set for the module, because the section's whole state is the module's
+ * — one project's dependencies, and one `bun` run at a time over them.
+ */
+const ACTIONS: PackagesActions = {
+  add: () => {
+    void onAdd();
+  },
+  edit: (value: string) => {
+    /* The echo. The scope has to be told what the field now holds even though nothing about the
+       section changes, because emptying it after a successful add is otherwise a write of "" over
+       a scope that already said "" — no change, no binding, and the installed package's name left
+       sitting in the field. */
+    _addName = value;
+    render();
+  },
+  reinstall: () => {
+    void onReinstall();
+  },
+  remove: (name: string) => {
+    void onRemove(name);
+  },
+  update: (name: string) => {
+    void onUpdate(name);
+  },
+  updateAll: () => {
+    void onUpdateAll();
+  },
+};
 
 function render() {
   if (!_container) {
     return;
   }
-  const pkgs = _packages ?? [];
-  const hasUpdates = pkgs.some((p) => upgradeFor(p) !== null);
-
-  const tpl = html`
-    <div class="settings-section">
-      <h3 class="settings-section-title">Packages</h3>
-      <p class="settings-field-desc">Manage this project's npm dependencies.</p>
-
-      <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">
-        <sp-textfield
-          size="s"
-          placeholder="package-name"
-          .value=${_addName}
-          ?disabled=${_busy}
-          @input=${(e: Event) => {
-            _addName = (e.target as HTMLInputElement).value;
-          }}
-        ></sp-textfield>
-        <sp-action-button size="s" ?disabled=${_busy} @click=${onAdd}>
-          <sp-icon-add slot="icon"></sp-icon-add>
-          Add
-        </sp-action-button>
-        <span style="flex:1"></span>
-        ${
-          hasUpdates
-            ? html`<sp-action-button size="s" ?disabled=${_busy} @click=${onUpdateAll}>
-                Update all
-              </sp-action-button>`
-            : ""
-        }
-        <sp-action-button
-          size="s"
-          quiet
-          ?disabled=${_busy}
-          title="Reinstall (bun install)"
-          @click=${onReinstall}
-        >
-          <sp-icon-refresh slot="icon"></sp-icon-refresh>
-          Reinstall
-        </sp-action-button>
-      </div>
-
-      ${
-        _packages === null
-          ? html`<p class="settings-muted">Loading…</p>`
-          : pkgs.length === 0
-            ? html`<p class="settings-muted">No dependencies.</p>`
-            : html`
-                <sp-table size="s">
-                  <sp-table-head>
-                    <sp-table-head-cell>Package</sp-table-head-cell>
-                    <sp-table-head-cell>Current</sp-table-head-cell>
-                    <sp-table-head-cell>Latest</sp-table-head-cell>
-                    <sp-table-head-cell></sp-table-head-cell>
-                  </sp-table-head>
-                  <sp-table-body> ${pkgs.map((p) => row(p))} </sp-table-body>
-                </sp-table>
-              `
-      }
-    </div>
-  `;
-
-  litRender(tpl, _container);
+  renderPackagesSurface(_container, view(), ACTIONS);
 }
 
 /** @param {HTMLElement} container */

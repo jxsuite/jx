@@ -67,7 +67,7 @@
     {
       "tagName": "h3",
       "attributes": {
-        "part": "heading"
+        "part": "title"
       },
       "textContent": "Overview"
     },

@@ -155,3 +155,15 @@ Every section edits `project.json` at the root of your project, the same file th
   - packages/studio/src/surfaces/settings-head.ts
   - packages/studio/src/surfaces/settings-locales.json
   - packages/studio/src/surfaces/settings-locales.ts
+  - packages/studio/src/surfaces/settings-deploy.json
+  - packages/studio/src/surfaces/settings-deploy.ts
+  - packages/studio/src/surfaces/settings-rawjson.json
+  - packages/studio/src/surfaces/settings-rawjson.ts
+  - packages/studio/src/surfaces/settings-css-vars.json
+  - packages/studio/src/surfaces/settings-css-vars.ts
+  - packages/studio/src/surfaces/settings-extensions.json
+  - packages/studio/src/surfaces/settings-extensions.ts
+  - packages/studio/src/surfaces/settings-packages.json
+  - packages/studio/src/surfaces/settings-packages.ts
+  - packages/studio/src/surfaces/settings-defs.json
+  - packages/studio/src/surfaces/settings-defs.ts

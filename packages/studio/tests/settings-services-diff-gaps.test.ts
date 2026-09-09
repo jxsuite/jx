@@ -143,10 +143,10 @@ describe("css vars — Manage contexts when the section cannot be opened", () =>
 
     const container = document.createElement("div");
     renderCssVarsEditor(container);
-    const link = [...container.querySelectorAll("sp-action-button")].find((b) =>
-      b.textContent?.includes("Manage contexts"),
-    );
-    expect(link).toBeDefined();
+    // A document now, so its content lands a turn later; the footer link is `[part="manage"]`.
+    await flush(2);
+    const link = container.querySelector('[part="manage"]');
+    expect(link).not.toBeNull();
 
     pointer(link!, "click");
     await flush(4);
