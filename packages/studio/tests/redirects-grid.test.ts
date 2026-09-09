@@ -22,6 +22,9 @@ void mock.module("tabulator-tables/dist/css/tabulator.min.css", () => ({}));
 let dialogDriver: ((host: HTMLElement, done: (value: unknown) => void) => void) | null = null;
 
 void mock.module("../src/ui/layers.js", () => ({
+  /* Converted surfaces mount themselves into a layer, so they import `layerHost` from
+     here — a mock without it fails the whole file at import time. */
+  layerHost: () => document.body,
   clearLayerSlot: () => {},
   getLayerSlot: () => document.createElement("div"),
   initLayers: () => {},

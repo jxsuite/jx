@@ -8,6 +8,9 @@ import type { TemplateResult } from "lit-html";
 const popoverHosts: HTMLElement[] = [];
 let dismissed = 0;
 void mock.module("../src/ui/layers.js", () => ({
+  /* Converted surfaces mount themselves into a layer, so they import `layerHost` from
+     here — a mock without it fails the whole file at import time. */
+  layerHost: () => document.body,
   clearLayerSlot: () => {},
   getLayerSlot: () => document.createElement("div"),
   initLayers: () => {},

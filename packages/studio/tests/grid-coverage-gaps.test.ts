@@ -23,6 +23,9 @@ import type { StudioPlatform } from "../src/types";
 void mock.module("tabulator-tables", () => tabulatorMockModule);
 void mock.module("tabulator-tables/dist/css/tabulator.min.css", () => ({}));
 void mock.module("../src/ui/layers.js", () => ({
+  /* Converted surfaces mount themselves into a layer, so they import `layerHost` from
+     here — a mock without it fails the whole file at import time. */
+  layerHost: () => document.body,
   clearLayerSlot: () => {},
   getLayerSlot: () => document.createElement("div"),
   initLayers: () => {},

@@ -897,57 +897,6 @@
   text-align: center;
 }
 
-/* ─── The one blocking progress surface ───────────────────────────────────────
-   Dependency install, and nothing else (§7.3). Its error view has left for Problems, so what is
-   left is a spinner, a line and the two ways out. */
-.progress-modal {
-  position: fixed;
-  inset: 0;
-  /* Above its own scrim. `sp-underlay` paints at `z-index: 1`, and this card — its sibling in the
-     modal layer — sat at `auto`, so the scrim covered it: the surface was VISIBLE (the scrim is
-     translucent) and every click landed on the underlay instead. `Run in the background` was the
-     only way out of a running install and could not be pressed. 1000 is what the other four
-     underlay-bearing cards use (.settings-modal, .about-modal, .new-project-modal, .seo-modal). */
-  z-index: 1000;
-  margin: auto;
-  width: min(420px, calc(100vw - 48px));
-  max-height: calc(100vh - 96px);
-  height: max-content;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  padding: 24px;
-  border: 1px solid var(--border);
-  border-radius: var(--spectrum-corner-radius-200, 8px);
-  background: var(--bg-panel);
-  color: var(--fg);
-  box-shadow: 0 8px 32px rgb(0 0 0 / 40%);
-}
-.progress-head {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
-.progress-lines {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-.progress-title {
-  font-size: var(--spectrum-font-size-100, 14px);
-}
-.progress-status {
-  color: var(--fg-dim);
-  font-size: var(--spectrum-font-size-75, 12px);
-  overflow-wrap: anywhere;
-}
-.progress-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
 /* ─── Project Settings, in the pane ───────────────────────────────────────────
    The settings document (settings/settings-document.ts, panels/settings-pane.ts). Its section
    internals are the .settings-* rules in overlays.css, unchanged: the modal's IA was never the
