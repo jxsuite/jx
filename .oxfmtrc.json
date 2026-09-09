@@ -8,7 +8,10 @@
     "packages/schema/*.json",
     "packages/extension-catalog/catalog.json",
     "**/project.schema.json",
-    "**/document.schema.json"
+    "**/document.schema.json",
+    "packages/studio/styles/tokens.css",
+    "packages/studio/styles/shell-frame.css",
+    "packages/studio/styles/forced-colors.css"
   ],
   "indentStyle": "tab",
   "jsdoc": true

@@ -176,6 +176,8 @@ export const STUDIO_STYLESHEETS: readonly string[] = [
   /* Spectrum's leftovers, second so the tokens above are declared before anything reads them.
      Deleted whole with the last Spectrum component; nothing new belongs in it. */
   "styles/spectrum.css",
+  /* The frame before the surfaces that fill it: generated from styles/shell-frame.json. */
+  "styles/shell-frame.css",
   "styles/shell.css",
   "styles/canvas.css",
   "styles/panels.css",

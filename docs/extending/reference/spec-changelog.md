@@ -484,6 +484,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `studio-ui-guidelines.md`
 
+- **0.4.16-draft** (2026-09-09) — the shell frame's stylesheet is generated from a style block; its markup waits because initShellRefs reads the hosts synchronously.
 - **0.4.15-draft** (2026-09-09) — forced-colors.css is generated from a style block with its reasoning intact; the keyframes stay put and gain the duplicate-name gate.
 - **0.4.14-draft** (2026-09-09) — tokens.css is a build output generated from tokens.json, and stays a linked stylesheet because everything in it is pre-paint.
 - **0.4.13-draft** (2026-09-09) — the styling gate reads a surface document's style object and the classes it names, so a converted surface cannot leave the rules behind.
