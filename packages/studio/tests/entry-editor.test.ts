@@ -120,17 +120,21 @@ async function mount(tab: Tab): Promise<HTMLElement> {
   const host = document.createElement("div");
   document.body.append(host);
   renderEntryMode(surfaceOf(host), tab);
-  await flush();
+  /* The form is a mounted document now: `mountSurface` settles when the document has rendered, and
+     a kit element's own template is one `connectedCallback` after that. */
+  await flush(6);
   return host;
 }
 
 function fieldValue(host: HTMLElement, prop: string): unknown {
-  const el = host.querySelector(`[data-prop="${prop}"] sp-textfield`);
+  const el = host.querySelector(`[data-prop="${prop}"] [part="text"] [part="input"]`);
   return (el as unknown as { value?: unknown } | null)?.value;
 }
 
 function typeInto(host: HTMLElement, prop: string, value: string): void {
-  const el = host.querySelector(`[data-prop="${prop}"] sp-textfield`) as HTMLElement & {
+  const el = host.querySelector(
+    `[data-prop="${prop}"] [part="text"] [part="input"]`,
+  ) as HTMLElement & {
     value: string;
   };
   el.value = value;
@@ -192,9 +196,9 @@ describe("rendering", () => {
     const host = await mount(await openPost());
     expect(host.querySelector(".entry-editor-collection")?.textContent).toBe("blog");
     expect(fieldValue(host, "title")).toBe("Hello");
-    expect(host.querySelectorAll(".entry-editor-fields .style-row").length).toBeGreaterThanOrEqual(
-      4,
-    );
+    expect(
+      host.querySelectorAll('.entry-editor-fields [part="field"]').length,
+    ).toBeGreaterThanOrEqual(4);
   });
 
   test("a valid JSON entry is not accused of missing its required field", async () => {
@@ -237,7 +241,9 @@ describe("rendering", () => {
 
   test("a dynamic enum resolves through the project config", async () => {
     const host = await mount(await openPost());
-    const options = [...host.querySelectorAll("sp-picker sp-menu-item")].map((o) => o.textContent);
+    const options = [...host.querySelectorAll('[part="select"] [part="option"]')].map(
+      (o) => o.textContent,
+    );
     // `#/$context/content` walks project.json — the same resolver every other form host uses.
     expect(options).toContain("authors");
     expect(options).toContain("blog");
@@ -245,13 +251,11 @@ describe("rendering", () => {
 
   test("the form can ask the pane for a second frame", async () => {
     const host = await mount(await openPost());
-    const add = [...host.querySelectorAll("sp-action-button")].find((b) =>
-      b.textContent?.includes("Add"),
-    );
-    expect(add).toBeDefined();
+    const add = host.querySelector('[part="row-add"] [part="control"]');
+    expect(add).not.toBeNull();
     add!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    await flush();
-    expect(host.querySelectorAll(".array-object-row")).toHaveLength(1);
+    await flush(4);
+    expect(host.querySelectorAll('[part="row"]')).toHaveLength(1);
   });
 });
 

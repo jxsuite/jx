@@ -292,7 +292,7 @@ describe("every project-level panel renders with no document open", () => {
   });
 
   test("no tab, no throw — cold, empty, and with a working tree to draw", async () => {
-    installMockPlatform();
+    const { platform } = installMockPlatform();
     setProjectState({
       dirs: new Map(),
       expanded: new Set(),
@@ -320,22 +320,49 @@ describe("every project-level panel renders with no document open", () => {
     const paint = async (): Promise<Map<string, HTMLElement>> => {
       const painted = new Map<string, HTMLElement>();
       for (const panel of panels) {
-        const body = panel.render({ deps, doc: null, rerender: () => {} });
-        // `nothing` is a legal body (PanelBody says so); a TemplateResult is committed for real,
-        // Because a directive that throws does it on commit rather than on construction.
+        const paneCtx = { deps, doc: null, rerender: () => {} };
+        const body = panel.render(paneCtx);
+        // A TemplateResult is committed for real, because a directive that throws does it on
+        // Commit rather than on construction.
         if (typeof body === "object" && "strings" in body) {
           painted.set(panel.id, await renderInto(body));
+          continue;
+        }
+        /* `nothing` is a legal body (PanelBody says so) and it is what a CONVERTED panel returns:
+           its markup is a Jx document that its `afterRender` mounts into the host the Navigator
+           painted. So the loop paints that host and mounts into it, which is what keeps a panel
+           inside this corollary after it moves to the kit. */
+        if (panel.afterRender) {
+          const host = document.createElement("div");
+          host.className = "panel-body";
+          const content = document.createElement("div");
+          content.className = "panel-content";
+          host.append(content);
+          document.body.append(host);
+          panel.afterRender(paneCtx, host);
+          painted.set(panel.id, host);
         }
       }
-      await flush();
+      // A mounted document needs more turns than a lit render: `mountSurface` is asynchronous and
+      // Each kit element settles its own template one `connectedCallback` after that.
+      await flush(6);
       return painted;
     };
 
     // Each pass asserts WHICH body it drew, so "renders three times without throwing" cannot
     // Quietly become "renders the same placeholder three times without throwing".
+    /* The first paint is the one that KICKS the read, and Source Control's body is a document now:
+       it settles inside the same paint that mounts it, so the answer is held back to see what the
+       panel draws while the read is still in flight. */
+    const answer = platform.gitStatus;
+    platform.gitStatus = (() => new Promise(() => {})) as typeof answer;
     const cold = await paint();
     expect(cold.get("git")?.textContent).toContain("Loading");
 
+    platform.gitStatus = answer;
+    // The held-back read never settled, so nothing ever cleared its flag; the panel's own bootstrap
+    // Guard is `no status, not loading, no error`, which is the state a fresh project is in.
+    shell.git.loading = false;
     const settled = await paint();
     expect(settled.get("git")?.textContent).toContain("not tracked by git");
     expect(settled.get("files")?.querySelector(".file-tree")).not.toBeNull();
@@ -350,8 +377,9 @@ describe("every project-level panel renders with no document open", () => {
       remotes: ["origin"],
     } as never;
     const tracked = await paint();
-    expect(tracked.get("git")?.querySelector(".git-branch-name")?.textContent).toBe("main");
-    expect(tracked.get("git")?.querySelector(".git-file-name")?.textContent).toBe("index.json");
+    // Addressed by `part`, because Source Control is a document now (`surfaces/git-panel.json`).
+    expect(tracked.get("git")?.querySelector('[part="branch-name"]')?.textContent).toBe("main");
+    expect(tracked.get("git")?.querySelector('[part="file-name"]')?.textContent).toBe("index.json");
   });
 });
 

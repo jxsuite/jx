@@ -14,8 +14,9 @@
  *   does not have.
  * - A module reaching a node it renders itself, by selector. The node is real until the next render
  *   replaces it, and then the handle is detached or the query finds a sibling pane's copy instead.
- *   `packages/studio/src/panels/target-line.ts` states the rule in its own header — "a module-local
- *   handle rather than a querySelector at call time" — and `ref()` is how you get one.
+ *   `packages/studio/src/surfaces/target-line.ts` states the rule in its own header — "a
+ *   module-local handle rather than a querySelector at call time" — and `ref()` is how you get
+ *   one.
  *
  * Both rules FAIL BOTH WAYS, in this package's idiom (see `scripts/check-pane-singletons.ts` and
  * `scripts/check-styles.ts`'s ALLOWED_ORPHANS): a new occurrence fails, and an allow-list entry
@@ -257,8 +258,6 @@ function isExcluded(file: string): boolean {
  */
 export const SPECTRUM_DEBT: Record<string, number> = {
   "files/files.ts": 1,
-  "new-project/location-fields.ts": 5,
-  "new-project/new-project-modal.ts": 2,
   "panels/block-action-bar.ts": 1,
   "panels/events-panel.ts": 3,
   "panels/head-panel.ts": 1,
@@ -266,8 +265,6 @@ export const SPECTRUM_DEBT: Record<string, number> = {
   "panels/properties-panel.ts": 4,
   "panels/signals-panel.ts": 3,
   "panels/statement-editor.ts": 2,
-  "settings/contributed-section.ts": 2,
-  "settings/preferences-dialog.ts": 1,
   /* Content-type field cards. Rebuilt wholesale on every edit today, so the reader has no window
      in which to diverge — which is why they are here rather than fixed. */
   "settings/schema-field-ui.ts": 9,
@@ -279,16 +276,13 @@ export const SPECTRUM_DEBT: Record<string, number> = {
   "ui/expression-editor.ts": 1,
   "ui/field-row.ts": 2,
   "ui/form-controls.ts": 2,
-  /* The generic schema-driven form: ten controls whose shapes come from a JSON Schema rather than
-     from this file, so each needs its own answer about what the reader can diverge. */
-  "ui/schema-form.ts": 10,
 };
 
 /**
  * Selector reads of a module's own rendered nodes — same discipline, same ratchet.
  *
  * Discharge an entry by taking a handle with `ref()` at the site that renders the node, as
- * `src/panels/target-line.ts` describes, and lowering the number. Note that a legitimately
+ * `src/surfaces/target-line.ts` describes, and lowering the number. Note that a legitimately
  * imperative USE — a measurement, a scrollIntoView, a focus move — is not what this rule objects
  * to; it objects to re-finding the node by selector every time instead of holding it.
  */
@@ -298,7 +292,6 @@ export const SELF_QUERY_DEBT: Record<string, number> = {
      repaints a single Down keystroke walked ten rows". `@keydown` on the tree deleted the
      workaround, the deps entry that carried it, and the query, all at once. */
   "files/files.ts": 4,
-  "new-project/new-project-modal.ts": 1,
   "panels/block-action-bar.ts": 3,
   "panels/bottom-dock.ts": 1,
   "panels/editors.ts": 1,
@@ -423,7 +416,7 @@ export function report(r: Report): { lines: string[]; failed: boolean } {
       r.selfQuery,
       "Modules reaching their own rendered nodes by selector:",
       "The node is only real until the next render, and with a second pane the query can find " +
-        "someone else's. Take a handle with ref(), as src/panels/target-line.ts describes, or add " +
+        "someone else's. Take a handle with ref(), as src/surfaces/target-line.ts describes, or add " +
         "the file to SELF_QUERY_DEBT with the reason.",
     ),
   ];

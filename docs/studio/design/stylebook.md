@@ -8,7 +8,7 @@ code:
   - packages/studio/src/panels/stylebook-panel.ts
   - packages/studio/src/panels/stylebook-layers-panel.ts
   - packages/studio/src/panels/stylebook-doc.ts
-  - packages/studio/src/panels/target-line.ts
+  - packages/studio/src/surfaces/target-line.ts
   - packages/studio/src/panels/style-panel.ts
   - packages/studio/src/panels/pane-context.ts
   - packages/studio/src/style/project-styles.ts

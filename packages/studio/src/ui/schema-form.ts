@@ -1,34 +1,71 @@
 /// <reference lib="dom" />
 /**
- * Schema-form — reusable JSON-Schema → form rendering engine, extracted from the signals panel.
+ * Schema-form — the reusable JSON-Schema → form engine, and the FLOW half of it.
  *
- * Maps schema property types to Spectrum controls (enum → picker, boolean → checkbox,
- * number/integer → number-field, `json-schema` format → multiline JSON editor, array-of-objects →
- * multi-row inline form, other array/object → JSON text field, default → textfield). Hosts commit
- * edits through a single `onChange(patch)` callback; dynamic enum choices resolve through a
- * {@link SchemaFormContext}. Custom controls register by name via {@link registerFormControl} and
- * are consulted first for `ui` overrides.
+ * Maps schema property types to controls (enum → select, boolean → checkbox, number/integer →
+ * number field, `json-schema` format → JSON editor, array-of-objects → a row per item, other
+ * array/object → JSON text, default → text field); hosts commit edits through a single
+ * `onChange(patch)` callback; dynamic enum choices resolve through a {@link SchemaFormContext}.
+ * Custom controls register by name via {@link registerFormControl} and are consulted first for `ui`
+ * overrides.
+ *
+ * **This module decides; `surfaces/schema-form.json` draws.** Every question with an answer — which
+ * control a property gets, what its choices are, which rungs of the value ladder the position
+ * permits, what a keystroke is worth and whether a committed value is refused — is answered here
+ * and handed over as a list of already-decided rows. The document holds the markup, the ARIA and
+ * the style, and holds no schema knowledge at all.
+ *
+ * **Why a host element and not a template.** A Jx document CLEARS the host it is given, so a
+ * document and a lit template can never share a container. {@link mountSchemaForm} therefore hands
+ * back the element the form lives in; a caller that is still lit puts that element in its own tree
+ * exactly where it used to interpolate a template (studio-ui-guidelines.md §9.3, §9.4). Calling it
+ * again with the same `formKey` updates the standing form rather than building a second one, which
+ * is what keeps the caret in a field across the repaint a commit provokes.
  *
  * **Binding is the same ladder as everywhere else** (§6.6). A host that names somewhere a value can
  * come from — route params, the document's signals — gets a Value Source chip on every scalar
- * field, drawn by `ui/dynamic-slot.ts` and named by `ui/value-source.ts`. It replaces two things: a
- * private `Static value / $params/… / Custom…` picker that mounted only when the field ALREADY held
- * a `$ref` (so no form had a gesture for starting a binding at all), and a link button beside the
- * textfield that silently committed the first route param. A host that names no source — the
- * project settings forms — draws no chip and edits fixed values, exactly as before.
+ * field, named by `ui/value-source.ts` and switched by `ui/dynamic-slot.ts`'s per-field, per-rung
+ * memory, which is shared rather than reimplemented: only the DRAWING differs between a form row
+ * and an inspector row. A host that names no source — the project settings forms — draws no chip
+ * and edits fixed values.
+ *
+ * **The one thing still drawn in lit is a registered control.** The registry's contract
+ * (specs/extensions.md §9.1) is a function returning a lit template, and an extension's control is
+ * its own surface rather than part of this one — so the document draws an empty host for it and
+ * this module renders into that host, which is the same seam a lit caller uses to embed the form.
  */
 
-import { html, nothing } from "lit-html";
-import { ifDefined } from "lit-html/directives/if-defined.js";
-import { live } from "lit-html/directives/live.js";
-import { styleMap } from "lit-html/directives/style-map.js";
+import { render as litRender } from "lit-html";
 import { isRef } from "@jxsuite/schema/guards";
-import { renderFieldRow } from "./field-row";
-import { renderDynamicSlot } from "./dynamic-slot";
-import { configFieldSchema } from "./value-source";
+import { createSchemaFormSurface } from "../surfaces/schema-form";
+import { openMenu } from "../surfaces/menu";
+import type { MenuHandle } from "../surfaces/menu";
+import { cloneValue } from "../tabs/doc-op-apply";
+import {
+  effectiveSlotMode,
+  hasStashedSlotValue,
+  slotModeSeed,
+  stashSlotValue,
+  switchSlotMode,
+} from "./dynamic-slot";
+import {
+  VALUE_SOURCE_HINTS,
+  VALUE_SOURCE_LABELS,
+  configFieldSchema,
+  slotCaps,
+} from "./value-source";
+import { rectOf } from "../utils/geometry";
 import type { TemplateResult } from "lit-html";
+import type { SlotMode } from "./value-source";
 import type { SignalOption } from "./dynamic-slot";
 import type { JsonValue } from "../types";
+import type {
+  SchemaFormCellView,
+  SchemaFormFieldView,
+  SchemaFormOption,
+  SchemaFormRowView,
+  SchemaFormSurface,
+} from "../surfaces/schema-form";
 
 /** A (possibly nested) JSON Schema node, covering both object and property level keys. */
 export interface JsonSchema {
@@ -86,7 +123,7 @@ export interface SchemaFormControlArgs {
 
 export type SchemaFormControl = (args: SchemaFormControlArgs) => TemplateResult;
 
-/** Options for {@link renderForm}. */
+/** Options for {@link mountSchemaForm}. */
 export interface RenderFormOptions {
   onChange: (patch: Record<string, unknown>) => void;
   context?: SchemaFormContext | undefined;
@@ -101,9 +138,8 @@ export interface RenderFormOptions {
    * Externally-produced diagnostics, keyed by property name — §7.1's inline tier, sourced.
    *
    * This is how a validator that runs over the WHOLE document reaches the one field it is about:
-   * `jx-validate`'s `project.json` errors (until now wired only to the AI's `write_project_config`,
-   * so a human editing the same file through Settings got no validation at all), Monaco's markers
-   * for the same file open in the code view, and a host's own commit-time rejection.
+   * `jx-validate`'s `project.json` errors, Monaco's markers for the same file open in the code
+   * view, and a host's own commit-time rejection.
    *
    * A host message wins over {@link validateFieldValue}'s intrinsic check, because the host knows
    * things the property schema alone does not — that this enum value names a connector that was
@@ -117,8 +153,8 @@ export interface RenderFormOptions {
    * Report required-but-empty fields inline. Off by default, and that default is §7.1's rule
    * literally applied: a form the user has not touched yet has not committed anything, so painting
    * every required field red the moment it renders is telling them they got something wrong before
-   * they did anything. Required-ness is already shown — the label carries a `*`. A host that
-   * validates on submit turns this on for the render that follows the rejected submit.
+   * they did anything. Required-ness is already shown — the row carries the required mark. A host
+   * that validates on submit turns this on for the render that follows the rejected submit.
    */
   showRequired?: boolean | undefined;
 }
@@ -219,368 +255,10 @@ export function parseNumericField(raw: string, integer: boolean): number {
   return integer ? Math.trunc(Number(raw)) : Number(raw);
 }
 
-/** Plain textfield editing a `{ $ref }` value directly — the fallback when no binding control. */
-function refTextField(key: string, refVal: string, onChange: (next: unknown) => void) {
-  return html`<sp-textfield
-    size="s"
-    label=${key}
-    placeholder=${key}
-    .value=${live(refVal)}
-    @change=${(e: Event) => {
-      const v = (e.target as HTMLInputElement).value.trim();
-      onChange(v ? { $ref: v } : undefined);
-    }}
-  ></sp-textfield>`;
-}
-
-/**
- * Render a single inline field within an array-of-objects row. Dispatches by schema type: enum →
- * picker, boolean → switch, number → number-field, else → textfield.
- *
- * @param {string} key
- * @param {JsonSchema} schema
- * @param {unknown} value
- * @param {(val: unknown) => void} onChange
- * @param {SchemaFormContext | undefined} ctx
- * @param {Record<string, unknown>} [scope] - Scope for dependent enum refs (the parent form value)
- * @param {() => void} [rerender] - Repaint hook, threaded so an inline reference can show its
- *   choices once they load — an async control with no way to ask for a second frame renders its
- *   loading state forever.
- */
-export function renderInlineField(
-  key: string,
-  schema: JsonSchema,
-  value: unknown,
-  onChange: (val: unknown) => void,
-  ctx?: SchemaFormContext,
-  scope?: Record<string, unknown>,
-  rerender?: () => void,
-) {
-  if (isRef(value)) {
-    return refTextField(key, value.$ref, onChange);
-  }
-  const referenceControl =
-    referenceTarget(schema) === null ? undefined : controlRegistry.get("reference");
-  if (referenceControl) {
-    return referenceControl({
-      ctx: ctx ?? NULL_FORM_CONTEXT,
-      key,
-      onChange,
-      rerender,
-      schema,
-      value,
-    });
-  }
-  const enumValues = resolveFormEnum(schema.enum, ctx, scope);
-
-  if (enumValues) {
-    return html`<sp-picker
-      size="s"
-      label=${key}
-      value=${value !== undefined ? String(value) : "__none__"}
-      @change=${(e: Event) =>
-        onChange(
-          (e.target as HTMLInputElement).value === "__none__"
-            ? undefined
-            : (e.target as HTMLInputElement).value,
-        )}
-    >
-      <sp-menu-item value="__none__">—</sp-menu-item>
-      ${enumValues.map((v: string) => html`<sp-menu-item value=${v}>${v}</sp-menu-item>`)}
-    </sp-picker>`;
-  }
-  if (schema.type === "boolean") {
-    return html`<sp-switch
-      size="s"
-      ?checked=${Boolean(value)}
-      @change=${(e: Event) => onChange((e.target as HTMLInputElement).checked)}
-      >${key}</sp-switch
-    >`;
-  }
-  if (schema.type === "integer" || schema.type === "number") {
-    return html`<sp-number-field
-      size="s"
-      label=${key}
-      .value=${value !== undefined ? value : nothing}
-      step=${schema.type === "integer" ? "1" : nothing}
-      @change=${(e: Event) => {
-        const parsed = parseNumericField(
-          (e.target as HTMLInputElement).value,
-          schema.type === "integer",
-        );
-        onChange(Number.isNaN(parsed) ? undefined : parsed);
-      }}
-    ></sp-number-field>`;
-  }
-  return html`<sp-textfield
-    size="s"
-    label=${key}
-    placeholder=${key}
-    .value=${value ?? ""}
-    @input=${(e: Event) => onChange((e.target as HTMLInputElement).value || undefined)}
-  ></sp-textfield>`;
-}
-
-/** Render a debounced multiline JSON text field for array/object schema properties. */
-function renderJsonTextField(currentValue: unknown, ps: JsonSchema, commit: (v: unknown) => void) {
-  /** @type {ReturnType<typeof setTimeout> | undefined} */
-  let debounce: ReturnType<typeof setTimeout> | undefined;
-  return html`<sp-textfield
-    multiline
-    size="s"
-    style="min-height:40px"
-    .value=${currentValue !== undefined ? JSON.stringify(currentValue, null, 2) : ""}
-    placeholder=${ps.default !== undefined ? JSON.stringify(ps.default) : nothing}
-    @input=${(e: Event) => {
-      clearTimeout(debounce);
-      debounce = setTimeout(() => {
-        try {
-          commit(JSON.parse((e.target as HTMLInputElement).value) as unknown);
-        } catch {}
-      }, 500);
-    }}
-  ></sp-textfield>`;
-}
-
-// ─── Per-property control dispatch ───────────────────────────────────────────
-
-/** Render the widget for one schema property, honoring registered-control overrides. */
-function renderPropertyControl(
-  prop: string,
-  ps: JsonSchema,
-  value: Record<string, unknown>,
-  required: Set<string>,
-  opts: RenderFormOptions,
-  ctx: SchemaFormContext,
-): TemplateResult {
-  const currentValue = value[prop];
-  const commit = (next: unknown) => opts.onChange({ [prop]: next });
-  const controlArgs: SchemaFormControlArgs = {
-    ctx,
-    key: prop,
-    onChange: commit,
-    rerender: opts.rerender,
-    schema: ps,
-    value: currentValue,
-  };
-
-  // Explicit ui override → consult the control registry first
-  const overrideName = opts.ui?.[prop]?.control;
-  if (overrideName) {
-    const custom = controlRegistry.get(overrideName);
-    if (custom) {
-      return custom(controlArgs);
-    }
-  }
-
-  /* A ref left in a form whose host named nowhere to bind: no ladder is drawn, so the pointer is
-     edited as the string it is rather than rendered as "[object Object]" in a typed widget. */
-  if (isRef(currentValue) && isBindableField(ps)) {
-    return refTextField(prop, currentValue.$ref, commit);
-  }
-
-  /* A relationship to another collection (`$ref: "#/content/<type>"`) is the registered `reference`
-     control, wherever the form is drawn — §9.2's "one picker" is this dispatch plus the single
-     `registerFormControl("reference", …)` in `ui/form-controls.ts`. It is deliberately NOT an enum:
-     the choices are entry files on disk, so they are read asynchronously and can be stale, and a
-     schema `enum` is a closed set the document itself declares. When the control is not registered
-     (a bare-Bun import of this engine), the field falls through to the plain textfield below rather
-     than rendering nothing. */
-  if (referenceTarget(ps) !== null) {
-    const referenceControl = controlRegistry.get("reference");
-    if (referenceControl) {
-      return referenceControl(controlArgs);
-    }
-  }
-
-  const enumValues = resolveFormEnum(opts.ui?.[prop]?.enum ?? ps.enum, ctx, value);
-  if (enumValues) {
-    return html`
-      <sp-picker
-        size="s"
-        value=${
-          currentValue !== undefined
-            ? String(currentValue)
-            : ps.default !== undefined
-              ? String(ps.default)
-              : "__none__"
-        }
-        @change=${(e: Event) =>
-          commit(
-            (e.target as HTMLInputElement).value === "__none__"
-              ? undefined
-              : (e.target as HTMLInputElement).value,
-          )}
-      >
-        ${!required.has(prop) ? html`<sp-menu-item value="__none__">—</sp-menu-item>` : nothing}
-        ${enumValues.map((val: string) => html`<sp-menu-item value=${val}>${val}</sp-menu-item>`)}
-      </sp-picker>
-    `;
-  }
-  if (ps.type === "boolean") {
-    return html`<sp-checkbox
-      ?checked=${currentValue ?? ps.default ?? false}
-      @change=${(e: Event) => commit((e.target as HTMLInputElement).checked)}
-    ></sp-checkbox>`;
-  }
-  if (ps.type === "integer" || ps.type === "number") {
-    /** @type {ReturnType<typeof setTimeout> | undefined} */
-    let debounce: ReturnType<typeof setTimeout> | undefined;
-    return html`<sp-number-field
-      size="s"
-      min=${ifDefined(ps.minimum)}
-      max=${ifDefined(ps.maximum)}
-      step=${ps.type === "integer" ? "1" : nothing}
-      .value=${currentValue !== undefined ? currentValue : nothing}
-      placeholder=${ps.default != null ? String(ps.default) : nothing}
-      @change=${(e: Event) => {
-        clearTimeout(debounce);
-        debounce = setTimeout(() => {
-          const parsed = parseNumericField(
-            (e.target as HTMLInputElement).value,
-            ps.type === "integer",
-          );
-          commit(Number.isNaN(parsed) ? undefined : parsed);
-        }, 400);
-      }}
-    ></sp-number-field>`;
-  }
-  if (ps.format === "json-schema") {
-    const hasValue =
-      currentValue && typeof currentValue === "object" && Object.keys(currentValue).length > 0;
-    const cv = currentValue as Record<string, unknown>;
-    const isSchemaRef = hasValue && cv.$ref;
-    /** @type {ReturnType<typeof setTimeout> | undefined} */
-    let debounce: ReturnType<typeof setTimeout> | undefined;
-    return html`
-      <div class="schema-param-editor">
-        ${
-          hasValue && !isSchemaRef && cv.properties
-            ? html`
-                <div style="display:flex;flex-wrap:wrap;gap:3px;margin-bottom:4px">
-                  ${Object.entries(cv.properties as Record<string, Record<string, unknown>>).map(
-                    ([k, v]) => html`
-                      <span
-                        style="background:var(--bg);padding:1px 6px;border-radius:var(--radius);font-size:10px;color:var(--fg-dim)"
-                        >${k}: ${v.type ?? "any"}</span
-                      >
-                    `,
-                  )}
-                </div>
-              `
-            : nothing
-        }
-        <sp-textfield
-          multiline
-          size="s"
-          style=${styleMap({
-            fontFamily: "monospace",
-            fontSize: "11px",
-            minHeight: hasValue ? "80px" : "40px",
-          })}
-          .value=${currentValue !== undefined ? JSON.stringify(currentValue, null, 2) : ""}
-          placeholder=${ps.description ?? "JSON Schema defining the data shape…"}
-          @input=${(e: Event) => {
-            clearTimeout(debounce);
-            debounce = setTimeout(() => {
-              try {
-                commit(JSON.parse((e.target as HTMLInputElement).value) as unknown);
-              } catch {}
-            }, 500);
-          }}
-        ></sp-textfield>
-      </div>
-    `;
-  }
-  if (ps.type === "array" && ps.items?.type === "object" && ps.items?.properties) {
-    // Array of objects with defined schema → multi-row inline form
-    const rows: Record<string, unknown>[] = Array.isArray(currentValue)
-      ? (currentValue as Record<string, unknown>[])
-      : [];
-    const itemProps = ps.items.properties;
-    return html`
-      <div class="array-object-field">
-        ${rows.map(
-          (row: Record<string, unknown>, idx: number) => html`
-            <div
-              class="array-object-row"
-              style="display:flex;gap:4px;align-items:center;margin-bottom:4px"
-            >
-              ${Object.entries(itemProps).map(([propKey, propSchema]) =>
-                renderInlineField(
-                  propKey,
-                  propSchema,
-                  row[propKey],
-                  (val) => {
-                    const updated = [...rows];
-                    updated[idx] = { ...updated[idx], [propKey]: val };
-                    commit(updated);
-                  },
-                  ctx,
-                  value,
-                  opts.rerender,
-                ),
-              )}
-              <sp-action-button
-                quiet
-                size="s"
-                @click=${() => {
-                  const updated = rows.filter((_: unknown, i: number) => i !== idx);
-                  commit(updated.length > 0 ? updated : undefined);
-                  opts.rerender?.();
-                }}
-              >
-                <sp-icon-delete slot="icon"></sp-icon-delete>
-              </sp-action-button>
-            </div>
-          `,
-        )}
-        <sp-action-button
-          quiet
-          size="s"
-          @click=${(e: Event) => {
-            e.stopPropagation();
-            const newRow: Record<string, unknown> = {};
-            for (const [k, v] of Object.entries(itemProps)) {
-              if (v.default !== undefined) {
-                newRow[k] = v.default;
-              }
-            }
-            commit([...rows, newRow]);
-            opts.rerender?.();
-          }}
-          >+ Add</sp-action-button
-        >
-      </div>
-    `;
-  }
-  if (ps.type === "array" || ps.type === "object") {
-    return renderJsonTextField(currentValue, ps, commit) as TemplateResult;
-  }
-
-  /** @type {ReturnType<typeof setTimeout> | undefined} */
-  let debounce: ReturnType<typeof setTimeout> | undefined;
-  const ph = ps.default !== undefined ? String(ps.default) : (ps.examples?.[0] ?? "");
-  return html`<sp-textfield
-    size="s"
-    style="flex:1"
-    .value=${currentValue ?? ""}
-    placeholder=${ph || nothing}
-    title=${ps.description || nothing}
-    @input=${(e: Event) => {
-      clearTimeout(debounce);
-      debounce = setTimeout(() => commit((e.target as HTMLInputElement).value || undefined), 400);
-    }}
-  ></sp-textfield>`;
-}
-
-// ─── The Value Source ladder (§6.6) ──────────────────────────────────────────
-
 /**
  * Whether a property is edited as a single value at all. The three that are not — a nested JSON
- * Schema, an object and an array — are edited as raw JSON or as a multi-row sub-form, and a chip
- * offering to replace that editor with a signal pointer would be offering to delete the user's
- * work.
+ * Schema, an object and an array — are edited as raw JSON or as a row per item, and a chip offering
+ * to replace that editor with a signal pointer would be offering to delete the user's work.
  */
 function isBindableField(ps: JsonSchema): boolean {
   return ps.format !== "json-schema" && ps.type !== "object" && ps.type !== "array";
@@ -592,6 +270,17 @@ function refSourcesFor(ctx: SchemaFormContext): SignalOption[] {
     ...(ctx.signals ?? []).map((name) => ({ label: name, value: `#/state/${name}` })),
     ...(ctx.params ?? []).map((name) => ({ label: `$params/${name}`, value: `#/$params/${name}` })),
   ];
+}
+
+/** The empty row's value in a select — an option list cannot offer "absent" as a value. */
+const NONE = "__none__";
+
+/** A value as a control reads it: a string, and never `"[object Object]"`. */
+function asText(value: unknown): string {
+  if (value === undefined || value === null) {
+    return "";
+  }
+  return typeof value === "object" ? JSON.stringify(value, null, 2) : String(value);
 }
 
 // ─── Field validation (§7.1, inline tier) ────────────────────────────────────
@@ -655,60 +344,763 @@ export function validateFieldValue(
   return "";
 }
 
-// ─── Form rendering ──────────────────────────────────────────────────────────
+// ─── What one property turned out to be ──────────────────────────────────────
 
 /**
- * Render form field rows for a JSON Schema's `properties`, committing edits through `opts.onChange`
- * as single-key patches (`undefined` values mean "unset the key").
- *
- * @param {JsonSchema} schema
- * @param {Record<string, unknown>} value - The record being edited
- * @param {RenderFormOptions} opts
- * @returns {TemplateResult}
+ * How this module reads a gesture back. The document reports `commit("port", "8080")` and nothing
+ * else; everything needed to turn that into a patch was decided when the row was derived, so the
+ * plan is where it is kept rather than re-derived from the schema on every keystroke.
  */
-export function renderForm(
+interface FieldPlan {
+  prop: string;
+  schema: JsonSchema;
+  /** How a committed string becomes a document value. */
+  commit: "text" | "ref" | "template" | "select" | "number" | "json" | "none";
+  /** Commit a keystroke after this long; `0` means only on change. */
+  debounceMs: number;
+  /** Item-property schemas, for an array-of-objects field. */
+  itemProps?: Record<string, JsonSchema> | undefined;
+  /** The rows currently held, so a cell edit can rebuild the array. */
+  rows?: Record<string, unknown>[] | undefined;
+  /** The ladder, when this position offers one. */
+  ladder?: { fieldKey: string; mode: SlotMode; offered: SlotMode[]; sources: SignalOption[] };
+  /** A registered control owns the whole field; args are rebuilt for it on every repaint. */
+  control?: SchemaFormControl | undefined;
+  /** Registered controls owning one cell, keyed by the cell's host id. */
+  cellControls?: Map<
+    string,
+    { control: SchemaFormControl; schema: JsonSchema; row: string; key: string }
+  >;
+  /**
+   * Cells that currently hold a pointer, by cell id.
+   *
+   * A cell edits the pointer STRING it is showing, so what it commits has to go back as `{ $ref }`
+   * — which the item property's declared type cannot say, because the property is typed as what the
+   * pointer resolves to.
+   */
+  refCells?: Set<string>;
+}
+
+/** The debounce a JSON editor gets: long, because a half-typed object is not a refusal. */
+const JSON_COMMIT_MS = 500;
+/** The debounce a scalar gets, so the canvas follows a value being typed. */
+const TEXT_COMMIT_MS = 400;
+
+// ─── The controller ──────────────────────────────────────────────────────────
+
+interface FormController {
+  readonly host: HTMLElement;
+  readonly update: (
+    schema: JsonSchema,
+    value: Record<string, unknown>,
+    opts: RenderFormOptions,
+  ) => void;
+  readonly dispose: () => void;
+}
+
+/** Every standing form, by the key its caller named it with. */
+const forms = new Map<string, FormController>();
+
+/** Test hook: take every standing form down, so one test's mount never outlives it. */
+export function resetSchemaForms(): void {
+  for (const controller of forms.values()) {
+    controller.dispose();
+  }
+  forms.clear();
+}
+
+/**
+ * Mount (or update) a schema-driven form and hand back the element it lives in.
+ *
+ * @param {string} formKey Stable identity for this form — the same key updates the standing mount
+ *   instead of building a second one, which is what keeps the caret in a field across a repaint.
+ * @param {JsonSchema} schema
+ * @param {Record<string, unknown>} value The record being edited
+ * @param {RenderFormOptions} opts
+ * @returns {HTMLElement} The form's own host, for a lit caller to place in its tree
+ */
+export function mountSchemaForm(
+  formKey: string,
   schema: JsonSchema,
   value: Record<string, unknown>,
   opts: RenderFormOptions,
-): TemplateResult {
-  const required = new Set(schema.required);
-  const ctx = opts.context ?? NULL_FORM_CONTEXT;
-  const refSources = refSourcesFor(ctx);
+): HTMLElement {
+  sweep(formKey);
+  let controller = forms.get(formKey);
+  if (!controller) {
+    controller = createController();
+    forms.set(formKey, controller);
+  }
+  controller.update(schema, value, opts);
+  return controller.host;
+}
 
-  const propertyFields = Object.entries(schema.properties ?? {}).map(([prop, ps]) => {
-    const labelText = prop + (required.has(prop) ? " *" : "");
-    // Host diagnostics win over the intrinsic check — see RenderFormOptions.errors.
-    const error =
-      opts.errors?.[prop] ||
-      validateFieldValue(ps, value[prop], Boolean(opts.showRequired) && required.has(prop));
-    const count = opts.errorCounts?.[prop];
-    const staticWidget = renderPropertyControl(prop, ps, value, required, opts, ctx);
-    /* A `ui.control` override owns its whole field — the secret control writes an env-var NAME
-       rather than the value it was handed, so a rung switch above it would be editing a different
-       thing than the one on screen. */
-    const laddered =
-      refSources.length > 0 && isBindableField(ps) && !opts.ui?.[prop]?.control
-        ? renderDynamicSlot({
-            allowCustomRef: true,
-            caps: { schema: configFieldSchema(ps) },
-            extraSignals: refSources,
-            fieldKey: `${ctx.fieldKeyPrefix ?? ""}.${prop}`,
-            onChange: (v?: JsonValue) => opts.onChange({ [prop]: v }),
-            staticWidget,
-            stateDefs: [],
-            value: value[prop],
-          })
-        : null;
-    return renderFieldRow({
-      hasValue: false,
-      label: labelText,
-      prop: ps.name || prop,
-      widget: laddered ? laddered.widget : staticWidget,
-      ...(laddered ? { labelExtra: laddered.modeButton } : {}),
-      ...(error ? { error } : {}),
-      ...(count === undefined ? {} : { errorCount: count }),
+/**
+ * Drop forms whose host has been taken out of the page.
+ *
+ * A host is created here and inserted by its caller one lit render later, so "not connected" is the
+ * normal state of the form being mounted right now — which is why the key being asked for is exempt
+ * rather than the sweep being conditional on a count.
+ */
+function sweep(exceptKey: string): void {
+  for (const [key, controller] of forms) {
+    if (key !== exceptKey && !controller.host.isConnected) {
+      controller.dispose();
+      forms.delete(key);
+    }
+  }
+}
+
+function createController(): FormController {
+  let schema: JsonSchema = {};
+  let value: Record<string, unknown> = {};
+  let opts: RenderFormOptions = { onChange: () => {} };
+  let ctx: SchemaFormContext = NULL_FORM_CONTEXT;
+  const plans = new Map<string, FieldPlan>();
+  const timers = new Map<string, ReturnType<typeof setTimeout>>();
+  const controlHosts = new Map<string, HTMLElement>();
+  /** The rung picker, while one is up. One at a time, and it goes down with the form. */
+  let sourceMenu: MenuHandle | null = null;
+
+  const later = (key: string, ms: number, run: () => void): void => {
+    clearTimeout(timers.get(key));
+    if (ms <= 0) {
+      run();
+      return;
+    }
+    timers.set(key, setTimeout(run, ms));
+  };
+  const now = (key: string, run: () => void): void => {
+    clearTimeout(timers.get(key));
+    timers.delete(key);
+    run();
+  };
+
+  const patch = (prop: string, next: unknown): void => {
+    opts.onChange({ [prop]: next });
+  };
+
+  /** Turn a committed string into the document value this plan says it is. */
+  const write = (plan: FieldPlan, raw: string): void => {
+    if (plan.commit === "none") {
+      // The value is not a string this module writes: a control or a row editor owns it.
+      return;
+    }
+    switch (plan.commit) {
+      case "ref": {
+        const trimmed = raw.trim();
+        patch(plan.prop, trimmed ? { $ref: trimmed } : undefined);
+        return;
+      }
+      case "template": {
+        patch(plan.prop, raw);
+        return;
+      }
+      case "select": {
+        patch(plan.prop, raw === NONE ? undefined : raw);
+        return;
+      }
+      case "number": {
+        const parsed = parseNumericField(raw, plan.schema.type === "integer");
+        patch(plan.prop, Number.isNaN(parsed) ? undefined : parsed);
+        return;
+      }
+      case "json": {
+        try {
+          patch(plan.prop, JSON.parse(raw) as unknown);
+        } catch {
+          /* A half-typed object is not a refusal: the last parsable text is what the document
+             keeps, and the field goes on showing what is actually in it. */
+        }
+        return;
+      }
+      default: {
+        patch(plan.prop, raw || undefined);
+      }
+    }
+  };
+
+  /** The field's items, each shallow-copied so a cell edit never writes through to the document. */
+  const cellRows = (plan: FieldPlan): Record<string, unknown>[] => {
+    const copies: Record<string, unknown>[] = [];
+    for (const item of plan.rows ?? []) {
+      copies.push({ ...item });
+    }
+    return copies;
+  };
+
+  const actions = {
+    addRow: (field: string) => {
+      const plan = plans.get(field);
+      if (!plan?.itemProps) {
+        return;
+      }
+      const seed: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(plan.itemProps)) {
+        if (v.default !== undefined) {
+          seed[k] = v.default;
+        }
+      }
+      patch(field, [...cellRows(plan), seed]);
+      opts.rerender?.();
+    },
+    commit: (key: string, raw: string) => {
+      const plan = plans.get(key);
+      if (plan) {
+        now(key, () => write(plan, raw));
+      }
+    },
+    commitChecked: (key: string, checked: boolean) => {
+      const plan = plans.get(key);
+      if (plan) {
+        patch(plan.prop, checked);
+      }
+    },
+    edit: (key: string, raw: string) => {
+      const plan = plans.get(key);
+      if (plan && plan.debounceMs > 0) {
+        later(key, plan.debounceMs, () => write(plan, raw));
+      }
+    },
+    editCell: (field: string, row: string, cell: string, raw: string) => {
+      writeCell(field, row, cell, raw);
+    },
+    editCellChecked: (field: string, row: string, cell: string, checked: boolean) => {
+      writeCell(field, row, cell, checked);
+    },
+    editJson: (key: string, raw: string) => {
+      const plan = plans.get(key);
+      if (plan) {
+        later(key, JSON_COMMIT_MS, () => write(plan, raw));
+      }
+    },
+    pickSource: (key: string, anchor: HTMLElement) => {
+      openSourceMenu(key, anchor);
+    },
+    removeRow: (field: string, row: string) => {
+      const plan = plans.get(field);
+      if (!plan) {
+        return;
+      }
+      const idx = Number(row);
+      const kept = cellRows(plan).filter((_, i) => i !== idx);
+      patch(field, kept.length > 0 ? kept : undefined);
+      opts.rerender?.();
+    },
+  };
+
+  function writeCell(field: string, row: string, cell: string, next: unknown): void {
+    const plan = plans.get(field);
+    if (!plan?.itemProps) {
+      return;
+    }
+    const idx = Number(row);
+    const rows = cellRows(plan);
+    const target = rows[idx];
+    if (!target) {
+      return;
+    }
+    const cellSchema = plan.itemProps[cell];
+    rows[idx] = {
+      ...target,
+      [cell]: coerceCell(cellSchema, next, plan.refCells?.has(`${field}/${row}/${cell}`) ?? false),
+    };
+    patch(field, rows);
+  }
+
+  /** A cell's committed string, as the item property's declared type. */
+  function coerceCell(
+    cellSchema: JsonSchema | undefined,
+    next: unknown,
+    isPointer: boolean,
+  ): unknown {
+    if (typeof next === "boolean") {
+      return next;
+    }
+    const raw = String(next);
+    if (isPointer) {
+      const trimmed = raw.trim();
+      return trimmed ? { $ref: trimmed } : undefined;
+    }
+    if (cellSchema?.type === "integer" || cellSchema?.type === "number") {
+      const parsed = parseNumericField(raw, cellSchema.type === "integer");
+      return Number.isNaN(parsed) ? undefined : parsed;
+    }
+    if (raw === NONE || raw === "") {
+      return undefined;
+    }
+    return raw;
+  }
+
+  /** The rung picker: every source this position permits, one action away (§6.3). */
+  function openSourceMenu(key: string, anchor: HTMLElement): void {
+    const plan = plans.get(key);
+    if (!plan?.ladder) {
+      return;
+    }
+    const { fieldKey, mode, offered, sources } = plan.ladder;
+    const box = rectOf(anchor);
+    sourceMenu?.close();
+    sourceMenu = openMenu({
+      label: "Value source",
+      onClosed: () => {
+        sourceMenu = null;
+      },
+      opener: anchor,
+      origin: { x: box.left, y: box.bottom },
+      region: "value-source",
+      rows: offered.map((rung) => ({
+        checked: (rung === mode ? "true" : "false") as "true" | "false",
+        destructive: false,
+        disabled: false,
+        dividerAbove: false,
+        id: rung,
+        title: VALUE_SOURCE_LABELS[rung],
+      })),
+      run: (id) => {
+        const next = id as SlotMode;
+        if (next === mode) {
+          return;
+        }
+        /* Leaving From data… seeds an empty Fixed value stash with the property's declared default,
+           so unbind-restores-default survives a detour through Mixed text. */
+        const literalDefault = plan.schema.default as JsonValue | undefined;
+        if (
+          mode === "ref" &&
+          literalDefault !== undefined &&
+          !hasStashedSlotValue(fieldKey, "literal")
+        ) {
+          stashSlotValue(fieldKey, "literal", literalDefault);
+        }
+        patch(
+          plan.prop,
+          switchSlotMode(
+            fieldKey,
+            mode,
+            next,
+            cloneValue(value[plan.prop] as JsonValue | undefined),
+            slotModeSeed(next, { extraSignals: sources, literalDefault, stateDefs: [] }),
+          ),
+        );
+      },
     });
-  });
+  }
 
-  return html`${propertyFields}`;
+  /**
+   * Draw one registered control into the host the document announced for it.
+   *
+   * Connectedness is deliberately NOT consulted. A host is announced as it is CREATED, which is one
+   * reconcile step before it is in the page — so "is it connected" answers no for exactly the node
+   * that needs drawing, and a check there is how the control came out empty on first mount.
+   */
+  function paintControl(id: string, host: HTMLElement): void {
+    const plan = plans.get(id);
+    if (plan?.control) {
+      litRender(
+        plan.control({
+          ctx,
+          key: plan.prop,
+          onChange: (next) => patch(plan.prop, next),
+          rerender: opts.rerender,
+          schema: plan.schema,
+          value: value[plan.prop],
+        }),
+        host,
+      );
+      return;
+    }
+    const cell = cellControlFor(id);
+    if (cell) {
+      litRender(cell, host);
+    }
+  }
+
+  /** Redraw every control this form has been handed a host for. */
+  function paintControls(): void {
+    for (const [id, host] of controlHosts) {
+      paintControl(id, host);
+    }
+  }
+
+  /** The template for a cell-level registered control, or undefined when the id names none. */
+  function cellControlFor(id: string): TemplateResult | undefined {
+    for (const plan of plans.values()) {
+      const entry = plan.cellControls?.get(id);
+      if (!entry) {
+        continue;
+      }
+      const rows = plan.rows ?? [];
+      const row = rows[Number(entry.row)] ?? {};
+      return entry.control({
+        ctx,
+        key: entry.key,
+        onChange: (next) => writeCell(plan.prop, entry.row, entry.key, next),
+        rerender: opts.rerender,
+        schema: entry.schema,
+        value: row[entry.key],
+      });
+    }
+    return undefined;
+  }
+
+  const surface: SchemaFormSurface = createSchemaFormSurface(
+    { fields: [] },
+    actions,
+    (id, host) => {
+      controlHosts.set(id, host);
+      paintControl(id, host);
+    },
+  );
+
+  return {
+    dispose() {
+      for (const timer of timers.values()) {
+        clearTimeout(timer);
+      }
+      timers.clear();
+      sourceMenu?.close();
+      sourceMenu = null;
+      controlHosts.clear();
+      plans.clear();
+      surface.dispose();
+    },
+    host: surface.host,
+    update(nextSchema, nextValue, nextOpts) {
+      schema = nextSchema;
+      value = nextValue;
+      opts = nextOpts;
+      ctx = nextOpts.context ?? NULL_FORM_CONTEXT;
+      plans.clear();
+      surface.update({ fields: deriveFields(schema, value, opts, ctx, plans) });
+      paintControls();
+    },
+  };
+}
+
+// ─── Derivation: one schema property becomes one already-decided row ─────────
+
+/** Every row the document draws, and the plan that reads each one's gestures back. */
+function deriveFields(
+  schema: JsonSchema,
+  value: Record<string, unknown>,
+  opts: RenderFormOptions,
+  ctx: SchemaFormContext,
+  plans: Map<string, FieldPlan>,
+): SchemaFormFieldView[] {
+  const required = new Set(schema.required);
+  const sources = refSourcesFor(ctx);
+  return Object.entries(schema.properties ?? {}).map(([prop, ps]) =>
+    deriveField(prop, ps, {
+      ctx,
+      opts,
+      plans,
+      required: required.has(prop),
+      sources,
+      value,
+    }),
+  );
+}
+
+interface DeriveArgs {
+  ctx: SchemaFormContext;
+  opts: RenderFormOptions;
+  plans: Map<string, FieldPlan>;
+  required: boolean;
+  sources: SignalOption[];
+  value: Record<string, unknown>;
+}
+
+function deriveField(prop: string, ps: JsonSchema, args: DeriveArgs): SchemaFormFieldView {
+  const { ctx, opts, plans, required, sources, value } = args;
+  const current = value[prop];
+  const plan: FieldPlan = { commit: "text", debounceMs: TEXT_COMMIT_MS, prop, schema: ps };
+  plans.set(prop, plan);
+
+  // Host diagnostics win over the intrinsic check — see RenderFormOptions.errors.
+  const error =
+    opts.errors?.[prop] || validateFieldValue(ps, current, Boolean(opts.showRequired) && required);
+  const count = opts.errorCounts?.[prop];
+
+  /* A `ui.control` override owns its whole field — the secret control writes an env-var NAME rather
+     than the value it was handed, so a rung switch above it would be editing a different thing than
+     the one on screen. */
+  const overrideName = opts.ui?.[prop]?.control;
+  const override = overrideName ? controlRegistry.get(overrideName) : undefined;
+  const laddered = sources.length > 0 && isBindableField(ps) && !overrideName;
+
+  const row: SchemaFormFieldView = {
+    addLabel: `Add ${prop}`,
+    checked: false,
+    chips: [],
+    description: ps.description ?? "",
+    error,
+    errorCount: count !== undefined && count > 1 ? `×${count}` : "",
+    hasChip: false,
+    hasChips: false,
+    hasCount: count !== undefined && count > 1,
+    hasError: error !== "",
+    hasOptions: false,
+    invalid: error !== "",
+    key: prop,
+    kind: "text",
+    label: prop,
+    max: "",
+    min: "",
+    mono: false,
+    multiline: false,
+    options: [],
+    placeholder: "",
+    prop: ps.name || prop,
+    required,
+    rows: [],
+    source: "fixed",
+    sourceHint: "",
+    sourceLabel: "",
+    sourceLocked: false,
+    sourceName: "",
+    step: "",
+    value: "",
+  };
+
+  if (laddered) {
+    const fieldKey = `${ctx.fieldKeyPrefix ?? ""}.${prop}`;
+    const mode = effectiveSlotMode(fieldKey, current);
+    /* A From data… rung with nothing to point at is a dead end — but this engine only ladders a
+       field once the host has named a source, so the rung always has something in it. */
+    const offered = slotCaps({ schema: configFieldSchema(ps) });
+    plan.ladder = { fieldKey, mode, offered, sources };
+    row.hasChip = true;
+    row.sourceLabel = VALUE_SOURCE_LABELS[mode];
+    row.sourceHint = VALUE_SOURCE_HINTS[mode];
+    row.source = mode === "literal" ? "fixed" : "bound";
+    row.sourceLocked = !offered.some((m) => m !== mode);
+    row.sourceName = row.sourceLocked
+      ? `Value source: ${row.sourceLabel} (no other source available here)`
+      : `Value source: ${row.sourceLabel} — click to change`;
+    if (mode === "ref") {
+      plan.commit = "ref";
+      plan.debounceMs = 0;
+      row.kind = "pointer";
+      row.value = isRef(current) ? current.$ref : "";
+      row.options = sources.map((s) => ({ label: s.label, value: s.value }));
+      row.hasOptions = row.options.length > 0;
+      return row;
+    }
+    if (mode === "template") {
+      plan.commit = "template";
+      plan.debounceMs = 0;
+      row.kind = "template";
+      row.value = String(current ?? "");
+      return row;
+    }
+  }
+
+  if (override) {
+    plan.commit = "none";
+    plan.control = override;
+    row.kind = "control";
+    return row;
+  }
+
+  /* A ref left in a form whose host named nowhere to bind: no ladder is drawn, so the pointer is
+     edited as the string it is rather than rendered as "[object Object]" in a typed widget. */
+  if (isRef(current) && isBindableField(ps)) {
+    plan.commit = "ref";
+    plan.debounceMs = 0;
+    row.kind = "text";
+    row.mono = true;
+    row.value = current.$ref;
+    row.placeholder = prop;
+    return row;
+  }
+
+  /* A relationship to another collection (`$ref: "#/content/<type>"`) is the registered `reference`
+     control, wherever the form is drawn — §9.2's "one picker" is this dispatch plus the single
+     `registerFormControl("reference", …)` in `ui/form-controls.ts`. It is deliberately NOT an enum:
+     the choices are entry files on disk, so they are read asynchronously and can be stale, and a
+     schema `enum` is a closed set the document itself declares. When the control is not registered
+     (a bare-Bun import of this engine), the field falls through to the plain text control below. */
+  if (referenceTarget(ps) !== null) {
+    const reference = controlRegistry.get("reference");
+    if (reference) {
+      plan.commit = "none";
+      plan.control = reference;
+      row.kind = "control";
+      return row;
+    }
+  }
+
+  const enumValues = resolveFormEnum(opts.ui?.[prop]?.enum ?? ps.enum, ctx, value);
+  if (enumValues) {
+    plan.commit = "select";
+    plan.debounceMs = 0;
+    row.kind = "select";
+    row.value =
+      current !== undefined
+        ? String(current)
+        : ps.default !== undefined
+          ? String(ps.default)
+          : NONE;
+    row.options = [
+      ...(required ? [] : [{ label: "—", value: NONE }]),
+      ...enumValues.map((v) => ({ label: v, value: v })),
+    ];
+    return row;
+  }
+  if (ps.type === "boolean") {
+    plan.commit = "none";
+    row.kind = "checkbox";
+    row.checked = Boolean(current ?? ps.default ?? false);
+    return row;
+  }
+  if (ps.type === "integer" || ps.type === "number") {
+    plan.commit = "number";
+    plan.debounceMs = 0;
+    row.kind = "number";
+    row.value = current !== undefined ? String(current) : "";
+    row.placeholder = ps.default != null ? String(ps.default) : "";
+    row.min = ps.minimum !== undefined ? String(ps.minimum) : "";
+    row.max = ps.maximum !== undefined ? String(ps.maximum) : "";
+    row.step = ps.type === "integer" ? "1" : "";
+    return row;
+  }
+  if (ps.format === "json-schema") {
+    plan.commit = "json";
+    row.kind = "json";
+    row.value = current !== undefined ? JSON.stringify(current, null, 2) : "";
+    row.placeholder = ps.description ?? "JSON Schema defining the data shape…";
+    row.chips = shapeChips(current);
+    row.hasChips = row.chips.length > 0;
+    return row;
+  }
+  if (ps.type === "array" && ps.items?.type === "object" && ps.items.properties) {
+    return arrayOfObjects(prop, ps.items.properties, args, plan, row);
+  }
+  if (ps.type === "array" || ps.type === "object") {
+    plan.commit = "json";
+    row.kind = "json";
+    row.value = current !== undefined ? JSON.stringify(current, null, 2) : "";
+    row.placeholder = ps.default !== undefined ? JSON.stringify(ps.default) : "";
+    return row;
+  }
+
+  row.kind = "text";
+  row.value = asText(current);
+  row.placeholder = ps.default !== undefined ? String(ps.default) : (ps.examples?.[0] ?? "");
+  return row;
+}
+
+/** The property chips above a JSON-Schema field: what shape is in there right now. */
+function shapeChips(current: unknown): { key: string; label: string }[] {
+  if (!current || typeof current !== "object") {
+    return [];
+  }
+  const held = current as Record<string, unknown>;
+  if (held.$ref || typeof held.properties !== "object" || held.properties === null) {
+    return [];
+  }
+  return Object.entries(held.properties as Record<string, Record<string, unknown>>).map(
+    ([key, spec]) => ({ key, label: `${key}: ${String(spec.type ?? "any")}` }),
+  );
+}
+
+/** An array whose items have a declared shape: one row per item, one cell per property. */
+function arrayOfObjects(
+  prop: string,
+  itemProps: Record<string, JsonSchema>,
+  args: DeriveArgs,
+  plan: FieldPlan,
+  row: SchemaFormFieldView,
+): SchemaFormFieldView {
+  const held = args.value[prop];
+  const rows = Array.isArray(held) ? (held as Record<string, unknown>[]) : [];
+  plan.commit = "none";
+  plan.itemProps = itemProps;
+  plan.rows = rows;
+  plan.cellControls = new Map();
+  plan.refCells = new Set();
+  row.kind = "rows";
+  row.rows = rows.map((item, idx) => deriveRow(prop, String(idx), item, itemProps, args, plan));
+  return row;
+}
+
+function deriveRow(
+  prop: string,
+  key: string,
+  item: Record<string, unknown>,
+  itemProps: Record<string, JsonSchema>,
+  args: DeriveArgs,
+  plan: FieldPlan,
+): SchemaFormRowView {
+  return {
+    cells: Object.entries(itemProps).map(([cellKey, cellSchema]) =>
+      deriveCell(prop, key, cellKey, cellSchema, item[cellKey], args, plan),
+    ),
+    field: prop,
+    key,
+    removeLabel: `Remove ${prop} ${Number(key) + 1}`,
+  };
+}
+
+function deriveCell(
+  prop: string,
+  rowKey: string,
+  cellKey: string,
+  cellSchema: JsonSchema,
+  held: unknown,
+  args: DeriveArgs,
+  plan: FieldPlan,
+): SchemaFormCellView {
+  const id = `${prop}/${rowKey}/${cellKey}`;
+  const cell: SchemaFormCellView = {
+    checked: false,
+    field: prop,
+    id,
+    key: cellKey,
+    kind: "text",
+    label: cellKey,
+    options: [],
+    row: rowKey,
+    value: "",
+  };
+  if (isRef(held)) {
+    cell.value = held.$ref;
+    plan.refCells?.add(id);
+    return cell;
+  }
+  if (referenceTarget(cellSchema) !== null) {
+    const reference = controlRegistry.get("reference");
+    if (reference) {
+      cell.kind = "control";
+      plan.cellControls?.set(id, {
+        control: reference,
+        key: cellKey,
+        row: rowKey,
+        schema: cellSchema,
+      });
+      return cell;
+    }
+  }
+  const enumValues = resolveFormEnum(cellSchema.enum, args.ctx, args.value);
+  if (enumValues) {
+    cell.kind = "select";
+    cell.value = held !== undefined ? String(held) : NONE;
+    cell.options = [
+      { label: "—", value: NONE },
+      ...enumValues.map((v: string): SchemaFormOption => ({ label: v, value: v })),
+    ];
+    return cell;
+  }
+  if (cellSchema.type === "boolean") {
+    cell.kind = "checkbox";
+    cell.checked = Boolean(held);
+    return cell;
+  }
+  if (cellSchema.type === "integer" || cellSchema.type === "number") {
+    cell.kind = "number";
+    cell.value = held !== undefined ? String(held) : "";
+    return cell;
+  }
+  cell.value = asText(held);
+  return cell;
 }

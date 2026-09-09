@@ -62,8 +62,9 @@ describe("attachJumpBarHost", () => {
     return el.closest<HTMLElement>(".pane")!.style.getPropertyValue("--jump-bar-h");
   }
 
+  /* Parts, not classes: the bar is `src/surfaces/jump-bar.json` now, and a document emits none. */
   function crumbsIn(el: HTMLElement): (string | undefined)[] {
-    return [...el.querySelectorAll(".jb-crumb")].map((c) => c.textContent?.trim());
+    return [...el.querySelectorAll('[part="crumb"]')].map((c) => c.textContent?.trim());
   }
 
   beforeEach(() => {
@@ -81,16 +82,16 @@ describe("attachJumpBarHost", () => {
   test("handed the host it already has, it keeps the painted bar node for node", async () => {
     const host = makeHost("jb-host-a");
     attachJumpBarHost(PRIMARY_PANE, host);
-    await flush(1);
-    const painted = host.querySelector(".jump-bar");
+    await flush(3);
+    const painted = host.querySelector('nav[part="bar"]');
     expect(crumbsIn(host)).toEqual(["My Site", "index.json"]);
 
     attachJumpBarHost(PRIMARY_PANE, host);
-    await flush(1);
+    await flush(3);
     // The SAME element, not an equal one: the grid re-runs its `ref()` on every cell repaint, so a
     // Re-attach that blanked the host and painted it again would throw the bar's DOM away on every
     // Unrelated repaint of the pane.
-    expect(host.querySelector(".jump-bar")).toBe(painted);
+    expect(host.querySelector('nav[part="bar"]')).toBe(painted);
     expect(crumbsIn(host)).toEqual(["My Site", "index.json"]);
     expect(bandOf(host)).toBe("24px");
   });
@@ -99,14 +100,14 @@ describe("attachJumpBarHost", () => {
     const first = makeHost("jb-host-a");
     const second = makeHost("jb-host-b");
     attachJumpBarHost(PRIMARY_PANE, first);
-    await flush(1);
+    await flush(3);
     expect(crumbsIn(first)).toEqual(["My Site", "index.json"]);
 
     attachJumpBarHost(PRIMARY_PANE, second);
-    await flush(1);
+    await flush(3);
     // The cell being disposed still holds this bar's DOM, and the lit part that owns it is about to
     // Be unreachable — so the handover blanks it and gives its band back.
-    expect(first.querySelector(".jump-bar")).toBeNull();
+    expect(first.querySelector('nav[part="bar"]')).toBeNull();
     expect(bandOf(first)).toBe("0px");
     expect(crumbsIn(second)).toEqual(["My Site", "index.json"]);
     expect(bandOf(second)).toBe("24px");
@@ -115,15 +116,15 @@ describe("attachJumpBarHost", () => {
   test("handed null, it detaches the pane and never paints it again", async () => {
     const host = makeHost("jb-host-a");
     attachJumpBarHost(PRIMARY_PANE, host);
-    await flush(1);
+    await flush(3);
     expect(crumbsIn(host)).toEqual(["My Site", "index.json"]);
 
     attachJumpBarHost(PRIMARY_PANE, null);
-    expect(host.querySelector(".jump-bar")).toBeNull();
+    expect(host.querySelector('nav[part="bar"]')).toBeNull();
     expect(bandOf(host)).toBe("0px");
     // Detached means forgotten: a later repaint has no host to find.
     renderJumpBar();
-    expect(host.querySelector(".jump-bar")).toBeNull();
+    expect(host.querySelector('nav[part="bar"]')).toBeNull();
   });
 });
 
@@ -168,7 +169,7 @@ describe("the rename field's own name", () => {
     let row = findRow(h.container, name);
     if (!row.classList.contains("expanded")) {
       pointer(row, "click");
-      await flush(1);
+      await flush(3);
       row = findRow(h.container, name);
     }
     const editor = row.nextElementSibling;
@@ -205,7 +206,7 @@ describe("the rename field's own name", () => {
     // The accepted case commits nothing and repaints nothing, so the refusal is cleared in state
     // And the panel shows it on its next paint.
     h.repaint();
-    await flush(1);
+    await flush(3);
     editor = await expand(h, "$a");
     expect(alertText(editor)).toBeUndefined();
     expect(editor.querySelector('[data-prop="Name"] [role="alert"]')).toBeNull();
@@ -215,14 +216,14 @@ describe("the rename field's own name", () => {
     const h = mountSignals();
     let editor = await expand(h, "$a");
     commitName(editor, " $a ");
-    await flush(1);
+    await flush(3);
     const state = (activeTab.value?.doc.document.state ?? {}) as Record<string, unknown>;
     expect(Object.keys(state)).toEqual(["$a", "$b"]);
     expect(state.$a).toEqual({ default: 1 } as never);
     // And it is not refused either: an entry cannot collide with itself, which is what a fall
     // Through into the collision check would report.
     h.repaint();
-    await flush(1);
+    await flush(3);
     editor = await expand(h, "$a");
     expect(alertText(editor)).toBeUndefined();
   });

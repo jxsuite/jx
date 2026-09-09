@@ -1,4 +1,4 @@
-import { renderInto, resetStudioState, resetWorkspaceWithTab } from "./harness";
+import { flush, renderInto, resetStudioState, resetWorkspaceWithTab } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { activeTab, closeAllTabs } from "../src/workspace/workspace";
 import { shell } from "../src/shell";
@@ -51,8 +51,16 @@ function setupLayoutTab() {
   return tab;
 }
 
+/**
+ * Paint the panel and let the Target Line's document settle.
+ *
+ * The line is a mounted surface now (`surfaces/target-line.json`), not a lit fragment: the panel's
+ * own render puts an empty host on screen and the document lands a couple of turns later.
+ */
 async function renderPanel() {
-  return renderInto(renderStylePanelTemplate({ getCanvasMode: () => "stylebook" }));
+  const c = await renderInto(renderStylePanelTemplate({ getCanvasMode: () => "stylebook" }));
+  await flush(2);
+  return c;
 }
 
 beforeEach(() => {
@@ -70,7 +78,9 @@ describe("the project-wide warning band", () => {
   test("with no answer yet it says it is counting, and asks exactly once per paint cycle", async () => {
     setupLayoutTab();
     const c = await renderPanel();
-    expect(c.querySelector(".tl-warning-text")!.textContent).toContain("counting the elements");
+    expect(c.querySelector('[part="warning-text"]')!.textContent).toContain(
+      "counting the elements",
+    );
     expect(loadMock).toHaveBeenCalledWith({ tagName: "h1" });
   });
 
@@ -78,7 +88,7 @@ describe("the project-wide warning band", () => {
     setupLayoutTab();
     usage = { message: "no backend", status: "failed" };
     const c = await renderPanel();
-    expect(c.querySelector(".tl-warning-text")!.textContent).toContain("is unknown");
+    expect(c.querySelector('[part="warning-text"]')!.textContent).toContain("is unknown");
     // Settled: nothing is re-requested.
     expect(loadMock).not.toHaveBeenCalled();
   });
@@ -87,42 +97,46 @@ describe("the project-wide warning band", () => {
     setupLayoutTab();
     usage = ready([{ count: 7, path: "pages/index.json" }], 7);
     let c = await renderPanel();
-    expect(c.querySelector(".tl-warning-text")!.textContent).toContain("7 elements in 1 file");
-    expect(c.querySelector(".tl-affected")).toBeNull();
+    expect(c.querySelector('[part="warning-text"]')!.textContent).toContain("7 elements in 1 file");
+    expect(c.querySelector('[part="affected"]')).toBeNull();
 
-    c.querySelector(".tl-warning-action")!.dispatchEvent(
+    c.querySelector('[part="warning-action"]')!.dispatchEvent(
       new MouseEvent("click", { bubbles: true }),
     );
     c = await renderPanel();
-    expect(c.querySelector(".tl-affected-path")!.textContent).toBe("pages/index.json");
+    expect(c.querySelector('[part="affected-path"]')!.textContent).toBe("pages/index.json");
 
     // And it folds away again — the disclosure is a toggle with an idempotent reset behind it.
-    c.querySelector(".tl-warning-action")!.dispatchEvent(
+    c.querySelector('[part="warning-action"]')!.dispatchEvent(
       new MouseEvent("click", { bubbles: true }),
     );
     c = await renderPanel();
-    expect(c.querySelector(".tl-affected")).toBeNull();
+    expect(c.querySelector('[part="affected"]')).toBeNull();
   });
 
   test("one element in one file reads in the singular", async () => {
     setupLayoutTab();
     usage = ready([{ count: 1, path: "pages/index.json" }], 1);
     const c = await renderPanel();
-    expect(c.querySelector(".tl-warning-text")!.textContent).toContain("1 element in 1 file");
+    expect(c.querySelector('[part="warning-text"]')!.textContent).toContain("1 element in 1 file");
   });
 
   test("a tag nothing uses says so, rather than reporting a count of zero", async () => {
     setupLayoutTab();
     usage = ready([], 0);
     const c = await renderPanel();
-    expect(c.querySelector(".tl-warning-text")!.textContent).toContain("no element in the project");
+    expect(c.querySelector('[part="warning-text"]')!.textContent).toContain(
+      "no element in the project",
+    );
   });
 
   test("a pending sweep is still counting", async () => {
     setupLayoutTab();
     usage = { status: "pending" };
     const c = await renderPanel();
-    expect(c.querySelector(".tl-warning-text")!.textContent).toContain("counting the elements");
+    expect(c.querySelector('[part="warning-text"]')!.textContent).toContain(
+      "counting the elements",
+    );
   });
 
   test("a page document with the same tag is document-scoped, with no band at all", async () => {
@@ -130,8 +144,8 @@ describe("the project-wide warning band", () => {
     tab.documentPath = "pages/index.json";
     usage = ready([], 0);
     const c = await renderPanel();
-    expect(c.querySelector(".tl-warning")).toBeNull();
-    expect(c.querySelector(".tl-scope")!.textContent).toContain("all <h1> in this document");
+    expect(c.querySelector('[part="warning"]')).toBeNull();
+    expect(c.querySelector('[part="scope"]')!.textContent).toContain("all <h1> in this document");
     expect(activeTab.value!.documentPath).toBe("pages/index.json");
   });
 });
@@ -151,9 +165,9 @@ describe("project.json is the widest scope, not the narrowest", () => {
     tab.documentPath = "project.json";
     usage = ready([{ count: 4, path: "pages/index.json" }], 4);
     const c = await renderPanel();
-    expect(c.querySelector(".tl-scope")!.textContent).toContain("all <h1> in this project");
-    expect((c.querySelector(".tl-scope") as HTMLElement).dataset.scope).toBe("project");
-    expect(c.querySelector(".tl-warning-text")!.textContent).toContain("4 elements in 1 file");
+    expect(c.querySelector('[part="scope"]')!.textContent).toContain("all <h1> in this project");
+    expect((c.querySelector('[part="scope"]') as HTMLElement).dataset.scope).toBe("project");
+    expect(c.querySelector('[part="warning-text"]')!.textContent).toContain("4 elements in 1 file");
   });
 
   test("a config reached from a sub-directory is still the project stylesheet", async () => {
@@ -161,7 +175,7 @@ describe("project.json is the widest scope, not the narrowest", () => {
     tab.documentPath = "sites/blog/project.json";
     usage = ready([], 3);
     const c = await renderPanel();
-    expect(c.querySelector(".tl-scope")!.textContent).toContain("all <h1> in this project");
+    expect(c.querySelector('[part="scope"]')!.textContent).toContain("all <h1> in this project");
   });
 
   test("a document merely NAMED project.json under another name is not it", async () => {
@@ -169,8 +183,8 @@ describe("project.json is the widest scope, not the narrowest", () => {
     tab.documentPath = "pages/my-project.json";
     usage = ready([], 0);
     const c = await renderPanel();
-    expect(c.querySelector(".tl-warning")).toBeNull();
-    expect(c.querySelector(".tl-scope")!.textContent).toContain("all <h1> in this document");
+    expect(c.querySelector('[part="warning"]')).toBeNull();
+    expect(c.querySelector('[part="scope"]')!.textContent).toContain("all <h1> in this document");
   });
 
   test("with no tag selected the root style still warns, and says unknown rather than zero", async () => {
@@ -181,12 +195,12 @@ describe("project.json is the widest scope, not the narrowest", () => {
     shell.stylebook.selection = null;
     usage = ready([{ count: 9, path: "pages/index.json" }], 9);
     const c = await renderPanel();
-    expect(c.querySelector(".tl-scope")!.textContent).toContain("every page in this project");
-    expect(c.querySelector(".tl-warning-text")!.textContent).toContain(
+    expect(c.querySelector('[part="scope"]')!.textContent).toContain("every page in this project");
+    expect(c.querySelector('[part="warning-text"]')!.textContent).toContain(
       "how many pages that is, is unknown",
     );
     // No tag means no query and no file list — so no disclosure to offer, and nothing asked.
-    expect(c.querySelector(".tl-warning-action")).toBeNull();
+    expect(c.querySelector('[part="warning-action"]')).toBeNull();
     expect(loadMock).not.toHaveBeenCalled();
   });
 
@@ -195,7 +209,7 @@ describe("project.json is the widest scope, not the narrowest", () => {
     tab.documentPath = "pages/index.json";
     shell.stylebook.selection = null;
     const c = await renderPanel();
-    expect(c.querySelector(".tl-scope")!.textContent).toContain("this element");
-    expect(c.querySelector(".tl-warning")).toBeNull();
+    expect(c.querySelector('[part="scope"]')!.textContent).toContain("this element");
+    expect(c.querySelector('[part="warning"]')).toBeNull();
   });
 });

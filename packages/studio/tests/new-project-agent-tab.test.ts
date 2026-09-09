@@ -1,10 +1,15 @@
 /**
  * The New Project wizard's Agent flow: the credentials gate and prompt validation on the source
- * step, then the scaffold-then-seed flow from the Parameters step (createProject with the blank
+ * step, then the scaffold-then-seed flow from the second step (createProject with the blank
  * template + a pending agent prompt stored for the opening window's assistant).
  *
  * The Agent submit runs the same destination validation as a normal create, so a project is only
  * ever scaffolded under the Location the user chose.
+ *
+ * The gate is two ISLANDS now: the keyless Cloudflare offer and the key form are each a mounted
+ * document of their own, placed into boxes `surfaces/new-project.json` renders empty. So the gate
+ * is `[part="creds"]` with `[part="managed-connect"]` and `[part="ai-creds-form"]` inside it, and
+ * it takes more turns to settle than the wizard around it does.
  */
 import {
   clearSeededSettings,
@@ -12,7 +17,12 @@ import {
   installMockPlatform,
   mountOverlayLayers,
   npFillLocation,
+  npDismiss,
+  npFooter,
   npName,
+  npPart,
+  npPickTab,
+  npPress,
   npPreview,
   npType,
   seedSettings,
@@ -20,40 +30,25 @@ import {
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { resetModelCache } from "../src/services/ai-models";
 
-const { closeNewProjectModal, openNewProjectModal } =
-  await import("../src/new-project/new-project-modal");
+const { openNewProjectModal } = await import("../src/new-project/new-project-modal");
 const { initLayers } = await import("../src/ui/layers");
 
 mountOverlayLayers(document.body);
 initLayers();
 
 /** The multiline prompt field on the Agent source step. */
-function promptField(): any {
-  return document.querySelector("#layer-modal .new-project-agent-prompt");
+function promptField(): HTMLInputElement {
+  return npPart("prompt")!.querySelector('[part="input"]') as HTMLInputElement;
 }
 
-/** The inline destination validation message rendered under the Location fields. */
+/** The inline destination-validation message under the Location fields. */
 function inlineError(): string {
-  return (
-    document
-      .querySelector("#layer-modal .new-project-error:not(.new-project-error--global)")
-      ?.textContent?.trim() ?? ""
-  );
+  return npPart("destination-failure")?.textContent?.trim() ?? "";
 }
 
-function footerButtons(): any[] {
-  return [...document.querySelectorAll("#layer-modal .new-project-modal-footer sp-button")];
-}
-
-function clickFooter(label: string) {
-  const btn = footerButtons().find((b) => b.textContent?.includes(label));
-  btn!.dispatchEvent(new Event("click", { bubbles: true }));
-}
-
-function switchTab(value: string) {
-  const tabs: any = document.querySelector("#layer-modal sp-tabs");
-  tabs.selected = value;
-  tabs.dispatchEvent(new Event("change", { bubbles: true }));
+/** The wizard's global refusal strip, which is a different sentence in a different place. */
+function globalError(): string {
+  return npPart("failure")?.textContent?.trim() ?? "";
 }
 
 /* The credentials gate probes the AI proxy for backend-held credentials. Stub it: the default is an
@@ -70,16 +65,19 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  closeNewProjectModal();
+  npDismiss();
 });
 
 describe("Agent flow", () => {
-  test("shows the AI credentials form when no key is stored, with no Next button", () => {
+  test("shows the AI credentials form when no key is stored, with no Next button", async () => {
     installMockPlatform();
     void openNewProjectModal();
-    switchTab("agent");
-    expect(document.querySelector("#layer-modal .new-project-creds")).toBeTruthy();
-    expect(footerButtons()).toHaveLength(1); // Cancel only
+    await flush(3);
+    npPickTab("agent");
+    await flush(4);
+    expect(npPart("creds")).toBeTruthy();
+    expect(npPart("ai-creds-form")).toBeTruthy();
+    expect(npFooter()).toEqual(["Cancel"]);
   });
 
   test("offers Connect Cloudflare beside the key form on a managed platform", async () => {
@@ -92,17 +90,18 @@ describe("Agent flow", () => {
       connection: { connected: true },
     });
     void openNewProjectModal();
-    switchTab("agent");
-    /* Six turns: the Cloudflare offer beside the key form is a mounted Jx document, so it is
+    await flush(3);
+    npPickTab("agent");
+    /* The Cloudflare offer beside the key form is a mounted Jx document of its own, so it is
        addressed by `part` and it is not there on the turn the gate renders. */
     await flush(6);
 
-    const gate = document.querySelector("#layer-modal .new-project-creds");
+    const gate = npPart("creds");
     expect(gate?.querySelector('[part="managed-connect"]')).toBeTruthy();
     expect(gate!.textContent).toContain("Connect Cloudflare");
     // The BYOK form stays — both are real paths.
     expect(gate!.querySelector('[part="ai-creds-form"]')).toBeTruthy();
-    expect(document.querySelector("#layer-modal .new-project-tab-intro")?.textContent).toContain(
+    expect(npPart("blurb")?.textContent).toContain(
       "Connect Cloudflare, or add an OpenAI-compatible API key",
     );
   });
@@ -113,47 +112,49 @@ describe("Agent flow", () => {
     proxyState = { configured: true, managed: true };
     installMockPlatform();
     void openNewProjectModal();
-    switchTab("agent");
-    await flush();
+    await flush(3);
+    npPickTab("agent");
+    await flush(3);
 
     expect(localStorage.getItem("jx.ai.openaiKey")).toBeNull();
-    expect(document.querySelector("#layer-modal .new-project-creds")).toBeNull();
+    expect(npPart("creds")).toBeNull();
     expect(promptField()).toBeTruthy();
-    expect(footerButtons().map((b) => b.textContent?.trim())).toContain("Next");
+    expect(npFooter()).toContain("Next");
   });
 
-  test("shows the prompt once a key is stored and requires it before Next", () => {
+  test("shows the prompt once a key is stored and requires it before Next", async () => {
     seedSettings({ "jx.ai.openaiKey": "sk-agent-test" });
     installMockPlatform();
     void openNewProjectModal();
-    switchTab("agent");
-    expect(document.querySelector("#layer-modal .new-project-creds")).toBeNull();
+    await flush(3);
+    npPickTab("agent");
+    await flush(3);
+    expect(npPart("creds")).toBeNull();
     expect(promptField()).toBeTruthy();
 
-    clickFooter("Next");
-    expect(document.querySelector("#layer-modal .new-project-error")?.textContent).toContain(
-      "Describe the site",
-    );
+    npPress("Confirm");
+    await flush(2);
+    expect(globalError()).toContain("Describe the site");
     // Still on the source step.
-    expect(document.querySelector("#layer-modal sp-tabs")).toBeTruthy();
+    expect(npPart("tabs")).toBeTruthy();
   });
 
-  test("requires a name on the Parameters step", async () => {
+  test("requires a name on the second step", async () => {
     seedSettings({ "jx.ai.openaiKey": "sk-agent-test" });
     const { state } = installMockPlatform();
     void openNewProjectModal();
-    switchTab("agent");
+    await flush(3);
+    npPickTab("agent");
+    await flush(3);
     npType(promptField(), "A cozy site");
-    clickFooter("Next");
+    npPress("Confirm");
+    await flush(3);
     npFillLocation();
-    clickFooter("Create & Start Agent");
     await flush();
+    npPress("Confirm");
+    await flush(2);
     // The message renders inline at the name field, not in the global strip.
-    expect(
-      document
-        .querySelector('#layer-modal .new-project-name sp-help-text[slot="negative-help-text"]')
-        ?.textContent?.trim(),
-    ).toBe("Project name is required");
+    expect(npPart("name-failure")?.textContent?.trim()).toBe("Project name is required");
     expect(state.calls.filter((c) => c[0] === "createProject")).toHaveLength(0);
   });
 
@@ -161,13 +162,17 @@ describe("Agent flow", () => {
     seedSettings({ "jx.ai.openaiKey": "sk-agent-test" });
     const { state } = installMockPlatform();
     void openNewProjectModal();
-    switchTab("agent");
+    await flush(3);
+    npPickTab("agent");
+    await flush(3);
     npType(promptField(), "A cozy site");
-    clickFooter("Next");
-    // Everything but the destination is filled in — the modal never guesses where to write.
+    npPress("Confirm");
+    await flush(3);
+    // Everything but the destination is filled in — the wizard never guesses where to write.
     npType(npName(), "Agent Site");
-    clickFooter("Create & Start Agent");
     await flush();
+    npPress("Confirm");
+    await flush(2);
 
     expect(inlineError()).toBe("Choose a location for the project folder");
     expect(state.calls.filter((c) => c[0] === "createProject")).toHaveLength(0);
@@ -188,17 +193,20 @@ describe("Agent flow", () => {
     });
 
     const promise = openNewProjectModal();
-    switchTab("agent");
+    await flush(3);
+    npPickTab("agent");
+    await flush(3);
     npType(promptField(), "A landing page for a coffee roastery");
-    clickFooter("Next");
+    npPress("Confirm");
+    await flush(3);
     // The agent scaffolds from the blank template; its breakpoint preset prefills the editor.
-    expect(document.querySelector("#layer-modal .new-project-step-context")?.textContent).toContain(
-      "Agent",
-    );
+    expect(npPart("context")?.textContent).toContain("Agent");
     npType(npName(), "Agent Site");
+    await flush();
     npFillLocation("/home/dev/Sites");
+    await flush();
     expect(npPreview()).toBe("Creates: /home/dev/Sites/agent-site");
-    clickFooter("Create & Start Agent");
+    npPress("Confirm");
 
     const result = await promise;
     expect(result).toEqual({

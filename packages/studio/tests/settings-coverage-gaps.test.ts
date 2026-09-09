@@ -5,7 +5,10 @@
  *   update/update-all/reinstall (progress-modal error view), and busy re-entrancy.
  * - Css-vars-editor: font/size row deletion and the scheme-override color swatch input.
  * - Contributed-section: template-less newEntry, array/number template leaves, stale delete clicks,
- *   and the entry-name keydown (Enter/Escape) handling.
+ *   and the entry-name keydown (Enter/Escape) handling. That section is a Jx document
+ *   (`src/surfaces/settings-contributed.json`), so its container is on the page and every render is
+ *   awaited, and Escape no longer blurs a field: the scope moves back to the key on disk, which is
+ *   what the field then shows.
  */
 import { flush, installMockPlatform, key, pointer, resetStudioState, topDialog } from "./harness";
 import { problems, resetNotifications } from "../src/services/notify";
@@ -28,10 +31,9 @@ const { renderDependenciesEditor } = await import("../src/settings/dependencies-
 const { renderCssVarsEditor } = await import("../src/settings/css-vars-editor");
 const { renderContributedSection, resetContributedSectionState } =
   await import("../src/settings/contributed-section");
+const { resetSchemaForms } = await import("../src/ui/schema-form");
 // Namespace import keeps the `projectState` binding live across resetStudioState calls.
 const store = await import("../src/store");
-
-type ValueEl = HTMLElement & { value: string };
 
 beforeAll(() => {
   for (const id of ["layer-popover", "layer-modal", "layer-dialog"]) {
@@ -59,16 +61,6 @@ function makeContainer(): HTMLElement {
   const c = document.createElement("div");
   document.body.append(c);
   return c;
-}
-
-function buttonByText(scope: HTMLElement, text: string): HTMLElement {
-  const el = [...scope.querySelectorAll("sp-action-button")].find(
-    (b) => b.textContent?.trim() === text,
-  );
-  if (!el) {
-    throw new Error(`no button "${text}"`);
-  }
-  return el as HTMLElement;
 }
 
 function modalLayer(): HTMLElement {
@@ -375,8 +367,32 @@ describe("contributed section gaps", () => {
   let platformState: MockPlatformState;
   let container: HTMLElement;
 
+  /** Let the section's document and the standing schema form catch up. */
+  async function settle(): Promise<void> {
+    await flush(8);
+  }
+
+  /** A node the section's own document draws, by the `part` it carries. */
+  function part(root: ParentNode, name: string): HTMLElement {
+    const el = root.querySelector(`[part="${name}"]`);
+    if (!el) {
+      throw new Error(`no [part="${name}"] in the contributed section`);
+    }
+    return el as HTMLElement;
+  }
+
+  /** The native control a kit element wraps. */
+  function control(el: Element): HTMLInputElement {
+    const inner = el.querySelector<HTMLInputElement>('input[part="input"]');
+    if (!inner) {
+      throw new Error(`no native control inside <${el.tagName.toLowerCase()}>`);
+    }
+    return inner;
+  }
+
   beforeEach(() => {
     resetContributedSectionState();
+    resetSchemaForms();
     ({ state: platformState } = installMockPlatform());
     resetStudioState({
       projectConfig: {
@@ -385,6 +401,11 @@ describe("contributed section gaps", () => {
       } as unknown,
     });
     container = document.createElement("div");
+    document.body.append(container);
+  });
+
+  afterEach(() => {
+    container.remove();
   });
 
   function config(): Record<string, unknown> {
@@ -398,18 +419,30 @@ describe("contributed section gaps", () => {
     title: "Connections",
   };
 
-  function createEntry(name: string): void {
-    pointer(buttonByText(container, "New Entry"), "click");
-    const field = container.querySelector(".settings-inline-form sp-textfield")!;
-    (field as ValueEl).value = name;
+  async function createEntry(name: string): Promise<void> {
+    pointer(part(container, "new-open"), "click");
+    await settle();
+    const field = control(part(container, "new-field"));
+    field.value = name;
     field.dispatchEvent(new Event("input", { bubbles: true }));
-    pointer(buttonByText(container, "Create"), "click");
+    await settle();
+    pointer(part(container, "new-create"), "click");
+    await settle();
+  }
+
+  async function selectEntry(name: string): Promise<void> {
+    const row = container.querySelector(`[data-entry="${name}"]`);
+    if (!row) {
+      throw new Error(`no entry row for "${name}"`);
+    }
+    pointer(row, "click");
+    await settle();
   }
 
   test("create without a newEntry template starts from an empty entry", async () => {
     renderContributedSection(container, mapContribution);
-    createEntry("Fresh One");
-    await flush();
+    await settle();
+    await createEntry("Fresh One");
     expect((config().connections as Record<string, unknown>)["fresh-one"]).toEqual({});
   });
 
@@ -423,8 +456,8 @@ describe("contributed section gaps", () => {
         layout: "map",
       },
     });
-    createEntry("tagged");
-    await flush();
+    await settle();
+    await createEntry("tagged");
     expect((config().connections as Record<string, unknown>).tagged).toEqual({
       depth: 2,
       enabled: true,
@@ -434,39 +467,48 @@ describe("contributed section gaps", () => {
 
   test("a stale delete click after the entry is gone is a no-op", async () => {
     renderContributedSection(container, mapContribution);
-    pointer(buttonByText(container, "main"), "click");
-    const deleteButton = container.querySelector('[title="Delete entry"]') as HTMLElement;
+    await settle();
+    await selectEntry("main");
+    const deleteButton = part(container, "delete-entry");
     pointer(deleteButton, "click");
-    await flush();
+    await settle();
     const writes = platformState.calls.filter(
       (c) => c[0] === "writeFile" && c[1] === "project.json",
     ).length;
-    // The detached button's listener still fires, but the entry is already gone.
+    // The detached button's handler still fires, but the entry is already gone.
     pointer(deleteButton, "click");
-    await flush();
+    await settle();
     expect(config().connections).toEqual({});
     expect(
       platformState.calls.filter((c) => c[0] === "writeFile" && c[1] === "project.json"),
     ).toHaveLength(writes);
   });
 
-  test("Enter blurs the entry-name field and Escape restores the current key", () => {
+  test("Enter commits the entry rename and Escape abandons it", async () => {
     renderContributedSection(container, mapContribution);
-    pointer(buttonByText(container, "main"), "click");
-    const nameInput = container.querySelector(".entry-name-input") as ValueEl;
-    let blurs = 0;
-    (nameInput as unknown as { blur: () => void }).blur = () => {
-      blurs += 1;
-    };
+    await settle();
+    await selectEntry("main");
+    const nameInput = () => control(part(container, "entry-name"));
 
-    key(nameInput, "Enter");
-    expect(blurs).toBe(1);
-
-    nameInput.value = "half-typed";
-    key(nameInput, "Escape");
-    expect(blurs).toBe(2);
-    expect(nameInput.value).toBe("main");
-    // No rename happened — the entry key is untouched.
+    // Escape puts the key on disk back, and writes nothing.
+    nameInput().value = "half-typed";
+    nameInput().dispatchEvent(new Event("input", { bubbles: true }));
+    await settle();
+    key(nameInput(), "Escape");
+    await settle();
+    expect(nameInput().value).toBe("main");
     expect(Object.keys(config().connections as Record<string, unknown>)).toEqual(["main"]);
+    expect(
+      platformState.calls.filter((c) => c[0] === "writeFile" && c[1] === "project.json"),
+    ).toHaveLength(0);
+
+    // Enter commits, without waiting for the field to lose focus.
+    nameInput().value = "Renamed One";
+    nameInput().dispatchEvent(new Event("input", { bubbles: true }));
+    await settle();
+    key(nameInput(), "Enter");
+    await settle();
+    expect(Object.keys(config().connections as Record<string, unknown>)).toEqual(["renamed-one"]);
+    expect(nameInput().value).toBe("renamed-one");
   });
 });

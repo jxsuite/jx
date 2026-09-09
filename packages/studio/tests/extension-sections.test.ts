@@ -255,7 +255,11 @@ describe("syncExtensionSettingsSections", () => {
     expect(settingsSectionKeys()).toContain("guestbook");
     setSettingsSection("guestbook");
     await navLabels();
-    expect(body().querySelector(".settings-section-title")?.textContent).toBe("Guestbook");
-    expect(body().querySelector('[data-prop="moderation"] sp-checkbox')).not.toBeNull();
+    /* The section is a Jx document (`src/surfaces/settings-contributed.json`) mounted into the host
+       the pane hands it, and the schema form inside it is one of its own — so the assertion is on
+       `part` and `data-prop`, and the mount needs more turns than a lit render. */
+    await flush(8);
+    expect(body().querySelector('[part="title"]')?.textContent).toBe("Guestbook");
+    expect(body().querySelector('[data-prop="moderation"] [part="checkbox"]')).not.toBeNull();
   });
 });

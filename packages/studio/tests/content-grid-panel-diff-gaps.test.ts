@@ -14,7 +14,6 @@ import {
   installMockPlatform,
   pointer,
   registerPrimaryStage,
-  renderInto,
   resetStudioState,
   resetWorkspaceWithTab,
   surfaceOf,
@@ -65,7 +64,7 @@ const {
 const { parseRedirectsCsv } = await import("../src/grid/redirects");
 const { REDIRECTS_TAB_ID, openRedirectsGrid } = await import("../src/grid/redirects-grid");
 const { logicPanelBody, logicTarget } = await import("../src/panels/formula-workspace");
-const { renderMessageList } = await import("../src/panels/ai-chat/chat-view");
+const { projectRows } = await import("../src/panels/ai-chat/chat-view");
 const { initShellRefs, registerRenderer } = await import("../src/store");
 const frontmatterPanel = await import("../src/panels/frontmatter-panel");
 
@@ -361,14 +360,10 @@ describe("the changed-files summary of an assistant turn", () => {
     timestamp: 1,
   } as Message;
 
-  const list = () =>
-    renderMessageList({
-      error: null,
-      listRef: () => {},
-      messages: [turn],
-      onScroll: () => {},
-      status: "idle",
-    });
+  /* The assistant is a Jx document now, so the summary is a PROJECTION rather than a template:
+     `changesState` is what the surface's `$switch` reads, and it is what "no expander at all"
+     means with no markup in this module to look for. */
+  const row = () => projectRows({ messages: [turn], status: "idle" })[0]!;
 
   afterEach(() => {
     stubWrites = [];
@@ -378,19 +373,21 @@ describe("the changed-files summary of an assistant turn", () => {
   test("a summary that has something to say is drawn above the file list", async () => {
     stubWrites = [{ disk: false, ok: true, path: "pages/index.json", tool: "write_file" }];
     stubSummary = "Changed 1 file";
-    const el = await renderInto(list());
-    expect(el.querySelector(".ai-msg-changes > summary")?.textContent).toContain("Changed 1 file");
-    expect(el.querySelectorAll(".ai-msg-changes-list li")).toHaveLength(1);
+    const projected = row();
+    expect(projected.changesState).toBe("list");
+    expect(projected.changesSummary).toBe("Changed 1 file");
+    expect(projected.changes).toHaveLength(1);
   });
 
   test("writes that summarise to nothing draw no expander at all", async () => {
     stubWrites = [{ disk: false, ok: true, path: "pages/index.json", tool: "write_file" }];
     stubSummary = "";
-    const el = await renderInto(list());
+    const projected = row();
     // An empty <summary> over a file list is a disclosure widget whose label is a blank line.
-    expect(el.querySelector(".ai-msg-changes")).toBeNull();
+    expect(projected.changesState).toBe("none");
+    expect(projected.changes).toHaveLength(0);
     // The message itself is untouched — only its footer is withheld.
-    expect(el.querySelector(".ai-msg-md")?.textContent).toContain("Done.");
+    expect(projected.markdown).toContain("Done.");
   });
 });
 

@@ -42,7 +42,7 @@ import { NAVIGATOR_STATEMENTS_REGION } from "../ui/regions";
 import { livePreviewExpression } from "../services/live-preview";
 import { renderMediaPicker } from "../ui/media-picker";
 import { renderOnly } from "../store";
-import { renderForm } from "../ui/schema-form";
+import { mountSchemaForm } from "../ui/schema-form";
 import { resolveContextPointer } from "../services/context-resolver";
 import type { JsonSchema } from "../ui/schema-form";
 import type { TabUi } from "../tabs/tab";
@@ -1586,17 +1586,22 @@ export function renderSchemaFieldsTemplate(
     Object.entries(schema.properties).filter(([prop]) => !STUDIO_RESERVED_KEYS.has(prop)),
   );
 
-  return renderForm({ ...schema, properties }, def as Record<string, unknown>, {
-    context: {
-      fieldKeyPrefix: name,
-      params: dynamicRouteParams(S.documentPath),
-      resolvePointer: resolveSignalsContextPointer,
-      // A config value may point at any signal but this one — a def that reads itself is a cycle.
-      signals: bindableSignalNames(S.document).filter((signal) => signal !== name),
+  return mountSchemaForm(
+    `signal:${name}`,
+    { ...schema, properties },
+    def as Record<string, unknown>,
+    {
+      context: {
+        fieldKeyPrefix: name,
+        params: dynamicRouteParams(S.documentPath),
+        resolvePointer: resolveSignalsContextPointer,
+        // A config value may point at any signal but this one — a def that reads itself is a cycle.
+        signals: bindableSignalNames(S.document).filter((signal) => signal !== name),
+      },
+      onChange: (patch) => transactDoc(activeTab.value, (t) => mutateUpdateDef(t, name, patch)),
+      ...(ctx && { rerender: () => ctx.renderLeftPanel() }),
     },
-    onChange: (patch) => transactDoc(activeTab.value, (t) => mutateUpdateDef(t, name, patch)),
-    ...(ctx && { rerender: () => ctx.renderLeftPanel() }),
-  });
+  );
 }
 
 /**

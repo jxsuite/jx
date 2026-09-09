@@ -1,6 +1,20 @@
+/**
+ * The Source Control panel's four moods, as the document draws them —
+ * `src/surfaces/git-panel.json`, mounted by `src/surfaces/git-panel.ts` and projected by
+ * `src/panels/git-panel.ts`.
+ *
+ * Everything is addressed by `part`, by `role` or by the region grammar, because the panel is a
+ * document: there is no `sp-action-button`, `sp-picker` or `.git-file-row` to find any more. A row
+ * carries the file it draws (`data-path`) so a query says which row it is acting on rather than
+ * counting siblings.
+ *
+ * Every draw is awaited. `mountSurface` is asynchronous and each kit element settles its own
+ * template one `connectedCallback` after that, so the synchronous `render(); assert;` this file
+ * used to do would now assert against an empty container.
+ */
 import "./with-dom.js";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { render as litRender } from "lit-html";
+import { flush } from "./harness";
 import type { StudioPlatform } from "../src/types";
 
 let mockPlatform: Partial<StudioPlatform>;
@@ -16,43 +30,21 @@ void mock.module("../src/workspace/workspace.js", () => ({
   activeTab: { value: null },
   /* Reached through `panels/git-diff-open.ts`: a changed file the canvas cannot render opens a
      path-keyed stub tab, the way a media file does, and an already-open one is re-activated. A
-     partial mock of a module the graph reaches is a LOAD error rather than a missing stub at call
-     time, so these are here whether or not a given test clicks a row. */
+     partial mock of a module the graph reaches is a LOAD error, not a missing stub at call time, so
+     these are here whether or not a given test clicks a row. */
   activateTab: () => {},
   closeTab: () => {},
   openTab: () => {},
   // `store.ts` registers the primary pane's canvas stage at `initShellRefs`, and
-  // `canvas/canvas-surface.ts` resolves a pane through `paneById` — both reached transitively
-  // From this panel's imports, neither called by it.
-  // `shell.ts` persists the session (§4.4) through `workspace/session.ts`, which reads the pane
-  // Grid and moves the focus on restore. Reached transitively; never called by this panel.
+  // `canvas/canvas-surface.ts` resolves a pane through `paneById` — both reached transitively from
+  // This panel's imports, neither called by it.
   focusPane: () => {},
   paneById: () => {},
   PRIMARY_PANE: "primary",
   SECONDARY_PANE: "secondary",
   renameTab: () => {},
   setWorkspaceProject: () => {},
-  // `shell.ts` reads the project root from this store to load that project's named layouts, so
-  // The stand-in has to carry it — an absent export is a module-resolution error, not a null.
-  // `panes`/`activePaneId` are here for the same reason: a canvas surface addresses a pane.
-  // `tabs` joins them for `git-diff-open.ts`, which looks a comparison's tab up by path.
   workspace: { activePaneId: "primary", panes: [], projectRoot: null, tabs: new Map() },
-}));
-
-void mock.module("../src/ui/layers.js", () => ({
-  /* Converted surfaces mount themselves into a layer, so they import `layerHost` from
-     here — a mock without it fails the whole file at import time. */
-  layerHost: () => document.body,
-  // Reached transitively (progress-modal, quick-search); the panel never calls them.
-  getLayerSlot: (_kind: string, id: string) => {
-    const el = document.createElement("div");
-    el.id = id;
-    return el;
-  },
-  openModal: () => Promise.resolve(null),
-  showConfirmDialog: async () => true,
-  showDialog: async () => null,
-  showPromptDialog: async () => null,
 }));
 
 void mock.module("../src/packages/pull-package-sync.js", () => ({
@@ -64,7 +56,8 @@ void mock.module("../src/packages/pull-package-sync.js", () => ({
 
 const { setProjectState } = (await import("../src/state.js")) as any;
 const { resetProjectShell, shell } = await import("../src/shell.js");
-const { renderGitPanel, platformSupportsClone } = await import("../src/panels/git-panel.js");
+const { cleanupGitPanel, gitPanelValues, mountGitPanel, platformSupportsClone, renderGitPanel } =
+  await import("../src/panels/git-panel.js");
 
 /** Stage project-level source-control state — the panel reads nothing else. */
 function stageGit(patch: Record<string, unknown>) {
@@ -73,177 +66,295 @@ function stageGit(patch: Record<string, unknown>) {
   Object.assign(shell.git, patch);
 }
 
-/** @param {any} templateResult */
-function renderToString(templateResult: any) {
-  const div = document.createElement("div");
-  litRender(templateResult, div);
-  return div.innerHTML;
+/**
+ * The Navigator's panel host, as `left-panel.ts` paints it: a `.panel-body` with the
+ * `.panel-content` the document is mounted into one level in.
+ */
+function panelHost(): HTMLElement {
+  const body = document.createElement("div");
+  body.className = "panel-body";
+  const content = document.createElement("div");
+  content.className = "panel-content";
+  body.append(content);
+  document.body.append(body);
+  return body;
 }
 
-describe("renderGitPanel — state rendering", () => {
-  beforeEach(() => {
+/** The accessible name of one action button — the kit forwards it to the inner control. */
+function controlName(panel: HTMLElement, part: string): string | null | undefined {
+  return panel.querySelector(`[part="${part}"] [part="control"]`)?.getAttribute("aria-label");
+}
+
+/** Mount the panel and let the document — and every kit element in it — settle. */
+async function draw(deps: Record<string, unknown> = {}): Promise<HTMLElement> {
+  const host = panelHost();
+  mountGitPanel(host, deps);
+  await flush(6);
+  return host.querySelector(".panel-content") as HTMLElement;
+}
+
+beforeEach(() => {
+  cleanupGitPanel();
+  for (const stale of document.querySelectorAll("body > .panel-body")) {
+    stale.remove();
+  }
+  setProjectState(null);
+  stageGit({});
+  mockPlatform = {
+    gitBranches: async () => ({ branches: ["main"], current: "main" }),
+    gitLog: async () => [],
+    gitStatus: async () => ({
+      ahead: 0,
+      behind: 0,
+      branch: "main",
+      files: [],
+      isRepo: true,
+      remotes: ["origin"],
+    }),
+  };
+});
+
+/** A repository whose read has landed, with whatever the test wants changed about it. */
+function seedRepo(status: Record<string, unknown> = {}) {
+  setProjectState({ name: "test-project" });
+  stageGit({
+    branches: { branches: ["main", "dev"], current: "main" },
+    status: {
+      ahead: 0,
+      behind: 0,
+      branch: "main",
+      files: [],
+      isRepo: true,
+      remotes: ["origin"],
+      ...status,
+    },
+  });
+}
+
+describe("the four moods", () => {
+  test("no project — teaches what source control is for", async () => {
     setProjectState(null);
-    stageGit({});
-    mockPlatform = {
-      gitBranches: async () => ({ branches: ["main"], current: "main" }),
-      gitLog: async () => [],
-      gitStatus: async () => ({
-        ahead: 0,
-        behind: 0,
-        branch: "main",
-        files: [],
-        isRepo: true,
-        remotes: ["origin"],
-      }),
-    };
+    const panel = await draw();
+    const empty = panel.querySelector('[part="empty"][data-view="no-project"]');
+    expect(empty?.textContent).toContain("Open a project");
+    expect(panel.querySelector('[part="clone"]')).toBeNull();
   });
 
-  test("no project — shows 'Open a project' message", () => {
+  test("no project with clone support — offers Clone as a real button", async () => {
+    mockPlatform.gitClone = async (_url: string) => ({ ok: true, root: "/tmp/cloned" });
     setProjectState(null);
-    const result = renderGitPanel({});
-    const output = renderToString(result);
-    expect(output).toContain("Open a project");
+    const panel = await draw();
+    expect(panel.querySelector('[part="clone"]')?.textContent).toContain("Clone Git Repository");
   });
 
-  test("no project with clone support — shows Clone button", () => {
-    mockPlatform.gitClone = async (_url: string) => ({
-      ok: true,
-      root: "/tmp/cloned",
-    });
-    setProjectState(null);
-    const result = renderGitPanel({});
-    const output = renderToString(result);
-    expect(output).toContain("Clone Git Repository");
-  });
-
-  test("no project without clone support — no Clone button", () => {
-    delete (mockPlatform as Record<string, unknown>).gitClone;
-    setProjectState(null);
-    const result = renderGitPanel({});
-    const output = renderToString(result);
-    expect(output).not.toContain("Clone Git Repository");
-  });
-
-  test("project loaded, not a git repo — shows init + publish buttons", () => {
-    setProjectState({ name: "test-project" });
-    stageGit({
-      status: {
-        ahead: 0,
-        behind: 0,
-        branch: "",
-        files: [],
-        isRepo: false,
-        remotes: [],
-      },
-    });
-    const result = renderGitPanel({});
-    const output = renderToString(result);
-    expect(output).toContain("not tracked by git yet");
-    expect(output).toContain("Initialize Repository");
-    expect(output).toContain("Create GitHub repository");
-  });
-
-  test("git repo with no remotes — shows 'Local only' sync bar with publish", () => {
-    setProjectState({ name: "test-project" });
-    stageGit({
-      branches: { branches: ["main"], current: "main" },
-      status: {
-        ahead: 0,
-        behind: 0,
-        branch: "main",
-        files: [],
-        isRepo: true,
-        remotes: [],
-      },
-    });
-    const result = renderGitPanel({});
-    const output = renderToString(result);
-    expect(output).toContain("Local only");
-    expect(output).toContain("Create GitHub repository");
-    expect(output).not.toContain("Up to date");
-  });
-
-  test("git repo with remote — shows normal sync bar without publish", () => {
-    setProjectState({ name: "test-project" });
-    stageGit({
-      branches: { branches: ["main"], current: "main" },
-      status: {
-        ahead: 0,
-        behind: 0,
-        branch: "main",
-        files: [],
-        isRepo: true,
-        remotes: ["origin"],
-      },
-    });
-    const result = renderGitPanel({});
-    const output = renderToString(result);
-    expect(output).toContain("Up to date");
-    expect(output).not.toContain("Create GitHub repository");
-    expect(output).not.toContain("Local only");
-  });
-
-  test("git repo with ahead/behind — shows sync counts", () => {
-    setProjectState({ name: "test-project" });
-    stageGit({
-      branches: { branches: ["main"], current: "main" },
-      status: {
-        ahead: 3,
-        behind: 1,
-        branch: "main",
-        files: [],
-        isRepo: true,
-        remotes: ["origin"],
-      },
-    });
-    const result = renderGitPanel({});
-    const output = renderToString(result);
-    expect(output).toContain("3 ahead");
-    expect(output).toContain("1 behind");
-  });
-
-  test("git repo with changed files — shows file list", () => {
-    setProjectState({ name: "test-project" });
-    stageGit({
-      branches: { branches: ["main"], current: "main" },
-      status: {
-        ahead: 0,
-        behind: 0,
-        branch: "main",
-        files: [
-          { path: "src/index.js", staged: false, status: "M" },
-          { path: "src/util.js", staged: true, status: "A" },
-        ],
-        isRepo: true,
-        remotes: ["origin"],
-      },
-    });
-    const result = renderGitPanel({});
-    const output = renderToString(result);
-    expect(output).toContain("index.js");
-    expect(output).toContain("util.js");
-    expect(output).toContain("Staged Changes");
-  });
-
-  test("loading state with no status yet — shows loading indicator", () => {
+  test("a first read still in flight draws the loading line and nothing else", async () => {
     setProjectState({ name: "test-project" });
     stageGit({ loading: true, status: null });
-    const result = renderGitPanel({});
-    const output = renderToString(result);
-    expect(output).toContain("Loading");
+    const panel = await draw();
+    expect(panel.querySelector('[part="status"][data-view="loading"]')).toBeNull();
+    // `loading: true` is past the bootstrap branch: the repo body is drawn, busy.
+    expect(panel.querySelector('[part="status"][data-status="busy"]')?.textContent).toContain(
+      "Loading",
+    );
+  });
+
+  test("a project git is not tracking offers both ways to start", async () => {
+    setProjectState({ name: "test-project" });
+    stageGit({
+      status: { ahead: 0, behind: 0, branch: "", files: [], isRepo: false, remotes: [] },
+    });
+    const panel = await draw();
+    expect(panel.querySelector('[part="empty"][data-view="no-repo"]')?.textContent).toContain(
+      "not tracked by git yet",
+    );
+    expect(panel.querySelector('[part="init"]')?.textContent).toContain("Initialize Repository");
+    expect(panel.querySelector('[part="create-repository"]')?.textContent).toContain(
+      "Create GitHub repository",
+    );
+  });
+});
+
+describe("the sync bar", () => {
+  test("a repository with no remote says so and offers to make one", async () => {
+    seedRepo({ remotes: [] });
+    const panel = await draw();
+    const bar = panel.querySelector<HTMLElement>('[part="sync-bar"]');
+    expect(bar?.dataset.remote).toBe("none");
+    expect(bar?.textContent).toContain("Local only");
+    expect(panel.querySelector('[part="create-repository"]')).toBeTruthy();
+    expect(panel.textContent).not.toContain("Up to date");
+  });
+
+  test("a repository with a remote draws the three remote verbs and no publish button", async () => {
+    seedRepo();
+    const panel = await draw();
+    expect(panel.querySelector<HTMLElement>('[part="sync-bar"]')?.dataset.remote).toBe("yes");
+    expect(panel.querySelector('[part="sync-label"]')?.textContent).toBe("Up to date");
+    for (const part of ["fetch", "pull", "push"]) {
+      expect(panel.querySelector(`[part="${part}"]`)).toBeTruthy();
+    }
+    expect(panel.querySelector('[part="create-repository"]')).toBeNull();
+  });
+
+  test("ahead and behind counts reach the label and both button names", async () => {
+    seedRepo({ ahead: 3, behind: 1 });
+    const panel = await draw();
+    expect(panel.querySelector('[part="sync-label"]')?.textContent).toBe("3 ahead, 1 behind");
+    // The name is on the control the reader actually reaches, which is where the kit forwards it.
+    expect(controlName(panel, "pull")).toBe("Pull (1 behind)");
+    expect(controlName(panel, "push")).toBe("Push (3 ahead)");
+  });
+
+  test("the last-updated stamp is drawn only once a read has landed", async () => {
+    seedRepo();
+    const cold = await draw();
+    expect(cold.querySelector('[part="sync-time"]')).toBeNull();
+    cleanupGitPanel();
+    shell.git.lastUpdated = Date.parse("2024-05-01T14:04:00Z");
+    const stamped = await draw();
+    expect(stamped.querySelector('[part="sync-time"]')?.textContent).toContain("Last updated");
+  });
+});
+
+describe("the changed files", () => {
+  test("each file is one keyed row, with its status as a letter and in words", async () => {
+    seedRepo({
+      files: [
+        { path: "src/index.js", staged: false, status: "M" },
+        { path: "src/util.js", staged: true, status: "A" },
+      ],
+    });
+    const panel = await draw();
+    const modified = panel.querySelector('[part="file-row"][data-path="src/index.js"]');
+    expect(modified?.querySelector('[part="file-name"]')?.textContent).toBe("index.js");
+    expect(modified?.querySelector('[part="file-dir"]')?.textContent).toBe("src");
+    expect(modified?.querySelector('[part="badge"][data-status]')?.textContent).toBe("M");
+    expect(modified?.querySelector('[part="file-open"]')?.getAttribute("aria-label")).toBe(
+      "src/index.js, modified",
+    );
+    // A staged file is listed twice — under Staged Changes and under its component.
+    expect(panel.querySelectorAll('[part="file-row"][data-path="src/util.js"]').length).toBe(2);
+    expect(
+      panel.querySelector('[part="section"][data-section="staged"] [part="section-title"]')
+        ?.textContent,
+    ).toBe("Staged Changes");
+  });
+
+  test("a file at the project root draws no directory", async () => {
+    seedRepo({ files: [{ path: "README.md", staged: false, status: "M" }] });
+    const panel = await draw();
+    const row = panel.querySelector('[part="file-row"][data-path="README.md"]');
+    expect(row?.querySelector('[part="file-name"]')?.textContent).toBe("README.md");
+    expect(row?.querySelector('[part="file-dir"]')).toBeNull();
+  });
+
+  test("an empty working tree teaches what lands here, and offers no Stage all", async () => {
+    seedRepo();
+    const panel = await draw();
+    expect(panel.querySelector('[part="empty-message"][data-empty="changes"]')?.textContent).toBe(
+      "Nothing to commit. Files you edit and save show up here.",
+    );
+    expect(panel.querySelector('[part="stage-all"]')).toBeNull();
+    expect(panel.querySelector('[part="section"][data-section="staged"]')).toBeNull();
+  });
+
+  test("the commit form carries the region the screenshot pipeline addresses", async () => {
+    seedRepo();
+    const panel = await draw();
+    expect(panel.querySelector<HTMLElement>('[part="commit"]')?.dataset.jxRegion).toBe(
+      "navigator/panel:git/commit",
+    );
+  });
+});
+
+describe("the projection on its own", () => {
+  test("groups files by component, with anything unrenderable under Other", () => {
+    seedRepo({
+      files: [
+        { path: "components/card.json", staged: false, status: "M" },
+        { path: "scripts/build.ts", staged: false, status: "M" },
+        { path: "top.json", staged: true, status: "A" },
+      ],
+    });
+    expect(gitPanelValues().groups.map((group) => group.key)).toEqual([
+      "/top.json",
+      "/components",
+      "Other",
+    ]);
+  });
+
+  test("the branch picker always offers a row that mints a new branch", () => {
+    seedRepo();
+    const values = gitPanelValues();
+    expect(values.branchOptions.map((option) => option.value)).toEqual(["main", "dev", "__new__"]);
+    expect(values.branchValue).toBe("main");
+    expect(values.branchName).toBe("main");
+  });
+
+  test("a repository with no branches at all still names its checked-out one", () => {
+    setProjectState({ name: "p" });
+    stageGit({
+      branches: null,
+      status: { ahead: 0, behind: 0, branch: "trunk", files: [], isRepo: true, remotes: [] },
+    });
+    const values = gitPanelValues();
+    expect(values.branchName).toBe("trunk");
+    expect(values.branchValue).toBe("");
+  });
+
+  test("a repository with neither reads as an em dash rather than as nothing", () => {
+    setProjectState({ name: "p" });
+    stageGit({
+      branches: null,
+      status: { ahead: 0, behind: 0, branch: "", files: [], isRepo: true, remotes: [] },
+    });
+    expect(gitPanelValues().branchName).toBe("—");
+  });
+
+  test("the changes tab prints its count only when there is one", () => {
+    seedRepo();
+    expect(gitPanelValues().changesLabel).toBe("Local Changes");
+    shell.git.status!.files = [{ path: "a.json", staged: false, status: "M" }];
+    expect(gitPanelValues().changesLabel).toBe("Local Changes (1)");
+  });
+
+  test("an error is projected as both a flag and a sentence", () => {
+    seedRepo();
+    shell.git.error = "broken pipe";
+    const values = gitPanelValues();
+    expect(values.hasError).toBe(true);
+    expect(values.error).toBe("broken pipe");
   });
 });
 
 describe("platformSupportsClone", () => {
-  test("returns true when platform has gitClone", () => {
-    mockPlatform = {
-      gitClone: async (_url: string) => ({ ok: true, root: "" }),
-    };
+  test("returns true when the platform has gitClone", () => {
+    mockPlatform = { gitClone: async (_url: string) => ({ ok: true, root: "" }) };
     expect(platformSupportsClone()).toBe(true);
   });
 
-  test("returns false when platform lacks gitClone", () => {
+  test("returns false when it does not", () => {
     mockPlatform = {};
     expect(platformSupportsClone()).toBe(false);
   });
+});
+
+test("a panel taken down while its mount is still in flight leaves nothing behind", async () => {
+  // The Navigator can paint another panel one tick after this one — or a project can close — so the
+  // Mount that lands afterwards has to dispose itself rather than appear in a container nobody is
+  // Looking at.
+  setProjectState({ name: "test-project" });
+  stageGit({
+    status: { ahead: 0, behind: 0, branch: "main", files: [], isRepo: true, remotes: [] },
+  });
+  const host = panelHost();
+  mountGitPanel(host, {});
+  cleanupGitPanel();
+  await flush(6);
+  expect(host.querySelector('[part="git-panel"]')).toBeNull();
+});
+
+test("the lit renderer is a stub the Navigator no longer draws through", () => {
+  // It survives only because `NavigatorPanelDeps` still declares the injection.
+  expect(renderGitPanel({})).toBeDefined();
 });

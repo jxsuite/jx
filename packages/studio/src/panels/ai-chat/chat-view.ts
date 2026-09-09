@@ -1,13 +1,14 @@
 /// <reference lib="dom" />
 /**
- * Chat-view.js — the active-conversation templates: header and message list.
+ * Chat-view.ts — the transcript's PROJECTION: what the assistant surface is told about a turn.
  *
- * Message-row anatomy: user messages render as right-aligned bubbles (attached-context
- * blocks become chips), assistant messages render sanitized markdown plus tool-call
- * chips, tool messages surface failures only (ADR §11.3), the streaming tail renders
- * as plain text with a cursor (markdown parses once on finalize), and chat errors get
- * a danger row with recovery advice and a Retry. Templates only — chat state lives in ai-panel, and
- * the three buttons are records the registry holds (see below).
+ * Message-row anatomy: user messages render as right-aligned bubbles (attached-context blocks
+ * become chips), assistant messages render sanitized markdown plus tool-call chips, tool messages
+ * surface failures only (ADR §11.3), the streaming tail renders as plain text with a cursor
+ * (markdown parses once on finalize), and chat errors get a danger row with recovery advice and a
+ * Retry. **None of that is markup here any more** — `surfaces/ai-chat.json` draws it and this
+ * module decides what it says, which is the same split the file always had with a document on the
+ * other side of it instead of a lit template.
  *
  * §7.4 (AI honesty) is why three things here are not what they were:
  *
@@ -24,24 +25,28 @@
  * §11.1 is why the three buttons here are not callbacks any more. History, New Chat and Retry were
  * closures this module received and invoked, so the capabilities existed ONLY as buttons: the
  * `Assistant` category held zero records, and nothing could reach them from the palette, a chord,
- * the automation runner or the generated commands sheet. They run {@link commandButton} now, in the
- * idiom `surfaces/statusbar.ts` established — the record is the definition site, and this file only
- * decides where it is drawn.
+ * the automation runner or the generated commands sheet. They are {@link projectCommand} now, in
+ * the idiom `surfaces/statusbar.ts` established — the record is the definition site, and this file
+ * only decides where it is drawn and with which glyph.
  *
  * @license MIT
  */
 
-import { html, nothing } from "lit-html";
-import { repeat } from "lit-html/directives/repeat.js";
-import type { TemplateResult } from "lit-html";
-import { ref } from "lit-html/directives/ref.js";
 import type { Message, ToolCallRecord } from "@jxsuite/ai/chat-state";
 import { splitAttachedContext } from "./attached-context";
 import { renderMarkdown } from "./chat-markdown";
 import { summarizeWrites, writesForTurn } from "../../services/ai-writes";
 import { activeRegistry } from "../../commands/active-registry";
 
+import type { CommandRegistry } from "../../commands/registry";
 import type { ImportRunRecord } from "../../services/import-run";
+import type {
+  ChatChangeView,
+  ChatChipView,
+  ChatCommandView,
+  ChatContextChip,
+  ChatRowView,
+} from "../../surfaces/ai-chat";
 
 // ─── Helpers (moved from ai-panel.ts) ────────────────────────────────────────
 
@@ -116,178 +121,99 @@ export function formatErrorAdvice(error: string): string {
 
 // ─── Commands as buttons ────────────────────────────────────────────────────
 
-/** What {@link commandButton} draws inside the button, and how. */
+/** Where a projected command is drawn, and with what. */
 export interface CommandButtonOptions {
-  /** Slotted content — an icon element for the header, a label for the error row's Retry. */
-  content: TemplateResult | string;
-  /** Extra class, so the CSS that already targets `.ai-msg-retry` keeps landing. */
-  className?: string;
-  /** Quiet chrome. The header's icon buttons are quiet; the labelled Retry is not. */
-  quiet?: boolean;
+  /** The kit glyph, by its name in the manifest. Empty for a text-only button. */
+  icon?: string;
+  /** Visible text. Empty on an icon-only button. */
+  text?: string;
 }
 
 /**
- * One control that IS a command — `surfaces/statusbar.ts`'s `itemTpl`, for the assistant.
+ * One control that IS a command — `surfaces/statusbar.ts`'s `projectItem`, for the assistant.
  *
- * A command the registry does not hold, or whose `when` is false, renders NOTHING rather than a
- * dead button; a visible-but-refused one renders disabled with its `requires` sentence in the
- * tooltip. That is what keeps this file a rendering of the registry instead of a second place the
- * assistant's capabilities are decided — and it is why `tests/ai-chat-view.test.ts` asserts the
- * ids, exactly as `tests/statusbar.test.ts` does: an id is not an interface between two files
- * unless something checks it.
+ * A command the registry does not hold, or whose `when` is false, projects to NOTHING rather than a
+ * dead button; a visible-but-refused one projects disabled with its `requires` sentence in the
+ * tooltip. That is what keeps the assistant a rendering of the registry instead of a second place
+ * its capabilities are decided — and it is why `tests/ai-chat-view.test.ts` asserts the ids,
+ * exactly as `tests/statusbar.test.ts` does: an id is not an interface between two files unless
+ * something checks it.
  *
  * Before any registry exists (the bootstrap composes one at the END of `studio.ts`, and a reduced
  * test fixture may compose none) the button is simply absent. The chat is still readable, which is
  * the same bargain the status bar strikes for the frame it paints early.
+ *
+ * @param {string} id
+ * @param {CommandButtonOptions} [opts]
+ * @param {CommandRegistry | null} [registry] The registry to ask; the active one by default.
+ * @returns {ChatCommandView | null}
  */
-export function commandButton(
+export function projectCommand(
   id: string,
-  opts: CommandButtonOptions,
-): TemplateResult | typeof nothing {
-  const registry = activeRegistry();
+  opts: CommandButtonOptions = {},
+  registry: CommandRegistry | null = activeRegistry(),
+): ChatCommandView | null {
   const command = registry?.get(id);
   if (!registry || !command || !registry.isVisible(id)) {
-    return nothing;
+    return null;
   }
   const reason = registry.disabledReason(id);
   const chord = registry.keymap.formatBinding(id);
-  const title = reason
+  const hint = reason
     ? `${command.title} — requires ${reason}`
     : chord
       ? `${command.title} (${chord})`
       : command.title;
-  return html`<sp-action-button
-    size="s"
-    ?quiet=${opts.quiet ?? false}
-    class=${opts.className ?? ""}
-    ?disabled=${reason !== undefined}
-    title=${title}
-    @click=${() => {
-      /* Re-asked at click time, not trusted from the render: state moves between the two, and
-         `registry.run` THROWS on a refusal. Same bargain `registry.handleKeyEvent` strikes for a
-         chord bound to a disabled command — swallow it here rather than make every surface wrap a
-         dispatch in try/catch. */
-      if (registry.isEnabled(id)) {
-        void registry.run(id);
-      }
-    }}
-  >
-    ${opts.content}
-  </sp-action-button>`;
+  return {
+    disabled: reason !== undefined,
+    hint,
+    icon: opts.icon ?? "",
+    id,
+    key: id,
+    label: command.title,
+    text: opts.text ?? "",
+  };
+}
+
+/** The projections that survived, as a list — a `null` is a command that is not on offer. */
+export function projectCommands(entries: readonly (ChatCommandView | null)[]): ChatCommandView[] {
+  return entries.filter((entry): entry is ChatCommandView => entry !== null);
 }
 
 // ─── Header ─────────────────────────────────────────────────────────────────
 
-export interface ChatHeaderOptions {
-  /** The open session's title, or null for a fresh unsaved chat. */
-  title: string | null;
-  streaming: boolean;
-  /**
-   * The conversation's estimated token count, and whether it is over the warning line.
-   *
-   * `services/context-manager.ts` has computed both on every turn since it was written, and
-   * `chat-state.ts` has stored them — with NO READER anywhere. Plan §11.6: "Context budget manager
-   * → tokenCount / contextWarning actually rendered". So a conversation was silently trimmed, the
-   * assistant forgot what you told it ten turns ago, and the two numbers that would have explained
-   * why sat in the store.
-   */
-  tokens: number;
-  overBudget: boolean;
-}
-
 /** Compact token count: 18400 → "18.4k". A four-digit number in a 28px header is noise. */
-function tokenLabel(tokens: number): string {
+export function tokenLabel(tokens: number): string {
   return tokens >= 1000 ? `${(tokens / 1000).toFixed(1)}k` : String(tokens);
 }
 
-/** The chat header: history button, session title, the context budget, spinner, New Chat. */
-export function renderChatHeader(opts: ChatHeaderOptions): TemplateResult {
-  return html`
-    <div class="ai-chat-header">
-      ${commandButton("assistant.history", {
-        content: html`<sp-icon-history slot="icon"></sp-icon-history>`,
-        quiet: true,
-      })}
-      <span class="ai-chat-title">${opts.title ?? "New chat"}</span>
-      <span class="ai-header-spacer"></span>
-      ${
-        opts.tokens > 0
-          ? html`<span
-              class=${opts.overBudget ? "ai-tokens ai-tokens--warn" : "ai-tokens"}
-              title=${
-                opts.overBudget
-                  ? `About ${opts.tokens.toLocaleString()} tokens — past half the model's context. ` +
-                    `The oldest turns are dropped as this grows; start a new chat to keep them.`
-                  : `About ${opts.tokens.toLocaleString()} tokens of the model's context in use`
-              }
-              >${tokenLabel(opts.tokens)}</span
-            >`
-          : nothing
-      }
-      ${
-        opts.streaming
-          ? html`<sp-progress-circle size="s" indeterminate></sp-progress-circle>`
-          : nothing
-      }
-      ${commandButton("assistant.newChat", {
-        content: html`<sp-icon-add slot="icon"></sp-icon-add>`,
-        quiet: true,
-      })}
-    </div>
-  `;
+/**
+ * The sentence behind the token readout.
+ *
+ * `services/context-manager.ts` has computed both numbers on every turn since it was written, and
+ * `chat-state.ts` has stored them — with NO READER anywhere. Plan §11.6: "Context budget manager →
+ * tokenCount / contextWarning actually rendered". So a conversation was silently trimmed, the
+ * assistant forgot what you told it ten turns ago, and the two numbers that would have explained
+ * why sat in the store.
+ *
+ * @param {number} tokens
+ * @param {boolean} overBudget
+ * @returns {string}
+ */
+export function tokenHint(tokens: number, overBudget: boolean): string {
+  return overBudget
+    ? `About ${tokens.toLocaleString()} tokens — past half the model's context. ` +
+        "The oldest turns are dropped as this grows; start a new chat to keep them."
+    : `About ${tokens.toLocaleString()} tokens of the model's context in use`;
 }
 
-// ─── Message rows ───────────────────────────────────────────────────────────
-
-function renderUserMessage(msg: Message): TemplateResult {
-  const { body, contextLines } = splitAttachedContext(msg.content);
-  return html`
-    <div class="ai-msg-user">
-      <div class="ai-msg-user-body">${body}</div>
-      ${
-        contextLines.length > 0
-          ? html`
-              <div class="ai-msg-context-chips">
-                ${contextLines.map((line) => html`<span class="ai-context-chip">${line}</span>`)}
-              </div>
-            `
-          : nothing
-      }
-    </div>
-  `;
-}
+// ─── Tool calls ─────────────────────────────────────────────────────────────
 
 /** The tool whose chip is a question card rather than a chip. */
 const ASK_TOOL = "ask_user";
 
 /** The tool whose chip grows a live progress line while it runs. */
 const IMPORT_TOOL = "import_site";
-
-/** Log lines drawn under a running import. The tail is what a reader wants. */
-/**
- * How close to the bottom counts as "following along".
- *
- * The same threshold and the same reasoning as the transcript's own scroller
- * (`panels/ai-panel.ts`): a reader who has scrolled up is reading something, and yanking them back
- * on every new line is the behaviour that makes a live log unreadable.
- */
-const IMPORT_STICK_THRESHOLD = 24;
-
-/**
- * Keep an import log pinned to its newest line, unless the reader has scrolled away from it.
- *
- * The log is a scroller now rather than a six-line tail, and a scroller that does not follow is a
- * box that shows the same six lines it started with while the interesting ones pile up below.
- */
-function stickToBottom(element: Element | undefined): void {
-  if (!(element instanceof HTMLElement)) {
-    return;
-  }
-  const distance = element.scrollHeight - element.scrollTop - element.clientHeight;
-  if (distance <= IMPORT_STICK_THRESHOLD || element.scrollTop === 0) {
-    element.scrollTop = element.scrollHeight;
-  }
-}
 
 /** What `ask_user` was called with, as far as the arguments actually parse. */
 interface AskArgs {
@@ -366,14 +292,56 @@ export function toolOutcomeText(tc: ToolCallRecord): string {
   return (result.success ? result.summary : result.error) ?? "";
 }
 
+/** How a question card reaches the store that resolves it, and an import its record. */
+export interface AskHandlers {
+  /** The id of the question the loop is still waiting on, or null. */
+  pendingId?: string | null;
+  /** The live record for an `import_site` call, if this renderer's host has one. */
+  importRun?: (id: string) => ImportRunRecord | null;
+}
+
+/** The empty import fields every chip carries, so a `$switch` never reads an absent path. */
+function noImport(): Pick<
+  ChatChipView,
+  | "hasPhase"
+  | "importCount"
+  | "importLog"
+  | "importMessage"
+  | "importOpen"
+  | "importPhase"
+  | "importProgress"
+  | "importSpinner"
+  | "importState"
+> {
+  return {
+    hasPhase: false,
+    importCount: "",
+    importLog: [],
+    importMessage: "",
+    importOpen: false,
+    importPhase: "",
+    importProgress: "",
+    importSpinner: "none",
+    importState: "none",
+  };
+}
+
 /**
  * A running import, under the chip that started it.
  *
- * An import takes minutes and says a line at a time. Rendering it here rather than in the modal it
- * used to live in is what stops a successful run destroying its own account of what it did: the
- * chip and the progress are one thing, joined by the tool-call id.
+ * An import takes minutes and says a line at a time. Rendering it under the chip rather than in the
+ * modal it used to live in is what stops a successful run destroying its own account of what it
+ * did: the chip and the progress are one thing, joined by the tool-call id.
+ *
+ * Projected for EVERY import chip, not only a running one. A finished run used to lose its whole
+ * account of itself at the instant it finished — the record was fetched only while the call was
+ * pending, so the log vanished on success. That is the failure the hand-off from the wizard to the
+ * assistant was made to fix, reproduced one layer in.
+ *
+ * @param {ImportRunRecord} record
+ * @returns {Partial<ChatChipView>}
  */
-function renderImportProgress(record: ImportRunRecord): TemplateResult {
+function projectImport(record: ImportRunRecord): Partial<ChatChipView> {
   const running = record.status === "running";
   const determinate = record.total !== null && record.current !== null;
   const outcome =
@@ -384,357 +352,224 @@ function renderImportProgress(record: ImportRunRecord): TemplateResult {
         : record.status === "stopped"
           ? "Import stopped"
           : record.message;
-  return html`
-    <details class="ai-import-progress" ?open=${running}>
-      <summary class="ai-import-head">
-        ${
-          running
-            ? determinate
-              ? html`<sp-progress-circle
-                  size="s"
-                  progress=${Math.round((record.current! / Math.max(record.total!, 1)) * 100)}
-                ></sp-progress-circle>`
-              : html`<sp-progress-circle indeterminate size="s"></sp-progress-circle>`
-            : nothing
-        }
-        ${running ? html`<span class="ai-import-phase">${record.phase}</span>` : nothing}
-        <span class="ai-import-message">${outcome}</span>
-        <span class="ai-import-count">${record.log.length}</span>
-      </summary>
-      <div class="ai-import-log" ${ref(stickToBottom)}>
-        ${repeat(
-          record.log,
-          (evt, index) => `${index}:${evt.phase}`,
-          (evt) => html`
-            <div class="ai-import-log-line">
-              <span class="ai-import-phase">${evt.phase}</span>${evt.message}
-            </div>
-          `,
-        )}
-      </div>
-    </details>
-  `;
-}
-
-/** How a question card reaches the store that resolves it. */
-export interface AskHandlers {
-  /** The id of the question the loop is still waiting on, or null. */
-  pendingId?: string | null;
-  onAnswer?: (text: string) => void;
-  onSkip?: () => void;
-  /** The live record for an `import_site` call, if this renderer's host has one. */
-  importRun?: (id: string) => ImportRunRecord | null;
+  return {
+    hasPhase: running && record.phase !== "",
+    importCount: String(record.log.length),
+    importLog: record.log.map((evt, index) => ({
+      key: `${index}:${evt.phase}`,
+      message: evt.message,
+      phase: evt.phase,
+    })),
+    importMessage: outcome,
+    importOpen: running,
+    importPhase: record.phase,
+    importProgress: determinate
+      ? String(Math.round((record.current! / Math.max(record.total!, 1)) * 100))
+      : "",
+    importSpinner: running ? (determinate ? "progress" : "busy") : "none",
+    importState: "run",
+  };
 }
 
 /**
- * A question, as the last thing in the transcript, waiting on the reader.
+ * One tool call, as the transcript draws it.
  *
- * The card IS the tool chip rather than a row beside it: the question, its options and its answer
- * are all facts about one tool call, and rendering them anywhere else would give the transcript two
- * accounts of the same event that can disagree after a reload.
+ * The question card IS the tool chip rather than a row beside it: the question, its options and its
+ * answer are all facts about one tool call, and putting them anywhere else would give the
+ * transcript two accounts of the same event that can disagree after a reload.
  *
- * The options are a shortcut, never the whole answer — the composer is always live beneath, and its
- * placeholder says so. A question whose real answer is "neither, do this instead" must stay
- * answerable.
+ * @param {ToolCallRecord} tc
+ * @param {AskHandlers} handlers
+ * @returns {ChatChipView}
  */
-function renderAskCard(
-  tc: ToolCallRecord,
-  ask: AskArgs,
-  outcome: ReturnType<typeof toolOutcome>,
-  handlers: AskHandlers,
-): TemplateResult {
+export function projectChip(tc: ToolCallRecord, handlers: AskHandlers = {}): ChatChipView {
+  const outcome = toolOutcome(tc, tc.id === handlers.pendingId || Boolean(tc.result));
+  const text = toolOutcomeText(tc);
+  const run = tc.name === IMPORT_TOOL ? (handlers.importRun?.(tc.id) ?? null) : null;
+  const ask = tc.name === ASK_TOOL ? parseAsk(tc) : null;
   const answered = tc.result?.success
     ? ((tc.result.data as { answer?: string | null; skipped?: boolean } | undefined) ?? null)
     : null;
-  return html`
-    <div class="ai-ask" data-outcome=${outcome}>
-      <div class="ai-ask-question">${ask.question}</div>
-      ${ask.context ? html`<div class="ai-ask-context">${ask.context}</div>` : nothing}
-      ${
-        outcome === "pending"
-          ? html`
-              <div class="ai-ask-options">
-                ${ask.options.map(
-                  (option) => html`
-                    <sp-button
-                      size="s"
-                      variant="secondary"
-                      treatment="outline"
-                      @click=${() => handlers.onAnswer?.(option)}
-                    >
-                      ${option}
-                    </sp-button>
-                  `,
-                )}
-                <sp-action-button
-                  size="s"
-                  quiet
-                  class="ai-ask-skip"
-                  title="Let the assistant decide"
-                  @click=${() => handlers.onSkip?.()}
-                >
-                  You decide
-                </sp-action-button>
-              </div>
-            `
-          : nothing
-      }
-      ${
-        outcome === "unanswered"
-          ? html`<div class="ai-ask-outcome">
-              This question was still open when the session was reloaded — reply below to carry on.
-            </div>`
-          : nothing
-      }
-      ${
-        answered
-          ? html`<div class="ai-ask-answer">
-              ${answered.skipped ? "You decide" : answered.answer}
-            </div>`
-          : nothing
-      }
-      ${
-        outcome === "failed"
-          ? html`<div class="ai-ask-outcome">${toolOutcomeText(tc)}</div>`
-          : nothing
-      }
-    </div>
-  `;
+  const base: ChatChipView = {
+    answer: answered ? (answered.skipped ? "You decide" : (answered.answer ?? "")) : "",
+    askState: "none",
+    context: ask?.context ?? "",
+    hasContext: Boolean(ask?.context),
+    hint: text || formatToolLabel(tc),
+    key: tc.id,
+    kind: ask ? "ask" : "chip",
+    label: formatToolLabel(tc),
+    mark: outcome === "ok" ? "✓" : "✗",
+    options: (ask?.options ?? []).map((option) => ({ key: option, label: option })),
+    outcome,
+    outcomeState: outcome === "pending" || outcome === "unanswered" ? "hidden" : "shown",
+    outcomeText: text,
+    question: ask?.question ?? "",
+    tool: tc.name,
+    ...noImport(),
+    ...(run ? projectImport(run) : {}),
+  };
+  if (ask) {
+    /* The options are a shortcut, never the whole answer — the composer is always live beneath, and
+       its placeholder says so. A question whose real answer is "neither, do this instead" must stay
+       answerable, which is why `pending` draws the options AND leaves the field alone. */
+    base.askState =
+      outcome === "pending"
+        ? "pending"
+        : outcome === "unanswered"
+          ? "unanswered"
+          : answered
+            ? "answered"
+            : outcome === "failed"
+              ? "failed"
+              : "none";
+  }
+  return base;
 }
 
-function renderToolChips(
-  toolCalls: ToolCallRecord[],
-  handlers: AskHandlers = {},
-): TemplateResult | typeof nothing {
-  if (toolCalls.length === 0) {
-    return nothing;
-  }
-  return html`
-    <div class="ai-msg-tools">
-      ${toolCalls.map((tc) => {
-        const ask = tc.name === ASK_TOOL ? parseAsk(tc) : null;
-        const outcome = toolOutcome(tc, tc.id === handlers.pendingId || Boolean(tc.result));
-        if (ask) {
-          return renderAskCard(tc, ask, outcome, handlers);
-        }
-        const text = toolOutcomeText(tc);
-        /*
-         * For EVERY import chip, not only a running one.
-         *
-         * A finished run used to lose its whole account of itself at the instant it finished — the
-         * record was fetched only while the call was pending, so the log vanished on success. That
-         * is the failure the hand-off from the wizard to the assistant was made to fix, reproduced
-         * one layer in. It stays, collapsed, under the chip that produced it.
-         */
-        const run = tc.name === IMPORT_TOOL ? (handlers.importRun?.(tc.id) ?? null) : null;
-        return html`
-          <span class="ai-tool-chip" data-outcome=${outcome} title=${text || formatToolLabel(tc)}>
-            <sp-icon-gears size="xs"></sp-icon-gears>
-            <span class="ai-tool-chip-name">${formatToolLabel(tc)}</span>
-            ${
-              outcome === "pending" || outcome === "unanswered"
-                ? nothing
-                : html`<span class="ai-tool-chip-outcome"
-                    >${outcome === "ok" ? "✓" : "✗"} ${text}</span
-                  >`
-            }
-          </span>
-          ${run ? renderImportProgress(run) : nothing}
-        `;
-      })}
-    </div>
-  `;
-}
+// ─── Changed files ──────────────────────────────────────────────────────────
 
 /**
  * The turn's changed-files summary, with the two things it can honestly offer.
  *
- * Rendered only for a turn that changed something — "Changed 0 files" is noise, and a turn that
+ * Projected only for a turn that changed something — "Changed 0 files" is noise, and a turn that
  * only read is the common case. **Restore to here** is offered only when every recorded change went
  * through a transaction: a disk write has no history behind it, so a button that claimed to restore
  * one would be the same lie the model-facing caveat used to be.
+ *
+ * @param {string} messageId
+ * @returns {{
+ *   changesState: string;
+ *   changesSummary: string;
+ *   canRestore: boolean;
+ *   changes: ChatChangeView[];
+ * }}
  */
-function renderChangedFiles(
-  msg: Message,
-  onRestore?: (messageId: string) => void,
-): TemplateResult | typeof nothing {
-  const writes = writesForTurn(msg.id);
-  if (writes.length === 0) {
-    return nothing;
-  }
-  const summary = summarizeWrites(writes);
+export function projectChanges(messageId: string): {
+  changesState: string;
+  changesSummary: string;
+  canRestore: boolean;
+  changes: ChatChangeView[];
+} {
+  const writes = writesForTurn(messageId);
+  const summary = writes.length > 0 ? summarizeWrites(writes) : "";
   if (!summary) {
-    return nothing;
+    return { canRestore: false, changes: [], changesState: "none", changesSummary: "" };
   }
-  const restorable = writes.every((w) => !w.disk);
-  return html`
-    <details class="ai-msg-changes">
-      <summary>
-        ${summary}
-        ${
-          onRestore && restorable
-            ? html`<sp-action-button
-                size="xs"
-                quiet
-                title="Undo everything this turn changed"
-                @click=${(e: Event) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  onRestore(msg.id);
-                }}
-              >
-                Restore to here
-              </sp-action-button>`
-            : nothing
-        }
-      </summary>
-      <ul class="ai-msg-changes-list">
-        ${writes.map(
-          (w) => html`
-            <li data-disk=${String(w.disk)} data-ok=${String(w.ok)}>
-              <code>${w.path}</code>
-              <span>${w.ok ? w.tool : `failed — ${w.error ?? w.tool}`}</span>
-              ${w.disk ? html`<em>written to disk — undo cannot reach it</em>` : nothing}
-            </li>
-          `,
-        )}
-      </ul>
-    </details>
-  `;
+  return {
+    canRestore: writes.every((w) => !w.disk),
+    changes: writes.map((w, index) => ({
+      disk: w.disk,
+      key: `${index}:${w.path}`,
+      note: w.ok ? w.tool : `failed — ${w.error ?? w.tool}`,
+      ok: w.ok,
+      path: w.path,
+    })),
+    changesState: "list",
+    changesSummary: summary,
+  };
 }
 
-function renderAssistantMessage(
-  msg: Message,
-  onRestore?: (messageId: string) => void,
-  ask: AskHandlers = {},
-): TemplateResult | typeof nothing {
-  const toolCalls = msg.toolCalls ?? [];
-  if (!msg.content && toolCalls.length === 0) {
-    return nothing;
-  }
-  return html`
-    <div class="ai-msg-assistant">
-      ${msg.content ? renderMarkdown(msg.id, msg.content) : nothing}
-      ${renderToolChips(toolCalls, ask)} ${renderChangedFiles(msg, onRestore)}
-    </div>
-  `;
+// ─── Rows ───────────────────────────────────────────────────────────────────
+
+/** Every field a row carries, so a `$switch` case never reads an absent path. */
+function emptyRow(key: string, kind: string): ChatRowView {
+  return {
+    body: "",
+    canRestore: false,
+    changes: [],
+    changesState: "none",
+    changesSummary: "",
+    chips: [],
+    contextChips: [],
+    hasChips: false,
+    hasContextChips: false,
+    key,
+    kind,
+    markdown: "",
+  };
 }
 
-function renderToolMessage(msg: Message): TemplateResult | typeof nothing {
-  // Show only failed tool results so the user knows why an edit didn't land
-  // (ADR §11.3). Successful tool results stay hidden to reduce noise.
-  const parsed = tryParseToolResult(msg.content);
-  if (!parsed || parsed.success) {
-    return nothing;
-  }
-  return html`<div class="ai-msg-tool-error">⚠️ ${parsed.error || "Tool call failed"}</div>`;
+/** The attached-context block on a user turn, back apart into chips. */
+function contextChips(lines: readonly string[]): ChatContextChip[] {
+  return lines.map((line, index) => ({ key: `${index}:${line}`, label: line }));
 }
-
-function renderStreamingTail(msg: Message, ask: AskHandlers = {}): TemplateResult {
-  if (!msg.content) {
-    return html`
-      <div class="ai-msg-typing">
-        <span></span>
-        <span></span>
-        <span></span>
-      </div>
-    `;
-  }
-  return html`
-    <div class="ai-msg-assistant">
-      <span class="ai-msg-streaming">${msg.content}</span>
-      ${renderToolChips(msg.toolCalls ?? [], ask)}
-    </div>
-  `;
-}
-
-// ─── Message list ───────────────────────────────────────────────────────────
 
 export interface MessageListOptions {
-  messages: Message[];
-  /** ChatState status — "streaming" renders the tail live. */
+  messages: readonly Message[];
+  /** ChatState status — "streaming" projects the tail live. */
   status: string;
-  error: string | null;
-  onScroll: (e: Event) => void;
-  /** Ref to the scrolling element, for stick-to-bottom maintenance. */
-  listRef: (el: Element | undefined) => void;
-  /** Undo everything one turn changed. Offered only for turns whose changes are all transactional. */
-  onRestore?: ((messageId: string) => void) | undefined;
-  /**
-   * The outstanding question and how to settle it.
-   *
-   * Passed down rather than read from the store here, because this module renders templates and
-   * holds no state — the same reason the three header buttons are command records.
-   */
+  /** The outstanding question and the import records, passed down rather than read here. */
   ask?: AskHandlers | undefined;
 }
 
-/** The scrollable message list — THE scroller of the chat view. */
-export function renderMessageList(opts: MessageListOptions): TemplateResult {
-  const { messages, status } = opts;
+/**
+ * The transcript, as rows.
+ *
+ * Keyed on `msg.id`, for two reasons a reader can see. The last assistant row swaps between the
+ * streaming tail and the finished message the moment a stream completes, so an unkeyed list would
+ * tear down and rebuild the longest node in the transcript every time one finishes. And an
+ * assistant row holds the reader's OWN open/closed state on its changed-files disclosure, which
+ * position-based reuse hands to a different message.
+ *
+ * A message that would draw nothing — an empty assistant turn with no tool calls, a successful tool
+ * result — is absent rather than an empty row, which is the same thing the lit template's `nothing`
+ * did and one fewer node for the runtime to reconcile.
+ *
+ * @param {MessageListOptions} opts
+ * @returns {ChatRowView[]}
+ */
+export function projectRows(opts: MessageListOptions): ChatRowView[] {
   const ask = opts.ask ?? {};
-  const lastIdx = messages.length - 1;
-  return html`
-    <div class="ai-chat-messages" ${ref(opts.listRef)} @scroll=${opts.onScroll}>
-      ${
-        messages.length === 0 && status !== "streaming"
-          ? html`
-              <div class="ai-chat-empty">
-                Ask the assistant to build or edit this page — it can add sections, restyle
-                elements, and wire up components.
-              </div>
-            `
-          : nothing
+  const lastIdx = opts.messages.length - 1;
+  const rows: ChatRowView[] = [];
+  for (const [i, msg] of opts.messages.entries()) {
+    if (msg.role === "user") {
+      const { body, contextLines } = splitAttachedContext(msg.content);
+      rows.push({
+        ...emptyRow(msg.id, "user"),
+        body,
+        contextChips: contextChips(contextLines),
+        hasContextChips: contextLines.length > 0,
+      });
+      continue;
+    }
+    if (msg.role === "tool") {
+      // Show only failed tool results so the user knows why an edit didn't land (ADR §11.3).
+      // Successful tool results stay hidden to reduce noise.
+      const parsed = tryParseToolResult(msg.content);
+      if (parsed && !parsed.success) {
+        rows.push({
+          ...emptyRow(msg.id, "tool-error"),
+          body: `⚠️ ${parsed.error || "Tool call failed"}`,
+        });
       }
-      ${repeat(
-        messages,
-        /* Keyed on msg.id, for two reasons a reader can see. The last assistant row swaps between
-           renderStreamingTail and renderAssistantMessage the moment a stream completes, so an
-           unkeyed list tears down and rebuilds the longest node in the transcript every time one
-           finishes. And an assistant row holds the reader's OWN open/closed state on its
-           ai-msg-changes details element, which position-based reuse hands to a different
-           message. */
-        (msg) => msg.id,
-        (msg, i) => {
-          if (msg.role === "user") {
-            return renderUserMessage(msg);
-          }
-          if (msg.role === "tool") {
-            return renderToolMessage(msg);
-          }
-          if (msg.role === "assistant") {
-            if (status === "streaming" && i === lastIdx) {
-              return renderStreamingTail(msg, ask);
-            }
-            return renderAssistantMessage(msg, opts.onRestore, ask);
-          }
-          return nothing;
-        },
-      )}
-      ${
-        status !== "streaming" && opts.error
-          ? html`
-              <div class="ai-msg-error">
-                <div>${opts.error}</div>
-                ${
-                  formatErrorAdvice(opts.error)
-                    ? html`<div class="ai-msg-error-advice">${formatErrorAdvice(opts.error)}</div>`
-                    : nothing
-                }
-                ${
-                  /* `assistant.retry`, not a closure. Its `enablement` reads `ctx.ai.configured`,
-                     so the one error this row cannot recover from — no provider connected, whose
-                     advice line above already says to add a key — draws the button disabled with
-                     that sentence rather than offering a send that will fail identically. */
-                  commandButton("assistant.retry", {
-                    className: "ai-msg-retry",
-                    content: "Retry",
-                  })
-                }
-              </div>
-            `
-          : nothing
-      }
-    </div>
-  `;
+      continue;
+    }
+    if (msg.role !== "assistant") {
+      continue;
+    }
+    const toolCalls = msg.toolCalls ?? [];
+    const chips = toolCalls.map((tc) => projectChip(tc, ask));
+    if (opts.status === "streaming" && i === lastIdx) {
+      rows.push({
+        ...emptyRow(msg.id, msg.content ? "streaming" : "typing"),
+        body: msg.content,
+        chips,
+        hasChips: chips.length > 0,
+      });
+      continue;
+    }
+    if (!msg.content && toolCalls.length === 0) {
+      continue;
+    }
+    rows.push({
+      ...emptyRow(msg.id, "assistant"),
+      chips,
+      hasChips: chips.length > 0,
+      markdown: msg.content ? renderMarkdown(msg.id, msg.content) : "",
+      ...projectChanges(msg.id),
+    });
+  }
+  return rows;
 }

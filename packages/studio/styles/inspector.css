@@ -146,48 +146,6 @@ textarea.field-input {
 .kv-add:hover {
   text-decoration: underline;
 }
-
-/* ─── The Target Line (plan §6.1) ─────────────────────────────────────────────
-   One sentence at the top of the Style tab, stating the compound coordinate an
-   edit lands in: element · breakpoint · scheme variant · selector, then the
-   scope chip. Every segment is a control, so every segment is a button with the
-   chrome taken off — the row must read as a sentence, not as a toolbar, which is
-   exactly what the three widgets it replaces failed to do. */
-.target-line {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 5px 8px;
-  border-bottom: 1px solid var(--border);
-  font-size: var(--spectrum-font-size-50, 11px);
-  line-height: 1.4;
-}
-.tl-glyph {
-  flex-shrink: 0;
-  color: var(--accent);
-}
-.tl-segments {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 2px;
-  min-width: 0;
-  flex: 1;
-}
-.tl-sep {
-  color: var(--fg-dim);
-  opacity: 0.6;
-}
-.tl-seg {
-  padding: 1px 3px;
-  border: none;
-  border-radius: var(--radius);
-  background: none;
-  color: var(--fg);
-  font: inherit;
-  font-family: var(--font-mono);
-  cursor: pointer;
-}
 button.tl-seg:hover {
   background: var(--hover-bg);
   color: var(--accent);
@@ -196,88 +154,7 @@ button.tl-seg:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: -1px;
 }
-.tl-seg--element {
-  color: var(--tag);
-}
-.tl-seg--media,
 .tl-seg--scheme {
-  color: var(--fg-dim);
-}
-.tl-seg--selector {
-  color: var(--signal);
-}
-.tl-selector-popover {
-  max-height: 320px;
-  overflow-y: auto;
-}
-.tl-selector-menu {
-  min-width: 160px;
-}
-/* The scope chip. Element scope is ambient and reads as ambient; the two tag-wide
-   scopes are the ones a reader has to notice before typing, so they carry weight. */
-.tl-scope {
-  flex-shrink: 0;
-  padding: 1px 6px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  color: var(--fg-dim);
-  white-space: nowrap;
-}
-.tl-scope--document {
-  border-color: var(--accent-50);
-  color: var(--accent);
-}
-.tl-scope--project {
-  border-color: var(--warning);
-  color: var(--warning);
-}
-.tl-warning {
-  padding: 6px 8px;
-  border-bottom: 1px solid var(--border);
-  border-left: 2px solid var(--warning);
-  background: var(--bg-panel);
-  font-size: var(--spectrum-font-size-50, 11px);
-}
-.tl-warning-text {
-  margin: 0;
-  color: var(--warning);
-}
-.tl-warning-action {
-  margin-top: 4px;
-  padding: 0;
-  border: none;
-  background: none;
-  color: var(--accent);
-  font: inherit;
-  cursor: pointer;
-  text-decoration: underline;
-}
-.tl-affected {
-  margin: 4px 0 0;
-  padding: 0;
-  max-height: 140px;
-  overflow-y: auto;
-  list-style: none;
-}
-.tl-affected-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 1px 0;
-  color: var(--fg-dim);
-}
-.tl-affected-path {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-family: var(--font-mono);
-}
-.tl-affected-count {
-  flex-shrink: 0;
-  font-family: var(--font-mono);
-}
-.tl-affected-empty {
-  margin: 4px 0 0;
   color: var(--fg-dim);
 }
 
@@ -372,7 +249,7 @@ button.tl-seg:focus-visible {
 .style-row--warning .style-row-label::before {
   content: "⚠ ";
 }
-/* §7.1's third notification tier: a bad value, said AT the control that refuses it, for exactly as
+/* An error under a field reads as part of that field, and stays put for as
    long as the value stays bad. A toast expires and a problem is a list entry somewhere else; this
    one is a property of the field, so it is styled as part of the row rather than as a floating
    surface. The left rule is what makes it read as belonging to the widget above it. */

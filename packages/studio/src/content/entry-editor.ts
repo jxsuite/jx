@@ -40,7 +40,7 @@ import { effect, effectScope } from "../reactivity";
 import { projectState } from "../store";
 import { resolveContextPointer } from "../services/context-resolver";
 import { transactDoc } from "../tabs/transact";
-import { renderForm } from "../ui/schema-form";
+import { mountSchemaForm } from "../ui/schema-form";
 import { paneRegion } from "../ui/regions";
 import { activateTab, workspace } from "../workspace/workspace";
 import { commitEntryFields, entryFields, mutateEntryField } from "./entry-fields";
@@ -266,7 +266,7 @@ export function renderEntryMode(surface: CanvasSurface, tab: Tab): void {
         <div class="entry-editor" data-jx-region=${paneRegion(paneId, "entry")}>
           ${headerTpl(tab, collection)}
           <div class="entry-editor-fields" data-jx-region=${paneRegion(paneId, "entry/fields")}>
-            ${renderForm(collection.schema as JsonSchema, fields, {
+            ${mountSchemaForm(`entry:${paneId}`, collection.schema as JsonSchema, fields, {
               context: formContext(tab),
               errors: absentRequiredErrors(collection, fields),
               onChange: (patch) => commitEntryFields(tab, patch),

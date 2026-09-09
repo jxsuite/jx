@@ -87,15 +87,12 @@ import { IconDelete } from "@spectrum-web-components/icons-workflow/src/elements
 import { IconClose } from "@spectrum-web-components/icons-workflow/src/elements/IconClose.js";
 import { IconChevronRight } from "@spectrum-web-components/icons-workflow/src/elements/IconChevronRight.js";
 import { IconEdit } from "@spectrum-web-components/icons-workflow/src/elements/IconEdit.js";
-import { IconUndo } from "@spectrum-web-components/icons-workflow/src/elements/IconUndo.js";
 import { IconDuplicate } from "@spectrum-web-components/icons-workflow/src/elements/IconDuplicate.js";
 import { IconCopy } from "@spectrum-web-components/icons-workflow/src/elements/IconCopy.js";
 import { IconExport } from "@spectrum-web-components/icons-workflow/src/elements/IconExport.js";
 import { IconPreview } from "@spectrum-web-components/icons-workflow/src/elements/IconPreview.js";
 import { IconCode } from "@spectrum-web-components/icons-workflow/src/elements/IconCode.js";
 import { IconBrush } from "@spectrum-web-components/icons-workflow/src/elements/IconBrush.js";
-import { IconGears } from "@spectrum-web-components/icons-workflow/src/elements/IconGears.js";
-import { IconSettings } from "@spectrum-web-components/icons-workflow/src/elements/IconSettings.js";
 import { IconInfo } from "@spectrum-web-components/icons-workflow/src/elements/IconInfo.js";
 import { IconBack } from "@spectrum-web-components/icons-workflow/src/elements/IconBack.js";
 import { IconProperties } from "@spectrum-web-components/icons-workflow/src/elements/IconProperties.js";
@@ -112,7 +109,6 @@ import { IconTextAlignRight } from "@spectrum-web-components/icons-workflow/src/
 import { IconTextAlignJustify } from "@spectrum-web-components/icons-workflow/src/elements/IconTextAlignJustify.js";
 import { IconAlignTop } from "@spectrum-web-components/icons-workflow/src/elements/IconAlignTop.js";
 import { IconAlignBottom } from "@spectrum-web-components/icons-workflow/src/elements/IconAlignBottom.js";
-import { IconShare } from "@spectrum-web-components/icons-workflow/src/elements/IconShare.js";
 import { IconAlignMiddle } from "@spectrum-web-components/icons-workflow/src/elements/IconAlignMiddle.js";
 import { IconAlignLeft } from "@spectrum-web-components/icons-workflow/src/elements/IconAlignLeft.js";
 import { IconAlignRight } from "@spectrum-web-components/icons-workflow/src/elements/IconAlignRight.js";
@@ -134,10 +130,6 @@ import { IconVisibility } from "@spectrum-web-components/icons-workflow/src/elem
 import { IconVisibilityOff } from "@spectrum-web-components/icons-workflow/src/elements/IconVisibilityOff.js";
 import { IconArtboard } from "@spectrum-web-components/icons-workflow/src/elements/IconArtboard.js";
 import { IconChat } from "@spectrum-web-components/icons-workflow/src/elements/IconChat.js";
-import { IconSend } from "@spectrum-web-components/icons-workflow/src/elements/IconSend.js";
-import { IconStop } from "@spectrum-web-components/icons-workflow/src/elements/IconStop.js";
-import { IconHistory } from "@spectrum-web-components/icons-workflow/src/elements/IconHistory.js";
-import { IconAttach } from "@spectrum-web-components/icons-workflow/src/elements/IconAttach.js";
 import { IconViewList } from "@spectrum-web-components/icons-workflow/src/elements/IconViewList.js";
 
 // Inline formatting icons
@@ -148,7 +140,6 @@ import { IconTextStrikethrough } from "@spectrum-web-components/icons-workflow/s
 import { IconTextSuperscript } from "@spectrum-web-components/icons-workflow/src/elements/IconTextSuperscript.js";
 import { IconTextSubscript } from "@spectrum-web-components/icons-workflow/src/elements/IconTextSubscript.js";
 import { IconLink } from "@spectrum-web-components/icons-workflow/src/elements/IconLink.js";
-import { IconDownload } from "@spectrum-web-components/icons-workflow/src/elements/IconDownload.js";
 import { IconCheckmark } from "@spectrum-web-components/icons-workflow/src/elements/IconCheckmark.js";
 
 // Custom studio components
@@ -226,15 +217,12 @@ const components = [
   ["sp-icon-delete", IconDelete],
   ["sp-icon-close", IconClose],
   ["sp-icon-edit", IconEdit],
-  ["sp-icon-undo", IconUndo],
   ["sp-icon-duplicate", IconDuplicate],
   ["sp-icon-copy", IconCopy],
   ["sp-icon-export", IconExport],
   ["sp-icon-preview", IconPreview],
   ["sp-icon-code", IconCode],
   ["sp-icon-brush", IconBrush],
-  ["sp-icon-gears", IconGears],
-  ["sp-icon-settings", IconSettings],
   ["sp-icon-info", IconInfo],
   ["sp-icon-back", IconBack],
   ["sp-icon-properties", IconProperties],
@@ -249,7 +237,6 @@ const components = [
   ["sp-icon-text-align-justify", IconTextAlignJustify],
   ["sp-icon-align-top", IconAlignTop],
   ["sp-icon-align-bottom", IconAlignBottom],
-  ["sp-icon-share", IconShare],
   ["sp-icon-align-middle", IconAlignMiddle],
   ["sp-icon-align-left", IconAlignLeft],
   ["sp-icon-align-right", IconAlignRight],
@@ -265,7 +252,6 @@ const components = [
   ["sp-icon-flip-vertical", IconFlipVertical],
   ["sp-icon-remove", IconRemove],
   ["sp-icon-full-screen", IconFullScreen],
-  ["sp-icon-download", IconDownload],
   ["sp-icon-checkmark", IconCheckmark],
   ["sp-icon-view-column", IconViewColumn],
   ["sp-icon-box", IconBox],
@@ -273,10 +259,6 @@ const components = [
   ["sp-icon-visibility-off", IconVisibilityOff],
   ["sp-icon-artboard", IconArtboard],
   ["sp-icon-chat", IconChat],
-  ["sp-icon-send", IconSend],
-  ["sp-icon-stop", IconStop],
-  ["sp-icon-history", IconHistory],
-  ["sp-icon-attach", IconAttach],
   ["sp-icon-view-list", IconViewList],
   ["sp-icon-text-bold", IconTextBold],
   ["sp-icon-text-italic", IconTextItalic],

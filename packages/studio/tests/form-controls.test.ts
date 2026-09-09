@@ -6,7 +6,7 @@ import { flush, pointer } from "./harness";
 import { beforeEach, describe, expect, test } from "bun:test";
 import { html, render } from "lit-html";
 import { builtinFormControls, resetFormControlUiState } from "../src/ui/form-controls";
-import { getFormControl, renderForm } from "../src/ui/schema-form";
+import { getFormControl } from "../src/ui/schema-form";
 import type { SchemaFormContext } from "../src/ui/schema-form";
 
 type ValueEl = HTMLElement & { value: string };
@@ -36,25 +36,29 @@ interface BuilderMount {
   state: { value: unknown };
 }
 
-/** Mount a schema-builder-controlled field over a live value that tracks onChange patches. */
+/**
+ * Mount the schema-builder control over a live value that tracks its commits.
+ *
+ * The control is rendered DIRECTLY rather than through a form, because the form is a document now
+ * and its mount is asynchronous — and what this file is about is the control's own state machine.
+ * That a `ui.control` override reaches the registry at all is `schema-form.test.ts`'s assertion.
+ */
 function mountBuilder(initial: unknown, ctx: SchemaFormContext = inertCtx): BuilderMount {
   const container = document.createElement("div");
   const state = { value: initial };
   const doRender = () => {
     render(
-      html`${renderForm(
-        { properties: { schema: { format: "json-schema", type: "object" } } },
-        { schema: state.value },
-        {
-          context: ctx,
-          onChange: (patch) => {
-            state.value = patch.schema;
-            doRender();
-          },
-          rerender: doRender,
-          ui: { schema: { control: "schema-builder" } },
+      html`${getFormControl("schema-builder")!({
+        ctx,
+        key: "schema",
+        onChange: (next) => {
+          state.value = next;
+          doRender();
         },
-      )}`,
+        rerender: doRender,
+        schema: { format: "json-schema", type: "object" },
+        value: state.value,
+      })}`,
       container,
     );
   };

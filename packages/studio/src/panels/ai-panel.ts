@@ -2,30 +2,31 @@
 /**
  * Ai-panel.ts — AI assistant tab for the right panel (Stack B document assistant).
  *
- * Native lit-html chat UI (VSCode-Copilot style) over the reactive document-assistant
- * session: a view-state machine (sessions list ↔ chat), a message list with
- * stick-to-bottom scrolling, and the sticky composer.
+ * The assistant over the reactive document-assistant session: a view-state machine (sessions list ↔
+ * chat), the transcript, the sticky composer, and the six `Assistant:` records that are the only
+ * definition of what it can do. It is a Jx document over the kit now
+ * (`surfaces/ai-chat.json` + `surfaces/ai-chat.ts`); this module is the flow, and everything below
+ * decides rather than draws.
  *
  * Credentials are NOT a state of this panel. A provider key is a roaming APPLICATION setting
  * configured once, so it lives in Preferences › Assistant (⌘,) — not in a dialog reachable only
  * from the panel that is broken for want of one. The panel with no key configured still opens on an
- * invitation to talk, with the way to fix it offered beneath. It repaints when a credential is
+ * invitation to talk, with the way to fix it offered beneath. It re-projects when a credential is
  * saved or revoked by subscribing to `settings/preferences-accounts.ts`, which is a LEAF both
  * modules depend on rather than an import back into the sheet.
  *
- * Rendering: this panel owns a private rAF-coalesced render loop into the assistant
- * `.panel-body` container (bound once via {@link bindAiPanelHost}). It deliberately
- * bypasses the right-panel scheduler's focus guard — streaming must repaint while the
- * composer is focused — which is safe because nothing here is value-bound (the composer
- * textarea is uncontrolled). The right panel renders the same template into the same
- * container on tab switches; lit reconciles both paths through one part cache.
+ * **The frame loop is gone, and nothing replaced it.** This panel used to own a private
+ * rAF-coalesced `litRender` that deliberately bypassed `panels/panel-scheduler.ts`'s focus guard,
+ * because streaming had to repaint while the composer was focused and a whole-panel repaint would
+ * otherwise have taken the caret. A document's bindings re-run per PROPERTY and skip a write equal
+ * to what is already there, so a token arriving mid-stream touches one text node and reaches
+ * nothing else — the composer is never re-rendered, so there is nothing to guard against and
+ * nothing to coalesce. One `effect()` recomputes the projection; the surface follows.
  *
  * @docs studio/ai/chat
  * @license MIT
  */
 
-import { html, render as litRender, nothing } from "lit-html";
-import type { TemplateResult } from "lit-html";
 import { effect, effectScope } from "../reactivity";
 import { createDocumentAssistant } from "../services/document-assistant";
 import { writesForTurn } from "../services/ai-writes";
@@ -42,13 +43,23 @@ import { openPreferences } from "../settings/preferences-dialog";
 import { onCredentialsChanged } from "../settings/preferences-accounts";
 import { setDockCollapsed } from "../shell";
 import { hasSelection } from "../commands/context";
+import { activeRegistry } from "../commands/active-registry";
 import { clearMarkdownCache } from "./ai-chat/chat-markdown";
-import { renderChatHeader, renderMessageList } from "./ai-chat/chat-view";
+import {
+  formatErrorAdvice,
+  projectCommand,
+  projectCommands,
+  projectRows,
+  tokenHint,
+  tokenLabel,
+} from "./ai-chat/chat-view";
 import { createComposer } from "./ai-chat/composer";
-import { renderSessionsList } from "./ai-chat/sessions-view";
+import { projectSessions } from "./ai-chat/sessions-view";
 import { buildMessageWithContext } from "./ai-chat/attached-context";
 import { setInspectorTab } from "./right-panel";
+import { emptyAiChatView, mountAiChatSurface } from "../surfaces/ai-chat";
 
+import type { AiChatSurface, AiChatView } from "../surfaces/ai-chat";
 import type { AnyCommand } from "../commands/registry";
 import type { CommandContext } from "../commands/context";
 import type { EffectScope } from "@vue/reactivity";
@@ -65,42 +76,103 @@ const assistant = createDocumentAssistant();
 (globalThis as Record<string, unknown>).assistant = assistant;
 let assistantScope: EffectScope | null = null;
 
-// ─── Render loop ────────────────────────────────────────────────────────────
+// ─── The surface ────────────────────────────────────────────────────────────
 
-/** The assistant tab's `.panel-body` container, bound once by the right panel. */
-let hostEl: HTMLElement | null = null;
-let renderQueued = false;
+/** The mounted document, once the right panel has handed over its container. */
+let surface: AiChatSurface | null = null;
 
 /**
- * Bind the panel's render host and start the streaming watcher. Called once from the right panel's
- * container setup; replaces the old global render-bridge.
+ * Mount the assistant into the container the Inspector owns, and subscribe to the state it draws.
+ * Called once from the right panel's container setup; replaces the old render-host binding.
  *
- * @param {HTMLElement} el
+ * `null` unbinds: the document is disposed and the watcher stopped, which is what `chat-panel.ts`'s
+ * `unmount()` needs. It is the same seam rather than a second export, because a tear-down nothing
+ * but a teardown reaches is a tear-down the reachability ledger has to carry.
+ *
+ * @param {HTMLElement | null} el
  */
-export function bindAiPanelHost(el: HTMLElement) {
-  hostEl = el;
+export function bindAiPanelHost(el: HTMLElement | null) {
+  assistantScope?.stop();
+  assistantScope = null;
+  surface?.dispose();
+  surface = null;
+  if (!el) {
+    return;
+  }
+  surface = mountAiChatSurface(el, projectPanel(), {
+    answer: (text) => {
+      void handleAssistantSend(text);
+    },
+    attach: (_scope, event) => {
+      composer.openAttachMenu(event.currentTarget);
+    },
+    deleteSession,
+    dropChip: (kind) => composer.dropChip(kind),
+    edit: (text) => composer.edit(text),
+    openSession,
+    openSettings: () => {
+      void openPreferences("assistant");
+    },
+    pickerSlot: (host) => composer.pickerSlot(host),
+    restore: handleRestore,
+    run: runCommand,
+    send: () => composer.send(),
+    skip: () => {
+      skipAsk();
+      renderAiPanel();
+    },
+    stop,
+  });
   watchAssistant();
 }
 
-/** Coalesce a re-render of the whole panel onto the next animation frame. */
-function scheduleAiRender() {
-  if (renderQueued || !hostEl) {
+/** Whether a projection is already queued for the end of this tick. */
+let projectionQueued = false;
+
+/**
+ * Recompute the projection; the surface follows.
+ *
+ * **Coalesced on a microtask, for two reasons that are not about paint.** A turn writes several
+ * reactive facts in one tick — the message, the status, the token count — and the transcript
+ * projection is O(messages), so running it once per write would rebuild the whole list three times
+ * for one event. And the write LEDGER (`services/ai-writes.ts`) is a plain array: `endTurn` files
+ * it immediately after the assistant message lands, so a projection that ran synchronously inside
+ * the effect would read the turn's changed-files summary one write too early, every time. The old
+ * frame loop hid both by accident of deferral; this states them. Precedent: `panels/overlays.ts`,
+ * §9.3's second scheduler.
+ */
+export function renderAiPanel(): void {
+  if (projectionQueued || !surface) {
     return;
   }
-  renderQueued = true;
-  requestAnimationFrame(() => {
-    renderQueued = false;
-    if (hostEl) {
-      litRender(renderAiPanelTemplate(), hostEl);
-      maintainScroll();
-    }
+  projectionQueued = true;
+  queueMicrotask(() => {
+    projectionQueued = false;
+    surface?.update(projectPanel());
   });
 }
 
 /**
- * Reactively repaint on chat-state changes. Tracks the message count, the tail message's growth
- * (streaming deltas / tool calls), status, and errors; the actual DOM work happens in the
- * rAF-coalesced render, so token rate never exceeds frame rate.
+ * Run one of the panel's projected commands.
+ *
+ * Re-asked at click time, not trusted from the projection: state moves between the two, and
+ * `registry.run` THROWS on a refusal. Same bargain `registry.handleKeyEvent` strikes for a chord
+ * bound to a disabled command — swallow it here rather than make every surface wrap a dispatch in
+ * try/catch.
+ */
+function runCommand(id: string): void {
+  const registry = activeRegistry();
+  if (registry?.isEnabled(id)) {
+    void registry.run(id);
+  }
+}
+
+/**
+ * Reactively re-project on chat-state changes. Tracks the message count, the tail message's growth
+ * (streaming deltas / tool calls), status, and errors.
+ *
+ * There is no coalescer under this and there does not need to be one: the projection is data, and
+ * the runtime writes only the bindings whose value actually moved.
  */
 function watchAssistant() {
   assistantScope?.stop();
@@ -114,18 +186,21 @@ function watchAssistant() {
       void last?.toolCalls?.length;
       void cs.status;
       void cs.error;
+      // The registry is composed AFTER the bootstrap mounts this, and it is a reactive holder —
+      // Reading it here is what turns the header's skeleton into its real buttons.
+      void activeRegistry();
       // The question is not chat state — it lives in `services/ai-ask.ts` — but it is drawn into
-      // This panel, so the same effect has to track it or a question would appear a frame late
+      // This panel, so the same effect has to track it or a question would appear a turn late
       // (and its ANSWER would never repaint the card at all).
       void pendingAsk();
       /* The run record, for the same reason: an import reports a line at a time from a store that
-         is not chat state, and its chip has to repaint on every one of them. Reading the ACTIVE
-         run tracks the whole record, so any field moving schedules a frame. */
+         is not chat state, and its chip has to follow every one of them. Reading the ACTIVE run
+         tracks the whole record, so any field moving re-projects. */
       const run = activeImportRun();
       void run?.message;
       void run?.log.length;
       void run?.status;
-      scheduleAiRender();
+      renderAiPanel();
     });
   });
 }
@@ -139,58 +214,7 @@ export function mountAiPanel() {
   mounted = true;
   // A key saved (or revoked) in Preferences changes what this panel shows — the setup notice, and
   // Whether the composer can send. One subscription, and no import back into the sheet.
-  onCredentialsChanged(scheduleAiRender);
-}
-
-// ─── Auto-scroll (stick to bottom unless the user scrolled up) ──────────────
-
-let messagesEl: HTMLElement | null = null;
-let stickToBottom = true;
-
-/** How close (px) to the bottom still counts as "at the bottom". */
-const STICK_THRESHOLD = 48;
-
-function onMessagesScroll(e: Event) {
-  const el = e.target as HTMLElement;
-  stickToBottom = el.scrollHeight - el.scrollTop - el.clientHeight < STICK_THRESHOLD;
-}
-
-function onMessagesListRef(el: Element | undefined) {
-  messagesEl = (el as HTMLElement | undefined) ?? null;
-  maintainScroll();
-}
-
-function maintainScroll() {
-  if (messagesEl && stickToBottom) {
-    messagesEl.scrollTop = messagesEl.scrollHeight;
-  }
-}
-
-// ─── The credentials gate's in-panel residue ─────────────────────────────────
-
-/**
- * One line and the action that fixes it, under a chat that still invites a conversation.
- *
- * The action is `Preferences › Assistant`, not a dialog of this panel's own: a provider key is an
- * application setting, and the surface that owns application settings is the one that can also list
- * and revoke it. The probe fires here for the same reason the old gate fired it — a managed
- * platform or an env-keyed dev server may already be configured, and only `/models` knows.
- */
-function renderSetupNotice(): TemplateResult {
-  return html`
-    <div class="ai-setup-notice">
-      <span>No AI provider is connected yet.</span>
-      <sp-button
-        size="s"
-        variant="secondary"
-        @click=${() => {
-          void openPreferences("assistant");
-        }}
-      >
-        Open Preferences…
-      </sp-button>
-    </div>
-  `;
+  onCredentialsChanged(renderAiPanel);
 }
 
 // ─── Sending ────────────────────────────────────────────────────────────────
@@ -208,14 +232,14 @@ async function handleAssistantSend(text: string) {
     return;
   }
   if (answerAsk(text.trim())) {
-    stickToBottom = true;
-    scheduleAiRender();
+    surface?.pin();
+    renderAiPanel();
     return;
   }
   // A send always lands in the chat view, pinned to the newest message.
   view = "chat";
-  stickToBottom = true;
-  scheduleAiRender();
+  surface?.pin();
+  renderAiPanel();
   try {
     await assistant.sendMessage(text);
   } catch {
@@ -240,7 +264,7 @@ async function handleRetry(): Promise<void> {
   }
   const { content } = lastUser;
   cs.retryLast();
-  scheduleAiRender();
+  renderAiPanel();
   await handleAssistantSend(content);
 }
 
@@ -248,15 +272,15 @@ async function handleRetry(): Promise<void> {
  * Undo everything one assistant turn changed — §7.4's "Restore to here".
  *
  * The loop opens one batch per turn per document, so undoing the turn is undoing that batch. The
- * button is offered by the renderer only when every recorded change was transactional; this guard
+ * button is offered by the projection only when every recorded change was transactional; this guard
  * is the second half of the same promise, because a ledger can be trimmed (MAX_TURNS) between the
- * render and the click and a Restore that silently restored SOME of a turn would be worse than one
- * that refused.
+ * projection and the click and a Restore that silently restored SOME of a turn would be worse than
+ * one that refused.
  *
  * @param {string} messageId
  */
-/* Exported so the guard can be exercised directly: the button is not RENDERED for a turn that
-   touched disk, which would otherwise make the refusal path unreachable from the panel. */
+/* Exported so the guard can be exercised directly: the button is not DRAWN for a turn that touched
+   disk, which would otherwise make the refusal path unreachable from the panel. */
 export function handleRestore(messageId: string): void {
   const writes = writesForTurn(messageId);
   if (writes.length === 0) {
@@ -279,13 +303,13 @@ export function handleRestore(messageId: string): void {
   }
   undo(tab);
   notify.success("Restored to before that turn.", { action: "edit.redo", source: "Assistant" });
-  scheduleAiRender();
+  renderAiPanel();
 }
 
 /**
  * Seed the assistant with a prompt programmatically (e.g. the New Project flow handing off a
  * project brief). Delegates to the same send path as the composer. Safe to call right after the
- * Assistant tab renders — the reactive watcher paints chat-state into the panel whenever it
+ * Assistant tab renders — the reactive watcher projects chat-state into the panel whenever it
  * mounts.
  */
 export async function seedAssistantPrompt(text: string): Promise<void> {
@@ -314,17 +338,6 @@ export async function revealImportHandoff(brief: ImportBrief): Promise<void> {
   await seedAssistantPrompt(buildImportTurn(brief));
 }
 
-/**
- * The user message that opens an import turn.
- *
- * The parameters ride in an attached-context block — the composer's own convention for facts the
- * model must see but the reader should not have to re-read (`ai-chat/attached-context.ts`). The
- * body is the user's own brief, so the transcript reads as what they asked for rather than as a
- * form submission.
- *
- * @param {ImportBrief} brief
- * @returns {string}
- */
 /** The breakpoint policy in a sentence the model can act on rather than a JSON blob. */
 function describeBreakpoints(policy: ImportBreakpointPolicy): string {
   if (policy.mode === "all") {
@@ -336,6 +349,17 @@ function describeBreakpoints(policy: ImportBreakpointPolicy): string {
   return `keep ${policy.count ?? 3}, evenly spaced (rounding ${policy.rounding ?? "nearest"})`;
 }
 
+/**
+ * The user message that opens an import turn.
+ *
+ * The parameters ride in an attached-context block — the composer's own convention for facts the
+ * model must see but the reader should not have to re-read (`ai-chat/attached-context.ts`). The
+ * body is the user's own brief, so the transcript reads as what they asked for rather than as a
+ * form submission.
+ *
+ * @param {ImportBrief} brief
+ * @returns {string}
+ */
 export function buildImportTurn(brief: ImportBrief): string {
   const body = brief.prompt.trim() || `Import ${brief.url} and get it ready for me to work on.`;
   return buildMessageWithContext(body, [
@@ -374,13 +398,13 @@ let seededCount = 0;
  * Automation-only seam (scripts/screenshots): stage a canned conversation without ever invoking a
  * model. Stores an inert demo key so the key gate opens (localStorage-only on the dev server — no
  * request fires), switches to the chat view, and pushes fully-formed messages straight into the
- * reactive chat state — the same path session restore uses — so the panel repaints through its
+ * reactive chat state — the same path session restore uses — so the panel re-projects through its
  * normal watcher.
  */
 export function seedAssistantMessages(messages: SeededAssistantMessage[]): void {
   setOpenAiKey("sk-demo");
   view = "chat";
-  stickToBottom = true;
+  surface?.pin();
   for (const msg of messages) {
     seededCount += 1;
     const seq = seededCount;
@@ -400,7 +424,7 @@ export function seedAssistantMessages(messages: SeededAssistantMessage[]): void 
         : {}),
     });
   }
-  scheduleAiRender();
+  renderAiPanel();
 }
 
 // ─── Controls ─────────────────────────────────────────────────────────────────
@@ -438,7 +462,7 @@ export function isAssistantWaiting(): boolean {
  * a probe when one exists", and no caller ever did — so `ctx.ai.streaming` read `false` forever and
  * `assistant.stop` would have been permanently refused. Reading the reactive chat state here is
  * what makes the fact LIVE: `createLiveContext` builds a fresh record per predicate evaluation, so
- * a surface repainting from an effect tracks this status and re-renders when the stream starts or
+ * a surface projecting from an effect tracks this status and re-projects when the stream starts or
  * ends.
  */
 export function isAssistantStreaming(): boolean {
@@ -453,26 +477,26 @@ function newChat() {
   assistant.newChat();
   clearMarkdownCache();
   view = "chat";
-  stickToBottom = true;
-  scheduleAiRender();
+  surface?.pin();
+  renderAiPanel();
 }
 
 function openSession(id: string) {
   assistant.openSession(id);
   clearMarkdownCache();
   view = "chat";
-  stickToBottom = true;
-  scheduleAiRender();
+  surface?.pin();
+  renderAiPanel();
 }
 
 function deleteSession(id: string) {
   assistant.deleteSession(id);
-  scheduleAiRender();
+  renderAiPanel();
 }
 
 function showSessions() {
   view = "sessions";
-  scheduleAiRender();
+  renderAiPanel();
 }
 
 /** The open session's title for the chat header (null → "New chat"). */
@@ -489,33 +513,83 @@ function activeSessionTitle(): string | null {
 const composer = createComposer({
   isAwaiting: isAssistantWaiting,
   isStreaming: isAssistantStreaming,
-  onOpenSettings: () => {
-    void openPreferences("assistant");
-  },
   onSend: (text) => {
     void handleAssistantSend(text);
   },
-  onStop: stop,
-  requestRender: scheduleAiRender,
+  requestRender: renderAiPanel,
 });
 
 /**
  * Reveal the assistant, put it on the chat view, and place the caret in the composer.
  *
- * The focus rides a frame because {@link scheduleAiRender} is rAF-coalesced: revealing from the
- * sessions list means the textarea does not exist yet, and focusing a node that is about to be
- * replaced would leave the caret nowhere. Ordering holds because this frame is queued after the
- * render's.
+ * The focus rides a frame because the surface's own bindings settle asynchronously: revealing from
+ * the sessions list means the textarea does not exist yet, and focusing a node that is about to be
+ * inserted would leave the caret nowhere.
  */
 function focusComposer(): void {
   revealAssistant();
   if (view !== "chat") {
     view = "chat";
-    scheduleAiRender();
+    renderAiPanel();
   }
   requestAnimationFrame(() => {
-    composer.focus();
+    surface?.focusComposer();
   });
+}
+
+// ─── Projection ─────────────────────────────────────────────────────────────
+
+/**
+ * The whole panel, as data.
+ *
+ * Two header buttons and one Retry, each `projectCommand`ed rather than written out: the record is
+ * the definition site and this is only where it is drawn. The glyph is the one thing decided here,
+ * because a command record carries no icon and the rail's `PanelRecord.icon` is the only place in
+ * Studio that does.
+ */
+function projectPanel(): AiChatView {
+  const cs = assistant.chatState;
+  const streaming = cs.status === "streaming";
+  const error = !streaming && cs.error ? cs.error : "";
+  const advice = error ? formatErrorAdvice(error) : "";
+  const newChatCommand = projectCommand("assistant.newChat", { icon: "plus" });
+  const rows = projectRows({
+    ask: { importRun, pendingId: pendingAsk()?.id ?? null },
+    messages: cs.messages,
+    status: cs.status,
+  });
+  return {
+    ...emptyAiChatView(),
+    ...composer.view(),
+    emptyState: rows.length === 0 && !streaming ? "shown" : "hidden",
+    error,
+    errorAdvice: advice,
+    errorState: error ? "shown" : "hidden",
+    hasAdvice: advice !== "",
+    hasSessions: assistant.listSessions().length > 0,
+    headLead: projectCommands([
+      projectCommand("assistant.history", { icon: "clock-counter-clockwise" }),
+    ]),
+    headTrail: projectCommands([newChatCommand]),
+    /* `assistant.retry`, not a closure. Its `enablement` reads `ctx.ai.configured`, so the one
+       error this row cannot recover from — no provider connected, whose advice line above already
+       says to add a key — draws the button disabled with that sentence rather than offering a send
+       that will fail identically. */
+    retry: projectCommands([projectCommand("assistant.retry", { text: "Retry" })]),
+    rows,
+    sessionCommands: projectCommands([
+      newChatCommand ? { ...newChatCommand, text: "New Chat" } : null,
+    ]),
+    sessions: projectSessions(assistant.listSessions()),
+    setupState: hasAiCredentials() ? "hidden" : "shown",
+    streaming,
+    title: activeSessionTitle() ?? "New chat",
+    tokens: tokenLabel(cs.tokenCount),
+    tokensHint: tokenHint(cs.tokenCount, cs.contextWarning),
+    tokensState: cs.tokenCount > 0 ? "shown" : "hidden",
+    tokensTone: cs.contextWarning ? "warn" : "normal",
+    view,
+  };
 }
 
 // ─── The `Assistant:` command family (§11.1) ────────────────────────────────
@@ -640,53 +714,4 @@ export function assistantCommands(): AnyCommand[] {
       run: stop,
     },
   ];
-}
-
-// ─── Template ───────────────────────────────────────────────────────────────
-
-/** @returns {TemplateResult} */
-export function renderAiPanelTemplate(): TemplateResult {
-  if (view === "sessions") {
-    return html`
-      <div class="ai-tab-body">
-        ${renderSessionsList({
-          onDelete: deleteSession,
-          onOpen: openSession,
-          sessions: assistant.listSessions(),
-        })}
-      </div>
-    `;
-  }
-
-  const cs = assistant.chatState;
-  return html`
-    <div class="ai-tab-body">
-      ${renderChatHeader({
-        overBudget: cs.contextWarning,
-        streaming: cs.status === "streaming",
-        title: activeSessionTitle(),
-        tokens: cs.tokenCount,
-      })}
-      ${renderMessageList({
-        ask: {
-          importRun,
-          onAnswer: (text) => {
-            void handleAssistantSend(text);
-          },
-          onSkip: () => {
-            skipAsk();
-            scheduleAiRender();
-          },
-          pendingId: pendingAsk()?.id ?? null,
-        },
-        error: cs.error,
-        listRef: onMessagesListRef,
-        messages: cs.messages,
-        onRestore: handleRestore,
-        onScroll: onMessagesScroll,
-        status: cs.status,
-      })}
-      ${hasAiCredentials() ? nothing : renderSetupNotice()} ${composer.render()}
-    </div>
-  `;
 }

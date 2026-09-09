@@ -35,7 +35,7 @@ void mock.module("../src/commands/active-registry", () => ({
 }));
 
 const { renderStylePanelTemplate, resetSelectorMenu } = await import("../src/panels/style-panel");
-const { openSelectorMenu } = await import("../src/panels/target-line");
+const { openSelectorMenu } = await import("../src/surfaces/target-line");
 const { initCssData } = await import("../src/panels/style-utils");
 const { initLayers } = await import("../src/ui/layers");
 const { getNodeAtPath } = await import("../src/store");
@@ -74,8 +74,37 @@ function selectedNode(): JxMutableNode {
   return getNodeAtPath(activeTab.value!.doc.document, ["children", 0]);
 }
 
+/** Every host a paint has put in the document, so a test never inherits the last one's line. */
+const painted: HTMLElement[] = [];
+
+/**
+ * Paint the panel into a CONNECTED host and let the Target Line's document settle.
+ *
+ * Connected because `style.openSelectorMenu` asks the trigger whether it is still in the document,
+ * and two turns because the line is a mounted surface now (`surfaces/target-line.json`): the
+ * panel's own render puts an empty host on screen and the document lands after it.
+ */
 async function renderPanel(mode = "edit") {
-  return renderInto(renderStylePanelTemplate({ getCanvasMode: () => mode }));
+  const host = document.createElement("div");
+  document.body.append(host);
+  painted.push(host);
+  const c = await renderInto(renderStylePanelTemplate({ getCanvasMode: () => mode }), host);
+  await flush(2);
+  return c;
+}
+
+/** Open the Target Line's selector menu — the kit's, in the popover layer — and read its rows. */
+async function selectorRows(): Promise<HTMLElement[]> {
+  openSelectorMenu();
+  await flush(3);
+  return [
+    ...document.querySelectorAll<HTMLElement>("#layer-popover jx-menu-item[data-command-id]"),
+  ];
+}
+
+/** One row of that menu, addressed by the value it stands for. */
+function selectorRow(rows: HTMLElement[], value: string): HTMLElement | undefined {
+  return rows.find((el) => el.dataset.commandId === value);
 }
 
 function row(container: HTMLElement, prop: string) {
@@ -103,12 +132,12 @@ function fire(el: Element | null | undefined, type: string, value?: string) {
 
 /** One segment of the Target Line, addressed by the axis it states. */
 function segment(container: HTMLElement, key: string) {
-  return container.querySelector(`.target-line [data-seg="${key}"]`) as HTMLElement | null;
+  return container.querySelector(`[part="line"] [data-seg="${key}"]`) as HTMLElement | null;
 }
 
 /** The trailing scope chip — "this element" / "all <h1> in this document". */
 function scopeChip(container: HTMLElement) {
-  return container.querySelector(".target-line .tl-scope") as HTMLElement | null;
+  return container.querySelector('[part="scope"]') as HTMLElement | null;
 }
 
 /** A row's provenance chip, whatever state it is in. */
@@ -142,6 +171,11 @@ beforeEach(() => {
 
 afterEach(() => {
   closeAllTabs();
+  resetSelectorMenu();
+  for (const host of painted.splice(0)) {
+    host.remove();
+  }
+  document.querySelector("#layer-popover")?.replaceChildren();
 });
 
 // ─── Empty states ────────────────────────────────────────────────────────────
@@ -220,7 +254,7 @@ describe("stylebook mode", () => {
     expect(scopeChip(c)?.textContent).toContain("all <h1> in this project");
     // The harness platform answers no `findReferences`, so the honest count is "unknown" — never
     // A confident zero.
-    expect(c.querySelector(".tl-warning-text")?.textContent).toContain("unknown");
+    expect(c.querySelector('[part="warning-text"]')?.textContent).toContain("unknown");
   });
 });
 
@@ -335,7 +369,7 @@ describe("the Target Line", () => {
     expect(segment(c, "media")?.textContent?.trim()).toBe("Base");
     expect(segment(c, "scheme")).toBeNull();
     expect(scopeChip(c)?.textContent?.trim()).toBe("this element");
-    expect(c.querySelector(".tl-warning")).toBeNull();
+    expect(c.querySelector('[part="warning"]')).toBeNull();
   });
 
   test("names the active breakpoint, and every segment is a control", async () => {
@@ -362,43 +396,32 @@ describe("the Target Line", () => {
     tab.session.ui.activeSelector = "&.custom";
     const c = await renderPanel();
     expect(segment(c, "selector")?.textContent).toContain("&.custom");
-    const values = [...c.querySelectorAll(".tl-selector-menu sp-menu-item")].map((m) =>
-      m.getAttribute("value"),
-    );
+    const rows = await selectorRows();
+    const values = rows.map((el) => el.dataset.commandId);
     expect(values).toContain("&.active");
     expect(values).toContain("&.custom");
     expect(values).toContain("__base__");
-    // A declared selector is marked, so the menu says which rules already exist.
-    const active = [...c.querySelectorAll(".tl-selector-menu sp-menu-item")].find(
-      (m) => m.getAttribute("value") === "&.active",
-    );
-    expect(active?.textContent).toContain("●");
+    // A declared selector is marked, so the menu says which rules already exist. The ● the row
+    // Used to print is `aria-checked` now: the element has a spelling for "this one is on".
+    expect(selectorRow(rows, "&.active")?.getAttribute("aria-checked")).toBe("true");
   });
 
   test("choosing a menu entry sets the selector; the base entry clears it", async () => {
     const tab = setupTab({});
-    const c = await renderPanel();
-    const item = (value: string) =>
-      [...c.querySelectorAll(".tl-selector-menu sp-menu-item")].find(
-        (m) => m.getAttribute("value") === value,
-      );
-    click(item(":focus"));
+    await renderPanel();
+    click(selectorRow(await selectorRows(), ":focus"));
     expect(tab.session.ui.activeSelector).toBe(":focus");
-    click(item("__base__"));
+    await renderPanel();
+    click(selectorRow(await selectorRows(), "__base__"));
     expect(tab.session.ui.activeSelector).toBeNull();
   });
 
   test("+ Add custom… opens a validated dialog, not an imperative input", async () => {
     const tab = setupTab({});
     let c = await renderPanel();
-    const addCustom = (container: HTMLElement) =>
-      click(
-        [...container.querySelectorAll(".tl-selector-menu sp-menu-item")].find(
-          (m) => m.getAttribute("value") === "__add_custom__",
-        ),
-      );
+    const addCustom = async () => click(selectorRow(await selectorRows(), "__add_custom__"));
 
-    addCustom(c);
+    await addCustom();
     await flush();
     expect(topDialog()).not.toBeNull();
     expect(topDialog()!.getAttribute("headline")).toBe("Add Selector");
@@ -413,7 +436,7 @@ describe("the Target Line", () => {
 
     // Cancelling changes nothing.
     c = await renderPanel();
-    addCustom(c);
+    await addCustom();
     await flush();
     await answerPromptDialog(null);
     expect(tab.session.ui.activeSelector).toBe(".fancy");
@@ -421,18 +444,13 @@ describe("the Target Line", () => {
 
   test("style.openSelectorMenu opens the Target Line's own menu, and refuses when unrendered", async () => {
     setupTab({});
-    // Connected, because the command asks the element whether it is still in the document.
-    const host = document.createElement("div");
-    document.body.append(host);
-    const c = await renderInto(renderStylePanelTemplate({ getCanvasMode: () => "edit" }), host);
-    const trigger = c.querySelector("overlay-trigger") as HTMLElement & { open?: string };
-    expect(trigger).not.toBeNull();
-    openSelectorMenu();
-    expect(trigger.open).toBe("click");
+    // `renderPanel` paints into a CONNECTED host, because the command asks the trigger whether it
+    // Is still in the document rather than handing a CSS selector to a synthetic mouse (§13).
+    await renderPanel();
+    expect(selectorRow(await selectorRows(), "__base__")).toBeDefined();
 
     resetSelectorMenu();
     expect(() => openSelectorMenu()).toThrow("needs the Inspector's Style tab rendered");
-    host.remove();
   });
 });
 
@@ -577,10 +595,7 @@ describe("selector style editing", () => {
     const c = await renderPanel();
     expect(segment(c, "selector")?.textContent).toContain(":hover");
     // The declared selector is marked in the menu
-    const hoverItem = [...c.querySelectorAll(".tl-selector-menu sp-menu-item")].find(
-      (m) => m.getAttribute("value") === ":hover",
-    );
-    expect(hoverItem?.textContent).toContain("●");
+    expect(selectorRow(await selectorRows(), ":hover")?.getAttribute("aria-checked")).toBe("true");
     click(row(c, "textTransform")!.querySelector(".set-dot"));
     expect(selectedNode().style).toBeUndefined();
   });

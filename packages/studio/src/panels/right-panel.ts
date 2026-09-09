@@ -15,7 +15,7 @@
  *   says "this is where the link target lives".
  * - **The containers are permanent.** The no-document state used to drop and rebuild them; it now
  *   renders INTO the three document tabs, because the Assistant's DOM (composer draft, scroll
- *   position, streaming part cache) must survive a document closing — the assistant works with no
+ *   position, mounted document) must survive a document closing — the assistant works with no
  *   project at all, which is exactly the New Project hand-off's requirement.
  *
  * Every tab renders under a header naming its target (§3.2 ⑨), the same treatment wave A gave the
@@ -187,8 +187,8 @@ function _ensureContainers(ctx: RightPanelCtx): Map<InspectorTabId, HTMLElement>
       return [t.id as InspectorTabId, el] as const;
     }),
   );
-  // The assistant owns its container for the life of the window: it is bound as lit's render host
-  // For a streaming rAF loop, and rebuilding it would drop the transcript and the composer draft.
+  // The assistant owns its container for the life of the window: it is the mount point for the
+  // Assistant's own Jx document, and rebuilding it would drop the transcript and the composer draft.
   ctx.mountAssistant(_containers.get("assistant")!);
   return _containers;
 }
@@ -287,8 +287,8 @@ function _doRender() {
     }
 
     const body = containers.get(tab)!;
-    // The assistant paints itself through its own rAF loop into this very container (streaming has
-    // To repaint while the composer is focused), so the host must not render over it.
+    // The assistant is a mounted Jx document in this very container, driven by its own effect
+    // (`panels/ai-panel.ts`), so the host must not render over it.
     if (tab === "assistant") {
       return;
     }

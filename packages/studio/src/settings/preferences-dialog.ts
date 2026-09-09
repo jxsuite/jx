@@ -25,14 +25,24 @@
  *   press"), and rebindable — as a LAYER over the registry (`settings/preferences-keymap.ts`), so
  *   the sheet stays a projection and the app's own record of a default is never edited.
  *
- * Modality: an `sp-dialog-wrapper` through {@link showDialog}, which is focus-managed and dismissed
- * by Escape — not `openModal`'s `inset:40px` blackout. Preferences does not suspend the app.
+ * **This module is the FLOW; `surfaces/preferences.json` is what it draws.** Every function below
+ * either answers a question about state or changes some, and the answers leave here as strings and
+ * booleans — `keyboardEmpty` is a sentence rather than a case name, a row's chord is already
+ * formatted, an account's buttons are already decided. Which of those add up to which branch of the
+ * document is `surfaces/preferences.ts`'s.
+ *
+ * **Only the showing section is projected.** `accountsView()` reads three credential stores and
+ * `keyboardView()` walks the whole registry, and a repaint of the theme toggle has no business
+ * doing either — so each is built when its own section is up and left empty otherwise, exactly as
+ * the four `*Tpl()` functions this replaced were called one at a time.
+ *
+ * Modality: a `jx-dialog` in the dialog layer, which is focus-managed, dismissed by Escape and
+ * backed by the platform's own top layer — not `openModal`'s `inset:40px` blackout. Preferences
+ * does not suspend the app.
  */
 
-import { html, nothing, render as litRender } from "lit-html";
-import { ref } from "lit-html/directives/ref.js";
 import { CHROME_THEMES, setChromeTheme, shell } from "../shell";
-import { showDialog } from "../ui/layers";
+import { layerHost } from "../ui/layers";
 import { createAiCredentialsForm } from "../ui/ai-credentials-form";
 import { createManagedConnect } from "../ui/ai-managed-connect";
 import { activeRegistry } from "../commands/active-registry";
@@ -48,13 +58,21 @@ import {
   revokeAccount,
 } from "./preferences-accounts";
 import { applyKeybindingOverrides, rebindCommand, resetKeybinding } from "./preferences-keymap";
-import { overlayRegion } from "../ui/regions";
+import { openPreferencesSurface } from "../surfaces/preferences";
 
-import type { TemplateResult } from "lit-html";
 import type { ChromeTheme } from "../shell";
 import type { ShortcutRow } from "../commands/reference";
 import type { RebindResult } from "./preferences-keymap";
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
+import type {
+  PreferencesAccountRow,
+  PreferencesIsland,
+  PreferencesKeyGroup,
+  PreferencesSectionRow,
+  PreferencesSurfaceHandle,
+  PreferencesThemeRow,
+  PreferencesView,
+} from "../surfaces/preferences";
 
 /*
  * The sections moved to `./preferences-sections`, a leaf with no imports, so the rail's gear menu
@@ -79,15 +97,12 @@ export type { PreferencesSection } from "./preferences-sections";
 
 let _section = DEFAULT_PREFERENCES_SECTION;
 
-/** Repaint the open sheet, if one is up. */
-let _rerender: (() => void) | null = null;
-
-/** Dismiss the open sheet, if one is up. */
-let _close: (() => void) | null = null;
+/** The mounted sheet, or `null` while none is up. */
+let _surface: PreferencesSurfaceHandle | null = null;
 
 /** Whether Preferences is on screen. */
 export function isPreferencesOpen(): boolean {
-  return _close !== null;
+  return _surface !== null;
 }
 
 /** The section currently showing. Exposed for tests and for the `app.preferences` round-trip. */
@@ -96,7 +111,8 @@ export function preferencesSection(): string {
 }
 
 function repaint(): void {
-  _rerender?.();
+  _surface?.update(view());
+  fillIslands();
 }
 
 /** Save/revoke both change what other surfaces show, so they announce as well as repaint. */
@@ -134,98 +150,157 @@ const credsForm = createAiCredentialsForm({
 /** Shared with the New Project modal's gates — see ui/ai-managed-connect.ts. */
 const managedConnect = createManagedConnect({ requestRender: credentialsChanged });
 
-// ─── Sections ─────────────────────────────────────────────────────────────────
+// ─── The Assistant islands ────────────────────────────────────────────────────
 
-function appearanceTpl(): TemplateResult {
-  return html`
-    <div class="prefs-field">
-      <span class="prefs-field-label">Theme</span>
-      <sp-action-group compact selects="single" size="s">
-        ${CHROME_THEMES.map(
-          (theme) => html`
-            <sp-action-button
-              value=${theme}
-              ?selected=${shell.theme === theme}
-              @click=${() => {
-                setChromeTheme(theme as ChromeTheme);
-                repaint();
-              }}
-            >
-              ${theme === "dark" ? "Dark" : "Light"}
-            </sp-action-button>
-          `,
-        )}
-      </sp-action-group>
-    </div>
-  `;
-}
+/*
+ * The two elements the Assistant section renders and does not fill.
+ *
+ * Both belong to a controller that outlives this sheet and is embedded by three other credentials
+ * gates, so the document renders an empty box for each and the elements are MOVED into it. Moving a
+ * node keeps everything inside it — which is the whole point: the credentials form is three fields
+ * a reader is typing into, and a repaint that rebuilt them would take the caret with it.
+ */
+let _managedSlot: HTMLElement | null = null;
+let _credsSlot: HTMLElement | null = null;
 
-function assistantTpl(): TemplateResult {
-  managedConnect.ensureProbe();
-  return html`<div class="prefs-assistant">${managedConnect.render()} ${credsForm.render()}</div>`;
+/** A slot was created by the document. Remember it, and fill it. */
+function islandCreated(island: PreferencesIsland, host: HTMLElement): void {
+  if (island === "managed") {
+    _managedSlot = host;
+  } else {
+    _credsSlot = host;
+  }
+  fillIslands();
 }
 
 /**
- * The buttons on one row.
+ * Put each controller's element in its slot, and bring both up to date.
  *
- * A record that declares `actions` decides its own verbs; everything else keeps the original rule —
- * a connected credential offers Disconnect and a disconnected one offers nothing. The async ones
- * repaint when they settle, because a hosted Reconnect is a round trip through a Cloudflare popup
- * and the row must not still be reading "expired" when it comes back.
+ * `render()` on either controller is an UPDATE when the surface already exists, so this is also how
+ * a repaint reaches them. The parent check is what keeps it from being a rebuild: re-appending a
+ * node that is already there would be a move, and a move of a focused field takes the caret.
  */
-function accountActionsTpl(account: ReturnType<typeof listAccounts>[number]) {
-  if (account.actions) {
-    return account.actions.map(
-      (action) => html`
-        <sp-button
-          size="s"
-          data-action=${action.id}
-          variant=${action.variant ?? nothing}
-          treatment=${action.variant === "negative" ? "outline" : nothing}
-          @click=${() => {
-            void Promise.resolve(action.run()).finally(repaint);
-          }}
-        >
-          ${action.label}
-        </sp-button>
-      `,
-    );
+function fillIslands(): void {
+  if (_managedSlot) {
+    managedConnect.ensureProbe();
+    const element = managedConnect.render();
+    if (element === null) {
+      _managedSlot.replaceChildren();
+    } else if (element.parentNode !== _managedSlot) {
+      _managedSlot.replaceChildren(element);
+    }
   }
-  return account.connected
-    ? html`
-        <sp-button
-          size="s"
-          variant="negative"
-          treatment="outline"
-          @click=${() => {
-            revokeAccount(account.id);
-            repaint();
-          }}
-        >
-          Disconnect
-        </sp-button>
-      `
-    : nothing;
+  if (_credsSlot) {
+    const element = credsForm.render();
+    if (element.parentNode !== _credsSlot) {
+      _credsSlot.replaceChildren(element);
+    }
+  }
 }
 
-function accountsTpl(): TemplateResult {
+// ─── Sections ─────────────────────────────────────────────────────────────────
+
+/** The nav, with the showing row marked as the accessibility tree already marks it. */
+function sectionsView(): PreferencesSectionRow[] {
+  return PREFERENCES_SECTIONS.map((section) => ({
+    current: section.id === _section ? "true" : "false",
+    id: section.id,
+    title: section.title,
+  }));
+}
+
+/** The theme segments. `checked` is a string because that is what `aria-checked` takes. */
+function themesView(): PreferencesThemeRow[] {
+  return CHROME_THEMES.map((theme) => ({
+    checked: shell.theme === theme ? "true" : "false",
+    label: theme === "dark" ? "Dark" : "Light",
+    value: theme,
+  }));
+}
+
+function selectSection(id: string): void {
+  _section = id;
+  // Leaving a section abandons what it was in the middle of: an armed key capture whose listener
+  // Is no longer mounted would otherwise swallow the first chord pressed on the author's NEXT
+  // Visit.
+  resetKeyboardState();
+  repaint();
+  sectionShown();
+}
+
+function setTheme(value: string): void {
+  setChromeTheme(value as ChromeTheme);
+  repaint();
+}
+
+// ─── Accounts ─────────────────────────────────────────────────────────────────
+
+/**
+ * What each account button does, by the key the row carries.
+ *
+ * Rebuilt with the rows, because `listAccounts()` mints a fresh closure per call and the one a
+ * click must run is the one that was drawn. A key that is no longer in the map is a click on a row
+ * that has since been redrawn, which is a no-op rather than an error.
+ */
+let _accountRuns = new Map<string, () => void | Promise<void>>();
+
+/**
+ * The accounts, as rows.
+ *
+ * A record that declares `actions` decides its own verbs; everything else keeps the original rule —
+ * a connected credential offers Disconnect and a disconnected one offers nothing.
+ */
+function accountsView(): PreferencesAccountRow[] {
   // First paint asks the broker what it holds; the answer arrives as a credentials-changed repaint.
   ensureCfConnection();
-  return html`
-    <div class="prefs-accounts">
-      ${listAccounts().map(
-        (account) => html`
-          <div class="prefs-account" data-account=${account.id}>
-            <div class="prefs-account-text">
-              <span class="prefs-account-label">${account.label}</span>
-              <span class="prefs-account-detail">${account.detail}</span>
-            </div>
-            <div class="prefs-account-actions">${accountActionsTpl(account)}</div>
-          </div>
-        `,
-      )}
-    </div>
-  `;
+  const runs = new Map<string, () => void | Promise<void>>();
+  const rows = listAccounts().map((account) => {
+    const declared =
+      account.actions ??
+      (account.connected
+        ? [
+            {
+              id: "disconnect",
+              label: "Disconnect",
+              run: () => {
+                revokeAccount(account.id);
+              },
+              variant: "negative",
+            },
+          ]
+        : []);
+    return {
+      actions: declared.map((action) => {
+        const key = `${account.id}/${action.id}`;
+        runs.set(key, action.run);
+        return {
+          id: action.id,
+          key,
+          label: action.label,
+          variant: action.variant ?? "secondary",
+        };
+      }),
+      detail: account.detail,
+      id: account.id,
+      label: account.label,
+    };
+  });
+  _accountRuns = runs;
+  return rows;
+}
+
+/**
+ * Run one account button.
+ *
+ * Every one of them repaints when it settles, because a hosted Reconnect is a round trip through a
+ * Cloudflare popup and the row must not still be reading "expired" when it comes back.
+ */
+function runAccountAction(key: string): void {
+  const run = _accountRuns.get(key);
+  if (!run) {
+    return;
+  }
+  void Promise.resolve(run()).finally(repaint);
 }
 
 // ─── Keyboard ─────────────────────────────────────────────────────────────────
@@ -239,8 +314,15 @@ function accountsTpl(): TemplateResult {
  */
 type KeyFilter = { kind: "text"; value: string } | { kind: "chord"; chord: string } | null;
 
-/** The next chord goes to the search box, or onto a command. `null` while nothing is listening. */
-type KeyCapture = { mode: "search" } | { mode: "rebind"; command: AnyCommand } | null;
+/**
+ * The next chord goes to the search box, or onto a command. `null` while nothing is listening.
+ *
+ * A rebind capture holds the command's ID rather than its record, because the click that armed it
+ * arrived from a document and carried a string. The record is looked up when the chord lands, which
+ * is also the one moment at which "the registry went away under the open sheet" can be answered
+ * honestly rather than asserted against.
+ */
+type KeyCapture = { mode: "search" } | { mode: "rebind"; commandId: string } | null;
 
 /** Keydowns that are not a chord yet: a modifier held on its way to one. */
 const MODIFIER_KEYS = new Set(["Meta", "Control", "Alt", "Shift", "CapsLock", "OS"]);
@@ -303,95 +385,86 @@ function onKeyboardKeyDown(event: KeyboardEvent): void {
     _keyFilter = { kind: "chord", chord };
     _keyRefusal = null;
   } else {
-    const result = rebindCommand(registry, capture.command, chord);
-    _keyRefusal = result.ok ? null : result;
+    const command = commandById(registry, capture.commandId);
+    if (command) {
+      const result = rebindCommand(registry, command, chord);
+      _keyRefusal = result.ok ? null : result;
+    }
   }
   repaint();
 }
 
-/** The refusal, and the one thing that can be done about it: go and look at the command holding it. */
-function keyRefusalTpl(): TemplateResult | typeof nothing {
-  if (!_keyRefusal) {
-    return nothing;
-  }
-  const { conflict } = _keyRefusal;
-  return html`
-    <div class="prefs-field">
-      <sp-help-text variant="negative">${_keyRefusal.reason}</sp-help-text>
-      ${
-        conflict
-          ? html`
-              <sp-button
-                size="s"
-                treatment="outline"
-                @click=${() => {
-                  _keyFilter = { kind: "text", value: conflict.title };
-                  _keyRefusal = null;
-                  repaint();
-                }}
-              >
-                Show ${conflict.title}
-              </sp-button>
-            `
-          : nothing
-      }
-    </div>
-  `;
+/** The record behind a row's id, or `undefined` when the registry no longer holds one. */
+function commandById(registry: CommandRegistry, commandId: string): AnyCommand | undefined {
+  return [...registry.list()].find((candidate) => candidate.id === commandId);
 }
 
-/**
- * One binding.
- *
- * The record is passed in rather than looked up: the rows and the commands come from the same
- * `registry.list()` call, so there is no window in which a row can name something the sheet cannot
- * resolve, and no assertion pretending so.
- */
-function keyRowTpl(
-  row: ShortcutRow,
-  command: AnyCommand,
-  registry: CommandRegistry,
-): TemplateResult {
-  const capturing = _keyCapture?.mode === "rebind" && _keyCapture.command.id === row.commandId;
-  return html`
-    <div class="prefs-key" data-command=${row.commandId}>
-      <kbd class="prefs-key-chord">
-        ${capturing ? "Press a shortcut…" : registry.keymap.format(row.chord)}
-      </kbd>
-      <span class="prefs-key-title">${row.title}${row.overridden ? " — changed" : ""}</span>
-      <sp-action-button
-        size="s"
-        quiet
-        ?selected=${capturing}
-        aria-label=${capturing ? `Stop changing ${row.title}` : `Change the shortcut for ${row.title}`}
-        @click=${() => {
-          _keyCapture = capturing ? null : { mode: "rebind", command };
-          _keyRefusal = null;
-          repaint();
-        }}
-      >
-        ${capturing ? "Cancel" : "Change"}
-      </sp-action-button>
-      ${
-        row.overridden
-          ? html`
-              <sp-action-button
-                size="s"
-                quiet
-                aria-label=${`Reset the shortcut for ${row.title}`}
-                @click=${() => {
-                  resetKeybinding(registry, row.commandId);
-                  _keyRefusal = null;
-                  repaint();
-                }}
-              >
-                Reset
-              </sp-action-button>
-            `
-          : nothing
-      }
-    </div>
-  `;
+/** Arm or disarm the search box's chord capture. */
+function toggleKeystroke(): void {
+  _keyCapture = _keyCapture?.mode === "search" ? null : { mode: "search" };
+  _keyRefusal = null;
+  repaint();
 }
+
+/** Arm or disarm one row's rebind. */
+function toggleRebind(commandId: string): void {
+  const capturing = _keyCapture?.mode === "rebind" && _keyCapture.commandId === commandId;
+  _keyCapture = capturing ? null : { mode: "rebind", commandId };
+  _keyRefusal = null;
+  repaint();
+}
+
+/** Put a rebound chord back, and forget whatever the last attempt said. */
+function resetBinding(commandId: string): void {
+  const registry = activeRegistry();
+  if (registry) {
+    resetKeybinding(registry, commandId);
+  }
+  _keyRefusal = null;
+  repaint();
+}
+
+/** Go and look at the command holding the chord that was refused. */
+function showConflict(): void {
+  const conflict = _keyRefusal?.conflict;
+  if (!conflict) {
+    return;
+  }
+  _keyFilter = { kind: "text", value: conflict.title };
+  _keyRefusal = null;
+  repaint();
+}
+
+/** Type into the search box. A keystroke capture is abandoned: the author changed their mind. */
+function setKeyQuery(value: string): void {
+  _keyFilter = value ? { kind: "text", value } : null;
+  _keyCapture = null;
+  repaint();
+}
+
+/** The Keyboard half of the view, with nothing to say when its section is not up. */
+type KeyboardView = Pick<
+  PreferencesView,
+  | "capturingSearch"
+  | "conflictLabel"
+  | "groups"
+  | "keyboardEmpty"
+  | "keyQuery"
+  | "keystrokeLabel"
+  | "refusal"
+  | "rowsEmpty"
+>;
+
+const KEYBOARD_IDLE: KeyboardView = {
+  capturingSearch: false,
+  conflictLabel: "",
+  groups: [],
+  keyboardEmpty: "",
+  keyQuery: "",
+  keystrokeLabel: "",
+  refusal: "",
+  rowsEmpty: "",
+};
 
 /**
  * The keyboard sheet — every live binding, grouped by the scope it is live in.
@@ -401,93 +474,79 @@ function keyRowTpl(
  * the same projection rather than patched into its output.
  *
  * A command that declares two chords has two rows and rebinding either one leaves it with one — a
- * user who asked for ⌥⌘Y is not also asking to keep ⌘Y, and Reset brings both back.
+ * user who asked for ⌥⌘Y is not also asking to keep ⌘Y, and Reset brings both back. The two rows
+ * share a `commandId` and differ by chord, which is why the row key is both.
  */
-function keyboardTpl(): TemplateResult {
+function keyboardView(): KeyboardView {
   const registry = activeRegistry();
   const commands: readonly AnyCommand[] = registry ? [...registry.list()] : [];
   const rows = registry ? shortcutReference(commands, registry.keymap.overrides()) : [];
   if (!registry || rows.length === 0) {
-    return html`<p class="prefs-empty">No commands are registered in this window.</p>`;
+    return { ...KEYBOARD_IDLE, keyboardEmpty: "No commands are registered in this window." };
   }
   const format = (chord: string) => registry.keymap.format(chord);
-  const byId = new Map(commands.map((command) => [command.id, command]));
-  const visible = rows.flatMap((row) => {
-    const command = byId.get(row.commandId);
-    return command && keyRowMatches(row, format) ? [{ command, row }] : [];
-  });
-  const scopes = [...new Set(visible.map(({ row }) => row.scope))];
+  const known = new Set(commands.map((command) => command.id));
+  const visible = rows.filter((row) => known.has(row.commandId) && keyRowMatches(row, format));
   const capturingSearch = _keyCapture?.mode === "search";
-  return html`
-    <div class="prefs-keys" @keydown=${onKeyboardKeyDown}>
-      <div class="prefs-field">
-        <sp-search
-          size="s"
-          placeholder="Find a shortcut…"
-          .value=${
-            _keyFilter === null
-              ? ""
-              : _keyFilter.kind === "chord"
-                ? format(_keyFilter.chord)
-                : _keyFilter.value
-          }
-          @input=${(event: Event) => {
-            const { value } = event.target as HTMLInputElement;
-            _keyFilter = value ? { kind: "text", value } : null;
-            _keyCapture = null;
-            repaint();
-          }}
-          @submit=${(event: Event) => event.preventDefault()}
-        ></sp-search>
-        <sp-action-button
-          size="s"
-          ?selected=${capturingSearch}
-          @click=${() => {
-            _keyCapture = capturingSearch ? null : { mode: "search" };
-            _keyRefusal = null;
-            repaint();
-          }}
-        >
-          ${capturingSearch ? "Press it now" : "Search by keystroke"}
-        </sp-action-button>
-      </div>
-      ${keyRefusalTpl()}
-      ${
-        visible.length === 0
-          ? html`<p class="prefs-empty">
-              ${
-                _keyFilter?.kind === "chord"
-                  ? `Nothing is bound to ${format(_keyFilter.chord)}.`
-                  : "No shortcut matches that."
-              }
-            </p>`
-          : scopes.map(
-              (scope) => html`
-                <h4 class="prefs-keys-scope">${SCOPE_LABELS[scope]}</h4>
-                ${visible
-                  .filter(({ row }) => row.scope === scope)
-                  .map(({ command, row }) => keyRowTpl(row, command, registry))}
-              `,
-            )
-      }
-    </div>
-  `;
-}
-
-function sectionBodyTpl(): TemplateResult {
-  if (_section === "assistant") {
-    return assistantTpl();
+  const groups: PreferencesKeyGroup[] = [];
+  const byScope = new Map<string, PreferencesKeyGroup>();
+  for (const row of visible) {
+    const capturing = _keyCapture?.mode === "rebind" && _keyCapture.commandId === row.commandId;
+    let group = byScope.get(row.scope);
+    if (!group) {
+      group = { label: SCOPE_LABELS[row.scope], rows: [], scope: row.scope };
+      byScope.set(row.scope, group);
+      groups.push(group);
+    }
+    group.rows.push({
+      capturing,
+      changeLabel: capturing ? "Cancel" : "Change",
+      changeName: capturing ? `Stop changing ${row.title}` : `Change the shortcut for ${row.title}`,
+      chord: capturing ? "Press a shortcut…" : format(row.chord),
+      commandId: row.commandId,
+      key: `${row.commandId}/${row.chord}`,
+      overridden: row.overridden,
+      resetName: `Reset the shortcut for ${row.title}`,
+      title: `${row.title}${row.overridden ? " — changed" : ""}`,
+    });
   }
-  if (_section === "accounts") {
-    return accountsTpl();
-  }
-  if (_section === "keyboard") {
-    return keyboardTpl();
-  }
-  return appearanceTpl();
+  return {
+    capturingSearch,
+    conflictLabel: _keyRefusal?.conflict ? `Show ${_keyRefusal.conflict.title}` : "",
+    groups,
+    keyboardEmpty: "",
+    keyQuery:
+      _keyFilter === null
+        ? ""
+        : _keyFilter.kind === "chord"
+          ? format(_keyFilter.chord)
+          : _keyFilter.value,
+    keystrokeLabel: capturingSearch ? "Press it now" : "Search by keystroke",
+    refusal: _keyRefusal?.reason ?? "",
+    rowsEmpty:
+      visible.length > 0
+        ? ""
+        : _keyFilter?.kind === "chord"
+          ? `Nothing is bound to ${format(_keyFilter.chord)}.`
+          : "No shortcut matches that.",
+  };
 }
 
 // ─── The sheet ────────────────────────────────────────────────────────────────
+
+/** Everything the document reads, built from the section that is actually showing. */
+function view(): PreferencesView {
+  const active = PREFERENCES_SECTIONS.find((candidate) => candidate.id === _section);
+  return {
+    accounts: _section === "accounts" ? accountsView() : [],
+    section: _section,
+    sectionBlurb: active?.blurb ?? "",
+    sectionTitle: active?.title ?? "",
+    sections: sectionsView(),
+    themes: themesView(),
+    ...(_section === "keyboard" ? keyboardView() : KEYBOARD_IDLE),
+  };
+}
 
 /**
  * Open Preferences, optionally on a named section. Resolves when it is dismissed.
@@ -504,7 +563,7 @@ export function openPreferences(section?: string): Promise<null> {
      something it has no reason to believe. */
   resetCfConnectionCache();
   _section = section !== undefined && isPreferencesSection(section) ? section : _section;
-  if (_close) {
+  if (_surface) {
     repaint();
     sectionShown();
     return Promise.resolve(null);
@@ -514,84 +573,45 @@ export function openPreferences(section?: string): Promise<null> {
   credsForm.startEdit();
   resetKeyboardState();
   sectionShown();
-  return showDialog<null>(
-    (done) => {
-      let wrapperEl: HTMLElement | null = null;
-
-      function finish() {
-        _rerender = null;
-        _close = null;
-        done(null);
-      }
-
-      function build(): TemplateResult {
-        const active = PREFERENCES_SECTIONS.find((candidate) => candidate.id === _section);
-        return html`
-          <sp-dialog-wrapper
-            open
-            underlay
-            headline="Preferences"
-            cancel-label="Close"
-            size="l"
-            @cancel=${finish}
-            @close=${finish}
-            ${ref((el?: Element) => {
-              if (el) {
-                wrapperEl = el as HTMLElement;
-              }
-            })}
-          >
-            <div class="prefs-sheet">
-              <nav class="prefs-nav" aria-label="Preferences sections">
-                ${PREFERENCES_SECTIONS.map(
-                  (candidate) => html`
-                    <button
-                      type="button"
-                      class="prefs-nav-item ${candidate.id === _section ? "active" : ""}"
-                      aria-current=${candidate.id === _section ? "true" : "false"}
-                      @click=${() => {
-                        _section = candidate.id;
-                        // Leaving a section abandons what it was in the middle of: an armed key
-                        // Capture whose listener is no longer mounted would otherwise swallow the
-                        // First chord pressed on the author's NEXT visit.
-                        resetKeyboardState();
-                        repaint();
-                        sectionShown();
-                      }}
-                    >
-                      ${candidate.title}
-                    </button>
-                  `,
-                )}
-              </nav>
-              <section class="prefs-body">
-                <h3 class="prefs-title">${active?.title ?? ""}</h3>
-                <p class="prefs-blurb">${active?.blurb ?? ""}</p>
-                ${sectionBodyTpl()}
-              </section>
-            </div>
-          </sp-dialog-wrapper>
-        `;
-      }
-
-      _close = finish;
-      _rerender = () => {
-        // Resolved lazily: lit commits element refs before inserting the fragment, so the slot the
-        // Sheet was rendered into is only reachable once the first render has landed.
-        const host = wrapperEl?.parentElement;
-        if (host) {
-          litRender(build(), host);
+  return new Promise<null>((resolve) => {
+    /* Guarded rather than trusted to the handle, because closing is what RAISES `onClosed` — so a
+       teardown that re-entered through it would call itself until the stack ran out. The close is
+       made HERE and not left to the platform: a `close` the flow did not ask for (Escape, or the
+       Close button) must also take the document out of the dialog layer, or the surface outlives
+       the dialog it drew. */
+    let closing = false;
+    _surface = openPreferencesSurface({
+      layer: layerHost("dialog"),
+      onAccountAction: runAccountAction,
+      onCaptureKey: onKeyboardKeyDown,
+      onClosed: () => {
+        if (closing) {
+          return;
         }
-      };
-      return build();
-    },
-    { region: overlayRegion("dialog", "preferences") },
-  );
+        closing = true;
+        const handle = _surface;
+        _surface = null;
+        _managedSlot = null;
+        _credsSlot = null;
+        handle?.close();
+        resolve(null);
+      },
+      onIsland: islandCreated,
+      onKeyQuery: setKeyQuery,
+      onResetBinding: resetBinding,
+      onSelectSection: selectSection,
+      onSetTheme: setTheme,
+      onShowConflict: showConflict,
+      onToggleKeystroke: toggleKeystroke,
+      onToggleRebind: toggleRebind,
+      view: view(),
+    });
+  });
 }
 
 /** Close Preferences if it is open. Tests, and the shell teardown. */
 export function closePreferences(): void {
-  _close?.();
+  _surface?.close();
 }
 
 // ─── Command ──────────────────────────────────────────────────────────────────

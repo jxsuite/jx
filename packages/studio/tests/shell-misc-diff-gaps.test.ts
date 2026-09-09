@@ -16,13 +16,13 @@ import {
   mountOverlayLayers,
 } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { html, nothing, render } from "lit-html";
+import { nothing } from "lit-html";
 import { notifyModule } from "./notify-mock";
 import { createMockCollabHub, settleCollab, waitForCollab } from "./collab-mock";
 import { mockFormatAction, seedMarkdownFormat } from "./format-fixture";
 import { keyScopeStack, makeContext } from "../src/commands/context";
 import { persistedSession } from "../src/shell";
-import { renderForm } from "../src/ui/schema-form";
+import { mountSchemaForm, resetSchemaForms } from "../src/ui/schema-form";
 import { invalidateReferenceEntries } from "../src/ui/form-controls";
 import { seedPublishConnected } from "../src/publish/publish-panel";
 import { initLayers } from "../src/ui/layers";
@@ -96,23 +96,30 @@ const AUTHOR_CONFIG = {
   },
 };
 
-function mountReference(container: HTMLElement): void {
-  const redraw = () => {
-    render(
-      html`${renderForm(
-        { properties: { author: { $ref: "#/content/authors" } } },
-        { author: "" },
-        {
-          onChange: () => {
-            /* Not committed here */
-          },
-          rerender: () => redraw(),
+/**
+ * Draw one reference field into `container`.
+ *
+ * The schema form is a document now, so what the engine hands back is the element the form lives in
+ * rather than a template: the container is ATTACHED (a kit element renders on connect) and the host
+ * is placed in it. Re-mounting under the same key is what the control's own `rerender` hook does.
+ */
+function mountReference(container: HTMLElement, key: string): void {
+  document.body.append(container);
+  const draw = () =>
+    mountSchemaForm(
+      key,
+      { properties: { author: { $ref: "#/content/authors" } } },
+      { author: "" },
+      {
+        onChange: () => {
+          /* Not committed here */
         },
-      )}`,
-      container,
+        rerender: () => {
+          draw();
+        },
+      },
     );
-  };
-  redraw();
+  container.append(draw());
 }
 
 function optionsIn(container: HTMLElement): (string | null)[] {
@@ -149,15 +156,19 @@ describe("the reference control reads a collection once", () => {
     // Both mounts happen in the same tick: the cache holds an UNSETTLED promise, which is the only
     // Moment the in-flight branch is reachable (a settled collection renders straight from
     // `entryIdResult` and never asks again).
+    resetSchemaForms();
     const first = document.createElement("div");
     const second = document.createElement("div");
-    mountReference(first);
-    mountReference(second);
-    await waitFor(() => optionsIn(first).length > 0);
+    mountReference(first, "ref-first");
+    mountReference(second, "ref-second");
+    await waitFor(() => optionsIn(first).length > 0 && optionsIn(second).length > 0);
 
     expect(directoryReads(state)).toEqual(["content/authors"]);
     expect(optionsIn(first)).toEqual(["—", "ada", "grace"]);
     expect(optionsIn(second)).toEqual(["—", "ada", "grace"]);
+    resetSchemaForms();
+    first.remove();
+    second.remove();
   });
 });
 

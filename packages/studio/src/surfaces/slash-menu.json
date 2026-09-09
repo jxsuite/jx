@@ -1,0 +1,265 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioSlashMenu",
+  "$description": "The slash menu: the element-insertion list that hangs under the caret. It is a LISTBOX rather than a `jx-menu`, and that is the one thing about this surface worth knowing — the panel must not take the keyboard, because the caret it is filtering for is in the canvas (often in the iframe realm), and every character the author types after the `/` has to keep landing there. A menu owns DOM focus by contract; this panel marks its active row with `aria-selected` and leaves the caret where it was. When the menu is opened BY NAME rather than by a slash there is no caret to protect, so it grows a filter field of its own and that field is what carries `aria-activedescendant`.",
+  "tagName": "jx-popover",
+  "$props": {
+    "label": "Insert element",
+    "x": {
+      "$ref": "#/state/x"
+    },
+    "y": {
+      "$ref": "#/state/y"
+    }
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "body"
+      },
+      "style": {
+        "display": "flex",
+        "flexDirection": "column",
+        "minWidth": "220px",
+        "maxHeight": "320px",
+        "minHeight": "0",
+        "fontFamily": "var(--jx-font-sans)",
+        "fontSize": "var(--jx-text-md)",
+        "& [part=\"filter\"]": {
+          "$description": "Borderless inside a panel that already draws a frame: a second box around the field would only be a box inside a box. The keyboard ring is given back explicitly, because a reader who arrives here by Tab has nothing else to go on.",
+          "display": "block",
+          "width": "100%",
+          "boxSizing": "border-box",
+          "flex": "0 0 auto",
+          "padding": "var(--jx-space-2) var(--jx-space-3)",
+          "border": "none",
+          "borderBottom": "1px solid var(--jx-border)",
+          "outline": "none",
+          "background": "transparent",
+          "color": "inherit",
+          "font": "inherit",
+          "::placeholder": {
+            "color": "var(--jx-fg-muted)"
+          },
+          ":focus-visible": {
+            "outline": "var(--jx-focus-ring)",
+            "outlineOffset": "-2px"
+          }
+        },
+        "& [part=\"list\"]": {
+          "flex": "1",
+          "minHeight": "0",
+          "overflowY": "auto"
+        },
+        "& [part=\"option\"]": {
+          "display": "flex",
+          "alignItems": "center",
+          "gap": "var(--jx-space-3)",
+          "padding": "var(--jx-space-2) var(--jx-space-3)",
+          "borderRadius": "var(--jx-radius-sm)",
+          "cursor": "pointer",
+          "color": "var(--jx-fg-dim)",
+          ":hover": {
+            "background": "var(--jx-hover-bg)"
+          }
+        },
+        "& [part=\"option\"][data-selected]": {
+          "$description": "The highlight follows the active row, not `:hover` — a pointer moving over the list writes that index, so the two can never disagree, and an arrow key arriving from the canvas moves the same mark the mouse does.",
+          "background": "var(--jx-accent-solid)",
+          "color": "var(--jx-accent-fg)"
+        },
+        "& [part=\"name\"]": {
+          "whiteSpace": "nowrap",
+          "color": "var(--jx-fg)"
+        },
+        "& [part=\"option\"][data-selected] [part=\"name\"]": {
+          "color": "inherit"
+        },
+        "& [part=\"detail\"]": {
+          "minWidth": "0",
+          "marginLeft": "auto",
+          "opacity": "0.6",
+          "fontSize": "var(--jx-text-sm)",
+          "whiteSpace": "nowrap",
+          "overflow": "hidden",
+          "textOverflow": "ellipsis"
+        },
+        "& [part=\"empty\"]": {
+          "padding": "var(--jx-space-3)",
+          "color": "var(--jx-fg-muted)"
+        }
+      },
+      "children": [
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "filter-slot",
+            "role": "none"
+          },
+          "style": {
+            "display": "contents"
+          },
+          "$switch": {
+            "$ref": "#/state/showFilter"
+          },
+          "cases": {
+            "true": {
+              "tagName": "input",
+              "attributes": {
+                "part": "filter",
+                "type": "text",
+                "role": "combobox",
+                "autocomplete": "off",
+                "aria-controls": "slash-menu-listbox",
+                "aria-expanded": "${state.expanded ? 'true' : 'false'}",
+                "aria-activedescendant": "${state.expanded ? state.activeId : null}",
+                "aria-autocomplete": "list",
+                "aria-label": "Filter elements",
+                "placeholder": "Filter…"
+              },
+              "value": {
+                "$ref": "#/state/filter"
+              },
+              "oninput": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/input"
+                    },
+                    "value": [
+                      {
+                        "$ref": "event#/target/value"
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "list",
+            "role": "listbox",
+            "id": "slash-menu-listbox",
+            "aria-label": "Elements"
+          },
+          "children": [
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "empty-slot",
+                "role": "none"
+              },
+              "$switch": {
+                "$ref": "#/state/isEmpty"
+              },
+              "cases": {
+                "true": {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "empty"
+                  },
+                  "textContent": "No matches"
+                }
+              }
+            },
+            {
+              "$prototype": "Array",
+              "items": {
+                "$ref": "#/state/rows"
+              },
+              "key": {
+                "$ref": "$map/item/key"
+              },
+              "map": {
+                "tagName": "div",
+                "attributes": {
+                  "part": "option",
+                  "role": "option",
+                  "id": "slash-menu-option-${$map.item.index}",
+                  "data-tag": "${$map.item.key}",
+                  "aria-selected": "${$map.item.index === state.activeIndex ? 'true' : 'false'}",
+                  "data-selected": "${$map.item.index === state.activeIndex ? '' : null}"
+                },
+                "onclick": {
+                  "$prototype": "Function",
+                  "body": [
+                    {
+                      "preventDefault": true
+                    },
+                    {
+                      "stopPropagation": true
+                    },
+                    {
+                      "operator": "call",
+                      "target": {
+                        "$ref": "#/state/activateRow"
+                      },
+                      "value": [
+                        {
+                          "$ref": "$map/item/index"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "onmouseenter": {
+                  "$prototype": "Function",
+                  "body": [
+                    {
+                      "operator": "call",
+                      "target": {
+                        "$ref": "#/state/hover"
+                      },
+                      "value": [
+                        {
+                          "$ref": "$map/item/index"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "children": [
+                  {
+                    "tagName": "span",
+                    "attributes": {
+                      "part": "name"
+                    },
+                    "textContent": "${$map.item.label}"
+                  },
+                  {
+                    "tagName": "span",
+                    "attributes": {
+                      "part": "detail-slot",
+                      "role": "none"
+                    },
+                    "style": {
+                      "display": "contents"
+                    },
+                    "$switch": {
+                      "$ref": "$map/item/hasDescription"
+                    },
+                    "cases": {
+                      "true": {
+                        "tagName": "span",
+                        "attributes": {
+                          "part": "detail"
+                        },
+                        "textContent": "${$map.item.description}"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

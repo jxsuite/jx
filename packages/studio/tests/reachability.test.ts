@@ -291,10 +291,10 @@ const KNOWN_UNREACHABLE: Record<string, Record<string, string>> = {
       "rather than per-tab, so it also survives a PROJECT switch — and the warning band it folds " +
       "open belongs to a project. `resetProjectShell()` is where that would be answered, and " +
       "`shell.ts` may not import a panel",
-    resetSelectorMenu: "test reset; delegates to `target-line.ts`'s `resetSelectorTrigger`",
+    resetSelectorMenu: "test reset; delegates to `surfaces/target-line.ts`'s `resetTargetLine`",
   },
   "panels/tab-strip.ts": { unmount: PANEL_TEARDOWN },
-  "panels/target-line.ts": { resetSelectorTrigger: TEST_RESET },
+  "surfaces/target-line.ts": { resetTargetLine: TEST_RESET },
   "surfaces/commandbar.ts": { setMacPlatformForTests: TEST_SEAM },
   "project-list.ts": { resetProjectList: TEST_RESET },
   "publish/deploy-checklist.ts": {
@@ -438,6 +438,7 @@ const KNOWN_UNREACHABLE: Record<string, Record<string, string>> = {
       "surgical edit that surface does not make",
   },
   "ui/dynamic-slot.ts": { resetSlotModeMemory: TEST_RESET },
+  "ui/schema-form.ts": { resetSchemaForms: TEST_RESET },
   "ui/field-input.ts": {
     clearDraft:
       "discards a field's in-flight draft and cancels its debounced commit. Nothing discards — " +

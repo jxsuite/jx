@@ -283,8 +283,11 @@ describe("the settings document", () => {
       "Raw JSON",
     ]);
     pointer(navButton("Content Types"), "click");
-    await flush();
-    expect(body().querySelector(".settings-section-title")?.textContent).toBe("Content Types");
+    /* Content Types is a contributed section, and that renderer is a Jx document now
+       (`src/surfaces/settings-contributed.json`) — so it is addressed by `part`, and its mount
+       needs more turns than a lit render. */
+    await flush(8);
+    expect(body().querySelector('[part="title"]')?.textContent).toBe("Content Types");
   });
 
   test("a custom section registering while mounted redraws the nav with no re-mount", async () => {

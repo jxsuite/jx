@@ -2,7 +2,7 @@
  * Left panel orchestrator — mount/unmount lifecycle, per-tab routing (files/git/blocks/layers/
  * imports/state/data/head), the content-mode head applyMutation bridge, and error recovery.
  */
-import { flush, resetStudioState, resetWorkspaceWithTab } from "./harness";
+import { flush, installMockPlatform, resetStudioState, resetWorkspaceWithTab } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { html } from "lit-html";
 import { mount, render, unmount } from "../src/panels/left-panel";
@@ -75,6 +75,10 @@ beforeEach(() => {
     Element.prototype.scrollIntoView = () => {};
   }
   shell.leftTab = "layers";
+  /* Source Control is a Jx document mounted by its own `afterRender` rather than a lit body drawn
+     through `deps`, so the real panel runs here and asks the platform what the working tree says.
+     Without one registered, `getPlatform()` throws inside the Navigator's render. */
+  installMockPlatform();
   view.dndCleanups = [];
   view._layersCollapsed = new Set();
   resetStudioState();
@@ -101,37 +105,62 @@ describe("left panel — project-level tabs", () => {
     expect(ctx.registerFileTreeDnD).toHaveBeenCalled();
   });
 
-  test("git tab passes the ctx through and reads project state, not the tab", async () => {
+  /* Source Control is a Jx document (`surfaces/git-panel.json`) mounted by the record's own
+     `afterRender`, so the panel is no longer drawn through `deps.renderGitPanel` and there is no
+     `#git-rendered` to find. What the Navigator still owes it is the HOST: the `.panel-body` with
+     its region and the `.panel-content` the document goes into. */
+  function seedRepo() {
+    shell.git.branches = { branches: ["main"], current: "main" } as never;
+    shell.git.status = {
+      ahead: 0,
+      behind: 0,
+      branch: "main",
+      files: [],
+      isRepo: true,
+      remotes: ["origin"],
+    } as never;
+  }
+
+  test("git tab mounts the Source Control document, and not the deps renderer", async () => {
+    seedRepo();
     shell.leftTab = "git";
     await mountWith();
-    expect(leftPanel.querySelector("#git-rendered")).not.toBeNull();
-    expect(captured.git[0]).toBe(ctx);
+    await flush(4);
+    expect(leftPanel.querySelector('[part="git-panel"]')).not.toBeNull();
+    expect(captured.git).toEqual([]);
   });
 
   test("git tab renders with no active tab — Source Control is project level", async () => {
+    seedRepo();
     closeAllTabs();
     shell.leftTab = "git";
     await mountWith();
-    expect(leftPanel.querySelector("#git-rendered")).not.toBeNull();
+    await flush(4);
+    expect(leftPanel.querySelector('[part="git-panel"]')).not.toBeNull();
   });
 
-  test("project-level source-control changes repaint the panel with no tab open", async () => {
-    // The panel used to be repainted by hand from inside git-panel (renderOnly("leftPanel") after
-    // Every write). Those calls are gone: the fields it renders from are tracked here.
+  test("project-level source-control changes reach the panel with no tab open", async () => {
+    /* The panel used to be repainted by hand from inside git-panel (`renderOnly("leftPanel")` after
+       every write), and then by the Navigator's own repaint. Both are gone: the mounted document
+       owns an effect over the same `shell.git` fields, so the sub-tab moving is enough. */
+    seedRepo();
     closeAllTabs();
     shell.leftTab = "git";
     await mountWith();
-    const renders = () => (ctx.renderGitPanel as ReturnType<typeof mock>).mock.calls.length;
-    const before = renders();
+    await flush(4);
+    expect(leftPanel.querySelector('[part="commit"]')).not.toBeNull();
 
     shell.git.subTab = "history";
-    await flush(3);
-    expect(renders()).toBeGreaterThan(before);
+    await flush(4);
+    expect(leftPanel.querySelector('[part="commit"]')).toBeNull();
+    expect(leftPanel.querySelector('[part="history"]')).not.toBeNull();
 
-    const afterSubTab = renders();
-    shell.git.logEntries = [{ author: "a", date: "d", hash: "abc", message: "m" }];
-    await flush(3);
-    expect(renders()).toBeGreaterThan(afterSubTab);
+    shell.git.logEntries = [
+      { author: "a", date: "2024-01-01T00:00:00Z", hash: "abc", message: "m" },
+    ];
+    await flush(4);
+    expect(leftPanel.querySelector('[part="history-entry"]')).not.toBeNull();
+    shell.git.subTab = "changes";
   });
 
   test("insert panel renders the elements palette and registers DnD", async () => {
@@ -345,29 +374,32 @@ describe("left panel — lifecycle and recovery", () => {
     expect(leftPanel.querySelector(".panel-body")).toBeNull();
   });
 
+  /* Files is the throwing fixture, because it is the project-level panel still drawn through
+     `deps`: Source Control's body is a document its own `afterRender` mounts, so a `deps` renderer
+     that throws is no longer on the Navigator's render path at all. */
   test("a render error is recovered by clearing lit state and retrying", async () => {
     let calls = 0;
-    shell.leftTab = "git";
+    shell.leftTab = "files";
     await mountWith({
-      renderGitPanel: mock(() => {
+      renderFilesTemplate: mock(() => {
         calls += 1;
         if (calls === 1) {
           throw new Error("boom");
         }
-        return html`<div id="git-recovered"></div>`;
+        return html`<div id="files-recovered"></div>`;
       }),
     });
     expect(calls).toBe(2);
-    expect(leftPanel.querySelector("#git-recovered")).not.toBeNull();
+    expect(leftPanel.querySelector("#files-recovered")).not.toBeNull();
   });
 
   test("a persistent render error is swallowed without crashing", async () => {
-    shell.leftTab = "git";
+    shell.leftTab = "files";
     await mountWith({
-      renderGitPanel: mock(() => {
+      renderFilesTemplate: mock(() => {
         throw new Error("always");
       }),
     });
-    expect(leftPanel.querySelector("#git-rendered")).toBeNull();
+    expect(leftPanel.querySelector("#files-rendered")).toBeNull();
   });
 });
