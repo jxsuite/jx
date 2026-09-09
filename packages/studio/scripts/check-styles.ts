@@ -217,7 +217,6 @@ export const ALLOWED_ORPHANS = new Set<string>([
   "settings-form-panel",
   "settings-section",
   // Owner: settings/css-vars-editor.ts
-  "css-var-scheme-row",
   /* "css-vars-enable-dark" retired with the button: this section overrides tokens per scheme, it
      no longer DEFINES a scheme — that is Settings › Contexts (§2 principle 5). */
   // Owner: settings/schema-field-ui.ts

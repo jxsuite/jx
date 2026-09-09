@@ -514,29 +514,6 @@
   font-weight: 600;
   color: var(--fg);
 }
-.settings-field {
-  margin-bottom: 20px;
-}
-.settings-field-label {
-  display: block;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--fg);
-  margin-bottom: 2px;
-}
-.settings-field-desc {
-  margin: 0 0 6px;
-  font-size: var(--spectrum-font-size-75, 12px);
-  color: var(--fg-dim);
-}
-/* A write that failed, or a value the field refuses. Rendered under the control it belongs to
-   (or under the section title for a whole-file write failure) — settings save on change, so a
-   silent rejection would otherwise read as "my edit just vanished". */
-.settings-field-error {
-  margin: 6px 0 0;
-  font-size: var(--spectrum-font-size-75, 12px);
-  color: var(--danger);
-}
 .settings-field-row {
   display: flex;
   gap: 8px;
@@ -890,74 +867,6 @@
 .new-project-scratch .new-project-template-blank {
   width: 96px;
   flex-shrink: 0;
-}
-/* CSS Vars editor */
-.css-vars-group {
-  margin-bottom: 24px;
-}
-.css-vars-group-title {
-  margin: 0 0 8px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--fg);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-.css-var-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 0;
-}
-.css-var-name {
-  font-size: var(--spectrum-font-size-75, 12px);
-  color: var(--fg-dim);
-  min-width: 100px;
-}
-.css-var-swatch {
-  width: 24px;
-  height: 24px;
-  border-radius: var(--radius);
-  border: 1px solid var(--border);
-  position: relative;
-  overflow: hidden;
-  cursor: pointer;
-}
-.css-var-swatch input[type="color"] {
-  position: absolute;
-  inset: 0;
-  opacity: 0;
-  cursor: pointer;
-  width: 100%;
-  height: 100%;
-}
-.css-var-font-preview {
-  font-size: 13px;
-  color: var(--fg-dim);
-  padding: 4px 0 12px 108px;
-}
-.css-var-media-overrides {
-  padding-left: 108px;
-  margin-bottom: 8px;
-}
-.css-var-media-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 2px 0;
-}
-.css-var-media-label {
-  font-size: var(--spectrum-font-size-50, 11px);
-  color: var(--fg-dim);
-  min-width: 60px;
-}
-.css-var-add-row {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  padding: 8px 0;
-  border-top: 1px solid var(--border);
-  margin-top: 8px;
 }
 
 /* ─── Settings editors (Collections / Definitions) ─── */

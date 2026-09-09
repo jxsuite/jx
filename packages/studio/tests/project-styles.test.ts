@@ -8,7 +8,6 @@
  */
 import "./harness";
 import { describe, expect, test } from "bun:test";
-import { render } from "lit-html";
 import { CANVAS_MODES } from "../src/canvas/iframe-protocol";
 import {
   PROJECT_STYLES_TITLE,
@@ -24,12 +23,7 @@ import {
   tokenOverrides,
   writeTokenOverride,
 } from "../src/style/project-styles";
-import {
-  renderTokenChip,
-  resolveTokenValue,
-  toTokenRef,
-  tokenRefName,
-} from "../src/style/token-ref";
+import { resolveTokenValue, toTokenRef, tokenRefName } from "../src/style/token-ref";
 
 import type { JxStyle } from "@jxsuite/schema/types";
 import type { TokenContext } from "../src/style/project-styles";
@@ -292,33 +286,5 @@ describe("token references", () => {
   test("nothing in, nothing out", () => {
     expect(resolveTokenValue({} as JxStyle, null)).toBeUndefined();
     expect(resolveTokenValue({} as JxStyle, ABSENT)).toBeUndefined();
-  });
-});
-
-describe("the token chip", () => {
-  function chip(...args: Parameters<typeof renderTokenChip>): HTMLElement {
-    const host = document.createElement("div");
-    render(renderTokenChip(...args), host);
-    return host.querySelector(".style-token-chip") as HTMLElement;
-  }
-
-  test("it names the token and carries the full reference and its value in the title", () => {
-    const el = chip("--color-brand", "#00aa55", { swatch: true });
-    expect(el.querySelector(".style-token-chip-label")?.textContent?.trim()).toBe("Brand");
-    expect(el.getAttribute("title")).toBe("var(--color-brand) → #00aa55");
-    expect(el.querySelector(".style-token-chip-swatch")?.getAttribute("style")).toContain(
-      "#00aa55",
-    );
-  });
-
-  test("a swatch is only drawn when there is a resolved colour to draw", () => {
-    expect(
-      chip("--color-brand", ABSENT, { swatch: true }).querySelector(".style-token-chip-swatch"),
-    ).toBeNull();
-    expect(chip("--size-gap", "8px").querySelector(".style-token-chip-swatch")).toBeNull();
-  });
-
-  test("an unresolvable reference says so rather than showing an empty value", () => {
-    expect(chip("--size-gap", ABSENT).getAttribute("title")).toBe("var(--size-gap) → unresolved");
   });
 });

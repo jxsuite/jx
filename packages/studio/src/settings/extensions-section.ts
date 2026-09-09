@@ -15,24 +15,34 @@
  * there is no `@jxsuite/` prefix test below: which extensions are first-party is the backend's
  * answer, and a second definition of it here would be wrong for a fork.
  *
+ * **The markup left.** The section is the `settings-extensions` surface
+ * (`surfaces/settings-extensions.json`), mounted by `surfaces/settings-extensions.ts`; what is here
+ * is what was always this module's — what the three sources add up to, which sentence a row's state
+ * deserves, why a control cannot be used, and what a failed operation says.
+ * `renderExtensionsSection` is unchanged as a contract: the registry hands a container to a
+ * `render`, and this one mounts a document into it instead of rendering lit.
+ *
  * @docs studio/projects/settings
  */
 
-import { html, nothing, render as litRender } from "lit-html";
-import { classMap } from "lit-html/directives/class-map.js";
-import { live } from "lit-html/directives/live.js";
-import { repeat } from "lit-html/directives/repeat.js";
 import { errorMessage } from "@jxsuite/schema/parse";
 import { buildRows } from "./extension-rows";
 import { getPlatform } from "../platform";
-import { renderEmptyState } from "../panels/empty-state";
 import {
   disableExtension,
   enableExtension,
   extensionOpInFlight,
   removeExtensionPackage,
 } from "./extension-commands";
+import { mountExtensionsSurface } from "../surfaces/settings-extensions";
 import type { ExtensionOrigin, ExtensionRow } from "./extension-rows";
+import type {
+  ExtensionGroupView,
+  ExtensionRowView,
+  ExtensionsActions,
+  ExtensionsSurfaceHandle,
+  ExtensionsView,
+} from "../surfaces/settings-extensions";
 import type { PackageInfo } from "../types";
 
 /** Group headings, in render order, each with the sentence that says what the group is. */
@@ -56,223 +66,214 @@ const GROUPS: { origin: ExtensionOrigin; label: string; blurb: string }[] = [
   },
 ];
 
-let _container: HTMLElement | null = null;
-
-/** The project's dependencies, re-read whenever an operation may have changed them. */
+/**
+ * The project's dependencies, re-read whenever an operation may have changed them.
+ *
+ * Module-level rather than per container, because it is a fact about the PROJECT: two panes showing
+ * this section are not looking at two dependency lists.
+ */
 let _packages: PackageInfo[] | null = null;
 
+/** The surface mounted in each container, so a redraw updates one rather than making another. */
+const mounted = new WeakMap<HTMLElement, ExtensionsSurfaceHandle>();
+
 /**
- * The last failed operation, shown after the control that failed.
+ * The last failed operation, per rendered section, shown under the section title.
  *
- * Not a second announcement: `updateSiteConfig` already files a Problem for a rejected write and
- * `activity.fail` files one for a rejected install. §13.1 makes INLINE the tier for "the value is
- * on screen, and nothing else is the right place" — the Problem is about the file, and this line is
- * about the switch the reader is looking at.
+ * Keyed by container, the shape `general-settings.ts` and `locales-section.ts` use, and for the
+ * reason they use it: a message belongs to the copy of the section the reader was looking at when
+ * the operation failed. It is cleared when the next operation starts and when one succeeds, and a
+ * section the reader navigated away from and back is drawn into a fresh host
+ * (`panels/settings-pane.ts`), so it starts with nothing to say rather than with a stale
+ * complaint.
  */
-let _error: string | null = null;
+const errors = new WeakMap<HTMLElement, string>();
 
-/** Re-read the package list, then repaint. Installed-ness is what a config write cannot move. */
-async function reload(): Promise<void> {
-  try {
-    _packages = await getPlatform().listPackages();
-  } catch {
-    _packages = [];
-  }
-  render();
-}
-
-async function onToggle(row: ExtensionRow): Promise<void> {
-  // Intent is the DOCUMENT's truth inverted, never the switch's own `checked` — the browser has
-  // Already moved that by the time this fires, so reading it would compound a double event.
-  _error = null;
-  // Started, THEN painted: both operations take the in-flight latch synchronously before their
-  // First await, so this repaint is what disables every other switch for the duration.
-  const op = row.enabled ? disableExtension(row.specifier) : enableExtension(row.specifier);
-  render();
-  try {
-    await op;
-  } catch (error) {
-    _error = errorMessage(error);
-  }
-  // Either way the row repaints from `project.json`, so `live()` puts a switch the operation did
-  // Not earn back where the document says it belongs.
-  await reload();
-}
-
-async function onRemove(row: ExtensionRow): Promise<void> {
-  _error = null;
-  const op = removeExtensionPackage(row.name);
-  render();
-  try {
-    await op;
-  } catch (error) {
-    _error = errorMessage(error);
-  }
-  await reload();
-}
-
-/** The sentence a row's state deserves, or null. */
-function noteFor(row: ExtensionRow): { text: string; warn: boolean } | null {
+/** The sentence a row's state deserves, and the tone it is said in. */
+function noteFor(row: ExtensionRow): { note: string; noteTone: ExtensionRowView["noteTone"] } {
   if (row.unavailable !== undefined) {
-    return { text: row.unavailable, warn: true };
+    return { note: row.unavailable, noteTone: "warn" };
   }
   if (row.broken) {
     return {
-      text:
+      note:
         `${row.name} is named in project.json but is not installed, so the next build will fail. ` +
         `Turn it off, or turn it off and on again to install it.`,
-      warn: true,
+      noteTone: "warn",
     };
   }
   if (!row.installed && !row.bundled) {
-    return { text: "Not installed. Turning this on installs it first.", warn: false };
+    return { note: "Not installed. Turning this on installs it first.", noteTone: "note" };
   }
   if (row.bundled) {
-    return { text: "Ships with this backend, so it needs no install.", warn: false };
+    return { note: "Ships with this backend, so it needs no install.", noteTone: "note" };
   }
-  return null;
+  return { note: "", noteTone: "none" };
 }
 
-/** Why a row's toggle cannot be used right now, or undefined when it can. */
-function blockedReason(row: ExtensionRow): string | undefined {
+/** Why a row's toggle cannot be used right now, or `""` when it can. */
+function blockedReason(row: ExtensionRow): string {
   // Turning something OFF is always safe, even on a backend that cannot run it — otherwise a row
   // That arrived unsupported could never be removed from the project that names it.
   if (row.unavailable !== undefined && !row.enabled) {
     return row.unavailable;
   }
   const busy = extensionOpInFlight();
-  return busy === null ? undefined : `Waiting for ${busy} to finish.`;
+  return busy === null ? "" : `Waiting for ${busy} to finish.`;
 }
 
 /**
- * The per-row Remove.
+ * The per-row Remove, as the document reads it.
  *
- * Refused while the extension is still enabled, and rendered DISABLED with the reason rather than
- * hidden (guidelines §10): removing the package while `project.json` still names it manufactures
- * exactly the broken state this section exists to eliminate.
+ * Refused while the extension is still enabled, and DISABLED with the reason rather than hidden
+ * (guidelines §10): removing the package while `project.json` still names it manufactures exactly
+ * the broken state this section exists to eliminate. It is absent only when there is nothing to
+ * remove — a package the project never installed, or one the backend bundles.
  */
-function removeTemplate(row: ExtensionRow) {
-  if (!row.installed || row.bundled) {
-    return nothing;
-  }
+function removeFor(
+  row: ExtensionRow,
+): Pick<ExtensionRowView, "canRemove" | "removeDisabled" | "removeHint" | "removeLabel"> {
   const refusal = row.enabled
     ? `Turn ${row.title} off first. Removing the package while project.json still names it would fail the next build.`
-    : undefined;
-  return html`<sp-action-button
-    size="s"
-    quiet
-    class="settings-extension-remove"
-    title=${refusal ?? `Remove ${row.name}`}
-    ?disabled=${refusal !== undefined || extensionOpInFlight() !== null}
-    @click=${() => {
-      void onRemove(row);
-    }}
-  >
-    <sp-icon-delete slot="icon"></sp-icon-delete>
-  </sp-action-button>`;
+    : "";
+  return {
+    canRemove: row.installed && !row.bundled,
+    removeDisabled: refusal !== "" || extensionOpInFlight() !== null,
+    removeHint: refusal === "" ? `Remove ${row.name}` : refusal,
+    removeLabel: `Remove ${row.name}`,
+  };
 }
 
-function rowTemplate(row: ExtensionRow) {
+/** One row, projected. */
+function rowView(row: ExtensionRow): ExtensionRowView {
   const blocked = blockedReason(row);
-  const note = noteFor(row);
-  return html`
-    <div
-      class=${classMap({
-        "settings-toggle-row": true,
-        "settings-toggle-row--broken": row.broken,
-      })}
-    >
-      <sp-switch
-        size="s"
-        class="settings-extension-toggle"
-        aria-label=${row.title}
-        .checked=${live(row.enabled)}
-        ?disabled=${blocked !== undefined}
-        title=${blocked ?? nothing}
-        @change=${() => {
-          void onToggle(row);
-        }}
-      ></sp-switch>
-      <div class="settings-toggle-body">
-        <span class="settings-toggle-title">${row.title}</span>
-        <code class="settings-toggle-package">${row.name}</code>
-        ${row.description ? html`<p class="settings-toggle-desc">${row.description}</p>` : nothing}
-        ${
-          row.sections.length === 0
-            ? nothing
-            : html`<div class="settings-toggle-sections">
-                ${row.sections.map(
-                  (key) => html`<span class="settings-toggle-section">${key}</span>`,
-                )}
-              </div>`
-        }
-        ${
-          note === null
-            ? nothing
-            : html`<p
-                class=${classMap({
-                  "settings-toggle-note": true,
-                  "settings-toggle-note--warn": note.warn,
-                })}
-              >
-                ${note.text}
-              </p>`
-        }
-      </div>
-      <div class="settings-toggle-actions">${removeTemplate(row)}</div>
-    </div>
-  `;
+  return {
+    blocked: blocked !== "",
+    blockedReason: blocked,
+    broken: row.broken,
+    description: row.description ?? "",
+    enabled: row.enabled,
+    hasDescription: (row.description ?? "") !== "",
+    hasSections: row.sections.length > 0,
+    name: row.name,
+    sections: row.sections.map((key) => ({ key })),
+    specifier: row.specifier,
+    title: row.title,
+    ...noteFor(row),
+    ...removeFor(row),
+  };
 }
 
-function render(): void {
-  if (!_container) {
-    return;
-  }
+/**
+ * What the section shows right now.
+ *
+ * A group with no rows is left out rather than drawn empty: the three origins are a classification
+ * of what happens to exist, not a set of shelves a project is expected to fill.
+ */
+function view(container: HTMLElement): ExtensionsView {
   const rows = buildRows(_packages);
-  const groups: { label: string; blurb: string; rows: ExtensionRow[] }[] = [];
+  const groups: ExtensionGroupView[] = [];
   for (const group of GROUPS) {
     const matching = rows.filter((row) => row.origin === group.origin);
     if (matching.length > 0) {
-      groups.push({ blurb: group.blurb, label: group.label, rows: matching });
+      groups.push({
+        blurb: group.blurb,
+        label: group.label,
+        origin: group.origin,
+        rows: matching.map((row) => rowView(row)),
+      });
     }
   }
+  return { error: errors.get(container) ?? "", groups };
+}
 
-  const tpl = html`
-    <div class="settings-section">
-      <h3 class="settings-section-title">Extensions</h3>
-      <p class="settings-field-desc">
-        Extensions add what the core does not do on its own: content collections, search, feeds,
-        sign-ins and databases. Turning one on installs its package and enables it; turning it off
-        leaves the package installed.
-      </p>
-      ${
-        _error === null ? nothing : html`<p class="settings-field-error" role="alert">${_error}</p>`
-      }
-      ${
-        groups.length === 0
-          ? renderEmptyState({
-              compact: true,
-              detail: "This backend lists no catalogue, so nothing can be offered here yet.",
-              message:
-                "Extensions add what the core does not do on its own: content collections, search, feeds, sign-ins and databases.",
-            })
-          : groups.map(
-              (group) => html`
-                <div class="settings-extension-group">
-                  <h4 class="settings-extension-group-title">${group.label}</h4>
-                  <p class="settings-field-desc">${group.blurb}</p>
-                  ${repeat(
-                    group.rows,
-                    (row) => row.name,
-                    (row) => rowTemplate(row),
-                  )}
-                </div>
-              `,
-            )
-      }
-    </div>
-  `;
-  litRender(tpl, _container);
+/** Draw the section, or bring the surface already there up to date. */
+function refresh(container: HTMLElement): void {
+  const standing = mounted.get(container);
+  if (standing?.connected()) {
+    standing.update(view(container));
+    return;
+  }
+  standing?.dispose();
+  mounted.set(container, mountExtensionsSurface(container, view(container), actions(container)));
+}
+
+/** Re-read the package list, then repaint. Installed-ness is what a config write cannot move. */
+async function reload(container: HTMLElement): Promise<void> {
+  try {
+    _packages = await getPlatform().listPackages();
+  } catch {
+    _packages = [];
+  }
+  refresh(container);
+}
+
+async function onToggle(
+  container: HTMLElement,
+  specifier: string,
+  checked: boolean,
+): Promise<void> {
+  /* The echo, first and before anything is decided: the scope is made to agree with the switch, so
+     that the projection which follows — the file's answer — is a real move rather than a
+     restatement of a value the scope never left. */
+  mounted.get(container)?.echo(specifier, checked);
+  errors.delete(container);
+  // Intent is the DOCUMENT's truth inverted, never the switch's own `checked` — the browser has
+  // Already moved that by the time this fires, so reading it would compound a double event.
+  const row = buildRows(_packages).find((candidate) => candidate.specifier === specifier);
+  if (row === undefined) {
+    refresh(container);
+    return;
+  }
+  // Started, THEN painted: both operations take the in-flight latch synchronously before their
+  // First await, so this repaint is what disables every other switch for the duration.
+  const op = row.enabled ? disableExtension(row.specifier) : enableExtension(row.specifier);
+  refresh(container);
+  try {
+    await op;
+  } catch (error) {
+    errors.set(container, errorMessage(error));
+  }
+  // Either way the row repaints from `project.json`, so a switch the operation did not earn is put
+  // Back where the document says it belongs.
+  await reload(container);
+}
+
+async function onRemove(container: HTMLElement, name: string): Promise<void> {
+  errors.delete(container);
+  const op = removeExtensionPackage(name);
+  refresh(container);
+  try {
+    await op;
+  } catch (error) {
+    errors.set(container, errorMessage(error));
+  }
+  await reload(container);
+}
+
+/**
+ * What the reader may do, bound to one container.
+ *
+ * Memoized per container so the surface is handed the same functions every time: they are read
+ * once, when it mounts, and a fresh pair on every refresh would be a scope write that says
+ * nothing.
+ */
+const bound = new WeakMap<HTMLElement, ExtensionsActions>();
+
+function actions(container: HTMLElement): ExtensionsActions {
+  let acts = bound.get(container);
+  if (!acts) {
+    acts = {
+      remove: (name: string) => {
+        void onRemove(container, name);
+      },
+      toggle: (specifier: string, checked: boolean) => {
+        void onToggle(container, specifier, checked);
+      },
+    };
+    bound.set(container, acts);
+  }
+  return acts;
 }
 
 /**
@@ -281,8 +282,6 @@ function render(): void {
  * @param {HTMLElement} container
  */
 export function renderExtensionsSection(container: HTMLElement): void {
-  _container = container;
-  _error = null;
-  render();
-  void reload();
+  refresh(container);
+  void reload(container);
 }

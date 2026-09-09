@@ -1038,20 +1038,6 @@ button.provenance-chip:focus-visible {
   text-overflow: ellipsis;
 }
 
-/* The add-an-override picker, under a token's existing context rows. It aligns
-   with them rather than with the token name, because it belongs to the override
-   list and not to the token — the affordance that was missing is "give this
-   token a value in a context it has none in", and a control that lined up with
-   the base value would read as a second base value. */
-.css-var-override-add {
-  display: flex;
-  align-items: center;
-  padding: 2px 0;
-}
-.css-var-override-add sp-picker {
-  font-size: var(--spectrum-font-size-50, 11px);
-}
-
 /* ─── The reference control (ui/form-controls.ts) ────────────────────────────
    A property whose `$ref` names another collection. One registration, so this
    is the only block that styles a relationship field wherever it is drawn — the

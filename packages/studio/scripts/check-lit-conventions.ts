@@ -277,11 +277,7 @@ export const SPECTRUM_DEBT: Record<string, number> = {
      a surface never renders back the secret it describes, so it is triaged with that in view. */
   "publish/publish-panel.ts": 5,
   "settings/contributed-section.ts": 2,
-  "settings/css-vars-editor.ts": 2,
-  "settings/defs-editor.ts": 1,
-  "settings/dependencies-editor.ts": 1,
   "settings/preferences-dialog.ts": 1,
-  "settings/project-sections.ts": 1,
   /* Content-type field cards. Rebuilt wholesale on every edit today, so the reader has no window
      in which to diverge — which is why they are here rather than fixed. */
   "settings/schema-field-ui.ts": 9,

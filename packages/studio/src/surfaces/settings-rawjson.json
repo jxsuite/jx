@@ -1,0 +1,104 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioSettingsRawJson",
+  "$description": "Project Settings › Raw JSON: `project.json` as it is written, and the way through to editing it as text. The adapter (`surfaces/settings-rawjson.ts`) hands in the serialisation the save chokepoint itself produced, so what is drawn is what a save writes rather than a second pretty-printer that would disagree with the file by an indent. The button opens the SAME tab in the Code editor — one document, three editors (`studio.md` §9.3) — so switching to the text and back keeps one undo stack instead of forking two.",
+  "tagName": "section",
+  "attributes": {
+    "part": "rawjson"
+  },
+  "style": {
+    "$description": "Two of the rules this section borrowed are gone rather than moved. `.settings-field-desc` styled the sentence under the title, and it is kept here because there is no `jx-field` in this section to draw it — a `<pre>` is not a control and wrapping one in a row would give the file a label it does not need. `.settings-edit-as-code` set `align-self: flex-start` on the button, which did nothing: its parent carried `.settings-section`, a class no stylesheet defines, so there was no flex container for the declaration to be about — and `jx-button` is `inline-flex`, so it already sits at the left of a block.",
+    "display": "block",
+    "fontFamily": "var(--jx-font-sans)",
+    "color": "var(--fg)",
+    "& [part=\"title\"]": {
+      "margin": "0 0 16px",
+      "fontSize": "16px",
+      "fontWeight": "600",
+      "color": "var(--fg)"
+    },
+    "& [part=\"intro\"]": {
+      "$description": "The sentence under the title. Its size read `--spectrum-font-size-75` with a 12px fallback, a name that resolves only inside `<sp-theme>`; a document is mounted in the settings pane, so the fallback is all it could ever have taken and the size is the kit's scale now.",
+      "margin": "0 0 6px",
+      "fontSize": "var(--jx-text-md)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"file\"]": {
+      "$description": "The file's name, said in the prose as the file it is. It borrowed a bare `<code>` element and whatever the page happened to give one; a document's styling is its own, so the face is stated here.",
+      "fontFamily": "var(--font-mono)"
+    },
+    "& [part=\"json\"]": {
+      "$description": "`project.json` as it is saved. It scrolls in its own box: a 250-line file must not push the \"Edit as code\" action off the bottom of the section. Its background read `var(--bg-dim, var(--bg))` and `--bg-dim` is declared nowhere in the token layer, so the fallback is what has always painted it — written as what it resolves to rather than as a name that never resolved.",
+      "margin": "0 0 12px",
+      "padding": "12px",
+      "maxHeight": "420px",
+      "overflow": "auto",
+      "border": "1px solid var(--border)",
+      "borderRadius": "var(--radius)",
+      "background": "var(--bg)",
+      "fontFamily": "var(--font-mono)",
+      "fontSize": "var(--jx-text-md)",
+      "color": "var(--fg)",
+      "whiteSpace": "pre"
+    }
+  },
+  "children": [
+    {
+      "tagName": "h3",
+      "attributes": {
+        "part": "title"
+      },
+      "textContent": "Raw JSON"
+    },
+    {
+      "tagName": "p",
+      "attributes": {
+        "part": "intro"
+      },
+      "children": [
+        "The whole of ",
+        {
+          "tagName": "code",
+          "attributes": {
+            "part": "file"
+          },
+          "textContent": "project.json"
+        },
+        ", as it is saved. Editing it as code opens the same document in the Code editor — one undo stack, one dirty flag."
+      ]
+    },
+    {
+      "tagName": "pre",
+      "attributes": {
+        "part": "json"
+      },
+      "textContent": "${state.json}"
+    },
+    {
+      "tagName": "jx-button",
+      "attributes": {
+        "part": "edit"
+      },
+      "$props": {
+        "size": "sm"
+      },
+      "onclick": {
+        "$prototype": "Function",
+        "body": [
+          {
+            "operator": "call",
+            "target": {
+              "$ref": "#/state/editAsCode"
+            }
+          }
+        ]
+      },
+      "children": [
+        {
+          "tagName": "span",
+          "textContent": "Edit as code"
+        }
+      ]
+    }
+  ]
+}

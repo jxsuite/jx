@@ -1,13 +1,20 @@
 /**
- * Tests for src/settings/dependencies-editor.ts — the dependency table.
+ * Tests for the Packages settings section — `src/settings/dependencies-editor.ts`, the flow, and
+ * `src/surfaces/settings-packages.json`, the document it mounts.
  *
  * The Latest column is the registry's answer for EVERY row. The `../src/version` mock below is
  * deliberately a version no package in these fixtures is at: it is what the `@jxsuite/*` rows used
  * to be pinned to, so a row showing it again is the regression these tests exist to catch.
+ *
+ * Everything is addressed by `part`, because the section is a document: there is no `sp-table-row`,
+ * `sp-table-cell` or `.settings-muted` to find any more. A row is a `<tr>` carrying the package it
+ * draws, and the two buttons on it are named after that package rather than after the verb, so the
+ * queries below say which row they act on.
  */
 import { flush, installMockPlatform, pointer } from "./harness";
 import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
 import { initLayers } from "../src/ui/layers";
+import type { PackageInfo } from "../src/types";
 
 void mock.module("../src/version", () => ({
   APP_NAME: "Jx Studio",
@@ -36,12 +43,6 @@ function makeContainer(): HTMLElement {
   return c;
 }
 
-function buttonByText(c: HTMLElement, text: string): HTMLElement | undefined {
-  return [...c.querySelectorAll("sp-action-button")].find((b) => b.textContent?.trim() === text) as
-    | HTMLElement
-    | undefined;
-}
-
 afterEach(() => {
   for (const d of document.querySelectorAll("body > div")) {
     if (!d.id) {
@@ -62,30 +63,60 @@ const TWO_DEPS = {
   ],
 };
 
-/** The rendered table, keyed by package name → its cells. */
-function cellsByName(c: HTMLElement): Map<string | undefined, Element[]> {
-  return new Map(
-    [...c.querySelectorAll("sp-table-row")].map((r) => {
-      const cells = [...r.querySelectorAll("sp-table-cell")];
-      return [cells[0]?.textContent?.trim().split(/\s/)[0], cells];
-    }),
-  );
+/** Draw the section into a fresh container and let the surface mount. */
+async function setup(overrides: Record<string, unknown>): Promise<HTMLElement> {
+  installMockPlatform(overrides);
+  const c = makeContainer();
+  renderDependenciesEditor(c);
+  await flush(4);
+  return c;
+}
+
+/** The line drawn where the table would be: "Loading…" or "No dependencies.". */
+function status(c: HTMLElement): string {
+  return c.querySelector('[part="status"]')?.textContent?.trim() ?? "";
+}
+
+/** One package's row, found by the package it draws. */
+function row(c: HTMLElement, name: string): HTMLElement | null {
+  return c.querySelector(`[part="row"][data-package="${name}"]`);
+}
+
+/** A cell of one package's row, by the column it is in. */
+function cell(c: HTMLElement, name: string, part: string): string | undefined {
+  return row(c, name)?.querySelector(`[part="${part}"]`)?.textContent?.trim();
+}
+
+/** Every package the table lists, in order. */
+function listed(c: HTMLElement): (string | undefined)[] {
+  return [...c.querySelectorAll('[part="row"]')].map((r) => (r as HTMLElement).dataset["package"]);
 }
 
 describe("renderDependenciesEditor", () => {
-  test("shows a loading state then a table with current + latest", async () => {
-    installMockPlatform(TWO_DEPS);
-    const c = makeContainer();
-    renderDependenciesEditor(c);
-    expect(c.querySelector(".settings-muted")?.textContent).toContain("Loading");
+  test("shows a loading state until the list comes back", async () => {
+    let release: (list: PackageInfo[]) => void = () => {};
+    const pending = new Promise<PackageInfo[]>((resolve) => {
+      release = resolve;
+    });
+    const c = await setup({ listPackages: () => pending });
+    /* The list has not come back. "Loading…" is not the empty state: a table drawn now would say
+       "No dependencies." about a project nobody has finished asking about. */
+    expect(status(c)).toContain("Loading");
 
-    await flush();
-    const cells = cellsByName(c);
-    expect(cells.size).toBe(2);
-    // Every row reads its OWN newest publish — including the @jxsuite one, which used to read the
-    // Version this Studio build embeds (mocked to 0.30.1 above) whatever npm actually had.
-    expect(cells.get("@jxsuite/compiler")?.[2]?.textContent?.trim()).toBe("0.22.0");
-    expect(cells.get("hono")?.[2]?.textContent?.trim()).toBe("4.6.0");
+    release([{ name: "hono", version: "^4.0.0" }]);
+    await flush(4);
+    expect(status(c)).toBe("");
+    expect(cell(c, "hono", "current")).toBe("^4.0.0");
+  });
+
+  test("the table lists every dependency with its current and latest version", async () => {
+    const c = await setup(TWO_DEPS);
+    expect(listed(c)).toEqual(["@jxsuite/compiler", "hono"]);
+    expect(cell(c, "@jxsuite/compiler", "latest")).toBe("0.22.0");
+    expect(cell(c, "hono", "latest")).toBe("4.6.0");
+    // A devDependency says so beside its name rather than in a column of its own.
+    expect(cell(c, "@jxsuite/compiler", "dev")).toBe("· dev");
+    expect(row(c, "hono")?.querySelector('[part="dev"]')).toBeNull();
   });
 
   test("a package already AT its latest shows that version, with no update button", async () => {
@@ -94,140 +125,124 @@ describe("renderDependenciesEditor", () => {
      * arrived as an absence and the Latest column read `—` — the registry's answer was known and
      * discarded. It is a version now, and only the update affordance is conditional.
      */
-    installMockPlatform({
+    const c = await setup({
       listPackages: async () => [{ name: "hono", version: "^4.6.0" }],
       packageVersions: async () => [{ current: "^4.6.0", latest: "4.6.0", name: "hono" }],
     });
-    const c = makeContainer();
-    renderDependenciesEditor(c);
-    await flush();
-    expect(cellsByName(c).get("hono")?.[2]?.textContent?.trim()).toBe("4.6.0");
-    expect(c.querySelector('sp-action-button[title^="Update to"]')).toBeNull();
-    expect(buttonByText(c, "Update all")).toBeUndefined();
+    expect(cell(c, "hono", "latest")).toBe("4.6.0");
+    expect(c.querySelector('[part="update"]')).toBeNull();
+    expect(c.querySelector('[part="update-all"]')).toBeNull();
   });
 
   test("a package pinned AHEAD of the registry shows latest but is not offered a downgrade", async () => {
-    installMockPlatform({
+    const c = await setup({
       listPackages: async () => [{ name: "hono", version: "^5.0.0-rc.1" }],
       packageVersions: async () => [{ current: "^5.0.0-rc.1", latest: "4.6.0", name: "hono" }],
     });
-    const c = makeContainer();
-    renderDependenciesEditor(c);
-    await flush();
-    expect(cellsByName(c).get("hono")?.[2]?.textContent?.trim()).toBe("4.6.0");
-    expect(c.querySelector('sp-action-button[title^="Update to"]')).toBeNull();
+    expect(cell(c, "hono", "latest")).toBe("4.6.0");
+    expect(c.querySelector('[part="update"]')).toBeNull();
   });
 
   test("a package the registry cannot answer for reads —", async () => {
     // A workspace:/file:/git spec, or a name npm does not serve: no row comes back for it at all.
-    installMockPlatform({
+    const c = await setup({
       listPackages: async () => [{ name: "local-thing", version: "workspace:^" }],
       packageVersions: async () => [],
     });
-    const c = makeContainer();
-    renderDependenciesEditor(c);
-    await flush();
-    expect(cellsByName(c).get("local-thing")?.[2]?.textContent?.trim()).toBe("—");
+    expect(cell(c, "local-thing", "latest")).toBe("—");
   });
 
   test("renders the empty state when there are no dependencies", async () => {
-    installMockPlatform({ listPackages: async () => [] });
-    const c = makeContainer();
-    renderDependenciesEditor(c);
-    await flush();
-    expect(c.querySelector(".settings-muted")?.textContent).toContain("No dependencies");
+    const c = await setup({ listPackages: async () => [] });
+    expect(status(c)).toContain("No dependencies");
+    expect(c.querySelector('[part="table"]')).toBeNull();
   });
 
   test("update sends a ^latest bump for the row", async () => {
     let received: unknown;
-    installMockPlatform({
+    const c = await setup({
       ...TWO_DEPS,
-      setPackageVersions: async (u) => {
+      setPackageVersions: async (u: unknown) => {
         received = u;
         return { ok: true };
       },
     });
-    const c = makeContainer();
-    renderDependenciesEditor(c);
-    await flush();
-    const updateBtn = c.querySelector('sp-action-button[title="Update to 4.6.0"]') as HTMLElement;
-    pointer(updateBtn, "click");
-    await flush();
+    /* The button is named after the package and the version it would install: there is one of it
+       per row, and "Update" alone would be the same name as many times over. The name is read off
+       the control the reader reaches rather than off the host, because that is the one a screen
+       reader announces. */
+    expect(
+      row(c, "hono")?.querySelector('[part="update"] [part="control"]')?.getAttribute("aria-label"),
+    ).toBe("Update hono to 4.6.0");
+    pointer(row(c, "hono")!.querySelector('[part="update"]')!, "click");
+    await flush(4);
     expect(received).toEqual([{ dev: false, name: "hono", version: "^4.6.0" }]);
   });
 
   test("update all bumps every dependency that is actually behind", async () => {
     let received: { name: string }[] = [];
-    installMockPlatform({
+    const c = await setup({
       ...TWO_DEPS,
-      setPackageVersions: async (u) => {
+      setPackageVersions: async (u: { name: string }[]) => {
         received = u;
         return { ok: true };
       },
     });
-    const c = makeContainer();
-    renderDependenciesEditor(c);
-    await flush();
-    pointer(buttonByText(c, "Update all")!, "click");
-    await flush();
+    pointer(c.querySelector('[part="update-all"]')!, "click");
+    await flush(4);
     expect(received.map((u) => u.name).toSorted()).toEqual(["@jxsuite/compiler", "hono"]);
   });
 
   test("remove calls removePackage", async () => {
     let removed: string | undefined;
-    installMockPlatform({
+    const c = await setup({
       ...TWO_DEPS,
-      removePackage: async (name) => {
+      removePackage: async (name: string) => {
         removed = name;
         return {};
       },
     });
-    const c = makeContainer();
-    renderDependenciesEditor(c);
-    await flush();
-    const removeBtn = c.querySelector('sp-action-button[title="Remove"]') as HTMLElement;
-    pointer(removeBtn, "click");
-    await flush();
+    pointer(row(c, "@jxsuite/compiler")!.querySelector('[part="remove"]')!, "click");
+    await flush(4);
     expect(removed).toBe("@jxsuite/compiler");
   });
 
-  test("add installs the typed package name", async () => {
+  test("add installs the typed package name and empties the field", async () => {
     let added: string | undefined;
-    installMockPlatform({
+    const c = await setup({
       listPackages: async () => [],
-      addPackage: async (name) => {
+      addPackage: async (name: string) => {
         added = name;
         return {};
       },
     });
-    const c = makeContainer();
-    renderDependenciesEditor(c);
-    await flush();
-    const field = c.querySelector("sp-textfield") as HTMLInputElement;
+    const field = c.querySelector('[part="add-field"] [part="input"]') as HTMLInputElement;
     field.value = "lodash";
     field.dispatchEvent(new Event("input", { bubbles: true }));
-    pointer(buttonByText(c, "Add")!, "click");
-    await flush();
+    await flush(2);
+    pointer(c.querySelector('[part="add-button"]')!, "click");
+    await flush(4);
     expect(added).toBe("lodash");
+    /*
+     * The echo, asserted rather than assumed. The section clears `_addName` after the install and
+     * redraws; that write only reaches the field because the keystroke was stated to the scope
+     * first — a scope that had never moved off "" would be written "" again, which is not a change,
+     * and the installed package's name would still be sitting in the field.
+     */
+    expect(field.value).toBe("");
   });
 
   test("reinstall runs installDependencies", async () => {
     let reinstalled = 0;
-    installMockPlatform({
+    const c = await setup({
       ...TWO_DEPS,
       installDependencies: async () => {
         reinstalled += 1;
         return { ok: true };
       },
     });
-    const c = makeContainer();
-    renderDependenciesEditor(c);
-    await flush();
-    const reinstallBtn = c.querySelector(
-      'sp-action-button[title="Reinstall (bun install)"]',
-    ) as HTMLElement;
-    pointer(reinstallBtn, "click");
-    await flush();
+    pointer(c.querySelector('[part="reinstall"]')!, "click");
+    await flush(4);
     expect(reinstalled).toBe(1);
   });
 });
