@@ -11,6 +11,7 @@ code:
   - packages/studio/src/services/tool-executor.ts
   - packages/studio/src/ui/ai-credentials-form.ts
   - packages/studio/src/ui/ai-managed-connect.ts
+  - packages/studio/src/surfaces/ai-managed-connect.ts
   - packages/studio/src/services/ai-models.ts
 ---
 

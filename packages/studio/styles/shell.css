@@ -572,30 +572,7 @@
   color: var(--fg-dim);
   font-size: var(--spectrum-font-size-50, 11px);
 }
-.ai-managed-connect {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-}
 /* The lede reads as the recommendation, so it carries weight the divider beneath it does not. */
-.ai-managed-connect-lede {
-  color: var(--fg);
-  font-size: var(--spectrum-font-size-75, 12px);
-  max-width: 280px;
-  text-align: center;
-}
-.ai-managed-connect-error {
-  color: var(--danger);
-  font-size: var(--spectrum-font-size-50, 11px);
-  max-width: 260px;
-}
-.ai-managed-connect-divider {
-  color: var(--fg-dim);
-  font-size: var(--spectrum-font-size-50, 11px);
-  margin-top: 6px;
-}
 
 /* ─── Assistant settings (ui/ai-credentials-form.ts) ──────── */
 /* The provider credentials form. Hosted by the `Assistant: Settings…` dialog and by the New

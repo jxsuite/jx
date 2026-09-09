@@ -25,7 +25,7 @@ import type { RepoInfo, StarterInfo } from "../src/types";
 
 const { closeNewProjectModal, openNewProjectModal } =
   await import("../src/new-project/new-project-modal");
-const { closeAddRepoModal, openAddRepoModal } = await import("../src/new-project/add-repo-modal");
+const { openAddRepoModal } = await import("../src/new-project/add-repo-modal");
 const { initLayers } = await import("../src/ui/layers");
 
 mountOverlayLayers(document.body);
@@ -102,8 +102,19 @@ beforeEach(() => {
 
 afterEach(() => {
   closeNewProjectModal();
-  closeAddRepoModal();
+  dismissPicker();
 });
+
+/**
+ * Put the repo picker away the way a reader does: the platform's `cancel`, which is what Escape
+ * raises on a modal `<dialog>` and what the kit's Cancel button dispatches. A no-op when the picker
+ * is not up — the flow exported a closer only while it drew its own box.
+ */
+function dismissPicker(): void {
+  document
+    .querySelector('#layer-dialog jx-dialog[part="add-repo"]')
+    ?.dispatchEvent(new Event("cancel", { bubbles: true }));
+}
 
 describe("new-project modal gaps", () => {
   test("saving a key through the agent gate re-renders past it", async () => {
@@ -259,8 +270,15 @@ describe("add-repo modal gaps", () => {
     },
   ];
 
+  /* The picker is a document in the dialog layer now, so its rows are addressed by `part` and the
+     dialog itself is the `jx-dialog` — `.add-repo-row` and the `sp-underlay` card it sat in are
+     both gone (`src/surfaces/add-repo.json`). */
   function rows(): HTMLButtonElement[] {
-    return [...document.querySelectorAll("#layer-modal .add-repo-row")] as HTMLButtonElement[];
+    return [...document.querySelectorAll('#layer-dialog [part="row"]')] as HTMLButtonElement[];
+  }
+
+  function picker(): HTMLElement | null {
+    return document.querySelector('#layer-dialog jx-dialog[part="add-repo"]');
   }
 
   test("a second open while the picker is up resolves null immediately", async () => {
@@ -269,9 +287,9 @@ describe("add-repo modal gaps", () => {
       listRepos: () => Promise.resolve(REPOS),
     });
     const first = openAddRepoModal();
-    await flush();
+    await flush(3);
     expect(await openAddRepoModal()).toBeNull();
-    closeAddRepoModal();
+    dismissPicker();
     expect(await first).toBeNull();
   });
 
@@ -288,10 +306,13 @@ describe("add-repo modal gaps", () => {
       listRepos: () => Promise.resolve(REPOS),
     });
     const promise = openAddRepoModal();
+    await flush(3);
+    rows()[0]!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     await flush();
-    rows()[0]!.dispatchEvent(new Event("click", { bubbles: true }));
-    await flush();
-    rows()[1]!.dispatchEvent(new Event("click", { bubbles: true }));
+    // The row that is running says so itself, and every row goes quiet while it does.
+    expect(rows()[0]!.textContent).toContain("Importing…");
+    expect(rows()[1]!.disabled).toBe(true);
+    rows()[1]!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     await flush();
     expect(imports).toBe(1);
     releaseImport();
@@ -301,13 +322,13 @@ describe("add-repo modal gaps", () => {
   test("platforms that cannot import surface the inline notice", async () => {
     installMockPlatform({ listRepos: () => Promise.resolve(REPOS) });
     const promise = openAddRepoModal();
+    await flush(3);
+    rows()[0]!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     await flush();
-    rows()[0]!.dispatchEvent(new Event("click", { bubbles: true }));
-    await flush();
-    expect(document.querySelector("#layer-modal .new-project-error")?.textContent).toContain(
+    expect(document.querySelector('#layer-dialog [part="failure"]')?.textContent).toContain(
       "cannot import repositories",
     );
-    closeAddRepoModal();
+    dismissPicker();
     expect(await promise).toBeNull();
   });
 
@@ -317,12 +338,12 @@ describe("add-repo modal gaps", () => {
       listRepos: () => Promise.resolve(REPOS),
     });
     const promise = openAddRepoModal();
+    await flush(3);
+    /* Escape on a modal `<dialog>` is the platform's: it closes the dialog and raises `cancel`,
+       which is the same event the kit's own Cancel button dispatches. */
+    picker()!.dispatchEvent(new Event("cancel", { bubbles: true }));
     await flush();
-    const modal = document.querySelector("#layer-modal .add-repo-modal") as HTMLElement;
-    modal.dispatchEvent(
-      new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "Escape" }),
-    );
-    expect(document.querySelector("#layer-modal .add-repo-modal")).toBeNull();
+    expect(picker()).toBeNull();
     expect(await promise).toBeNull();
   });
 });

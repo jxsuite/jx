@@ -111,6 +111,20 @@ function chipByTitle(title: string): HTMLElement {
   return chip as HTMLElement;
 }
 
+/**
+ * A row of the formula palette, by its name.
+ *
+ * The palette is a Jx document mounted in its own popover slot (`surfaces/formula-palette.ts`), so
+ * it is addressed by `part` inside that slot rather than by the `.quick-search-*` classes it used
+ * to borrow from the command palette's stylesheet.
+ */
+function paletteItem(name: string): HTMLElement | undefined {
+  const host = document.querySelector('[data-jx-region="overlay.menu:formula-palette"]');
+  return [...(host?.querySelectorAll('[part="item"]') ?? [])].find(
+    (el) => el.querySelector('[part="name"]')?.textContent === name,
+  ) as HTMLElement | undefined;
+}
+
 /** The selected sub-node form's operator picker. */
 function operatorPicker(): HTMLElement & { value: string } {
   const picker = dock.querySelector(".fw-editor .expression-editor sp-picker");
@@ -294,9 +308,7 @@ describe("editing", () => {
     openWorkspace();
     pointer(dock.querySelector(".fw-browse-catalog") as HTMLElement, "click");
     await flush();
-    const item = [...document.querySelectorAll(".quick-search-item")].find(
-      (el) => el.querySelector(".quick-search-name")?.textContent === "?:",
-    );
+    const item = paletteItem("?:");
     expect(item).toBeTruthy();
     pointer(item!, "click");
 
@@ -308,9 +320,7 @@ describe("editing", () => {
     openWorkspace();
     pointer(dock.querySelector(".fw-browse-catalog") as HTMLElement, "click");
     await flush();
-    const item = [...document.querySelectorAll(".quick-search-item")].find(
-      (el) => el.querySelector(".quick-search-name")?.textContent === "sum",
-    );
+    const item = paletteItem("sum");
     expect(item).toBeTruthy();
     pointer(item!, "click");
 

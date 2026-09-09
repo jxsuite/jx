@@ -138,8 +138,6 @@ export const ALLOWED_ORPHANS = new Set<string>([
   "jx-grid-picker",
   // Owner: grid/grid-panel.ts
   "jx-grid-replace-popover",
-  // Owner: new-project/add-repo-modal.ts
-  "add-repo-filter",
   // Owner: new-project/location-fields.ts
   "new-project-error--destination",
   "new-project-owner",
@@ -231,10 +229,6 @@ export const ALLOWED_ORPHANS = new Set<string>([
   "formula-chip",
   "formula-chip--group",
   "formula-chips",
-  // Owner: ui/formula-palette.ts
-  "formula-palette",
-  "formula-palette-input",
-  "formula-palette-overlay",
   // Owner: ui/layers.ts
   // Owner: ui/media-picker.ts
   "media-picker-browse",
@@ -296,12 +290,6 @@ export const FOCUS_RING_ALLOWANCES: readonly FocusRingAllowance[] = [
     file: "styles/shell.css",
     restoredBy: ".ai-composer-input:focus-visible",
     selector: ".ai-composer-input:focus:not(:focus-visible)",
-  },
-  // The quick-search field: borderless inside its own framed popover.
-  {
-    file: "styles/overlays.css",
-    restoredBy: ".quick-search-input:focus-visible",
-    selector: ".quick-search-input",
   },
   // The Source view textarea, which fills its pane edge to edge.
   {

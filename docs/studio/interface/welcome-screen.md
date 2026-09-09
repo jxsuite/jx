@@ -4,6 +4,7 @@ description: "What Jx Studio shows before a project is open, and every way to st
 code:
   - packages/studio/src/surfaces/welcome.ts
   - packages/studio/src/new-project/add-repo-modal.ts
+  - packages/studio/src/surfaces/add-repo.ts
 ---
 
 # Welcome screen

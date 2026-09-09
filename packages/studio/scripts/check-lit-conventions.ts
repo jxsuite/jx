@@ -256,11 +256,9 @@ function isExcluded(file: string): boolean {
  * where there is something more specific to say.
  */
 export const SPECTRUM_DEBT: Record<string, number> = {
-  "browse/library-pane.ts": 2,
   "editor/convert-to-component.ts": 1,
   "editor/convert-to-repeater.ts": 4,
   "files/files.ts": 1,
-  "new-project/add-repo-modal.ts": 1,
   "new-project/location-fields.ts": 5,
   "new-project/new-project-modal.ts": 2,
   "panels/block-action-bar.ts": 1,
@@ -301,7 +299,6 @@ export const SPECTRUM_DEBT: Record<string, number> = {
  * to; it objects to re-finding the node by selector every time instead of holding it.
  */
 export const SELF_QUERY_DEBT: Record<string, number> = {
-  "browse/library-pane.ts": 1,
   /* Four windowed-row lookups and drag guards. The fifth was the WeakSet-guarded keydown, which
      existed only because the unguarded version accumulated a listener per render — "after ten
      repaints a single Down keystroke walked ten rows". `@keydown` on the tree deleted the

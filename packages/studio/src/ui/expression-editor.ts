@@ -16,7 +16,7 @@ import { isJsonObject, isRef } from "@jxsuite/schema/guards";
 import { renderFieldRow } from "./field-row";
 import { renderFormulaChips } from "./formula-chips";
 import { applyCatalogPick, calleeEntry, formulaCatalog } from "./formula-catalog";
-import { openFormulaPalette } from "./formula-palette";
+import { openFormulaPalette } from "../surfaces/formula-palette";
 import { VALUE_SOURCE_LABELS } from "./value-source";
 import { renderEmptyState } from "../panels/empty-state";
 

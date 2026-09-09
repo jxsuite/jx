@@ -3,6 +3,7 @@ title: "The Library"
 description: "Every page, layout, component, entry and asset in one Jx Studio tab: five layouts, a category filter, and an empty state that tells the truth."
 code:
   - packages/studio/src/browse/library-pane.ts
+  - packages/studio/src/surfaces/library-pane.ts
   - packages/studio/src/browse/library-model.ts
   - packages/studio/src/browse/library-layouts.ts
   - packages/studio/src/browse/library-source.ts

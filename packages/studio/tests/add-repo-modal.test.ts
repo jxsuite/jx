@@ -1,15 +1,20 @@
 /**
- * Repository picker modal tests — drives the real picker through the layer system: repo list
- * rendering with badges, filtering, import success resolving the catalogue root key, the structured
- * not_jx_project failure staying inline, dismissal, and the Open Project mode (write-access
- * filtering, Jx-first ordering, install-App empty state).
+ * Repository picker tests — `src/new-project/add-repo-modal.ts` (the flow) and
+ * `src/surfaces/add-repo.json` (the dialog it draws into): repo rows with badges, filtering, an
+ * import resolving the catalogue root key, the structured not_jx_project failure staying inline,
+ * dismissal, and the Open Project mode (write-access filtering, Jx-first ordering, install-App
+ * empty state).
+ *
+ * Everything is addressed by `part`, because the picker is a document: there is no `.add-repo-row`
+ * to find any more, and no `.new-project-modal` either — the box, the backdrop, Escape and the
+ * Cancel button all belong to `jx-dialog`, which is why the dialog now lives in `#layer-dialog`
+ * rather than in the modal layer beside an `<sp-underlay>` it painted itself.
  */
 import { flush, installMockPlatform, mountOverlayLayers } from "./harness";
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import type { RepoInfo } from "../src/types";
 
 const {
-  closeAddRepoModal,
   openAddRepoModal,
   openProjectPickerModal,
   platformSupportsAddRepo,
@@ -42,30 +47,64 @@ const REPOS: RepoInfo[] = [
   },
 ];
 
+function d<T extends Element = HTMLElement>(sel: string): T | null {
+  return document.querySelector(`#layer-dialog ${sel}`) as T | null;
+}
+
+function all<T extends Element = HTMLElement>(sel: string): T[] {
+  return [...document.querySelectorAll(`#layer-dialog ${sel}`)] as T[];
+}
+
+/** The dialog itself, which is the surface's root. */
+function dialog(): HTMLElement | null {
+  return d('jx-dialog[part="add-repo"]');
+}
+
 function rows(): HTMLButtonElement[] {
-  return [...document.querySelectorAll("#layer-modal .add-repo-row")] as HTMLButtonElement[];
+  return all<HTMLButtonElement>('[part="row"]');
 }
 
-function modal(): HTMLElement | null {
-  return document.querySelector("#layer-modal .add-repo-modal");
+function click(el: Element): void {
+  el.dispatchEvent(new MouseEvent("click", { bubbles: true }));
 }
 
-function errorText(): string | null {
-  return document.querySelector("#layer-modal .new-project-error")?.textContent?.trim() ?? null;
+/** The refusal above the list. `failure`, not `error`: `jx-textfield` owns that part name. */
+function failureText(): string | null {
+  return d('[part="failure"]')?.textContent?.trim() ?? null;
+}
+
+function emptyText(): string | null {
+  return d('[part="empty"]')?.textContent ?? null;
 }
 
 function accessLinks(): HTMLAnchorElement[] {
-  return [
-    ...document.querySelectorAll("#layer-modal .add-repo-access-link"),
-  ] as HTMLAnchorElement[];
+  return all<HTMLAnchorElement>('[part="access-link"]');
 }
 
+/** `jx-button` draws the native control, and `disabled` is what that control carries. */
 function refreshButton(): HTMLButtonElement | null {
-  return document.querySelector("#layer-modal .add-repo-refresh");
+  return d<HTMLButtonElement>('[part="refresh"] [part="control"]');
+}
+
+/** Type in the filter, from the control the reader is actually in. */
+function filterBy(text: string): void {
+  const input = d<HTMLInputElement>('[part="filter"] [part="input"]')!;
+  input.value = text;
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+/**
+ * Dismiss it the way a reader would: the platform's `cancel`, which is what Escape raises on a
+ * native `<dialog>` and what the kit's own Cancel button dispatches.
+ */
+function dismiss(): void {
+  dialog()?.dispatchEvent(new Event("cancel", { bubbles: true }));
 }
 
 afterEach(() => {
-  closeAddRepoModal();
+  /* No exported closer any more: every way out of the dialog is the platform's `cancel`, and this
+     is a no-op with nothing up. See the module docblock in `src/new-project/add-repo-modal.ts`. */
+  dismiss();
   resetAccountStatus();
 });
 
@@ -109,22 +148,38 @@ describe("openAddRepoModal", () => {
       listRepos: () => Promise.resolve(REPOS),
     });
     const promise = openAddRepoModal();
-    await flush();
-    expect(modal()).toBeTruthy();
+    await flush(3);
+    expect(dialog()).toBeTruthy();
     expect(rows()).toHaveLength(2);
     expect(rows()[0]!.textContent).toContain("octocat/site");
     expect(rows()[0]!.textContent).toContain("Jx");
     expect(rows()[0]!.textContent).toContain("private");
     expect(rows()[1]!.textContent).toContain("trunk · write");
 
-    const filter = document.querySelector("#layer-modal .add-repo-filter") as HTMLInputElement;
-    filter.value = "acme";
-    filter.dispatchEvent(new Event("input", { bubbles: true }));
+    filterBy("acme");
+    await flush();
     expect(rows()).toHaveLength(1);
     expect(rows()[0]!.textContent).toContain("acme/marketing");
 
-    closeAddRepoModal();
+    dismiss();
     expect(await promise).toBeNull();
+  });
+
+  test("the dialog is the kit's, headline and all — nothing here draws a box", async () => {
+    installMockPlatform({
+      importProject: () => Promise.resolve({ root: "r" }),
+      listRepos: () => Promise.resolve(REPOS),
+    });
+    const promise = openAddRepoModal();
+    await flush(3);
+    expect(dialog()?.querySelector('[part="headline"]')?.textContent).toBe(
+      "Add existing repository",
+    );
+    expect(d("sp-dialog-wrapper")).toBeNull();
+    expect(d("sp-underlay")).toBeNull();
+    dismiss();
+    expect(await promise).toBeNull();
+    expect(dialog()).toBeNull();
   });
 
   test("importing a repo resolves with its catalogue root key", async () => {
@@ -136,12 +191,13 @@ describe("openAddRepoModal", () => {
       listRepos: () => Promise.resolve(REPOS),
     });
     const promise = openAddRepoModal();
-    await flush();
-    rows()[0]!.dispatchEvent(new Event("click", { bubbles: true }));
+    await flush(3);
+    click(rows()[0]!);
     await flush();
     expect(importProject).toHaveBeenCalledWith({ name: "site", owner: "octocat" });
     expect(await promise).toEqual({ root: "octocat/site@main" });
-    expect(modal()).toBeNull();
+    await flush();
+    expect(dialog()).toBeNull();
   });
 
   test("a not_jx_project failure stays inline and the picker remains open", async () => {
@@ -155,13 +211,15 @@ describe("openAddRepoModal", () => {
       listRepos: () => Promise.resolve(REPOS),
     });
     const promise = openAddRepoModal();
+    await flush(3);
+    click(rows()[1]!);
     await flush();
-    rows()[1]!.dispatchEvent(new Event("click", { bubbles: true }));
-    await flush();
-    expect(modal()).toBeTruthy();
-    expect(errorText()).toContain("no readable project.json");
+    expect(dialog()).toBeTruthy();
+    expect(failureText()).toContain("no readable project.json");
+    // The list survives the refusal: the other repositories are still on offer.
+    expect(rows()).toHaveLength(2);
 
-    closeAddRepoModal();
+    dismiss();
     expect(await promise).toBeNull();
   });
 
@@ -171,10 +229,10 @@ describe("openAddRepoModal", () => {
       listRepos: () => Promise.reject(new Error("GitHub authorization expired")),
     });
     const promise = openAddRepoModal();
-    await flush();
+    await flush(3);
     expect(rows()).toHaveLength(0);
-    expect(errorText()).toContain("GitHub authorization expired");
-    closeAddRepoModal();
+    expect(failureText()).toContain("GitHub authorization expired");
+    dismiss();
     expect(await promise).toBeNull();
   });
 
@@ -184,10 +242,25 @@ describe("openAddRepoModal", () => {
       listRepos: () => Promise.resolve([READ_ONLY_REPO]),
     });
     const promise = openAddRepoModal();
-    await flush();
+    await flush(3);
     expect(rows()).toHaveLength(1);
     expect(rows()[0]!.textContent).toContain("acme/docs");
-    closeAddRepoModal();
+    dismiss();
+    expect(await promise).toBeNull();
+  });
+
+  test("a filter that matches nothing says so, and says which absence it is", async () => {
+    installMockPlatform({
+      importProject: () => Promise.resolve({ root: "r" }),
+      listRepos: () => Promise.resolve(REPOS),
+    });
+    const promise = openAddRepoModal();
+    await flush(3);
+    filterBy("nothing-like-this");
+    await flush();
+    expect(rows()).toHaveLength(0);
+    expect(emptyText()).toContain("No repositories match the filter.");
+    dismiss();
     expect(await promise).toBeNull();
   });
 });
@@ -208,14 +281,14 @@ describe("repository-access footer", () => {
       openProjectPicker: "repo-list",
     });
     const promise = openProjectPickerModal();
-    await flush();
+    await flush(3);
     // Rendered alongside a populated list — widening access is not just an empty-state fallback.
     expect(rows()).toHaveLength(2);
     expect(accessLinks().map((a) => [a.textContent?.trim(), a.href])).toEqual([
       ["octocat", MANAGE_URL],
       ["Another account…", INSTALL_URL],
     ]);
-    closeAddRepoModal();
+    dismiss();
     expect(await promise).toBeNull();
   });
 
@@ -231,14 +304,15 @@ describe("repository-access footer", () => {
     });
     // No hydrateAccountStatus() call here — opening the dialog must be enough.
     const promise = openAddRepoModal();
-    await flush();
+    await flush(3);
     expect(accessLinks()).toHaveLength(2);
-    closeAddRepoModal();
+    dismiss();
     expect(await promise).toBeNull();
   });
 
   test("Refresh re-reads repositories granted while the dialog stayed open", async () => {
     let granted = false;
+    let release: (() => void) | null = null;
     installMockPlatform({
       getAccountStatus: () =>
         Promise.resolve({
@@ -246,22 +320,31 @@ describe("repository-access footer", () => {
           installations: [{ account: "octocat", id: 7, manageUrl: MANAGE_URL }],
         }),
       importProject: () => Promise.resolve({ root: "r" }),
-      listRepos: () => Promise.resolve(granted ? REPOS : [REPOS[0]!]),
+      listRepos: () =>
+        granted
+          ? new Promise<RepoInfo[]>((resolve) => {
+              release = () => resolve(REPOS);
+            })
+          : Promise.resolve([REPOS[0]!]),
       openProjectPicker: "repo-list",
     });
     const promise = openProjectPickerModal();
-    await flush();
+    await flush(3);
     expect(rows()).toHaveLength(1);
 
     granted = true;
-    refreshButton()!.dispatchEvent(new Event("click", { bubbles: true }));
+    click(refreshButton()!);
+    await flush();
     // Mid-refresh the list is unknown again, so Refresh cannot be double-fired.
     expect(refreshButton()!.disabled).toBe(true);
-    await flush();
+    expect(emptyText()).toContain("Loading repositories…");
+
+    release!();
+    await flush(2);
     expect(rows()).toHaveLength(2);
     expect(refreshButton()!.disabled).toBe(false);
 
-    closeAddRepoModal();
+    dismiss();
     expect(await promise).toBeNull();
   });
 
@@ -271,10 +354,10 @@ describe("repository-access footer", () => {
       listRepos: () => Promise.resolve(REPOS),
     });
     const promise = openAddRepoModal();
-    await flush();
+    await flush(3);
     expect(accessLinks()).toHaveLength(0);
     expect(refreshButton()).toBeNull();
-    closeAddRepoModal();
+    dismiss();
     expect(await promise).toBeNull();
   });
 
@@ -288,12 +371,12 @@ describe("repository-access footer", () => {
         }),
     });
     const promise = openAddRepoModal();
-    await flush();
-    closeAddRepoModal();
-    expect(modal()).toBeNull();
+    await flush(3);
+    dismiss();
+    expect(dialog()).toBeNull();
     release(REPOS);
-    await flush();
-    expect(modal()).toBeNull();
+    await flush(2);
+    expect(dialog()).toBeNull();
     expect(await promise).toBeNull();
   });
 });
@@ -326,13 +409,12 @@ describe("openProjectPickerModal", () => {
       openProjectPicker: "repo-list",
     });
     const promise = openProjectPickerModal();
-    await flush();
-    const title = document.querySelector("#layer-modal .new-project-modal-title");
-    expect(title?.textContent?.trim()).toBe("Open Project");
+    await flush(3);
+    expect(dialog()?.querySelector('[part="headline"]')?.textContent).toBe("Open Project");
     const names = rows().map((row) => row.title);
     // Read-only acme/docs is absent; Jx-tagged octocat/site precedes the untagged writable repos.
     expect(names).toEqual(["octocat/site", "acme/newsletter", "acme/marketing"]);
-    closeAddRepoModal();
+    dismiss();
     expect(await promise).toBeNull();
   });
 
@@ -346,8 +428,8 @@ describe("openProjectPickerModal", () => {
       openProjectPicker: "repo-list",
     });
     const promise = openProjectPickerModal();
-    await flush();
-    rows()[0]!.dispatchEvent(new Event("click", { bubbles: true }));
+    await flush(3);
+    click(rows()[0]!);
     await flush();
     expect(importProject).toHaveBeenCalledWith({ name: "site", owner: "octocat" });
     expect(await promise).toEqual({ root: "octocat/site@main" });
@@ -365,12 +447,12 @@ describe("openProjectPickerModal", () => {
       openProjectPicker: "repo-list",
     });
     const promise = openProjectPickerModal();
+    await flush(3);
+    click(rows()[0]!);
     await flush();
-    rows()[0]!.dispatchEvent(new Event("click", { bubbles: true }));
-    await flush();
-    expect(modal()).toBeTruthy();
-    expect(errorText()).toContain("no readable project.json");
-    closeAddRepoModal();
+    expect(dialog()).toBeTruthy();
+    expect(failureText()).toContain("no readable project.json");
+    dismiss();
     expect(await promise).toBeNull();
   });
 
@@ -381,11 +463,10 @@ describe("openProjectPickerModal", () => {
       openProjectPicker: "repo-list",
     });
     const promise = openProjectPickerModal();
-    await flush();
+    await flush(3);
     expect(rows()).toHaveLength(0);
-    const empty = document.querySelector("#layer-modal .add-repo-empty");
-    expect(empty?.textContent).toContain("No repositories with write access");
-    closeAddRepoModal();
+    expect(emptyText()).toContain("No repositories with write access");
+    dismiss();
     expect(await promise).toBeNull();
   });
 
@@ -402,11 +483,25 @@ describe("openProjectPickerModal", () => {
     });
     await hydrateAccountStatus();
     const promise = openProjectPickerModal();
-    await flush();
-    const link = document.querySelector("#layer-modal .add-repo-install") as HTMLAnchorElement;
+    await flush(3);
+    const link = d<HTMLAnchorElement>('[part="install"]')!;
     expect(link).toBeTruthy();
     expect(link.href).toBe("https://github.com/apps/jx-suite/installations/new");
-    closeAddRepoModal();
+    dismiss();
+    expect(await promise).toBeNull();
+  });
+
+  test("an installed App that reaches nothing says that instead", async () => {
+    installMockPlatform({
+      importProject: () => Promise.resolve({ root: "r" }),
+      listRepos: () => Promise.resolve([]),
+      openProjectPicker: "repo-list",
+    });
+    const promise = openProjectPickerModal();
+    await flush(3);
+    expect(d('[part="install"]')).toBeNull();
+    expect(emptyText()).toContain("No repositories are reachable.");
+    dismiss();
     expect(await promise).toBeNull();
   });
 });

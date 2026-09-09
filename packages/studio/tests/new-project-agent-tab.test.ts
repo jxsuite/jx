@@ -93,10 +93,12 @@ describe("Agent flow", () => {
     });
     void openNewProjectModal();
     switchTab("agent");
-    await flush();
+    /* Six turns: the Cloudflare offer beside the key form is a mounted Jx document, so it is
+       addressed by `part` and it is not there on the turn the gate renders. */
+    await flush(6);
 
     const gate = document.querySelector("#layer-modal .new-project-creds");
-    expect(gate?.querySelector(".ai-managed-connect")).toBeTruthy();
+    expect(gate?.querySelector('[part="managed-connect"]')).toBeTruthy();
     expect(gate!.textContent).toContain("Connect Cloudflare");
     // The BYOK form stays — both are real paths.
     expect(gate!.querySelector(".ai-creds-form")).toBeTruthy();

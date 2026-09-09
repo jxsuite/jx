@@ -1,4 +1,4 @@
-import "./harness";
+import { flush } from "./harness";
 import { describe, expect, test } from "bun:test";
 import { render } from "lit-html";
 import { expressionHint, renderExpressionEditor } from "../src/ui/expression-editor";
@@ -361,22 +361,37 @@ describe("chips strip", () => {
 // ─── Browse catalog affordance ───────────────────────────────────────────────
 
 describe("browse catalog", () => {
-  test("button beside the operator picker opens the palette; picking inserts the entry", () => {
+  /**
+   * The palette's own popover slot.
+   *
+   * It is a Jx document now (`surfaces/formula-palette.ts`), mounted a turn after the click and
+   * addressed by `part` inside its slot — so these two tests await a flush where they used to
+   * assert synchronously against the `.quick-search-*` classes the palette borrowed.
+   */
+  const paletteSlot = () =>
+    document.querySelector('[data-jx-region="overlay.menu:formula-palette"]');
+  const overlay = () => paletteSlot()?.querySelector('[part="overlay"]') ?? null;
+  const names = () =>
+    [...(paletteSlot()?.querySelectorAll('[part="name"]') ?? [])].map((n) => n.textContent);
+
+  test("button beside the operator picker opens the palette; picking inserts the entry", async () => {
     const { container, changes } = mount({ operator: "+", target: 1, value: 2 });
     const btn = row(container, "operator").querySelector(".expr-browse-catalog") as HTMLElement;
     expect(btn).not.toBeNull();
     btn.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    expect(document.querySelector(".formula-palette-overlay")).not.toBeNull();
+    await flush();
+    expect(overlay()).not.toBeNull();
 
-    const item = [...document.querySelectorAll(".quick-search-item")].find(
-      (i) => i.querySelector(".quick-search-name")?.textContent === "?:",
+    const item = [...paletteSlot()!.querySelectorAll('[part="item"]')].find(
+      (i) => i.querySelector('[part="name"]')?.textContent === "?:",
     )!;
     item.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await flush();
     expect(changes[0]).toEqual({ initial: null, operator: "?:", target: null, value: null });
-    expect(document.querySelector(".formula-palette-overlay")).toBeNull();
+    expect(overlay()).toBeNull();
   });
 
-  test("palette includes named formulas when stateEntries are provided", () => {
+  test("palette includes named formulas when stateEntries are provided", async () => {
     const { container } = mount(
       { operator: "+", target: 1, value: 2 },
       {
@@ -390,12 +405,11 @@ describe("browse catalog", () => {
     );
     const btn = row(container, "operator").querySelector(".expr-browse-catalog") as HTMLElement;
     btn.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    const names = [...document.querySelectorAll(".quick-search-name")].map((n) => n.textContent);
-    expect(names).toContain("lineTotal");
-    document
-      .querySelector(".formula-palette-overlay")!
-      .dispatchEvent(new MouseEvent("click", { bubbles: false }));
-    expect(document.querySelector(".formula-palette-overlay")).toBeNull();
+    await flush();
+    expect(names()).toContain("lineTotal");
+    overlay()!.dispatchEvent(new MouseEvent("click", { bubbles: false }));
+    await flush();
+    expect(overlay()).toBeNull();
   });
 });
 
