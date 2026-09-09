@@ -174,18 +174,23 @@ describe("left panel — document tabs", () => {
     expect(ctx.registerLayersDnD).not.toHaveBeenCalled();
   });
 
-  test("packages panel passes document elements and a transact-backed applyMutation", async () => {
+  test("the packages tab routes to the Packages panel, which mounts its own document", async () => {
+    /* This file is the ORCHESTRATOR's test: which panel a tab routes to. The panel used to be drawn
+       through an injected `renderImportsTemplate`, so the injection was also where its context
+       could be inspected — the panel is `surfaces/panel-imports.json` now and returns `nothing`,
+       so there is no template to capture. What that assertion was really about, the document's
+       `$elements` and a transact-backed `applyMutation` reaching the panel, is tested against the
+       panel itself in `tests/imports-panel.test.ts`; what belongs here is that this tab reaches
+       this panel at all. */
     activeTab.value!.doc.document.$elements = ["@acme/widgets"] as never;
     shell.leftTab = "packages";
     await mountWith();
-    expect(leftPanel.querySelector("#imports-rendered")).not.toBeNull();
-    expect(captured.imports.documentElements).toEqual(["@acme/widgets"]);
-    expect(captured.imports.documentPath).toBe("/project/index.json");
-
-    captured.imports.applyMutation((doc: JxMutableNode) => {
-      doc.title = "Mutated";
-    });
-    expect(activeTab.value!.doc.document.title).toBe("Mutated");
+    await flush(4);
+    // Reader-visible, so it stays true whatever the document's internal part names become.
+    expect((leftPanel.textContent ?? "").replaceAll(/\s+/g, " ")).toContain(
+      "Components you add here can be dropped onto this page",
+    );
+    expect(leftPanel.querySelector("#imports-rendered")).toBeNull();
   });
 
   test("the data tab renders the ONE template, over the whole tab", async () => {

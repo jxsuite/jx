@@ -6,24 +6,44 @@
  * the rows are `renderSignalsTemplate`'s and the cases that used to drive
  * `renderDataExplorerTemplate` drive that instead. What is left in this module is the machinery
  * those rows read, which is what this file exercises.
+ *
+ * **The value tree is a Jx document** (`src/surfaces/panel-data.{json,ts}`), so two things about
+ * this file follow from that. It is addressed by `part` and by `data-tone` — there is no
+ * `.data-branch` to count any more — and every paint is followed by `flush()`, because a document
+ * mounts asynchronously: the kit has to be defined before one can render, and asserting on the
+ * render before it settles is asserting on an empty host.
  */
-import { renderInto, resetWorkspaceWithTab } from "./harness";
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { flush, resetWorkspaceWithTab } from "./harness";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { render } from "lit-html";
-import { renderDataTreeTemplate, resetDataRowExpansion } from "../src/panels/data-explorer";
+import {
+  dataTreeRows,
+  mountDataTrees,
+  renderDataTreeTemplate,
+  resetDataRowExpansion,
+} from "../src/panels/data-explorer";
 import { renderSignalsTemplate } from "../src/panels/signals-panel";
 import { activeTab } from "../src/workspace/workspace";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 
 const refreshData = mock(() => {});
 const renderLeftPanel = mock(() => {});
+const containers: HTMLElement[] = [];
+
+/** A container in the document, because a mounted document needs one that is connected. */
+function stage(): HTMLElement {
+  const container = document.createElement("div");
+  document.body.append(container);
+  containers.push(container);
+  return container;
+}
 
 /** Mount the merged Data panel over a document with `state`, and a canvas that resolved `scope`. */
-function mountData(state: Record<string, unknown>, scope: Record<string, unknown> | null) {
+async function mountData(state: Record<string, unknown>, scope: Record<string, unknown> | null) {
   resetWorkspaceWithTab({ children: [], state, tagName: "div" } as unknown as JxMutableNode);
   const tab = activeTab.value!;
   tab.session.canvas.scope = scope;
-  const container = document.createElement("div");
+  const container = stage();
   // The record the Data panel hands the template — `NavigatorPanelContext.doc`, built the way
   // `left-panel.ts` builds it, so this drives the same shape the app does.
   const S = {
@@ -39,10 +59,17 @@ function mountData(state: Record<string, unknown>, scope: Record<string, unknown
     },
     renderLeftPanel: () => {
       renderLeftPanel();
-      render(renderSignalsTemplate(S as never, ctx), container);
+      paint();
     },
   };
-  render(renderSignalsTemplate(S as never, ctx), container);
+  /* Render, then `afterRender` — the two halves `left-panel.ts` runs back to back, and the reason
+     the trees appear at all: `render` leaves a host per open row and the second half fills it. */
+  function paint() {
+    render(renderSignalsTemplate(S as never, ctx), container);
+    mountDataTrees(container, ctx.renderLeftPanel);
+  }
+  paint();
+  await flush();
   renderLeftPanel.mockClear();
   return { container, ctx };
 }
@@ -52,14 +79,20 @@ beforeEach(() => {
   renderLeftPanel.mockClear();
 });
 
+afterEach(() => {
+  for (const container of containers.splice(0)) {
+    container.remove();
+  }
+});
+
 describe("the resolved-value column", () => {
   const typeOf = (el: HTMLElement, name: string) =>
     [...el.querySelectorAll(".signal-row")]
       .find((r) => r.querySelector(".signal-name")?.textContent === name)
       ?.querySelector(".data-type")?.textContent;
 
-  test("labels null, pending, arrays, objects and scalars", () => {
-    const { container } = mountData(
+  test("labels null, pending, arrays, objects and scalars", async () => {
+    const { container } = await mountData(
       { arr: {}, flag: {}, missing: {}, nil: {}, obj: {}, txt: {} },
       { arr: [1, 2, 3], flag: true, nil: null, obj: { a: 1, b: 2 }, txt: "hello" },
     );
@@ -71,24 +104,24 @@ describe("the resolved-value column", () => {
     expect(typeOf(container, "txt")).toBe("string");
   });
 
-  test("unwraps Vue refs before labelling", () => {
-    const { container } = mountData({ count: {} }, { count: { __v_isRef: true, value: 42 } });
+  test("unwraps Vue refs before labelling", async () => {
+    const { container } = await mountData({ count: {} }, { count: { __v_isRef: true, value: 42 } });
     expect(typeOf(container, "count")).toBe("number");
   });
 
-  test("marks null values as pending style", () => {
-    const { container } = mountData({ nil: {} }, { nil: null });
+  test("marks null values as pending style", async () => {
+    const { container } = await mountData({ nil: {} }, { nil: null });
     expect(container.querySelector(".data-type")?.classList.contains("data-pending")).toBe(true);
   });
 
-  test("pending only PULSES while a refresh is in flight", () => {
+  test("pending only PULSES while a refresh is in flight", async () => {
     /*
      * While you are editing, an automatic `Request` is deliberately not fetched, so `pending` is a
      * resting state and an endless pulse is a spinner for something that is not loading. It is also
      * why `probe.idle()` could never call this panel quiet: the screenshot lane timed out on
      * "2 animation(s) running" over a panel that had finished.
      */
-    const { container, ctx } = mountData({ nil: {} }, { nil: null });
+    const { container, ctx } = await mountData({ nil: {} }, { nil: null });
     const panel = () => container.querySelector(".signals-panel")!;
     expect(panel().classList.contains("is-refreshing")).toBe(false);
 
@@ -97,11 +130,11 @@ describe("the resolved-value column", () => {
     expect(panel().classList.contains("is-refreshing")).toBe(true);
   });
 
-  test("an entry that cannot HOLD a value never gets the column", () => {
+  test("an entry that cannot HOLD a value never gets the column", async () => {
     // A function and an assignment expression are things the page DOES. They are absent from the
     // Resolved scope for that reason, and the column called every one of them "pending" — which
     // Reads as "still loading" for something that will never load.
-    const { container } = mountData(
+    const { container } = await mountData(
       {
         held: { default: 1, type: "number" },
         runIt: { $prototype: "Function", body: "return 1;" },
@@ -123,11 +156,11 @@ describe("the resolved-value column", () => {
     expect(slotFor("setIt")).toBe("hint");
   });
 
-  test("with NO scope at all the row says how the entry is defined instead", () => {
+  test("with NO scope at all the row says how the entry is defined instead", async () => {
     // One slot, and the value wins it — but only when there is one. A panel opened before the
     // Canvas has rendered knows nothing about any entry, and labelling the whole list "pending"
     // There would be a fact about the panel dressed up as a fact about the data.
-    const { container } = mountData({ greeting: { default: "hi", type: "string" } }, null);
+    const { container } = await mountData({ greeting: { default: "hi", type: "string" } }, null);
     expect(container.querySelector(".data-type")).toBeNull();
     expect(container.querySelector(".signal-hint")).not.toBeNull();
   });
@@ -139,14 +172,15 @@ describe("expansion", () => {
       (r) => r.querySelector(".signal-name")?.textContent === name,
     ) as HTMLElement;
 
-  test("a row shows the definition AND what it resolved to", () => {
+  test("a row shows the definition AND what it resolved to", async () => {
     // The whole point of the merge: one click, and you see how a value is defined next to the value
     // It became. These were two panels, listing the same names, one rail tab apart.
-    const { container } = mountData({ post: {} }, { post: { id: 7, title: "Hi" } });
+    const { container } = await mountData({ post: {} }, { post: { id: 7, title: "Hi" } });
     expect(container.querySelector(".data-tree")).toBeNull();
 
     rowFor(container, "post").click();
     expect(renderLeftPanel).toHaveBeenCalledTimes(1);
+    await flush();
 
     const editor = rowFor(container, "post").nextElementSibling!;
     expect(editor.querySelector('[data-prop="Name"]')).not.toBeNull();
@@ -159,26 +193,29 @@ describe("expansion", () => {
     expect(container.querySelector(".data-tree")).toBeNull();
   });
 
-  test("SEVERAL rows stay open at once — comparing two entries means seeing both", () => {
-    const { container } = mountData({ a: {}, b: {} }, { a: 1, b: 2 });
+  test("SEVERAL rows stay open at once — comparing two entries means seeing both", async () => {
+    const { container } = await mountData({ a: {}, b: {} }, { a: 1, b: 2 });
     rowFor(container, "a").click();
     rowFor(container, "b").click();
+    await flush();
     expect(container.querySelectorAll(".signal-editor").length).toBe(2);
+    // Two open rows are two documents, each mounted in its own host.
+    expect(container.querySelectorAll('[part="tree"]').length).toBe(2);
   });
 
-  test("expansion is PER TAB — it does not follow you to a document without that entry", () => {
-    const first = mountData({ onlyHere: {} }, {});
+  test("expansion is PER TAB — it does not follow you to a document without that entry", async () => {
+    const first = await mountData({ onlyHere: {} }, {});
     rowFor(first.container, "onlyHere").click();
     expect(first.container.querySelectorAll(".signal-editor").length).toBe(1);
 
     // A different document, and the module-global Set this replaced would have kept `onlyHere`
     // Marked open — a name the new document does not even define.
-    const second = mountData({ somethingElse: {} }, {});
+    const second = await mountData({ somethingElse: {} }, {});
     expect(second.container.querySelectorAll(".signal-editor").length).toBe(0);
   });
 
-  test("resetDataRowExpansion drops the focused tab's rows", () => {
-    const { container, ctx } = mountData({ a: {} }, {});
+  test("resetDataRowExpansion drops the focused tab's rows", async () => {
+    const { container, ctx } = await mountData({ a: {} }, {});
     rowFor(container, "a").click();
     expect(container.querySelectorAll(".signal-editor").length).toBe(1);
     resetDataRowExpansion();
@@ -197,8 +234,8 @@ describe("expansion", () => {
 });
 
 describe("the Refresh button", () => {
-  test("re-fetches through refreshData, then re-renders the panel", () => {
-    const { container } = mountData({ a: {} }, {});
+  test("re-fetches through refreshData, then re-renders the panel", async () => {
+    const { container } = await mountData({ a: {} }, {});
     (container.querySelector(".data-refresh-btn") as HTMLElement).click();
     // RefreshData, not a plain repaint: automatic `Request` entries stay gated in edit/design, and
     // Re-firing them is exactly what this button promises.
@@ -206,12 +243,12 @@ describe("the Refresh button", () => {
     expect(renderLeftPanel).toHaveBeenCalledTimes(1);
   });
 
-  test("says it is refreshing until the canvas answers, not for 200ms", () => {
+  test("says it is refreshing until the canvas answers, not for 200ms", async () => {
     // It used to repaint on a `setTimeout(…, 200)`: a fetch slower than that repainted the OLD
     // Values and read as a Refresh that did nothing. `session.canvas.refreshing` is set by the verb
     // And cleared by the iframe's `dataScope` reply, so the button is honest for as long as it
     // Takes.
-    const { container, ctx } = mountData({ a: {} }, {});
+    const { container, ctx } = await mountData({ a: {} }, {});
     const btn = () => container.querySelector(".data-refresh-btn") as HTMLElement;
     expect(btn().textContent?.trim()).toBe("Refresh");
     expect(btn().hasAttribute("disabled")).toBe(false);
@@ -228,8 +265,8 @@ describe("the Refresh button", () => {
     expect(btn().querySelector("sp-progress-circle")).toBeNull();
   });
 
-  test("is not drawn over a document with no data — there is nothing to re-fetch", () => {
-    const { container } = mountData({}, {});
+  test("is not drawn over a document with no data — there is nothing to re-fetch", async () => {
+    const { container } = await mountData({}, {});
     expect(container.querySelector(".data-refresh-btn")).toBeNull();
   });
 });
@@ -241,57 +278,65 @@ describe("truncation markers", () => {
     ) as HTMLElement;
 
   /** A row open over a list longer than the 20-item cap. */
-  function longList(n = 60) {
-    const { container, ctx } = mountData(
+  async function longList(n = 60) {
+    const { container, ctx } = await mountData(
       { rows: {} },
       { rows: Array.from({ length: n }, (_, i) => i) },
     );
     rowFor(container, "rows").click();
+    await flush();
+    renderLeftPanel.mockClear();
     return { container, ctx };
   }
 
-  test("a capped list ends in a marker that is a BUTTON, not a caption", () => {
+  test("a capped list ends in a marker that is a BUTTON, not a caption", async () => {
     // "… 40 more" used to be inert text: the panel saying it has the answer and will not show it,
     // In the one panel a reader opens BECAUSE item 40 is the surprising one.
-    const { container } = longList();
-    expect(container.querySelectorAll(".data-branch").length).toBe(20);
-    const more = container.querySelector(".data-more") as HTMLButtonElement;
+    const { container } = await longList();
+    expect(container.querySelectorAll('[part="row"]').length).toBe(20);
+    const more = container.querySelector('[part="more"]') as HTMLButtonElement;
     expect(more.tagName).toBe("BUTTON");
     expect(more.textContent?.trim()).toBe("… 40 more");
+    expect(more.getAttribute("title")).toBe("Show 50 more");
   });
 
-  test("pressing it shows fifty more, and again shows the rest", () => {
-    const { container, ctx } = longList();
-    (container.querySelector(".data-more") as HTMLElement).click();
-    ctx.renderLeftPanel();
-    expect(container.querySelectorAll(".data-branch").length).toBe(60);
-    expect(container.querySelector(".data-more")).toBeNull();
+  test("pressing it shows fifty more, and again shows the rest", async () => {
+    const { container } = await longList();
+    // The press repaints the Navigator itself now — raising a limit is the surface's one action,
+    // And the panel that owns the limit is the panel that redraws.
+    (container.querySelector('[part="more"]') as HTMLElement).click();
+    await flush();
+    expect(renderLeftPanel).toHaveBeenCalledTimes(1);
+    expect(container.querySelectorAll('[part="row"]').length).toBe(60);
+    expect(container.querySelector('[part="more"]')).toBeNull();
   });
 
-  test("the raised limit is per marker and per tab", () => {
-    const { container, ctx } = longList();
-    (container.querySelector(".data-more") as HTMLElement).click();
-    ctx.renderLeftPanel();
-    expect(container.querySelectorAll(".data-branch").length).toBe(60);
+  test("the raised limit is per marker and per tab", async () => {
+    const { container } = await longList();
+    (container.querySelector('[part="more"]') as HTMLElement).click();
+    await flush();
+    expect(container.querySelectorAll('[part="row"]').length).toBe(60);
 
     // A different document with the same entry NAME does not inherit the reading position — the
     // Failure mode the row-expansion Set had before it moved onto the tab.
-    const second = mountData({ rows: {} }, { rows: Array.from({ length: 60 }, (_, i) => i) });
+    const second = await mountData({ rows: {} }, { rows: Array.from({ length: 60 }, (_, i) => i) });
     rowFor(second.container, "rows").click();
-    expect(second.container.querySelectorAll(".data-branch").length).toBe(20);
+    await flush();
+    expect(second.container.querySelectorAll('[part="row"]').length).toBe(20);
   });
 
-  test("a capped OBJECT gets one too, at its own cap", () => {
+  test("a capped OBJECT gets one too, at its own cap", async () => {
     const big: Record<string, number> = {};
     for (let i = 0; i < 40; i++) {
       big[`k${i}`] = i;
     }
-    const { container, ctx } = mountData({ obj: {} }, { obj: big });
+    const { container } = await mountData({ obj: {} }, { obj: big });
     rowFor(container, "obj").click();
-    expect(container.querySelectorAll(".data-branch").length).toBe(30);
-    (container.querySelector(".data-more") as HTMLElement).click();
-    ctx.renderLeftPanel();
-    expect(container.querySelectorAll(".data-branch").length).toBe(40);
+    await flush();
+    expect(container.querySelectorAll('[part="row"]').length).toBe(30);
+    (container.querySelector('[part="more"]') as HTMLElement).click();
+    await flush();
+    expect(container.querySelectorAll('[part="row"]').length).toBe(40);
   });
 
   test("with no tab open, raising a limit is a no-op rather than a crash", async () => {
@@ -302,55 +347,65 @@ describe("truncation markers", () => {
   });
 });
 
-describe("renderDataTreeTemplate", () => {
-  async function renderTree(value: unknown, depth = 0, maxDepth = 5) {
-    return renderInto(renderDataTreeTemplate(value, depth, maxDepth));
+describe("the value tree", () => {
+  /** One tree, mounted the way the panel mounts it: a host from the template, then `afterRender`. */
+  async function tree(value?: unknown, depth = 0, maxDepth = 5): Promise<HTMLElement> {
+    const container = stage();
+    render(renderDataTreeTemplate(value, depth, maxDepth), container);
+    mountDataTrees(container, () => {});
+    await flush();
+    return container;
   }
 
-  test("renders ellipsis past maxDepth", async () => {
-    const el = await renderTree({ a: 1 }, 6);
-    expect(el.querySelector(".data-ellipsis")?.textContent?.trim()).toBe("…");
+  const values = (el: HTMLElement) => [...el.querySelectorAll('[part="value"]')];
+  const toned = (el: HTMLElement, tone: string) => [
+    ...el.querySelectorAll(`[part="value"][data-tone="${tone}"]`),
+  ];
+
+  test("renders a marker past maxDepth", async () => {
+    const el = await tree({ a: 1 }, 6);
+    expect(el.querySelector('[part="more"]')?.textContent?.trim()).toBe("…");
+    expect(el.querySelector('[part="more"]')?.getAttribute("title")).toBe("Show 50 more levels");
   });
 
   test("renders null and undefined leaves", async () => {
-    const elNull = await renderTree(null);
-    expect(elNull.querySelector(".data-null")?.textContent?.trim()).toBe("null");
-    const elUndef = await renderInto(renderDataTreeTemplate(undefined, 0));
-    expect(elUndef.querySelector(".data-null")?.textContent?.trim()).toBe("undefined");
+    const elNull = await tree(null);
+    expect(toned(elNull, "null")[0]?.textContent?.trim()).toBe("null");
+    const elUndef = await tree();
+    expect(toned(elUndef, "null")[0]?.textContent?.trim()).toBe("undefined");
   });
 
   test("renders scalar leaves with JSON formatting", async () => {
-    const el = await renderTree("hello");
-    expect(el.querySelector(".data-string")?.textContent).toContain('"hello"');
-    const elNum = await renderTree(3.5);
-    expect(elNum.querySelector(".data-number")?.textContent).toContain("3.5");
+    const el = await tree("hello");
+    expect(toned(el, "string")[0]?.textContent).toContain('"hello"');
+    const elNum = await tree(3.5);
+    expect(toned(elNum, "number")[0]?.textContent).toContain("3.5");
   });
 
   test("truncates long scalar strings at 200 chars", async () => {
-    const el = await renderTree("x".repeat(250));
-    const text = el.querySelector(".data-string")?.textContent ?? "";
+    const el = await tree("x".repeat(250));
+    const text = toned(el, "string")[0]?.textContent ?? "";
     expect(text).toContain("…");
     expect(text.length).toBeLessThan(230);
   });
 
   test("renders array items with index keys and caps at 20", async () => {
-    const el = await renderTree(Array.from({ length: 25 }, (_, i) => i));
-    const branches = el.querySelectorAll(".data-branch");
-    expect(branches.length).toBe(20);
-    expect(branches[0]!.querySelector(".data-key")?.textContent).toContain("[0]");
-    expect(el.querySelector(".data-ellipsis")?.textContent).toContain("5 more");
+    const el = await tree(Array.from({ length: 25 }, (_, i) => i));
+    expect(el.querySelectorAll('[part="row"]').length).toBe(20);
+    expect(el.querySelector('[part="key"]')?.textContent).toContain("[0]");
+    expect(el.querySelector('[part="more"]')?.textContent).toContain("5 more");
   });
 
   test("truncates long strings inside arrays at 80 chars", async () => {
-    const el = await renderTree(["y".repeat(120)]);
-    const text = el.querySelector(".data-value")?.textContent ?? "";
+    const el = await tree(["y".repeat(120)]);
+    const text = values(el)[0]?.textContent ?? "";
     expect(text).toContain("…");
     expect(text.length).toBeLessThan(100);
   });
 
   test("nested array items show labels and recurse", async () => {
-    const el = await renderTree([[1, 2], { a: 1 }]);
-    const labels = [...el.querySelectorAll(".data-object-label")].map((n) => n.textContent);
+    const el = await tree([[1, 2], { a: 1 }]);
+    const labels = toned(el, "object").map((n) => n.textContent);
     expect(labels).toContain("Array(2)");
     expect(labels).toContain("{1}");
     // Recursed leaves rendered one level deeper
@@ -363,30 +418,56 @@ describe("renderDataTreeTemplate", () => {
     for (let i = 0; i < 35; i++) {
       big[`k${i}`] = i;
     }
-    const el = await renderTree(big);
-    expect(el.querySelectorAll(".data-branch").length).toBe(30);
-    expect(el.querySelector(".data-ellipsis")?.textContent).toContain("5 more");
+    const el = await tree(big);
+    expect(el.querySelectorAll('[part="row"]').length).toBe(30);
+    expect(el.querySelector('[part="more"]')?.textContent).toContain("5 more");
   });
 
   test("object values that are objects show labels and recurse", async () => {
-    const el = await renderTree({ list: [1], meta: { x: 1, y: 2 } });
-    const labels = [...el.querySelectorAll(".data-object-label")].map((n) => n.textContent);
+    const el = await tree({ list: [1], meta: { x: 1, y: 2 } });
+    const labels = toned(el, "object").map((n) => n.textContent);
     expect(labels).toContain("Array(1)");
     expect(labels).toContain("{2}");
     expect(el.textContent).toContain("x:");
   });
 
   test("truncates long object string values at 80 chars", async () => {
-    const el = await renderTree({ body: "z".repeat(150) });
-    const text = el.querySelector(".data-value")?.textContent ?? "";
+    const el = await tree({ body: "z".repeat(150) });
+    const text = values(el)[0]?.textContent ?? "";
     expect(text).toContain("…");
     expect(text.length).toBeLessThan(100);
   });
 
   test("null values inside objects and arrays use null styling", async () => {
-    const el = await renderTree({ gone: null });
-    expect(el.querySelector(".data-value.data-null")?.textContent).toContain("null");
-    const elArr = await renderTree([null]);
-    expect(elArr.querySelector(".data-value.data-null")).not.toBeNull();
+    const el = await tree({ gone: null });
+    expect(toned(el, "null")[0]?.textContent).toContain("null");
+    const elArr = await tree([null]);
+    expect(toned(elArr, "null").length).toBe(1);
+  });
+
+  test("a host given no request draws nothing rather than throwing", async () => {
+    // `afterRender` sweeps the whole panel body, and only a host the template filled in has a tree
+    // To draw. Anything else it finds is somebody else's element.
+    const container = stage();
+    const stray = document.createElement("div");
+    stray.dataset.jxTree = "";
+    container.append(stray);
+    mountDataTrees(container, () => {});
+    await flush();
+    expect(stray.childNodes.length).toBe(0);
+  });
+
+  test("a deeper indent is carried by the row, not by the markup", async () => {
+    // The tree is FLAT — a document maps a list — so depth reaches the document as a length on the
+    // Row it belongs to. Two levels, two indents.
+    const rows = dataTreeRows({ meta: { x: 1 } }, 0);
+    expect(rows.map((r) => r.indent)).toEqual(["12px", "24px"]);
+    expect(rows.map((r) => r.label)).toEqual(["meta: ", "x: "]);
+
+    // …and it reaches the painted row as a custom property the shared padding rule reads, which
+    // Is what keeps a hundred-row tree on ONE interned rule instead of one per row.
+    const el = await tree({ meta: { x: 1 } });
+    const painted = [...el.querySelectorAll<HTMLElement>('[part="row"]')];
+    expect(painted.map((n) => n.style.getPropertyValue("--row-indent"))).toEqual(["12px", "24px"]);
   });
 });

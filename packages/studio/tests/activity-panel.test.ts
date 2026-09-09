@@ -6,12 +6,13 @@
  * only exists when an operation actually handed one over, and that `probeIdle()` counts a running
  * operation and stops counting a finished one.
  */
-import { renderInto } from "./harness";
+import { flush, renderInto } from "./harness";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
   activities,
   activityById,
   activityDuration,
+  activityView,
   activityIdleBlockers,
   beginActivity,
   cancelActivity,
@@ -19,10 +20,12 @@ import {
   isFinished,
   MAX_FINISHED_ACTIVITIES,
   registerActivityPanel,
-  renderActivityList,
+  renderActivityBody,
   resetActivities,
   runningActivities,
+  syncActivitySurface,
 } from "../src/panels/activity-panel";
+import { disposeActivitySurface } from "../src/surfaces/panel-activity";
 import { getPanel, panelContext, resetPanels } from "../src/panels/panel-registry";
 import { problems, resetNotifications } from "../src/services/notify";
 import { effect, effectScope } from "../src/reactivity";
@@ -35,14 +38,39 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  // The feed holds an effect scope and a mounted document; a suite that left one standing would
+  // Hand the next test a surface projecting the activities it has just reset.
+  disposeActivitySurface();
+  document.body.replaceChildren();
   resetActivities();
   resetNotifications();
   resetPanels();
 });
 
-/** `renderActivityList()` is typed as a `PanelBody`; every case here renders a template. */
-function body(): TemplateResult {
-  return renderActivityList() as TemplateResult;
+/**
+ * Paint the tab the way the Bottom dock does — lit's body, then the panel's `afterRender` — and let
+ * the document mount into the container that body carries.
+ *
+ * Two waits, not one: `mountSurface` resolves when the DOCUMENT has rendered, and the kit elements
+ * inside it settle their own templates one `connectedCallback` later.
+ */
+async function paint(host: HTMLElement = document.createElement("div")): Promise<HTMLElement> {
+  document.body.append(host);
+  await renderInto(renderActivityBody() as TemplateResult, host);
+  syncActivitySurface(host);
+  await flush();
+  await flush();
+  return host;
+}
+
+/** Everything the mounted feed drew under one part name. */
+function parts(host: HTMLElement, name: string): HTMLElement[] {
+  return [...host.querySelectorAll<HTMLElement>(`[part="${name}"]`)];
+}
+
+/** The one element under a part name, or null. */
+function part(host: HTMLElement, name: string): HTMLElement | null {
+  return host.querySelector<HTMLElement>(`[part="${name}"]`);
 }
 
 describe("beginActivity", () => {
@@ -230,10 +258,13 @@ describe("activityDuration", () => {
   });
 });
 
-describe("rendering", () => {
+describe("the surface", () => {
   test("an empty list says what the region is for", async () => {
-    const host = await renderInto(body());
-    expect(host.textContent).toContain("Long operations show their progress");
+    const host = await paint();
+    expect(part(host, "empty-message")?.textContent).toContain(
+      "Long operations show their progress",
+    );
+    expect(part(host, "list")).toBeNull();
   });
 
   test("a running operation renders its status, its steps and a Cancel button", async () => {
@@ -244,51 +275,169 @@ describe("rendering", () => {
       steps: ["Resolve", "Install"],
       title: "Update dependencies",
     });
-    const host = await renderInto(body());
-    expect(host.textContent).toContain("Update dependencies");
-    expect(host.textContent).toContain("Packages");
-    expect(host.textContent).toContain("Resolving…");
-    expect(host.querySelectorAll(".activity-step")).toHaveLength(2);
-    const cancel = host.querySelector(".activity-cancel") as HTMLElement;
+    const host = await paint();
+    expect(part(host, "row")?.dataset.state).toBe("running");
+    expect(part(host, "row-title")?.textContent).toBe("Update dependencies");
+    expect(part(host, "source")?.textContent).toBe("Packages");
+    expect(part(host, "status")?.textContent).toBe("Resolving…");
+    expect(parts(host, "step")).toHaveLength(2);
+    const cancel = part(host, "cancel");
     expect(cancel).not.toBeNull();
-    cancel.click();
+    cancel!.click();
     expect(handle.entry.state).toBe("cancelled");
   });
 
   test("an operation with no cancel renders no button that pretends otherwise", async () => {
     beginActivity({ title: "Install" });
-    const host = await renderInto(body());
-    expect(host.querySelector(".activity-cancel")).toBeNull();
-    expect(host.querySelector(".activity-steps")).toBeNull();
-    expect(host.querySelector(".activity-log-toggle")).toBeNull();
+    const host = await paint();
+    expect(part(host, "cancel")).toBeNull();
+    expect(part(host, "steps")).toBeNull();
+    expect(part(host, "log-toggle")).toBeNull();
   });
 
   test("the log is a disclosure, and the flag lives on the record", async () => {
     const handle = beginActivity({ title: "Install" });
     handle.log("line one");
-    const host = await renderInto(body());
-    const toggle = host.querySelector(".activity-log-toggle") as HTMLElement;
+    const host = await paint();
+    const toggle = part(host, "log-toggle")!;
     expect(toggle.textContent).toContain("Show log (1 line(s))");
-    expect(host.querySelector(".activity-log")).toBeNull();
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(part(host, "log")).toBeNull();
 
     toggle.click();
     expect(handle.entry.expanded).toBe(true);
-    const reopened = await renderInto(body(), host);
-    expect(reopened.querySelector(".activity-log")?.textContent).toContain("line one");
-    expect(reopened.querySelector(".activity-log-toggle")?.textContent).toContain("Hide log");
+    // Nothing repaints the tab: the surface's own effect saw the flag move on the record.
+    await flush();
+    expect(part(host, "log")?.textContent).toContain("line one");
+    expect(part(host, "log-toggle")?.textContent).toContain("Hide log");
+    expect(part(host, "log-toggle")?.getAttribute("aria-expanded")).toBe("true");
   });
 
   test("Clear offers itself only once something has finished, and clears exactly that", async () => {
     beginActivity({ title: "Running" });
-    let host = await renderInto(body());
-    expect(host.querySelector(".activity-clear")).toBeNull();
+    const host = await paint();
+    expect(part(host, "clear")).toBeNull();
 
     beginActivity({ title: "Finished" }).done();
-    host = await renderInto(body(), host);
-    const clear = host.querySelector(".activity-clear") as HTMLElement;
+    await flush();
+    const clear = part(host, "clear")!;
     expect(clear.textContent).toContain("Clear 1 finished");
     clear.click();
+    await flush();
     expect(activities).toHaveLength(1);
+    expect(parts(host, "row")).toHaveLength(1);
+  });
+
+  test("a live operation moves the row it is on, with no repaint of the tab", async () => {
+    const handle = beginActivity({ status: "Resolving…", title: "Install" });
+    const host = await paint();
+    const row = part(host, "row")!;
+
+    handle.step("Fetch");
+    handle.log("downloading");
+    await flush();
+    // The same element: one effect wrote the fields that changed, and the keyed row stayed put.
+    expect(part(host, "row")).toBe(row);
+    expect(part(host, "status")?.textContent).toBe("Fetch");
+    expect(parts(host, "step")).toHaveLength(1);
+    expect(part(host, "log-toggle")?.textContent).toContain("Show log (1 line(s))");
+
+    handle.fail("nope");
+    await flush();
+    expect(part(host, "row")?.dataset.state).toBe("failed");
+  });
+
+  test("the projection answers every question the document can ask", () => {
+    const handle = beginActivity({
+      source: "Packages",
+      status: "Resolving…",
+      steps: ["One", "Two"],
+      title: "Install",
+    });
+    handle.log("a");
+    handle.log("b");
+    handle.step("Two");
+    const view = activityView();
+    expect(view.hasRows).toBe(true);
+    expect(view.hasFinished).toBe(false);
+    const row = view.rows[0]!;
+    expect(row).toMatchObject({
+      cancellable: false,
+      expanded: false,
+      hasLog: true,
+      hasSource: true,
+      hasStatus: true,
+      hasSteps: true,
+      icon: "⋯",
+      logLabel: "Show log (2 line(s))",
+      logText: "a\nb",
+      showLog: false,
+      source: "Packages",
+      state: "running",
+      status: "Two",
+      title: "Install",
+    });
+    // Keyed by position as well as label, because an operation may append a step it has already
+    // Run and two rows carrying one key is how a keyed list stops reconciling.
+    expect(row.steps).toMatchObject([
+      { icon: "✓", key: "0:One", label: "One", state: "done" },
+      { icon: "⋯", key: "1:Two", label: "Two", state: "running" },
+    ]);
+
+    handle.done("Installed");
+    const finished = activityView();
+    expect(finished.hasFinished).toBe(true);
+    expect(finished.clearLabel).toBe("Clear 1 finished");
+    expect(finished.rows[0]!.icon).toBe("✓");
+  });
+});
+
+describe("the panel's afterRender", () => {
+  test("keeps the standing surface when the tab is painted again", async () => {
+    beginActivity({ title: "Install" });
+    const host = await paint();
+    const row = part(host, "row")!;
+
+    // The dock runs afterRender on every paint, so a second call must not remount: a remount would
+    // Throw away the row the reader is watching and start its effect over.
+    await paint(host);
+    expect(part(host, "row")).toBe(row);
+    expect(parts(host, "row")).toHaveLength(1);
+  });
+
+  test("takes the surface down when another tab owns the body", async () => {
+    beginActivity({ title: "Install" });
+    const host = await paint();
+    expect(part(host, "row")).not.toBeNull();
+
+    const container = host.querySelector<HTMLElement>("[data-activity-surface]")!;
+    // What the dock paints when Problems is showing: a body with no container of ours in it.
+    host.replaceChildren();
+    syncActivitySurface(host);
+    await flush();
+    // The document went with it. A surface left standing in DOM lit has thrown away keeps an
+    // Effect subscribed to the activity store and a scope nothing will ever read.
+    expect(container.childNodes).toHaveLength(0);
+
+    // And it comes back when the tab does.
+    const again = await paint();
+    expect(part(again, "row-title")?.textContent).toBe("Install");
+  });
+
+  test("a mount still in flight when the tab goes leaves nothing standing", async () => {
+    beginActivity({ title: "Install" });
+    const host = document.createElement("div");
+    document.body.append(host);
+    await renderInto(renderActivityBody() as TemplateResult, host);
+    const container = host.querySelector<HTMLElement>("[data-activity-surface]")!;
+
+    // `mountSurface` waits for the kit, so a tab switch can land between the two — and a document
+    // That arrives after its host has been given up must not attach to it.
+    syncActivitySurface(host);
+    disposeActivitySurface();
+    await flush();
+    await flush();
+    expect(container.childNodes).toHaveLength(0);
   });
 });
 
@@ -307,9 +456,19 @@ describe("the panel record", () => {
     expect(panel.badge?.(ctx)).toBe(1);
   });
 
-  test("renders through the record, with no document", () => {
+  test("renders a body with the container its surface mounts into, and no document", async () => {
     registerActivityPanel();
     const panel = getPanel("activity")!;
-    expect(() => panel.render({ deps: {} as never, doc: null, rerender: () => {} })).not.toThrow();
+    const ctx = { deps: {} as never, doc: null, rerender: () => {} };
+    const host = document.createElement("div");
+    document.body.append(host);
+    await renderInto(panel.render(ctx) as TemplateResult, host);
+    expect(host.querySelector("[data-activity-surface]")).not.toBeNull();
+
+    beginActivity({ title: "Install" });
+    panel.afterRender?.(ctx, host);
+    await flush();
+    await flush();
+    expect(part(host, "row-title")?.textContent).toBe("Install");
   });
 });

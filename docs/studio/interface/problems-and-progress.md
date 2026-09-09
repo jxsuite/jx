@@ -151,3 +151,7 @@ The selection field carries what an address can't state: **3 selected** when mor
 - **[Keyboard shortcuts](/docs/studio/interface/shortcuts)**: the full generated list
 - **[Dependencies and imports](/docs/studio/projects/dependencies)**: the one operation that still blocks
 - **[Source control](/docs/studio/publish/source-control)**: where a failed commit or push sends you back to
+  - packages/studio/src/surfaces/panel-problems.json
+  - packages/studio/src/surfaces/panel-problems.ts
+  - packages/studio/src/surfaces/panel-activity.json
+  - packages/studio/src/surfaces/panel-activity.ts

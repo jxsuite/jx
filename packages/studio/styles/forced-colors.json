@@ -5,13 +5,13 @@
   "tagName": "html",
   "style": {
     "@(forced-colors: active)": {
+      ".notification-row--problem": {
+        "$description": "The Problems and dirty row markers, drawn with the same inset shadow and lost the same way. `.problem-row` left this list when the Problems panel became a document: its marker is the document's own `[part=\"row\"][data-severity]` rule, which draws a border rather than a shadow and so survives the mode without help.",
+        "border-left": "2px solid Highlight"
+      },
       ".pane-tab[aria-selected=\"true\"], .tab--active": {
         "$description": "The pane tab's underline. `box-shadow: inset …` is gone in this mode, so the same 2px is drawn as a border on the same edge — which forced colours keep.",
         "border-bottom": "2px solid Highlight"
-      },
-      ".notification-row--problem, .problem-row": {
-        "$description": "The Problems and dirty row markers, drawn with the same inset shadow and lost the same way.",
-        "border-left": "2px solid Highlight"
       },
       ".drop-target, .is-drop-target": {
         "$description": "The drop target. A 3px translucent ring is invisible here twice over — shadow and alpha.",

@@ -69,3 +69,5 @@ Packages are recorded in your project's `package.json`; the components you tick 
 
 - **[Project settings](/docs/studio/projects/settings)**: the Packages section of the configuration document
 - **[Pages, layouts, and components](/docs/studio/projects/pages-layouts-components)**: what components are and when to make your own
+  - packages/studio/src/surfaces/panel-imports.json
+  - packages/studio/src/surfaces/panel-imports.ts

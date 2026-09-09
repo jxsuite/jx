@@ -184,11 +184,6 @@ export const ALLOWED_ORPHANS = new Set<string>([
   "head-add-val",
   "imports-section-title",
   // Owner: panels/imports-panel.ts
-  "import-add-name",
-  "import-add-path",
-  "import-component-label",
-  "import-component-row",
-  "imports-component-list",
   // Owner: panels/layers-panel.ts
   "layers-container",
   "layers-tree",
