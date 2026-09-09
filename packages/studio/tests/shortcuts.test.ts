@@ -184,12 +184,12 @@ let releaseStageGestures: (() => void) | null = null;
 /** The composed registry, so a test can ask what a verb's chord IS rather than only pressing it. */
 let registry: ReturnType<typeof createCommandRegistry>;
 
-beforeAll(() => {
+beforeAll(async () => {
   document.body.innerHTML = "";
   /* The real frame. This used to be eight hand-listed divs — no bottom dock, no pane grid, no toast
      host — plus stampShellRegions() to add the region ids the divs could not carry. The template
      stamps its own, so both halves are gone. */
-  mountShellTree();
+  await mountShellTree();
   initShellRefs();
   registerPrimaryStage();
   initLayers();

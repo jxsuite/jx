@@ -10,12 +10,13 @@
  */
 import "./harness";
 import { describe, expect, test } from "bun:test";
-import { mountShellTree, overlayLayers, shellTree } from "../src/shell/tree";
+import { mountShellTree, overlayLayers } from "../src/shell/tree";
 import { render } from "lit-html";
+import shellDoc from "../src/surfaces/shell.json";
 
-function frame(): HTMLElement {
+async function frame(): Promise<HTMLElement> {
   const host = document.createElement("div");
-  mountShellTree(host);
+  await mountShellTree(host);
   return host;
 }
 
@@ -40,50 +41,57 @@ const HOSTS: [id: string, adopter: string][] = [
 
 describe("the frame", () => {
   for (const [id, adopter] of HOSTS) {
-    test(`has #${id} — ${adopter}`, () => {
-      expect(frame().querySelector(`#${id}`)).not.toBeNull();
+    test(`has #${id} — ${adopter}`, async () => {
+      const built = await frame();
+      expect(built.querySelector(`#${id}`)).not.toBeNull();
     });
   }
 
   /* The three the drifted fixture had lost, called out as a group: two dozen files agreeing on a
      frame is exactly what nobody was doing, and these are what it cost. */
-  test("has the three hosts the old hand-written fixture had silently dropped", () => {
-    const f = frame();
+  test("has the three hosts the old hand-written fixture had silently dropped", async () => {
+    const f = await frame();
     for (const id of ["resize-bottom", "bottom-dock", "layer-toast"]) {
       expect(f.querySelector(`#${id}`), `#${id} is missing from the frame`).not.toBeNull();
     }
   });
 
-  test("every id is unique — an adopter that finds two hosts has found the wrong one", () => {
-    const ids = [...frame().querySelectorAll("[id]")].map((el) => el.id);
+  test("every id is unique — an adopter that finds two hosts has found the wrong one", async () => {
+    const built = await frame();
+    const ids = [...built.querySelectorAll("[id]")].map((el) => el.id);
     expect(ids.length).toBe(new Set(ids).size);
   });
 
   /* Spectrum's theming reaches its descendants through sp-theme, and the whole chrome stylesheet is
      written against a light tree beneath it. A frame rendered outside it is unstyled. */
-  test("renders inside the Spectrum theme host", () => {
-    const theme = frame().querySelector("sp-theme");
+  test("renders inside the Spectrum theme host", async () => {
+    const built = await frame();
+    const theme = built.querySelector("sp-theme");
     expect(theme).not.toBeNull();
     expect(theme!.querySelector("#app")).not.toBeNull();
     expect(theme!.getAttribute("system")).toBe("spectrum");
   });
 
-  test("mounting twice reuses the one theme host rather than nesting another", () => {
+  test("mounting twice reuses the one theme host rather than nesting another", async () => {
+    /* The `#app` half is the one the document mount added: a runtime mount APPENDS, so without the
+       clear a remount leaves two frames and every `querySelector` silently picks the stale one. */
     const host = document.createElement("div");
-    mountShellTree(host);
-    mountShellTree(host);
+    await mountShellTree(host);
+    await mountShellTree(host);
     expect(host.querySelectorAll("sp-theme")).toHaveLength(1);
     expect(host.querySelectorAll("#app")).toHaveLength(1);
+    expect(host.querySelectorAll("#layer-toast")).toHaveLength(1);
   });
 
   /* `textContent = ""` strips lit's comment markers but leaves its private part reference behind, so
      the next render reuses a part whose markers are detached. Fixtures clear the body constantly. */
-  test("mounting survives a host that was emptied since the last mount", () => {
+  test("mounting survives a host that was emptied since the last mount", async () => {
     const host = document.createElement("div");
-    mountShellTree(host);
+    await mountShellTree(host);
     host.textContent = "";
-    expect(() => mountShellTree(host)).not.toThrow();
+    await mountShellTree(host);
     expect(host.querySelector("#pane-grid")).not.toBeNull();
+    expect(host.querySelector("#layer-toast")).not.toBeNull();
   });
 });
 
@@ -100,8 +108,9 @@ describe("regions", () => {
   ];
 
   for (const [id, region] of REGIONS) {
-    test(`#${id} carries data-jx-region="${region}"`, () => {
-      expect(frame().querySelector<HTMLElement>(`#${id}`)!.dataset.jxRegion).toBe(region);
+    test(`#${id} carries data-jx-region="${region}"`, async () => {
+      const built = await frame();
+      expect(built.querySelector<HTMLElement>(`#${id}`)!.dataset.jxRegion).toBe(region);
     });
   }
 });
@@ -113,9 +122,10 @@ describe("the overlay layers", () => {
     return host;
   }
 
-  test("are the same four the frame carries, in the same order", () => {
+  test("are the same four the frame carries, in the same order", async () => {
     const alone = [...layers().querySelectorAll("[id]")].map((el) => el.id);
-    const inFrame = [...frame().querySelectorAll('[id^="layer-"]')].map((el) => el.id);
+    const built = await frame();
+    const inFrame = [...built.querySelectorAll('[id^="layer-"]')].map((el) => el.id);
     expect(alone).toEqual(["layer-popover", "layer-modal", "layer-dialog", "layer-toast"]);
     expect(inFrame).toEqual(alone);
   });
@@ -154,10 +164,35 @@ describe("index.html", () => {
   });
 });
 
-describe("shellTree", () => {
-  test("is a template, so a caller may render it anywhere without a document body", () => {
+describe("the frame is a document", () => {
+  test("mounts anywhere, without a document body", async () => {
     const host = document.createElement("section");
-    render(shellTree(), host);
+    await mountShellTree(host);
     expect(host.querySelector("#app")).not.toBeNull();
+  });
+
+  test("its cells are the document's, not a template's", () => {
+    /* The frame is `src/surfaces/shell.json` — a Jx document the runtime renders — so the ids the
+       application adopts are readable from the JSON itself rather than only from a rendered tree.
+       That is the point of the migration: Studio can open its own frame. */
+    const { children } = shellDoc as { children: { attributes: { id: string } }[] };
+    expect(children.map((child) => child.attributes.id)).toEqual([
+      "toolbar",
+      "pane-grid",
+      "activity-bar",
+      "left-panel",
+      "resize-left",
+      "resize-bottom",
+      "bottom-dock",
+      "resize-right",
+      "right-panel",
+      "statusbar",
+    ]);
+    expect((shellDoc as { attributes: { id: string } }).attributes.id).toBe("app");
+  });
+
+  test("carries no style of its own, because the frame must be laid out by the first paint", () => {
+    // Its rules are the generated styles/shell-frame.css (studio-ui-guidelines.md §1.1).
+    expect("style" in (shellDoc as Record<string, unknown>)).toBe(false);
   });
 });

@@ -114,9 +114,9 @@ describe("the frame", () => {
      asserted against `SHELL_REGION_HOSTS`, a selector-to-id map that existed only because the frame
      was markup in index.html and "cannot stamp itself". The frame is a template now and stamps its
      own, so the claim is checked where it is made. */
-  test("claims no pane region of its own — a pane cannot be an application row", () => {
+  test("claims no pane region of its own — a pane cannot be an application row", async () => {
     const host = document.createElement("div");
-    mountShellTree(host);
+    await mountShellTree(host);
     const stamped = [...host.querySelectorAll<HTMLElement>("[data-jx-region]")].map(
       (el) => el.dataset.jxRegion!,
     );
@@ -169,7 +169,7 @@ describe("uniqueness with two stages standing", () => {
 
   /** The whole shell, both panes, every renderer that stamps a pane-scoped id. */
   async function twoRealPanes() {
-    mountShellTree();
+    await mountShellTree();
     paneGrid.mount();
     openDocTab("regions-left", "pages/left.json");
     openDocTab("regions-right", "pages/right.json");
