@@ -67,3 +67,5 @@ Element defaults are saved as tag-named rules in the open file's top-level `styl
 
 - Name the values your defaults are built from in **[Design tokens](/docs/studio/design/tokens)**.
 - See how Project Styles fits among the editors and views in **[Modes and views](/docs/studio/interface/modes)**.
+  - packages/studio/src/surfaces/panel-stylebook-layers.ts
+  - packages/studio/src/surfaces/stylebook-chrome.ts

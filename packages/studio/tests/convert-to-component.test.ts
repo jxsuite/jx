@@ -1,8 +1,12 @@
 /**
  * Tests for src/editor/convert-to-component.ts — extract selection into a reusable component.
  *
- * Drives the real lit-rendered naming dialog (sp-dialog-wrapper in #layer-dialog) and asserts the
- * document mutation, $elements ref wiring, and the platform writeFile call.
+ * The naming dialog is `showPromptDialog`, which is a document over the kit
+ * (`surfaces/dialog.json`) rather than a wrapper this module renders: there is no `sp-textfield` to
+ * find any more and no `sp-help-text`, so the field is addressed as `jx-textfield`'s own
+ * `[part="input"]` and the refusal as its `[part="error"]`. What this file asserts is unchanged,
+ * because what this module owns is unchanged: the default name, what makes a name usable, whether
+ * the document took the reference, and what is written to disk once it has.
  */
 import {
   flush,
@@ -63,22 +67,42 @@ beforeEach(() => {
   tab = resetWorkspaceWithTab(freshDoc());
 });
 
-function dialog() {
+/** The dialog itself, which is the prompt surface's root. */
+function dialog(): HTMLElement | null {
   return topDialog();
 }
 
-function textfield() {
-  return document.querySelector("#layer-dialog sp-textfield") as HTMLElement & { value?: string };
+/** The field's native input: what a reader types into, and what the element listens to. */
+function nameInput(): HTMLInputElement | null {
+  return dialog()?.querySelector<HTMLInputElement>('jx-textfield [part="input"]') ?? null;
 }
 
 function setName(value: string) {
-  const tf = textfield();
-  tf.value = value;
-  tf.dispatchEvent(new Event("input", { bubbles: true }));
+  const input = nameInput()!;
+  input.value = value;
+  input.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
 function confirmDialog() {
   dialog()!.dispatchEvent(new Event("confirm"));
+}
+
+/** The refusal under the field, which is `jx-textfield`'s own error line. */
+function errorText(): string {
+  return dialog()?.querySelector('jx-textfield [part="error"]')?.textContent?.trim() ?? "";
+}
+
+/**
+ * Start a conversion and wait for the dialog to be up.
+ *
+ * The pending conversion comes back WRAPPED: an async helper that returned the promise itself would
+ * have the caller's `await` adopt it, and every test would hang on the answer it has not given
+ * yet.
+ */
+async function startDialog(): Promise<{ done: Promise<void> }> {
+  const done = convertToComponent();
+  await flush(3);
+  return { done };
 }
 
 // ─── Early returns ────────────────────────────────────────────────────────────
@@ -104,23 +128,39 @@ describe("guards", () => {
   });
 });
 
+// ─── The dialog is Studio's one prompt ────────────────────────────────────────
+
+describe("the surface", () => {
+  test("is the kit's prompt, headline and sentence and all — nothing here draws a box", async () => {
+    tab.session.selection = [["children", 0]];
+    const { done } = await startDialog();
+    expect(dialog()?.tagName.toLowerCase()).toBe("jx-dialog");
+    expect(dialog()?.querySelector('[part="headline"]')?.textContent).toBe("Convert to Component");
+    expect(dialog()?.querySelector('[part="message"]')?.textContent).toContain(
+      "hyphenated tag name",
+    );
+    expect(document.querySelector("#layer-dialog sp-dialog-wrapper")).toBeNull();
+    expect(document.querySelector("#layer-dialog sp-underlay")).toBeNull();
+    dialog()!.dispatchEvent(new Event("cancel"));
+    await done;
+  });
+});
+
 // ─── Default name derivation ──────────────────────────────────────────────────
 
 describe("default name", () => {
   test("hyphenated $id becomes the default name", async () => {
     tab.session.selection = [["children", 0]];
-    const done = convertToComponent();
-    await flush();
-    expect(textfield().getAttribute("value")).toBe("hero-block");
+    const { done } = await startDialog();
+    expect(nameInput()?.value).toBe("hero-block");
     dialog()!.dispatchEvent(new Event("cancel"));
     await done;
   });
 
   test("plain tag gets a jx- prefix", async () => {
     tab.session.selection = [["children", 1]];
-    const done = convertToComponent();
-    await flush();
-    expect(textfield().getAttribute("value")).toBe("jx-p");
+    const { done } = await startDialog();
+    expect(nameInput()?.value).toBe("jx-p");
     dialog()!.dispatchEvent(new Event("close"));
     await done;
   });
@@ -128,9 +168,8 @@ describe("default name", () => {
   test("hyphenated tag is used directly", async () => {
     (tab.doc.document.children as unknown[])[1] = { tagName: "fancy-card" };
     tab.session.selection = [["children", 1]];
-    const done = convertToComponent();
-    await flush();
-    expect(textfield().getAttribute("value")).toBe("fancy-card");
+    const { done } = await startDialog();
+    expect(nameInput()?.value).toBe("fancy-card");
     dialog()!.dispatchEvent(new Event("cancel"));
     await done;
   });
@@ -141,8 +180,7 @@ describe("default name", () => {
 describe("conversion", () => {
   test("confirm replaces the node, adds the $ref, and writes the component file", async () => {
     tab.session.selection = [["children", 0]];
-    const done = convertToComponent();
-    await flush();
+    const { done } = await startDialog();
 
     setName("hero-block");
     confirmDialog();
@@ -167,8 +205,7 @@ describe("conversion", () => {
     const doc = tab.doc.document as Record<string, unknown>;
     doc.$elements = [{ $ref: "../components/hero-block.json" }];
     tab.session.selection = [["children", 0]];
-    const done = convertToComponent();
-    await flush();
+    const { done } = await startDialog();
     setName("hero-block");
     confirmDialog();
     await done;
@@ -177,8 +214,7 @@ describe("conversion", () => {
 
   test("cancel leaves the document untouched", async () => {
     tab.session.selection = [["children", 0]];
-    const done = convertToComponent();
-    await flush();
+    const { done } = await startDialog();
     dialog()!.dispatchEvent(new Event("cancel"));
     await done;
 
@@ -203,8 +239,7 @@ describe("conversion", () => {
       tagName: "div",
     } as never;
     tab.session.selection = [["children", 0]];
-    const done = convertToComponent();
-    await flush();
+    const { done } = await startDialog();
     setName("slotty-block");
     confirmDialog();
     await done;
@@ -224,8 +259,7 @@ describe("conversion", () => {
       },
     });
     tab.session.selection = [["children", 0]];
-    const done = convertToComponent();
-    await flush();
+    const { done } = await startDialog();
     setName("hero-block");
     confirmDialog();
     await done; // Resolves despite the write error
@@ -237,78 +271,72 @@ describe("conversion", () => {
 // ─── Name validation ──────────────────────────────────────────────────────────
 
 describe("name validation", () => {
-  async function startDialog() {
+  async function start() {
     tab.session.selection = [["children", 0]];
-    const done = convertToComponent();
-    await flush();
-    return { done };
-  }
-
-  function helpText() {
-    return document.querySelector("#layer-dialog sp-help-text")?.textContent?.trim() ?? "";
+    return startDialog();
   }
 
   test("missing hyphen shows an error and keeps the dialog open", async () => {
-    const { done } = await startDialog();
+    const { done } = await start();
     setName("plainname");
     confirmDialog();
     await flush();
     expect(dialog()).not.toBeNull();
-    expect(helpText()).toContain("hyphen");
+    expect(errorText()).toContain("hyphen");
     dialog()!.dispatchEvent(new Event("cancel"));
     await done;
   });
 
   test("invalid characters show the naming-rule error", async () => {
-    const { done } = await startDialog();
+    const { done } = await start();
     setName("my--comp");
     confirmDialog();
     await flush();
     expect(dialog()).not.toBeNull();
-    expect(helpText()).toContain("Lowercase");
-    // The `invalid` property is what makes Spectrum project the negative-help-text slot.
-    expect(textfield()!.hasAttribute("invalid")).toBe(true);
+    expect(errorText()).toContain("Lowercase");
+    // `invalid` is what says aria-invalid on the control and draws it in the danger colour.
+    expect(nameInput()?.getAttribute("aria-invalid")).toBe("true");
     dialog()!.dispatchEvent(new Event("cancel"));
     await done;
   });
 
   test("existing component name is rejected", async () => {
     componentRegistry.push({ tagName: "taken-name" } as never);
-    const { done } = await startDialog();
+    const { done } = await start();
     setName("taken-name");
     confirmDialog();
     await flush();
     expect(dialog()).not.toBeNull();
-    expect(helpText()).toContain("already exists");
+    expect(errorText()).toContain("already exists");
     dialog()!.dispatchEvent(new Event("cancel"));
     await done;
   });
 
   test("live input feedback clears once the name becomes valid", async () => {
-    const { done } = await startDialog();
+    const { done } = await start();
     setName("bad");
     await flush();
-    expect(helpText()).toContain("hyphen");
+    expect(errorText()).toContain("hyphen");
     setName("good-name");
     await flush();
-    expect(helpText()).toBe("");
+    expect(errorText()).toBe("");
     confirmDialog();
     await done;
     const doc = tab.doc.document as Record<string, unknown>;
     expect((doc.children as unknown[])[0]).toEqual({ tagName: "good-name" });
   });
 
-  test("Enter in the textfield confirms", async () => {
-    const { done } = await startDialog();
+  test("Enter in the field confirms", async () => {
+    const { done } = await start();
     setName("enter-name");
-    textfield().dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }));
+    nameInput()!.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }));
     await done;
     const doc = tab.doc.document as Record<string, unknown>;
     expect((doc.children as unknown[])[0]).toEqual({ tagName: "enter-name" });
   });
 
   test("uppercase input is normalized to lowercase", async () => {
-    const { done } = await startDialog();
+    const { done } = await start();
     setName("  My-Widget ");
     confirmDialog();
     await done;
@@ -331,8 +359,7 @@ describe("a refused conversion", () => {
     resetNotifications();
     tab.session.selection = [["children", 0]];
     const before = JSON.stringify(tab.doc.document);
-    const done = convertToComponent();
-    await flush();
+    const { done } = await startDialog();
     setName("frozen-widget");
     setTransactGate(() => "source-canonical");
     try {

@@ -359,6 +359,9 @@ const entryIdCache = new Map<string, Promise<string[]>>();
  */
 const entryIdResult = new Map<string, { ids: string[] } | { error: string }>();
 
+/** Collections whose settle handler is already attached, so a repaint never attaches a second. */
+const entryIdWatched = new Set<string>();
+
 /**
  * Forget cached entry ids — for one collection, or all of them.
  *
@@ -370,9 +373,11 @@ export function invalidateReferenceEntries(collection?: string): void {
   if (collection === undefined) {
     entryIdCache.clear();
     entryIdResult.clear();
+    entryIdWatched.clear();
   } else {
     entryIdCache.delete(collection);
     entryIdResult.delete(collection);
+    entryIdWatched.delete(collection);
   }
 }
 
@@ -390,6 +395,52 @@ function entryIdsFor(collection: string): Promise<string[]> {
   );
   entryIdCache.set(collection, pending);
   return pending;
+}
+
+/**
+ * How listing a collection's entry ids ENDED, for a surface that draws its own picker.
+ *
+ * `null` means the read is still in flight, and `onSettled` is called once when it lands — which is
+ * the second frame the registered control gets from `until` and a document has to be given.
+ *
+ * Exported because the `reference` control's MARKUP is a lit template and a surface that is a Jx
+ * document cannot interpolate one (specs/studio-ui-guidelines.md §9.4). What such a surface needs
+ * is not the widget but the answer behind it, and taking it from here rather than calling
+ * `listCollectionEntryIds` directly is what keeps ONE cache and ONE invalidation: a collection
+ * listed for the Document Header card is not listed again for the entry editor, and
+ * {@link invalidateReferenceEntries} after an entry is created is still the single event that
+ * forgets it.
+ *
+ * @param {string} collection
+ * @param {() => void} [onSettled]
+ * @returns {{ ids: string[] } | { error: string } | null}
+ */
+export function referenceEntryState(
+  collection: string,
+  onSettled?: () => void,
+): { ids: string[] } | { error: string } | null {
+  const done = entryIdResult.get(collection);
+  if (done) {
+    return done;
+  }
+  const pending = entryIdsFor(collection);
+  if (entryIdWatched.has(collection)) {
+    return null;
+  }
+  entryIdWatched.add(collection);
+  void pending.then(
+    (ids) => {
+      entryIdWatched.delete(collection);
+      entryIdResult.set(collection, { ids });
+      onSettled?.();
+    },
+    (error: unknown) => {
+      entryIdWatched.delete(collection);
+      entryIdResult.set(collection, { error: errorMessage(error) });
+      onSettled?.();
+    },
+  );
+  return null;
 }
 
 /** Plain text editing of the reference id — the fallback when the choices cannot be listed. */

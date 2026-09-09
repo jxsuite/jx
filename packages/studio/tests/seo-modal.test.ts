@@ -1,13 +1,18 @@
 /**
- * Search appearance — the modal (plan §9.2, §14).
+ * Search appearance — the surface (plan §9.2, §14).
  *
- * It was a `<details>` inside the Document Header card. Everything asserted here was asserted there
- * and still must hold: two previews of the MERGED head, the resolved-field list with its counters
- * and provenance chips, the named warnings, and the editable rows below them. What is new is the
- * SURFACE — that it opens from two places and the palette, over the document it was opened on, and
- * that closing it leaves nothing behind.
+ * It was a `<details>` inside the Document Header card, then a lit modal, and it is a Jx document
+ * over the kit now. Everything asserted here was asserted through both: two previews of the MERGED
+ * head, the resolved-field list with its counters and provenance chips, the named warnings, and the
+ * editable rows below them. What is new is the SEAM — a `jx-dialog` in the dialog layer, so the
+ * box, the backdrop, Escape and the way out all belong to the platform rather than to a fixed card
+ * with a `z-index` of its own.
  *
- * The merge itself is asserted in `head-panel.test.ts`; these are about what the modal SHOWS, and
+ * Everything is addressed by `part`, `role` or `data-*`: there is no `.seo-modal` to find any more,
+ * no `.provenance-chip` and no `.set-dot` — the chip vocabulary travels with the surface as parts,
+ * and the row's clear affordance is `jx-textfield`'s own.
+ *
+ * The merge itself is asserted in `head-panel.test.ts`; these are about what the surface SHOWS, and
  * about the one property the plan states as a prohibition — nothing here renders a score.
  */
 import {
@@ -31,16 +36,21 @@ import { setActiveRegistry } from "../src/commands/active-registry";
 const { closeSeoModal, openSeoModal, renderSeoModal, seoCommands } =
   await import("../src/panels/seo-modal");
 
+/** The dialog itself, which is the surface's root. */
+function dialog(): HTMLElement | null {
+  return document.querySelector<HTMLElement>('#layer-dialog jx-dialog[part="seo"]');
+}
+
 /**
  * Is it up?
  *
  * The DOM, not an exported predicate. `seoModalOpen()` existed for exactly these assertions and for
  * a pressed state on the two buttons — which cannot exist, because both buttons are behind the
  * modal while it is open. `tests/reachability.test.ts` calls that shape out by name, and it is
- * right: what the reader wants to know is whether the modal is on screen.
+ * right: what the reader wants to know is whether the surface is on screen.
  */
 function seoModalOpen(): boolean {
-  return document.querySelector(".seo-modal") !== null;
+  return dialog() !== null;
 }
 
 // Panel scheduler coalesces via requestAnimationFrame; make it synchronous-ish.
@@ -48,18 +58,26 @@ function seoModalOpen(): boolean {
   cb: FrameRequestCallback,
 ) => setTimeout(() => cb(0), 0) as unknown as number;
 
-/** The modal's own element. It paints into a layer slot on `document.body`, not into a panel. */
+/** The surface's own element. It mounts into a dialog-layer slot, not into a panel. */
 function host(): HTMLElement {
-  const el = document.querySelector<HTMLElement>(".seo-modal");
+  const el = dialog();
   if (!el) {
-    throw new Error("the Search appearance modal is not open");
+    throw new Error("the Search appearance surface is not open");
   }
   return el;
 }
 
+function d<T extends Element = HTMLElement>(sel: string): T | null {
+  return host().querySelector<T>(sel) as T | null;
+}
+
+function all<T extends Element = HTMLElement>(sel: string): T[] {
+  return [...host().querySelectorAll<T>(sel)];
+}
+
 function setShell() {
-  // The overlay layers are part of the shell here, not an afterthought: `openModal` appends into
-  // `#layer-modal`, and `setShell` replaces `document.body.innerHTML` before every test.
+  // The overlay layers are part of the shell here, not an afterthought: the surface mounts into
+  // `#layer-dialog`, and `setShell` replaces `document.body.innerHTML` before every test.
   document.body.innerHTML = `<div id="app">
     <div id="toolbar"></div>
     <div id="activity-bar"></div><div id="left-panel"></div>
@@ -96,23 +114,38 @@ function setupContentTab(
   return tab;
 }
 
-function fireChange(el: Element, value: string): void {
-  (el as any).value = value;
+/** The `<input>`/`<textarea>` inside one row's field — `jx-textfield`'s own control. */
+function control(prop: string): HTMLInputElement {
+  const el = d<HTMLInputElement>(`[data-prop="${prop}"] [part="entry"] [part="input"]`);
+  if (!el) {
+    throw new Error(`row not found: ${prop}`);
+  }
+  return el;
+}
+
+/** Commit a row the way losing focus does. */
+function fireChange(prop: string, value: string): void {
+  const el = control(prop);
+  el.value = value;
   el.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
 function row(prop: string): HTMLElement {
-  const el = host().querySelector(`[data-prop="${prop}"]`);
+  const el = d(`[data-prop="${prop}"]`);
   if (!el) {
     throw new Error(`row not found: ${prop}`);
   }
-  return el as HTMLElement;
+  return el;
+}
+
+function click(el: Element): void {
+  el.dispatchEvent(new MouseEvent("click", { bubbles: true }));
 }
 
 /** Open it over whatever tab the test just set up — what both buttons and the command all do. */
 async function mountAndFlush() {
   openSeoModal(activeTab.value!);
-  await flush(4);
+  await flush(6);
 }
 
 /** Re-paint, standing in for the commit path's own `renderSeoModal`. */
@@ -143,12 +176,25 @@ describe("the surface itself", () => {
     expect(seoModalOpen()).toBe(false);
     await mountAndFlush();
     expect(seoModalOpen()).toBe(true);
-    expect(host().querySelector(".settings-modal-title")?.textContent).toBe("Search appearance");
+    // The headline belongs to `jx-dialog`, so it is one `connectedCallback` past the mount.
+    expect(d('[part="headline"]')?.textContent).toBe("Search appearance");
     // A modal covers the tab strip, so it has to say which document it is about itself.
-    expect(host().querySelector(".seo-modal-doc")?.textContent).toBe("posts/hello.json");
+    expect(d('[part="doc"]')?.textContent).toBe("posts/hello.json");
   });
 
-  test("opening it twice is one modal, re-pointed at the current document", async () => {
+  test("the box, the backdrop and the way out are the platform's — nothing here draws one", async () => {
+    setupContentTab({ title: "Hello" });
+    await mountAndFlush();
+    // No fixed card, no scrim of its own, and no hand-drawn close button.
+    expect(document.querySelector(".seo-modal")).toBeNull();
+    expect(document.querySelector("#layer-dialog sp-underlay")).toBeNull();
+    expect(document.querySelector("#layer-dialog sp-dialog-wrapper")).toBeNull();
+    expect(d('[part="cancel-label"]')?.textContent).toBe("Close");
+    // The region the screenshot pipeline photographs rides on the element with a box.
+    expect(host().dataset.jxRegion).toBe("overlay.dialog:seo");
+  });
+
+  test("opening it twice is one dialog, re-pointed at the current document", async () => {
     setupContentTab({ title: "First" }, { documentPath: "posts/first.json", id: "seo-a" });
     await mountAndFlush();
     const second = setupContentTab(
@@ -159,18 +205,27 @@ describe("the surface itself", () => {
       },
     );
     openSeoModal(second);
-    await flush(4);
-    expect(document.querySelectorAll(".seo-modal").length).toBe(1);
-    expect(host().querySelector(".seo-modal-doc")?.textContent).toBe("posts/second.json");
+    await flush(6);
+    expect(document.querySelectorAll('jx-dialog[part="seo"]').length).toBe(1);
+    expect(d('[part="doc"]')?.textContent).toBe("posts/second.json");
   });
 
   test("closing it removes it, and closing twice is not a throw", async () => {
     setupContentTab({ title: "Hello" });
     await mountAndFlush();
     closeSeoModal();
-    expect(document.querySelector(".seo-modal")).toBeNull();
+    expect(dialog()).toBeNull();
     expect(seoModalOpen()).toBe(false);
     closeSeoModal();
+  });
+
+  test("the platform's own dismissal takes it down too", async () => {
+    setupContentTab({ title: "Hello" });
+    await mountAndFlush();
+    // What Escape raises on a native `<dialog>`, and what the kit's Close button dispatches.
+    host().dispatchEvent(new Event("cancel", { bubbles: true }));
+    await flush(2);
+    expect(seoModalOpen()).toBe(false);
   });
 
   test("a repaint with nothing open is a no-op, not a throw", () => {
@@ -183,9 +238,11 @@ describe("the surface itself", () => {
     await mountAndFlush();
     // Open Graph has its OWN Title, Description and Image: ungrouped, "Description" named two
     // Different fields eight rows apart.
-    expect(
-      [...host().querySelectorAll(".seo-modal-group-title")].map((h) => h.textContent),
-    ).toEqual(["Search result", "Social card"]);
+    expect(all('[part="group-title"]').map((h) => h.textContent)).toEqual([
+      "Search result",
+      "Social card",
+    ]);
+    expect(all('[part="group"]').map((g) => g.dataset.group)).toEqual(["page", "og"]);
   });
 });
 
@@ -198,7 +255,7 @@ describe("document.openSeo", () => {
     expect(command!.aiTool?.name).toBe("open_seo");
   });
 
-  test("it needs an open document, and opens the modal over the active one", async () => {
+  test("it needs an open document, and opens the surface over the active one", async () => {
     const [command] = seoCommands();
     const registry = createCommandRegistry({
       getContext: () => makeContext({ document: { open: true } }),
@@ -209,20 +266,20 @@ describe("document.openSeo", () => {
 
     setupContentTab({ title: "Hello" }, { documentPath: "posts/hello.json" });
     await registry.run("document.openSeo");
-    await flush(4);
+    await flush(6);
     expect(seoModalOpen()).toBe(true);
-    expect(host().querySelector(".seo-modal-doc")?.textContent).toBe("posts/hello.json");
+    expect(d('[part="doc"]')?.textContent).toBe("posts/hello.json");
   });
 });
 
 describe("the favicon row", () => {
-  test("committing a path writes a link entry; the clear dot removes it", async () => {
+  test("committing a path writes a link entry; the field's clear button removes it", async () => {
     const tab = setupContentTab({ title: "Hello" });
     await mountAndFlush();
-    const field = row("icon").querySelector("sp-textfield")!;
-    (field as any).value = "/favicon.png";
+    const field = control("icon");
+    field.value = "/favicon.png";
     field.dispatchEvent(new Event("input", { bubbles: true }));
-    // The media field commits on a debounce.
+    // Typing commits on a debounce; losing focus does not have to wait for it.
     await new Promise((resolve) => {
       setTimeout(resolve, 450);
     });
@@ -233,25 +290,58 @@ describe("the favicon row", () => {
 
     render();
     await flush(4);
-    row("icon")
-      .querySelector(".set-dot")!
-      .dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    /* The set dot became the control's own clear button: one affordance, drawn by the kit, shown
+       only while there is something to clear. */
+    click(row("icon").querySelector('[part="clear"]')!);
+    await flush(4);
     expect(tab.doc.content.frontmatter.$head).toBeUndefined();
+  });
+
+  test("a media row carries Upload and Browse; a text row carries neither", async () => {
+    setupContentTab({ title: "Hello" });
+    await mountAndFlush();
+    expect(row("icon").querySelector('[part="upload"]')).not.toBeNull();
+    expect(row("icon").querySelector('[part="browse"]')).not.toBeNull();
+    expect(row("og:image").querySelector('[part="browse"]')).not.toBeNull();
+    expect(row("description").querySelector('[part="browse"]')).toBeNull();
+  });
+
+  test("Browse offers the project's media in a kit menu, and picking one commits it", async () => {
+    const tab = setupContentTab({ title: "Hello" });
+    installMockPlatform({
+      listDirectory: async (dir: string) =>
+        dir === "public"
+          ? [{ name: "hero.jpg", path: "public/hero.jpg", size: 12, type: "file" }]
+          : [],
+    });
+    await mountAndFlush();
+    /* A kit menu, not the Spectrum popover the inspector's media picker draws: a modal `<dialog>`
+       is in the top layer, so an overlay painted into a layer div renders underneath the dialog
+       that opened it and is inert besides. */
+    click(row("og:image").querySelector('[part="browse"]')!);
+    await flush(8);
+    const item = document.querySelector<HTMLElement>(
+      "#layer-popover jx-menu-item[data-command-id]",
+    );
+    expect(item?.textContent).toContain("hero.jpg");
+    click(item!);
+    await flush(4);
+    expect(tab.doc.content.frontmatter.$head).toEqual([
+      { attributes: { content: "/hero.jpg", property: "og:image" }, tagName: "meta" },
+    ]);
   });
 });
 
 function seoRow(key: string): HTMLElement {
-  const el = host().querySelector(`[data-seo-field="${key}"]`);
+  const el = d(`[data-seo-field="${key}"]`);
   if (!el) {
     throw new Error(`no SEO field row: ${key}`);
   }
-  return el as HTMLElement;
+  return el;
 }
 
 function seoWarningIds(): string[] {
-  return [...host().querySelectorAll("[data-seo-warning]")].map(
-    (el) => (el as HTMLElement).dataset.seoWarning!,
-  );
+  return all("[data-seo-warning]").map((el) => el.dataset.seoWarning!);
 }
 
 /** A site page whose layout and project config both contribute head material. */
@@ -287,25 +377,30 @@ function setupSeoPage(
   tab.doc.content.frontmatter = frontmatter;
 }
 
-describe("the modal previews the merged head", () => {
+describe("the surface previews the merged head", () => {
   test("the search-result card prints the canonical breadcrumb, the title and the description", async () => {
     setupSeoPage({ title: "About Us" });
     await mountAndFlush();
     await flush(4);
-    const serp = host().querySelector(".seo-card--serp")!;
-    expect(serp.querySelector(".seo-serp-url")?.textContent).toBe("acme.test › about");
-    expect(serp.querySelector(".seo-serp-title")?.textContent).toBe("About Us");
-    expect(serp.querySelector(".seo-serp-desc")?.textContent?.trim()).toBe("the layout's summary");
+    const serp = d('[part="card"][data-card="serp"]')!;
+    expect(serp.getAttribute("aria-label")).toBe("Search result preview");
+    expect(serp.querySelector('[part="serp-url"]')?.textContent).toBe("acme.test › about");
+    expect(serp.querySelector('[part="serp-title"]')?.textContent).toBe("About Us");
+    expect(serp.querySelector('[part="serp-desc"]')?.textContent?.trim()).toBe(
+      "the layout's summary",
+    );
   });
 
   test("the social card shows the og:image, and says so plainly when there is none", async () => {
     setupSeoPage({ title: "About Us" });
     await mountAndFlush();
     await flush(4);
-    const social = host().querySelector(".seo-card--social")!;
-    expect(social.querySelector(".seo-social-domain")?.textContent).toBe("acme.test");
-    expect(social.querySelector(".seo-social-media .seo-unset")?.textContent).toBe("No image");
-    expect(social.querySelector(".seo-social-title .seo-unset")?.textContent).toBe(
+    const social = d('[part="card"][data-card="social"]')!;
+    expect(social.querySelector('[part="social-domain"]')?.textContent).toBe("acme.test");
+    expect(social.querySelector('[part="social-media"] [part="unset"]')?.textContent).toBe(
+      "No image",
+    );
+    expect(social.querySelector('[part="social-title"] [part="unset"]')?.textContent).toBe(
       "No social title",
     );
 
@@ -313,18 +408,17 @@ describe("the modal previews the merged head", () => {
       $head: [{ attributes: { content: "/card.png", property: "og:image" }, tagName: "meta" }],
       title: "About Us",
     });
-    // A fresh tab, so RE-OPEN rather than re-render: the modal draws the document it was opened
+    // A fresh tab, so RE-OPEN rather than re-render: the surface draws the document it was opened
     // Over, and repainting would faithfully redraw the previous one.
     await mountAndFlush();
-    const img = host().querySelector(".seo-social-media img") as HTMLImageElement;
-    expect(img.getAttribute("src")).toBe("/card.png");
+    expect(d<HTMLImageElement>('[part="social-image"]')?.getAttribute("src")).toBe("/card.png");
   });
 
   test("a document with no route and no site URL previews without inventing one", async () => {
     setupContentTab({ title: "Post" }, { documentPath: "posts/hello.json" });
     await mountAndFlush();
-    expect(host().querySelector(".seo-serp-url")?.textContent).toBe("/");
-    expect(host().querySelector(".seo-social-domain .seo-unset")?.textContent).toBe("No site URL");
+    expect(d('[part="serp-url"]')?.textContent).toBe("/");
+    expect(d('[part="social-domain"] [part="unset"]')?.textContent).toBe("No site URL");
     expect(seoWarningIds()).toContain("site-url-missing");
   });
 });
@@ -335,21 +429,24 @@ describe("the resolved-field list marks where each value came from", () => {
     await mountAndFlush();
     await flush(4);
 
-    const title = seoRow("title").querySelector(".provenance-chip")!;
-    expect(title.classList.contains("provenance-chip--set")).toBe(true);
-    expect(title.tagName).toBe("SPAN"); // Read-only: the chip has nowhere to go.
+    const title = seoRow("title").querySelector<HTMLElement>('[part="chip"]')!;
+    expect(title.dataset.state).toBe("set");
+    // A 6px disc, not a control: the kit's own dot, and it has nowhere to go.
+    expect(title.tagName).toBe("JX-DOT");
 
-    const description = seoRow("description").querySelector(".provenance-chip")!;
-    expect(description.classList.contains("provenance-chip--inherited")).toBe(true);
+    const description = seoRow("description").querySelector<HTMLElement>('[part="chip"]')!;
+    expect(description.dataset.state).toBe("inherited");
     expect(description.textContent?.trim()).toBe("from Base");
+    // The layout donor has nowhere to go either, so it is not drawn as something pressable.
+    expect(description.tagName).toBe("SPAN");
   });
 
   test("an unset field shows no chip at all — absence IS the ghost", async () => {
     setupSeoPage({ title: "About Us" });
     await mountAndFlush();
     await flush(4);
-    expect(seoRow("og:type").querySelector(".provenance-chip")).toBeNull();
-    expect(seoRow("og:type").querySelector(".seo-unset")?.textContent).toBe("No social type");
+    expect(seoRow("og:type").querySelector('[part="chip"]')).toBeNull();
+    expect(seoRow("og:type").querySelector('[part="unset"]')?.textContent).toBe("No social type");
   });
 
   test("a title inherited from the project name jumps to the setting that defines it", async () => {
@@ -370,10 +467,10 @@ describe("the resolved-field list marks where each value came from", () => {
     setupSeoPage({ subtitle: "no title here" });
     await mountAndFlush();
     await flush(4);
-    const chip = seoRow("title").querySelector(".provenance-chip") as HTMLButtonElement;
+    const chip = seoRow("title").querySelector('[part="chip"]') as HTMLButtonElement;
     expect(chip.tagName).toBe("BUTTON");
     expect(chip.textContent?.trim()).toBe("from Site name");
-    chip.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    click(chip);
     expect(ran).toEqual([{ args: { section: "overview" }, id: "settings.open" }]);
     setActiveRegistry(null);
   });
@@ -401,9 +498,9 @@ describe("the resolved-field list marks where each value came from", () => {
     );
     await mountAndFlush();
     await flush(4);
-    const chip = seoRow("og:image").querySelector(".provenance-chip") as HTMLButtonElement;
+    const chip = seoRow("og:image").querySelector('[part="chip"]') as HTMLButtonElement;
     expect(chip.textContent?.trim()).toBe("from Site head");
-    chip.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    click(chip);
     expect(ran).toEqual([{ section: "head" }]);
     setActiveRegistry(null);
   });
@@ -413,8 +510,8 @@ describe("the resolved-field list marks where each value came from", () => {
     setupSeoPage({ subtitle: "no title here" });
     await mountAndFlush();
     await flush(4);
-    const chip = seoRow("title").querySelector(".provenance-chip") as HTMLButtonElement;
-    chip.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    const chip = seoRow("title").querySelector('[part="chip"]') as HTMLButtonElement;
+    click(chip);
     expect(chip.textContent?.trim()).toBe("from Site name");
   });
 });
@@ -422,14 +519,15 @@ describe("the resolved-field list marks where each value came from", () => {
 describe("the two realms a document can keep its head material in", () => {
   test("a JSON document commits straight onto the document root, not into frontmatter", async () => {
     // The markdown path (`applyContentMutation`) is what every other case here exercises. A
-    // Component or a JSON page has no frontmatter at all: it goes through `transact`, and the modal
-    // Has to pick the right one from the tab it was opened over rather than from the focused pane.
+    // Component or a JSON page has no frontmatter at all: it goes through `transact`, and the
+    // Surface has to pick the right one from the tab it was opened over rather than from the
+    // Focused pane.
     setupContentTab({ title: "Hello" });
     const tab = activeTab.value as any;
     tab.doc.mode = "component";
     tab.doc.document.title = "Root Title";
     await mountAndFlush();
-    fireChange(row("description").querySelector("sp-textfield")!, "Written onto the root");
+    fireChange("description", "Written onto the root");
     expect(tab.doc.document.$head).toEqual([
       { attributes: { content: "Written onto the root", name: "description" }, tagName: "meta" },
     ]);
@@ -444,8 +542,8 @@ describe("the two realms a document can keep its head material in", () => {
     await mountAndFlush();
     await flush(4);
     expect(seoRow("title").textContent).toContain("Jx Site");
-    const chip = seoRow("title").querySelector(".provenance-chip")!;
-    expect(chip.classList.contains("provenance-chip--inherited")).toBe(true);
+    const chip = seoRow("title").querySelector<HTMLElement>('[part="chip"]')!;
+    expect(chip.dataset.state).toBe("inherited");
     expect(chip.textContent?.trim()).toBe("from the build");
     // Inherited from the build is not a setting you can open: the chip has nowhere to go.
     expect(chip.tagName).toBe("SPAN");
@@ -457,19 +555,19 @@ describe("counters and warnings, and the absence of a score", () => {
     setupSeoPage({ title: "About Us" });
     await mountAndFlush();
     await flush(4);
-    expect(seoRow("title").querySelector(".seo-field-count")?.textContent).toBe("8/60");
-    expect(seoRow("description").querySelector(".seo-field-count")?.textContent).toBe("20/160");
-    expect(seoRow("og:image").querySelector(".seo-field-count")).toBeNull();
-    expect(host().querySelectorAll(".seo-field-count--over").length).toBe(0);
+    expect(seoRow("title").querySelector('[part="count"]')?.textContent).toBe("8/60");
+    expect(seoRow("description").querySelector('[part="count"]')?.textContent).toBe("20/160");
+    expect(seoRow("og:image").querySelector('[part="count"]')).toBeNull();
+    expect(all('[part="count"][data-over]').length).toBe(0);
   });
 
   test("over budget is marked on the counter and named in the list — never summed", async () => {
     setupSeoPage({ title: "T".repeat(61) });
     await mountAndFlush();
     await flush(4);
-    expect(seoRow("title").querySelector(".seo-field-count--over")?.textContent).toBe("61/60");
+    expect(seoRow("title").querySelector('[part="count"][data-over]')?.textContent).toBe("61/60");
     expect(seoWarningIds()).toContain("title-long");
-    // The prohibition, asserted: no element in the modal carries a total or a grade.
+    // The prohibition, asserted: no element in the surface carries a total or a grade.
     const text = host().textContent ?? "";
     expect(text).not.toMatch(/\b\d{1,3}\s*\/\s*100\b/);
     expect(text.toLowerCase()).not.toContain("score");
@@ -492,8 +590,8 @@ describe("counters and warnings, and the absence of a score", () => {
       "og-description-missing",
       "og-image-missing",
     ]);
-    const first = host().querySelector(".seo-warning")!;
-    expect(first.querySelector(".seo-warning-field")?.textContent).toBe("og:title");
+    const first = d('[part="warning"]')!;
+    expect(first.querySelector('[part="warning-field"]')?.textContent).toBe("og:title");
   });
 
   test("a fully-described page says so rather than printing an empty list", async () => {
@@ -507,8 +605,8 @@ describe("counters and warnings, and the absence of a score", () => {
     });
     await mountAndFlush();
     await flush(4);
-    expect(host().querySelector(".seo-warnings")).toBeNull();
-    expect(host().querySelector(".doc-header-empty")?.textContent?.trim()).toBe(
+    expect(d('[part="warnings"]')).toBeNull();
+    expect(d('[part="empty"]')?.textContent?.trim()).toBe(
       "Nothing to flag — every previewed field resolves to a value.",
     );
   });
@@ -517,15 +615,15 @@ describe("counters and warnings, and the absence of a score", () => {
     setupSeoPage({ title: "About Us" });
     await mountAndFlush();
     await flush(4);
-    const seo = host();
-    const order = [
-      ...seo.querySelectorAll('.seo-previews, .seo-fields, [data-prop="description"]'),
-    ].map((el) => (el as HTMLElement).dataset.prop ?? el.className);
-    expect(order).toEqual(["seo-previews", "seo-fields", "description"]);
-    const descriptionRow = seo.querySelector('[data-prop="description"]')!;
-    fireChange(descriptionRow.querySelector("sp-textfield")!, "Written here");
+    const order = all('[part="previews"], [part="fields"], [data-prop="description"]').map(
+      (el) => el.dataset.prop ?? el.getAttribute("part"),
+    );
+    expect(order).toEqual(["previews", "fields", "description"]);
+    fireChange("description", "Written here");
     await flush(4);
-    expect(seoRow("description").querySelector(".provenance-chip--set")).toBeTruthy();
+    expect(seoRow("description").querySelector<HTMLElement>('[part="chip"]')?.dataset.state).toBe(
+      "set",
+    );
     expect(seoRow("description").textContent).toContain("Written here");
   });
 });
@@ -533,7 +631,7 @@ describe("counters and warnings, and the absence of a score", () => {
 // ─── The warnings also reach Problems ────────────────────────────────────────
 
 describe("SEO warnings are Problems too", () => {
-  test("opening the modal files one Problem per warning, and a re-open replaces them", async () => {
+  test("opening the surface files one Problem per warning, and a re-open replaces them", async () => {
     /*
      * A window someone has to open is not where a fact should live alone. Problems is where this
      * app keeps the records that outlive the frame you were not watching.

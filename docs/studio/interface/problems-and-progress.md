@@ -155,3 +155,4 @@ The selection field carries what an address can't state: **3 selected** when mor
   - packages/studio/src/surfaces/panel-problems.ts
   - packages/studio/src/surfaces/panel-activity.json
   - packages/studio/src/surfaces/panel-activity.ts
+  - packages/studio/src/surfaces/panel-deploy-checklist.ts

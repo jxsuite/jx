@@ -271,21 +271,24 @@ describe("Appearance", () => {
 describe("Assistant", () => {
   test("hosts the provider form that used to be locked inside the assistant panel", async () => {
     void openPreferences("assistant");
-    await flush(3);
+    /* Six turns: the provider form is a mounted Jx document, so it is addressed by `part` and it is
+       not there on the turn the sheet renders. */
+    await flush(6);
     expect(d(".prefs-assistant")).not.toBeNull();
-    expect(d(".ai-creds-form")).not.toBeNull();
-    // Spectrum controls, not raw inputs with inline styles.
-    expect(dAll("sp-textfield").length).toBeGreaterThan(0);
+    expect(d('[part="ai-creds-form"]')).not.toBeNull();
+    // Kit controls, not raw inputs with inline styles.
+    expect(dAll('[part="ai-creds-form"] jx-textfield').length).toBeGreaterThan(0);
+    // And the key is masked, which is the one thing about this form that must never regress.
+    expect(d('[part="key"] [part="input"]')!.getAttribute("type")).toBe("password");
   });
 
   test("saving a key lands in the store and repaints the Accounts row", async () => {
     void openPreferences("assistant");
-    await flush(3);
-    const field = d<HTMLInputElement>("sp-textfield")!;
+    await flush(6);
+    const field = d<HTMLInputElement>('[part="key"] [part="input"]')!;
     field.value = "sk-from-preferences";
     field.dispatchEvent(new Event("input", { bubbles: true }));
-    const save = dAll("sp-button").find((el) => el.textContent?.includes("Save"))!;
-    pointer(save, "click");
+    pointer(d('[part="save"]')!, "click");
     await flush(3);
     expect(localStorage.getItem("jx.ai.openaiKey")).toBe("sk-from-preferences");
     // The sheet stays up — Preferences is a place, not a wizard step.

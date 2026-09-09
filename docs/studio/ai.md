@@ -104,3 +104,5 @@ Requests travel through Studio's own local proxy straight to the endpoint you co
 - Create a project for the assistant to work in: **[New Project](/docs/studio/projects/create)**
 - The state entries it can add for you are explained in the **[Data panel](/docs/studio/logic/data)**
 - Working the same project from outside Studio, with a coding agent or in CI: **[Working with agents](/docs/framework/agents)**
+  - packages/studio/src/surfaces/ai-credentials-form.ts
+  - packages/studio/src/surfaces/ai-model-picker.ts

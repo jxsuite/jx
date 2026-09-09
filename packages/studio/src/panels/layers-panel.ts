@@ -68,7 +68,7 @@ import { view } from "../view";
 import { setActivityTab } from "../shell";
 import { renderEmptyState } from "./empty-state";
 import { registerPanel } from "./panel-registry";
-import { renderStylebookLayersTemplate } from "./stylebook-layers-panel";
+import { detachStylebookLayers, mountStylebookLayersPanel } from "./stylebook-layers-panel";
 import { selectStylebookTag, stylebookMeta } from "./stylebook-panel";
 import { isInlineElement } from "../editor/inline-edit";
 import { showContextMenu } from "../editor/context-menu";
@@ -89,6 +89,7 @@ import {
 } from "../ui/virtual-window";
 import type { CommandRegistry } from "../commands/registry";
 import type { ListWindowWatch } from "../ui/virtual-window";
+import type { PanelBody } from "./panel-registry";
 import type { TemplateResult } from "lit-html";
 
 // ─── What a row says ─────────────────────────────────────────────────────────
@@ -1252,20 +1253,35 @@ export function registerLayersPanel(): void {
     dock: "navigator",
     icon: "stack",
     requiresDocument: "Open a page to see the elements it is built from.",
-    render: (ctx) =>
+    /*
+     * One panel, two bodies, and only one of them is lit's.
+     *
+     * The Project Styles catalogue is a Jx document now (`panels/stylebook-layers-panel.ts`), so
+     * that branch draws NOTHING here and mounts against the painted DOM below — a document and a
+     * lit template can never share a container, because the document clears the host it is given
+     * and destroys lit's own part markers with it. The tree branch is unchanged.
+     */
+    render: (ctx): PanelBody =>
       ctx.deps.getCanvasMode() === "stylebook"
-        ? renderStylebookLayersTemplate({
-            selectStylebookTag,
-            stylebookMeta,
-          } as Parameters<typeof renderStylebookLayersTemplate>[0])
+        ? nothing
         : renderLayersTemplate({
             navigateToComponent: ctx.deps.navigateToComponent,
             rerender: ctx.rerender,
           }),
+    /*
+     * `afterRender` runs on every repaint, and {@link mountStylebookLayersPanel} is idempotent —
+     * the standing surface is updated where it is still there and re-mounted only where lit has
+     * taken it out. The detach on the other side is not symmetry: lit renders the tree into the
+     * range it owns INSIDE `.panel-content` and leaves everything appended after it alone, so a
+     * catalogue nobody took down would sit under the tree for the rest of the session.
+     */
     afterRender: (ctx, host) => {
-      if (ctx.deps.getCanvasMode() !== "stylebook") {
-        ctx.deps.registerLayersDnD();
+      if (ctx.deps.getCanvasMode() === "stylebook") {
+        mountStylebookLayersPanel({ selectStylebookTag, stylebookMeta }, host);
+        return;
       }
+      detachStylebookLayers();
+      ctx.deps.registerLayersDnD();
       revealSelectedRow(host);
     },
   });

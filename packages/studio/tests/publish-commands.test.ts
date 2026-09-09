@@ -166,7 +166,7 @@ describe("the records", () => {
     initLayers();
     await command("publish.setUp").run(emptyContext(), undefined as never);
     await flush();
-    expect(document.querySelector("#layer-modal .publish-modal")).toBeTruthy();
+    expect(document.querySelector('#layer-modal jx-dialog[part="publish"]')).toBeTruthy();
   });
 
   test("Deploy's run wrapper drives the same activity the direct call does", async () => {

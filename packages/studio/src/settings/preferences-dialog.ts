@@ -120,10 +120,10 @@ function sectionShown(): void {
 
 /** The shared credentials form — draft state lives inside the form's closure. */
 const credsForm = createAiCredentialsForm({
-  intro: html`
-    Any OpenAI-compatible key works. Stored locally on this machine; sent only to the Studio proxy
-    (never to a third party except your chosen endpoint).
-  `,
+  /* A sentence rather than a template: the form is a document now, and a document renders text
+     rather than another module's markup. */
+  intro:
+    "Any OpenAI-compatible key works. Stored locally on this machine; sent only to the Studio proxy (never to a third party except your chosen endpoint).",
   // Both buttons keep the sheet open: Preferences is a place, not a wizard step, and the previous
   // Dialog's habit of vanishing on Save is what made "did that take?" unanswerable.
   onCancel: repaint,

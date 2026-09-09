@@ -166,11 +166,16 @@ describe("left panel — document tabs", () => {
     }
   });
 
-  test("stylebook canvas mode renders the stylebook layer tree instead", async () => {
+  test("stylebook canvas mode mounts the Project Styles catalogue instead", async () => {
+    /* One panel, two bodies, and only the tree is lit's. The catalogue is
+       `surfaces/panel-stylebook-layers.json` and is addressed by `part`; what belongs HERE is that
+       this canvas mode reaches it at all, and that the tree's own branch stays out of the way.
+       What the catalogue contains is `tests/stylebook-layers-panel.test.ts`. */
     await mountWith({ getCanvasMode: () => "stylebook" });
-    // Stylebook meta sections render rows with tag badges, no layers DnD registration
-    expect(leftPanel.querySelectorAll(".layer-row").length).toBeGreaterThan(0);
+    await flush(4);
+    expect(leftPanel.querySelectorAll('[part="row"]').length).toBeGreaterThan(0);
     expect(leftPanel.querySelector(".layers-tree")).toBeNull();
+    expect(leftPanel.querySelectorAll(".layer-row")).toHaveLength(0);
     expect(ctx.registerLayersDnD).not.toHaveBeenCalled();
   });
 

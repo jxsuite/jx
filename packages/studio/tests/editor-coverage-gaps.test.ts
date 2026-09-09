@@ -129,14 +129,16 @@ describe("convert-to-repeater gaps", () => {
     tab.session.selection = [["children", 0]];
 
     const done = convertToRepeater();
-    await flush();
-    const field = document.querySelector("#layer-dialog sp-textfield") as HTMLElement & {
-      value?: string;
-    };
+    /* Three turns: the kit element registers, then the runtime renders its template. */
+    await flush(3);
+    const field = document.querySelector<HTMLInputElement>(
+      '#layer-dialog [part="new-name"] [part="input"]',
+    );
     expect(field).not.toBeNull();
-    field.value = "viaEnter";
-    field.dispatchEvent(new Event("input", { bubbles: true }));
-    field.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }));
+    field!.value = "viaEnter";
+    field!.dispatchEvent(new Event("input", { bubbles: true }));
+    await flush();
+    field!.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }));
     await done;
 
     const doc = tab.doc.document as Record<string, unknown>;

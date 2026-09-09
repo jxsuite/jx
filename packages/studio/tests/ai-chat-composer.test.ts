@@ -13,7 +13,7 @@ import {
   seedSettings,
   setValue,
 } from "./harness";
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { render } from "lit-html";
 import { createComposer } from "../src/panels/ai-chat/composer";
 import { ATTACHED_CONTEXT_DELIMITER } from "../src/panels/ai-chat/attached-context";
@@ -31,8 +31,21 @@ let fetchImpl: (url: string, init?: RequestInit) => Promise<Response> = async ()
 
 // ─── Harness ─────────────────────────────────────────────────────────────────
 
+/** Every container this file has attached, so one test's DOM never outlives it. */
+const containers: HTMLElement[] = [];
+
+afterEach(() => {
+  for (const node of containers.splice(0)) {
+    node.remove();
+  }
+});
+
 function makeComposer(extra: Partial<ComposerOptions> = {}) {
   const container = document.createElement("div");
+  /* ATTACHED, because the model picker inside the row is a mounted Jx document and a kit element
+     renders its own template on connection: detached, the picker is a host with nothing in it. */
+  document.body.append(container);
+  containers.push(container);
   const onSend = mock((_text: string) => {});
   const onStop = mock(() => {});
   const onOpenSettings = mock(() => {});
@@ -219,7 +232,10 @@ describe("model picker", () => {
      render scheduler to it. */
   test("mounts a picker wired to the composer's own scheduler", async () => {
     const c = makeComposer();
-    expect(c.container.querySelector(".ai-model-picker")).not.toBeNull();
+    /* The picker is a mounted Jx document now, so it is addressed by `part` and it is not there on
+       the turn the composer renders. */
+    await flush(6);
+    expect(c.container.querySelector('[part="model-picker"]')).not.toBeNull();
     // The fetch settles through requestRender, so the list appears without an explicit rerender.
     await flush();
     expect(c.container.textContent).toContain("o3 mini");

@@ -250,6 +250,6 @@ describe("document.openSeo with no document", () => {
     expect(() => registry.run("document.openSeo")).toThrow(
       'command "document.openSeo" needs an open document',
     );
-    expect(document.querySelector(".seo-modal")).toBeNull();
+    expect(document.querySelector('jx-dialog[part="seo"]')).toBeNull();
   });
 });

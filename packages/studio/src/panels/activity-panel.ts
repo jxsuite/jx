@@ -31,12 +31,13 @@
  * **The feed itself is a Jx document** (`surfaces/panel-activity.json`, mounted by
  * `surfaces/panel-activity.ts`). What stays here is the record and the vocabulary a row is written
  * in — the state glyphs, the duration, and {@link activityView}, which flattens the store into the
- * booleans a document can switch on. The tab's `render` paints the deploy checklist and the
- * container the document mounts into; nothing in this file draws a row any more.
+ * booleans a document can switch on. The tab's `render` paints two empty containers — one for the
+ * deploy checklist, one for the feed — and its `afterRender` hands each to the module that owns it;
+ * nothing in this file draws a row any more.
  */
 
 import { html } from "lit-html";
-import { renderDeployChecklist } from "../publish/deploy-checklist";
+import { syncDeployChecklist } from "../publish/deploy-checklist";
 import { disposeActivitySurface, mountActivitySurface } from "../surfaces/panel-activity";
 import { reactive } from "../reactivity";
 import { now } from "../services/clock";
@@ -443,25 +444,25 @@ const ACTIVITY_SURFACE: ActivitySurfaceDeps = {
 };
 
 /**
- * The Activity tab's body: the deploy checklist, then the container the feed mounts into.
+ * The Activity tab's body: a container for the deploy checklist, then one for the feed.
  *
- * The checklist is still a lit template and still belongs to `publish/deploy-checklist.ts` — a
- * deploy is a long operation with a log, which is why P4 folded it in here rather than giving it a
- * fifth dock tab. It renders above the feed and before any operation has started, because its whole
- * job is to say what is missing BEFORE you begin. It converts with its own module; this tab hosts
- * it either way.
+ * Two documents, two hosts, and that is the seam rather than a layout: a document CLEARS the host
+ * it is given and lit renders BESIDE foreign nodes, so a document and a lit template can never
+ * share a container. The checklist belongs to `publish/deploy-checklist.ts` — a deploy is a long
+ * operation with a log, which is why P4 folded it in here rather than giving it a fifth dock tab —
+ * and it sits above the feed because its whole job is to say what is missing BEFORE you begin.
  *
- * **`data-activity-surface` is the marker, and it is an attribute rather than a class for two
- * reasons.** Nothing styles it, and a class no stylesheet defines is an orphan the styling gate is
- * right to refuse. And the dock runs EVERY tab's `afterRender` against the same painted body
- * whether or not that tab is showing (`panels/bottom-dock.ts`), so a marker lit paints only for
- * this tab is also the answer to "am I on screen?" — which is the question the Logic tab settles
- * the same way, with its own empty `.fw-code` container.
+ * **`data-deploy-checklist` and `data-activity-surface` are the markers, and they are attributes
+ * rather than classes for two reasons.** Nothing styles them, and a class no stylesheet defines is
+ * an orphan the styling gate is right to refuse. And the dock runs EVERY tab's `afterRender`
+ * against the same painted body whether or not that tab is showing (`panels/bottom-dock.ts`), so a
+ * marker lit paints only for this tab is also the answer to "am I on screen?" — which is the
+ * question the Logic tab settles the same way, with its own empty `.fw-code` container.
  *
  * @returns {PanelBody}
  */
 export function renderActivityBody(): PanelBody {
-  return html`${renderDeployChecklist()}
+  return html`<div data-deploy-checklist></div>
     <div data-activity-surface></div>`;
 }
 
@@ -504,6 +505,9 @@ export function registerActivityPanel(): void {
     badge: () => (runningActivities().length > 0 ? runningActivities().length : null),
     render: () => renderActivityBody(),
     afterRender: (_ctx, host) => {
+      /* Two surfaces, each told about the same painted body and each finding its own container in
+         it — or not finding it, which is how either one learns the tab is off screen. */
+      syncDeployChecklist(host);
       syncActivitySurface(host);
     },
   });

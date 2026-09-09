@@ -114,7 +114,7 @@ describe("chat panel", () => {
     expect(container).toBeTruthy();
     // No key stored and no configured proxy → still a chat, with the setup action beneath it.
     // The credentials form itself lives in Preferences › Assistant, not in this tab.
-    expect(container.querySelector(".ai-creds-form")).toBeNull();
+    expect(container.querySelector('[part="ai-creds-form"]')).toBeNull();
     expect(container.querySelector(".ai-chat-header")).toBeTruthy();
     expect(container.querySelector(".ai-setup-notice")).toBeTruthy();
   });

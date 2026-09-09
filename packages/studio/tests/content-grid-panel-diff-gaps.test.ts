@@ -483,21 +483,23 @@ describe("a Document Header repaint that lands after the host is gone", () => {
 
     const el = document.querySelector<HTMLElement>(".doc-header-host")!;
     frontmatterPanel.attachDocumentHeaderHost("primary", el);
-    await flush(4);
-    expect(el.querySelector(".doc-header")).not.toBeNull();
+    await flush(8);
+    expect(el.querySelector('[part="card"]')).not.toBeNull();
     expect(el.hidden).toBeFalse();
 
     // The stage asks for a repaint and then redraws itself without a header slot before the frame
     // Lands. The queued repaint still runs, and it has nowhere to paint.
     frontmatterPanel.render();
     frontmatterPanel.attachDocumentHeaderHost("primary", null);
-    await flush(4);
+    await flush(8);
 
     expect(frontmatterPanel.documentHeaderHost("primary")).toBeNull();
     expect(frameErrors).toEqual([]);
-    // The element the stage took back is left exactly as it was — the orphaned repaint neither
-    // Cleared it nor hid it, because it never ran against it.
-    expect(el.querySelector(".doc-header")).not.toBeNull();
+    /* The stage's own node is left as it found it — nothing hides it and nothing else is written
+       into it — but the CARD goes with the hand-back. It is a mounted document now, and a document
+       owns runtime effects: leaving one bound to a tree the stage has taken away is a subscription
+       to a document nobody can see, which is exactly the leak the lit card had no way to have. */
     expect(el.hidden).toBeFalse();
+    expect(el.querySelector('[part="card"]')).toBeNull();
   });
 });
