@@ -382,6 +382,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `spec.md`
 
+- **0.6.16-draft** (2026-09-09) — a declaration at-rule may be written more than once, as an array of blocks — the only spelling @font-face has for a family's second weight.
 - **0.6.15-draft** (2026-09-03) — a style declaration value may be a ref; a reactive custom property on a self-target rule is written inline so rows share one rule; a static build reports what it drops; color-scheme lands on :root.
 - **0.6.14-draft** (2026-09-03) — a custom element's call-site style merges with its definition's; a slot leaves no node; the display default is a rule decided by the base block, with display revert as the opt-out; onMount receives the host; #/$map resolves.
 - **0.6.13-draft** (2026-09-02) — Removing an observed attribute restores the state entry's declared default (§16.5).

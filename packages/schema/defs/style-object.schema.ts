@@ -21,7 +21,27 @@ export const styleObjectSchema = {
     "(e.g. breakpoint → selector → pseudo-class), mirroring the compiler's recursive emission. " +
     "An object carrying $ref is a reactive VALUE, and the runtime reads it as one. It also " +
     "matches the nested-block branch vacuously, since a block admits a string under any key, " +
-    "which is why these branches are anyOf rather than oneOf.",
+    "which is why these branches are anyOf rather than oneOf. " +
+    "A DECLARATION at-rule (@font-face, @property, @position-try, @counter-style) may hold an " +
+    "ARRAY of blocks, which is that key written more than once, in order: an object's keys are " +
+    "unique, so @font-face — the at-rule whose identity is not in its key — could not otherwise " +
+    "state a family's second weight at all.",
+  patternProperties: {
+    /*
+     * A DECLARATION at-rule, and only one of those four, may hold several blocks.
+     *
+     * `additionalProperties` below admits no array, so this is the whole of it. The builder scopes
+     * the form the same way (`blocksOf` in `packages/runtime/src/css.ts`), and the two must agree:
+     * a schema that admitted an array under a selector would validate a document the builder
+     * silently drops, which is the same trap `staticStyleObjectSchema` exists to avoid one level up.
+     */
+    "^@(font-face|property|position-try|counter-style)": {
+      anyOf: [
+        { $ref: "#/$defs/StyleObject" },
+        { items: { $ref: "#/$defs/StyleObject" }, minItems: 1, type: "array" },
+      ],
+    },
+  },
   properties: {},
   type: "object",
 } as const;

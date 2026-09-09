@@ -2,9 +2,9 @@
 
 ## Declarative Document Object Model — JSON Edition
 
-**Version:** 0.6.15-draft\
+**Version:** 0.6.16-draft\
 **Status:** Partial\
-**Updated:** 2026-09-03\
+**Updated:** 2026-09-09\
 **License:** MIT
 
 ---
@@ -924,6 +924,21 @@ Both the compiler and the runtime resolve nesting recursively; the component and
 ```
 
 The name is part of the key, so the test is a prefix match.
+
+**A declaration at-rule may be written more than once, as an ARRAY of blocks**, emitted in the order given. An object's keys are unique, so a key names a rule once — and `@font-face` is the one at-rule of the four whose identity is NOT in its key, so a family with three weights had no spelling at all:
+
+```json
+{
+  "style": {
+    "@font-face": [
+      { "font-family": "JetBrains Mono", "font-weight": "400", "src": "url(\"mono-400.woff2\")" },
+      { "font-family": "JetBrains Mono", "font-weight": "700", "src": "url(\"mono-700.woff2\")" }
+    ]
+  }
+}
+```
+
+**Only these four keys take the form**, and the narrowness is deliberate. They are leaves — their bodies are declarations and nothing recurses into them — so a list there teaches no other reader anything new. Under a selector key an array would say what one block already says, while every style walker outside the emitter assumes a block key holds ONE block; admitting it there would leave those readers stepping past it in silence. A validator refuses the array under any other key, so the schema and the emitters agree about what a document means rather than one of them dropping what the other accepted.
 
 **`@keyframes` is the third body shape**, and the only one: its children are neither declarations nor element selectors but **keyframe selectors** — `from`, `to`, `50%`, `"0%, 100%"` — each naming a point on an animation's timeline. Three rules follow, and each of them is a correctness requirement rather than a formatting preference:
 
@@ -2542,6 +2557,7 @@ This rewrites the mutating handlers of Appendix A's idiom using `$expression`, l
 
 ## Changelog
 
+- **0.6.16-draft** (2026-09-09) — a declaration at-rule may be written more than once, as an array of blocks — the only spelling @font-face has for a family's second weight.
 - **0.6.15-draft** (2026-09-03) — a style declaration value may be a ref; a reactive custom property on a self-target rule is written inline so rows share one rule; a static build reports what it drops; color-scheme lands on :root.
 - **0.6.14-draft** (2026-09-03) — a custom element's call-site style merges with its definition's; a slot leaves no node; the display default is a rule decided by the base block, with display revert as the opt-out; onMount receives the host; #/$map resolves.
 - **0.6.13-draft** (2026-09-02) — Removing an observed attribute restores the state entry's declared default (§16.5).
@@ -2621,4 +2637,4 @@ This rewrites the mutating handlers of Appendix A's idiom using `$expression`, l
 
 ---
 
-_Jx Specification v0.6.15-draft — subject to revision_
+_Jx Specification v0.6.16-draft — subject to revision_

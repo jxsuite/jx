@@ -633,6 +633,31 @@ export function buildStyleRules(style: JxStyle, options: CssBuildOptions = {}): 
   const isBlock = (value: unknown): value is JxStyle =>
     value !== null && typeof value === "object" && !Array.isArray(value) && !isRef(value);
 
+  /**
+   * The blocks written under one key: the block itself, or each of an ARRAY of them, in order.
+   *
+   * An object's keys are unique, so a key can name a rule only once — and `@font-face` is the
+   * at-rule whose identity is not in its key, so a family with three weights had no spelling at
+   * all. It was not refused either: an array here emitted NOTHING, silently, so a style block that
+   * looked complete shipped no faces and the page fell to its fallback stack.
+   *
+   * **Only a DECLARATION at-rule takes the array**, and the narrowness is the point rather than
+   * caution. Those four are leaves — `walkAt` emits their declarations and recurses into nothing —
+   * so admitting a list there teaches no other walker anything new. Under a selector key an array
+   * would say what one block already says, while every style walker in the repo (the overlay lint,
+   * the a11y lint, the canvas) assumes a block key holds ONE block; allowing it there would leave
+   * those reading past it in silence, which is the failure this codebase keeps finding.
+   */
+  const blocksOf = (key: string, value: unknown): JxStyle[] => {
+    if (isBlock(value)) {
+      return [value];
+    }
+    if (!isDeclarationAtRule(key) || !Array.isArray(value) || value.length === 0) {
+      return [];
+    }
+    return value.every((entry) => isBlock(entry)) ? value : [];
+  };
+
   const declarationValue = (
     property: string,
     value: unknown,
@@ -674,7 +699,9 @@ export function buildStyleRules(style: JxStyle, options: CssBuildOptions = {}): 
   ): [string, string][] => {
     const declarations: [string, string][] = [];
     for (const [key, value] of Object.entries(node)) {
-      if (isBlock(value)) {
+      /* `blocksOf`, not `isBlock`: an array of blocks is a rule written more than once, never a
+         declaration value, and reading it as one emitted `@font-face: [object Object]`. */
+      if (blocksOf(key, value).length > 0) {
         continue;
       }
       // A scalar under a selector or at-rule key is an invalid shape, not a declaration.
@@ -809,18 +836,17 @@ export function buildStyleRules(style: JxStyle, options: CssBuildOptions = {}): 
   ) {
     emit(conditions, selector, declarationsOf(node, true, true, target), target);
     for (const [key, value] of Object.entries(node)) {
-      if (!isBlock(value)) {
-        continue;
-      }
-      if (key.startsWith("@")) {
-        walkAt(key, value, selector, conditions, target);
-      } else if (selector !== null) {
-        walk(
-          value,
-          resolveNestedSelector(selector, key),
-          conditions,
-          compoundsOntoScope(key) ? target : "descendant",
-        );
+      for (const block of blocksOf(key, value)) {
+        if (key.startsWith("@")) {
+          walkAt(key, block, selector, conditions, target);
+        } else if (selector !== null) {
+          walk(
+            block,
+            resolveNestedSelector(selector, key),
+            conditions,
+            compoundsOntoScope(key) ? target : "descendant",
+          );
+        }
       }
     }
   }
