@@ -86,7 +86,7 @@ Document/preview surfaces (`.canvas-panel-viewport`, stylebook, element previews
 
 `scripts/check-styles.ts` (run via `bun run lint:styles`, and as part of `bun test`) **fails** on hard-coded hex colours and **warns** on `font-size` / `border-radius` px that have an exact Spectrum token. Add genuinely intentional colours to `ALLOWED_HEX` in that script, with a comment.
 
-`styles/tokens.css` and `styles/forced-colors.css` are generated from `styles/tokens.json` and `styles/forced-colors.json` by `scripts/build-styles.ts`. Edit the JSON and run `bun run styles:sync`; `bun run styles:check` is the gate. A rule's `$description` becomes the comment above it. It remains a linked stylesheet because everything in it must paint before the kit's theme is adopted from JavaScript. `styles/spectrum.css` is the one hand-written sheet left, and it goes when `<sp-theme>` does.
+`styles/tokens.css`, `styles/shell-frame.css` and `styles/forced-colors.css` are generated from the `.json` files beside them by `scripts/build-styles.ts`, and each is excluded from `bun run format` so the generator is their only author. Edit the JSON and run `bun run styles:sync`; `bun run styles:check` is the gate. A rule's `$description` becomes the comment above it. It remains a linked stylesheet because everything in it must paint before the kit's theme is adopted from JavaScript. `styles/spectrum.css` is the one hand-written sheet left, and it goes when `<sp-theme>` does.
 
 Both rules read a surface document's `style` object as well as the stylesheets, in either spelling (`"fontSize"` and `"font-size"` alike). Only style values are read: a hex in a `textContent` or a `$description` is content, not chrome.
 

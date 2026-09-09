@@ -9,6 +9,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
+  SHEETS,
   commentOf,
   expandRule,
   readSource,
@@ -250,5 +251,101 @@ describe("sheetCSS", () => {
     expect(sheetCSS({ color: "red" } as never, ":root", "/* h */")).toBe(
       "/* h */\n:root {\n  color: red;\n}\n",
     );
+  });
+});
+
+describe("a generated sheet has one author", () => {
+  test("every generated output is excluded from the formatter", () => {
+    /* `bun run format` wraps a declaration at its own print width and the generator does not, so a
+       generated sheet the formatter also owns gets rewritten by each in turn — `styles:check` red
+       with nothing wrong. The two lists are held equal here because a sheet added to one and not
+       the other fails that way rather than obviously. */
+    const config = JSON.parse(readFileSync(join(ROOT, "../../.oxfmtrc.json"), "utf8")) as {
+      ignorePatterns: string[];
+    };
+    for (const sheet of SHEETS) {
+      expect(config.ignorePatterns, sheet.output).toContain(`packages/studio/${sheet.output}`);
+    }
+  });
+
+  test("each generated sheet is linked, in the order the cascade needs", () => {
+    // A sheet nobody links is the 2.1.0 dead-links outage; check-studio-package.ts owns the set.
+    const html = readFileSync(join(ROOT, "index.html"), "utf8");
+    for (const sheet of SHEETS) {
+      expect(html, sheet.output).toContain(`./${sheet.output}`);
+    }
+    expect(html.indexOf("shell-frame.css")).toBeLessThan(html.indexOf("shell.css"));
+    expect(html.indexOf("forced-colors.css")).toBeGreaterThan(html.indexOf("shell.css"));
+  });
+});
+
+const frame = readFileSync(join(ROOT, "styles/shell-frame.css"), "utf8");
+
+describe("the shell frame", () => {
+  test("the grid names its columns, and the dock track is declared on :root", () => {
+    /* The names, because every rule addressed the columns by index and a name survives an
+       insertion. The `:root` track, because `shell.ts`'s applyDockLayout writes it inline on the
+       root element and any closer ancestor would shadow that — and because an UNSET custom property
+       inside the `grid-template-rows` shorthand invalidates the whole declaration, so the shell
+       would paint one frame with no grid at all. */
+    expect(frame).toContain("[rail] 56px");
+    expect(frame).toContain("[nav] var(--panel-w-left)");
+    expect(frame).toContain("[pane] 1fr");
+    expect(frame).toContain("[insp] var(--panel-w-right)");
+    expect(frame).toContain("--dock-h-bottom: 220px;");
+    expect(frame).toContain("grid-template-rows: 36px minmax(0, 1fr) var(--dock-h-bottom) 24px;");
+  });
+
+  test("each collapse variant zeroes its track and hides its handle", () => {
+    for (const [side, token] of [
+      ["left", "--panel-w-left"],
+      ["right", "--panel-w-right"],
+    ]) {
+      expect(frame, side).toContain(`#app.${side}-collapsed {`);
+      expect(frame, token).toContain(`${token}: 0px;`);
+      expect(frame, side).toContain(`#app.${side}-collapsed #resize-${side}`);
+    }
+    expect(frame).toContain("#app.bottom-collapsed {");
+    expect(frame).toContain("--dock-h-bottom: 0px;");
+  });
+
+  test("the four overlay layers keep their stacking order", () => {
+    /* The z-indices were inline style attributes once, which put the one piece of ordering the
+       whole overlay system depends on outside the reach of the stacking rule. The toast host is
+       ABOVE the dialog host because an operation started from a dialog reports its outcome to the
+       person still looking at it. */
+    const z = (name: string) =>
+      Number(new RegExp(`\\.jx-layer--${name} \\{[^}]*z-index: (\\d+)`).exec(frame)?.[1]);
+    expect(z("popover")).toBe(1000);
+    expect(z("modal")).toBe(2000);
+    expect(z("dialog")).toBe(3000);
+    expect(z("toast")).toBeGreaterThan(z("dialog"));
+    expect(frame).toContain("pointer-events: none;");
+  });
+
+  test("the platform's drag region stays a class, because it is a contract and not a look", () => {
+    // `commandbar.ts` adds it; the desktop window reads `-webkit-app-region` to move the window.
+    expect(frame).toContain("#toolbar.electrobun-webkit-app-region-drag");
+    expect(frame).toContain("-webkit-app-region: drag;");
+  });
+
+  test("the statusbar owns its own row, below the dock's", () => {
+    /* Sharing that row put the whole bar in a zero-height cell — it rendered its three fields into
+       nothing while the 24px track stood empty, so the app looked like it had lost its status bar
+       the day it gained a dock. */
+    const rule = frame.slice(frame.indexOf("#statusbar {"));
+    expect(rule.slice(0, rule.indexOf("}"))).toContain("grid-row: 4;");
+  });
+
+  test("nothing that moved was left behind, and nothing else came with it", () => {
+    const shell = readFileSync(join(ROOT, "styles/shell.css"), "utf8");
+    const overlays = readFileSync(join(ROOT, "styles/overlays.css"), "utf8");
+    for (const selector of ["#app {", "#toolbar {", "#statusbar {", ".resize-handle {"]) {
+      expect(shell, selector).not.toContain(selector);
+      expect(frame, selector).toContain(selector);
+    }
+    expect(overlays).not.toContain(".jx-layer {");
+    // The AI chat panel stayed: it is a lit surface, and it moves with its surface, not with this.
+    expect(shell).toContain(".ai-chat-header");
   });
 });

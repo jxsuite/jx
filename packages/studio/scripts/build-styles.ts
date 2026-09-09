@@ -73,13 +73,39 @@ const FORCED_COLORS_HEADER = `/* GENERATED FILE — do not edit.
    across the whole app rather than one element's own subtree. */
 `;
 
-/** Every stylesheet generated from a style block. */
-const SHEETS: readonly Sheet[] = [
+const SHELL_FRAME_HEADER = `/* GENERATED FILE — do not edit.
+   Source: styles/shell-frame.json. Regenerate with \`bun run styles:sync\`.
+
+   The application FRAME: the #app grid, the cells every surface mounts into, the resize handles
+   and edges, the collapsed-dock variants, and the four overlay layers.
+
+   It is a linked stylesheet rather than a surface's own style block for the reason tokens.css is
+   one: the frame is what the first paint lays out. Its cells are addressed by id because
+   TypeScript adopts them (store.ts's initShellRefs) and the overlay API renders into them, so the
+   ids are a contract rather than styling — which is also why these rules are emitted UNSCOPED. */
+`;
+
+/**
+ * Every stylesheet generated from a style block.
+ *
+ * Each output is also in `.oxfmtrc.json`'s ignore list, and it has to be: a generated file has ONE
+ * author. `bun run format` wraps a declaration at its own print width, which this does not, so the
+ * two rewrote the same long `grid-template-columns` in turn and left `styles:check` red with
+ * nothing wrong. `tests/build-styles.test.ts` holds the two lists equal, since a sheet added here
+ * and not there fails that way rather than obviously.
+ */
+export const SHEETS: readonly Sheet[] = [
   {
     header: TOKENS_HEADER,
     output: "styles/tokens.css",
     scope: ":root",
     source: "styles/tokens.json",
+  },
+  {
+    header: SHELL_FRAME_HEADER,
+    output: "styles/shell-frame.css",
+    scope: "",
+    source: "styles/shell-frame.json",
   },
   {
     header: FORCED_COLORS_HEADER,
