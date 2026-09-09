@@ -482,6 +482,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `studio-ui-guidelines.md`
 
+- **0.4.13-draft** (2026-09-09) — the styling gate reads a surface document's style object and the classes it names, so a converted surface cannot leave the rules behind.
 - **0.4.12-draft** (2026-09-08) — the prompt's format choice is jx-select, and its projection names the chosen value rather than marking a row.
 - **0.4.11-draft** (2026-09-08) — the prompt's format select is a named defect rather than a pending promise: jx-select has landed and that control carries both spellings ui.md forbids.
 - **0.4.10-draft** (2026-09-02) — A surface that rewrites what the reader typed must make the rewrite visible to the binding.

@@ -214,7 +214,7 @@
       "height": "20px",
       "borderRadius": "50%",
       "overflow": "hidden",
-      "color": "#fff",
+      "color": "var(--jx-accent-fg)",
       "fontSize": "var(--jx-text-xs)",
       "fontWeight": "600",
       "flexShrink": "0"
