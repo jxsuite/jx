@@ -86,6 +86,8 @@ Document/preview surfaces (`.canvas-panel-viewport`, stylebook, element previews
 
 `scripts/check-styles.ts` (run via `bun run lint:styles`, and as part of `bun test`) **fails** on hard-coded hex colours and **warns** on `font-size` / `border-radius` px that have an exact Spectrum token. Add genuinely intentional colours to `ALLOWED_HEX` in that script, with a comment.
 
+`styles/tokens.css` is generated from `styles/tokens.json` by `scripts/build-tokens.ts`. Edit the JSON and run `bun run tokens:sync`; `bun run tokens:check` is the gate. It remains a linked stylesheet because everything in it must paint before the kit's theme is adopted from JavaScript. `styles/spectrum.css` is the one hand-written sheet left, and it goes when `<sp-theme>` does.
+
 Both rules read a surface document's `style` object as well as the stylesheets, in either spelling (`"fontSize"` and `"font-size"` alike). Only style values are read: a hex in a `textContent` or a `$description` is content, not chrome.
 
 It also **fails** on a modal card opened beside an `<sp-underlay>` that no rule stacks. The scrim paints at `z-index: 1`, so a card left at `auto` sits _under_ its own overlay: visible through it, and unclickable — which is how the blocking progress modal shipped with its only exit button unpressable. Give the card a `z-index` (the underlay-bearing cards use `1000`).
