@@ -11,16 +11,18 @@
  * it and revoke it (plan §9.3). Nothing about this form changed for the move, which is the argument
  * for it having been a reusable form rather than a section of a dialog.
  *
- * Built from Spectrum controls with its layout in `styles/shell.css`: a roaming credential the user
- * configures once does not get its own bespoke inputs, and it certainly does not get 200-character
- * inline `style=` strings that stop responding the moment the theme changes.
+ * This module is the FLOW; `surfaces/ai-credentials-form.json` is what it draws. It keeps the three
+ * drafts, decides which credentials a listing is sent with, what Save persists and re-reads, and
+ * whether Cancel is on offer; the surface renders those and reports what the reader did. `render()`
+ * hands back the surface's own host element rather than a template, because every gate is still a
+ * lit template that interpolates the form beside the keyless offer — see
+ * `surfaces/ai-credentials-form.ts` for why that element is the mount point and why re-rendering
+ * the gate cannot disturb it.
  *
+ * @docs studio/ai
  * @license MIT
  */
 
-import { html, nothing } from "lit-html";
-import { live } from "lit-html/directives/live.js";
-import type { TemplateResult } from "lit-html";
 import { fetchAvailableModels } from "../services/ai-models";
 import {
   getBaseUrl,
@@ -29,6 +31,16 @@ import {
   saveAiProvider,
   storedModel,
 } from "../services/ai-settings";
+import { createAiCredentialsSurface } from "../surfaces/ai-credentials-form";
+import type {
+  AiCredentialsSurface,
+  AiCredentialsView,
+  CredentialsModelRow,
+} from "../surfaces/ai-credentials-form";
+
+/** The blurb a host that says nothing gets. */
+const DEFAULT_INTRO =
+  "Any OpenAI-compatible key works. Stored locally in this browser; sent only to the Studio proxy (never to a third party except your chosen endpoint).";
 
 export interface AiCredentialsFormOptions {
   /** Host re-render scheduler — called whenever the form's internal state changes. */
@@ -37,12 +49,22 @@ export interface AiCredentialsFormOptions {
   onSaved?: () => void;
   /** Called when Cancel dismisses the form (Cancel is only offered when a key already exists). */
   onCancel?: () => void;
-  /** Optional context line (TemplateResult | string) replacing the default blurb. */
-  intro?: unknown;
+  /**
+   * Optional context line replacing the default blurb.
+   *
+   * A string, not a template: the line is drawn by a document, and a document renders text rather
+   * than somebody else's markup. Nothing that passed one ever passed more than a sentence.
+   */
+  intro?: string;
 }
 
 export interface AiCredentialsForm {
-  render: () => TemplateResult;
+  /**
+   * The form's host element.
+   *
+   * A gate interpolates it into its own lit template, which inserts a Node it is handed as-is.
+   */
+  render: () => HTMLElement;
   /** Preload drafts from the stored ai-settings and auto-fetch the model list. */
   startEdit: () => void;
 }
@@ -62,6 +84,9 @@ export function createAiCredentialsForm(opts: AiCredentialsFormOptions): AiCrede
   let availableModels: { id: string; name: string }[] = [];
   let modelsLoading = false;
   let modelsError = "";
+
+  /** Made on the first render, and kept for the life of the controller. */
+  let surface: AiCredentialsSurface | null = null;
 
   /**
    * Load the drafts from what is stored.
@@ -104,7 +129,7 @@ export function createAiCredentialsForm(opts: AiCredentialsFormOptions): AiCrede
     loadDrafts();
     modelsError = "";
     /* The fetched list stays: it was listed under exactly these credentials, and dropping it
-       collapsed the model combobox back to a free-text field on every save. The module cache is
+       collapsed the model list control back to a bare text field on every save. The module cache is
        dropped by ai-models' own settings subscription, so this form does not have to remember to. */
     opts.onSaved?.();
     opts.requestRender();
@@ -148,96 +173,68 @@ export function createAiCredentialsForm(opts: AiCredentialsFormOptions): AiCrede
     }
   }
 
-  /** The key + model + endpoint form column. */
-  function render(): TemplateResult {
-    const haveKey = hasOpenAiKey();
-    return html`
-      <div class="ai-creds-form">
-        <div class="ai-creds-title">AI provider key</div>
-        <div class="ai-creds-note">
-          ${
-            opts.intro === undefined
-              ? html`
-                  Any OpenAI-compatible key works. Stored locally in this browser; sent only to the
-                  Studio proxy (never to a third party except your chosen endpoint).
-                `
-              : opts.intro
-          }
-        </div>
-        <sp-textfield
-          class="ai-creds-field"
-          type="password"
-          size="s"
-          placeholder="sk-… or any compatible key"
-          .value=${live(keyDraft)}
-          @input=${(e: Event) => {
-            keyDraft = (e.target as HTMLInputElement).value;
-          }}
-        ></sp-textfield>
-        <div class="ai-creds-label">Model</div>
-        ${
-          availableModels.length > 0
-            ? html`
-                <sp-combobox
-                  class="ai-creds-field"
-                  size="s"
-                  allows-custom-value
-                  .value=${live(modelDraft)}
-                  @change=${(e: Event) => {
-                    modelDraft = (e.target as HTMLInputElement).value;
-                  }}
-                  @input=${(e: Event) => {
-                    modelDraft = (e.target as HTMLInputElement).value;
-                  }}
-                >
-                  ${availableModels.map(
-                    (m) => html`<sp-menu-item value=${m.id}>${m.name}</sp-menu-item>`,
-                  )}
-                </sp-combobox>
-              `
-            : html`
-                <sp-textfield
-                  class="ai-creds-field"
-                  size="s"
-                  placeholder="Model ID (e.g. gpt-4o, claude-sonnet-4-20250514, etc.)"
-                  .value=${live(modelDraft)}
-                  @input=${(e: Event) => {
-                    modelDraft = (e.target as HTMLInputElement).value;
-                  }}
-                ></sp-textfield>
-              `
-        }
-        <div class="ai-creds-models">
-          <sp-button size="s" variant="secondary" ?disabled=${modelsLoading} @click=${fetchModels}>
-            ${
-              modelsLoading
-                ? "Fetching…"
-                : availableModels.length > 0
-                  ? "Refresh models"
-                  : "Fetch models"
-            }
-          </sp-button>
-          ${modelsError ? html`<span class="ai-creds-error">${modelsError}</span>` : nothing}
-        </div>
-        <sp-textfield
-          class="ai-creds-field"
-          size="s"
-          placeholder="Endpoint (optional, e.g. http://localhost:11434/v1)"
-          .value=${live(baseUrlDraft)}
-          @input=${(e: Event) => {
-            baseUrlDraft = (e.target as HTMLInputElement).value;
-          }}
-        ></sp-textfield>
-        <div class="ai-creds-actions">
-          ${
-            haveKey
-              ? html`<sp-button size="s" variant="secondary" @click=${cancel}>Cancel</sp-button>`
-              : nothing
-          }
-          <sp-button size="s" variant="primary" @click=${save}>Save</sp-button>
-        </div>
-      </div>
-    `;
+  /** The catalogue as rows. A model with no name of its own is called by its id. */
+  function rows(): CredentialsModelRow[] {
+    return availableModels.map((model) => ({ label: model.name, value: model.id }));
+  }
+
+  /** What the form says right now — the whole of what the surface is told. */
+  function view(): AiCredentialsView {
+    return {
+      baseUrlDraft,
+      fetchLabel: modelsLoading
+        ? "Fetching…"
+        : availableModels.length > 0
+          ? "Refresh models"
+          : "Fetch models",
+      haveKey: hasOpenAiKey(),
+      intro: opts.intro ?? DEFAULT_INTRO,
+      keyDraft,
+      modelDraft,
+      models: rows(),
+      modelsError,
+      modelsLoading,
+    };
+  }
+
+  /**
+   * What the reader typed, announced on the scope before anything else reads it.
+   *
+   * A document's binding writes only when the value it reads CHANGES (§9.3), so a draft the flow
+   * decided without the raw text passing through would leave the field holding something the flow
+   * does not have. Nothing rewrites a draft today; the echo is what makes a rewrite possible.
+   */
+  function setKey(value: string) {
+    keyDraft = value;
+    surface?.update(view());
+  }
+
+  function setModel(value: string) {
+    modelDraft = value;
+    surface?.update(view());
+  }
+
+  function setBaseUrl(value: string) {
+    baseUrlDraft = value;
+    surface?.update(view());
+  }
+
+  function render(): HTMLElement {
+    if (surface) {
+      surface.update(view());
+    } else {
+      surface = createAiCredentialsSurface(view(), {
+        cancel,
+        fetchModels: () => {
+          void fetchModels();
+        },
+        save,
+        setBaseUrl,
+        setKey,
+        setModel,
+      });
+    }
+    return surface.host;
   }
 
   return { render, startEdit };

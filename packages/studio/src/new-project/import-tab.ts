@@ -41,9 +41,14 @@ const MAX_BREAKPOINTS = 12;
  */
 const MAX_DEPTH = 5;
 
-/** Structural view of src/ui/ai-credentials-form's controller (what this tab renders when gated). */
+/**
+ * Structural view of src/ui/ai-credentials-form's controller (what this tab renders when gated).
+ *
+ * `render()` hands back an ELEMENT rather than a template: the form is a mounted document now, and
+ * this tab interpolates the host node it owns. lit inserts a Node it is given as-is.
+ */
 export interface CredsFormLike {
-  render: () => TemplateResult;
+  render: () => HTMLElement;
   startEdit: () => void;
 }
 
@@ -164,13 +169,15 @@ let _picker: ReturnType<typeof createModelPicker> | null = null;
 
 function modelPicker() {
   _picker ??= createModelPicker({
-    className: "new-project-import-model",
     getModel: () => _model || preferredModel(),
     // A draft, deliberately not `setModel` — see `_model`.
     onChange: (id) => {
       _model = id;
     },
     requestRender: () => _rerender?.(),
+    /* A field in a form column, so the control takes the column's width — the shape it used to get
+       from `.new-project-import-model`, said to the surface that owns the rule instead. */
+    width: "fill",
   });
   return _picker;
 }

@@ -193,7 +193,9 @@ describe("uniqueness with two stages standing", () => {
       }
     }
     frontmatter.render();
-    await flush(4);
+    // Eight turns rather than four: the Document Header card is a mounted document, so a paint is
+    // The kit's registration plus the runtime's own render rather than one synchronous `litRender`.
+    await flush(8);
   }
 
   afterEach(() => {
@@ -238,18 +240,22 @@ describe("uniqueness with two stages standing", () => {
        id, not a wrongly-scoped one.
 
        Both pickers have since moved into Search appearance, which halves the original hazard by
-       construction — the modal is a singleton, so there is no per-pane duplicate to shadow the
-       Inspector's control. It does NOT remove it: the modal still draws pickers, and a picker that
-       stamps an Inspector id is wrong from wherever it is drawn. So this asserts the property, not
-       the old geometry: whatever pickers exist outside `#right-panel`, none is stamped. */
+       construction — the surface is a singleton, so there is no per-pane duplicate to shadow the
+       Inspector's control. It does NOT remove it: Search appearance still draws media rows, and a
+       media control that stamps an Inspector id is wrong from wherever it is drawn. So this asserts
+       the property, not the old geometry: whatever media controls exist outside `#right-panel`,
+       none is stamped. Search appearance is a document now, so its Browse controls are addressed by
+       `part` rather than by the picker's class — which is itself the point, since a document may
+       not stamp an id the Inspector derives. The Document Header card is a document too now, so the
+       two cards are counted by the region each stamps on itself rather than by a class. */
     await twoRealPanes();
-    expect([...document.querySelectorAll(".doc-header")]).toHaveLength(2);
-    // The card's own pickers are gone; the ones that were there are in the modal now.
+    expect([...document.querySelectorAll('[data-jx-region$="/frontmatter"]')]).toHaveLength(2);
+    // The card's own pickers are gone; the ones that were there are in Search appearance now.
     expect(document.querySelectorAll(".pane-stage .media-picker-browse")).toHaveLength(0);
 
     openSeoModal(activeTab.value!);
-    await flush(4);
-    const browseButtons = [...document.querySelectorAll(".seo-modal .media-picker-browse")];
+    await flush(12);
+    const browseButtons = [...document.querySelectorAll('jx-dialog[part="seo"] [part="browse"]')];
     expect(browseButtons.length).toBeGreaterThanOrEqual(2); // Icon and og:image.
     for (const button of browseButtons) {
       expect(button.getAttribute(REGION_ATTR)).toBeNull();

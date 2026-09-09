@@ -165,17 +165,15 @@ describe("the reference control reads a collection once", () => {
 
 function publishBodyText(): string {
   return (
-    document.querySelector("#layer-modal .publish-modal")?.textContent?.replaceAll(/\s+/g, " ") ??
-    ""
+    document
+      .querySelector('#layer-modal jx-dialog[part="publish"]')
+      ?.textContent?.replaceAll(/\s+/g, " ") ?? ""
   );
 }
 
-function publishButton(label: string): HTMLElement | null {
-  return (
-    [...document.querySelectorAll<HTMLElement>("#layer-modal sp-button")].find((button) =>
-      button.textContent?.includes(label),
-    ) ?? null
-  );
+/** A control on the publish surface, by the `part` it carries — the panel is a document now. */
+function publishButton(part: string): HTMLElement | null {
+  return document.querySelector<HTMLElement>(`#layer-modal [part="${part}"]`);
 }
 
 describe("the publish panel's Refresh button", () => {
@@ -212,7 +210,7 @@ describe("the publish panel's Refresh button", () => {
     expect(publishBodyText()).toContain("Connected to Pages project");
     expect(cfConnection).not.toHaveBeenCalled();
 
-    pointer(publishButton("Refresh")!, "click");
+    pointer(publishButton("refresh")!, "click");
     await flush();
 
     expect(cfConnection).toHaveBeenCalledTimes(1);

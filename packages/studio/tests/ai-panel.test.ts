@@ -178,10 +178,15 @@ function d<T extends Element = HTMLElement>(sel: string) {
   return document.querySelector(`#layer-dialog ${sel}`) as T | null;
 }
 
-/** The dialog's `<sp-button>` whose label contains `label`. */
+/**
+ * The dialog's button whose label contains `label`.
+ *
+ * Both families, because the sheet is half-migrated: its own template is still Spectrum, and the
+ * provider form mounted inside it is a Jx document over the kit.
+ */
 function dialogButton(label: string) {
-  return [...document.querySelectorAll("#layer-dialog sp-button")].find((b) =>
-    b.textContent?.includes(label),
+  return [...document.querySelectorAll("#layer-dialog sp-button, #layer-dialog jx-button")].find(
+    (b) => b.textContent?.includes(label),
   ) as HTMLElement | undefined;
 }
 
@@ -229,7 +234,7 @@ describe("ai-panel", () => {
     // The panel is a chat, not a credentials form — the transcript and composer are both up.
     expect(q(".ai-chat-messages")).not.toBeNull();
     expect(q(".ai-composer textarea")).not.toBeNull();
-    expect(q(".ai-creds-form")).toBeNull();
+    expect(q('[part="ai-creds-form"]')).toBeNull();
     // …with one line and the action that fixes it.
     expect(q(".ai-setup-notice")!.textContent).toContain("No AI provider is connected yet.");
     // The action is Preferences, not a dialog of the panel's own: a provider key is an
@@ -243,15 +248,17 @@ describe("ai-panel", () => {
     clearSeededSettings();
     await flush(3);
     await openSettingsFromNotice();
-    expect(d(".ai-creds-form")).not.toBeNull();
+    expect(d('[part="ai-creds-form"]')).not.toBeNull();
     expect(d("sp-dialog-wrapper")!.getAttribute("headline")).toBe("Preferences");
-    // The form is Spectrum controls, not raw inputs with inline styles.
-    expect(document.querySelectorAll("#layer-dialog sp-textfield").length).toBeGreaterThan(0);
-    expect(d(".ai-creds-form input")).toBeNull();
+    // The form is kit controls, and the key one masks.
+    expect(
+      document.querySelectorAll('#layer-dialog [part="ai-creds-form"] jx-textfield').length,
+    ).toBeGreaterThan(0);
+    expect(d('[part="key"] [part="input"]')!.getAttribute("type")).toBe("password");
 
     d("sp-dialog-wrapper")!.dispatchEvent(new Event("close", { bubbles: true }));
     await flush(3);
-    expect(d(".ai-creds-form")).toBeNull();
+    expect(d('[part="ai-creds-form"]')).toBeNull();
     expect(q(".ai-setup-notice")).not.toBeNull();
   });
 
@@ -260,7 +267,7 @@ describe("ai-panel", () => {
     clearSeededSettings();
     await flush(3);
     await openSettingsFromNotice();
-    const field = d<HTMLInputElement>("sp-textfield")!;
+    const field = d<HTMLInputElement>('[part="key"] [part="input"]')!;
     field.value = "sk-from-dialog";
     field.dispatchEvent(new Event("input", { bubbles: true }));
     pointer(dialogButton("Save")!, "click");
@@ -268,7 +275,7 @@ describe("ai-panel", () => {
     expect(globalThis.localStorage.getItem("jx.ai.openaiKey")).toBe("sk-from-dialog");
     // Preferences is a PLACE, not a wizard step: it stays up, and the panel behind it has
     // Already dropped the notice because the save announced itself.
-    expect(d(".ai-creds-form")).not.toBeNull();
+    expect(d('[part="ai-creds-form"]')).not.toBeNull();
     expect(q(".ai-setup-notice")).toBeNull();
     await closeSettings();
     localStorage.clear();
@@ -294,7 +301,7 @@ describe("ai-panel", () => {
     await openSettingsFromNotice();
     // Both real paths show: the managed connect CTA above the BYOK form.
     expect(managedConnect()).not.toBeNull();
-    expect(d(".ai-creds-form")).not.toBeNull();
+    expect(d('[part="ai-creds-form"]')).not.toBeNull();
 
     // Connecting flips /models to configured — the notice retires.
     (globalThis as Record<string, unknown>).fetch = async () =>
@@ -435,16 +442,16 @@ describe("ai-panel", () => {
   test("the composer gear opens Preferences; the chat behind it is untouched", async () => {
     pointer(q("sp-action-button[title='API key & endpoint']")!, "click");
     await flush(3);
-    expect(d(".ai-creds-form")).not.toBeNull();
+    expect(d('[part="ai-creds-form"]')).not.toBeNull();
     // The chat behind the sheet never went anywhere — that is the whole point of the move.
     expect(q(".ai-chat-messages")).not.toBeNull();
     // Cancel is offered because a key exists at this point in the scenario; it clears the drafts
     // And leaves the sheet up.
     pointer(dialogButton("Cancel")!, "click");
     await flush(3);
-    expect(d(".ai-creds-form")).not.toBeNull();
+    expect(d('[part="ai-creds-form"]')).not.toBeNull();
     await closeSettings();
-    expect(d(".ai-creds-form")).toBeNull();
+    expect(d('[part="ai-creds-form"]')).toBeNull();
     expect(q(".ai-chat-messages")).not.toBeNull();
   });
 

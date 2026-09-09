@@ -278,85 +278,9 @@
   max-height: 40vh;
   overflow-y: auto;
 }
-.doc-header {
-  display: flex;
-  flex-direction: column;
-  padding: 8px 12px 10px;
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-}
 .doc-header-host.pinned .doc-header {
   border-width: 0 0 1px;
   border-radius: 0;
-}
-.doc-header-bar {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  padding-bottom: 6px;
-}
-.doc-header-title {
-  font-size: var(--spectrum-font-size-50, 11px);
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--fg-dim);
-}
-.doc-header-route {
-  font-family: var(--font-mono);
-  font-size: var(--spectrum-font-size-50, 11px);
-  color: var(--fg-dim);
-}
-.doc-header-body {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-/* The card's door to Search appearance. It sits where the SEO disclosure used to, above Raw head
-   tags — same place in the reading order, one line instead of a block that could grow taller than
-   the document it describes. */
-.doc-header-seo {
-  display: flex;
-  padding: 2px 0;
-}
-.doc-header-seo-btn {
-  font-size: var(--spectrum-font-size-50, 11px);
-}
-.doc-header-disclosure > summary {
-  padding: 4px 0;
-  font-size: var(--spectrum-font-size-50, 11px);
-  color: var(--fg-dim);
-  cursor: pointer;
-}
-.doc-header-disclosure > summary:hover {
-  color: var(--fg);
-}
-.doc-header-empty {
-  margin: 0;
-  padding: 4px 0;
-  font-size: var(--spectrum-font-size-50, 11px);
-  color: var(--fg-dim);
-}
-.doc-header-raw {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.doc-header-raw li {
-  display: flex;
-  gap: 8px;
-  min-width: 0;
-  font-size: var(--spectrum-font-size-50, 11px);
-}
-.doc-header-raw li span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--fg-dim);
 }
 /* ─── Content edit mode canvas ─────────────── */
 .content-edit-canvas {

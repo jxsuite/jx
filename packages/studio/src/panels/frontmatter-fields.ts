@@ -1,11 +1,20 @@
 /// <reference lib="dom" />
 /**
- * Frontmatter-fields.ts — Shared schema-driven frontmatter field collection and renderers.
+ * Frontmatter-fields.ts — the shared schema-driven frontmatter FIELD SET, and one renderer for it.
  *
- * Used by both frontmatter editing surfaces: the Document tab (head-panel) and the above-canvas
- * Properties panel (frontmatter-panel). Fields come from the content-collection schema
- * (`findContentTypeSchema`) plus any extra keys already present in the frontmatter; each renders as
- * a typed widget committing through `mutateUpdateFrontmatter`.
+ * {@link collectFmFields} is what both frontmatter-editing surfaces share, and it is the half that
+ * matters: which keys a document has, in which order, which of them the schema declares, which are
+ * required, and which are reserved by a named control elsewhere. Fields come from the
+ * content-collection schema (`findContentTypeSchema`) plus any extra keys already present in the
+ * frontmatter.
+ *
+ * {@link renderFmField} is the other half, and it now has ONE caller. The Document Header card
+ * (`panels/frontmatter-panel.ts`) is a Jx document over the UI kit
+ * (`src/surfaces/doc-header.json`), and a document and a lit template cannot share a container — so
+ * the card draws its own row for each of these kinds from the same field set, exactly as every
+ * converted surface draws its own empty state while `panels/empty-state.ts` still serves the lit
+ * ones. This renderer belongs to `panels/head-panel.ts`'s Page panel until that surface converts,
+ * and it goes with it.
  */
 
 import { html } from "lit-html";

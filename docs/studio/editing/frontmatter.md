@@ -130,3 +130,5 @@ On disk, all of this lives at the top of the page's own file, in a small labeled
 - Edit a whole collection's frontmatter at once in **[Grid mode](/docs/studio/editing/grid)**
 - Define collections and their fields in **[Content types](/docs/studio/projects/content-types)**
 - How the three layers merge, and what the build adds, in **[SEO and metadata](/docs/framework/site/seo)**
+  - packages/studio/src/surfaces/doc-header.ts
+  - packages/studio/src/surfaces/seo.ts

@@ -112,7 +112,6 @@ import { IconTextAlignRight } from "@spectrum-web-components/icons-workflow/src/
 import { IconTextAlignJustify } from "@spectrum-web-components/icons-workflow/src/elements/IconTextAlignJustify.js";
 import { IconAlignTop } from "@spectrum-web-components/icons-workflow/src/elements/IconAlignTop.js";
 import { IconAlignBottom } from "@spectrum-web-components/icons-workflow/src/elements/IconAlignBottom.js";
-import { IconSearch } from "@spectrum-web-components/icons-workflow/src/elements/IconSearch.js";
 import { IconShare } from "@spectrum-web-components/icons-workflow/src/elements/IconShare.js";
 import { IconAlignMiddle } from "@spectrum-web-components/icons-workflow/src/elements/IconAlignMiddle.js";
 import { IconAlignLeft } from "@spectrum-web-components/icons-workflow/src/elements/IconAlignLeft.js";
@@ -250,7 +249,6 @@ const components = [
   ["sp-icon-text-align-justify", IconTextAlignJustify],
   ["sp-icon-align-top", IconAlignTop],
   ["sp-icon-align-bottom", IconAlignBottom],
-  ["sp-icon-search", IconSearch],
   ["sp-icon-share", IconShare],
   ["sp-icon-align-middle", IconAlignMiddle],
   ["sp-icon-align-left", IconAlignLeft],

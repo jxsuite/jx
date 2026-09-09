@@ -26,6 +26,7 @@ import {
   syncActivitySurface,
 } from "../src/panels/activity-panel";
 import { disposeActivitySurface } from "../src/surfaces/panel-activity";
+import { disposeDeployChecklistSurface } from "../src/surfaces/panel-deploy-checklist";
 import { getPanel, panelContext, resetPanels } from "../src/panels/panel-registry";
 import { problems, resetNotifications } from "../src/services/notify";
 import { effect, effectScope } from "../src/reactivity";
@@ -39,8 +40,10 @@ beforeEach(() => {
 
 afterEach(() => {
   // The feed holds an effect scope and a mounted document; a suite that left one standing would
-  // Hand the next test a surface projecting the activities it has just reset.
+  // Hand the next test a surface projecting the activities it has just reset. The deploy checklist
+  // Beside it is the same, and the panel's `afterRender` mounts both.
   disposeActivitySurface();
+  disposeDeployChecklistSurface();
   document.body.replaceChildren();
   resetActivities();
   resetNotifications();
@@ -456,13 +459,16 @@ describe("the panel record", () => {
     expect(panel.badge?.(ctx)).toBe(1);
   });
 
-  test("renders a body with the container its surface mounts into, and no document", async () => {
+  test("renders a body with the containers its two surfaces mount into, and no document", async () => {
     registerActivityPanel();
     const panel = getPanel("activity")!;
     const ctx = { deps: {} as never, doc: null, rerender: () => {} };
     const host = document.createElement("div");
     document.body.append(host);
     await renderInto(panel.render(ctx) as TemplateResult, host);
+    /* Two hosts, because a document CLEARS the node it is given and lit renders BESIDE foreign
+       nodes: the deploy checklist and the feed can never share one. */
+    expect(host.querySelector("[data-deploy-checklist]")).not.toBeNull();
     expect(host.querySelector("[data-activity-surface]")).not.toBeNull();
 
     beginActivity({ title: "Install" });
@@ -470,5 +476,8 @@ describe("the panel record", () => {
     await flush();
     await flush();
     expect(part(host, "row-title")?.textContent).toBe("Install");
+    // And the checklist mounted into its own container, above the feed.
+    expect(host.querySelector('[data-deploy-checklist] [part="checklist"]')).not.toBeNull();
+    disposeDeployChecklistSurface();
   });
 });

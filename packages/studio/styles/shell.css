@@ -504,10 +504,6 @@
   gap: 4px;
   min-width: 0;
 }
-.ai-model-picker {
-  max-width: 140px;
-  min-width: 0;
-}
 /* The chat-only-model note, under the picker that caused it. Advisory weight on purpose: the
    assistant still answers, it just cannot edit. */
 .ai-composer-note {
@@ -582,44 +578,6 @@
   flex-direction: column;
   align-items: center;
   gap: 12px;
-}
-.ai-creds-form {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  width: 100%;
-  max-width: 320px;
-  text-align: left;
-}
-.ai-creds-title {
-  align-self: center;
-  font-weight: 600;
-}
-.ai-creds-note {
-  color: var(--fg-dim);
-  font-size: var(--spectrum-font-size-50, 11px);
-}
-.ai-creds-label {
-  margin-top: 4px;
-  font-weight: 500;
-  font-size: var(--spectrum-font-size-50, 11px);
-}
-.ai-creds-field {
-  width: 100%;
-}
-.ai-creds-models {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.ai-creds-error {
-  color: var(--danger);
-  font-size: var(--spectrum-font-size-50, 11px);
-}
-.ai-creds-actions {
-  display: flex;
-  align-self: flex-end;
-  gap: 8px;
 }
 
 /* The fields and items are the `statusbar` surface (src/surfaces/statusbar.json); their rules live in the document. */

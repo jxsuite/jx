@@ -7,6 +7,13 @@
  * flatten). Hits decode to tags in the host and route back here through the injected stylebook-hit
  * handler (`setStylebookHitHandler` in studio.ts).
  *
+ * **The chrome bar over the stage is a Jx document** (`surfaces/stylebook-chrome.json`, mounted by
+ * `surfaces/stylebook-chrome.ts`) in a host this module owns and hands to lit as a child value. The
+ * STAGE beneath it stays a lit template, and cannot be anything else here: its artboards are
+ * `TemplateResult`s handed in by `canvas/canvas-render.ts` through {@link StylebookCtx}, and
+ * `.panzoom-wrap` is the class `canvas/canvas-utils.ts` measures the pan transform against. Both
+ * belong to the canvas rather than to this surface, so they move when the canvas does.
+ *
  * Every identifier here still says `stylebook`, and that is deliberate: `"stylebook"` is the
  * `CANVAS_MODES` wire value this module mounts against, shared with `dist/iframe-entry.js`. The
  * user-facing name is {@link PROJECT_STYLES_TITLE} and nothing a reader sees may be spelled from
@@ -16,10 +23,10 @@
 import { html, render as litRender } from "lit-html";
 import { repeat } from "lit-html/directives/repeat.js";
 import { ref } from "lit-html/directives/ref.js";
-import { classMap } from "lit-html/directives/class-map.js";
-import { live } from "lit-html/directives/live.js";
 
 import { projectState, updateSession } from "../store";
+import { createStylebookChromeSurface } from "../surfaces/stylebook-chrome";
+import type { StylebookChromeSurface } from "../surfaces/stylebook-chrome";
 import type { CanvasSurface } from "../canvas/canvas-surface";
 import { tabOfPane } from "../canvas/canvas-surface";
 import { activeTab } from "../workspace/workspace";
@@ -58,6 +65,50 @@ interface StylebookCtx {
 export { default as stylebookMeta } from "../../data/stylebook-meta.json";
 
 /**
+ * The chrome bar standing over each pane's stage.
+ *
+ * Keyed on the stage rather than held in a module slot: two panes can both be showing Project
+ * Styles, and one slot would hand the second pane's stage the first pane's bar — the defect rule 2
+ * of `scripts/check-pane-singletons.ts` is about. A `WeakMap` also needs no teardown hook, because
+ * the record goes when the pane does.
+ */
+const chromeBars = new WeakMap<CanvasSurface, StylebookChromeSurface>();
+
+/**
+ * This stage's chrome bar, created on first use and updated after.
+ *
+ * The bar is a Jx document (`surfaces/stylebook-chrome.json`) in a host this module owns, so what
+ * comes back is a NODE for the template below to interpolate — not markup. Everything the bar says
+ * is decided here: both names are spelled from {@link PROJECT_STYLES_TITLE}, so the surface has one
+ * name and not one per control, and the wire value never surfaces.
+ */
+function chromeBar(surface: CanvasSurface): HTMLElement {
+  const view = {
+    customizedHint: "Show only the elements this file has already styled",
+    customizedLabel: "Customized",
+    customizedOnly: shell.stylebook.customizedOnly,
+    filter: shell.stylebook.filter,
+    filterLabel: `Filter the ${PROJECT_STYLES_TITLE} catalogue`,
+    title: PROJECT_STYLES_TITLE,
+  };
+  const standing = chromeBars.get(surface);
+  if (standing) {
+    standing.update(view);
+    return standing.host;
+  }
+  const created = createStylebookChromeSurface(view, {
+    setFilter: (value) => {
+      shell.stylebook.filter = value;
+    },
+    toggleCustomized: () => {
+      shell.stylebook.customizedOnly = !shell.stylebook.customizedOnly;
+    },
+  });
+  chromeBars.set(surface, created);
+  return created.host;
+}
+
+/**
  * Render the stylebook mode into the canvas: chrome bar + one iframe panel per breakpoint, all
  * mounting the SAME generated specimen document.
  *
@@ -78,46 +129,10 @@ export function renderStylebookMode(surface: CanvasSurface, ctx: StylebookCtx) {
   const { sizeBreakpoints, baseWidth } = parseMediaEntries(effectiveMedia);
   const hasMedia = sizeBreakpoints.length > 0;
 
-  const onFilterInput = (e: Event) => {
-    shell.stylebook.filter = (e.target as HTMLInputElement).value;
-  };
-
-  const onCustomizedToggle = () => {
-    shell.stylebook.customizedOnly = !shell.stylebook.customizedOnly;
-  };
-
-  const chromeBarTpl = html`
-    <div
-      class="sb-chrome"
-      style="position:absolute;top:0;left:0;right:0;z-index:15;background:var(--bg-panel);border-bottom:1px solid var(--border)"
-    >
-      <div
-        style="display:flex;align-items:center;padding:4px 8px;gap:4px"
-        role="toolbar"
-        aria-label=${PROJECT_STYLES_TITLE}
-      >
-        <input
-          class="field-input"
-          style="flex:1;max-width:200px"
-          placeholder="Filter…"
-          aria-label="Filter the ${PROJECT_STYLES_TITLE} catalogue"
-          .value=${live(shell.stylebook.filter)}
-          @input=${onFilterInput}
-        />
-        <button
-          class=${classMap({
-            active: shell.stylebook.customizedOnly,
-            "tb-toggle": true,
-          })}
-          aria-pressed=${String(shell.stylebook.customizedOnly)}
-          title="Show only the elements this file has already styled"
-          @click=${onCustomizedToggle}
-        >
-          Customized
-        </button>
-      </div>
-    </div>
-  `;
+  /* The bar is a document in a node this module owns, so it is interpolated rather than authored:
+     lit inserts a Node it is given instead of cloning it, and re-inserting the same one is a no-op,
+     so the field keeps its caret across the stage rebuild a keystroke in it causes. */
+  const chromeBarNode = chromeBar(surface);
 
   (canvasWrap as HTMLElement).style.overflow = "hidden";
 
@@ -160,7 +175,7 @@ export function renderStylebookMode(surface: CanvasSurface, ctx: StylebookCtx) {
 
   litRender(
     html`
-      ${chromeBarTpl}
+      ${chromeBarNode}
       <div
         class="panzoom-wrap"
         style="transform-origin:0 0;padding-top:40px"

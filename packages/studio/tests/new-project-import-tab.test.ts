@@ -147,8 +147,11 @@ function reachParams(url = "https://clone.example/") {
 /* The credentials gate probes the AI proxy for backend-held credentials; default it to a plain
    BYOK-only backend, and let managed/env-keyed tests override. */
 let proxyState: { configured: boolean; managed: boolean } = { configured: false, managed: false };
+/* What the proxy lists. Empty by default — the model picker still offers the current model, which
+   it prepends — and set by the one test that needs a SECOND model to choose. */
+let proxyModels: { id: string }[] = [];
 (globalThis as Record<string, unknown>).fetch = async () =>
-  Response.json({ models: [], ...proxyState }, { status: 200 });
+  Response.json({ models: proxyModels, ...proxyState }, { status: 200 });
 
 beforeEach(() => {
   clearPendingImportBrief();
@@ -156,6 +159,7 @@ beforeEach(() => {
   localStorage.clear();
   clearSeededSettings();
   proxyState = { configured: false, managed: false };
+  proxyModels = [];
   resetModelCache(); // Re-arms the one-shot probe between tests.
 });
 
@@ -194,16 +198,21 @@ describe("Import source step", () => {
     expect(footerButtons().map((b) => b.textContent?.trim())).toEqual(["Cancel", "Next"]);
   });
 
-  test("shows the URL, crawl options, model and brief once a key is stored", () => {
+  test("shows the URL, crawl options, model and brief once a key is stored", async () => {
     setKey();
     importPlatform();
     void openNewProjectModal();
     switchTab("import");
+    /* Six turns: the model picker is a mounted Jx document, so it is addressed by `part` and it is
+       not there on the turn the step renders. */
+    await flush(6);
     expect(document.querySelector("#layer-modal .new-project-creds")).toBeNull();
     // Two textfields: the site URL, and the brief handed to the assistant afterwards.
     expect(document.querySelectorAll("#layer-modal sp-textfield")).toHaveLength(2);
     expect(document.querySelector("#layer-modal .new-project-import-prompt")).toBeTruthy();
-    expect(document.querySelector("#layer-modal .new-project-import-model")).toBeTruthy();
+    expect(
+      document.querySelector('#layer-modal [part="model-picker"][data-width="fill"]'),
+    ).toBeTruthy();
     // Crawl depth, max pages, and how many breakpoints the project keeps.
     expect(document.querySelectorAll("#layer-modal sp-number-field")).toHaveLength(3);
     expect(document.querySelector("#layer-modal .new-project-breakpoint-mode")).toBeTruthy();
@@ -467,7 +476,16 @@ describe("Import — the model picker", () => {
   test("a chosen model reaches the brief without retargeting the assistant", async () => {
     /* The picker writes a DRAFT, not `jx.ai.model`: choosing a model for one import must not
        silently change which model every later chat turn runs on. */
-    setKey();
+    proxyModels = [{ id: "o3-import" }];
+    /* Distinct credentials rather than `setKey()`: the tab's picker is a module singleton that
+       remembers which connection it last listed FOR, so re-listing under the same key is exactly
+       what it declines to do. A different endpoint is a different connection, and the catalogue
+       lands. */
+    seedSettings({
+      "jx.ai.baseUrl": "http://picker.local/v1",
+      "jx.ai.model": "test-model",
+      "jx.ai.openaiKey": "sk-import-picker",
+    });
     importPlatform();
     void reachParams();
     npFillLocation();
@@ -475,9 +493,11 @@ describe("Import — the model picker", () => {
 
     // Step back to the source step, where the picker lives, and choose.
     clickFooter("Back");
+    // The catalogue has to have landed before there is a second row to pick.
+    await flush(6);
     const picker = document.querySelector(
-      "#layer-modal .new-project-import-model",
-    ) as HTMLElement & { value?: string };
+      '#layer-modal [part="model-picker"] [part="control"]',
+    ) as HTMLSelectElement;
     picker.value = "o3-import";
     picker.dispatchEvent(new Event("change", { bubbles: true }));
 

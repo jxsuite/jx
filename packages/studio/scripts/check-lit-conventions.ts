@@ -256,8 +256,6 @@ function isExcluded(file: string): boolean {
  * where there is something more specific to say.
  */
 export const SPECTRUM_DEBT: Record<string, number> = {
-  "editor/convert-to-component.ts": 1,
-  "editor/convert-to-repeater.ts": 4,
   "files/files.ts": 1,
   "new-project/location-fields.ts": 5,
   "new-project/new-project-modal.ts": 2,
@@ -268,10 +266,6 @@ export const SPECTRUM_DEBT: Record<string, number> = {
   "panels/properties-panel.ts": 4,
   "panels/signals-panel.ts": 3,
   "panels/statement-editor.ts": 2,
-  /* The five connect-form fields over a mutable module `_form`, re-rendered from loadConnection,
-     hostedConnect and the error paths. Converting is safe, but this file also carries the rule that
-     a surface never renders back the secret it describes, so it is triaged with that in view. */
-  "publish/publish-panel.ts": 5,
   "settings/contributed-section.ts": 2,
   "settings/preferences-dialog.ts": 1,
   /* Content-type field cards. Rebuilt wholesale on every edit today, so the reader has no window

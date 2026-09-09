@@ -1,0 +1,114 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioAiModelPicker",
+  "$description": "The provider's model catalogue as one control, for every surface that chooses a model — the assistant's composer and the New Project Import source. Everything here is a projection: `ui/ai-model-picker.ts` decides which credentials the catalogue was listed under, which rows it holds, which of them is selected and what a failed listing said. This document never fetches anything and never learns what a credential is.",
+  "tagName": "div",
+  "attributes": {
+    "part": "model-picker",
+    "data-width": "${state.width}"
+  },
+  "style": {
+    "$description": "`.ai-model-picker` (shell.css) and `.new-project-import-model` (overlays.css) were the same control at two widths, so the two rules become one attribute the host sets. The wrapper is the flex item now rather than the control, which is what lets the retry button sit beside the picker without the host laying it out.",
+    "display": "flex",
+    "alignItems": "center",
+    "gap": "var(--jx-space-2)",
+    "minWidth": "0",
+    "&[data-width=\"compact\"]": {
+      "$description": "The composer's row: the picker may not push the send button off the end, so it is capped and allowed to shrink.",
+      "maxWidth": "140px"
+    },
+    "&[data-width=\"fill\"]": {
+      "$description": "A field in a form column, where the control takes the column's width.",
+      "width": "100%"
+    },
+    "& [part=\"select\"]": {
+      "minWidth": "0",
+      "flex": "1 1 auto"
+    }
+  },
+  "children": [
+    {
+      "tagName": "jx-select",
+      "attributes": {
+        "part": "select",
+        "title": "${state.hint}"
+      },
+      "$props": {
+        "label": "Model",
+        "size": {
+          "$ref": "#/state/size"
+        },
+        "options": {
+          "$ref": "#/state/options"
+        },
+        "value": {
+          "$ref": "#/state/value"
+        }
+      },
+      "onchange": {
+        "$prototype": "Function",
+        "body": [
+          {
+            "operator": "call",
+            "target": {
+              "$ref": "#/state/choose"
+            },
+            "value": [
+              {
+                "$ref": "event#/target/value"
+              }
+            ]
+          }
+        ],
+        "description": "The change bubbles out of the inner control, so the picked id is read off the event rather than off the element."
+      }
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "retry-slot",
+        "role": "none"
+      },
+      "style": {
+        "display": "contents"
+      },
+      "$switch": {
+        "$ref": "#/state/hasFailure"
+      },
+      "cases": {
+        "true": {
+          "$description": "Retry is a BUTTON beside the picker, not a row inside it. As a row it was a value the select could hold and did not mean — one press left the control reporting `__retry_models__` as the chosen model, and the write that would have corrected it is exactly the write a document's bindings skip when the scope never moved. A button says the same thing and holds no value at all.",
+          "tagName": "jx-button",
+          "attributes": {
+            "part": "retry"
+          },
+          "$props": {
+            "size": {
+              "$ref": "#/state/size"
+            },
+            "quiet": true,
+            "label": "Retry loading models"
+          },
+          "onclick": {
+            "$prototype": "Function",
+            "body": [
+              {
+                "operator": "call",
+                "target": {
+                  "$ref": "#/state/retry"
+                },
+                "value": []
+              }
+            ]
+          },
+          "children": [
+            {
+              "tagName": "span",
+              "textContent": "Retry"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

@@ -14,7 +14,7 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { html } from "lit-html";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 import type { CanvasPanel } from "../src/types";
-import { shell } from "../src/shell";
+import { resetProjectShell, shell } from "../src/shell";
 import { PROJECT_STYLES_TITLE, PROJECT_STYLES_VIEW } from "../src/style/project-styles";
 import { surfaceForPane } from "../src/canvas/surface-registry";
 
@@ -103,9 +103,42 @@ function makeTab(doc: Record<string, unknown> = {}) {
   return resetWorkspaceWithTab({ children: [], tagName: "div", ...doc } as JxMutableNode);
 }
 
+// ─── The chrome bar, which is a document ──────────────────────────────────────
+
+/** The bar itself — addressed by `part`, because it carries no class of its own. */
+function chromeBar(): HTMLElement {
+  const el = document.querySelector<HTMLElement>('[part="chrome"]');
+  if (!el) {
+    throw new Error("the Project Styles chrome bar is not mounted");
+  }
+  return el;
+}
+
+/** The filter field's own control, a native input drawn by `jx-textfield`. */
+function filterControl(): HTMLInputElement {
+  const el = chromeBar().querySelector('[part="filter"] [part="input"]');
+  if (!el) {
+    throw new Error("no control in the chrome bar's filter field");
+  }
+  return el as HTMLInputElement;
+}
+
+/** The Customized toggle's own control, drawn by `jx-action-button`. */
+function customizedControl(): HTMLButtonElement {
+  const el = chromeBar().querySelector('[part="customized"] [part="control"]');
+  if (!el) {
+    throw new Error("no control in the chrome bar's Customized toggle");
+  }
+  return el as HTMLButtonElement;
+}
+
 beforeEach(() => {
   setupShell();
   resetStudioState();
+  /* The chrome bar is a standing DOCUMENT keyed on the pane's surface, and the surface record
+     outlives a test — so the shell it projects has to be put back too, or one test's Customized
+     leaks into the next as a control that says pressed while the shell says otherwise. */
+  resetProjectShell();
   canvasPanels.length = 0;
   componentRegistry.length = 0;
   panelTemplateCalls.length = 0;
@@ -155,17 +188,23 @@ describe("renderStylebookMode", () => {
     makeTab();
     shell.stylebook.filter = "h1";
     renderStylebookMode(stage, ctx);
+    await flush();
     expect(mounts[0]!.generated.tagToCardPath.has("h1")).toBe(true);
     expect(mounts[0]!.generated.tagToCardPath.has("ul")).toBe(false);
 
-    const toggle = document.querySelector(".sb-chrome button") as HTMLButtonElement;
-    toggle.click();
+    customizedControl().click();
     await flush();
     expect(shell.stylebook.customizedOnly).toBe(true);
+    /* The click is what the READER does; the render is what the app does next — `studio.ts`
+       subscribes the canvas to this flag. Recording it here is what keeps the element's own
+       pressed state and the scope that projects it from parting. */
+    renderStylebookMode(stage, ctx);
+    await flush();
 
-    const input = document.querySelector(".sb-chrome input") as HTMLInputElement;
+    const input = filterControl();
     input.value = "table";
     input.dispatchEvent(new Event("input", { bubbles: true }));
+    await flush();
     expect(shell.stylebook.filter).toBe("table");
   });
 
@@ -175,22 +214,54 @@ describe("renderStylebookMode", () => {
     makeTab();
     shell.stylebook.customizedOnly = false;
     renderStylebookMode(stage, ctx);
-    const bar = document.querySelector(".sb-chrome [role='toolbar']") as HTMLElement;
-    expect(bar.getAttribute("aria-label")).toBe(PROJECT_STYLES_TITLE);
+    await flush();
+    expect(chromeBar().getAttribute("role")).toBe("toolbar");
+    expect(chromeBar().getAttribute("aria-label")).toBe(PROJECT_STYLES_TITLE);
 
-    const input = document.querySelector(".sb-chrome input") as HTMLInputElement;
+    const input = filterControl();
     expect(input.getAttribute("aria-label")).toBe(`Filter the ${PROJECT_STYLES_TITLE} catalogue`);
     expect(input.getAttribute("aria-label")).not.toContain(PROJECT_STYLES_VIEW);
 
-    const toggle = document.querySelector(".sb-chrome button") as HTMLButtonElement;
+    const toggle = customizedControl();
     expect(toggle.getAttribute("aria-pressed")).toBe("false");
+    expect(toggle.getAttribute("aria-label")).toBe("Customized");
     expect(toggle.getAttribute("title")).toBeTruthy();
     toggle.click();
     await flush();
     renderStylebookMode(stage, ctx);
-    expect(
-      (document.querySelector(".sb-chrome button") as HTMLElement).getAttribute("aria-pressed"),
-    ).toBe("true");
+    await flush();
+    expect(customizedControl().getAttribute("aria-pressed")).toBe("true");
+  });
+
+  test("the bar is a document: it emits no class, and one node survives every rebuild", async () => {
+    /* The stage is rebuilt on every filter keystroke — that is what narrows the catalogue — so the
+       bar must be the same element afterwards or the field loses the caret that caused it. */
+    makeTab();
+    renderStylebookMode(stage, ctx);
+    await flush();
+    const bar = chromeBar();
+    expect([...bar.querySelectorAll("[class]")]).toEqual([]);
+    expect(bar.getAttribute("class")).toBeNull();
+
+    shell.stylebook.filter = "table";
+    renderStylebookMode(stage, ctx);
+    await flush();
+    expect(chromeBar()).toBe(bar);
+    expect(filterControl().value).toBe("table");
+  });
+
+  test("a bar taken out of its own host is mounted again on the next render", async () => {
+    /* The one case an assignment cannot answer. The host belongs to this module and lit only ever
+       moves it, so this is the belt-and-braces path — and the surface that stops answering is one
+       nothing else in the app would ever report. */
+    makeTab();
+    renderStylebookMode(stage, ctx);
+    await flush();
+    chromeBar().remove();
+    renderStylebookMode(stage, ctx);
+    await flush();
+    expect(chromeBar().getAttribute("role")).toBe("toolbar");
+    expect(document.querySelectorAll('[part="chrome"]')).toHaveLength(1);
   });
 });
 

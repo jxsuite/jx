@@ -84,6 +84,24 @@ export function invalidateLayoutPickerCache() {
   invalidateLayoutHeadCache();
 }
 
+/**
+ * The layouts the picker offers, or `null` while the directory is still being listed.
+ *
+ * The same listing {@link renderLayoutPickerRow} draws from, handed over as DATA. The Document
+ * Header card is a Jx document (`src/surfaces/doc-header.json`) and cannot interpolate a lit
+ * template, so it draws its own picker — but drawing its own LISTING would be a second cache with a
+ * second lifetime, and {@link invalidateLayoutPickerCache} would then forget only one of them.
+ * Asking starts the read; it repaints both surfaces when it lands.
+ *
+ * @returns {{ name: string; path: string }[] | null}
+ */
+export function layoutPickerEntries(): { name: string; path: string }[] | null {
+  if (layoutEntries === null) {
+    void loadLayoutEntries();
+  }
+  return layoutEntries;
+}
+
 // ─── Field definitions ───────────────────────────────────────────────────
 
 export const PAGE_FIELDS: MetaField[] = [
@@ -128,7 +146,7 @@ export const RESERVED_FM_KEYS = new Set(["title"]);
  * @param {string} key
  * @returns {JxHeadEntry | undefined}
  */
-function findMetaEntry(head: JxHeadEntry[], attr: "name" | "property", key: string) {
+export function findMetaEntry(head: JxHeadEntry[], attr: "name" | "property", key: string) {
   if (!head) {
     return;
   }
@@ -182,7 +200,12 @@ export function isManagedEntry(entry: JxHeadEntry) {
  * @param {string} key
  * @param {string} content
  */
-function upsertMeta(doc: JxMutableNode, attr: "name" | "property", key: string, content: string) {
+export function upsertMeta(
+  doc: JxMutableNode,
+  attr: "name" | "property",
+  key: string,
+  content: string,
+) {
   if (!doc.$head) {
     doc.$head = [];
   }

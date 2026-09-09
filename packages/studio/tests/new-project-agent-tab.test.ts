@@ -101,7 +101,7 @@ describe("Agent flow", () => {
     expect(gate?.querySelector('[part="managed-connect"]')).toBeTruthy();
     expect(gate!.textContent).toContain("Connect Cloudflare");
     // The BYOK form stays — both are real paths.
-    expect(gate!.querySelector(".ai-creds-form")).toBeTruthy();
+    expect(gate!.querySelector('[part="ai-creds-form"]')).toBeTruthy();
     expect(document.querySelector("#layer-modal .new-project-tab-intro")?.textContent).toContain(
       "Connect Cloudflare, or add an OpenAI-compatible API key",
     );

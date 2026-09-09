@@ -69,3 +69,4 @@ Studio records the connection under `build.deploy` in `project.json` (provider, 
 
 - **[Source control](/docs/studio/publish/source-control)** is the commit-and-sync flow that triggers each deployment.
 - **[Other hosts](/docs/studio/publish/other-hosts)** puts the same site on Netlify, GitHub Pages, or anywhere else.
+  - packages/studio/src/surfaces/publish.ts

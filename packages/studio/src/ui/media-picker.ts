@@ -345,10 +345,17 @@ function renderMediaPickerPopover() {
 }
 
 /**
+ * Open the media browser under `anchorEl` and commit whatever is picked.
+ *
+ * Exported because the popover is a SURFACE OF ITS OWN — it renders into the popover layer, not
+ * into the field that opened it — so a converted surface can offer the same browser without
+ * re-implementing it and without a lit template inside a document. `surfaces/doc-header.ts`'s
+ * Browse button is the first such caller.
+ *
  * @param {HTMLElement} anchorEl
  * @param {(val: string) => void} onCommit
  */
-function showMediaPickerPopover(anchorEl: HTMLElement, onCommit: (val: string) => void) {
+export function showMediaPickerPopover(anchorEl: HTMLElement, onCommit: (val: string) => void) {
   dismissMediaPickerPopover();
   _popoverOnCommit = onCommit;
   _popoverAnchorEl = anchorEl;
@@ -387,9 +394,12 @@ export async function uploadAndAssign(
  * Open the OS file picker for a media field. The input is created per click and discarded after — a
  * persistent hidden input in the template would be recreated by lit on every panel re-render.
  *
+ * Exported for the same reason {@link showMediaPickerPopover} is: it opens an OS dialog rather than
+ * rendering anything, so a surface that is a document can offer Upload without drawing a widget.
+ *
  * @param {(val: string) => void} onCommit
  */
-function pickAndUpload(onCommit: (val: string) => void) {
+export function pickAndUpload(onCommit: (val: string) => void) {
   const input = document.createElement("input");
   input.type = "file";
   input.multiple = true;

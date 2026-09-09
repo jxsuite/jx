@@ -121,20 +121,20 @@ describe("new-project modal gaps", () => {
     installMockPlatform();
     void openNewProjectModal();
     switchTab("agent");
-    const creds = document.querySelector("#layer-modal .ai-creds-form") as HTMLElement;
+    /* Six turns: the credentials form is a mounted Jx document, so it is addressed by `part` and it
+       is not there on the turn the gate renders. */
+    await flush(6);
+    const creds = document.querySelector('#layer-modal [part="ai-creds-form"]') as HTMLElement;
     expect(creds).toBeTruthy();
 
-    const keyInput = creds.querySelector('sp-textfield[type="password"]') as HTMLInputElement;
+    const keyInput = creds.querySelector('[part="key"] [part="input"]') as HTMLInputElement;
     keyInput.value = "sk-fresh-key";
     keyInput.dispatchEvent(new Event("input", { bubbles: true }));
-    const save = [...creds.querySelectorAll("sp-button")].find((b) =>
-      b.textContent?.includes("Save"),
-    ) as HTMLElement;
-    save.dispatchEvent(new Event("click", { bubbles: true }));
+    creds.querySelector('[part="save"]')!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     await flush();
 
     // The gate lifted: the prompt field replaced the credentials form.
-    expect(document.querySelector("#layer-modal .ai-creds-form")).toBeNull();
+    expect(document.querySelector('#layer-modal [part="ai-creds-form"]')).toBeNull();
     expect(document.querySelector("#layer-modal .new-project-agent-prompt")).toBeTruthy();
   });
 

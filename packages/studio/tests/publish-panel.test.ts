@@ -1,15 +1,17 @@
 /**
- * Publish panel tests: drives the modal through its states — unsupported platform, credential
- * collection (token form vs hosted connect), the create-and-connect form with validation, the
+ * Publish panel tests — `src/publish/publish-panel.ts` (the flow) and `src/surfaces/publish.json`
+ * (the `jx-dialog` it draws into): the unsupported platform, credential collection (token form vs
+ * hosted connect), the lapsed connection, the create-and-connect form with validation, the
  * connected status view with refresh/disconnect, and the Pages-GitHub-App error hint.
+ *
+ * Everything is addressed by `part` and by the surface's region, because the panel is a document:
+ * there is no `.publish-modal` to find any more and no `.publish-error` either — the card, the
+ * backdrop, Escape, focus restoration and the Close button all belong to `jx-dialog`. It still
+ * lives in the MODAL layer, which is where `openModal` put it: `overlayRegion` maps both the modal
+ * and dialog layers onto the same `overlay.dialog` instance, so the region the screenshot manifest
+ * names is unchanged.
  */
-import {
-  flush,
-  installMockPlatform,
-  pointer,
-  resetStudioState,
-  mountOverlayLayers,
-} from "./harness";
+import { flush, installMockPlatform, resetStudioState, mountOverlayLayers } from "./harness";
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import type { DeployConfig } from "@jxsuite/schema/types";
 import type { CfConnectOutcome } from "../src/types";
@@ -41,27 +43,52 @@ const DEPLOY: DeployConfig = {
   productionUrl: "https://my-site.pages.dev",
 };
 
+/** The panel's root — the surface's own element, in the modal layer. */
 function panel(): HTMLElement | null {
-  return document.querySelector("#layer-modal .publish-modal");
+  return document.querySelector<HTMLElement>('#layer-modal jx-dialog[part="publish"]');
+}
+
+function part<T extends Element = HTMLElement>(name: string): T | null {
+  return (panel()?.querySelector(`[part="${name}"]`) ?? null) as T | null;
 }
 
 function bodyText(): string {
   return panel()?.textContent?.replaceAll(/\s+/g, " ") ?? "";
 }
 
-function button(label: string): HTMLElement | null {
-  return (
-    [...document.querySelectorAll<HTMLElement>("#layer-modal sp-button")].find((b) =>
-      b.textContent?.includes(label),
-    ) ?? null
-  );
+/** `jx-button` draws the native control, and `disabled` is what that control carries. */
+function control(name: string): HTMLButtonElement | null {
+  return part<HTMLButtonElement>(name)?.querySelector('[part="control"]') ?? null;
 }
 
-function closePanel() {
-  const closeBtn = document.querySelector("#layer-modal sp-action-button");
-  if (closeBtn) {
-    pointer(closeBtn as HTMLElement, "click");
-  }
+function click(name: string): void {
+  const button = part(name);
+  expect(button).toBeTruthy();
+  button!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+}
+
+/** Type into a field the way a reader does: the native control inside the kit element. */
+function type(name: string, value: string): void {
+  const input = part<HTMLInputElement>(name)?.querySelector<HTMLInputElement>('[part="input"]');
+  expect(input).toBeTruthy();
+  input!.value = value;
+  input!.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+/** Pick an account from the native `<select>` the kit draws, which is what a reader moves. */
+function pickAccount(value: string): void {
+  const select = part<HTMLSelectElement>("account")?.querySelector<HTMLSelectElement>("select");
+  expect(select).toBeTruthy();
+  select!.value = value;
+  select!.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+/**
+ * Dismiss it the way a reader would: the platform's `cancel`, which is what Escape raises on a
+ * native `<dialog>` and what the kit's own Close button dispatches. A no-op with nothing up.
+ */
+function closePanel(): void {
+  panel()?.dispatchEvent(new Event("cancel", { bubbles: true }));
 }
 
 /** Marker for routes that should reject (keeps the Error-throw lint rules happy). */
@@ -105,6 +132,20 @@ describe("openPublishPanel — platform capability states", () => {
     expect(bodyText()).toContain("cannot reach the Cloudflare API");
   });
 
+  /* The region the screenshot manifest names, on the one element here that HAS a box: `jx-dialog`
+     is `display: contents` and the slot wraps a `<dialog>` the top layer takes out of flow, so a
+     stamp on either would measure 0×0 and the capture would be refused. */
+  test("carries the publish region on the platform's own dialog box", async () => {
+    resetStudioState({ projectConfig: { name: "My Site" } });
+    installMockPlatform();
+    openPublishPanel();
+    await flush();
+    const stamped = document.querySelector('[data-jx-region="overlay.dialog:publish"]');
+    expect(stamped).toBeTruthy();
+    expect(stamped!.tagName.toLowerCase()).toBe("dialog");
+    expect(stamped!.getAttribute("part")).toBe("dialog");
+  });
+
   test("shows the token form when no credential is stored", async () => {
     resetStudioState({ projectConfig: { name: "My Site" } });
     installMockPlatform({
@@ -114,7 +155,7 @@ describe("openPublishPanel — platform capability states", () => {
     openPublishPanel();
     await flush();
     expect(bodyText()).toContain("Paste a Cloudflare API token");
-    expect(document.querySelector("#cf-token-input")).toBeTruthy();
+    expect(part("token")).toBeTruthy();
   });
 
   test("offers hosted connect and re-checks the connection after it", async () => {
@@ -134,9 +175,8 @@ describe("openPublishPanel — platform capability states", () => {
     });
     openPublishPanel();
     await flush();
-    const connect = button("Connect Cloudflare");
-    expect(connect).toBeTruthy();
-    pointer(connect!, "click");
+    expect(part("connect")).toBeTruthy();
+    click("connect");
     await flush();
     expect(connected).toBe(true);
     expect(bodyText()).toContain("Create a Cloudflare Pages project");
@@ -152,10 +192,8 @@ describe("openPublishPanel — platform capability states", () => {
     });
     openPublishPanel();
     await flush();
-    const input = document.querySelector("#cf-token-input") as HTMLInputElement;
-    expect(input).toBeTruthy();
-    input.value = "cf_pasted";
-    pointer(button("Verify & Connect")!, "click");
+    type("token", "cf_pasted");
+    click("verify");
     await flush();
     expect(getCfToken()).toBe("cf_pasted");
     expect(bodyText()).toContain("Create a Cloudflare Pages project");
@@ -211,7 +249,7 @@ describe("openPublishPanel — an expired connection", () => {
     // The 401 that produced the raw error string is not even attempted.
     expect(cfApi).not.toHaveBeenCalled();
     expect(bodyText()).not.toContain("Cloudflare API:");
-    expect(button("Reconnect Cloudflare")).toBeTruthy();
+    expect(part("reconnect")?.textContent).toContain("Reconnect Cloudflare");
   });
 
   test("Reconnect runs the hosted flow and the panel moves on", async () => {
@@ -219,7 +257,7 @@ describe("openPublishPanel — an expired connection", () => {
     installLapsed();
     openPublishPanel();
     await flush();
-    pointer(button("Reconnect Cloudflare")!, "click");
+    click("reconnect");
     await flush();
     expect(bodyText()).toContain("Create a Cloudflare Pages project");
   });
@@ -230,16 +268,16 @@ describe("openPublishPanel — an expired connection", () => {
     installLapsed(async () => outcome);
     openPublishPanel();
     await flush();
-    pointer(button("Reconnect Cloudflare")!, "click");
+    click("reconnect");
     await flush();
     expect(bodyText()).toContain("didn't finish");
 
     // A closed popup says nothing — and clears the deadline message, which no longer applies.
     outcome = { status: "canceled" };
-    pointer(button("Reconnect Cloudflare")!, "click");
+    click("reconnect");
     await flush();
     expect(bodyText()).not.toContain("didn't finish");
-    expect(panel()?.querySelector(".publish-error")).toBeNull();
+    expect(part("failure")).toBeNull();
   });
 
   test("a connect with no account chosen opens the picker before the form", async () => {
@@ -259,7 +297,7 @@ describe("openPublishPanel — an expired connection", () => {
     });
     openPublishPanel();
     await flush();
-    pointer(button("Connect Cloudflare")!, "click");
+    click("connect");
     await flush();
     expect(pickerOpens).toBe(1);
     expect(bodyText()).toContain("Create a Cloudflare Pages project");
@@ -278,19 +316,24 @@ describe("openPublishPanel — connect form", () => {
     });
   }
 
+  /** What a field is showing, from the control the reader would read it off. */
+  function fieldValue(name: string): string {
+    return (
+      part<HTMLInputElement>(name)?.querySelector<HTMLInputElement>('[part="input"]')?.value ?? ""
+    );
+  }
+
   test("prefills the project name slug and validates required fields", async () => {
     resetStudioState({ projectConfig: { build: {}, name: "My Site" } });
     installConnected();
     openPublishPanel();
     await flush();
-    const nameField = [...document.querySelectorAll("#layer-modal sp-textfield")].find(
-      (el) => el.getAttribute("value") === "my-site",
-    );
-    expect(nameField).toBeTruthy();
+    expect(fieldValue("project-name")).toBe("my-site");
     // Owner/repo are blank on non-cloud roots → validation error on submit.
-    pointer(button("Create & Connect")!, "click");
+    click("submit");
     await flush();
     expect(bodyText()).toContain("owner/repo are all required");
+    expect(part("failure")).toBeTruthy();
   });
 
   /* The cloud adapter's projectRoot is the root key "owner/repo@branch". A prefill that only
@@ -305,11 +348,19 @@ describe("openPublishPanel — connect form", () => {
     });
     openPublishPanel();
     await flush();
-    const values = [...document.querySelectorAll("#layer-modal sp-textfield")].map((el) =>
-      el.getAttribute("value"),
+    expect(fieldValue("owner")).toBe("octocat");
+    expect(fieldValue("repo")).toBe("site");
+  });
+
+  test("every row is a named field, so a control is reachable by what it collects", async () => {
+    resetStudioState({ projectConfig: { build: {}, name: "My Site" } });
+    installConnected();
+    openPublishPanel();
+    await flush();
+    const fields = [...(panel()?.querySelectorAll<HTMLElement>('[part="row"]') ?? [])].map(
+      (row) => row.dataset["field"],
     );
-    expect(values).toContain("octocat");
-    expect(values).toContain("site");
+    expect(fields).toEqual(["account", "projectName", "owner", "repo", "branch"]);
   });
 
   test("connects end-to-end and lands on the status view", async () => {
@@ -326,28 +377,15 @@ describe("openPublishPanel — connect form", () => {
     openPublishPanel();
     await flush();
     // Drive every field handler (owner/repo empty on non-cloud roots).
-    const fields = [
-      ...document.querySelectorAll("#layer-modal sp-textfield"),
-    ] as HTMLInputElement[];
-    const byValue = (v: string) => fields.find((f) => f.getAttribute("value") === v)!;
-    const type = (el: HTMLInputElement, value: string) => {
-      el.value = value;
-      el.dispatchEvent(new Event("input", { bubbles: true }));
-    };
-    type(byValue("my-site"), "my-site");
-    type(byValue(""), "octocat");
-    type(
-      fields.find((f) => f.getAttribute("value") === "" && f.value !== "octocat")!,
-      "site",
-    );
-    type(byValue("main"), "main");
-    const picker = document.querySelector("#layer-modal sp-picker") as HTMLInputElement;
-    picker.value = "a".repeat(32);
-    picker.dispatchEvent(new Event("change", { bubbles: true }));
-    pointer(button("Create & Connect")!, "click");
+    type("project-name", "my-site");
+    type("owner", "octocat");
+    type("repo", "site");
+    type("branch", "main");
+    pickAccount("a".repeat(32));
+    click("submit");
     await flush();
     expect(bodyText()).toContain("Connected to Pages project");
-    expect(bodyText()).toContain("my-site");
+    expect(part("project-name")?.textContent).toBe("my-site");
   });
 
   test("suggests installing the Pages GitHub App on the characteristic failure", async () => {
@@ -363,10 +401,12 @@ describe("openPublishPanel — connect form", () => {
     });
     openPublishPanel();
     await flush();
-    pointer(button("Create & Connect")!, "click");
+    click("submit");
     await flush();
     expect(bodyText()).toContain("GitHub app is not installed");
-    expect(panel()?.querySelector('a[href*="cloudflare-pages/installations"]')).toBeTruthy();
+    expect(part<HTMLAnchorElement>("install-link")?.href).toContain(
+      "cloudflare-pages/installations",
+    );
   });
 });
 
@@ -390,8 +430,8 @@ describe("seedPublishConnected — automation seam", () => {
     });
     await flush();
     expect(bodyText()).toContain("Connected to Pages project");
-    expect(bodyText()).toContain("my-site");
-    expect(bodyText()).toContain("deploy: success");
+    expect(part("project-name")?.textContent).toBe("my-site");
+    expect(part("deployment-state")?.textContent).toBe("deploy: success");
     // The seam bypasses loadConnection entirely — no Cloudflare traffic.
     expect(cfConnection).not.toHaveBeenCalled();
     expect(cfApi).not.toHaveBeenCalled();
@@ -399,13 +439,13 @@ describe("seedPublishConnected — automation seam", () => {
 });
 
 describe("openPublishPanel — the token is not in the DOM", () => {
-  /** Everything the rendered modal could be carrying the secret in. */
+  /** Everything the rendered panel could be carrying the secret in. */
   function serializedPanel(): string {
     const host = document.querySelector("#layer-modal");
     const attributes = [...(host?.querySelectorAll("*") ?? [])].flatMap((el) =>
       [...el.attributes].map((attr) => attr.value),
     );
-    const values = [...(host?.querySelectorAll("input, sp-textfield") ?? [])].map(
+    const values = [...(host?.querySelectorAll("input") ?? [])].map(
       (el) => (el as HTMLInputElement).value ?? "",
     );
     return [host?.innerHTML ?? "", ...attributes, ...values].join("\n");
@@ -429,8 +469,8 @@ describe("openPublishPanel — the token is not in the DOM", () => {
     expect(serializedPanel()).not.toContain("cf_super_secret_value");
     expect(bodyText()).toContain("A Cloudflare API token is stored on this machine");
     // And there is no field at all until one is asked for.
-    expect(document.querySelector("#cf-token-input")).toBeNull();
-    expect(button("Replace token")).toBeTruthy();
+    expect(part("token")).toBeNull();
+    expect(part("replace")).toBeTruthy();
   });
 
   test("Replace token opens an EMPTY field, and saving it stores what was typed", async () => {
@@ -440,18 +480,19 @@ describe("openPublishPanel — the token is not in the DOM", () => {
     installRejecting();
     openPublishPanel();
     await flush();
-    pointer(button("Replace token")!, "click");
+    click("replace");
     await flush();
-    const input = document.querySelector("#cf-token-input") as HTMLInputElement;
-    expect(input).toBeTruthy();
-    expect(input.getAttribute("value")).toBe("");
+    const field = part<HTMLInputElement>("token");
+    expect(field).toBeTruthy();
+    expect(field!.getAttribute("value")).toBeNull();
+    expect(field!.querySelector<HTMLInputElement>('[part="input"]')?.value).toBe("");
     expect(serializedPanel()).not.toContain("cf_old_secret");
 
-    input.value = "cf_new_secret";
-    pointer(button("Verify & Connect")!, "click");
+    type("token", "cf_new_secret");
+    click("verify");
     await flush();
     expect(getCfToken()).toBe("cf_new_secret");
-    // Read out of the live control on its way to storage, and cleared from it afterwards.
+    // Read out of the live control on its way to storage, and the field is gone afterwards.
     expect(serializedPanel()).not.toContain("cf_new_secret");
   });
 
@@ -462,9 +503,9 @@ describe("openPublishPanel — the token is not in the DOM", () => {
     installRejecting();
     openPublishPanel();
     await flush();
-    pointer(button("Replace token")!, "click");
+    click("replace");
     await flush();
-    pointer(button("Verify & Connect")!, "click");
+    click("verify");
     await flush();
     expect(getCfToken()).toBe("cf_keep_me");
     expect(bodyText()).toContain("Preferences › Accounts to forget the stored one");
@@ -491,7 +532,7 @@ describe("openPublishPanel — the token is not in the DOM", () => {
     setActiveRegistry(registry);
     openPublishPanel();
     await flush();
-    pointer(button("Preferences › Accounts")!, "click");
+    click("accounts");
     await flush();
     expect(runs).toEqual([{ args: { section: "accounts" }, id: "app.preferences" }]);
     setActiveRegistry(null);
@@ -521,13 +562,33 @@ describe("openPublishPanel — connected status view", () => {
     });
     openPublishPanel();
     await flush();
-    expect(bodyText()).toContain("deploy: success");
-    expect(bodyText()).toContain("Publishing happens automatically on every commit");
+    expect(part("deployment-state")?.textContent).toBe("deploy: success");
+    expect(part("hint")?.textContent).toContain("Publishing happens automatically on every commit");
+    expect(part<HTMLAnchorElement>("link")?.href).toBe("https://my-site.pages.dev/");
 
-    pointer(button("Disconnect")!, "click");
+    click("disconnect");
     await flush();
     const writes = state.calls.filter((c) => c[0] === "writeFile" && c[1] === "project.json");
     const config = JSON.parse(String(writes.at(-1)?.[2])) as { build: Record<string, unknown> };
     expect(config.build["deploy"]).toBeUndefined();
+  });
+
+  test("a connected project with nothing shipped says so, and the buttons refuse while busy", async () => {
+    resetStudioState({
+      projectConfig: { build: { adapter: "cloudflare-pages", deploy: DEPLOY }, name: "My Site" },
+    });
+    installMockPlatform({
+      cfApi: cfApiMock({
+        "/accounts": [{ id: DEPLOY.accountId, name: "Acme" }],
+        "/deployments": [],
+      }),
+      cfConnection: () =>
+        Promise.resolve({ accountId: DEPLOY.accountId, accountName: "Acme", connected: true }),
+    });
+    openPublishPanel();
+    await flush();
+    expect(part("deployment")?.textContent).toContain("No deployments yet");
+    expect(control("refresh")?.disabled).toBe(false);
+    expect(control("disconnect")?.disabled).toBe(false);
   });
 });

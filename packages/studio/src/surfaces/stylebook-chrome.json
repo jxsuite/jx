@@ -1,0 +1,124 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioStylebookChrome",
+  "$description": "The bar across the top of the Project Styles canvas: the filter that narrows the specimen catalogue, and the toggle that reduces it to the elements this file has already styled. Both are shell state rather than document state — the adapter owns which — and the two names come in as values, because the surface is called Project Styles and the canvas view it draws is the wire word `stylebook`; nothing a reader sees here may be spelled from that.",
+  "tagName": "div",
+  "attributes": {
+    "part": "chrome",
+    "role": "toolbar",
+    "aria-label": "${state.title}"
+  },
+  "style": {
+    "$description": "What `.sb-chrome` said in `styles/overlays.css`, plus the six inline declarations the template carried beside it, plus `.tb-toggle` — all three go dead with this conversion, and none of them is shared with another surface. Two repairs on the way. The bar is one element rather than a positioned box wrapping a `role=\"toolbar\"` row that declared the same flex layout again. And `.tb-toggle` read `var(--spectrum-font-size-50, 11px)`, which the kit spells `--jx-text-sm` at the same value; the rest of its drawing is a `jx-action-button` reaching in through `part=\"control\"`, because what it has to look like is a small bordered chip and every fill and control height the kit draws would otherwise have to be taken back off.",
+    "position": "absolute",
+    "top": "0",
+    "left": "0",
+    "right": "0",
+    "zIndex": "15",
+    "display": "flex",
+    "alignItems": "center",
+    "gap": "var(--jx-space-2)",
+    "flexShrink": "0",
+    "padding": "var(--jx-space-2) var(--jx-space-3)",
+    "background": "var(--bg-panel)",
+    "borderBottom": "1px solid var(--border)",
+    "fontFamily": "var(--jx-font-sans)",
+    "color": "var(--fg)",
+    "& [part=\"filter\"]": {
+      "flex": "1",
+      "maxWidth": "200px"
+    },
+    "& [part=\"customized\"] > [part=\"control\"]": {
+      "$description": "Bordered, unfilled and dimmed until it is on, which is what says it is a filter rather than an action: the catalogue it narrows is the thing the reader is looking at, so the control has to be quieter than its subject.",
+      "padding": "3px var(--jx-space-3)",
+      "border": "1px solid var(--border)",
+      "borderRadius": "var(--radius)",
+      "background": "transparent",
+      "color": "var(--fg-dim)",
+      "fontSize": "var(--jx-text-sm)",
+      ":hover": {
+        "background": "var(--hover-bg)"
+      }
+    },
+    "& [part=\"customized\"][data-selected] > [part=\"control\"]": {
+      "$description": "`data-selected` and not `selected`: the kit reflects the pressed state as a data attribute (`jx-action-button.json`), and the property this document binds never reaches the attribute of the same name.",
+      "borderColor": "var(--accent)",
+      "background": "var(--accent-15)",
+      "color": "var(--accent)"
+    }
+  },
+  "children": [
+    {
+      "tagName": "jx-textfield",
+      "attributes": {
+        "part": "filter"
+      },
+      "$props": {
+        "size": "sm",
+        "type": "search",
+        "clearable": true,
+        "label": {
+          "$ref": "#/state/filterLabel"
+        },
+        "placeholder": "Filter…",
+        "value": {
+          "$ref": "#/state/filter"
+        }
+      },
+      "oninput": {
+        "$prototype": "Function",
+        "body": [
+          {
+            "operator": "call",
+            "target": {
+              "$ref": "#/state/setFilter"
+            },
+            "value": [
+              {
+                "$ref": "event#/target/value"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "tagName": "jx-action-button",
+      "$description": "`onchange` and not `onclick`: a `toggles` button owns its own pressed state and says so with `change` (`jx-action-button.json`), and an `onclick` written here would replace the element's own click handler on the same property — the toggle would stop flipping and stop announcing `aria-pressed`.",
+      "attributes": {
+        "part": "customized"
+      },
+      "$props": {
+        "size": "sm",
+        "toggles": true,
+        "selected": {
+          "$ref": "#/state/customizedOnly"
+        },
+        "label": {
+          "$ref": "#/state/customizedLabel"
+        },
+        "hint": {
+          "$ref": "#/state/customizedHint"
+        }
+      },
+      "onchange": {
+        "$prototype": "Function",
+        "body": [
+          {
+            "operator": "call",
+            "target": {
+              "$ref": "#/state/toggleCustomized"
+            },
+            "value": []
+          }
+        ]
+      },
+      "children": [
+        {
+          "tagName": "span",
+          "textContent": "${state.customizedLabel}"
+        }
+      ]
+    }
+  ]
+}

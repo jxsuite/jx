@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 /**
- * Ai-model-picker.ts — the provider's model catalogue as one `sp-picker`, for every surface that
+ * Ai-model-picker.ts — the provider's model catalogue as one control, for every surface that
  * chooses a model.
  *
  * It was private to `panels/ai-chat/composer.ts`, which was correct while the chat composer was the
@@ -14,14 +14,18 @@
  * and the catalogue becomes UNAVAILABLE rather than stale. Holding it in a closure is what once let
  * the picker offer one provider's models while another was configured.
  *
+ * This module is the FLOW; `surfaces/ai-model-picker.json` is what it draws. `render()` hands back
+ * the surface's own host element rather than a template, because both hosts are still lit templates
+ * that interpolate the picker into a row of their own — see `surfaces/ai-model-picker.ts` for why
+ * that element is the mount point and why re-rendering the row cannot disturb it.
+ *
  * A closure factory (precedent: `createComposer`, `createAiCredentialsForm`) so two hosts never
  * share a loading flag or a failed-fetch record.
  *
+ * @docs studio/ai
  * @license MIT
  */
 
-import { html, nothing } from "lit-html";
-import { live } from "lit-html/directives/live.js";
 import {
   aiConnection,
   cachedModels,
@@ -30,14 +34,17 @@ import {
   preferredModel,
 } from "../services/ai-models";
 import { setModel } from "../services/ai-settings";
+import { createModelPickerSurface } from "../surfaces/ai-model-picker";
 
-import type { TemplateResult } from "lit-html";
 import type { AiCredentials } from "../services/ai-models";
+import type {
+  ModelPickerRow,
+  ModelPickerSurface,
+  ModelPickerView,
+  ModelPickerWidth,
+} from "../surfaces/ai-model-picker";
 
-/** The `sp-menu-item` value that means "try listing again" rather than "select this model". */
-export const RETRY_MODELS = "__retry_models__";
-
-/** The `sp-menu-item` value of the disabled placeholder shown during the first fetch. */
+/** The row value of the disabled placeholder shown during the first listing. */
 export const LOADING_MODELS = "__loading__";
 
 /** What a listed model's row says when the backend reported it cannot call tools. */
@@ -70,14 +77,26 @@ export interface ModelPickerOptions {
    * the assistant.
    */
   onChange?: (id: string) => void;
-  /** Extra class on the `sp-picker`, so a host can size it without touching this module. */
-  className?: string;
-  /** Picker size; `"s"` (the composer's) by default. */
-  size?: "s" | "m";
+  /**
+   * Which of the surface's two shapes to draw. `"compact"` (the composer's) by default; the Import
+   * form's field column asks for `"fill"`.
+   *
+   * This replaced a `className`. A document styles through `part` rather than through a class
+   * (`ui.md` §3.1), so the two rules the hosts used to supply are one attribute the document
+   * branches on — and a host can no longer reach in and restyle a control it does not own.
+   */
+  width?: ModelPickerWidth;
+  /** Control size; `"sm"` (the composer's) by default. */
+  size?: "sm" | "md";
 }
 
 export interface ModelPicker {
-  render: () => TemplateResult;
+  /**
+   * The picker's host element.
+   *
+   * A host interpolates it into its own lit template, which inserts a Node it is handed as-is.
+   */
+  render: () => HTMLElement;
   /** Whether a fetch is in flight — for a host that wants to disable a submit button. */
   isLoading: () => boolean;
   /** The last fetch's failure, or `""`. */
@@ -110,6 +129,9 @@ export function createModelPicker(opts: ModelPickerOptions): ModelPicker {
    */
   let attempted: AiCredentials | null = null;
 
+  /** Made on the first render, and kept for the life of the controller. */
+  let surface: ModelPickerSurface | null = null;
+
   function sameConnection(a: AiCredentials | null, b: AiCredentials): boolean {
     return a !== null && a.apiKey === b.apiKey && a.baseUrl === b.baseUrl;
   }
@@ -133,22 +155,23 @@ export function createModelPicker(opts: ModelPickerOptions): ModelPicker {
       });
   }
 
-  function onPickerChange(e: Event) {
-    const { value } = e.target as HTMLInputElement;
-    if (value === RETRY_MODELS) {
-      attempted = null;
-      ensureModels(true);
-      // Re-render so the picker snaps back to the current model instead of showing "Retry".
-      opts.requestRender();
-      return;
-    }
+  /** List again, from the beginning: a refusal is forgotten so the same credentials are re-asked. */
+  function retry() {
+    attempted = null;
+    ensureModels(true);
+    opts.requestRender();
+  }
+
+  function choose(value: string) {
+    /* The placeholder is disabled, so a reader cannot land on it; a host driving the control
+       directly still can, and a state is not a model. */
     if (value && value !== LOADING_MODELS) {
       onChange(value);
     }
   }
 
-  function render(): TemplateResult {
-    ensureModels();
+  /** The rows to offer — what the catalogue holds, plus the one state that is worth a row. */
+  function rows(): ModelPickerRow[] {
     const current = getModel();
     const listed = cachedModels(aiConnection()) ?? [];
     /* A catalogue that does not contain the current model still has to show it selected — an
@@ -156,28 +179,33 @@ export function createModelPicker(opts: ModelPickerOptions): ModelPicker {
     const items = listed.some((m) => m.id === current)
       ? listed
       : [{ id: current, name: current }, ...listed];
-    return html`
-      <sp-picker
-        size=${opts.size ?? "s"}
-        quiet
-        class=${opts.className ?? "ai-model-picker"}
-        title=${failure ? `Couldn't load models: ${failure}` : "Model"}
-        .value=${live(current)}
-        @change=${onPickerChange}
-      >
-        ${items.map((m) => html`<sp-menu-item value=${m.id}>${itemLabel(m)}</sp-menu-item>`)}
-        ${
-          loading
-            ? html`<sp-menu-item disabled value=${LOADING_MODELS}>Loading models…</sp-menu-item>`
-            : nothing
-        }
-        ${
-          failure
-            ? html`<sp-menu-item value=${RETRY_MODELS}>Retry loading models</sp-menu-item>`
-            : nothing
-        }
-      </sp-picker>
-    `;
+    const offered: ModelPickerRow[] = items.map((m) => ({ label: itemLabel(m), value: m.id }));
+    if (loading) {
+      offered.push({ disabled: true, label: "Loading models…", value: LOADING_MODELS });
+    }
+    return offered;
+  }
+
+  /** What the picker says right now — the whole of what the surface is told. */
+  function view(): ModelPickerView {
+    return {
+      failure,
+      hint: failure ? `Couldn't load models: ${failure}` : "Model",
+      options: rows(),
+      size: opts.size ?? "sm",
+      value: getModel(),
+      width: opts.width ?? "compact",
+    };
+  }
+
+  function render(): HTMLElement {
+    ensureModels();
+    if (surface) {
+      surface.update(view());
+    } else {
+      surface = createModelPickerSurface(view(), { choose, retry });
+    }
+    return surface.host;
   }
 
   return {
