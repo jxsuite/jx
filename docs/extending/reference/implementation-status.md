@@ -29,7 +29,7 @@ This page is generated from the `> **Status: …**` markers in the specification
 | `site-architecture.md`    | 0.6.10-draft  | Partial     | 2026-08-29 |
 | `spec.md`                 | 0.6.17-draft  | Partial     | 2026-09-09 |
 | `standards.md`            | 0.1.17-draft  | Partial     | 2026-09-02 |
-| `studio-ui-guidelines.md` | 0.4.17-draft  | Partial     | 2026-09-09 |
+| `studio-ui-guidelines.md` | 0.4.18-draft  | Partial     | 2026-09-09 |
 | `studio.md`               | 0.10.16-draft | Partial     | 2026-09-02 |
 | `ui.md`                   | 0.1.18-draft  | Partial     | 2026-09-08 |
 

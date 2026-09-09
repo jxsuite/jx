@@ -35,8 +35,14 @@ let _modalLayer: HTMLElement;
 let _dialogLayer: HTMLElement;
 let _toastLayer: HTMLElement;
 
-/** The host a layer kind renders into, falling back to `<body>` before `initLayers()` has run. */
-function layerHost(kind: LayerKind): HTMLElement {
+/**
+ * The host a layer kind renders into, falling back to `<body>` before `initLayers()` has run.
+ *
+ * Exported for the surfaces that mount THEMSELVES into a layer rather than handing this module a
+ * template — `surfaces/about.ts` is the first — so a converted surface asks for its layer by name
+ * instead of reaching for `#layer-dialog` and re-deriving the fallback.
+ */
+export function layerHost(kind: LayerKind): HTMLElement {
   const host =
     kind === "popover"
       ? _popoverLayer

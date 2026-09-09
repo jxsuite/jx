@@ -95,7 +95,7 @@ describe("dependencies editor gaps", () => {
     const c = makeContainer();
     renderDependenciesEditor(c);
     await flush();
-    expect(c.querySelector(".about-muted")?.textContent).toContain("No dependencies");
+    expect(c.querySelector(".settings-muted")?.textContent).toContain("No dependencies");
   });
 
   test("packageVersions failure keeps the table without latest versions", async () => {

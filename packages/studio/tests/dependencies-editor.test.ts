@@ -77,7 +77,7 @@ describe("renderDependenciesEditor", () => {
     installMockPlatform(TWO_DEPS);
     const c = makeContainer();
     renderDependenciesEditor(c);
-    expect(c.querySelector(".about-muted")?.textContent).toContain("Loading");
+    expect(c.querySelector(".settings-muted")?.textContent).toContain("Loading");
 
     await flush();
     const cells = cellsByName(c);
@@ -135,7 +135,7 @@ describe("renderDependenciesEditor", () => {
     const c = makeContainer();
     renderDependenciesEditor(c);
     await flush();
-    expect(c.querySelector(".about-muted")?.textContent).toContain("No dependencies");
+    expect(c.querySelector(".settings-muted")?.textContent).toContain("No dependencies");
   });
 
   test("update sends a ^latest bump for the row", async () => {
