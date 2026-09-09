@@ -15,29 +15,7 @@
 
 import { html, render as litRender } from "lit-html";
 import type { TemplateResult } from "lit-html";
-
-/**
- * Render a frame template into `host`, surviving a host that was emptied since the last mount.
- *
- * `textContent = ""` (or `innerHTML = ""`) removes the comment nodes lit uses as a ChildPart's
- * markers but leaves lit's private `_$litPart$` reference behind, so the next render reuses a part
- * whose markers are detached from the DOM and throws — or, worse, quietly renders nothing. Test
- * fixtures clear the body between cases constantly, and the app does the same thing to a stage on
- * every mode transition; `canvas/canvas-render.ts`'s hardClearCanvasWrap carries the same ejection
- * for the same reason.
- *
- * Mounting is a one-shot, so ejecting unconditionally costs nothing and makes it idempotent.
- */
-function mountInto(host: ParentNode, tpl: TemplateResult): void {
-  /* Both halves, in this order. Clearing alone leaves lit's private part reference pointing at
-     comment markers that are no longer in the document, so the next render throws or paints
-     nothing. Ejecting alone leaves the OLD nodes in place and lit starts a fresh part beside them,
-     so a second mount produces two frames rather than one. */
-  (host as HTMLElement).textContent = "";
-  // @ts-expect-error -- _$litPart$ is lit's private render-part marker, not in the DOM types
-  delete (host as HTMLElement)["_$litPart$"];
-  litRender(tpl, host as HTMLElement);
-}
+import { mountShellSurface } from "../surfaces/shell";
 
 /**
  * The four overlay layers that `ui/layers.ts` renders into, in stacking order.
@@ -74,60 +52,35 @@ export function overlayLayers(): TemplateResult {
 }
 
 /**
- * The application frame: the Spectrum theme wrapper, the app grid, and the four overlay layers.
+ * Render the frame and the overlay layers into `host`, in that order.
  *
- * The theme's three attributes are BINDINGS rather than literals, and that is not decoration. A
- * literal lives in the template lit clones with `importNode`, and cloning a registered custom
- * element makes the DOM fire `attributeChangedCallback` before its constructor has run — Spectrum's
- * Theme then reaches for `_provideSystemContext` and finds nothing. A binding is applied after the
- * element exists. `shell.ts` overwrites `color` on the first theme effect anyway, so the literal
- * was never the source of truth.
+ * `#app` and its cells are `src/surfaces/shell.json`, mounted through the runtime — the frame is a
+ * Jx document, which is the whole point of the migration. The four overlay LAYERS are still a lit
+ * template, and deliberately: they belong to `ui/layers.ts` rather than to the frame, and they move
+ * when that module does. Both land in the theme wrapper, `#app` first, exactly as before.
  *
- * Region ids are stamped HERE. They used to live in a selector-to-id map in `ui/regions.ts`, whose
- * comment gave the reason plainly — these were "bare `<div id>` in index.html, so it cannot stamp
- * itself". A template can, so the map is gone and the id sits on the element it names.
- */
-export function shellTree(): TemplateResult {
-  return html`
-    <div id="app">
-      <div id="toolbar" data-jx-region="commandbar"></div>
-      <!-- The PANE GRID (studio.md §18.1). One cell per pane, each holding that pane's own strip,
-             jump bar, chrome layer and stage — the four surfaces that used to be flat siblings of
-             THIS grid, which is to say application rows that only ever described one pane. There is
-             nothing to see here in markup: panels/pane-grid.ts reconciles the cells against
-             workspace.panes, because how many there are is a fact about the workspace and a
-             single div can only ever be one of them. -->
-      <div id="pane-grid"></div>
-      <div id="activity-bar" data-jx-region="rail"></div>
-      <div id="left-panel" data-jx-region="navigator"></div>
-      <div id="resize-left" class="resize-handle"></div>
-      <!-- The Bottom dock (⌘J). It sits in the PANE's column, under the stage and above the
-             status bar, so opening it never narrows the Navigator or the Inspector (studio.md §12
-             region ⑪). Its handle resizes on the other axis; panels/bottom-dock.ts stamps
-             dock.bottom on this host while it is open, and nothing while it is closed. -->
-      <div id="resize-bottom" class="resize-handle resize-handle-row"></div>
-      <div id="bottom-dock"></div>
-      <div id="resize-right" class="resize-handle"></div>
-      <!-- The Inspector dock. Four tabs — Content · Style · Logic · Assistant (studio.md §12
-             region ⑨) — all inside this one host. -->
-      <div id="right-panel" data-jx-region="inspector"></div>
-      <!-- The app's only status channel: announce what lands in it (studio.md §12 region ⑫). -->
-      <div id="statusbar" role="status" aria-live="polite" data-jx-region="statusbar"></div>
-    </div>
-    ${overlayLayers()}
-  `;
-}
-
-/**
- * Render {@link shellTree} into `host`.
- *
- * The entry calls this once, before `initShellRefs()`. Tests call it instead of pasting an
- * approximation of the frame — which is the whole reason it is a function.
+ * **This is now asynchronous, and every caller must await it.** `store.ts`'s `initShellRefs` reads
+ * five of these cells out of the document on the line after the mount, and `ui/panel-resize.ts`
+ * reads three more; a mount that has not settled hands each of them a null. The runtime renders one
+ * microtask after insertion and waits for the kit to be defined first, so there is no synchronous
+ * spelling of this to fall back on.
  *
  * @param host Where the frame goes. Defaults to the document body.
  */
-export function mountShellTree(host: ParentNode = document.body): void {
-  mountInto(themeHost(host), shellTree());
+export async function mountShellTree(host: ParentNode = document.body): Promise<void> {
+  const theme = themeHost(host);
+  /* The same clear-and-eject the lit mount did, for the same two reasons — a fixture that empties
+     the host leaves lit's part marker pointing at comment nodes that are gone, and ejecting without
+     clearing makes a second mount paint a second frame beside the first — and now for a third: the
+     document mount APPENDS, so without this a remount leaves two `#app`s and every `querySelector`
+     silently picks the stale one. */
+  theme.textContent = "";
+  // @ts-expect-error -- _$litPart$ is lit's private render-part marker, not in the DOM types
+  delete theme["_$litPart$"];
+  await mountShellSurface(theme);
+  /* After the frame, so the layers are its siblings in the order they always were. lit's `render`
+     manages only the range between its own markers, so appending here leaves `#app` alone. */
+  litRender(overlayLayers(), theme);
 }
 
 /**

@@ -29,8 +29,8 @@ import "../src/panels/pane-grid";
    host, like every other hand-written copy. `src/shell/tree.ts` is the one definition and stamps its
    own ids, which is what most of this file is about. */
 
-beforeEach(() => {
-  mountShellTree();
+beforeEach(async () => {
+  await mountShellTree();
   initShellRefs();
   if (!Element.prototype.scrollIntoView) {
     Element.prototype.scrollIntoView = () => {};

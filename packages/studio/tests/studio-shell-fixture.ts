@@ -85,7 +85,7 @@ export async function bootStudio(opts: {
      could report it because the fixture WAS the thing under test.
      src/studio.ts mounts the frame itself at boot, so this is belt and braces for the assertions
      that run before the import; both go through the one definition. */
-  mountShellTree();
+  await mountShellTree();
 
   void mock.module("../src/services/monaco-setup.js", () => ({}));
 

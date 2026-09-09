@@ -624,7 +624,7 @@ describe("the bar is wired to the app, not to a stub", () => {
     expect(source).not.toContain("jumpBarCommands");
   });
 
-  test("the bootstrap mounts the bar into a cell the shell actually has", () => {
+  test("the bootstrap mounts the bar into a cell the shell actually has", async () => {
     // `app-commands-composition.test.ts` guards the projection; this guards the other half — a
     // Surface nothing mounts is exactly as unreachable as a command nothing registers.
     //
@@ -648,7 +648,7 @@ describe("the bar is wired to the app, not to a stub", () => {
        tree rather than index.html's text: the frame is src/shell/tree.ts now, and the document
        carries an empty body. */
     const frame = document.createElement("div");
-    mountShellTree(frame);
+    await mountShellTree(frame);
     expect(frame.querySelector("#pane-grid")).not.toBeNull();
     expect(frame.querySelector("#jump-bar")).toBeNull();
   });

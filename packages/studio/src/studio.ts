@@ -469,8 +469,13 @@ void registerKit();
 // ─── Render loop ──────────────────────────────────────────────────────────────
 
 /* The application frame, before anything adopts a host out of it. index.html carries an empty body
-   and this is the only definition — see src/shell/tree.ts for what that fixed. */
-mountShellTree();
+   and this is the only definition — see src/shell/tree.ts for what that fixed.
+
+   AWAITED, and it has to be: the frame is a Jx document now, so it renders one microtask after
+   insertion and only once the kit's elements are defined. `initShellRefs()` on the next line reads
+   five of its cells with `querySelector`, and every module that holds one of those would otherwise
+   hold a null — silently, because a null host is only noticed by whatever renders into it later. */
+await mountShellTree();
 
 initShellRefs();
 // One effect projects the dock record onto the shell grid — collapse classes and column widths.
