@@ -173,6 +173,9 @@ export const STUDIO_WORKERS: readonly string[] = [
  */
 export const STUDIO_STYLESHEETS: readonly string[] = [
   "styles/tokens.css",
+  /* Spectrum's leftovers, second so the tokens above are declared before anything reads them.
+     Deleted whole with the last Spectrum component; nothing new belongs in it. */
+  "styles/spectrum.css",
   "styles/shell.css",
   "styles/canvas.css",
   "styles/panels.css",

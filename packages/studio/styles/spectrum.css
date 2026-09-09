@@ -1,0 +1,62 @@
+/* Spectrum residue, and the only stylesheet in Studio that is still hand-written.
+   Everything here is declared ON the <sp-theme> element, where Spectrum's own tokens are in scope,
+   and STYLING.md records that moving these to :root silently breaks them — a --spectrum-* name
+   resolves to nothing outside the element that declares it, so each var() would fall to its hex
+   fallback and stop following the theme.
+
+   That is why this file exists rather than joining styles/tokens.json: its declarations cannot be
+   expressed at :root while Spectrum is still here. It is deleted whole when <sp-theme> goes, along
+   with the last Spectrum component (specs/studio-ui-guidelines.md §14). Nothing new belongs in it. */
+
+sp-tab:not(:first-of-type) {
+  margin-inline-start: var(--mod-tabs-item-horizontal-spacing, 8px);
+}
+
+/* What still reads Spectrum, on sp-theme where its tokens are in scope: the
+   theme-independent canvas palette and the data-explorer syntax colours.
+   They move to kit tokens with the surfaces that use them. */
+sp-theme {
+  display: block;
+  height: 100%;
+  --slot-c: var(--spectrum-seafoam-900, #1a8a7a);
+  --case-c: var(--spectrum-informative-color-800, #60a5fa);
+  /* Light canvas palette (stylebook, block/element previews, content
+     mode). These surfaces always render as a light "document" regardless
+     of the app chrome, so the ramp is derived from the theme-independent
+     Spectrum white/black tokens via color-mix rather than hard-coded hex.
+     The percentage is the black (foreground) or white (background) blend
+     of each step; this keeps the canvas light even in the dark chrome
+     while still being Spectrum-sourced. */
+  --canvas-fg: color-mix(in srgb, var(--spectrum-black, #000) 90%, var(--spectrum-white, #fff));
+  --canvas-fg-2: color-mix(in srgb, var(--spectrum-black, #000) 80%, var(--spectrum-white, #fff));
+  --canvas-fg-3: color-mix(in srgb, var(--spectrum-black, #000) 67%, var(--spectrum-white, #fff));
+  --canvas-dim: color-mix(in srgb, var(--spectrum-black, #000) 47%, var(--spectrum-white, #fff));
+  --canvas-muted: color-mix(in srgb, var(--spectrum-black, #000) 40%, var(--spectrum-white, #fff));
+  --canvas-light: color-mix(in srgb, var(--spectrum-black, #000) 27%, var(--spectrum-white, #fff));
+  --canvas-border: color-mix(in srgb, var(--spectrum-black, #000) 13%, var(--spectrum-white, #fff));
+  --canvas-rule: color-mix(in srgb, var(--spectrum-black, #000) 7%, var(--spectrum-white, #fff));
+  --canvas-bg-1: color-mix(in srgb, var(--spectrum-white, #fff) 96%, var(--spectrum-black, #000));
+  --canvas-bg-2: color-mix(in srgb, var(--spectrum-white, #fff) 94%, var(--spectrum-black, #000));
+  --canvas-track: color-mix(in srgb, var(--spectrum-white, #fff) 88%, var(--spectrum-black, #000));
+  /* Data explorer syntax colors (mapped to nearest Spectrum hues) */
+  --data-key: var(--spectrum-blue-700, #3b82f6);
+  --data-string: var(--spectrum-orange-700, #ce9178);
+  --data-number: var(--spectrum-celery-700, #b5cea8);
+  --data-boolean: var(--tag);
+  /* Typography — align the chrome with the Spectrum sans stack used by
+     the SWC components; 12px maps exactly to font-size-75. line-height
+     stays 1.5 (a deliberate reading height; the Spectrum body token is
+     1.3, which would tighten the whole UI). */
+  color: var(--fg);
+  background: var(--bg);
+  font-family: var(
+    --spectrum-sans-font-family-stack,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    system-ui,
+    sans-serif
+  );
+  font-size: var(--spectrum-font-size-75, 12px);
+  line-height: 1.5;
+}

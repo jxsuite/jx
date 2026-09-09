@@ -1,15 +1,48 @@
-/* Jx Studio — design tokens and global base.
-   MUST load first: every other styles/*.css file resolves var(--bg),
-   var(--fg), var(--accent), var(--font-mono), var(--radius) and the
-   --canvas-* ramp declared here.
+/* GENERATED FILE — do not edit.
+   Source: styles/tokens.json. Regenerate with `bun run tokens:sync`.
 
-   Owns: the vendored @font-face declarations, the box-sizing reset,
-   html/body, the :root panel-width variables and the sp-theme semantic
-   token layer. */
+   Studio's global base and semantic token layer. It is a linked stylesheet rather than part of the
+   kit's adopted theme because every declaration here is PRE-PAINT: the kit's sheet is adopted from
+   JavaScript at boot, so these hex fallbacks are what paints the shell before that lands, and the
+   @font-face rules are what keep the first frame out of a fallback face.
 
-/* Jx brand mono font, vendored in ./fonts (SIL OFL 1.1, see fonts/OFL.txt).
-   Latin subset only; the stack falls back to SF Mono / Fira Code for
-   other scripts. Monaco remeasures after load (src/services/monaco-setup.ts). */
+   Every --name here is an ALIAS of a kit token (packages/ui/project.json, specs/ui.md §4). The
+   fallbacks are the kit's DARK values, because the app boots dark; check-styles.ts holds them to
+   the table in specs/studio-ui-guidelines.md §1.1. */
+
+:root {
+  box-sizing: border-box;
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--jx-bg, #111114);
+  --panel-w-left: 240px;
+  --panel-w-right: 280px;
+  --bg: var(--jx-bg, #111114);
+  --bg-panel: var(--jx-bg-panel, #17171b);
+  --bg-input: var(--jx-bg-input, #1d1d22);
+  --border: var(--jx-border, #2f2f36);
+  --fg: var(--jx-fg, #eeeef2);
+  --fg-dim: var(--jx-fg-dim, #a2a2af);
+  --accent: var(--jx-accent, #3b82f6);
+  --accent-fg: var(--jx-accent-fg, #ffffff);
+  --danger: var(--jx-danger, #e86460);
+  --success: var(--jx-success, #4fb27a);
+  --tag: var(--jx-tag, #8fb5fb);
+  --signal: var(--jx-signal, #f2cc7c);
+  --handler: var(--jx-handler, #c8a2e0);
+  --warning: var(--jx-warning, #e5ae4a);
+  --map: var(--jx-map, #8b83e6);
+  --switch-c: var(--danger);
+  --radius: var(--jx-radius-sm, 4px);
+  --font-mono: var(--jx-font-mono, "JetBrains Mono", "SF Mono", "Fira Code", monospace);
+  --hover-bg: var(--jx-hover-bg, color-mix(in oklab, var(--fg) 6%, transparent));
+  --accent-8: var(--jx-accent-8, color-mix(in oklab, var(--accent) 8%, transparent));
+  --accent-10: var(--jx-accent-10, color-mix(in oklab, var(--accent) 10%, transparent));
+  --accent-15: var(--jx-accent-15, color-mix(in oklab, var(--accent) 15%, transparent));
+  --accent-20: var(--jx-accent-20, color-mix(in oklab, var(--accent) 20%, transparent));
+  --accent-50: var(--jx-accent-50, color-mix(in oklab, var(--accent) 50%, transparent));
+}
 @font-face {
   font-family: "JetBrains Mono";
   font-style: normal;
@@ -31,130 +64,18 @@
   font-display: swap;
   src: url("../fonts/jetbrains-mono-700.woff2") format("woff2");
 }
-*,
-*::before,
-*::after {
+:root *,
+:root *::before,
+:root *::after {
   box-sizing: border-box;
   margin: 0;
 }
-sp-tab:not(:first-of-type) {
-  margin-inline-start: var(--mod-tabs-item-horizontal-spacing, 8px);
-}
-html,
-body {
+:root body {
   height: 100%;
   overflow: hidden;
-  /* The kit's --jx-bg is a light-dark() pair on :root, so one declaration
-     follows the chrome theme; the hex fallback is the pre-theme backdrop
-     painted before registerKit() adopts the sheet. */
   background: var(--jx-bg, #111114);
 }
-/* The fallback cannot know the theme, so a light Studio would boot behind
-   the dark backdrop for a frame. `data-theme` is stamped on <html> by
-   applyChromeTheme() (src/shell.ts) before first paint, and this rule
-   gives the light boot its own fallback, the kit's gray-50. */
-html[data-theme="light"],
-html[data-theme="light"] body {
+:root[data-theme="light"],
+:root[data-theme="light"] body {
   background: var(--jx-bg, #f7f7f9);
-}
-/* Panel layout widths. These must live on :root (the <html> element),
-   not on sp-theme or #app, because the resize logic in
-   src/ui/panel-resize.ts reads and writes them as inline styles on
-   document.documentElement. A definition on any closer ancestor of #app
-   (sp-theme or body) would shadow that inline override and freeze the
-   sidebars. The #app.left/right-collapsed rules override per instance. */
-:root {
-  --panel-w-left: 240px;
-  --panel-w-right: 280px;
-}
-/* Studio semantic token layer.
-   Every name here is an ALIAS of a kit token (packages/ui/project.json,
-   specs/ui.md §4): the kit declares --jx-* on :root as light-dark() pairs,
-   registerKit() adopts that sheet at boot, and these aliases keep the
-   names the chrome's own CSS and check-styles.ts already read. They live
-   on :root now — the kit tokens are in scope there — so the #layer-* hosts
-   and anything outside <sp-theme> read them too. The hex fallbacks are the
-   kit's DARK values (the app boots dark) and are what paints before the
-   sheet is adopted; check-styles.ts holds them to the guidelines table. */
-:root {
-  /* Surfaces */
-  --bg: var(--jx-bg, #111114);
-  --bg-panel: var(--jx-bg-panel, #17171b);
-  --bg-input: var(--jx-bg-input, #1d1d22);
-  --border: var(--jx-border, #2f2f36);
-  /* Text */
-  --fg: var(--jx-fg, #eeeef2);
-  --fg-dim: var(--jx-fg-dim, #a2a2af);
-  /* Accent and status */
-  --accent: var(--jx-accent, #3b82f6);
-  --accent-fg: var(--jx-accent-fg, #ffffff);
-  --danger: var(--jx-danger, #e86460);
-  --success: var(--jx-success, #4fb27a);
-  --tag: var(--jx-tag, #8fb5fb);
-  --signal: var(--jx-signal, #f2cc7c);
-  --handler: var(--jx-handler, #c8a2e0);
-  --warning: var(--jx-warning, #e5ae4a);
-  --map: var(--jx-map, #8b83e6);
-  --switch-c: var(--danger);
-  /* Corner radius */
-  --radius: var(--jx-radius-sm, 4px);
-  /* Monospace stack for code/source chrome: the kit's, which leads with the
-     JetBrains Mono vendored in ./fonts. */
-  --font-mono: var(--jx-font-mono, "JetBrains Mono", "SF Mono", "Fira Code", monospace);
-  /* Hover wash and accent tints, the kit's: the wash is a tint of the ink
-     so it shows on the light theme's white panels too. */
-  --hover-bg: var(--jx-hover-bg, color-mix(in oklab, var(--fg) 6%, transparent));
-  --accent-8: var(--jx-accent-8, color-mix(in oklab, var(--accent) 8%, transparent));
-  --accent-10: var(--jx-accent-10, color-mix(in oklab, var(--accent) 10%, transparent));
-  --accent-15: var(--jx-accent-15, color-mix(in oklab, var(--accent) 15%, transparent));
-  --accent-20: var(--jx-accent-20, color-mix(in oklab, var(--accent) 20%, transparent));
-  --accent-50: var(--jx-accent-50, color-mix(in oklab, var(--accent) 50%, transparent));
-}
-/* What still reads Spectrum, on sp-theme where its tokens are in scope: the
-   theme-independent canvas palette and the data-explorer syntax colours.
-   They move to kit tokens with the surfaces that use them. */
-sp-theme {
-  display: block;
-  height: 100%;
-  --slot-c: var(--spectrum-seafoam-900, #1a8a7a);
-  --case-c: var(--spectrum-informative-color-800, #60a5fa);
-  /* Light canvas palette (stylebook, block/element previews, content
-     mode). These surfaces always render as a light "document" regardless
-     of the app chrome, so the ramp is derived from the theme-independent
-     Spectrum white/black tokens via color-mix rather than hard-coded hex.
-     The percentage is the black (foreground) or white (background) blend
-     of each step; this keeps the canvas light even in the dark chrome
-     while still being Spectrum-sourced. */
-  --canvas-fg: color-mix(in srgb, var(--spectrum-black, #000) 90%, var(--spectrum-white, #fff));
-  --canvas-fg-2: color-mix(in srgb, var(--spectrum-black, #000) 80%, var(--spectrum-white, #fff));
-  --canvas-fg-3: color-mix(in srgb, var(--spectrum-black, #000) 67%, var(--spectrum-white, #fff));
-  --canvas-dim: color-mix(in srgb, var(--spectrum-black, #000) 47%, var(--spectrum-white, #fff));
-  --canvas-muted: color-mix(in srgb, var(--spectrum-black, #000) 40%, var(--spectrum-white, #fff));
-  --canvas-light: color-mix(in srgb, var(--spectrum-black, #000) 27%, var(--spectrum-white, #fff));
-  --canvas-border: color-mix(in srgb, var(--spectrum-black, #000) 13%, var(--spectrum-white, #fff));
-  --canvas-rule: color-mix(in srgb, var(--spectrum-black, #000) 7%, var(--spectrum-white, #fff));
-  --canvas-bg-1: color-mix(in srgb, var(--spectrum-white, #fff) 96%, var(--spectrum-black, #000));
-  --canvas-bg-2: color-mix(in srgb, var(--spectrum-white, #fff) 94%, var(--spectrum-black, #000));
-  --canvas-track: color-mix(in srgb, var(--spectrum-white, #fff) 88%, var(--spectrum-black, #000));
-  /* Data explorer syntax colors (mapped to nearest Spectrum hues) */
-  --data-key: var(--spectrum-blue-700, #3b82f6);
-  --data-string: var(--spectrum-orange-700, #ce9178);
-  --data-number: var(--spectrum-celery-700, #b5cea8);
-  --data-boolean: var(--tag);
-  /* Typography — align the chrome with the Spectrum sans stack used by
-     the SWC components; 12px maps exactly to font-size-75. line-height
-     stays 1.5 (a deliberate reading height; the Spectrum body token is
-     1.3, which would tighten the whole UI). */
-  color: var(--fg);
-  background: var(--bg);
-  font-family: var(
-    --spectrum-sans-font-family-stack,
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    system-ui,
-    sans-serif
-  );
-  font-size: var(--spectrum-font-size-75, 12px);
-  line-height: 1.5;
 }

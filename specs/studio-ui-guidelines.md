@@ -1,6 +1,6 @@
 # Jx Studio UI/UX Interface Guidelines
 
-**Version:** 0.4.13-draft\
+**Version:** 0.4.14-draft\
 **Status:** Partial\
 **Updated:** 2026-09-09\
 **Applies to:** `packages/studio/`
@@ -26,6 +26,10 @@ Use CSS custom properties from `:root` — never hardcode color values.
 > The **Fallback** column is checked against `styles/tokens.css` by `packages/studio/scripts/check-styles.ts`, and the check is why the values below are right. Seven of them had been wrong for months — this table named `#1e1e1e` for `--bg` where the app had shipped `#111111` since the brand ramp landed — so anyone designing against the documented palette was designing against one that no longer existed. A correction without a gate only resets the clock.
 >
 > Every token below is an **alias of a kit token** (`ui.md` §4): `--bg: var(--jx-bg, #111114)`, declared on `:root` where the kit's own declarations are in scope. The declaration is the contract and the fallback is merely checkable. The fallbacks are the dark values because dark is what the app boots in; the kit token is a `light-dark()` pair, so under `data-theme="light"` the same alias resolves to the light value (`--bg` `#f7f7f9`, `--bg-panel` `#ffffff`, `--fg` `#1d1d22`, `--accent` `#2563eb`) with nothing in `tokens.css` branching on the theme. A token that has to be spelled twice, once per theme, belongs in the kit's `project.json` instead.
+>
+> **`styles/tokens.css` is a BUILD OUTPUT.** Its source is `styles/tokens.json`, a Jx style block like any surface's, and `scripts/build-tokens.ts` writes the stylesheet from it: `bun run tokens:check` is the gate and `bun run tokens:sync` is the fixer, the same pair `schema:verify` and `schema:sync` are for the committed schemas. Never hand-edit the CSS; the fix belongs in the JSON.
+>
+> **It stays a linked stylesheet, and that is the design rather than an exception to it.** Every declaration in it is PRE-PAINT — the kit's own theme is adopted from JavaScript at boot, so these hex fallbacks are what paints the shell before that lands, and the `@font-face` rules are what keep the first frame out of a fallback face. Moving them into the adopted sheet would delete the thing they exist to be. So the SOURCE moves into the schema and the artifact stays a `<link>`, which is the only arrangement that is both. The one stylesheet still hand-written is `styles/spectrum.css`, which holds what is declared ON `<sp-theme>` and cannot be expressed at `:root` while Spectrum is here; it is deleted whole with the last Spectrum component.
 
 | Token         | Purpose                           | Fallback                                                             |
 | ------------- | --------------------------------- | -------------------------------------------------------------------- |
@@ -867,6 +871,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.4.14-draft** (2026-09-09) — tokens.css is a build output generated from tokens.json, and stays a linked stylesheet because everything in it is pre-paint.
 - **0.4.13-draft** (2026-09-09) — the styling gate reads a surface document's style object and the classes it names, so a converted surface cannot leave the rules behind.
 - **0.4.12-draft** (2026-09-08) — the prompt's format choice is jx-select, and its projection names the chosen value rather than marking a row.
 - **0.4.11-draft** (2026-09-08) — the prompt's format select is a named defect rather than a pending promise: jx-select has landed and that control carries both spellings ui.md forbids.
