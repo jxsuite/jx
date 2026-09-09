@@ -1,18 +1,22 @@
 /**
- * Gap coverage for src/github/github-publish.ts — the repo-options dialog template (refs,
- * confirm/cancel/close handlers, value fallbacks) which tests/github-publish.test.ts bypasses by
- * stubbing showDialog with a canned result. Here showDialog actually renders the template so the
- * dialog DOM and its event handlers execute.
+ * The Create GitHub Repository dialog — `src/surfaces/github-publish.json` and its adapter, driven
+ * through the real flow that `tests/github-publish.test.ts` bypasses with a canned answer.
+ *
+ * Everything is addressed by `part` and `data-field`, because the dialog is a document now: there
+ * is no `#repo-name` to find, no `sp-dialog-wrapper` to dispatch at, and no
+ * `.github-publish-dialog` to style — the box, the header, the two answer buttons and the backdrop
+ * all belong to `jx-dialog`. A reader's edit is written to the NATIVE control inside the kit
+ * element and dispatched from there, because that is what typing is: the element hears its own
+ * control, writes the value into its state, and lets the event bubble on to the surface.
  */
-import "./with-dom.js";
+import { flush } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { notifyModule } from "./notify-mock";
 import { resetActivities } from "../src/panels/activity-panel";
-import { render as litRender } from "lit-html";
+import { openGithubPublishSurface } from "../src/surfaces/github-publish";
 
 let statusMessages: string[] = [];
 let refreshCalls = 0;
-let dialogHosts: HTMLElement[] = [];
 let authToken: string | null = "ghp_gap_token";
 let remoteCalls: unknown[][] = [];
 let pushCalls: unknown[][] = [];
@@ -21,21 +25,13 @@ let fetchCalls: { url: string; opts: any }[] = [];
 let fetchResponses: { ok: boolean; json: unknown }[] = [];
 const originalFetch = globalThis.fetch;
 
+/** The dialog layer, standing in for `#layer-dialog` without a shell to hang it off. */
+const dialogLayer = document.createElement("div");
+document.body.append(dialogLayer);
+
 void mock.module("../src/ui/layers.js", () => ({
+  layerHost: () => dialogLayer,
   showConfirmDialog: async () => true,
-  showDialog: (templateFn: any) =>
-    new Promise((resolve) => {
-      const host = document.createElement("div");
-      document.body.append(host);
-      dialogHosts.push(host);
-      litRender(
-        templateFn((value: any) => {
-          host.remove();
-          resolve(value);
-        }),
-        host,
-      );
-    }),
 }));
 
 void mock.module("../src/github/github-auth.js", () => ({
@@ -84,14 +80,6 @@ void mock.module("../src/services/notify.js", () =>
 
 const { createGithubRepository } = await import("../src/github/github-publish.js");
 
-async function flush(turns = 3) {
-  for (let i = 0; i < turns; i++) {
-    await new Promise((resolve) => {
-      setTimeout(resolve, 0);
-    });
-  }
-}
-
 function stubFetch(responses: { ok: boolean; json: unknown }[]) {
   fetchResponses = [...responses];
   fetchCalls = [];
@@ -106,26 +94,51 @@ function stubFetch(responses: { ok: boolean; json: unknown }[]) {
   };
 }
 
-/** Start the publish flow and wait for the dialog to appear. */
+/** The dialog the flow put up, or null. */
+function dialogElement(): HTMLElement | null {
+  return dialogLayer.querySelector<HTMLElement>('jx-dialog[part="github-publish"]');
+}
+
+/** One row's native control: the input a reader types into, or the switch's checkbox. */
+function control(row: string): HTMLInputElement {
+  return dialogElement()!.querySelector<HTMLInputElement>(
+    `[data-field="${row}"] [part="input"]`,
+  ) as HTMLInputElement;
+}
+
+/** Type into a field the way a reader does: the control moves, and the element hears it. */
+function type(row: string, value: string): void {
+  const input = control(row);
+  input.value = value;
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+/**
+ * Start the flow and wait for the dialog.
+ *
+ * Two waits, not one: the mount resolving means the DOCUMENT rendered, and `jx-dialog`, `jx-field`,
+ * `jx-textfield` and `jx-switch` each settle their own template one `connectedCallback` later — so
+ * a single flush finds the dialog element with none of its controls inside it
+ * (specs/studio-ui-guidelines.md §1.1).
+ */
 async function openPublishDialog(projectName = "proj") {
   const promise = createGithubRepository({ projectName });
   await flush();
-  const host = dialogHosts.at(-1)!;
-  expect(host).toBeTruthy();
-  return { host, promise, wrapper: host.querySelector("sp-dialog-wrapper")! };
+  await flush();
+  const dialog = dialogElement();
+  expect(dialog).not.toBeNull();
+  return { dialog: dialog!, promise };
 }
 
 beforeEach(() => {
   resetActivities();
   statusMessages = [];
+  details.length = 0;
   refreshCalls = 0;
   remoteCalls = [];
   pushCalls = [];
   authToken = "ghp_gap_token";
-  for (const host of dialogHosts) {
-    host.remove();
-  }
-  dialogHosts = [];
+  dialogLayer.replaceChildren();
   stubFetch([]);
 });
 
@@ -133,7 +146,7 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
 });
 
-describe("createGithubRepository dialog", () => {
+describe("the Create GitHub Repository dialog", () => {
   test("confirm with edited fields creates the repo with those values", async () => {
     stubFetch([
       {
@@ -144,12 +157,14 @@ describe("createGithubRepository dialog", () => {
         ok: true,
       },
     ]);
-    const { host, promise, wrapper } = await openPublishDialog("proj");
+    const { dialog, promise } = await openPublishDialog("proj");
 
-    (host.querySelector("#repo-name") as any).value = "custom-repo";
-    (host.querySelector("#repo-desc") as any).value = "My description";
-    (host.querySelector("sp-switch") as any).checked = false;
-    wrapper.dispatchEvent(new Event("confirm"));
+    type("name", "custom-repo");
+    type("description", "My description");
+    const visibility = control("visibility");
+    visibility.checked = false;
+    visibility.dispatchEvent(new Event("change", { bubbles: true }));
+    dialog.dispatchEvent(new Event("confirm"));
 
     const result = await promise;
     expect(result).toBe(true);
@@ -170,6 +185,8 @@ describe("createGithubRepository dialog", () => {
         m.includes("Repository created: https://github.com/u/custom-repo"),
       ),
     ).toBe(true);
+    // The document went with the answer: the layer is empty again.
+    expect(dialogLayer.querySelector("jx-dialog")).toBeNull();
   });
 
   test("confirm with untouched fields falls back to project name and private repo", async () => {
@@ -179,12 +196,14 @@ describe("createGithubRepository dialog", () => {
         ok: true,
       },
     ]);
-    const { host, promise, wrapper } = await openPublishDialog("proj");
+    const { dialog, promise } = await openPublishDialog("proj");
 
-    // The name field is pre-filled via attribute from the project name.
-    expect(host.querySelector("#repo-name")!.getAttribute("value")).toBe("proj");
+    // The name field starts on the project's name, and the switch starts on private.
+    expect(control("name").value).toBe("proj");
+    expect(control("description").value).toBe("");
+    expect(control("visibility").checked).toBe(true);
 
-    wrapper.dispatchEvent(new Event("confirm"));
+    dialog.dispatchEvent(new Event("confirm"));
     const result = await promise;
     expect(result).toBe(true);
     const body = JSON.parse(fetchCalls[0]!.opts.body);
@@ -193,25 +212,41 @@ describe("createGithubRepository dialog", () => {
     expect(body.private).toBe(true);
   });
 
-  test("cancel resolves false without any API call", async () => {
-    const { promise, wrapper } = await openPublishDialog();
-    wrapper.dispatchEvent(new Event("cancel"));
+  test("an emptied name falls back to the project's, rather than creating a nameless repo", async () => {
+    stubFetch([
+      {
+        json: { clone_url: "https://github.com/u/proj.git", html_url: "https://github.com/u/proj" },
+        ok: true,
+      },
+    ]);
+    const { dialog, promise } = await openPublishDialog("proj");
+    type("name", "");
+    dialog.dispatchEvent(new Event("confirm"));
+
+    expect(await promise).toBe(true);
+    expect(JSON.parse(fetchCalls[0]!.opts.body).name).toBe("proj");
+  });
+
+  test("cancel resolves false, takes the document down, and calls nothing", async () => {
+    const { dialog, promise } = await openPublishDialog();
+    dialog.dispatchEvent(new Event("cancel"));
     expect(await promise).toBe(false);
     expect(fetchCalls).toEqual([]);
     expect(remoteCalls).toEqual([]);
+    expect(dialogLayer.querySelector("jx-dialog")).toBeNull();
   });
 
-  test("close resolves false without any API call", async () => {
-    const { promise, wrapper } = await openPublishDialog();
-    wrapper.dispatchEvent(new Event("close"));
+  test("the platform's own close resolves false, whatever closed it", async () => {
+    const { dialog, promise } = await openPublishDialog();
+    dialog.dispatchEvent(new Event("close"));
     expect(await promise).toBe(false);
     expect(fetchCalls).toEqual([]);
   });
 
   test("API error without field errors falls back to top-level message", async () => {
     stubFetch([{ json: { message: "nope" }, ok: false }]);
-    const { promise, wrapper } = await openPublishDialog();
-    wrapper.dispatchEvent(new Event("confirm"));
+    const { dialog, promise } = await openPublishDialog();
+    dialog.dispatchEvent(new Event("confirm"));
     expect(await promise).toBe(false);
     expect(statusMessages).toContain("Could not create the GitHub repository.");
     expect(details).toContain("nope");
@@ -220,8 +255,8 @@ describe("createGithubRepository dialog", () => {
 
   test("API error without any message uses the generic fallback", async () => {
     stubFetch([{ json: {}, ok: false }]);
-    const { promise, wrapper } = await openPublishDialog();
-    wrapper.dispatchEvent(new Event("confirm"));
+    const { dialog, promise } = await openPublishDialog();
+    dialog.dispatchEvent(new Event("confirm"));
     expect(await promise).toBe(false);
     expect(statusMessages).toContain("Could not create the GitHub repository.");
     expect(details.join("\n")).toContain("GitHub answered 422.");
@@ -231,7 +266,77 @@ describe("createGithubRepository dialog", () => {
     authToken = null;
     const result = await createGithubRepository({ projectName: "proj" });
     expect(result).toBe(false);
-    expect(dialogHosts).toEqual([]);
+    expect(dialogElement()).toBeNull();
     expect(fetchCalls).toEqual([]);
+  });
+});
+
+describe("the dialog's own markup", () => {
+  test("the switch keeps the name printed beside it, rather than the row's label", async () => {
+    /*
+     * `jx-field` names the first thing slotted into it that observes `labelledby`, so a switch
+     * slotted straight into the Visibility row would be announced "Visibility" over the top of the
+     * words next to it. The row opens with a plain `div`, which observes no naming — asserted here
+     * because the defect is silent: the dialog looks identical either way.
+     */
+    const { dialog, promise } = await openPublishDialog();
+    const toggle = dialog.querySelector('[part="toggle"]') as HTMLElement;
+    expect(toggle.getAttribute("labelledby")).toBeNull();
+    expect(control("visibility").getAttribute("aria-labelledby")).toBeNull();
+    expect(dialog.querySelector('[part="toggle"] [part="label"]')?.textContent).toBe(
+      "Private repository",
+    );
+
+    dialog.dispatchEvent(new Event("cancel"));
+    expect(await promise).toBe(false);
+  });
+
+  test("each text row's label names its own field", async () => {
+    const { dialog, promise } = await openPublishDialog();
+    for (const [row, label] of [
+      ["name", "Repository name"],
+      ["description", "Description (optional)"],
+    ] as const) {
+      const named = control(row).getAttribute("aria-labelledby");
+      expect(named).not.toBeNull();
+      expect(dialog.querySelector(`#${named}`)?.textContent).toBe(label);
+    }
+
+    dialog.dispatchEvent(new Event("cancel"));
+    expect(await promise).toBe(false);
+  });
+});
+
+describe("the surface on its own", () => {
+  test("closing before the mount lands disposes it, and a second close says nothing twice", async () => {
+    /*
+     * The flow never reaches this: it opens the dialog and waits for an answer. But the mount is
+     * asynchronous, so a caller CAN take the dialog down before the document has landed — and the
+     * mount that arrives afterwards must be disposed rather than left showing over an app that has
+     * moved on. `onClosed` fires once, because two paths reach it and either may be first.
+     */
+    const layer = document.createElement("div");
+    document.body.append(layer);
+    let closures = 0;
+    const handle = openGithubPublishSurface({
+      layer,
+      name: "unmounted",
+      onCancel: () => {},
+      onClosed: () => {
+        closures += 1;
+      },
+      onConfirm: () => {},
+    });
+    expect(layer.childElementCount).toBe(1);
+
+    handle.close();
+    expect(layer.childElementCount).toBe(0);
+    handle.close();
+    expect(closures).toBe(1);
+
+    const element = await handle.ready;
+    await flush();
+    expect(element.isConnected).toBe(false);
+    layer.remove();
   });
 });

@@ -19,16 +19,22 @@
  * Read-only, deliberately. Rename, delete and reveal are the file tree's, and a second set of
  * buttons for them here would be a second place to keep them right.
  *
+ * **This module is the flow; `surfaces/media-pane.json` is the markup.** Everything below decides
+ * something — which pane holds which tab, which of the six stages a file belongs in, when the
+ * metadata and the reference count are asked for, what a copy writes and what a row opens — and
+ * hands the surface a projection with no decisions left in it.
+ *
  * @docs studio/projects/media
  */
 
-import { html, nothing, render as litRender } from "lit-html";
 import { effect, effectScope } from "../reactivity";
 import { paneRegion } from "../ui/regions";
 import { mediaSiteUrl, previewFileSrc } from "../files/media-paths";
 import { formatBytes, loadMediaMeta, peekMediaMeta, recordImageSize } from "../files/media-meta";
 import { extensionOf, mediaKind } from "../files/media-upload";
 import { loadMediaUsages, mediaUsageHeadline, peekMediaUsages } from "../files/media-usage";
+import { mountMediaSurface } from "../surfaces/media-pane";
+import type { MediaStage, MediaSurfaceHandle, MediaView } from "../surfaces/media-pane";
 import type { MediaMeta } from "../files/media-meta";
 import type { UsageState } from "../services/references";
 import type { Tab } from "../tabs/tab";
@@ -43,15 +49,13 @@ const FONT_EXTENSIONS = new Set([".woff", ".woff2", ".ttf", ".otf"]);
 /** The pangram the font specimen is set in — short, and every letter of the alphabet once. */
 const SPECIMEN = "The quick brown fox jumps over the lazy dog";
 
-/** Specimen sizes, largest first: enough to judge a display face and a body face in one look. */
-const SPECIMEN_SIZES = [48, 32, 24, 18, 14];
-
 // ─── Mounting ────────────────────────────────────────────────────────────────
 
 interface ActiveMediaPane {
   paneId: string;
   tabId: string;
   wrap: HTMLElement;
+  surface: MediaSurfaceHandle;
   scope: { stop: () => void; run: <T>(fn: () => T) => T | undefined };
 }
 
@@ -71,7 +75,9 @@ function activeIn(paneId: string): ActiveMediaPane | null {
 /** Whether this tab's viewer is already mounted in this pane and still in the document. */
 export function mediaPaneMounted(paneId: string, tab: Tab): boolean {
   const panel = activeIn(paneId);
-  return panel !== null && panel.tabId === tab.id && panel.wrap.isConnected;
+  return (
+    panel !== null && panel.tabId === tab.id && panel.wrap.isConnected && panel.surface.attached()
+  );
 }
 
 /** Tear one pane's viewer down (mode change, tab switch, project close). Idempotent. */
@@ -81,78 +87,32 @@ export function detachMediaPane(paneId: string): void {
     return;
   }
   panel.scope.stop();
+  panel.surface.dispose();
   _active.delete(paneId);
 }
 
-// ─── Templates ───────────────────────────────────────────────────────────────
+// ─── The projection ──────────────────────────────────────────────────────────
 
 /**
- * The asset itself, in whatever element can show it.
+ * Which element the stage should draw this file in.
  *
- * A file the browser cannot render is not a failure state — it is a font, or a zip, or a format
- * this build has never heard of — so the fallback says what the file IS rather than apologising.
+ * A font is decided by extension before anything else: `mediaKind` calls a `.woff2` a plain file,
+ * and a file the browser cannot render is the last answer here rather than the first.
  */
-function assetTpl(path: string, src: string, redraw: () => void) {
+function stageFor(path: string): MediaStage {
   const ext = extensionOf(path);
-  const kind = mediaKind({ name: path });
-
   if (FONT_EXTENSIONS.has(ext)) {
-    /* A font is shown by being USED. The @font-face is scoped to a generated family name so two
-       specimens open side by side cannot claim the same one. */
-    const family = `jx-specimen-${path.replaceAll(/[^a-zA-Z0-9]/g, "-")}`;
-    return html`
-      <style>
-        @font-face {
-          font-family: "${family}";
-          src: url("${src}");
-        }
-      </style>
-      <div class="media-specimen" style="font-family: '${family}', system-ui, sans-serif">
-        ${SPECIMEN_SIZES.map(
-          (size) => html`<p class="media-specimen-line" style="font-size: ${size}px">
-            ${SPECIMEN}
-          </p>`,
-        )}
-      </div>
-    `;
+    return "font";
   }
-
-  switch (kind) {
-    case "image": {
-      return html`<img
-        class="media-image"
-        src=${src}
-        alt=""
-        @load=${(e: Event) => {
-          const img = e.target as HTMLImageElement;
-          /* The only honest source of pixel dimensions in a browser is an image that has loaded,
-             and this viewer is showing one at full size anyway. `recordImageSize` reports whether
-             the number was new, so a repaint happens once rather than on every load event. */
-          if (recordImageSize(path, img.naturalWidth, img.naturalHeight)) {
-            redraw();
-          }
-        }}
-      />`;
-    }
-    case "video": {
-      return html`<video class="media-video" src=${src} controls></video>`;
-    }
-    case "audio": {
-      return html`<audio class="media-audio" src=${src} controls></audio>`;
-    }
-    default: {
-      return ext === ".pdf"
-        ? html`<embed class="media-embed" src=${src} type="application/pdf" />`
-        : html`<div class="media-unviewable">
-            <p>Jx has no viewer for <code>${ext || "this file"}</code>.</p>
-            <p class="media-note">The file is in the project and builds normally.</p>
-          </div>`;
-    }
+  const kind = mediaKind({ name: path });
+  if (kind === "image" || kind === "video" || kind === "audio") {
+    return kind;
   }
+  return ext === ".pdf" ? "embed" : "unviewable";
 }
 
 /** Kind, dimensions, size and modified time — each omitted rather than zeroed when unknown. */
-function factsTpl(path: string, meta: MediaMeta | null) {
+function factsLine(path: string, meta: MediaMeta | null): string {
   const facts: string[] = [mediaKind({ name: path })];
   if (meta?.width != null && meta.height != null) {
     facts.push(`${meta.width} × ${meta.height}`);
@@ -163,68 +123,29 @@ function factsTpl(path: string, meta: MediaMeta | null) {
   if (meta?.modified) {
     facts.push(`modified ${meta.modified.slice(0, 10)}`);
   }
-  return html`<p class="media-facts">${facts.join(" · ")}</p>`;
+  return facts.join(" · ");
 }
 
-/**
- * The URL a document would reference this file by, with a copy button.
- *
- * The single most useful fact about an asset that is not the asset: `public/hero.jpg` is written
- * `/hero.jpg`, a string that shares not one path segment with the file, and getting it wrong is the
- * commonest way an image ends up missing from a page.
- */
-function refTpl(path: string) {
-  const ref = mediaSiteUrl(path);
-  return html`
-    <div class="media-ref">
-      <code class="media-ref-value">${ref}</code>
-      <sp-action-button
-        size="s"
-        quiet
-        title="Copy the reference"
-        @click=${() => {
-          void navigator.clipboard?.writeText(ref);
-        }}
-        >Copy</sp-action-button
-      >
-    </div>
-  `;
+/** The family name a specimen is set in, generated from the path so two cannot collide. */
+function specimenFamily(path: string): string {
+  return `jx-specimen-${path.replaceAll(/[^a-zA-Z0-9]/g, "-")}`;
 }
 
 /** Which documents reference this file, or the honest reason there is no list. */
-function usageTpl(usage: UsageState | null) {
+function usageOf(
+  usage: UsageState | null,
+): Pick<MediaView, "usageState" | "usageHeadline" | "usageFiles"> {
   const headline = mediaUsageHeadline(usage);
   if (headline === null) {
     // The host has no reference index. A zero here would be a number nobody can stand behind.
-    return nothing;
+    return { usageFiles: [], usageHeadline: "", usageState: "hidden" };
   }
   const files = usage?.status === "ready" ? usage.result.files : [];
-  return html`
-    <div class="media-usage">
-      <h4 class="media-usage-title">Used by</h4>
-      <p class="media-usage-headline">${headline}</p>
-      ${
-        files.length === 0
-          ? nothing
-          : html`<ul class="media-usage-list">
-              ${files.map(
-                (file) => html`<li>
-                  <button
-                    type="button"
-                    class="media-usage-link"
-                    @click=${() => {
-                      void openDocument(file.path);
-                    }}
-                  >
-                    ${file.path}
-                  </button>
-                  <span class="media-usage-count">${file.count}</span>
-                </li>`,
-              )}
-            </ul>`
-      }
-    </div>
-  `;
+  return {
+    usageFiles: files.map((file) => ({ count: String(file.count), path: file.path })),
+    usageHeadline: headline,
+    usageState: "shown",
+  };
 }
 
 /**
@@ -257,19 +178,21 @@ export function renderMediaMode(surface: CanvasSurface, tab: Tab): void {
   }
   detachMediaPane(paneId);
 
-  const scope = effectScope();
-  const panel: ActiveMediaPane = { paneId, scope, tabId: tab.id, wrap: canvasWrap };
-  _active.set(paneId, panel);
-
   const path = tab.documentPath ?? "";
+  const family = specimenFamily(path);
+  const src = previewFileSrc(path);
+  const ref = mediaSiteUrl(path);
+  const ext = extensionOf(path);
+  const kind = stageFor(path);
 
+  let panel: ActiveMediaPane | null = null;
   const redraw = () => {
-    if (activeIn(paneId) === panel) {
+    if (panel !== null && activeIn(paneId) === panel) {
       draw();
     }
   };
 
-  const draw = () => {
+  const view = (): MediaView => {
     const meta = peekMediaMeta(path);
     const usage = peekMediaUsages(path);
     /* Asked on the first paint that finds it missing, never on every paint: both loaders cache and
@@ -280,20 +203,47 @@ export function renderMediaMode(surface: CanvasSurface, tab: Tab): void {
     if (usage === null || usage.status === "pending") {
       void loadMediaUsages(path).then(redraw);
     }
-
-    litRender(
-      html`
-        <div class="media-viewer" data-jx-region=${paneRegion(paneId, "media")}>
-          <div class="media-stage">${assetTpl(path, previewFileSrc(path), redraw)}</div>
-          <div class="media-details">
-            <h3 class="media-name">${path.split("/").pop()}</h3>
-            ${factsTpl(path, meta)} ${refTpl(path)} ${usageTpl(usage)}
-          </div>
-        </div>
-      `,
-      canvasWrap,
-    );
+    return {
+      extLabel: ext || "this file",
+      facts: factsLine(path, meta),
+      /* The face is scoped to the generated family name, so two specimens open side by side cannot
+         claim the same one. Written only for a font: every other stage carries an empty sheet. */
+      fontFace:
+        kind === "font" ? `@font-face { font-family: "${family}"; src: url("${src}"); }` : "",
+      kind,
+      name: path.split("/").pop() ?? "",
+      ref,
+      region: paneRegion(paneId, "media"),
+      specimen: SPECIMEN,
+      specimenFamily: `--jx-specimen-family: "${family}"`,
+      src,
+      ...usageOf(usage),
+    };
   };
+
+  const draw = () => {
+    panel?.surface.update(view());
+  };
+
+  const scope = effectScope();
+  const mounted = mountMediaSurface(canvasWrap, view(), {
+    copyRef: () => {
+      void navigator.clipboard?.writeText(ref);
+    },
+    imageLoaded: (width, height) => {
+      /* The only honest source of pixel dimensions in a browser is an image that has loaded, and
+         this viewer is showing one at full size anyway. `recordImageSize` reports whether the
+         number was new, so a repaint happens once rather than on every load event. */
+      if (recordImageSize(path, width, height)) {
+        redraw();
+      }
+    },
+    openDocument: (target: string) => {
+      void openDocument(target);
+    },
+  });
+  panel = { paneId, scope, surface: mounted, tabId: tab.id, wrap: canvasWrap };
+  _active.set(paneId, panel);
 
   scope.run(() => {
     effect(() => {

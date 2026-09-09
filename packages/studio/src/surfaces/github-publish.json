@@ -1,0 +1,206 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioGithubPublish",
+  "$description": "Create GitHub Repository: the three things the flow needs before it calls the API — the repository's name, an optional description, and whether it is private. A `jx-dialog`, so the platform owns modality, Escape, focus restoration and the backdrop, and the kit draws both answer buttons. Nothing here reaches GitHub: `github/github-publish.ts` keeps the token, the request and the activity, and this document only collects.",
+  "tagName": "jx-dialog",
+  "$props": {
+    "headline": "Create GitHub Repository",
+    "confirmLabel": "Create Repository",
+    "cancelLabel": "Cancel",
+    "size": "sm"
+  },
+  "attributes": {
+    "part": "github-publish"
+  },
+  "onconfirm": {
+    "$prototype": "Function",
+    "body": [
+      {
+        "operator": "call",
+        "target": {
+          "$ref": "#/state/confirm"
+        },
+        "value": []
+      }
+    ]
+  },
+  "oncancel": {
+    "$prototype": "Function",
+    "body": [
+      {
+        "operator": "call",
+        "target": {
+          "$ref": "#/state/cancel"
+        },
+        "value": []
+      }
+    ]
+  },
+  "onclose": {
+    "$prototype": "Function",
+    "body": [
+      {
+        "operator": "call",
+        "target": {
+          "$ref": "#/state/closed"
+        },
+        "value": []
+      }
+    ]
+  },
+  "style": {
+    "$description": "What is NOT here is most of the conversion. `.github-publish-dialog` was a flex column with an 8px gap and `8px 0` of padding: the gap is the one thing it said that nothing else draws, and `jx-dialog`'s own body already pads the content, so only the gap survives. `.github-publish-dialog sp-textfield { width: 100% }` had nothing to transcribe either — a `jx-field` row is a grid whose control cell stretches, so the field fills the row without being told to. The three `sp-field-label`s are gone with them, because `jx-field` draws the label AND names the control from it; the third of them carried no `for` at all, so \"Visibility\" was text beside a switch rather than a name for it.",
+    "& [part=\"rows\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-3)"
+    }
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "rows"
+      },
+      "children": [
+        {
+          "tagName": "jx-field",
+          "$props": {
+            "span": true,
+            "label": "Repository name"
+          },
+          "attributes": {
+            "part": "row",
+            "data-field": "name"
+          },
+          "children": [
+            {
+              "tagName": "jx-textfield",
+              "$props": {
+                "placeholder": "my-project",
+                "value": {
+                  "$ref": "#/state/name"
+                }
+              },
+              "attributes": {
+                "part": "field"
+              },
+              "oninput": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/setName"
+                    },
+                    "value": [
+                      {
+                        "$ref": "event#/target/value"
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "tagName": "jx-field",
+          "$props": {
+            "span": true,
+            "label": "Description (optional)"
+          },
+          "attributes": {
+            "part": "row",
+            "data-field": "description"
+          },
+          "children": [
+            {
+              "tagName": "jx-textfield",
+              "$props": {
+                "placeholder": "A brief description",
+                "value": {
+                  "$ref": "#/state/description"
+                }
+              },
+              "attributes": {
+                "part": "field"
+              },
+              "oninput": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/setDescription"
+                    },
+                    "value": [
+                      {
+                        "$ref": "event#/target/value"
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "tagName": "jx-field",
+          "$props": {
+            "span": true,
+            "label": "Visibility"
+          },
+          "attributes": {
+            "part": "row",
+            "data-field": "visibility"
+          },
+          "children": [
+            {
+              "tagName": "div",
+              "$description": "The row opens with a plain `div`, and that is the whole reason it exists: `jx-field` names the first thing slotted into it that observes `labelledby`, so a switch slotted straight in would be announced \"Visibility\" over the top of the words printed beside it. A `div` observes no naming, so the switch keeps the name its own label gives it.",
+              "attributes": {
+                "part": "visibility-row"
+              },
+              "children": [
+                {
+                  "tagName": "jx-switch",
+                  "attributes": {
+                    "part": "toggle"
+                  },
+                  "$props": {
+                    "checked": {
+                      "$ref": "#/state/isPrivate"
+                    }
+                  },
+                  "onchange": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/setPrivate"
+                        },
+                        "value": [
+                          {
+                            "$ref": "event#/target/checked"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "children": [
+                    {
+                      "tagName": "span",
+                      "textContent": "Private repository"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

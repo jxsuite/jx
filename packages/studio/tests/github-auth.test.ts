@@ -42,6 +42,9 @@ function setupFetch(responses: { ok?: boolean; json: unknown; status?: number }[
 }
 
 void mock.module("../src/ui/layers.js", () => ({
+  /* Converted surfaces mount themselves into a layer, so they import `layerHost` from
+     here — a mock without it fails the whole file at import time. */
+  layerHost: () => document.body,
   showConfirmDialog: async () => true,
   showDialog: (fn: any) =>
     new Promise((resolve) => {

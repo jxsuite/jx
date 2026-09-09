@@ -1005,29 +1005,6 @@
   font-size: var(--spectrum-font-size-50, 11px);
   color: var(--fg-dim);
 }
-/* The account picker borrows `.prefs-account` for its rows on purpose — it is the same object in a
-   different frame, and a second row style would drift from this one. Only its own chrome is here. */
-.cf-account-picker {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  min-width: 320px;
-}
-.cf-account-picker-lede {
-  margin: 0;
-  color: var(--fg-dim);
-  font-size: var(--spectrum-font-size-75, 12px);
-}
-.cf-account-picker-empty {
-  margin: 0;
-  color: var(--fg-dim);
-  font-size: var(--spectrum-font-size-75, 12px);
-}
-.cf-account-picker-error {
-  margin: 0;
-  color: var(--danger);
-  font-size: var(--spectrum-font-size-75, 12px);
-}
 .prefs-account-actions {
   display: flex;
   align-items: center;

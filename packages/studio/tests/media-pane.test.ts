@@ -6,6 +6,12 @@
  * imported for public/hero.png — add one to project.json imports"_, which is not advice about a
  * PNG. A test that built the tab by hand could not have caught that, and could not catch its
  * return.
+ *
+ * Everything is addressed by `part`, because the viewer is a document
+ * (`src/surfaces/media-pane.json`): there is no `.media-viewer`, `.media-name` or
+ * `sp-action-button` to find any more. Every render is awaited too — `mountSurface` is
+ * asynchronous, so the synchronous `render(); assert;` this file used to do would now assert
+ * against an empty pane.
  */
 import { flush, installMockPlatform, resetStudioState, surfaceOf } from "./harness";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
@@ -52,7 +58,7 @@ async function open(path: string): Promise<{ tab: Tab; el: HTMLElement }> {
   const host = document.createElement("div");
   document.body.append(host);
   renderMediaMode(surfaceOf(host), tab);
-  await flush(2);
+  await flush(4);
   return { el: host, tab };
 }
 
@@ -114,32 +120,54 @@ describe("opening one", () => {
 describe("what it draws", () => {
   test("an image, at its own size, with the file's name", async () => {
     const { el } = await open("public/hero.png");
-    expect(el.querySelector("img.media-image")).toBeTruthy();
-    expect(el.querySelector(".media-name")?.textContent?.trim()).toBe("hero.png");
+    expect(el.querySelector('img[part="image"]')).toBeTruthy();
+    expect(el.querySelector('[part="title"]')?.textContent?.trim()).toBe("hero.png");
   });
 
   test("a video gets controls, not an img tag", async () => {
     const { el } = await open("public/promo.mp4");
-    expect(el.querySelector("video.media-video")?.hasAttribute("controls")).toBe(true);
-    expect(el.querySelector("img.media-image")).toBeNull();
+    expect(el.querySelector('video[part="video"]')?.hasAttribute("controls")).toBe(true);
+    expect(el.querySelector('img[part="image"]')).toBeNull();
   });
 
   test("audio gets controls and no picture", async () => {
     const { el } = await open("public/jingle.mp3");
-    expect(el.querySelector("audio.media-audio")?.hasAttribute("controls")).toBe(true);
-    expect(el.querySelector("img.media-image")).toBeNull();
+    expect(el.querySelector('audio[part="audio"]')?.hasAttribute("controls")).toBe(true);
+    expect(el.querySelector('img[part="image"]')).toBeNull();
   });
 
   test("a font is shown by being used", async () => {
     const { el } = await open("public/theme.woff2");
-    const lines = el.querySelectorAll(".media-specimen-line");
+    const lines = el.querySelectorAll('[part="specimen-line"]');
     expect(lines.length).toBeGreaterThan(1);
     expect(lines[0]!.textContent).toContain("quick brown fox");
+    // The ramp is the document's own: five sizes, largest first, each named by its `data-size`.
+    expect(el.querySelector('[part="specimen-line"][data-size="48"]')).toBeTruthy();
+  });
+
+  test("the face itself arrives, under a family name only this file can claim", async () => {
+    /* Two specimens open side by side must not claim one family, so the name is generated from the
+       path — and the element carries only the NAME, as a custom property, because the fallback
+       stack beside it is a rule and belongs in the document's style block. */
+    const { el } = await open("public/theme.woff2");
+    const specimen = el.querySelector<HTMLElement>('[part="specimen"]')!;
+    expect(specimen.querySelector("style")?.textContent).toContain("@font-face");
+    expect(specimen.querySelector("style")?.textContent).toContain(
+      "jx-specimen-public-theme-woff2",
+    );
+    expect(specimen.style.getPropertyValue("--jx-specimen-family")).toContain(
+      "jx-specimen-public-theme-woff2",
+    );
+  });
+
+  test("no font face is written for a file that is not a font", async () => {
+    const { el } = await open("public/hero.png");
+    expect(el.querySelector("style")).toBeNull();
   });
 
   test("a PDF is embedded", async () => {
     const { el } = await open("public/spec.pdf");
-    expect(el.querySelector("embed.media-embed")?.getAttribute("type")).toBe("application/pdf");
+    expect(el.querySelector('embed[part="embed"]')?.getAttribute("type")).toBe("application/pdf");
   });
 
   test("the reference a document would write, which is not the path", async () => {
@@ -147,12 +175,12 @@ describe("what it draws", () => {
        file. Getting it wrong is the commonest way an image goes missing from a page, and the
        importer got it wrong for every asset it downloaded. */
     const { el } = await open("public/hero.png");
-    expect(el.querySelector(".media-ref-value")?.textContent?.trim()).toBe("/hero.png");
+    expect(el.querySelector('[part="ref-value"]')?.textContent?.trim()).toBe("/hero.png");
   });
 
   test("the kind, always; the numbers only when they are known", async () => {
     const { el } = await open("public/hero.png");
-    const facts = el.querySelector(".media-facts")?.textContent ?? "";
+    const facts = el.querySelector('[part="facts"]')?.textContent ?? "";
     expect(facts).toContain("image");
     // No `0 × 0` and no `0 B`: a real file can almost be either, so they must not double as
     // "we did not find out".
@@ -173,26 +201,42 @@ describe("mounting", () => {
     /* The fast path in `canvas-render.ts` relies on this: the viewer owns its own effect, so a
        repaint that reached the canvas pipeline would tear it down and rebuild it. */
     const { el, tab } = await open("public/hero.png");
-    const img = el.querySelector("img.media-image");
+    const img = el.querySelector('img[part="image"]');
     renderMediaMode(surfaceOf(el), tab);
-    await flush(2);
-    expect(el.querySelector("img.media-image")).toBe(img!);
+    await flush(4);
+    expect(el.querySelector('img[part="image"]')).toBe(img!);
   });
 
   test("a different file in the same pane replaces the viewer rather than stacking one", async () => {
     const first = await open("public/hero.png");
-    expect(first.el.querySelector(".media-name")?.textContent?.trim()).toBe("hero.png");
+    expect(first.el.querySelector('[part="title"]')?.textContent?.trim()).toBe("hero.png");
 
     await openFileInTab("public/promo.mp4");
     const video = workspace.tabs.get("public/promo.mp4")!;
     renderMediaMode(surfaceOf(first.el), video);
-    await flush(2);
+    await flush(4);
 
     // One viewer, showing the second file: the first panel's scope was stopped on the way in.
-    expect(first.el.querySelectorAll(".media-viewer")).toHaveLength(1);
-    expect(first.el.querySelector("video.media-video")).not.toBeNull();
+    expect(first.el.querySelectorAll('[part="viewer"]')).toHaveLength(1);
+    expect(first.el.querySelector('video[part="video"]')).not.toBeNull();
     expect(mediaPaneMounted("primary", video)).toBe(true);
     expect(mediaPaneMounted("primary", first.tab)).toBe(false);
+  });
+
+  test("detaching before the mount lands leaves nothing behind", async () => {
+    /* `mountSurface` is asynchronous, so a pane closed in the same turn it was opened has a mount
+       still in flight. Without the guard the document lands in a host the canvas has already given
+       to something else — which is the one way this surface could paint over another mode. */
+    await openFileInTab("public/hero.png");
+    const tab = workspace.tabs.get("public/hero.png")!;
+    const host = document.createElement("div");
+    document.body.append(host);
+    renderMediaMode(surfaceOf(host), tab);
+    detachMediaPane("primary");
+    await flush(4);
+
+    expect(host.querySelector('[part="viewer"]')).toBeNull();
+    expect(mediaPaneMounted("primary", tab)).toBe(false);
   });
 
   test("detaching a pane that has nothing mounted is a no-op", () => {
@@ -219,7 +263,7 @@ describe("what it can say about the file", () => {
     } as Partial<StudioPlatform>);
     const { el } = await open("public/hero.png");
     await flush(4);
-    const facts = el.querySelector(".media-facts")?.textContent ?? "";
+    const facts = el.querySelector('[part="facts"]')?.textContent ?? "";
     expect(facts).toContain("image");
     expect(facts).toContain("2 KB");
     expect(facts).toContain("modified 2026-08-26");
@@ -230,34 +274,34 @@ describe("what it can say about the file", () => {
        not find out". The harness's listing carries no size, which is exactly that case. */
     const { el } = await open("public/hero.png");
     await flush(4);
-    expect(el.querySelector(".media-facts")?.textContent?.trim()).toBe("image");
+    expect(el.querySelector('[part="facts"]')?.textContent?.trim()).toBe("image");
   });
 
   test("pixel dimensions arrive from the image that is already on screen", async () => {
     /* There is no stat that returns them and no decoder in the shell, so the only honest source is
        an `<img>` that has loaded — which this pane is showing at full size anyway. */
     const { el } = await open("public/hero.png");
-    const img = el.querySelector("img.media-image") as HTMLImageElement;
+    const img = el.querySelector('img[part="image"]') as HTMLImageElement;
     Object.defineProperty(img, "naturalWidth", { configurable: true, value: 1200 });
     Object.defineProperty(img, "naturalHeight", { configurable: true, value: 630 });
     img.dispatchEvent(new Event("load"));
-    await flush(2);
+    await flush(4);
 
-    expect(el.querySelector(".media-facts")?.textContent).toContain("1200 × 630");
+    expect(el.querySelector('[part="facts"]')?.textContent).toContain("1200 × 630");
   });
 
   test("a second load of the same image does not repaint again", async () => {
     const { el } = await open("public/hero.png");
-    const img = el.querySelector("img.media-image") as HTMLImageElement;
+    const img = el.querySelector('img[part="image"]') as HTMLImageElement;
     Object.defineProperty(img, "naturalWidth", { configurable: true, value: 800 });
     Object.defineProperty(img, "naturalHeight", { configurable: true, value: 600 });
     img.dispatchEvent(new Event("load"));
-    await flush(2);
+    await flush(4);
     // Same numbers: nothing was learned, so nothing is redrawn and the node survives.
-    const before = el.querySelector("img.media-image");
+    const before = el.querySelector('img[part="image"]');
     img.dispatchEvent(new Event("load"));
-    await flush(2);
-    expect(el.querySelector("img.media-image")).toBe(before!);
+    await flush(4);
+    expect(el.querySelector('img[part="image"]')).toBe(before!);
   });
 
   test("a file it cannot show says so, and says the file is still fine", async () => {
@@ -269,12 +313,12 @@ describe("what it can say about the file", () => {
     const host = document.createElement("div");
     document.body.append(host);
     renderMediaMode(surfaceOf(host), tab);
-    await flush(2);
+    await flush(4);
     const el = host;
-    const box = el.querySelector(".media-unviewable");
+    const box = el.querySelector('[part="unviewable"]');
     expect(box).toBeTruthy();
     expect(box!.textContent).toContain(".zip");
-    expect(el.querySelector(".media-note")?.textContent).toContain("builds normally");
+    expect(el.querySelector('[part="note"]')?.textContent).toContain("builds normally");
   });
 
   test("the reference can be copied", async () => {
@@ -284,7 +328,7 @@ describe("what it can say about the file", () => {
       value: { writeText: (text: string) => written.push(text) },
     });
     const { el } = await open("public/hero.png");
-    (el.querySelector(".media-ref sp-action-button") as HTMLElement).dispatchEvent(
+    (el.querySelector('[part="copy"]') as HTMLElement).dispatchEvent(
       new Event("click", { bubbles: true }),
     );
     expect(written).toEqual(["/hero.png"]);
@@ -321,9 +365,9 @@ describe("which documents use it", () => {
     const { el } = await open("public/hero.png");
     await flush(6);
 
-    const links = [...el.querySelectorAll(".media-usage-link")].map((n) => n.textContent?.trim());
+    const links = [...el.querySelectorAll('[part="file-path"]')].map((n) => n.textContent?.trim());
     expect(links).toContain("pages/index.json");
-    expect(el.querySelector(".media-usage-count")?.textContent?.trim()).toBe("2");
+    expect(el.querySelector('[part="count"]')?.textContent?.trim()).toBe("2");
   });
 
   test("a row opens the document that references it", async () => {
@@ -331,7 +375,7 @@ describe("which documents use it", () => {
     const { el } = await open("public/hero.png");
     await flush(6);
 
-    (el.querySelector(".media-usage-link") as HTMLElement).dispatchEvent(
+    (el.querySelector('[part="file-path"]') as HTMLElement).dispatchEvent(
       new Event("click", { bubbles: true }),
     );
     await flush(4);
@@ -342,14 +386,14 @@ describe("which documents use it", () => {
     withReferences([]);
     const { el } = await open("public/hero.png");
     await flush(6);
-    expect(el.querySelector(".media-usage-headline")?.textContent?.trim()).toBeTruthy();
-    expect(el.querySelector(".media-usage-list")).toBeNull();
+    expect(el.querySelector('[part="message"]')?.textContent?.trim()).toBeTruthy();
+    expect(el.querySelector('[part="list"]')).toBeNull();
   });
 
   test("a host with no reference index shows no count rather than a zero", async () => {
     // A confident zero is the one answer this must never invent.
     const { el } = await open("public/hero.png");
     await flush(6);
-    expect(el.querySelector(".media-usage")).toBeNull();
+    expect(el.querySelector('[part="usage"]')).toBeNull();
   });
 });

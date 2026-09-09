@@ -1499,17 +1499,19 @@ describe("media mode", () => {
     tab.capabilities.modes = ["media"];
     setMode("media");
     renderCanvas();
-    await flush();
+    /* Four turns, not one: the viewer is a document now (`src/surfaces/media-pane.json`), so
+       `mountSurface` has to settle before the stage holds anything at all. */
+    await flush(4);
 
-    const viewer = stageEl().querySelector(".media-viewer");
+    const viewer = stageEl().querySelector('[part="viewer"]');
     expect(viewer).not.toBeNull();
-    expect(stageEl().querySelector(".media-name")?.textContent?.trim()).toBe("hero.png");
+    expect(stageEl().querySelector('[part="title"]')?.textContent?.trim()).toBe("hero.png");
     // No artboard: a media file is shown, not laid out.
     expect(canvasPanels.length).toBe(0);
 
     renderCanvas();
-    await flush();
-    expect(stageEl().querySelector(".media-viewer")).toBe(viewer!);
+    await flush(4);
+    expect(stageEl().querySelector('[part="viewer"]')).toBe(viewer!);
 
     detachMediaPane("primary");
   });

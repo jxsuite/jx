@@ -17,6 +17,7 @@ code:
   - packages/studio/src/canvas/asset-refs.ts
   - packages/studio/src/canvas/asset-resolve.ts
   - packages/studio/src/media/media-pane.ts
+  - packages/studio/src/surfaces/media-pane.ts
   - packages/studio/src/media/media-open.ts
 ---
 

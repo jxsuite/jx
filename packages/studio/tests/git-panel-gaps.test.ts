@@ -71,6 +71,9 @@ void mock.module("../src/panels/git-diff-open.js", () => ({
 }));
 
 void mock.module("../src/ui/layers.js", () => ({
+  /* Converted surfaces mount themselves into a layer, so they import `layerHost` from
+     here — a mock without it fails the whole file at import time. */
+  layerHost: () => document.body,
   // Reached transitively (progress-modal, quick-search); the panel never calls them.
   getLayerSlot: (_kind: string, id: string) => {
     const el = document.createElement("div");

@@ -20,14 +20,16 @@
  * `packages/pull-package-sync.ts`, `packages/jxsuite-update.ts` and
  * `settings/dependencies-editor.ts`. Every other long operation calls `beginActivity` directly and
  * blocks nobody.
+ *
+ * The surface itself is `surfaces/progress-modal.json`, a `jx-dialog`; this module is the flow
+ * around it and owns nothing that is drawn.
  */
 
-import { html } from "lit-html";
 import { beginActivity } from "../panels/activity-panel";
 import { setBottomTab } from "../shell";
-import { openModal } from "./layers";
+import { layerHost } from "./layers";
+import { openProgressSurface } from "../surfaces/progress-modal";
 import type { ActivityHandle } from "../panels/activity-panel";
-import type { TemplateResult } from "lit-html";
 
 export interface ProgressModalHandle {
   /** Update the status line shown under the title. Also the Activity entry's status. */
@@ -57,46 +59,6 @@ export interface ProgressModalOptions {
   cancel?: () => void;
 }
 
-function card(body: TemplateResult): TemplateResult {
-  return html`
-    <sp-underlay open></sp-underlay>
-    <div class="progress-modal" aria-live="polite">${body}</div>
-  `;
-}
-
-/**
- * The running view: the spinner, the status line, and the two ways out.
- *
- * `Run in the background` is not a cancel and does not pretend to be — it dismisses the BLOCKING
- * part and leaves the operation running where it can be watched, which is the affordance a modal
- * with no exit never had.
- */
-function runningView(
-  title: string,
-  status: string,
-  actions: { background: () => void; cancel?: (() => void) | undefined },
-): TemplateResult {
-  return card(html`
-    <div class="progress-head">
-      <sp-progress-circle indeterminate size="m" aria-label=${title}></sp-progress-circle>
-      <div class="progress-lines">
-        <strong class="progress-title">${title}</strong>
-        ${status ? html`<span class="progress-status">${status}</span>` : ""}
-      </div>
-    </div>
-    <div class="progress-actions">
-      <sp-button size="s" variant="secondary" treatment="outline" @click=${actions.background}>
-        Run in the background
-      </sp-button>
-      ${
-        actions.cancel
-          ? html`<sp-button size="s" variant="negative" @click=${actions.cancel}>Cancel</sp-button>`
-          : ""
-      }
-    </div>
-  `);
-}
-
 /**
  * Show a blocking progress modal, and record the operation in Activity either way.
  *
@@ -118,7 +80,7 @@ export function showProgressModal(opts: ProgressModalOptions): ProgressModalHand
       return;
     }
     closed = true;
-    modal.close();
+    surface.close();
   };
 
   /** Hand the app back and put the operation where it can be watched. */
@@ -127,21 +89,21 @@ export function showProgressModal(opts: ProgressModalOptions): ProgressModalHand
     setBottomTab("activity");
   };
 
-  const cancel = opts.cancel
-    ? () => {
-        close();
-        opts.cancel?.();
-      }
-    : undefined;
-
-  const view = (status: string) => runningView(opts.title, status, { background, cancel });
-
-  const modal = openModal(view(opts.status ?? ""), {
-    label: opts.title,
-    // Escape means the same thing the button does: stop BLOCKING, not stop working. The operation
-    // Owned the modal outright before, and swallowing Escape was the only honest thing a surface
-    // With nowhere to put a running operation could do.
-    onDismiss: background,
+  const surface = openProgressSurface({
+    cancellable: opts.cancel !== undefined,
+    layer: layerHost("modal"),
+    // Escape means the same thing the confirm button does: stop BLOCKING, not stop working. The
+    // Operation owned the modal outright before, and swallowing Escape was the only honest thing a
+    // Surface with nowhere to put a running operation could do.
+    onBackground: background,
+    onCancel: () => {
+      close();
+      opts.cancel?.();
+    },
+    // The platform's own close, whatever reached it: the document goes with the dialog.
+    onClosed: close,
+    status: opts.status ?? "",
+    title: opts.title,
   });
 
   return {
@@ -171,7 +133,7 @@ export function showProgressModal(opts: ProgressModalOptions): ProgressModalHand
     setStatus(text: string) {
       activity.setStatus(text);
       if (!closed) {
-        modal.update(view(text));
+        surface.setStatus(text);
       }
     },
   };

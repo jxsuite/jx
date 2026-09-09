@@ -1,0 +1,300 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioCfAccountPicker",
+  "$description": "The Cloudflare account picker: which of the accounts this grant reaches should publishing and the assistant run against. A `jx-dialog`, so the platform owns modality, Escape, focus restoration and the backdrop — which is what retired the `sp-dialog-wrapper` this surface used to open by hand, along with the focus trap and the `aria-modal` slot `showDialog` wrapped around it. There is no confirming button: each row commits itself, because a picker whose answer is one of N rows has N answers rather than one. The adapter (`surfaces/cf-account-picker.ts`) hands in rows that are already strings and booleans — nothing here knows what `cf_account_required` is, which call refused, or whether the list came back empty because the grant reaches nothing or because Cloudflare could not be reached.",
+  "tagName": "jx-dialog",
+  "$props": {
+    "headline": "Choose a Cloudflare account",
+    "confirmLabel": "",
+    "cancelLabel": "Cancel",
+    "size": "sm"
+  },
+  "attributes": {
+    "part": "cf-accounts"
+  },
+  "oncancel": {
+    "$prototype": "Function",
+    "body": [
+      {
+        "operator": "call",
+        "target": {
+          "$ref": "#/state/closed"
+        },
+        "value": []
+      }
+    ]
+  },
+  "onclose": {
+    "$prototype": "Function",
+    "body": [
+      {
+        "operator": "call",
+        "target": {
+          "$ref": "#/state/closed"
+        },
+        "value": []
+      }
+    ]
+  },
+  "style": {
+    "$description": "The picker's own look. Four `.cf-account-picker*` rules in `styles/shell.css` become the parts below and one of them does not come with them: `min-width: 320px` was this surface sizing its own box, and `jx-dialog` is what sizes a dialog now — `sm` is `min(90vw, 24rem)`, which is wider than the 320px it asked for. The row shape came from `.prefs-account`, which the lit template BORROWED from Preferences › Accounts; it is copied here rather than shared, because a class in a stylesheet is a thing two surfaces can drift apart on and `preferences-dialog.ts` still draws its own rows from it. Three token repairs travel with them: `--spectrum-font-size-75` and `--spectrum-font-size-50` resolve only inside `<sp-theme>`, and a document mounted in the dialog layer is outside it, so every one of them would silently have taken its hard-coded fallback.",
+    "& [part=\"picker\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-4)"
+    },
+    "& [part=\"intro\"], & [part=\"empty\"]": {
+      "$description": "The lede and the two absences read as the same secondary line, so they are one rule: the sentence over the list and the sentence drawn instead of it are the same voice.",
+      "margin": "0",
+      "fontSize": "var(--jx-text-md)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"error\"]": {
+      "$description": "A commit the broker refused, said above the list the reader is still looking at. It is not an announcement of the same thing twice: the list survives a refusal, because listing again is not what would fix an account Cloudflare will not accept, so the reason has to sit beside the rows that are still on offer.",
+      "margin": "0",
+      "fontSize": "var(--jx-text-md)",
+      "color": "var(--danger)"
+    },
+    "& [part=\"fail\"]": {
+      "$description": "The one state that offers a verb of its own. Retrying is right for a listing that never landed and wrong for a grant that genuinely reaches nothing, so the button lives in this branch rather than under both.",
+      "display": "flex",
+      "flexDirection": "column",
+      "alignItems": "flex-start",
+      "gap": "var(--jx-space-3)"
+    },
+    "& [part=\"list\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-2)"
+    },
+    "& [part=\"row\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "justifyContent": "space-between",
+      "gap": "var(--jx-space-4)",
+      "padding": "var(--jx-space-3)",
+      "border": "1px solid var(--border)",
+      "borderRadius": "var(--radius)"
+    },
+    "& [part=\"text\"]": {
+      "$description": "`min-width: 0` so a long account name ellipses inside the row instead of pushing its own button off the end of it.",
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-1)",
+      "minWidth": "0"
+    },
+    "& [part=\"name\"]": {
+      "color": "var(--fg)"
+    },
+    "& [part=\"detail\"]": {
+      "$description": "The account id under the name. Two Cloudflare accounts may carry the same name and the id is what is stored, so the row shows both rather than the half a reader would have to guess from.",
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--fg-dim)"
+    }
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "picker"
+      },
+      "children": [
+        {
+          "tagName": "p",
+          "attributes": {
+            "part": "intro"
+          },
+          "textContent": "Your Cloudflare login reaches more than one account. Publishing and the assistant both run against the one you pick; you can change it in Preferences › Accounts."
+        },
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "body-slot",
+            "role": "none"
+          },
+          "style": {
+            "display": "contents"
+          },
+          "$switch": {
+            "$ref": "#/state/listState"
+          },
+          "cases": {
+            "loading": {
+              "tagName": "p",
+              "attributes": {
+                "part": "empty"
+              },
+              "textContent": "Reading your Cloudflare accounts…"
+            },
+            "empty": {
+              "tagName": "p",
+              "attributes": {
+                "part": "empty"
+              },
+              "textContent": "This Cloudflare login reaches no accounts. Create one at dash.cloudflare.com, then try again."
+            },
+            "failed": {
+              "tagName": "div",
+              "attributes": {
+                "part": "fail"
+              },
+              "children": [
+                {
+                  "tagName": "p",
+                  "attributes": {
+                    "part": "empty"
+                  },
+                  "textContent": "${state.failureMessage}"
+                },
+                {
+                  "tagName": "jx-button",
+                  "attributes": {
+                    "part": "retry"
+                  },
+                  "$props": {
+                    "size": "sm"
+                  },
+                  "onclick": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/retry"
+                        },
+                        "value": []
+                      }
+                    ]
+                  },
+                  "children": [
+                    {
+                      "tagName": "span",
+                      "textContent": "Try again"
+                    }
+                  ]
+                }
+              ]
+            },
+            "listed": {
+              "tagName": "div",
+              "attributes": {
+                "part": "listed",
+                "role": "none"
+              },
+              "style": {
+                "display": "contents"
+              },
+              "children": [
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "error-slot",
+                    "role": "none"
+                  },
+                  "style": {
+                    "display": "contents"
+                  },
+                  "$switch": {
+                    "$ref": "#/state/hasFailure"
+                  },
+                  "cases": {
+                    "true": {
+                      "tagName": "p",
+                      "attributes": {
+                        "part": "error"
+                      },
+                      "textContent": "${state.failure}"
+                    }
+                  }
+                },
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "list"
+                  },
+                  "children": [
+                    {
+                      "$prototype": "Array",
+                      "items": {
+                        "$ref": "#/state/rows"
+                      },
+                      "key": {
+                        "$ref": "$map/item/id"
+                      },
+                      "map": {
+                        "tagName": "div",
+                        "attributes": {
+                          "part": "row",
+                          "data-account": "${$map.item.id}"
+                        },
+                        "children": [
+                          {
+                            "tagName": "div",
+                            "attributes": {
+                              "part": "text"
+                            },
+                            "children": [
+                              {
+                                "tagName": "span",
+                                "attributes": {
+                                  "part": "name"
+                                },
+                                "textContent": "${$map.item.name}"
+                              },
+                              {
+                                "tagName": "span",
+                                "attributes": {
+                                  "part": "detail"
+                                },
+                                "textContent": "${$map.item.id}"
+                              }
+                            ]
+                          },
+                          {
+                            "tagName": "jx-button",
+                            "attributes": {
+                              "part": "choose"
+                            },
+                            "$props": {
+                              "size": "sm",
+                              "variant": "accent",
+                              "disabled": {
+                                "$ref": "$map/item/busy"
+                              }
+                            },
+                            "onclick": {
+                              "$prototype": "Function",
+                              "body": [
+                                {
+                                  "operator": "call",
+                                  "target": {
+                                    "$ref": "#/state/choose"
+                                  },
+                                  "value": [
+                                    {
+                                      "$ref": "$map/item/id"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            "children": [
+                              {
+                                "tagName": "span",
+                                "textContent": "${$map.item.label}"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
