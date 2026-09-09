@@ -49,6 +49,18 @@ interface ActiveSettingsPane {
   host: HTMLElement;
   /** The section body container, handed to whichever section renderer is current. */
   body: HTMLElement | null;
+  /**
+   * The element the ACTIVE section was drawn into, inside {@link SettingsPanel.body}.
+   *
+   * Sections no longer share one container, and they cannot: a converted section mounts a document
+   * and clears what it is given, which destroys lit's `_$litPart$` markers — so the next lit
+   * section rendering into that same element throws on a part whose markers have left the document.
+   * It fails the other way too: lit renders BESIDE foreign nodes rather than replacing them, so a
+   * lit section drawn after a document one left both on screen at once. A fresh host per section is
+   * what makes the two kinds coexist, which is the whole of §9.3's surface-level rule applied to
+   * one dispatcher.
+   */
+  sectionHost: HTMLElement | null;
   /** The section the body currently holds, so an idle re-render does not rebuild it. */
   rendered: string | null;
   /** Unsubscribe from the document's change notifications. */
@@ -120,6 +132,7 @@ export function renderSettingsPane(surface: CanvasSurface): void {
     panel = {
       bindBody: bodyBinder(paneId),
       body: null,
+      sectionHost: null,
       host,
       off: onSettingsDocumentChanged(() => draw(paneId, true)),
       rendered: null,
@@ -191,13 +204,26 @@ function draw(paneId: string, force: boolean): void {
   if (!panel.body || (!force && panel.rendered === active)) {
     return;
   }
+  /* Read BEFORE the write: whether the section is changing is what decides the host, and
+     `panel.rendered` is about to stop saying so. */
+  const changed = panel.rendered !== active;
   panel.rendered = active;
+  /* A FRESH host whenever the section changes, and the same one for a forced redraw of the section
+     already showing — remounting that one would take the caret out of whatever field the reader is
+     typing in. The freshness is what lets the two kinds coexist: a lit section left its render part
+     on the element it drew into, and a document section clears the element it is given, so handing
+     either one the other's element is a throw or a double render. */
+  if (changed || !panel.sectionHost || panel.sectionHost.parentElement !== panel.body) {
+    panel.sectionHost = document.createElement("div");
+    panel.body.replaceChildren(panel.sectionHost);
+  }
+  const host = panel.sectionHost;
   const section = settingsSection(active);
   if (section) {
-    section.render(panel.body);
+    section.render(host);
     return;
   }
   /* Every section unregistered at once — a project closing while the editor is open. A blank
      content area beside a nav reads as a broken pane, so it says which it is. */
-  litRender(html`<div class="settings-empty-state">No settings sections.</div>`, panel.body);
+  litRender(html`<div class="settings-empty-state">No settings sections.</div>`, host);
 }

@@ -1136,20 +1136,6 @@
   padding: 24px;
   min-width: 0;
 }
-/* One row of a simple key list — an extension package, and whatever else turns out to be a name
-   with one action beside it. */
-.settings-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 4px 8px;
-}
-.settings-row-name {
-  font-size: var(--spectrum-font-size-75, 12px);
-  color: var(--fg);
-  overflow-wrap: anywhere;
-}
 .settings-build-adapter {
   max-width: 320px;
 }

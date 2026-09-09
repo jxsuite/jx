@@ -276,13 +276,10 @@ export const SPECTRUM_DEBT: Record<string, number> = {
      hostedConnect and the error paths. Converting is safe, but this file also carries the rule that
      a surface never renders back the secret it describes, so it is triaged with that in view. */
   "publish/publish-panel.ts": 5,
-  "settings/contexts-section.ts": 1,
   "settings/contributed-section.ts": 2,
   "settings/css-vars-editor.ts": 2,
   "settings/defs-editor.ts": 1,
   "settings/dependencies-editor.ts": 1,
-  "settings/head-editor.ts": 5,
-  "settings/locales-section.ts": 3,
   "settings/preferences-dialog.ts": 1,
   "settings/project-sections.ts": 1,
   /* Content-type field cards. Rebuilt wholesale on every edit today, so the reader has no window

@@ -86,30 +86,45 @@ describe("clearStudioStorage without a Storage", () => {
 // ─── settings/contexts-section.ts — the parked failure, read back ────────────
 
 describe("contextsError", () => {
-  test("is null until a control refuses, then names the control and the reason", () => {
+  /*
+   * The section is a Jx document, so the container has to be IN the page — a kit element renders in
+   * `connectedCallback` and a detached one is an empty tag — and the mount has to be awaited before
+   * there is a control to refuse anything.
+   */
+  test("is null until a control refuses, then names the control and the reason", async () => {
     installMockPlatform();
     resetStudioState({ projectConfig: { $media: { "--": "1280px" } } as unknown });
     const container = document.createElement("div");
+    document.body.append(container);
     renderContextsSection(container);
+    await flush(8);
 
     expect(contextsError(container)).toBeNull();
 
-    const base = container.querySelector('[data-context="base"]') as HTMLInputElement;
+    const base = container.querySelector(
+      '[data-context="base"] [part="input"]',
+    ) as HTMLInputElement;
     base.value = "wide";
     base.dispatchEvent(new Event("change", { bubbles: true }));
+    await flush(4);
 
     expect(contextsError(container)).toEqual({
       message: "Enter a width in pixels, like 1280px.",
       target: "base",
     });
-    expect(container.querySelector(".settings-field-error")?.textContent?.trim()).toBe(
+    expect(container.querySelector('[part="row-error"]')?.textContent?.trim()).toBe(
       "Enter a width in pixels, like 1280px.",
     );
 
     // Keyed by container, so a second mount has its own failure state rather than this one.
     const other = document.createElement("div");
+    document.body.append(other);
     renderContextsSection(other);
+    await flush(8);
     expect(contextsError(other)).toBeNull();
+
+    container.remove();
+    other.remove();
   });
 });
 

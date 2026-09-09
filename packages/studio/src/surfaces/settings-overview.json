@@ -1,0 +1,423 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioSettingsOverview",
+  "$description": "Project Settings › Overview: the project's identity. Its name, the description meta a search result reads, the production URL a sitemap is built from, its favicon, and the way through to Project Styles. Every row is a `jx-field` and every text control a `jx-textfield`, so the label, the sentence under it, the naming of the control and the announced refusal are all the kit's — this document draws the section's own rhythm and the favicon row, and nothing else. The adapter decides what is written and what is refused; nothing here reads `project.json`.",
+  "tagName": "div",
+  "attributes": {
+    "part": "overview"
+  },
+  "style": {
+    "$description": "What is NOT in this block is the conversion. Four stylesheet rules had no counterpart to write: `.settings-field-label` and `.settings-field-desc` drew a row's label and the sentence under it, and `jx-field` draws both — with the label actually NAMING the control, which the bare `<label>` they styled never did; `.settings-field-error` drew a refused value's sentence, and `jx-textfield` draws that into a permanent live region under the field, so the first refusal is announced rather than only a later one; and `.settings-site-description`'s `min-height` sized a textarea the kit already gives three rows. What is left is what this section decides for itself.",
+    "display": "flex",
+    "flexDirection": "column",
+    "gap": "20px",
+    "fontFamily": "var(--jx-font-sans)",
+    "color": "var(--fg)",
+    "& [part=\"heading\"]": {
+      "margin": "0",
+      "fontSize": "16px",
+      "fontWeight": "600",
+      "color": "var(--fg)"
+    },
+    "& jx-textfield": {
+      "$description": "How wide a text control may grow. A name field spanning a 900px pane is a line the eye has to travel to read six characters; 420px is the measure `.settings-site-name`, `.settings-site-url` and `.settings-site-description` shared, and it is the one thing those three rules said that the kit does not.",
+      "width": "100%",
+      "maxWidth": "420px"
+    },
+    "& [part=\"favicon-row\"], & [part=\"styles-row\"]": {
+      "$description": "The two rows whose control is not a single field, and the reason each opens with a plain `div`: `jx-field` names the first thing slotted into it, and a button named by its row would be announced as \"Favicon\" or \"Global Styles\" instead of the verb it carries. A `div` observes no naming, so the row leaves it alone and the buttons keep the names they say on screen.",
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-4)"
+    },
+    "& [part=\"favicon\"], & [part=\"favicon-empty\"]": {
+      "$description": "One box, whether or not there is an icon in it, so the row does not resize the moment an upload lands.",
+      "width": "32px",
+      "height": "32px",
+      "boxSizing": "border-box",
+      "borderRadius": "var(--radius)"
+    },
+    "& [part=\"favicon\"]": {
+      "objectFit": "contain",
+      "border": "1px solid var(--border)",
+      "padding": "2px"
+    },
+    "& [part=\"favicon-empty\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "justifyContent": "center",
+      "border": "1px dashed var(--border)",
+      "color": "var(--fg-dim)",
+      "fontSize": "var(--jx-text-sm)"
+    },
+    "& [part=\"favicon-path\"]": {
+      "$description": "Where the icon came from. It read `--spectrum-font-size-50` with an 11px fallback, which resolved only inside `<sp-theme>` — this document is mounted in the settings pane, where that name is not in scope and every one of these would have taken the fallback — so the size is the kit's scale and the colour is the studio layer's.",
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--fg-dim)",
+      "wordBreak": "break-all"
+    },
+    "& [part=\"section-error\"], & [part=\"favicon-error\"]": {
+      "$description": "A failed write with no control of its own to sit under. Settings save on change, so a rejection nobody shows reads as \"my edit just vanished\"; the sentence stands, in the danger colour, until a later write succeeds.",
+      "margin": "0",
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--danger)"
+    }
+  },
+  "children": [
+    {
+      "tagName": "h3",
+      "attributes": {
+        "part": "heading"
+      },
+      "textContent": "Overview"
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "section-error-slot",
+        "role": "none"
+      },
+      "style": {
+        "display": "contents"
+      },
+      "$switch": {
+        "$ref": "#/state/hasSectionError"
+      },
+      "cases": {
+        "true": {
+          "tagName": "p",
+          "attributes": {
+            "part": "section-error",
+            "role": "alert"
+          },
+          "textContent": "${state.sectionError}"
+        }
+      }
+    },
+    {
+      "tagName": "jx-field",
+      "$props": {
+        "span": true,
+        "label": "Site Name",
+        "description": "What this site is called — used in page titles and the project list.",
+        "invalid": {
+          "$ref": "#/state/nameInvalid"
+        }
+      },
+      "attributes": {
+        "part": "row",
+        "data-field": "name"
+      },
+      "children": [
+        {
+          "tagName": "jx-textfield",
+          "$props": {
+            "size": "sm",
+            "placeholder": "My Site",
+            "value": {
+              "$ref": "#/state/nameValue"
+            },
+            "invalid": {
+              "$ref": "#/state/nameInvalid"
+            },
+            "error": {
+              "$ref": "#/state/nameError"
+            }
+          },
+          "onchange": {
+            "$prototype": "Function",
+            "body": [
+              {
+                "operator": "call",
+                "target": {
+                  "$ref": "#/state/setName"
+                },
+                "value": [
+                  {
+                    "$ref": "event#/target/value"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "jx-field",
+      "$props": {
+        "span": true,
+        "label": "Description",
+        "description": "One or two sentences about the site. Search engines and link previews show this.",
+        "invalid": {
+          "$ref": "#/state/descriptionInvalid"
+        }
+      },
+      "attributes": {
+        "part": "row",
+        "data-field": "description"
+      },
+      "children": [
+        {
+          "tagName": "jx-textfield",
+          "$props": {
+            "size": "sm",
+            "multiline": true,
+            "placeholder": "A short description of the site",
+            "value": {
+              "$ref": "#/state/descriptionValue"
+            },
+            "invalid": {
+              "$ref": "#/state/descriptionInvalid"
+            },
+            "error": {
+              "$ref": "#/state/descriptionError"
+            }
+          },
+          "onchange": {
+            "$prototype": "Function",
+            "body": [
+              {
+                "operator": "call",
+                "target": {
+                  "$ref": "#/state/setDescription"
+                },
+                "value": [
+                  {
+                    "$ref": "event#/target/value"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "jx-field",
+      "$props": {
+        "span": true,
+        "label": "Production URL",
+        "description": "Where the published site lives. Sitemaps and absolute links are built from it.",
+        "invalid": {
+          "$ref": "#/state/urlInvalid"
+        }
+      },
+      "attributes": {
+        "part": "row",
+        "data-field": "url"
+      },
+      "children": [
+        {
+          "tagName": "jx-textfield",
+          "$props": {
+            "size": "sm",
+            "type": "url",
+            "placeholder": "https://example.com",
+            "value": {
+              "$ref": "#/state/urlValue"
+            },
+            "invalid": {
+              "$ref": "#/state/urlInvalid"
+            },
+            "error": {
+              "$ref": "#/state/urlError"
+            }
+          },
+          "onchange": {
+            "$prototype": "Function",
+            "body": [
+              {
+                "operator": "call",
+                "target": {
+                  "$ref": "#/state/setUrl"
+                },
+                "value": [
+                  {
+                    "$ref": "event#/target/value"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "jx-field",
+      "$props": {
+        "span": true,
+        "label": "Favicon",
+        "description": "Upload an image to use as the site favicon."
+      },
+      "attributes": {
+        "part": "row",
+        "data-field": "favicon"
+      },
+      "children": [
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "favicon-row"
+          },
+          "children": [
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "favicon-slot",
+                "role": "none"
+              },
+              "style": {
+                "display": "contents"
+              },
+              "$switch": {
+                "$ref": "#/state/hasFavicon"
+              },
+              "cases": {
+                "true": {
+                  "tagName": "img",
+                  "attributes": {
+                    "part": "favicon",
+                    "src": "${state.favicon}",
+                    "alt": "Current favicon"
+                  }
+                },
+                "false": {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "favicon-empty",
+                    "aria-hidden": "true"
+                  },
+                  "textContent": "—"
+                }
+              }
+            },
+            {
+              "tagName": "jx-button",
+              "$props": {
+                "size": "sm"
+              },
+              "attributes": {
+                "part": "favicon-upload"
+              },
+              "onclick": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/uploadFavicon"
+                    }
+                  }
+                ]
+              },
+              "children": [
+                {
+                  "tagName": "span",
+                  "textContent": "Upload Favicon"
+                }
+              ]
+            },
+            {
+              "tagName": "span",
+              "attributes": {
+                "part": "favicon-path-slot",
+                "role": "none"
+              },
+              "style": {
+                "display": "contents"
+              },
+              "$switch": {
+                "$ref": "#/state/hasFavicon"
+              },
+              "cases": {
+                "true": {
+                  "tagName": "span",
+                  "attributes": {
+                    "part": "favicon-path"
+                  },
+                  "textContent": "${state.favicon}"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "favicon-error-slot",
+            "role": "none"
+          },
+          "style": {
+            "display": "contents"
+          },
+          "$switch": {
+            "$ref": "#/state/hasFaviconError"
+          },
+          "cases": {
+            "true": {
+              "tagName": "p",
+              "attributes": {
+                "part": "favicon-error",
+                "role": "alert"
+              },
+              "textContent": "${state.faviconError}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "jx-field",
+      "$props": {
+        "span": true,
+        "label": "Global Styles",
+        "description": "Design tokens and the default element styles that apply across every page. Opens Project Styles over this same document."
+      },
+      "attributes": {
+        "part": "row",
+        "data-field": "styles"
+      },
+      "children": [
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "styles-row"
+          },
+          "children": [
+            {
+              "tagName": "jx-button",
+              "$props": {
+                "size": "sm",
+                "disabled": {
+                  "$ref": "#/state/stylesDisabled"
+                }
+              },
+              "attributes": {
+                "part": "styles-open",
+                "title": "${state.stylesTitle}"
+              },
+              "onclick": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/openStyles"
+                    }
+                  }
+                ]
+              },
+              "children": [
+                {
+                  "tagName": "span",
+                  "textContent": "Edit Global Styles"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

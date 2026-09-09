@@ -356,9 +356,10 @@ const KNOWN_UNREACHABLE: Record<string, Record<string, string>> = {
   },
   "settings/contexts-section.ts": {
     contextsError:
-      "reads back the per-container failure message. The section renders the message at the point " +
-      "it is set, so the WeakMap is written and never read — which also means a re-render drops " +
-      "the message it was keyed to survive",
+      "reads back the per-container failure message. The section projects the message out of the " +
+      "same WeakMap on every render, so the accessor tells the app nothing it is not already " +
+      "drawing; its readers are the two suites that assert a refusal was parked rather than shown " +
+      "and forgotten",
   },
   "settings/contributed-section.ts": {
     resetContributedDiagnostics: TEST_RESET,

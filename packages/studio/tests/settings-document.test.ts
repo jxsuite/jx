@@ -95,9 +95,16 @@ function body(): HTMLElement {
   return host.querySelector(".settings-doc-content") as HTMLElement;
 }
 
-/** Mount the editor and let its deferred section render land. */
+/**
+ * Mount the editor and let its deferred section render land.
+ *
+ * TWO turns, not one: a converted section mounts a Jx document, which waits for the kit's elements
+ * to be defined before it renders. One turn settles the pane and its nav; the section's own content
+ * arrives on the next.
+ */
 async function mount(): Promise<void> {
   renderSettingsPane(surfaceOf(host));
+  await flush();
   await flush();
 }
 
@@ -189,7 +196,7 @@ describe("the settings document", () => {
     expect(navLabels()).toEqual(BUILTIN_LABELS);
     expect(navButton("Overview").classList.contains("active")).toBe(true);
     expect(navButton("Overview").getAttribute("aria-current")).toBe("page");
-    expect(body().querySelector(".settings-section-title")?.textContent).toBe("Overview");
+    expect(body().querySelector('[part="heading"]')?.textContent).toBe("Overview");
   });
 
   test("the host says whether it is mounted, and stops saying so once detached", async () => {

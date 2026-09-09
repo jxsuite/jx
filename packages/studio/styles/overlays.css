@@ -537,52 +537,11 @@
   font-size: var(--spectrum-font-size-75, 12px);
   color: var(--danger);
 }
-/* A problem the file already had, said once at section level. Deliberately not `-error`: it did not
-   refuse anything and it belongs to no control, so it is a warning about the file rather than a
-   rejection of an edit — §16.1's distinction, in the one place a settings section can make it. */
-.settings-section-notice {
-  margin: 6px 0 0;
-  font-size: var(--spectrum-font-size-75, 12px);
-  color: var(--warning);
-}
-.settings-site-name,
-.settings-site-url {
-  width: 100%;
-  max-width: 420px;
-}
-.settings-site-description {
-  width: 100%;
-  max-width: 420px;
-  min-height: 64px;
-}
 .settings-field-row {
   display: flex;
   gap: 8px;
   align-items: center;
   margin-bottom: 8px;
-}
-.settings-media-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.settings-media-row {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-}
-.settings-media-name-fixed {
-  width: 80px;
-  font-size: var(--spectrum-font-size-75, 12px);
-  font-weight: 500;
-  color: var(--fg-dim);
-  padding: 0 8px;
-}
-.settings-media-name {
-  width: 80px;
-}
-.settings-media-value {
-  flex: 1;
 }
 /* New Project modal */
 .new-project-modal {
@@ -999,36 +958,6 @@
   padding: 8px 0;
   border-top: 1px solid var(--border);
   margin-top: 8px;
-}
-/* Head editor */
-.head-entry {
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 12px;
-  margin-bottom: 8px;
-}
-.head-entry-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 8px;
-}
-.head-entry-tag {
-  font-size: var(--spectrum-font-size-75, 12px);
-  font-weight: 600;
-  color: var(--fg);
-}
-.head-code-editor {
-  width: 100%;
-  min-height: 80px;
-  padding: 8px;
-  font-family: var(--font-mono);
-  font-size: var(--spectrum-font-size-75, 12px);
-  background: var(--spectrum-gray-100, #1e1e1e);
-  color: var(--fg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  resize: vertical;
 }
 
 /* ─── Settings editors (Collections / Definitions) ─── */
@@ -2078,25 +2007,6 @@
 .entry-pill--draft {
   background: var(--spectrum-yellow-400, #d8b400);
   color: var(--spectrum-gray-900, #000);
-}
-
-/* ─── Locales section ─── */
-/* The raw BCP 47 tag beside the language's own name. Both are shown because they answer different
-   questions — "which language is this" is the autonym, "what do I type in a path" is the tag, and a
-   row showing only one of them sends the author to the docs to find the other. */
-.settings-locale-tag {
-  margin-inline-start: auto;
-  font-family: var(--font-mono);
-  font-size: var(--spectrum-font-size-75, 12px);
-  color: var(--fg-dim);
-}
-.settings-locale-name {
-  flex: 1;
-  min-width: 0;
-}
-.settings-default-locale,
-.settings-locale-routing {
-  max-width: 320px;
 }
 
 /* The gear menu's section submenu.
