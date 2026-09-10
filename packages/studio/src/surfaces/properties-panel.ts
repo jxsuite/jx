@@ -48,10 +48,23 @@ export type ContentFieldKind =
   | "number"
   | "select"
   | "link"
+  | "color"
   | "control";
 
 /** What a row is drawn as. Everything a section body can hold is one of these. */
 export type ContentRowShape = "field" | "kv" | "note" | "action" | "file";
+
+/**
+ * One colour the project has named, as a `color` row's palette draws it.
+ *
+ * The same three fields the Style tab projects, and for the same reason: `value` is the reference a
+ * click commits, `color` is only how it reads on screen, and `label` is what a reader hears.
+ */
+export interface ContentTokenView extends Record<string, unknown> {
+  value: string;
+  color: string;
+  label: string;
+}
 
 /** A choice a select offers, in the shape the kit's select reads. */
 export interface ContentOption {
@@ -82,6 +95,9 @@ export interface ContentRowView {
   mono: boolean;
   /** Choices for `select`; the routes or the popover ids for a `link`'s value half. */
   options: ContentOption[];
+  /** The palette a `color` row offers inside its picker, and whether it has one to offer. */
+  tokens: ContentTokenView[];
+  hasTokens: boolean;
   /**
    * The provenance chip's shape: `""` draws nothing (§6.2's `default` state, where absence IS the
    * ghost), `dot` is the 6px accent dot that clears the value, `text` states a donor without

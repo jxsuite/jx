@@ -10,12 +10,17 @@
  * @docs extending/ui-kit
  */
 import { defineElement, preloadDocument, preloadModule } from "@jxsuite/runtime";
+import * as color from "./color.ts";
+import * as colorArea from "./behaviors/color-area.ts";
+import * as colorField from "./behaviors/color-field.ts";
+import * as colorSlider from "./behaviors/color-slider.ts";
 import * as dialog from "./behaviors/dialog.ts";
 import * as menu from "./behaviors/menu.ts";
 import * as numberField from "./behaviors/number-field.ts";
 import * as actionGroup from "./behaviors/action-group.ts";
 import * as popover from "./behaviors/popover.ts";
 import * as select from "./behaviors/select.ts";
+import * as swatchGroup from "./behaviors/swatch-group.ts";
 import * as tabs from "./behaviors/tabs.ts";
 import * as tooltip from "./behaviors/tooltip.ts";
 import * as textfield from "./behaviors/textfield.ts";
@@ -40,15 +45,20 @@ export const KIT_BASE = "jx-ui:/components/";
 
 /** Behaviour modules, under the `$src` specifiers the documents use. */
 export const KIT_MODULES: Readonly<Record<string, Record<string, unknown>>> = {
+  "jx-ui:/behaviors/color-area.ts": colorArea,
+  "jx-ui:/behaviors/color-field.ts": colorField,
+  "jx-ui:/behaviors/color-slider.ts": colorSlider,
   "jx-ui:/behaviors/dialog.ts": dialog,
   "jx-ui:/behaviors/menu.ts": menu,
   "jx-ui:/behaviors/number-field.ts": numberField,
   "jx-ui:/behaviors/action-group.ts": actionGroup,
   "jx-ui:/behaviors/popover.ts": popover,
   "jx-ui:/behaviors/select.ts": select,
+  "jx-ui:/behaviors/swatch-group.ts": swatchGroup,
   "jx-ui:/behaviors/tabs.ts": tabs,
   "jx-ui:/behaviors/tooltip.ts": tooltip,
   "jx-ui:/behaviors/textfield.ts": textfield,
+  "jx-ui:/color.ts": color,
   "jx-ui:/icons.ts": icons,
 };
 

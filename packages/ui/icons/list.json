@@ -44,6 +44,7 @@
   "export": ["regular"],
   "eye": ["regular", "fill"],
   "eye-slash": ["regular"],
+  "eyedropper": ["regular"],
   "file": ["regular", "fill"],
   "file-code": ["regular"],
   "file-text": ["regular"],

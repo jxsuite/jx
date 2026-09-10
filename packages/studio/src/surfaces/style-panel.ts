@@ -7,12 +7,13 @@
  * and into how many elements — and hands this module one projection whose every field is already a
  * string, a boolean or a list of them. The document draws it and decides nothing.
  *
- * **Two seams, and both are announced rather than queried** (specs/studio-ui-guidelines.md §9.4).
- * The Target Line is its own document and cannot share a container with this one, so the tab draws
- * an empty `[part="target-host"]` and the runtime reports it through `onNodeCreated` as it is made.
- * A colour row draws an empty `[part="control-host"]` for the same reason and a different one: the
- * kit's colour elements are `ui.md` §5.6, which is **Pending**, so that ONE control stays on the
- * seam it already has until `jx-color-field` lands.
+ * **One seam, and it is announced rather than queried** (specs/studio-ui-guidelines.md §9.4). The
+ * Target Line is its own document and cannot share a container with this one, so the tab draws an
+ * empty `[part="target-host"]` and the runtime reports it through `onNodeCreated` as it is made.
+ * There was a second: a colour row drew an empty `[part="control-host"]` a lit island filled,
+ * because the kit's colour elements were `ui.md` §5.6 and §5.6 was Pending. It landed, the row is a
+ * `jx-color-field` in the document beside every other control, and the sink that carried it is gone
+ * with it.
  *
  * **The mount is only ever ASSIGNED to.** A repaint that rebuilt it would take the field a reader
  * is typing into out from under them, which is the whole reason the lit panel needed
@@ -24,7 +25,6 @@
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import stylePanelDoc from "./style-panel.json";
-import type { JxScope } from "@jxsuite/runtime/types";
 import type { JxDocument, JxElement } from "@jxsuite/schema/types";
 import type { SurfaceHandle } from "../ui/surface";
 
@@ -38,7 +38,7 @@ export type StyleWidgetKind =
   | "number"
   | "group"
   | "buttons"
-  | "host"
+  | "color"
   | "shorthand"
   | "kv"
   | "kvadd"
@@ -56,6 +56,19 @@ export type StyleRowKind =
 
 /** How the provenance chip is drawn: not at all, as a control, or as a statement. */
 export type StyleChipControl = "none" | "button" | "text";
+
+/**
+ * One colour the project has named, as the row's palette draws it.
+ *
+ * `value` is the reference and `color` is the literal behind it, and they are two fields because
+ * they are two things: choosing a swatch commits `var(--color-accent)`, while the chip is only how
+ * that reads on screen. `label` is what a reader hears — a swatch is never named by its hex.
+ */
+export interface StyleTokenView extends Record<string, unknown> {
+  value: string;
+  color: string;
+  label: string;
+}
 
 /** One value of a button-group row. */
 export interface StyleButtonView extends Record<string, unknown> {
@@ -117,6 +130,9 @@ export interface StyleRowView extends Record<string, unknown> {
   choicesLabel: string;
   choicesHint: string;
   buttons: StyleButtonView[];
+  /** The palette a colour row offers inside its picker, and whether it has one to offer. */
+  tokens: StyleTokenView[];
+  hasTokens: boolean;
   overflowSelected: boolean;
   expanded: boolean;
   expandIcon: string;
@@ -186,12 +202,10 @@ export interface StylePanelActions {
   addNested: () => void;
 }
 
-/** Where an announced host belongs: the Target Line, or one row's out-of-kit control. */
+/** Where the one announced host belongs. */
 export interface StyleHostSink {
   /** The Target Line's container, as it is created — and `null` when the document is taken down. */
   target: (host: HTMLElement | null) => void;
-  /** One row's control host, with the row key the flow put on it. */
-  control: (key: string, host: HTMLElement) => void;
 }
 
 export interface StylePanelSurface {
@@ -205,20 +219,6 @@ export interface StylePanelSurface {
 
 /** The scope the document reads: the view plus the actions, flat. */
 interface StylePanelScope extends Record<string, unknown>, StylePanelView, StylePanelActions {}
-
-/**
- * The key an announced host belongs to.
- *
- * Read out of the node's own `$map` scope rather than off the element, because `onNodeCreated`
- * fires BEFORE the runtime applies attributes — an element that has just been created carries
- * neither its `part` nor its `data-prop` yet, so a check on either answers no for exactly the node
- * that needs filling.
- */
-function controlKeyOf(state: JxScope | undefined): string {
-  const item = (state?.["$map"] as { item?: Record<string, unknown> } | undefined)?.item;
-  const key = item?.["key"];
-  return typeof key === "string" ? key : "";
-}
 
 /** A node definition's `part`, as written in the document. */
 function partOf(def: JxElement | string): string {
@@ -245,7 +245,7 @@ function project(scope: StylePanelScope, view: StylePanelView): void {
  * @param {HTMLElement} host The Inspector's Style tab body.
  * @param {StylePanelView} view What the tab says to begin with.
  * @param {StylePanelActions} actions What each control does. Read once, when the scope is made.
- * @param {StyleHostSink} hosts Where the two announced hosts are handed to.
+ * @param {StyleHostSink} hosts Where the announced Target Line host is handed to.
  * @returns {StylePanelSurface}
  */
 export function mountStylePanelSurface(
@@ -269,20 +269,9 @@ export function mountStylePanelSurface(
   let mounted: SurfaceHandle | null = null;
   let disposed = false;
   void mountSurface("style-panel", scope, host, {
-    onNodeCreated: (element, _path, def, state) => {
-      if (!(element instanceof HTMLElement)) {
-        return;
-      }
-      const part = partOf(def);
-      if (part === "target-host") {
+    onNodeCreated: (element, _path, def) => {
+      if (element instanceof HTMLElement && partOf(def) === "target-host") {
         hosts.target(element);
-        return;
-      }
-      if (part === "control-host") {
-        const key = controlKeyOf(state);
-        if (key !== "") {
-          hosts.control(key, element);
-        }
       }
     },
   }).then((surface) => {

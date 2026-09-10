@@ -257,10 +257,11 @@ function isExcluded(file: string): boolean {
  * where there is something more specific to say.
  */
 export const SPECTRUM_DEBT: Record<string, number> = {
-  /* The colour row's `<sp-picker>` of tokens. It stays lit ON PURPOSE — `specs/ui.md` §5.6
-     (`jx-color-field`, `jx-color-area`, `jx-swatch`) is Pending, so the Style tab draws an empty
-     `[part="control-host"]` and this island fills it — and it goes whole when §5.6 lands. */
-  "ui/color-selector.ts": 1,
+  /* Empty, and that is the ratchet arriving at zero rather than a list waiting to be filled. The
+     last entry was the colour row's `<sp-picker>` of tokens, held open because `specs/ui.md` §5.6
+     was Pending; §5.6 landed, the row is a `jx-color-field` in the Style tab's own document, and
+     `ui/color-selector.ts` no longer renders anything. A new entry needs the reason a binding
+     cannot be `live()`, as every retired one carried. */
 };
 
 /**
@@ -411,9 +412,13 @@ export function report(r: Report): { lines: string[]; failed: boolean } {
   if (lines.length > 0) {
     return { failed: true, lines };
   }
-  const debt =
-    Object.values(SPECTRUM_DEBT).reduce((a, n) => a + n, 0) +
-    Object.values(SELF_QUERY_DEBT).reduce((a, n) => a + n, 0);
+  /* One sum over both lists rather than one per list. Two `reduce`s meant two callbacks, and a
+     `reduce` over an empty array with a seed never calls its own — so the moment SPECTRUM_DEBT
+     ratcheted to zero, half of this line stopped being executed while still reading as covered. */
+  const debt = [...Object.values(SPECTRUM_DEBT), ...Object.values(SELF_QUERY_DEBT)].reduce(
+    (a, n) => a + n,
+    0,
+  );
   return {
     failed: false,
     lines: [

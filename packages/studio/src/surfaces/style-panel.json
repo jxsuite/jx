@@ -44,7 +44,8 @@
       "gridTemplateColumns": "minmax(0, 1fr) minmax(0, 1fr)",
       "gap": "var(--jx-space-2) var(--jx-space-3)"
     },
-    "& [part=\"row\"]": {
+    "& [part=\"rows\"] > [part=\"row\"]": {
+      "$description": "Scoped to the panel's OWN rows rather than to every `part=\"row\"` beneath it, and that is load-bearing now that a colour row draws a `jx-color-field`. The kit is light DOM and one cascade, so `[part=\"row\"]` as a bare descendant also matches the field's internal row — and at equal specificity with the kit's own `& > [part=\"row\"]` the winner is whichever sheet was interned later, which is not a thing a stylesheet may depend on. The same reasoning moved `[part=\"chip\"]` under `[part=\"chip-slot\"]`, where `background: none` would otherwise have erased a swatch's colour, and `[part=\"control\"]` under its row, where `> *` would have stretched a swatch's chip.",
       "display": "flex",
       "flexDirection": "column",
       "alignItems": "stretch",
@@ -52,10 +53,10 @@
       "padding": "2px 0",
       "minWidth": "0"
     },
-    "& [part=\"row\"][data-span=\"2\"]": {
+    "& [part=\"rows\"] > [part=\"row\"][data-span=\"2\"]": {
       "gridColumn": "1 / -1"
     },
-    "& [part=\"row\"][data-child=\"true\"]": {
+    "& [part=\"rows\"] > [part=\"row\"][data-child=\"true\"]": {
       "paddingLeft": "var(--jx-space-5)"
     },
     "& [part=\"row-label\"]": {
@@ -65,7 +66,7 @@
       "fontSize": "var(--jx-text-xs)",
       "color": "var(--jx-fg-dim)"
     },
-    "& [part=\"row\"][data-warning=\"true\"] [part=\"row-label\"]": {
+    "& [part=\"rows\"] > [part=\"row\"][data-warning=\"true\"] > [part=\"row-label\"]": {
       "color": "var(--jx-warning)",
       "::before": {
         "content": "\"⚠ \""
@@ -76,17 +77,35 @@
       "textOverflow": "ellipsis",
       "whiteSpace": "nowrap"
     },
-    "& [part=\"control\"]": {
+    "& [part=\"rows\"] > [part=\"row\"] > [part=\"control\"]": {
       "display": "flex",
       "alignItems": "center",
       "gap": "var(--jx-space-1)",
       "minWidth": "0"
     },
-    "& [part=\"control\"] > *": {
+    "& [part=\"rows\"] > [part=\"row\"] > [part=\"control\"] > *": {
       "flex": "1",
       "minWidth": "0"
     },
-    "& [part=\"chip\"]": {
+    "& [part=\"color\"]": {
+      "display": "flex",
+      "minWidth": "0"
+    },
+    "& [part=\"color\"] > [part=\"color-field\"]": {
+      "flex": "1",
+      "minWidth": "0"
+    },
+    "& [part=\"color-field\"] > [part=\"row\"]": {
+      "$description": "The field is `inline-flex` around a row sized to its own contents, which is right where it stands in a sentence and wrong where it IS the width of a dock. Two declarations, not a restatement of the kit's layout: the field still lays itself out.",
+      "flex": "1",
+      "minWidth": "0"
+    },
+    "& [part=\"color-field\"] [part=\"text\"]": {
+      "flex": "1",
+      "inlineSize": "auto",
+      "minInlineSize": "0"
+    },
+    "& [part=\"chip-slot\"] > [part=\"chip\"]": {
       "$description": "One vocabulary, five states (§6.2). `default` draws nothing at all — absence IS the ghost — which is why there is no rule for it: the document never makes the node. `set` is the 6px accent disc `.set-dot` has always been; the two that carry information wear their donor's name in a bordered pill, and `mixed` is neutral on purpose because it says nothing about WHERE a value came from, only that the selection disagrees.",
       "display": "inline-flex",
       "alignItems": "center",
@@ -99,23 +118,23 @@
       "font": "inherit",
       "fontSize": "var(--jx-text-xs)"
     },
-    "& button[part=\"chip\"]": {
+    "& [part=\"chip-slot\"] > button[part=\"chip\"]": {
       "cursor": "pointer",
       ":focus-visible": {
         "outline": "var(--jx-focus-ring)",
         "outlineOffset": "1px"
       }
     },
-    "& [part=\"chip\"][data-state=\"set\"]": {
+    "& [part=\"chip-slot\"] > [part=\"chip\"][data-state=\"set\"]": {
       "width": "6px",
       "height": "6px",
       "borderRadius": "50%",
       "background": "var(--jx-accent)"
     },
-    "& button[part=\"chip\"][data-state=\"set\"]:hover": {
+    "& [part=\"chip-slot\"] > button[part=\"chip\"][data-state=\"set\"]:hover": {
       "background": "var(--jx-danger)"
     },
-    "& [part=\"chip\"][data-state=\"inherited\"], & [part=\"chip\"][data-state=\"bound\"], & [part=\"chip\"][data-state=\"mixed\"]": {
+    "& [part=\"chip-slot\"] > [part=\"chip\"][data-state=\"inherited\"], & [part=\"chip-slot\"] > [part=\"chip\"][data-state=\"bound\"], & [part=\"chip-slot\"] > [part=\"chip\"][data-state=\"mixed\"]": {
       "maxWidth": "16ch",
       "overflow": "hidden",
       "padding": "0 var(--jx-space-2)",
@@ -125,13 +144,13 @@
       "whiteSpace": "nowrap",
       "textOverflow": "ellipsis"
     },
-    "& [part=\"chip\"][data-state=\"inherited\"]": {
+    "& [part=\"chip-slot\"] > [part=\"chip\"][data-state=\"inherited\"]": {
       "color": "var(--jx-warning)"
     },
-    "& [part=\"chip\"][data-state=\"bound\"]": {
+    "& [part=\"chip-slot\"] > [part=\"chip\"][data-state=\"bound\"]": {
       "color": "var(--jx-handler)"
     },
-    "& [part=\"chip\"][data-state=\"mixed\"]": {
+    "& [part=\"chip-slot\"] > [part=\"chip\"][data-state=\"mixed\"]": {
       "color": "var(--jx-fg-muted)"
     },
     "& [part=\"dots\"]": {
@@ -1054,12 +1073,149 @@
                                         }
                                       ]
                                     },
-                                    "host": {
-                                      "$description": "A control the kit cannot draw yet. The colour field — swatch, value and a popover of area, slider and tokens — is `ui.md` §5.6, which is Pending, so this row is an announced HOST and `panels/style-color-island.ts` fills it with the control Studio already has. It is the ONE island on this surface, and it goes when `jx-color-field` lands.",
+                                    "color": {
+                                      "$description": "The colour row, and the whole of it: `ui.md` §5.6 landed, so the swatch, the value, the saturation square, the hue track and the project's own palette are ONE element rather than an announced `[part=\"control-host\"]` a lit island filled. The listener is on the WRAPPER and not on the field, and that is the field's own contract rather than a preference. `jx-color-field` stops its five inner controls' native events at its root and re-says the platform's two names FROM the host, so an ancestor hears exactly one `input` and one `change` per gesture with `e.target` being the field — while a listener on the field itself hears BOTH, including the raw `change` of a text box holding a half-typed word the field has just refused. Bound there, `not a colour` would have been committed as a colour.",
                                       "tagName": "div",
                                       "attributes": {
-                                        "part": "control-host"
-                                      }
+                                        "part": "color",
+                                        "role": "none"
+                                      },
+                                      "oninput": {
+                                        "$prototype": "Function",
+                                        "body": [
+                                          {
+                                            "operator": "call",
+                                            "target": {
+                                              "$ref": "#/state/editText"
+                                            },
+                                            "value": [
+                                              {
+                                                "$ref": "$map/item/key"
+                                              },
+                                              {
+                                                "$ref": "event#/target/value"
+                                              }
+                                            ]
+                                          }
+                                        ]
+                                      },
+                                      "onchange": {
+                                        "$prototype": "Function",
+                                        "body": [
+                                          {
+                                            "operator": "call",
+                                            "target": {
+                                              "$ref": "#/state/commitText"
+                                            },
+                                            "value": [
+                                              {
+                                                "$ref": "$map/item/key"
+                                              },
+                                              {
+                                                "$ref": "event#/target/value"
+                                              }
+                                            ]
+                                          }
+                                        ]
+                                      },
+                                      "children": [
+                                        {
+                                          "tagName": "jx-color-field",
+                                          "attributes": {
+                                            "part": "color-field"
+                                          },
+                                          "$props": {
+                                            "size": "sm",
+                                            "label": {
+                                              "$ref": "$map/item/label"
+                                            },
+                                            "value": {
+                                              "$ref": "$map/item/value"
+                                            },
+                                            "alpha": true
+                                          },
+                                          "children": [
+                                            {
+                                              "tagName": "span",
+                                              "attributes": {
+                                                "part": "palette-slot",
+                                                "slot": "tokens",
+                                                "role": "none"
+                                              },
+                                              "style": {
+                                                "display": "contents"
+                                              },
+                                              "$switch": {
+                                                "$ref": "$map/item/hasTokens"
+                                              },
+                                              "cases": {
+                                                "true": {
+                                                  "$description": "The palette's `change` is caught HERE, on the group, because it never gets out: the field routes it as its `palette` channel, stops it, and then declines it — a swatch that stands for `var(--color-accent)` is not a string the field can parse as a colour, which is exactly why the reference survives the click. A row that let the field answer instead would have committed the literal behind the token and quietly opted one declaration out of the palette for ever.",
+                                                  "tagName": "jx-swatch-group",
+                                                  "attributes": {
+                                                    "part": "palette"
+                                                  },
+                                                  "$props": {
+                                                    "label": "Colour tokens",
+                                                    "value": {
+                                                      "$ref": "$map/item/value"
+                                                    }
+                                                  },
+                                                  "onchange": {
+                                                    "$prototype": "Function",
+                                                    "body": [
+                                                      {
+                                                        "operator": "call",
+                                                        "target": {
+                                                          "$ref": "#/state/commitText"
+                                                        },
+                                                        "value": [
+                                                          {
+                                                            "$ref": "$map/item/key"
+                                                          },
+                                                          {
+                                                            "$ref": "event#/target/value"
+                                                          }
+                                                        ]
+                                                      }
+                                                    ]
+                                                  },
+                                                  "children": [
+                                                    {
+                                                      "$prototype": "Array",
+                                                      "items": {
+                                                        "$ref": "$map/item/tokens"
+                                                      },
+                                                      "key": {
+                                                        "$ref": "$map/item/value"
+                                                      },
+                                                      "map": {
+                                                        "tagName": "jx-swatch",
+                                                        "attributes": {
+                                                          "part": "token",
+                                                          "data-token": "${$map.item.value}"
+                                                        },
+                                                        "$props": {
+                                                          "size": "sm",
+                                                          "color": {
+                                                            "$ref": "$map/item/color"
+                                                          },
+                                                          "value": {
+                                                            "$ref": "$map/item/value"
+                                                          },
+                                                          "label": {
+                                                            "$ref": "$map/item/label"
+                                                          }
+                                                        }
+                                                      }
+                                                    }
+                                                  ]
+                                                }
+                                              }
+                                            }
+                                          ]
+                                        }
+                                      ]
                                     },
                                     "shorthand": {
                                       "tagName": "div",

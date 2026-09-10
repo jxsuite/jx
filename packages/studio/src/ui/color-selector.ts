@@ -1,364 +1,83 @@
-/// <reference lib="dom" />
 /**
- * Color-selector.js — Color input widget with swatch, text field, and popover picker.
+ * The project's colour tokens, as a projection.
  *
- * Uses sp-overlay trigger pattern for positioning (same as unit-selector and value-selector). The
- * popover content is a JxColorPopover LitElement that reactively syncs color between the area,
- * slider, and text field via a single `color` property.
+ * This module used to be a CONTROL — a swatch, a text field and an `sp-overlay` holding an
+ * `sp-color-area`, an `sp-color-slider` and an `sp-swatch-group` — because `specs/ui.md` §5.6 was
+ * Pending and there was no colour element in the kit to draw a colour row with. It was the last
+ * Spectrum surface in Studio, and the island `studio-ui-guidelines.md` §9.4 describes: the Style
+ * tab and the Content tab each drew an empty `[part="control-host"]` and this filled it with lit.
  *
- * When the value is a var(--color-*) reference matching a defined color variable, the input
- * switches to picker mode showing the title-cased variable name (e.g. "Primary Blue") with a
- * swatch, similar to jx-value-selector's dual-mode behavior.
+ * §5.6 landed, so the control is `jx-color-field` and both tabs draw it inline in their own
+ * documents. What no kit element can answer is what is LEFT here: which colours this project has
+ * given a name to. That is a question about the document being edited — the `--color-*` custom
+ * properties of the effective style, site and document together — and it is Studio's to answer.
+ *
+ * A token is projected as three separate things on purpose, because they are three:
+ *
+ * - `value` is what choosing it COMMITS, and it is the reference (`var(--color-accent)`) rather than
+ *   the colour behind it. Committing the literal would resolve the token at the moment of the click
+ *   and quietly opt that one declaration out of the palette for ever.
+ * - `color` is how the chip LOOKS, which is the literal, and is not what the swatch means.
+ * - `label` is the word a reader would use. A colour is not a name: `jx-swatch` announces its own
+ *   `value` when it is given no label, and "var(--color-primary-blue)" read one character at a time
+ *   is a name in the same sense that a licence plate is.
+ *
+ * @docs studio/design/style-inspector
  */
 
-import { LitElement, html, nothing } from "lit";
-import { html as litHtml, render as litRender } from "lit-html";
-import { live } from "lit-html/directives/live.js";
-import { debouncedStyleCommit } from "../store";
 import { activeTab } from "../workspace/workspace";
 import { getEffectiveStyle } from "../site-context";
 import { kebabToLabel } from "../utils/studio-utils";
 
-interface ColorVar {
-  name: string;
+/**
+ * One colour the project has named, as a swatch reads it.
+ *
+ * `Record<string, unknown>` because it is a `$map` item: a repeater's scope is a record, and a
+ * shape that is not one cannot be read through `$map/item/...`.
+ */
+export interface ColorTokenView extends Record<string, unknown> {
+  /** What choosing this swatch commits — the reference, never the literal behind it. */
   value: string;
+  /** The chip's colour: how the token looks, which is not what it means. */
+  color: string;
+  /** The token's name, title-cased — "Primary Blue" — and the swatch's accessible name. */
+  label: string;
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+/**
+ * Convert a colour variable's name to a title-case label.
+ *
+ * Strips the `--color-` prefix and converts kebab to title case, so `--color-primary-blue` becomes
+ * "Primary Blue". A token named `--color` alone has nothing left after the prefix, and falls back
+ * to its own name rather than announcing itself as the empty string.
+ *
+ * @param {string} name The custom property's name, with its leading dashes.
+ * @returns {string}
+ */
+function varToLabel(name: string): string {
+  return kebabToLabel(name.replace(/^--color-?/, "")) || name;
+}
 
-/** Extract --color-* CSS custom properties from the effective (site + document) style. */
-function getColorVars() {
+/**
+ * The `--color-*` custom properties of the effective (site + document) style, in the order they are
+ * written.
+ *
+ * Only scalars are taken. A custom property whose value is an object is a nested rule rather than a
+ * colour, and a swatch drawn from one would be a chip of nothing labelled with a name that commits
+ * a reference to something that is not a colour.
+ *
+ * @returns {ColorTokenView[]} The palette, empty when the document defines no colours.
+ */
+export function colorTokens(): ColorTokenView[] {
+  /* `getEffectiveStyle` answers with an object whatever it is given — the site's, the document's,
+     the two merged, or an empty one — so there is no absent case to guard, and the guard that used
+     to stand here was a branch no test could reach because nothing could produce it. */
   const style = getEffectiveStyle(activeTab.value?.doc.document?.style);
-  if (!style) {
-    return [];
-  }
-  const vars = [];
-  for (const [k, v] of Object.entries(style)) {
-    if (k.startsWith("--color") && (typeof v === "string" || typeof v === "number")) {
-      vars.push({ name: k, value: String(v) });
+  const tokens: ColorTokenView[] = [];
+  for (const [name, value] of Object.entries(style)) {
+    if (name.startsWith("--color") && (typeof value === "string" || typeof value === "number")) {
+      tokens.push({ color: String(value), label: varToLabel(name), value: `var(${name})` });
     }
   }
-  return vars;
+  return tokens;
 }
-
-/**
- * Convert a color variable name to a title-case label. Strips the "--color-" prefix and converts
- * kebab to title case. e.g. "--color-primary-blue" → "Primary Blue"
- */
-function varToLabel(name: string) {
-  return kebabToLabel(name.replace(/^--color-?/, ""));
-}
-
-/** Resolve a color value for display — if it's a var() reference, look up the actual color. */
-function resolveColorForDisplay(val: string | number | undefined) {
-  if (!val) {
-    return "transparent";
-  }
-  const s = String(val);
-  const m = s.match(/^var\((--[^)]+)\)$/);
-  if (m) {
-    const style = getEffectiveStyle(activeTab.value?.doc.document?.style);
-    const resolved = style?.[m[1]!];
-    if (typeof resolved === "string") {
-      return resolved;
-    }
-    return "transparent";
-  }
-  return s;
-}
-
-function safeColor(val: string | number | undefined) {
-  if (!val) {
-    return "transparent";
-  }
-  return resolveColorForDisplay(val);
-}
-
-/** Normalize a color string to include # prefix for hex values. */
-function normalizeHex(c: string) {
-  if (!c) {
-    return c;
-  }
-  if (c.startsWith("var(") || c.startsWith("rgb") || c.startsWith("hsl")) {
-    return c;
-  }
-  return c.replace(/^#?/, "#");
-}
-
-/**
- * Check if a value is a var() reference that matches a defined color variable.
- *
- * @param {string | number | undefined} value
- * @param {{ name: string; value: string }[]} colorVars
- */
-function matchesColorVar(
-  value: string | number | undefined,
-  colorVars: { name: string; value: string }[],
-) {
-  if (!value || typeof value !== "string") {
-    return null;
-  }
-  const m = value.match(/^var\((--[^)]+)\)$/);
-  if (!m) {
-    return null;
-  }
-  return colorVars.find((cv) => cv.name === m[1]) || null;
-}
-
-// ─── JxColorPopover LitElement ──────────────────────────────────────────────
-
-export class JxColorPopover extends LitElement {
-  static override properties = {
-    color: { type: String },
-    colorVars: { attribute: false },
-    displayColor: { attribute: false, type: String },
-  };
-
-  declare color: string;
-  declare displayColor: string;
-  declare colorVars: ColorVar[];
-
-  constructor() {
-    super();
-    this.color = "";
-    this.displayColor = "#000000";
-    this.colorVars = [];
-  }
-
-  /** No shadow DOM — render directly into light DOM for Spectrum theming */
-  override createRenderRoot() {
-    return this;
-  }
-
-  /** @param {Map<string, unknown>} changed */
-  override willUpdate(changed: Map<string, unknown>) {
-    if (changed.has("color")) {
-      const raw = resolveColorForDisplay(this.color);
-      if (!raw || raw === "transparent") {
-        this.displayColor = "#000000";
-      } else if (raw.startsWith("#") || raw.startsWith("rgb") || raw.startsWith("hsl")) {
-        this.displayColor = raw;
-      } else {
-        this.displayColor = `#${raw}`;
-      }
-    }
-  }
-
-  _handleArea(e: Event) {
-    const color = normalizeHex(String((e.target as HTMLElement & { color: string }).color));
-    this.displayColor = color;
-    this.color = color;
-    this.dispatchEvent(new CustomEvent("color-change", { bubbles: true, detail: color }));
-  }
-
-  _handleSlider(e: Event) {
-    const color = normalizeHex(String((e.target as HTMLElement & { color: string }).color));
-    this.displayColor = color;
-    this.color = color;
-    this.dispatchEvent(new CustomEvent("color-change", { bubbles: true, detail: color }));
-  }
-
-  _handleText(e: Event) {
-    const val = (e.target as HTMLInputElement).value.trim();
-    if (!val) {
-      return;
-    }
-    this.displayColor = val;
-    this.color = val;
-    this.dispatchEvent(new CustomEvent("color-change", { bubbles: true, detail: val }));
-  }
-
-  _handleSwatch(e: Event, varName: string) {
-    e.stopPropagation();
-    const varRef = `var(${varName})`;
-    this.color = varRef;
-    this.dispatchEvent(new CustomEvent("color-change", { bubbles: true, detail: varRef }));
-  }
-
-  override render() {
-    return html`
-      <div class="color-popover-inner">
-        <sp-color-area
-          style="width:200px; height:150px; --mod-colorarea-width:200px; --mod-colorarea-height:150px"
-          .color=${this.displayColor}
-          @input=${this._handleArea}
-        ></sp-color-area>
-        <sp-color-slider
-          style="width:200px; --mod-colorslider-length:200px"
-          .color=${this.displayColor}
-          @input=${this._handleSlider}
-        ></sp-color-slider>
-        <sp-textfield
-          size="s"
-          style="width:200px"
-          .value=${live(this.color || "")}
-          placeholder="#000000"
-          @change=${this._handleText}
-        ></sp-textfield>
-        ${
-          this.colorVars.length > 0
-            ? html`
-                <sp-divider size="s"></sp-divider>
-                <span class="color-popover-swatches-label">Color Tokens</span>
-                <sp-swatch-group size="xs" border="light" rounding="none">
-                  ${this.colorVars.map(
-                    (cv) => html`
-                      <sp-swatch
-                        color=${cv.value}
-                        .value=${cv.name}
-                        title=${cv.name}
-                        @click=${(e: Event) => this._handleSwatch(e, cv.name)}
-                      ></sp-swatch>
-                    `,
-                  )}
-                </sp-swatch-group>
-              `
-            : nothing
-        }
-      </div>
-    `;
-  }
-}
-
-// ─── Color input widget ─────────────────────────────────────────────────────
-
-/**
- * Render a color selector: swatch + text field + overlay popover. Uses sp-overlay trigger pattern
- * (same as unit-selector and value-selector).
- *
- * When value is a var(--color-*) matching a defined variable, switches to picker mode showing
- * title-cased label with swatch (e.g. "Primary Blue").
- *
- * @param {string} prop — property key (for debounce namespace)
- * @param {string | number | undefined} value — current color value
- * @param {(color: string) => void} onChange — commit callback
- * @returns {import("lit-html").TemplateResult}
- */
-export function renderColorSelector(
-  /** @type {string} */ prop: string,
-  /** @type {string | number | undefined} */ value: string | number | undefined,
-  /** @type {(color: string) => void} */ onChange: (color: string) => void,
-) {
-  const colorVars = getColorVars();
-  const matchedVar = matchesColorVar(value, colorVars);
-  const triggerId = `color-trigger-${prop}`;
-  const pickerTriggerId = `color-picker-${prop}`;
-
-  // ─── Picker mode: value matches a defined color variable ───
-  if (matchedVar) {
-    return litHtml`
-      <div class="style-input-color">
-        <sp-swatch
-          size="s"
-          rounding="none"
-          border="light"
-          color=${matchedVar.value}
-          id=${triggerId}
-        ></sp-swatch>
-        <sp-overlay trigger="${triggerId}@click" placement="bottom-start" type="auto">
-          <sp-popover style="padding:12px">
-            <jx-color-popover
-              .color=${value || ""}
-              .colorVars=${colorVars}
-              @color-change=${(e: CustomEvent) => onChange(e.detail as string)}
-            ></jx-color-popover>
-          </sp-popover>
-        </sp-overlay>
-        <sp-picker
-          id=${pickerTriggerId}
-          size="s"
-          style="flex:1; min-width:0"
-          .value=${`var(${matchedVar.name})`}
-          @change=${(e: Event) => {
-            e.stopPropagation();
-            onChange((e.target as HTMLInputElement).value);
-          }}
-        >
-          ${colorVars.map(
-            (cv) => litHtml`
-              <sp-menu-item value=${`var(${cv.name})`}>
-                <sp-swatch
-                  slot="icon"
-                  size="xs"
-                  rounding="none"
-                  border="light"
-                  color=${cv.value}
-                ></sp-swatch>
-                ${varToLabel(cv.name)}
-              </sp-menu-item>
-            `,
-          )}
-        </sp-picker>
-      </div>
-    `;
-  }
-
-  // ─── Text mode: custom color value or empty ───
-  return litHtml`
-    <div class="style-input-color" id=${triggerId}>
-      <sp-swatch
-        size="s"
-        rounding="none"
-        border="light"
-        color=${safeColor(value)}
-      ></sp-swatch>
-      <sp-textfield
-        size="s"
-        style="flex:1; min-width:0"
-        .value=${live(value || "")}
-        @click=${(e: Event) => e.stopPropagation()}
-        @input=${debouncedStyleCommit(`color:${prop}`, 400, (e: Event) => {
-          onChange((e.target as HTMLInputElement).value.trim());
-        })}
-      ></sp-textfield>
-      <sp-overlay trigger="${triggerId}@click" placement="bottom-start" type="auto">
-        <sp-popover style="padding:12px">
-          <jx-color-popover
-            .color=${value || ""}
-            .colorVars=${colorVars}
-            @color-change=${(e: CustomEvent) => onChange(e.detail as string)}
-          ></jx-color-popover>
-        </sp-popover>
-      </sp-overlay>
-    </div>
-  `;
-}
-
-/**
- * Paint the colour control into a host a DOCUMENT drew.
- *
- * The Style tab is a Jx document (`surfaces/style-panel.json`) and the kit's colour elements are
- * `specs/ui.md` §5.6, which is **Pending** — there is no `jx-color-field`, no `jx-color-area` and
- * no `jx-swatch` to draw a colour row with. So that ONE row stays on the seam it already has: the
- * document draws an empty `[part="control-host"]`, announces it through `onNodeCreated`, and this
- * is what fills it. It is the island `studio-ui-guidelines.md` §9.4 describes, and it goes whole
- * when §5.6 lands rather than being replaced piece by piece.
- *
- * Lit owns the host from here: re-rendering the same template into it reconciles rather than
- * rebuilds, so a swatch the reader has the picker open under is not taken away by a repaint.
- *
- * @param {HTMLElement} host The empty element the document drew.
- * @param {string} prop The property key — the debounce namespace and the overlay trigger's id.
- * @param {string | number | undefined} value The current colour.
- * @param {(color: string) => void} onChange Commit callback.
- */
-export function paintColorControl(
-  host: HTMLElement,
-  prop: string,
-  value: string | number | undefined,
-  onChange: (color: string) => void,
-): void {
-  litRender(renderColorSelector(prop, value, onChange), host);
-}
-
-/*
- * `isColorPopoverOpen()` lived here, and it went with the Inspector's panel scheduler.
- *
- * It answered ONE question — may the Inspector repaint right now? — for a dock that rebuilt its
- * markup on every projection, because a lit repaint destroys the element a drag is committing
- * through. The dock is `surfaces/inspector-dock.json` now: it draws a title, a target and a tab
- * selection, its four bodies are mounted documents of their own that never go through it, and a
- * binding whose value did not move writes nothing. There is no repaint to withhold, so there is
- * nothing left to ask. It had no other caller (`tests/reachability.test.ts` is what says so), and a
- * predicate kept for a question nobody asks is a thing the next reader has to work out.
- */

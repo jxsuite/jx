@@ -33,10 +33,12 @@
  * Source picker was a third. All three are `openMenu()` now, which is also how roving focus,
  * typeahead and Escape arrive here without a line of keyboard code.
  *
- * **One control is an island, and it is named.** `specs/ui.md` §5.6 (Colour) is Pending — there is
- * no `jx-color-field` — so a colour row draws an announced `[part="control-host"]` and
- * `ui/color-selector.ts`'s `paintColorControl` fills it. That is the whole of the Spectrum left on
- * this surface, and it goes when §5.6 lands.
+ * **Nothing here is an island any more.** One control was: `specs/ui.md` §5.6 (Colour) was Pending,
+ * so a colour row drew an announced `[part="control-host"]` and a lit `paintColorControl` filled
+ * it, and that was the last Spectrum on this surface. §5.6 landed. The row is a `jx-color-field` in
+ * the document beside every other control, its palette is a `jx-swatch-group` slotted into the
+ * picker, and `ui/color-selector.ts` is what remains: which colours THIS PROJECT has named, which
+ * is a question no kit element can answer.
  *
  * @docs studio/design/style-inspector
  */
@@ -107,7 +109,7 @@ import {
   getLonghands,
 } from "./style-utils";
 import { UNIT_RE } from "../ui/unit-selector";
-import { paintColorControl } from "../ui/color-selector";
+import { colorTokens } from "../ui/color-selector";
 import { mountStylePanelSurface } from "../surfaces/style-panel";
 import { openMenu } from "../surfaces/menu";
 import type { MenuHandle } from "../surfaces/menu";
@@ -740,14 +742,6 @@ interface RowActions {
   add?: (name: string) => boolean;
   /** Open a nested rule as the active selector. */
   open?: () => void;
-  /**
-   * The colour value an island is showing, and what a change to it commits.
-   *
-   * `prop` rather than the row's key, because the control makes a DOM id out of it and hangs its
-   * popover off that: a key carries the whole coordinate, `|` and `/` included, and an id with
-   * those in it is one the overlay's own trigger selector cannot resolve.
-   */
-  colour?: { prop: string; value: string; onChange: (value: string) => void };
 }
 
 /** Every row on screen, by key. Rebuilt whole on every projection; read by every action. */
@@ -761,12 +755,6 @@ let _nestedAdd: (() => void) | null = null;
 
 /** The value each button-group row is holding — pressing the selected button again clears it. */
 let _buttonValues = new Map<string, string>();
-
-/** The colour islands the document has announced, by row key. */
-const _controlHosts = new Map<string, HTMLElement>();
-
-/** What each announced island is currently painted with, so an unchanged row is left alone. */
-const _paintedColours = new Map<string, string>();
 
 /** Look one row up. A key the projection no longer has is a stale click, and does nothing. */
 function rowActions(key: string): RowActions | undefined {
@@ -914,6 +902,7 @@ function blankRow(key: string, prop: string, kind: StyleRowView["kind"]): StyleR
     hasChoices: false,
     hasLabel: false,
     hasSource: false,
+    hasTokens: false,
     key,
     kind,
     label: "",
@@ -931,6 +920,7 @@ function blankRow(key: string, prop: string, kind: StyleRowView["kind"]): StyleR
     sourceState: "literal",
     span: false,
     step: "",
+    tokens: [],
     value: "",
     warning: false,
     widget: "text",
@@ -1057,8 +1047,15 @@ function fieldRow(
 
   switch (type) {
     case "color": {
-      row.widget = "host";
-      actions.colour = { onChange: commitLiteral, prop, value };
+      row.widget = "color";
+      row.tokens = colorTokens();
+      row.hasTokens = row.tokens.length > 0;
+      /* Both verbs, as a text row has: the field says `input` on every frame of a drag and
+         `change` when the reader lets go, so the drag is debounced into one write per pause and
+         the release lands immediately. */
+      actions.edit = commitLiteral;
+      actions.commit = commitLiteral;
+      actions.debounceId = `color:${key}`;
       break;
     }
     case "button-group": {
@@ -2061,32 +2058,6 @@ const EDIT_MODE = () => "edit";
 /** The canvas mode the dock last reported — Stylebook edits a tag, Edit edits a selection. */
 let _canvasMode: () => string = EDIT_MODE;
 
-/**
- * Paint every colour island the document has announced, and forget the ones it has taken away.
- *
- * The kit has no colour element (`ui.md` §5.6, Pending), so a colour row is the one control here
- * that is still lit. An island is repainted only when its VALUE moved: `renderColorSelector` opens
- * an `sp-overlay` the reader may be dragging inside, and re-rendering it under them is exactly the
- * repaint the Inspector's focus guard used to exist for.
- */
-function paintColourIslands(): void {
-  for (const [key, host] of _controlHosts) {
-    const colour = _rows.get(key)?.colour;
-    if (!colour) {
-      if (!host.isConnected) {
-        _controlHosts.delete(key);
-        _paintedColours.delete(key);
-      }
-      continue;
-    }
-    if (_paintedColours.get(key) === colour.value && host.childNodes.length > 0) {
-      continue;
-    }
-    _paintedColours.set(key, colour.value);
-    paintColorControl(host, colour.prop, colour.value, colour.onChange);
-  }
-}
-
 /** Remember the button values, so a second press on the selected one clears it. */
 function rememberButtons(view: StylePanelView): void {
   _buttonValues = new Map();
@@ -2119,8 +2090,6 @@ export function bindStyleHost(el: HTMLElement | null, ctx?: StyleHostDeps): void
   _standing?.scope.stop();
   _standing?.handle.dispose();
   _standing = null;
-  _controlHosts.clear();
-  _paintedColours.clear();
   _rows = new Map();
   _sectionClears = new Map();
   _nestedAdd = null;
@@ -2131,11 +2100,6 @@ export function bindStyleHost(el: HTMLElement | null, ctx?: StyleHostDeps): void
   const first = buildView(_canvasMode);
   rememberButtons(first);
   const handle = mountStylePanelSurface(el, first, ACTIONS, {
-    control: (key, element) => {
-      _controlHosts.set(key, element);
-      _paintedColours.delete(key);
-      paintColourIslands();
-    },
     target: (element) => attachTargetLine(element ?? undefined),
   });
   const scope = effectScope();
@@ -2144,7 +2108,6 @@ export function bindStyleHost(el: HTMLElement | null, ctx?: StyleHostDeps): void
       const view = buildView(_canvasMode);
       rememberButtons(view);
       handle.update(view);
-      paintColourIslands();
     });
   });
   _standing = { handle, host: el, scope };

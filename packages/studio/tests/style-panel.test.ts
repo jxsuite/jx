@@ -6,7 +6,8 @@
  * by its `part`, a section by `data-section`, and every list the tab opens is the kit menu in the
  * popover layer. What is asserted is the contract the tab exists for: a row says where its value
  * came from, a commit reaches every selected element in one undo step, a section heading tallies
- * what is set inside it, and the two controls the kit cannot draw yet are still real controls.
+ * what is set inside it, and a colour row is a `jx-color-field` with the project's own palette
+ * slotted into its picker.
  *
  * A mounted document needs more turns than a lit render — the surface mounts, the Target Line
  * mounts inside it, and the keyed repeaters reconcile after that — so `flush(4)` is the normal
@@ -1081,21 +1082,119 @@ describe("the button group", () => {
   });
 });
 
-// ─── The colour island ───────────────────────────────────────────────────────
+// ─── The colour row ──────────────────────────────────────────────────────────
 
-describe("the colour island", () => {
-  test("a colour row draws an announced host, filled by the control the kit cannot draw yet", async () => {
+/*
+ * This block used to assert that a colour row drew an announced `[part="control-host"]` and that
+ * `ui/color-selector.ts` filled it with an `sp-swatch` and an `sp-overlay`. `ui.md` §5.6 landed, so
+ * the island is gone and what is asserted instead is the contract the kit's field gave the tab: it
+ * holds the row's value, its own gestures commit through the tab's two verbs, and a token stays a
+ * token on the way through.
+ */
+
+/** The colour field of a row, and the palette slotted into its picker. */
+function colourField(container: HTMLElement, prop = "color") {
+  return row(container, prop)?.querySelector<HTMLElement & { value: string }>(
+    'jx-color-field[part="color-field"]',
+  );
+}
+
+function swatches(container: HTMLElement, prop = "color") {
+  return [
+    ...(row(container, prop)?.querySelectorAll<HTMLElement>('jx-swatch[part="token"]') ?? []),
+  ];
+}
+
+describe("the colour row", () => {
+  test("a colour row is the kit's field, holding the row's own value", async () => {
     const tab = setupTab({ color: "#ff0000" });
     tab.session.ui.styleSections = { typography: true };
     const c = await renderPanel();
-    const host = row(c, "color")!.querySelector('[part="control-host"]')!;
-    // `ui.md` §5.6 (Colour) is Pending, so this ONE control is still `ui/color-selector.ts`'s.
-    const control = host.querySelector(".style-input-color")!;
-    expect(control).not.toBeNull();
-    /* The control is named by the PROPERTY, not by the row's key: it makes a DOM id out of the
-       name and hangs its popover off that, and a key carries the whole coordinate — `|` and `/`
-       included — which is an id the overlay's own trigger selector cannot resolve. */
-    expect(control.id).toBe("color-trigger-color");
+    const field = colourField(c)!;
+    expect(field).not.toBeNull();
+    expect(field.value).toBe("#ff0000");
+    // The row is named by the property it edits, as every other row is.
+    expect(input(row(c, "color"), "text")!.value).toBe("#ff0000");
+  });
+
+  test("a value the field cannot decompose is kept verbatim rather than refused", async () => {
+    const tab = setupTab({ color: "var(--color-accent)" });
+    tab.session.ui.styleSections = { typography: true };
+    const c = await renderPanel();
+    /* The whole reason the conversion was possible: a token is a perfectly good colour that only
+       the browser can resolve, and the field shows it rather than replacing it with black. */
+    expect(colourField(c)!.value).toBe("var(--color-accent)");
+    expect(input(row(c, "color"), "text")!.value).toBe("var(--color-accent)");
+  });
+
+  test("typing a colour into the field commits it; a word that is not one commits nothing", async () => {
+    const tab = setupTab({ color: "#ff0000" });
+    tab.session.ui.styleSections = { typography: true };
+    const c = await renderPanel();
+    fire(input(row(c, "color"), "text"), "change", "not a colour");
+    await settle();
+    /* The field refuses it and stops the text box's own event at its root, so the tab never hears
+       a commit — which is exactly what a listener bound ON the field instead of above it would
+       have got wrong. */
+    expect(selectedNode().style?.color).toBe("#ff0000");
+
+    fire(input(row(c, "color"), "text"), "change", "#00ff00");
+    await settle();
+    expect(selectedNode().style?.color).toBe("#00ff00");
+  });
+
+  test("moving the hue track commits the colour the field composed", async () => {
+    const tab = setupTab({ color: "#ff0000" });
+    tab.session.ui.styleSections = { typography: true };
+    const c = await renderPanel();
+    const hue = row(c, "color")!.querySelector<HTMLInputElement>('[part="hue"] [part="input"]')!;
+    fire(hue, "input", "200");
+    await settle();
+    // The commit is the FIELD's value, not the track's number.
+    expect(selectedNode().style?.color).toBe("#00aaff");
+  });
+
+  test("the project's colour tokens are the palette, and choosing one commits the reference", async () => {
+    resetStudioState();
+    const doc = {
+      children: [{ style: { color: "#111111" }, tagName: "section" }],
+      style: { "--color-accent": "#ff0000", "--color-ink": "#0000ff", "--space-2": "8px" },
+      tagName: "div",
+    } as unknown as JxMutableNode;
+    const tab = resetWorkspaceWithTab(doc);
+    tab.session.selection = [["children", 0]];
+    tab.session.ui.styleSections = { typography: true };
+    const c = await renderPanel();
+
+    const chips = swatches(c);
+    // Only the `--color-*` custom properties, and a swatch is named rather than read out as a hex.
+    expect(chips.map((el) => el.dataset.token)).toEqual([
+      "var(--color-accent)",
+      "var(--color-ink)",
+    ]);
+    expect(
+      chips.map((el) => el.querySelector('[part="control"]')?.getAttribute("aria-label")),
+    ).toEqual(["Accent", "Ink"]);
+    expect(chips.map((el) => el.style.getPropertyValue("--jx-swatch-color"))).toEqual([
+      "#ff0000",
+      "#0000ff",
+    ]);
+
+    click(chips[1]!.querySelector('[part="control"]'));
+    await settle();
+    /* The REFERENCE, not the literal behind it: the field itself cannot parse a token and declines
+       it, which is what leaves the group's own answer standing. */
+    expect(selectedNode().style?.color).toBe("var(--color-ink)");
+    await settle();
+    expect(swatches(c)[1]!.dataset.chosen).toBe("");
+  });
+
+  test("a document with no colour tokens draws no palette at all", async () => {
+    const tab = setupTab({ color: "#ff0000" });
+    tab.session.ui.styleSections = { typography: true };
+    const c = await renderPanel();
+    // An empty radiogroup is a thing a reader is told about and cannot use.
+    expect(row(c, "color")!.querySelectorAll('[part="palette"]').length).toBe(0);
   });
 });
 
@@ -1290,7 +1389,6 @@ describe("the surface's own seam", () => {
   function mountBare(host: HTMLElement) {
     const targets: (HTMLElement | null)[] = [];
     const handle = mountStylePanelSurface(host, VIEW, NOTHING, {
-      control: () => {},
       target: (el) => targets.push(el),
     });
     return { handle, targets };
