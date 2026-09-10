@@ -348,11 +348,13 @@ describe("the shell frame", () => {
       expect(frame, selector).toContain(selector);
     }
     expect(overlays).not.toContain(".jx-layer {");
-    /* The tab strip stayed: it is a lit surface, and it moves with its surface, not with this.
-       This used to name `.ai-chat-header`, which said the same thing until the assistant became
-       a document and took its rules with it — the class to name here is whichever one is still
-       drawn by a lit template. */
-    expect(shell).toContain(".tab-strip-tab");
+    /* The pane cell stayed: it is a lit surface (`panels/pane-grid.ts` renders `.pane-strip`), and
+       it moves with its surface, not with this. This used to name `.ai-chat-header`, then
+       `.tab-strip-tab`, and each stopped saying anything the day its surface became a document and
+       took its rules with it — the class to name here is whichever one is still drawn by a lit
+       template. `.tab-strip-tab`'s rules are still in this file and now draw NOTHING, which is the
+       dead-rule sweep's business rather than this assertion's. */
+    expect(shell).toContain(".pane-strip");
   });
 });
 

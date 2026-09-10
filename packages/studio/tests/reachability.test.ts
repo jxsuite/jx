@@ -284,7 +284,10 @@ const KNOWN_UNREACHABLE: Record<string, Record<string, string>> = {
       "`shell.ts` may not import a panel",
     resetSelectorMenu: "test reset; delegates to `surfaces/target-line.ts`'s `resetTargetLine`",
   },
-  "panels/tab-strip.ts": { unmount: PANEL_TEARDOWN },
+  /* `panels/tab-strip.ts:unmount` was here, as a panel teardown nothing calls. It is reachable
+     now: the strip is a mounted document, so `mount()` starts by tearing the standing one down —
+     the runtime that owns that DOM is about to be unreachable, and a second mount into the same
+     host would leave two strips whose chips both answer clicks. The ledger only ratchets down. */
   "surfaces/target-line.ts": { resetTargetLine: TEST_RESET },
   "surfaces/commandbar.ts": { setMacPlatformForTests: TEST_SEAM },
   "project-list.ts": { resetProjectList: TEST_RESET },

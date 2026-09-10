@@ -11,13 +11,12 @@
  *
  * **The editor is a document now** (`src/surfaces/entry-editor.json`), so everything inside it is
  * addressed by `part` or by REGION: there is no `.entry-editor-header`, `.entry-editor-note` or
- * `sp-action-button` left to find. The one exception is the draft PILL, which is still a lit
- * `<span>` because it belongs to the tab chip rather than to this surface — the test that names its
- * class says so.
+ * `sp-action-button` left to find. The draft PILL was the one exception, a lit `<span>` because it
+ * belongs to the tab chip rather than to this surface; the tab strip is a document too now, so the
+ * pill is a projection and the test that named its class names its values.
  */
 import { flush, installMockPlatform, resetStudioState, surfaceOf } from "./harness";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { render } from "lit-html";
 import { MARKDOWN_FORMAT, mockFormatAction, seedMarkdownFormat } from "./format-fixture";
 import { activeTab, closeAllTabs, workspace } from "../src/workspace/workspace";
 import { openFileInTab } from "../src/files/files";
@@ -413,26 +412,29 @@ describe("drafts", () => {
   });
 
   /**
-   * The pill is the one fragment of this module that is still lit, because it is drawn on the tab
-   * CHIP — `panels/tab-strip.ts` interpolates it into a `repeat()` that rebuilds on every strip
-   * repaint. It converts when that surface does; until then it keeps its class and its rule.
+   * The pill was the one fragment of this module that was still lit, because it is drawn on the tab
+   * CHIP — `panels/tab-strip.ts` interpolated it into a `repeat()` that rebuilt on every strip
+   * repaint — and it said it would convert when that surface did. It has: the strip is a Jx
+   * document, so this is a projection of two strings and a flag, and `surfaces/tab-strip.json`
+   * draws it in `jx-tab`'s `status` slot. The assertions moved with it, from a class and a rendered
+   * `<span>` to the values that decide both. That it reaches the chip at all is
+   * `tab-strip.test.ts`'s to say; that it says the right words is this one's.
    */
   test("the pill names both states, and appears on no document without the axis", async () => {
-    const host = document.createElement("div");
+    expect(entryDraftPill(await openAda({ draft: true }))).toEqual({
+      draft: true,
+      text: "Draft",
+      title: expect.stringContaining("does not exclude") as unknown as string,
+    });
 
-    render(entryDraftPill(await openAda({ draft: true })), host);
-    await flush();
-    expect(host.querySelector(".entry-pill--draft")?.textContent).toBe("Draft");
-    expect(host.querySelector(".entry-pill")?.getAttribute("title")).toContain("does not exclude");
+    const published = entryDraftPill(await openAda());
+    expect(published?.text).toBe("Published");
+    expect(published?.draft).toBe(false);
+    expect(published?.title).toBe("Not marked a draft.");
 
-    render(entryDraftPill(await openAda()), host);
-    await flush();
-    expect(host.querySelector(".entry-pill")?.textContent).toBe("Published");
-    expect(host.querySelector(".entry-pill--draft")).toBeNull();
-
-    render(entryDraftPill(await openEntry("pages/index.json", "{}")), host);
-    await flush();
-    expect(host.querySelector(".entry-pill")).toBeNull();
+    // No draft axis at all is `null`, which is how the chip draws NEITHER word — a document that
+    // Has no draft workflow must not be given a state it does not have.
+    expect(entryDraftPill(await openEntry("pages/index.json", "{}"))).toBeNull();
   });
 });
 

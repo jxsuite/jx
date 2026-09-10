@@ -40,7 +40,6 @@
  * @docs studio/projects/content-types
  */
 
-import { html, nothing } from "lit-html";
 import { activeRegistry } from "../commands/active-registry";
 import { effect, effectScope } from "../reactivity";
 import { projectState } from "../store";
@@ -124,33 +123,42 @@ export function setEntryDraft(tab: Tab, draft: boolean): void {
   transactDoc(tab, (t) => mutateEntryField(t, DRAFT_FIELD, draft as JsonValue));
 }
 
+/** What the tab chip's draft pill says. A value, drawn by `surfaces/tab-strip.json`. */
+export interface DraftPill {
+  /** The word on the pill: "Draft" or "Published". */
+  text: string;
+  /** Its tooltip: what being a draft actually excludes, or that it is not one. */
+  title: string;
+  draft: boolean;
+}
+
 /**
- * The draft pill for a tab, or `nothing`.
+ * The draft pill for a tab, or `null` when its document has no draft axis at all.
  *
  * Drawn on the pane's tab chip (`panels/tab-strip.ts`) rather than only inside the editor, because
  * the failure this exists to prevent is publishing something you thought was private — and that
- * mistake is made while looking at a tab, not while looking at a form. It renders for any entry
- * whose collection declares the field, so "Published" is as visible as "Draft"; a collection with
- * no draft workflow shows neither.
+ * mistake is made while looking at a tab, not while looking at a form. It states its two words for
+ * any entry whose collection declares the field, so "Published" is as visible as "Draft"; a
+ * collection with no draft workflow states neither, which is what `null` means.
  *
- * **This is the ONE piece of markup left in this file, and it is not this surface's.** It is a
- * fragment of the tab CHIP — a `<span>` lit interpolates into a `repeat()` that rebuilds on every
- * strip repaint — so it converts when `panels/tab-strip.ts` converts, and a document mounted per
- * chip would be an async mount inside a synchronous rebuild. `.entry-pill` keeps its rules in
- * `styles/overlays.css` for exactly that long.
+ * **It was the ONE piece of markup left in this file, and it was not this surface's.** It was a
+ * fragment of the tab CHIP — a `<span>` lit interpolated into a `repeat()` that rebuilt on every
+ * strip repaint — and it said so, and that it would convert when `panels/tab-strip.ts` converted.
+ * The strip is a Jx document now, so this is a projection: two strings and a flag, drawn by the
+ * chip's `status` slot, and `.entry-pill`'s rules in `styles/overlays.css` are dead with it.
  */
-export function entryDraftPill(tab: Tab) {
+export function entryDraftPill(tab: Tab): DraftPill | null {
   const collection = collectionOfPath(tab.documentPath);
   const fields = entryFields(tab);
   if (!collection || !hasDraftAxis(collection.schema, fields)) {
-    return nothing;
+    return null;
   }
   const draft = isDraftEntry(fields);
-  return html`<span
-    class=${draft ? "entry-pill entry-pill--draft" : "entry-pill"}
-    title=${draft ? DRAFT_MEANING : "Not marked a draft."}
-    >${draft ? "Draft" : "Published"}</span
-  >`;
+  return {
+    draft,
+    text: draft ? "Draft" : "Published",
+    title: draft ? DRAFT_MEANING : "Not marked a draft.",
+  };
 }
 
 // ─── The form ────────────────────────────────────────────────────────────────

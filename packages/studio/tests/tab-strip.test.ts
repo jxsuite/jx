@@ -5,6 +5,7 @@
 import { flush, installMockPlatform, resetStudioState, topDialog } from "./harness";
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { confirmCloseAll, mount, unmount } from "../src/panels/tab-strip";
+import doc from "../src/surfaces/tab-strip.json";
 import { collabState } from "../src/collab/collab-state";
 import {
   closeAllTabs,
@@ -40,11 +41,16 @@ function open(id: string, documentPath: string | null = `/project/${id}.json`) {
 }
 
 function tabs(): HTMLElement[] {
-  return [...host.querySelectorAll(".tab-strip-tab")] as HTMLElement[];
+  return [...host.querySelectorAll('[part="tab"]')] as HTMLElement[];
 }
 
 function strip(): HTMLElement {
-  return host.querySelector(".tab-strip") as HTMLElement;
+  return host.querySelector('[part="tabs"]') as HTMLElement;
+}
+
+/** One pane strip's outer row, where the focused-pane mark lives. */
+function stripRow(into: HTMLElement): HTMLElement | null {
+  return into.querySelector<HTMLElement>('[part="strip-row"]');
 }
 
 // Happy-dom performs no layout (scrollWidth/clientWidth are 0); stub them to fake overflow.
@@ -85,7 +91,7 @@ afterEach(() => {
 describe("tab strip rendering", () => {
   test("renders nothing with no tabs", async () => {
     await flush();
-    expect(host.querySelector(".tab-strip")).toBeNull();
+    expect(host.querySelector('[part="tabs"]')).toBeNull();
   });
 
   test("renders a tab per open document with file-name labels", async () => {
@@ -94,15 +100,15 @@ describe("tab strip rendering", () => {
     await flush();
     const els = tabs();
     expect(els.length).toBe(2);
-    expect(els[0]!.querySelector(".tab-strip-label")!.textContent).toBe("home.json");
-    expect(els[1]!.querySelector(".tab-strip-label")!.textContent).toBe("about.json");
+    expect(els[0]!.querySelector('[part="label"]')!.textContent).toBe("home.json");
+    expect(els[1]!.querySelector('[part="label"]')!.textContent).toBe("about.json");
     expect(els[0]!.getAttribute("title")).toBe("/project/pages/home.json");
   });
 
   test("tab without a documentPath is labeled Untitled", async () => {
     open("untitled", null);
     await flush();
-    expect(tabs()[0]!.querySelector(".tab-strip-label")!.textContent).toBe("Untitled");
+    expect(tabs()[0]!.querySelector('[part="label"]')!.textContent).toBe("Untitled");
     expect(tabs()[0]!.getAttribute("title")).toBe("Untitled");
   });
 
@@ -110,14 +116,14 @@ describe("tab strip rendering", () => {
     const a = open("a");
     open("b");
     await flush();
-    expect(tabs()[1]!.classList.contains("active")).toBe(true);
-    expect(tabs()[0]!.classList.contains("active")).toBe(false);
-    expect(host.querySelector(".tab-strip-dirty")).toBeNull();
+    expect(tabs()[1]!.getAttribute("aria-selected") === "true").toBe(true);
+    expect(tabs()[0]!.getAttribute("aria-selected") === "true").toBe(false);
+    expect(host.querySelector('[part="dirty"]')).toBeNull();
 
     a.doc.dirty = true;
     await flush();
-    expect(tabs()[0]!.querySelector(".tab-strip-dirty")).not.toBeNull();
-    expect(tabs()[1]!.querySelector(".tab-strip-dirty")).toBeNull();
+    expect(tabs()[0]!.querySelector('[part="dirty"]')).not.toBeNull();
+    expect(tabs()[1]!.querySelector('[part="dirty"]')).toBeNull();
   });
 
   test("rerenders when tabs open and close", async () => {
@@ -129,16 +135,25 @@ describe("tab strip rendering", () => {
     expect(tabs().length).toBe(2);
     closeAllTabs();
     await flush();
-    expect(host.querySelector(".tab-strip")).toBeNull();
+    expect(host.querySelector('[part="tabs"]')).toBeNull();
   });
 
-  test("unmount stops reactive rendering", async () => {
+  test("unmount takes the document down, and no later tab brings it back", async () => {
     open("a");
     await flush();
+    expect(tabs().length).toBe(1);
     unmount();
+    /* The strip is a MOUNTED DOCUMENT now, so unmounting is a disposal rather than a stopped
+       effect: the runtime that owns this DOM is about to be unreachable, and leaving the last
+       render standing would leave a strip whose chips still answer clicks. The assertion this
+       replaces read `toBe(1)` — the frozen render — which cannot tell a stopped effect from a
+       live one that simply has not been asked yet. Opening a second tab is what tells them
+       apart. */
+    expect(host.querySelector('[part="strip-row"]')).toBeNull();
     open("b");
     await flush();
-    expect(tabs().length).toBe(1);
+    expect(tabs().length).toBe(0);
+    expect(host.querySelector('[part="strip-row"]')).toBeNull();
   });
 });
 
@@ -150,14 +165,14 @@ describe("tab strip interactions", () => {
     tabs()[0]!.click();
     expect(workspace.activeTabId).toBe("a");
     await flush();
-    expect(tabs()[0]!.classList.contains("active")).toBe(true);
+    expect(tabs()[0]!.getAttribute("aria-selected") === "true").toBe(true);
   });
 
   test("close button closes a clean tab without confirmation", async () => {
     open("a");
     open("b");
     await flush();
-    (tabs()[0]!.querySelector(".tab-strip-close") as HTMLElement).click();
+    (tabs()[0]!.querySelector('[part="close"]') as HTMLElement).click();
     await flush();
     expect(workspace.tabs.has("a")).toBe(false);
     expect(tabs().length).toBe(1);
@@ -189,7 +204,7 @@ describe("tab strip interactions", () => {
     const a = open("a");
     a.doc.dirty = true;
     await flush();
-    (tabs()[0]!.querySelector(".tab-strip-close") as HTMLElement).click();
+    (tabs()[0]!.querySelector('[part="close"]') as HTMLElement).click();
     await flush();
     const dialog = topDialog()!;
     expect(dialog).not.toBeNull();
@@ -210,7 +225,7 @@ describe("tab strip interactions", () => {
     const a = open("a");
     a.doc.dirty = true;
     await flush();
-    (tabs()[0]!.querySelector(".tab-strip-close") as HTMLElement).click();
+    (tabs()[0]!.querySelector('[part="close"]') as HTMLElement).click();
     await flush();
     const dialog = topDialog()!;
     dialog.dispatchEvent(new Event("secondary"));
@@ -223,7 +238,7 @@ describe("tab strip interactions", () => {
     const a = open("a");
     a.doc.dirty = true;
     await flush();
-    (tabs()[0]!.querySelector(".tab-strip-close") as HTMLElement).click();
+    (tabs()[0]!.querySelector('[part="close"]') as HTMLElement).click();
     await flush();
     (topDialog() as HTMLElement).dispatchEvent(new Event("confirm"));
     await flush(6);
@@ -240,7 +255,7 @@ describe("tab strip interactions", () => {
     const a = open("a");
     a.doc.dirty = true;
     await flush();
-    (tabs()[0]!.querySelector(".tab-strip-close") as HTMLElement).click();
+    (tabs()[0]!.querySelector('[part="close"]') as HTMLElement).click();
     await flush();
     (topDialog() as HTMLElement).dispatchEvent(new Event("confirm"));
     await flush(6);
@@ -256,7 +271,7 @@ describe("tab strip interactions", () => {
     state.active = true;
     state.peers = [{ clientId: 2, state: { focusedPath: "/project/a.json" } as never }];
     await flush();
-    (tabs()[0]!.querySelector(".tab-strip-close") as HTMLElement).click();
+    (tabs()[0]!.querySelector('[part="close"]') as HTMLElement).click();
     await flush();
     // The shared session lives on with the remaining peer — closing is safe, no prompt.
     expect(topDialog()).toBeNull();
@@ -271,7 +286,7 @@ describe("tab strip interactions", () => {
     // A peer exists but is focused on a different doc — nobody else holds THIS doc.
     state.peers = [{ clientId: 2, state: { focusedPath: "/project/other.json" } as never }];
     await flush();
-    (tabs()[0]!.querySelector(".tab-strip-close") as HTMLElement).click();
+    (tabs()[0]!.querySelector('[part="close"]') as HTMLElement).click();
     await flush();
     expect(topDialog()).not.toBeNull();
     expect(workspace.tabs.has("a")).toBe(true);
@@ -296,7 +311,7 @@ describe("tab strip interactions", () => {
       const a = openReadOnly("a");
       collabState(a).peers = [{ clientId: 2, state: { focusedPath: "/project/a.json" } as never }];
       await flush();
-      (tabs()[0]!.querySelector(".tab-strip-close") as HTMLElement).click();
+      (tabs()[0]!.querySelector('[part="close"]') as HTMLElement).click();
       await flush();
       expect(topDialog()).not.toBeNull();
       expect(workspace.tabs.has("a")).toBe(true);
@@ -305,7 +320,7 @@ describe("tab strip interactions", () => {
     test("is offered discard-or-keep, never a Save it cannot honour", async () => {
       openReadOnly("a");
       await flush();
-      (tabs()[0]!.querySelector(".tab-strip-close") as HTMLElement).click();
+      (tabs()[0]!.querySelector('[part="close"]') as HTMLElement).click();
       await flush();
       const dialog = topDialog()!;
       expect(dialog.getAttribute("headline")).toBe("Changes Cannot Be Saved");
@@ -325,7 +340,7 @@ describe("tab strip interactions", () => {
       const { state } = installMockPlatform();
       openReadOnly("a");
       await flush();
-      (tabs()[0]!.querySelector(".tab-strip-close") as HTMLElement).click();
+      (tabs()[0]!.querySelector('[part="close"]') as HTMLElement).click();
       await flush();
       (topDialog() as HTMLElement).dispatchEvent(new Event("confirm"));
       await flush(6);
@@ -378,7 +393,7 @@ describe("tab strip interactions", () => {
       const a = open("a");
       view.functionEditor = typingBuffer(a, "typed();", (body) => landBody(a, body)) as never;
       await flush();
-      (tabs()[0]!.querySelector(".tab-strip-close") as HTMLElement).click();
+      (tabs()[0]!.querySelector('[part="close"]') as HTMLElement).click();
       await flush();
 
       // The commit landed WHILE the tab was still open — which is the only moment it could.
@@ -394,7 +409,7 @@ describe("tab strip interactions", () => {
         landBody(a, text);
       }) as never;
       await flush();
-      (tabs()[0]!.querySelector(".tab-strip-close") as HTMLElement).click();
+      (tabs()[0]!.querySelector('[part="close"]') as HTMLElement).click();
       await flush();
 
       expect((a.doc.document as unknown as { body?: string }).body).toBe("# Never saved");
@@ -415,7 +430,7 @@ describe("tab strip interactions", () => {
       bufferWrites(buffer).markTyped();
       surfaceForPane("primary").monacoEditor = buffer as never;
       await flush();
-      (tabs()[0]!.querySelector(".tab-strip-close") as HTMLElement).click();
+      (tabs()[0]!.querySelector('[part="close"]') as HTMLElement).click();
       await flush();
 
       expect(a.doc.dirty).toBe(false); // Nothing made it dirty, and it is still unsaved work
@@ -445,7 +460,7 @@ describe("tab strip interactions", () => {
       bufferWrites(buffer).markTyped();
       surfaceForPane("primary").monacoEditor = buffer as never;
       await flush();
-      (tabs()[0]!.querySelector(".tab-strip-close") as HTMLElement).click();
+      (tabs()[0]!.querySelector('[part="close"]') as HTMLElement).click();
       await flush();
 
       await flush();
@@ -478,7 +493,7 @@ describe("tab strip interactions", () => {
         landBody(a, text);
       }) as never;
       await flush();
-      (tabs()[0]!.querySelector(".tab-strip-close") as HTMLElement).click();
+      (tabs()[0]!.querySelector('[part="close"]') as HTMLElement).click();
       await flush();
 
       expect(workspace.tabs.has("a")).toBe(false);
@@ -512,7 +527,7 @@ describe("tab strip interactions", () => {
       bufferWrites(buffer).markTyped();
       view.functionEditor = buffer as never;
       await flush();
-      (tabs()[0]!.querySelector(".tab-strip-close") as HTMLElement).click();
+      (tabs()[0]!.querySelector('[part="close"]') as HTMLElement).click();
       await flush();
 
       expect(a.doc.dirty).toBe(false);
@@ -533,7 +548,7 @@ describe("tab strip interactions", () => {
       bufferWrites(buffer).markAhead();
       view.functionEditor = buffer as never;
       await flush();
-      (tabs()[0]!.querySelector(".tab-strip-close") as HTMLElement).click();
+      (tabs()[0]!.querySelector('[part="close"]') as HTMLElement).click();
       await flush();
 
       expect(topDialog()).toBeNull();
@@ -769,7 +784,7 @@ describe("tab strip interactions", () => {
     const a = open("a");
     a.doc.dirty = true;
     await flush();
-    const closeBtn = tabs()[0]!.querySelector(".tab-strip-close") as HTMLElement;
+    const closeBtn = tabs()[0]!.querySelector('[part="close"]') as HTMLElement;
     // Remove the tab out from under the strip, then click the stale button.
     workspace.tabs.delete("a");
     closeBtn.click();
@@ -851,8 +866,8 @@ describe("active tab reveal", () => {
     tabs()[0]!.click();
     await flush();
     expect(revealed.length).toBe(1);
-    expect(revealed[0]!.classList.contains("active")).toBe(true);
-    expect(revealed[0]!.querySelector(".tab-strip-label")!.textContent).toBe("a.json");
+    expect(revealed[0]!.getAttribute("aria-selected") === "true").toBe(true);
+    expect(revealed[0]!.querySelector('[part="label"]')!.textContent).toBe("a.json");
     spy.mockRestore();
   });
 
@@ -873,13 +888,13 @@ describe("pin, reorder and preview", () => {
     open("b");
     await flush();
     tabs()[1]!
-      .querySelector(".tab-strip-pin")!
+      .querySelector('[part="pin"]')!
       .dispatchEvent(new MouseEvent("click", { bubbles: true }));
     await flush();
     const els = tabs();
-    expect(els[0]!.querySelector(".tab-strip-label")!.textContent).toBe("b.json");
-    expect(els[0]!.classList.contains("pinned")).toBe(true);
-    expect(els[0]!.querySelector(".tab-strip-pin")!.getAttribute("title")).toBe("Unpin");
+    expect(els[0]!.querySelector('[part="label"]')!.textContent).toBe("b.json");
+    expect(els[0]!.dataset.pinned !== undefined).toBe(true);
+    expect(els[0]!.querySelector('[part="pin"]')!.getAttribute("title")).toBe("Unpin");
   });
 
   test("clicking the pin does not also activate the tab", async () => {
@@ -888,7 +903,7 @@ describe("pin, reorder and preview", () => {
     await flush();
     expect(workspace.activeTabId).toBe("b");
     tabs()[0]!
-      .querySelector(".tab-strip-pin")!
+      .querySelector('[part="pin"]')!
       .dispatchEvent(new MouseEvent("click", { bubbles: true }));
     await flush();
     expect(workspace.activeTabId).toBe("b");
@@ -902,11 +917,11 @@ describe("pin, reorder and preview", () => {
       preview: true,
     });
     await flush();
-    expect(tabs()[0]!.classList.contains("preview")).toBe(true);
+    expect(tabs()[0]!.dataset.preview !== undefined).toBe(true);
     expect(tabs()[0]!.getAttribute("title")).toContain("Preview — double-click to keep open");
     tabs()[0]!.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
     await flush();
-    expect(tabs()[0]!.classList.contains("preview")).toBe(false);
+    expect(tabs()[0]!.dataset.preview !== undefined).toBe(false);
   });
 
   test("an edit promotes a preview tab without a click", async () => {
@@ -930,10 +945,10 @@ describe("pin, reorder and preview", () => {
     const [first, , third] = tabs();
     first!.dispatchEvent(new Event("dragstart", { bubbles: true }));
     await flush();
-    expect(tabs()[0]!.classList.contains("dragging")).toBe(true);
+    expect(tabs()[0]!.dataset.dragging !== undefined).toBe(true);
     third!.dispatchEvent(new Event("drop", { bubbles: true, cancelable: true }));
     await flush();
-    expect(tabs().map((el) => el.querySelector(".tab-strip-label")!.textContent)).toEqual([
+    expect(tabs().map((el) => el.querySelector('[part="label"]')!.textContent)).toEqual([
       "b.json",
       "c.json",
       "a.json",
@@ -946,14 +961,14 @@ describe("pin, reorder and preview", () => {
     await flush();
     tabs()[0]!.dispatchEvent(new Event("drop", { bubbles: true, cancelable: true }));
     await flush();
-    expect(tabs().map((el) => el.querySelector(".tab-strip-label")!.textContent)).toEqual([
+    expect(tabs().map((el) => el.querySelector('[part="label"]')!.textContent)).toEqual([
       "a.json",
       "b.json",
     ]);
     tabs()[0]!.dispatchEvent(new Event("dragstart", { bubbles: true }));
     tabs()[0]!.dispatchEvent(new Event("dragend", { bubbles: true }));
     await flush();
-    expect(host.querySelector(".tab-strip-tab.dragging")).toBeNull();
+    expect(host.querySelector('[part="tab"][data-dragging]')).toBeNull();
   });
 });
 
@@ -970,20 +985,20 @@ describe("per-pane strips", () => {
     await flush();
 
     const second = document.querySelector("#tab-strip-2") as HTMLElement;
-    expect([...host.querySelectorAll(".tab-strip-label")].map((e) => e.textContent)).toEqual([
+    expect([...host.querySelectorAll('[part="label"]')].map((e) => e.textContent)).toEqual([
       "a.json",
     ]);
-    expect([...second.querySelectorAll(".tab-strip-label")].map((e) => e.textContent)).toEqual([
+    expect([...second.querySelectorAll('[part="label"]')].map((e) => e.textContent)).toEqual([
       "b.json",
     ]);
-    expect(second.querySelector(".tab-strip-row")!.classList.contains("focused")).toBe(true);
-    expect(host.querySelector(".tab-strip-row")!.classList.contains("focused")).toBe(false);
+    expect(stripRow(second)!.dataset.focused !== undefined).toBe(true);
+    expect(stripRow(host)!.dataset.focused !== undefined).toBe(false);
 
     // Collapsing the pane blanks the host it left behind.
     closePane("secondary");
     await flush();
-    expect(second.querySelector(".tab-strip-tab")).toBeNull();
-    expect([...host.querySelectorAll(".tab-strip-label")].map((e) => e.textContent)).toEqual([
+    expect(second.querySelector('[part="tab"]')).toBeNull();
+    expect([...host.querySelectorAll('[part="label"]')].map((e) => e.textContent)).toEqual([
       "a.json",
       "b.json",
     ]);
@@ -1002,10 +1017,12 @@ describe("per-pane strips", () => {
     splitRight();
     await flush();
 
-    const labels = () => [...host.querySelectorAll(".tab-strip-label")].map((e) => e.textContent);
+    const labels = () => [...host.querySelectorAll('[part="label"]')].map((e) => e.textContent);
     expect(labels()).toEqual(["b.json"]);
-    expect(host.querySelector(".tab-strip-row")!.classList.contains("focused")).toBe(true);
-    expect(host.querySelector(".tab-strip-tab.active")!.textContent).toContain("b.json");
+    expect(stripRow(host)!.dataset.focused !== undefined).toBe(true);
+    expect(host.querySelector('[part="tab"][aria-selected="true"]')!.textContent).toContain(
+      "b.json",
+    );
 
     // Focus back, and the one strip follows it back.
     focusPane("primary");
@@ -1029,9 +1046,161 @@ describe("per-pane strips", () => {
     splitRight();
     await flush();
     host
-      .querySelector(".tab-strip-row")!
+      .querySelector('[part="strip-row"]')!
       .dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
     expect(workspace.activePaneId).toBe("primary");
+  });
+});
+
+// ─── Tab semantics ────────────────────────────────────────────────────────────
+
+/**
+ * The strip is a real `tablist` now, and the three marks that kept it out of the pattern are
+ * `jx-tab`'s slots.
+ *
+ * `studio-ui-guidelines.md` §14's `gap:apg-coverage` said the pane strip carried no tab semantics
+ * "because a Studio tab chip carries a pin toggle, an origin marker and a draft pill and `jx-tab`
+ * accepts no slotted content". It does now (`ui.md` §5.4), so the strip is one stop in the tab
+ * order with a roving caret inside it — and Delete closes a document, which the × has never had a
+ * keyboard path to.
+ */
+describe("the strip is a real tablist", () => {
+  /** Press a key where a keyboard would: at the focused node, or at the strip. */
+  function key(name: string): KeyboardEvent {
+    const event = new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: name });
+    const active = document.activeElement;
+    const target = active && strip().contains(active) ? active : strip();
+    target.dispatchEvent(event);
+    return event;
+  }
+  const carets = () => tabs().map((chip) => chip.getAttribute("tabindex"));
+
+  test("the host IS the tablist and each chip is a tab, with ONE caret for the strip", async () => {
+    open("a");
+    open("b", "/project/b.json");
+    await flush();
+    expect(strip().getAttribute("role")).toBe("tablist");
+    // A tablist takes no name from its tabs and no lint can say so: a bound role switches the
+    // Naming rules off. With two panes there are two strips, so the name says which.
+    expect(strip().getAttribute("aria-label")).toBe("Open documents");
+    expect(tabs().map((chip) => chip.getAttribute("role"))).toEqual(["tab", "tab"]);
+    expect(tabs().map((chip) => chip.getAttribute("aria-selected"))).toEqual(["false", "true"]);
+    // Exactly one stop, so Tab enters and leaves the whole strip in one press.
+    expect(carets().filter((value) => value === "0")).toHaveLength(1);
+    // And the tabs are the tablist's OWN children: a generic box between a container role and the
+    // Elements it owns is the trap this family falls into.
+    expect([...strip().children].map((child) => child.localName)).toEqual(["jx-tab", "jx-tab"]);
+  });
+
+  test("the arrows walk the strip, and Home and End reach its ends", async () => {
+    open("a");
+    open("b", "/project/b.json");
+    open("c", "/project/c.json");
+    await flush();
+    const caret = tabs().find((chip) => chip.getAttribute("tabindex") === "0")!;
+    caret.focus();
+    expect(caret.dataset.tab).toBe("c");
+
+    key("ArrowLeft");
+    expect(carets()).toEqual(["-1", "0", "-1"]);
+    key("Home");
+    expect(carets()).toEqual(["0", "-1", "-1"]);
+    key("End");
+    expect(carets()).toEqual(["-1", "-1", "0"]);
+    // The strip selects as the caret lands, which is what a strip of already-open documents wants.
+    await flush();
+    expect(workspace.panes[0]!.activeTabId).toBe("c");
+  });
+
+  test("Delete on the focused tab closes it, through the button the pointer presses", async () => {
+    open("a");
+    open("b", "/project/b.json");
+    await flush();
+    tabs()
+      .find((chip) => chip.getAttribute("tabindex") === "0")!
+      .focus();
+    key("Delete");
+    await flush();
+    // The × has never had a keyboard path. The kit's Delete IS that path, and it runs the same
+    // Close the pointer does — prompts included, which is why this document is clean.
+    expect(workspace.tabs.has("b")).toBe(false);
+    expect(workspace.tabs.has("a")).toBe(true);
+  });
+
+  test("the marker, the pill and the pin are slotted, in that order, around the label", async () => {
+    resetStudioState({
+      projectConfig: {
+        content: {
+          notes: {
+            format: "json",
+            schema: { properties: { draft: { type: "boolean" } }, type: "object" },
+            source: "./content/notes/",
+          },
+        },
+        name: "Demo",
+      },
+      projectRoot: "/demo",
+    });
+    openTab({
+      document: { draft: true, tagName: "div" } as unknown as JxMutableNode,
+      documentPath: "content/notes/one.json",
+      id: "content/notes/one.json",
+      openedFrom: { documentPath: "pages/index.md", tabId: "parent" },
+    });
+    await flush();
+    const chip = tabs()[0]!;
+    /* Order is the contract of a positional slot, so it is read as ORDER rather than as three
+       presence checks that would pass with the marks in any arrangement at all. The dot and the ✕
+       are the KIT's, and they come last: a mark Studio adds must never push the close button off
+       the end of the chip. */
+    expect([...chip.children].map((child) => child.getAttribute("part"))).toEqual([
+      "icon",
+      "label",
+      "status",
+      "actions",
+      "dirty-slot",
+      "close-slot",
+    ]);
+    expect(chip.querySelector('[part="origin"]:not([hidden])')!.textContent).toBe("↳");
+    const pill = chip.querySelector<HTMLElement>('[part="pill"]:not([hidden])')!;
+    expect(pill.textContent).toBe("Draft");
+    expect(pill.dataset.draft).toBe("");
+    expect(pill.getAttribute("title")).toContain("does not exclude");
+    expect(chip.querySelector('[part="pin"]')!.getAttribute("title")).toBe("Pin");
+    // The tab still names itself with exactly the string it draws: `aria-label` beats
+    // Name-from-content, so "↳", "Draft" and "Pin" never join the document's name.
+    expect(chip.getAttribute("aria-label")).toBe("one.json");
+    expect(chip.querySelector('[part="label"]')!.textContent).toBe("one.json");
+  });
+
+  test("a chip with no marks to draw pays for none of them", async () => {
+    open("a");
+    await flush();
+    const chip = tabs()[0]!;
+    for (const part of ["origin", "pill"]) {
+      expect(chip.querySelector(`[part="${part}"]`)!.hasAttribute("hidden"), part).toBe(true);
+    }
+    expect(chip.querySelector('[part="dirty"]')).toBeNull();
+  });
+
+  test("the pin is a tab stop only while its chip is current, and Enter on it is the pin's", async () => {
+    open("a");
+    open("b", "/project/b.json");
+    await flush();
+    const pins = () =>
+      tabs().map((chip) => chip.querySelector('[part="pin"]')!.getAttribute("tabindex"));
+    /* A control inside every chip that took the platform's default would make a strip of fifteen
+       documents fifteen tab stops. The kit writes no `tabindex` onto slotted content — that is the
+       foreign-attribute write `ui.md` §2 forbids — so the projection carries it, exactly as the
+       close button's is carried. */
+    expect(pins()).toEqual(["-1", "0"]);
+
+    const pin = tabs()[1]!.querySelector('[part="pin"]') as HTMLElement;
+    pin.focus();
+    const event = key("Enter");
+    // A focusable control the keyboard cannot operate is SC 2.1.1. The strip steps aside.
+    expect(event.target).toBe(pin);
+    expect(event.defaultPrevented).toBe(false);
   });
 });
 
@@ -1329,7 +1498,7 @@ describe("tab context menu", () => {
     // Re-render so the chevron is measured in.
     workspace.tabs.get("a")!.doc.dirty = true;
     await flush();
-    (host.querySelector(".tab-strip-overflow") as HTMLElement).dispatchEvent(
+    (host.querySelector('[part="overflow"]:not([hidden])') as HTMLElement).dispatchEvent(
       new MouseEvent("click", { bubbles: true }),
     );
     await flush();
@@ -1352,5 +1521,33 @@ describe("tab context menu", () => {
     unmount();
     expect(document.querySelector("#layer-popover sp-popover")).toBeNull();
     mount(host);
+  });
+});
+
+// ─── The lens chip's vertical box ─────────────────────────────────────────────
+
+describe("a derivation chip sits on the tab row's baseline grid", () => {
+  /* Read from the DOCUMENT, not from a rendered box. happy-dom lays nothing out — every rect is
+     0×0 whether the rule is right or wrong — so what can be checked here is that the two
+     declarations agree, and a 19px strip against a 28px one is left to the screenshot lane. The
+     numbers: `4px` top and bottom on each, plus the 2px underline the tab reserves, so a lens's
+     one-chip row is the same height as the tab row in the pane beside it. */
+  const { style } = doc as unknown as {
+    style: Record<string, Record<string, string>>;
+  };
+
+  test("its block padding is a tab chip's, and it reserves the same underline", () => {
+    const chip = style['& [part="derivation"]']!;
+    const tab = style['& [part="tab"]']!;
+    expect(chip.padding!.split(" ")[0]).toBe(tab.padding!.split(" ")[0]);
+    expect(chip.borderBottom).toBe("2px solid transparent");
+  });
+
+  /* Horizontally it is 10px rather than a chip's 8px, and that is deliberate: this row is one chip
+     wide with nothing to sit beside, and a chip's tighter inset exists so several of them read as
+     a series. Asserted so the difference reads as a decision rather than as drift. */
+  test("its inline padding is wider than a chip's, because it has no siblings", () => {
+    expect(style['& [part="derivation"]']!.padding).toBe("4px 10px");
+    expect(style['& [part="tab"]']!.padding).toBe("4px var(--jx-space-2)");
   });
 });

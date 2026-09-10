@@ -341,6 +341,29 @@ Each tab names its panel with `panel`, and each `jx-tab-panel` points back with 
 
 `closable` adds a close button and Delete closes the focused tab. Enter and Space on the close button close it too, rather than selecting the tab it sits in. `dirty` draws the unsaved dot.
 
+A tab takes three named slots, so you can decorate one without rebuilding the strip. `icon` draws before the label; `status` and `actions` draw after it and before the tab's own dirty dot and close button.
+
+```json
+{
+  "tagName": "jx-tab",
+  "attributes": { "value": "post", "label": "hello.md", "closable": "" },
+  "children": [
+    { "tagName": "span", "attributes": { "slot": "status" }, "textContent": "Draft" },
+    {
+      "tagName": "jx-action-button",
+      "attributes": { "slot": "actions" },
+      "$props": { "icon": "eye", "size": "sm", "label": "Preview hello.md", "tabindex": "0" }
+    }
+  ]
+}
+```
+
+Pick between the two by what a click should do. `status` is for a mark about the document, such as a pill, a count or a sync state, and a click on a mark selects the tab like a click anywhere else on it. `actions` is for a control, such as a pin or a lock, and a click inside it stops there, so pressing the control never also moves the selection. There is no default slot: a tab's words are its `label`.
+
+Always give a tab a `label` once you slot anything into it. The label is the tab's accessible name, so nothing you slot in can join it and each control you add keeps announcing its own name. Leave the label off and the tab falls back to naming itself from its content, which means a tab holding only a pin button is announced as "Pin".
+
+Two things stay yours. A control in `actions` should be in the tab order only while its tab is the current one, the way the close button is: bind its `tabindex` to the selection, which is what `jx-action-button` takes a `tabindex` property for. And a mark that says nothing useful to a screen reader is yours to hide with `aria-hidden`, because only you know whether it is decoration.
+
 ## Sections
 
 `jx-accordion-item` is a native `<details>` with a heading you can style:
