@@ -257,12 +257,12 @@ function isExcluded(file: string): boolean {
  * where there is something more specific to say.
  */
 export const SPECTRUM_DEBT: Record<string, number> = {
-  "files/files.ts": 1,
-  "panels/block-action-bar.ts": 1,
-  "panels/pane-context.ts": 5,
+  /* The colour row's `<sp-picker>` of tokens. It stays lit ON PURPOSE — `specs/ui.md` §5.6
+     (`jx-color-field`, `jx-color-area`, `jx-swatch`) is Pending, so the Style tab draws an empty
+     `[part="control-host"]` and this island fills it — and it goes whole when §5.6 lands. */
+  "ui/color-selector.ts": 1,
   /* Content-type field cards. Rebuilt wholesale on every edit today, so the reader has no window
      in which to diverge — which is why they are here rather than fixed. */
-  "ui/color-selector.ts": 1,
   "ui/expression-editor.ts": 1,
   "ui/form-controls.ts": 2,
 };
@@ -276,25 +276,11 @@ export const SPECTRUM_DEBT: Record<string, number> = {
  * to; it objects to re-finding the node by selector every time instead of holding it.
  */
 export const SELF_QUERY_DEBT: Record<string, number> = {
-  /* Four windowed-row lookups and drag guards. The fifth was the WeakSet-guarded keydown, which
-     existed only because the unguarded version accumulated a listener per render — "after ten
-     repaints a single Down keystroke walked ten rows". `@keydown` on the tree deleted the
-     workaround, the deps entry that carried it, and the query, all at once. */
-  "files/files.ts": 4,
-  "panels/block-action-bar.ts": 3,
-  "panels/bottom-dock.ts": 1,
-  "panels/editors.ts": 1,
-  /* The per-row `.layer-actions` sub-root is a deliberate second render tree so hovering does not
-     repaint the whole outline; the others are drag guards and windowed-row lookups. */
-  "panels/layers-panel.ts": 4,
-  "panels/left-panel.ts": 1,
-  "panels/pane-context.ts": 1,
   /* Four reads of the strip and its chips, all for MEASUREMENT (scrollWidth, offsetLeft) or
      scrollIntoView. The uses stay imperative; it is the acquisition that wants one per-pane ref. */
   "panels/tab-strip.ts": 4,
   /* `isColorPopoverOpen()` derives modality from the live DOM, document-wide, and right-panel
      calls it as a blockWhile on every scheduled render. State read back out of markup. */
-  "ui/color-selector.ts": 1,
   "ui/value-selector.ts": 1,
 };
 

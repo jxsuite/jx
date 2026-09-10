@@ -218,6 +218,15 @@
             },
             "error": {
               "$ref": "#/state/error"
+            },
+            "multiline": {
+              "$ref": "#/state/multiline"
+            },
+            "rows": {
+              "$ref": "#/state/rows"
+            },
+            "mono": {
+              "$ref": "#/state/mono"
             }
           },
           "attributes": {
@@ -244,25 +253,35 @@
             "body": [
               {
                 "$switch": {
-                  "$ref": "event#/key"
+                  "$ref": "#/state/singleLine"
                 },
                 "cases": {
-                  "Enter": [
+                  "true": [
                     {
-                      "preventDefault": true
-                    },
-                    {
-                      "operator": "call",
-                      "target": {
-                        "$ref": "#/state/confirm"
+                      "$switch": {
+                        "$ref": "event#/key"
                       },
-                      "value": []
+                      "cases": {
+                        "Enter": [
+                          {
+                            "preventDefault": true
+                          },
+                          {
+                            "operator": "call",
+                            "target": {
+                              "$ref": "#/state/confirm"
+                            },
+                            "value": []
+                          }
+                        ]
+                      }
                     }
                   ]
                 }
               }
             ]
-          }
+          },
+          "$description": "The prompt's one field. `multiline` is what makes it a paste box rather than a line: an import the author copied out of a `_redirects` file is column-aligned, so it also asks for `mono`. A multiline field takes Enter as a newline, which is why the Enter-confirms handler below is guarded on it — a paste box whose second line submits the dialog cannot be typed into."
         }
       }
     }

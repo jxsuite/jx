@@ -11,10 +11,16 @@
  * both. Every surface that removes or moves a file routes its confirmation through them, so no
  * caller can ship a destructive dialog that grades only by reversibility again.
  *
+ * Both answer in SENTENCES rather than in markup. The dialog is `surfaces/dialog.json` now, and a
+ * `TemplateResult` reaches it only through the island seam — which is the right shape for a body
+ * that is genuinely rich, and the wrong shape for one paragraph of prose: it put a `<strong>` and a
+ * `<p class="dialog-consequence">` on this module's side of a boundary whose whole point is that
+ * the document owns the markup. What the copy loses is the visual set-apart of the consequence
+ * line; what it keeps is the consequence itself, in the same words, in the same dialog.
+ *
  * @docs studio/projects/pages-layouts-components
  */
 
-import { html, nothing } from "lit-html";
 import { loadUsages, usageWarning } from "../services/references";
 import { isMediaFile } from "./media-upload";
 import { loadMediaUsages } from "./media-usage";
@@ -383,7 +389,7 @@ export async function exportFile() {
 // ─── Destructive confirmations ───────────────────────────────────────────────
 
 /**
- * The reference sentence a destructive dialog carries, or `nothing` when the host cannot count.
+ * The reference sentence a destructive dialog carries, or `""` when there is nothing to say.
  *
  * The query is awaited BEFORE the dialog opens rather than rendered into it and filled in later: a
  * confirm button that becomes truthful two frames after the user has already pressed it is the same
@@ -402,10 +408,9 @@ export async function exportFile() {
  * @param path — the file about to be deleted or renamed.
  * @param verb — which way the references go. A rename repairs them; a delete breaks them.
  */
-async function usageLine(path: string, verb: "delete" | "rename" | "convert") {
+async function usageLine(path: string, verb: "delete" | "rename" | "convert"): Promise<string> {
   const state = isMediaFile(path) ? await loadMediaUsages(path) : await loadUsages({ path });
-  const sentence = usageWarning(state, verb);
-  return sentence === null ? nothing : html`<p class="dialog-consequence">${sentence}</p>`;
+  return usageWarning(state, verb) ?? "";
 }
 
 /**
@@ -416,12 +421,13 @@ async function usageLine(path: string, verb: "delete" | "rename" | "convert") {
  */
 export async function confirmFileDelete(file: { name: string; path: string }): Promise<boolean> {
   const consequence = await usageLine(file.path, "delete");
+  const question = `Delete ${file.name}? This cannot be undone.`;
   // `showDialog`'s generic widens to unknown through the confirm wrapper; the dialog only ever
   // Resolves true/false, and Boolean() is the narrowing that says so without a cast.
   return Boolean(
     await showConfirmDialog(
       "Delete File",
-      html`<span>Delete <strong>${file.name}</strong>? This cannot be undone.</span>${consequence}`,
+      consequence === "" ? question : `${question} ${consequence}`,
       { confirmLabel: "Delete", destructive: true },
     ),
   );
@@ -437,7 +443,10 @@ export async function confirmFileDelete(file: { name: string; path: string }): P
  * @param path — the file about to be renamed.
  * @param verb — `"rename"`, or `"convert"` when the bytes change with the name.
  */
-export async function renamePromptMessage(path: string, verb: "rename" | "convert" = "rename") {
+export async function renamePromptMessage(
+  path: string,
+  verb: "rename" | "convert" = "rename",
+): Promise<string | undefined> {
   const consequence = await usageLine(path, verb);
-  return consequence === nothing ? undefined : html`${consequence}`;
+  return consequence === "" ? undefined : consequence;
 }

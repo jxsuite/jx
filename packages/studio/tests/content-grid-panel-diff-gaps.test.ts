@@ -19,7 +19,6 @@ import {
   surfaceOf,
 } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { render as litRender } from "lit-html";
 import type { AiWrite } from "../src/services/ai-writes";
 import type { AnyCommand } from "../src/commands/registry";
 import type { Message } from "@jxsuite/ai/chat-state";
@@ -63,7 +62,22 @@ const {
 } = await import("../src/grid/grid-layout");
 const { parseRedirectsCsv } = await import("../src/grid/redirects");
 const { REDIRECTS_TAB_ID, openRedirectsGrid } = await import("../src/grid/redirects-grid");
-const { logicPanelBody, logicTarget } = await import("../src/panels/formula-workspace");
+/**
+ * Only the Monaco mount is doubled, and only because it is the one thing this file cannot host.
+ *
+ * The Logic tab's code surface draws an empty `[part="code-host"]` and `syncFunctionEditor` fills
+ * it with a real Monaco against a real `StudioPlatform`. What is under test here is the REAL
+ * {@link closeFunctionEditor} — that pressing Close clears the target rather than merely hiding a
+ * surface — so every other export stays the module's own.
+ */
+const realEditors = await import("../src/panels/editors");
+void mock.module("../src/panels/editors.js", () => ({
+  ...realEditors,
+  syncFunctionEditor: () => {},
+}));
+
+const { logicTarget, syncLogicPanel } = await import("../src/panels/formula-workspace");
+const { bottomPanelRegion } = await import("../src/ui/regions");
 const { projectRows } = await import("../src/panels/ai-chat/chat-view");
 const { initShellRefs, registerRenderer } = await import("../src/store");
 const frontmatterPanel = await import("../src/panels/frontmatter-panel");
@@ -400,7 +414,8 @@ describe("the changed-files summary of an assistant turn", () => {
 // ─── The Logic tab's function surface ────────────────────────────────────────
 
 describe("closing the function body in the Logic tab", () => {
-  function openFunctionPane(): { dock: HTMLElement; tab: Tab } {
+  /** The tab, mounted the way the Bottom dock mounts it: a body carrying the tab's own region. */
+  async function openFunctionPane(): Promise<{ dock: HTMLElement; tab: Tab }> {
     const tab = resetWorkspaceWithTab(
       {
         children: [],
@@ -411,32 +426,29 @@ describe("closing the function body in the Logic tab", () => {
     ) as unknown as Tab;
     tab.session.ui.editingFunction = { defName: "greet", type: "def" } as never;
     const dock = host();
-    litRender(
-      logicPanelBody(() => {}),
-      dock,
-    );
+    dock.dataset["jxRegion"] = bottomPanelRegion("logic");
+    syncLogicPanel(dock);
+    await flush(3);
     return { dock, tab };
   }
 
   test("Close clears the target, so the tab stops claiming to hold one", async () => {
-    const { dock, tab } = openFunctionPane();
-    expect(dock.querySelector(".fw-code")).not.toBeNull();
-    expect(dock.querySelector(".fw-title")?.textContent).toContain("greet");
+    const { dock, tab } = await openFunctionPane();
+    expect(dock.querySelector('[part="code-host"]')).not.toBeNull();
+    expect(dock.querySelector('[part="title"]')?.textContent).toContain("greet");
     expect(logicTarget(tab)?.surface).toBe("function");
 
-    pointer(dock.querySelector(".fw-close")!, "click");
-    await flush();
+    pointer(dock.querySelector('[part="close"]')!, "click");
+    await flush(3);
 
     expect(tab.session.ui.editingFunction).toBeNull();
     expect(logicTarget(tab)).toBeNull();
-    // And the tab redraws as what it now is: nothing open, with the sentence that says so.
-    litRender(
-      logicPanelBody(() => {}),
-      host(),
-    );
-    const repainted = document.body.lastElementChild as HTMLElement;
-    expect(repainted.querySelector(".fw-code")).toBeNull();
-    expect(repainted.textContent).toContain("Open a formula or a function to edit it here");
+    // And the tab re-projects into what it now is: nothing open, with the sentence that says so.
+    expect(dock.querySelector('[part="code-host"]')).toBeNull();
+    expect(dock.textContent).toContain("Open a formula or a function to edit it here");
+    // Down the way the dock takes it down: a repaint whose body is not Logic's.
+    delete dock.dataset["jxRegion"];
+    syncLogicPanel(dock);
   });
 });
 

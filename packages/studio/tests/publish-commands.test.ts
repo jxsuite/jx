@@ -158,8 +158,6 @@ describe("the records", () => {
   test("Set Up opens the panel, and does not import it until it is run", async () => {
     // The lazy import is load-bearing: `commands/app-commands.ts` is read by three CI checks in a
     // Bare Bun process, and a module that opens a modal at import time would break all three.
-    const { openModal } = await import("../src/ui/layers");
-    expect(typeof openModal).toBe("function");
     resetStudioState({ projectConfig: { name: "My Site" } });
     mountOverlayLayers(document.body);
     const { initLayers } = await import("../src/ui/layers");

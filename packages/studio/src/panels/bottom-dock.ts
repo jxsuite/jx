@@ -37,7 +37,7 @@
  * (`panels/problems-panel.ts`) and registered from here, like every other tab of this dock.
  */
 
-import { html, render as litRender, nothing } from "lit-html";
+import { render as litRender, nothing } from "lit-html";
 import { effect, effectScope } from "../reactivity";
 import {
   BOTTOM_TAB_IDS,
@@ -54,10 +54,11 @@ import { registerActivityPanel } from "./activity-panel";
 import { registerProblemsPanel } from "./problems-panel";
 import { logicTarget, registerLogicPanel, revealLogicPanel } from "./formula-workspace";
 import { renderEmptyState } from "./empty-state";
+import { mountBottomDockSurface } from "../surfaces/bottom-dock";
+import type { BottomDockHandle, BottomDockValues } from "../surfaces/bottom-dock";
 import type { CommandContext } from "../commands/context";
 import type { NavigatorPanelContext, NavigatorPanelDeps, PanelRecord } from "./panel-registry";
 import type { EffectScope } from "@vue/reactivity";
-import type { TemplateResult } from "lit-html";
 
 /** The dock's host — a bare `<div id>` in index.html, like every other shell host. */
 export const BOTTOM_DOCK_SELECTOR = "#bottom-dock";
@@ -152,53 +153,45 @@ export function bottomTabLabel(panel: PanelRecord, ctx: CommandContext): string 
   return badge === null || badge === 0 || badge === "" ? panel.title : `${panel.title} ${badge}`;
 }
 
-/** The dock, as a template. Exported so a test can render it without a host. */
-export function bottomDockTemplate(ctx: CommandContext = panelContext()): TemplateResult {
-  const panels = visibleBottomPanels(ctx);
+/**
+ * What the strip says right now: one row per admitted tab, and which of them is showing.
+ *
+ * Exported so a test can read the projection without a host — the same reason the template it
+ * replaced was exported, and a stronger one: this is a plain object, so an assertion about a tab's
+ * label or the selected id is a comparison rather than a DOM walk.
+ *
+ * @param {CommandContext} [ctx]
+ * @returns {BottomDockValues}
+ */
+export function bottomDockValues(ctx: CommandContext = panelContext()): BottomDockValues {
   const active = activeBottomPanel(ctx);
-  const body = active
-    ? active.render(bottomContext())
-    : renderEmptyState({ message: "Nothing to show here yet." });
-  return html`
-    <div class="bd-strip">
-      <sp-tabs
-        class="bd-tabs"
-        quiet
-        size="s"
-        selected=${active?.id ?? ""}
-        @change=${(e: Event & { target: { selected: string } }) => {
-          const { selected } = e.target;
-          if (selected && selected !== active?.id) {
-            setBottomTab(selected);
-          }
-        }}
-      >
-        ${panels.map(
-          (panel) => html`<sp-tab value=${panel.id} label=${bottomTabLabel(panel, ctx)}></sp-tab>`,
-        )}
-      </sp-tabs>
-      <button
-        class="bd-close"
-        title="Close the Bottom dock"
-        aria-label="Close the Bottom dock"
-        @click=${() => {
-          setDockCollapsed("bottom", true);
-        }}
-      >
-        <span aria-hidden="true">×</span>
-      </button>
-    </div>
-    ${
-      active
-        ? html`<div class="bd-body" data-jx-region=${bottomPanelRegion(active.id)}>${body}</div>`
-        : html`<div class="bd-body">${body}</div>`
-    }
-  `;
+  return {
+    bodyRegion: active ? bottomPanelRegion(active.id) : "",
+    tab: active?.id ?? "",
+    tabId: active ? `bottom-dock-tab-${active.id}` : "",
+    tabs: visibleBottomPanels(ctx).map((panel) => ({
+      key: panel.id,
+      label: bottomTabLabel(panel, ctx),
+      tabId: `bottom-dock-tab-${panel.id}`,
+    })),
+  };
 }
 
 let _scope: EffectScope | null = null;
 
 let _host: HTMLElement | null = null;
+
+/** The mounted chrome document, live only while the dock is open. */
+let _dock: BottomDockHandle | null = null;
+
+/**
+ * The `[part="dock-body"]` the document announced, or null while nothing is mounted.
+ *
+ * Held rather than re-queried: it is the one element every tab's `afterRender` is measured against,
+ * and a selector that returned a different node between the paint and the hook would hand a tab a
+ * body it had not been painted into.
+ */
+let _body: HTMLElement | null = null;
 
 /**
  * The Logic target the dock has already revealed itself for.
@@ -237,13 +230,79 @@ export function renderBottomDock(): void {
   }
   if (shell.docks.bottom.collapsed) {
     _host.removeAttribute(REGION_ATTR);
-    litRender(nothing, _host);
+    /* The chrome is taken down rather than hidden, and `#bottom-dock:empty { display: none }` is
+       why: the shell's own sheet keeps a dock with nothing in it out of the grid, so a document
+       left mounted behind a `hidden` attribute would make that rule permanently unmatchable. Disposing also
+       makes the collapsed branch mean what it says to a tab — every one of them is handed the
+       emptied HOST, which is the fourth of the four ways Logic stops being on screen. */
+    _dock?.dispose();
+    _dock = null;
+    _body = null;
     runAfterRender(_host);
     return;
   }
   _host.setAttribute(REGION_ATTR, "dock.bottom");
-  litRender(bottomDockTemplate(), _host);
-  runAfterRender(_host.querySelector<HTMLElement>(".bd-body") ?? _host);
+  if (!_dock) {
+    /* The mount is asynchronous (the kit has to be defined first), so the body is painted from the
+       announcement rather than from here — `onBody` fires while the host is still inside the
+       runtime's fragment, one append before the strip is in the page. */
+    _dock = mountBottomDockSurface(
+      _host,
+      bottomDockValues(),
+      {
+        closeDock: () => {
+          setDockCollapsed("bottom", true);
+        },
+        selectTab: (id) => {
+          if (id !== "" && id !== activeBottomPanel()?.id) {
+            setBottomTab(id);
+          }
+        },
+      },
+      {
+        onBody: (host) => {
+          _body = host;
+          /* A MICROTASK, not this call. `onNodeCreated` fires the moment the element is CONSTRUCTED
+             — the runtime applies its attributes on the next line — so a tab's `afterRender` run
+             from here would be handed a body with no `part` and no `data-jx-region` on it yet, and
+             every tab that identifies its own container by attribute would decide it is off screen.
+             By the time a microtask runs, the synchronous render that created this node has
+             finished and the element is fully written. */
+          queueMicrotask(() => {
+            if (_body === host) {
+              paintBody();
+            }
+          });
+        },
+      },
+    );
+    return;
+  }
+  _dock.update(bottomDockValues());
+  paintBody();
+}
+
+/**
+ * Draw the selected tab into the one body the document leaves empty, and tell every tab about it.
+ *
+ * The record's `render` returns a lit template — that is what a `PanelRecord` is — so this is the
+ * one place lit still paints inside the dock, into an island the document owns and never touches
+ * (studio-ui-guidelines.md §9.4). With no visible tab at all there is still a body: the empty state
+ * is what a dock whose every tab is gated off says, and a blank box is not.
+ */
+function paintBody(): void {
+  const host = _body;
+  if (!host) {
+    return;
+  }
+  const active = activeBottomPanel();
+  litRender(
+    active
+      ? active.render(bottomContext())
+      : renderEmptyState({ message: "Nothing to show here yet." }),
+    host,
+  );
+  runAfterRender(host);
 }
 
 /**
@@ -328,9 +387,15 @@ export function unmountBottomDock(): void {
   _scope?.stop();
   _scope = null;
   _revealedLogicKey = null;
+  _dock?.dispose();
+  _dock = null;
+  _body = null;
   if (_host) {
     _host.removeAttribute(REGION_ATTR);
+    /* The document's dispose removed its own root; this clears anything a caller left beside it,
+       so the host is `:empty` again and the shell's sheet takes the dock out of the grid. */
     litRender(nothing, _host);
+    _host.textContent = "";
     runAfterRender(_host);
     _host = null;
   }

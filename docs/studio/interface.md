@@ -15,6 +15,8 @@ code:
   - packages/studio/src/surfaces/rail.ts
   - packages/studio/src/panels/left-panel.ts
   - packages/studio/src/files/files.ts
+  - packages/studio/src/surfaces/files-panel.json
+  - packages/studio/src/surfaces/files-panel.ts
   - packages/studio/src/files/gitignore.ts
   - packages/studio/src/format/format-host.ts
   - packages/studio/src/format/format-choices.ts

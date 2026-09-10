@@ -16,7 +16,7 @@
  * modules depend on rather than an import back into the sheet.
  *
  * **The frame loop is gone, and nothing replaced it.** This panel used to own a private
- * rAF-coalesced `litRender` that deliberately bypassed `panels/panel-scheduler.ts`'s focus guard,
+ * rAF-coalesced `litRender` that deliberately bypassed the Inspector's old focus-aware scheduler,
  * because streaming had to repaint while the composer was focused and a whole-panel repaint would
  * otherwise have taken the caret. A document's bindings re-run per PROPERTY and skip a write equal
  * to what is already there, so a token arriving mid-stream touches one text node and reaches

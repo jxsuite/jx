@@ -7,6 +7,7 @@ code:
   - packages/studio/src/collab/collab-state.ts
   - packages/studio/src/tabs/project-config.ts
   - packages/studio/src/collab/presence-chips.ts
+  - packages/studio/src/surfaces/pane-context.json
   - packages/studio/src/surfaces/commandbar.json
   - packages/studio/src/collab/monaco-cursors.ts
   - packages/studio/src/collab/monaco-binding.ts

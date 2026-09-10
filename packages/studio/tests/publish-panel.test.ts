@@ -7,7 +7,7 @@
  * Everything is addressed by `part` and by the surface's region, because the panel is a document:
  * there is no `.publish-modal` to find any more and no `.publish-error` either — the card, the
  * backdrop, Escape, focus restoration and the Close button all belong to `jx-dialog`. It still
- * lives in the MODAL layer, which is where `openModal` put it: `overlayRegion` maps both the modal
+ * lives in the MODAL layer, where the panel has always been: `overlayRegion` maps both the modal
  * and dialog layers onto the same `overlay.dialog` instance, so the region the screenshot manifest
  * names is unchanged.
  */

@@ -457,7 +457,7 @@ const ACTIVITY_SURFACE: ActivitySurfaceDeps = {
  * an orphan the styling gate is right to refuse. And the dock runs EVERY tab's `afterRender`
  * against the same painted body whether or not that tab is showing (`panels/bottom-dock.ts`), so a
  * marker lit paints only for this tab is also the answer to "am I on screen?" — which is the
- * question the Logic tab settles the same way, with its own empty `.fw-code` container.
+ * question the Logic tab settles the same way, with its own empty `[part="code-host"]` container.
  *
  * @returns {PanelBody}
  */

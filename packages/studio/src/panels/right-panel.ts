@@ -7,30 +7,27 @@
  * grid column it used to own — which is the point of plan §3.2 ⑨: an inspector tab costs zero
  * additional width, so the canvas gets the ~300px back and the assistant is still one key away.
  *
- * Two things changed shape to make that work:
+ * **This file no longer draws anything.** The dock's markup, its ARIA and its style are
+ * `surfaces/inspector-dock.json`, mounted through `surfaces/inspector-dock.ts`; what is left here
+ * is the flow — which tab is selected, what the tab is pointed at, and which of the four seams each
+ * body host is handed to. Two things came out of the move:
  *
- * - **The tabs are words, not icons.** Three icon-only tabs with `title` attributes meant three hover
- *   probes to learn a dock you look at all day, and the icons were `sp-icon-properties` /
- *   `sp-icon-event` / `sp-icon-brush` — a form, a lightning bolt and a paintbrush, none of which
- *   says "this is where the link target lives".
- * - **The containers are permanent.** The no-document state used to drop and rebuild them; it now
- *   renders INTO the three document tabs, because the Assistant's DOM (composer draft, scroll
- *   position, mounted document) must survive a document closing — the assistant works with no
- *   project at all, which is exactly the New Project hand-off's requirement.
+ * - **The strip is a real `tablist`.** It was `sp-tabs` with no `tabpanel` on the other end, so the
+ *   four bodies were anonymous scrolling divs: a screen reader was told a tab was selected and
+ *   never told what it controlled. `jx-tabs` / `jx-tab` / `jx-tab-panel` pair `aria-controls` with
+ *   `aria-labelledby` from one key, which is what closes `gap:apg-coverage` for this strip.
+ * - **The containers are permanent by construction.** They were hand-built once and remembered in a
+ *   module `Map`, because a repaint that rebuilt them would drop the Assistant's transcript and
+ *   composer draft. They are now rows of a keyed `$map` over a CONSTANT list, so nothing can
+ *   rebuild them — see `surfaces/inspector-dock.ts`.
  *
- * Every tab renders under a header naming its target (§3.2 ⑨), the same treatment wave A gave the
- * Navigator panels. The Target Line proper — provenance-coded, cascade-aware — is §6 and P5; this
- * is its honest predecessor: the tab's name, and what it is pointed at.
- *
- * The heavy sub-templates (properties, style) remain in their own modules and are passed the ctx
- * they need.
+ * **And the panel scheduler went with it.** Its focus guard existed because a lit repaint takes the
+ * node a reader is typing into; a document skips a write that resolved to the value the control
+ * already holds, so there is nothing to withhold.
  */
 
-import { html, render as litRender } from "lit-html";
 import { getNodeAtPath, nodeLabel, rightPanel } from "../store";
 import { effect, effectScope, reactive } from "../reactivity";
-import { createPanelScheduler } from "./panel-scheduler";
-import type { PanelScheduler } from "./panel-scheduler";
 import { activeTab } from "../workspace/workspace";
 import { primarySelection } from "../tabs/selection";
 import { bindLogicPanelHost } from "./events-panel";
@@ -38,12 +35,12 @@ import { bindContentHost } from "./properties-panel";
 
 import { DEFAULT_INSPECTOR_TAB, isInspectorTabId, shell } from "../shell";
 import { INSPECTOR_TABS } from "../commands/defaults";
-import { inspectorTabRegion, REGION_ATTR } from "../ui/regions";
-import { isColorPopoverOpen } from "../ui/color-selector";
+import { inspectorTabRegion } from "../ui/regions";
 import { bindStyleHost } from "./style-panel";
+import { mountInspectorDock } from "../surfaces/inspector-dock";
 
+import type { InspectorDockHandle, InspectorTabView } from "../surfaces/inspector-dock";
 import type { InspectorTabId } from "../shell";
-import type { TemplateResult } from "lit-html";
 import type { EffectScope } from "@vue/reactivity";
 
 interface RightPanelCtx {
@@ -60,11 +57,9 @@ interface RightPanelCtx {
   mountAssistant: (host: HTMLElement) => void;
 }
 
-let _ctx: RightPanelCtx | null = null;
-
 let _scope: EffectScope | null = null;
 
-let _scheduler: PanelScheduler | null = null;
+let _dock: InspectorDockHandle | null = null;
 
 /**
  * The selected tab while NO document is open.
@@ -81,18 +76,92 @@ let _scheduler: PanelScheduler | null = null;
 const _detached = reactive({ tab: DEFAULT_INSPECTOR_TAB as InspectorTabId });
 
 /**
+ * Hand one tab's body host to its owner, once, and never let that stop the dock.
+ *
+ * **The boundary is load-bearing, and it moved.** The dock used to build its containers inside its
+ * own render, under a `try` that had already painted the header and the strip — so a tab whose bind
+ * threw left a dock that was still navigable and the reader could leave the tab that failed. A
+ * binder now runs inside `onNodeCreated`, which is the runtime building the document: an error
+ * there rejects the whole mount, and the dock that could not draw ONE tab would draw NO chrome at
+ * all. So the boundary is here, around exactly the call that is somebody else's code.
+ */
+function bindBody(ctx: RightPanelCtx, tabId: string, host: HTMLElement): void {
+  try {
+    bindBodyUnguarded(ctx, tabId, host);
+  } catch (error) {
+    console.error(`right-panel: the ${tabId} tab could not take its body:`, error);
+  }
+}
+
+/**
+ * The four seams, keyed by the tab whose body feeds them.
+ *
+ * A table rather than a chain of `if`s so that the ONE thing this module still does with a body
+ * host is stated in one place. Every entry is a binder another module published: three of them
+ * mount a document of their own into the host, and the assistant's arrives from `studio.ts` because
+ * a matching import here would be a cycle.
+ */
+function bindBodyUnguarded(ctx: RightPanelCtx, tabId: string, host: HTMLElement): void {
+  switch (tabId) {
+    case "assistant": {
+      /* The assistant owns its container for the life of the window: it is the mount point for the
+         Assistant's own Jx document, and rebuilding it would drop the transcript and the composer
+         draft. */
+      ctx.mountAssistant(host);
+      break;
+    }
+    case "events": {
+      /* Logic is a mounted document too (`surfaces/logic-panel.json`), and it watches its own facts
+         and re-projects — this dock never paints over it. */
+      bindLogicPanelHost(host);
+      break;
+    }
+    case "properties": {
+      /* Content needs one thing from the dock that the others do not: the way to open a component's
+         definition, which is `studio.ts`'s and reaches this module as ctx. */
+      bindContentHost(host, { navigateToComponent: ctx.navigateToComponent });
+      break;
+    }
+    case "style": {
+      /* The canvas mode is what the tab cannot read for itself — Stylebook edits a tag catalogue
+         entry and Edit edits the selection — so it comes in from `studio.ts` the same way the
+         Content tab's navigation door does. */
+      bindStyleHost(host, { getCanvasMode: ctx.getCanvasMode });
+      break;
+    }
+    default: {
+      /* A tab id the document drew but no seam claims. Unreachable while `INSPECTOR_TABS` is what
+         both this and the document read, and stated rather than assumed: a fifth tab arriving with
+         no binder must leave an empty body, not throw inside a mount callback. */
+      break;
+    }
+  }
+}
+
+/** The tab rows the document draws, with the selection resolved onto them. */
+function tabViews(selected: InspectorTabId): InspectorTabView[] {
+  return INSPECTOR_TABS.map((tab) => ({
+    active: tab.id === selected,
+    key: tab.id,
+    panelId: `inspector-panel-${tab.id}`,
+    region: inspectorTabRegion(tab.id),
+    tabId: `inspector-tab-${tab.id}`,
+    title: tab.title,
+  }));
+}
+
+/**
  * Mount the right panel.
  *
  * @param {RightPanelCtx} ctx
  */
 export function mount(ctx: RightPanelCtx) {
-  _ctx = ctx;
-  _scheduler = createPanelScheduler({
-    blockWhile: isColorPopoverOpen,
-    render: _doRender,
-    root: rightPanel,
-  });
-  _scheduler.bindFocus();
+  _dock = mountInspectorDock(
+    rightPanel,
+    values(),
+    { selectTab: (id) => selectFromStrip(id) },
+    { onBody: (tabId, host) => bindBody(ctx, tabId, host) },
+  );
   _scope = effectScope();
   _scope.run(() => {
     effect(() => {
@@ -110,13 +179,8 @@ export function mount(ctx: RightPanelCtx) {
         // Changes WITHIN the array, and §6.5's helpers always replace it but nothing enforces that.
         void tab.session.selection.map((path) => path.join("/")).join("|");
         void tab.session.ui.rightTab;
-        void tab.session.ui.activeMedia;
-        void tab.session.ui.activeSelector;
-        void tab.session.ui.styleSections;
-        void tab.session.ui.styleShorthands;
-        void tab.session.ui.styleFilter;
-        void tab.session.ui.inspectorSections;
       }
+      void _detached.tab;
       render();
     });
   });
@@ -125,24 +189,33 @@ export function mount(ctx: RightPanelCtx) {
 export function unmount() {
   _scope?.stop();
   _scope = null;
-  _ctx = null;
-  _scheduler?.unbind();
-  _scheduler = null;
-  // The Logic and Content tabs' documents and their watchers belong to the containers being
-  // Dropped; nothing else hears about that, because the dock simply stops rendering.
+  _dock?.dispose();
+  _dock = null;
+  // The Logic and Content tabs' documents and their watchers belong to the hosts being dropped;
+  // Nothing else hears about that, because the dock simply stops rendering.
   bindLogicPanelHost(null);
   bindContentHost(null);
   bindStyleHost(null);
-  _containers = null;
   _detached.tab = DEFAULT_INSPECTOR_TAB;
 }
 
+/** The whole projection the document reads, built fresh from the state it names. */
+function values() {
+  const tab = inspectorTab();
+  return {
+    tab,
+    tabs: tabViews(tab),
+    target: inspectorTarget(),
+    title: INSPECTOR_TABS.find((t) => t.id === tab)?.title ?? tab,
+  };
+}
+
 /**
- * Request a render. Coalesced and deferred while a text input in the panel is focused or a color
- * popover is open (so explicit callers can never clobber a field mid-edit).
+ * Bring the dock up to date. Synchronous, and idempotent: the runtime skips a binding whose value
+ * did not move, so an explicit caller can never take a control mid-interaction.
  */
 export function render() {
-  _scheduler?.schedule();
+  _dock?.update(values());
 }
 
 /**
@@ -175,41 +248,17 @@ export function setInspectorTab(tab: InspectorTabId): void {
   render();
 }
 
-/** Tab value → its body container, built once and reused across renders. */
-let _containers: Map<InspectorTabId, HTMLElement> | null = null;
-
-function _ensureContainers(ctx: RightPanelCtx): Map<InspectorTabId, HTMLElement> {
-  if (_containers) {
-    return _containers;
+/**
+ * A pick from the strip.
+ *
+ * The strip states a value and this decides what it means, which is why the document dispatches an
+ * id rather than writing one: an id the enum does not declare is refused here rather than becoming
+ * a dock with no tab selected.
+ */
+function selectFromStrip(id: string): void {
+  if (id !== "" && id !== inspectorTab() && isInspectorTabId(id)) {
+    setInspectorTab(id);
   }
-  _containers = new Map(
-    INSPECTOR_TABS.map((t) => {
-      const el = document.createElement("div");
-      el.className = "panel-body";
-      el.setAttribute(REGION_ATTR, inspectorTabRegion(t.id));
-      return [t.id as InspectorTabId, el] as const;
-    }),
-  );
-  // The assistant owns its container for the life of the window: it is the mount point for the
-  // Assistant's own Jx document, and rebuilding it would drop the transcript and the composer draft.
-  ctx.mountAssistant(_containers.get("assistant")!);
-  /* Logic is the same bargain, reached from the other side. It is a mounted document too
-     (`surfaces/logic-panel.json`), and it must NOT go through this dock's scheduler: the focus
-     guard there exists because a lit repaint takes the node a reader is typing into, and a
-     document's binding skips a write that resolved to the value the control already holds. The tab
-     watches its own facts and re-projects. */
-  bindLogicPanelHost(_containers.get("events")!);
-  /* Content is the third, and it needs one thing from the dock that the other two do not: the way
-     to open a component's definition, which is `studio.ts`'s and reaches this module as ctx. */
-  bindContentHost(_containers.get("properties")!, {
-    navigateToComponent: ctx.navigateToComponent,
-  });
-  /* Style is the fourth and last, so this dock now renders no tab BODY at all: every one of them
-     is a mounted document that keeps itself current. The canvas mode is what the tab cannot read
-     for itself — Stylebook edits a tag catalogue entry and Edit edits the selection — so it comes
-     in from `studio.ts` the same way the Content tab's navigation door does. */
-  bindStyleHost(_containers.get("style")!, { getCanvasMode: ctx.getCanvasMode });
-  return _containers;
 }
 
 /**
@@ -243,68 +292,4 @@ function inspectorTarget(): string {
   }
   const path = tab.documentPath;
   return path ? (path.split("/").at(-1) ?? "document") : "document";
-}
-
-/** The dock's header: which tab you are in, and what it is pointed at. */
-function headerTpl(tab: InspectorTabId): TemplateResult {
-  const title = INSPECTOR_TABS.find((t) => t.id === tab)?.title ?? tab;
-  return html`
-    <header class="panel-header">
-      <span class="panel-header-title">${title}</span>
-      <span class="panel-header-level">${inspectorTarget()}</span>
-    </header>
-  `;
-}
-
-/** The four-tab strip. Text labels: a dock you read all day should not need to be hovered. */
-function tabsTpl(tab: InspectorTabId): TemplateResult {
-  return html`
-    <div class="panel-tabs inspector-tabs">
-      <sp-tabs
-        selected=${tab}
-        quiet
-        size="s"
-        @change=${(e: Event & { target: { selected: string } }) => {
-          const sel = e.target.selected;
-          if (sel && sel !== tab && isInspectorTabId(sel)) {
-            setInspectorTab(sel);
-          }
-        }}
-      >
-        ${INSPECTOR_TABS.map((t) => html`<sp-tab value=${t.id} label=${t.title}></sp-tab>`)}
-      </sp-tabs>
-    </div>
-  `;
-}
-
-/**
- * Draw the dock's own chrome, and show the tab that is selected.
- *
- * It draws no tab BODY. All four are mounted Jx documents in containers this module makes once
- * (`panels/ai-panel.ts`, `panels/events-panel.ts`, `panels/properties-panel.ts`,
- * `panels/style-panel.ts`), each driven by its own effect and each drawing its own no-document
- * state in its own words — so a render here that painted over one would take the field a reader is
- * typing into, which is exactly what the containers were made permanent to prevent.
- */
-function _doRender() {
-  if (!_ctx) {
-    return;
-  }
-  try {
-    const ctx = _ctx as RightPanelCtx;
-    const tab = inspectorTab();
-
-    litRender(html`${headerTpl(tab)}${tabsTpl(tab)}`, rightPanel);
-
-    const containers = _ensureContainers(ctx);
-    // Show/hide containers, and attach any that a fresh build has not mounted yet.
-    for (const [key, el] of containers) {
-      el.style.display = key === tab ? "" : "none";
-      if (!el.parentNode) {
-        rightPanel.append(el);
-      }
-    }
-  } catch (error) {
-    console.error("right-panel render error:", error);
-  }
 }

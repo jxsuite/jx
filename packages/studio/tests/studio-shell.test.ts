@@ -124,7 +124,7 @@ const renderStatusbarMock = mock(() => {});
 void mock.module("../src/panels/bottom-dock.ts", () => ({
   BOTTOM_DOCK_SELECTOR: "#bottom-dock",
   activeBottomPanel: mock(() => null),
-  bottomDockTemplate: mock(() => nothing),
+  bottomDockValues: mock(() => ({ bodyRegion: "", tab: "", tabId: "", tabs: [] })),
   bottomPanelSet: mock(() => []),
   bottomTabLabel: mock(() => ""),
   mountBottomDock: mock(() => {}),

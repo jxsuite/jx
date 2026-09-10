@@ -16,7 +16,6 @@ import {
   probeIdle,
 } from "../src/services/idle";
 import { registerRenderer, render } from "../src/store";
-import { createPanelScheduler } from "../src/panels/panel-scheduler";
 import { beginActivity, resetActivities } from "../src/panels/activity-panel";
 import { registerPlatform } from "../src/platform";
 import type { IdleSource } from "../src/services/idle";
@@ -136,10 +135,9 @@ describe("probeIdle", () => {
 });
 
 describe("defaultIdleSources", () => {
-  test("names the seven subsystems and is quiet in a bare page", () => {
+  test("names the six subsystems and is quiet in a bare page", () => {
     expect(defaultIdleSources().map((s) => s.name)).toEqual([
       "render",
-      "panels",
       "canvas",
       "platform",
       "overlay",
@@ -181,15 +179,16 @@ describe("defaultIdleSources", () => {
     }
   });
 
-  test("a panel with a frame queued blocks, and unbinding releases it", () => {
-    const root = document.createElement("div");
-    root.id = "right-panel";
-    const scheduler = createPanelScheduler({ render: () => {}, root });
-    scheduler.schedule();
-    expect(idleBlockers()).toEqual(["panels: #right-panel has a frame queued"]);
-    scheduler.unbind();
-    expect(idleBlockers()).toEqual([]);
-  });
+  /*
+   * There WAS a `panels` source here, and it went with `panels/panel-scheduler.ts`. It reported a
+   * dock with an animation frame queued or a render withheld while a field had focus — two facts
+   * about a lit dock repainting itself, and the Navigator and the Inspector are Jx documents now
+   * (`surfaces/navigator-dock.json`, `surfaces/inspector-dock.json`): a projection is written
+   * synchronously and a binding whose value did not move writes nothing, so there is no queued
+   * frame to be outstanding. What the source stood for — a dock mid-repaint keeps `probeIdle`
+   * waiting — is covered by `render`, which counts the renderers those docks are registered as.
+   * The list `defaultIdleSources` is asserted against above is what enforces its absence.
+   */
 
   test("an unsettled platform call blocks, named by its method", async () => {
     let finish: (value: string) => void = () => {};

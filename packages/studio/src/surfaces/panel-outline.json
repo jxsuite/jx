@@ -1,0 +1,912 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioPanelOutline",
+  "$description": "The Navigator's Outline panel while the pane is drawing a document: the element tree, as a Jx document over the kit. The adapter hands in one flat projection per row — its badge, its name, how deep it sits, where it stands among its siblings, whether it is selected, whether it is being renamed and which verbs it may offer — so nothing here walks the document, reads the command registry or knows what a collapsed ancestor is. It is one panel with two bodies and this is the design half of it; `panel-stylebook-layers.json` is the other, and the two share a row vocabulary on purpose so the pane switching between them does not switch design as well.",
+  "tagName": "div",
+  "attributes": {
+    "part": "outline"
+  },
+  "style": {
+    "$description": "What `.layers-container`, `.layer-row` and their nine siblings said in `styles/panels.css`, keyed on `part` and carried here. Four Spectrum names could not come with the declarations and are the kit's instead, at the same values: `--spectrum-corner-radius-75` (2px) is `--jx-radius-xs`, `--spectrum-font-size-50` (11px) is `--jx-text-sm`, the badge's 10px is `--jx-text-xs` and the focus ring is `--jx-focus-ring`. Two colours could not: `--case-c` and `--slot-c` are declared on `<sp-theme>` rather than at `:root` (`styles/spectrum.css` says why), so each carries a `:root` token as its fallback — the badge keeps today's colour where the theme element is an ancestor and degrades to a real colour rather than to nothing on the day it is not. THE INDENT IS A VARIABLE, for the reason `panel-data.json` gives: a per-row `padding-left` declaration interns one rule per row, while `--row-indent` is written inline under its own name and read by one shared rule. AND THE ROW STATES ARE ATTRIBUTES: `selected`, `dragging` and `drop-target` were classes, and a document styles through `part` and data attributes rather than through a class (`ui.md` §3.1) — so `aria-selected` is now the only writer of the selected drawing, which is also what stops the wash and the announcement disagreeing.",
+    "display": "block",
+    "position": "relative",
+    "fontFamily": "var(--jx-font-sans)",
+    "color": "var(--fg)",
+    "& [part=\"tree\"]": {
+      "display": "block"
+    },
+    "& [part=\"row\"]": {
+      "$description": "The 24px row `OUTLINE_ROW_HEIGHT` windows by. `block-size` rather than a height, and `box-sizing: border-box`, because the indent is padding: a window reserves scroll height for rows it did not draw, so a row whose height depends on its depth would make the scrollbar a lie.",
+      "position": "relative",
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-2)",
+      "padding": "3px var(--jx-space-3)",
+      "paddingLeft": "var(--row-indent, var(--jx-space-3))",
+      "blockSize": "24px",
+      "boxSizing": "border-box",
+      "cursor": "grab",
+      "whiteSpace": "nowrap",
+      "userSelect": "none",
+      "borderLeft": "2px solid transparent",
+      "transition": "transform 150ms ease"
+    },
+    "& [part=\"row\"]:hover": {
+      "background": "var(--hover-bg)"
+    },
+    "& [part=\"row\"][aria-selected=\"true\"]": {
+      "background": "var(--accent-20)",
+      "borderLeftColor": "var(--accent)"
+    },
+    "& [part=\"row\"]:focus-visible": {
+      "outline": "var(--jx-focus-ring)",
+      "outlineOffset": "-2px"
+    },
+    "& [part=\"row\"][data-dragging]": {
+      "opacity": "0.4",
+      "transition": "none"
+    },
+    "& [part=\"row\"][data-drop-target]": {
+      "background": "var(--accent-15)",
+      "outline": "1px dashed var(--accent)",
+      "outlineOffset": "-1px"
+    },
+    "& [part=\"row\"][data-kind=\"text\"]": {
+      "opacity": "0.6",
+      "fontStyle": "italic"
+    },
+    "& [part=\"toggle\"]": {
+      "display": "inline-flex",
+      "alignItems": "center",
+      "justifyContent": "center",
+      "width": "14px",
+      "flex": "none",
+      "color": "var(--fg-dim)",
+      "cursor": "pointer",
+      "--jx-icon-size": "10px"
+    },
+    "& [part=\"toggle\"]:empty": {
+      "$description": "A row with nothing under it draws no chevron, so the 14px it would have occupied must not promise one.",
+      "cursor": "default"
+    },
+    "& [part=\"badge\"]": {
+      "$description": "A long custom-element tag is a badge, not a paragraph: it truncates rather than pushing the label out of a 240px column.",
+      "flex": "none",
+      "maxWidth": "12ch",
+      "overflow": "hidden",
+      "padding": "0 var(--jx-space-2)",
+      "borderRadius": "var(--jx-radius-xs)",
+      "background": "var(--tag)",
+      "color": "var(--accent-fg)",
+      "fontSize": "var(--jx-text-xs)",
+      "textOverflow": "ellipsis"
+    },
+    "& [part=\"badge\"][data-kind=\"map\"]": {
+      "background": "var(--map)",
+      "fontSize": "9px",
+      "letterSpacing": "0.5px"
+    },
+    "& [part=\"badge\"][data-kind=\"switch\"]": {
+      "background": "var(--switch-c)"
+    },
+    "& [part=\"badge\"][data-kind=\"case\"]": {
+      "maxWidth": "60px",
+      "background": "var(--case-c, var(--accent))",
+      "fontSize": "9px",
+      "fontStyle": "italic"
+    },
+    "& [part=\"badge\"][data-kind=\"slot\"]": {
+      "background": "var(--slot-c, var(--success))"
+    },
+    "& [part=\"badge\"][data-kind=\"text\"]": {
+      "$description": "The one badge that names no tag, so it is drawn in the neutral rather than in the tag colour — and on the page background rather than on `--accent-fg`, which is white and would sit on a light grey at a contrast nobody can read in the light theme.",
+      "background": "var(--fg-dim)",
+      "color": "var(--bg)",
+      "fontSize": "9px"
+    },
+    "& [part=\"label\"]": {
+      "flex": "1",
+      "minWidth": "24px",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap"
+    },
+    "& [part=\"label\"][data-italic=\"true\"]": {
+      "fontStyle": "italic"
+    },
+    "& [part=\"title-input\"]": {
+      "$description": "Stretches into the row's content box rather than setting its own height: the row is a fixed 24px, and an input taller than that would push its borders through the rows either side.",
+      "flex": "1",
+      "minWidth": "24px",
+      "alignSelf": "stretch",
+      "boxSizing": "border-box",
+      "padding": "0 var(--jx-space-1)",
+      "border": "1px solid var(--accent)",
+      "borderRadius": "var(--jx-radius-xs)",
+      "background": "var(--bg)",
+      "color": "inherit",
+      "font": "inherit"
+    },
+    "& [part=\"title-input\"]:focus-visible": {
+      "outline": "var(--jx-focus-ring)",
+      "outlineOffset": "-1px"
+    },
+    "& [part=\"drag\"]": {
+      "$description": "Revealed on hover, on the selected row, and whenever anything inside the row has focus — the third is what keeps it reachable for a reader who arrived by keyboard.",
+      "display": "none",
+      "padding": "0 var(--jx-space-2) 0 0",
+      "color": "var(--fg-dim)",
+      "opacity": "0.6",
+      "fontSize": "var(--jx-text-sm)",
+      "cursor": "grab"
+    },
+    "& [part=\"row\"]:hover [part=\"drag\"], & [part=\"row\"][aria-selected=\"true\"] [part=\"drag\"], & [part=\"row\"]:focus-within [part=\"drag\"]": {
+      "display": "inline-block"
+    },
+    "& [part=\"actions\"]": {
+      "$description": "Positioned out of flow so it never contributes to the row's intrinsic width: in a 240px column, four in-flow buttons plus an indent is exactly what pushed the tree sideways. The cluster is EMPTY on every row but the selected one and the hovered one — a projection with no commands in it, not a `display: none` rule, because a hidden `jx-action-button` is still an upgraded custom element and CSS reveal would have kept the whole cost the collapse exists to remove.",
+      "position": "absolute",
+      "right": "2px",
+      "top": "50%",
+      "transform": "translateY(-50%)",
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "0",
+      "borderRadius": "var(--jx-radius-xs)"
+    },
+    "& [part=\"actions\"][data-state=\"shown\"]": {
+      "paddingLeft": "var(--jx-space-3)",
+      "background": "var(--bg-panel)",
+      "boxShadow": "-8px 0 8px -8px rgb(0 0 0 / 0.4)"
+    },
+    "& [part=\"action\"], & [part=\"overflow\"]": {
+      "flex": "none"
+    },
+    "& [part=\"action\"][data-destructive=\"true\"]": {
+      "color": "var(--danger)"
+    },
+    "& [part=\"empty\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "alignItems": "center",
+      "gap": "var(--jx-space-3)",
+      "padding": "var(--jx-space-5)",
+      "textAlign": "center",
+      "color": "var(--fg-dim)",
+      "fontSize": "var(--jx-text-md)"
+    },
+    "& [part=\"empty-message\"]": {
+      "margin": "0",
+      "maxWidth": "34ch",
+      "lineHeight": "1.5"
+    },
+    "@(forced-colors: active)": {
+      "& [part=\"row\"][aria-selected=\"true\"]": {
+        "$description": "The selected row, redrawn. Every author colour is replaced by one from the user's palette in forced colours, so the accent wash behind the row collapses into the page and the left edge is the only marker left.",
+        "borderLeftColor": "Highlight"
+      }
+    }
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "tree",
+        "role": "tree",
+        "aria-label": "Document outline"
+      },
+      "onmouseleave": {
+        "$prototype": "Function",
+        "body": [
+          {
+            "operator": "call",
+            "target": {
+              "$ref": "#/state/hoverOut"
+            }
+          }
+        ],
+        "description": "`mouseleave` on the tree rather than on each row: the pointer leaves one row for another constantly, and only leaving the TREE means no row is under it."
+      },
+      "children": [
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "body-slot",
+            "role": "none"
+          },
+          "style": {
+            "display": "contents"
+          },
+          "$switch": {
+            "$ref": "#/state/view"
+          },
+          "cases": {
+            "rows": {
+              "tagName": "div",
+              "attributes": {
+                "part": "rows",
+                "role": "none"
+              },
+              "style": {
+                "display": "contents"
+              },
+              "children": [
+                {
+                  "$description": "The rows the window left above and below, as the height they would have occupied: the scrollbar stays the length of the whole document, and `aria-hidden` keeps two empty spacers out of a tree that owns treeitems.",
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "pad",
+                    "style": "${state.padTop}",
+                    "aria-hidden": "true"
+                  }
+                },
+                {
+                  "$prototype": "Array",
+                  "items": {
+                    "$ref": "#/state/rows"
+                  },
+                  "key": {
+                    "$ref": "$map/item/key"
+                  },
+                  "map": {
+                    "tagName": "div",
+                    "attributes": {
+                      "part": "row-slot",
+                      "role": "none"
+                    },
+                    "style": {
+                      "display": "contents"
+                    },
+                    "$switch": {
+                      "$ref": "$map/item/kind"
+                    },
+                    "cases": {
+                      "element": {
+                        "tagName": "div",
+                        "attributes": {
+                          "part": "row",
+                          "data-kind": "element",
+                          "role": "treeitem",
+                          "aria-level": "${$map.item.level}",
+                          "aria-posinset": "${$map.item.posInSet}",
+                          "aria-setsize": "${$map.item.setSize}",
+                          "aria-selected": "${$map.item.selected}",
+                          "aria-expanded": "${$map.item.expanded}",
+                          "tabindex": "${$map.item.tabindex}",
+                          "data-primary": "${$map.item.primary}",
+                          "data-jx-path": "${$map.item.jxPath}",
+                          "data-path": "${$map.item.key}",
+                          "data-dnd-row": "${$map.item.dndRow}",
+                          "data-dnd-depth": "${$map.item.dndDepth}",
+                          "data-dnd-void": "${$map.item.dndVoid}",
+                          "data-dnd-expanded": "${$map.item.dndExpanded}"
+                        },
+                        "style": {
+                          "--row-indent": {
+                            "$ref": "$map/item/indent"
+                          }
+                        },
+                        "onclick": {
+                          "$prototype": "Function",
+                          "body": [
+                            {
+                              "operator": "call",
+                              "target": {
+                                "$ref": "#/state/activate"
+                              },
+                              "value": [
+                                {
+                                  "$ref": "$map/item/key"
+                                },
+                                {
+                                  "$ref": "event#/ctrlKey"
+                                },
+                                {
+                                  "$ref": "event#/metaKey"
+                                },
+                                {
+                                  "$ref": "event#/shiftKey"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        "ondblclick": {
+                          "$prototype": "Function",
+                          "body": [
+                            {
+                              "stopPropagation": true
+                            },
+                            {
+                              "operator": "call",
+                              "target": {
+                                "$ref": "#/state/rename"
+                              },
+                              "value": [
+                                {
+                                  "$ref": "$map/item/key"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        "oncontextmenu": {
+                          "$ref": "#/state/contextMenu"
+                        },
+                        "onmouseenter": {
+                          "$prototype": "Function",
+                          "body": [
+                            {
+                              "operator": "call",
+                              "target": {
+                                "$ref": "#/state/hover"
+                              },
+                              "value": [
+                                {
+                                  "$ref": "$map/item/key"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        "onkeydown": {
+                          "$prototype": "Function",
+                          "body": [
+                            {
+                              "$switch": {
+                                "$ref": "event#/key"
+                              },
+                              "cases": {
+                                "ArrowDown": [
+                                  {
+                                    "preventDefault": true
+                                  },
+                                  {
+                                    "operator": "call",
+                                    "target": {
+                                      "$ref": "#/state/walk"
+                                    },
+                                    "value": [
+                                      {
+                                        "$ref": "$map/item/key"
+                                      },
+                                      "ArrowDown",
+                                      {
+                                        "$ref": "event#/shiftKey"
+                                      }
+                                    ]
+                                  }
+                                ],
+                                "ArrowUp": [
+                                  {
+                                    "preventDefault": true
+                                  },
+                                  {
+                                    "operator": "call",
+                                    "target": {
+                                      "$ref": "#/state/walk"
+                                    },
+                                    "value": [
+                                      {
+                                        "$ref": "$map/item/key"
+                                      },
+                                      "ArrowUp",
+                                      {
+                                        "$ref": "event#/shiftKey"
+                                      }
+                                    ]
+                                  }
+                                ],
+                                "ArrowRight": [
+                                  {
+                                    "preventDefault": true
+                                  },
+                                  {
+                                    "operator": "call",
+                                    "target": {
+                                      "$ref": "#/state/walk"
+                                    },
+                                    "value": [
+                                      {
+                                        "$ref": "$map/item/key"
+                                      },
+                                      "ArrowRight",
+                                      {
+                                        "$ref": "event#/shiftKey"
+                                      }
+                                    ]
+                                  }
+                                ],
+                                "ArrowLeft": [
+                                  {
+                                    "preventDefault": true
+                                  },
+                                  {
+                                    "operator": "call",
+                                    "target": {
+                                      "$ref": "#/state/walk"
+                                    },
+                                    "value": [
+                                      {
+                                        "$ref": "$map/item/key"
+                                      },
+                                      "ArrowLeft",
+                                      {
+                                        "$ref": "event#/shiftKey"
+                                      }
+                                    ]
+                                  }
+                                ],
+                                "Home": [
+                                  {
+                                    "preventDefault": true
+                                  },
+                                  {
+                                    "operator": "call",
+                                    "target": {
+                                      "$ref": "#/state/walk"
+                                    },
+                                    "value": [
+                                      {
+                                        "$ref": "$map/item/key"
+                                      },
+                                      "Home",
+                                      {
+                                        "$ref": "event#/shiftKey"
+                                      }
+                                    ]
+                                  }
+                                ],
+                                "End": [
+                                  {
+                                    "preventDefault": true
+                                  },
+                                  {
+                                    "operator": "call",
+                                    "target": {
+                                      "$ref": "#/state/walk"
+                                    },
+                                    "value": [
+                                      {
+                                        "$ref": "$map/item/key"
+                                      },
+                                      "End",
+                                      {
+                                        "$ref": "event#/shiftKey"
+                                      }
+                                    ]
+                                  }
+                                ],
+                                "Enter": [
+                                  {
+                                    "preventDefault": true
+                                  },
+                                  {
+                                    "operator": "call",
+                                    "target": {
+                                      "$ref": "#/state/walk"
+                                    },
+                                    "value": [
+                                      {
+                                        "$ref": "$map/item/key"
+                                      },
+                                      "Enter",
+                                      {
+                                        "$ref": "event#/shiftKey"
+                                      }
+                                    ]
+                                  }
+                                ],
+                                "F2": [
+                                  {
+                                    "preventDefault": true
+                                  },
+                                  {
+                                    "operator": "call",
+                                    "target": {
+                                      "$ref": "#/state/walk"
+                                    },
+                                    "value": [
+                                      {
+                                        "$ref": "$map/item/key"
+                                      },
+                                      "F2",
+                                      {
+                                        "$ref": "event#/shiftKey"
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            }
+                          ],
+                          "description": "The ARIA tree keyboard model, spelled as cases rather than as an `if` chain in a host handler: the document says which keys the tree answers to, and `walk` decides what each one MEANS against the row model. Delete is deliberately absent — it is `selection.delete`'s chord and the registry owns it."
+                        },
+                        "children": [
+                          {
+                            "tagName": "span",
+                            "attributes": {
+                              "part": "toggle",
+                              "aria-hidden": "true"
+                            },
+                            "onclick": {
+                              "$prototype": "Function",
+                              "body": [
+                                {
+                                  "stopPropagation": true
+                                },
+                                {
+                                  "operator": "call",
+                                  "target": {
+                                    "$ref": "#/state/toggle"
+                                  },
+                                  "value": [
+                                    {
+                                      "$ref": "$map/item/key"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            "$switch": {
+                              "$ref": "$map/item/chevron"
+                            },
+                            "cases": {
+                              "open": {
+                                "tagName": "jx-icon",
+                                "$props": {
+                                  "name": "caret-down"
+                                }
+                              },
+                              "closed": {
+                                "tagName": "jx-icon",
+                                "$props": {
+                                  "name": "caret-right"
+                                }
+                              }
+                            }
+                          },
+                          {
+                            "tagName": "span",
+                            "attributes": {
+                              "part": "badge",
+                              "data-kind": "${$map.item.badgeKind}",
+                              "title": "${$map.item.badgeTitle}"
+                            },
+                            "textContent": "${$map.item.badge}"
+                          },
+                          {
+                            "tagName": "span",
+                            "attributes": {
+                              "part": "label-slot",
+                              "role": "none"
+                            },
+                            "style": {
+                              "display": "contents"
+                            },
+                            "$switch": {
+                              "$ref": "$map/item/editing"
+                            },
+                            "cases": {
+                              "false": {
+                                "tagName": "span",
+                                "attributes": {
+                                  "part": "label",
+                                  "data-italic": "${$map.item.labelItalic}"
+                                },
+                                "textContent": "${$map.item.label}"
+                              },
+                              "true": {
+                                "$description": "Renaming, in place. The predecessor built this input with `document.createElement`, hid the label with an inline `display:none` and put the two back by hand on commit — four imperative writes into a tree the surface does not own, and the reason a stale `display:none` could survive a keyed re-render. It is a case of the row now, so a repaint cannot leave one half of it behind.",
+                                "tagName": "input",
+                                "attributes": {
+                                  "part": "title-input",
+                                  "type": "text",
+                                  "value": "${$map.item.editValue}",
+                                  "placeholder": "${$map.item.placeholder}",
+                                  "aria-label": "Rename this element"
+                                },
+                                "oninput": {
+                                  "$prototype": "Function",
+                                  "body": [
+                                    {
+                                      "operator": "call",
+                                      "target": {
+                                        "$ref": "#/state/editInput"
+                                      },
+                                      "value": [
+                                        {
+                                          "$ref": "event#/target/value"
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                },
+                                "onkeydown": {
+                                  "$prototype": "Function",
+                                  "body": [
+                                    {
+                                      "$switch": {
+                                        "$ref": "event#/key"
+                                      },
+                                      "cases": {
+                                        "Enter": [
+                                          {
+                                            "preventDefault": true
+                                          },
+                                          {
+                                            "operator": "call",
+                                            "target": {
+                                              "$ref": "#/state/editCommit"
+                                            }
+                                          }
+                                        ],
+                                        "Escape": [
+                                          {
+                                            "preventDefault": true
+                                          },
+                                          {
+                                            "operator": "call",
+                                            "target": {
+                                              "$ref": "#/state/editCancel"
+                                            }
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  ]
+                                },
+                                "onblur": {
+                                  "$prototype": "Function",
+                                  "body": [
+                                    {
+                                      "operator": "call",
+                                      "target": {
+                                        "$ref": "#/state/editCommit"
+                                      }
+                                    }
+                                  ]
+                                }
+                              }
+                            }
+                          },
+                          {
+                            "tagName": "span",
+                            "attributes": {
+                              "part": "drag-slot",
+                              "role": "none"
+                            },
+                            "style": {
+                              "display": "contents"
+                            },
+                            "$switch": {
+                              "$ref": "$map/item/draggable"
+                            },
+                            "cases": {
+                              "true": {
+                                "$description": "A plain span rather than a control, because it is the grab affordance for a pointer drag the pragmatic-dnd island owns and NOT a second way to move the row: the four move verbs in the cluster beside it are the keyboard path, and they are records rather than markup.",
+                                "tagName": "span",
+                                "attributes": {
+                                  "part": "drag",
+                                  "title": "Drag to reorder",
+                                  "aria-hidden": "true"
+                                },
+                                "textContent": "⠿"
+                              }
+                            }
+                          },
+                          {
+                            "tagName": "span",
+                            "attributes": {
+                              "part": "actions",
+                              "data-state": "${$map.item.actions}"
+                            },
+                            "children": [
+                              {
+                                "$prototype": "Array",
+                                "items": {
+                                  "$ref": "$map/item/commands"
+                                },
+                                "key": {
+                                  "$ref": "$map/item/id"
+                                },
+                                "map": {
+                                  "tagName": "jx-action-button",
+                                  "attributes": {
+                                    "part": "action",
+                                    "data-command": "${$map.item.id}",
+                                    "data-destructive": "${$map.item.destructive}"
+                                  },
+                                  "$props": {
+                                    "label": {
+                                      "$ref": "$map/item/title"
+                                    },
+                                    "hint": {
+                                      "$ref": "$map/item/tooltip"
+                                    },
+                                    "icon": {
+                                      "$ref": "$map/item/icon"
+                                    },
+                                    "disabled": {
+                                      "$ref": "$map/item/disabled"
+                                    },
+                                    "size": "sm",
+                                    "quiet": true
+                                  },
+                                  "onclick": {
+                                    "$prototype": "Function",
+                                    "body": [
+                                      {
+                                        "stopPropagation": true
+                                      },
+                                      {
+                                        "operator": "call",
+                                        "target": {
+                                          "$ref": "#/state/runRow"
+                                        },
+                                        "value": [
+                                          {
+                                            "$ref": "$map/item/id"
+                                          },
+                                          {
+                                            "$ref": "$map/item/row"
+                                          },
+                                          {
+                                            "$ref": "event#/currentTarget"
+                                          }
+                                        ]
+                                      }
+                                    ]
+                                  }
+                                }
+                              },
+                              {
+                                "tagName": "span",
+                                "attributes": {
+                                  "part": "overflow-slot",
+                                  "role": "none"
+                                },
+                                "style": {
+                                  "display": "contents"
+                                },
+                                "$switch": {
+                                  "$ref": "$map/item/overflow"
+                                },
+                                "cases": {
+                                  "true": {
+                                    "tagName": "jx-action-button",
+                                    "attributes": {
+                                      "part": "overflow",
+                                      "data-command": "outline.more"
+                                    },
+                                    "$props": {
+                                      "label": "More actions",
+                                      "hint": "More actions",
+                                      "icon": "dots-three-vertical",
+                                      "haspopup": "menu",
+                                      "size": "sm",
+                                      "quiet": true
+                                    },
+                                    "onclick": {
+                                      "$prototype": "Function",
+                                      "body": [
+                                        {
+                                          "stopPropagation": true
+                                        },
+                                        {
+                                          "operator": "call",
+                                          "target": {
+                                            "$ref": "#/state/overflowRow"
+                                          },
+                                          "value": [
+                                            {
+                                              "$ref": "$map/item/key"
+                                            },
+                                            {
+                                              "$ref": "event#/currentTarget"
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      "text": {
+                        "$description": "A text node's row: drawn, and deliberately not a tree item. There is nothing to do to it — it cannot be moved, renamed, duplicated or deleted on its own — so giving it a `treeitem` role would put a stop in the keyboard walk that answers to none of the keys the walk offers.",
+                        "tagName": "div",
+                        "attributes": {
+                          "part": "row",
+                          "data-kind": "text",
+                          "data-jx-path": "${$map.item.jxPath}",
+                          "data-path": "${$map.item.key}"
+                        },
+                        "style": {
+                          "--row-indent": {
+                            "$ref": "$map/item/indent"
+                          }
+                        },
+                        "children": [
+                          {
+                            "tagName": "span",
+                            "attributes": {
+                              "part": "badge",
+                              "data-kind": "text"
+                            },
+                            "textContent": "text"
+                          },
+                          {
+                            "tagName": "span",
+                            "attributes": {
+                              "part": "label"
+                            },
+                            "textContent": "${$map.item.label}"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                },
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "pad",
+                    "style": "${state.padBottom}",
+                    "aria-hidden": "true"
+                  }
+                }
+              ]
+            },
+            "empty": {
+              "$description": "Drawn here rather than borrowed from `panels/empty-state.ts`, which is a lit template a document cannot call. What is kept is the pattern's rules (guidelines §11): one sentence saying what the region is for, then the one action that fills it.",
+              "tagName": "div",
+              "attributes": {
+                "part": "empty"
+              },
+              "children": [
+                {
+                  "tagName": "p",
+                  "attributes": {
+                    "part": "empty-message"
+                  },
+                  "textContent": "${state.emptyMessage}"
+                },
+                {
+                  "tagName": "jx-button",
+                  "attributes": {
+                    "part": "empty-action"
+                  },
+                  "$props": {
+                    "size": "sm",
+                    "variant": "secondary"
+                  },
+                  "onclick": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/emptyAction"
+                        }
+                      }
+                    ]
+                  },
+                  "children": [
+                    {
+                      "tagName": "span",
+                      "textContent": "${state.emptyLabel}"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

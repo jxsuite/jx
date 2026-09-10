@@ -64,10 +64,22 @@ interface DragMonitorDropArgs {
   location: { current: { dropTargets: { data: Record<string, unknown> }[] } };
 }
 
+/**
+ * How the drag island addresses the Outline, which is a Jx document and emits no classes.
+ *
+ * `surfaces/panel-outline.json` is the tree; `part` is the only style and query hook a document
+ * offers (`ui.md` §3.1), so these three selectors are the contract between it and this module. The
+ * two per-row STATES this file writes — `data-dragging` and `data-drop-target` — are attributes for
+ * the same reason: a class the document would have to style is a class the document may not have.
+ */
+const OUTLINE_ROOT = '[part="outline"]';
+const OUTLINE_ROWS = '[part="row"]';
+const OUTLINE_ACTIONS = '[part="actions"]';
+
 /** Register DnD on layer rows — called from left-panel.js after render */
 export function registerLayersDnD() {
   requestAnimationFrame(() => {
-    const container = leftPanel?.querySelector(".layers-container") as HTMLElement | null;
+    const container = leftPanel?.querySelector(OUTLINE_ROOT) as HTMLElement | null;
     if (!container) {
       return;
     }
@@ -84,7 +96,7 @@ export function registerLayersDnD() {
         draggable({
           canDrag({ element: _el, input }: DragCanDragArgs) {
             const target = elementAtPoint(input.clientX, input.clientY) as HTMLElement;
-            if (target?.closest(".layer-actions")) {
+            if (target?.closest(OUTLINE_ACTIONS)) {
               return false;
             }
             return true;
@@ -99,14 +111,14 @@ export function registerLayersDnD() {
             disableNativeDragPreview({ nativeSetDragImage });
           },
           onDragStart() {
-            row.classList.add("dragging");
+            row.dataset.dragging = "";
             view.layerDragSourceHeight = row.offsetHeight;
             if (isExpanded) {
               hideDescendantRows(row, container);
             }
           },
           onDrop() {
-            row.classList.remove("dragging");
+            delete row.dataset.dragging;
             if (isExpanded) {
               renderOnly("leftPanel");
             }
@@ -248,7 +260,7 @@ export function registerComponentsDnD() {
 /** Register DnD on element (HTML block) rows */
 export function registerElementsDnD() {
   requestAnimationFrame(() => {
-    const container = leftPanel?.querySelector(".panel-body") as HTMLElement | null;
+    const container = leftPanel?.querySelector('[part="content"]') as HTMLElement | null;
     if (!container) {
       return;
     }
@@ -283,7 +295,7 @@ export function registerElementsDnD() {
  */
 function hideDescendantRows(parentRow: HTMLElement, container: HTMLElement) {
   const prefix = `${parentRow.dataset.path}/`;
-  const rows = container.querySelectorAll(".layers-tree .layer-row");
+  const rows = container.querySelectorAll(OUTLINE_ROWS);
   for (const r of rows) {
     if ((r as HTMLElement).dataset.path?.startsWith(prefix)) {
       (r as HTMLElement).style.display = "none";
@@ -303,9 +315,9 @@ export function showLayerDropGap(
 ) {
   const instruction = extractInstruction(data);
 
-  // Clear previous drop-target highlight
+  // Clear the previous drop-target mark
   if (view._currentDropTargetRow && view._currentDropTargetRow !== rowEl) {
-    view._currentDropTargetRow.classList.remove("drop-target");
+    delete view._currentDropTargetRow.dataset.dropTarget;
   }
 
   if (!instruction || instruction.type === "instruction-blocked") {
@@ -315,21 +327,21 @@ export function showLayerDropGap(
 
   if (instruction.type === "make-child") {
     clearLayerDropGap(container);
-    rowEl.classList.add("drop-target");
+    rowEl.dataset.dropTarget = "";
     view._currentDropTargetRow = rowEl;
     return;
   }
 
-  rowEl.classList.remove("drop-target");
+  delete rowEl.dataset.dropTarget;
   view._currentDropTargetRow = rowEl;
 
   // Shift rows to create gap
-  const rows = [...container.querySelectorAll(".layers-tree .layer-row")];
+  const rows = [...container.querySelectorAll(OUTLINE_ROWS)];
   const targetIdx = rows.indexOf(rowEl);
   const gap = view.layerDragSourceHeight;
 
   for (let i = 0; i < rows.length; i++) {
-    if ((rows[i] as HTMLElement).classList.contains("dragging")) {
+    if ((rows[i] as HTMLElement).dataset.dragging !== undefined) {
       continue;
     }
     if (instruction.type === "reorder-above") {
@@ -343,13 +355,13 @@ export function showLayerDropGap(
 /** @param {HTMLElement} container */
 export function clearLayerDropGap(container: HTMLElement) {
   if (view._currentDropTargetRow) {
-    view._currentDropTargetRow.classList.remove("drop-target");
+    delete view._currentDropTargetRow.dataset.dropTarget;
     view._currentDropTargetRow = null;
   }
-  const rows = container.querySelectorAll(".layers-tree .layer-row");
+  const rows = container.querySelectorAll(OUTLINE_ROWS);
   for (const r of rows) {
     (r as HTMLElement).style.transform = "";
-    // Also clear `display:none` left by hideDescendantRows. The `.layer-row` div has no `style`
+    // Also clear `display:none` left by hideDescendantRows. The row has no `style`
     // Lit binding, so an imperative style set during the drag survives the post-drop re-render on
     // Whichever row keeps that key — and a move is exactly the edit that hands a key to a different
     // Node. (The rows ARE keyed, by `pathKey`; the earlier form of this note said they were not,

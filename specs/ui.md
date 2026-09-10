@@ -2,9 +2,9 @@
 
 ## Interface Elements Authored as Jx Documents
 
-**Version:** 0.1.18-draft\
+**Version:** 0.1.19-draft\
 **Status:** Partial\
-**Updated:** 2026-09-08\
+**Updated:** 2026-09-10\
 **License:** MIT\
 **Applies to:** `packages/ui/`, `packages/studio/src/surfaces/`
 
@@ -263,7 +263,7 @@ Menus, popovers and tooltips are native `popover` panels positioned with CSS anc
 
 The top layer replaces a z-index ladder: whatever was shown later paints above what showed it. A modal `<dialog>` makes everything outside it inert, so a popover opened from a control inside one renders inside its `[part="overlay-slot"]`. A submenu is a child popover of its row and therefore in its parent's hierarchy: light dismissal closes the whole stack, Escape closes one level, and Tab hides the root.
 
-In Studio, `layers.ts` keeps its exports (`renderPopover`, `showDialog`, `openModal`, `getLayerSlot`, `isModalOpen`) as the façade over these primitives; how each maps is studio-ui-guidelines.md §8.7.
+In Studio, `layers.ts` keeps its exports (`renderPopover`, `showDialog`, `getLayerSlot`, `isModalOpen`) as the façade over these primitives; how each maps is studio-ui-guidelines.md §8.7. `openModal` is no longer among them: a persistent modal is a `jx-dialog` surface document mounted into the modal layer, so the helper went when its last caller did.
 
 ## 7. Keyboard and Focus
 
@@ -319,6 +319,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.1.19-draft** (2026-09-10) — The Studio facade list drops openModal: a persistent modal is a jx-dialog surface document (§6).
 - **0.1.18-draft** (2026-09-08) — jx-select: the default slot and its once-at-mount distribution, the slotted hr separator, and the property-only rows.
 - **0.1.17-draft** (2026-09-04) — jx-select is a native select under appearance: base-select — the four things a document must never author, the sidecar that keeps selectedness alive, and why the kit ships no jx-option.
 - **0.1.16-draft** (2026-09-04) — the theme layer is an authored key, so themeCSS writes no CSS text and agrees with the site builder about the same block (4.2).
@@ -341,4 +342,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx UI Kit Specification v0.1.18-draft_
+_Jx UI Kit Specification v0.1.19-draft_

@@ -7,7 +7,6 @@
  * and the keyboard model that made the bar reachable without a mouse.
  */
 import { flush, resetWorkspaceWithTab } from "./harness";
-import { render as litRender } from "lit-html";
 import { afterEach, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { componentRegistry } from "../src/files/components";
 import { initLayers } from "../src/ui/layers";
@@ -37,7 +36,6 @@ void mock.module("../src/canvas/iframe-host", () => ({
 
 const {
   BLOCKBAR_MAX_ITEMS,
-  commandIcon,
   commandTooltip,
   commandTargetPath,
   dismissBlockActionBar,
@@ -77,15 +75,52 @@ function setup(node: JxMutableNode = TWO_PARAGRAPHS, selection: JxPath = ["child
 }
 
 function bar(): HTMLElement {
-  const el = view.blockActionBarEl?.querySelector(".block-action-bar") as HTMLElement | null;
+  const el = view.blockActionBarEl?.querySelector('[part="bar"]') as HTMLElement | null;
   if (!el) {
     throw new Error("the bar did not render");
   }
   return el;
 }
 
+/** The toolbar itself — the kit group that owns the role, the label and the roving caret. */
+function toolbar(): HTMLElement {
+  return bar().querySelector('[part="tools"]') as HTMLElement;
+}
+
+/** The controls the roving caret walks: the group's own action buttons, in order. */
 function items(): HTMLElement[] {
-  return [...bar().querySelectorAll<HTMLElement>("[data-toolbar-item]")];
+  return [...toolbar().querySelectorAll<HTMLElement>("jx-action-button")];
+}
+
+/** A kit button's own control: the focusable node, and the one that carries `disabled`. */
+function control(el: Element | null): HTMLElement {
+  return el!.querySelector('[part="control"]') as HTMLElement;
+}
+
+function isDisabled(el: Element | null): boolean {
+  return control(el).hasAttribute("disabled");
+}
+
+function press(el: Element | null): void {
+  control(el).dispatchEvent(new MouseEvent("click", { bubbles: true }));
+}
+
+/** Render, then let the document reconcile: the bar is a mount, not a synchronous template. */
+async function render(): Promise<void> {
+  renderBlockActionBar();
+  await flush(3);
+}
+
+/** Every `⋮` row on screen, addressed by the record that produced it. */
+function menuRows(): HTMLElement[] {
+  return [
+    ...document.querySelectorAll<HTMLElement>("#layer-popover jx-menu-item[data-command-id]"),
+  ];
+}
+
+/** A slot the surface left empty prints nothing, exactly as it shows nothing. */
+function shownText(el: Element | null): string | undefined {
+  return el?.textContent?.trim() || undefined;
 }
 
 /** A minimal selection-level record, so a test can decide exactly what the bar is asked to draw. */
@@ -230,15 +265,14 @@ describe("the verb cluster", () => {
       record("test.seven", { group: "1_g" }),
     ]);
     setup();
-    renderBlockActionBar();
-    await flush();
+    await render();
 
-    const shown = [...bar().querySelectorAll<HTMLElement>("[data-command]")].map(
-      (b) => b.dataset.command,
+    const shown = [...bar().querySelectorAll<HTMLElement>('[part="verb"]')].map(
+      (b) => b.dataset.commandId,
     );
     expect(shown).toEqual(["test.one", "test.two", "test.three", "test.four", "test.five"]);
     expect(shown.length).toBe(BLOCKBAR_MAX_ITEMS);
-    expect(bar().querySelector(".bar-overflow")).not.toBeNull();
+    expect(bar().querySelector('[part="overflow"]')).not.toBeNull();
   });
 
   test("the ⋮ menu carries the remainder with their names, chords and refusals", async () => {
@@ -258,17 +292,39 @@ describe("the verb cluster", () => {
       }),
     ]);
     setup();
-    renderBlockActionBar();
-    (bar().querySelector(".bar-overflow") as HTMLElement).click();
-    await flush();
+    await render();
+    press(bar().querySelector('[part="overflow"]'));
+    await flush(3);
 
-    const rows = [...document.querySelectorAll("#layer-popover sp-menu-item")];
-    expect(rows.map((r) => (r as HTMLElement).dataset.command)).toEqual(["test.six", "test.seven"]);
+    /* The kit menu, not a second list of this surface's own (§12.5): the rows are `jx-menu-item`s
+       and every fact on one — the chord, the refusal, the danger colour — is drawn by the element
+       from the record's own projection. */
+    const rows = menuRows();
+    expect(rows.map((r) => r.dataset.commandId)).toEqual(["test.six", "test.seven"]);
     // Whatever the keymap formats — the surface prints it and does not restyle it.
-    expect(rows[0]!.querySelector("kbd.cmd-chord")!.textContent).toBe("⌘⇧6");
-    expect(rows[1]!.hasAttribute("disabled")).toBe(true);
-    expect(rows[1]!.getAttribute("title")).toBe("Seventh — requires something that is not true");
-    expect(rows[1]!.getAttribute("style")).toContain("var(--danger)");
+    expect(shownText(rows[0]!.querySelector("kbd"))).toBe("⌘⇧6");
+    expect(rows[1]!.getAttribute("aria-disabled")).toBe("true");
+    expect(rows[1]!.getAttribute("title")).toBe("something that is not true");
+    expect(shownText(rows[1]!.querySelector('[slot="description"]'))).toBe(
+      "Needs something that is not true",
+    );
+    /* Destructiveness reaches the row off the record. The kit PAINTS it only on a row that can
+       act — a refused row is already dimmed and shouting at it says the wrong thing twice — so the
+       flag is what this asserts, and the colour is asserted on the enabled row below. */
+    expect((rows[1] as unknown as { destructive?: boolean }).destructive).toBe(true);
+    expect((rows[0] as unknown as { destructive?: boolean }).destructive).toBe(false);
+  });
+
+  test("an enabled destructive ⋮ row is drawn in the danger colour", async () => {
+    injectRegistry([
+      ...["a", "b", "c", "d", "e"].map((k) => record(`test.${k}`, { group: `1_${k}` })),
+      record("test.wipe", { destructive: true, group: "9_z", title: "Delete" }),
+    ]);
+    setup();
+    await render();
+    press(bar().querySelector('[part="overflow"]'));
+    await flush(3);
+    expect(menuRows()[0]!.getAttribute("style")).toContain("var(--jx-danger)");
   });
 
   test("a ⋮ row runs its command, and the menu closes behind it", async () => {
@@ -283,12 +339,13 @@ describe("the verb cluster", () => {
       }),
     ]);
     setup();
-    renderBlockActionBar();
-    (bar().querySelector(".bar-overflow") as HTMLElement).click();
+    await render();
+    press(bar().querySelector('[part="overflow"]'));
+    await flush(3);
+    menuRows()[0]!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     await flush();
-    (document.querySelector("#layer-popover sp-menu-item") as HTMLElement).click();
     expect(ran).toEqual(["last"]);
-    expect(document.querySelector("#layer-popover sp-menu-item")).toBeNull();
+    expect(menuRows()).toHaveLength(0);
   });
 
   test("opening the menu twice does not stack two of them", async () => {
@@ -297,12 +354,12 @@ describe("the verb cluster", () => {
       record("test.last", { group: "9_z" }),
     ]);
     setup();
-    renderBlockActionBar();
-    const overflow = bar().querySelector(".bar-overflow") as HTMLElement;
-    overflow.click();
-    overflow.click();
-    await flush();
-    expect(document.querySelectorAll("#layer-popover sp-menu-item")).toHaveLength(1);
+    await render();
+    const overflow = bar().querySelector('[part="overflow"]');
+    press(overflow);
+    press(overflow);
+    await flush(3);
+    expect(menuRows()).toHaveLength(1);
   });
 });
 
@@ -338,23 +395,31 @@ describe("names, chords and refusals", () => {
       }),
     ]);
     setup();
-    renderBlockActionBar();
-    await flush();
-    const btn = bar().querySelector('[data-command="test.no"]')!;
+    await render();
+    const btn = control(bar().querySelector('[data-command-id="test.no"]'));
     expect(btn.getAttribute("aria-label")).toBe("Delete");
     expect(btn.getAttribute("title")).toBe("Delete — requires an element selection");
   });
 
-  test("a record with no icon draws its title rather than an empty button", () => {
-    const registry = injectRegistry([
+  test("a record with no icon draws its title rather than an empty button", async () => {
+    /* A record's `icon` is a name in the KIT's manifest now — there is no alias table between the
+       record and the glyph any more, so what a miss degrades to is the document's business. A
+       record with no icon slots its title as text; one with a glyph draws the glyph and slots
+       nothing, so the button is never a blank square either way. */
+    injectRegistry([
       record("test.plain", { title: "Duplicate" }),
-      record("test.iconed", { icon: "sp-icon-delete", title: "Delete" }),
+      record("test.iconed", { icon: "trash", title: "Delete" }),
     ]);
-    const container = document.createElement("div");
-    litRender(commandIcon(registry.get("test.plain")!), container);
-    expect(container.querySelector(".cmd-label")!.textContent).toBe("Duplicate");
-    litRender(commandIcon(registry.get("test.iconed")!), container);
-    expect(container.querySelector("sp-icon-delete")).not.toBeNull();
+    setup();
+    await render();
+
+    const plain = bar().querySelector('[data-command-id="test.plain"]')!;
+    expect(shownText(plain.querySelector('[part="cmd-label"]'))).toBe("Duplicate");
+    expect((plain.querySelector('[part="icon"]') as HTMLElement).hidden).toBe(true);
+
+    const iconed = bar().querySelector('[data-command-id="test.iconed"]')!;
+    expect(iconed.querySelector('[part="cmd-label"]')).toBeNull();
+    expect((iconed.querySelector('[part="icon"]') as HTMLElement).hidden).toBe(false);
   });
 
   test("runCommand refuses a disabled verb rather than throwing at the surface", () => {
@@ -402,18 +467,20 @@ describe("names, chords and refusals", () => {
 describe("role=toolbar and the roving tabindex", () => {
   beforeEach(async () => {
     setup();
-    renderBlockActionBar();
-    await flush();
+    await render();
   });
 
   test("the bar declares itself a toolbar", () => {
-    expect(bar().getAttribute("role")).toBe("toolbar");
-    expect(bar().getAttribute("aria-label")).toBe("Block actions");
-    expect(bar().getAttribute("aria-orientation")).toBe("horizontal");
+    /* The role, the name and the orientation are the KIT's — `jx-action-group` with
+       `selects="none"` — so the bar no longer writes any of them, and the arrow keys that go with
+       them are not this surface's code either. */
+    expect(toolbar().getAttribute("role")).toBe("toolbar");
+    expect(toolbar().getAttribute("aria-label")).toBe("Block actions");
+    expect(toolbar().getAttribute("aria-orientation")).toBe("horizontal");
   });
 
   test("exactly one control is in the tab order", () => {
-    const tabbable = items().filter((el) => el.tabIndex === 0);
+    const tabbable = items().filter((el) => control(el).getAttribute("tabindex") === "0");
     expect(tabbable).toHaveLength(1);
     expect(items().length).toBeGreaterThan(3);
   });
@@ -422,7 +489,8 @@ describe("role=toolbar and the roving tabindex", () => {
     const e = new KeyboardEvent("keydown", { altKey: true, cancelable: true, key: "ArrowUp" });
     handleBlockBarEntryKey(e);
     expect(e.defaultPrevented).toBe(true);
-    expect(document.activeElement).toBe(items()[0]!);
+    // The focusable node is the button INSIDE the first control that can act.
+    expect(document.activeElement).toBe(control(items().find((el) => !isDisabled(el))!));
   });
 
   test("⌥↑ with another modifier, or on another key, is not the entry chord", () => {
@@ -437,7 +505,7 @@ describe("role=toolbar and the roving tabindex", () => {
     }
   });
 
-  test("⌥↑ is refused while a modal owns the keyboard, and when there is no bar", () => {
+  test("⌥↑ is refused while a modal owns the keyboard, and when there is no bar", async () => {
     const slot = document.createElement("div");
     slot.innerHTML = "<sp-dialog-wrapper open></sp-dialog-wrapper>";
     document.querySelector("#layer-dialog")!.append(slot);
@@ -451,33 +519,37 @@ describe("role=toolbar and the roving tabindex", () => {
     slot.remove();
 
     dismissBlockActionBar();
+    await flush();
     const gone = new KeyboardEvent("keydown", { altKey: true, cancelable: true, key: "ArrowUp" });
     handleBlockBarEntryKey(gone);
     expect(gone.defaultPrevented).toBe(false);
   });
 
   test("← and → walk the controls and wrap; Home and End go to the ends", () => {
+    /* Every one of these is the KIT's contract now (`behaviors/action-group.ts`), which is the
+       point of the assertion rather than a reason to drop it: the bar deleted a hand-written
+       `[data-toolbar-item]` ring, and what replaced it has to keep the same promises. */
     const key = (k: string) =>
-      bar().dispatchEvent(
+      (document.activeElement ?? toolbar()).dispatchEvent(
         new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: k }),
       );
     handleBlockBarEntryKey(
       new KeyboardEvent("keydown", { altKey: true, cancelable: true, key: "ArrowUp" }),
     );
-    const all = items().filter((el) => !el.hasAttribute("disabled"));
+    const all = items().filter((el) => !isDisabled(el));
 
     key("ArrowRight");
-    expect(document.activeElement).toBe(all[1]!);
+    expect(document.activeElement).toBe(control(all[1]!));
     key("ArrowLeft");
     key("ArrowLeft"); // Wraps backwards off the front.
-    expect(document.activeElement).toBe(all.at(-1)!);
+    expect(document.activeElement).toBe(control(all.at(-1)!));
     key("Home");
-    expect(document.activeElement).toBe(all[0]!);
+    expect(document.activeElement).toBe(control(all[0]!));
     key("End");
-    expect(document.activeElement).toBe(all.at(-1)!);
+    expect(document.activeElement).toBe(control(all.at(-1)!));
     // The focused control is the one in the tab order — the toolbar does not reset to its first.
-    expect(all.at(-1)!.tabIndex).toBe(0);
-    expect(all[0]!.tabIndex).toBe(-1);
+    expect(control(all.at(-1)!).getAttribute("tabindex")).toBe("0");
+    expect(control(all[0]!).getAttribute("tabindex")).toBe("-1");
   });
 
   test("Escape closes the ⋮ menu and hands the keyboard back", async () => {
@@ -486,30 +558,32 @@ describe("role=toolbar and the roving tabindex", () => {
       ...["a", "b", "c", "d", "e"].map((k) => record(`test.${k}`, { group: `1_${k}` })),
       record("test.last", { group: "9_z" }),
     ]);
-    renderBlockActionBar();
-    (bar().querySelector(".bar-overflow") as HTMLElement).click();
-    await flush();
-    expect(document.querySelector("#layer-popover sp-menu-item")).not.toBeNull();
+    await render();
+    press(bar().querySelector('[part="overflow"]'));
+    await flush(3);
+    expect(menuRows().length).toBeGreaterThan(0);
 
     bar().dispatchEvent(
       new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "Escape" }),
     );
-    expect(document.querySelector("#layer-popover sp-menu-item")).toBeNull();
+    await flush();
+    expect(menuRows()).toHaveLength(0);
   });
 
   test("a disabled control is skipped by the arrows but still rendered", () => {
     // ONE shape: the control keeps its slot, so nothing moves under the cursor — but the keyboard
     // Does not stop on something that cannot act.
-    const disabled = items().filter((el) => el.hasAttribute("disabled"));
+    const disabled = items().filter((el) => isDisabled(el));
     expect(disabled.length).toBeGreaterThan(0);
+    const refused = disabled.map((el) => control(el));
     handleBlockBarEntryKey(
       new KeyboardEvent("keydown", { altKey: true, cancelable: true, key: "ArrowUp" }),
     );
     for (let i = 0; i < items().length + 2; i++) {
-      bar().dispatchEvent(
+      (document.activeElement ?? toolbar()).dispatchEvent(
         new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "ArrowRight" }),
       );
-      expect(disabled).not.toContain(document.activeElement as HTMLElement);
+      expect(refused).not.toContain(document.activeElement as HTMLElement);
     }
   });
 });

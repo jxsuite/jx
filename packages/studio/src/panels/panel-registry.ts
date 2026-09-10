@@ -38,6 +38,7 @@ import type { JxMutableNode } from "@jxsuite/schema/types";
 import type { JxPath } from "../state";
 import type { Tab, TabUi } from "../tabs/tab";
 import type { nothing, TemplateResult } from "lit-html";
+import type { renderFilesTemplate } from "../files/files";
 import type { renderGitPanel } from "./git-panel";
 import type { renderHeadTemplate } from "./head-panel";
 import type { renderImportsTemplate } from "./imports-panel";
@@ -68,7 +69,7 @@ export interface NavigatorPanelDeps {
   // Typed against their implementations so every call site stays checked. These are type-only
   // Imports, so they are erased — the modules themselves are never pulled in through this file.
   renderImportsTemplate: typeof renderImportsTemplate;
-  renderFilesTemplate: () => TemplateResult;
+  renderFilesTemplate: typeof renderFilesTemplate;
   /**
    * Draw the Data panel into the painted host.
    *

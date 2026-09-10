@@ -28,7 +28,6 @@ void mock.module("../src/ui/layers.js", () => ({
   clearLayerSlot: () => {},
   getLayerSlot: () => document.createElement("div"),
   initLayers: () => {},
-  openModal: () => ({ close: () => {}, update: () => {} }),
   // The media picker asks which layer its anchor sits in; these fields are in a panel.
   popoverLayerFor: () => "popover",
   renderPopover: (template: unknown) => {
@@ -56,8 +55,18 @@ void mock.module("../src/ui/layers.js", () => ({
         done(null);
       }
     }),
-  showPromptDialog: async () => null,
+  /* The paste box IS the prompt dialog with a multiline field (§12.5), so the driver here is the
+     prompt's answer rather than a template to render. What the flow asked for is kept, because
+     "multiline" is the difference between a paste box and a one-line field. */
+  showPromptDialog: async (headline: string, opts: Record<string, unknown> = {}) => {
+    lastPrompt = { headline, opts };
+    return promptAnswer;
+  },
 }));
+
+/** What the mocked prompt answers, and what it was asked for. */
+let promptAnswer: string | null = null;
+let lastPrompt: { headline: string; opts: Record<string, unknown> } = { headline: "", opts: {} };
 void mock.module("../src/ui/progress-modal.js", () => ({
   showProgressModal: () => ({ done: () => {}, fail: () => {}, setStatus: () => {} }),
 }));
@@ -111,6 +120,8 @@ beforeEach(() => {
   resetProjectConfigDocument();
   FakeTabulator.reset();
   dialogDriver = null;
+  promptAnswer = null;
+  lastPrompt = { headline: "", opts: {} };
   for (const host of document.querySelectorAll(".test-dialog-host")) {
     host.remove();
   }
@@ -480,19 +491,20 @@ describe("import", () => {
     expect(problems.find((p) => p.key === "redirects.import")).toBeUndefined();
   });
 
-  test("the paste dialog returns what was typed, and null when it is dismissed", async () => {
-    dialogDriver = (host, done) => {
-      const box = host.querySelector("textarea")!;
-      box.value = "/a /b 302";
-      box.dispatchEvent(new Event("input"));
-      host.querySelector("sp-dialog-wrapper")!.dispatchEvent(new Event("confirm"));
-      done("unused");
-    };
+  test("the paste box is a multiline prompt: it returns what was typed, or null", async () => {
+    promptAnswer = "/a /b 302";
     expect(await promptRedirectImport()).toBe("/a /b 302");
 
-    dialogDriver = (host) => {
-      host.querySelector("sp-dialog-wrapper")!.dispatchEvent(new Event("cancel"));
-    };
+    expect(lastPrompt.headline).toBe("Import Redirects");
+    /* Not decoration: a one-line field cannot show a pasted `_redirects` file back to the author,
+       and Enter in it would submit the dialog on the second line. Both formats are column-aligned
+       in the file they were copied out of, so it is monospaced too. */
+    expect(lastPrompt.opts.multiline).toBeTrue();
+    expect(lastPrompt.opts.mono).toBeTrue();
+    expect(lastPrompt.opts.rows).toBe("10");
+    expect(String(lastPrompt.opts.message)).toContain("_redirects");
+
+    promptAnswer = null;
     expect(await promptRedirectImport()).toBeNull();
   });
 });
@@ -546,7 +558,7 @@ describe("commands", () => {
 
   test("redirects.import with no text asks, and a dismissed dialog imports nothing", async () => {
     setup();
-    dialogDriver = null; // Dismissed.
+    promptAnswer = null; // Dismissed.
     await byId("redirects.import").run(openCtx, {} as never);
     expect(workspace.tabs.has(REDIRECTS_TAB_ID)).toBeFalse();
   });

@@ -1,27 +1,39 @@
 /**
- * Grid canvas panel — the lit shell rendered into #canvas-wrap when a tab's canvasMode is "grid".
+ * Grid canvas panel — the FLOW behind the grid surface, drawn on a pane's stage when a tab's
+ * canvasMode is "grid".
  *
- * Follows the stylebook/source pattern: canvas-render calls renderGridMode() on entry and
- * detachGridPanel() in its mode-change teardown. The shell (toolbar + host div) re-renders from a
- * panel-local effect that tracks the controller's reactive state, so the Save badge, row count, and
+ * `canvas-render` calls renderGridMode() on entry and detachGridPanel() in its mode-change
+ * teardown. The frame is `surfaces/grid-panel.json`, mounted once per entry; a panel-local effect
+ * tracks the controller's reactive state and re-PROJECTS it, so the Save badge, row count and
  * loading/error surfaces stay live without renderCanvas involvement. The Tabulator view is created
- * once per tab entry, after the controller has loaded columns, and destroyed on detach — all grid
- * data survives in the controller/buffer, so a rebuild on re-entry is cheap.
+ * once per tab entry, after the controller has loaded columns and the document has made the host
+ * node, and destroyed on detach — all grid data survives in the controller/buffer, so a rebuild on
+ * re-entry is cheap.
+ *
+ * **The markup left.** Everything this module used to render — the toolbar, the saved-view panel,
+ * find-and-replace, the "no grid source" sentence — is a document now (`surfaces/grid-panel.json`,
+ * `surfaces/grid-views.json`, `surfaces/grid-replace.json`), and what is here decides rather than
+ * draws. Two things that used to need saying out loud stopped needing it:
+ *
+ * - **The engine's host node cannot be destroyed by a toolbar tick.** The lit shell wrapped that div
+ *   in `guard([source.id])` because a re-render of the surrounding template would otherwise
+ *   re-commit it and silently take Tabulator with it. A document reconciles in place, so the
+ *   guarantee is the rendering model's rather than a directive somebody has to remember.
+ * - **The panel state that is not reactive still needs a bump.** `localStorage` is not reactive and
+ *   neither is the engine, so a column drag saved from `grid-view.ts`, a view saved from the
+ *   palette, and the host node arriving all reach the surface through
+ *   {@link ActiveGridPanel.bump}.
  *
  * **The panel owns the view state** (plan §12 P7.2). Saved views persist through `grid-layout.ts` —
  * one store, the grid id as its key, so "per collection" needs no code — and this module is what
  * drives them onto the four surfaces they touch: the engine (column order, width and visibility,
  * applied by a REBUILD, which is cheap because the data never leaves the controller), the
- * controller (sort and grouping, which are row order and belong to the data), and the toolbar's own
+ * controller (sort and grouping, which are row order and belong to the data), and the surface's own
  * filter box. Applying a view is therefore one function with one order of operations, not five
  * controls that each half-remember what the others did.
  */
-import { html, render as litRender, nothing } from "lit-html";
-import { guard } from "lit-html/directives/guard.js";
-import { live } from "lit-html/directives/live.js";
-import { ref } from "lit-html/directives/ref.js";
 import { effect, effectScope, reactive } from "../reactivity";
-import { renderPopover, showConfirmDialog, showPromptDialog } from "../ui/layers";
+import { showConfirmDialog, showPromptDialog } from "../ui/layers";
 import { notify } from "../services/notify";
 import { rectOf } from "../utils/geometry";
 import { activeTab, workspace } from "../workspace/workspace";
@@ -29,6 +41,9 @@ import { createGridController, getGridController } from "./grid-controller";
 import { createCsvFileSource } from "./sources/csv-file-source";
 import { createGridView } from "./grid-view";
 import { parseGridTabId } from "./grid-source";
+import { mountGridPanelSurface } from "../surfaces/grid-panel";
+import { openGridViewsSurface } from "../surfaces/grid-views";
+import { openGridReplaceSurface } from "../surfaces/grid-replace";
 import {
   activeViewModified,
   activeViewName,
@@ -48,6 +63,13 @@ import type { GridView } from "./grid-view";
 import type { Tab } from "../tabs/tab";
 import type { CanvasSurface } from "../canvas/canvas-surface";
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
+import type {
+  GridPanelActions,
+  GridPanelSurfaceHandle,
+  GridPanelView,
+} from "../surfaces/grid-panel";
+import type { GridViewsSurfaceHandle, GridViewsView } from "../surfaces/grid-views";
+import type { GridReplaceSurfaceHandle } from "../surfaces/grid-replace";
 
 interface ActiveGridPanel {
   /** The pane whose stage this grid is drawn on. */
@@ -56,6 +78,14 @@ interface ActiveGridPanel {
   scope: EffectScope;
   view: GridView | null;
   wrap: HTMLElement;
+  /** The mounted frame, or null while the mount is still in flight. */
+  surface: GridPanelSurfaceHandle | null;
+  /** The saved-view panel while it is open. */
+  views: GridViewsSurfaceHandle | null;
+  /** Where that panel was opened, so a re-projection cannot move it back to the origin. */
+  viewsAt: { x: number; y: number };
+  /** Find & replace while it is open. */
+  replace: GridReplaceSurfaceHandle | null;
   /**
    * Rebuild the engine over the same controller.
    *
@@ -66,7 +96,7 @@ interface ActiveGridPanel {
   remount: () => void;
   /** Apply a whole layout — sort, grouping, columns, filter — in one order of operations. */
   applyLayout: (layout: GridLayout | null) => void;
-  /** Re-render the toolbar. `localStorage` is not reactive, so a view edit has to say so. */
+  /** Re-project. `localStorage` is not reactive, so a view edit has to say so. */
   bump: () => void;
 }
 
@@ -79,6 +109,15 @@ interface ActiveGridPanel {
  */
 const _active = new Map<string, ActiveGridPanel>();
 
+/**
+ * The "no grid source" frame in each pane, which has no panel record to hang off.
+ *
+ * It is still a mounted document, so something has to be able to dispose it — `mountSurface`
+ * registers every mount so a saved kit edit can find it again, and a frame nobody disposes stays in
+ * that registry after its stage has been emptied.
+ */
+const _missing = new Map<string, GridPanelSurfaceHandle>();
+
 /** The grid mounted in a pane, or null. */
 function activeIn(paneId: string): ActiveGridPanel | null {
   return _active.get(paneId) ?? null;
@@ -86,12 +125,17 @@ function activeIn(paneId: string): ActiveGridPanel | null {
 
 /** Destroy one pane's grid view/effects (canvas-render teardown + tab switches). */
 export function detachGridPanel(paneId: string) {
+  _missing.get(paneId)?.dispose();
+  _missing.delete(paneId);
   const panel = _active.get(paneId);
   if (!panel) {
     return;
   }
+  panel.views?.close();
+  panel.replace?.close();
   panel.view?.destroy();
   panel.scope.stop();
+  panel.surface?.dispose();
   _active.delete(paneId);
 }
 
@@ -101,127 +145,7 @@ export function gridPanelMounted(paneId: string, tab: Tab): boolean {
   return panel !== null && panel.tabId === tab.id && panel.wrap.isConnected;
 }
 
-function toolbarTpl(controller: GridController, panel: ActiveGridPanel) {
-  const getView = () => panel.view;
-  const { state } = controller;
-  const gridId = controller.source.id;
-  const layout = loadGridLayout(gridId);
-  const dirty = controller.buffer.dirtyCount();
-  const sourceRef = parseGridTabId(controller.source.id);
-  const lossyNote =
-    sourceRef?.kind === "collection" || sourceRef?.kind === "pages"
-      ? html`<span
-          class="jx-grid-note"
-          title="Saving re-serializes frontmatter; YAML comments and key order are not preserved."
-        >
-          rewrites frontmatter
-        </span>`
-      : nothing;
-
-  return html`
-    <div class="jx-grid-toolbar">
-      <sp-button
-        size="s"
-        variant="accent"
-        ?disabled=${dirty === 0 || state.saving}
-        @click=${() => {
-          void controller.save();
-        }}
-      >
-        Save${dirty > 0 ? ` (${dirty})` : ""}
-      </sp-button>
-      <sp-action-button
-        size="s"
-        quiet
-        title="Reload from source"
-        ?disabled=${state.loading || state.saving}
-        @click=${() => {
-          void controller.refresh();
-        }}
-      >
-        Refresh
-      </sp-action-button>
-      <sp-divider size="s" vertical></sp-divider>
-      ${
-        controller.source.capabilities.insert
-          ? html`<sp-action-button
-              size="s"
-              quiet
-              title="Add a row (saved on Save)"
-              @click=${() => controller.addRow()}
-            >
-              Add Row
-            </sp-action-button>`
-          : nothing
-      }
-      ${
-        controller.source.capabilities.delete
-          ? html`<sp-action-button
-              size="s"
-              quiet
-              title="Mark selected rows for deletion"
-              @click=${() => controller.deleteRows(getView()?.getSelectedRowKeys() ?? [])}
-            >
-              Delete Rows
-            </sp-action-button>`
-          : nothing
-      }
-      <sp-action-button
-        size="s"
-        quiet
-        title="Fill the selected range down from its first row (Ctrl/Cmd-D)"
-        @click=${() => getView()?.fillDown()}
-      >
-        Fill Down
-      </sp-action-button>
-      <sp-action-button
-        size="s"
-        quiet
-        title="Find & replace across text cells"
-        @click=${(e: MouseEvent) => openReplacePopover(controller, e.currentTarget as HTMLElement)}
-      >
-        Replace
-      </sp-action-button>
-      <sp-action-button
-        size="s"
-        quiet
-        class="jx-grid-view-button"
-        title="Saved views, columns, sort and grouping"
-        @click=${(e: MouseEvent) => openViewPopover(controller, panel, e.currentTarget as HTMLElement)}
-      >
-        ${viewButtonLabel(gridId)}
-      </sp-action-button>
-      <sp-search
-        size="s"
-        quiet
-        placeholder="Filter rows"
-        .value=${live(layout?.filter ?? "")}
-        @input=${(e: Event) => {
-          const term = (e.target as HTMLInputElement).value;
-          // The filter is part of the view, so it persists with the rest of it rather than
-          // Evaporating on a tab switch and taking a saved view's meaning with it.
-          saveGridLayout(gridId, { filter: term });
-          getView()?.setSearch(term);
-        }}
-        @submit=${(e: Event) => e.preventDefault()}
-      ></sp-search>
-      <span class="jx-grid-spacer"></span>
-      ${groupNoteTpl(controller)} ${lossyNote}
-      ${controller.source.capabilities.remotePaging ? pagerTpl(controller) : nothing}
-      <span class="jx-grid-count">
-        ${
-          state.loading
-            ? "Loading…"
-            : state.error
-              ? html`<span class="jx-grid-error-text">${state.error}</span>`
-              : `${state.total} row${state.total === 1 ? "" : "s"}`
-        }
-      </span>
-    </div>
-  `;
-}
-
-// ─── Saved views ──────────────────────────────────────────────────────────────
+// ─── Projection ───────────────────────────────────────────────────────────────
 
 /**
  * The View button's label: the applied view's name, with a dot when the layout has since drifted.
@@ -238,206 +162,210 @@ function viewButtonLabel(gridId: string): string {
 }
 
 /** "Grouped by Status · 3 groups" — the grouping is invisible in the rows, so the toolbar says it. */
-function groupNoteTpl(controller: GridController) {
+function groupNote(controller: GridController): string {
   const field = controller.state.grouping;
   if (!field) {
-    return nothing;
+    return "";
   }
   const title = controller.state.columns.find((column) => column.field === field)?.title ?? field;
   const count = controller.groups().length;
-  return html`<span class="jx-grid-note" title="Rows are ordered so each group is contiguous.">
-    Grouped by ${title} · ${count} group${count === 1 ? "" : "s"}
-  </span>`;
+  return `Grouped by ${title} · ${count} group${count === 1 ? "" : "s"}`;
+}
+
+/** The page the reader is on, as "51–100". Only remote-paged sources have one. */
+function pageRange(controller: GridController): string {
+  const { state } = controller;
+  const limit = state.query.limit ?? 50;
+  const offset = state.query.offset ?? 0;
+  const from = state.total === 0 ? 0 : offset + 1;
+  return `${from}–${Math.min(offset + limit, state.total)}`;
+}
+
+/** Everything the frame draws right now, read from the controller, the buffer and the layout. */
+function projectPanel(controller: GridController): GridPanelView {
+  const { state } = controller;
+  const gridId = controller.source.id;
+  const dirty = controller.buffer.dirtyCount();
+  const sourceRef = parseGridTabId(gridId);
+  const limit = state.query.limit ?? 50;
+  const offset = state.query.offset ?? 0;
+  const note = groupNote(controller);
+  return {
+    canDelete: controller.source.capabilities.delete === true,
+    canInsert: controller.source.capabilities.insert === true,
+    countLabel: `${state.total} row${state.total === 1 ? "" : "s"}`,
+    countState: state.loading ? "loading" : state.error ? "error" : "total",
+    error: state.error ?? "",
+    filter: loadGridLayout(gridId)?.filter ?? "",
+    groupNote: note,
+    groupState: note === "" ? "hidden" : "shown",
+    lossyState:
+      sourceRef?.kind === "collection" || sourceRef?.kind === "pages" ? "shown" : "hidden",
+    nextDisabled: offset + limit >= state.total || state.loading,
+    pageRange: pageRange(controller),
+    pagerState: controller.source.capabilities.remotePaging ? "shown" : "hidden",
+    prevDisabled: offset === 0 || state.loading,
+    refreshDisabled: state.loading || state.saving,
+    saveDisabled: dirty === 0 || state.saving,
+    saveLabel: dirty > 0 ? `Save (${dirty})` : "Save",
+    view: "grid",
+    viewLabel: viewButtonLabel(gridId),
+  };
+}
+
+// ─── Saved views ──────────────────────────────────────────────────────────────
+
+/** What the View panel shows: the saved views, and the four facets one of them is made of. */
+function projectViews(controller: GridController, at: { x: number; y: number }): GridViewsView {
+  const gridId = controller.source.id;
+  const layout = loadGridLayout(gridId) ?? {};
+  const saved = listSavedViews(gridId);
+  const activeName = activeViewName(gridId);
+  const hidden = new Set(layout.hidden);
+  const sort = layout.sort ?? null;
+  const { columns } = controller.state;
+  const fields = columns.map((column) => ({ label: column.title, value: column.field }));
+  return {
+    columns: columns.map((column) => ({
+      field: column.field,
+      title: column.title,
+      visible: !hidden.has(column.field),
+    })),
+    dirOptions: [
+      { label: "Ascending", value: "asc" },
+      { label: "Descending", value: "desc" },
+    ],
+    fieldOptions: [{ label: "Source order", value: "" }, ...fields],
+    groupField: controller.state.grouping ?? "",
+    groupOptions: [{ label: "Ungrouped", value: "" }, ...fields],
+    saveLabel: activeName ? "Save as…" : "Save view…",
+    sortDir: sort?.dir ?? "asc",
+    sortDirDisabled: sort === null,
+    sortField: sort?.field ?? "",
+    views: saved.map((view) => ({
+      active: view.name === activeName ? "true" : "false",
+      current: view.name === activeName ? "true" : "false",
+      deleteLabel: `Delete the saved view ${view.name}`,
+      key: view.name,
+      name: view.name,
+    })),
+    viewsState: saved.length === 0 ? "empty" : "listed",
+    x: at.x,
+    y: at.y,
+  };
 }
 
 /**
- * The View popover: saved views, then the four facets one of them is made of.
+ * The View panel: saved views, then the four facets one of them is made of.
  *
  * One control rather than four, because the chrome budget is a cap on named things in the toolbar
  * (plan §2, principle 9) and these four are only ever adjusted together. Each edit writes the
  * working layout and applies immediately — there is no Apply button, so there is no state in which
- * the popover shows something the grid is not already doing.
+ * the panel shows something the grid is not already doing.
  */
-function openViewPopover(controller: GridController, panel: ActiveGridPanel, anchor: HTMLElement) {
+function openViewPopover(
+  controller: GridController,
+  panel: ActiveGridPanel,
+  anchor: HTMLElement,
+): void {
+  /* A second press on the button TOGGLES. The platform does not light-dismiss a popover from its
+     own invoker — that is what passing the anchor as the popover's source buys — so without this
+     the button stacks a second panel into the same layer slot, and the first one's `toggle` tears
+     down the slot the second was just mounted into. */
+  if (panel.views?.isOpen()) {
+    panel.views.close();
+    panel.views = null;
+    return;
+  }
   const rect = rectOf(anchor);
+  const at = { x: Math.max(4, rect.left), y: rect.bottom + 4 };
+  panel.viewsAt = at;
   const gridId = controller.source.id;
-  // Opened empty and filled by `rerender()` below, because the body's handlers close over `handle`
-  // And every one of them re-renders the popover in place rather than closing it.
-  const handle = renderPopover(nothing as never, {
-    dismissOnOutsideClick: true,
-    region: "grid/views",
-  });
-  const rerender = () => handle.update(body());
-  const close = () => handle.dismiss();
+  const close = () => {
+    panel.views?.close();
+    panel.views = null;
+  };
 
-  /** Persist one facet, put it on screen, and refresh both the popover and the toolbar. */
+  /** Persist one facet, put it on screen, and refresh both the panel and the toolbar. */
   const change = (patch: GridLayout, apply: () => void) => {
     saveGridLayout(gridId, patch);
     apply();
     panel.bump();
-    rerender();
   };
 
-  function body() {
-    const layout = loadGridLayout(gridId) ?? {};
-    const views = listSavedViews(gridId);
-    const activeName = activeViewName(gridId);
-    const hidden = new Set(layout.hidden);
-    const sort = layout.sort ?? null;
-    const { columns } = controller.state;
+  const setSort = (spec: GridSortSpec | null) =>
+    change({ sort: spec }, () => {
+      void controller.setSort(spec);
+    });
 
-    const setSort = (spec: GridSortSpec | null) =>
-      change({ sort: spec }, () => {
-        void controller.setSort(spec);
-      });
-
-    return html`<sp-popover
-      open
-      class="jx-grid-view-popover"
-      style="position:fixed;z-index:10000;left:${Math.max(4, rect.left)}px;top:${rect.bottom + 4}px"
-    >
-      <div class="jx-grid-cell-popover-body">
-        <div class="jx-grid-cell-popover-title">Saved views</div>
-        ${
-          views.length === 0
-            ? html`<div class="jx-grid-view-empty">
-                No saved views yet. Arrange the grid, then save it under a name.
-              </div>`
-            : views.map(
-                (view) => html`<div class="jx-grid-view-row">
-                  <button
-                    class="jx-grid-view-name ${view.name === activeName ? "is-active" : ""}"
-                    @click=${() => {
-                      panel.applyLayout(applySavedView(gridId, view.name));
-                      close();
-                    }}
-                  >
-                    ${view.name}
-                  </button>
-                  <sp-action-button
-                    size="s"
-                    quiet
-                    title="Delete this view"
-                    @click=${async () => {
-                      const confirmed = await showConfirmDialog(
-                        "Delete View",
-                        `Delete the saved view "${view.name}"? The grid keeps its current layout.`,
-                        { confirmLabel: "Delete", destructive: true },
-                      );
-                      if (confirmed && deleteSavedView(gridId, view.name)) {
-                        panel.bump();
-                        rerender();
-                      }
-                    }}
-                    >✕</sp-action-button
-                  >
-                </div>`,
-              )
+  panel.views = openGridViewsSurface(
+    projectViews(controller, at),
+    {
+      applyView: (name) => {
+        panel.applyLayout(applySavedView(gridId, name));
+        close();
+      },
+      deleteView: (name) => {
+        void confirmDeleteView(gridId, name, panel);
+      },
+      dismissed: () => {
+        panel.views = null;
+      },
+      reset: () => {
+        resetGridLayout(gridId);
+        panel.applyLayout(null);
+        close();
+      },
+      saveView: () => {
+        void promptSaveView(controller, panel);
+      },
+      setGroup: (field) => {
+        change({ groupBy: field || null }, () => controller.setGrouping(field || null));
+      },
+      setSortDir: (dir) => {
+        const sort = loadGridLayout(gridId)?.sort ?? null;
+        if (sort) {
+          setSort({ dir: dir === "desc" ? "desc" : "asc", field: sort.field });
         }
-        <div class="jx-grid-cell-popover-actions">
-          <sp-button
-            size="s"
-            variant="accent"
-            @click=${() => {
-              void promptSaveView(controller, panel, rerender);
-            }}
-          >
-            ${activeName ? "Save as…" : "Save view…"}
-          </sp-button>
-          <sp-button
-            size="s"
-            variant="secondary"
-            title="Forget this grid's saved columns, sort, grouping and filter. Named views are kept."
-            @click=${() => {
-              resetGridLayout(gridId);
-              panel.applyLayout(null);
-              close();
-            }}
-          >
-            Reset
-          </sp-button>
-        </div>
+      },
+      setSortField: (field) => {
+        const sort = loadGridLayout(gridId)?.sort ?? null;
+        setSort(field === "" ? null : { dir: sort?.dir ?? "asc", field });
+      },
+      toggleColumn: (field, visible) => {
+        const hidden = new Set(loadGridLayout(gridId)?.hidden);
+        if (visible) {
+          hidden.delete(field);
+        } else {
+          hidden.add(field);
+        }
+        change({ hidden: [...hidden] }, () => panel.remount());
+      },
+    },
+    anchor,
+  );
 
-        <div class="jx-grid-cell-popover-title">Columns</div>
-        ${columns.map(
-          (column) => html`<label class="jx-grid-view-check">
-            <input
-              type="checkbox"
-              .checked=${!hidden.has(column.field)}
-              data-field=${column.field}
-              @change=${(e: Event) => {
-                const next = new Set(hidden);
-                if ((e.target as HTMLInputElement).checked) {
-                  next.delete(column.field);
-                } else {
-                  next.add(column.field);
-                }
-                change({ hidden: [...next] }, () => panel.remount());
-              }}
-            />
-            ${column.title}
-          </label>`,
-        )}
-
-        <div class="jx-grid-cell-popover-title">Sort</div>
-        <select
-          class="jx-grid-input jx-grid-sort-field"
-          @change=${(e: Event) => {
-            const field = (e.target as HTMLSelectElement).value;
-            setSort(field === "" ? null : { dir: sort?.dir ?? "asc", field });
-          }}
-        >
-          <option value="" ?selected=${!sort}>Source order</option>
-          ${columns.map(
-            (column) =>
-              html`<option value=${column.field} ?selected=${sort?.field === column.field}>
-                ${column.title}
-              </option>`,
-          )}
-        </select>
-        <select
-          class="jx-grid-input jx-grid-sort-dir"
-          ?disabled=${!sort}
-          @change=${(e: Event) => {
-            const dir = (e.target as HTMLSelectElement).value === "desc" ? "desc" : "asc";
-            if (sort) {
-              setSort({ dir, field: sort.field });
-            }
-          }}
-        >
-          <option value="asc" ?selected=${sort?.dir !== "desc"}>Ascending</option>
-          <option value="desc" ?selected=${sort?.dir === "desc"}>Descending</option>
-        </select>
-
-        <div class="jx-grid-cell-popover-title">Group by</div>
-        <select
-          class="jx-grid-input jx-grid-group-field"
-          @change=${(e: Event) => {
-            const field = (e.target as HTMLSelectElement).value || null;
-            change({ groupBy: field }, () => controller.setGrouping(field));
-          }}
-        >
-          <option value="" ?selected=${!controller.state.grouping}>Ungrouped</option>
-          ${columns.map(
-            (column) =>
-              html`<option
-                value=${column.field}
-                ?selected=${controller.state.grouping === column.field}
-              >
-                ${column.title}
-              </option>`,
-          )}
-        </select>
-      </div>
-    </sp-popover>`;
-  }
-
-  rerender();
-  // The button's label is derived from storage, and storage is ALSO written by the engine — a
-  // Column drag or resize goes straight to `saveGridLayout` from `grid-view.ts`. Refreshing the
-  // Toolbar as the control opens is what stops the drift dot lagging a resize by one interaction.
+  /* The button's label is derived from storage, and storage is ALSO written by the engine — a
+     column drag or resize goes straight to `saveGridLayout` from `grid-view.ts`. Refreshing the
+     toolbar as the control opens is what stops the drift dot lagging a resize by one interaction,
+     and it is what puts the freshly-read projection into the panel that just opened. */
   panel.bump();
-  return handle;
+}
+
+/** Ask before forgetting a named view, and re-project when one is actually gone. */
+async function confirmDeleteView(
+  gridId: string,
+  name: string,
+  panel: ActiveGridPanel,
+): Promise<void> {
+  const confirmed = await showConfirmDialog(
+    "Delete View",
+    `Delete the saved view "${name}"? The grid keeps its current layout.`,
+    { confirmLabel: "Delete", destructive: true },
+  );
+  if (confirmed && deleteSavedView(gridId, name)) {
+    panel.bump();
+  }
 }
 
 /**
@@ -450,7 +378,6 @@ function openViewPopover(controller: GridController, panel: ActiveGridPanel, anc
 async function promptSaveView(
   controller: GridController,
   panel: ActiveGridPanel,
-  rerender: () => void,
 ): Promise<string | null> {
   const gridId = controller.source.id;
   const name = await showPromptDialog("Save Grid View", {
@@ -473,136 +400,50 @@ async function promptSaveView(
     return null;
   }
   panel.bump();
-  rerender();
   return saved.name;
 }
 
-/** Find & replace popover — buffers all replacements as one undo group. */
-function openReplacePopover(controller: GridController, anchor: HTMLElement) {
+/** Find & replace panel — buffers all replacements as one undo group. */
+function openReplacePopover(
+  controller: GridController,
+  panel: ActiveGridPanel,
+  anchor: HTMLElement,
+): void {
+  if (panel.replace?.isOpen()) {
+    panel.replace.close();
+    panel.replace = null;
+    return;
+  }
   const rect = rectOf(anchor);
-  let find = "";
-  let replace = "";
-  const handle = renderPopover(
-    html`<sp-popover
-      open
-      class="jx-grid-replace-popover"
-      style="position:fixed;z-index:10000;left:${Math.max(4, rect.left)}px;top:${rect.bottom + 4}px"
-    >
-      <div class="jx-grid-cell-popover-body">
-        <div class="jx-grid-cell-popover-title">Find &amp; Replace</div>
-        <input
-          class="jx-grid-input"
-          placeholder="Find…"
-          @input=${(e: Event) => (find = (e.target as HTMLInputElement).value)}
-        />
-        <input
-          class="jx-grid-input"
-          placeholder="Replace with…"
-          @input=${(e: Event) => (replace = (e.target as HTMLInputElement).value)}
-        />
-        <div class="jx-grid-cell-popover-actions">
-          <sp-button
-            size="s"
-            variant="accent"
-            @click=${() => {
-              const changed = controller.replaceAll(find, replace);
-              if (changed === 0) {
-                notify.info("No matches.", { key: "grid.replaceAll" });
-              } else {
-                notify.success(
-                  `Replaced in ${changed} cell${changed === 1 ? "" : "s"} — save to apply.`,
-                  { action: "file.save", key: "grid.replaceAll" },
-                );
-              }
-              if (changed > 0) {
-                handle.dismiss();
-              }
-            }}
-          >
-            Replace All
-          </sp-button>
-          <sp-button size="s" variant="secondary" @click=${() => handle.dismiss()}>
-            Cancel
-          </sp-button>
-        </div>
-      </div>
-    </sp-popover>`,
-    { dismissOnOutsideClick: true },
+  panel.replace = openGridReplaceSurface(
+    { x: Math.max(4, rect.left), y: rect.bottom + 4 },
+    {
+      dismissed: () => {
+        panel.replace = null;
+      },
+      replaceAll: (find, replace) => {
+        const changed = controller.replaceAll(find, replace);
+        if (changed === 0) {
+          notify.info("No matches.", { key: "grid.replaceAll" });
+          return;
+        }
+        notify.success(`Replaced in ${changed} cell${changed === 1 ? "" : "s"} — save to apply.`, {
+          action: "file.save",
+          key: "grid.replaceAll",
+        });
+        panel.replace?.close();
+        panel.replace = null;
+      },
+    },
+    anchor,
   );
 }
 
-/** Prev/Next pager for remote-paged sources (connector tables). */
-function pagerTpl(controller: GridController) {
-  const { state } = controller;
-  const limit = state.query.limit ?? 50;
-  const offset = state.query.offset ?? 0;
-  const from = state.total === 0 ? 0 : offset + 1;
-  const to = Math.min(offset + limit, state.total);
-  return html`
-    <sp-action-button
-      size="s"
-      quiet
-      title="Previous page"
-      ?disabled=${offset === 0 || state.loading}
-      @click=${() => {
-        void controller.setQuery({
-          ...state.query,
-          limit,
-          offset: Math.max(0, offset - limit),
-        });
-      }}
-    >
-      ‹ Prev
-    </sp-action-button>
-    <span class="jx-grid-count">${from}–${to}</span>
-    <sp-action-button
-      size="s"
-      quiet
-      title="Next page"
-      ?disabled=${offset + limit >= state.total || state.loading}
-      @click=${() => {
-        void controller.setQuery({ ...state.query, limit, offset: offset + limit });
-      }}
-    >
-      Next ›
-    </sp-action-button>
-  `;
-}
-
-function shellTpl(
-  controller: GridController,
-  panel: ActiveGridPanel,
-  onHost: (el: HTMLElement | undefined) => void,
-) {
-  return html`
-    <div class="jx-grid">
-      ${toolbarTpl(controller, panel)}
-      ${guard(
-        [controller.source.id],
-        /* Tabulator OWNS this node's children once createGridView hands it over, so a toolbar tick
-           must not re-render it. Today that holds by ACCIDENT: shellTpl returns the same template
-           shape every pass, so lit keeps the element and patches only the toolbar above it. Put
-           this div behind a conditional, or inside a map, and the next tick silently destroys the
-           whole table. The guard says the guarantee out loud.
-           Keyed on the SOURCE, not on nothing: an empty dependency list also suppresses the
-           re-commit a tab switch needs. `hostEl` lives in the panel closure, so switching tabs
-           builds a fresh one and relies on `ref` firing again with the new callback to hand the
-           node over; memoising past that leaves the new panel with a null host and no engine. */
-        () =>
-          html`<div
-            class="jx-grid-host"
-            ${ref((el) => onHost(el as HTMLElement | undefined))}
-          ></div>`,
-      )}
-    </div>
-  `;
-}
-
 /**
- * Render the grid surface for a tab into #canvas-wrap. Re-entrant: same-tab calls while the panel
+ * Render the grid surface for a tab onto a pane's stage. Re-entrant: same-tab calls while the panel
  * is live are no-ops (the panel's own effect keeps it fresh).
  *
- * @param {HTMLElement} canvasWrap
+ * @param {CanvasSurface} surface
  * @param {Tab} tab
  */
 export function renderGridMode(surface: CanvasSurface, tab: Tab) {
@@ -620,17 +461,15 @@ export function renderGridMode(surface: CanvasSurface, tab: Tab) {
     void controller.load();
   }
   if (!controller) {
-    litRender(html`<div class="jx-grid-missing">This tab has no grid source.</div>`, canvasWrap);
+    _missing.set(paneId, mountGridPanelSurface(canvasWrap, missingView(), missingActions()));
     return;
   }
 
   const scope = effectScope();
-  // `localStorage` is not reactive and neither is the engine, so the toolbar needs something that
-  // Is: a saved-view edit bumps this and the panel's one effect re-renders like any other change.
+  /* `localStorage` is not reactive and neither is the engine, so the surface needs something that
+     is: a saved-view edit, or the host node arriving, bumps this and the panel's one effect
+     re-projects like any other change. */
   const local = reactive({ views: 0 });
-  /* Named `controller` everywhere else in this file; this alias exists so the closures below
-     capture it by a short name. NOT `live` — that is lit's directive, imported above and used
-     in shellTpl, and a local of the same name shadows it. */
   const engine = controller;
   let hostEl: HTMLElement | null = null;
 
@@ -645,21 +484,72 @@ export function renderGridMode(surface: CanvasSurface, tab: Tab) {
     bump() {
       local.views += 1;
     },
+    paneId,
     remount() {
       panel.view?.destroy();
       panel.view = hostEl ? createGridView(hostEl, engine) : null;
     },
-    paneId,
+    replace: null,
     scope,
+    surface: null,
     tabId: tab.id,
     view: null,
+    views: null,
+    viewsAt: { x: 0, y: 0 },
     wrap: canvasWrap,
   };
   _active.set(paneId, panel);
 
-  const onHost = (el: HTMLElement | undefined) => {
-    hostEl = el ?? null;
-  };
+  panel.surface = mountGridPanelSurface(canvasWrap, projectPanel(engine), {
+    addRow: () => engine.addRow(),
+    deleteRows: () => engine.deleteRows(panel.view?.getSelectedRowKeys() ?? []),
+    fillDown: () => panel.view?.fillDown(),
+    gridHost: (element) => {
+      hostEl = element;
+    },
+    nextPage: () => {
+      const limit = engine.state.query.limit ?? 50;
+      void engine.setQuery({
+        ...engine.state.query,
+        limit,
+        offset: (engine.state.query.offset ?? 0) + limit,
+      });
+    },
+    openReplace: (element) => {
+      openReplacePopover(engine, panel, element);
+    },
+    openViews: (element) => {
+      openViewPopover(engine, panel, element);
+    },
+    prevPage: () => {
+      const limit = engine.state.query.limit ?? 50;
+      void engine.setQuery({
+        ...engine.state.query,
+        limit,
+        offset: Math.max(0, (engine.state.query.offset ?? 0) - limit),
+      });
+    },
+    refresh: () => {
+      void engine.refresh();
+    },
+    save: () => {
+      void engine.save();
+    },
+    setFilter: (term) => {
+      // The filter is part of the view, so it persists with the rest of it rather than
+      // Evaporating on a tab switch and taking a saved view's meaning with it.
+      saveGridLayout(engine.source.id, { filter: term });
+      panel.view?.setSearch(term);
+    },
+  });
+  /* The host node is announced during the mount, one reconcile step before it is in the page. The
+     engine is built from the EFFECT rather than from there, so it is never handed a detached node —
+     `ready` is the document saying the frame has landed. */
+  void panel.surface.ready.then(() => {
+    if (activeIn(paneId) === panel) {
+      panel.bump();
+    }
+  });
 
   // The stored sort, grouping and filter are applied ONCE, when the engine first exists. Re-running
   // Them on every render would fight the author: every ad-hoc header sort would be undone by the
@@ -672,35 +562,73 @@ export function renderGridMode(surface: CanvasSurface, tab: Tab) {
         return;
       }
       // Track everything the toolbar shows.
-      void controller.state.loading;
-      void controller.state.saving;
-      void controller.state.error;
-      void controller.state.total;
-      void controller.state.query.offset;
-      void controller.state.grouping;
-      void controller.buffer.dirtyCount();
+      void engine.state.loading;
+      void engine.state.saving;
+      void engine.state.error;
+      void engine.state.total;
+      void engine.state.query.offset;
+      void engine.state.grouping;
+      void engine.buffer.dirtyCount();
       void local.views;
 
-      litRender(shellTpl(controller, panel, onHost), canvasWrap);
+      panel.surface?.update(projectPanel(engine));
+      panel.views?.update(projectViews(engine, panel.viewsAt));
 
       // Create the engine once the columns exist and the host div is in the DOM.
-      if (
-        !panel.view &&
-        !controller.state.loading &&
-        controller.state.columns.length > 0 &&
-        hostEl
-      ) {
-        panel.view = createGridView(hostEl, controller);
+      if (!panel.view && !engine.state.loading && engine.state.columns.length > 0 && hostEl) {
+        panel.view = createGridView(hostEl, engine);
         if (!restored) {
           restored = true;
-          const layout = loadGridLayout(controller.source.id);
-          void controller.setSort(layout?.sort ?? null);
-          controller.setGrouping(layout?.groupBy ?? null);
+          const layout = loadGridLayout(engine.source.id);
+          void engine.setSort(layout?.sort ?? null);
+          engine.setGrouping(layout?.groupBy ?? null);
           panel.view.setSearch(layout?.filter ?? "");
         }
       }
     });
   });
+}
+
+/** The frame a tab with no grid source draws: one sentence, and no controls to press. */
+function missingView(): GridPanelView {
+  return {
+    canDelete: false,
+    canInsert: false,
+    countLabel: "",
+    countState: "total",
+    error: "",
+    filter: "",
+    groupNote: "",
+    groupState: "hidden",
+    lossyState: "hidden",
+    nextDisabled: true,
+    pageRange: "",
+    pagerState: "hidden",
+    prevDisabled: true,
+    refreshDisabled: true,
+    saveDisabled: true,
+    saveLabel: "Save",
+    view: "missing",
+    viewLabel: "View",
+  };
+}
+
+/** No control is drawn in the missing state, so none of these can be reached. */
+function missingActions(): GridPanelActions {
+  const nothing = () => {};
+  return {
+    addRow: nothing,
+    deleteRows: nothing,
+    fillDown: nothing,
+    gridHost: nothing,
+    nextPage: nothing,
+    openReplace: nothing,
+    openViews: nothing,
+    prevPage: nothing,
+    refresh: nothing,
+    save: nothing,
+    setFilter: nothing,
+  };
 }
 
 // ─── Commands ─────────────────────────────────────────────────────────────────
@@ -721,7 +649,7 @@ function activeGridSurface(): { controller: GridController; panel: ActiveGridPan
   return { controller, panel: active };
 }
 
-/** The saved-view verbs. Every one of them is also a control in the View popover. */
+/** The saved-view verbs. Every one of them is also a control in the View panel. */
 function requireSurface(commandId: string) {
   const surface = activeGridSurface();
   if (!surface) {
@@ -734,7 +662,7 @@ function requireSurface(commandId: string) {
  * Saved views, as commands.
  *
  * A view is named, so it is addressable, so it belongs in the palette, on the `__jxAutomation`
- * surface and in front of the assistant — not only behind a popover the author has to find. The
+ * surface and in front of the assistant — not only behind a panel the author has to find. The
  * refusals name what the grid actually holds, in the idiom of `collection.editInGrid`: an unknown
  * view lists the views that exist rather than doing nothing.
  *
@@ -772,7 +700,7 @@ export function gridViewCommands(): AnyCommand[] {
       },
       run: async () => {
         const { controller, panel } = requireSurface("grid.saveView");
-        await promptSaveView(controller, panel, () => {});
+        await promptSaveView(controller, panel);
       },
       title: "Save Grid View…",
     },

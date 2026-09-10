@@ -66,8 +66,8 @@ export function initLayers() {
 const UNDERLAID = "jx-dialog[data-open], sp-dialog-wrapper[open], sp-underlay[open]";
 
 /**
- * Whether a surface with an underlay is up — a dialog from {@link showDialog}, or an
- * {@link openModal} body that renders its own `sp-underlay`.
+ * Whether a surface with an underlay is up — a dialog from {@link showDialog}, or a `jx-dialog`
+ * surface mounted into the modal layer (`surfaces/progress-modal.ts`, `surfaces/publish.ts`).
  *
  * Read by the app-level keyboard handlers, which must stand down while one is: an underlay swallows
  * every pointer event across the viewport, so leaving shortcuts live means <kbd>Delete</kbd>,
@@ -118,24 +118,6 @@ function focusOverlay(slot: HTMLElement): void {
   });
 }
 
-/**
- * Keep <kbd>Tab</kbd> inside the overlay: cycle through the body's focusables, wrapping at both
- * ends. With no focusable body at all the caret stays on the slot — tabbing out of a surface the
- * mouse cannot leave either would strand the keyboard behind the underlay.
- */
-function trapTab(slot: HTMLElement, e: KeyboardEvent): void {
-  e.preventDefault();
-  const items = focusablesIn(slot);
-  if (items.length === 0) {
-    return;
-  }
-  const at = items.indexOf(document.activeElement as HTMLElement);
-  const next = e.shiftKey
-    ? items[at <= 0 ? items.length - 1 : at - 1]
-    : items[at === -1 || at === items.length - 1 ? 0 : at + 1];
-  next?.focus();
-}
-
 /** How an overlay slot behaves once it is up. */
 interface OverlaySlotOptions {
   /** Layer host the slot is appended to. */
@@ -149,16 +131,16 @@ interface OverlaySlotOptions {
   regionId?: string | undefined;
   /** Handle <kbd>Escape</kbd> pressed inside the slot; the callback owns `preventDefault`. */
   onEscape?: (e: KeyboardEvent, slot: HTMLElement) => void;
-  /** Cycle <kbd>Tab</kbd> within the slot instead of letting it walk into the app behind. */
-  trapFocus?: boolean;
 }
 
 /**
  * Open a slot in a layer with the full overlay keyboard contract: focus in on open, focus back to
- * the opener on close, centralised <kbd>Escape</kbd>, and (optionally) a Tab trap.
+ * the opener on close, and centralised <kbd>Escape</kbd>.
  *
- * Both {@link showDialog} and {@link openModal} are thin wrappers over this — one contract, one
- * implementation, so no surface can ship without the machinery.
+ * {@link showDialog} is a thin wrapper over this — one contract, one implementation, so no lit body
+ * can ship without the machinery. There is no Tab trap: a `jx-dialog` surface is opened with
+ * `showModal()`, which makes the rest of the page inert by itself, and a `showDialog` body's action
+ * buttons live in a shadow root a light-DOM cycle cannot enumerate.
  */
 function openOverlaySlot(opts: OverlaySlotOptions): { slot: HTMLElement; release: () => void } {
   const slot = document.createElement("div");
@@ -176,10 +158,6 @@ function openOverlaySlot(opts: OverlaySlotOptions): { slot: HTMLElement; release
   const onKeydown = (e: KeyboardEvent) => {
     if (e.key === "Escape") {
       opts.onEscape?.(e, slot);
-      return;
-    }
-    if (e.key === "Tab" && opts.trapFocus) {
-      trapTab(slot, e);
     }
   };
   slot.addEventListener("keydown", onKeydown);
@@ -431,6 +409,20 @@ export interface PromptDialogOptions {
   value?: string;
   /** A picker above the field whose selection this dialog owns. */
   choice?: PromptChoice;
+  /**
+   * Make the field a paste box: several lines, Enter inserts one rather than confirming.
+   *
+   * This is still `showPromptDialog` and not a second dialog. A redirects import is one value the
+   * author pastes and one answer they give, which is exactly what this flow is; what it needed was
+   * a field tall enough to read the value back in, and that is a property of the field.
+   */
+  multiline?: boolean;
+  /** How many lines a multiline field opens at. */
+  rows?: string;
+  /** Monospaced, for a format whose columns line up in the file it was copied from. */
+  mono?: boolean;
+  /** The dialog's width — a paste box wants more than a name does. */
+  size?: "sm" | "md" | "lg";
 }
 
 /**
@@ -452,8 +444,12 @@ export function showPromptDialog(
     choice,
     confirmLabel = "OK",
     message,
+    mono = false,
+    multiline = false,
     placeholder = "",
+    rows = "3",
     select = "all",
+    size,
     validate,
     value: initialValue = "",
   } = opts;
@@ -498,7 +494,8 @@ export function showPromptDialog(
       layer: layerHost("dialog"),
       ...(message === undefined ? {} : messageOptions(message)),
       ...(choice ? { choice: { chosen, label: choice.label, options: optionsNow() } } : {}),
-      field: { placeholder: placeholderNow(), select, value },
+      field: { mono, multiline, placeholder: placeholderNow(), rows, select, value },
+      ...(size === undefined ? {} : { size }),
       onCancel: () => done(null),
       onClosed: () => done(null),
       onConfirm: () => {
@@ -538,79 +535,6 @@ export function showPromptDialog(
       },
     });
   });
-}
-
-/** Options accepted by {@link openModal}. */
-export interface ModalOptions {
-  /**
-   * Accessible name for the modal, applied as `aria-label` on the wrapper. Required: it is the only
-   * name assistive tech gets, and a per-modal opt-in would be forgotten.
-   */
-  label: string;
-  /**
-   * Whether <kbd>Escape</kbd> dismisses. `false` for modals that must not vanish mid-flight (a
-   * running operation, a step that has to be confirmed).
-   */
-  dismissible?: boolean;
-  /**
-   * What <kbd>Escape</kbd> runs. Defaults to the handle's own `close()`; pass the call site's close
-   * function when it keeps bookkeeping of its own (a module-level handle to clear).
-   */
-  onDismiss?: () => void;
-  /**
-   * Instance name for this modal's region — `overlay.dialog:settings`.
-   *
-   * Optional because one modal at a time is the norm and `overlay.dialog` addresses it. A modal
-   * that can be open beside another, or that a command needs to move focus back into by name,
-   * declares one.
-   */
-  region?: string;
-}
-
-/**
- * Open a persistent modal. Returns a handle with update() and close() methods.
- *
- * The wrapper — not the body — owns the modal contract, so no surface can ship without it: the slot
- * is the `role="dialog"` element, carries `aria-modal` and the caller's label, takes the keyboard
- * on open, cycles <kbd>Tab</kbd> within itself, dismisses on <kbd>Escape</kbd>, and hands focus
- * back to the opener on close. Bodies render content only.
- *
- * @param {import("lit-html").TemplateResult} template
- * @param {ModalOptions} opts
- */
-export function openModal(template: TemplateResult, opts: ModalOptions) {
-  const { release, slot } = openOverlaySlot({
-    kind: "modal",
-    layer: layerHost("modal"),
-    onEscape(e) {
-      if (opts.dismissible === false) {
-        return;
-      }
-      // Stop it ALSO reaching the app behind (which clears the canvas selection on Escape).
-      e.preventDefault();
-      e.stopPropagation();
-      (opts.onDismiss ?? handle.close)();
-    },
-    regionId: opts.region,
-    trapFocus: true,
-  });
-  slot.setAttribute("role", "dialog");
-  slot.setAttribute("aria-modal", "true");
-  slot.setAttribute("aria-label", opts.label);
-
-  const handle = {
-    close() {
-      release();
-    },
-    host: slot,
-    /** @param {import("lit-html").TemplateResult} tpl */
-    update(tpl: TemplateResult) {
-      litRender(tpl, slot);
-    },
-  };
-  litRender(template, slot);
-  focusOverlay(slot);
-  return handle;
 }
 
 /**

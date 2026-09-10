@@ -17,7 +17,6 @@ import {
 import type { NavigatorPanelDeps, PanelRecord } from "../src/panels/panel-registry";
 import { setProjectState } from "../src/store";
 import { closeAllTabs } from "../src/workspace/workspace";
-import { renderFilesTemplate } from "../src/files/files";
 import { cleanupGitPanel, renderGitPanel } from "../src/panels/git-panel";
 import {
   navigatorPanelSet,
@@ -242,20 +241,14 @@ describe("the Navigator's panel set", () => {
 /**
  * The deps a PROJECT-level panel may touch, and a tripwire for everything else.
  *
- * Only the two renderers project-level records delegate to are real. Every other member of
+ * Only the one renderer a project-level record still delegates to is real. Every other member of
  * {@link NavigatorPanelDeps} is a document-level renderer or a document-level gesture registration,
- * so reaching for one IS the violation this suite is looking for — and the error names which.
+ * so reaching for one IS the violation this suite is looking for — and the error names which. Files
+ * is a document mounted by its own `afterRender` and reaches for NOTHING, which is why its entry is
+ * gone rather than stubbed: a regression that made it delegate again lands on the Proxy.
  */
 function projectPanelDeps(): NavigatorPanelDeps {
-  const provided: Partial<NavigatorPanelDeps> = {
-    renderFilesTemplate: () =>
-      renderFilesTemplate({
-        openFileFromTree: () => {},
-        openProject: () => {},
-        renderLeftPanel: () => {},
-      }),
-    renderGitPanel,
-  };
+  const provided: Partial<NavigatorPanelDeps> = { renderGitPanel };
   return new Proxy(provided, {
     get(target, prop) {
       if (typeof prop === "symbol" || prop in target) {
@@ -365,7 +358,8 @@ describe("every project-level panel renders with no document open", () => {
     shell.git.loading = false;
     const settled = await paint();
     expect(settled.get("git")?.textContent).toContain("not tracked by git");
-    expect(settled.get("files")?.querySelector(".file-tree")).not.toBeNull();
+    // Addressed by role, because Files is a document too (`surfaces/files-panel.json`).
+    expect(settled.get("files")?.querySelector('[role="tree"]')).not.toBeNull();
 
     shell.git.branches = { branches: ["main"], current: "main" } as never;
     shell.git.status = {

@@ -11,12 +11,15 @@
  * Everything else here is the rest of the audit: the keyboard walk, the reveal that follows a
  * selection made somewhere else, the ARIA set counts, and the drag that must not have the rows
  * pulled out from under it.
+ *
+ * The body is a Jx document now, so the rows are `[part="row"]`, the spacers are `[part="pad"]`,
+ * and the drag mark the repaint guard looks for is `data-dragging` rather than a class.
  */
-import { flush, renderInto, resetWorkspaceWithTab, stubRect } from "./harness";
+import { flush, resetWorkspaceWithTab, stubRect } from "./harness";
+import { click, outlineHost, press, resetOutline, row, tree, treeItems } from "./outline-fixture";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { activeTab, closeAllTabs } from "../src/workspace/workspace";
 import { view } from "../src/view";
-import { initLayers } from "../src/ui/layers";
 import { getPanel, resetPanels } from "../src/panels/panel-registry";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 import type { JxPath } from "../src/state";
@@ -28,7 +31,7 @@ void mock.module("@atlaskit/pragmatic-drag-and-drop/element/adapter", () => ({
   monitorForElements: () => () => {},
 }));
 
-const { OUTLINE_ROW_HEIGHT, clearHoverActions, registerLayersPanel, renderLayersTemplate } =
+const { OUTLINE_ROW_HEIGHT, mountOutlinePanel, registerLayersPanel } =
   await import("../src/panels/layers-panel");
 
 /** Children of the root — enough that a window is a small fraction of the tree. */
@@ -57,30 +60,24 @@ function makeDoc(): JxMutableNode {
  * scroller's viewport, and the tree's top relative to it — which is what moves when you scroll.
  */
 function place(): void {
-  const tree = host.querySelector<HTMLElement>(".layers-tree");
-  if (tree) {
-    (tree as { getBoundingClientRect: () => DOMRect }).getBoundingClientRect = () =>
+  const el = tree(host);
+  if (el) {
+    (el as { getBoundingClientRect: () => DOMRect }).getBoundingClientRect = () =>
       ({ height: ROW_COUNT * OUTLINE_ROW_HEIGHT, top: -scroller.scrollTop }) as DOMRect;
   }
 }
 
-async function renderLayers(): Promise<void> {
-  await renderInto(
-    renderLayersTemplate({
-      navigateToComponent: () => {},
+async function draw(): Promise<void> {
+  mountOutlinePanel(
+    {
+      registerDnD: () => {},
       rerender: () => {
-        void renderLayers();
+        void draw();
       },
-    }),
+    },
     host,
   );
-  place();
-}
-
-/** Render until the tree has been adopted and the second, windowed pass has run. */
-async function renderWindowed(): Promise<void> {
-  await renderLayers();
-  await flush();
+  await flush(3);
   place();
 }
 
@@ -88,12 +85,8 @@ async function scrollTo(top: number): Promise<void> {
   scroller.scrollTop = top;
   place();
   scroller.dispatchEvent(new Event("scroll"));
-  await flush();
-  await flush();
-}
-
-function rows(): HTMLElement[] {
-  return [...host.querySelectorAll<HTMLElement>('.layer-row[role="treeitem"]')];
+  await flush(3);
+  place();
 }
 
 function childPath(index: number): JxPath {
@@ -101,15 +94,7 @@ function childPath(index: number): JxPath {
 }
 
 function rowFor(index: number): HTMLElement | null {
-  return host.querySelector<HTMLElement>(`.layer-row[data-path="children/${index}"]`);
-}
-
-function click(el: HTMLElement, opts: MouseEventInit = {}): void {
-  el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, ...opts }));
-}
-
-function press(el: HTMLElement, key: string, opts: KeyboardEventInit = {}): void {
-  el.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key, ...opts }));
+  return row(host, `children/${index}`);
 }
 
 function selection(): JxPath[] {
@@ -118,19 +103,13 @@ function selection(): JxPath[] {
 
 /** The two spacers that stand in for the rows the window left out. */
 function pads(): number[] {
-  return [...host.querySelectorAll<HTMLElement>(".layers-tree > div[aria-hidden]")].map((el) =>
+  return [...host.querySelectorAll<HTMLElement>('[part="pad"]')].map((el) =>
     Number(el.style.height.replace("px", "")),
   );
 }
 
 beforeEach(async () => {
-  document.body.innerHTML = `
-    <div id="scroller"><div id="host"></div></div>
-    <div id="layer-popover"></div>
-    <div id="layer-modal"></div>
-    <div id="layer-dialog"></div>
-  `;
-  initLayers();
+  host = outlineHost(true);
   scroller = document.querySelector("#scroller") as HTMLElement;
   scroller.style.overflowY = "auto";
   Object.defineProperty(scroller, "clientHeight", { configurable: true, value: VIEWPORT });
@@ -139,24 +118,24 @@ beforeEach(async () => {
     value: ROW_COUNT * OUTLINE_ROW_HEIGHT,
   });
   stubRect(scroller, { height: VIEWPORT, top: 0 });
-  host = document.querySelector("#host") as HTMLElement;
-  view._layersCollapsed = new Set();
-  view.dndCleanups = [];
-  clearHoverActions();
   resetWorkspaceWithTab(makeDoc());
-  await renderWindowed();
+  await draw();
+  // The first pass draws everything, because nothing can be measured before the tree exists; the
+  // Watch's opening measurement is what asks for the second, windowed one.
+  await flush(3);
+  place();
 });
 
 afterEach(() => {
-  clearHoverActions();
+  resetOutline();
   closeAllTabs();
   resetPanels();
-  document.body.innerHTML = "";
 });
 
 describe("the shift-range is a range over the MODEL", () => {
   test("holds when the anchor has scrolled out of the window", async () => {
     click(rowFor(0)!);
+    await flush();
     expect(selection()).toEqual([childPath(0)]);
 
     await scrollTo(OUTLINE_ROW_HEIGHT * 150);
@@ -165,6 +144,7 @@ describe("the shift-range is a range over the MODEL", () => {
     expect(rowFor(0)).toBeNull();
 
     click(rowFor(149)!, { shiftKey: true });
+    await flush();
     expect(selection()).toHaveLength(150);
     expect(selection()[0]).toEqual(childPath(0));
     expect(selection().at(-1)).toEqual(childPath(149));
@@ -173,11 +153,13 @@ describe("the shift-range is a range over the MODEL", () => {
   test("holds when the TARGET is the row that scrolled away", async () => {
     await scrollTo(OUTLINE_ROW_HEIGHT * 150);
     click(rowFor(149)!);
+    await flush();
     await scrollTo(0);
     expect(rowFor(149)).toBeNull();
 
     // Shift+↑ from a drawn row extends towards an anchor that is not drawn.
     press(rowFor(2)!, "ArrowUp", { shiftKey: true });
+    await flush();
     expect(selection()).toHaveLength(149);
     expect(selection()[0]).toEqual(childPath(149));
     expect(selection().at(-1)).toEqual(childPath(1));
@@ -185,8 +167,8 @@ describe("the shift-range is a range over the MODEL", () => {
 });
 
 describe("the window", () => {
-  test("draws the viewport and its overscan, not the document", async () => {
-    const drawn = rows();
+  test("draws the viewport and its overscan, not the document", () => {
+    const drawn = treeItems(host);
     expect(drawn.length).toBeGreaterThan(0);
     expect(drawn.length).toBeLessThan(20);
     expect(drawn.length).toBeLessThan(ROW_COUNT);
@@ -196,7 +178,7 @@ describe("the window", () => {
   test("reserves the scroll height of every row it did not draw", () => {
     const [padTop, padBottom] = pads();
     expect(padTop).toBe(0);
-    expect(padTop! + rows().length * OUTLINE_ROW_HEIGHT + padBottom!).toBe(
+    expect(padTop! + treeItems(host).length * OUTLINE_ROW_HEIGHT + padBottom!).toBe(
       ROW_COUNT * OUTLINE_ROW_HEIGHT,
     );
   });
@@ -207,43 +189,56 @@ describe("the window", () => {
     expect(rowFor(100)).not.toBeNull();
     const [padTop, padBottom] = pads();
     expect(padTop).toBeGreaterThan(0);
-    expect(padTop! + rows().length * OUTLINE_ROW_HEIGHT + padBottom!).toBe(
+    expect(padTop! + treeItems(host).length * OUTLINE_ROW_HEIGHT + padBottom!).toBe(
       ROW_COUNT * OUTLINE_ROW_HEIGHT,
     );
   });
 
   test("reports each row's place in the DOCUMENT, not in the window", async () => {
     await scrollTo(OUTLINE_ROW_HEIGHT * 100);
-    const row = rowFor(100)!;
+    const el = rowFor(100)!;
     // 101st of 200 children, at depth 2 — a screen reader is told the same thing whether or not
     // The other 199 rows happen to be painted.
-    expect(row.getAttribute("aria-posinset")).toBe("101");
-    expect(row.getAttribute("aria-setsize")).toBe(String(CHILD_COUNT));
-    expect(row.getAttribute("aria-level")).toBe("2");
+    expect(el.getAttribute("aria-posinset")).toBe("101");
+    expect(el.getAttribute("aria-setsize")).toBe(String(CHILD_COUNT));
+    expect(el.getAttribute("aria-level")).toBe("2");
+  });
+
+  test("hands the tab stop to a row the window actually holds", async () => {
+    await scrollTo(OUTLINE_ROW_HEIGHT * 100);
+    // The selection is empty and the root has scrolled away, so a stop derived from the model
+    // Alone would name a row nobody painted — a tree with no way in.
+    const stops = treeItems(host).filter((el) => el.tabIndex === 0);
+    expect(stops).toHaveLength(1);
+    expect(stops[0]!.isConnected).toBe(true);
   });
 });
 
 describe("the keyboard reaches rows the window does not hold", () => {
   test("End selects the last row of the document and scrolls to it", async () => {
     press(rowFor(1)!, "End");
+    await flush();
     expect(selection()).toEqual([childPath(CHILD_COUNT - 1)]);
     expect(scroller.scrollTop).toBeGreaterThan(0);
-    await flush();
-    await flush();
+    place();
+    scroller.dispatchEvent(new Event("scroll"));
+    await flush(3);
     expect(rowFor(CHILD_COUNT - 1)).not.toBeNull();
   });
 
   test("Home comes back to the root", async () => {
     await scrollTo(OUTLINE_ROW_HEIGHT * 150);
     press(rowFor(150)!, "Home");
+    await flush();
     expect(selection()).toEqual([[]]);
     expect(scroller.scrollTop).toBe(0);
   });
 
   test("↓ walks past the last DRAWN row instead of stopping at it", async () => {
-    const last = rows().at(-1)!;
+    const last = treeItems(host).at(-1)!;
     const lastIndex = Number(last.dataset.path!.split("/")[1]);
     press(last, "ArrowDown");
+    await flush();
     expect(selection()).toEqual([childPath(lastIndex + 1)]);
   });
 });
@@ -252,15 +247,19 @@ describe("the reveal that follows a selection made elsewhere", () => {
   test("scrolls to a row the canvas selected far below the window", async () => {
     registerLayersPanel();
     activeTab.value!.session.selection = [childPath(180)];
-    await renderLayers();
 
     getPanel("layers")!.afterRender!(
       {
         deps: { getCanvasMode: () => "canvas", registerLayersDnD: () => {} },
-        rerender: () => {},
+        // The Navigator's answer to a repaint request is another `afterRender`, which is what
+        // Carries the scroll watch's request for the second, windowed pass back to the rows.
+        rerender: () => {
+          void draw();
+        },
       } as unknown as NavigatorPanelContext,
       host,
     );
+    await flush(2);
     expect(scroller.scrollTop).toBeGreaterThan(OUTLINE_ROW_HEIGHT * 100);
 
     // A browser fires `scroll` after a programmatic `scrollTop`, and the watch repaints on it —
@@ -268,24 +267,43 @@ describe("the reveal that follows a selection made elsewhere", () => {
     // Thing this test has to supply.
     place();
     scroller.dispatchEvent(new Event("scroll"));
-    await flush();
-    await flush();
+    await flush(3);
     expect(rowFor(180)).not.toBeNull();
   });
 });
 
 describe("a drag keeps the window it started with", () => {
   test("a scroll mid-drag does not repaint the rows pragmatic-dnd is holding", async () => {
-    const dragged = rows()[2]!;
-    dragged.classList.add("dragging");
-    const before = rows().length;
+    const dragged = treeItems(host)[2]!;
+    dragged.dataset.dragging = "";
+    const before = treeItems(host).length;
 
     scroller.scrollTop = OUTLINE_ROW_HEIGHT * 100;
     place();
     scroller.dispatchEvent(new Event("scroll"));
-    await flush();
+    await flush(3);
 
-    expect(rows()).toHaveLength(before);
+    expect(treeItems(host)).toHaveLength(before);
     expect(dragged.isConnected).toBe(true);
+    expect(rowFor(100)).toBeNull();
+  });
+});
+
+describe("the panel takes its own body down", () => {
+  test("switching the pane to Project Styles removes the tree it drew", async () => {
+    registerLayersPanel();
+    expect(treeItems(host).length).toBeGreaterThan(0);
+    getPanel("layers")!.afterRender!(
+      {
+        deps: { getCanvasMode: () => "stylebook", registerLayersDnD: () => {} },
+        rerender: () => {},
+      } as unknown as NavigatorPanelContext,
+      host,
+    );
+    await flush(3);
+    // Both bodies are APPENDED into the same content box, so a body nobody takes down sits under
+    // The one that replaced it for the rest of the session.
+    expect(host.querySelector('[part="outline"]')).toBeNull();
+    expect(view._layersCollapsed).toBeDefined();
   });
 });

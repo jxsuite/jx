@@ -64,7 +64,17 @@ export interface DialogSurfaceOptions {
   /** A `jx-select` above the field, and which of its rows is chosen. */
   choice?: { label: string; options: DialogChoiceOption[]; chosen: string };
   /** The prompt's field. */
-  field?: { value: string; placeholder: string; select: "all" | "stem" | "none" };
+  field?: {
+    value: string;
+    placeholder: string;
+    select: "all" | "stem" | "none";
+    /** A paste box rather than a line. Enter then means a newline, not confirm. */
+    multiline?: boolean;
+    /** How many lines a multiline field opens at. */
+    rows?: string;
+    /** Monospaced, for a format whose columns line up. */
+    mono?: boolean;
+  };
   region?: string;
   onConfirm: () => void;
   onSecondary?: () => void;
@@ -77,6 +87,17 @@ export interface DialogSurfaceOptions {
 
 /** What a flow may change while the dialog is up. */
 export interface DialogSurfacePatch {
+  /**
+   * The buttons' text, which a multi-phase dialog moves through.
+   *
+   * A push is a confirm whose answer changes as it runs — Cancel then Apply then Close — and the
+   * alternative to patching them is closing one dialog and opening another between phases, which
+   * takes the reader's focus with it every time.
+   */
+  confirmLabel?: string;
+  cancelLabel?: string;
+  /** The sentence under the headline. Cleared by the empty string. */
+  message?: string;
   value?: string;
   placeholder?: string;
   invalid?: boolean;
@@ -108,6 +129,11 @@ interface DialogScope extends Record<string, unknown> {
   choiceLabel: string;
   options: DialogChoiceOption[];
   hasField: boolean;
+  multiline: boolean;
+  rows: string;
+  mono: boolean;
+  /** `hasField && !multiline` — whether Enter confirms. A word, because a document switches. */
+  singleLine: string;
   /** The chosen row's value, which is the only thing that decides what the select shows. */
   chosen: string;
   value: string;
@@ -185,6 +211,10 @@ export function openDialogSurface(options: DialogSurfaceOptions): DialogSurfaceH
     error: "",
     hasChoice: options.choice !== undefined,
     hasField: options.field !== undefined,
+    mono: options.field?.mono === true,
+    multiline: options.field?.multiline === true,
+    rows: options.field?.rows ?? "3",
+    singleLine: options.field !== undefined && options.field.multiline !== true ? "true" : "false",
     hasMessage: options.message !== undefined && options.message !== "",
     headline: options.headline,
     input: (value) => {
@@ -262,6 +292,16 @@ export function openDialogSurface(options: DialogSurfaceOptions): DialogSurfaceH
     host: slot,
     ready,
     update(patch) {
+      if (patch.confirmLabel !== undefined) {
+        scope.confirmLabel = patch.confirmLabel;
+      }
+      if (patch.cancelLabel !== undefined) {
+        scope.cancelLabel = patch.cancelLabel;
+      }
+      if (patch.message !== undefined) {
+        scope.message = patch.message;
+        scope.hasMessage = patch.message !== "";
+      }
       if (patch.value !== undefined) {
         scope.value = patch.value;
       }

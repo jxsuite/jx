@@ -15,14 +15,7 @@
  *   overflow menu reopened AFTER such a click is the live one, which is the reachable state a stale
  *   `_overflowHandle` would have to be visible in.
  */
-import {
-  flush,
-  key,
-  renderInto,
-  resetWorkspaceWithTab,
-  stubRect,
-  mountOverlayLayers,
-} from "./harness";
+import { flush, key, mountOverlayLayers, resetWorkspaceWithTab, stubRect } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import {
   activeTab,
@@ -51,8 +44,8 @@ void mock.module("@atlaskit/pragmatic-drag-and-drop/element/adapter", () => ({
 const {
   OUTLINE_ROW_HEIGHT,
   applyRowSelection,
-  clearHoverActions,
-  renderLayersTemplate,
+  detachOutline,
+  mountOutlinePanel,
   startLayerTitleEdit,
 } = await import("../src/panels/layers-panel");
 const { dismissOverflowMenu, mount, unmount } = await import("../src/panels/tab-strip");
@@ -79,7 +72,7 @@ let onRerender: () => void;
 
 /** Happy-dom performs no layout, so the box the window is computed from is stubbed by hand. */
 function place(rowCount: number): void {
-  const tree = host.querySelector<HTMLElement>(".layers-tree");
+  const tree = host.querySelector<HTMLElement>('[part="tree"]');
   if (tree) {
     (tree as { getBoundingClientRect: () => DOMRect }).getBoundingClientRect = () =>
       ({ height: rowCount * OUTLINE_ROW_HEIGHT, top: treeTop() }) as DOMRect;
@@ -87,22 +80,21 @@ function place(rowCount: number): void {
 }
 
 async function renderOutline(rowCount: number): Promise<void> {
-  await renderInto(
-    renderLayersTemplate({
-      navigateToComponent: () => {},
-      rerender: () => onRerender(),
-    }),
-    host,
-  );
+  mountOutlinePanel({ registerDnD: () => {}, rerender: () => onRerender() }, host);
+  await flush(3);
   place(rowCount);
 }
 
 function rowByKey(pathKey: string): HTMLElement | null {
-  return host.querySelector<HTMLElement>(`.layer-row[data-path="${pathKey}"]`);
+  return (
+    [...host.querySelectorAll<HTMLElement>('[part="row"]')].find(
+      (el) => el.dataset.path === pathKey,
+    ) ?? null
+  );
 }
 
 function rows(): HTMLElement[] {
-  return [...host.querySelectorAll<HTMLElement>('.layer-row[role="treeitem"]')];
+  return [...host.querySelectorAll<HTMLElement>('[part="row"][role="treeitem"]')];
 }
 
 function selection(): JxPath[] {
@@ -110,8 +102,9 @@ function selection(): JxPath[] {
 }
 
 function setUpOutlineDom(): void {
+  detachOutline();
   document.body.innerHTML = `
-    <div id="scroller"><div id="host"></div></div>
+    <div id="scroller"><div class="panel-body"><div class="panel-content"></div></div></div>
     <div id="layer-popover"></div>
     <div id="layer-modal"></div>
     <div id="layer-dialog"></div>
@@ -121,10 +114,9 @@ function setUpOutlineDom(): void {
   scroller.style.overflowY = "auto";
   Object.defineProperty(scroller, "clientHeight", { configurable: true, value: VIEWPORT });
   stubRect(scroller, { height: VIEWPORT, top: 0 });
-  host = document.querySelector("#host") as HTMLElement;
+  host = document.querySelector(".panel-body") as HTMLElement;
   view._layersCollapsed = new Set();
   view.dndCleanups = [];
-  clearHoverActions();
   treeTop = () => -scroller.scrollTop;
   onRerender = () => {};
 }
@@ -157,7 +149,7 @@ describe("the Outline's walk off the end of its model", () => {
   });
 
   afterEach(() => {
-    clearHoverActions();
+    detachOutline();
     closeAllTabs();
     resetPanels();
     document.body.innerHTML = "";
@@ -166,12 +158,13 @@ describe("the Outline's walk off the end of its model", () => {
   test("↓ from the last tree item stays put — the text row below it is not a step", async () => {
     // The text row is drawn BELOW the last tree item, so the walk has something to skip before it
     // Runs out of model.
-    const tail = [...host.querySelectorAll<HTMLElement>(".layer-row")].at(-1)!;
+    const tail = [...host.querySelectorAll<HTMLElement>('[part="row"]')].at(-1)!;
     expect(tail.textContent).toContain("just words");
     expect(tail.getAttribute("role")).toBeNull();
 
     const last = rowByKey("children/1")!;
     last.click();
+    await flush();
     expect(selection()).toEqual([["children", 1]]);
 
     key(last, "ArrowDown");
@@ -184,23 +177,31 @@ describe("the Outline's walk off the end of its model", () => {
     // It really is expanded: the branch under test is the one that DESCENDS, not the one that opens.
     expect(last.getAttribute("aria-expanded")).toBe("true");
     last.click();
+    await flush();
     last.focus();
     const drawn = rows().length;
-    const repaint = mock(() => {});
-    onRerender = repaint;
 
     const errors = captureErrors();
     key(last, "ArrowRight");
-    await flush();
+    await flush(2);
     errors.stop();
 
     expect(errors.messages).toEqual([]);
-    // Nothing moved: no collapse was toggled, no repaint asked for, the keyboard stayed here.
-    expect(repaint).not.toHaveBeenCalled();
+    // Nothing moved: no collapse was toggled, the row count is what it was, and the keyboard is
+    // Still here. The only child below this row is a TEXT line, so the descent has nowhere to land.
     expect(view._layersCollapsed!.size).toBe(0);
     expect(selection()).toEqual([["children", 1]]);
     expect(rows()).toHaveLength(drawn);
-    expect(document.activeElement).toBe(last);
+    expect(document.activeElement).toBe(rowByKey("children/1"));
+
+    // …and the same key on a COLLAPSED row does move, which is what makes the above an assertion
+    // Rather than a key nothing is bound to.
+    key(last, "ArrowLeft");
+    await flush(2);
+    expect(view._layersCollapsed!.has("children/1")).toBe(true);
+    key(rowByKey("children/1")!, "ArrowRight");
+    await flush(2);
+    expect(view._layersCollapsed!.size).toBe(0);
   });
 
   test("a row activation with no document open leaves the closed tab's selection alone", () => {
@@ -246,7 +247,7 @@ describe("a keyboard jump the repaint still cannot draw", () => {
   });
 
   afterEach(() => {
-    clearHoverActions();
+    detachOutline();
     closeAllTabs();
     resetPanels();
     document.body.innerHTML = "";
@@ -259,8 +260,7 @@ describe("a keyboard jump the repaint still cannot draw", () => {
 
     const errors = captureErrors();
     key(rows()[1]!, "End");
-    await flush();
-    await flush();
+    await flush(3);
     errors.stop();
 
     expect(scroller.scrollTop).toBeGreaterThan(0);
@@ -272,23 +272,38 @@ describe("a keyboard jump the repaint still cannot draw", () => {
     expect(rows().filter((row) => row.tabIndex === 0)).toHaveLength(1);
   });
 
-  test("a rename aimed below the window scrolls to the row and asks for the repaint", async () => {
-    const repaint = mock(() => {});
-    onRerender = repaint;
+  test("a rename aimed below the window scrolls to the row, and the input follows it", async () => {
+    // The window is frozen at the top of the list: the scroll happens, the paint does not follow.
+    treeTop = () => 0;
     expect(rowByKey("children/180")).toBeNull();
 
-    startLayerTitleEdit(["children", 180], repaint);
+    const errors = captureErrors();
+    startLayerTitleEdit(["children", 180], () => {});
+    await flush(2);
+    errors.stop();
 
+    // The scroll is immediate; DRAWING the row is the window's business, so the input cannot be
+    // Inserted into a tree that does not hold the row — and asking for it is not an error either.
+    expect(errors.messages).toEqual([]);
     expect(scroller.scrollTop).toBeGreaterThan(OUTLINE_ROW_HEIGHT * 100);
-    expect(repaint).toHaveBeenCalledTimes(1);
-    // The input is the NEXT pass's business — this one only made the row reachable.
-    expect(document.querySelector(".layer-title-input")).toBeNull();
+    expect(rowByKey("children/180")).toBeNull();
+    expect(host.querySelector('[part="title-input"]')).toBeNull();
 
-    // A path that is in no row at all asks for nothing: there is no row to scroll to.
+    // Let the window catch up: the rename is still live, so the row arrives already editing.
+    treeTop = () => -scroller.scrollTop;
+    place(ROW_COUNT);
+    scroller.dispatchEvent(new Event("scroll"));
+    await flush(3);
+    expect(rowByKey("children/180")).not.toBeNull();
+    expect(rowByKey("children/180")!.querySelector('[part="title-input"]')).not.toBeNull();
+
+    // A path that is in no row at all asks for nothing: there is no row to scroll to, and no
+    // Rename is started — the row the reader is on keeps its input.
     const scrolled = scroller.scrollTop;
-    startLayerTitleEdit(["children", 999], repaint);
-    expect(repaint).toHaveBeenCalledTimes(1);
+    startLayerTitleEdit(["children", 999], () => {});
+    await flush(2);
     expect(scroller.scrollTop).toBe(scrolled);
+    expect(rowByKey("children/180")!.querySelector('[part="title-input"]')).not.toBeNull();
   });
 });
 

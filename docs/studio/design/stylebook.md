@@ -11,6 +11,7 @@ code:
   - packages/studio/src/surfaces/target-line.ts
   - packages/studio/src/panels/style-panel.ts
   - packages/studio/src/panels/pane-context.ts
+  - packages/studio/src/surfaces/pane-context.ts
   - packages/studio/src/style/project-styles.ts
 ---
 

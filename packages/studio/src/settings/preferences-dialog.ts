@@ -37,8 +37,8 @@
  * the four `*Tpl()` functions this replaced were called one at a time.
  *
  * Modality: a `jx-dialog` in the dialog layer, which is focus-managed, dismissed by Escape and
- * backed by the platform's own top layer — not `openModal`'s `inset:40px` blackout. Preferences
- * does not suspend the app.
+ * backed by the platform's own top layer — not the full-viewport blackout the lit modal path used
+ * to paint. Preferences does not suspend the app.
  */
 
 import { CHROME_THEMES, setChromeTheme, shell } from "../shell";

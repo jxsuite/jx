@@ -448,13 +448,27 @@ describe("applyContentMutation", () => {
 
 // ─── panels/pane-context.ts · the preset menu, and a late param load ─────────
 
-describe("the preset menu's outside-click dismissal", () => {
+describe("the preset menu", () => {
   let host: HTMLElement;
 
-  /** The rows of the popover the ⟲ trigger opened, addressed by its own aria-label. */
+  /**
+   * The rows of the menu the ⟲ trigger opened, addressed by its own accessible name.
+   *
+   * It is the KIT menu now (`surfaces/menu.ts`) rather than a hand-built `sp-popover`, so light
+   * dismissal, Escape, roving focus and the disabled row's `requires` sentence all belong to the
+   * platform and to that surface — which is why the outside-`mousedown` case this block used to
+   * carry is gone rather than rewritten: it asserted a document listener this module no longer
+   * owns, and `tests/surfaces-menu.test.ts` is where that contract lives. What is still this
+   * module's, and is asserted below, is that there is exactly ONE menu at a time and that
+   * `dismissPresetMenu()` takes it down.
+   */
   function menuItems(): HTMLElement[] {
     const menu = document.querySelector('[aria-label="Show beside this pane"]');
-    return menu ? [...menu.querySelectorAll<HTMLElement>("sp-menu-item")] : [];
+    return menu ? [...menu.querySelectorAll<HTMLElement>("jx-menu-item")] : [];
+  }
+
+  function menus(): NodeListOf<Element> {
+    return document.querySelectorAll('[aria-label="Show beside this pane"]');
   }
 
   beforeEach(() => {
@@ -481,42 +495,49 @@ describe("the preset menu's outside-click dismissal", () => {
     closeAllTabs();
   });
 
-  async function openMenu(): Promise<void> {
+  async function openPresetMenu(): Promise<void> {
     resetWorkspaceWithTab(
       { children: [{ tagName: "p", textContent: "Hi" }], tagName: "div" },
       { documentPath: "pages/index.json", id: "pages/index.json" },
     );
     paneContext.mount(host, makeCtx());
-    await flush();
-    const trigger = host.querySelector(".pc-derive-trigger") as HTMLElement;
+    await flush(8);
+    const trigger = host.querySelector('[part="preset"]') as HTMLElement;
     trigger.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    // A frame later the popover has taken its outside-click listener.
-    await flush();
+    // The menu mounts a document of its own and then shows it.
+    await flush(8);
   }
 
-  test("a mousedown inside keeps it; one outside takes it down", async () => {
-    await openMenu();
+  test("every row is a COMMAND, projected — never a second list of actions", async () => {
+    await openPresetMenu();
     const opened = menuItems();
     expect(opened.length).toBeGreaterThan(0);
-
-    // Pressing INSIDE the menu is how a row is activated — it must not dismiss first.
-    opened[0]!.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
-    expect(menuItems().length).toBe(opened.length);
-
-    document.body.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
-    expect(menuItems()).toHaveLength(0);
+    // Each row's identity begins with the id it runs; §12.5 forbids a second list beside them.
+    for (const row of opened) {
+      expect(row.dataset["commandId"]).toMatch(/^pane\.(derive|pin|unsplit)/);
+    }
+    expect(opened.map((row) => row.dataset["commandId"])).toContain("pane.unsplit");
   });
 
-  test("…and the trigger opens a fresh one afterwards, exactly one at a time", async () => {
-    await openMenu();
-    document.body.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
-    expect(menuItems()).toHaveLength(0);
+  test("exactly one at a time — a second press replaces the first rather than stacking", async () => {
+    await openPresetMenu();
+    expect(menus()).toHaveLength(1);
 
-    const trigger = host.querySelector(".pc-derive-trigger") as HTMLElement;
+    const trigger = host.querySelector('[part="preset"]') as HTMLElement;
     trigger.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    await flush();
+    await flush(8);
+    expect(menus()).toHaveLength(1);
     expect(menuItems().length).toBeGreaterThan(0);
-    expect(document.querySelectorAll('[aria-label="Show beside this pane"]')).toHaveLength(1);
+  });
+
+  test("dismissPresetMenu takes it down, and says nothing the second time", async () => {
+    await openPresetMenu();
+    expect(menuItems().length).toBeGreaterThan(0);
+    paneContext.dismissPresetMenu();
+    expect(menuItems()).toHaveLength(0);
+    expect(() => {
+      paneContext.dismissPresetMenu();
+    }).not.toThrow();
   });
 });
 

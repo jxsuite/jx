@@ -37,6 +37,7 @@ import {
   keyframeNames,
   jsonStyleBlocks,
   surfaceClasses,
+  surfaceDefinedClasses,
   stackedClasses,
   extractUnderlayCards,
   stripCommentsAndStrings,
@@ -967,6 +968,29 @@ describe("scanJsonStyle", () => {
     expect(at('{ "style": { "fontSize": "13px" } }').warnings).toEqual([]);
     expect(at('{ "style": { "gap": "12px" } }').warnings).toEqual([]);
     expect(at('{ "style": { "width": "4px" } }').warnings).toEqual([]);
+  });
+});
+
+describe("surfaceDefinedClasses", () => {
+  test("reads the classes a document's own style block declares rules for", () => {
+    const src = '{ "style": { "& .tabulator-cell.jx-grid-cell--dirty": { "color": "red" } } }';
+    expect(surfaceDefinedClasses(src)).toEqual(["tabulator-cell", "jx-grid-cell--dirty"]);
+  });
+
+  test("ignores a declaration, which is a property rather than a selector", () => {
+    expect(surfaceDefinedClasses('{ "style": { "fontSize": "12px" } }')).toEqual([]);
+  });
+
+  test("ignores a selector with no class in it", () => {
+    expect(surfaceDefinedClasses('{ "style": { "&:hover": { "color": "red" } } }')).toEqual([]);
+  });
+
+  /* The case that made this exist. A document styles what its ISLAND writes, so the emission is in
+     TypeScript and the definition is in the JSON beside it — and without this the orphan rule saw
+     only `styles/*.css` and reported six live grid state classes as having no rule at all. */
+  test("a class emitted by an island and styled by its document is not an orphan", () => {
+    const doc = '{ "style": { "& .tabulator-row.jx-grid-row--stale": { "opacity": "0.5" } } }';
+    expect(surfaceDefinedClasses(doc)).toContain("jx-grid-row--stale");
   });
 });
 

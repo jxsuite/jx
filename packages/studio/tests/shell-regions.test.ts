@@ -129,7 +129,9 @@ describe("navigator/panel:<id>", () => {
 
       const region = resolveRegion(`navigator/panel:${panel}`);
       expect(region).not.toBeNull();
-      expect(region!.classList.contains("panel-body")).toBe(true);
+      // The Navigator's box is a document (`surfaces/navigator-dock.json`), so it emits no class;
+      // The part is what the region is stamped on and what a rule can key.
+      expect(region!.getAttribute("part")).toBe("panel-body");
       expect(leftPanel.contains(region)).toBe(true);
     });
   }
@@ -184,6 +186,12 @@ describe("inspector/tab:<value>", () => {
     } as never);
   }
 
+  /** Whether an Inspector tab's body is the one on screen — its panel is not `hidden`. */
+  function showingTab(key: string): boolean {
+    const panel = resolveRegion(`inspector/tab:${key}`)?.closest('[role="tabpanel"]');
+    return panel !== null && panel !== undefined && !panel.hasAttribute("hidden");
+  }
+
   test("all four tab bodies are addressable, and only the active one is shown", async () => {
     const tab = resetWorkspaceWithTab();
     tab.session.ui.rightTab = "style";
@@ -195,8 +203,11 @@ describe("inspector/tab:<value>", () => {
       expect(body).not.toBeNull();
       expect(rightPanel.contains(body)).toBe(true);
     }
-    expect(resolveRegion("inspector/tab:style")!.style.display).toBe("");
-    expect(resolveRegion("inspector/tab:properties")!.style.display).toBe("none");
+    /* Showing is the `tabpanel`'s own `hidden`, not an inline `display` this dock writes onto a
+       container: the four bodies are real tab panels now, so the strip's `aria-selected` and the
+       panel's `hidden` are one fact rather than two that can disagree. */
+    expect(showingTab("style")).toBe(true);
+    expect(showingTab("properties")).toBe(false);
   });
 
   test("an unknown stored tab falls back to the first record, not to a dead region", async () => {
@@ -204,7 +215,7 @@ describe("inspector/tab:<value>", () => {
     tab.session.ui.rightTab = "content";
     mountInspector();
     await flush(3);
-    expect(resolveRegion("inspector/tab:properties")!.style.display).toBe("");
+    expect(showingTab("properties")).toBe(true);
     expect(resolveRegion("inspector/tab:content")).toBeNull();
   });
 });
@@ -288,7 +299,7 @@ describe("Outline rows carry node identity", () => {
     const row = [...leftPanel.querySelectorAll<HTMLElement>("[data-jx-path]")].find(
       (el) => el.dataset.jxPath === JSON.stringify(["children", 0]),
     );
-    expect(outlineRowPath(row!.querySelector(".layer-label"))).toEqual(["children", 0]);
+    expect(outlineRowPath(row!.querySelector('[part="label"]'))).toEqual(["children", 0]);
     expect(outlineRowPath(null)).toBeNull();
     expect(outlineRowPath(document.body)).toBeNull();
   });
@@ -322,16 +333,18 @@ describe("overlay slots stamp themselves", () => {
     clearLayerSlot("popover", "block-actions");
   });
 
-  test("a modal is `overlay.dialog`, and a named one is addressable by name", async () => {
-    const { initLayers, openModal } = await import("../src/ui/layers");
+  test("a slot in the MODAL layer is `overlay.dialog` too, and a named one answers to its name", async () => {
+    /* `OVERLAY_INSTANCE` maps the modal layer onto the SAME instance as the dialog layer — a modal
+       IS a dialog — so the two `jx-dialog` surfaces that live in `#layer-modal`
+       (`surfaces/progress-modal.ts`, `surfaces/publish.ts`) are addressed by the ids a shot already
+       names, without a second vocabulary for the second host. */
+    const { clearLayerSlot, getLayerSlot, initLayers } = await import("../src/ui/layers");
     initLayers();
-    const anon = openModal(html`<p>body</p>`, { label: "Anonymous" });
-    expect(resolveRegion("overlay.dialog")).toBe(anon.host);
-    anon.close();
+    const settings = getLayerSlot("modal", "settings");
+    expect(settings.parentElement?.id).toBe("layer-modal");
+    expect(resolveRegion("overlay.dialog:settings")).toBe(settings);
 
-    const named = openModal(html`<p>body</p>`, { label: "Settings", region: "settings" });
-    expect(resolveRegion("overlay.dialog:settings")).toBe(named.host);
-    named.close();
+    clearLayerSlot("modal", "settings");
     expect(resolveRegion("overlay.dialog:settings")).toBeNull();
   });
 

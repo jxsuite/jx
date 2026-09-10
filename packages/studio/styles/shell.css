@@ -92,43 +92,6 @@
   min-width: 0;
 }
 
-/* ─── ⑪ Bottom dock ───────────────────────────── */
-
-.bd-strip {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  flex-shrink: 0;
-  padding: 0 4px;
-  border-bottom: 1px solid var(--border);
-}
-.bd-tabs {
-  flex: 1;
-  min-width: 0;
-}
-.bd-close {
-  flex-shrink: 0;
-  padding: 2px 6px;
-  border: none;
-  border-radius: var(--spectrum-corner-radius-75, 2px);
-  background: none;
-  color: var(--fg-dim);
-  font: inherit;
-  line-height: 1;
-  cursor: pointer;
-}
-.bd-close:hover {
-  background: var(--hover-bg);
-  color: var(--fg);
-}
-/* The one scrolling region. `min-height: 0` because a flex item's auto minimum is its content,
-   which would push the dock past its own track instead of scrolling inside it. */
-.bd-body {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-}
-
 /* ─── Tab strip ───────────────────────────────── */
 /* The chevron sits OUTSIDE the scrolling strip, so it stays reachable at any scroll offset —
    which is the whole point of it: the scrollbar is hidden and the wheel is a mouse affordance. */
@@ -306,14 +269,4 @@
   height: 5px;
   margin: -3px 0 -2px;
   cursor: row-resize;
-}
-
-/* A standing statement, not an after-the-fact refusal: a guest without write
-   access used to watch their edits apply locally and vanish at the publish gate. */
-.jx-collab-banner {
-  padding: 6px 10px;
-  border-bottom: 1px solid var(--border);
-  background: var(--hover-bg);
-  color: var(--fg-dim);
-  font-size: var(--spectrum-font-size-75, 12px);
 }

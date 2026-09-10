@@ -1,21 +1,35 @@
 /**
- * Tests for src/ui/formula-chips.ts — the chip-pipeline presentation layer: target-chain unrolling,
- * live value badges, parenthesized group chips, and click-to-path reporting.
+ * The chip pipeline: target-chain unrolling, live value badges, parenthesized group chips, and
+ * click-to-path reporting.
+ *
+ * **It is two files now**, and the split is the conversion. `src/ui/formula-chips.ts` is the MODEL
+ * — {@link formulaChipStrip}, the chips one expression node reads as — because the strip has two
+ * surfaces: the Logic dock draws it as a Jx document over the kit (`surfaces/logic-workspace.json`,
+ * covered by `formula-workspace.test.ts`) and `src/ui/expression-editor.ts` still draws it in lit
+ * over Spectrum. So the drawing asserted below is the LIT one, imported from the editor that owns
+ * it; every assertion about what a chip SAYS is made against the model, where it is a comparison
+ * rather than a DOM walk.
  */
 import "./with-dom.js";
 import { describe, expect, test } from "bun:test";
 import { render } from "lit-html";
-import { chipSummary, renderFormulaChips } from "../src/ui/formula-chips";
-import type { EditorPreview } from "../src/ui/expression-editor";
+import { chipSummary, formulaChipStrip } from "../src/ui/formula-chips";
+import { renderFormulaChips } from "../src/ui/expression-editor";
+import type { ChipPreview } from "../src/ui/formula-chips";
 
 function mount(node: unknown, opts: Record<string, unknown> = {}) {
   const picks: (string | number)[][] = [];
   const container = document.createElement("div");
   render(
-    renderFormulaChips(node, (p) => picks.push(p), opts as never),
+    renderFormulaChips(node, (p: (string | number)[]) => picks.push(p), opts as never),
     container,
   );
   return { container, picks };
+}
+
+/** The model's answer for a node, as `label@path` pairs — the whole strip in one comparison. */
+function strip(node: unknown, opts: Record<string, unknown> = {}): string[] {
+  return formulaChipStrip(node, opts as never).map((c) => `${c.label}@${c.key}`);
 }
 
 function chips(container: HTMLElement): HTMLElement[] {
@@ -36,7 +50,81 @@ const CHAIN_NODE = {
   value: 1,
 };
 
-describe("renderFormulaChips — chain unrolling", () => {
+// ─── The model ───────────────────────────────────────────────────────────────
+
+describe("formulaChipStrip", () => {
+  test("unrolls the target chain deepest-first, keying each chip by its node path", () => {
+    expect(strip(CHAIN_NODE)).toEqual(["count@target/target", "*@target", "+@"]);
+  });
+
+  test("a base path prefixes every chip's key, and the path it hands back", () => {
+    const built = formulaChipStrip(CHAIN_NODE, { path: ["value"] });
+    expect(built.map((c) => c.key)).toEqual(["value/target/target", "value/target", "value"]);
+    expect(built.map((c) => c.path)).toEqual([
+      ["value", "target", "target"],
+      ["value", "target"],
+      ["value"],
+    ]);
+  });
+
+  test("a non-target expression operand is a parenthesized GROUP chip, at its own path", () => {
+    const built = formulaChipStrip({
+      operator: "+",
+      target: { $ref: "#/state/count" },
+      value: { operator: "*", target: { $ref: "#/state/factor" }, value: 2 },
+    });
+    expect(built.map((c) => [c.label, c.group])).toEqual([
+      ["count", false],
+      ["+", false],
+      ["(factor › *)", true],
+    ]);
+  });
+
+  test("group chips reach initial, switch cases, default and each positional arg", () => {
+    expect(
+      strip({
+        cases: { done: { operator: "!", target: { $ref: "#/state/busy" } } },
+        default: { operator: "-", target: 1 },
+        operator: "switch",
+        target: { $ref: "#/state/status" },
+      }),
+    ).toEqual(["status@target", "switch@", "(busy › !)@cases/done", "(1 › -)@default"]);
+    expect(
+      strip({
+        initial: { operator: "-", target: { $ref: "#/state/n" } },
+        operator: "?:",
+        target: { $ref: "#/state/flag" },
+        value: 1,
+      }),
+    ).toEqual(["flag@target", "?:@", "(n › -)@initial"]);
+    expect(
+      strip({
+        operator: "call",
+        target: { $ref: "#/state/lineTotal" },
+        value: [{ operator: "+", target: 1, value: 2 }, 5],
+      }),
+    ).toEqual(["lineTotal@target", "call@", "(1 › +)@value/0"]);
+  });
+
+  test("a badge is the preview's value at that path — and an EMPTY one is still a value", () => {
+    const built = formulaChipStrip(CHAIN_NODE, {
+      preview: { values: new Map([["target", ""]]) },
+    });
+    const byKey = new Map(built.map((c) => [c.key, c]));
+    // "" is what an empty string evaluates to; reporting it as "no value" is the bug hasBadge
+    // Exists to prevent — the chip must draw an empty badge rather than none at all.
+    expect(byKey.get("target")).toMatchObject({ badge: "", hasBadge: true });
+    expect(byKey.get("")).toMatchObject({ badge: "", hasBadge: false });
+  });
+
+  test("anything that is not an expression node is no strip at all", () => {
+    expect(formulaChipStrip(null)).toEqual([]);
+    expect(formulaChipStrip("text")).toEqual([]);
+    expect(formulaChipStrip({ target: 1 })).toEqual([]);
+  });
+});
+
+describe("the lit drawing — chain unrolling", () => {
   test("unrolls the target chain deepest-first: head operand, then operators outward", () => {
     const { container } = mount(CHAIN_NODE);
     expect(chipLabels(container)).toEqual(["count", "*", "+"]);
@@ -74,11 +162,9 @@ describe("renderFormulaChips — chain unrolling", () => {
   });
 });
 
-describe("renderFormulaChips — badges", () => {
+describe("the lit drawing — badges", () => {
   test("shows live value badges from the preview keyed by chip path", () => {
-    const preview: EditorPreview = {
-      error: null,
-      mutating: false,
+    const preview: ChipPreview = {
       values: new Map([
         ["", "7"],
         ["target", "6"],
@@ -103,7 +189,7 @@ describe("renderFormulaChips — badges", () => {
   });
 });
 
-describe("renderFormulaChips — group chips", () => {
+describe("the lit drawing — group chips", () => {
   test("nested non-target value operand renders a parenthesized group chip", () => {
     const { container } = mount({
       operator: "+",
@@ -148,7 +234,7 @@ describe("renderFormulaChips — group chips", () => {
   });
 });
 
-describe("renderFormulaChips — selection", () => {
+describe("the lit drawing — selection", () => {
   test("clicking a chip reports its node path", () => {
     const { container, picks } = mount(CHAIN_NODE);
     const [head, mul, plus] = chips(container);

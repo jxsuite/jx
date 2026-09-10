@@ -230,11 +230,11 @@ const KNOWN_UNREACHABLE: Record<string, Record<string, string>> = {
   },
   "surfaces/rail.ts": { unmount: PANEL_TEARDOWN },
   "panels/activity-panel.ts": { resetActivities: TEST_RESET },
+  /* `isLinkPopoverOpen` has ratcheted OFF this ledger. It used to be an accessor nothing read —
+     the scroll handler consulted a module-private boolean beside it — and the bar's conversion to a
+     document left the surface as the single owner of that state, so the accessor is now the only
+     way to ask and `onCanvasScroll` asks it. */
   "panels/block-action-bar.ts": {
-    isLinkPopoverOpen:
-      "guards a toolbar refresh from re-rendering the open link popover out from under the caret. " +
-      "The refresh path consults the edit snapshot instead — worth re-checking the day a refresh " +
-      "is seen closing that popover",
     useCommandRegistry:
       "injects the app-wide registry into the selection surfaces in place of their own. The " +
       "bootstrap lets them keep their own, so the injection point is unused; its contract " +
@@ -248,15 +248,6 @@ const KNOWN_UNREACHABLE: Record<string, Record<string, string>> = {
     resetDataGridState: TEST_RESET,
   },
   "panels/frontmatter-panel.ts": { unmount: PANEL_TEARDOWN },
-  "panels/layers-panel.ts": {
-    outlineRowPath:
-      "reads a row's unambiguous `JxPath` back off `data-jx-path`. Its docstring names five " +
-      "readers that need exactly this — shift-range select, drag-reorder, canvas-to-Outline sync, " +
-      "a collaborator's cursor, a Problems jump — and every one of them uses the LOSSY `data-path` " +
-      'key beside it, which collides `["children", 0]` with `["children", "0"]` and cannot ' +
-      "represent a segment containing a slash. The correct reader is written and waiting; " +
-      "migrating five call sites onto it is a real change with real risk",
-  },
   "panels/left-panel.ts": { unmount: PANEL_TEARDOWN },
   "panels/navigator-panels.ts": { resetNavigatorPanels: TEST_RESET },
   "panels/overlays.ts": { unmount: PANEL_TEARDOWN },

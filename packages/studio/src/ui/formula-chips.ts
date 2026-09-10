@@ -1,19 +1,31 @@
-/// <reference lib="dom" />
 /**
- * Formula chips — a horizontal presentation layer summarizing an expression tree as left-to-right
- * chips (spec §19.9). The `target` chain unrolls deepest-first: the head chip is the innermost
- * target operand (ref/literal), followed by each operator up to the root. Nested non-target
- * operands render as parenthesized group chips. Pure presentation — no editing logic; clicking a
- * chip reports the node path to the caller.
+ * Formula chips — the MODEL behind the chip pipeline (spec §19.9): an expression tree read as a row
+ * of chips, left to right. The `target` chain unrolls deepest-first, so the head chip is the
+ * innermost target operand (a ref or a literal) and each operator follows it out to the root;
+ * nested non-target operands (`value`, `initial`, a `switch` case, a positional arg) become
+ * parenthesized group chips beside the link they belong to.
+ *
+ * **This module draws nothing, and that is the conversion.** It used to be four lit templates over
+ * an inline `style=` string, which is one drawing — and the strip has two surfaces now: the Logic
+ * dock is a Jx document (`surfaces/logic-workspace.json`) and the expression editor is still a lit
+ * template over Spectrum. A shared control cannot be both (studio-ui-guidelines.md §1), so what is
+ * shared is the ANSWER — {@link formulaChipStrip} — and each surface draws it in its own element
+ * set. The lit drawing lives beside its one remaining caller in `ui/expression-editor.ts` and dies
+ * with that conversion; nothing here has to be touched when it does.
+ *
+ * The preview is taken structurally (`{ values }`) rather than as a named type, because the two
+ * callers hold two spellings of the same record — `EditorPreview` and `services/preview-eval.ts`'s
+ * `ExpressionPreview` — and a chip only ever reads one field of it.
  */
 
-import { html, nothing } from "lit-html";
 import { isJsonObject, isRef } from "@jxsuite/schema/guards";
 
-import type { TemplateResult } from "lit-html";
-import type { EditorPreview } from "./expression-editor";
-
 type NodePath = (string | number)[];
+
+/** What a chip needs to know about the live evaluation: display strings keyed by node path. */
+export interface ChipPreview {
+  values: Map<string, string>;
+}
 
 interface ChainLink {
   node: Record<string, unknown>;
@@ -25,6 +37,27 @@ interface Chain {
   head: { value: unknown; path: NodePath } | null;
   /** Operator nodes, deepest target first → outermost operator last. */
   links: ChainLink[];
+}
+
+/**
+ * One chip of the pipeline, already decided.
+ *
+ * `key` is the joined path and the chip's identity — a keyed `$map`'s key in the document, the
+ * `data-path` a lit chip carries, and what a click reports back. It is unique within a strip by
+ * construction: two chips of one expression cannot occupy one position in it.
+ */
+export interface FormulaChip {
+  key: string;
+  /** The node this chip addresses, for a caller that resolves a selection against the tree. */
+  path: NodePath;
+  /** What the chip reads, and its own tooltip: an operand's label or an operator's spelling. */
+  label: string;
+  /** The live value at this path. Empty when the preview has none. */
+  badge: string;
+  /** Whether {@link badge} is a value at all — "" is a legitimate one. */
+  hasBadge: boolean;
+  /** A parenthesized non-target operand rather than a link of the target chain. */
+  group: boolean;
 }
 
 function isExprNode(value: unknown): value is Record<string, unknown> {
@@ -100,64 +133,31 @@ export function chipSummary(node: unknown): string {
   return parts.join(" › ");
 }
 
-// ─── Rendering ──────────────────────────────────────────────────────────────
-
-const CHIP_STYLE =
-  "display:inline-flex;align-items:center;gap:4px;max-width:180px;padding:1px 7px;" +
-  "border:1px solid var(--spectrum-gray-300, #3c3c3c);border-radius:10px;cursor:pointer;" +
-  "background:var(--spectrum-gray-100, #232323);color:var(--spectrum-gray-800, #d0d0d0);" +
-  "font-size:11px;font-family:var(--spectrum-code-font-family, monospace);line-height:18px";
-
-/** Live value badge — same styling convention as the expression editor's `.expr-live-badge`. */
-function renderChipBadge(preview: EditorPreview | null | undefined, pathKey: string) {
-  const text = preview?.values.get(pathKey);
-  if (text === undefined) {
-    return nothing;
-  }
-  return html`
-    <span
-      class="expr-live-badge"
-      title=${text}
-      style="font-family:var(--spectrum-code-font-family, monospace);font-size:10px;line-height:16px;padding:0 5px;border-radius:4px;background:var(--spectrum-gray-200, #323232);color:var(--spectrum-seafoam-900, #35a690);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px;flex-shrink:1"
-      >${text}</span
-    >
-  `;
-}
-
-function renderChip(
+/** One chip record, with its badge resolved against the preview. */
+function chip(
   label: string,
   path: NodePath,
-  onSelect: (path: NodePath) => void,
-  preview: EditorPreview | null | undefined,
+  preview: ChipPreview | null | undefined,
   group = false,
-) {
-  return html`
-    <button
-      type="button"
-      class=${group ? "formula-chip formula-chip--group" : "formula-chip"}
-      data-path=${path.join("/")}
-      style=${CHIP_STYLE}
-      title=${label}
-      @click=${() => onSelect(path)}
-    >
-      <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:110px"
-        >${label}</span
-      >
-      ${renderChipBadge(preview, path.join("/"))}
-    </button>
-  `;
+): FormulaChip {
+  const key = path.join("/");
+  const value = preview?.values.get(key);
+  return {
+    badge: value ?? "",
+    group,
+    hasBadge: value !== undefined,
+    key,
+    label,
+    path,
+  };
 }
 
-/** Collect group chips for a link's non-target expression operands (value/initial/cases). */
-function groupChips(
-  link: ChainLink,
-  onSelect: (path: NodePath) => void,
-  preview: EditorPreview | null | undefined,
-): TemplateResult[] {
-  const chips: TemplateResult[] = [];
+/** Group chips for a link's non-target expression operands (value / initial / cases / default). */
+function groupChips(link: ChainLink, preview: ChipPreview | null | undefined): FormulaChip[] {
+  const chips: FormulaChip[] = [];
   const add = (operand: unknown, path: NodePath) => {
     if (isExprNode(operand)) {
-      chips.push(renderChip(`(${chipSummary(operand)})`, path, onSelect, preview, true));
+      chips.push(chip(`(${chipSummary(operand)})`, path, preview, true));
     }
   };
   const { value, initial, cases } = link.node;
@@ -179,38 +179,33 @@ function groupChips(
 }
 
 /**
- * Render an expression node as a horizontal chip pipeline. Each chip carries the node's live value
- * badge when a preview is supplied; clicking a chip calls `onSelect` with the node path.
+ * The chips one expression node reads as, in strip order.
+ *
+ * Empty for anything that is not an expression node, which is what a caller draws nothing for — a
+ * strip of no chips and no strip at all are the same thing on screen, and saying it here keeps both
+ * drawings from having to decide.
+ *
+ * @param {unknown} node The expression node to read.
+ * @param {{ preview?: ChipPreview | null; path?: NodePath }} [opts] The live evaluation, and the
+ *   document position `node` sits at — every chip path is prefixed with it.
+ * @returns {FormulaChip[]}
  */
-export function renderFormulaChips(
+export function formulaChipStrip(
   node: unknown,
-  onSelect: (path: NodePath) => void,
-  opts: { preview?: EditorPreview | null; path?: NodePath } = {},
-): TemplateResult {
+  opts: { preview?: ChipPreview | null; path?: NodePath } = {},
+): FormulaChip[] {
   if (!isExprNode(node)) {
-    return html`${nothing}`;
+    return [];
   }
   const preview = opts.preview ?? null;
-  const basePath = opts.path ?? [];
-  const { head, links } = unrollChain(node, basePath);
+  const { head, links } = unrollChain(node, opts.path ?? []);
 
-  const chips: TemplateResult[] = [];
+  const chips: FormulaChip[] = [];
   if (head) {
-    chips.push(renderChip(operandLabel(head.value), head.path, onSelect, preview));
+    chips.push(chip(operandLabel(head.value), head.path, preview));
   }
   for (const link of links) {
-    chips.push(
-      renderChip(String(link.node.operator), link.path, onSelect, preview),
-      ...groupChips(link, onSelect, preview),
-    );
+    chips.push(chip(String(link.node.operator), link.path, preview), ...groupChips(link, preview));
   }
-
-  return html`
-    <div
-      class="formula-chips"
-      style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;padding:2px 0 6px"
-    >
-      ${chips}
-    </div>
-  `;
+  return chips;
 }
