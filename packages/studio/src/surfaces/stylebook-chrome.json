@@ -1,29 +1,27 @@
 {
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "StudioStylebookChrome",
-  "$description": "The bar across the top of the Project Styles canvas: the filter that narrows the specimen catalogue, and the toggle that reduces it to the elements this file has already styled. Both are shell state rather than document state — the adapter owns which — and the two names come in as values, because the surface is called Project Styles and the canvas view it draws is the wire word `stylebook`; nothing a reader sees here may be spelled from that.",
-  "tagName": "div",
+  "$description": "The bar across the top of the Project Styles canvas: the filter that narrows the specimen catalogue, and the toggle that reduces it to the elements this file has already styled. Both are shell state rather than document state — the adapter owns which — and the two names come in as values, because the surface is called Project Styles and the canvas view it draws is the wire word `stylebook`; nothing a reader sees here may be spelled from that. **The bar IS the kit's toolbar now.** It used to write `role=\"toolbar\"` and its own `aria-label` on a `<div>`, which is a role with none of the behaviour under it: two controls, two tab stops, and no arrow key between them. `jx-action-group` is not the element for it — that one roves `jx-action-button` and this bar's first control is a `jx-textfield` — so `jx-toolbar` is, and the field keeps its own arrows while its caret still has text to walk (ui.md §5.5).",
+  "tagName": "jx-toolbar",
   "attributes": {
-    "part": "chrome",
-    "role": "toolbar",
-    "aria-label": "${state.title}"
+    "part": "chrome"
+  },
+  "$props": {
+    "label": {
+      "$ref": "#/state/title"
+    }
   },
   "style": {
-    "$description": "What `.sb-chrome` said in `styles/overlays.css`, plus the six inline declarations the template carried beside it, plus `.tb-toggle` — all three go dead with this conversion, and none of them is shared with another surface. Two repairs on the way. The bar is one element rather than a positioned box wrapping a `role=\"toolbar\"` row that declared the same flex layout again. And `.tb-toggle` read `var(--spectrum-font-size-50, 11px)`, which the kit spells `--jx-text-sm` at the same value; the rest of its drawing is a `jx-action-button` reaching in through `part=\"control\"`, because what it has to look like is a small bordered chip and every fill and control height the kit draws would otherwise have to be taken back off.",
+    "$description": "What `.sb-chrome` said in `styles/overlays.css`, plus the six inline declarations the template carried beside it, plus `.tb-toggle` — all three go dead with this conversion, and none of them is shared with another surface. Three repairs on the way. The bar is one element rather than a positioned box wrapping a `role=\"toolbar\"` row that declared the same flex layout again. The flex layout is not declared here EITHER any more: `display: flex`, `align-items: center`, the `--jx-space-2` gap, the sans face and the foreground colour are all `jx-toolbar`'s own, so what is left below is only what a positioned BAND is. And `.tb-toggle` read `var(--spectrum-font-size-50, 11px)`, which the kit spells `--jx-text-sm` at the same value; the rest of its drawing is a `jx-action-button` reaching in through `part=\"control\"`, because what it has to look like is a small bordered chip and every fill and control height the kit draws would otherwise have to be taken back off.",
     "position": "absolute",
     "top": "0",
     "left": "0",
     "right": "0",
     "zIndex": "15",
-    "display": "flex",
-    "alignItems": "center",
-    "gap": "var(--jx-space-2)",
     "flexShrink": "0",
     "padding": "var(--jx-space-2) var(--jx-space-3)",
     "background": "var(--bg-panel)",
     "borderBottom": "1px solid var(--border)",
-    "fontFamily": "var(--jx-font-sans)",
-    "color": "var(--fg)",
     "& [part=\"filter\"]": {
       "flex": "1",
       "maxWidth": "200px"

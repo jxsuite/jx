@@ -284,6 +284,87 @@ describe("renderStylebookMode", () => {
   });
 });
 
+// ─── The chrome bar IS the kit's toolbar ──────────────────────────────────────
+
+describe("the Project Styles chrome bar", () => {
+  /** Every control the toolbar roves, paired with the roving `tabindex` a Tab would land on. */
+  const stops = () =>
+    [...chromeBar().querySelectorAll<HTMLElement>('[part="control"], [part="input"]')]
+      .filter((el) => el.closest('[part="clear"]') === null)
+      .map((el) => el.getAttribute("tabindex"));
+
+  test("the role and the name are the element's, and two controls are ONE tab stop", async () => {
+    /* The bar wrote `role="toolbar"` and its own `aria-label` on a `<div>` — a container role with
+       none of the behaviour a reader is promised by it: two controls, two tab stops, no arrow key
+       between them. `jx-action-group` was not available as the fix, because the first control in
+       this bar is a `jx-textfield` and that element roves `jx-action-button` alone. */
+    makeTab();
+    await renderStylebookMode(stage, ctx);
+    await flush();
+    expect(chromeBar().localName).toBe("jx-toolbar");
+    expect(chromeBar().getAttribute("role")).toBe("toolbar");
+    expect(chromeBar().getAttribute("aria-orientation")).toBe("horizontal");
+    /* The name still comes from the surface's own TITLE rather than the canvas view's wire word,
+       which is the one thing this document's own description asks of every string in it. It moved
+       from a hand-written `aria-label` binding to the element's `label` prop, and a prop that never
+       arrived would leave the container announced by its role alone with nothing to say so. */
+    const name = chromeBar().getAttribute("aria-label") ?? "";
+    expect(name).not.toBe("");
+    expect(name).not.toBe("stylebook");
+    expect(stops()).toEqual(["0", "-1"]);
+  });
+
+  test("the band still positions itself, and the row's flex layout now comes from the element", async () => {
+    /* The root's own `position: absolute` is load-bearing — the host it mounts into is
+       `display: contents` precisely so the bar can place itself — and a kit element as a document
+       ROOT keeps its host's style object, which is what makes that legal. What it no longer
+       declares is the flex row: that left with the div and arrives from `jx-toolbar`. */
+    makeTab();
+    await renderStylebookMode(stage, ctx);
+    await flush();
+    const computed = getComputedStyle(chromeBar());
+    expect(computed.position).toBe("absolute");
+    expect(computed.display).toBe("flex");
+    expect(computed.alignItems).toBe("center");
+  });
+
+  test("an arrow moves between the field and the toggle, and the field keeps it until its caret runs out", async () => {
+    makeTab();
+    await renderStylebookMode(stage, ctx);
+    await flush();
+    const input = filterControl();
+    input.value = "he";
+    input.setSelectionRange(1, 1);
+    input.focus();
+    const held = new KeyboardEvent("keydown", {
+      bubbles: true,
+      cancelable: true,
+      key: "ArrowRight",
+    });
+    input.dispatchEvent(held);
+    expect(held.defaultPrevented).toBe(false);
+    expect(document.activeElement).toBe(input);
+    input.setSelectionRange(2, 2);
+    const out = new KeyboardEvent("keydown", {
+      bubbles: true,
+      cancelable: true,
+      key: "ArrowRight",
+    });
+    input.dispatchEvent(out);
+    expect(out.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(customizedControl());
+    // And back again, from the start of the field's own text.
+    const back = new KeyboardEvent("keydown", {
+      bubbles: true,
+      cancelable: true,
+      key: "ArrowLeft",
+    });
+    customizedControl().dispatchEvent(back);
+    expect(back.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(input);
+  });
+});
+
 // ─── selectStylebookTag ───────────────────────────────────────────────────────
 
 describe("selectStylebookTag", () => {

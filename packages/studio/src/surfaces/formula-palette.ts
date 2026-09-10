@@ -94,8 +94,10 @@ interface FormulaPaletteScope extends Record<string, unknown> {
   /** Which empty state: nothing matched what was typed, or there was nothing to match. */
   emptyHint: string;
   anchored: boolean;
-  /** The two measured custom properties an anchored panel is positioned by; empty when centred. */
-  anchorVars: string;
+  /** An anchored panel's inline-start edge in viewport pixels; ignored while `anchored` is false. */
+  anchorLeft: number;
+  /** An anchored panel's block-start edge in viewport pixels. */
+  anchorTop: number;
   close: () => void;
   input: (value: string) => void;
   move: (delta: number) => void;
@@ -158,22 +160,25 @@ function groupRows(entries: readonly FormulaCatalogEntry[]): GroupProjection[] {
 }
 
 /**
- * The panel's position as two custom properties, or the empty string for a centred panel.
+ * The panel's position for `anchor`, or null for a centred panel.
  *
- * A rect belongs to the moment it was measured, so this is taken once per open and written as data
- * the document's own rule reads. A zero box is what a detached or unlaid-out anchor gives back, and
- * pinning the panel to the top-left corner of the window is worse than centring it.
+ * A rect belongs to the moment it was measured, so this is taken once per open and handed to the
+ * document as state; the two declarations that read it are in `formula-palette.json`'s own style
+ * object. A zero box is what a detached or unlaid-out anchor gives back, and pinning the panel to
+ * the top-left corner of the window is worse than centring it.
  */
-function anchorVars(anchor: HTMLElement | null): string {
+function anchorAt(anchor: HTMLElement | null): { left: number; top: number } | null {
   if (!anchor) {
-    return "";
+    return null;
   }
   const rect = rectOf(anchor);
   if (rect.top === 0 && rect.left === 0 && rect.width === 0) {
-    return "";
+    return null;
   }
-  const left = Math.max(8, Math.min(rect.left, (globalThis.innerWidth || 1200) - PANEL_WIDTH));
-  return `--formula-palette-left:${left}px;--formula-palette-top:${rect.bottom + 4}px`;
+  return {
+    left: Math.max(8, Math.min(rect.left, (globalThis.innerWidth || 1200) - PANEL_WIDTH)),
+    top: rect.bottom + 4,
+  };
 }
 
 /** The document's scope, created once. */
@@ -195,7 +200,8 @@ function scope(): FormulaPaletteScope {
     },
     activeId: "",
     anchored: false,
-    anchorVars: "",
+    anchorLeft: 0,
+    anchorTop: 0,
     close: closeFormulaPalette,
     emptyHint: "",
     expanded: false,
@@ -315,9 +321,10 @@ export function openFormulaPalette(opts: FormulaPaletteOpts): void {
   _query = "";
   _selectedIndex = 0;
   const state = scope();
-  const vars = anchorVars(opts.anchor ?? null);
-  state.anchorVars = vars;
-  state.anchored = vars !== "";
+  const at = anchorAt(opts.anchor ?? null);
+  state.anchorLeft = at?.left ?? 0;
+  state.anchorTop = at?.top ?? 0;
+  state.anchored = at !== null;
   ensureMounted();
   project();
   focusInput();

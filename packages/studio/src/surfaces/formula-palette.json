@@ -1,7 +1,7 @@
 {
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "StudioFormulaPalette",
-  "$description": "The formula palette (spec §19.9): a search field over the formula catalog, its results grouped by the catalog's own group order, and one pick that hands an entry back to whoever opened it. The same shape as `palette.json` — a scrim, a framed panel, a borderless field, a listbox — because it is the same gesture over a different corpus, and the two used to share a stylesheet by sharing its class names. `groups` is the filtered catalog already grouped; `activeId` is the highlight, and it is ONE string — the id the field points `aria-activedescendant` at and the id the listbox is handed as `active` — kept apart from the rows so a key moves it without the list reconciling, which is why every row carries the FLAT index it would otherwise have to be asked for. Panel position is the caller's: centred under the top edge by default, and pinned under an anchor control when one was named, which is the only thing about this surface a document cannot decide for itself.",
+  "$description": "The formula palette (spec §19.9): a search field over the formula catalog, its results grouped by the catalog's own group order, and one pick that hands an entry back to whoever opened it. The same shape as `palette.json` — a scrim, a framed panel, a borderless field, a listbox — because it is the same gesture over a different corpus, and the two used to share a stylesheet by sharing its class names. `groups` is the filtered catalog already grouped; `activeId` is the highlight, and it is ONE string — the id the field points `aria-activedescendant` at and the id the listbox is handed as `active` — kept apart from the rows so a key moves it without the list reconciling, which is why every row carries the FLAT index it would otherwise have to be asked for. Panel position is the caller's: centred under the top edge by default, and pinned under an anchor control when one was named, which is the only thing about this surface a document cannot decide for itself — it arrives as `anchorLeft`/`anchorTop`, two numbers the `style` object below binds, because a style declaration may read state like any other value (spec §9.1).",
   "tagName": "div",
   "attributes": {
     "part": "palette"
@@ -9,6 +9,8 @@
   "style": {
     "$description": "The `.quick-search-*` rules the palette used to borrow from `styles/overlays.css`, brought here and re-valued. Every colour in the originals was a `--spectrum-*` name with a hex fallback, and a mounted document is outside `<sp-theme>` — so each of those resolved to its fallback and the palette had stopped following the chrome theme at all. The names now read from the kit's own layer, which is where a surface's colours come from.",
     "display": "contents",
+    "--formula-palette-left": "${state.anchorLeft}px",
+    "--formula-palette-top": "${state.anchorTop}px",
     "& [part=\"overlay\"]": {
       "position": "fixed",
       "inset": "0",
@@ -34,7 +36,7 @@
       "overflow": "hidden"
     },
     "& [part=\"panel\"][data-anchored]": {
-      "$description": "Opened from a control rather than from a chord: the panel hangs under that control instead of sitting under the top edge. The two custom properties are the only measured numbers in the surface — a rect belongs to the moment it was taken, so the adapter writes them and the rule that reads them stays here.",
+      "$description": "Opened from a control rather than from a chord: the panel hangs under that control instead of sitting under the top edge. The two custom properties are the only measured numbers in the surface — a rect belongs to the moment it was taken, so the adapter measures it once per open and this document binds the result. They used to travel as a `style` ATTRIBUTE the adapter assembled into one string, on the belief that a document cannot bind a style declaration to state; it can, and always could. They are declared at the top of this object rather than here because a reactive custom property in a rule targeting the element ITSELF is written inline under the author's own name (spec §9.1), and the panel then reads them by inheritance — the root is `display: contents`, so nothing sits between the two.",
       "position": "fixed",
       "left": "var(--formula-palette-left)",
       "top": "var(--formula-palette-top)",
@@ -121,8 +123,7 @@
           "tagName": "div",
           "attributes": {
             "part": "panel",
-            "data-anchored": "${state.anchored ? '' : null}",
-            "style": "${state.anchorVars}"
+            "data-anchored": "${state.anchored ? '' : null}"
           },
           "onclick": {
             "$prototype": "Function",

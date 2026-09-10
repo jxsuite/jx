@@ -638,6 +638,84 @@ describe("the panel's answer to a move it cannot perform", () => {
   });
 });
 
+describe("the panel's answer to a letter it must resolve over the model", () => {
+  /** Say what `jx-tree` says for a printable character on a tree whose slice is not the model. */
+  function typeahead(from: string, char: string): void {
+    tree(host).dispatchEvent(
+      new CustomEvent("typeahead", { bubbles: true, detail: { char, from } }),
+    );
+  }
+
+  /** The doc's rows, titled so a letter names exactly one and text rows can be made to lie. */
+  function titledDoc(): JxMutableNode {
+    return {
+      children: [
+        { $title: "Alpha", tagName: "section" },
+        /* A TEXT row that starts with the same letter as a real one. The element's own typeahead
+           never lands on a text node because it is not a `treeitem`, so neither may this: a search
+           over the model has to carry the same distinction the arrows do. */
+        { children: ["Beta the text node"], tagName: "p" },
+        { $title: "Bravo", tagName: "div" },
+        { $title: "Bella", tagName: "div" },
+      ],
+      tagName: "div",
+    };
+  }
+
+  test("it lands on the model's NEXT row with that name, wrapping, and never on a text node", async () => {
+    resetWorkspaceWithTab(titledDoc());
+    await draw();
+
+    typeahead(pathKey(["children", 0]), "b");
+    await flush();
+    // Bravo, not the "Beta the text node" row that sits between them.
+    expect(activeTab.value!.session.selection).toEqual([["children", 2]]);
+
+    // The next `b` after the caret, so a second press cycles rather than sticking.
+    typeahead(pathKey(["children", 2]), "b");
+    await flush();
+    expect(activeTab.value!.session.selection).toEqual([["children", 3]]);
+
+    // And it wraps back through the top of the model.
+    typeahead(pathKey(["children", 3]), "a");
+    await flush();
+    expect(activeTab.value!.session.selection).toEqual([["children", 0]]);
+  });
+
+  test("a letter the model has no row for moves nothing at all", async () => {
+    resetWorkspaceWithTab(titledDoc());
+    await draw();
+    activeTab.value!.session.selection = [["children", 0]];
+    const before = activeTab.value!.session.selection;
+
+    typeahead(pathKey(["children", 0]), "z");
+    await flush();
+    expect(activeTab.value!.session.selection).toBe(before);
+  });
+
+  test("the name it matches is the one the row DRAWS", async () => {
+    /* `jx-tree` matches a drawn row on its `label` prop because that is the row's accessible name.
+       A model-side search that named a row a second way would move the caret somewhere the reader
+       was never told about, so both reads go through `outlineRowLabel`. A `$title` beats the tag,
+       the id and the text, and it is what the row shows — so it is what a letter must reach. */
+    resetWorkspaceWithTab({
+      children: [{ $id: "zeta", $title: "Quartz", tagName: "p", textContent: "zebra" }],
+      tagName: "div",
+    });
+    await draw();
+
+    typeahead("", "q");
+    await flush();
+    expect(activeTab.value!.session.selection).toEqual([["children", 0]]);
+
+    // The id and the text are both `z`, and neither is what the row says.
+    activeTab.value!.session.selection = [];
+    typeahead("", "z");
+    await flush();
+    expect(activeTab.value!.session.selection).toEqual([]);
+  });
+});
+
 // ─── Selection, and what a click means ───────────────────────────────────────
 
 describe("clicking a row", () => {

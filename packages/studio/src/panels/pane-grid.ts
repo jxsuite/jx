@@ -38,13 +38,31 @@
  *    #1, the rest of the gesture goes to whatever is under the cursor, and a drag asking for +0.20
  *    lands +0.03.
  *
+ * **The splitter is `jx-split` (ui.md §5.5), and the drag left this module with it.** It used to be
+ * a bare div carrying `role="separator"` and a `setupHandle` call from here — which meant the one
+ * dock-sized thing in Studio that no keyboard could move: no tab stop, no `aria-valuenow`, no
+ * arrows, and a double click that reset the split as the only gesture a pointer could reach without
+ * dragging. What is left here is the two lines a host actually owns: {@link setPaneSplit} on every
+ * move and {@link persistDocks} on every commit. The element measures the grid itself, so the 320px
+ * floor is handed over in pixels and converted against the box it is actually dividing — and the
+ * `scale`, `min` and `max` closures that read `clientWidth` on every `pointermove` are gone, along
+ * with the window-resize staleness they were paying for.
+ *
  * The fourth rule of §18.1 — _a pane with nothing in it is a hole in the grid_ — is enforced in
  * `workspace/workspace.ts`, where the tabs are. This module never repairs: repairing inside a
  * reactive effect that writes `workspace.panes` is an effect that triggers itself.
  */
 
 import { effect, effectScope } from "../reactivity";
-import { persistDocks, registerShellSurface, setPaneSplit, shell } from "../shell";
+import {
+  DEFAULT_PANE_SPLIT,
+  PANE_SPLIT_MAX,
+  PANE_SPLIT_MIN,
+  persistDocks,
+  registerShellSurface,
+  setPaneSplit,
+  shell,
+} from "../shell";
 import {
   createPaneSurface,
   disposePaneSurface,
@@ -57,7 +75,6 @@ import { paneRegion, paneStripRegion } from "../ui/regions";
 import { attachJumpBarHost } from "./jump-bar";
 import { attachPaneChromeHost } from "./pane-context";
 import { focusPane, workspace } from "../workspace/workspace";
-import { setupHandle } from "../ui/panel-resize";
 import { mountPaneGridSurface } from "../surfaces/pane-grid";
 import type { EffectScope } from "@vue/reactivity";
 import type { CanvasSurface } from "../canvas/canvas-surface";
@@ -286,28 +303,15 @@ function sameOrder(a: readonly string[], b: readonly string[]): boolean {
 }
 
 /**
- * The splitter has been created. Wire it, once.
+ * The floor: a pane, not a sliver.
  *
- * There is nothing to un-wire: the node is created when the second pane appears and dropped when it
- * goes, and NOTHING in between re-inserts it — so a pointer capture taken on `pointerdown` survives
- * the drag that writes `shell.paneSplit` five times.
+ * 320px is the narrowest an Inspector-less editor is usable at, and the same number on both sides
+ * is what makes a drag symmetrical. It is handed to `jx-split` in PIXELS and converted there
+ * against the track the element measures for itself, which is the whole reason nothing in this
+ * module has to notice a window resize: a fractional floor computed from a width here would be
+ * wrong the moment the width changed, and wrong in the direction that lets a pane go below it.
  */
-function onSplitter(element: HTMLElement): void {
-  setupHandle(element, {
-    axis: "x",
-    // The floor is a pane, not a sliver: 320px is the narrowest an Inspector-less editor is
-    // Usable at, and the same number on both sides is what makes a drag symmetrical.
-    max: () => Math.max(0.2, 1 - 320 / Math.max(1, gridWidth())),
-    min: () => Math.min(0.8, 320 / Math.max(1, gridWidth())),
-    read: () => shell.paneSplit,
-    reset: () => 0.5,
-    // A drag is px against the measured grid; the stored value is a RATIO, so the same layout
-    // Survives a window resize.
-    scale: () => 1 / Math.max(1, gridWidth()),
-    settle: () => persistDocks(),
-    write: (value) => setPaneSplit(value),
-  });
-}
+const MIN_PANE_PX = 320;
 
 /**
  * Bring the drawn cells into line with `workspace.panes`. Idempotent by construction.
@@ -339,7 +343,7 @@ export function reconcile(): void {
       }
     }
     _drawn = ids;
-    _surface.update(next);
+    _surface.update(next, shell.paneSplit);
   }
   layout(grid);
 }
@@ -368,10 +372,6 @@ function layout(grid: HTMLElement): void {
   grid.style.gridTemplateColumns = `minmax(0, ${split}fr) 5px minmax(0, ${1 - split}fr)`;
 }
 
-function gridWidth(): number {
-  return _grid?.clientWidth ?? 0;
-}
-
 /** Mount the grid. Called by `shell.ts`'s `mountShell()`, like every other shell surface. */
 export function mount(): void {
   if (_scope) {
@@ -383,7 +383,18 @@ export function mount(): void {
   }
   const first = rows();
   _drawn = first.map((row) => row.id);
-  _surface = mountPaneGridSurface(_grid, first, { cellPart, splitter: onSplitter });
+  _surface = mountPaneGridSurface(
+    _grid,
+    first,
+    {
+      collapse: DEFAULT_PANE_SPLIT,
+      gap: MIN_PANE_PX,
+      max: PANE_SPLIT_MAX,
+      min: PANE_SPLIT_MIN,
+      value: shell.paneSplit,
+    },
+    { cellPart, move: setPaneSplit, settle: persistDocks },
+  );
   _ready = _surface.ready;
   _scope = effectScope();
   _scope.run(() => {

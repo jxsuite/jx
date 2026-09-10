@@ -1,0 +1,170 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StylebookSplit",
+  "tagName": "main",
+  "$elements": [{ "$ref": "../components/jx-split.json" }],
+  "state": {
+    "columns": 0.5,
+    "rows": 0.6,
+    "onColumns": {
+      "$prototype": "Function",
+      "body": [
+        {
+          "operator": "=",
+          "target": { "$ref": "#/state/columns" },
+          "value": { "$ref": "event#/target/value" }
+        }
+      ]
+    },
+    "onRows": {
+      "$prototype": "Function",
+      "body": [
+        {
+          "operator": "=",
+          "target": { "$ref": "#/state/rows" },
+          "value": { "$ref": "event#/target/value" }
+        }
+      ]
+    }
+  },
+  "style": {
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "color": "var(--jx-fg)",
+    "background": "var(--jx-bg)",
+    "padding": "var(--jx-space-6)",
+    "minHeight": "100vh",
+    "& > h1": {
+      "fontSize": "var(--jx-text-lg)",
+      "fontWeight": "600",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& > h2": {
+      "fontSize": "var(--jx-text-md)",
+      "fontWeight": "600",
+      "margin": "var(--jx-space-6) 0 var(--jx-space-3)"
+    },
+    "& > p": { "color": "var(--jx-fg-dim)", "margin": "0 0 var(--jx-space-5)" },
+    "& [data-columns]": {
+      "display": "grid",
+      "gridTemplateColumns": "minmax(0, ${state.columns}fr) auto minmax(0, ${1 - state.columns}fr)",
+      "height": "180px",
+      "width": "min(640px, 100%)",
+      "border": "1px solid var(--jx-border)",
+      "borderRadius": "var(--jx-radius-sm)",
+      "overflow": "hidden",
+      "background": "var(--jx-bg-panel)"
+    },
+    "& [data-rows]": {
+      "display": "grid",
+      "gridTemplateRows": "minmax(0, ${state.rows}fr) auto minmax(0, ${1 - state.rows}fr)",
+      "height": "240px",
+      "width": "min(320px, 100%)",
+      "border": "1px solid var(--jx-border)",
+      "borderRadius": "var(--jx-radius-sm)",
+      "overflow": "hidden",
+      "background": "var(--jx-bg-panel)"
+    },
+    "& [data-fixed]": {
+      "display": "grid",
+      "gridTemplateColumns": "minmax(0, 1fr) auto minmax(0, 1fr)",
+      "height": "120px",
+      "width": "min(640px, 100%)",
+      "border": "1px solid var(--jx-border)",
+      "borderRadius": "var(--jx-radius-sm)",
+      "overflow": "hidden",
+      "background": "var(--jx-bg-panel)"
+    },
+    "& [data-side]": {
+      "display": "flex",
+      "alignItems": "center",
+      "justifyContent": "center",
+      "minWidth": "0",
+      "minHeight": "0",
+      "color": "var(--jx-fg-dim)"
+    }
+  },
+  "children": [
+    { "tagName": "h1", "textContent": "jx-split" },
+    {
+      "tagName": "p",
+      "textContent": "A window splitter: role=separator, a real tab stop, and a value that is the leading side's share of the box it divides. It measures that box itself at the start of every gesture, so the gap floor below is honoured in pixels while the value it stores stays a fraction — the same layout survives a window resize with no listener anywhere."
+    },
+    {
+      "tagName": "h2",
+      "textContent": "Vertical — the upright line between two side-by-side panes"
+    },
+    {
+      "tagName": "p",
+      "textContent": "Drag it, or put the caret on it and press Left and Right. Shift takes the larger step, Home and End go to the ends of its legal range, and Enter collapses the split and restores it. gap=120 keeps 120px on each side however the box is resized."
+    },
+    {
+      "tagName": "div",
+      "attributes": { "data-columns": "", "role": "none" },
+      "children": [
+        { "tagName": "div", "attributes": { "data-side": "" }, "textContent": "Navigator" },
+        {
+          "tagName": "jx-split",
+          "$props": {
+            "label": "Navigator and editor",
+            "value": { "$ref": "#/state/columns" },
+            "min": 0.2,
+            "max": 0.8,
+            "gap": 120,
+            "collapse": 0.5
+          },
+          "oninput": { "$ref": "#/state/onColumns" }
+        },
+        { "tagName": "div", "attributes": { "data-side": "" }, "textContent": "Editor" }
+      ]
+    },
+    {
+      "tagName": "h2",
+      "textContent": "Horizontal — the flat line between a stage and a dock"
+    },
+    {
+      "tagName": "p",
+      "textContent": "orientation names the SEPARATOR rather than the axis it moves on, which is ARIA's meaning: a horizontal splitter is the flat line between two stacked boxes, dragged up and down with Up and Down."
+    },
+    {
+      "tagName": "div",
+      "attributes": { "data-rows": "", "role": "none" },
+      "children": [
+        { "tagName": "div", "attributes": { "data-side": "" }, "textContent": "Stage" },
+        {
+          "tagName": "jx-split",
+          "$props": {
+            "label": "Stage and console",
+            "orientation": "horizontal",
+            "value": { "$ref": "#/state/rows" },
+            "min": 0.15,
+            "max": 0.85,
+            "gap": 48
+          },
+          "oninput": { "$ref": "#/state/onRows" }
+        },
+        { "tagName": "div", "attributes": { "data-side": "" }, "textContent": "Console" }
+      ]
+    },
+    {
+      "tagName": "h2",
+      "textContent": "Disabled"
+    },
+    {
+      "tagName": "p",
+      "textContent": "A disabled splitter keeps its box and its announcement and drops out of the tab order: a layout a reader cannot explain is worse than one they cannot change."
+    },
+    {
+      "tagName": "div",
+      "attributes": { "data-fixed": "", "role": "none" },
+      "children": [
+        { "tagName": "div", "attributes": { "data-side": "" }, "textContent": "Fixed" },
+        {
+          "tagName": "jx-split",
+          "$props": { "label": "Fixed split", "disabled": true }
+        },
+        { "tagName": "div", "attributes": { "data-side": "" }, "textContent": "Fixed" }
+      ]
+    }
+  ]
+}

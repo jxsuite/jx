@@ -179,14 +179,22 @@ function isOffscreen(): boolean {
   return bar()!.dataset.offscreen !== undefined;
 }
 
-/** The bar's placed inline-start edge, as the document's own custom property. */
+/**
+ * The bar's placed inline-start edge, RESOLVED.
+ *
+ * `getComputedStyle`, not the element's own inline style: the document declares the position in its
+ * own style object, so the value is a custom property set on the mount's root and read by the bar
+ * through the cascade. Asking the bar for its computed `left` asks the question a reader's eye
+ * asks, and it holds whichever element the value happens to be written on — which is the point,
+ * because the clamp writes it on the bar itself.
+ */
 function barX(): string {
-  return bar()!.style.getPropertyValue("--jx-bar-x").trim();
+  return globalThis.getComputedStyle(bar()!).left.trim();
 }
 
-/** The bar's placed block-start edge. */
+/** The bar's placed block-start edge, resolved the same way. */
 function barY(): string {
-  return bar()!.style.getPropertyValue("--jx-bar-y").trim();
+  return globalThis.getComputedStyle(bar()!).top.trim();
 }
 
 function press(el: Element | null): void {
@@ -357,16 +365,16 @@ describe("block action bar", () => {
     setup({ children: [{ tagName: "p", textContent: "A" }], tagName: "div" }, ["children", 0]);
     setAnchor({ height: 50, left: 30, top: 200, width: 100 });
     await render();
-    expect(bar()!.style.getPropertyValue("--jx-bar-x").trim()).toBe("30px");
-    expect(bar()!.style.getPropertyValue("--jx-bar-y").trim()).toBe("162px"); // 200 - 38
+    expect(barX()).toBe("30px");
+    expect(barY()).toBe("162px"); // 200 - 38
   });
 
   test("positions below the anchor when near the top of the viewport", async () => {
     setup({ children: [{ tagName: "p", textContent: "A" }], tagName: "div" }, ["children", 0]);
     setAnchor({ height: 20, left: 12, top: 10, width: 100 });
     await render();
-    expect(bar()!.style.getPropertyValue("--jx-bar-x").trim()).toBe("12px");
-    expect(bar()!.style.getPropertyValue("--jx-bar-y").trim()).toBe("34px"); // 10 + 20 + 4
+    expect(barX()).toBe("12px");
+    expect(barY()).toBe("34px"); // 10 + 20 + 4
   });
 
   test("the root selection keeps the bar's shape and disables what cannot act", async () => {

@@ -175,6 +175,125 @@ describe("a mounted island keeps projecting", () => {
   });
 });
 
+describe("the grid toolbar is the kit's toolbar", () => {
+  /**
+   * The row, as the reader meets it: every control the toolbar roves, in order, paired with the
+   * roving `tabindex` on the node a Tab actually lands on.
+   */
+  const row = (stage: HTMLElement) =>
+    [
+      ...stage.querySelectorAll<HTMLElement>(
+        '[part="toolbar"] [part="control"], [part="toolbar"] [part="input"]',
+      ),
+    ].map((control) => [
+      control.getAttribute("aria-label") ?? control.textContent,
+      control.getAttribute("tabindex"),
+    ]);
+
+  test("the role, the name and the ONE tab stop are the element's, not four lines of markup", async () => {
+    /* The `<div>` this replaced wrote `role="toolbar"` and `aria-label` by hand and stopped there:
+       a container role with none of the behaviour a reader is promised by it. Seven controls meant
+       seven tab stops and no arrow key moved between any of them. `jx-action-group` could not have
+       been the fix — it roves `jx-action-button` and this row's Save is a `jx-button` and its
+       filter is a `jx-textfield`. */
+    const stage = host();
+    const handle = mountGridPanelSurface(stage, { ...GRID_VIEW, canInsert: true }, GRID_ACTIONS);
+    await handle.ready;
+    await flush(3);
+    const bar = stage.querySelector<HTMLElement>('[part="toolbar"]')!;
+    expect(bar.localName).toBe("jx-toolbar");
+    expect(bar.getAttribute("role")).toBe("toolbar");
+    expect(bar.getAttribute("aria-label")).toBe("Grid actions");
+    expect(bar.getAttribute("aria-orientation")).toBe("horizontal");
+    // The document itself writes neither the role nor a tabindex any more.
+    const module_ = await import("../src/surfaces/grid-panel.json");
+    const source = JSON.stringify(module_.default as unknown);
+    expect(source).not.toContain('"role":"toolbar"');
+    expect(source).not.toContain("tabindex");
+    // Exactly one stop, over controls of three different kinds.
+    const stops = row(stage);
+    expect(stops.length).toBeGreaterThanOrEqual(6);
+    expect(stops.filter(([, tab]) => tab === "0")).toHaveLength(1);
+    expect(stops.filter(([, tab]) => tab === "-1").length).toBe(stops.length - 1);
+    handle.dispose();
+  });
+
+  test("the band's flex layout left with the div, and the element supplies it", async () => {
+    /* The three declarations `& [part="toolbar"]` used to carry are `jx-toolbar`'s own now, and
+       this is what says they really arrive: a surface that deleted them and got nothing back would
+       stack its controls in a column with no gap, which no assertion about markup would notice. */
+    const stage = host();
+    const handle = mountGridPanelSurface(stage, GRID_VIEW, GRID_ACTIONS);
+    await handle.ready;
+    await flush(3);
+    const bar = stage.querySelector<HTMLElement>('[part="toolbar"]')!;
+    const computed = getComputedStyle(bar);
+    expect(computed.display).toBe("flex");
+    expect(computed.alignItems).toBe("center");
+    // And the band's own declarations, which stayed, are still on the same box.
+    expect(computed.flexShrink).toBe("0");
+    handle.dispose();
+  });
+
+  test("an arrow walks the row, and the filter field keeps the key until its caret runs out", async () => {
+    /* The reason this row needed a new element rather than `jx-action-group`. A text field in a
+       toolbar is the case the APG raises and does not answer: the arrow the toolbar wants is the
+       arrow that moves the caret. The field holds it while there is text left that way and gives
+       it back at the edge, so the reader arrows in, filters, and arrows out with one key. */
+    const stage = host();
+    const handle = mountGridPanelSurface(stage, GRID_VIEW, GRID_ACTIONS);
+    await handle.ready;
+    await flush(3);
+    const bar = stage.querySelector<HTMLElement>('[part="toolbar"]')!;
+    const input = bar.querySelector<HTMLInputElement>('[part="filter"] [part="input"]')!;
+    input.value = "post";
+    input.setSelectionRange(2, 2);
+    input.focus();
+    const held = new KeyboardEvent("keydown", {
+      bubbles: true,
+      cancelable: true,
+      key: "ArrowRight",
+    });
+    input.dispatchEvent(held);
+    expect(held.defaultPrevented).toBe(false);
+    expect(document.activeElement).toBe(input);
+    // At the end of the text the same key leaves the field for the next control in the row.
+    input.setSelectionRange(4, 4);
+    const out = new KeyboardEvent("keydown", {
+      bubbles: true,
+      cancelable: true,
+      key: "ArrowRight",
+    });
+    input.dispatchEvent(out);
+    expect(out.defaultPrevented).toBe(true);
+    expect(document.activeElement).not.toBe(input);
+    expect(bar.contains(document.activeElement)).toBe(true);
+    handle.dispose();
+  });
+
+  test("the row's one stop survives the controls that come and go with the source", async () => {
+    /* Add Row and Delete Rows are `$switch` branches on the source's capabilities and the pager
+       appears with a second page, so this row really does grow and shrink under the reader. A
+       control appended with no `tabindex` is a second tab stop; losing the one that held the caret
+       leaves none at all. */
+    const stage = host();
+    const handle = mountGridPanelSurface(stage, GRID_VIEW, GRID_ACTIONS);
+    await handle.ready;
+    await flush(3);
+    const before = row(stage);
+    expect(before.filter(([, tab]) => tab === "0")).toHaveLength(1);
+    handle.update({ ...GRID_VIEW, canDelete: true, canInsert: true, pagerState: "shown" });
+    await flush(3);
+    const after = row(stage);
+    expect(after.length).toBeGreaterThan(before.length);
+    expect(after.filter(([, tab]) => tab === "0")).toHaveLength(1);
+    handle.update(GRID_VIEW);
+    await flush(3);
+    expect(row(stage).filter(([, tab]) => tab === "0")).toHaveLength(1);
+    handle.dispose();
+  });
+});
+
 describe("a popover surface owns its own slot", () => {
   const panels = () => [...layerHost("popover").querySelectorAll('[part="views-panel"]')];
 

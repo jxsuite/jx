@@ -1,4 +1,4 @@
-import "./harness";
+import { flush } from "./harness";
 import { afterEach, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -51,22 +51,35 @@ function rows(...ids: string[]): PaneGridRow[] {
   }));
 }
 
-/** A recorder for both actions, in call order. */
+/** The splitter's constants, as `panels/pane-grid.ts` hands them over. */
+const SPLIT = { collapse: 0.5, gap: 320, max: 0.8, min: 0.2, value: 0.5 };
+
+/** A recorder for every action, in call order. */
 function recorder() {
   const parts: string[] = [];
-  const splitters: HTMLElement[] = [];
+  const moves: number[] = [];
+  const settles: number[] = [];
   return {
     actions: {
       cellPart: (paneId: string, part: PaneCellPart, element: HTMLElement) => {
         parts.push(`${paneId}:${part}:${element.tagName.toLowerCase()}`);
       },
-      splitter: (element: HTMLElement) => {
-        splitters.push(element);
+      move: (value: number) => {
+        moves.push(value);
+      },
+      settle: () => {
+        settles.push(moves.length);
       },
     },
+    moves,
     parts,
-    splitters,
+    settles,
   };
+}
+
+/** The splitter the document drew, or null. */
+function splitterIn(el: HTMLElement): HTMLElement | null {
+  return el.querySelector<HTMLElement>("jx-split");
 }
 
 afterEach(() => {
@@ -76,7 +89,7 @@ afterEach(() => {
 describe("what the mount announces", () => {
   test("every cell box arrives named by its pane, in document order", async () => {
     const rec = recorder();
-    const surface = mountPaneGridSurface(host(), rows("primary"), rec.actions);
+    const surface = mountPaneGridSurface(host(), rows("primary"), SPLIT, rec.actions);
     await surface.ready;
 
     /* The CELL first, then its four boxes: the runtime creates a row depth-first, so the outermost
@@ -90,19 +103,22 @@ describe("what the mount announces", () => {
       "primary:stage:div",
     ]);
     // One pane, so no splitter at all — the `$switch` renders no case rather than a hidden one.
-    expect(rec.splitters).toHaveLength(0);
+    expect(document.querySelectorAll("jx-split")).toHaveLength(0);
     surface.dispose();
   });
 
   test("a second row brings a splitter, and the first row's boxes are not re-announced", async () => {
     const rec = recorder();
     const el = host();
-    const surface = mountPaneGridSurface(el, rows("primary"), rec.actions);
+    const surface = mountPaneGridSurface(el, rows("primary"), SPLIT, rec.actions);
     await surface.ready;
     rec.parts.length = 0;
 
-    surface.update(rows("primary", "secondary"));
-    await Promise.resolve();
+    surface.update(rows("primary", "secondary"), 0.42);
+    /* Two turns rather than a microtask: the row's `jx-split` is a custom element, so its own
+       definition renders one turn after the row that created it — and every ARIA attribute below is
+       written by that render rather than by this document. */
+    await flush();
 
     /* Only the new row. A keyed repeater REUSES the row it already has, which is the whole reason
        a split does not reload the primary pane's `<iframe>`; re-announcing its boxes would mean it
@@ -114,18 +130,28 @@ describe("what the mount announces", () => {
       "secondary:chrome:div",
       "secondary:stage:div",
     ]);
-    expect(rec.splitters).toHaveLength(1);
-    expect(rec.splitters[0]!.getAttribute("role")).toBe("separator");
-    expect(rec.splitters[0]!.getAttribute("aria-orientation")).toBe("vertical");
+    /* The splitter is `jx-split`, so the flow is told nothing about it: there is no node to wire,
+       and every attribute below is written by the ELEMENT rather than by this document. It is still
+       reached by `part`, which is the hook a surface offers for a node it does not own. */
+    const splitter = splitterIn(el)!;
+    expect(splitter).not.toBeNull();
+    expect(splitter.dataset["part"] ?? splitter.getAttribute("part")).toBe("splitter");
+    expect(splitter.getAttribute("role")).toBe("separator");
+    expect(splitter.getAttribute("aria-orientation")).toBe("vertical");
+    expect(splitter.getAttribute("tabindex")).toBe("0");
+    // The projection's split reaches it as `value`, which is `aria-valuenow`.
+    expect(splitter.getAttribute("aria-valuenow")).toBe("0.42");
+    expect(splitter.getAttribute("aria-valuemin")).toBe("0.2");
+    expect(splitter.getAttribute("aria-valuemax")).toBe("0.8");
     // And it is between the two cells, in neither.
-    expect(rec.splitters[0]!.closest(PANE_SELECTOR)).toBeNull();
+    expect(splitter.closest(PANE_SELECTOR)).toBeNull();
     surface.dispose();
   });
 
   test("the region ids the projection carries are the ones stamped", async () => {
     const rec = recorder();
     const el = host();
-    const surface = mountPaneGridSurface(el, rows("primary"), rec.actions);
+    const surface = mountPaneGridSurface(el, rows("primary"), SPLIT, rec.actions);
     await surface.ready;
 
     const cell = el.querySelector<HTMLElement>(PANE_SELECTOR)!;
@@ -146,7 +172,7 @@ describe("giving up before the mount settles", () => {
        rather than paint into a host nobody is holding any more. */
     const rec = recorder();
     const el = host();
-    const surface = mountPaneGridSurface(el, rows("primary"), rec.actions);
+    const surface = mountPaneGridSurface(el, rows("primary"), SPLIT, rec.actions);
     surface.dispose();
     await surface.ready;
     await Promise.resolve();
@@ -166,7 +192,7 @@ describe("giving up before the mount settles", () => {
     el.append(stale);
 
     const rec = recorder();
-    const surface = mountPaneGridSurface(el, rows("primary"), rec.actions);
+    const surface = mountPaneGridSurface(el, rows("primary"), SPLIT, rec.actions);
     await surface.ready;
 
     expect(el.querySelector("#stale")).toBeNull();

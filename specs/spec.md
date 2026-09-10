@@ -2,7 +2,7 @@
 
 ## Declarative Document Object Model — JSON Edition
 
-**Version:** 0.6.20-draft\
+**Version:** 0.6.21-draft\
 **Status:** Partial\
 **Updated:** 2026-09-10\
 **License:** MIT
@@ -879,6 +879,8 @@ Every declaration in that object becomes a **CSS rule**, not an inline style att
 **A declaration value may be reactive**: a `"${…}"` template, or a `{ "$ref": … }`. Both mean the same thing — a value the runtime resolves against the live scope and keeps current — and both are how a component renders in a value it cannot know until it runs, such as a row drawn in the typeface it names. The mechanism is §9.6.
 
 A **reactive value on a custom property, in a rule targeting the element itself**, is written inline under the author's own name and contributes no declaration to the rule. That is deliberate and it is what makes a repeater affordable: the indirection §9.6 describes puts a per-element variable name INTO the rule text, and rules are interned by their text, so a hundred rows each carrying their own value would be a hundred rules. Writing the author's own name inline leaves the rule text identical across rows, so they share one. The declaration that READS the variable — `font-family: var(--row-face, inherit)` — belongs to the element that owns the layout, and interns once. A rule targeting a DESCENDANT keeps the indirection, because a `var()` resolves from the nearest ancestor that set it and a shared descendant rule would otherwise read the wrong element's value.
+
+**A number the host MEASURED is such a value**, and that is worth stating because its absence has twice been read as an exception. A floating panel's placement in viewport pixels reaches the scope as data like any other number — the measurement is the host's and belongs to the moment it was taken, but what the document does with it is an ordinary binding — so the declaration that positions the panel reads it there, and a document never has to assemble a `style` ATTRIBUTE to carry one. Two Studio surfaces did, on the belief that this paragraph did not cover them; `packages/studio/src/surfaces/block-action-bar.json` and `formula-palette.json` now bind the declaration, and each says so in its own `$description`.
 
 An author's own `attributes: { "style": "…" }` is untouched by any of this; it remains a literal attribute, at inline precedence, and overrides the object.
 
@@ -2568,6 +2570,7 @@ This rewrites the mutating handlers of Appendix A's idiom using `$expression`, l
 
 ## Changelog
 
+- **0.6.21-draft** (2026-09-10) — a style declaration may bind a value the host measured, which two surfaces had worked around as impossible.
 - **0.6.20-draft** (2026-09-10) — 8.8 gains custom-element-in-select: a select builds its own rows, so a custom element among them draws, reads convincingly and cannot be picked.
 - **0.6.19-draft** (2026-09-10) — the shell's Trusted Types sink list is one shorter: sp-theme left with Adobe Spectrum rather than being allow-listed.
 - **0.6.18-draft** (2026-09-10) — §4.3 listener options are not part of the on* grammar; §6.1 a binding writes when its source moves, so a document cannot re-assert or empty a bound control; §13.1 there is no document-local element fragment.
@@ -2652,4 +2655,4 @@ This rewrites the mutating handlers of Appendix A's idiom using `$expression`, l
 
 ---
 
-_Jx Specification v0.6.20-draft — subject to revision_
+_Jx Specification v0.6.21-draft — subject to revision_

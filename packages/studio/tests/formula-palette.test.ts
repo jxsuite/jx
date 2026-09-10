@@ -221,8 +221,11 @@ describe("formula palette — the anchored panel", () => {
     await flush();
     const panel = slot().querySelector('[part="panel"]') as HTMLElement;
     expect(panel.dataset.anchored).toBe("");
-    expect(panel.getAttribute("style")).toContain("--formula-palette-left:120px");
-    expect(panel.getAttribute("style")).toContain("--formula-palette-top:44px");
+    /* Computed, not the element's own `style` attribute: the position is declared in the document's
+       own style object and reaches the panel as a custom property set on the mount's root. */
+    const placed = globalThis.getComputedStyle(panel);
+    expect(placed.left.trim()).toBe("120px");
+    expect(placed.top.trim()).toBe("44px");
 
     closeFormulaPalette();
     await flush();

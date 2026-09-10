@@ -175,7 +175,7 @@ describe("ResizeTarget.snap", () => {
     handle.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, clientX: to }));
   }
 
-  test("an absent snap is the identity — the three docks and the splitter are unaffected", () => {
+  test("an absent snap is the identity — the three docks are unaffected", () => {
     const { handle, state } = harness();
     move(handle, 0, 23);
     expect(state.value).toBe(123);

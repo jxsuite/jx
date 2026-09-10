@@ -1,0 +1,221 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "JxSplit",
+  "tagName": "jx-split",
+  "observedAttributes": [
+    "orientation",
+    "label",
+    "value",
+    "min",
+    "max",
+    "gap",
+    "step",
+    "large-step",
+    "collapse",
+    "disabled"
+  ],
+  "state": {
+    "orientation": {
+      "type": "string",
+      "default": "vertical",
+      "attribute": "orientation",
+      "description": "vertical or horizontal — the separator's OWN orientation, which is ARIA's meaning and the opposite of the axis it moves on: a vertical splitter is the upright line between two side-by-side panes, dragged left and right. Only \"horizontal\" turns it; every other value, the default included, is the upright one."
+    },
+    "label": {
+      "type": "string",
+      "default": "Split",
+      "attribute": "label",
+      "description": "The accessible name. A separator is in neither the accessibility lint's content-named roles nor its labelled ones, so an unnamed one is invisible to every gate and a reader arriving on it is told they have landed on a separator and nothing more. Name every splitter after the thing it divides."
+    },
+    "value": {
+      "type": "number",
+      "default": 0.5,
+      "attribute": "value",
+      "description": "Where the splitter sits: the LEADING side's share of the box it divides, 0-1. A fraction rather than pixels because a splitter has no size of its own to report, and because the same stored number survives a window resize. It is aria-valuenow, and the element is its own writer during a gesture — a host reads it back off the input and change events."
+    },
+    "min": {
+      "type": "number",
+      "default": 0,
+      "attribute": "min",
+      "description": "The smallest share the leading side may have, and aria-valuemin. A policy about the split, which is why it is a constant a host declares rather than something derived: gap answers the other question, and the two are intersected."
+    },
+    "max": {
+      "type": "number",
+      "default": 1,
+      "attribute": "max",
+      "description": "The largest share, and aria-valuemax."
+    },
+    "gap": {
+      "type": "number",
+      "default": 0,
+      "attribute": "gap",
+      "description": "The smallest EITHER side may be, in pixels of the measured track. Converted into the value's own units at gesture time, so it needs no listener and cannot go stale when the window resizes — which a fractional floor computed from a width by a host always does. A track too narrow for two gaps has no legal position, and the splitter goes to the middle of its crossed bounds."
+    },
+    "step": {
+      "type": "number",
+      "default": 0.02,
+      "attribute": "step",
+      "description": "What one arrow key moves the value by. Two per cent of the track is a nudge a reader can aim with; a value that is not a positive number falls back to it."
+    },
+    "largeStep": {
+      "type": "number",
+      "default": 0.1,
+      "attribute": "large-step",
+      "description": "What Shift+Arrow moves it by — the same coarse gesture jx-number-field and jx-color-slider add, and one the platform has on nothing."
+    },
+    "collapse": {
+      "type": "number",
+      "default": -1,
+      "attribute": "collapse",
+      "description": "The value Enter and a double click move to, and back from. The default is below every legal share, so it clamps to min: collapsing means going to the floor unless a host says otherwise. A splitter whose two sides are both real panes points it wherever its double click has always gone."
+    },
+    "disabled": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "disabled",
+      "description": "Cannot be moved, by pointer or by key, and drops out of the tab order. aria-disabled rather than removal, because a splitter a reader cannot find is a layout they cannot explain."
+    },
+    "dragging": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether a pointer gesture is live. Written by the behaviour and mirrored as data-dragging, so the splitter stays lit for the length of a drag that has left it — which is the whole point of the pointer capture."
+    },
+    "restore": {
+      "type": "number",
+      "default": -1,
+      "description": "Where the collapse toggle returns to, recorded on the way down. Negative until a collapse has recorded one, which is a value no share can be."
+    },
+    "valueText": "${Math.round(((state.value - state.min) / ((state.max - state.min) || 1)) * 100) + '%'}",
+    "onPointerDown": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/split.ts",
+      "$export": "onSplitPointerDown",
+      "description": "Measures the track once, captures the gesture on the element and takes the focus, so the arrow keys carry on from where the pointer stopped. The value does not jump: the splitter is already the thing under the cursor."
+    },
+    "onPointerMove": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/split.ts",
+      "$export": "onSplitPointerMove",
+      "description": "The drag, against the length measured at pointerdown. Nothing moves without a press first, so a hover moves no split.",
+      "emits": [
+        {
+          "name": "input",
+          "description": "The splitter is moving under the reader's hand. It comes from the ELEMENT, so e.target.value is the whole answer."
+        }
+      ]
+    },
+    "onPointerUp": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/split.ts",
+      "$export": "onSplitPointerUp",
+      "description": "Ends the gesture and commits once. Bound to pointercancel and lostpointercapture as well as pointerup: a capture lost any other way is still a gesture that is over, and a splitter left in the dragging state would follow the next pointer that crossed it with no button down.",
+      "emits": [
+        {
+          "name": "change",
+          "description": "The reader let go; e.target is the element. Dispatched even when the last move changed nothing, because the commit is about the gesture ending."
+        }
+      ]
+    },
+    "onKeydown": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/split.ts",
+      "$export": "onSplitKeydown",
+      "description": "The splitter keyboard: the arrows of its own axis with Shift for the larger step, Home and End for the extremes, and Enter for the collapse toggle. A keystroke is a move AND a commit. Every other key reaches the host untouched.",
+      "emits": [
+        {
+          "name": "input",
+          "description": "A key moved the splitter."
+        },
+        {
+          "name": "change",
+          "description": "The same key committed it."
+        }
+      ]
+    },
+    "onDoubleClick": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/split.ts",
+      "$export": "onSplitDoubleClick",
+      "description": "Collapses the split, and restores it on the next one. This is the SC 2.5.7 door — a single-pointer alternative to dragging — and it is deliberately the same function Enter runs, so the two cannot drift.",
+      "emits": [
+        {
+          "name": "input",
+          "description": "The toggle moved the splitter."
+        },
+        {
+          "name": "change",
+          "description": "And committed it."
+        }
+      ]
+    }
+  },
+  "attributes": {
+    "role": "separator",
+    "tabindex": "${state.disabled ? '-1' : '0'}",
+    "aria-label": "${state.label}",
+    "aria-orientation": "${state.orientation}",
+    "aria-valuenow": "${state.value}",
+    "aria-valuemin": "${state.min}",
+    "aria-valuemax": "${state.max}",
+    "aria-valuetext": "${state.valueText}",
+    "aria-disabled": "${state.disabled ? 'true' : null}",
+    "orientation": "${state.orientation}",
+    "data-dragging": "${state.dragging ? '' : null}"
+  },
+  "onpointerdown": {
+    "$ref": "#/state/onPointerDown"
+  },
+  "onpointermove": {
+    "$ref": "#/state/onPointerMove"
+  },
+  "onpointerup": {
+    "$ref": "#/state/onPointerUp"
+  },
+  "onpointercancel": {
+    "$ref": "#/state/onPointerUp"
+  },
+  "onlostpointercapture": {
+    "$ref": "#/state/onPointerUp"
+  },
+  "onkeydown": {
+    "$ref": "#/state/onKeydown"
+  },
+  "ondblclick": {
+    "$ref": "#/state/onDoubleClick"
+  },
+  "style": {
+    "display": "block",
+    "&[hidden]": {
+      "display": "none"
+    },
+    "flex": "none",
+    "position": "relative",
+    "zIndex": "1",
+    "touchAction": "none",
+    "background": "var(--jx-border)",
+    "cursor": "col-resize",
+    "inlineSize": "5px",
+    "outline": "none",
+    "&[orientation=\"horizontal\"]": {
+      "cursor": "row-resize",
+      "inlineSize": "auto",
+      "blockSize": "5px"
+    },
+    "&:hover, &[data-dragging]": {
+      "background": "var(--jx-accent)",
+      "opacity": "0.5"
+    },
+    "&:focus-visible": {
+      "outline": "var(--jx-focus-ring)",
+      "outlineOffset": "-2px"
+    },
+    "&[aria-disabled=\"true\"]": {
+      "cursor": "default"
+    },
+    "&[aria-disabled=\"true\"]:hover": {
+      "background": "var(--jx-border)",
+      "opacity": "1"
+    }
+  },
+  "children": []
+}

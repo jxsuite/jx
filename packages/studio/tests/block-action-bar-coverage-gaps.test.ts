@@ -103,13 +103,17 @@ function isOffscreen(): boolean {
   return bar()!.dataset.offscreen !== undefined;
 }
 
-/** The bar's placed edges, as the two custom properties the document's `left`/`top` read. */
+/**
+ * The bar's placed edges, RESOLVED.
+ *
+ * The document declares the position in its own style object, so the value is a custom property set
+ * on the mount's root and read here through the cascade; the clamp writes the same property on the
+ * bar itself. Computed style is the one question that holds for both.
+ */
 function barAt(): [string, string] {
   const el = bar()!;
-  return [
-    el.style.getPropertyValue("--jx-bar-x").trim(),
-    el.style.getPropertyValue("--jx-bar-y").trim(),
-  ];
+  const computed = globalThis.getComputedStyle(el);
+  return [computed.left.trim(), computed.top.trim()];
 }
 
 const raf = () =>
@@ -269,11 +273,46 @@ describe("block action bar gaps", () => {
     await raf();
     await flush();
     await raf();
-    // The clamp writes the same custom property the document's `left` reads, so the next repaint
-    // That re-projects the anchor overwrites it rather than fighting it.
+    // The clamp writes the same custom property the document's `left` reads, on the bar itself —
+    // Where it beats the value inherited from the root the document set it on.
     expect(el.style.getPropertyValue("--jx-bar-x").trim()).toBe(
       `${Math.max(0, window.innerWidth - 300)}px`,
     );
+    expect(globalThis.getComputedStyle(el).left.trim()).toBe(
+      `${Math.max(0, window.innerWidth - 300)}px`,
+    );
+  });
+
+  test("the clamp releases itself, so a bar that no longer overflows goes back where it is put", async () => {
+    /*
+     * The projected position is a custom property set on the document's ROOT and inherited by the
+     * bar; the clamp's correction is the same property set on the BAR. An element's own value beats
+     * one it inherits at every specificity, so a clamp that never let go would pin the bar at the
+     * right edge for the rest of the session and every later projection would be written into a
+     * variable nothing reads. The clamp therefore removes its previous write before it measures.
+     */
+    setup({ children: [{ tagName: "p", textContent: "hi" }], tagName: "div" }, ["children", 0]);
+    await render();
+    const el = bar()!;
+
+    // Overflowing: the clamp fires and pulls the bar inside the right edge.
+    stubRect(el, { height: 30, left: window.innerWidth - 10, top: 200, width: 300 });
+    host.anchor = { height: 20, left: window.innerWidth - 10, top: 300, width: 100 };
+    scrollDoc();
+    await raf();
+    await flush();
+    await raf();
+    expect(barAt()[0]).toBe(`${Math.max(0, window.innerWidth - 300)}px`);
+
+    // Well inside: nothing to clamp, and the bar must land on the projected number.
+    stubRect(el, { height: 30, left: 40, top: 200, width: 300 });
+    host.anchor = { height: 20, left: 40, top: 300, width: 100 };
+    scrollDoc();
+    await raf();
+    await flush();
+    await raf();
+    expect(el.style.getPropertyValue("--jx-bar-x")).toBe("");
+    expect(barAt()[0]).toBe("40px");
   });
 
   test("mousedown inside the link panel is not focus-guarded", async () => {

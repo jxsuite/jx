@@ -19,7 +19,7 @@
  */
 import "./with-dom.js";
 import { beforeEach, afterEach, describe, expect, mock, test } from "bun:test";
-import { flush, resetStudioState } from "./harness";
+import { flush, resetStudioState, stubRect } from "./harness";
 import {
   PRIMARY_PANE,
   SECONDARY_PANE,
@@ -422,7 +422,9 @@ describe("a live frame survives the grid", () => {
     expect(homeFrame).toBeTruthy();
 
     const gridEl = document.querySelector("#pane-grid") as HTMLElement;
-    Object.defineProperty(gridEl, "clientWidth", { configurable: true, value: 1000 });
+    /* The RECT rather than `clientWidth`: `jx-split` measures the box it divides for itself, which
+       is what lets the 320px floor stay a pixel floor across a window resize with no listener. */
+    stubRect(gridEl, { height: 800, width: 1000 });
     const observer = new MutationObserver(() => {});
     observer.observe(gridEl, { childList: true, subtree: true });
 
@@ -431,7 +433,7 @@ describe("a live frame survives the grid", () => {
     grid.reconcile();
     // 2 · A multi-step splitter drag — five `shell.paneSplit` writes, five passes through the
     // Effect. This is the gesture that used to remove and re-insert the handle on every move.
-    const splitter = gridEl.querySelector('[part="splitter"]') as HTMLElement;
+    const splitter = gridEl.querySelector("jx-split") as HTMLElement;
     splitter.dispatchEvent(new PointerEvent("pointerdown", { clientX: 500, clientY: 0 }));
     for (const clientX of [520, 560, 600, 620, 640]) {
       splitter.dispatchEvent(new PointerEvent("pointermove", { clientX, clientY: 0 }));

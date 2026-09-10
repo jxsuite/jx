@@ -45,6 +45,11 @@
       "attribute": "quiet",
       "description": "No fill and no border until hovered: a button that sits in a toolbar or beside text."
     },
+    "tabindex": {
+      "type": "string",
+      "default": "",
+      "description": "Forwarded to the inner control as its tabindex, which is what makes a roving caret possible: the focusable node is the control inside, not the host, so a jx-toolbar moving focus writes this rather than reaching into a child's internals. It is a PROPERTY ONLY (el.tabindex = \"0\") and deliberately not an observed attribute: written as an attribute it would land on the host as well, and a host carrying tabindex is itself focusable, so the one control would become two tab stops."
+    },
     "disabled": {
       "type": "boolean",
       "default": false,
@@ -278,6 +283,7 @@
         "aria-label": "${state.label || null}",
         "aria-labelledby": "${state.labelledby || null}",
         "aria-describedby": "${state.describedby || null}",
+        "tabindex": "${state.tabindex || null}",
         "popovertarget": "${state.popovertarget || null}",
         "popovertargetaction": "${state.popovertargetaction || null}",
         "command": "${state.command || null}",

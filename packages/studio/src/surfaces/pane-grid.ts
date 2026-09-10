@@ -91,6 +91,27 @@ export interface PaneGridRow extends Record<string, unknown> {
   stripRegion: string;
 }
 
+/**
+ * The splitter's constants and its opening position — everything `jx-split` is handed.
+ *
+ * It arrives from the FLOW rather than being read here, because every number in it belongs to a
+ * module this one deliberately does not import: `min` and `max` are `shell.ts`'s supported range
+ * and `collapse` its default split, and `gap` is the pane grid's own idea of a usable pane. This
+ * module is the seam between the document and the flow and knows nothing about either.
+ */
+export interface PaneGridSplit {
+  /** Where the splitter sits: the primary pane's share of the grid. */
+  value: number;
+  /** The smallest share the primary may have. */
+  min: number;
+  /** The largest. */
+  max: number;
+  /** The smallest either pane may be dragged to, in PIXELS — the element converts it itself. */
+  gap: number;
+  /** What Enter and a double click move to, and back from. */
+  collapse: number;
+}
+
 /** What the flow wants to be told about. Read once, when the scope is made. */
 export interface PaneGridActions {
   /**
@@ -101,15 +122,30 @@ export interface PaneGridActions {
    * cell's capture-phase `pointerdown` listener from here.
    */
   cellPart: (paneId: string, part: PaneCellPart, element: HTMLElement) => void;
-  /** The splitter exists. Wired once: nothing re-inserts it while a pointer capture is live. */
-  splitter: (element: HTMLElement) => void;
+  /**
+   * The splitter moved, and is still moving: once per `pointermove` of a drag, and once per key.
+   *
+   * There is nothing to wire and nothing to un-wire any more. `jx-split` owns the gesture, the
+   * capture and the keyboard, and reports the value it has already bounded — so this is the whole
+   * of the flow's part in a drag, and the document is not touched by one at all.
+   */
+  move: (value: number) => void;
+  /** The gesture ended, or a key committed. Persist once. */
+  settle: () => void;
 }
 
 export interface PaneGridSurface {
   /** Resolves once the first projection is in the document. */
   ready: Promise<void>;
-  /** Bring the standing document up to date. An assignment; the mount is never rebuilt. */
-  update: (rows: PaneGridRow[]) => void;
+  /**
+   * Bring the standing document up to date. An assignment; the mount is never rebuilt.
+   *
+   * The split is re-asserted HERE, on a pane-set change, and nowhere else — which is what keeps a
+   * drag clear of the document entirely. During one the element is the single writer of its own
+   * position and the flow only mirrors it into `shell`; the scope catches up the next time the grid
+   * gains or loses a pane, which is the only moment anything else could have moved it.
+   */
+  update: (rows: PaneGridRow[], split: number) => void;
   /** Take the document down and give `#pane-grid` back empty. Idempotent. */
   dispose: () => void;
 }
@@ -117,6 +153,15 @@ export interface PaneGridSurface {
 /** The scope `pane-grid.json` reads. */
 interface PaneGridScope extends Record<string, unknown> {
   rows: PaneGridRow[];
+  /** `jx-split`'s `value`. */
+  paneSplit: number;
+  splitMin: number;
+  splitMax: number;
+  splitGap: number;
+  /** `jx-split`'s `collapse`. */
+  splitDefault: number;
+  move: (value: number) => void;
+  settle: () => void;
 }
 
 /** The `part` a node's definition carries, or `""` for a text node or an unmarked element. */
@@ -145,16 +190,27 @@ function paneOf(state: JxScope | undefined): string {
  *
  * @param {HTMLElement} host `#pane-grid`.
  * @param {PaneGridRow[]} rows What to draw on the first paint.
+ * @param {PaneGridSplit} split The splitter's constants, and where it opens.
  * @param {PaneGridActions} actions What to tell the flow about. Read once.
  * @returns {PaneGridSurface}
  */
 export function mountPaneGridSurface(
   host: HTMLElement,
   rows: PaneGridRow[],
+  split: PaneGridSplit,
   actions: PaneGridActions,
 ): PaneGridSurface {
   host.replaceChildren();
-  const scope = reactive<PaneGridScope>({ rows }) as PaneGridScope;
+  const scope = reactive<PaneGridScope>({
+    move: actions.move,
+    paneSplit: split.value,
+    rows,
+    settle: actions.settle,
+    splitDefault: split.collapse,
+    splitGap: split.gap,
+    splitMax: split.max,
+    splitMin: split.min,
+  }) as PaneGridScope;
 
   let mounted: SurfaceHandle | null = null;
   let disposed = false;
@@ -165,11 +221,8 @@ export function mountPaneGridSurface(
        scope is always there to name the pane. A guard on either would be a branch the document
        cannot reach — which is a line no test could ever cover, which is a claim nothing checks. */
     onNodeCreated: (element, _path, def, state) => {
-      const part = partOf(def);
-      const cellPart = CELL_PARTS.get(part);
-      if (part === "splitter") {
-        actions.splitter(element as HTMLElement);
-      } else if (cellPart) {
+      const cellPart = CELL_PARTS.get(partOf(def));
+      if (cellPart) {
         actions.cellPart(paneOf(state), cellPart, element as HTMLElement);
       }
     },
@@ -189,8 +242,9 @@ export function mountPaneGridSurface(
       host.replaceChildren();
     },
     ready,
-    update(next) {
+    update(next, value) {
       scope.rows = next;
+      scope.paneSplit = value;
     },
   };
 }

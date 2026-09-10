@@ -1,15 +1,17 @@
 {
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "StudioBlockActionBar",
-  "$description": "The floating action bar over the canvas selection (plan §3.2 region ⑩, studio-ui-guidelines.md §8.6), as a Jx document over the kit. ONE SHAPE is the whole rule this markup exists to keep: the parent selector, the element badge, the drag handle and every verb are drawn on every selection, and a control that cannot act is DISABLED rather than removed — a toolbar whose buttons move under the cursor is worse than one with a greyed button. Nothing here decides what a verb is called, whether it can act or what its chord reads: `panels/block-action-bar.ts` projects the command registry into `verbs` and `formats`, already resolved to a glyph, a name, a tooltip and a refusal, and this document draws them. The toolbar role, the roving caret and the arrow keys are `jx-action-group`'s, so no keyboard code rides along; Escape is the one key this document claims, because leaving the bar means going back to the canvas and only the host knows where that is. The drag handle is an ISLAND (§9.4): the document draws the node and `surfaces/block-action-bar.ts` attaches the pragmatic-dnd registration to it through `onNodeCreated`. Position is a DECISION measured against the selection rect, so it arrives as `anchorVars` — two custom properties — rather than as a layout this document could compute.",
+  "$description": "The floating action bar over the canvas selection (plan §3.2 region ⑩, studio-ui-guidelines.md §8.6), as a Jx document over the kit. ONE SHAPE is the whole rule this markup exists to keep: the parent selector, the element badge, the drag handle and every verb are drawn on every selection, and a control that cannot act is DISABLED rather than removed — a toolbar whose buttons move under the cursor is worse than one with a greyed button. Nothing here decides what a verb is called, whether it can act or what its chord reads: `panels/block-action-bar.ts` projects the command registry into `verbs` and `formats`, already resolved to a glyph, a name, a tooltip and a refusal, and this document draws them. The toolbar role, the roving caret and the arrow keys are `jx-action-group`'s, so no keyboard code rides along; Escape is the one key this document claims, because leaving the bar means going back to the canvas and only the host knows where that is. The drag handle is an ISLAND (§9.4): the document draws the node and `surfaces/block-action-bar.ts` attaches the pragmatic-dnd registration to it through `onNodeCreated`. Position is a DECISION measured against the selection rect, so it arrives as two numbers the flow projects — `barX` and `barY` — rather than as a layout this document could compute; the `style` object below binds them, because a style declaration may read state like any other value (spec §9.1).",
   "tagName": "div",
   "attributes": {
     "part": "root",
     "role": "none"
   },
   "style": {
-    "$description": "The `.block-action-bar` rules that used to live in `styles/canvas.css`, re-valued onto the kit's tokens. The bar is `position: fixed` because its anchor is a rect in viewport space that crossed the iframe bridge; the layer it sits in has no clipping, which is why the host clamps it rather than letting overflow do it.",
+    "$description": "The `.block-action-bar` rules that used to live in `styles/canvas.css`, re-valued onto the kit's tokens. The bar is `position: fixed` because its anchor is a rect in viewport space that crossed the iframe bridge; the layer it sits in has no clipping, which is why the host clamps it rather than letting overflow do it.\n\nThe two placement properties are declared HERE, bound to the flow's measured numbers. They used to travel as a `style` ATTRIBUTE the flow assembled into one string, on the belief that a document cannot bind a style declaration to state. It can, and always could: a reactive value on a custom property in a rule targeting the element itself is written inline under the author's own name (spec §9.1), which is precisely the attribute that string was hand-writing. The bar reads them by name through the ordinary cascade — the root is `display: contents`, so a custom property set on it inherits down — and `panels/block-action-bar.ts` overrides `--jx-bar-x` on the bar itself when it clamps, because a value set on an element beats one it inherits — which is also why that clamp releases its own previous write before it measures, or the bar would be pinned at the right edge for the rest of the session.",
     "display": "contents",
+    "--jx-bar-x": "${state.barX}px",
+    "--jx-bar-y": "${state.barY}px",
     "& [part=\"bar\"]": {
       "position": "fixed",
       "left": "var(--jx-bar-x, 0px)",
@@ -120,7 +122,6 @@
       "attributes": {
         "part": "bar",
         "data-jx-region": "overlay.menu:block-action-bar",
-        "style": "${state.anchorVars}",
         "data-offscreen": "${state.offscreen ? '' : null}"
       },
       "onmousedown": {

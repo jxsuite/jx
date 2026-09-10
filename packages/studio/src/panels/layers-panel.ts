@@ -632,12 +632,79 @@ function moveOutlineCaret(from: string, keyName: string): void {
       return;
     }
   }
+  landOutlineCaret(target);
+}
+
+/**
+ * Put the caret on the model row at `target`, or do nothing when there is no such row.
+ *
+ * Shared by the two events the element cannot answer for itself, because they end the same way and
+ * that is not a coincidence: both are a row named over the MODEL, and reaching it means selecting
+ * it, focusing it and repainting the window around it in that order.
+ *
+ * @param {number} target
+ */
+function landOutlineCaret(target: number): void {
   if (!_outlineRows[target]) {
     return;
   }
   selectModelRow(target);
   focusModelRow(target);
   redrawOutline();
+}
+
+/**
+ * What a row is CALLED — the one string the reader sees, hears and types the first letter of.
+ *
+ * One function rather than the three expressions it replaced, because typeahead now matches over
+ * the MODEL and the drawn row's `label` is what it must agree with. `jx-tree` matches a drawn row
+ * on its `label` prop precisely because that is the row's accessible name; a model-side search that
+ * computed the name a second way would move the caret to a row the reader was never told about, and
+ * nothing on screen would explain it.
+ *
+ * It answers for a TEXT row too, and that is what makes the `item` filter in
+ * {@link typeaheadOutlineCaret} do real work rather than merely read well: a text row draws its own
+ * preview, so it has a name a letter could reach, and the only thing keeping the caret off it is
+ * that it is not a tree item — the same rule {@link outlineStep} applies to the arrows.
+ *
+ * @param {OutlineRow} row
+ */
+function outlineRowLabel(row: OutlineRow): string {
+  if (!row.item) {
+    const text = String(row.node);
+    return text.length > TEXT_PREVIEW_MAX ? `${text.slice(0, TEXT_PREVIEW_MAX)}…` : text;
+  }
+  const node = row.node as JxMutableNode;
+  return row.nodeType === "case-ref" ? node.$ref || "external" : outlineLabel(node);
+}
+
+/**
+ * A printable character on a windowed tree: find the model row it names, and go there.
+ *
+ * `jx-tree` resolves typeahead itself only when the drawn rows ARE the model; past that it
+ * dispatches, because a search over a slice always answers and the answer is the wrong row. The
+ * search here is the element's own, moved onto the full list: forward from the caret, wrapping
+ * once, matching the row's name case-insensitively, and skipping the rows that are drawn but are
+ * not tree items — text nodes, which the arrows already step over.
+ *
+ * Every model row is named on each keystroke, and that is affordable where it would not be in a
+ * paint: this runs once per key rather than once per frame, and {@link outlineRowView} is still
+ * called for the window alone.
+ *
+ * @param {string} from The row the caret is on
+ * @param {string} char The character typed, lowercased
+ */
+function typeaheadOutlineCaret(from: string, char: string): void {
+  const start = outlineIndexOfKey(from);
+  const total = _outlineRows.length;
+  for (let step = 1; step <= total; step++) {
+    const at = (start + step + total) % total;
+    const row = _outlineRows[at];
+    if (row?.item && outlineRowLabel(row).trim().toLowerCase().startsWith(char)) {
+      landOutlineCaret(at);
+      return;
+    }
+  }
 }
 
 /**
@@ -883,7 +950,6 @@ function rowBadge(row: OutlineRow): {
 
 /** A text node's row: drawn, and deliberately not a tree item — there is nothing to do to it. */
 function textRowView(row: OutlineRow): OutlineRowView {
-  const text = String(row.node);
   return {
     actions: "hidden",
     badge: "text",
@@ -902,7 +968,7 @@ function textRowView(row: OutlineRow): OutlineRowView {
     jxPath: JSON.stringify(row.path),
     key: row.key,
     kind: "text",
-    label: text.length > TEXT_PREVIEW_MAX ? `${text.slice(0, TEXT_PREVIEW_MAX)}…` : text,
+    label: outlineRowLabel(row),
     labelItalic: "false",
     level: "",
     overflow: "false",
@@ -979,7 +1045,7 @@ function outlineRowView(
     jxPath: JSON.stringify(path),
     key,
     kind: "element",
-    label: nodeType === "case-ref" ? node.$ref || "external" : outlineLabel(node),
+    label: outlineRowLabel(row),
     labelItalic: nodeType === "case-ref" ? "true" : "false",
     level: String(depth + 1),
     overflow: overflow.length > 0 ? "true" : "false",
@@ -1206,6 +1272,7 @@ export function mountOutlinePanel(
         treeReady: (element) => {
           _outlineList = element;
         },
+        typeahead: typeaheadOutlineCaret,
       }),
       host: target,
     };

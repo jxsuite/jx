@@ -61,6 +61,7 @@ function outlineActionSpies(): OutlineActions {
     runRow: () => {},
     select: () => {},
     treeReady: () => {},
+    typeahead: () => {},
   };
 }
 

@@ -9,6 +9,7 @@ spec:
   - ui.md#5.1 # primitives
   - ui.md#5.3 # forms
   - ui.md#5.4 # containers
+  - ui.md#5.5 # builder
   - ui.md#5.6 # colour
   - ui.md#8 # icons
   - ui.md#9 # build and distribution
@@ -28,6 +29,8 @@ code:
   - packages/ui/src/behaviors/toast-host.ts
   - packages/ui/src/behaviors/tabs.ts
   - packages/ui/src/behaviors/action-group.ts
+  - packages/ui/src/behaviors/toolbar.ts
+  - packages/ui/src/behaviors/split.ts
   - packages/ui/src/behaviors/color-area.ts
   - packages/ui/src/behaviors/color-slider.ts
   - packages/ui/src/behaviors/swatch-group.ts
@@ -514,6 +517,70 @@ The element fires `toggle` when a section opens or closes, and that event stops 
 `selects` decides what the row is: `"none"` is a toolbar of separate actions, `"single"` is a set of choices where one wins, and `"multiple"` is a set of independent switches. Arrow keys move within the row and Tab leaves it, so a toolbar of ten buttons costs one tab stop rather than ten. `compact` joins the buttons into one segmented control.
 
 For a single-choice row, set `checked` to `"true"` or `"false"` on each button rather than `selected`, and do not set `toggles`. A button that both announces a chosen state and flips itself would fight the host that owns the value, so the element refuses the combination.
+
+## Toolbars
+
+`jx-toolbar` is a row of controls with one tab stop. Reach for it when the row holds more than buttons: a text field, a divider, a plain `jx-button`, a count at the far end.
+
+```json
+{
+  "tagName": "jx-toolbar",
+  "$props": { "label": "Grid actions" },
+  "children": [
+    { "tagName": "jx-button", "$props": { "label": "Save", "variant": "accent" } },
+    { "tagName": "jx-action-button", "$props": { "icon": "arrows-clockwise", "label": "Refresh" } },
+    { "tagName": "jx-divider", "$props": { "orientation": "vertical" } },
+    { "tagName": "jx-textfield", "$props": { "type": "search", "label": "Filter rows" } }
+  ]
+}
+```
+
+`label` is what a screen reader announces when the reader enters the row, so give every toolbar one. `orientation` chooses which arrow pair moves between the controls, and turns the row through a quarter turn.
+
+Arrow keys move along the row and wrap at both ends, :kbd[Home] and :kbd[End] reach the ends, and :kbd[Tab] leaves the whole toolbar. A row of any length costs one tab stop.
+
+A text field in the row keeps the arrow keys while its caret still has text to move through. Press the same arrow again at the end of the text and the caret leaves the field for the next control, so you arrow in, type, and arrow out with one key. :kbd[Home] and :kbd[End] inside a text field always belong to the field.
+
+Two kinds of control are not moved between by the toolbar's arrows, and each keeps a tab stop of its own instead. Anything that runs its own arrow keys is left alone, such as a `jx-action-group` or a `jx-tabs`: two roving carets over one row would disagree about which control is current. So is anything whose arrow keys are already spoken for, such as a `jx-select`, a range, a spin button or a `jx-combobox`, because walking the caret past one would rewrite what somebody had chosen or open a list they had not asked for.
+
+There is no overflow menu, by decision. A row that will not fit is a row to shorten. Where a list of what is out of view is genuinely needed, the host measures it and opens a `jx-menu` of its own commands, which is what the editor's tab strips do.
+
+Which of the two to use: `jx-action-group` for a row of `jx-action-button`s that share one look, and `jx-toolbar` for a row of mixed controls. A group may stand beside a toolbar, never inside one.
+
+## Splitters
+
+`jx-split` is the divider between two panes, and it is a control rather than a drag handle: it takes a tab stop, announces where it sits, and moves with the arrow keys.
+
+```json
+{
+  "tagName": "div",
+  "style": {
+    "display": "grid",
+    "gridTemplateColumns": "minmax(0, ${state.share}fr) auto minmax(0, ${1 - state.share}fr)"
+  },
+  "children": [
+    { "tagName": "div", "textContent": "Navigator" },
+    {
+      "tagName": "jx-split",
+      "$props": {
+        "label": "Navigator and editor",
+        "value": { "$ref": "#/state/share" },
+        "gap": 120
+      },
+      "oninput": { "$ref": "#/state/onShare" }
+    },
+    { "tagName": "div", "textContent": "Editor" }
+  ]
+}
+```
+
+`value` is the share of the box that goes to the side before the splitter, from 0 to 1, so it is a ratio and not a pixel count. That is what lets the same layout survive a window resize: the two sides keep their proportions instead of one of them keeping a width. Listen for `input` while the reader is moving it and for `change` when they let go, and save on the second one.
+
+`gap` is the one number you give in pixels: the smallest either side may become. The element measures the box it divides at the start of every gesture and converts the gap against that measurement, so nothing on your side has to watch for a resize. `min` and `max` are ratios, and both are honoured: the tighter of the two wins at each end.
+
+Arrow keys move the splitter one `step` at a time along its own axis, :kbd[Shift] with an arrow takes a `largeStep`, and :kbd[Home] and :kbd[End] go as far as the gap allows. :kbd[Enter] collapses the split and a second press restores it to where it was. A double click does the same thing with the pointer, which is what gives a reader who cannot drag a way to reach both positions.
+
+`orientation` names the splitter rather than the direction it travels, which is what ARIA means by it: the default `vertical` is the upright line between two side by side panes, dragged left and right, and `horizontal` is the flat line between two stacked boxes, dragged up and down.
 
 ## Colours
 

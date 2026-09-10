@@ -1020,6 +1020,36 @@ function moveFileCaret(from: string, key: string): void {
 }
 
 /**
+ * A printable character on a windowed tree: find the model row it names, and go there.
+ *
+ * `jx-tree` resolves typeahead itself only when the drawn rows ARE the model; past that it
+ * dispatches, and the reason is sharper than the one behind `move`. A move off the end of the slice
+ * announces itself — there is nothing to land on. A letter never does: the element's search over
+ * the drawn rows always answers, and over `node_modules` the answer is whichever of the eleven
+ * painted rows happened to start with that letter.
+ *
+ * The search is the element's own, moved onto the full list: forward from the caret, wrapping once,
+ * matching the row's NAME — which is the string the row draws and announces, so the caret can never
+ * land somewhere the reader was not told about — and skipping the "Loading…" placeholders, which
+ * are not tree items and which the arrows already step over.
+ *
+ * @param {string} from The row the caret is on
+ * @param {string} char The character typed, lowercased
+ */
+function typeaheadFileCaret(from: string, char: string): void {
+  const start = fileIndexOfPath(from);
+  const total = _fileRows.length;
+  for (let step = 1; step <= total; step++) {
+    const at = (start + step + total) % total;
+    const row = _fileRows[at];
+    if (row && !row.loading && row.name.trim().toLowerCase().startsWith(char)) {
+      focusFileRow(at);
+      return;
+    }
+  }
+}
+
+/**
  * Move the keyboard to the model row at `index`, bringing it into the window if it is outside.
  *
  * The SELECTION moves with it, and that is not a flourish: `jx-tree` raises `select` alongside
@@ -2446,6 +2476,7 @@ const FILE_ACTIONS: FilesPanelActions = {
     repaintFiles();
   },
   treeHost: adoptFileTreeElement,
+  typeahead: typeaheadFileCaret,
 };
 
 /** The mounted document, and the node it was mounted into. */

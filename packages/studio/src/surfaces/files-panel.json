@@ -430,6 +430,26 @@
                 ],
                 "description": "The caret has to reach a row the window did not draw. The element knows only that the pad on that side is not zero; where the row is in the model, and how far to scroll to bring it into view, is the flow's — which is why this is an event and not a `scrollIntoView`."
               },
+              "ontypeahead": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/typeahead"
+                    },
+                    "value": [
+                      {
+                        "$ref": "event#/detail/from"
+                      },
+                      {
+                        "$ref": "event#/detail/char"
+                      }
+                    ]
+                  }
+                ],
+                "description": "A printable character, on a windowed tree. The same hand-off as `onmove` and for a sharper reason: a move off the end of the slice announces itself, and a letter never does — the element's own search over the drawn rows always answers, and over a `node_modules` of ten thousand entries the answer is whichever of the eleven painted rows happened to start with that letter. So the element dispatches EVERY such character and the flow answers it over the model."
+              },
               "children": [
                 {
                   "$prototype": "Array",
