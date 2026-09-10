@@ -166,8 +166,8 @@ async function sourceContent(tab: Tab) {
 // Single-RAF scheduling; concurrent schedule requests within the same frame are deduped.
 //
 /* Two nested rAFs used to make the canvas render "yield to higher-priority panel paints first".
-   Panels have since grown their own rAF scheduler (see panel-scheduler.ts), so the second frame
-   bought nothing and put a hard ~32 ms floor under every escalated edit — canvas-patcher's
+   Panels have since stopped repainting their own chrome at all (the docks are Jx documents), so
+   the second frame bought nothing and put a hard ~32 ms floor under every escalated edit — canvas-patcher's
    escalateToFullRender routes through here. */
 /*
  * One pending frame PER PANE. A shared id would have let the pane that scheduled first swallow the

@@ -7,8 +7,9 @@
  * The section around both is a Jx document (`src/surfaces/settings-contributed.json`), so the
  * container is appended to the page and every render awaited — a kit element renders in its
  * `connectedCallback`. The secret control and the actions row are the two ISLANDS this surface
- * renders empty host nodes for, which is why `.secret-field` and `.data-section-actions` are still
- * the right way to reach them: neither is this document's markup.
+ * renders empty host nodes for. `.secret-field` is still the right way to reach the first, because
+ * that one is lit; the actions row is a document of its own now (`surfaces/data-actions.json`), so
+ * it is reached by `part` like everything else the kit draws.
  */
 import { flush, installMockPlatform, pointer, resetStudioState } from "./harness";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
@@ -152,17 +153,20 @@ describe("actions slot", () => {
     document.body.append(container);
     renderContributedSection(container, CONNECTIONS_CONTRIBUTION, { actions: actions! });
     await settle();
-    expect(container.querySelector(".data-section-actions")).not.toBeNull();
-    expect(container.querySelector(".data-action-push")).not.toBeNull();
+    const probe = () =>
+      container.querySelector('[part="test"] [part="control"]') as HTMLElement | null;
+    expect(container.querySelector('[part="data-actions"]')).not.toBeNull();
+    expect(container.querySelector('[part="push"]')).not.toBeNull();
     // No entry selected yet: Test Connection is present but disabled.
-    expect(container.querySelector(".data-action-test")!.hasAttribute("disabled")).toBe(true);
+    expect(probe()!.hasAttribute("disabled")).toBe(true);
     await selectEntry("main");
-    expect(container.querySelector(".data-action-test")!.hasAttribute("disabled")).toBe(false);
+    // The row is projected rather than re-rendered, so the same control answers differently.
+    expect(probe()!.hasAttribute("disabled")).toBe(false);
   });
 
   test("sections without an actions option render actions-free", async () => {
     await mount();
     expect(container.querySelector('[part="actions"]')).toBeNull();
-    expect(container.querySelector(".data-section-actions")).toBeNull();
+    expect(container.querySelector('[part="data-actions"]')).toBeNull();
   });
 });

@@ -786,9 +786,7 @@ const MUTANTS: Mutant[] = [
     test: "tests/lens-chrome.test.ts",
   },
   {
-    edits: [
-      { find: `                focusPane(row.pane);`, replace: `                void row.pane;` },
-    ],
+    edits: [{ find: `      focusPane(row.pane);`, replace: `      void row.pane;` }],
     file: "src/panels/pane-context.ts",
     id: "pane-context.ts · a menu row acts on the pane it is a row of",
     means:
@@ -840,8 +838,13 @@ const MUTANTS: Mutant[] = [
   {
     edits: [
       {
-        find: `              if (row.disabled === null) {`,
-        replace: `              if (true) {`,
+        /* The rows are projected for the KIT menu now, and the refusal is the projected flag
+           rather than a conditional in a click handler: `jx-menu-item` raises no `select` while
+           `aria-disabled` is true, so this one line is the whole guard — which is also why the
+           lit version's second check inside `run` went with the conversion. Same discriminator,
+           one frame further back. */
+        find: `    disabled: row.disabled !== null,`,
+        replace: `    disabled: false,`,
       },
     ],
     file: "src/panels/pane-context.ts",
@@ -854,8 +857,10 @@ const MUTANTS: Mutant[] = [
   {
     edits: [
       {
-        find: `      ${"${"}lens ? nothing : readOnlyBannerTemplate(tab)}`,
-        replace: `      ${"${"}readOnlyBannerTemplate(tab)}`,
+        /* The bar is a Jx document, so the banner is a projected FLAG rather than a branch in a
+           template — the same discriminator the lit version carried, one line further back. */
+        find: `    bannerState: !lens && readOnly ? "shown" : "hidden",`,
+        replace: `    bannerState: readOnly ? "shown" : "hidden",`,
       },
     ],
     file: "src/panels/pane-context.ts",
@@ -890,8 +895,8 @@ const MUTANTS: Mutant[] = [
   {
     edits: [
       {
-        find: `${"${"}zoomButton("Zoom out (Ctrl+-)", "−", () => setUserZoom(stageZoom(surface) / 1.2, surface))}`,
-        replace: `${"${"}zoomButton("Zoom out (Ctrl+-)", "−", () => setUserZoom(stageZoom() / 1.2))}`,
+        find: `      setUserZoom(stageZoom(surface) / 1.2, surface);`,
+        replace: `      setUserZoom(stageZoom() / 1.2);`,
       },
     ],
     file: "src/panels/pane-context.ts",
@@ -904,8 +909,8 @@ const MUTANTS: Mutant[] = [
   {
     edits: [
       {
-        find: `${"${"}zoomButton("Zoom in (Ctrl+=)", "+", () => setUserZoom(stageZoom(surface) * 1.2, surface))}`,
-        replace: `${"${"}zoomButton("Zoom in (Ctrl+=)", "+", () => setUserZoom(stageZoom() * 1.2))}`,
+        find: `      setUserZoom(stageZoom(surface) * 1.2, surface);`,
+        replace: `      setUserZoom(stageZoom() * 1.2);`,
       },
     ],
     file: "src/panels/pane-context.ts",

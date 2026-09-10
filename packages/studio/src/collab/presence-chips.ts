@@ -2,8 +2,8 @@
  * Presence chips — who else is in this co-editing session, the sync-status pill that replaces the
  * dirty dot for collab tabs, and the two states co-editing had no way to announce (§7.4).
  *
- * Pure lit templates over `collabState(tab)`; the toolbar includes them and its render effect
- * tracks the underlying reactive state.
+ * Pure projections of `collabState(tab)`: the Command Bar surface draws the cluster and the pane's
+ * own chrome draws the banner, and both are documents, so nothing here renders.
  *
  * **What was invisible.** Three things:
  *
@@ -12,7 +12,10 @@
  *   precisely what a bug looks like. It gets a persistent indicator, so the refusal has a visible
  *   cause standing beside it for as long as it is true.
  * - **Read-only guests.** Their edits applied locally and were dropped at the publish gate. They now
- *   get a banner that says so before they type, not a silence after.
+ *   get a banner that says so before they type, not a silence after. The banner itself lives in
+ *   `surfaces/pane-context.json`, drawn from `collabState(tab)` by the pane's own chrome: the
+ *   sentence has to stand above the editing surface and inside the band the stage is offset by, and
+ *   that band is a document now. What stays here is everything the TOOLBAR draws.
  * - **A failed attach.** It set `status = "detached"` — the same value a solo document carries — so a
  *   dead relay was indistinguishable from nobody having shared the file. `"failed"` and
  *   `"unavailable"` are now separate states with separate sentences.
@@ -23,8 +26,6 @@
  * precisely because silently undoing someone else's work is worse than not undoing.
  */
 
-import { html, nothing } from "lit-html";
-import type { TemplateResult } from "lit-html";
 import { collabState } from "./collab-state";
 import type { CollabTabStatus, PeerPresence } from "./collab-state";
 import type { Tab } from "../tabs/tab";
@@ -71,7 +72,6 @@ export function statusTitle(status: CollabTabStatus, attachError: string): strin
   return STATUS_LABEL[status];
 }
 
-/** Chips + status pill for the toolbar; `nothing` while the tab has no collaboration to report. */
 /** One peer, as the Command Bar draws it: a coloured chip with the person's initial or avatar. */
 export interface PresencePeerProjection {
   /** The awareness client id, the row key. */
@@ -126,30 +126,4 @@ export function presenceProjection(tab: Tab | null): PresenceProjection | null {
     status: state.status,
     title: statusTitle(state.status, state.attachError),
   };
-}
-
-/**
- * The read-only banner — a standing statement, not an after-the-fact refusal.
- *
- * A guest without write access used to watch their edits apply locally and be dropped silently at
- * the publish gate, which reads as the app losing work. The sentence has to be there before the
- * first keystroke, so it is rendered by the PANE CHROME (`panels/pane-context.ts`) rather than by
- * the toolbar the chips ride in: the chrome is per-pane and per-document, it sits directly above
- * the editing surface, and the stage is offset by the band it lives in — so the banner pushes the
- * document down instead of covering it.
- */
-export function readOnlyBannerTemplate(tab: Tab | null): TemplateResult | typeof nothing {
-  if (!tab) {
-    return nothing;
-  }
-  const state = collabState(tab);
-  if (!state.active || !state.readOnly) {
-    return nothing;
-  }
-  return html`
-    <div class="jx-collab-banner" role="status" data-kind="read-only">
-      You have read access to this session. You can explore and edit locally, but your changes are
-      not published to the other people in it.
-    </div>
-  `;
 }

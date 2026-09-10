@@ -9,6 +9,7 @@ code:
   - packages/studio/src/commands/context.ts
   - packages/studio/src/tabs/tab.ts
   - packages/studio/src/panels/pane-context.ts
+  - packages/studio/src/surfaces/pane-context.ts
   - packages/studio/src/canvas/canvas-render.ts
   - packages/studio/src/settings/settings-document.ts
 ---

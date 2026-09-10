@@ -111,7 +111,7 @@ import {
 import {
   loadProject as _loadProject,
   openProject as _openProject,
-  renderFilesTemplate as _renderFilesTemplate,
+  renderFilesTemplate,
   findHomePage,
   loadDirectory,
   openFileInPane,
@@ -1399,13 +1399,6 @@ async function openRecentProject(root: string) {
     activity.log(errorMessage(error));
     activity.fail(`Could not open the project at ${root}.`, { path: root });
   }
-}
-function renderFilesTemplate() {
-  return _renderFilesTemplate({
-    openFileFromTree,
-    openProject,
-    renderLeftPanel,
-  });
 }
 function openFileFromTree(path: string) {
   return openFileInTab(path);

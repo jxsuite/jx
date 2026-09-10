@@ -133,13 +133,31 @@ function twoPaneGrid(): Tab {
 }
 
 function axesOf(host: HTMLElement): string[] {
-  return [...host.querySelectorAll(".pc-axis-label")].map((el) => el.textContent?.trim() ?? "");
+  return [...host.querySelectorAll('[part="axis-label"]')].map(
+    (el) => el.textContent?.trim() ?? "",
+  );
+}
+
+/**
+ * The pane chrome is a Jx DOCUMENT now, so everything below reads it by `part`.
+ *
+ * The classes these helpers used to name (`.pc-axis-label`, `.pane-zoom`, `.pc-derive-trigger`) are
+ * gone with the lit template: a surface document styles through `part` and carries no class at all,
+ * so a query naming one would be asserting a stylesheet that no longer applies to it.
+ */
+function chromePart(host: HTMLElement, name: string): HTMLElement | null {
+  return host.querySelector<HTMLElement>(`[part="${name}"]`);
+}
+
+/** What the pod's reset button reads — the scale this pane is drawing at. */
+function zoomLabelOf(host: HTMLElement): string | undefined {
+  return chromePart(host, "zoom-label")?.querySelector('[part="label"]')?.textContent?.trim();
 }
 
 /** One of the pod's two write controls, addressed by the tooltip the author reads. */
 function zoomControl(host: HTMLElement, title: string): HTMLElement {
-  const button = [...host.querySelectorAll(".pane-zoom sp-action-button")].find((el) =>
-    el.getAttribute("title")?.startsWith(title),
+  const button = [...host.querySelectorAll('[part="pod"] jx-action-button')].find((el) =>
+    el.querySelector('[part="control"]')?.getAttribute("title")?.startsWith(title),
   );
   expect(button).toBeDefined();
   return button as HTMLElement;
@@ -183,7 +201,7 @@ describe("the context bar in a lens pane", () => {
     paneContext.mount(primaryHost, makeCtx());
     paneContext.attachPaneChromeHost(SECONDARY_PANE, sideHost);
     paneContext.render();
-    await flush();
+    await flush(8);
 
     // The pane that owns the document keeps all three.
     expect(axesOf(primaryHost)).toEqual(["Editor", "View", "Context"]);
@@ -191,7 +209,7 @@ describe("the context bar in a lens pane", () => {
        `ctx.setCanvasMode(tab, …)`, and that tab belongs to the pane beside this one — a control
        here would flip the document the author is editing. */
     expect(axesOf(sideHost)).toEqual(["Context"]);
-    expect(sideHost.querySelector(".pane-context")).not.toBeNull();
+    expect(chromePart(sideHost, "bar")).not.toBeNull();
   });
 
   test("keeps the zoom pod, reading the LENS's own scale and not the source tab's", async () => {
@@ -202,12 +220,12 @@ describe("the context bar in a lens pane", () => {
     Object.assign(derived, { media: null, mode: "design", preset: "breakpoint", zoom: 0.4 });
     paneContext.attachPaneChromeHost(SECONDARY_PANE, sideHost);
     paneContext.mount(primaryHost, makeCtx());
-    await flush();
+    await flush(8);
 
-    expect(sideHost.querySelector(".pane-zoom")).not.toBeNull();
+    expect(chromePart(sideHost, "pod")).not.toBeNull();
     /* `session.ui.zoom` is per-TAB and the lens shares the source pane's tab, so a pod reading it
        would report the desktop pane's scale and divide the wrong number on the minus button. */
-    expect(sideHost.querySelector(".pc-zoom-label")?.textContent?.trim()).toBe("40%");
+    expect(zoomLabelOf(sideHost)).toBe("40%");
   });
 
   /* …AND IT REPAINTS WHEN THE SCALE MOVES. The test above sets `zoom` BEFORE the mount, so it
@@ -222,13 +240,13 @@ describe("the context bar in a lens pane", () => {
     Object.assign(derived, { media: null, mode: "design", preset: "breakpoint", zoom: 1 });
     paneContext.attachPaneChromeHost(SECONDARY_PANE, sideHost);
     paneContext.mount(primaryHost, makeCtx());
-    await flush();
-    expect(sideHost.querySelector(".pc-zoom-label")?.textContent?.trim()).toBe("100%");
+    await flush(8);
+    expect(zoomLabelOf(sideHost)).toBe("100%");
 
     (derivationOfPane(SECONDARY_PANE) as { zoom: number }).zoom = 0.5;
     await flush();
 
-    expect(sideHost.querySelector(".pc-zoom-label")?.textContent?.trim()).toBe("50%");
+    expect(zoomLabelOf(sideHost)).toBe("50%");
   });
 
   /* FINDING 10b. The trigger WAS drawn in a lens, and a test locked it in. From there every
@@ -242,15 +260,15 @@ describe("the context bar in a lens pane", () => {
     lensGrid();
     paneContext.attachPaneChromeHost(SECONDARY_PANE, sideHost);
     paneContext.mount(primaryHost, makeCtx());
-    await flush();
-    expect(primaryHost.querySelectorAll(".pc-derive-trigger")).toHaveLength(1);
+    await flush(8);
+    expect(primaryHost.querySelectorAll('[part="preset"]')).toHaveLength(1);
     // Counted rather than compared to `null`, for the same reason as the chip assertion in
     // `properties-panel.test.ts`: a happy-dom element in a failure message drags its whole `window`
     // Into the output.
-    expect(sideHost.querySelectorAll(".pc-derive-trigger")).toHaveLength(0);
+    expect(sideHost.querySelectorAll('[part="preset"]')).toHaveLength(0);
     // The SPACER stays — it is what pushes the axes right, and dropping it with the trigger would
     // Move the one control a lens does draw.
-    expect(sideHost.querySelector(".pc-spacer")).not.toBeNull();
+    expect(chromePart(sideHost, "spacer")).not.toBeNull();
   });
 
   /* FINDING 10a. `renderingSummaryTpl` called `ctx.parseMediaEntries(getEffectiveMedia(...))` and
@@ -265,7 +283,7 @@ describe("the context bar in a lens pane", () => {
     };
     paneContext.attachPaneChromeHost(SECONDARY_PANE, sideHost);
     paneContext.mount(primaryHost, ctx);
-    await flush();
+    await flush(8);
 
     /* Only the LENS draws for this pass. The pane that owns the tab parses legitimately — its
        rendering-context control offers every breakpoint — so the count has to be attributed, not
@@ -274,7 +292,7 @@ describe("the context bar in a lens pane", () => {
     parses.mockClear();
     paneContext.render();
 
-    expect(sideHost.querySelector(".pc-static")?.textContent?.trim()).toBe("Base");
+    expect(chromePart(sideHost, "static")?.textContent?.trim()).toBe("Base");
     expect(parses.mock.calls).toEqual([]);
   });
 
@@ -296,16 +314,16 @@ describe("the context bar in a lens pane", () => {
     });
     paneContext.attachPaneChromeHost(SECONDARY_PANE, sideHost);
     paneContext.mount(primaryHost, makeCtx());
-    await flush();
+    await flush(8);
 
-    expect(sideHost.querySelector(".pc-static")?.textContent?.trim()).toBe("Tablet");
+    expect(chromePart(sideHost, "static")?.textContent?.trim()).toBe("Tablet");
 
     // …and a BASE lens says Base, though the tab it shares is still on `wide`. `null` is the
     // Lens's answer, not a missing one.
     Object.assign(derivationOfPane(SECONDARY_PANE)!, { media: null });
     paneContext.render();
     await flush();
-    expect(sideHost.querySelector(".pc-static")?.textContent?.trim()).toBe("Base");
+    expect(chromePart(sideHost, "static")?.textContent?.trim()).toBe("Base");
   });
 });
 
@@ -539,46 +557,82 @@ describe("the preset menu's rows", () => {
 });
 
 describe("the preset menu, opened", () => {
-  /** The rows of the popover the trigger opened — scoped to its own named slot, not the document. */
+  /**
+   * The rows of the KIT menu the trigger opened, scoped to its own named slot.
+   *
+   * `surfaces/menu.ts` draws it now, so a row is a `jx-menu-item` carrying the command id it runs
+   * and announcing its refusal as `aria-disabled` — which is what a menu row is required to say,
+   * and what a bare `disabled` attribute on the old `sp-menu-item` never did.
+   */
   function menuItems(): HTMLElement[] {
     const menu = document.querySelector('[aria-label="Show beside this pane"]');
-    return menu ? ([...menu.querySelectorAll("sp-menu-item")] as HTMLElement[]) : [];
+    return menu ? ([...menu.querySelectorAll("jx-menu-item")] as HTMLElement[]) : [];
+  }
+
+  /** A row's own words, without the "Needs …" sentence a refused row carries beside them. */
+  function rowTitle(row: HTMLElement): string {
+    return row.querySelector('[part="label"]')?.textContent?.trim() ?? "";
+  }
+
+  function rowNamed(title: string): HTMLElement {
+    return menuItems().find((row) => rowTitle(row) === title)!;
+  }
+
+  function refused(row: HTMLElement): boolean {
+    return row.getAttribute("aria-disabled") === "true";
+  }
+
+  /** Activate a row the way a pointer or the keyboard does: the kit item raises its own `select`. */
+  function selectRow(row: HTMLElement): void {
+    row.click();
   }
 
   test("the trigger opens it, a row runs its command with its arguments, and it dismisses", async () => {
     lensGrid();
     paneContext.mount(primaryHost, makeCtx());
-    await flush();
-    const trigger = primaryHost.querySelector(".pc-derive-trigger") as HTMLElement;
+    await flush(8);
+    const trigger = chromePart(primaryHost, "preset")!;
 
     trigger.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    await flush();
+    await flush(8);
     const rows = menuItems();
     expect(rows.length).toBeGreaterThan(0);
-    expect(rows.map((row) => row.textContent?.trim())).toContain("Layout");
+    expect(rows.map((row) => rowTitle(row))).toContain("Layout");
+    /* The row IS the command — a projection of the record, never a second list of actions. The id
+       carries the arguments too, because `pane.derive` appears once per projection, once per
+       declared breakpoint and once per declared locale, and a keyed row needs an identity of its
+       own. */
+    expect(rowNamed("Layout").dataset["commandId"]).toBe("pane.derive:layout");
+    expect(rowNamed("Code").dataset["commandId"]).toBe("pane.derive:code");
 
-    // A row that CAN run does; the menu closes either way.
-    const layout = rows.find((row) => row.textContent?.trim() === "Layout")!;
-    layout.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    await flush();
+    // A row that CAN run does, and the menu goes with it.
+    selectRow(rowNamed("Code"));
+    await flush(4);
     expect(menuItems()).toHaveLength(0);
+    expect(derivationOfPane(SECONDARY_PANE)).toMatchObject({
+      preset: "code",
+      sourcePaneId: PRIMARY_PANE,
+    });
   });
 
   test("a disabled row runs nothing — the reason is on the row, not a missing row", async () => {
     const page = lensGrid();
     page.session.ui.canvasMode = "source";
     paneContext.mount(primaryHost, makeCtx());
-    await flush();
-    (primaryHost.querySelector(".pc-derive-trigger") as HTMLElement).dispatchEvent(
-      new MouseEvent("click", { bubbles: true }),
-    );
-    await flush();
-    const code = menuItems().find((row) => row.textContent?.trim() === "Code")!;
-    expect(code.hasAttribute("disabled")).toBe(true);
-    code.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    await flush();
+    await flush(8);
+    chromePart(primaryHost, "preset")!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await flush(8);
+    const code = rowNamed("Code");
+    expect(refused(code)).toBe(true);
+    selectRow(code);
+    await flush(4);
     // Still one lens — the one the fixture made — and no second derivation was published.
     expect(derivationOfPane(SECONDARY_PANE)?.preset).toBe("code");
+    /* …and the menu is STILL STANDING, which is the kit's contract and a deliberate change: the
+       old handler called `dismissPresetMenu()` before it looked at the row, so pressing a refused
+       row shut the menu and left the author to reopen it to read the sentence explaining why. A
+       refusal is not a choice, so it closes nothing. */
+    expect(menuItems().length).toBeGreaterThan(0);
   });
 
   /* …AND IT DOES NOT TAKE THE KEYBOARD ON THE WAY. The assertion above cannot see the guard at
@@ -592,20 +646,18 @@ describe("the preset menu, opened", () => {
     twoPaneGrid();
     paneContext.attachPaneChromeHost(SECONDARY_PANE, sideHost);
     paneContext.mount(primaryHost, makeCtx());
-    await flush();
+    await flush(8);
     expect(workspace.activePaneId).toBe(PRIMARY_PANE);
 
     // The SIDE pane's own menu, opened without a pointerdown — the keyboard path (see FINDING 3).
-    (sideHost.querySelector(".pc-derive-trigger") as HTMLElement).dispatchEvent(
-      new MouseEvent("click", { bubbles: true }),
-    );
-    await flush();
+    chromePart(sideHost, "preset")!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await flush(8);
     // `scratch.json` declares no layout, so this row is refused before the command is reached.
-    const layout = menuItems().find((row) => row.textContent?.trim() === "Layout")!;
-    expect(layout.hasAttribute("disabled")).toBe(true);
+    const layout = rowNamed("Layout");
+    expect(refused(layout)).toBe(true);
 
-    layout.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    await flush();
+    selectRow(layout);
+    await flush(4);
 
     expect(workspace.activePaneId).toBe(PRIMARY_PANE);
     expect(derivationOfPane(SECONDARY_PANE)).toBeNull();
@@ -629,18 +681,18 @@ describe("the preset menu, opened", () => {
     twoPaneGrid();
     paneContext.attachPaneChromeHost(SECONDARY_PANE, sideHost);
     paneContext.mount(primaryHost, makeCtx());
-    await flush();
+    await flush(8);
     expect(workspace.activePaneId).toBe(PRIMARY_PANE);
 
-    const trigger = sideHost.querySelector(".pc-derive-trigger") as HTMLElement;
+    const trigger = chromePart(sideHost, "preset")!;
     expect(trigger).not.toBeNull();
     trigger.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    await flush();
-    const code = menuItems().find((row) => row.textContent?.trim() === "Code")!;
-    expect(code.hasAttribute("disabled")).toBe(false);
+    await flush(8);
+    const code = rowNamed("Code");
+    expect(refused(code)).toBe(false);
 
-    code.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    await flush();
+    selectRow(code);
+    await flush(4);
 
     // The SECONDARY is the source of the projection, and the primary is the pane holding it.
     expect(derivationOfPane(PRIMARY_PANE)).toMatchObject({
@@ -658,11 +710,9 @@ describe("the preset menu, opened", () => {
     lensGrid();
     setActiveRegistry(null);
     paneContext.mount(primaryHost, makeCtx());
-    await flush();
-    (primaryHost.querySelector(".pc-derive-trigger") as HTMLElement).dispatchEvent(
-      new MouseEvent("click", { bubbles: true }),
-    );
-    await flush();
+    await flush(8);
+    chromePart(primaryHost, "preset")!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await flush(8);
     expect(menuItems()).toHaveLength(0);
   });
 });
@@ -1128,14 +1178,14 @@ describe("what a lens's chrome reads about ITS pane", () => {
     lensGrid();
     paneContext.attachPaneChromeHost(SECONDARY_PANE, sideHost);
     paneContext.mount(primaryHost, makeCtx());
-    await flush();
+    await flush(8);
     // A Code lens: no panzoom surface, so no pod.
-    expect(sideHost.querySelectorAll(".pane-zoom")).toHaveLength(0);
+    expect(sideHost.querySelectorAll('[part="pod"]')).toHaveLength(0);
 
     (derivationOfPane(SECONDARY_PANE) as { mode: string }).mode = "design";
     await flush();
 
-    expect(sideHost.querySelectorAll(".pane-zoom")).toHaveLength(1);
+    expect(sideHost.querySelectorAll('[part="pod"]')).toHaveLength(1);
   });
 
   /* THE BUTTONS TAKE A SURFACE, not just the readout. Every zoom verb defaults its `surface`
@@ -1150,7 +1200,7 @@ describe("what a lens's chrome reads about ITS pane", () => {
     page.session.ui.zoom = 2;
     paneContext.attachPaneChromeHost(SECONDARY_PANE, sideHost);
     paneContext.mount(primaryHost, makeCtx());
-    await flush();
+    await flush(8);
     // The keyboard is in the pane that OWNS the document, which is the whole hazard.
     expect(workspace.activePaneId).toBe(PRIMARY_PANE);
 

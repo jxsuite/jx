@@ -1,17 +1,67 @@
 /**
- * Layers panel — renderLayersTemplate rows (badges, visibility, move actions, collapse) and
- * startLayerTitleEdit inline rename.
+ * The Outline's rows: what each badge says, which nodes get a row at all, the move verbs, collapse,
+ * inline rename, and the empty state.
+ *
+ * The panel's body is a Jx document (`src/surfaces/panel-outline.json`), so every question here is
+ * asked of a `part`, a `role` or a `data-*` — there is no `.layer-row`, no `.layer-tag` and no
+ * `sp-action-button`. The two assertions that named Spectrum attributes are re-asked of the kit's
+ * own `[part="control"]`, which is where a `jx-action-button` puts `disabled` and its tooltip, and
+ * the one that read `label.style.display` is re-asked as "the label is gone and the input is there"
+ * — the drawing is a `$switch` case now, not a hidden node beside a created one.
  */
-import { flush, key, renderInto, resetWorkspaceWithTab } from "./harness";
+import { flush, resetWorkspaceWithTab } from "./harness";
+import {
+  allRows,
+  click,
+  control,
+  isRefusing,
+  mountOutline,
+  needRow,
+  outlineHost,
+  resetOutline,
+  row,
+  rowActions,
+  textOf,
+  treeItems,
+} from "./outline-fixture";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { renderLayersTemplate, startLayerTitleEdit } from "../src/panels/layers-panel";
 import { activeTab, closeAllTabs } from "../src/workspace/workspace";
 import { pathKey } from "../src/store";
 import { view } from "../src/view";
 import { NAVIGATOR_PANEL_IDS, shell } from "../src/shell";
-import { initLayers } from "../src/ui/layers";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 import type { JxPath } from "../src/state";
+import type { OutlineActions } from "../src/surfaces/panel-outline";
+
+void mock.module("@atlaskit/pragmatic-drag-and-drop/element/adapter", () => ({
+  draggable: () => () => {},
+  dropTargetForElements: () => () => {},
+  monitorForElements: () => () => {},
+}));
+
+const { startLayerTitleEdit } = await import("../src/panels/layers-panel");
+const { mountOutlineSurface } = await import("../src/surfaces/panel-outline");
+
+/** Every action the surface can call, as a no-op: these tests are about the MOUNT, not the flow. */
+function outlineActionSpies(): OutlineActions {
+  return {
+    activate: () => {},
+    contextMenu: () => {},
+    editCancel: () => {},
+    editCommit: () => {},
+    editInput: () => {},
+    editReady: () => {},
+    emptyAction: () => {},
+    hover: () => {},
+    hoverOut: () => {},
+    overflowRow: () => {},
+    rename: () => {},
+    runRow: () => {},
+    toggle: () => {},
+    treeReady: () => {},
+    walk: () => {},
+  };
+}
 
 const LONG_TEXT = "this is a very long text node well beyond forty characters of content";
 
@@ -49,219 +99,219 @@ function makeDoc(): JxMutableNode {
 }
 
 let host: HTMLElement;
+const log = { dnd: 0, rerenders: 0 };
 
-async function renderLayers(opts: { rerender?: () => void; nav?: (p: string) => void } = {}) {
-  const tpl = renderLayersTemplate({
-    navigateToComponent: opts.nav ?? (() => {}),
-    rerender: opts.rerender ?? (() => {}),
-  });
-  await renderInto(tpl, host);
-  return host;
+async function draw(): Promise<HTMLElement> {
+  return mountOutline(host, log);
 }
 
-function rowByKey(path: JxPath): HTMLElement | null {
-  return host.querySelector(`.layer-row[data-path="${pathKey(path)}"]`);
+function at(path: JxPath): HTMLElement {
+  return needRow(host, pathKey(path));
+}
+
+/** A row's badge, which carries both its text and which of the six drawings it gets. */
+function badgeOf(el: HTMLElement): HTMLElement {
+  return el.querySelector('[part="badge"]') as HTMLElement;
+}
+
+/** A row's name. */
+function labelOf(el: HTMLElement): HTMLElement {
+  return el.querySelector('[part="label"]') as HTMLElement;
+}
+
+function maybe(path: JxPath): HTMLElement | null {
+  return row(host, pathKey(path));
+}
+
+/** Select a row, draw, and collect its verb buttons by command id. */
+async function buttons(path: JxPath): Promise<Record<string, HTMLElement>> {
+  activeTab.value!.session.selection = [path];
+  await draw();
+  return rowActions(at(path));
+}
+
+/** The kit menu the `⋮` button opens. */
+function overflowItems(): HTMLElement[] {
+  return [
+    ...document.querySelectorAll<HTMLElement>("#layer-popover jx-menu-item[data-command-id]"),
+  ];
 }
 
 beforeEach(() => {
-  document.body.innerHTML = `
-    <div id="host"></div>
-    <div id="layer-popover"></div>
-    <div id="layer-modal"></div>
-    <div id="layer-dialog"></div>
-  `;
-  initLayers();
-  host = document.querySelector("#host") as HTMLElement;
-  view._layersCollapsed = new Set();
-  view.dndCleanups = [];
+  host = outlineHost();
+  log.dnd = 0;
+  log.rerenders = 0;
   resetWorkspaceWithTab(makeDoc());
 });
 
 afterEach(() => {
+  resetOutline();
   closeAllTabs();
-  document.body.innerHTML = "";
 });
 
-describe("renderLayersTemplate — rows and badges", () => {
-  test("renders element rows with tag badges and labels", async () => {
-    await renderLayers();
-    const root = rowByKey([]);
-    expect(root).not.toBeNull();
-    expect(root!.querySelector(".layer-tag")!.textContent).toBe("div");
-
-    const section = rowByKey(["children", 0]);
-    expect(section).not.toBeNull();
-    expect(section!.querySelector(".layer-tag")!.textContent).toBe("section");
+describe("the rows and their badges", () => {
+  test("an element row wears its tag as a badge", async () => {
+    await draw();
+    expect(textOf(at([]), "badge")).toBe("div");
+    expect(badgeOf(at([])).dataset.kind).toBe("tag");
+    expect(textOf(at(["children", 0]), "badge")).toBe("section");
   });
 
-  test("text node children render truncated italic preview rows", async () => {
-    await renderLayers();
-    const labels = [...host.querySelectorAll(".layer-label")].map((el) => el.textContent ?? "");
-    const preview = labels.find((t) => t.endsWith("…"));
-    expect(preview).toBeDefined();
-    expect(preview!.length).toBe(41); // 40 chars + ellipsis
-    expect(preview!.startsWith(LONG_TEXT.slice(0, 40))).toBe(true);
+  test("a text node gets a line of its own, previewed and marked as text", async () => {
+    await draw();
+    const text = allRows(host).find((r) => r.dataset.kind === "text");
+    expect(text).toBeDefined();
+    const preview = textOf(text!, "label");
+    expect(preview.length).toBe(41); // 40 chars + ellipsis
+    expect(preview.startsWith(LONG_TEXT.slice(0, 40))).toBe(true);
+    expect(badgeOf(text!).dataset.kind).toBe("text");
   });
 
   test("inline elements (span inside p) are skipped", async () => {
-    await renderLayers();
-    expect(rowByKey(["children", 0, "children", 1, "children", 1])).toBeNull();
+    await draw();
+    expect(maybe(["children", 0, "children", 1, "children", 1])).toBeNull();
   });
 
-  test("map node renders repeater badge and template child", async () => {
-    await renderLayers();
-    // The repeater is now a first-class member of the <ul>'s children (normalized on load).
-    const mapRow = rowByKey(["children", 2, "children", 0]);
-    expect(mapRow).not.toBeNull();
-    expect(mapRow!.querySelector(".map-tag")!.textContent).toBe("↻");
-    expect(mapRow!.querySelector(".layer-label")!.textContent).toContain("Repeater");
-    // The map node is draggable/structural like any element.
-    expect(mapRow!.dataset.dndRow).toBe(pathKey(["children", 2, "children", 0]));
-    expect(mapRow!.querySelector(".layer-drag-handle")).not.toBeNull();
-    // The map template li renders as a normal element row.
-    expect(rowByKey(["children", 2, "children", 0, "map"])).not.toBeNull();
+  test("a repeater wears the repeat badge, is draggable, and shows its template", async () => {
+    await draw();
+    // The repeater is a first-class member of the <ul>'s children (normalized on load).
+    const mapRow = at(["children", 2, "children", 0]);
+    expect(textOf(mapRow, "badge")).toBe("↻");
+    expect(badgeOf(mapRow).dataset.kind).toBe("map");
+    expect(textOf(mapRow, "label")).toContain("Repeater");
+    expect(mapRow.dataset.dndRow).toBe(pathKey(["children", 2, "children", 0]));
+    expect(mapRow.querySelector('[part="drag"]')).not.toBeNull();
+    // A repeater cannot take a dropped child: its content is the single template.
+    expect(mapRow.dataset.dndVoid).toBe("");
+    expect(maybe(["children", 2, "children", 0, "map"])).not.toBeNull();
   });
 
-  test("$switch node gets switch badge; cases get case and case-ref badges", async () => {
-    await renderLayers();
-    const switchRow = rowByKey(["children", 3]);
-    expect(switchRow!.querySelector(".switch-tag")!.textContent).toBe("⇄");
+  test("a $switch node and its cases each get their own badge kind", async () => {
+    await draw();
+    const switchRow = at(["children", 3]);
+    expect(textOf(switchRow, "badge")).toBe("⇄");
+    expect(badgeOf(switchRow).dataset.kind).toBe("switch");
 
-    const caseRow = rowByKey(["children", 3, "cases", "alpha"]);
-    expect(caseRow!.querySelector(".case-tag")!.textContent).toBe("alpha");
+    const caseRow = at(["children", 3, "cases", "alpha"]);
+    expect(textOf(caseRow, "badge")).toBe("alpha");
+    expect(badgeOf(caseRow).dataset.kind).toBe("case");
 
-    const refRow = rowByKey(["children", 3, "cases", "beta"]);
-    expect(refRow!.querySelector(".case-tag")!.textContent).toBe("beta");
-    const refLabel = refRow!.querySelector(".layer-label") as HTMLElement;
-    expect(refLabel.textContent).toBe("./beta.json");
-    expect(refLabel.getAttribute("style")).toContain("italic");
+    const refRow = at(["children", 3, "cases", "beta"]);
+    expect(textOf(refRow, "badge")).toBe("beta");
+    expect(textOf(refRow, "label")).toBe("./beta.json");
+    // An external case names a file rather than describing a node, so it is set in italic.
+    expect(labelOf(refRow).dataset.italic).toBe("true");
+  });
+
+  test("a slot says which slot it is, on the badge that names no tag", async () => {
+    resetWorkspaceWithTab({
+      children: [{ attributes: { name: "footer" }, tagName: "slot" }],
+      tagName: "div",
+    } as JxMutableNode);
+    await draw();
+    const slot = badgeOf(at(["children", 0]));
+    expect(slot.dataset.kind).toBe("slot");
+    expect(slot.getAttribute("title")).toBe('Slot "footer"');
   });
 
   test("content mode skips the root row", async () => {
     activeTab.value!.doc.mode = "content";
-    await renderLayers();
-    expect(rowByKey([])).toBeNull();
-    expect(rowByKey(["children", 0])).not.toBeNull();
+    await draw();
+    expect(maybe([])).toBeNull();
+    expect(maybe(["children", 0])).not.toBeNull();
   });
 
-  test("root row has no move actions", async () => {
-    await renderLayers();
-    expect(rowByKey([])!.querySelector(".layer-actions")).toBeNull();
+  test("the root row has no cluster and no grab handle", async () => {
+    await draw();
+    expect(at([]).querySelectorAll("jx-action-button")).toHaveLength(0);
+    expect(at([]).querySelector('[part="drag"]')).toBeNull();
+    expect(at([]).dataset.dndRow).toBeUndefined();
   });
 });
 
-describe("renderLayersTemplate — selection and collapse", () => {
+describe("selection and collapse", () => {
   test("clicking a row selects its path", async () => {
-    await renderLayers();
-    rowByKey(["children", 1])!.click();
+    await draw();
+    click(at(["children", 1]));
+    await flush();
     expect(activeTab.value!.session.selection).toEqual([["children", 1]]);
   });
 
-  test("selected row gets the selected class", async () => {
+  test("the selected row announces itself rather than wearing a class", async () => {
     activeTab.value!.session.selection = [["children", 0]];
-    await renderLayers();
-    expect(rowByKey(["children", 0])!.classList.contains("selected")).toBe(true);
+    await draw();
+    expect(at(["children", 0]).getAttribute("aria-selected")).toBe("true");
+    expect(at(["children", 1]).getAttribute("aria-selected")).toBe("false");
+    expect(at(["children", 0]).className).toBe("");
   });
 
-  test("clicking the toggle collapses and hides descendants", async () => {
-    const rerender = mock(() => {});
-    await renderLayers({ rerender });
-    const toggle = rowByKey(["children", 0])!.querySelector(".layer-toggle") as HTMLElement;
-    expect(toggle.querySelector("sp-icon-chevron-down")).not.toBeNull();
-    toggle.click();
-    expect(rerender).toHaveBeenCalledTimes(1);
+  test("clicking the chevron collapses, hides descendants, and turns the glyph", async () => {
+    await draw();
+    const toggle = () => at(["children", 0]).querySelector('[part="toggle"]') as HTMLElement;
+    expect(toggle().querySelector("jx-icon")).not.toBeNull();
+
+    click(toggle());
+    await flush();
     expect(view._layersCollapsed!.has("children/0")).toBe(true);
+    expect(maybe(["children", 0, "children", 0])).toBeNull();
+    expect(at(["children", 0]).getAttribute("aria-expanded")).toBe("false");
 
-    await renderLayers({ rerender });
-    expect(rowByKey(["children", 0, "children", 0])).toBeNull();
-    const toggleNow = rowByKey(["children", 0])!.querySelector(".layer-toggle") as HTMLElement;
-    expect(toggleNow.querySelector("sp-icon-chevron-right")).not.toBeNull();
-
-    // Toggle back open
-    toggleNow.click();
+    click(toggle());
+    await flush();
     expect(view._layersCollapsed!.has("children/0")).toBe(false);
+    expect(maybe(["children", 0, "children", 0])).not.toBeNull();
   });
 
-  test("non-expandable rows render no chevron", async () => {
-    await renderLayers();
-    const imgToggle = rowByKey(["children", 4])!.querySelector(".layer-toggle") as HTMLElement;
-    expect(imgToggle.children.length).toBe(0);
+  test("a row with nothing under it draws no chevron", async () => {
+    await draw();
+    const toggle = at(["children", 4]).querySelector('[part="toggle"]') as HTMLElement;
+    expect(toggle.children).toHaveLength(0);
   });
 
-  test("tree click outside a toggle is a no-op for collapse state", async () => {
-    const rerender = mock(() => {});
-    await renderLayers({ rerender });
-    (host.querySelector(".layer-label") as HTMLElement).click();
+  test("clicking the label is not a collapse", async () => {
+    await draw();
+    click(at(["children", 0]).querySelector('[part="label"]') as HTMLElement);
+    await flush();
     expect(view._layersCollapsed!.size).toBe(0);
   });
 
-  test("contextmenu on an element row selects it", async () => {
-    await renderLayers();
-    const row = rowByKey(["children", 1]) as HTMLElement;
-    row.dispatchEvent(
+  test("a right-click on a row selects it and opens the element menu", async () => {
+    await draw();
+    at(["children", 1]).dispatchEvent(
       new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 10, clientY: 10 }),
     );
+    await flush(3);
     expect(activeTab.value!.session.selection).toEqual([["children", 1]]);
+    expect(overflowItems().length).toBeGreaterThan(0);
   });
 });
 
-describe("renderLayersTemplate — move and delete actions", () => {
-  /**
-   * Select the row, render, and collect its action buttons by COMMAND ID.
-   *
-   * Two things this helper encodes. Row actions exist for the selected row (and the hovered one)
-   * only — five sp-action-buttons per row is ~5 custom elements with shadow roots per visible row —
-   * so selecting first is the real interaction; a click on the row both selects it and reveals its
-   * verbs. And the buttons are keyed by `data-command` rather than by their title, because the
-   * title is now the record's own tooltip (its chord when it can act, its `requires` sentence when
-   * it cannot) and the surface is not allowed to know either string.
-   */
-  async function buttons(path: JxPath): Promise<Record<string, HTMLElement>> {
-    activeTab.value!.session.selection = [path];
-    await renderLayers();
-    const out: Record<string, HTMLElement> = {};
-    for (const btn of rowByKey(path)!.querySelectorAll("sp-action-button[data-command]")) {
-      out[(btn as HTMLElement).dataset.command ?? ""] = btn as HTMLElement;
-    }
-    return out;
-  }
-
-  /** Whether the row's button for `id` is present but refusing (ONE shape: disabled, not removed). */
-  function isDisabled(acts: Record<string, HTMLElement>, id: string): boolean {
-    const btn = acts[id];
-    if (!btn) {
-      throw new Error(`row action not rendered: ${id}`);
-    }
-    return btn.hasAttribute("disabled");
-  }
-
-  test("actions are built only for the selected row", async () => {
+describe("the move verbs", () => {
+  test("verbs are built only for the selected row", async () => {
     activeTab.value!.session.selection = [["children", 1]];
-    await renderLayers();
-    expect(rowByKey(["children", 1])!.querySelectorAll("sp-action-button").length).toBeGreaterThan(
-      0,
-    );
-    // Every other structural row contributes zero custom elements.
-    expect(rowByKey(["children", 0])!.querySelectorAll("sp-action-button").length).toBe(0);
-    expect(rowByKey(["children", 4])!.querySelectorAll("sp-action-button").length).toBe(0);
+    await draw();
+    expect(at(["children", 1]).querySelectorAll("jx-action-button").length).toBeGreaterThan(0);
+    expect(at(["children", 0]).querySelectorAll("jx-action-button")).toHaveLength(0);
+    expect(at(["children", 4]).querySelectorAll("jx-action-button")).toHaveLength(0);
   });
 
   test("first child cannot move up, last cannot move down — disabled, not removed", async () => {
     const first = await buttons(["children", 0]);
-    expect(isDisabled(first, "selection.moveUp")).toBe(true);
-    expect(isDisabled(first, "selection.moveDown")).toBe(false);
+    expect(isRefusing(first, "selection.moveUp")).toBe(true);
+    expect(isRefusing(first, "selection.moveDown")).toBe(false);
     // The refusal is the record's own sentence, printed once.
-    expect(first["selection.moveUp"]!.getAttribute("title")).toBe(
+    expect(control(first["selection.moveUp"]!).getAttribute("title")).toBe(
       "Move Up — requires an element with a sibling above it",
     );
     const last = await buttons(["children", 4]);
-    expect(isDisabled(last, "selection.moveDown")).toBe(true);
-    expect(isDisabled(last, "selection.moveUp")).toBe(false);
+    expect(isRefusing(last, "selection.moveDown")).toBe(true);
+    expect(isRefusing(last, "selection.moveUp")).toBe(false);
   });
 
   test("move down reorders siblings", async () => {
     const acts = await buttons(["children", 0]);
     acts["selection.moveDown"]!.click();
+    await flush();
     const children = activeTab.value!.doc.document.children as JxMutableNode[];
     expect(children[0]!.tagName).toBe("p");
     expect(children[1]!.tagName).toBe("section");
@@ -270,6 +320,7 @@ describe("renderLayersTemplate — move and delete actions", () => {
   test("move up reorders siblings", async () => {
     const acts = await buttons(["children", 1]);
     acts["selection.moveUp"]!.click();
+    await flush();
     const children = activeTab.value!.doc.document.children as JxMutableNode[];
     expect(children[0]!.tagName).toBe("p");
     expect(children[1]!.tagName).toBe("section");
@@ -277,33 +328,31 @@ describe("renderLayersTemplate — move and delete actions", () => {
 
   test("move into previous sibling appends the node to that sibling's children", async () => {
     const acts = await buttons(["children", 1]);
-    const btn = acts["selection.moveIn"];
-    expect(isDisabled(acts, "selection.moveIn")).toBe(false);
-    btn!.click();
+    expect(isRefusing(acts, "selection.moveIn")).toBe(false);
+    acts["selection.moveIn"]!.click();
+    await flush();
     const children = activeTab.value!.doc.document.children as JxMutableNode[];
     expect(children.length).toBe(4);
-    const section = children[0] as JxMutableNode;
-    const sectionChildren = section.children as JxMutableNode[];
+    const sectionChildren = (children[0] as JxMutableNode).children as JxMutableNode[];
     expect(sectionChildren.length).toBe(3);
     expect(sectionChildren[2]!.textContent).toBe("First");
     expect(children.map((c) => c.textContent)).not.toContain("First");
   });
 
-  test("move-in is unavailable when previous sibling is not a container", async () => {
+  test("move-in is unavailable when the previous sibling is not a container", async () => {
     // Children[2] (ul with $map children) follows children[1] (p with no children array)
     const acts = await buttons(["children", 2]);
-    expect(isDisabled(acts, "selection.moveIn")).toBe(true);
+    expect(isRefusing(acts, "selection.moveIn")).toBe(true);
   });
 
-  test("move out of parent lifts node after its parent", async () => {
+  test("move out of parent lifts the node after its parent", async () => {
     const acts = await buttons(["children", 0, "children", 0]);
-    const btn = acts["selection.moveOut"];
-    expect(isDisabled(acts, "selection.moveOut")).toBe(false);
-    btn!.click();
+    expect(isRefusing(acts, "selection.moveOut")).toBe(false);
+    acts["selection.moveOut"]!.click();
+    await flush();
     const children = activeTab.value!.doc.document.children as JxMutableNode[];
     expect(children[1]!.tagName).toBe("h2");
-    const section = children[0] as JxMutableNode;
-    expect((section.children as JxMutableNode[]).length).toBe(1);
+    expect(((children[0] as JxMutableNode).children as JxMutableNode[]).length).toBe(1);
   });
 
   test("the row's inline cluster is the four moves; Duplicate and Delete ride in ⋮", async () => {
@@ -314,113 +363,137 @@ describe("renderLayersTemplate — move and delete actions", () => {
       "selection.moveIn",
       "selection.moveOut",
     ]);
-    expect(rowByKey(["children", 1])!.querySelector(".layer-overflow")).not.toBeNull();
+    expect(at(["children", 1]).querySelector('[part="overflow"]')).not.toBeNull();
   });
 
   test("delete removes the node, from the ⋮ menu", async () => {
     await buttons(["children", 1]);
-    (rowByKey(["children", 1])!.querySelector(".layer-overflow") as HTMLElement).click();
-    const menu = [...document.querySelectorAll("#layer-popover sp-menu-item")];
-    expect(menu.map((el) => (el as HTMLElement).dataset.command)).toEqual([
+    (at(["children", 1]).querySelector('[part="overflow"]') as HTMLElement).click();
+    await flush(3);
+    expect(overflowItems().map((el) => el.dataset.commandId)).toEqual([
       "selection.duplicate",
       "selection.delete",
     ]);
-    (menu[1] as HTMLElement).click();
+    overflowItems()[1]!.click();
+    await flush(3);
 
     const children = activeTab.value!.doc.document.children as JxMutableNode[];
     expect(children.length).toBe(4);
     expect(children.map((c) => c.tagName)).not.toContain("p");
     // The menu closes behind the verb it ran.
-    expect(document.querySelectorAll("#layer-popover sp-menu-item")).toHaveLength(0);
+    expect(overflowItems()).toHaveLength(0);
   });
 
-  test("dnd cleanups run and reset on each render", async () => {
+  test("every draw takes down the drag registrations the last one made", async () => {
     const cleanup = mock(() => {});
+    await draw();
     view.dndCleanups = [cleanup];
-    await renderLayers();
+    await draw();
     expect(cleanup).toHaveBeenCalledTimes(1);
     expect(view.dndCleanups).toEqual([]);
+    expect(log.dnd).toBeGreaterThan(0);
   });
 });
 
-describe("startLayerTitleEdit", () => {
-  test("dblclick starts editing; Enter-blur commits $title", async () => {
-    const rerender = mock(() => {});
-    await renderLayers({ rerender });
-    const row = rowByKey(["children", 1]) as HTMLElement;
-    row.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, cancelable: true }));
-    await flush();
+describe("inline rename", () => {
+  test("a double-click opens the input; Enter and blur write $title", async () => {
+    await draw();
+    at(["children", 1]).dispatchEvent(
+      new MouseEvent("dblclick", { bubbles: true, cancelable: true }),
+    );
+    await flush(2);
 
-    const input = row.querySelector(".layer-title-input") as HTMLInputElement;
+    const input = at(["children", 1]).querySelector('[part="title-input"]') as HTMLInputElement;
     expect(input).not.toBeNull();
-    const label = row.querySelector(".layer-label") as HTMLElement;
-    expect(label.style.display).toBe("none");
+    // The label is a `$switch` case, so it is GONE while the input stands — never hidden beside it.
+    expect(at(["children", 1]).querySelector('[part="label"]')).toBeNull();
+    expect(document.activeElement).toBe(input);
 
     input.value = "Hero paragraph";
-    key(input, "Enter");
+    input.dispatchEvent(new Event("input", { bubbles: true }));
     input.dispatchEvent(new Event("blur"));
-    await flush();
+    await flush(2);
 
     const node = (activeTab.value!.doc.document.children as JxMutableNode[])[1]!;
     expect(node.$title).toBe("Hero paragraph");
-    expect(rerender).toHaveBeenCalled();
-    expect(row.querySelector(".layer-title-input")).toBeNull();
-    expect(label.style.display).toBe("");
+    expect(at(["children", 1]).querySelector('[part="title-input"]')).toBeNull();
+    expect(textOf(at(["children", 1]), "label")).toBe("Hero paragraph");
   });
 
-  test("empty value commits undefined (clears $title)", async () => {
+  test("an empty value clears $title, and the placeholder says what the row falls back to", async () => {
     const node = (activeTab.value!.doc.document.children as JxMutableNode[])[1]!;
     node.$title = "Old";
-    await renderLayers();
-    const row = rowByKey(["children", 1]) as HTMLElement;
+    await draw();
     startLayerTitleEdit(["children", 1], () => {});
-    const input = row.querySelector(".layer-title-input") as HTMLInputElement;
+    await flush(2);
+    const input = at(["children", 1]).querySelector('[part="title-input"]') as HTMLInputElement;
     expect(input.value).toBe("Old");
+    // What the row would say with no title of its own: its own text.
+    expect(input.getAttribute("placeholder")).toBe("First");
+
     input.value = "   ";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
     input.dispatchEvent(new Event("blur"));
+    await flush(2);
     expect(node.$title).toBeUndefined();
   });
 
-  test("Escape cancels without mutating", async () => {
+  test("Escape cancels without mutating, and a late blur is a no-op", async () => {
     const rerender = mock(() => {});
-    await renderLayers();
-    const row = rowByKey(["children", 1]) as HTMLElement;
+    await draw();
     startLayerTitleEdit(["children", 1], rerender);
-    const input = row.querySelector(".layer-title-input") as HTMLInputElement;
+    await flush(2);
+    const input = at(["children", 1]).querySelector('[part="title-input"]') as HTMLInputElement;
     input.value = "Should not stick";
-    key(input, "Escape");
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.dispatchEvent(
+      new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "Escape" }),
+    );
+    await flush(2);
+
     const node = (activeTab.value!.doc.document.children as JxMutableNode[])[1]!;
     expect(node.$title).toBeUndefined();
     expect(rerender).toHaveBeenCalledTimes(1);
-    expect(row.querySelector(".layer-title-input")).toBeNull();
-    // A late blur after cancel is a no-op (committed guard)
+    expect(at(["children", 1]).querySelector('[part="title-input"]')).toBeNull();
+
     input.dispatchEvent(new Event("blur"));
+    await flush(2);
     expect(node.$title).toBeUndefined();
   });
 
-  test("returns silently when row is missing", async () => {
-    await renderLayers();
+  test("a rename on a path with no row draws nothing rather than throwing", async () => {
+    await draw();
     expect(() => {
       startLayerTitleEdit(["children", 99], () => {});
     }).not.toThrow();
-    expect(document.querySelector(".layer-title-input")).toBeNull();
+    await flush(2);
+    expect(host.querySelector('[part="title-input"]')).toBeNull();
   });
 
-  test("returns silently when no active tab", async () => {
-    await renderLayers();
+  test("a rename with no open document draws nothing rather than throwing", async () => {
+    await draw();
     closeAllTabs();
     expect(() => {
       startLayerTitleEdit(["children", 1], () => {});
     }).not.toThrow();
-    expect(document.querySelector(".layer-title-input")).toBeNull();
+    await flush(2);
+    expect(host.querySelector('[part="title-input"]')).toBeNull();
+  });
+
+  test("the cluster stands aside while the row is being renamed", async () => {
+    await buttons(["children", 1]);
+    expect(at(["children", 1]).querySelectorAll("jx-action-button").length).toBeGreaterThan(0);
+    startLayerTitleEdit(["children", 1], () => {});
+    await flush(2);
+    // The input owns the row's whole width; verbs on top of its right edge is what this prevents.
+    expect(at(["children", 1]).querySelectorAll("jx-action-button")).toHaveLength(0);
   });
 });
 
-describe("renderLayersTemplate — keyed rows", () => {
-  test("a stale display:none does not leak to a stable-key sibling after a structural move", async () => {
-    // Two sibling containers: `wrap` holds a repeater, `target` holds a paragraph. Mirrors the
-    // Real bug: dragging the repeater into `target` left `display:none` on the dragged subtree,
-    // Which — under positional (unkeyed) reuse — leaked onto `target`'s paragraph row.
+describe("keyed rows", () => {
+  test("a structural move re-uses the row whose key did not change", async () => {
+    // Mirrors the real bug: dragging a repeater into a sibling left `display:none` on the dragged
+    // Subtree, which — under positional (unkeyed) reuse — leaked onto the sibling's own row.
     resetWorkspaceWithTab({
       children: [
         {
@@ -439,44 +512,40 @@ describe("renderLayersTemplate — keyed rows", () => {
       tagName: "div",
     } as unknown as JxMutableNode);
 
-    await renderLayers();
-    // Simulate hideDescendantRows leaving display:none on the dragged repeater's template row.
-    const template = rowByKey(["children", 0, "children", 0, "map"]);
-    expect(template).not.toBeNull();
-    template!.style.display = "none";
+    await draw();
+    const stable = at(["children", 1, "children", 0]);
+    // What a drag leaves behind on the row it was dragging.
+    const template = at(["children", 0, "children", 0, "map"]);
+    template.style.display = "none";
 
-    // Move the Array node into `target` (append) — the repeater's key changes, but the paragraph's
-    // Key (children/1/children/0) stays stable, so its keyed DOM node is reused untouched.
-    const doc = activeTab.value!.doc.document as unknown as {
-      children: { children: unknown[] }[];
-    };
+    const doc = activeTab.value!.doc.document as unknown as { children: { children: unknown[] }[] };
     const arr = doc.children[0]!.children.splice(0, 1)[0]!;
     doc.children[1]!.children.push(arr);
-    await renderLayers();
+    await draw();
 
-    const para = rowByKey(["children", 1, "children", 0]);
-    expect(para).not.toBeNull();
-    expect(para!.textContent).toContain("keep me");
-    expect(para!.style.display).not.toBe("none");
+    const after = at(["children", 1, "children", 0]);
+    expect(after).toBe(stable); // The same DOM node: its key never moved.
+    expect(after.style.display).not.toBe("none");
+    expect(textOf(after, "label")).toBe("keep me");
   });
 });
 
-describe("renderLayersTemplate — empty state", () => {
-  test("a page with nothing on it teaches what the outline lists, and opens Insert", async () => {
+describe("the empty state", () => {
+  test("a page with nothing on it teaches what the Outline lists, and opens Insert", async () => {
     shell.leftTab = "layers";
     resetWorkspaceWithTab({ children: [], tagName: "div" } as JxMutableNode, {
       id: "empty-doc-tab",
     });
     // Content mode drops the root row, so the tree really is empty.
     activeTab.value!.doc.mode = "content";
-    await renderLayers({ rerender: () => {} });
-    expect(host.querySelectorAll(".layer-row")).toHaveLength(0);
-    expect(host.querySelector(".empty-state-message")?.textContent).toBe(
+    await draw();
+    expect(treeItems(host)).toHaveLength(0);
+    expect(host.querySelector('[part="empty-message"]')?.textContent).toBe(
       "This page is empty. Everything you add to it is listed here, in order.",
     );
 
-    // One state write and no rerender callback beside it: the left panel tracks `shell.leftTab`.
-    (host.querySelector(".empty-state-action") as HTMLElement).click();
+    (host.querySelector('[part="empty-action"]') as HTMLElement).click();
+    await flush();
     /* `"insert"` — and the second assertion is the one that matters.
        This test asserted `"blocks"` while its own title said "opens Insert", so it PASSED for three
        phases over an action that put the Navigator into "No Navigator panel is registered as
@@ -485,5 +554,60 @@ describe("renderLayersTemplate — empty state", () => {
        against the declared set — that is the assertion a rename cannot satisfy by accident. */
     expect(shell.leftTab).toBe("insert");
     expect([...NAVIGATOR_PANEL_IDS] as string[]).toContain(shell.leftTab);
+  });
+});
+
+describe("the mounted surface", () => {
+  test("a dispose while the mount is still in flight leaves nothing standing", async () => {
+    /* The panel takes its own body down when the pane switches to Project Styles, and that can
+       land in the same turn as the mount it is cancelling — the kit has to be defined before a
+       document can render, so a first mount is genuinely asynchronous. Whichever half wins, the
+       container must end up empty; a mount that settled after its handle was disposed would leave
+       an Outline standing under whatever the Navigator painted next. */
+    const content = host.querySelector(".panel-content") as HTMLElement;
+    const handle = mountOutlineSurface(
+      content,
+      { emptyLabel: "", emptyMessage: "", padBottom: "", padTop: "", rows: [], view: "empty" },
+      outlineActionSpies(),
+    );
+    handle.dispose();
+    await handle.ready;
+    await flush(3);
+    expect(content.querySelector('[part="outline"]')).toBeNull();
+    expect(handle.connected()).toBe(false);
+    // And a second dispose is not a second teardown.
+    expect(() => {
+      handle.dispose();
+    }).not.toThrow();
+  });
+
+  test("the Navigator painting a new box replaces the standing Outline rather than adding one", async () => {
+    await draw();
+    const first = host.querySelector('[part="outline"]');
+    expect(first).not.toBeNull();
+
+    // A panel switch and back gives the record a DIFFERENT content box; the surface standing in the
+    // Old one is the one being replaced, and holding both would leave the first one's effects
+    // Running against a scope nobody writes any more.
+    const second = outlineHost();
+    host = second;
+    await draw();
+    expect(second.querySelectorAll('[part="outline"]')).toHaveLength(1);
+    expect(first!.isConnected).toBe(false);
+  });
+
+  test("a mount that outlives its container reports itself disconnected", async () => {
+    const content = host.querySelector(".panel-content") as HTMLElement;
+    const handle = mountOutlineSurface(
+      content,
+      { emptyLabel: "", emptyMessage: "", padBottom: "", padTop: "", rows: [], view: "empty" },
+      outlineActionSpies(),
+    );
+    await handle.ready;
+    expect(handle.connected()).toBe(true);
+    // What the stylebook's own catalogue does to this box when it takes it over.
+    content.replaceChildren();
+    expect(handle.connected()).toBe(false);
+    handle.dispose();
   });
 });

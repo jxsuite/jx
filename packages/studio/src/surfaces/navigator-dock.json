@@ -1,0 +1,113 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioNavigatorDock",
+  "$description": "The Navigator dock's one panel host, as a Jx document over the kit. It is deliberately thin — a header naming the panel and its containment level, and one empty `[part=\"content\"]` island — because a Navigator panel is a `PanelRecord` whose `render` returns a lit template, so the BODY cannot be a document and this draws the box around it instead (studio-ui-guidelines.md §9.4). `panels/left-panel.ts` keeps every decision: which record `shell.leftTab` names, whether a context admits it, whether the panel needs a document it does not have, and what `afterRender` is handed. The body is a keyed `$map` of exactly one row, and the KEY IS THE PANEL: four Navigator panels append a mounted document of their own past lit's range inside the content box, and a host that survived a panel switch would leave the Outline standing underneath the file tree. Keying the row on the panel id is what makes switching panels destroy the box those documents are in — the same thing the old lit template bought by rebuilding its own markup, said once instead of relied upon. The region is stamped from the panel's own id, which is what makes `navigator/panel:<id>` DERIVED: renaming a panel renames its region in the same edit instead of leaving a stale selector that photographs the wrong box.",
+  "tagName": "div",
+  "attributes": {
+    "part": "navigator-dock"
+  },
+  "style": {
+    "$description": "`styles/panels.css`'s `.panel-header*`, `.panel-content` and `.panel-body` rules, keyed on `part` and carried here. `--spectrum-font-size-50` resolved only inside `<sp-theme>` and a document mounts outside it, so both 11px values are `--jx-text-sm`. The root is `display: contents` so the panel body is still `#left-panel`'s own child for layout — the shell cell is the scroller and a box between them would be a second one. And one rule is repaired on the way: the `·` between the title and the level was a `::before` on the level span, and it is drawn only when there IS a header now — the unknown-panel state has none, and a lone separator over an error message reads as a missing word.",
+    "display": "contents",
+    "& [part=\"panel-body\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "minHeight": "0",
+      "padding": "0",
+      "fontFamily": "var(--jx-font-sans)",
+      "color": "var(--fg)"
+    },
+    "& [part=\"header\"]": {
+      "display": "flex",
+      "flex": "0 0 auto",
+      "alignItems": "baseline",
+      "gap": "var(--jx-space-2)",
+      "padding": "6px var(--jx-space-3)",
+      "borderBottom": "1px solid var(--border)"
+    },
+    "& [part=\"header-title\"]": {
+      "fontSize": "var(--jx-text-sm)",
+      "fontWeight": "700",
+      "letterSpacing": "0.06em",
+      "textTransform": "uppercase",
+      "color": "var(--fg)"
+    },
+    "& [part=\"header-level\"]": {
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--fg-dim)",
+      "::before": {
+        "content": "\"·\"",
+        "marginRight": "var(--jx-space-2)"
+      }
+    },
+    "& [part=\"content\"]": {
+      "minHeight": "0"
+    }
+  },
+  "children": [
+    {
+      "$prototype": "Array",
+      "items": {
+        "$ref": "#/state/panels"
+      },
+      "key": {
+        "$ref": "$map/item/key"
+      },
+      "map": {
+        "tagName": "div",
+        "attributes": {
+          "part": "panel-body",
+          "data-panel": "${$map.item.key}",
+          "data-jx-region": "${$map.item.region || null}"
+        },
+        "children": [
+          {
+            "tagName": "div",
+            "attributes": {
+              "part": "header-slot",
+              "role": "none"
+            },
+            "style": {
+              "display": "contents"
+            },
+            "$switch": {
+              "$ref": "$map/item/hasHeader"
+            },
+            "cases": {
+              "true": {
+                "$description": "The fix for \"which panel am I in?\". Six of eight panels had no header at all, and the Imports panel silently changed meaning based on whether the focused document was `project.json`. Every panel now renders under its title AND its level (\"FILES · project\"), so the containment model is legible from the screen rather than only from the matrix: a badge on a `project` panel does not go away when the last tab closes, and a `document` panel says out loud that it is about the file in front of you.",
+                "tagName": "header",
+                "attributes": {
+                  "part": "header"
+                },
+                "children": [
+                  {
+                    "tagName": "span",
+                    "attributes": {
+                      "part": "header-title"
+                    },
+                    "textContent": "${$map.item.title}"
+                  },
+                  {
+                    "tagName": "span",
+                    "attributes": {
+                      "part": "header-level"
+                    },
+                    "textContent": "${$map.item.level}"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "$description": "The island, and it is empty for as long as this panel is the one showing: `panels/left-panel.ts` renders the record's own template here, and the four panels that are themselves mounted documents append past lit's range — the same seam they used when this box was a `.panel-content` lit rendered `nothing` into.",
+            "tagName": "div",
+            "attributes": {
+              "part": "content"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

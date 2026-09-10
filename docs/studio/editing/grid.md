@@ -3,6 +3,10 @@ title: "Grid mode"
 description: "Edit collections, CSV files, redirects and page metadata as a spreadsheet in Jx Studio: typed cells, saved views, find & replace, one batched Save."
 code:
   - packages/studio/src/grid/grid-panel.ts
+  - packages/studio/src/surfaces/grid-panel.ts
+  - packages/studio/src/surfaces/grid-views.ts
+  - packages/studio/src/surfaces/grid-replace.ts
+  - packages/studio/src/surfaces/grid-cell.ts
   - packages/studio/src/grid/grid-layout.ts
   - packages/studio/src/grid/grid-view.ts
   - packages/studio/src/grid/grid-controller.ts
@@ -48,7 +52,7 @@ Edited cells are highlighted, and nothing touches your files yet. Everything wai
 
 ## Arrange the table
 
-The **View** button in the toolbar holds everything about how the table is arranged. Each choice takes effect as you make it. There's no Apply step, so the popover never shows something the grid isn't already doing.
+The **View** button in the toolbar holds everything about how the table is arranged. Each choice takes effect as you make it. There's no Apply step, so the panel never shows something the grid isn't already doing. Pressing **View** again closes it.
 
 - **Columns**: tick a column to show it, untick it to hide it. A hidden column isn't drawn, but its values are still loaded and still searched by **Filter rows**.
 - **Sort**: choose a column and a direction, or **Source order** for none. Empty cells sort last in both directions, and a row you just added stays at the bottom where you added it until you save. Source order is the source's own: a collection lists its entry files by path, a CSV keeps its file's row order, and a table keeps what the query returned, so it is the same order every time you open the grid.
@@ -62,7 +66,7 @@ Name an arrangement and it becomes a **saved view** you can return to:
 
 1. Arrange the table, then click **View** and **Save view…** (it reads **Save as…** once a view is applied).
 2. Give it a name, say "Recent drafts" or "Price check". A blank name is refused in the field, and reusing a name updates that view.
-3. The name appears in the popover's **Saved views** list. Click it to apply it; the ✕ beside it deletes it, after a confirmation that says the table keeps whatever it is currently showing.
+3. The name appears in the panel's **Saved views** list. Click it to apply it; the ✕ beside it deletes it, after a confirmation that says the table keeps whatever it is currently showing.
 
 A view holds all six facets at once: which columns are shown, their order, their widths, the sort, the group-by column, and the filter text.
 

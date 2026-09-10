@@ -32,13 +32,6 @@
   flex-direction: column;
   overflow: hidden;
 }
-/* Text labels, not icons: four words in a 280px dock, allowed to compress rather
-   than to become anonymous. */
-.inspector-tabs sp-tabs {
-  --mod-tabs-font-size: var(--spectrum-font-size-50, 11px);
-
-  width: 100%;
-}
 .inspector-fields.hidden {
   display: none;
 }
@@ -409,11 +402,6 @@ jx-styled-combobox sp-picker {
 .data-more:focus-visible {
   color: var(--accent);
   text-decoration: underline;
-}
-.data-tree {
-  padding: 2px 0;
-  max-height: 300px;
-  overflow-y: auto;
 }
 .data-leaf,
 .data-branch {

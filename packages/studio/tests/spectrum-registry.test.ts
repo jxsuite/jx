@@ -53,18 +53,28 @@ describe("spectrum component registry", () => {
     expect(customElements.get("sp-tooltip")).toBeDefined();
   });
 
+  /**
+   * The families, taken FROM the manifest rather than named here.
+   *
+   * This asserted eight hand-picked tags, which is the right claim — the registration loop reaches
+   * widgets, icons and Studio's own elements alike — written so that it rots. Two of its icons
+   * (`sp-icon-folder`, `sp-icon-chevron100`) stopped being registered when the surfaces that wrote
+   * them became documents, and the test went red naming a tag nothing had asked for in months. The
+   * manifest is the list; what is worth pinning is that every KIND in it survives the loop, and
+   * that the loop is not silently registering nothing.
+   */
   test("widgets, icons, and studio elements are all reachable by tag", () => {
-    for (const tag of [
-      "sp-theme",
-      "sp-action-button",
-      "sp-color-area",
-      "sp-table-cell",
-      "sp-icon-folder",
-      "sp-icon-chevron100",
-      "jx-value-selector",
-      "jx-color-popover",
-    ]) {
-      expect(customElements.get(tag), tag).toBeDefined();
+    const tags = components.map(([tag]) => tag as string);
+    const families = {
+      icon: tags.filter((t) => t.startsWith("sp-icon-")),
+      spectrum: tags.filter((t) => t.startsWith("sp-") && !t.startsWith("sp-icon-")),
+      studio: tags.filter((t) => t.startsWith("jx-")),
+    };
+    for (const [kind, members] of Object.entries(families)) {
+      expect(members.length, `no ${kind} tag left in the manifest`).toBeGreaterThan(0);
+      for (const tag of members) {
+        expect(customElements.get(tag), tag).toBeDefined();
+      }
     }
   });
 

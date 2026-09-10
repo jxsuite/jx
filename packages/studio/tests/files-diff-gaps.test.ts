@@ -6,7 +6,7 @@
  * refuses to open, the "Loading…" placeholder sitting in the keyboard's path, a grid tab's save
  * verdict, and a component that can be named neither by package nor by path being un-imported.
  */
-import { flush, installMockPlatform, renderInto } from "./harness";
+import { flush, installMockPlatform } from "./harness";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { requireProjectState, setProjectState } from "../src/store";
 import {
@@ -56,7 +56,7 @@ void mock.module("../src/grid/grid-controller", () => ({
   getGridController: (tab: object | null) => (tab === null ? null : (gridTabs.get(tab) ?? null)),
 }));
 
-const { openFileInTab, openLastSessionOrHome, renderFilesTemplate } =
+const { mountFilesPanel, openFileInTab, openLastSessionOrHome, unmountFilesPanel } =
   await import("../src/files/files");
 const { saveFile } = await import("../src/files/file-ops");
 const { serializeDocument } = await import("../src/files/serialize-document");
@@ -290,22 +290,20 @@ describe("the ↓ walk and the Loading… placeholder", () => {
 
     const host = document.createElement("div");
     document.body.append(host);
-    await renderInto(
-      renderFilesTemplate({
-        openFileFromTree: () => {},
-        openProject: () => {},
-        renderLeftPanel: () => {},
-      }),
-      host,
-    );
-    await flush();
+    // A mounted document needs more than one turn: the surface waits for the kit, then renders.
+    mountFilesPanel(host, () => {});
+    await flush(3);
 
-    const tree = host.querySelector(".file-tree") as HTMLElement;
+    const tree = host.querySelector('[part="tree"]') as HTMLElement;
     // Model: assets · Loading… · one.json · two.json
     expect(
-      [...tree.querySelectorAll(".file-tree-item")].map((el) => el.textContent?.trim()),
+      [...tree.querySelectorAll('[part="row"]')].map((el) => el.textContent?.trim()),
     ).toContain("Loading…");
-    const assets = tree.querySelector('.file-tree-item[data-path="assets"]') as HTMLElement;
+    // The placeholder is not a `treeitem`, so the keyboard cannot land on it at all.
+    expect(tree.querySelector('[part="row"][data-loading="true"]')?.getAttribute("role")).toBe(
+      "none",
+    );
+    const assets = tree.querySelector('[part="row"][data-path="assets"]') as HTMLElement;
     assets.focus();
 
     assets.dispatchEvent(
@@ -314,6 +312,7 @@ describe("the ↓ walk and the Loading… placeholder", () => {
     await flush();
 
     expect((document.activeElement as HTMLElement).dataset.path).toBe("one.json");
+    unmountFilesPanel();
     host.remove();
   });
 });

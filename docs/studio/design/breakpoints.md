@@ -6,6 +6,7 @@ code:
   - packages/studio/src/canvas/edit-width-drag.ts
   - packages/studio/src/settings/contexts-section.ts
   - packages/studio/src/panels/pane-context.ts
+  - packages/studio/src/surfaces/pane-context.ts
   - packages/studio/src/utils/canvas-media.ts
   - packages/studio/src/utils/inherited-style.ts
   - packages/import/src/breakpoint-plan.ts

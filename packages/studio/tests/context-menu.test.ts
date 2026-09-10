@@ -1127,7 +1127,7 @@ describe("context menu actions", () => {
   test("Set Title with a rerender hook lazily loads the layers panel editor", async () => {
     await rightClick(["children", 0], { rerender: () => {} });
     itemById("selection.setTitle").click();
-    await flush(4); // Await the dynamic import; no .layer-row exists so it returns early
+    await flush(4); // Await the dynamic import; the Outline holds no rows, so it returns early
     expect((doc().children as JxMutableNode[]).length).toBe(2);
   });
 });

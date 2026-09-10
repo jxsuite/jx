@@ -12,8 +12,7 @@ void mock.module("../src/store", () => ({
       fn(...args),
 }));
 
-const { JxColorPopover, isColorPopoverOpen, renderColorSelector } =
-  await import("../src/ui/color-selector");
+const { JxColorPopover, renderColorSelector } = await import("../src/ui/color-selector");
 
 type ColorPopoverEl = InstanceType<typeof JxColorPopover>;
 
@@ -269,47 +268,14 @@ describe("JxColorPopover", () => {
   });
 });
 
-// ─── isColorPopoverOpen ──────────────────────────────────────────────────────
-
-describe("isColorPopoverOpen", () => {
-  test("reflects presence of an open overlay inside a color input", () => {
-    expect(isColorPopoverOpen()).toBe(false);
-    const wrap = document.createElement("div");
-    wrap.className = "style-input-color";
-    const overlay = document.createElement("sp-overlay");
-    wrap.append(overlay);
-    document.body.append(wrap);
-    expect(isColorPopoverOpen()).toBe(false);
-    overlay.setAttribute("open", "");
-    expect(isColorPopoverOpen()).toBe(true);
-    wrap.remove();
-    expect(isColorPopoverOpen()).toBe(false);
-  });
-});
-
-describe("isColorPopoverOpen", () => {
-  test("sees a kit overlay as well as the Spectrum island", () => {
-    /* The Inspector must not repaint under either. The query is additive rather than replaced:
-       the colour popover is still a Spectrum island committing on every drag frame with no
-       debounce, so swapping it out would destroy the element mid-drag. */
-    document.body.replaceChildren();
-    expect(isColorPopoverOpen()).toBe(false);
-
-    const kit = document.createElement("jx-popover");
-    kit.dataset["open"] = "";
-    document.body.append(kit);
-    expect(isColorPopoverOpen()).toBe(true);
-
-    delete kit.dataset["open"];
-    expect(isColorPopoverOpen()).toBe(false);
-
-    const island = document.createElement("div");
-    island.className = "style-input-color";
-    const overlay = document.createElement("sp-overlay");
-    overlay.setAttribute("open", "");
-    island.append(overlay);
-    document.body.append(island);
-    expect(isColorPopoverOpen()).toBe(true);
-    document.body.replaceChildren();
-  });
-});
+/*
+ * Two `describe("isColorPopoverOpen")` blocks stood here, and the predicate they covered is gone.
+ *
+ * What they asserted was that the Inspector could ask whether an overlay it must not repaint under
+ * was open — a question only `panels/panel-scheduler.ts` ever asked, on behalf of a dock that
+ * rebuilt its own markup. The dock is a Jx document now (`surfaces/inspector-dock.json`) and its
+ * four bodies are mounted documents that it never paints over, so the repaint those tests were
+ * guarding against cannot happen: the contract is met by construction rather than by a predicate,
+ * which is why this is a deletion and not a re-aim. The colour popover's own behaviour — that it
+ * commits on every drag frame, and what it commits — is what the rest of this file covers.
+ */

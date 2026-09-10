@@ -3,19 +3,26 @@
  * Layers panel — the Outline: the document tree, with collapse, selection, drag-and-drop
  * reordering, and per-row actions that are RENDERINGS of the command registry.
  *
- * Three things this file is deliberate about.
+ * **One panel, two bodies, and both of them are documents now.** The tree is
+ * `surfaces/panel-outline.json`; the Project Styles catalogue is
+ * `surfaces/panel-stylebook-layers.json` (`panels/stylebook-layers-panel.ts`). This module renders
+ * neither. It owns the record — only the record can know which body the pane is asking for — and
+ * everything that is a DECISION: which rows exist and in what order, what a row is called, what the
+ * window onto them is, which verbs the registry places on which row, and the whole of the keyboard
+ * model. The surface reads values. The two bodies are appended into the same `.panel-content`, so
+ * each mode takes the other's document down on the way in; that symmetry is the whole of the seam.
+ *
+ * Four things this file is deliberate about.
  *
  * **Rows are `registry.forPlacement("outline/row")`.** Every row used to carry five hand-built
- * action buttons, always visible, on every row — five custom elements with shadow roots per visible
- * row. They now collapse to the selected row plus the hovered one, which is Gutenberg's rule and
- * the one plan §3.2 ⑩ codifies: the floating bar owns selection-scoped verbs, the inspector owns
- * values. The verbs, their names, their chords and their disabled reasons all come from the records
- * in `block-action-bar.ts` — the surface renders, it does not decide.
- *
- * The hovered row's cluster is mounted imperatively ({@link mountHoverActions}) rather than by a
- * `display: none` CSS rule, because a hidden `sp-action-button` is still an upgraded custom element
- * with a shadow root: CSS reveal would have kept the whole cost the collapse exists to remove. At
- * most two clusters exist at any moment — the selected row's, and the one under the pointer.
+ * action buttons, always visible, on every row. They collapse to the selected row plus the hovered
+ * one, which is Gutenberg's rule and the one plan §3.2 ⑩ codifies: the floating bar owns
+ * selection-scoped verbs, the inspector owns values. The verbs, their names, their chords and their
+ * disabled reasons all come from the records in `block-action-bar.ts` — the surface renders, it
+ * does not decide. A row that is neither selected nor hovered is projected with an EMPTY command
+ * list, so the cluster costs nothing rather than being hidden by a rule: a `display: none` kit
+ * element is still an upgraded custom element, which is the whole cost the collapse exists to
+ * remove.
  *
  * **A row says something.** On a real page the tree was a wall of rows all reading "div": only
  * text-bearing nodes got a preview and containers got the tag they already wear as a coloured
@@ -24,25 +31,23 @@
  *
  * **It is a tree, and it is reachable.** `role="tree"` / `role="treeitem"` with a roving tabindex
  * and the arrow-key model ARIA specifies: ↑↓ walk the visible rows, → expands then descends, ←
- * collapses then ascends, Enter/F2 renames.
+ * collapses then ascends, Enter/F2 renames. The keys are cases in the document (`$switch` on
+ * `event#/key`); what each one MEANS is {@link onOutlineKey}.
  *
  * **The rows are a MODEL, and the DOM holds a window onto it** ({@link OutlineRow}, `ui/
- * virtual-window.ts`). A 5 000-node page drew 5 000 rows, each carrying an `sp-icon` custom
- * element, on every repaint. It now draws the viewport plus three rows of overscan — and because
- * the DOM is no longer the whole list, nothing may ASK the DOM what the whole list is. Every
- * question about "which rows exist, and in what order" — the shift-range, the arrow walk, Home/End,
- * ←'s climb to the parent, the reveal that follows the selection — is answered from the array
- * {@link buildOutlineRows} produces. A shift-range read off the DOM would silently select the wrong
- * set the moment either end of it scrolled out of the window: a correctness bug wearing a
- * performance change's clothes.
+ * virtual-window.ts`). A 5 000-node page drew 5 000 rows on every repaint. It now draws the
+ * viewport plus three rows of overscan — and because the DOM is no longer the whole list, nothing
+ * may ASK the DOM what the whole list is. Every question about "which rows exist, and in what
+ * order" — the shift-range, the arrow walk, Home/End, ←'s climb to the parent, the reveal that
+ * follows the selection — is answered from the array {@link buildOutlineRows} produces. A
+ * shift-range read off the DOM would silently select the wrong set the moment either end of it
+ * scrolled out of the window: a correctness bug wearing a performance change's clothes.
+ *
+ * @docs studio/design/layers
  */
 
-import { html, render as litRender, nothing } from "lit-html";
+import { nothing } from "lit-html";
 import { displayTagName, isTagExpression, tagNameCandidates } from "@jxsuite/schema/guards";
-import { classMap } from "lit-html/directives/class-map.js";
-import { ifDefined } from "lit-html/directives/if-defined.js";
-import { ref } from "lit-html/directives/ref.js";
-import { repeat } from "lit-html/directives/repeat.js";
 import {
   VOID_ELEMENTS,
   childIndex,
@@ -66,7 +71,6 @@ import type { JxMutableNode } from "@jxsuite/schema/types";
 import { mutateUpdateProperty, transactDoc } from "../tabs/transact";
 import { view } from "../view";
 import { setActivityTab } from "../shell";
-import { renderEmptyState } from "./empty-state";
 import { registerPanel } from "./panel-registry";
 import { detachStylebookLayers, mountStylebookLayersPanel } from "./stylebook-layers-panel";
 import { selectStylebookTag, stylebookMeta } from "./stylebook-panel";
@@ -74,7 +78,6 @@ import { isInlineElement } from "../editor/inline-edit";
 import { showContextMenu } from "../editor/context-menu";
 import { revealPathInCanvas } from "../canvas/popover-state";
 import {
-  commandIcon,
   commandTooltip,
   runCommand,
   selectionCommandRegistry,
@@ -87,15 +90,24 @@ import {
   revealListRow,
   watchListWindow,
 } from "../ui/virtual-window";
-import type { CommandRegistry } from "../commands/registry";
+import { mountOutlineSurface } from "../surfaces/panel-outline";
+import type { AnyCommand, CommandRegistry } from "../commands/registry";
 import type { ListWindowWatch } from "../ui/virtual-window";
 import type { PanelBody } from "./panel-registry";
-import type { TemplateResult } from "lit-html";
+import type {
+  OutlineCommandView,
+  OutlineRowView,
+  OutlineSurfaceHandle,
+  OutlineValues,
+} from "../surfaces/panel-outline";
 
 // ─── What a row says ─────────────────────────────────────────────────────────
 
 /** How much of a text preview a 240px column can carry before it is just noise. */
 const LABEL_MAX = 32;
+
+/** How much of a text NODE's own content the row previews. */
+const TEXT_PREVIEW_MAX = 40;
 
 /**
  * Tags whose human name is worth more than the tag itself.
@@ -209,144 +221,47 @@ export function outlineLabel(node: JxMutableNode): string {
 export const OUTLINE_ROW_MAX_ITEMS = 4;
 
 /**
- * The row's action cluster.
+ * The row's action cluster, as values.
+ *
+ * The glyph is `command.icon`, verbatim — the same one line `block-action-bar.ts`'s own `toolOf`
+ * projection is, because the records carry kit names and "what glyph does this record draw" must
+ * have exactly one answer. A record with no icon projects "" and the button draws its title.
  *
  * Wrapped in {@link withCommandTarget} so every record is evaluated against THIS ROW'S node rather
  * than the selection — `PLACEMENT_MATRIX["outline/row"]` says row actions act on the row's node,
  * and the hovered row is not the selected one.
  */
-export function renderRowCommands(registry: CommandRegistry, path: JxPath) {
+export function rowCommandViews(
+  registry: CommandRegistry,
+  path: JxPath,
+  key: string,
+): { commands: OutlineCommandView[]; overflow: AnyCommand[] } {
   return withCommandTarget(path, () => {
     const placed = registry.forPlacement("outline/row");
-    const shown = placed.slice(0, OUTLINE_ROW_MAX_ITEMS);
-    const overflow = placed.slice(OUTLINE_ROW_MAX_ITEMS);
-    return html`${shown.map(
-      (command) => html`<sp-action-button
-        quiet
-        size="xs"
-        class=${command.destructive ? "layer-action layer-delete" : "layer-action"}
-        data-command=${command.id}
-        aria-label=${command.title}
-        title=${commandTooltip(registry, command)}
-        ?disabled=${registry.disabledReason(command.id) !== undefined}
-        @click=${(e: MouseEvent) => {
-          e.stopPropagation();
-          (e.currentTarget as HTMLElement).blur();
-          runCommand(registry, command.id, path);
-        }}
-        >${commandIcon(command)}</sp-action-button
-      >`,
-    )}
-    ${
-      overflow.length === 0
-        ? nothing
-        : html`<sp-action-button
-            quiet
-            size="xs"
-            class="layer-action layer-overflow"
-            aria-label="More actions"
-            aria-haspopup="menu"
-            title="More actions"
-            @click=${(e: MouseEvent) => {
-              e.stopPropagation();
-              showCommandOverflow(e.currentTarget as HTMLElement, registry, overflow, path);
-            }}
-          >
-            <sp-icon-more slot="icon"></sp-icon-more>
-          </sp-action-button>`
-    }`;
-  });
-}
-
-// ─── The hovered row's cluster ───────────────────────────────────────────────
-
-/**
- * The row whose cluster this module mounted on hover, so it can be taken down again.
- *
- * One at a time: the pointer is in one place. The SELECTED row's cluster is lit's (it is in the row
- * template), and is never touched from here.
- */
-let _hoverActionsRow: HTMLElement | null = null;
-
-/** The empty span a non-selected row keeps for {@link mountHoverActions} to render into. */
-function actionSlot(row: HTMLElement): HTMLElement | null {
-  return row.classList.contains("selected")
-    ? null
-    : row.querySelector<HTMLElement>(".layer-actions");
-}
-
-/** Take down the hover cluster, if one is up. */
-export function clearHoverActions(): void {
-  const slot = _hoverActionsRow ? actionSlot(_hoverActionsRow) : null;
-  if (slot) {
-    litRender(nothing, slot);
-  }
-  _hoverActionsRow = null;
-}
-
-/** Build `row`'s cluster into its slot, replacing whatever was there. */
-function mountHoverActions(row: HTMLElement): void {
-  const slot = actionSlot(row);
-  const key = row.dataset.path;
-  if (!slot || key === undefined) {
-    return;
-  }
-  _hoverActionsRow = row;
-  litRender(renderRowCommands(selectionCommandRegistry(), pathFromKey(key)), slot);
-}
-
-/**
- * Delegated `mouseover` (which bubbles; `mouseenter` does not): reveal the cluster on the row under
- * the pointer, and only that row.
- */
-export function onTreeHover(e: Event): void {
-  const row = (e.target as HTMLElement | null)?.closest<HTMLElement>('.layer-row[role="treeitem"]');
-  if (!row || row === _hoverActionsRow) {
-    return;
-  }
-  clearHoverActions();
-  mountHoverActions(row);
-}
-
-/**
- * The two things that can only be decided once the rows are in the document.
- *
- * Deferred by a microtask on purpose. A `ref` on the tree element commits BEFORE the child part
- * holding the rows, so on a first render the callback sees an empty tree; and the template this
- * module returns is rendered by its caller, so a microtask is the first tick at which the new DOM
- * exists either way.
- *
- * - The roving tabindex needs to know which rows survived their collapsed ancestors.
- * - The hover cluster needs re-mounting: rows are keyed by path, so a document edit can leave the
- *   pointer on a DOM row that now stands for a different node, with different disabled reasons.
- */
-export function afterTreeRender(tree: HTMLElement): void {
-  const row = _hoverActionsRow;
-  queueMicrotask(() => {
-    adoptOutlineTree(tree);
-    applyTreeRovingTabindex(tree);
-    // A keyboard jump that had to scroll first left its target here, for the render it provoked.
-    const wanted = _pendingFocusKey;
-    if (wanted !== null) {
-      _pendingFocusKey = null;
-      focusRow(tree, rowElementFor(tree, wanted) ?? undefined);
-    }
-    if (!row || _hoverActionsRow !== row) {
-      return;
-    }
-    if (row.isConnected && !row.classList.contains("selected")) {
-      mountHoverActions(row);
-    } else {
-      _hoverActionsRow = null;
-    }
+    return {
+      commands: placed.slice(0, OUTLINE_ROW_MAX_ITEMS).map((command) => ({
+        destructive: command.destructive === true ? "true" : "false",
+        disabled: registry.disabledReason(command.id) !== undefined,
+        icon: command.icon ?? "",
+        id: command.id,
+        row: key,
+        title: command.title,
+        tooltip: commandTooltip(registry, command),
+      })),
+      overflow: placed.slice(OUTLINE_ROW_MAX_ITEMS),
+    };
   });
 }
 
 // ─── The tree, as a keyboard surface ─────────────────────────────────────────
 
-/** Pixels of indent per level, and the depth past which the column stops paying for more. */
+/**
+ * Pixels of indent per level, the depth past which the column stops paying, and the row's own
+ * gutter.
+ */
 const INDENT_STEP = 16;
 const INDENT_MAX_DEPTH = 6;
+const INDENT_BASE = 8;
 
 /**
  * The indent for `depth`, capped.
@@ -369,12 +284,12 @@ function pathFromKey(key: string): JxPath {
  * One row the Outline WOULD draw, whether or not it is currently in the window.
  *
  * Built in a first pass that decides visibility (collapsed ancestors, inline elements, the content
- * root) and costs nothing but the decision; the templates are built in a second pass, for the
- * window only. Splitting the two is the whole saving — the expensive half is the `sp-icon` and
- * `sp-action-button` custom elements a row template mounts, not the walk that finds it.
+ * root) and costs nothing but the decision; the projections are built in a second pass, for the
+ * window only. Splitting the two is the whole saving — the expensive half is the kit elements a
+ * row's cluster mounts, not the walk that finds it.
  */
 interface OutlineRow {
-  /** `pathKey(path)` — the drag-and-drop and roving-tabindex key, and lit's `repeat` key. */
+  /** `pathKey(path)` — the drag-and-drop and roving-focus key, and the `$map`'s reconcile key. */
   key: string;
   path: JxPath;
   depth: number;
@@ -384,8 +299,8 @@ interface OutlineRow {
    * Whether this row is a `role="treeitem"`.
    *
    * Text-node rows are drawn but are not tree items, and were never part of the keyboard walk or a
-   * shift-range: `treeRows()` selected on the role, so moving those questions to the model has to
-   * carry the same distinction rather than quietly start selecting text nodes.
+   * shift-range — so moving those questions to the model has to carry the same distinction rather
+   * than quietly start selecting text nodes.
    */
   item: boolean;
   node: JxMutableNode | string | number | boolean;
@@ -397,26 +312,33 @@ interface OutlineRow {
 }
 
 /**
- * The declared height of one row — `styles/panels.css` `.layer-row { block-size: 24px }`.
+ * The declared height of one row — `surfaces/panel-outline.json`'s `[part="row"] { block-size }`.
  *
  * A window needs a row height BEFORE the first row exists, so this constant is what the first paint
  * windows by; {@link outlineRowHeight} measures a real row afterwards and believes the measurement.
- * The stylesheet declares the height explicitly so the two cannot drift apart in silence.
+ * The document declares the height explicitly so the two cannot drift apart in silence.
  */
 export const OUTLINE_ROW_HEIGHT = 24;
 
+/** The selector the window, the reveal and the focus move address a drawn row by. */
+const ROW_SELECTOR = '[part="row"]';
+
 /** The rows the Outline last built, in display order. */
 let _outlineRows: OutlineRow[] = [];
-/** The `.layers-tree` element, kept between renders so a window can be computed for the next one. */
+/** The `[part="tree"]` element, kept between renders so a window can be computed for the next one. */
 let _outlineList: HTMLElement | null = null;
 /** The scroll watch that repaints the Outline as its scroller moves. */
 let _outlineWatch: ListWindowWatch | null = null;
-/** The Navigator repaint, captured per render so the scroll watch never holds a stale one. */
+/** The Navigator repaint, captured per mount so the scroll watch never holds a stale one. */
 let _outlineRerender: (() => void) | null = null;
+/** The row under the pointer, which is the second row that carries a cluster. */
+let _hoveredKey: string | null = null;
+/** The row being renamed, the text typed into it so far, and whose repaint to spend on commit. */
+let _editing: { key: string; text: string; rerender: () => void } | null = null;
 
 /** The height one row actually has; the declared constant until a row has been laid out. */
 function outlineRowHeight(): number {
-  return measuredRowHeight(_outlineList, ".layer-row", OUTLINE_ROW_HEIGHT);
+  return measuredRowHeight(_outlineList, ROW_SELECTOR, OUTLINE_ROW_HEIGHT);
 }
 
 /** The model index of the row keyed `key`, or -1. */
@@ -476,38 +398,45 @@ function revealOutlineRow(index: number): boolean {
 /**
  * Repaint the Outline because its window changed.
  *
- * Deferred to a microtask so a scroll that arrives while lit is committing cannot re-enter the
- * render that is producing the rows.
+ * Deferred to a microtask so a scroll that arrives while the runtime is committing cannot re-enter
+ * the render that is producing the rows.
  *
  * **Never during a drag.** `panels/dnd.ts` holds the drop targets it registered on the rendered
  * rows and shifts the rows either side of the pointer by a transform; re-rendering underneath it
  * would drop both. A wheel-scroll mid-drag therefore keeps the window the drag started with, and
- * the drop's own repaint restores it.
+ * the drop's own repaint restores it. The drag marks its row with `data-dragging`, which is an
+ * attribute rather than a class for the reason the document's style block gives.
  *
  * **Never for a tree that is gone.** The stylebook draws a different panel into the same dock,
  * whose scroller is the one this watch is still listening to.
  */
 function outlineWindowChanged(): void {
-  if (_outlineList?.isConnected !== true || _outlineList.querySelector(".layer-row.dragging")) {
+  if (_outlineList?.isConnected !== true || _outlineList.querySelector("[data-dragging]")) {
     return;
   }
   queueMicrotask(() => _outlineRerender?.());
 }
 
 /**
- * Adopt the rendered tree: remember it, and keep it watching its scroller.
+ * Keep the tree watching whatever scrolls it.
  *
- * Called from {@link afterTreeRender}, one microtask after the rows are committed — the first moment
- * they exist AND the element can be resolved to whatever scrolls it (`#left-panel`, or the bottom
- * dock). The first paint of a session therefore draws every row, because nothing can be measured
- * before it; the watch's opening measurement is what asks for the second, windowed one.
+ * Split from {@link OutlineActions.treeReady} on purpose, and the split is the whole of why the
+ * window works. `onNodeCreated` hands over the element as it is BUILT — one tick before it is in
+ * the document — so `nearestScroller` walking up from it at that moment finds nothing, binds no
+ * watch, and the tree silently draws all five thousand rows for the rest of the session. The
+ * element is remembered there, because the next projection's `listWindow` needs it; the watch is
+ * bound HERE, from the post-mount tick, where the element is connected and the scroller resolves.
  *
  * Idempotent by construction: `watchListWindow` hands back the same watch for the same element and
- * scroller, so calling this after every render costs a comparison.
+ * scroller, so calling it after every draw costs a comparison. The first paint of a session draws
+ * every row, because nothing can be measured before them; the watch's opening measurement is what
+ * asks for the second, windowed one.
  */
-function adoptOutlineTree(tree: HTMLElement): void {
-  _outlineList = tree;
-  _outlineWatch = watchListWindow(_outlineWatch, tree, {
+function watchOutlineTree(): void {
+  if (!_outlineList) {
+    return;
+  }
+  _outlineWatch = watchListWindow(_outlineWatch, _outlineList, {
     count: () => _outlineRows.length,
     onChange: outlineWindowChanged,
     rowHeight: outlineRowHeight,
@@ -519,12 +448,12 @@ function adoptOutlineTree(tree: HTMLElement): void {
  *
  * Rows carry their `JxPath` verbatim, as JSON, in `data-jx-path` — node IDENTITY in the DOM. That
  * is a different thing from the neighbouring `data-path`, which is `pathKey`'s lossy `join("/")`
- * string and exists as the drag-and-drop and roving-tabindex Map key; `["children", "0"]` and
+ * string and exists as the drag-and-drop and roving-focus Map key; `["children", "0"]` and
  * `["children", 0]` share a key and are different nodes, and a segment containing a slash has no
  * key at all.
  *
- * Everything that has to point at a node from outside the render — shift-range multi-select,
- * drag-reorder, canvas to Outline sync, a collaborator's cursor, a jump from Problems — needs the
+ * Everything that has to point at a node from outside the projection — the context menu, drag
+ * reorder, canvas to Outline sync, a collaborator's cursor, a jump from Problems — needs the
  * unambiguous one.
  */
 export function outlineRowPath(el: Element | null): JxPath | null {
@@ -540,78 +469,34 @@ export function outlineRowPath(el: Element | null): JxPath | null {
   }
 }
 
-/** Every row currently on screen, in visual order. */
-function treeRows(tree: HTMLElement): HTMLElement[] {
-  return [...tree.querySelectorAll<HTMLElement>('.layer-row[role="treeitem"]')];
-}
-
-/**
- * Roving tabindex over the rows: the selected row is the tab stop, else the first.
- *
- * Applied after every render ({@link afterTreeRender}) rather than baked into each row's template,
- * because "is the selected row actually on screen" is only known once the collapsed ancestors have
- * been skipped — a selection inside a collapsed branch would otherwise leave the tree with no tab
- * stop at all.
- */
-export function applyTreeRovingTabindex(tree: HTMLElement): void {
-  const rows = treeRows(tree);
-  if (rows.length === 0) {
-    return;
-  }
-  // The PRIMARY row is the tab stop, not merely the first selected one: a multi-selection has one
-  // Keyboard position, and it is the row the author last pointed at. `data-primary` is stamped by
-  // The row template, so the two never have to re-derive the same answer.
-  const primary = rows.find((row) => row.dataset.primary !== undefined);
-  const selected = primary ?? rows.find((row) => row.getAttribute("aria-selected") === "true");
-  const stop = selected ?? rows[0]!;
-  for (const row of rows) {
-    row.tabIndex = row === stop ? 0 : -1;
-  }
-}
-
-/** Focus `row`, and make it the tree's single tab stop. */
-function focusRow(tree: HTMLElement, row: HTMLElement | undefined): void {
-  if (!row) {
-    return;
-  }
-  for (const other of treeRows(tree)) {
-    other.tabIndex = other === row ? 0 : -1;
-  }
-  row.focus();
-}
-
 /** The rendered row for a model key, or null when the window does not currently hold it. */
-function rowElementFor(tree: HTMLElement, key: string): HTMLElement | null {
-  return tree.querySelector<HTMLElement>(`.layer-row[data-path="${CSS.escape(key)}"]`);
+function rowElementFor(key: string): HTMLElement | null {
+  return (
+    _outlineList?.querySelector<HTMLElement>(`${ROW_SELECTOR}[data-path="${CSS.escape(key)}"]`) ??
+    null
+  );
 }
 
 /**
- * The row a repaint should hand the keyboard to, once it exists.
+ * Move the keyboard to the model row at `index`, bringing it into the window if it is outside one.
  *
- * A keyboard jump can name a row the window does not hold — End on a 5 000-row page, or ← climbing
- * to a parent far above the viewport. Scrolling to it is immediate; DRAWING it is the Navigator
- * scheduler's business, and `ctx.rerender` is explicitly "not a synchronous re-render". So the
- * request outlives the keystroke by exactly one render: {@link afterTreeRender} spends it, and
- * spends it once — a focus request that survived its own repaint is stale, and stealing the
- * keyboard later is worse than not having moved it.
+ * On a microtask, because the DOCUMENT is what draws the row: the projection written on this tick
+ * is a binding that runs on the next, so a query made here and now would find the row the PREVIOUS
+ * projection put at that key — or, for a row the window did not hold, no row at all. A row that has
+ * still not arrived is one the scroll watch has yet to draw, and stealing the keyboard later is
+ * worse than not having moved it.
  */
-let _pendingFocusKey: string | null = null;
-
-/** Move the keyboard to the model row at `index`, bringing it into the window if it is outside one. */
-function focusModelRow(tree: HTMLElement, index: number): void {
+function focusModelRow(index: number): void {
   const row = _outlineRows[index];
   if (!row) {
     return;
   }
-  const el = rowElementFor(tree, row.key);
-  if (el) {
-    focusRow(tree, el);
-    return;
+  if (!rowElementFor(row.key)) {
+    revealOutlineRow(index);
   }
-  if (revealOutlineRow(index)) {
-    _pendingFocusKey = row.key;
-    _outlineRerender?.();
-  }
+  queueMicrotask(() => {
+    rowElementFor(row.key)?.focus();
+  });
 }
 
 /** Select the model row at `index`, so the canvas and the inspector follow the keyboard. */
@@ -629,10 +514,6 @@ function selectModelRow(index: number, gesture: { range?: boolean } = {}): void 
  *   unmodified click can reach, and it is byte-identical to what the Outline always did.**
  * - Ctrl/Cmd: toggle this path in or out, leaving the rest alone.
  * - Shift: the contiguous run of VISIBLE rows from the anchor to here.
- *
- * It took the tree element as its first parameter while a range was resolved by reading the rows
- * out of the DOM. It no longer is ({@link visibleRowPaths}), and the parameter went with the read —
- * a signature that still asked for the tree would suggest the answer depends on what is painted.
  *
  * @param {JxPath} path
  * @param {{ additive?: boolean; range?: boolean }} gesture
@@ -661,7 +542,7 @@ export function applyRowSelection(
 }
 
 /**
- * The ARIA tree keyboard model.
+ * The ARIA tree keyboard model, against the row the key was pressed on.
  *
  * ↑ / ↓ walk the visible rows and take the selection with them — in an outline, "focus follows
  * selection" is what an author means by pressing Down. → expands a collapsed row and otherwise
@@ -669,157 +550,157 @@ export function applyRowSelection(
  * rename. Delete is deliberately absent: it is `selection.delete`'s chord, and the registry owns
  * it.
  *
- * Every one of those moves is an index into {@link outlineRows}, not into the rendered rows. The DOM
+ * Every one of those moves is an index into the row model, not into the rendered rows. The DOM
  * answer and the model answer agreed exactly while the tree drew everything; now the DOM holds a
  * window, and asking it for "the row after this one" would stop the walk at the window's edge and
  * make ← climb to whichever ancestor happened to be painted.
+ *
+ * @param {string} key The row's `pathKey`
+ * @param {string} keyName The key pressed, as the document's `$switch` case names it
+ * @param {boolean} shift
  */
-export function onTreeKeydown(
-  e: KeyboardEvent,
-  collapsed: Set<string>,
-  rerender: () => void,
-): void {
-  const tree = e.currentTarget as HTMLElement;
-  const row = (e.target as HTMLElement).closest<HTMLElement>('.layer-row[role="treeitem"]');
+export function onOutlineKey(key: string, keyName: string, shift: boolean): void {
+  const index = outlineIndexOfKey(key);
+  const row = _outlineRows[index];
   if (!row) {
     return;
   }
-  const key = row.dataset.path ?? "";
-  const index = outlineIndexOfKey(row.dataset.path);
-  const expanded = row.getAttribute("aria-expanded");
+  const collapsed = outlineCollapsed();
+  const expandable = isExpandable(row);
 
-  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-    e.preventDefault();
-    const next = outlineStep(index, e.key === "ArrowDown" ? 1 : -1);
+  if (keyName === "ArrowDown" || keyName === "ArrowUp") {
+    const next = outlineStep(index, keyName === "ArrowDown" ? 1 : -1);
     if (next >= 0) {
       // Shift+Arrow extends the range, the same gesture shift-click makes and through the same
       // Function. Without Shift the walk replaces the selection, exactly as it always has.
-      selectModelRow(next, { range: e.shiftKey });
-      focusModelRow(tree, next);
+      selectModelRow(next, { range: shift });
+      focusModelRow(next);
+      redrawOutline();
     }
-  } else if (e.key === "ArrowRight") {
-    e.preventDefault();
-    if (expanded === "false") {
+    return;
+  }
+  if (keyName === "ArrowRight") {
+    if (expandable && collapsed.has(key)) {
       collapsed.delete(key);
-      rerender();
-    } else if (expanded === "true") {
-      focusModelRow(tree, outlineStep(index, 1));
+      redrawOutline();
+    } else if (expandable) {
+      focusModelRow(outlineStep(index, 1));
     }
-  } else if (e.key === "ArrowLeft") {
-    e.preventDefault();
-    if (expanded === "true") {
+    return;
+  }
+  if (keyName === "ArrowLeft") {
+    if (expandable && !collapsed.has(key)) {
       collapsed.add(key);
-      rerender();
-    } else {
-      // The model records each row's parent as it builds them, so the climb is exact rather than a
-      // Backwards scan for a smaller `aria-level` — which could only ever see painted rows.
-      const parent = _outlineRows[index]?.parent ?? -1;
-      if (parent >= 0) {
-        selectModelRow(parent);
-        focusModelRow(tree, parent);
-      }
+      redrawOutline();
+      return;
     }
-  } else if (e.key === "Home" || e.key === "End") {
-    e.preventDefault();
-    const target = e.key === "Home" ? outlineStep(-1, 1) : outlineStep(_outlineRows.length, -1);
+    // The model records each row's parent as it builds them, so the climb is exact rather than a
+    // Backwards scan for a smaller `aria-level` — which could only ever see painted rows.
+    if (row.parent >= 0) {
+      selectModelRow(row.parent);
+      focusModelRow(row.parent);
+      redrawOutline();
+    }
+    return;
+  }
+  if (keyName === "Home" || keyName === "End") {
+    const target = keyName === "Home" ? outlineStep(-1, 1) : outlineStep(_outlineRows.length, -1);
     if (target >= 0) {
       selectModelRow(target);
-      focusModelRow(tree, target);
+      focusModelRow(target);
+      redrawOutline();
     }
-  } else if (e.key === "Enter" || e.key === "F2") {
-    e.preventDefault();
+    return;
+  }
+  if (keyName === "Enter" || keyName === "F2") {
     selectModelRow(index);
-    if (row.dataset.path !== undefined) {
-      startLayerTitleEdit(pathFromKey(row.dataset.path), rerender);
-    }
+    startLayerTitleEdit(row.path, () => _outlineRerender?.());
   }
 }
 
 /**
  * Start inline title editing on a layer row.
  *
+ * The input is a CASE of the row now, not a node this module creates and inserts: the document
+ * draws it when the projection says this row is the one being renamed, and takes it away again when
+ * the projection stops saying so. That is what retired the four imperative writes the predecessor
+ * made into a tree it did not own — and with them the stale `display: none` a keyed re-render could
+ * leave on the label of whichever node inherited the row.
+ *
+ * A row the window does not hold is scrolled to and left to the scroll watch, which is the same
+ * "the row exists on the next pass" the reveal has always relied on. Renaming through a command
+ * (⌘↵, the palette, the block bar) is the one gesture in the app where re-pressing it is obvious.
+ *
  * @param {JxPath} path
  * @param {() => void} rerender
  */
 export function startLayerTitleEdit(path: JxPath, rerender: () => void) {
-  const key = pathKey(path);
-  /* Scoped to THIS panel's tree, and escaped, through the same helper every other row lookup in
-     this file uses. The predecessor was a bare `document.querySelector` with the key interpolated
-     raw, which is wrong twice over: a second pane — or the stylebook, which draws a layer tree of
-     its own — puts more than one `.layer-row[data-path=…]` in the document, and the first match
-     wins rather than the right one; and an unescaped key containing a quote or a bracket is not a
-     selector the parser accepts, so a legitimately-named node throws instead of renaming.
-     `_outlineList` is null before the first render, which is the same "row the window does not
-     hold" case the reveal-and-repaint path below already handles. */
-  const row = _outlineList ? rowElementFor(_outlineList, key) : null;
-  if (!row) {
-    // Renaming through a command (⌘↵, the palette, the block bar) can name a row the window does
-    // Not hold. Scroll to it and repaint; the row exists on the next pass, and the caller's own
-    // Chord is the one gesture in the app where re-pressing it is obvious.
-    const index = outlineIndexOfPath(path);
-    if (index >= 0 && revealOutlineRow(index)) {
-      rerender();
-    }
-    return;
-  }
-  const label = row.querySelector(".layer-label") as HTMLElement | null;
-  if (!label) {
-    return;
-  }
-
   const tab = activeTab.value;
   if (!tab) {
     return;
   }
-  const node = getNodeAtPath(tab.doc.document, path);
-  if (!node) {
+  const index = outlineIndexOfPath(path);
+  const row = _outlineRows[index];
+  /* The row's own node, not a second `getNodeAtPath` walk: the model already holds it, and reading
+     it back off the model is what makes "a text line has no `$title` to write" a real branch rather
+     than a defensive null check nothing can reach. */
+  if (!row?.item || typeof row.node !== "object") {
     return;
   }
+  _editing = { key: row.key, rerender, text: row.node.$title || "" };
+  if (!rowElementFor(row.key)) {
+    revealOutlineRow(index);
+  }
+  redrawOutline();
+}
 
-  label.style.display = "none";
-  const input = document.createElement("input");
-  input.className = "layer-title-input";
-  input.value = node.$title || "";
-  const { $title: _, ...nodeWithoutTitle } = node;
-  input.placeholder = outlineLabel(nodeWithoutTitle) || displayTagName(node.tagName) || "div";
-  label.after(input);
-  input.focus();
-  input.select();
+/** Whether a rename is live on `key`. */
+function isEditing(key: string): boolean {
+  return _editing?.key === key;
+}
 
-  let committed = false;
-  const cleanup = () => {
-    input.remove();
-    label.style.display = "";
-  };
-  const commit = () => {
-    if (committed) {
-      return;
-    }
-    committed = true;
-    cleanup();
-    const val = input.value.trim();
-    transactDoc(tab, (t) => mutateUpdateProperty(t, path, "$title", val || undefined));
-    rerender();
-  };
-  const cancel = () => {
-    if (committed) {
-      return;
-    }
-    committed = true;
-    cleanup();
-    rerender();
-  };
-  input.addEventListener("blur", commit);
-  input.addEventListener("keydown", (e: KeyboardEvent) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      input.blur();
-    }
-    if (e.key === "Escape") {
-      e.preventDefault();
-      cancel();
-    }
-  });
+/** Record what the rename input holds, so a blur can commit it without reading the DOM back. */
+function editInput(text: string): void {
+  if (_editing) {
+    _editing.text = text;
+  }
+}
+
+/** Write the typed title (or clear it) and end the rename. Idempotent — a blur follows an Enter. */
+function editCommit(): void {
+  const session = _editing;
+  const tab = activeTab.value;
+  if (!session) {
+    return;
+  }
+  _editing = null;
+  const value = session.text.trim();
+  if (tab) {
+    transactDoc(tab, (t) =>
+      mutateUpdateProperty(t, pathFromKey(session.key), "$title", value || undefined),
+    );
+  }
+  session.rerender();
+  redrawOutline();
+}
+
+/** End the rename without writing anything. */
+function editCancel(): void {
+  const session = _editing;
+  if (!session) {
+    return;
+  }
+  _editing = null;
+  session.rerender();
+  redrawOutline();
+}
+
+// ─── The rows, and the window ────────────────────────────────────────────────
+
+/** The collapsed set, which is module state on `view` and survives every repaint. */
+function outlineCollapsed(): Set<string> {
+  view._layersCollapsed ||= new Set();
+  return view._layersCollapsed;
 }
 
 /**
@@ -827,9 +708,9 @@ export function startLayerTitleEdit(path: JxPath, rerender: () => void) {
  *
  * Every line here is a decision about VISIBILITY — a collapsed ancestor, an inline element the
  * canvas edits as text rather than as a block, the root the content mode does not own — and no line
- * here builds a template. That split is the whole saving: the walk is O(nodes) and costs a few
- * comparisons per node, while the half it defers mounts an `sp-icon` per row and an action cluster
- * on the selected one. Only the rows in the window ever pay it.
+ * here builds a projection. That split is the whole saving: the walk is O(nodes) and costs a few
+ * comparisons per node, while the half it defers mounts a kit element per verb on the rows that
+ * offer them. Only the rows in the window ever pay it.
  *
  * @param {JxMutableNode} doc @param {string} mode @param {Set<string>} collapsed
  */
@@ -918,324 +799,439 @@ function numberOutlineSets(rows: OutlineRow[]): OutlineRow[] {
   return rows;
 }
 
+/** Whether the row has anything under it — children, a map template, or `$switch` cases. */
+function isExpandable(row: OutlineRow): boolean {
+  if (!row.item || typeof row.node !== "object") {
+    return false;
+  }
+  const node = row.node as JxMutableNode;
+  const hasChildren = Array.isArray(node.children) && node.children.length > 0;
+  const hasMapChildren =
+    node.children !== undefined &&
+    typeof node.children === "object" &&
+    (node.children as unknown as Record<string, unknown>).$prototype === "Array";
+  const hasCases =
+    Boolean(node.$switch) &&
+    typeof node.cases === "object" &&
+    node.cases !== null &&
+    Object.keys(node.cases).length > 0;
+  return hasChildren || hasMapChildren || hasCases || (row.nodeType === "map" && Boolean(node.map));
+}
+
+/** The badge: what it says, which of the six drawings it gets, and what it says on hover. */
+function rowBadge(row: OutlineRow): {
+  badge: string;
+  badgeKind: string;
+  badgeTitle: string | null;
+} {
+  const node = row.node as JxMutableNode;
+  if (row.nodeType === "map") {
+    return { badge: "↻", badgeKind: "map", badgeTitle: "Repeating list — one copy per item" };
+  }
+  if (row.nodeType === "case" || row.nodeType === "case-ref") {
+    const name = String(row.path.at(-1) ?? "");
+    return { badge: name, badgeKind: "case", badgeTitle: `Condition case: ${name}` };
+  }
+  if (node.$switch) {
+    return { badge: "⇄", badgeKind: "switch", badgeTitle: "Condition" };
+  }
+  if (node.tagName === "slot") {
+    const slotName = node.attributes?.name;
+    return {
+      badge: "▣",
+      badgeKind: "slot",
+      badgeTitle:
+        typeof slotName === "string" && slotName.trim()
+          ? `Slot "${slotName.trim()}"`
+          : "Default slot",
+    };
+  }
+  /* The ROW BADGE, which is the one place the tag is shown as itself rather than folded into a
+     label — so it is the one that rendered `[object Object]` for a chosen tag after the other reads
+     were fixed. `outlineLabel` never returns a tag (it prefers a title, an id, text, a class, a
+     landmark), which is why fixing `nodeLabel` did not reach here. */
+  return {
+    badge: displayTagName(node.tagName) || "div",
+    badgeKind: "tag",
+    badgeTitle: isTagExpression(node.tagName)
+      ? `Tag chosen when the element is created: ${tagNameCandidates(node.tagName).join(" or ")}`
+      : null,
+  };
+}
+
 /** A text node's row: drawn, and deliberately not a tree item — there is nothing to do to it. */
-function textRowTemplate(row: OutlineRow): TemplateResult {
+function textRowView(row: OutlineRow): OutlineRowView {
   const text = String(row.node);
-  const preview = text.length > 40 ? `${text.slice(0, 40)}…` : text;
-  return html`
-    <div
-      class="layer-row"
-      data-jx-path=${JSON.stringify(row.path)}
-      style="padding-left:${indentWidth(row.depth) + 8}px; opacity: 0.6; font-style: italic;"
-    >
-      <span
-        class="layer-tag"
-        style="background: var(--spectrum-gray-500, #64748b); font-size: 0.65rem;"
-        >text</span
-      >
-      <span class="layer-label">${preview}</span>
-    </div>
-  `;
+  return {
+    actions: "hidden",
+    badge: "text",
+    badgeKind: "text",
+    badgeTitle: null,
+    chevron: "none",
+    commands: [],
+    dndDepth: null,
+    dndExpanded: null,
+    dndRow: null,
+    dndVoid: null,
+    draggable: "false",
+    editValue: "",
+    editing: "false",
+    expanded: null,
+    indent: `${indentWidth(row.depth) + INDENT_BASE}px`,
+    jxPath: JSON.stringify(row.path),
+    key: row.key,
+    kind: "text",
+    label: text.length > TEXT_PREVIEW_MAX ? `${text.slice(0, TEXT_PREVIEW_MAX)}…` : text,
+    labelItalic: "false",
+    level: "",
+    overflow: "false",
+    placeholder: "",
+    posInSet: "",
+    primary: null,
+    selected: "false",
+    setSize: "",
+    tabindex: "-1",
+  };
 }
 
 /**
- * Pass two: one row, drawn.
+ * Pass two: one row, projected.
  *
  * Called for the rows in the window and for no others, which is why it takes the document facts it
  * needs (`selection`, `mode`) as arguments instead of reading `activeTab` for each row.
  */
-function outlineRowTemplate(
+function outlineRowView(
   row: OutlineRow,
   doc: { selection: JxPath[]; mode: string },
   collapsed: Set<string>,
   registry: CommandRegistry,
-  ctx: { rerender: () => void },
-): TemplateResult {
+  stopKey: string,
+): OutlineRowView {
   if (!row.item) {
-    return textRowTemplate(row);
+    return textRowView(row);
   }
   const { depth, key, nodeType, path } = row;
-  const jxNode = row.node as JxMutableNode;
+  const node = row.node as JxMutableNode;
 
   // Every member of the set draws selected; the PRIMARY additionally carries the roving tab stop,
   // So a batch has one keyboard position rather than six.
-  const isSelected = isPathSelected(doc.selection, path);
-  const isPrimary = pathsEqual(path, primarySelection(doc.selection));
-  const hasChildren = Array.isArray(jxNode.children) && jxNode.children.length > 0;
-  const hasMapChildren =
-    jxNode.children &&
-    typeof jxNode.children === "object" &&
-    (jxNode.children as unknown as Record<string, unknown>).$prototype === "Array";
-  const hasCases =
-    jxNode.$switch &&
-    jxNode.cases &&
-    typeof jxNode.cases === "object" &&
-    Object.keys(jxNode.cases).length > 0;
-  const isExpandable =
-    hasChildren || hasMapChildren || hasCases || (nodeType === "map" && jxNode.map);
+  const selected = isPathSelected(doc.selection, path);
+  const primary = pathsEqual(path, primarySelection(doc.selection));
+  const expandable = isExpandable(row);
   // Array nodes can't accept dropped children (their content is the single map template), so they
   // Block the make-child drop instruction like void elements do.
   const isVoidEl =
-    VOID_ELEMENTS.has((displayTagName(jxNode.tagName) || "div").toLowerCase()) ||
-    nodeType === "map";
-
-  /** @type {string} */
-  let badgeClass;
-  /** @type {string | number} */
-  let badgeText;
-  /** @type {string | undefined} */
-  let badgeTitle;
-  if (nodeType === "map") {
-    badgeClass = "layer-tag map-tag";
-    badgeText = "↻";
-    badgeTitle = "Repeating list — one copy per item";
-  } else if (nodeType === "case" || nodeType === "case-ref") {
-    badgeClass = "layer-tag case-tag";
-    badgeText = path.at(-1);
-    badgeTitle = `Condition case: ${path.at(-1)}`;
-  } else if (jxNode.$switch) {
-    badgeClass = "layer-tag switch-tag";
-    badgeText = "⇄";
-    badgeTitle = "Condition";
-  } else if (jxNode.tagName === "slot") {
-    const slotName = jxNode.attributes?.name;
-    badgeClass = "layer-tag slot-tag";
-    badgeText = "▣";
-    badgeTitle =
-      typeof slotName === "string" && slotName.trim()
-        ? `Slot "${slotName.trim()}"`
-        : "Default slot";
-  } else {
-    badgeClass = "layer-tag";
-    /* The ROW BADGE, which is the one place the tag is shown as itself rather than folded into a
-       label — so it is the one that rendered `[object Object]` for a chosen tag after the other
-       reads were fixed. `outlineLabel` never returns a tag (it prefers a title, an id, text, a
-       class, a landmark), which is why fixing `nodeLabel` did not reach here. */
-    badgeText = displayTagName(jxNode.tagName) || "div";
-    badgeTitle = isTagExpression(jxNode.tagName)
-      ? `Tag chosen when the element is created: ${tagNameCandidates(jxNode.tagName).join(" or ")}`
-      : undefined;
-  }
-
-  /** @type {string} */
-  let labelText;
-  /** @type {boolean} */
-  let labelItalic;
-  if (nodeType === "case-ref") {
-    labelText = jxNode.$ref || "external";
-    labelItalic = true;
-  } else {
-    labelText = outlineLabel(jxNode);
-    labelItalic = false;
-  }
-
+    VOID_ELEMENTS.has((displayTagName(node.tagName) || "div").toLowerCase()) || nodeType === "map";
   // Array (repeater) nodes are first-class structural nodes — movable/draggable/deletable like
   // Elements. Both sit at a numeric child index; templates (path tail "map") and case nodes do
   // Not, so they stay selectable/editable but not structurally manipulable.
-  const isStructural =
+  const structural =
     (nodeType === "element" || nodeType === "map") && typeof childIndex(path) === "number";
   const isRoot = doc.mode === "content" ? path.length === 0 : path.length < 2;
+  const grabbable = structural && !isRoot;
+  const open = expandable && !collapsed.has(key);
+  const editing = isEditing(key);
 
-  return html`
-    <div
-      class=${classMap({ "layer-row": true, selected: isSelected })}
-      role="treeitem"
-      aria-level=${depth + 1}
-      aria-posinset=${row.posInSet}
-      aria-setsize=${row.setSize}
-      aria-selected=${isSelected ? "true" : "false"}
-      aria-expanded=${isExpandable ? (collapsed.has(key) ? "false" : "true") : nothing}
-      tabindex=${isPrimary ? "0" : "-1"}
-      data-primary=${isPrimary ? "" : nothing}
-      data-jx-path=${JSON.stringify(path)}
-      data-path=${key}
-      data-dnd-row=${isStructural ? key : nothing}
-      data-dnd-depth=${isStructural ? depth : nothing}
-      data-dnd-void=${isStructural && isVoidEl ? "" : nothing}
-      data-dnd-expanded=${isStructural && isExpandable && !collapsed.has(key) ? "" : nothing}
-      @click=${(e: MouseEvent) => {
-        applyRowSelection(path, { additive: e.ctrlKey || e.metaKey, range: e.shiftKey });
-        revealPathInCanvas(path);
-      }}
-      @dblclick=${
-        isStructural
-          ? (e: MouseEvent) => {
-              e.stopPropagation();
-              startLayerTitleEdit(path, ctx.rerender);
-            }
-          : nothing
-      }
-      @contextmenu=${
-        isStructural
-          ? (e: MouseEvent) =>
-              showContextMenu(e, path, {
-                rerender: ctx.rerender,
-              })
-          : nothing
-      }
-    >
-      <span class="layer-indent" style="width:${indentWidth(depth)}px"></span>
-      <span class="layer-toggle"
-        >${
-          isExpandable
-            ? html`
-                ${
-                  collapsed.has(key)
-                    ? html`<sp-icon-chevron-right></sp-icon-chevron-right>`
-                    : html`<sp-icon-chevron-down></sp-icon-chevron-down>`
-                }
-              `
-            : nothing
-        }</span
-      >
-      <span class=${badgeClass} title=${ifDefined(badgeTitle ?? undefined)}>${badgeText}</span>
-      <span class="layer-label" style=${labelItalic ? "font-style:italic" : nothing}
-        >${labelText}</span
-      >
-      ${
-        isStructural && !isRoot
-          ? html`<span class="layer-drag-handle" title="Drag to reorder">⠿</span>`
-          : nothing
-      }
-      ${
-        // The selected row's cluster is declared here so it survives every re-render; every
-        // Other structural row keeps an EMPTY slot, which the pointer fills (mountHoverActions)
-        // And empties again. The two branches are different templates, so lit swaps the DOM
-        // Between them and a hover cluster can never outlive the row becoming selected.
-        isStructural && !isRoot
-          ? isSelected
-            ? html`<span class="layer-actions">${renderRowCommands(registry, path)}</span>`
-            : html`<span class="layer-actions"></span>`
-          : nothing
-      }
-    </div>
-  `;
+  /* The cluster exists for the selected row and the hovered one, and for no other. While the row is
+     being renamed it exists for neither: the input owns the row's whole width, and the verbs would
+     sit on top of its right edge. */
+  const showActions = grabbable && !editing && (selected || key === _hoveredKey);
+  const { commands, overflow } = showActions
+    ? rowCommandViews(registry, path, key)
+    : { commands: [], overflow: [] };
+
+  const { badge, badgeKind, badgeTitle } = rowBadge(row);
+  const { $title: _ignored, ...withoutTitle } = node;
+  return {
+    actions: showActions ? "shown" : "hidden",
+    badge,
+    badgeKind,
+    badgeTitle,
+    chevron: expandable ? (open ? "open" : "closed") : "none",
+    commands,
+    dndDepth: structural ? String(depth) : null,
+    dndExpanded: structural && open ? "" : null,
+    dndRow: structural ? key : null,
+    dndVoid: structural && isVoidEl ? "" : null,
+    draggable: grabbable ? "true" : "false",
+    editValue: editing ? (node.$title ?? "") : "",
+    editing: editing ? "true" : "false",
+    expanded: expandable ? (open ? "true" : "false") : null,
+    indent: `${indentWidth(depth) + INDENT_BASE}px`,
+    jxPath: JSON.stringify(path),
+    key,
+    kind: "element",
+    label: nodeType === "case-ref" ? node.$ref || "external" : outlineLabel(node),
+    labelItalic: nodeType === "case-ref" ? "true" : "false",
+    level: String(depth + 1),
+    overflow: overflow.length > 0 ? "true" : "false",
+    placeholder: outlineLabel(withoutTitle) || displayTagName(node.tagName) || "div",
+    posInSet: String(row.posInSet),
+    primary: primary ? "" : null,
+    selected: selected ? "true" : "false",
+    setSize: String(row.setSize),
+    tabindex: key === stopKey ? "0" : "-1",
+  };
 }
 
 /**
- * @param {{ navigateToComponent: (path: string) => void; rerender: () => void }} ctx
- * @returns {import("lit-html").TemplateResult}
+ * The row of the window that carries the tree's single tab stop.
+ *
+ * The PRIMARY selection when it is drawn, else any drawn member of the selection, else the first
+ * drawn row. Decided over the WINDOW rather than over the model, because a tab stop on a row nobody
+ * painted is a tree with no way in — which is exactly what a selection inside a collapsed branch,
+ * or three thousand rows down, would otherwise produce.
  */
-export function renderLayersTemplate(ctx: {
-  navigateToComponent: (path: string) => void;
-  rerender: () => void;
-}) {
+function tabStopKey(window: OutlineRow[], selection: JxPath[]): string {
+  const items = window.filter((row) => row.item);
+  const primary = primarySelection(selection);
+  const stop =
+    items.find((row) => primary !== null && pathsEqual(row.path, primary)) ??
+    items.find((row) => isPathSelected(selection, row.path)) ??
+    items[0];
+  return stop?.key ?? "";
+}
+
+/**
+ * What the surface should be showing right now.
+ *
+ * Exported because it is the half of this module that is worth testing on its own: given the open
+ * document, the collapsed set and the window, it is the whole of what the Outline draws.
+ *
+ * @returns {OutlineValues}
+ */
+export function outlineValues(): OutlineValues {
   const tab = activeTab.value;
-  // The scroll watch outlives this call and must never repaint through a closure from an earlier
-  // One — the Navigator's scheduler is the only thing that knows how to draw the Outline.
-  _outlineRerender = ctx.rerender;
-
-  for (const fn of view.dndCleanups) {
-    fn();
-  }
-  view.dndCleanups = [];
-
-  view._layersCollapsed ||= new Set();
-  const collapsed = view._layersCollapsed;
+  const collapsed = outlineCollapsed();
   const registry = selectionCommandRegistry();
+  const mode = tab?.doc.mode ?? "";
 
-  _outlineRows = buildOutlineRows(tab!.doc.document, tab?.doc.mode ?? "", collapsed);
+  _outlineRows = tab ? buildOutlineRows(tab.doc.document, mode, collapsed) : [];
   // The window is computed from the PREVIOUS render's tree element, because that is the only one
-  // That exists while this template is being built. On the first paint of a session there is none
+  // That exists while this projection is being built. On the first paint of a session there is none
   // And `listWindow` answers "all of them" — which is exactly what the Outline did before it
-  // Windowed, and what the panel's `afterRender` then measures in order to ask for a second pass.
+  // Windowed, and what the tree's `onNodeCreated` then measures in order to ask for a second pass.
   const range = listWindow(_outlineList, {
     count: _outlineRows.length,
     rowHeight: outlineRowHeight(),
   });
-  const doc = { mode: tab?.doc.mode ?? "", selection: tab!.session.selection };
-  const layerRows = _outlineRows
-    .slice(range.start, range.end)
-    .map((row) => ({ key: row.key, tpl: outlineRowTemplate(row, doc, collapsed, registry, ctx) }));
+  const selection = tab?.session.selection ?? [];
+  const drawn = _outlineRows.slice(range.start, range.end);
+  const stopKey = tabStopKey(drawn, selection);
+  return {
+    emptyLabel: "Add an element",
+    emptyMessage: "This page is empty. Everything you add to it is listed here, in order.",
+    padBottom: `height:${range.padBottom}px`,
+    padTop: `height:${range.padTop}px`,
+    rows: drawn.map((row) =>
+      outlineRowView(row, { mode, selection }, collapsed, registry, stopKey),
+    ),
+    view: _outlineRows.length === 0 ? "empty" : "rows",
+  };
+}
 
-  return html`
-    <div class="layers-container" style="position:relative">
-      <div
-        class="layers-tree"
-        role="tree"
-        aria-label="Document outline"
-        ${ref((el) => {
-          if (el) {
-            afterTreeRender(el as HTMLElement);
-          }
-        })}
-        @keydown=${(e: KeyboardEvent) => onTreeKeydown(e, collapsed, ctx.rerender)}
-        @mouseover=${onTreeHover}
-        @mouseleave=${clearHoverActions}
-        @click=${(e: MouseEvent) => {
-          const toggle = (e.target as HTMLElement).closest(".layer-toggle");
-          if (!toggle) {
-            return;
-          }
-          e.stopPropagation();
-          const row = toggle.closest(".layer-row");
-          if (!row) {
-            return;
-          }
-          const key = (row as HTMLElement).dataset.path;
-          if (!key) {
-            return;
-          }
-          if (collapsed.has(key)) {
-            collapsed.delete(key);
-          } else {
-            collapsed.add(key);
-          }
-          ctx.rerender();
-        }}
-      >
-        ${
-          _outlineRows.length === 0
-            ? renderEmptyState({
-                actions: [
-                  {
-                    label: "Add an element",
-                    run: () => {
-                      // `"insert"`, not `"blocks"`. The panel was renamed in P3.1 and this call
-                      // Kept the old id for three phases, so the one action an empty page offers
-                      // Landed the Navigator on "No Navigator panel is registered as blocks".
-                      // `setActivityTab` takes a `NavigatorPanelId` now, so this cannot recur.
-                      setActivityTab("insert");
-                    },
-                  },
-                ],
-                message: "This page is empty. Everything you add to it is listed here, in order.",
-              })
-            : html`
-                <!-- The rows the window left above and below, as the height they would have
-                     occupied: the scrollbar stays the length of the whole document, and
-                     aria-hidden keeps two empty spacers out of a tree that owns treeitems. -->
-                <div style="height:${range.padTop}px" aria-hidden="true"></div>
-                ${repeat(
-                  layerRows,
-                  (r) => r.key,
-                  (r) => r.tpl,
-                )}
-                <div style="height:${range.padBottom}px" aria-hidden="true"></div>
-              `
-        }
-      </div>
-    </div>
-  `;
+// ─── The standing surface ────────────────────────────────────────────────────
+
+/**
+ * The surface standing in the Navigator, and the node it was mounted into.
+ *
+ * One slot rather than a per-host map, for the reason `panels/stylebook-layers-panel.ts` gives:
+ * there is one Navigator, so a mount into a DIFFERENT node is the old one being replaced, and
+ * holding both would leave the first one's effects running against a scope nobody writes any more.
+ */
+let standing: { host: HTMLElement; handle: OutlineSurfaceHandle } | null = null;
+/** Re-register drag-and-drop once the rows the projection asked for are actually in the DOM. */
+let _registerDnD: (() => void) | null = null;
+
+/** Update the standing surface with a fresh projection. A no-op before the first mount. */
+function redrawOutline(): void {
+  standing?.handle.update(outlineValues());
+}
+
+/** Take down every drag registration the last pass made, then make them again. */
+function reregisterDnD(): void {
+  for (const fn of view.dndCleanups) {
+    fn();
+  }
+  view.dndCleanups = [];
+  _registerDnD?.();
 }
 
 /**
  * Keep the selected row on screen after a repaint.
  *
- * Two cases now, where there used to be one. If the row is drawn, it scrolls itself into view, as
- * it always has. If it is NOT — the canvas selected a node three thousand rows down, a jump from
- * Problems, a collaborator's edit — then the row the author is meant to see is precisely the one
- * with no element to call `scrollIntoView` on, and the reveal has to be arithmetic: scroll to where
- * the model says the row is, and let the scroll watch draw it. Silently doing nothing would be the
- * windowing bug that looks like a selection bug.
+ * Two cases, where there used to be one. If the row is drawn, it scrolls itself into view. If it is
+ * NOT — the canvas selected a node three thousand rows down, a jump from Problems, a collaborator's
+ * edit — then the row the author is meant to see is precisely the one with no element to call
+ * `scrollIntoView` on, and the reveal has to be arithmetic: scroll to where the model says the row
+ * is, and let the scroll watch draw it. Silently doing nothing would be the windowing bug that
+ * looks like a selection bug.
  */
-function revealSelectedRow(host: HTMLElement): void {
-  const drawn = host.querySelector(".layer-row.selected");
+function revealSelectedRow(): void {
+  const drawn = _outlineList?.querySelector(`${ROW_SELECTOR}[aria-selected="true"]`);
   if (drawn) {
-    drawn.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    drawn.scrollIntoView?.({ behavior: "smooth", block: "nearest" });
     return;
   }
   revealOutlineRow(outlineIndexOfPath(primarySelection(activeTab.value?.session.selection)));
+}
+
+/** The pointer moved onto a row: it, and the selected row, are the two that carry a cluster. */
+function hoverRow(key: string): void {
+  if (_hoveredKey === key) {
+    return;
+  }
+  _hoveredKey = key;
+  redrawOutline();
+}
+
+/** The pointer left the tree, so no row is under it. Also the suites' reset. */
+export function clearOutlineHover(): void {
+  if (_hoveredKey === null) {
+    return;
+  }
+  _hoveredKey = null;
+  redrawOutline();
+}
+
+/**
+ * Draw the Outline — mounting the document the first time, updating it every time after.
+ *
+ * `panels/left-panel.ts` hands a panel's `afterRender` the CONTENT box itself, which is the node
+ * lit renders this panel's (empty) body into and the one whose comment markers must survive. The
+ * `.panel-content` lookup below is what that call used to require and is kept for a caller handing
+ * the body around it; either way the document must not be appended to the wrong one of the two, or
+ * the tree is drawn under whatever the Navigator paints next.
+ *
+ * @param {{ rerender: () => void; registerDnD: () => void }} ctx
+ * @param {HTMLElement} host - The panel's content box
+ */
+export function mountOutlinePanel(
+  ctx: { rerender: () => void; registerDnD: () => void },
+  host: HTMLElement,
+): void {
+  const target = host.querySelector<HTMLElement>(".panel-content") ?? host;
+  if (standing && (standing.host !== target || !standing.handle.connected())) {
+    standing.handle.dispose();
+    standing = null;
+  }
+  // The scroll watch outlives this call and must never repaint through a closure from an earlier
+  // One — the Navigator's scheduler is the only thing that knows how to draw the Outline.
+  _outlineRerender = ctx.rerender;
+  _registerDnD = ctx.registerDnD;
+
+  const values = outlineValues();
+  if (standing) {
+    standing.handle.update(values);
+  } else {
+    standing = {
+      handle: mountOutlineSurface(target, values, {
+        activate: (key, ctrl, meta, shift) => {
+          const path = pathFromKey(key);
+          applyRowSelection(path, { additive: ctrl || meta, range: shift });
+          revealPathInCanvas(path);
+          redrawOutline();
+        },
+        contextMenu: (_scope, event) => {
+          const path = outlineRowPath(event.target as Element | null);
+          if (path) {
+            showContextMenu(event as MouseEvent, path, { rerender: () => _outlineRerender?.() });
+            redrawOutline();
+          }
+        },
+        editCancel,
+        editCommit,
+        editInput,
+        editReady: (element) => {
+          /* On a microtask, because `onNodeCreated` fires as the node is BUILT and one tick before
+             it is in the document — which is exactly why it is the seam (guidelines §9.4): it
+             hands over the element earlier than awaiting the mount would, and the host decides
+             when it is worth anything. An unconnected input cannot take focus. */
+          queueMicrotask(() => {
+            const input = element as HTMLInputElement;
+            if (input.isConnected) {
+              input.focus();
+              input.select?.();
+            }
+          });
+        },
+        emptyAction: () => {
+          /* `"insert"`, not `"blocks"`. The panel was renamed in P3.1 and this call kept the old id
+             for three phases, so the one action an empty page offers landed the Navigator on "No
+             Navigator panel is registered as blocks". `setActivityTab` takes a `NavigatorPanelId`
+             now, so this cannot recur. */
+          setActivityTab("insert");
+        },
+        hover: hoverRow,
+        hoverOut: clearOutlineHover,
+        overflowRow: (key, opener) => {
+          const path = pathFromKey(key);
+          const registry = selectionCommandRegistry();
+          const { overflow } = rowCommandViews(registry, path, key);
+          if (opener instanceof HTMLElement && overflow.length > 0) {
+            showCommandOverflow(opener, registry, overflow, path);
+          }
+        },
+        rename: (key) => {
+          startLayerTitleEdit(pathFromKey(key), () => _outlineRerender?.());
+        },
+        runRow: (id, key, control) => {
+          if (control instanceof HTMLElement) {
+            control.blur();
+          }
+          runCommand(selectionCommandRegistry(), id, pathFromKey(key));
+          redrawOutline();
+        },
+        toggle: (key) => {
+          const row = _outlineRows[outlineIndexOfKey(key)];
+          /* A row with nothing under it draws no chevron, so this can only be a click on the empty
+             14px the chevron would have occupied. Answering it would put a key in the collapsed set
+             that nothing will ever take out again. */
+          if (!row || !isExpandable(row)) {
+            return;
+          }
+          const collapsed = outlineCollapsed();
+          if (collapsed.has(key)) {
+            collapsed.delete(key);
+          } else {
+            collapsed.add(key);
+          }
+          redrawOutline();
+        },
+        treeReady: (element) => {
+          _outlineList = element;
+        },
+        walk: onOutlineKey,
+      }),
+      host: target,
+    };
+  }
+  /* A resolved promise's `.then` is a microtask, so this is one tick after the projection either
+     way — but on the FIRST pass the mount is genuinely asynchronous (the kit has to be defined
+     before a document can render), and a `requestAnimationFrame` inside `registerLayersDnD` would
+     otherwise find an empty container and register nothing at all. */
+  void standing.handle.ready.then(() => {
+    watchOutlineTree();
+    reregisterDnD();
+    revealSelectedRow();
+  });
+}
+
+/**
+ * Take the tree down.
+ *
+ * Called by the record when the pane starts showing Project Styles. Without it the document
+ * survives its own irrelevance: both bodies are appended into the same `.panel-content`, so the one
+ * nobody took down sits under the one that replaced it for the rest of the session.
+ */
+export function detachOutline(): void {
+  standing?.handle.dispose();
+  standing = null;
+  _outlineList = null;
+  _outlineWatch?.window.destroy();
+  _outlineWatch = null;
+  _hoveredKey = null;
+  _editing = null;
 }
 
 /**
@@ -1254,35 +1250,25 @@ export function registerLayersPanel(): void {
     icon: "stack",
     requiresDocument: "Open a page to see the elements it is built from.",
     /*
-     * One panel, two bodies, and only one of them is lit's.
-     *
-     * The Project Styles catalogue is a Jx document now (`panels/stylebook-layers-panel.ts`), so
-     * that branch draws NOTHING here and mounts against the painted DOM below — a document and a
-     * lit template can never share a container, because the document clears the host it is given
-     * and destroys lit's own part markers with it. The tree branch is unchanged.
+     * One panel, two bodies, and neither of them is lit's. The body is a document either way, so
+     * there is nothing for lit to draw here — a document CLEARS nothing and is APPENDED, and lit's
+     * own comment markers inside `.panel-content` are what it finds its (empty) content by.
      */
-    render: (ctx): PanelBody =>
-      ctx.deps.getCanvasMode() === "stylebook"
-        ? nothing
-        : renderLayersTemplate({
-            navigateToComponent: ctx.deps.navigateToComponent,
-            rerender: ctx.rerender,
-          }),
+    render: (): PanelBody => nothing,
     /*
-     * `afterRender` runs on every repaint, and {@link mountStylebookLayersPanel} is idempotent —
-     * the standing surface is updated where it is still there and re-mounted only where lit has
-     * taken it out. The detach on the other side is not symmetry: lit renders the tree into the
-     * range it owns INSIDE `.panel-content` and leaves everything appended after it alone, so a
-     * catalogue nobody took down would sit under the tree for the rest of the session.
+     * `afterRender` runs on every repaint, and both mounts are idempotent — the standing surface is
+     * updated where it is still there and re-mounted only where something has taken it out. The
+     * detach on each side is not symmetry for its own sake: the two documents are appended into the
+     * same node, so a body nobody took down would sit under the one that replaced it.
      */
     afterRender: (ctx, host) => {
       if (ctx.deps.getCanvasMode() === "stylebook") {
+        detachOutline();
         mountStylebookLayersPanel({ selectStylebookTag, stylebookMeta }, host);
         return;
       }
       detachStylebookLayers();
-      ctx.deps.registerLayersDnD();
-      revealSelectedRow(host);
+      mountOutlinePanel({ registerDnD: ctx.deps.registerLayersDnD, rerender: ctx.rerender }, host);
     },
   });
 }

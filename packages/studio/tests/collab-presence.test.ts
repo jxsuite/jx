@@ -1,14 +1,9 @@
-import { installMockPlatform, renderInto } from "./harness";
-import type { TemplateResult } from "lit-html";
+import { installMockPlatform } from "./harness";
 import { createMockCollabHub, settleCollab } from "./collab-mock";
 import { closeAllTabs, openTab } from "../src/workspace/workspace";
 import { resetCollabForTests } from "../src/collab/collab-session";
 import { collabState } from "../src/collab/collab-state";
-import {
-  presenceProjection,
-  readOnlyBannerTemplate,
-  statusTitle,
-} from "../src/collab/presence-chips";
+import { presenceProjection, statusTitle } from "../src/collab/presence-chips";
 import { createOverlayLayer } from "../src/canvas/iframe-overlay";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 import { afterEach, describe, expect, test } from "bun:test";
@@ -168,40 +163,5 @@ describe("collab honesty", () => {
     expect(statusTitle("offline", "")).toContain("never a collaborator's");
     expect(statusTitle("failed", "boom")).toContain("boom");
     expect(statusTitle("connecting", "")).toBe("Connecting…");
-  });
-});
-
-describe("read-only banner", () => {
-  function tabWith(patch: Record<string, unknown>) {
-    installMockPlatform();
-    const tab = openTab({ document: structuredClone(DOC), documentPath: PATH, id: PATH });
-    Object.assign(collabState(tab), patch);
-    return tab;
-  }
-
-  test("renders only for an ACTIVE read-only session", async () => {
-    const el = document.createElement("div");
-    await renderInto(
-      readOnlyBannerTemplate(tabWith({ active: true, readOnly: true })) as TemplateResult,
-      el,
-    );
-    expect(el.querySelector('.jx-collab-banner[data-kind="read-only"]')?.textContent).toContain(
-      "not published",
-    );
-  });
-
-  test("renders nothing when writable, inactive, or tabless", async () => {
-    for (const patch of [
-      { active: true, readOnly: false },
-      { active: false, readOnly: true },
-    ]) {
-      const el = document.createElement("div");
-      const tpl = readOnlyBannerTemplate(tabWith(patch));
-      if (tpl !== undefined && typeof tpl !== "symbol") {
-        await renderInto(tpl as TemplateResult, el);
-      }
-      expect(el.querySelector(".jx-collab-banner")).toBeNull();
-    }
-    expect(readOnlyBannerTemplate(null)).toBeDefined();
   });
 });

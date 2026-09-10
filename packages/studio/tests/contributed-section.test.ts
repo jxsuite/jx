@@ -488,34 +488,46 @@ describe("the actions island", () => {
     expect(container.querySelector('[part="actions"]')).toBeNull();
   });
 
+  /* The contributor is handed the HOST rather than asked for a template. It used to return one and
+     this module lit-rendered it, which replaced the row on every redraw — so the seam is a mount
+     now, and what the test asserts is that the same node comes back and is told what is selected. */
   test("a host's actions land in the section's actions node, told what is selected", async () => {
     const seen: (string | null)[] = [];
+    const hosts: HTMLElement[] = [];
     renderContributedSection(container, mapContribution, {
-      actions: (ctx) => {
+      actions: (host, ctx) => {
         seen.push(ctx.selected);
-        return html`<button class="stub-action">${ctx.sectionKey}</button>`;
+        hosts.push(host);
+        host.replaceChildren(
+          Object.assign(document.createElement("button"), { textContent: ctx.sectionKey }),
+        );
       },
     });
     await settle();
-    expect(part(container, "actions").querySelector(".stub-action")?.textContent).toBe(
-      "connections",
-    );
+    expect(part(container, "actions").querySelector("button")?.textContent).toBe("connections");
     expect(seen.at(-1)).toBeNull();
 
     await selectEntry(container, "main");
     expect(seen.at(-1)).toBe("main");
+    // One host for the life of the section: a contributor may mount into it once and project after.
+    expect(new Set(hosts).size).toBe(1);
   });
+
   test("a section that loses its actions loses the row with it", async () => {
     renderContributedSection(container, mapContribution, {
-      actions: () => html`<button class="stub-action">x</button>`,
+      actions: (host) => {
+        host.replaceChildren(
+          Object.assign(document.createElement("button"), { id: "stub-action", textContent: "x" }),
+        );
+      },
     });
     await settle();
-    expect(container.querySelector(".stub-action")).not.toBeNull();
+    expect(part(container, "actions").querySelector("#stub-action")).not.toBeNull();
 
     renderContributedSection(container, mapContribution);
     await settle();
     expect(container.querySelector('[part="actions"]')).toBeNull();
-    expect(container.querySelector(".stub-action")).toBeNull();
+    expect(container.querySelector("#stub-action")).toBeNull();
   });
 });
 

@@ -9,6 +9,7 @@ code:
   - packages/studio/src/canvas/edit-width-drag.ts
   - packages/studio/src/editor/shortcuts.ts
   - packages/studio/src/panels/block-action-bar.ts
+  - packages/studio/src/surfaces/block-action-bar.ts
   - packages/studio/src/editor/context-menu.ts
   - packages/studio/src/surfaces/menu.ts
   - packages/studio/src/editor/insert-zone-action.ts
@@ -74,7 +75,7 @@ A small floating toolbar appears above the selected element:
 ![The block action bar floating above a selected paragraph, showing the parent, tag, move, duplicate and formatting controls](../../images/block-action-bar.png)
 
 - A **back arrow** selects the parent element.
-- The **name badge** shows what's selected: the element's type or its name. When the element can become something else (a paragraph into a heading, for example), clicking the badge lists the conversions.
+- The **name badge** shows what's selected: the element's type or its name. When the element can become something else (a paragraph into a heading, for example), clicking the badge lists the conversions. On a component instance or a repeater, where there is nothing to convert to, the badge is greyed rather than gone.
 - Drag the **⠿ drag handle** to move the element somewhere else on the page.
 - **Move up** and **Move down** arrows swap the element with its neighbors.
 - For a component instance, **Edit Component** opens the component itself; for anything else, **Convert to Component** turns the selection into a reusable component.

@@ -898,9 +898,10 @@ describe("every row is addressable by CSS", () => {
       { cases: { a: 1 }, default: null, operator: "switch", target: { $ref: "#/state/count" } },
       { preview },
     );
-    // The chip strip is `ui/formula-chips.ts`'s subtree, and it still hand-writes the badge's
-    // Declarations inline — it now inherits the `.expr-live-badge` rule and overrides it. Its
-    // Inline copy is that module's to delete, so it is not swept here.
+    // The chip strip is this module's own subtree now (`ui/formula-chips.ts` is the model), and it
+    // Still hand-writes the badge's declarations inline. Those go with the strip when this editor
+    // Converts — the Logic dock already draws the same chips from `part` alone — so the subtree is
+    // Lifted out rather than swept.
     container.querySelector(".formula-chips")?.remove();
     expect(inlineStyledOwn(container, await emittedClassesOf(SOURCE))).toEqual([]);
   });
@@ -934,7 +935,7 @@ describe("every row is addressable by CSS", () => {
 
   test("a live value is a badge inside the row it annotates, free to ellipsize", () => {
     const { container } = mount({ operator: "+", target: 2, value: 3 }, { preview });
-    // The chip strip draws badges of its own (ui/formula-chips.ts); these are the editor's rows.
+    // The chip strip draws badges of its own; these are the editor's operand rows.
     const badges = [...container.querySelectorAll(".expr-live-badge")].filter(
       (b) => b.closest(".formula-chips") === null,
     );

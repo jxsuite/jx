@@ -32,7 +32,6 @@ void mock.module("../src/ui/layers.js", () => ({
     el.id = id;
     return el;
   },
-  openModal: () => Promise.resolve(null),
   showConfirmDialog: async () => true,
   showDialog: async () => null,
   showPromptDialog: async () => null,

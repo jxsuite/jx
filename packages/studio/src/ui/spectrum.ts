@@ -68,59 +68,30 @@ import { TableRow } from "@spectrum-web-components/table/src/TableRow.js";
 import { TableCell } from "@spectrum-web-components/table/src/TableCell.js";
 
 // Icons
-import { IconFolder } from "@spectrum-web-components/icons-workflow/src/elements/IconFolder.js";
-import { IconFolderOpen } from "@spectrum-web-components/icons-workflow/src/elements/IconFolderOpen.js";
-import { IconDocument } from "@spectrum-web-components/icons-workflow/src/elements/IconDocument.js";
-import { IconFileCode } from "@spectrum-web-components/icons-workflow/src/elements/IconFileCode.js";
-import { IconFileTxt } from "@spectrum-web-components/icons-workflow/src/elements/IconFileTxt.js";
 import { IconImage } from "@spectrum-web-components/icons-workflow/src/elements/IconImage.js";
 import { IconFileSingleWebPage } from "@spectrum-web-components/icons-workflow/src/elements/IconFileSingleWebPage.js";
-import { IconRefresh } from "@spectrum-web-components/icons-workflow/src/elements/IconRefresh.js";
-import { IconAdd } from "@spectrum-web-components/icons-workflow/src/elements/IconAdd.js";
 import { IconUpload } from "@spectrum-web-components/icons-workflow/src/elements/IconUpload.js";
 import { IconBrackets } from "@spectrum-web-components/icons-workflow/src/elements/IconBrackets.js";
-import { IconData } from "@spectrum-web-components/icons-workflow/src/elements/IconData.js";
 import { IconChevronDown } from "@spectrum-web-components/icons-workflow/src/elements/IconChevronDown.js";
 import { IconChevronUp } from "@spectrum-web-components/icons-workflow/src/elements/IconChevronUp.js";
 import { IconDelete } from "@spectrum-web-components/icons-workflow/src/elements/IconDelete.js";
-import { IconClose } from "@spectrum-web-components/icons-workflow/src/elements/IconClose.js";
-import { IconChevronRight } from "@spectrum-web-components/icons-workflow/src/elements/IconChevronRight.js";
-import { IconEdit } from "@spectrum-web-components/icons-workflow/src/elements/IconEdit.js";
-import { IconDuplicate } from "@spectrum-web-components/icons-workflow/src/elements/IconDuplicate.js";
 import { IconCopy } from "@spectrum-web-components/icons-workflow/src/elements/IconCopy.js";
-import { IconExport } from "@spectrum-web-components/icons-workflow/src/elements/IconExport.js";
 import { IconPreview } from "@spectrum-web-components/icons-workflow/src/elements/IconPreview.js";
-import { IconCode } from "@spectrum-web-components/icons-workflow/src/elements/IconCode.js";
 import { IconBrush } from "@spectrum-web-components/icons-workflow/src/elements/IconBrush.js";
 import { IconInfo } from "@spectrum-web-components/icons-workflow/src/elements/IconInfo.js";
-import { IconBack } from "@spectrum-web-components/icons-workflow/src/elements/IconBack.js";
 import { IconProperties } from "@spectrum-web-components/icons-workflow/src/elements/IconProperties.js";
-import { IconMore } from "@spectrum-web-components/icons-workflow/src/elements/IconMore.js";
 
 // Layout / alignment icons
-import { IconArrowRight } from "@spectrum-web-components/icons-workflow/src/elements/IconArrowRight.js";
-import { IconArrowLeft } from "@spectrum-web-components/icons-workflow/src/elements/IconArrowLeft.js";
-import { IconArrowDown } from "@spectrum-web-components/icons-workflow/src/elements/IconArrowDown.js";
-import { IconArrowUp } from "@spectrum-web-components/icons-workflow/src/elements/IconArrowUp.js";
 import { IconDistributeSpaceVert } from "@spectrum-web-components/icons-workflow/src/elements/IconDistributeSpaceVert.js";
 import { IconDistributeBottomEdge } from "@spectrum-web-components/icons-workflow/src/elements/IconDistributeBottomEdge.js";
 import { IconDistributeTopEdge } from "@spectrum-web-components/icons-workflow/src/elements/IconDistributeTopEdge.js";
 import { IconFullScreen } from "@spectrum-web-components/icons-workflow/src/elements/IconFullScreen.js";
-import { IconBox } from "@spectrum-web-components/icons-workflow/src/elements/IconBox.js";
 import { IconVisibility } from "@spectrum-web-components/icons-workflow/src/elements/IconVisibility.js";
-import { IconVisibilityOff } from "@spectrum-web-components/icons-workflow/src/elements/IconVisibilityOff.js";
 import { IconArtboard } from "@spectrum-web-components/icons-workflow/src/elements/IconArtboard.js";
 import { IconChat } from "@spectrum-web-components/icons-workflow/src/elements/IconChat.js";
 import { IconViewList } from "@spectrum-web-components/icons-workflow/src/elements/IconViewList.js";
 
 // Inline formatting icons
-import { IconTextBold } from "@spectrum-web-components/icons-workflow/src/elements/IconTextBold.js";
-import { IconTextItalic } from "@spectrum-web-components/icons-workflow/src/elements/IconTextItalic.js";
-import { IconTextUnderline } from "@spectrum-web-components/icons-workflow/src/elements/IconTextUnderline.js";
-import { IconTextStrikethrough } from "@spectrum-web-components/icons-workflow/src/elements/IconTextStrikethrough.js";
-import { IconTextSuperscript } from "@spectrum-web-components/icons-workflow/src/elements/IconTextSuperscript.js";
-import { IconTextSubscript } from "@spectrum-web-components/icons-workflow/src/elements/IconTextSubscript.js";
-import { IconLink } from "@spectrum-web-components/icons-workflow/src/elements/IconLink.js";
 import { IconCheckmark } from "@spectrum-web-components/icons-workflow/src/elements/IconCheckmark.js";
 
 // Custom studio components
@@ -179,56 +150,27 @@ const components = [
   ["sp-table-body", TableBody],
   ["sp-table-row", TableRow],
   ["sp-table-cell", TableCell],
-  ["sp-icon-folder", IconFolder],
-  ["sp-icon-folder-open", IconFolderOpen],
-  ["sp-icon-document", IconDocument],
-  ["sp-icon-file-code", IconFileCode],
-  ["sp-icon-file-txt", IconFileTxt],
   ["sp-icon-image", IconImage],
   ["sp-icon-file-single-web-page", IconFileSingleWebPage],
-  ["sp-icon-refresh", IconRefresh],
-  ["sp-icon-add", IconAdd],
   ["sp-icon-upload", IconUpload],
   ["sp-icon-brackets", IconBrackets],
-  ["sp-icon-data", IconData],
   ["sp-icon-chevron-down", IconChevronDown],
   ["sp-icon-chevron-up", IconChevronUp],
-  ["sp-icon-chevron-right", IconChevronRight],
   ["sp-icon-delete", IconDelete],
-  ["sp-icon-close", IconClose],
-  ["sp-icon-edit", IconEdit],
-  ["sp-icon-duplicate", IconDuplicate],
   ["sp-icon-copy", IconCopy],
-  ["sp-icon-export", IconExport],
   ["sp-icon-preview", IconPreview],
-  ["sp-icon-code", IconCode],
   ["sp-icon-brush", IconBrush],
   ["sp-icon-info", IconInfo],
-  ["sp-icon-back", IconBack],
   ["sp-icon-properties", IconProperties],
-  ["sp-icon-more", IconMore],
-  ["sp-icon-arrow-right", IconArrowRight],
-  ["sp-icon-arrow-left", IconArrowLeft],
-  ["sp-icon-arrow-down", IconArrowDown],
-  ["sp-icon-arrow-up", IconArrowUp],
   ["sp-icon-distribute-space-vert", IconDistributeSpaceVert],
   ["sp-icon-distribute-bottom-edge", IconDistributeBottomEdge],
   ["sp-icon-distribute-top-edge", IconDistributeTopEdge],
   ["sp-icon-full-screen", IconFullScreen],
   ["sp-icon-checkmark", IconCheckmark],
-  ["sp-icon-box", IconBox],
   ["sp-icon-visibility", IconVisibility],
-  ["sp-icon-visibility-off", IconVisibilityOff],
   ["sp-icon-artboard", IconArtboard],
   ["sp-icon-chat", IconChat],
   ["sp-icon-view-list", IconViewList],
-  ["sp-icon-text-bold", IconTextBold],
-  ["sp-icon-text-italic", IconTextItalic],
-  ["sp-icon-text-underline", IconTextUnderline],
-  ["sp-icon-text-strikethrough", IconTextStrikethrough],
-  ["sp-icon-text-superscript", IconTextSuperscript],
-  ["sp-icon-text-subscript", IconTextSubscript],
-  ["sp-icon-link", IconLink],
   // UI icons (internal component chrome)
   ["sp-icon-chevron100", IconChevron100],
   // Custom studio components

@@ -1,43 +1,23 @@
-import { flush, installMockPlatform, resetStudioState } from "./harness";
-import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { html, render } from "lit-html";
+/**
+ * The grid's cell value picker — `grid/cell-popovers.ts` over `surfaces/grid-cell.json`.
+ *
+ * Two kinds edit this way rather than in the cell: an image and a relationship both pick from a
+ * list that is bigger than a cell, and Tabulator's range module blur-cancels an editor session the
+ * moment the pointer leaves it. The panel is a document, so a row is `[part]`; the media picker
+ * inside it is still a lit surface, and it arrives through the document's island seam — which is
+ * what `[part="picker-host"]` is, and what this file checks is actually filled.
+ */
+import { flush, installMockPlatform, mountOverlayLayers, resetStudioState } from "./harness";
+import { beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { html } from "lit-html";
+import { initLayers } from "../src/ui/layers";
 import type { GridColumn } from "../src/grid/grid-source";
-import type { TemplateResult } from "lit-html";
-
-// Capture popovers into a live host instead of the layer system.
-const popoverHosts: HTMLElement[] = [];
-let dismissed = 0;
-void mock.module("../src/ui/layers.js", () => ({
-  /* Converted surfaces mount themselves into a layer, so they import `layerHost` from
-     here — a mock without it fails the whole file at import time. */
-  layerHost: () => document.body,
-  clearLayerSlot: () => {},
-  getLayerSlot: () => document.createElement("div"),
-  initLayers: () => {},
-  openModal: () => ({ close: () => {}, update: () => {} }),
-  // The media picker asks which layer its anchor sits in; these fields are in a panel.
-  popoverLayerFor: () => "popover",
-  renderPopover: (template: TemplateResult) => {
-    const host = document.createElement("div");
-    document.body.append(host);
-    render(template, host);
-    popoverHosts.push(host);
-    return {
-      dismiss: () => {
-        dismissed += 1;
-        host.remove();
-      },
-    };
-  },
-  showConfirmDialog: async () => true,
-  showDialog: async () => null,
-}));
 
 // The real media picker drags in caches/timers — a stub input keeps the contract observable.
 void mock.module("../src/ui/media-picker.js", () => ({
   renderMediaPicker: (_prop: string, value: string, onCommit: (val: string) => void) =>
     html`<input
-      class="fake-media-input"
+      data-testid="media"
       .value=${value}
       @change=${(e: Event) => onCommit((e.target as HTMLInputElement).value)}
     />`,
@@ -46,6 +26,11 @@ void mock.module("../src/ui/media-picker.js", () => ({
 const { hasPopoverEditor, openCellValuePopover, referenceTargetType } =
   await import("../src/grid/cell-popovers");
 const { setFormats } = await import("../src/format/format-host");
+
+beforeAll(() => {
+  mountOverlayLayers();
+  initLayers();
+});
 
 const MD_FORMAT = {
   capabilities: { parse: { identifier: "parse", timing: [] } },
@@ -66,11 +51,20 @@ const col = (kind: GridColumn["kind"], schema?: GridColumn["schema"]): GridColum
   ...(schema ? { schema } : {}),
 });
 
+/** The open panel, in the popover layer where every overlay of its kind lives. */
+const panel = () => document.querySelector<HTMLElement>('#layer-popover [part="cell-panel"]');
+
+function part(root: ParentNode, name: string): HTMLElement | null {
+  return root.querySelector<HTMLElement>(`[part="${name}"]`);
+}
+
 beforeEach(() => {
   resetStudioState();
   setFormats([MD_FORMAT]);
-  popoverHosts.length = 0;
-  dismissed = 0;
+  /* Empty the whole layer rather than the panel inside it: a named slot is reused while it is still
+     parented, so leaving an orphaned one behind hands the next mount a container the previous
+     surface still believes it owns. */
+  document.querySelector("#layer-popover")?.replaceChildren();
 });
 
 describe("popover editor selection", () => {
@@ -91,7 +85,7 @@ describe("popover editor selection", () => {
 });
 
 describe("openCellValuePopover — reference", () => {
-  test("lists target-collection entry ids and commits picks (— clears)", async () => {
+  test("lists target-collection entry ids, names the target, and commits picks", async () => {
     installMockPlatform(
       {},
       {
@@ -112,24 +106,33 @@ describe("openCellValuePopover — reference", () => {
       commit: (v) => commits.push(v),
       value: "jane",
     });
-    await flush();
+    await flush(3);
 
-    const host = popoverHosts.at(-1)!;
-    const select = host.querySelector("select")!;
-    const options = [...select.querySelectorAll("option")].map((o) => o.value);
-    expect(options).toEqual(["", "jane", "mark"]);
-    expect((select.querySelector('option[value="jane"]') as HTMLOptionElement).selected).toBeTrue();
+    const box = panel()!;
+    expect(box).not.toBeNull();
+    // The panel says WHICH collection it is listing; "an id" with no target is unreadable.
+    expect(part(box, "hint")?.textContent).toContain("Entries of “authors”");
+    const select = box.querySelector("select")!;
+    expect([...select.querySelectorAll("option")].map((o) => o.value)).toEqual([
+      "",
+      "jane",
+      "mark",
+    ]);
+    expect(select.value).toBe("jane");
+    // A listed value belongs in the list, not duplicated into the free-text field beside it.
+    expect(box.querySelector<HTMLInputElement>('[part="custom"] input')!.value).toBe("");
 
     select.value = "mark";
     select.dispatchEvent(new Event("change", { bubbles: true }));
     expect(commits).toEqual(["mark"]);
 
+    // The em-dash row is how a reference is cleared, and cleared means null rather than "".
     select.value = "";
     select.dispatchEvent(new Event("change", { bubbles: true }));
     expect(commits).toEqual(["mark", null]);
   });
 
-  test("custom-id input commits free text; Done dismisses", async () => {
+  test("an id the collection does not hold survives in the free-text field", async () => {
     installMockPlatform();
     resetStudioState({ projectConfig: { content: {} } });
     const commits: unknown[] = [];
@@ -137,23 +140,40 @@ describe("openCellValuePopover — reference", () => {
       anchor: { bottom: 0, left: 0 },
       column: col("reference"),
       commit: (v) => commits.push(v),
-      value: null,
+      value: "elsewhere",
     });
-    await flush();
+    await flush(3);
 
-    const host = popoverHosts.at(-1)!;
-    const input = host.querySelector("input.jx-grid-input") as HTMLInputElement;
+    const box = panel()!;
+    // No target type to name, so no hint is drawn at all.
+    expect(part(box, "hint")).toBeNull();
+    const input = box.querySelector<HTMLInputElement>('[part="custom"] input')!;
+    expect(input.value).toBe("elsewhere");
+
     input.value = "  custom-entry ";
     input.dispatchEvent(new Event("change", { bubbles: true }));
     expect(commits).toEqual(["custom-entry"]);
+  });
 
-    (host.querySelector("sp-button") as HTMLElement).click();
-    expect(dismissed).toBe(1);
+  test("Done takes the panel down", async () => {
+    installMockPlatform();
+    resetStudioState({ projectConfig: { content: {} } });
+    await openCellValuePopover({
+      anchor: { bottom: 0, left: 0 },
+      column: col("reference"),
+      commit: () => {},
+      value: null,
+    });
+    await flush(3);
+    const box = panel()!;
+    (part(box, "done")!.querySelector('[part="control"]') as HTMLElement).click();
+    await flush(3);
+    expect(panel()).toBeNull();
   });
 });
 
 describe("openCellValuePopover — image", () => {
-  test("renders the media picker with the current path and commits changes (empty clears)", async () => {
+  test("the media picker is mounted into the island the document drew", async () => {
     installMockPlatform();
     const commits: unknown[] = [];
     await openCellValuePopover({
@@ -162,11 +182,16 @@ describe("openCellValuePopover — image", () => {
       commit: (v) => commits.push(v),
       value: "/img/a.png",
     });
-    await flush();
+    await flush(3);
 
-    const host = popoverHosts.at(-1)!;
-    const input = host.querySelector(".fake-media-input") as HTMLInputElement;
+    const box = panel()!;
+    // The document draws the box; the caller fills it. Neither knows the other's markup.
+    const host = part(box, "picker-host")!;
+    expect(host).not.toBeNull();
+    expect(part(box, "custom")).toBeNull();
+    const input = host.querySelector<HTMLInputElement>('[data-testid="media"]')!;
     expect(input.value).toBe("/img/a.png");
+
     input.value = "/img/b.png";
     input.dispatchEvent(new Event("change", { bubbles: true }));
     input.value = "";

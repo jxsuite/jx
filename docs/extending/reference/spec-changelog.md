@@ -484,6 +484,9 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `studio-ui-guidelines.md`
 
+- **0.5.0-draft** (2026-09-10) — openModal and the hand-rolled Tab trap are deleted with their last caller; a persistent modal is a jx-dialog surface document (§8.7).
+- **0.4.21-draft** (2026-09-10) — The dock tab strips carry real tab semantics; the pane strip waits on a slot in jx-tab (gap:apg-coverage).
+- **0.4.20-draft** (2026-09-10) — The Files tree's per-row menu is the kit menu: the tree's own verbs and the declared context/file records in one list, and the hand-written viewport clamp gone with the sp-popover.
 - **0.4.19-draft** (2026-09-09) — The migrated-surface list is the src/surfaces directory rather than an enumeration in the prose (§9.3).
 - **0.4.18-draft** (2026-09-09) — the About dialog is a document: the pattern a converted surface follows, and the readiness trap it hit.
 - **0.4.17-draft** (2026-09-09) — the shell frame is a Jx document, and mounting it is asynchronous because initShellRefs reads its cells on the next line.
@@ -663,6 +666,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `ui.md`
 
+- **0.1.19-draft** (2026-09-10) — The Studio facade list drops openModal: a persistent modal is a jx-dialog surface document (§6).
 - **0.1.18-draft** (2026-09-08) — jx-select: the default slot and its once-at-mount distribution, the slotted hr separator, and the property-only rows.
 - **0.1.17-draft** (2026-09-04) — jx-select is a native select under appearance: base-select — the four things a document must never author, the sidecar that keeps selectedness alive, and why the kit ships no jx-option.
 - **0.1.16-draft** (2026-09-04) — the theme layer is an authored key, so themeCSS writes no CSS text and agrees with the site builder about the same block (4.2).

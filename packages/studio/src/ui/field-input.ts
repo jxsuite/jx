@@ -12,8 +12,9 @@
  * normalized) document value again.
  *
  * The controls themselves are Jx documents, which read and write this layer through the panel that
- * draws them; pair it with the focus-aware panel scheduler (panels/panel-scheduler.ts), which keeps
- * the panel from re-rendering at all while a field is focused.
+ * draws them; the dock around them no longer repaints on every keystroke (its chrome is a Jx
+ * document, and a binding whose value did not move writes nothing), which is what keeps the panel
+ * from re-rendering at all while a field is focused.
  */
 
 interface DraftEntry {

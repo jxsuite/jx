@@ -1,6 +1,6 @@
 /**
- * Ui/layers — showDialog/showConfirmDialog resolution, openModal handle, renderPopover dismissal
- * (outside click, layer targeting), and named layer slots.
+ * Ui/layers — showDialog/showConfirmDialog resolution, renderPopover dismissal (outside click,
+ * layer targeting), and named layer slots.
  */
 import { flush, mountOverlayLayers } from "./harness";
 import { beforeAll, describe, expect, test } from "bun:test";
@@ -10,7 +10,6 @@ import {
   getLayerSlot,
   initLayers,
   isModalOpen,
-  openModal,
   renderPopover,
   showConfirmDialog,
   showDialog,
@@ -166,15 +165,22 @@ describe("layers after init", () => {
       expect(layer("dialog").children).toHaveLength(0);
     });
 
-    test("Escape in a bespoke body with no wrapper is left to the body", async () => {
+    test("Escape in a bespoke body with no wrapper is left to the body, and not swallowed", async () => {
       let doneFn: ((v: string) => void) | null = null;
       const promise = showDialog<string>((done) => {
         doneFn = done;
         return html`<div id="bespoke">no wrapper here</div>`;
       });
       const body = layer("dialog").querySelector("#bespoke") as HTMLElement;
-      body.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Escape" }));
+      const event = new KeyboardEvent("keydown", {
+        bubbles: true,
+        cancelable: true,
+        key: "Escape",
+      });
+      body.dispatchEvent(event);
       expect(layer("dialog").querySelector("#bespoke")).not.toBeNull();
+      // A slot that will not answer the key must not eat it either — the body still gets its turn.
+      expect(event.defaultPrevented).toBe(false);
       doneFn!("still here");
       expect(await promise).toBe("still here");
     });
@@ -195,21 +201,27 @@ describe("layers after init", () => {
       expect(isModalOpen()).toBe(false);
     });
 
-    test("true for an openModal body that paints its own underlay", () => {
-      const handle = openModal(
-        html`<sp-underlay open></sp-underlay>
-          <div>settings</div>`,
-        { label: "Settings" },
-      );
+    test("true for a jx-dialog surface open in the MODAL layer", () => {
+      /* The modal layer is read beside the dialog layer for the two surfaces that live in it —
+         `surfaces/progress-modal.ts` and `surfaces/publish.ts`, both `jx-dialog`s. `data-open` is
+         how the element mirrors the platform's own toggle (`jx-dialog.json`), so the predicate asks
+         the DOM what is covering the app rather than keeping a count. */
+      const slot = document.createElement("div");
+      const dialog = document.createElement("jx-dialog");
+      dialog.dataset.open = "";
+      slot.append(dialog);
+      layer("modal").append(slot);
       expect(isModalOpen()).toBe(true);
-      handle.close();
+      slot.remove();
       expect(isModalOpen()).toBe(false);
     });
 
     test("false for a modal-layer body with no underlay (the mouse still gets through)", () => {
-      const handle = openModal(html`<div class="progress">working…</div>`, { label: "Working" });
+      const slot = document.createElement("div");
+      slot.append(document.createElement("jx-dialog"));
+      layer("modal").append(slot);
       expect(isModalOpen()).toBe(false);
-      handle.close();
+      slot.remove();
     });
   });
 
@@ -349,6 +361,34 @@ describe("layers after init", () => {
       expect(await promise).toBe("seed");
     });
 
+    /* A paste box is this same flow with a taller field, not a second dialog (§12.5) — which is
+       what the redirects import needed. Two things have to change together for that to be usable:
+       the control becomes a `<textarea>`, and Enter stops confirming, because Enter on the second
+       line of a pasted `_redirects` file would submit the dialog mid-paste. */
+    test("a multiline prompt is a textarea, and Enter in it is a newline rather than a confirm", async () => {
+      const promise = showPromptDialog("Paste", { multiline: true, mono: true, rows: "10" });
+      const host = await dialog();
+      const box = host.querySelector("jx-textfield textarea") as HTMLTextAreaElement;
+      expect(box).not.toBeNull();
+      expect(host.querySelector('jx-textfield [part="input"]')?.tagName).toBe("TEXTAREA");
+
+      box.value = "/old  /new  301";
+      box.dispatchEvent(new Event("input", { bubbles: true }));
+      box.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }));
+      await flush();
+      expect(layer("dialog").querySelector("jx-dialog")).not.toBeNull();
+
+      host.dispatchEvent(new Event("confirm"));
+      expect(await promise).toBe("/old  /new  301");
+    });
+
+    test("a single-line prompt still confirms on Enter", async () => {
+      const promise = showPromptDialog("Name", { value: "seed" });
+      await dialog();
+      field().dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }));
+      expect(await promise).toBe("seed");
+    });
+
     test("a blank value blocks confirm and shows the default help text", async () => {
       const promise = showPromptDialog("D");
       const host = await dialog();
@@ -478,143 +518,14 @@ describe("layers after init", () => {
     });
   });
 
-  // ─── The keyboard contract the wrapper owns, not the body ──────────────────
+  // ─── The keyboard contract the slot owns, not the body ─────────────────────
 
-  /** The slot `openModal` created, which is the element the overlay contract listens on. */
-  function modalSlot(): HTMLElement {
-    return layer("modal").querySelector("[role='dialog']") as HTMLElement;
-  }
-
+  /** Dispatch a keydown on an overlay slot and hand back the event, to read what it did with it. */
   function key(slot: HTMLElement, init: KeyboardEventInit): KeyboardEvent {
     const event = new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init });
     slot.dispatchEvent(event);
     return event;
   }
-
-  describe("the Tab trap", () => {
-    test("cycles the body's focusables, and wraps at both ends", () => {
-      const handle = openModal(html`<button id="one">one</button><button id="two">two</button>`, {
-        label: "Trapped",
-      });
-      const slot = modalSlot();
-      const one = slot.querySelector<HTMLElement>("#one")!;
-      const two = slot.querySelector<HTMLElement>("#two")!;
-
-      one.focus();
-      // The trap answers Tab itself, so the browser's own walk never runs.
-      expect(key(slot, { key: "Tab" }).defaultPrevented).toBe(true);
-      expect(document.activeElement).toBe(two);
-      // Past the last one it wraps to the first, rather than walking into the app behind.
-      key(slot, { key: "Tab" });
-      expect(document.activeElement).toBe(one);
-      // Shift+Tab goes the other way, and wraps at the front for the same reason.
-      key(slot, { key: "Tab", shiftKey: true });
-      expect(document.activeElement).toBe(two);
-      handle.close();
-    });
-
-    test("Tab with focus outside the body enters it — at the top, or at the bottom going back", () => {
-      const handle = openModal(html`<button id="a">a</button><button id="b">b</button>`, {
-        label: "Entering",
-      });
-      const slot = modalSlot();
-      const outside = document.createElement("button");
-      document.body.append(outside);
-
-      outside.focus();
-      key(slot, { key: "Tab" });
-      expect((document.activeElement as HTMLElement).id).toBe("a");
-      outside.focus();
-      key(slot, { key: "Tab", shiftKey: true });
-      expect((document.activeElement as HTMLElement).id).toBe("b");
-
-      outside.remove();
-      handle.close();
-    });
-
-    test("a disabled control is not a stop on the cycle", () => {
-      const handle = openModal(
-        html`<button id="live">live</button><button id="dead" disabled>dead</button>`,
-        { label: "Disabled" },
-      );
-      const slot = modalSlot();
-      slot.querySelector<HTMLElement>("#live")!.focus();
-      key(slot, { key: "Tab" });
-      // One focusable means the cycle is a fixed point; landing on `dead` would be a dead end.
-      expect((document.activeElement as HTMLElement).id).toBe("live");
-      handle.close();
-    });
-
-    test("a body with nothing focusable keeps the caret where it is", () => {
-      /* Not "let Tab through": tabbing out of a surface the mouse cannot leave either would strand
-         the keyboard behind the underlay. */
-      const handle = openModal(html`<p>working…</p>`, { label: "Static" });
-      const slot = modalSlot();
-      const before = document.activeElement;
-      expect(key(slot, { key: "Tab" }).defaultPrevented).toBe(true);
-      expect(document.activeElement).toBe(before);
-      handle.close();
-    });
-
-    test("a key that is neither Escape nor Tab is left entirely alone", () => {
-      const handle = openModal(html`<button id="only">only</button>`, { label: "Passthrough" });
-      const slot = modalSlot();
-      slot.querySelector<HTMLElement>("#only")!.focus();
-      const event = key(slot, { key: "a" });
-      expect(event.defaultPrevented).toBe(false);
-      expect((document.activeElement as HTMLElement).id).toBe("only");
-      handle.close();
-    });
-  });
-
-  describe("Escape in a modal", () => {
-    test("dismisses it, and does not also reach the app behind", () => {
-      const reachedApp: Event[] = [];
-      const listener = (e: Event) => {
-        reachedApp.push(e);
-      };
-      document.body.addEventListener("keydown", listener);
-      const handle = openModal(html`<div id="dismissable">settings</div>`, { label: "Settings" });
-      const event = key(modalSlot(), { key: "Escape" });
-      document.body.removeEventListener("keydown", listener);
-
-      expect(layer("modal").querySelector("#dismissable")).toBeNull();
-      /* Both halves matter: `preventDefault` so the platform does nothing else with the key, and
-         `stopPropagation` so the app's own Escape — which clears the canvas selection — never sees
-         the keystroke that closed the surface sitting on top of it. */
-      expect(event.defaultPrevented).toBe(true);
-      expect(reachedApp).toEqual([]);
-      handle.close();
-    });
-
-    test("runs the caller's onDismiss INSTEAD of close, for a modal with bookkeeping of its own", () => {
-      const dismissed: number[] = [];
-      const handle = openModal(html`<div id="held">busy</div>`, {
-        label: "Held",
-        onDismiss: () => {
-          dismissed.push(1);
-        },
-      });
-      key(modalSlot(), { key: "Escape" });
-      expect(dismissed).toEqual([1]);
-      // The hook REPLACES close(), so the surface is still up until the caller takes it down.
-      expect(layer("modal").querySelector("#held")).not.toBeNull();
-      handle.close();
-      expect(layer("modal").querySelector("#held")).toBeNull();
-    });
-
-    test("is ignored — and not swallowed — by a modal that declares itself undismissable", () => {
-      const handle = openModal(html`<div id="running">running…</div>`, {
-        dismissible: false,
-        label: "Running",
-      });
-      const event = key(modalSlot(), { key: "Escape" });
-      expect(layer("modal").querySelector("#running")).not.toBeNull();
-      // A modal that will not answer the key must not eat it either.
-      expect(event.defaultPrevented).toBe(false);
-      handle.close();
-    });
-  });
 
   describe("Escape in a showDialog body that HAS a wrapper", () => {
     test("fires the wrapper's own close, and stops there", async () => {
@@ -643,6 +554,50 @@ describe("layers after init", () => {
       expect(layer("dialog").querySelector("sp-dialog-wrapper")).toBeNull();
       expect(event.defaultPrevented).toBe(true);
       expect(reachedApp).toEqual([]);
+    });
+
+    test("the body's `@close` DECIDES: one that does not resolve keeps the dialog up", async () => {
+      /* Escape is translated into the wrapper's `close`; it is not a close. A body with bookkeeping
+         of its own — a flow mid-step, a running operation — answers the event and stays up, and
+         nothing takes the surface down until its own `done()` runs. */
+      const dismissed: number[] = [];
+      let doneFn: ((v: string) => void) | null = null;
+      const promise = showDialog<string>((done) => {
+        doneFn = done;
+        return html`<sp-dialog-wrapper
+          headline="Held"
+          @close=${() => {
+            dismissed.push(1);
+          }}
+        >
+          <p id="held">busy</p>
+        </sp-dialog-wrapper>`;
+      });
+      const slot = layer("dialog").querySelector("[role='dialog']") as HTMLElement;
+      key(slot, { key: "Escape" });
+      expect(dismissed).toEqual([1]);
+      expect(layer("dialog").querySelector("#held")).not.toBeNull();
+
+      doneFn!("closed by the body");
+      expect(await promise).toBe("closed by the body");
+      expect(layer("dialog").querySelector("#held")).toBeNull();
+    });
+  });
+
+  describe("a key the slot does not answer", () => {
+    test("is left entirely alone", async () => {
+      let doneFn: ((v: string) => void) | null = null;
+      const promise = showDialog<string>((done) => {
+        doneFn = done;
+        return html`<button id="only">only</button>`;
+      });
+      const slot = layer("dialog").querySelector("[role='dialog']") as HTMLElement;
+      slot.querySelector<HTMLElement>("#only")!.focus();
+      const event = key(slot, { key: "a" });
+      expect(event.defaultPrevented).toBe(false);
+      expect((document.activeElement as HTMLElement).id).toBe("only");
+      doneFn!("x");
+      await promise;
     });
   });
 

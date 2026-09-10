@@ -1,0 +1,706 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioGridPanel",
+  "$description": "The spreadsheet grid's frame: the toolbar, the row count, and the empty box Tabulator is handed. **The engine is an island and stays one** (studio-ui-guidelines.md §9.4): `[part=\"host\"]` is drawn empty and `grid/grid-panel.ts` attaches Tabulator into it through `onNodeCreated`, so nothing here knows what a column or a range is. What converted is the CHROME — every control in the toolbar, and the two popovers and the cell editor that hang off it, each its own document. The host node's identity across a repaint used to be guaranteed by a lit `guard()` and is now guaranteed by construction: a document reconciles its tree in place, so a Save-badge tick cannot destroy the node Tabulator owns.",
+  "tagName": "div",
+  "attributes": {
+    "part": "grid"
+  },
+  "style": {
+    "$description": "The frame's own layout and the engine's theme, and nothing that was a class. The toolbar is a single row that never wraps: the chrome budget (§12.2) caps what may stand in it, and the count is the only thing pinned to the far end.",
+    "display": "flex",
+    "flexDirection": "column",
+    "height": "100%",
+    "minHeight": "0",
+    "background": "var(--bg)",
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "color": "var(--fg)",
+    "& [part=\"toolbar\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-2)",
+      "padding": "6px var(--jx-space-3)",
+      "borderBottom": "1px solid var(--border)",
+      "background": "var(--bg-panel)",
+      "flexShrink": "0"
+    },
+    "& [part=\"filter\"]": {
+      "width": "200px",
+      "flex": "0 0 auto"
+    },
+    "& [part=\"spacer\"]": {
+      "flex": "1"
+    },
+    "& [part=\"note\"]": {
+      "$description": "A fact about the grid that the rows themselves cannot show — the grouping in force, or that saving will rewrite frontmatter. `cursor: help` because the whole of it is in the tooltip.",
+      "fontSize": "var(--jx-text-xs)",
+      "color": "var(--fg-dim)",
+      "border": "1px solid var(--border)",
+      "borderRadius": "var(--radius)",
+      "padding": "1px 6px",
+      "cursor": "help",
+      "whiteSpace": "nowrap"
+    },
+    "& [part=\"pager\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-2)"
+    },
+    "& [part=\"count\"]": {
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--fg-dim)",
+      "whiteSpace": "nowrap"
+    },
+    "& [part=\"views\"]": {
+      "$description": "The applied view's name, which an author may have made long. It ellipses rather than pushing the count off the end, and the `hint` carries the whole of it.",
+      "maxWidth": "160px",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap"
+    },
+    "& [part=\"host\"]": {
+      "flex": "1",
+      "minHeight": "0"
+    },
+    "& [part=\"missing\"]": {
+      "margin": "0",
+      "padding": "var(--jx-space-6)",
+      "color": "var(--fg-dim)"
+    },
+    "& .tabulator": {
+      "$description": "Tabulator's own DOM, styled from inside the document. The engine is an ISLAND (studio-ui-guidelines.md §9.4): it builds this subtree itself, so its own class names are the only hook there is — the document emits none of them. These rules were `.jx-grid .tabulator …` in styles/overlays.css and are dead there now, because the frame that carried `.jx-grid` is this document and it carries no class at all.",
+      "background": "var(--bg)",
+      "color": "var(--fg)",
+      "border": "none",
+      "fontSize": "var(--jx-text-sm)",
+      "height": "100%"
+    },
+    "& .tabulator .tabulator-header": {
+      "background": "var(--bg-panel)",
+      "color": "var(--fg)",
+      "borderBottom": "1px solid var(--border)"
+    },
+    "& .tabulator .tabulator-header .tabulator-col": {
+      "background": "var(--bg-panel)",
+      "borderRight": "1px solid var(--border)"
+    },
+    "& .tabulator .tabulator-header .tabulator-col .tabulator-col-title": {
+      "color": "var(--fg)",
+      "fontWeight": "600"
+    },
+    "& .tabulator .tabulator-header .tabulator-header-filter input": {
+      "background": "var(--bg)",
+      "color": "var(--fg)",
+      "border": "1px solid var(--border)",
+      "borderRadius": "var(--jx-radius-sm)",
+      "padding": "1px 4px",
+      "font": "inherit"
+    },
+    "& .tabulator .tabulator-tableholder": {
+      "background": "var(--bg)"
+    },
+    "& .tabulator .tabulator-row": {
+      "background": "var(--bg)",
+      "color": "var(--fg)",
+      "borderBottom": "1px solid color-mix(in srgb, var(--border) 55%, transparent)",
+      "minHeight": "26px"
+    },
+    "& .tabulator .tabulator-row.tabulator-row-even": {
+      "background": "color-mix(in srgb, var(--bg-panel) 45%, var(--bg))"
+    },
+    "& .tabulator .tabulator-row.tabulator-selected": {
+      "background": "color-mix(in srgb, var(--accent) 16%, var(--bg))"
+    },
+    "& .tabulator .tabulator-row .tabulator-cell": {
+      "borderRight": "1px solid color-mix(in srgb, var(--border) 55%, transparent)",
+      "padding": "3px 8px"
+    },
+    "& .tabulator .tabulator-row .tabulator-cell.tabulator-frozen": {
+      "background": "var(--bg-panel)",
+      "borderRight": "1px solid var(--border)"
+    },
+    "& .tabulator .tabulator-range": {
+      "border": "1px solid var(--accent)",
+      "background": "color-mix(in srgb, var(--accent) 10%, transparent)"
+    },
+    "& .tabulator .tabulator-range-overlay .tabulator-range-cell-active": {
+      "border": "2px solid var(--accent)"
+    },
+    "& .tabulator .tabulator-placeholder .tabulator-placeholder-contents": {
+      "color": "var(--fg-dim)",
+      "background": "transparent"
+    },
+    "& .tabulator-cell.jx-grid-cell--dirty": {
+      "$description": "The edit buffer's paint. `grid-view.ts` toggles these names on Tabulator's cells and rows, which is the island writing to its own DOM; the document only says what they look like.",
+      "boxShadow": "inset 2px 0 0 var(--accent)",
+      "background": "color-mix(in srgb, var(--accent) 8%, transparent)"
+    },
+    "& .tabulator-cell.jx-grid-cell--error": {
+      "boxShadow": "inset 2px 0 0 var(--danger)",
+      "background": "color-mix(in srgb, var(--danger) 12%, transparent)"
+    },
+    "& .tabulator-cell.jx-grid-cell--stale": {
+      "opacity": "0.65"
+    },
+    "& .tabulator-row.jx-grid-row--pending-delete .tabulator-cell": {
+      "textDecoration": "line-through",
+      "opacity": "0.55"
+    },
+    "& .tabulator-row.jx-grid-row--pending-insert": {
+      "background": "color-mix(in srgb, var(--success, var(--accent)) 10%, var(--bg))"
+    },
+    "& .tabulator-row.jx-grid-row--stale": {
+      "outline": "1px dashed var(--fg-dim)",
+      "outlineOffset": "-1px"
+    },
+    "& [part=\"load-error\"]": {
+      "color": "var(--danger)"
+    }
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "view-slot",
+        "role": "none"
+      },
+      "style": {
+        "display": "contents"
+      },
+      "$switch": {
+        "$ref": "#/state/view"
+      },
+      "cases": {
+        "missing": {
+          "tagName": "p",
+          "attributes": {
+            "part": "missing",
+            "data-view": "missing"
+          },
+          "textContent": "This tab has no grid source."
+        },
+        "grid": {
+          "tagName": "div",
+          "attributes": {
+            "part": "frame",
+            "role": "none"
+          },
+          "style": {
+            "display": "contents"
+          },
+          "children": [
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "toolbar",
+                "role": "toolbar",
+                "aria-label": "Grid actions"
+              },
+              "children": [
+                {
+                  "tagName": "jx-button",
+                  "attributes": {
+                    "part": "save"
+                  },
+                  "$props": {
+                    "variant": "accent",
+                    "size": "sm",
+                    "disabled": {
+                      "$ref": "#/state/saveDisabled"
+                    }
+                  },
+                  "onclick": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/save"
+                        },
+                        "value": []
+                      }
+                    ]
+                  },
+                  "children": [
+                    {
+                      "tagName": "span",
+                      "textContent": "${state.saveLabel}"
+                    }
+                  ]
+                },
+                {
+                  "tagName": "jx-action-button",
+                  "attributes": {
+                    "part": "refresh"
+                  },
+                  "$props": {
+                    "size": "sm",
+                    "quiet": true,
+                    "label": "Refresh",
+                    "hint": "Reload from source",
+                    "disabled": {
+                      "$ref": "#/state/refreshDisabled"
+                    }
+                  },
+                  "onclick": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/refresh"
+                        },
+                        "value": []
+                      }
+                    ]
+                  },
+                  "children": [
+                    {
+                      "tagName": "span",
+                      "textContent": "Refresh"
+                    }
+                  ]
+                },
+                {
+                  "tagName": "jx-divider",
+                  "attributes": {
+                    "part": "divider"
+                  },
+                  "$props": {
+                    "orientation": "vertical"
+                  }
+                },
+                {
+                  "tagName": "span",
+                  "attributes": {
+                    "part": "insert-slot",
+                    "role": "none"
+                  },
+                  "style": {
+                    "display": "contents"
+                  },
+                  "$switch": {
+                    "$ref": "#/state/canInsert"
+                  },
+                  "cases": {
+                    "true": {
+                      "tagName": "jx-action-button",
+                      "attributes": {
+                        "part": "add-row"
+                      },
+                      "$props": {
+                        "size": "sm",
+                        "quiet": true,
+                        "label": "Add Row",
+                        "hint": "Add a row (saved on Save)"
+                      },
+                      "onclick": {
+                        "$prototype": "Function",
+                        "body": [
+                          {
+                            "operator": "call",
+                            "target": {
+                              "$ref": "#/state/addRow"
+                            },
+                            "value": []
+                          }
+                        ]
+                      },
+                      "children": [
+                        {
+                          "tagName": "span",
+                          "textContent": "Add Row"
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "tagName": "span",
+                  "attributes": {
+                    "part": "delete-slot",
+                    "role": "none"
+                  },
+                  "style": {
+                    "display": "contents"
+                  },
+                  "$switch": {
+                    "$ref": "#/state/canDelete"
+                  },
+                  "cases": {
+                    "true": {
+                      "tagName": "jx-action-button",
+                      "attributes": {
+                        "part": "delete-rows"
+                      },
+                      "$props": {
+                        "size": "sm",
+                        "quiet": true,
+                        "label": "Delete Rows",
+                        "hint": "Mark selected rows for deletion"
+                      },
+                      "onclick": {
+                        "$prototype": "Function",
+                        "body": [
+                          {
+                            "operator": "call",
+                            "target": {
+                              "$ref": "#/state/deleteRows"
+                            },
+                            "value": []
+                          }
+                        ]
+                      },
+                      "children": [
+                        {
+                          "tagName": "span",
+                          "textContent": "Delete Rows"
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "tagName": "jx-action-button",
+                  "attributes": {
+                    "part": "fill-down"
+                  },
+                  "$props": {
+                    "size": "sm",
+                    "quiet": true,
+                    "label": "Fill Down",
+                    "hint": "Fill the selected range down from its first row (Ctrl/Cmd-D)"
+                  },
+                  "onclick": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/fillDown"
+                        },
+                        "value": []
+                      }
+                    ]
+                  },
+                  "children": [
+                    {
+                      "tagName": "span",
+                      "textContent": "Fill Down"
+                    }
+                  ]
+                },
+                {
+                  "tagName": "jx-action-button",
+                  "attributes": {
+                    "part": "replace"
+                  },
+                  "$props": {
+                    "size": "sm",
+                    "quiet": true,
+                    "label": "Replace",
+                    "hint": "Find & replace across text cells"
+                  },
+                  "onclick": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/openReplace"
+                        },
+                        "value": [
+                          {
+                            "$ref": "event#/currentTarget"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "children": [
+                    {
+                      "tagName": "span",
+                      "textContent": "Replace"
+                    }
+                  ]
+                },
+                {
+                  "tagName": "jx-action-button",
+                  "attributes": {
+                    "part": "views"
+                  },
+                  "$props": {
+                    "size": "sm",
+                    "quiet": true,
+                    "label": "${state.viewLabel}",
+                    "hint": "Saved views, columns, sort and grouping",
+                    "haspopup": "dialog"
+                  },
+                  "onclick": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/openViews"
+                        },
+                        "value": [
+                          {
+                            "$ref": "event#/currentTarget"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "children": [
+                    {
+                      "tagName": "span",
+                      "textContent": "${state.viewLabel}"
+                    }
+                  ],
+                  "$description": "One control for the four facets a saved view is made of, because they are only ever adjusted together (§12.2). Its label is the applied view's name, so the toolbar says what is on screen before the panel is opened."
+                },
+                {
+                  "tagName": "jx-textfield",
+                  "attributes": {
+                    "part": "filter"
+                  },
+                  "$props": {
+                    "type": "search",
+                    "size": "sm",
+                    "label": "Filter rows",
+                    "placeholder": "Filter rows",
+                    "clearable": true,
+                    "value": {
+                      "$ref": "#/state/filter"
+                    }
+                  },
+                  "oninput": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/setFilter"
+                        },
+                        "value": [
+                          {
+                            "$ref": "event#/target/value"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                },
+                {
+                  "tagName": "span",
+                  "attributes": {
+                    "part": "spacer",
+                    "role": "none"
+                  }
+                },
+                {
+                  "tagName": "span",
+                  "attributes": {
+                    "part": "group-slot",
+                    "role": "none"
+                  },
+                  "style": {
+                    "display": "contents"
+                  },
+                  "$switch": {
+                    "$ref": "#/state/groupState"
+                  },
+                  "cases": {
+                    "shown": {
+                      "tagName": "span",
+                      "attributes": {
+                        "part": "note",
+                        "data-note": "grouping",
+                        "title": "Rows are ordered so each group is contiguous."
+                      },
+                      "textContent": "${state.groupNote}"
+                    }
+                  }
+                },
+                {
+                  "tagName": "span",
+                  "attributes": {
+                    "part": "lossy-slot",
+                    "role": "none"
+                  },
+                  "style": {
+                    "display": "contents"
+                  },
+                  "$switch": {
+                    "$ref": "#/state/lossyState"
+                  },
+                  "cases": {
+                    "shown": {
+                      "tagName": "span",
+                      "attributes": {
+                        "part": "note",
+                        "data-note": "lossy",
+                        "title": "Saving re-serializes frontmatter; YAML comments and key order are not preserved."
+                      },
+                      "textContent": "rewrites frontmatter"
+                    }
+                  }
+                },
+                {
+                  "tagName": "span",
+                  "attributes": {
+                    "part": "pager-slot",
+                    "role": "none"
+                  },
+                  "style": {
+                    "display": "contents"
+                  },
+                  "$switch": {
+                    "$ref": "#/state/pagerState"
+                  },
+                  "cases": {
+                    "shown": {
+                      "tagName": "span",
+                      "attributes": {
+                        "part": "pager"
+                      },
+                      "children": [
+                        {
+                          "tagName": "jx-action-button",
+                          "attributes": {
+                            "part": "prev"
+                          },
+                          "$props": {
+                            "size": "sm",
+                            "quiet": true,
+                            "label": "Previous page",
+                            "hint": "Previous page",
+                            "disabled": {
+                              "$ref": "#/state/prevDisabled"
+                            }
+                          },
+                          "onclick": {
+                            "$prototype": "Function",
+                            "body": [
+                              {
+                                "operator": "call",
+                                "target": {
+                                  "$ref": "#/state/prevPage"
+                                },
+                                "value": []
+                              }
+                            ]
+                          },
+                          "children": [
+                            {
+                              "tagName": "span",
+                              "textContent": "‹ Prev"
+                            }
+                          ]
+                        },
+                        {
+                          "tagName": "span",
+                          "attributes": {
+                            "part": "count"
+                          },
+                          "textContent": "${state.pageRange}"
+                        },
+                        {
+                          "tagName": "jx-action-button",
+                          "attributes": {
+                            "part": "next"
+                          },
+                          "$props": {
+                            "size": "sm",
+                            "quiet": true,
+                            "label": "Next page",
+                            "hint": "Next page",
+                            "disabled": {
+                              "$ref": "#/state/nextDisabled"
+                            }
+                          },
+                          "onclick": {
+                            "$prototype": "Function",
+                            "body": [
+                              {
+                                "operator": "call",
+                                "target": {
+                                  "$ref": "#/state/nextPage"
+                                },
+                                "value": []
+                              }
+                            ]
+                          },
+                          "children": [
+                            {
+                              "tagName": "span",
+                              "textContent": "Next ›"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "tagName": "span",
+                  "attributes": {
+                    "part": "count"
+                  },
+                  "children": [
+                    {
+                      "tagName": "span",
+                      "attributes": {
+                        "part": "count-slot",
+                        "role": "none"
+                      },
+                      "style": {
+                        "display": "contents"
+                      },
+                      "$switch": {
+                        "$ref": "#/state/countState"
+                      },
+                      "cases": {
+                        "loading": {
+                          "tagName": "span",
+                          "attributes": {
+                            "part": "count-text"
+                          },
+                          "textContent": "Loading…"
+                        },
+                        "error": {
+                          "tagName": "span",
+                          "attributes": {
+                            "part": "load-error",
+                            "role": "alert"
+                          },
+                          "textContent": "${state.error}"
+                        },
+                        "total": {
+                          "tagName": "span",
+                          "attributes": {
+                            "part": "count-text"
+                          },
+                          "textContent": "${state.countLabel}"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "$description": "Tabulator's node. Empty in the document, and filled by the adapter the moment it is created — a rendered child here would be destroyed by the engine's first build.",
+              "tagName": "div",
+              "attributes": {
+                "part": "host"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

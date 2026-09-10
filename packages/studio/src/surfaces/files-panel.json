@@ -1,0 +1,675 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioFilesPanel",
+  "$description": "The Navigator's Files tree, as a Jx document over the kit. `files/files.ts` keeps every decision — which directories are listed, which entries `.gitignore` masks, which rows the window draws, what a click on a row means, what the context menu offers and what each verb does to the filesystem — and hands this document one projection: a word saying which of three things to draw, a toolbar whose state is already resolved, and rows whose every field is already a string. Nothing here asks what a file is, how tall the Navigator is, or whether a directory has been read. The tree is a FLAT list and the DOM holds a window onto it, so the rows a `$map` renders are the visible slice: an expanded `node_modules` is eleven rows rather than ten thousand, and `aria-level` / `aria-posinset` / `aria-setsize` are what keep the ARIA true while it is. Four facts a row carries are bound against ONE scope field each — the selected path, the dragged path, the drop target and the roving tab stop — so moving the selection or dragging a file re-evaluates an attribute per drawn row instead of rebuilding the list under the reader's pointer. The pragmatic-drag-and-drop handles are an ISLAND: the document draws the rows and the tree, and the adapter attaches sources and targets to them through `onNodeCreated` (specs/studio-ui-guidelines.md §9.4).",
+  "tagName": "div",
+  "attributes": {
+    "part": "files"
+  },
+  "style": {
+    "$description": "What the twenty `.file-tree*`, `.files-toolbar`, `.project-header` and `.project-name` rules in `styles/panels.css` said, keyed on `part` and re-pointed at the studio token layer. Three names could not come with the declarations. The five `var(--spectrum-font-size-50 | -75, …)` reads are the kit's `--jx-text-sm` and `--jx-text-md`, which are the same 11px and 12px — a `--spectrum-*` name is declared by `<sp-theme>` and by nothing else in this package, so a document that reads one is a document whose type size changes when a component it does not use is removed. The `.selected`, `.dragging`, `.drag-over` and `.drag-over-root` classes are `data-` attributes on a part, because a part is the handle now and because a state a handler adds and forgets to take off is exactly the defect a cancelled drag used to leave on screen. And the row's indent was `padding-left:${8 + depth * 16}px` composed per row in TypeScript; it is a `--depth` custom property here, so the arithmetic that decides what a level LOOKS like lives with the rest of the styling.",
+    "display": "flex",
+    "flexDirection": "column",
+    "height": "100%",
+    "minHeight": "0",
+    "overflow": "hidden",
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "color": "var(--fg)",
+    "& [part=\"view-slot\"], & [part=\"header-slot\"], & [part=\"locale-slot\"]": {
+      "$description": "A `$switch` renders its own container, and none of these three is a box: each stands exactly where its case does, so the case's own rule is the only one that lays anything out.",
+      "display": "contents"
+    },
+    "& [part=\"empty\"]": {
+      "$description": "The two states that are not a tree. They are two states and not one sentence: a window with no project at all and a monorepo root that has not been pointed at a site are different situations, and only the second has anything to offer (§11).",
+      "padding": "var(--jx-space-6)",
+      "textAlign": "center",
+      "color": "var(--fg-dim)",
+      "fontSize": "var(--jx-text-md)",
+      "display": "flex",
+      "flexDirection": "column",
+      "alignItems": "center",
+      "gap": "var(--jx-space-4)"
+    },
+    "& [part=\"empty\"] p": {
+      "margin": "0"
+    },
+    "& [part=\"frame\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "height": "100%",
+      "minHeight": "0"
+    },
+    "& [part=\"project-header\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-3)",
+      "padding": "var(--jx-space-3) var(--jx-space-4)",
+      "borderBottom": "1px solid var(--border)",
+      "flexShrink": "0"
+    },
+    "& [part=\"project-name\"]": {
+      "fontSize": "var(--jx-text-md)",
+      "fontWeight": "600",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap"
+    },
+    "& [part=\"toolbar\"]": {
+      "display": "flex",
+      "gap": "var(--jx-space-2)",
+      "padding": "var(--jx-space-2) var(--jx-space-3)",
+      "borderBottom": "1px solid var(--border)",
+      "alignItems": "center",
+      "flexShrink": "0"
+    },
+    "& [part=\"search\"]": {
+      "flex": "1",
+      "minWidth": "0"
+    },
+    "& [part=\"tree\"]": {
+      "$description": "The scroller as well as the list. `ui/virtual-window.ts` walks up from the element it is given looking for the nearest thing that scrolls, and finding itself is the shortest answer.",
+      "flex": "1",
+      "minHeight": "0",
+      "overflowY": "auto"
+    },
+    "& [part=\"tree\"][data-drop=\"true\"]": {
+      "background": "var(--hover-bg)"
+    },
+    "& [part=\"pad-top\"], & [part=\"pad-bottom\"]": {
+      "$description": "The two spacers reserve the scroll height of the rows the window left out. They are `aria-hidden` because a `role=\"tree\"` owns `treeitem`s, and an empty div that exists to be four thousand pixels tall is not one.",
+      "flexShrink": "0"
+    },
+    "& [part=\"row\"]": {
+      "$description": "`block-size` is a CONTRACT, not a look: the tree is windowed, and a window can only reserve the right amount of scroll for the rows it did not draw if every row is the same known height. `--jx-control-h` is the kit's 24px — what the box already computed to — and it follows the density setting, which the hard-coded 24 could not. The renderer measures a real row anyway and believes the measurement over any declared number.",
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-3)",
+      "paddingInline": "calc(var(--jx-space-3) + var(--depth, 0) * 16px) var(--jx-space-3)",
+      "blockSize": "var(--jx-control-h)",
+      "boxSizing": "border-box",
+      "cursor": "pointer",
+      "color": "var(--fg)",
+      "userSelect": "none",
+      ":hover": {
+        "background": "var(--hover-bg)"
+      },
+      ":focus-visible": {
+        "$description": "Roving tabindex moves focus between rows, so the ring is the only thing telling a keyboard user where they are.",
+        "outline": "var(--jx-focus-ring)",
+        "outlineOffset": "-2px"
+      }
+    },
+    "& [part=\"row\"][data-selected=\"true\"]": {
+      "background": "var(--accent-20)"
+    },
+    "& [part=\"row\"][data-dragging=\"true\"]": {
+      "opacity": "0.4"
+    },
+    "& [part=\"row\"][data-drop=\"true\"]": {
+      "background": "var(--accent-20)",
+      "outline": "1px solid var(--accent)",
+      "outlineOffset": "-1px"
+    },
+    "& [part=\"row\"][data-loading=\"true\"]": {
+      "$description": "A directory whose listing has not arrived yet. It holds the place and it is NOT a `treeitem`: the keyboard cannot land on it, the set counts do not include it, and it is replaced by the real rows on the repaint the listing provokes.",
+      "color": "var(--fg-dim)",
+      "fontStyle": "italic",
+      "cursor": "default"
+    },
+    "& [part=\"twisty\"]": {
+      "$description": "A file has no case, so the box draws empty and keeps its width — which is what lines every name in the tree up whether or not its row can be opened.",
+      "inlineSize": "14px",
+      "flexShrink": "0",
+      "display": "flex",
+      "alignItems": "center",
+      "justifyContent": "center",
+      "color": "var(--fg-dim)",
+      "--jx-icon-size": "12px"
+    },
+    "& [part=\"row-icon\"]": {
+      "flexShrink": "0",
+      "display": "flex",
+      "alignItems": "center",
+      "--jx-icon-size": "16px"
+    },
+    "& [part=\"row-name\"]": {
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap",
+      "flex": "1",
+      "minWidth": "0"
+    },
+    "& [part=\"locale\"]": {
+      "$description": "The language chip. Deliberately declares no block size, no padding and no line height: the row above is one control-height by contract, and a chip that grew the box would desynchronise the window's scroll reservation from the height it reserves by. It only ever shrinks the text. A chip, not a filter term: the search matches the file's name alone, because a query that silently also matched a language would make “why is this file here” unanswerable from what is on screen.",
+      "marginInlineStart": "auto",
+      "flexShrink": "0",
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--fg-dim)",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap",
+      "maxInlineSize": "6em"
+    }
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "view-slot",
+        "role": "none"
+      },
+      "$switch": {
+        "$ref": "#/state/view"
+      },
+      "cases": {
+        "none": {
+          "tagName": "div",
+          "attributes": {
+            "part": "empty"
+          },
+          "children": [
+            {
+              "tagName": "p",
+              "textContent": "No project loaded"
+            }
+          ]
+        },
+        "welcome": {
+          "tagName": "div",
+          "attributes": {
+            "part": "empty"
+          },
+          "children": [
+            {
+              "tagName": "p",
+              "textContent": "Open a project folder to get started."
+            },
+            {
+              "tagName": "jx-button",
+              "attributes": {
+                "part": "open-project"
+              },
+              "$props": {
+                "variant": "accent",
+                "size": "sm"
+              },
+              "onclick": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/openProject"
+                    },
+                    "value": []
+                  }
+                ],
+                "description": "The declared `project.open` command, run through the registry — not a second opener of this surface's own. It is the one the chord, the palette and the status bar's PROJECT field already run, so a window that opens a project from here reports the outcome the same way they do (§12.5)."
+              },
+              "children": [
+                {
+                  "tagName": "span",
+                  "textContent": "Open Project"
+                }
+              ]
+            }
+          ]
+        },
+        "tree": {
+          "tagName": "div",
+          "attributes": {
+            "part": "frame"
+          },
+          "children": [
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "header-slot",
+                "role": "none"
+              },
+              "$switch": {
+                "$ref": "#/state/headerState"
+              },
+              "cases": {
+                "shown": {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "project-header"
+                  },
+                  "children": [
+                    {
+                      "tagName": "span",
+                      "attributes": {
+                        "part": "project-name",
+                        "title": "${state.projectName}"
+                      },
+                      "textContent": "${state.projectName}"
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "toolbar"
+              },
+              "children": [
+                {
+                  "tagName": "jx-action-group",
+                  "attributes": {
+                    "part": "toolbar-actions"
+                  },
+                  "$props": {
+                    "compact": true,
+                    "label": "File tree actions"
+                  },
+                  "children": [
+                    {
+                      "tagName": "jx-action-button",
+                      "attributes": {
+                        "part": "new-file"
+                      },
+                      "$props": {
+                        "size": "sm",
+                        "icon": "plus",
+                        "label": "New File",
+                        "hint": "New File"
+                      },
+                      "onclick": {
+                        "$prototype": "Function",
+                        "body": [
+                          {
+                            "operator": "call",
+                            "target": {
+                              "$ref": "#/state/newFile"
+                            },
+                            "value": []
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "tagName": "jx-action-button",
+                      "attributes": {
+                        "part": "refresh"
+                      },
+                      "$props": {
+                        "size": "sm",
+                        "icon": "arrows-clockwise",
+                        "label": "Refresh",
+                        "hint": "Refresh"
+                      },
+                      "onclick": {
+                        "$prototype": "Function",
+                        "body": [
+                          {
+                            "operator": "call",
+                            "target": {
+                              "$ref": "#/state/refresh"
+                            },
+                            "value": []
+                          }
+                        ],
+                        "description": "The rules go with the listings. Refresh is what an author reaches for after editing a `.gitignore` by hand, and a tree that came back still hiding by the old rules would read as the button not having worked."
+                      }
+                    },
+                    {
+                      "tagName": "jx-action-button",
+                      "attributes": {
+                        "part": "show-ignored"
+                      },
+                      "$props": {
+                        "size": "sm",
+                        "icon": {
+                          "$ref": "#/state/ignoredIcon"
+                        },
+                        "label": {
+                          "$ref": "#/state/ignoredLabel"
+                        },
+                        "hint": {
+                          "$ref": "#/state/ignoredLabel"
+                        },
+                        "selected": {
+                          "$ref": "#/state/ignoredSelected"
+                        }
+                      },
+                      "onclick": {
+                        "$prototype": "Function",
+                        "body": [
+                          {
+                            "operator": "call",
+                            "target": {
+                              "$ref": "#/state/toggleIgnored"
+                            },
+                            "value": []
+                          }
+                        ],
+                        "description": "A repaint and nothing else: the ignored entries were never dropped from the cached listings, only from the rows built out of them."
+                      }
+                    }
+                  ]
+                },
+                {
+                  "tagName": "jx-textfield",
+                  "attributes": {
+                    "part": "search"
+                  },
+                  "$props": {
+                    "label": "Filter files",
+                    "placeholder": "Filter files…",
+                    "size": "sm",
+                    "value": {
+                      "$ref": "#/state/query"
+                    }
+                  },
+                  "oninput": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/search"
+                        },
+                        "value": [
+                          {
+                            "$ref": "event#/target/value"
+                          }
+                        ]
+                      }
+                    ],
+                    "description": "The query matches a file's NAME and nothing else. A directory is kept whatever it says, because hiding the folder a match sits in would leave the match with nowhere to be drawn."
+                  }
+                }
+              ]
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "tree",
+                "role": "tree",
+                "aria-label": "Project files",
+                "data-drop": "${state.rootDrop || null}"
+              },
+              "children": [
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "pad-top",
+                    "aria-hidden": "true",
+                    "style": "${state.padTop}"
+                  }
+                },
+                {
+                  "$prototype": "Array",
+                  "items": {
+                    "$ref": "#/state/rows"
+                  },
+                  "key": {
+                    "$ref": "$map/item/key"
+                  },
+                  "map": {
+                    "tagName": "div",
+                    "attributes": {
+                      "part": "row-slot",
+                      "role": "none"
+                    },
+                    "$switch": {
+                      "$ref": "$map/item/kind"
+                    },
+                    "cases": {
+                      "item": {
+                        "tagName": "div",
+                        "attributes": {
+                          "part": "row",
+                          "role": "treeitem",
+                          "style": "--depth:${$map.item.depth}",
+                          "data-path": "${$map.item.path}",
+                          "data-type": "${$map.item.type}",
+                          "data-selected": "${state.selectedPath === $map.item.path ? 'true' : null}",
+                          "data-dragging": "${state.dragPath === $map.item.path ? 'true' : null}",
+                          "data-drop": "${state.dropPath === $map.item.path ? 'true' : null}",
+                          "aria-level": "${$map.item.level}",
+                          "aria-posinset": "${$map.item.posInSet}",
+                          "aria-setsize": "${$map.item.setSize}",
+                          "aria-expanded": "${$map.item.ariaExpanded || null}",
+                          "tabindex": "${state.tabStopPath === $map.item.path ? '0' : '-1'}"
+                        },
+                        "onclick": {
+                          "$prototype": "Function",
+                          "body": [
+                            {
+                              "stopPropagation": true
+                            },
+                            {
+                              "operator": "call",
+                              "target": {
+                                "$ref": "#/state/activate"
+                              },
+                              "value": [
+                                {
+                                  "$ref": "$map/item/path"
+                                }
+                              ]
+                            }
+                          ],
+                          "description": "One verb for both kinds of row. What a click MEANS — expand this directory, open that file — is the flow's to decide, and a row that decided it here would be a second answer to it beside Enter's."
+                        },
+                        "oncontextmenu": {
+                          "$prototype": "Function",
+                          "body": [
+                            {
+                              "preventDefault": true
+                            },
+                            {
+                              "stopPropagation": true
+                            },
+                            {
+                              "operator": "call",
+                              "target": {
+                                "$ref": "#/state/contextMenu"
+                              },
+                              "value": [
+                                {
+                                  "$ref": "$map/item/path"
+                                },
+                                {
+                                  "$ref": "event#/clientX"
+                                },
+                                {
+                                  "$ref": "event#/clientY"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        "onkeydown": {
+                          "$prototype": "Function",
+                          "body": [
+                            {
+                              "$switch": {
+                                "$ref": "event#/key"
+                              },
+                              "cases": {
+                                "ArrowDown": [
+                                  {
+                                    "preventDefault": true
+                                  },
+                                  {
+                                    "operator": "call",
+                                    "target": {
+                                      "$ref": "#/state/moveFocus"
+                                    },
+                                    "value": [
+                                      {
+                                        "$ref": "$map/item/path"
+                                      },
+                                      1
+                                    ]
+                                  }
+                                ],
+                                "ArrowUp": [
+                                  {
+                                    "preventDefault": true
+                                  },
+                                  {
+                                    "operator": "call",
+                                    "target": {
+                                      "$ref": "#/state/moveFocus"
+                                    },
+                                    "value": [
+                                      {
+                                        "$ref": "$map/item/path"
+                                      },
+                                      -1
+                                    ]
+                                  }
+                                ],
+                                "ArrowRight": [
+                                  {
+                                    "preventDefault": true
+                                  },
+                                  {
+                                    "operator": "call",
+                                    "target": {
+                                      "$ref": "#/state/expandRow"
+                                    },
+                                    "value": [
+                                      {
+                                        "$ref": "$map/item/path"
+                                      }
+                                    ]
+                                  }
+                                ],
+                                "ArrowLeft": [
+                                  {
+                                    "preventDefault": true
+                                  },
+                                  {
+                                    "operator": "call",
+                                    "target": {
+                                      "$ref": "#/state/collapseRow"
+                                    },
+                                    "value": [
+                                      {
+                                        "$ref": "$map/item/path"
+                                      }
+                                    ]
+                                  }
+                                ],
+                                "Enter": [
+                                  {
+                                    "preventDefault": true
+                                  },
+                                  {
+                                    "operator": "call",
+                                    "target": {
+                                      "$ref": "#/state/activate"
+                                    },
+                                    "value": [
+                                      {
+                                        "$ref": "$map/item/path"
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            }
+                          ],
+                          "description": "The keyboard is bound to the ROW rather than to the tree, so which row a key is about is the row's own `$map` item and never a lookup. ↑ and ↓ step through the MODEL: the step can land on a row the window did not draw, and moving the scroller and letting the focus follow the repaint is the flow's answer to that. A key with no case here is not prevented, so typeahead, Tab and Home reach the browser."
+                        },
+                        "children": [
+                          {
+                            "tagName": "div",
+                            "attributes": {
+                              "part": "twisty",
+                              "aria-hidden": "true"
+                            },
+                            "$switch": {
+                              "$ref": "$map/item/twisty"
+                            },
+                            "cases": {
+                              "expanded": {
+                                "tagName": "jx-icon",
+                                "$props": {
+                                  "name": "caret-down"
+                                }
+                              },
+                              "collapsed": {
+                                "tagName": "jx-icon",
+                                "$props": {
+                                  "name": "caret-right"
+                                }
+                              }
+                            }
+                          },
+                          {
+                            "tagName": "jx-icon",
+                            "attributes": {
+                              "part": "row-icon",
+                              "aria-hidden": "true"
+                            },
+                            "$props": {
+                              "name": {
+                                "$ref": "$map/item/icon"
+                              }
+                            }
+                          },
+                          {
+                            "tagName": "span",
+                            "attributes": {
+                              "part": "row-name"
+                            },
+                            "textContent": "${$map.item.name}"
+                          },
+                          {
+                            "tagName": "div",
+                            "attributes": {
+                              "part": "locale-slot",
+                              "role": "none"
+                            },
+                            "$switch": {
+                              "$ref": "$map/item/localeState"
+                            },
+                            "cases": {
+                              "shown": {
+                                "tagName": "span",
+                                "attributes": {
+                                  "part": "locale"
+                                },
+                                "textContent": "${$map.item.locale}"
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      "loading": {
+                        "tagName": "div",
+                        "attributes": {
+                          "part": "row",
+                          "role": "none",
+                          "data-loading": "true",
+                          "style": "--depth:${$map.item.depth}"
+                        },
+                        "textContent": "Loading…"
+                      }
+                    }
+                  }
+                },
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "pad-bottom",
+                    "aria-hidden": "true",
+                    "style": "${state.padBottom}"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

@@ -21,8 +21,9 @@
  *   release-before-install guards protect between them, asserted from the pragmatic-dnd
  *   registrations themselves.
  */
-import { resetWorkspaceWithTab } from "./harness";
+import { flush, resetWorkspaceWithTab } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { componentRegistry } from "../src/files/components";
 import { createCommandRegistry } from "../src/commands/registry";
 import { makeContext } from "../src/commands/context";
 import { initLayers } from "../src/ui/layers";
@@ -33,13 +34,21 @@ import type { JxPath } from "../src/state";
 
 // ─── Seams (both must precede the module-under-test import) ──────────────────
 
-/** One ordered log, so "released BEFORE the next install" is a fact and not two counts. */
-const dnd: { log: string[] } = { log: [] };
+/**
+ * One ordered log, so "released BEFORE the next install" is a fact and not two counts, plus the
+ * elements each registration landed on.
+ *
+ * The element is kept rather than named: a registration is announced through `onNodeCreated`, which
+ * fires BEFORE the runtime applies attributes, so the node has no `part` of its own yet at the
+ * moment the mock sees it.
+ */
+const dnd: { log: string[]; elements: HTMLElement[] } = { elements: [], log: [] };
 
 void mock.module("@atlaskit/pragmatic-drag-and-drop/element/adapter", () => ({
   draggable: ({ element }: { element: HTMLElement }) => {
     const nth = dnd.log.filter((entry) => entry.startsWith("install")).length;
-    dnd.log.push(`install#${nth}:${element.className}`);
+    dnd.elements.push(element);
+    dnd.log.push(`install#${nth}`);
     return () => dnd.log.push(`release#${nth}`);
   },
 }));
@@ -57,8 +66,9 @@ const {
   dismissLinkPopover,
   initBlockActionBar,
   openLinkPopoverFromShortcut,
+  handleBlockBarEntryKey,
   isEditChromeTarget,
-  onToolbarKeydown,
+  isLinkPopoverOpen,
   registerSelectionCommands,
   renderBlockActionBar,
   selectionCommandContext,
@@ -327,18 +337,20 @@ describe("the ⋮ menu released by an outside click", () => {
     document.body.append(anchor);
 
     showCommandOverflow(anchor, registry, registry.list());
-    const menu = document.querySelector(".bar-overflow-menu");
+    await flush(3);
+    const menu = document.querySelector("#layer-popover jx-menu-item");
     expect(menu).not.toBeNull();
-    const host = menu!.parentElement!;
+    const host = menu!.closest<HTMLElement>("[data-jx-region]")!;
     // While it is open the menu IS edit chrome: a press inside it operates ON the caret session
     // Rather than committing it.
     expect(isEditChromeTarget(host)).toBe(true);
 
-    // `renderPopover` arms its outside-click listener on the next frame.
+    // The kit's menu is an `auto` popover, so the platform light-dismisses it on an outside press.
     await raf();
     document.body.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    await flush(2);
 
-    expect(document.querySelector(".bar-overflow-menu")).toBeNull();
+    expect(document.querySelector("#layer-popover jx-menu-item")).toBeNull();
     // The handle is released, so the detached host is nobody's chrome any more — a stale one would
     // Keep swallowing the commit-guard for a menu the author already closed.
     expect(isEditChromeTarget(host)).toBe(false);
@@ -346,49 +358,56 @@ describe("the ⋮ menu released by an outside click", () => {
   });
 });
 
-// ─── The toolbar arrows with nothing to focus ────────────────────────────────
+// ─── Entering a bar whose every control is refused ───────────────────────────
 
-function toolbarKey(bar: HTMLElement, key: string): KeyboardEvent {
-  const e = new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key });
-  Object.defineProperty(e, "currentTarget", { configurable: true, value: bar });
-  onToolbarKeydown(e);
-  return e;
-}
+/**
+ * What `onToolbarKeydown`'s two "nothing can act" branches stood for, re-authored against the
+ * contract rather than against the ring that used to implement it.
+ *
+ * The roving caret is `jx-action-group`'s now, and it refuses to land on a control that cannot act.
+ * ONE shape (§8.6) means such a bar still draws every control, so the honest statement is: the
+ * chord is claimed, the bar is still whole, and the keyboard does not stop on a refusal.
+ */
+describe("⌥↑ into a bar where nothing can act", () => {
+  test("claims the key, keeps every control, and lands on none of them", async () => {
+    initBlockActionBar({ getCanvasMode: () => "design", navigateToComponent: () => {} });
+    const registry = createCommandRegistry({
+      getContext: () => makeContext({ document: { open: true }, selection: { count: 1 } }),
+    });
+    registry.registerAll([record("test.refused")]);
+    // Every record refused, and the fixed chrome refused with it: the root has no parent to
+    // Select and no tag to convert to.
+    registry.get("test.refused")!.enablement = () => false;
+    useCommandRegistry(registry);
+    /* A component instance AT THE ROOT is the one selection on which every control is refused: no
+       parent to select, no tag to convert to, no inline markup to format — and the one registry
+       verb above is refused too. */
+    componentRegistry.push({ path: "components/card.json", tagName: "x-card" } as never);
+    setup({ tagName: "x-card" } as JxMutableNode, []);
 
-describe("role=toolbar navigation over items that cannot act", () => {
-  test("the arrows claim the key but leave focus where it was", () => {
     const sentinel = document.createElement("button");
     document.body.append(sentinel);
     sentinel.focus();
-    const bar = document.createElement("div");
-    bar.innerHTML =
-      `<span data-toolbar-item tabindex="-1" disabled></span>` +
-      `<span data-toolbar-item tabindex="-1" aria-disabled="true"></span>`;
-    document.body.append(bar);
 
-    for (const key of ["ArrowRight", "ArrowLeft", "Home", "End"]) {
-      const e = toolbarKey(bar, key);
-      expect([key, e.defaultPrevented]).toEqual([key, true]);
-      expect([key, document.activeElement]).toEqual([key, sentinel]);
-    }
+    renderBlockActionBar();
+    await flush(3);
+    const buttons = [
+      ...document.querySelectorAll<HTMLElement>('#layer-popover [part="tools"] jx-action-button'),
+    ];
+    expect(buttons.length).toBeGreaterThan(0);
+    expect(
+      buttons.every((b) => b.querySelector('[part="control"]')!.hasAttribute("disabled")),
+    ).toBe(true);
 
-    bar.remove();
+    const e = new KeyboardEvent("keydown", { altKey: true, cancelable: true, key: "ArrowUp" });
+    handleBlockBarEntryKey(e);
+    expect(e.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(sentinel);
+
     sentinel.remove();
-  });
-
-  test("…and moves focus the moment one of them can", () => {
-    const sentinel = document.createElement("button");
-    document.body.append(sentinel);
-    sentinel.focus();
-    const bar = document.createElement("div");
-    bar.innerHTML = `<span id="live" data-toolbar-item tabindex="-1"></span>`;
-    document.body.append(bar);
-
-    toolbarKey(bar, "ArrowRight");
-
-    expect(document.activeElement).toBe(bar.querySelector("#live"));
-    bar.remove();
-    sentinel.remove();
+    componentRegistry.length = 0;
+    dismissBlockActionBar();
+    await flush();
   });
 });
 
@@ -403,73 +422,90 @@ describe("role=toolbar navigation over items that cannot act", () => {
  * from a stand-in assigned to `view.selDragCleanup` by hand.
  */
 describe("the drag handle across a re-render", () => {
+  const handle = () =>
+    document.querySelector('#layer-popover [part="drag-handle"]') as HTMLElement | null;
+
   beforeEach(() => {
     dnd.log.length = 0;
+    dnd.elements.length = 0;
     initBlockActionBar({ getCanvasMode: () => "design", navigateToComponent: () => {} });
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     dismissBlockActionBar();
+    await flush();
     if (view.selDragCleanup) {
       view.selDragCleanup();
       view.selDragCleanup = null;
     }
   });
 
-  test("the first pass's registration is released BEFORE the second one is installed", () => {
+  test("a repaint installs nothing new: one handle, one registration", async () => {
     setup(TWO_PARAGRAPHS, ["children", 1]);
 
     renderBlockActionBar();
-    const handle = document.querySelector(".bar-drag-handle");
-    expect(handle).not.toBeNull();
-    expect(dnd.log).toEqual(["install#0:bar-drag-handle"]);
+    await flush(3);
+    const first = handle();
+    expect(first).not.toBeNull();
+    expect(dnd.log).toEqual(["install#0"]);
+    expect(dnd.elements).toEqual([first!]);
 
+    /* The document reconciles by assignment, so the handle's node is the one it was and its
+       registration is untouched. The lit bar re-created the node on every pass and had to release
+       before installing to keep the count at one; the mount removes the race rather than ordering
+       it. */
     renderBlockActionBar();
-    // Lit re-uses the handle element, so the second registration lands on the SAME node the first
-    // One is still attached to — the ordering below is the only thing keeping that to one listener.
-    expect(document.querySelector(".bar-drag-handle")).toBe(handle);
-    expect(dnd.log).toEqual([
-      "install#0:bar-drag-handle",
-      "release#0",
-      "install#1:bar-drag-handle",
-    ]);
+    await flush(3);
+    expect(handle()).toBe(first);
+    expect(dnd.log).toEqual(["install#0"]);
     expect(view.selDragCleanup).toBeInstanceOf(Function);
   });
 
-  test("a pass that dismisses the bar releases too, though its ref never runs", () => {
+  test("a pass that dismisses the bar releases, because the handle's node goes with it", async () => {
     const tab = setup(TWO_PARAGRAPHS, ["children", 1]);
     renderBlockActionBar();
-    expect(dnd.log).toEqual(["install#0:bar-drag-handle"]);
+    await flush(3);
+    expect(dnd.log).toEqual(["install#0"]);
 
-    /* Clearing the selection sends the bar down one of the five dismissal paths: `litRender(nothing)`
-       and return, well before the template — so the drag handle's `ref` is never invoked on this
-       pass and cannot release anything. Only the release at the TOP of renderBlockActionBar runs
-       here, which is why it, and not a second copy inside the ref, is the load-bearing one. */
+    /* Clearing the selection sends the bar down one of the dismissal paths, and `visible: false`
+       takes the handle's node out of the document. A registration left live there is a dnd
+       listener on a detached node for the life of the window. */
     tab.session.selection = [];
     renderBlockActionBar();
+    await flush(3);
 
-    expect(document.querySelector(".bar-drag-handle")).toBeNull();
-    expect(dnd.log).toEqual(["install#0:bar-drag-handle", "release#0"]);
+    expect(handle()).toBeNull();
+    expect(dnd.log).toEqual(["install#0", "release#0"]);
     expect(view.selDragCleanup).toBeNull();
+
+    // …and drawing again installs exactly one more, on the new node.
+    tab.session.selection = [["children", 1]];
+    renderBlockActionBar();
+    await flush(3);
+    expect(dnd.log).toEqual(["install#0", "release#0", "install#1"]);
+    expect(dnd.elements[1]!.getAttribute("part")).toBe("drag-handle");
   });
 
-  test("a repaint while the Link popover is open leaves the handle draggable", () => {
+  test("a repaint while the Link popover is open leaves the handle draggable", async () => {
     setup(TWO_PARAGRAPHS, ["children", 1]);
     renderBlockActionBar();
-    const handle = document.querySelector(".bar-drag-handle");
-    expect(dnd.log).toEqual(["install#0:bar-drag-handle"]);
+    await flush(3);
+    const first = handle();
+    expect(dnd.log).toEqual(["install#0"]);
 
     openLinkPopoverFromShortcut();
+    await flush(2);
+    expect(isLinkPopoverOpen()).toBe(true);
 
-    /* The bar STAYS UP for this one — the pass is skipped so the URL field keeps its caret. Every
-       repaint reaches here (`applyTransform` → `renderOnly("overlays")` → this), so a pan, a zoom
-       or a pane resize runs it. Releasing the drag registration on a pass that then draws nothing
-       new would strand the ⠿ handle on screen and inert: nothing re-installs it, because dismissing
+    /* Every repaint reaches here (`applyTransform` → `renderOnly("overlays")` → this), so a pan, a
+       zoom or a pane resize runs it while the URL field holds the caret. Releasing the drag
+       registration on such a pass stranded the ⠿ handle on screen and inert, because dismissing
        the popover does not re-render the bar. */
     renderBlockActionBar();
+    await flush(3);
 
-    expect(document.querySelector(".bar-drag-handle")).toBe(handle);
-    expect(dnd.log).toEqual(["install#0:bar-drag-handle"]);
+    expect(handle()).toBe(first);
+    expect(dnd.log).toEqual(["install#0"]);
     expect(view.selDragCleanup).toBeInstanceOf(Function);
 
     // And closing the popover leaves it still draggable, without a re-render having been needed.

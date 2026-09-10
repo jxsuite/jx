@@ -1,14 +1,21 @@
 /**
  * Left panel orchestrator — mount/unmount lifecycle, per-tab routing (files/git/blocks/layers/
  * imports/state/data/head), the content-mode head applyMutation bridge, and error recovery.
+ *
+ * The dock's own box is `src/surfaces/navigator-dock.json` now, so the host is addressed by `part`
+ * and by the region grammar rather than by `.panel-body` / `.panel-content`. The panel BODIES are
+ * still lit — a `PanelRecord`'s `render` returns a template — so every selector that belongs to a
+ * panel rather than to the Navigator is untouched, which is the line this file is drawn along.
  */
 import { flush, installMockPlatform, resetStudioState, resetWorkspaceWithTab } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { html } from "lit-html";
+import type { TemplateResult } from "lit-html";
 import { mount, render, unmount } from "../src/panels/left-panel";
 import { initShellRefs, leftPanel } from "../src/store";
 import { activeTab, closeAllTabs } from "../src/workspace/workspace";
 import { mountSignalsPanel } from "../src/panels/signals-panel";
+import { registerPanel, resetPanels } from "../src/panels/panel-registry";
 import { view } from "../src/view";
 import { shell } from "../src/shell";
 
@@ -91,24 +98,32 @@ beforeEach(() => {
 afterEach(() => {
   unmount();
   closeAllTabs();
+  // The registry is module state, and two tests register a panel of their own into it.
+  resetPanels();
   document.body.innerHTML = "";
 });
 
 describe("left panel — project-level tabs", () => {
-  /* `afterRender` no longer wires the keyboard: the tree's keydown is a `@keydown` binding in
-     files.ts's own template, so there is nothing for the panel host to hand it. Drag-and-drop still
-     needs the pass, because pragmatic-dnd registers against real row elements. */
-  test("files tab renders the file tree and wires DnD", async () => {
+  /* Files is a Jx document too (`surfaces/files-panel.json`), mounted by the record's own
+     `afterRender` — so there is no injected `renderFilesTemplate` left to capture and no DnD pass
+     for the host to run. What belongs HERE is that the tab routes to the panel at all, and that the
+     panel's document went into the box this dock drew for it. */
+  test("files tab mounts the Files document into the Navigator's own box", async () => {
+    /* The Files panel reads the project state directly (it is `level: "project"`), so the fixture
+       has to be a project rather than the bare shape the other tabs get. */
+    resetStudioState({ dirs: new Map([[".", []]]), searchQuery: "" });
     shell.leftTab = "files";
     await mountWith();
-    expect(leftPanel.querySelector("#files-rendered")).not.toBeNull();
-    expect(ctx.registerFileTreeDnD).toHaveBeenCalled();
+    await flush(4);
+    const body = leftPanel.querySelector<HTMLElement>('[part="panel-body"]');
+    expect(body?.dataset.panel).toBe("files");
+    expect(body?.querySelector('[part="content"] [part="files"]')).not.toBeNull();
   });
 
   /* Source Control is a Jx document (`surfaces/git-panel.json`) mounted by the record's own
      `afterRender`, so the panel is no longer drawn through `deps.renderGitPanel` and there is no
-     `#git-rendered` to find. What the Navigator still owes it is the HOST: the `.panel-body` with
-     its region and the `.panel-content` the document goes into. */
+     `#git-rendered` to find. What the Navigator still owes it is the HOST: the `[part="panel-body"]`
+     carrying its region, and the `[part="content"]` box the document goes into. */
   function seedRepo() {
     shell.git.branches = { branches: ["main"], current: "main" } as never;
     shell.git.status = {
@@ -128,6 +143,11 @@ describe("left panel — project-level tabs", () => {
     await flush(4);
     expect(leftPanel.querySelector('[part="git-panel"]')).not.toBeNull();
     expect(captured.git).toEqual([]);
+    /* And the box it went into is the one the Navigator's own document drew, addressable as this
+       panel's region — which is the seam, and the thing a stale selector used to photograph. */
+    expect(leftPanel.querySelector<HTMLElement>('[part="panel-body"]')?.dataset.jxRegion).toBe(
+      "navigator/panel:git",
+    );
   });
 
   test("git tab renders with no active tab — Source Control is project level", async () => {
@@ -175,8 +195,8 @@ describe("left panel — project-level tabs", () => {
 describe("left panel — document tabs", () => {
   test("layers tab renders the layer tree and registers layers DnD", async () => {
     await mountWith();
-    expect(leftPanel.querySelector(".layers-tree")).not.toBeNull();
-    expect(leftPanel.querySelectorAll(".layer-row").length).toBeGreaterThan(0);
+    expect(leftPanel.querySelector('[part="outline"] [part="tree"]')).not.toBeNull();
+    expect(leftPanel.querySelectorAll('[part="row"]').length).toBeGreaterThan(0);
     expect(ctx.registerLayersDnD).toHaveBeenCalled();
   });
 
@@ -189,7 +209,7 @@ describe("left panel — document tabs", () => {
     };
     try {
       await mountWith();
-      expect(scrolled.some((el) => el.classList.contains("layer-row"))).toBe(true);
+      expect(scrolled.some((el) => el.getAttribute("part") === "row")).toBe(true);
     } finally {
       Element.prototype.scrollIntoView = orig;
     }
@@ -203,8 +223,7 @@ describe("left panel — document tabs", () => {
     await mountWith({ getCanvasMode: () => "stylebook" });
     await flush(4);
     expect(leftPanel.querySelectorAll('[part="row"]').length).toBeGreaterThan(0);
-    expect(leftPanel.querySelector(".layers-tree")).toBeNull();
-    expect(leftPanel.querySelectorAll(".layer-row")).toHaveLength(0);
+    expect(leftPanel.querySelector('[part="outline"]')).toBeNull();
     expect(ctx.registerLayersDnD).not.toHaveBeenCalled();
   });
 
@@ -257,7 +276,7 @@ describe("left panel — document tabs", () => {
   test("there is no `state` tab left to render", async () => {
     shell.leftTab = "state";
     await mountWith();
-    const body = leftPanel.querySelector(".panel-body") as HTMLElement;
+    const body = leftPanel.querySelector('[part="panel-body"]') as HTMLElement;
     expect(body.querySelector(".empty-state-message")?.textContent).toBe(
       'No Navigator panel is registered as "state".',
     );
@@ -266,7 +285,7 @@ describe("left panel — document tabs", () => {
   test("an id the registry does not declare says so instead of painting a blank body", async () => {
     shell.leftTab = "bogus";
     await mountWith();
-    const body = leftPanel.querySelector(".panel-body") as HTMLElement;
+    const body = leftPanel.querySelector('[part="panel-body"]') as HTMLElement;
     expect(body).not.toBeNull();
     expect(body.querySelector(".empty-state-message")?.textContent).toBe(
       'No Navigator panel is registered as "bogus".',
@@ -277,7 +296,7 @@ describe("left panel — document tabs", () => {
     closeAllTabs();
     shell.leftTab = "layers";
     await mountWith();
-    const body = leftPanel.querySelector(".panel-body") as HTMLElement;
+    const body = leftPanel.querySelector('[part="panel-body"]') as HTMLElement;
     expect(body.querySelector(".empty-state-message")?.textContent).toBe(
       "Open a page to see the elements it is built from.",
     );
@@ -314,10 +333,22 @@ describe("left panel — document tabs", () => {
 describe("left panel — lifecycle and recovery", () => {
   test("reactive effect re-renders on selection change", async () => {
     await mountWith();
-    expect(leftPanel.querySelector(".layer-row.selected")).toBeNull();
+    expect(leftPanel.querySelector('[part="row"][aria-selected="true"]')).toBeNull();
     activeTab.value!.session.selection = [["children", 0]];
-    await flush(3);
-    expect(leftPanel.querySelector(".layer-row.selected")).not.toBeNull();
+    await flush(4);
+    expect(leftPanel.querySelector('[part="row"][aria-selected="true"]')).not.toBeNull();
+  });
+
+  test("unmounting before the mount lands leaves nothing behind", async () => {
+    /* The dock is a document and a document mounts asynchronously, so `mount(); unmount()` in one
+       turn is a real sequence — a project closing under a Navigator that has only just been asked
+       for. The handle that settles afterwards has to throw its own surface away rather than append
+       it, or the cell keeps a panel body nobody can reach and the next mount finds two. */
+    ctx = makeCtx();
+    mount(ctx as never);
+    unmount();
+    await flush(4);
+    expect(leftPanel.childNodes).toHaveLength(0);
   });
 
   test("render after unmount is a no-op", async () => {
@@ -326,35 +357,57 @@ describe("left panel — lifecycle and recovery", () => {
     leftPanel.textContent = "";
     render();
     await flush(3);
-    expect(leftPanel.querySelector(".panel-body")).toBeNull();
+    expect(leftPanel.querySelector('[part="panel-body"]')).toBeNull();
   });
 
-  /* Files is the throwing fixture, because it is the project-level panel still drawn through
-     `deps`: Source Control's body is a document its own `afterRender` mounts, so a `deps` renderer
-     that throws is no longer on the Navigator's render path at all. */
+  /**
+   * A panel registered for this test, rather than one of the shipped eight.
+   *
+   * The throwing fixture used to be Files, through the `deps.renderFilesTemplate` the Navigator
+   * injected — which made this test a hostage to whether that panel still takes an injected
+   * renderer. What is under test is the HOST's boundary, so the fixture is a record of the test's
+   * own: it throws on demand, on the render path every panel shares.
+   */
+  function registerThrowingPanel(body: () => TemplateResult): void {
+    registerPanel({
+      dock: "navigator",
+      icon: "bug",
+      id: "boomtown",
+      level: "project",
+      rail: false,
+      render: body,
+      title: "Boomtown",
+    });
+  }
+
+  /* The recovery is a retry that clears lit's markers first, because a panel appending past lit's
+     range inside the content box can take those markers with it — the box the document draws is
+     fresh per panel, but nothing stops its tenant from emptying it. */
   test("a render error is recovered by clearing lit state and retrying", async () => {
     let calls = 0;
-    shell.leftTab = "files";
-    await mountWith({
-      renderFilesTemplate: mock(() => {
-        calls += 1;
-        if (calls === 1) {
-          throw new Error("boom");
-        }
-        return html`<div id="files-recovered"></div>`;
-      }),
+    registerThrowingPanel(() => {
+      calls += 1;
+      if (calls === 1) {
+        throw new Error("boom");
+      }
+      return html`<div id="panel-recovered"></div>`;
     });
+    shell.leftTab = "boomtown";
+    await mountWith();
     expect(calls).toBe(2);
-    expect(leftPanel.querySelector("#files-recovered")).not.toBeNull();
+    expect(leftPanel.querySelector("#panel-recovered")).not.toBeNull();
   });
 
   test("a persistent render error is swallowed without crashing", async () => {
-    shell.leftTab = "files";
-    await mountWith({
-      renderFilesTemplate: mock(() => {
-        throw new Error("always");
-      }),
+    registerThrowingPanel((): TemplateResult => {
+      throw new Error("always");
     });
-    expect(leftPanel.querySelector("#files-rendered")).toBeNull();
+    shell.leftTab = "boomtown";
+    await mountWith();
+    // The dock still drew its own chrome: the reader can see which panel failed and leave it.
+    expect(leftPanel.querySelector<HTMLElement>('[part="panel-body"]')?.dataset.panel).toBe(
+      "boomtown",
+    );
+    expect(leftPanel.querySelector('[part="content"]')?.childElementCount).toBe(0);
   });
 });

@@ -13,6 +13,7 @@ code:
   - packages/studio/src/tabs/project-config.ts
   - packages/studio/src/panels/jump-bar.ts
   - packages/studio/src/panels/pane-context.ts
+  - packages/studio/src/surfaces/pane-context.ts
   - packages/studio/src/workspace/workspace.ts
 ---
 

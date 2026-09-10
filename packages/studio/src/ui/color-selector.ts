@@ -351,18 +351,14 @@ export function paintColorControl(
   litRender(renderColorSelector(prop, value, onChange), host);
 }
 
-/**
- * Whether an overlay the Inspector must not repaint under is open.
+/*
+ * `isColorPopoverOpen()` lived here, and it went with the Inspector's panel scheduler.
  *
- * ADDITIVE rather than replaced as the kit lands. The colour popover is still a Spectrum island
- * that commits on every drag frame with no debounce, so swapping the query for the kit's would
- * destroy the element mid-drag; and a kit overlay closing is not the same event as the Spectrum
- * one, so the two have to be asked separately. A kit element that owns an overlay mirrors
- * `data-open` on its host, which is the one thing every one of them agrees on — so a new one joins
- * this list by declaring its tag here when it lands.
+ * It answered ONE question — may the Inspector repaint right now? — for a dock that rebuilt its
+ * markup on every projection, because a lit repaint destroys the element a drag is committing
+ * through. The dock is `surfaces/inspector-dock.json` now: it draws a title, a target and a tab
+ * selection, its four bodies are mounted documents of their own that never go through it, and a
+ * binding whose value did not move writes nothing. There is no repaint to withhold, so there is
+ * nothing left to ask. It had no other caller (`tests/reachability.test.ts` is what says so), and a
+ * predicate kept for a question nobody asks is a thing the next reader has to work out.
  */
-export function isColorPopoverOpen() {
-  return Boolean(
-    document.querySelector(".style-input-color sp-overlay[open], jx-popover[data-open]"),
-  );
-}

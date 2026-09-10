@@ -1,12 +1,15 @@
 /**
- * Coverage-gap tests for src/panels/right-panel.ts: the scheduled-render-after-unmount guard and
- * the dock's own render catch.
+ * Coverage-gap tests for src/panels/right-panel.ts: the render-after-unmount guard and the boundary
+ * around a tab taking its body.
  *
- * The second one used to be about a throwing style TEMPLATE, which the dock rendered on every
- * repaint inside a `try`. The Style tab is a mounted document now and the dock renders no tab body
- * at all, so the template and its catch are both gone — what survives is the contract they stood
- * for, re-aimed at the seam that replaced them: a tab whose bind throws must not stop the dock's
- * own chrome from drawing, and must not escape as an unhandled error.
+ * Both used to be about a lit repaint. The first was a scheduled animation frame that fired after
+ * `unmount()` had nulled the ctx; there is no scheduler any more, so what survives is the contract
+ * it stood for — a `render()` after `unmount()` neither throws nor puts the dock back. The second
+ * was a throwing style TEMPLATE inside `_doRender`'s `try`; the Style tab is a mounted document and
+ * the dock renders no tab body at all, so the same contract is re-aimed at the seam that replaced
+ * it — and the seam MOVED, which is why this test matters more than it did. A binder now runs
+ * inside the runtime's `onNodeCreated`, where a throw would reject the mount and leave the dock
+ * with no chrome at all rather than with one dead tab.
  */
 import { flush, resetStudioState, resetWorkspaceWithTab } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
@@ -28,13 +31,6 @@ const { initShellRefs, updateUi } = store;
 const { mount, render, unmount } = await import("../src/panels/right-panel");
 const { activeTab, closeAllTabs } = await import("../src/workspace/workspace");
 
-// Panel scheduler coalesces via requestAnimationFrame; make it a plain macrotask so a pending
-// Frame survives unmount (cancelAnimationFrame cannot cancel a timeout id).
-const origRaf = globalThis.requestAnimationFrame;
-(globalThis as unknown as Record<string, unknown>).requestAnimationFrame = (
-  cb: FrameRequestCallback,
-) => setTimeout(() => cb(0), 0) as unknown as number;
-
 function makeCtx() {
   return {
     getCanvasMode: mock(() => "design"),
@@ -42,6 +38,11 @@ function makeCtx() {
     navigateToComponent: mock(() => {}),
     renderCanvas: mock(() => {}),
   };
+}
+
+/** The tab panel that is showing. Exactly one, always. */
+function showingPanel(): HTMLElement | null {
+  return store.rightPanel.querySelector<HTMLElement>('[role="tabpanel"]:not([hidden])');
 }
 
 beforeEach(() => {
@@ -61,13 +62,14 @@ afterEach(() => {
 });
 
 describe("right panel gaps", () => {
-  test("a frame scheduled before unmount lands harmlessly after it", async () => {
+  test("a render issued around unmount neither throws nor puts the dock back", async () => {
     resetWorkspaceWithTab();
     mount(makeCtx() as never);
-    render(); // Schedules a flush on the stubbed (uncancelable) frame.
-    unmount(); // Nulls the ctx before the frame fires.
+    render();
+    unmount();
+    expect(() => render()).not.toThrow();
     await flush(4);
-    expect(store.rightPanel.querySelector("sp-tabs")).toBeNull();
+    expect(store.rightPanel.querySelector('[role="tablist"]')).toBeNull();
   });
 
   test("the events tab consults the custom-element predicate once a node is selected", async () => {
@@ -81,28 +83,24 @@ describe("right panel gaps", () => {
     updateUi(activeTab.value, "rightTab", "events");
     render();
     await flush(4);
-    const visible = [...store.rightPanel.querySelectorAll(".panel-body")].filter(
-      (el) => (el as HTMLElement).style.display !== "none",
-    );
-    expect(visible).toHaveLength(1);
+    const panel = showingPanel();
+    expect(panel?.dataset.tab).toBe("events");
     // The events body rendered content for the selected node (not the empty state).
-    expect(visible[0]!.textContent).not.toContain("Select an element");
+    expect(panel!.textContent).not.toContain("Select an element");
   });
 
-  test("a tab that throws while binding is caught, and the dock still draws its chrome", async () => {
+  test("a tab that throws while taking its body cannot stop the dock from drawing", async () => {
     resetWorkspaceWithTab();
     styleThrows = true;
     mount(makeCtx() as never);
     updateUi(activeTab.value, "rightTab", "style");
     render();
     await flush(4);
-    // The header and the tab strip are rendered BEFORE the containers are made, so the dock is
-    // Still navigable: the reader can leave the tab that failed.
-    expect(store.rightPanel.querySelector("sp-tabs")).not.toBeNull();
-    expect(store.rightPanel.querySelectorAll("sp-tab")).not.toHaveLength(0);
+    /* The dock is still navigable, so the reader can leave the tab that failed — and the OTHER
+       three tabs still got their hosts, which is the part the old boundary could not promise:
+       `_ensureContainers` built them in a loop and the throw ended it. */
+    expect(store.rightPanel.querySelector('[role="tablist"]')).not.toBeNull();
+    expect(store.rightPanel.querySelectorAll('[role="tab"]')).toHaveLength(4);
+    expect(store.rightPanel.querySelectorAll('[part="panel-body"]')).toHaveLength(4);
   });
-});
-
-afterEach(() => {
-  globalThis.requestAnimationFrame = origRaf;
 });

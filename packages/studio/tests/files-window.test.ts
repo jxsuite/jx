@@ -7,19 +7,25 @@
  * the questions below answerable: which row is below this one, where does this row sit among its
  * siblings, and where is the tab stop when the selected row has scrolled out of the DOM.
  */
-import { flush, installMockPlatform, renderInto, stubRect } from "./harness";
+import { flush, installMockPlatform, stubRect } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { requireProjectState, setProjectState } from "../src/store";
 import { initLayers } from "../src/ui/layers";
 import type { DirEntry } from "../src/types";
 
+/** The recorded drag sources, so a case can start a real drag instead of forging its evidence. */
+const draggables: { element?: HTMLElement; onDragStart?: () => void; onDrop?: () => void }[] = [];
+
 void mock.module("@atlaskit/pragmatic-drag-and-drop/element/adapter", () => ({
-  draggable: () => () => {},
+  draggable: (opts: { element?: HTMLElement }) => {
+    draggables.push(opts);
+    return () => {};
+  },
   dropTargetForElements: () => () => {},
   monitorForElements: () => () => {},
 }));
 
-const { FILE_ROW_HEIGHT, renderFilesTemplate } = await import("../src/files/files");
+const { FILE_ROW_HEIGHT, mountFilesPanel, unmountFilesPanel } = await import("../src/files/files");
 
 /** Files in the project root — enough that a window is a small fraction of the tree. */
 const FILE_COUNT = 300;
@@ -71,33 +77,37 @@ const ROW_COUNT = 3 + FILE_COUNT;
 
 /** Happy-dom performs no layout, so the tree's top relative to the scroller is stubbed. */
 function place(): void {
-  const tree = host.querySelector<HTMLElement>(".file-tree");
+  const tree = host.querySelector<HTMLElement>('[part="tree"]');
   if (tree) {
     (tree as { getBoundingClientRect: () => DOMRect }).getBoundingClientRect = () =>
       ({ height: ROW_COUNT * FILE_ROW_HEIGHT, top: -scroller.scrollTop }) as DOMRect;
   }
 }
 
-async function renderTree(): Promise<void> {
+/** The Navigator's repaint: the panel is drawn again, which re-projects into the document. */
+function repaint(): void {
   renders += 1;
-  await renderInto(
-    renderFilesTemplate({
-      openFileFromTree: () => {},
-      openProject: () => {},
-      renderLeftPanel: () => {
-        void renderTree();
-      },
-    }),
-    host,
-  );
+  mountFilesPanel(host, repaint);
   place();
 }
 
-/** Render until the tree has been adopted and the second, windowed pass has run. */
-async function renderWindowed(): Promise<void> {
-  await renderTree();
+async function renderTree(): Promise<void> {
+  repaint();
   await flush();
   place();
+}
+
+/**
+ * Mount, then settle: the first paint draws every row because nothing has been laid out to measure,
+ * and the watch's opening measurement is what asks for the second, windowed pass.
+ */
+async function renderWindowed(): Promise<void> {
+  mountFilesPanel(host, repaint);
+  await flush(3);
+  place();
+  await flush(3);
+  place();
+  renders = 0;
 }
 
 async function scrollTo(top: number): Promise<void> {
@@ -109,16 +119,16 @@ async function scrollTo(top: number): Promise<void> {
 }
 
 function rows(): HTMLElement[] {
-  return [...host.querySelectorAll<HTMLElement>('.file-tree-item[role="treeitem"]')];
+  return [...host.querySelectorAll<HTMLElement>('[part="row"][role="treeitem"]')];
 }
 
 function rowFor(path: string): HTMLElement | null {
-  return host.querySelector<HTMLElement>(`.file-tree-item[data-path="${CSS.escape(path)}"]`);
+  return host.querySelector<HTMLElement>(`[part="row"][data-path="${CSS.escape(path)}"]`);
 }
 
 function pads(): number[] {
-  return [...host.querySelectorAll<HTMLElement>(".file-tree > div[aria-hidden]")].map((el) =>
-    Number(el.style.height.replace("px", "")),
+  return [...host.querySelectorAll<HTMLElement>('[part="pad-top"], [part="pad-bottom"]')].map(
+    (el) => Number(el.style.height.replace("px", "")),
   );
 }
 
@@ -141,11 +151,13 @@ beforeEach(async () => {
   stubRect(scroller, { height: VIEWPORT, top: 0 });
   host = document.querySelector("#host") as HTMLElement;
   renders = 0;
+  draggables.length = 0;
   seedProject();
   await renderWindowed();
 });
 
 afterEach(() => {
+  unmountFilesPanel();
   setProjectState(null);
   document.body.innerHTML = "";
 });
@@ -217,8 +229,9 @@ describe("the window", () => {
 });
 
 describe("the keyboard walks the model", () => {
-  /* No setupTreeKeyboard call: the keydown is a `@keydown` binding in the tree's own template, so
-     rendering it is all the wiring there is. The event still bubbles from the focused row. */
+  /* The keydown is bound to the ROW in `surfaces/files-panel.json`, so mounting the document is all
+     the wiring there is — and which row the key is about is that row's own `$map` item rather than
+     anything looked up from the focus. */
   test("↓ steps past the last DRAWN row instead of stopping at it", async () => {
     const last = rows().at(-1)!;
     last.focus();
@@ -236,9 +249,9 @@ describe("the keyboard walks the model", () => {
 });
 
 /**
- * The language chip (`.file-tree-locale`) is drawn INSIDE the 24px row.
+ * The language chip (`[part="locale"]`) is drawn INSIDE the 24px row.
  *
- * `FILE_ROW_HEIGHT` mirrors `styles/panels.css`'s `.file-tree-item { block-size: 24px }`, and the
+ * `FILE_ROW_HEIGHT` mirrors the `--jx-control-h` the document gives `[part="row"]`, and the
  * window's scroll reservation is that number times the rows it did not draw. A chip that grew the
  * box would desynchronise the scrollbar from the model on every multilingual project — silently,
  * because nothing measures a row until one has been laid out.
@@ -282,14 +295,12 @@ describe("a multilingual project", () => {
   });
 
   test("chips the rows under a declared locale, in that language's own words", () => {
-    expect(rowFor("fr/index.json")!.querySelector(".file-tree-locale")?.textContent).toBe(
-      "français",
-    );
+    expect(rowFor("fr/index.json")!.querySelector('[part="locale"]')?.textContent).toBe("français");
     // The directory names the locale, so it carries the chip too.
-    expect(rowFor("fr")!.querySelector(".file-tree-locale")?.textContent).toBe("français");
+    expect(rowFor("fr")!.querySelector('[part="locale"]')?.textContent).toBe("français");
     // A file under no locale directory gets none — inventing the default locale here would be a
     // Claim about `routing` the path does not make.
-    expect(rowFor(fileName(0))!.querySelector(".file-tree-locale")).toBeNull();
+    expect(rowFor(fileName(0))!.querySelector('[part="locale"]')).toBeNull();
   });
 
   test("leaves the window and the ARIA set sizes exactly where they were", async () => {
@@ -309,7 +320,12 @@ describe("a multilingual project", () => {
 describe("a drag keeps the window it started with", () => {
   test("a scroll mid-drag does not repaint the rows pragmatic-dnd is holding", async () => {
     const dragged = rows()[2]!;
-    dragged.classList.add("dragging");
+    // A REAL drag, through the source the document's `onNodeCreated` registered — the predecessor
+    // Forged a `.dragging` class, which was the same thing the guard then went looking for, so the
+    // Case could not have caught the guard reading the wrong evidence.
+    const source = draggables.find((d) => d.element === dragged)!;
+    expect(source).toBeDefined();
+    source.onDragStart!();
     const before = renders;
 
     scroller.scrollTop = FILE_ROW_HEIGHT * 100;
@@ -319,5 +335,7 @@ describe("a drag keeps the window it started with", () => {
 
     expect(renders).toBe(before);
     expect(dragged.isConnected).toBe(true);
+
+    source.onDrop!();
   });
 });

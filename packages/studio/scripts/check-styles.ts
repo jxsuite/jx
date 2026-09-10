@@ -131,26 +131,6 @@ export const ALLOWED_ORPHANS = new Set<string>([
   "overlay-presence-tag",
   /* Owner: collab/presence-chips.ts — jx-presence, -chip, -status and the two new flags now have
      rules in styles/shell.css. The flagship co-editing affordance shipped unstyled (§7.4). */
-  // Owner: grid/grid-open.ts
-  "jx-grid-picker",
-  // Owner: grid/grid-panel.ts
-  "jx-grid-replace-popover",
-  // Owner: panels/data-grid.ts
-  "data-action-grid",
-  "data-action-push",
-  "data-action-test",
-  "data-section-actions",
-  "data-test-result",
-  "push-apply",
-  "push-cancel",
-  "push-dialog",
-  "push-dialog-actions",
-  "push-dialog-error",
-  "push-dialog-plan",
-  "push-dialog-status",
-  "push-dialog-steps",
-  "push-dialog-warning",
-  "push-step",
   // Owner: panels/drag-ghost.ts
   "jx-drag-ghost",
   // Owner: panels/events-panel.ts
@@ -158,11 +138,7 @@ export const ALLOWED_ORPHANS = new Set<string>([
      styles/panels.css now. The takeover held itself together with inline `style=` attributes; a
      dock tab cannot, because its height is the dock's rather than the stage's. Two remain: both
      are Spectrum action buttons the surface only needs a HANDLE on, and neither carries a rule. */
-  "fw-browse-catalog",
-  "fw-close",
   // Owner: panels/layers-panel.ts
-  "layers-container",
-  "layers-tree",
   /* Owner: panels/properties-panel.ts — the breakpoint form these three belonged to is gone.
      $media is defined in Project Settings › Contexts and nowhere else (plan §4.2). */
   /* Owner: panels/statement-editor.ts — the whole surface (twenty names, including the two
@@ -588,6 +564,32 @@ export function surfaceClasses(source: string): [string, number][] {
       }
     }
     match = re.exec(source);
+  }
+  return found;
+}
+
+/**
+ * Every class a surface document's own style block DEFINES a rule for.
+ *
+ * A document's style object is a stylesheet: its keys are selectors, and `"&
+ * .tabulator-cell.jx-grid-cell--dirty"` declares a rule exactly as a `.css` file would. The orphan
+ * rule reads a class emitted by `src/` and asks whether anything styles it, so without this it saw
+ * only `styles/*.css` and the `css` templates in TypeScript — and reported six live grid state
+ * classes as unstyled while the rules for them sat in `surfaces/grid-panel.json`. An island's state
+ * vocabulary is the case that surfaces it: the document styles what its island writes, so the
+ * definition and the emission are in different files by construction.
+ */
+export function surfaceDefinedClasses(source: string): string[] {
+  const found: string[] = [];
+  for (const block of jsonStyleBlocks(source)) {
+    for (const [, key] of block.text.matchAll(/"((?:[^"\\]|\\.)*)"\s*:/g)) {
+      if (!key || !key.includes(".")) {
+        continue;
+      }
+      for (const [, name] of key.matchAll(SELECTOR_CLASS_RE)) {
+        found.push(name!);
+      }
+    }
   }
   return found;
 }
@@ -1485,6 +1487,9 @@ export async function collect(root: string): Promise<StyleCheckResult> {
       if (!emitted.has(name)) {
         emitted.set(name, { file: rel, line, text: name });
       }
+    }
+    for (const name of surfaceDefinedClasses(source)) {
+      defined.add(name);
     }
   }
 

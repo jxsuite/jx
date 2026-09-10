@@ -5,6 +5,8 @@ spec:
   - studio.md#6.7
 code:
   - packages/studio/src/panels/layers-panel.ts
+  - packages/studio/src/surfaces/panel-outline.json
+  - packages/studio/src/surfaces/panel-outline.ts
   - packages/studio/src/panels/dnd.ts
   - packages/studio/src/tabs/selection.ts
 ---

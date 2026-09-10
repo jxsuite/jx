@@ -18,10 +18,11 @@
  * `ui/schema-form.ts`, and the actions row (Test Connection, Push Schema, Open Data Grid) is
  * contributed by `panels/data-grid.ts`. The document renders a host node for each and nothing
  * inside it, announced through `onNodeCreated` (specs/studio-ui-guidelines.md §9.4), and this
- * module fills them. That is what made the two convert one at a time, and the schema form has since
- * gone: it is a document of its own now, so {@link paintForm} PLACES its host element instead of
- * rendering a template into the node — the seam did not move, exactly as designed. The actions row
- * is still lit.
+ * module fills them. That is what made the two convert one at a time, and BOTH have since gone: the
+ * schema form is a document of its own, so {@link paintForm} PLACES its host element, and the
+ * actions row is one too, so {@link paintActions} hands the host over and the contributor MOUNTS
+ * into it. The seam did not move, exactly as designed — what changed is that nothing on either side
+ * of it renders a template any more.
  *
  * Two things the conversion settled, and each was a defect rather than a translation:
  *
@@ -36,7 +37,6 @@
  *   text. It is one value now, and the field shows it.
  */
 
-import { nothing, render as litRender } from "lit-html";
 import { errorMessage } from "@jxsuite/schema/parse";
 import { getPlatform } from "../platform";
 import { commitProjectConfig } from "../tabs/project-config";
@@ -50,7 +50,6 @@ import { paneRegion } from "../ui/regions";
 import { paneOfContainer } from "../canvas/canvas-surface";
 import { mountContributedSurface } from "../surfaces/settings-contributed";
 
-import type { TemplateResult } from "lit-html";
 import type { JsonSchema, SchemaFormContext } from "../ui/schema-form";
 import type { ProjectConfig } from "@jxsuite/schema/types";
 import type {
@@ -98,7 +97,7 @@ export interface ContributedSectionOptions {
    * section-scoped operations (e.g. the data surface's Test/Push actions) without the generic
    * renderer knowing any extension.
    */
-  actions?: ((ctx: SectionActionsContext) => TemplateResult) | undefined;
+  actions?: ((host: HTMLElement, ctx: SectionActionsContext) => void) | undefined;
 }
 
 // ─── Module state ─────────────────────────────────────────────────────────────
@@ -527,7 +526,7 @@ function paintActions(record: SectionMount): void {
     return;
   }
   if (!actions) {
-    litRender(nothing, host);
+    host.replaceChildren();
     return;
   }
   const sectionKey = record.contribution.key;
@@ -535,7 +534,7 @@ function paintActions(record: SectionMount): void {
     (record.contribution.settings.layout ?? "form") === "map"
       ? (selectedEntries.get(sectionKey) ?? null)
       : null;
-  litRender(actions({ rerender: () => redraw(record), sectionKey, selected }), host);
+  actions(host, { rerender: () => redraw(record), sectionKey, selected });
 }
 
 // ─── What the reader can do ───────────────────────────────────────────────────

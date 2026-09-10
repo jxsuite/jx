@@ -86,10 +86,12 @@ function makeDoc(): JxMutableNode {
   };
 }
 
-/** Build a layer row whose dataset is a plain object (happy-dom's proxy breaks Object.hasOwn). */
+/** Build an Outline row whose dataset is a plain object (happy-dom's proxy breaks Object.hasOwn). */
 function makeRow(path: string, depth: number, flags: { void?: boolean; expanded?: boolean } = {}) {
   const row = document.createElement("div");
-  row.className = "layer-row";
+  /* `part`, not a class. The Outline is a Jx document (`src/surfaces/panel-outline.json`) and emits
+     no classes at all, so `part` is how this island addresses the rows it registers. */
+  row.setAttribute("part", "row");
   row.dataset.dndRow = "";
   row.dataset.path = path;
   const dataset: AnyRec = { dndDepth: String(depth), dndRow: "", path };
@@ -107,9 +109,9 @@ function makeRow(path: string, depth: number, flags: { void?: boolean; expanded?
 async function setupLayers() {
   leftPanel.innerHTML = "";
   const container = document.createElement("div");
-  container.className = "layers-container";
+  container.setAttribute("part", "outline");
   const tree = document.createElement("div");
-  tree.className = "layers-tree";
+  tree.setAttribute("part", "tree");
   const rows = [
     makeRow("children/0", 0, { expanded: true }),
     makeRow("children/0/children/0", 1),
@@ -146,7 +148,7 @@ afterEach(() => {
 });
 
 describe("registerLayersDnD — registration", () => {
-  test("no .layers-container is a no-op", async () => {
+  test("no Outline root is a no-op", async () => {
     leftPanel.innerHTML = "";
     dnd.registerLayersDnD();
     await raf();
@@ -178,7 +180,7 @@ describe("registerLayersDnD — registration", () => {
   test("canDrag rejects drags starting on layer action buttons", async () => {
     const { rows } = await setupLayers();
     const actions = document.createElement("div");
-    actions.className = "layer-actions";
+    actions.setAttribute("part", "actions");
     const button = document.createElement("button");
     actions.append(button);
     rows[0]!.append(actions);
@@ -201,12 +203,12 @@ describe("registerLayersDnD — registration", () => {
     const { rows } = await setupLayers();
     Object.defineProperty(rows[0], "offsetHeight", { value: 24 });
     dragFor(rows[0]!).onDragStart();
-    expect(rows[0]!.classList.contains("dragging")).toBe(true);
+    expect(rows[0]!.dataset.dragging).toBe("");
     expect(view.layerDragSourceHeight).toBe(24);
     expect(rows[1]!.style.display).toBe("none"); // Descendant of children/0
     expect(rows[2]!.style.display).toBe("");
     dragFor(rows[0]!).onDrop();
-    expect(rows[0]!.classList.contains("dragging")).toBe(false);
+    expect(rows[0]!.dataset.dragging).toBeUndefined();
     expect(renderedPanels).toEqual(["leftPanel"]); // Expanded rows trigger a re-render
   });
 
@@ -259,7 +261,7 @@ describe("showLayerDropGap / clearLayerDropGap", () => {
   test("reorder-below shifts only rows after the target and skips the dragging row", async () => {
     const { rows } = await setupLayers();
     view.layerDragSourceHeight = 10;
-    rows[3]!.classList.add("dragging");
+    rows[3]!.dataset.dragging = "";
     dropFor(rows[1]!).onDrag({ self: { data: { __instr: { type: "reorder-below" } } } });
     expect(rows[1]!.style.transform).toBe("");
     expect(rows[2]!.style.transform).toBe("translateY(10px)");
@@ -271,7 +273,7 @@ describe("showLayerDropGap / clearLayerDropGap", () => {
     view.layerDragSourceHeight = 24;
     dropFor(rows[2]!).onDrag({ self: { data: { __instr: { type: "reorder-above" } } } });
     dropFor(rows[2]!).onDrag({ self: { data: { __instr: { type: "make-child" } } } });
-    expect(rows[2]!.classList.contains("drop-target")).toBe(true);
+    expect(rows[2]!.dataset.dropTarget).toBe("");
     expect(rows[3]!.style.transform).toBe("");
     expect(view._currentDropTargetRow).toBe(rows[2]!);
   });
@@ -280,8 +282,8 @@ describe("showLayerDropGap / clearLayerDropGap", () => {
     const { rows } = await setupLayers();
     dropFor(rows[2]!).onDrag({ self: { data: { __instr: { type: "make-child" } } } });
     dropFor(rows[3]!).onDrag({ self: { data: { __instr: { type: "make-child" } } } });
-    expect(rows[2]!.classList.contains("drop-target")).toBe(false);
-    expect(rows[3]!.classList.contains("drop-target")).toBe(true);
+    expect(rows[2]!.dataset.dropTarget).toBeUndefined();
+    expect(rows[3]!.dataset.dropTarget).toBe("");
   });
 
   test("a blocked or missing instruction clears the gap", async () => {
@@ -314,8 +316,8 @@ describe("showLayerDropGap / clearLayerDropGap", () => {
     rows[1]!.style.display = "none";
     rows[1]!.style.transform = "translateY(24px)";
     dnd.clearLayerDropGap(container);
-    // Without the display reset, lit would reuse this node (display:none) for whatever row lands
-    // On it after the post-drop re-render — silently hiding an unrelated sibling.
+    // Without the display reset, the keyed reconcile would hand this node (display:none) to
+    // Whatever row lands on that key after the post-drop repaint — silently hiding a sibling.
     expect(rows[1]!.style.display).toBe("");
     expect(rows[1]!.style.transform).toBe("");
   });
@@ -476,7 +478,10 @@ describe("registerComponentsDnD", () => {
 });
 
 describe("registerElementsDnD", () => {
-  test("no .panel-body is a no-op", async () => {
+  /* The container is the Navigator's `[part="content"]` box — `surfaces/navigator-dock.json`'s
+     island, which is where every panel's own markup goes. It was `.panel-body`, which is a class
+     the converted dock does not emit; the registration is unchanged, and what it looks for is not. */
+  test("no content box is a no-op", async () => {
     leftPanel.innerHTML = "";
     dnd.registerElementsDnD();
     await raf();
@@ -485,7 +490,7 @@ describe("registerElementsDnD", () => {
   });
 
   test("fills previews (span for unsafe tags) and serves default definitions", async () => {
-    leftPanel.innerHTML = `<div class="panel-body">
+    leftPanel.innerHTML = `<div part="content">
       <div data-block-tag="p"><div class="element-card-preview"></div></div>
       <div data-block-tag="script"><div class="element-card-preview"></div></div>
       <div data-block-tag="h1"><div class="element-card-preview"><span>keep</span></div></div>

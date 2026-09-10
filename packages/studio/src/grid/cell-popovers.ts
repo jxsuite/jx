@@ -1,13 +1,19 @@
 /**
  * Popover cell editors — media paths and relationship pickers.
  *
- * These kinds bypass Tabulator's in-cell editor session entirely: their pickers render Spectrum
- * overlays OUTSIDE the cell, which Tabulator's range module treats as an outside interaction and
- * blur-cancels. Instead, a dblclick on the cell opens an anchored layer popover that writes
- * straight through the edit buffer via `commit`.
+ * These kinds bypass Tabulator's in-cell editor session entirely: their pickers render OUTSIDE the
+ * cell, which Tabulator's range module treats as an outside interaction and blur-cancels. Instead,
+ * a dblclick on the cell opens `surfaces/grid-cell.json` anchored at the cell, and every pick
+ * writes straight through the edit buffer via `commit`.
+ *
+ * **What is left here is the decision, not the markup.** The panel is a document; this module says
+ * which of the two pickers it draws, what the relationship column points at, and what a pick means.
+ * The media picker itself is still a lit surface (`ui/media-picker.ts`), so it arrives through the
+ * document's island seam (specs/studio-ui-guidelines.md §9.4) — which is exactly why this module
+ * may import lit and the surface's adapter may not.
  */
-import { html, nothing } from "lit-html";
-import { renderPopover } from "../ui/layers";
+import { render as litRender } from "lit-html";
+import { openGridCellSurface } from "../surfaces/grid-cell";
 import { renderMediaPicker } from "../ui/media-picker";
 import { listCollectionEntryIds } from "./sources/content-source";
 import { cellToText } from "./schema-columns";
@@ -36,27 +42,17 @@ export interface CellPopoverArgs {
   commit: (value: GridCellValue) => void;
 }
 
-function popoverShell(
-  column: GridColumn,
-  anchor: CellPopoverArgs["anchor"],
-  body: unknown,
-  dismiss: () => void,
-) {
-  const left = Math.max(4, Math.min(anchor.left, window.innerWidth - 340));
-  const top = Math.max(4, Math.min(anchor.bottom + 2, window.innerHeight - 200));
-  return html`<sp-popover
-    open
-    class="jx-grid-cell-popover"
-    style="position:fixed;z-index:10000;left:${left}px;top:${top}px"
-  >
-    <div class="jx-grid-cell-popover-body">
-      <div class="jx-grid-cell-popover-title">${column.title}</div>
-      ${body}
-      <div class="jx-grid-cell-popover-actions">
-        <sp-button size="s" variant="secondary" @click=${dismiss}>Done</sp-button>
-      </div>
-    </div>
-  </sp-popover>`;
+/**
+ * Where the panel opens: at the cell, kept inside the viewport on both axes.
+ *
+ * The clamp is the panel's own width and a floor for its height, because a cell near the right edge
+ * of a wide grid is exactly where a relationship column tends to be.
+ */
+function placement(anchor: CellPopoverArgs["anchor"]): { x: number; y: number } {
+  return {
+    x: Math.max(4, Math.min(anchor.left, window.innerWidth - 340)),
+    y: Math.max(4, Math.min(anchor.bottom + 2, window.innerHeight - 200)),
+  };
 }
 
 /**
@@ -66,45 +62,53 @@ function popoverShell(
 export async function openCellValuePopover(args: CellPopoverArgs): Promise<void> {
   const { anchor, column, commit, value } = args;
   const current = cellToText(value);
+  const at = placement(anchor);
+  /* The empty string is what every control here says for "no value", and null is what the buffer
+     stores — a cell cleared through this panel must be indistinguishable from one never set. The
+     trim is for the free-text field: an id with a stray space is a reference that resolves to
+     nothing, and it is never what was meant. */
+  const pick = (picked: string) => {
+    const trimmed = picked.trim();
+    commit(trimmed === "" ? null : trimmed);
+  };
 
-  let body;
   if (column.kind === "reference") {
     const targetType = referenceTargetType(column);
     const ids = targetType ? await listCollectionEntryIds(targetType) : [];
-    body = html`
-      ${
-        targetType
-          ? html`<div class="jx-grid-cell-popover-hint">Entries of “${targetType}”</div>`
-          : nothing
-      }
-      <select
-        class="jx-grid-select"
-        @change=${(e: Event) => {
-          const picked = (e.target as HTMLSelectElement).value;
-          commit(picked === "" ? null : picked);
-        }}
-      >
-        <option value="" ?selected=${current === ""}>—</option>
-        ${ids.map((id) => html`<option value=${id} ?selected=${id === current}>${id}</option>`)}
-      </select>
-      <input
-        class="jx-grid-input"
-        placeholder="Custom id…"
-        .value=${ids.includes(current) ? "" : current}
-        @change=${(e: Event) => {
-          const text = (e.target as HTMLInputElement).value.trim();
-          commit(text === "" ? null : text);
-        }}
-      />
-    `;
-  } else {
-    body = renderMediaPicker(column.field, current, (val) => {
-      commit(val === "" ? null : val);
+    const listed = ids.includes(current);
+    openGridCellSurface({
+      pick,
+      view: {
+        /* An id the target collection does not hold is still a legal reference — a draft entry, or
+           one another repository owns — so it shows in the free-text field rather than being
+           silently dropped by a list that has no row for it. */
+        custom: listed ? "" : current,
+        hint: targetType ? `Entries of “${targetType}”` : "",
+        hintState: targetType ? "shown" : "hidden",
+        kind: "reference",
+        options: [{ label: "—", value: "" }, ...ids.map((id) => ({ label: id, value: id }))],
+        title: column.title,
+        value: listed ? current : "",
+        ...at,
+      },
     });
+    return;
   }
 
-  const handle = renderPopover(
-    popoverShell(column, anchor, body, () => handle.dismiss()),
-    { dismissOnOutsideClick: true },
-  );
+  openGridCellSurface({
+    island: (host) => {
+      litRender(renderMediaPicker(column.field, current, pick), host);
+    },
+    pick,
+    view: {
+      custom: "",
+      hint: "",
+      hintState: "hidden",
+      kind: "image",
+      options: [],
+      title: column.title,
+      value: current,
+      ...at,
+    },
+  });
 }

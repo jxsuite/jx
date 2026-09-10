@@ -1,8 +1,7 @@
 /// <reference lib="dom" />
 // ─── Data Explorer ──────────────────────────────────────────────────────────
 
-import { html, nothing } from "lit-html";
-import type { TemplateResult } from "lit-html";
+import { nothing } from "lit-html";
 import { activeTab } from "../workspace/workspace";
 import { booleanArg, stringArg, stringProperty } from "../commands/command-args";
 import { renderDataTreeSurface } from "../surfaces/panel-data";
@@ -210,48 +209,6 @@ export function dataTreeRows(
     rows.push(moreRow(path, limit, indent, `… ${entries.length - cap} more`));
   }
   return rows;
-}
-
-/**
- * What one host in the panel's markup is waiting to have drawn into it.
- *
- * The value travels as a lit PROPERTY rather than through module state: lit writes it on every
- * render, so a host and the value it stands for can never disagree, and the post-render pass has
- * only to read what the render left.
- */
-interface DataTreeRequest {
-  value: unknown;
-  depth: number;
-  maxDepth: number;
-  path: string;
-}
-
-/**
- * The host one value tree is drawn into, and the value it is to draw.
- *
- * It renders no tree of its own. The tree is a Jx document and a document is not a
- * `TemplateResult`, so what a lit template can contribute is the element it lands in, and
- * {@link paintDataTree} is what fills one. The signature is unchanged so that the row template
- * calling it does not have to know any of that.
- *
- * **Its one remaining caller has no filler.** The Data panel is a document now and paints its own
- * hosts directly; `panels/formula-workspace.ts` still renders this host and nothing has ever called
- * a mounting pass with the Bottom dock's body, so the Logic tab's "resolved value" box has been
- * empty since the tree became a document. The request is left on the host — it is exactly what a
- * `ref()` calling {@link paintDataTree} needs — rather than the host being quietly deleted.
- *
- * @returns {import("lit-html").TemplateResult}
- */
-export function renderDataTreeTemplate(
-  value: unknown,
-  depth: number,
-  maxDepth = 5,
-  path = "",
-): TemplateResult {
-  return html`<div
-    data-jx-tree=${path}
-    .jxDataTree=${{ depth, maxDepth, path, value } satisfies DataTreeRequest}
-  ></div>`;
 }
 
 /**

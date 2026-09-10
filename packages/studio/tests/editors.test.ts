@@ -4,12 +4,12 @@
  * (create/get/ setValue/dispose/change events, setValue firing onDidChangeModelContent like real
  * Monaco).
  *
- * The tests drive it the way the Bottom dock does — paint {@link functionEditorTemplate} into a
- * body, then call {@link syncFunctionEditor} as the panel's `afterRender` — and assert what the move
- * out of the canvas takeover has to get right: the canvas is left mounted, the editor is rebuilt
- * when lit replaces its container, and a Close still minifies and writes the body back. Format/lint
- * on open, debounced state sync for defs and events, and the completion provider are unchanged and
- * still covered here.
+ * The tests drive it the way the Bottom dock does — paint the code host into a body, then call
+ * {@link syncFunctionEditor} as the panel's `afterRender` — and assert what the move out of the
+ * canvas takeover has to get right: the canvas is left mounted, the editor is rebuilt when lit
+ * replaces its container, and a Close still minifies and writes the body back. Format/lint on open,
+ * debounced state sync for defs and events, and the completion provider are unchanged and still
+ * covered here.
  */
 import { flush, installMockPlatform, registerPrimaryStage, resetWorkspaceWithTab } from "./harness";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
@@ -126,13 +126,22 @@ void mock.module("monaco-editor/editor", () => ({
   },
 }));
 
-const {
-  closeFunctionEditor,
-  functionEditorTemplate,
-  registerFunctionCompletions,
-  syncFunctionEditor,
-} = await import("../src/panels/editors");
-const { nothing, render: litRender } = await import("lit-html");
+const { closeFunctionEditor, registerFunctionCompletions, syncFunctionEditor } =
+  await import("../src/panels/editors");
+const { html, nothing, render: litRender } = await import("lit-html");
+
+/**
+ * The container the Logic tab draws for Monaco.
+ *
+ * `surfaces/logic-workspace.json` renders `[part="code-host"]` and nothing inside it — the island
+ * contract of studio-ui-guidelines.md §9.4 — so this stands in for the one node of that document
+ * this module is answerable for. It is painted with lit here because these tests exercise the
+ * REPAINT: the surface being torn out from under a live editor is what `syncFunctionEditor` is for,
+ * and lit taking a container back is the cheapest way to stage it.
+ */
+function functionEditorTemplate() {
+  return html`<div part="code-host"></div>`;
+}
 const { loadMonaco } = await import("../src/services/monaco-lazy");
 const { initShellRefs, registerRenderer } = await import("../src/store");
 const { activeCanvasSurface } = await import("../src/canvas/canvas-surface");
@@ -292,7 +301,7 @@ describe("the code surface — def target", () => {
     expect(canvasPanels).toHaveLength(1);
     expect(canvasWrap.textContent).toBe("the rendered page");
 
-    expect(dock.querySelector(".fw-code")).not.toBeNull();
+    expect(dock.querySelector('[part="code-host"]')).not.toBeNull();
 
     expect(created).toHaveLength(1);
     expect(created[0]!.options.language).toBe("javascript");
@@ -509,7 +518,7 @@ describe("living in a dock tab", () => {
     const [first] = created;
     expect(first!.disposed).toBe(false);
 
-    // What switching to the formula surface and back does: a NEW `.fw-code`, same target. The
+    // What switching to the formula surface and back does: a NEW `[part="code-host"]`, same target. The
     // Takeover only compared the target string, so it would have kept a detached editor holding
     // The user's unsaved body and shown them an empty box.
     dock.textContent = "";
@@ -1067,7 +1076,7 @@ describe("closeFunctionEditor", () => {
     await flush();
 
     // The dock collapses / Problems is selected while the minify is in flight: the Logic tab
-    // Repaints without a `.fw-code`, so `syncFunctionEditor` disposes on the spot. Nothing
+    // Repaints without a `[part="code-host"]`, so `syncFunctionEditor` disposes on the spot. Nothing
     // Retargets, so nothing else will ever clear `editingFunction`.
     dock.textContent = "";
     // @ts-expect-error -- _$litPart$ is Lit's private render-part marker, not in the DOM types

@@ -14,7 +14,7 @@ import { live } from "lit-html/directives/live.js";
 import { PURE_METHOD_OPS } from "@jxsuite/runtime/expression";
 import { isJsonObject, isRef } from "@jxsuite/schema/guards";
 import { renderFieldRow } from "./field-row";
-import { renderFormulaChips } from "./formula-chips";
+import { formulaChipStrip } from "./formula-chips";
 import { applyCatalogPick, calleeEntry, formulaCatalog } from "./formula-catalog";
 import { openFormulaPalette } from "../surfaces/formula-palette";
 import { VALUE_SOURCE_LABELS } from "./value-source";
@@ -25,6 +25,7 @@ import type {
   JxExpressionOperand,
   JxStateDefinition,
 } from "@jxsuite/schema/types";
+import type { FormulaChip } from "./formula-chips";
 import type { TemplateResult } from "lit-html";
 
 // ─── Operator Categories ────────────────────────────────────────────────────
@@ -344,6 +345,87 @@ function renderValueBadge(preview: EditorPreview | null | undefined, pathKey: st
     return nothing;
   }
   return html`<span class="expr-live-badge" title=${text}>${text}</span>`;
+}
+
+// ─── Chip Strip (spec §19.9) ────────────────────────────────────────────────
+
+/**
+ * The chip pipeline's LIT drawing, over `ui/formula-chips.ts`'s model.
+ *
+ * It lives here rather than beside the model because a chip strip has two surfaces now and a shared
+ * control cannot be both (studio-ui-guidelines.md §1): the Logic dock draws the same chips as a Jx
+ * document over the kit (`surfaces/logic-workspace.json`), and this editor is still a lit template
+ * over Spectrum. What the two share is {@link formulaChipStrip}'s answer, not a drawing — so this
+ * one is this editor's own, and it goes when this editor converts.
+ *
+ * The inline `style=` is the strip's, unchanged: `.formula-chip`, `.formula-chip--group` and
+ * `.formula-chips` carry no stylesheet rule (`check-styles.ts`'s allow-list names all three), and
+ * writing rules for a subtree already scheduled for deletion would be the wrong direction.
+ */
+const CHIP_STYLE =
+  "display:inline-flex;align-items:center;gap:4px;max-width:180px;padding:1px 7px;" +
+  "border:1px solid var(--spectrum-gray-300, #3c3c3c);border-radius:10px;cursor:pointer;" +
+  "background:var(--spectrum-gray-100, #232323);color:var(--spectrum-gray-800, #d0d0d0);" +
+  "font-size:11px;font-family:var(--spectrum-code-font-family, monospace);line-height:18px";
+
+/** Live value badge — the same convention as the editor rows' `.expr-live-badge`. */
+function renderChipBadge(chip: FormulaChip) {
+  if (!chip.hasBadge) {
+    return nothing;
+  }
+  return html`
+    <span
+      class="expr-live-badge"
+      title=${chip.badge}
+      style="font-family:var(--spectrum-code-font-family, monospace);font-size:10px;line-height:16px;padding:0 5px;border-radius:4px;background:var(--spectrum-gray-200, #323232);color:var(--spectrum-seafoam-900, #35a690);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px;flex-shrink:1"
+      >${chip.badge}</span
+    >
+  `;
+}
+
+/**
+ * Render an expression node as a horizontal chip pipeline. Clicking a chip reports its node path.
+ *
+ * Exported so the strip can be tested as a drawing rather than only through a whole editor.
+ *
+ * @param {unknown} node The expression node to read.
+ * @param {(path: (string | number)[]) => void} onSelect What a chip click reports.
+ * @param {{ preview?: EditorPreview | null; path?: (string | number)[] }} [opts]
+ * @returns {import("lit-html").TemplateResult}
+ */
+export function renderFormulaChips(
+  node: unknown,
+  onSelect: (path: (string | number)[]) => void,
+  opts: { preview?: EditorPreview | null; path?: (string | number)[] } = {},
+): TemplateResult {
+  const chips = formulaChipStrip(node, opts);
+  if (chips.length === 0) {
+    return html`${nothing}`;
+  }
+  return html`
+    <div
+      class="formula-chips"
+      style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;padding:2px 0 6px"
+    >
+      ${chips.map(
+        (chip) => html`
+          <button
+            type="button"
+            class=${chip.group ? "formula-chip formula-chip--group" : "formula-chip"}
+            data-path=${chip.key}
+            style=${CHIP_STYLE}
+            title=${chip.label}
+            @click=${() => onSelect(chip.path)}
+          >
+            <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:110px"
+              >${chip.label}</span
+            >
+            ${renderChipBadge(chip)}
+          </button>
+        `,
+      )}
+    </div>
+  `;
 }
 
 // ─── Ref Picker ─────────────────────────────────────────────────────────────

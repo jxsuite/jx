@@ -67,6 +67,10 @@ export async function flush(turns = 2): Promise<void> {
 export function resetStudioState(overrides: Record<string, unknown> = {}): void {
   resetIgnoreCache();
   setProjectState({
+    /* `dirs` is not optional on `ProjectState`, and the default was missing it — which was
+       invisible while the Files tree was a lit template the suites mocked, and is a thrown
+       `dirs.get of undefined` the moment a suite paints the real panel. Overrides still win. */
+    dirs: new Map(),
     expanded: new Set(),
     projectConfig: null,
     ...overrides,
