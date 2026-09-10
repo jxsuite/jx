@@ -252,7 +252,7 @@ describe("layers-panel gaps", () => {
   function rowByKey(path: JxPath): HTMLElement | null {
     return (
       [...host.querySelectorAll<HTMLElement>('[part="row"]')].find(
-        (el) => el.dataset.path === path.join("/"),
+        (el) => el.dataset.value === path.join("/"),
       ) ?? null
     );
   }
@@ -334,7 +334,7 @@ describe("layers-panel gaps", () => {
 
   test("a click on the chevron collapses the row without also selecting it", async () => {
     await renderLayers();
-    const toggle = rowByKey(["children", 2])!.querySelector('[part="toggle"]') as HTMLElement;
+    const toggle = rowByKey(["children", 2])!.querySelector('[part="twisty"]') as HTMLElement;
     toggle.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
     await flush();
     expect(view._layersCollapsed!.has("children/2")).toBe(true);
@@ -413,7 +413,7 @@ describe("dnd drag previews", () => {
   test("Outline row drags suppress the native drag image", async () => {
     const leftPanel = document.querySelector("#left-panel") as HTMLElement;
     leftPanel.innerHTML = `<div part="outline">
-      <div part="row" data-dnd-row data-path="children/0" data-dnd-depth="0"></div>
+      <div part="row" data-dnd-row data-value="children/0" data-dnd-depth="0"></div>
     </div>`;
     dnd.registerLayersDnD();
     await raf();

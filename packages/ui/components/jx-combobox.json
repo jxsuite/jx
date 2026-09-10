@@ -1,0 +1,530 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "JxCombobox",
+  "tagName": "jx-combobox",
+  "observedAttributes": [
+    "value",
+    "placeholder",
+    "label",
+    "labelledby",
+    "describedby",
+    "invalid",
+    "disabled",
+    "readonly",
+    "required",
+    "size",
+    "name",
+    "autocomplete",
+    "allows-custom-value",
+    "error",
+    "help"
+  ],
+  "$elements": [
+    {
+      "$ref": "./jx-icon.json"
+    },
+    {
+      "$ref": "./jx-popover.json"
+    },
+    {
+      "$ref": "./jx-option.json"
+    },
+    {
+      "$ref": "./jx-listbox.json"
+    }
+  ],
+  "state": {
+    "value": {
+      "type": "string",
+      "default": "",
+      "attribute": "value",
+      "description": "The text in the field, which IS the value. A row's label is what it draws and its value is what it commits, and for a combobox those are normally one string: a picker whose rows carry a hidden key is a jx-select. Written by the reader as they type, by a pick, and by the host."
+    },
+    "options": {
+      "type": "array",
+      "default": [],
+      "description": "The rows to draw, as { value, label?, description?, disabled?, face?, swatch?, line? }. THE ELEMENT FILTERS NOTHING: this is the list that will be shown, not a corpus to match against. Every consumer already owns its own matching — a fuzzy ranker that knows about modes and recents, a catalogue fetched from a provider — so a second opinion here would be one more thing for each of them to defeat. A host re-answers it on input. It carries no attribute key, because a list cannot be one."
+    },
+    "allowsCustomValue": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "allows-custom-value",
+      "description": "Whether a value no row holds is kept. Set, the rows are a set of SUGGESTIONS and anything typed stands — which is the reported gap: a model id field whose catalogue is what a provider happens to list, not what the field will accept. Unset, the list is closed and a value no row holds is refused on the COMMIT, putting back the last one that was accepted."
+    },
+    "label": {
+      "type": "string",
+      "default": "",
+      "attribute": "label",
+      "description": "The accessible name, forwarded to the control as aria-label. Required unless labelledby names a visible label. The list takes its own name from it too, so a reader entering the popup hears which field it belongs to."
+    },
+    "labelledby": {
+      "type": "string",
+      "default": "",
+      "attribute": "labelledby",
+      "description": "Forwarded to the inner control as aria-labelledby."
+    },
+    "describedby": {
+      "type": "string",
+      "default": "",
+      "attribute": "describedby",
+      "description": "Forwarded to the inner control as aria-describedby, after the element's own error and help sentences."
+    },
+    "placeholder": {
+      "type": "string",
+      "default": "",
+      "attribute": "placeholder",
+      "description": "Shown while the field is empty. Not a label."
+    },
+    "name": {
+      "type": "string",
+      "default": "",
+      "attribute": "name",
+      "description": "The form field name, forwarded to the control."
+    },
+    "autocomplete": {
+      "type": "string",
+      "default": "off",
+      "attribute": "autocomplete",
+      "description": "The browser's own autofill, forwarded to the control. It defaults to off rather than to nothing, because the UA's own dropdown over a listbox the element is already drawing is two panels answering one question."
+    },
+    "size": {
+      "type": "string",
+      "default": "md",
+      "attribute": "size",
+      "description": "sm, md or lg. The control height is the kit's, so a row of controls lines up."
+    },
+    "disabled": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "disabled",
+      "description": "Cannot be edited, opened or focused."
+    },
+    "readonly": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "readonly",
+      "description": "Can be focused and selected, not edited — and the list never opens, because every row is an edit."
+    },
+    "required": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "required",
+      "description": "Forwarded to the control, for the form it sits in."
+    },
+    "invalid": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "invalid",
+      "description": "The value is refused: the control says aria-invalid and draws in the danger colour."
+    },
+    "error": {
+      "type": "string",
+      "default": "",
+      "attribute": "error",
+      "description": "The sentence explaining a refused value, drawn under the field and announced as it changes. Its region is permanent and empty until there is something to say, so the first refusal is announced rather than only a later one."
+    },
+    "help": {
+      "type": "string",
+      "default": "",
+      "attribute": "help",
+      "description": "A sentence of guidance under the field."
+    },
+    "open": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether the list is showing. THIS IS NOT A DOOR: it follows the panel's own toggle event, so a light dismiss and an Escape move it as surely as the chevron does. Writing it opens nothing."
+    },
+    "activeIndex": {
+      "type": "number",
+      "default": -1,
+      "description": "Which row the caret is on, or -1 for none — and -1 is where a keystroke leaves it, so Enter commits what the READER typed until they arrow onto a row. It is kept apart from the rows on purpose: a key moves the highlight without the row list reconciling, and the id it computes is the one string the field and the listbox are both told."
+    },
+    "committed": {
+      "type": "string",
+      "default": "",
+      "description": "The last value the element accepted, which is what a closed list puts back when it refuses one. Written by the sidecar at mount and on every accepted commit."
+    },
+    "uid": {
+      "type": "string",
+      "default": "",
+      "description": "This element's own id stem, minted on mount. The panel, the listbox, each row and the two sentences take their ids from it, so a consumer writes none of them and two comboboxes on one surface cannot collide."
+    },
+    "listId": "${state.uid ? state.uid + '-list' : ''}",
+    "panelId": "${state.uid ? state.uid + '-panel' : ''}",
+    "activeId": "${state.uid && state.activeIndex >= 0 ? state.uid + '-o' + state.activeIndex : ''}",
+    "hasError": {
+      "$expression": {
+        "operator": "!==",
+        "target": {
+          "$ref": "#/state/error"
+        },
+        "value": ""
+      }
+    },
+    "hasHelp": {
+      "$expression": {
+        "operator": "!==",
+        "target": {
+          "$ref": "#/state/help"
+        },
+        "value": ""
+      }
+    },
+    "onMount": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/combobox.ts",
+      "$export": "mountCombobox",
+      "description": "Mints the id stem and records the value the element starts out holding, so a refused edit has something to be put back to."
+    },
+    "onInput": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/combobox.ts",
+      "$export": "onComboboxInput",
+      "description": "Mirrors what the reader types into value, clears the highlight and opens the list. The control's own input event goes on to bubble out of the element unchanged, which is how a host knows to re-answer options."
+    },
+    "onKeydown": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/combobox.ts",
+      "$export": "onComboboxKeydown",
+      "description": "The editable-combobox keyboard: ArrowDown and ArrowUp open the list and move the caret through it with wrap, Alt+ArrowDown opens without moving and Alt+ArrowUp closes, Enter takes the highlighted row, Tab takes it on the way out, and Escape closes the list and is stopped so it does not also close a dialog around the field. Home and End are left to the text caret."
+    },
+    "onCommit": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/combobox.ts",
+      "$export": "onComboboxCommit",
+      "emits": [
+        {
+          "name": "change",
+          "description": "A refused value was put back; e.target is the element. An accepted one lets the control's own change bubble instead, so exactly one change reaches a host per edit."
+        }
+      ],
+      "description": "The commit, on the control's own change. An accepted value stands in the row's spelling; a value a closed list does not hold is put back, the control's change is stopped at the control, and the element says change once for itself."
+    },
+    "onPick": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/combobox.ts",
+      "$export": "onComboboxPick",
+      "emits": [
+        {
+          "name": "input",
+          "description": "A row was taken; e.target is the element."
+        },
+        {
+          "name": "change",
+          "description": "The edit the pick made is finished; e.target is the element."
+        }
+      ],
+      "description": "A row's own bubbling select: its value into the field, the list closed, the caret back in the control, and one input then change from the element rather than from the row."
+    },
+    "onToggle": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/combobox.ts",
+      "$export": "onComboboxToggle",
+      "description": "Mirrors the panel's toggle into open, and drops the highlight when the list closes."
+    },
+    "onButton": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/combobox.ts",
+      "$export": "onComboboxButton",
+      "description": "The chevron: shows the list under the field and puts the caret in the control, or hides a list that is already showing."
+    },
+    "onRowsPointerDown": {
+      "$prototype": "Function",
+      "body": [
+        {
+          "preventDefault": true
+        }
+      ],
+      "description": "Keeps the caret in the control while the panel's own gutter is pressed. jx-option cancels the press on a row; this is the same cancellation for the space around the rows, so a press that lands between two of them does not blur the field and fire a change for an edit the reader has not finished."
+    }
+  },
+  "onkeydown": {
+    "$ref": "#/state/onKeydown"
+  },
+  "attributes": {
+    "data-size": "${state.size}",
+    "data-open": "${state.open ? '' : null}",
+    "data-invalid": "${state.invalid ? '' : null}",
+    "data-disabled": "${state.disabled ? '' : null}"
+  },
+  "style": {
+    "display": "inline-flex",
+    "&[hidden]": {
+      "display": "none"
+    },
+    "position": "relative",
+    "flexDirection": "column",
+    "gap": "var(--jx-space-1)",
+    "verticalAlign": "middle",
+    "minWidth": "0",
+    "--jx-combobox-h": "var(--jx-control-h)",
+    "--jx-combobox-pad": "var(--jx-space-3)",
+    "&[data-size=\"sm\"]": {
+      "--jx-combobox-h": "calc(var(--jx-control-h) - 4px)",
+      "--jx-combobox-pad": "var(--jx-space-2)"
+    },
+    "&[data-size=\"lg\"]": {
+      "--jx-combobox-h": "calc(var(--jx-control-h) + 8px)"
+    },
+    "& [part=\"field\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "boxSizing": "border-box",
+      "width": "100%",
+      "minHeight": "var(--jx-combobox-h)",
+      "border": "1px solid var(--jx-border-strong)",
+      "borderRadius": "var(--jx-radius-sm)",
+      "background": "var(--jx-bg-input)",
+      "transition": "border-color var(--jx-dur-1) var(--jx-ease-out)",
+      ":hover": {
+        "borderColor": "var(--jx-fg-muted)"
+      },
+      ":focus-within": {
+        "outline": "var(--jx-focus-ring)",
+        "outlineOffset": "-1px"
+      }
+    },
+    "&[data-invalid] [part=\"field\"]": {
+      "borderColor": "var(--jx-danger)"
+    },
+    "&[data-disabled] [part=\"field\"]": {
+      "opacity": "0.5"
+    },
+    "& [part=\"input\"]": {
+      "appearance": "none",
+      "boxSizing": "border-box",
+      "flex": "1 1 auto",
+      "minWidth": "0",
+      "margin": "0",
+      "paddingBlock": "0",
+      "paddingInline": "var(--jx-combobox-pad) var(--jx-space-1)",
+      "border": "0",
+      "background": "none",
+      "color": "var(--jx-fg)",
+      "font": "inherit",
+      "fontFamily": "var(--jx-font-sans)",
+      "fontSize": "var(--jx-text-md)",
+      "lineHeight": "var(--jx-leading-md)",
+      "outline": "none",
+      "::placeholder": {
+        "color": "var(--jx-fg-muted)"
+      },
+      ":disabled": {
+        "cursor": "default"
+      }
+    },
+    "&[data-size=\"sm\"] [part=\"input\"]": {
+      "fontSize": "var(--jx-text-sm)"
+    },
+    "&[data-size=\"lg\"] [part=\"input\"]": {
+      "fontSize": "var(--jx-text-lg)"
+    },
+    "& [part=\"toggle\"]": {
+      "display": "inline-flex",
+      "alignItems": "center",
+      "justifyContent": "center",
+      "boxSizing": "border-box",
+      "flex": "0 0 auto",
+      "width": "calc(var(--jx-combobox-h) - 2px)",
+      "height": "calc(var(--jx-combobox-h) - 2px)",
+      "margin": "0",
+      "padding": "0",
+      "appearance": "none",
+      "border": "0",
+      "borderRadius": "var(--jx-radius-sm)",
+      "background": "transparent",
+      "color": "var(--jx-fg-muted)",
+      "cursor": "pointer",
+      "outline": "none",
+      "transition": "rotate var(--jx-dur-1) var(--jx-ease-out)",
+      ":hover": {
+        "color": "var(--jx-fg)"
+      },
+      ":focus-visible": {
+        "outline": "var(--jx-focus-ring)",
+        "outlineOffset": "-1px"
+      }
+    },
+    "&[data-open] [part=\"toggle\"]": {
+      "rotate": "180deg"
+    },
+    "& [part=\"list\"]": {
+      "--jx-listbox-max-block-size": "min(320px, 50vh)",
+      "minWidth": "0"
+    },
+    "& [part=\"error\"], & [part=\"help\"]": {
+      "margin": "0",
+      "fontSize": "var(--jx-text-sm)",
+      "lineHeight": "var(--jx-leading-sm)",
+      "color": "var(--jx-fg-dim)"
+    },
+    "& [part=\"error\"]": {
+      "color": "var(--jx-danger)"
+    },
+    "& [part=\"error\"]:empty": {
+      "position": "absolute"
+    },
+    "& > [part=\"help-slot\"]": {
+      "display": "contents"
+    }
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "field",
+        "role": "none"
+      },
+      "children": [
+        {
+          "tagName": "input",
+          "attributes": {
+            "part": "input",
+            "type": "text",
+            "role": "combobox",
+            "autocomplete": "${state.autocomplete}",
+            "aria-autocomplete": "list",
+            "aria-controls": "${state.listId || null}",
+            "aria-expanded": "${state.open ? 'true' : 'false'}",
+            "aria-activedescendant": "${state.open && state.activeId ? state.activeId : null}",
+            "aria-label": "${state.label || null}",
+            "aria-labelledby": "${state.labelledby || null}",
+            "aria-describedby": "${[state.hasError && state.uid ? state.uid + '-error' : null, state.hasHelp && state.uid ? state.uid + '-help' : null, state.describedby || null].filter(Boolean).join(' ') || null}",
+            "aria-invalid": "${state.invalid ? 'true' : null}",
+            "placeholder": "${state.placeholder || null}",
+            "name": "${state.name || null}",
+            "disabled": {
+              "$ref": "#/state/disabled"
+            },
+            "readonly": {
+              "$ref": "#/state/readonly"
+            },
+            "required": {
+              "$ref": "#/state/required"
+            },
+            "value": "${state.value}"
+          },
+          "value": {
+            "$ref": "#/state/value"
+          },
+          "oninput": {
+            "$ref": "#/state/onInput"
+          },
+          "onchange": {
+            "$ref": "#/state/onCommit"
+          }
+        },
+        {
+          "tagName": "button",
+          "attributes": {
+            "part": "toggle",
+            "type": "button",
+            "tabindex": "-1",
+            "aria-label": "Show suggestions",
+            "disabled": {
+              "$ref": "#/state/disabled"
+            }
+          },
+          "onclick": {
+            "$ref": "#/state/onButton"
+          },
+          "children": [
+            {
+              "tagName": "jx-icon",
+              "$props": {
+                "name": "caret-down"
+              },
+              "attributes": {
+                "part": "toggle-icon"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tagName": "jx-popover",
+      "attributes": {
+        "part": "popup",
+        "id": "${state.panelId || null}"
+      },
+      "ontoggle": {
+        "$ref": "#/state/onToggle"
+      },
+      "children": [
+        {
+          "tagName": "jx-listbox",
+          "attributes": {
+            "part": "list",
+            "id": "${state.listId || null}"
+          },
+          "$props": {
+            "label": "${state.label || 'Suggestions'}",
+            "active": "${state.activeId}"
+          },
+          "onselect": {
+            "$ref": "#/state/onPick"
+          },
+          "onpointerdown": {
+            "$ref": "#/state/onRowsPointerDown"
+          },
+          "children": [
+            {
+              "$prototype": "Array",
+              "items": {
+                "$ref": "#/state/options"
+              },
+              "key": {
+                "$ref": "$map/item/value"
+              },
+              "map": {
+                "tagName": "jx-option",
+                "attributes": {
+                  "part": "option",
+                  "id": "${state.uid}-o${$map.index}",
+                  "value": "${$map.item.value}",
+                  "label": "${$map.item.label || $map.item.value}",
+                  "description": "${$map.item.description || ''}",
+                  "face": "${$map.item.face || ''}",
+                  "swatch": "${$map.item.swatch || ''}",
+                  "line": "${$map.item.line || ''}",
+                  "disabled": "${!!$map.item.disabled}"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tagName": "p",
+      "attributes": {
+        "part": "error",
+        "id": "${state.uid ? state.uid + '-error' : null}",
+        "role": "status",
+        "aria-live": "polite"
+      },
+      "textContent": "${state.error}"
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "role": "none",
+        "part": "help-slot"
+      },
+      "$switch": {
+        "$ref": "#/state/hasHelp"
+      },
+      "cases": {
+        "true": {
+          "tagName": "p",
+          "attributes": {
+            "part": "help",
+            "id": "${state.uid ? state.uid + '-help' : null}"
+          },
+          "textContent": "${state.help}"
+        }
+      }
+    }
+  ]
+}

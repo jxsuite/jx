@@ -49,6 +49,7 @@
 import "./with-dom.ts";
 import { afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { documentStyleText } from "@jxsuite/runtime";
+import { findA11yDefects } from "@jxsuite/schema/a11y";
 import { documents } from "../src/documents.ts";
 import { registerUi } from "../src/index.ts";
 import { mountSelect, syncSelect } from "../src/behaviors/select.ts";
@@ -605,18 +606,23 @@ describe("jx-select", () => {
     expect(ruleFor(el, "select option {")).toContain("display: flex");
   });
 
-  test("the kit ships no jx-option", () => {
+  test("no custom element stands among its rows, and a lint is now what says so", () => {
     /* A custom element inside a `<select>` survives insertion and renders, and with `role="option"`
        the open a11y tree reads `combobox expanded -> MenuListPopup -> option "Alpha" selectable` —
        a convincing forgery. Measured in Chrome with a real `probe-option`: it draws 17.3px tall,
        `select.options.length` is 0, and ArrowDown + Enter gives `value ""`, `selectedIndex -1` and
-       zero change events. A test that asserts the tree passes while the control does nothing, so
-       the only defence is that no such element exists. */
-    expect(Object.keys(documents)).not.toContain("jx-option");
-    expect(customElements.get("jx-option")).toBeUndefined();
+       zero change events. A test that asserts the tree passes while the control does nothing.
+
+       THE DEFENCE USED TO BE AN ABSENCE — the kit shipped no `jx-option` to reach for — and §5.3's
+       `jx-option` is built now, as a `jx-listbox` row. So the absence is gone and a mechanical rule
+       stands in its place: `custom-element-in-select` in `@jxsuite/schema/a11y` fails ANY document,
+       kit or Studio surface, that puts one inside a `<select>` or a `jx-select`. It is broader than
+       the element that provoked it, because an `<option>`'s content model is text and a `jx-icon` in
+       that position is the same forgery with a different tag. */
+    expect(Object.keys(documents)).toContain("jx-option");
     for (const [path, key, value] of entries(doc)) {
-      if (key === "tagName") {
-        expect(value, `${path}.tagName`).not.toBe("jx-option");
+      if (key === "tagName" && path !== "root") {
+        expect(String(value), `${path}.tagName`).not.toContain("-");
       }
     }
     // Every row is a native option, and every node inside the control is one of four native tags.
@@ -624,6 +630,15 @@ describe("jx-select", () => {
     for (const tag of ["select", "option", "optgroup", "legend"]) {
       expect(tags).toContain(tag);
     }
+    // And the rule is live over this element's own tag, not only over `<select>`.
+    const forged = {
+      children: [{ attributes: { value: "a" }, children: ["Alpha"], tagName: "jx-option" }],
+      tagName: "jx-select",
+    };
+    expect(findA11yDefects(forged as never).map((defect) => defect.rule)).toEqual([
+      "custom-element-in-select",
+    ]);
+    expect(findA11yDefects(doc as never)).toEqual([]);
   });
 
   test("both appearance declarations sit in one object, and the picker parts are styled", async () => {

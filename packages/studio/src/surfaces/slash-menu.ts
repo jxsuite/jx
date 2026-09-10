@@ -19,6 +19,16 @@
  * palette, a toolbar button — and that one grows a filter field of its own, which is the element
  * that carries `aria-activedescendant` and makes the whole thing announce properly.
  *
+ * **The list is the kit's `jx-listbox`, and that is what makes "owned by nothing at all" sayable.**
+ * The element has no `tabindex` and never calls `focus()`, so the no-focus mode is its contract
+ * rather than this panel's discipline — and the highlight is ONE string, the listbox's `active`,
+ * which is the same id the filter field puts in `aria-activedescendant`. The sidecar is the single
+ * writer of every row's `selected`, so the per-row `aria-selected` comparison this document used to
+ * carry, and the `data-selected` beside it, are gone: the field and the rows can no longer answer
+ * "which row is active" differently, because only one of them is asked. Scrolling that row back
+ * into view went with them — it is a measurement, so it belongs in the sidecar, and this adapter no
+ * longer offers a `revealActive` for the flow to remember to call.
+ *
  * The panel is a `jx-popover`, so light dismissal, Escape on the topmost popover and the top layer
  * are the platform's; the hand-rolled `mousedown` capture listener that used to do the first of
  * those is gone with the Spectrum markup.
@@ -31,6 +41,7 @@ import { clearLayerSlot, getLayerSlot } from "../ui/layers";
 import { mountSurface, registerSurface } from "../ui/surface";
 import slashMenuDoc from "./slash-menu.json";
 import type { JxDocument } from "@jxsuite/schema/types";
+import type { JxScope } from "@jxsuite/runtime/types";
 import type { SurfaceHandle } from "../ui/surface";
 
 registerSurface("slash-menu", slashMenuDoc as unknown as JxDocument);
@@ -40,14 +51,14 @@ const SLOT = "slash-menu";
 
 /** One offer, as the document reads it. */
 export interface SlashMenuRow extends Record<string, unknown> {
-  /** The element's tag — unique in the list, so it is the repeater's key. */
+  /**
+   * The element's tag — unique in the list, so it is the repeater's key AND the row's `value`,
+   * which is what a picked row names in its `select` event.
+   */
   key: string;
-  /** Where the row sits in the filtered list: what a key, a click and a hover all address. */
-  index: number;
   label: string;
+  /** A muted note at the end of the row. Empty draws no box: `jx-option` hides its own part. */
   description: string;
-  /** Whether {@link SlashMenuRow.description} has anything in it; `$switch` is the conditional. */
-  hasDescription: boolean;
 }
 
 /** What the panel is showing right now. */
@@ -86,8 +97,6 @@ export interface SlashMenuSurface {
   readonly update: (view: SlashMenuView) => void;
   /** Put the caret in the filter field, when there is one. */
   readonly focusFilter: () => void;
-  /** Scroll the active row into view — a measurement, which is why it stays imperative. */
-  readonly revealActive: () => void;
   /** Close the panel now; the slot is emptied before this returns. */
   readonly close: () => void;
 }
@@ -99,12 +108,23 @@ interface SlashMenuScope extends Record<string, unknown> {
   showFilter: boolean;
   filter: string;
   rows: SlashMenuRow[];
-  activeIndex: number;
+  /**
+   * The active row's id — the ONE string the highlight is written as. The listbox turns it into a
+   * row's `selected`, and the filter field, when there is one, puts the same string in its
+   * `aria-activedescendant`.
+   */
   activeId: string;
   isEmpty: boolean;
   expanded: boolean;
   input: (value: string) => void;
-  activateRow: (index: number) => void;
+  /** A row dispatched `select`; its detail is the row's tag. */
+  pick: (scope: JxScope, event: Event) => void;
+  /**
+   * The pointer entered a row. This one still names a POSITION where {@link SlashMenuScope.pick}
+   * names a tag, and the asymmetry is the two gestures' own: a hover is handled where the repeater
+   * is drawing, with `$map.index` in hand, and a pick arrives at the listbox as a bubbled event
+   * with no repeater around it.
+   */
   hover: (index: number) => void;
 }
 
@@ -114,9 +134,16 @@ type PopoverElement = HTMLElement & {
   hidePopover: () => void;
 };
 
-/** The id `aria-activedescendant` names — the same one the row stamps on itself. */
-function optionId(index: number): string {
-  return `slash-menu-option-${index}`;
+/**
+ * The active row's id, or the empty string when no row is.
+ *
+ * One function, because the two readers of that id — the listbox that moves the highlight and the
+ * filter field that announces it — must be handed the same string, and the row itself computes it
+ * from the repeater's own `$map.index`. An out-of-range index (an empty result list, which the flow
+ * still counts from zero) names no row, and the empty string is how the listbox is told that.
+ */
+function activeIdOf(view: SlashMenuView): string {
+  return view.rows[view.activeIndex] ? `slash-menu-option-${view.activeIndex}` : "";
 }
 
 /**
@@ -141,11 +168,7 @@ export function openSlashMenuSurface(
   let closed = false;
 
   const scope = reactive<SlashMenuScope>({
-    activateRow: (index: number) => {
-      actions.activateRow(index);
-    },
-    activeId: optionId(view.activeIndex),
-    activeIndex: view.activeIndex,
+    activeId: activeIdOf(view),
     expanded: view.rows.length > 0,
     filter: view.filter,
     hover: (index: number) => {
@@ -155,6 +178,17 @@ export function openSlashMenuSurface(
       actions.input(value);
     },
     isEmpty: view.rows.length === 0,
+    pick: (_scope: JxScope, event: Event) => {
+      /* A picked row names ITSELF — `select`'s detail is the row's `value`, which is the tag — so
+         one bubbling handler on the listbox replaces a closure per row, and the position the flow
+         wants is resolved here against the list the panel is showing rather than baked into the
+         row when it was drawn. */
+      const tag = String((event as CustomEvent<unknown>).detail);
+      const index = scope.rows.findIndex((row) => row.key === tag);
+      if (index !== -1) {
+        actions.activateRow(index);
+      }
+    },
     rows: [...view.rows],
     showFilter: view.showFilter,
     x: view.x,
@@ -215,9 +249,6 @@ export function openSlashMenuSurface(
     },
     host: slot,
     ready,
-    revealActive: () => {
-      slot.querySelector('[part="option"][data-selected]')?.scrollIntoView({ block: "nearest" });
-    },
     update: (next) => {
       if (closed) {
         return;
@@ -227,8 +258,7 @@ export function openSlashMenuSurface(
       scope.showFilter = next.showFilter;
       scope.filter = next.filter;
       scope.rows = [...next.rows];
-      scope.activeIndex = next.activeIndex;
-      scope.activeId = optionId(next.activeIndex);
+      scope.activeId = activeIdOf(next);
       scope.isEmpty = next.rows.length === 0;
       scope.expanded = next.rows.length > 0;
     },

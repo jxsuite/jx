@@ -1,73 +1,45 @@
 {
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "StudioPanelOutline",
-  "$description": "The Navigator's Outline panel while the pane is drawing a document: the element tree, as a Jx document over the kit. The adapter hands in one flat projection per row — its badge, its name, how deep it sits, where it stands among its siblings, whether it is selected, whether it is being renamed and which verbs it may offer — so nothing here walks the document, reads the command registry or knows what a collapsed ancestor is. It is one panel with two bodies and this is the design half of it; `panel-stylebook-layers.json` is the other, and the two share a row vocabulary on purpose so the pane switching between them does not switch design as well.",
+  "$description": "The Navigator's Outline panel while the pane is drawing a document: the element tree, as a Jx document over the kit. The adapter hands in one flat projection per row — its badge, its name, how deep it sits, where it stands among its siblings, whether it is selected, whether it is being renamed and which verbs it may offer — so nothing here walks the document, reads the command registry or knows what a collapsed ancestor is. THE TREE IS `jx-tree`, and the eight keyboard cases and seven ARIA attributes this document used to spell out are the element's now. They were spelled out again in `files-panel.json`, which is the reason: two trees carried one keyboard contract independently, and nothing held them in agreement — ← climbed to a parent here and merely closed a directory there, Home and End existed here and not there, and neither had typeahead. What is left is what is true of THIS tree: a row is a badge and a name, a rename happens in place, and the verbs a row offers sit on a plate over its right edge. It is one panel with two bodies and this is the design half of it; `panel-stylebook-layers.json` is the other, and the two share a row vocabulary on purpose so the pane switching between them does not switch design as well.",
   "tagName": "div",
   "attributes": {
     "part": "outline"
   },
   "style": {
-    "$description": "What `.layers-container`, `.layer-row` and their nine siblings said in `styles/panels.css`, keyed on `part` and carried here. Four Spectrum names could not come with the declarations and are the kit's instead, at the same values: `--spectrum-corner-radius-75` (2px) is `--jx-radius-xs`, `--spectrum-font-size-50` (11px) is `--jx-text-sm`, the badge's 10px is `--jx-text-xs` and the focus ring is `--jx-focus-ring`. Two colours could not at first: `--case-c` and `--slot-c` were declared on `<sp-theme>` rather than at `:root`, so each carried a `:root` token as its fallback — the badge keeping today's colour where the theme element was an ancestor and degrading to a real colour rather than to nothing on the day it was not. That day came with Spectrum's removal, and the fallbacks are gone with it: both names are declared at `:root` in `styles/tokens.json` now, at exactly the values written here as their fallbacks (`--accent` and `--success`), in the same alias idiom `--switch-c` already used. A `var()` fallback that can no longer be reached is not a safety net, it is a second answer nobody will keep in step. THE INDENT IS A VARIABLE, for the reason `panel-data.json` gives: a per-row `padding-left` declaration interns one rule per row, while `--row-indent` is written inline under its own name and read by one shared rule. AND THE ROW STATES ARE ATTRIBUTES: `selected`, `dragging` and `drop-target` were classes, and a document styles through `part` and data attributes rather than through a class (`ui.md` §3.1) — so `aria-selected` is now the only writer of the selected drawing, which is also what stops the wash and the announcement disagreeing.",
+    "$description": "What `.layers-container`, `.layer-row` and their nine siblings said in `styles/panels.css`, keyed on `part` and carried here. Four Spectrum names could not come with the declarations and are the kit's instead, at the same values: `--spectrum-corner-radius-75` (2px) is `--jx-radius-xs`, `--spectrum-font-size-50` (11px) is `--jx-text-sm`, the badge's 10px is `--jx-text-xs` and the focus ring is `--jx-focus-ring`. Two colours could not at first: `--case-c` and `--slot-c` were declared on `<sp-theme>` rather than at `:root`, so each carried a `:root` token as its fallback. That day came with Spectrum's removal, and the fallbacks are gone with it: both names are declared at `:root` in `styles/tokens.json` now, at exactly the values written here as their fallbacks (`--accent` and `--success`), in the same alias idiom `--switch-c` already used. A `var()` fallback that can no longer be reached is not a safety net, it is a second answer nobody will keep in step. HALF OF THESE RULES ARE GONE, and that is `jx-tree-item` rather than an omission: the row's flex line, its one-control-height box, the hover and focus states, the selected wash and its inline-start edge, the faded dragged row, the dashed drop mark, the chevron's box, the label's ellipsis and the drag grip are all the element's — including the forced-colours redraw of the selected row, which used to be written out at the bottom of this file. THE INDENT IS STILL A VARIABLE, because this tree CAPS it: past six levels a `240px` column is all indent and no name, so `--row-indent` carries an already-capped length and overrides the element's `level`-derived padding. And the row STATES are attributes rather than classes (`ui.md` §3.1) — `aria-selected` is the only writer of the selected drawing, which is also what stops the wash and the announcement disagreeing.",
     "display": "block",
     "position": "relative",
     "fontFamily": "var(--jx-font-sans)",
     "color": "var(--fg)",
     "& [part=\"tree\"]": {
-      "display": "block"
+      "$description": "`jx-tree` declares no scrollbar of its own — one Studio tree scrolls in itself and this one scrolls in the Navigator, which also holds its toolbar — so what it needs here is the block box and this package's own text colour, which the element would otherwise take from the kit's `--jx-fg` directly and stop following the studio alias.",
+      "display": "block",
+      "color": "var(--fg)"
     },
     "& [part=\"row\"]": {
-      "$description": "The 24px row `OUTLINE_ROW_HEIGHT` windows by. `block-size` rather than a height, and `box-sizing: border-box`, because the indent is padding: a window reserves scroll height for rows it did not draw, so a row whose height depends on its depth would make the scrollbar a lie.",
+      "$description": "The four things the element cannot decide for this tree. The cluster is positioned against the row, so the row is the containing block. The indent is CAPPED — `--row-indent` is already `min(depth, 6) * 16 + 8`, and overriding the element's `level`-derived padding is what keeps a depth-12 row from pushing its badge out of a 240px column. The whole row is the drag handle, so the cursor says so. And the transition is what `panels/dnd.ts` animates the drop gap with.",
       "position": "relative",
+      "paddingInline": "var(--row-indent, var(--jx-space-3)) var(--jx-space-3)",
+      "cursor": "grab",
+      "transition": "transform 150ms ease"
+    },
+    "& [part=\"row\"][data-dragging]": {
+      "$description": "The lift is the element's; only the transition is this tree's, and it has to stop, or the dragged row animates back through every gap the rows below it open.",
+      "transition": "none"
+    },
+    "& [part=\"row\"][data-kind=\"text\"]": {
+      "$description": "A text node's line: drawn, and deliberately not a `jx-tree-item`. There is nothing to do to it — it cannot be moved, renamed, duplicated or deleted on its own — so making it a row the caret can land on would put a stop in the walk that answers to none of the verbs the walk offers. It is therefore the one line in this tree the element does not draw, and the box below is `jx-tree-item`'s own, restated: the same 24px the window reserves scroll by, and the same transparent inline-start edge, so a text line and an element line start at the same pixel.",
       "display": "flex",
       "alignItems": "center",
       "gap": "var(--jx-space-2)",
-      "padding": "3px var(--jx-space-3)",
-      "paddingLeft": "var(--row-indent, var(--jx-space-3))",
-      "blockSize": "24px",
+      "blockSize": "var(--jx-control-h)",
       "boxSizing": "border-box",
-      "cursor": "grab",
+      "borderInlineStart": "2px solid transparent",
       "whiteSpace": "nowrap",
       "userSelect": "none",
-      "borderLeft": "2px solid transparent",
-      "transition": "transform 150ms ease"
-    },
-    "& [part=\"row\"]:hover": {
-      "background": "var(--hover-bg)"
-    },
-    "& [part=\"row\"][aria-selected=\"true\"]": {
-      "background": "var(--accent-20)",
-      "borderLeftColor": "var(--accent)"
-    },
-    "& [part=\"row\"]:focus-visible": {
-      "outline": "var(--jx-focus-ring)",
-      "outlineOffset": "-2px"
-    },
-    "& [part=\"row\"][data-dragging]": {
-      "opacity": "0.4",
-      "transition": "none"
-    },
-    "& [part=\"row\"][data-drop-target]": {
-      "background": "var(--accent-15)",
-      "outline": "1px dashed var(--accent)",
-      "outlineOffset": "-1px"
-    },
-    "& [part=\"row\"][data-kind=\"text\"]": {
       "opacity": "0.6",
       "fontStyle": "italic"
-    },
-    "& [part=\"toggle\"]": {
-      "display": "inline-flex",
-      "alignItems": "center",
-      "justifyContent": "center",
-      "width": "14px",
-      "flex": "none",
-      "color": "var(--fg-dim)",
-      "cursor": "pointer",
-      "--jx-icon-size": "10px"
-    },
-    "& [part=\"toggle\"]:empty": {
-      "$description": "A row with nothing under it draws no chevron, so the 14px it would have occupied must not promise one.",
-      "cursor": "default"
     },
     "& [part=\"badge\"]": {
       "$description": "A long custom-element tag is a badge, not a paragraph: it truncates rather than pushing the label out of a 240px column.",
@@ -104,15 +76,12 @@
       "color": "var(--bg)",
       "fontSize": "9px"
     },
-    "& [part=\"label\"]": {
-      "flex": "1",
-      "minWidth": "24px",
-      "overflow": "hidden",
-      "textOverflow": "ellipsis",
-      "whiteSpace": "nowrap"
-    },
-    "& [part=\"label\"][data-italic=\"true\"]": {
+    "& [part=\"row\"][data-italic=\"true\"] [part=\"label\"]": {
       "fontStyle": "italic"
+    },
+    "& [part=\"row\"][data-editing=\"true\"] [part=\"label\"]": {
+      "$description": "While the row is being renamed the input stands where the name was. The name itself is still the row's `label`, so it still names the row to a reader — it is only taken off the screen.",
+      "display": "none"
     },
     "& [part=\"title-input\"]": {
       "$description": "Stretches into the row's content box rather than setting its own height: the row is a fixed 24px, and an input taller than that would push its borders through the rows either side.",
@@ -131,20 +100,8 @@
       "outline": "var(--jx-focus-ring)",
       "outlineOffset": "-1px"
     },
-    "& [part=\"drag\"]": {
-      "$description": "Revealed on hover, on the selected row, and whenever anything inside the row has focus — the third is what keeps it reachable for a reader who arrived by keyboard.",
-      "display": "none",
-      "padding": "0 var(--jx-space-2) 0 0",
-      "color": "var(--fg-dim)",
-      "opacity": "0.6",
-      "fontSize": "var(--jx-text-sm)",
-      "cursor": "grab"
-    },
-    "& [part=\"row\"]:hover [part=\"drag\"], & [part=\"row\"][aria-selected=\"true\"] [part=\"drag\"], & [part=\"row\"]:focus-within [part=\"drag\"]": {
-      "display": "inline-block"
-    },
-    "& [part=\"actions\"]": {
-      "$description": "Positioned out of flow so it never contributes to the row's intrinsic width: in a 240px column, four in-flow buttons plus an indent is exactly what pushed the tree sideways. The cluster is EMPTY on every row but the selected one and the hovered one — a projection with no commands in it, not a `display: none` rule, because a hidden `jx-action-button` is still an upgraded custom element and CSS reveal would have kept the whole cost the collapse exists to remove.",
+    "& [part=\"verbs\"]": {
+      "$description": "Positioned out of flow so it never contributes to the row's intrinsic width: in a 240px column, four in-flow buttons plus an indent is exactly what pushed the tree sideways. The cluster is EMPTY on every row but the selected one and the hovered one — a projection with no commands in it, not a `display: none` rule, because a hidden `jx-action-button` is still an upgraded custom element and CSS reveal would have kept the whole cost the collapse exists to remove. It is slotted into `jx-tree-item`'s `actions`, which is what stops a click on a verb from also moving the selection.",
       "position": "absolute",
       "right": "2px",
       "top": "50%",
@@ -154,7 +111,7 @@
       "gap": "0",
       "borderRadius": "var(--jx-radius-xs)"
     },
-    "& [part=\"actions\"][data-state=\"shown\"]": {
+    "& [part=\"verbs\"][data-state=\"shown\"]": {
       "paddingLeft": "var(--jx-space-3)",
       "background": "var(--bg-panel)",
       "boxShadow": "-8px 0 8px -8px rgb(0 0 0 / 0.4)"
@@ -179,21 +136,19 @@
       "margin": "0",
       "maxWidth": "34ch",
       "lineHeight": "1.5"
-    },
-    "@(forced-colors: active)": {
-      "& [part=\"row\"][aria-selected=\"true\"]": {
-        "$description": "The selected row, redrawn. Every author colour is replaced by one from the user's palette in forced colours, so the accent wash behind the row collapses into the page and the left edge is the only marker left.",
-        "borderLeftColor": "Highlight"
-      }
     }
   },
   "children": [
     {
-      "tagName": "div",
+      "$description": "The `role=\"tree\"`, and the keyboard that used to be eight `$switch` cases under every row. `jx-tree` writes the role, the name, the roving tab stop and each row's `aria-level` / `aria-posinset` / `aria-setsize`, and it owns the walk: the arrows step the drawn rows without wrapping, `Home` and `End` reach the ends of the MODEL by way of the pads, `ArrowRight` opens a collapsed row and steps into an open one, `ArrowLeft` closes an open row and otherwise climbs to its parent, `Enter` activates, `Space` is a selection verb and a printable character is typeahead. `multiple` is on because this Outline has always accepted Ctrl-click and Shift-click, and it is also the GATE: with it off the element would resolve every modifier to a plain replace. Six events come back, and each is a decision `panels/layers-panel.ts` already owned.",
+      "tagName": "jx-tree",
       "attributes": {
         "part": "tree",
-        "role": "tree",
-        "aria-label": "Document outline"
+        "label": "Document outline",
+        "multiple": "true",
+        "current": "${state.current}",
+        "padtop": "${state.padTop}",
+        "padbottom": "${state.padBottom}"
       },
       "onmouseleave": {
         "$prototype": "Function",
@@ -202,10 +157,88 @@
             "operator": "call",
             "target": {
               "$ref": "#/state/hoverOut"
-            }
+            },
+            "value": []
           }
         ],
         "description": "`mouseleave` on the tree rather than on each row: the pointer leaves one row for another constantly, and only leaving the TREE means no row is under it."
+      },
+      "onselect": {
+        "$prototype": "Function",
+        "body": [
+          {
+            "operator": "call",
+            "target": {
+              "$ref": "#/state/select"
+            },
+            "value": [
+              {
+                "$ref": "event#/detail/value"
+              },
+              {
+                "$ref": "event#/detail/mode"
+              }
+            ]
+          }
+        ],
+        "description": "What the reader meant by landing there: `replace`, `toggle` or `range`. An INTENT rather than a set — resolving a range means naming every row between two of them, and under windowing those are exactly the rows the DOM does not have, so the panel resolves it against the row MODEL. There is no `change` handler beside it on purpose: the element OWNS the caret and keeps it across every repaint that does not change `current`, so a second copy of it in the panel would be a variable that only ever went stale."
+      },
+      "onactivate": {
+        "$prototype": "Function",
+        "body": [
+          {
+            "operator": "call",
+            "target": {
+              "$ref": "#/state/rename"
+            },
+            "value": [
+              {
+                "$ref": "event#/detail"
+              }
+            ]
+          }
+        ],
+        "description": "`Enter` or a double click, which are one verb here: rename this row in place. F2 reaches the same verb from the row's own handler, because it is the one key the element leaves alone."
+      },
+      "onexpand": {
+        "$prototype": "Function",
+        "body": [
+          {
+            "operator": "call",
+            "target": {
+              "$ref": "#/state/expand"
+            },
+            "value": [
+              {
+                "$ref": "event#/detail/value"
+              },
+              {
+                "$ref": "event#/detail/expanded"
+              }
+            ]
+          }
+        ],
+        "description": "`ArrowRight`, `ArrowLeft` or the twisty, with ONE dispatcher between them, and the detail says the state the row should be PUT INTO — so the panel never has to work out which way a toggle was going."
+      },
+      "onmove": {
+        "$prototype": "Function",
+        "body": [
+          {
+            "operator": "call",
+            "target": {
+              "$ref": "#/state/move"
+            },
+            "value": [
+              {
+                "$ref": "event#/detail/from"
+              },
+              {
+                "$ref": "event#/detail/key"
+              }
+            ]
+          }
+        ],
+        "description": "The caret has to reach a row the window did not draw. The element knows only that the pad on that side is not zero; where the row is in the model, and how far to scroll to bring it into view, is the panel's."
       },
       "children": [
         {
@@ -232,15 +265,6 @@
               },
               "children": [
                 {
-                  "$description": "The rows the window left above and below, as the height they would have occupied: the scrollbar stays the length of the whole document, and `aria-hidden` keeps two empty spacers out of a tree that owns treeitems.",
-                  "tagName": "div",
-                  "attributes": {
-                    "part": "pad",
-                    "style": "${state.padTop}",
-                    "aria-hidden": "true"
-                  }
-                },
-                {
                   "$prototype": "Array",
                   "items": {
                     "$ref": "#/state/rows"
@@ -255,36 +279,35 @@
                       "role": "none"
                     },
                     "style": {
-                      "display": "contents"
+                      "display": "contents",
+                      "--row-indent": {
+                        "$ref": "$map/item/indent"
+                      }
                     },
                     "$switch": {
                       "$ref": "$map/item/kind"
                     },
                     "cases": {
                       "element": {
-                        "tagName": "div",
+                        "tagName": "jx-tree-item",
                         "attributes": {
                           "part": "row",
                           "data-kind": "element",
-                          "role": "treeitem",
-                          "aria-level": "${$map.item.level}",
-                          "aria-posinset": "${$map.item.posInSet}",
-                          "aria-setsize": "${$map.item.setSize}",
-                          "aria-selected": "${$map.item.selected}",
-                          "aria-expanded": "${$map.item.expanded}",
-                          "tabindex": "${$map.item.tabindex}",
-                          "data-primary": "${$map.item.primary}",
+                          "value": "${$map.item.key}",
+                          "label": "${$map.item.label}",
+                          "level": "${$map.item.level}",
+                          "posinset": "${$map.item.posInSet}",
+                          "setsize": "${$map.item.setSize}",
+                          "expanded": "${$map.item.expanded}",
+                          "selected": "${$map.item.selected}",
+                          "grip": "${$map.item.draggable}",
+                          "data-italic": "${$map.item.labelItalic}",
+                          "data-editing": "${$map.item.editing}",
                           "data-jx-path": "${$map.item.jxPath}",
-                          "data-path": "${$map.item.key}",
                           "data-dnd-row": "${$map.item.dndRow}",
                           "data-dnd-depth": "${$map.item.dndDepth}",
                           "data-dnd-void": "${$map.item.dndVoid}",
                           "data-dnd-expanded": "${$map.item.dndExpanded}"
-                        },
-                        "style": {
-                          "--row-indent": {
-                            "$ref": "$map/item/indent"
-                          }
                         },
                         "onclick": {
                           "$prototype": "Function",
@@ -292,35 +315,7 @@
                             {
                               "operator": "call",
                               "target": {
-                                "$ref": "#/state/activate"
-                              },
-                              "value": [
-                                {
-                                  "$ref": "$map/item/key"
-                                },
-                                {
-                                  "$ref": "event#/ctrlKey"
-                                },
-                                {
-                                  "$ref": "event#/metaKey"
-                                },
-                                {
-                                  "$ref": "event#/shiftKey"
-                                }
-                              ]
-                            }
-                          ]
-                        },
-                        "ondblclick": {
-                          "$prototype": "Function",
-                          "body": [
-                            {
-                              "stopPropagation": true
-                            },
-                            {
-                              "operator": "call",
-                              "target": {
-                                "$ref": "#/state/rename"
+                                "$ref": "#/state/reveal"
                               },
                               "value": [
                                 {
@@ -328,7 +323,8 @@
                                 }
                               ]
                             }
-                          ]
+                          ],
+                          "description": "A click brings the node into view on the canvas, and NOTHING else — the selection it also carries is `jx-tree`'s delegated click, which reads the modifiers off the real `MouseEvent` and answers with one `select` intent. Reveal is bound here rather than folded into that handler because an arrow key raises the same intent: a walk down the Outline that scrolled the canvas on every keystroke would be ten reveals for one glance."
                         },
                         "oncontextmenu": {
                           "$ref": "#/state/contextMenu"
@@ -357,162 +353,21 @@
                                 "$ref": "event#/key"
                               },
                               "cases": {
-                                "ArrowDown": [
-                                  {
-                                    "preventDefault": true
-                                  },
-                                  {
-                                    "operator": "call",
-                                    "target": {
-                                      "$ref": "#/state/walk"
-                                    },
-                                    "value": [
-                                      {
-                                        "$ref": "$map/item/key"
-                                      },
-                                      "ArrowDown",
-                                      {
-                                        "$ref": "event#/shiftKey"
-                                      }
-                                    ]
-                                  }
-                                ],
-                                "ArrowUp": [
-                                  {
-                                    "preventDefault": true
-                                  },
-                                  {
-                                    "operator": "call",
-                                    "target": {
-                                      "$ref": "#/state/walk"
-                                    },
-                                    "value": [
-                                      {
-                                        "$ref": "$map/item/key"
-                                      },
-                                      "ArrowUp",
-                                      {
-                                        "$ref": "event#/shiftKey"
-                                      }
-                                    ]
-                                  }
-                                ],
-                                "ArrowRight": [
-                                  {
-                                    "preventDefault": true
-                                  },
-                                  {
-                                    "operator": "call",
-                                    "target": {
-                                      "$ref": "#/state/walk"
-                                    },
-                                    "value": [
-                                      {
-                                        "$ref": "$map/item/key"
-                                      },
-                                      "ArrowRight",
-                                      {
-                                        "$ref": "event#/shiftKey"
-                                      }
-                                    ]
-                                  }
-                                ],
-                                "ArrowLeft": [
-                                  {
-                                    "preventDefault": true
-                                  },
-                                  {
-                                    "operator": "call",
-                                    "target": {
-                                      "$ref": "#/state/walk"
-                                    },
-                                    "value": [
-                                      {
-                                        "$ref": "$map/item/key"
-                                      },
-                                      "ArrowLeft",
-                                      {
-                                        "$ref": "event#/shiftKey"
-                                      }
-                                    ]
-                                  }
-                                ],
-                                "Home": [
-                                  {
-                                    "preventDefault": true
-                                  },
-                                  {
-                                    "operator": "call",
-                                    "target": {
-                                      "$ref": "#/state/walk"
-                                    },
-                                    "value": [
-                                      {
-                                        "$ref": "$map/item/key"
-                                      },
-                                      "Home",
-                                      {
-                                        "$ref": "event#/shiftKey"
-                                      }
-                                    ]
-                                  }
-                                ],
-                                "End": [
-                                  {
-                                    "preventDefault": true
-                                  },
-                                  {
-                                    "operator": "call",
-                                    "target": {
-                                      "$ref": "#/state/walk"
-                                    },
-                                    "value": [
-                                      {
-                                        "$ref": "$map/item/key"
-                                      },
-                                      "End",
-                                      {
-                                        "$ref": "event#/shiftKey"
-                                      }
-                                    ]
-                                  }
-                                ],
-                                "Enter": [
-                                  {
-                                    "preventDefault": true
-                                  },
-                                  {
-                                    "operator": "call",
-                                    "target": {
-                                      "$ref": "#/state/walk"
-                                    },
-                                    "value": [
-                                      {
-                                        "$ref": "$map/item/key"
-                                      },
-                                      "Enter",
-                                      {
-                                        "$ref": "event#/shiftKey"
-                                      }
-                                    ]
-                                  }
-                                ],
                                 "F2": [
                                   {
                                     "preventDefault": true
                                   },
                                   {
+                                    "stopPropagation": true
+                                  },
+                                  {
                                     "operator": "call",
                                     "target": {
-                                      "$ref": "#/state/walk"
+                                      "$ref": "#/state/rename"
                                     },
                                     "value": [
                                       {
                                         "$ref": "$map/item/key"
-                                      },
-                                      "F2",
-                                      {
-                                        "$ref": "event#/shiftKey"
                                       }
                                     ]
                                   }
@@ -520,55 +375,13 @@
                               }
                             }
                           ],
-                          "description": "The ARIA tree keyboard model, spelled as cases rather than as an `if` chain in a host handler: the document says which keys the tree answers to, and `walk` decides what each one MEANS against the row model. Delete is deliberately absent — it is `selection.delete`'s chord and the registry owns it."
+                          "description": "One key, and it is the one `jx-tree` deliberately does not own. The element passes every chord it has no verb for straight through — which is what keeps cut, paste, delete and this rename reachable from a focused row (WCAG 2.2 SC 2.5.7) — so F2 is answered here, against the row it was pressed on. Enter reaches the same rename through `activate`, because Enter IS the element's."
                         },
                         "children": [
                           {
                             "tagName": "span",
                             "attributes": {
-                              "part": "toggle",
-                              "aria-hidden": "true"
-                            },
-                            "onclick": {
-                              "$prototype": "Function",
-                              "body": [
-                                {
-                                  "stopPropagation": true
-                                },
-                                {
-                                  "operator": "call",
-                                  "target": {
-                                    "$ref": "#/state/toggle"
-                                  },
-                                  "value": [
-                                    {
-                                      "$ref": "$map/item/key"
-                                    }
-                                  ]
-                                }
-                              ]
-                            },
-                            "$switch": {
-                              "$ref": "$map/item/chevron"
-                            },
-                            "cases": {
-                              "open": {
-                                "tagName": "jx-icon",
-                                "$props": {
-                                  "name": "caret-down"
-                                }
-                              },
-                              "closed": {
-                                "tagName": "jx-icon",
-                                "$props": {
-                                  "name": "caret-right"
-                                }
-                              }
-                            }
-                          },
-                          {
-                            "tagName": "span",
-                            "attributes": {
+                              "slot": "icon",
                               "part": "badge",
                               "data-kind": "${$map.item.badgeKind}",
                               "title": "${$map.item.badgeTitle}"
@@ -576,9 +389,11 @@
                             "textContent": "${$map.item.badge}"
                           },
                           {
-                            "tagName": "span",
+                            "$description": "The rename, in place. It is a CASE of the row — the document draws it when the projection says this row is the one being renamed and takes it away again when the projection stops saying so — where the predecessor built the input with `document.createElement`, hid the label with an inline `display:none` and put the two back by hand on commit. It sits in `jx-tree-item`'s `status` slot, which is where the name ends, and it STOPS every event it can reach: an editable field inside a composite has to, or the tree's own typeahead moves the caret on the first letter typed and its delegated click takes the focus back on the first click into the text.",
+                            "tagName": "div",
                             "attributes": {
-                              "part": "label-slot",
+                              "slot": "status",
+                              "part": "edit-slot",
                               "role": "none"
                             },
                             "style": {
@@ -588,16 +403,7 @@
                               "$ref": "$map/item/editing"
                             },
                             "cases": {
-                              "false": {
-                                "tagName": "span",
-                                "attributes": {
-                                  "part": "label",
-                                  "data-italic": "${$map.item.labelItalic}"
-                                },
-                                "textContent": "${$map.item.label}"
-                              },
                               "true": {
-                                "$description": "Renaming, in place. The predecessor built this input with `document.createElement`, hid the label with an inline `display:none` and put the two back by hand on commit — four imperative writes into a tree the surface does not own, and the reason a stale `display:none` could survive a keyed re-render. It is a case of the row now, so a repaint cannot leave one half of it behind.",
                                 "tagName": "input",
                                 "attributes": {
                                   "part": "title-input",
@@ -605,6 +411,22 @@
                                   "value": "${$map.item.editValue}",
                                   "placeholder": "${$map.item.placeholder}",
                                   "aria-label": "Rename this element"
+                                },
+                                "onclick": {
+                                  "$prototype": "Function",
+                                  "body": [
+                                    {
+                                      "stopPropagation": true
+                                    }
+                                  ]
+                                },
+                                "ondblclick": {
+                                  "$prototype": "Function",
+                                  "body": [
+                                    {
+                                      "stopPropagation": true
+                                    }
+                                  ]
                                 },
                                 "oninput": {
                                   "$prototype": "Function",
@@ -625,6 +447,9 @@
                                 "onkeydown": {
                                   "$prototype": "Function",
                                   "body": [
+                                    {
+                                      "stopPropagation": true
+                                    },
                                     {
                                       "$switch": {
                                         "$ref": "event#/key"
@@ -671,164 +496,148 @@
                             }
                           },
                           {
-                            "tagName": "span",
+                            "tagName": "div",
                             "attributes": {
-                              "part": "drag-slot",
+                              "slot": "actions",
+                              "part": "verbs-slot",
                               "role": "none"
                             },
                             "style": {
                               "display": "contents"
                             },
-                            "$switch": {
-                              "$ref": "$map/item/draggable"
-                            },
-                            "cases": {
-                              "true": {
-                                "$description": "A plain span rather than a control, because it is the grab affordance for a pointer drag the pragmatic-dnd island owns and NOT a second way to move the row: the four move verbs in the cluster beside it are the keyboard path, and they are records rather than markup.",
-                                "tagName": "span",
-                                "attributes": {
-                                  "part": "drag",
-                                  "title": "Drag to reorder",
-                                  "aria-hidden": "true"
-                                },
-                                "textContent": "⠿"
-                              }
-                            }
-                          },
-                          {
-                            "tagName": "span",
-                            "attributes": {
-                              "part": "actions",
-                              "data-state": "${$map.item.actions}"
-                            },
                             "children": [
                               {
-                                "$prototype": "Array",
-                                "items": {
-                                  "$ref": "$map/item/commands"
+                                "tagName": "span",
+                                "attributes": {
+                                  "part": "verbs",
+                                  "data-state": "${$map.item.actions}"
                                 },
-                                "key": {
-                                  "$ref": "$map/item/id"
-                                },
-                                "map": {
-                                  "tagName": "jx-action-button",
-                                  "attributes": {
-                                    "part": "action",
-                                    "data-command": "${$map.item.id}",
-                                    "data-destructive": "${$map.item.destructive}"
-                                  },
-                                  "$props": {
-                                    "label": {
-                                      "$ref": "$map/item/title"
+                                "children": [
+                                  {
+                                    "$prototype": "Array",
+                                    "items": {
+                                      "$ref": "$map/item/commands"
                                     },
-                                    "hint": {
-                                      "$ref": "$map/item/tooltip"
+                                    "key": {
+                                      "$ref": "$map/item/id"
                                     },
-                                    "icon": {
-                                      "$ref": "$map/item/icon"
-                                    },
-                                    "disabled": {
-                                      "$ref": "$map/item/disabled"
-                                    },
-                                    "size": "sm",
-                                    "quiet": true
-                                  },
-                                  "onclick": {
-                                    "$prototype": "Function",
-                                    "body": [
-                                      {
-                                        "stopPropagation": true
+                                    "map": {
+                                      "tagName": "jx-action-button",
+                                      "attributes": {
+                                        "part": "action",
+                                        "data-command": "${$map.item.id}",
+                                        "data-destructive": "${$map.item.destructive}"
                                       },
-                                      {
-                                        "operator": "call",
-                                        "target": {
-                                          "$ref": "#/state/runRow"
+                                      "$props": {
+                                        "label": {
+                                          "$ref": "$map/item/title"
                                         },
-                                        "value": [
+                                        "hint": {
+                                          "$ref": "$map/item/tooltip"
+                                        },
+                                        "icon": {
+                                          "$ref": "$map/item/icon"
+                                        },
+                                        "disabled": {
+                                          "$ref": "$map/item/disabled"
+                                        },
+                                        "size": "sm",
+                                        "quiet": true
+                                      },
+                                      "onclick": {
+                                        "$prototype": "Function",
+                                        "body": [
                                           {
-                                            "$ref": "$map/item/id"
+                                            "stopPropagation": true
                                           },
                                           {
-                                            "$ref": "$map/item/row"
-                                          },
-                                          {
-                                            "$ref": "event#/currentTarget"
+                                            "operator": "call",
+                                            "target": {
+                                              "$ref": "#/state/runRow"
+                                            },
+                                            "value": [
+                                              {
+                                                "$ref": "$map/item/id"
+                                              },
+                                              {
+                                                "$ref": "$map/item/row"
+                                              },
+                                              {
+                                                "$ref": "event#/currentTarget"
+                                              }
+                                            ]
                                           }
                                         ]
                                       }
-                                    ]
-                                  }
-                                }
-                              },
-                              {
-                                "tagName": "span",
-                                "attributes": {
-                                  "part": "overflow-slot",
-                                  "role": "none"
-                                },
-                                "style": {
-                                  "display": "contents"
-                                },
-                                "$switch": {
-                                  "$ref": "$map/item/overflow"
-                                },
-                                "cases": {
-                                  "true": {
-                                    "tagName": "jx-action-button",
+                                    }
+                                  },
+                                  {
+                                    "tagName": "span",
                                     "attributes": {
-                                      "part": "overflow",
-                                      "data-command": "outline.more"
+                                      "part": "overflow-slot",
+                                      "role": "none"
                                     },
-                                    "$props": {
-                                      "label": "More actions",
-                                      "hint": "More actions",
-                                      "icon": "dots-three-vertical",
-                                      "haspopup": "menu",
-                                      "size": "sm",
-                                      "quiet": true
+                                    "style": {
+                                      "display": "contents"
                                     },
-                                    "onclick": {
-                                      "$prototype": "Function",
-                                      "body": [
-                                        {
-                                          "stopPropagation": true
+                                    "$switch": {
+                                      "$ref": "$map/item/overflow"
+                                    },
+                                    "cases": {
+                                      "true": {
+                                        "tagName": "jx-action-button",
+                                        "attributes": {
+                                          "part": "overflow",
+                                          "data-command": "outline.more"
                                         },
-                                        {
-                                          "operator": "call",
-                                          "target": {
-                                            "$ref": "#/state/overflowRow"
-                                          },
-                                          "value": [
+                                        "$props": {
+                                          "label": "More actions",
+                                          "hint": "More actions",
+                                          "icon": "dots-three-vertical",
+                                          "haspopup": "menu",
+                                          "size": "sm",
+                                          "quiet": true
+                                        },
+                                        "onclick": {
+                                          "$prototype": "Function",
+                                          "body": [
                                             {
-                                              "$ref": "$map/item/key"
+                                              "stopPropagation": true
                                             },
                                             {
-                                              "$ref": "event#/currentTarget"
+                                              "operator": "call",
+                                              "target": {
+                                                "$ref": "#/state/overflowRow"
+                                              },
+                                              "value": [
+                                                {
+                                                  "$ref": "$map/item/key"
+                                                },
+                                                {
+                                                  "$ref": "event#/currentTarget"
+                                                }
+                                              ]
                                             }
                                           ]
                                         }
-                                      ]
+                                      }
                                     }
                                   }
-                                }
+                                ]
                               }
                             ]
                           }
                         ]
                       },
                       "text": {
-                        "$description": "A text node's row: drawn, and deliberately not a tree item. There is nothing to do to it — it cannot be moved, renamed, duplicated or deleted on its own — so giving it a `treeitem` role would put a stop in the keyboard walk that answers to none of the keys the walk offers.",
+                        "$description": "A text node's line: drawn, and deliberately not a `jx-tree-item`. There is nothing to do to it — it cannot be moved, renamed, duplicated or deleted on its own — so a row the caret could land on would be a stop in the walk that answers to none of the verbs the walk offers. It still carries `data-value`, because `panels/dnd.ts` hides and shifts every line of the tree and a text child of a dragged element is one of them.",
                         "tagName": "div",
                         "attributes": {
                           "part": "row",
                           "data-kind": "text",
+                          "role": "none",
                           "data-jx-path": "${$map.item.jxPath}",
-                          "data-path": "${$map.item.key}"
-                        },
-                        "style": {
-                          "--row-indent": {
-                            "$ref": "$map/item/indent"
-                          }
+                          "data-value": "${$map.item.key}"
                         },
                         "children": [
                           {
@@ -848,15 +657,8 @@
                           }
                         ]
                       }
-                    }
-                  }
-                },
-                {
-                  "tagName": "div",
-                  "attributes": {
-                    "part": "pad",
-                    "style": "${state.padBottom}",
-                    "aria-hidden": "true"
+                    },
+                    "$description": "The indent lives HERE, on the wrapper, and not on the row — which is not a preference. A kit element renders its own `style` object through the same engine, and that engine releases the previous rule set for an element before adopting the next, so a host style object on a `jx-tree-item` is silently dropped the moment the element first paints. A custom property inherits through `display: contents`, so one declaration on the wrapper reaches whichever of the two rows the case draws — and both need it, because a text line indents like the element line above it."
                   }
                 }
               ]

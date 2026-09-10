@@ -43,7 +43,7 @@ void mock.module("@atlaskit/pragmatic-drag-and-drop/element/adapter", () => ({
   monitorForElements: () => () => {},
 }));
 
-const { OUTLINE_ROW_MAX_ITEMS, indentWidth, onOutlineKey, outlineLabel } =
+const { OUTLINE_ROW_MAX_ITEMS, indentWidth, outlineLabel } =
   await import("../src/panels/layers-panel");
 
 // ─── Harness ─────────────────────────────────────────────────────────────────
@@ -61,7 +61,7 @@ function at(path: JxPath): HTMLElement {
 
 /** Whether the row's verb cluster is drawn with its backing plate, or invisible and empty. */
 function clusterState(el: HTMLElement): string | undefined {
-  return el.querySelector<HTMLElement>('[part="actions"]')?.dataset.state;
+  return el.querySelector<HTMLElement>('[part="verbs"]')?.dataset.state;
 }
 
 /** A section containing a heading and a paragraph, a bare div, and a nested chain. */
@@ -237,7 +237,7 @@ describe("row actions", () => {
     hover(at(["children", 1]));
     await flush();
     expect(at(["children", 1]).querySelector('[part="actions"]')).toBe(cluster);
-    expect(host.querySelectorAll('[part="actions"][data-state="shown"]')).toHaveLength(1);
+    expect(host.querySelectorAll('[part="verbs"][data-state="shown"]')).toHaveLength(1);
   });
 
   test("moving the pointer to another row moves the cluster with it — one at a time", async () => {
@@ -249,7 +249,7 @@ describe("row actions", () => {
     expect(at(["children", 0]).querySelectorAll("jx-action-button")).toHaveLength(0);
     expect(at(["children", 1]).querySelectorAll("jx-action-button").length).toBeGreaterThan(0);
     // And exactly one cluster is drawn in the whole tree.
-    expect(host.querySelectorAll('[part="actions"][data-state="shown"]')).toHaveLength(1);
+    expect(host.querySelectorAll('[part="verbs"][data-state="shown"]')).toHaveLength(1);
   });
 
   test("the hovered row's cluster is recomputed after a repaint", async () => {
@@ -278,7 +278,7 @@ describe("row actions", () => {
     const now = at(["children", 1]);
     expect(now.getAttribute("aria-selected")).toBe("true");
     expect(now.querySelectorAll("jx-action-button").length).toBe(OUTLINE_ROW_MAX_ITEMS + 1);
-    expect(host.querySelectorAll('[part="actions"][data-state="shown"]')).toHaveLength(1);
+    expect(host.querySelectorAll('[part="verbs"][data-state="shown"]')).toHaveLength(1);
   });
 
   test("the root row has no verbs at all — it is not a node you can move or delete", async () => {
@@ -319,10 +319,20 @@ describe("indentWidth", () => {
 
   test("the row writes it as one custom property, not as a per-row padding rule", async () => {
     await draw();
-    // A `padding-left` declaration interns one rule per row; `--row-indent` interns one for all.
-    expect(at([]).style.getPropertyValue("--row-indent")).toBe("8px");
-    expect(at(["children", 0]).style.getPropertyValue("--row-indent")).toBe("24px");
-    expect(at(["children", 0, "children", 0]).style.getPropertyValue("--row-indent")).toBe("40px");
+    /* A `padding-left` declaration interns one rule per row; `--row-indent` interns one for all.
+       It is also what OVERRIDES `jx-tree-item`'s own `level`-derived padding, which is uncapped:
+       past six levels the element would keep indenting and this tree stops.
+
+       It is declared on the WRAPPER, and that is forced rather than chosen: a kit element renders
+       its own `style` object through the same engine, and the engine releases an element's previous
+       rule set before adopting the next — so a host style object on a `jx-tree-item` is dropped the
+       moment the element first paints. A custom property inherits through `display: contents`, so
+       one declaration on the wrapper reaches the row the case drew, whichever of the two it is. */
+    const indent = (key: string) =>
+      needRow(host, key).closest('[part="row-slot"]')?.getAttribute("style");
+    expect(indent("")).toBe("--row-indent: 8px;");
+    expect(indent(pathKey(["children", 0]))).toBe("--row-indent: 24px;");
+    expect(indent(pathKey(["children", 0, "children", 0]))).toBe("--row-indent: 40px;");
     expect(at([]).style.paddingLeft).toBe("");
   });
 });
@@ -339,6 +349,9 @@ describe("role=tree and the keyboard model", () => {
     expect(at(["children", 0]).getAttribute("aria-level")).toBe("2");
     expect(at(["children", 0]).getAttribute("aria-expanded")).toBe("true");
     expect(at(["children", 2]).getAttribute("aria-expanded")).toBeNull(); // A leaf.
+    // The counts describe the DOCUMENT, which is what keeps them true while the tree windows.
+    expect(at(["children", 0]).getAttribute("aria-posinset")).toBe("1");
+    expect(at(["children", 0]).getAttribute("aria-setsize")).toBe("3");
   });
 
   test("aria-selected follows the selection, and so does the single tab stop", async () => {
@@ -346,7 +359,7 @@ describe("role=tree and the keyboard model", () => {
     await draw();
     expect(at(["children", 2]).getAttribute("aria-selected")).toBe("true");
     const stops = treeItems(host).filter((r) => r.tabIndex === 0);
-    expect(stops.map((r) => r.dataset.path)).toEqual(["children/2"]);
+    expect(stops.map((r) => r.dataset.value)).toEqual(["children/2"]);
   });
 
   test("with nothing selected the first row is the way in", async () => {
@@ -354,7 +367,7 @@ describe("role=tree and the keyboard model", () => {
     expect(
       treeItems(host)
         .filter((r) => r.tabIndex === 0)
-        .map((r) => r.dataset.path),
+        .map((r) => r.dataset.value),
     ).toEqual([""]);
   });
 
@@ -372,7 +385,7 @@ describe("role=tree and the keyboard model", () => {
     press(at([]), "ArrowDown");
     await flush();
     expect(activeTab.value!.session.selection).toEqual([["children", 0]]);
-    expect((document.activeElement as HTMLElement).dataset.path).toBe("children/0");
+    expect((document.activeElement as HTMLElement).dataset.value).toBe("children/0");
 
     press(at(["children", 0]), "ArrowUp");
     await flush();
@@ -401,7 +414,7 @@ describe("role=tree and the keyboard model", () => {
 
     press(at(["children", 0]), "ArrowRight");
     await flush();
-    expect((document.activeElement as HTMLElement).dataset.path).toBe("children/0/children/0");
+    expect((document.activeElement as HTMLElement).dataset.value).toBe("children/0/children/0");
   });
 
   test("→ on a leaf does nothing", async () => {
@@ -422,7 +435,7 @@ describe("role=tree and the keyboard model", () => {
     press(at(["children", 0]), "ArrowLeft");
     await flush();
     expect(activeTab.value!.session.selection).toEqual([[]]);
-    expect((document.activeElement as HTMLElement).dataset.path).toBe("");
+    expect((document.activeElement as HTMLElement).dataset.value).toBe("");
   });
 
   test("← at the top of the tree has nowhere to go", async () => {
@@ -476,29 +489,66 @@ describe("role=tree and the keyboard model", () => {
     expect(host.innerHTML).toBe(before);
   });
 
-  test("a key naming a row the model does not hold is not an index", async () => {
+  test("every chord the tree does not own reaches the panel untouched", async () => {
+    activeTab.value!.session.selection = [[]];
     await draw();
-    const before = activeTab.value!.session.selection;
-    // The document only binds the keyboard on tree items, so this is the exported entry point
-    // Being addressed with a key from a stale projection — the shape a windowed repaint can hand it.
-    expect(() => {
-      onOutlineKey("children/99", "ArrowDown", false);
-    }).not.toThrow();
+    /* Cut and paste are the keyboard alternative to dragging a node (WCAG 2.2 SC 2.5.7) and they
+       are the registry's chords, not the tree's — so a tree that swallowed them would take the only
+       pointer-free way to move an element with it. Delete is the same. Each is dispatched on a
+       focused row and must come back UNPREVENTED. */
+    for (const chord of [
+      { ctrlKey: true, key: "x" },
+      { ctrlKey: true, key: "v" },
+      { ctrlKey: true, key: "c" },
+      { ctrlKey: true, key: "a" },
+      { key: "Delete" },
+      { key: "Escape" },
+      { key: "Tab" },
+    ]) {
+      const event = new KeyboardEvent("keydown", {
+        bubbles: true,
+        cancelable: true,
+        ...chord,
+      });
+      at([]).dispatchEvent(event);
+      expect([chord.key, event.defaultPrevented]).toEqual([chord.key, false]);
+    }
     await flush();
-    expect(activeTab.value!.session.selection).toBe(before);
+    expect(activeTab.value!.session.selection).toEqual([[]]);
   });
 
-  test("a text line answers to no key, because it can expand into nothing", async () => {
-    resetWorkspaceWithTab({
-      children: [{ children: ["Just words"], tagName: "p" }],
-      tagName: "div",
-    } as JxMutableNode);
+  test("the rename input keeps the tree's keyboard off itself", async () => {
     await draw();
-    const textKey = pathKey(["children", 0, "children", 0]);
-    onOutlineKey(textKey, "ArrowRight", false);
+    press(at(["children", 2]), "Enter");
+    await flush(2);
+    const input = at(["children", 2]).querySelector('[part="title-input"]') as HTMLInputElement;
+    expect(input).not.toBeNull();
+    input.focus();
+
+    /* An editable field inside a composite has to stop the composite's keyboard, or the tree's own
+       typeahead moves the caret on the first letter typed and the rename is over before a word of
+       it is in. The input is inside `jx-tree`, so nothing but its own handler can prevent that. */
+    const typed = new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "e" });
+    input.dispatchEvent(typed);
     await flush();
-    expect(view._layersCollapsed!.size).toBe(0);
-    expect(activeTab.value!.session.selection).toEqual([]);
+    expect(document.activeElement).toBe(input);
+    expect(at(["children", 2]).querySelector('[part="title-input"]')).not.toBeNull();
+
+    // And a click into the text does not hand the focus back to the row either.
+    click(input);
+    await flush();
+    expect(document.activeElement).toBe(input);
+  });
+
+  test("a printable character is typeahead over the drawn rows", async () => {
+    activeTab.value!.session.selection = [[]];
+    await draw();
+    /* The paragraph is labelled by its own text, "Every day" — so one keystroke from the root
+       reaches it, past two rows whose names begin with an O. Typeahead is entirely the element's
+       and this tree never had it: a 5 000-row outline was ↓ five thousand times. */
+    press(at([]), "e");
+    await flush();
+    expect((document.activeElement as HTMLElement).dataset.value).toBe("children/0/children/1");
   });
 
   test("a text-node line is drawn but is not a tree item", async () => {
@@ -509,7 +559,8 @@ describe("role=tree and the keyboard model", () => {
     await draw();
     const text = needRow(host, pathKey(["children", 0, "children", 0]));
     expect(text.dataset.kind).toBe("text");
-    expect(text.getAttribute("role")).toBeNull();
+    expect(text.localName).not.toBe("jx-tree-item");
+    expect(text.getAttribute("role")).toBe("none");
     expect(textOf(text, "badge")).toBe("text");
     expect(textOf(text, "label")).toBe("Just words");
     // Drawn, and outside the keyboard walk: the ↓ from the paragraph has nowhere to go.
@@ -517,6 +568,73 @@ describe("role=tree and the keyboard model", () => {
     press(needRow(host, pathKey(["children", 0])), "ArrowDown");
     await flush();
     expect(activeTab.value!.session.selection).toEqual([]);
+  });
+});
+
+describe("the panel's rules over the element's", () => {
+  test("what this tree re-declares wins, and what it slots is laid out against the row", async () => {
+    await draw();
+    const line = at(["children", 0]);
+
+    /* `jx-tree-item` renders its own `style` object through the same engine this document's goes
+       through, so a host rule that lost the cascade would be invisible — the row would simply keep
+       the element's answer. Three of them are load bearing here. `cursor` proves the precedence at
+       all: the element says `default` and this tree says `grab`, because the whole row is the drag
+       handle. `transition` is what `panels/dnd.ts` animates the drop gap with, and the element
+       declares none. And `position` is what makes the row the containing block for the verb
+       cluster, which is absolutely positioned two `display: contents` wrappers deep — through the
+       element's own `actions` zone, which is what stops a click on a verb from also selecting. */
+    expect(getComputedStyle(line).display).toBe("flex");
+    expect(getComputedStyle(line).cursor).toBe("grab");
+    expect(getComputedStyle(line).transition).toBe("transform 150ms ease");
+    expect(getComputedStyle(line).position).toBe("relative");
+
+    hover(line);
+    await flush();
+    const verbs = line.querySelector('[part="verbs"]') as HTMLElement;
+    expect(getComputedStyle(verbs).position).toBe("absolute");
+  });
+
+  test("a row being renamed takes its drawn name off the screen and keeps its label", async () => {
+    await draw();
+    press(at(["children", 0]), "F2");
+    await flush(2);
+    const line = at(["children", 0]);
+
+    /* The name is still the row's `label`, so `jx-tree-item` goes on writing `aria-label` and the
+       row keeps naming itself while it is renamed — what the projection takes away is the DRAWN
+       name, so the input can stand where it was. The predecessor removed the label node and, before
+       that, hid it with an inline `display: none` a keyed re-render could leave behind. */
+    expect(line.dataset.editing).toBe("true");
+    expect(line.getAttribute("aria-label")).toBe(textOf(line, "label"));
+    expect(getComputedStyle(line.querySelector('[part="label"]') as HTMLElement).display).toBe(
+      "none",
+    );
+    expect(line.querySelector('[part="title-input"]')).not.toBeNull();
+  });
+});
+
+describe("the panel's answer to a move it cannot perform", () => {
+  /** Say what `jx-tree` says when the caret has to reach a row the drawn slice does not have. */
+  function move(from: string, key: string): void {
+    tree(host).dispatchEvent(new CustomEvent("move", { bubbles: true, detail: { from, key } }));
+  }
+
+  test("a key it does not name, and a step the model has no row for, both do nothing", async () => {
+    activeTab.value!.session.selection = [["children", 0]];
+    await draw();
+    const before = activeTab.value!.session.selection;
+
+    /* The element dispatches `move` and performs nothing, so both halves of "nothing happens" are
+       the panel's to say. A key it has no step for is one; a step the MODEL runs out of is the
+       other — ↑ from the first row of the document, which is where every walk upwards ends. */
+    move("children/0", "PageDown");
+    await flush();
+    expect(activeTab.value!.session.selection).toBe(before);
+
+    move("", "ArrowUp");
+    await flush();
+    expect(activeTab.value!.session.selection).toBe(before);
   });
 });
 
@@ -539,20 +657,64 @@ describe("clicking a row", () => {
 
   test("a click on the chevron collapses instead of selecting", async () => {
     await draw();
-    const toggle = at(["children", 0]).querySelector('[part="toggle"]') as HTMLElement;
+    const toggle = at(["children", 0]).querySelector('[part="twisty"]') as HTMLElement;
     toggle.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
     await flush();
     expect(view._layersCollapsed!.has(pathKey(["children", 0]))).toBe(true);
     expect(activeTab.value!.session.selection).toEqual([]);
   });
 
-  test("a click on the empty chevron of a leaf collapses nothing", async () => {
+  test("a click in a row's verb cluster does not also move the selection", async () => {
+    activeTab.value!.session.selection = [["children", 0]];
     await draw();
-    const toggle = at(["children", 2]).querySelector('[part="toggle"]') as HTMLElement;
+    // The cluster is drawn on the selected row AND on the hovered one, and the hovered one is the
+    // Case that matters: a row's buttons act on that row, not on the selection.
+    hover(at(["children", 2]));
+    await flush();
+    const cluster = at(["children", 2]).querySelector('[part="verbs"]') as HTMLElement;
+    expect(cluster.querySelectorAll("jx-action-button").length).toBeGreaterThan(0);
+
+    click(cluster);
+    await flush();
+
+    /* `jx-tree` delegates its click on the TREE, so a control a consumer slots onto a row is inside
+       the tree's own listener unless something stops it — and `jx-tree-item`'s `actions` container
+       is what does. Without it, reaching for Move Down on the hovered row would first select that
+       row, and every verb would run against a node the reader had not aimed at. */
+    expect(activeTab.value!.session.selection).toEqual([["children", 0]]);
+  });
+
+  test("Space adds a row to the selection without activating it", async () => {
+    activeTab.value!.session.selection = [["children", 0]];
+    await draw();
+
+    press(at(["children", 2]), " ");
+    await flush();
+
+    /* The Outline is multi-select, so Space is a `toggle` — the one key that adds a row to a batch
+       without opening or renaming it. An activation here would start a rename on every Space. */
+    expect(activeTab.value!.session.selection).toEqual([
+      ["children", 0],
+      ["children", 2],
+    ]);
+    expect(at(["children", 2]).querySelector('[part="title-input"]')).toBeNull();
+  });
+
+  test("a click on the empty chevron of a leaf changes nothing, either way", async () => {
+    /* Seeded, because the element reads a LEAF's expansion as "open me" — so the only way this
+       click could touch the collapsed set is by taking a key OUT of it, and a set that started
+       empty cannot tell a working guard from a missing one. The key is here because the row had
+       children when it was last collapsed and an edit has since taken them away. */
+    view._layersCollapsed = new Set([pathKey(["children", 2])]);
+    await draw();
+    const toggle = at(["children", 2]).querySelector('[part="twisty"]') as HTMLElement;
     expect(toggle.children).toHaveLength(0);
+
     toggle.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
     await flush();
-    // A key in the collapsed set for a row with nothing under it is one nothing ever removes.
-    expect(view._layersCollapsed!.size).toBe(0);
+
+    // The dead 14px in front of a row with nothing under it is a click that does nothing at all.
+    expect([...view._layersCollapsed!]).toEqual([pathKey(["children", 2])]);
+    expect(activeTab.value!.session.selection).toEqual([]);
   });
 });

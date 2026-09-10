@@ -337,12 +337,16 @@ export function revealListRow(list: HTMLElement | null, index: number, rowHeight
  * The height one row actually has, measured, with the stylesheet's declared height as the answer
  * until a row exists to measure.
  *
- * Both are needed. The DECLARED height (`styles/panels.css` gives `.layer-row` and
- * `.file-tree-item` a `block-size`) is what lets the FIRST render window anything at all, before
- * any row has been laid out. The MEASUREMENT is what stops that constant becoming a lie the day
- * someone changes the row's padding, a user zooms, or a locale's font raises the line box: a window
- * computed from a stale height does not fail loudly, it drifts, and the list quietly ends a few
- * rows short of its own scrollbar.
+ * Both are needed. The DECLARED height is what lets the FIRST render window anything at all, before
+ * any row has been laid out. It used to be `styles/panels.css`'s `.layer-row` and `.file-tree-item`
+ * rules; both trees are `jx-tree-item` now and the declaration travelled with them — `blockSize:
+ * var(--jx-control-h)`, which is 24px and matches the constants the two hosts pass. At
+ * `[data-density=compact]` that token is 20px while the constants stay 24, and that is survivable
+ * for exactly the reason the next paragraph gives: the constant is only the answer until a row
+ * exists, and the measurement corrects it on the first one. The MEASUREMENT is what stops that
+ * constant becoming a lie the day someone changes the row's padding, a user zooms, or a locale's
+ * font raises the line box: a window computed from a stale height does not fail loudly, it drifts,
+ * and the list quietly ends a few rows short of its own scrollbar.
  */
 export function measuredRowHeight(
   list: HTMLElement | null,

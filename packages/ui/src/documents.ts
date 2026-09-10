@@ -23,6 +23,9 @@ import jxIcon from "../components/jx-icon.json";
 import jxMenu from "../components/jx-menu.json";
 import jxMenuItem from "../components/jx-menu-item.json";
 import jxPopover from "../components/jx-popover.json";
+import jxCombobox from "../components/jx-combobox.json";
+import jxListbox from "../components/jx-listbox.json";
+import jxOption from "../components/jx-option.json";
 import jxSelect from "../components/jx-select.json";
 import jxSpinner from "../components/jx-spinner.json";
 import jxTooltip from "../components/jx-tooltip.json";
@@ -35,6 +38,8 @@ import jxTabPanel from "../components/jx-tab-panel.json";
 import jxTabs from "../components/jx-tabs.json";
 import jxTextfield from "../components/jx-textfield.json";
 import jxToast from "../components/jx-toast.json";
+import jxTree from "../components/jx-tree.json";
+import jxTreeItem from "../components/jx-tree-item.json";
 import jxToastHost from "../components/jx-toast-host.json";
 
 /** Tag name → document, in registration order (a document's `$elements` come before it). */
@@ -52,10 +57,15 @@ export const documents: Readonly<Record<string, JxDocument>> = {
   "jx-switch": jxSwitch as unknown as JxDocument,
   "jx-number-field": jxNumberField as unknown as JxDocument,
   "jx-select": jxSelect as unknown as JxDocument,
+  "jx-option": jxOption as unknown as JxDocument,
+  "jx-listbox": jxListbox as unknown as JxDocument,
+  "jx-combobox": jxCombobox as unknown as JxDocument,
   "jx-action-group": jxActionGroup as unknown as JxDocument,
   "jx-tab": jxTab as unknown as JxDocument,
   "jx-tab-panel": jxTabPanel as unknown as JxDocument,
   "jx-tabs": jxTabs as unknown as JxDocument,
+  "jx-tree-item": jxTreeItem as unknown as JxDocument,
+  "jx-tree": jxTree as unknown as JxDocument,
   "jx-accordion-item": jxAccordionItem as unknown as JxDocument,
   "jx-accordion": jxAccordion as unknown as JxDocument,
   "jx-divider": jxDivider as unknown as JxDocument,

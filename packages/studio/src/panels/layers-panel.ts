@@ -447,10 +447,10 @@ function watchOutlineTree(): void {
  * The node an Outline row stands for, read back off the row.
  *
  * Rows carry their `JxPath` verbatim, as JSON, in `data-jx-path` — node IDENTITY in the DOM. That
- * is a different thing from the neighbouring `data-path`, which is `pathKey`'s lossy `join("/")`
- * string and exists as the drag-and-drop and roving-focus Map key; `["children", "0"]` and
- * `["children", 0]` share a key and are different nodes, and a segment containing a slash has no
- * key at all.
+ * is a different thing from the neighbouring `data-value`, which is `pathKey`'s lossy `join("/")`
+ * string and is the row's `value`: the drag-and-drop key, the caret key, and the detail of every
+ * event the row provokes. `["children", "0"]` and `["children", 0]` share a key and are different
+ * nodes, and a segment containing a slash has no key at all.
  *
  * Everything that has to point at a node from outside the projection — the context menu, drag
  * reorder, canvas to Outline sync, a collaborator's cursor, a jump from Problems — needs the
@@ -472,7 +472,7 @@ export function outlineRowPath(el: Element | null): JxPath | null {
 /** The rendered row for a model key, or null when the window does not currently hold it. */
 function rowElementFor(key: string): HTMLElement | null {
   return (
-    _outlineList?.querySelector<HTMLElement>(`${ROW_SELECTOR}[data-path="${CSS.escape(key)}"]`) ??
+    _outlineList?.querySelector<HTMLElement>(`${ROW_SELECTOR}[data-value="${CSS.escape(key)}"]`) ??
     null
   );
 }
@@ -542,80 +542,102 @@ export function applyRowSelection(
 }
 
 /**
- * The ARIA tree keyboard model, against the row the key was pressed on.
+ * The reader meant that row, and `mode` says what by.
  *
- * ↑ / ↓ walk the visible rows and take the selection with them — in an outline, "focus follows
- * selection" is what an author means by pressing Down. → expands a collapsed row and otherwise
- * descends into it; ← collapses an expanded one and otherwise climbs to its parent. Enter and F2
- * rename. Delete is deliberately absent: it is `selection.delete`'s chord, and the registry owns
- * it.
- *
- * Every one of those moves is an index into the row model, not into the rendered rows. The DOM
- * answer and the model answer agreed exactly while the tree drew everything; now the DOM holds a
- * window, and asking it for "the row after this one" would stop the walk at the window's edge and
- * make ← climb to whichever ancestor happened to be painted.
- *
- * @param {string} key The row's `pathKey`
- * @param {string} keyName The key pressed, as the document's `$switch` case names it
- * @param {boolean} shift
+ * The three modes are the ARIA tree's own — a plain move or click replaces, `Ctrl`/`Cmd` toggles,
+ * `Shift` extends — and each maps onto the gesture {@link applyRowSelection} already had. What
+ * `jx-tree` cannot do is RESOLVE the range: naming every row between two of them means naming rows
+ * the drawn slice does not have, so the element dispatches the intent and the range is resolved
+ * here against {@link visibleRowPaths}, which reads the MODEL.
  */
-export function onOutlineKey(key: string, keyName: string, shift: boolean): void {
-  const index = outlineIndexOfKey(key);
-  const row = _outlineRows[index];
+function selectOutlineRow(key: string, mode: string): void {
+  const row = _outlineRows[outlineIndexOfKey(key)];
   if (!row) {
     return;
   }
-  const collapsed = outlineCollapsed();
-  const expandable = isExpandable(row);
+  applyRowSelection(row.path, { additive: mode === "toggle", range: mode === "range" });
+  redrawOutline();
+}
 
-  if (keyName === "ArrowDown" || keyName === "ArrowUp") {
-    const next = outlineStep(index, keyName === "ArrowDown" ? 1 : -1);
-    if (next >= 0) {
-      // Shift+Arrow extends the range, the same gesture shift-click makes and through the same
-      // Function. Without Shift the walk replaces the selection, exactly as it always has.
-      selectModelRow(next, { range: shift });
-      focusModelRow(next);
-      redrawOutline();
-    }
+/**
+ * A row should be opened or closed.
+ *
+ * The detail says the state the row should be PUT INTO, so there is nothing left to work out about
+ * which way a toggle was going. The guard is still load bearing, in BOTH directions: a leaf's
+ * twisty box is drawn empty and still answers a click, and the element reads a leaf's expansion as
+ * "open me" — so the dead 14px in front of a row with nothing under it is a click that must change
+ * nothing at all, rather than one that quietly reaches into the collapsed set on its way past. The
+ * row must also still be in the model: a key from a stale projection would go into that set with
+ * nothing left to take it out again.
+ */
+function expandOutlineRow(key: string, expanded: boolean): void {
+  const row = _outlineRows[outlineIndexOfKey(key)];
+  if (!row || !isExpandable(row)) {
     return;
   }
-  if (keyName === "ArrowRight") {
-    if (expandable && collapsed.has(key)) {
-      collapsed.delete(key);
-      redrawOutline();
-    } else if (expandable) {
-      focusModelRow(outlineStep(index, 1));
-    }
-    return;
+  const collapsed = outlineCollapsed();
+  if (expanded) {
+    collapsed.delete(key);
+  } else {
+    collapsed.add(key);
   }
-  if (keyName === "ArrowLeft") {
-    if (expandable && !collapsed.has(key)) {
-      collapsed.add(key);
-      redrawOutline();
+  redrawOutline();
+}
+
+/**
+ * The caret has to reach a row the window did not draw.
+ *
+ * `jx-tree` walks the DRAWN rows, which is all it can see; when a pad says the model continues that
+ * way it dispatches `move` and performs nothing. Each key is answered here exactly as the element
+ * would have answered it over a slice that held everything — and ← is the one that could never have
+ * been the element's, because the model records each row's PARENT as it builds it and a scan for
+ * "the nearest row above at a shallower level" can only ever see painted rows.
+ *
+ * The selection comes with it, for two reasons that point the same way. In an outline "focus
+ * follows selection" is what an author means by pressing Down; and `jx-tree` raises `select` beside
+ * `change` on every arrow it can perform itself, so a step the window could not satisfy must not be
+ * the one step that silently does not — which is also what puts the tab stop on the revealed row,
+ * rather than leaving the reader FOCUSED on one row while Tab comes back to another.
+ *
+ * @param {string} from The row the caret is on
+ * @param {string} keyName The key the element could not perform
+ */
+function moveOutlineCaret(from: string, keyName: string): void {
+  const index = outlineIndexOfKey(from);
+  let target: number;
+  switch (keyName) {
+    case "Home": {
+      target = outlineStep(-1, 1);
+      break;
+    }
+    case "End": {
+      target = outlineStep(_outlineRows.length, -1);
+      break;
+    }
+    case "ArrowUp": {
+      target = outlineStep(index, -1);
+      break;
+    }
+    case "ArrowLeft": {
+      target = _outlineRows[index]?.parent ?? -1;
+      break;
+    }
+    // ↓ and → both ask for the next drawn row; over the model they are the same step.
+    case "ArrowDown":
+    case "ArrowRight": {
+      target = outlineStep(index, 1);
+      break;
+    }
+    default: {
       return;
     }
-    // The model records each row's parent as it builds them, so the climb is exact rather than a
-    // Backwards scan for a smaller `aria-level` — which could only ever see painted rows.
-    if (row.parent >= 0) {
-      selectModelRow(row.parent);
-      focusModelRow(row.parent);
-      redrawOutline();
-    }
+  }
+  if (!_outlineRows[target]) {
     return;
   }
-  if (keyName === "Home" || keyName === "End") {
-    const target = keyName === "Home" ? outlineStep(-1, 1) : outlineStep(_outlineRows.length, -1);
-    if (target >= 0) {
-      selectModelRow(target);
-      focusModelRow(target);
-      redrawOutline();
-    }
-    return;
-  }
-  if (keyName === "Enter" || keyName === "F2") {
-    selectModelRow(index);
-    startLayerTitleEdit(row.path, () => _outlineRerender?.());
-  }
+  selectModelRow(target);
+  focusModelRow(target);
+  redrawOutline();
 }
 
 /**
@@ -867,7 +889,6 @@ function textRowView(row: OutlineRow): OutlineRowView {
     badge: "text",
     badgeKind: "text",
     badgeTitle: null,
-    chevron: "none",
     commands: [],
     dndDepth: null,
     dndExpanded: null,
@@ -876,7 +897,7 @@ function textRowView(row: OutlineRow): OutlineRowView {
     draggable: "false",
     editValue: "",
     editing: "false",
-    expanded: null,
+    expanded: "",
     indent: `${indentWidth(row.depth) + INDENT_BASE}px`,
     jxPath: JSON.stringify(row.path),
     key: row.key,
@@ -887,10 +908,8 @@ function textRowView(row: OutlineRow): OutlineRowView {
     overflow: "false",
     placeholder: "",
     posInSet: "",
-    primary: null,
     selected: "false",
     setSize: "",
-    tabindex: "-1",
   };
 }
 
@@ -905,7 +924,6 @@ function outlineRowView(
   doc: { selection: JxPath[]; mode: string },
   collapsed: Set<string>,
   registry: CommandRegistry,
-  stopKey: string,
 ): OutlineRowView {
   if (!row.item) {
     return textRowView(row);
@@ -913,10 +931,7 @@ function outlineRowView(
   const { depth, key, nodeType, path } = row;
   const node = row.node as JxMutableNode;
 
-  // Every member of the set draws selected; the PRIMARY additionally carries the roving tab stop,
-  // So a batch has one keyboard position rather than six.
   const selected = isPathSelected(doc.selection, path);
-  const primary = pathsEqual(path, primarySelection(doc.selection));
   const expandable = isExpandable(row);
   // Array nodes can't accept dropped children (their content is the single map template), so they
   // Block the make-child drop instruction like void elements do.
@@ -947,7 +962,6 @@ function outlineRowView(
     badge,
     badgeKind,
     badgeTitle,
-    chevron: expandable ? (open ? "open" : "closed") : "none",
     commands,
     dndDepth: structural ? String(depth) : null,
     dndExpanded: structural && open ? "" : null,
@@ -956,7 +970,11 @@ function outlineRowView(
     draggable: grabbable ? "true" : "false",
     editValue: editing ? (node.$title ?? "") : "",
     editing: editing ? "true" : "false",
-    expanded: expandable ? (open ? "true" : "false") : null,
+    /* `""` is a LEAF, and it is not "no answer": it is what tells `jx-tree-item` to draw no chevron
+       and write no `aria-expanded`, and what makes `ArrowRight` on a row with nothing under it do
+       nothing instead of stepping onto the row below. The chevron used to be a second field saying
+       the same three things. */
+    expanded: expandable ? (open ? "true" : "false") : "",
     indent: `${indentWidth(depth) + INDENT_BASE}px`,
     jxPath: JSON.stringify(path),
     key,
@@ -967,29 +985,30 @@ function outlineRowView(
     overflow: overflow.length > 0 ? "true" : "false",
     placeholder: outlineLabel(withoutTitle) || displayTagName(node.tagName) || "div",
     posInSet: String(row.posInSet),
-    primary: primary ? "" : null,
     selected: selected ? "true" : "false",
     setSize: String(row.setSize),
-    tabindex: key === stopKey ? "0" : "-1",
   };
 }
 
 /**
- * The row of the window that carries the tree's single tab stop.
+ * The row the caret starts on, as the projection reports it.
  *
- * The PRIMARY selection when it is drawn, else any drawn member of the selection, else the first
- * drawn row. Decided over the WINDOW rather than over the model, because a tab stop on a row nobody
- * painted is a tree with no way in — which is exactly what a selection inside a collapsed branch,
- * or three thousand rows down, would otherwise produce.
+ * A SEED, not a clamp. The tab stop this replaced was decided over the WINDOW and re-decided on
+ * every paint, so a wheel moved it; `jx-tree` owns the caret, holds it across every repaint that
+ * does not change `current`, and clamps only the tab STOP into the drawn rows — so this module
+ * keeps no caret of its own. What it owes the element is a row to start on and a row to come back
+ * to when the one it was on has gone, and the primary selection is that row.
+ *
+ * It must NAME one, and the fallback is what guarantees it rather than tidiness: `move` reports the
+ * caret's own row as `from`, and a tree nobody has touched yet — or one scrolled far enough that
+ * the selected row is not drawn — would report `""` and send every ↓ off the bottom of the window
+ * back to the top of the document.
  */
-function tabStopKey(window: OutlineRow[], selection: JxPath[]): string {
-  const items = window.filter((row) => row.item);
+function outlineCaretKey(window: OutlineRow[], selection: JxPath[]): string {
   const primary = primarySelection(selection);
-  const stop =
-    items.find((row) => primary !== null && pathsEqual(row.path, primary)) ??
-    items.find((row) => isPathSelected(selection, row.path)) ??
-    items[0];
-  return stop?.key ?? "";
+  const held = primary === null ? -1 : outlineIndexOfPath(primary);
+  const row = _outlineRows[held];
+  return row?.item === true ? row.key : (window.find((line) => line.item)?.key ?? "");
 }
 
 /**
@@ -1017,15 +1036,13 @@ export function outlineValues(): OutlineValues {
   });
   const selection = tab?.session.selection ?? [];
   const drawn = _outlineRows.slice(range.start, range.end);
-  const stopKey = tabStopKey(drawn, selection);
   return {
+    current: outlineCaretKey(drawn, selection),
     emptyLabel: "Add an element",
     emptyMessage: "This page is empty. Everything you add to it is listed here, in order.",
-    padBottom: `height:${range.padBottom}px`,
-    padTop: `height:${range.padTop}px`,
-    rows: drawn.map((row) =>
-      outlineRowView(row, { mode, selection }, collapsed, registry, stopKey),
-    ),
+    padBottom: range.padBottom,
+    padTop: range.padTop,
+    rows: drawn.map((row) => outlineRowView(row, { mode, selection }, collapsed, registry)),
     view: _outlineRows.length === 0 ? "empty" : "rows",
   };
 }
@@ -1126,12 +1143,6 @@ export function mountOutlinePanel(
   } else {
     standing = {
       handle: mountOutlineSurface(target, values, {
-        activate: (key, ctrl, meta, shift) => {
-          const path = pathFromKey(key);
-          applyRowSelection(path, { additive: ctrl || meta, range: shift });
-          revealPathInCanvas(path);
-          redrawOutline();
-        },
         contextMenu: (_scope, event) => {
           const path = outlineRowPath(event.target as Element | null);
           if (path) {
@@ -1155,6 +1166,7 @@ export function mountOutlinePanel(
             }
           });
         },
+        expand: expandOutlineRow,
         emptyAction: () => {
           /* `"insert"`, not `"blocks"`. The panel was renamed in P3.1 and this call kept the old id
              for three phases, so the one action an empty page offers landed the Navigator on "No
@@ -1164,6 +1176,7 @@ export function mountOutlinePanel(
         },
         hover: hoverRow,
         hoverOut: clearOutlineHover,
+        move: moveOutlineCaret,
         overflowRow: (key, opener) => {
           const path = pathFromKey(key);
           const registry = selectionCommandRegistry();
@@ -1173,7 +1186,14 @@ export function mountOutlinePanel(
           }
         },
         rename: (key) => {
+          /* The selection follows the rename, which is what `Enter` always did: the row being
+             renamed is the row the inspector and the canvas are about. */
+          const index = outlineIndexOfKey(key);
+          selectModelRow(index);
           startLayerTitleEdit(pathFromKey(key), () => _outlineRerender?.());
+        },
+        reveal: (key) => {
+          revealPathInCanvas(pathFromKey(key));
         },
         runRow: (id, key, control) => {
           if (control instanceof HTMLElement) {
@@ -1182,26 +1202,10 @@ export function mountOutlinePanel(
           runCommand(selectionCommandRegistry(), id, pathFromKey(key));
           redrawOutline();
         },
-        toggle: (key) => {
-          const row = _outlineRows[outlineIndexOfKey(key)];
-          /* A row with nothing under it draws no chevron, so this can only be a click on the empty
-             14px the chevron would have occupied. Answering it would put a key in the collapsed set
-             that nothing will ever take out again. */
-          if (!row || !isExpandable(row)) {
-            return;
-          }
-          const collapsed = outlineCollapsed();
-          if (collapsed.has(key)) {
-            collapsed.delete(key);
-          } else {
-            collapsed.add(key);
-          }
-          redrawOutline();
-        },
+        select: selectOutlineRow,
         treeReady: (element) => {
           _outlineList = element;
         },
-        walk: onOutlineKey,
       }),
       host: target,
     };

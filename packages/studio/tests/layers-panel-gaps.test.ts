@@ -45,21 +45,22 @@ const { mountOutlineSurface } = await import("../src/surfaces/panel-outline");
 /** Every action the surface can call, as a no-op: these tests are about the MOUNT, not the flow. */
 function outlineActionSpies(): OutlineActions {
   return {
-    activate: () => {},
     contextMenu: () => {},
     editCancel: () => {},
     editCommit: () => {},
     editInput: () => {},
     editReady: () => {},
     emptyAction: () => {},
+    expand: () => {},
     hover: () => {},
     hoverOut: () => {},
+    move: () => {},
     overflowRow: () => {},
     rename: () => {},
+    reveal: () => {},
     runRow: () => {},
-    toggle: () => {},
+    select: () => {},
     treeReady: () => {},
-    walk: () => {},
   };
 }
 
@@ -115,10 +116,6 @@ function badgeOf(el: HTMLElement): HTMLElement {
 }
 
 /** A row's name. */
-function labelOf(el: HTMLElement): HTMLElement {
-  return el.querySelector('[part="label"]') as HTMLElement;
-}
-
 function maybe(path: JxPath): HTMLElement | null {
   return row(host, pathKey(path));
 }
@@ -180,7 +177,7 @@ describe("the rows and their badges", () => {
     expect(badgeOf(mapRow).dataset.kind).toBe("map");
     expect(textOf(mapRow, "label")).toContain("Repeater");
     expect(mapRow.dataset.dndRow).toBe(pathKey(["children", 2, "children", 0]));
-    expect(mapRow.querySelector('[part="drag"]')).not.toBeNull();
+    expect(mapRow.querySelector('[part="grip"]')).not.toBeNull();
     // A repeater cannot take a dropped child: its content is the single template.
     expect(mapRow.dataset.dndVoid).toBe("");
     expect(maybe(["children", 2, "children", 0, "map"])).not.toBeNull();
@@ -200,7 +197,7 @@ describe("the rows and their badges", () => {
     expect(textOf(refRow, "badge")).toBe("beta");
     expect(textOf(refRow, "label")).toBe("./beta.json");
     // An external case names a file rather than describing a node, so it is set in italic.
-    expect(labelOf(refRow).dataset.italic).toBe("true");
+    expect(refRow.dataset.italic).toBe("true");
   });
 
   test("a slot says which slot it is, on the badge that names no tag", async () => {
@@ -224,7 +221,7 @@ describe("the rows and their badges", () => {
   test("the root row has no cluster and no grab handle", async () => {
     await draw();
     expect(at([]).querySelectorAll("jx-action-button")).toHaveLength(0);
-    expect(at([]).querySelector('[part="drag"]')).toBeNull();
+    expect(at([]).querySelector('[part="grip"]')).toBeNull();
     expect(at([]).dataset.dndRow).toBeUndefined();
   });
 });
@@ -240,14 +237,18 @@ describe("selection and collapse", () => {
   test("the selected row announces itself rather than wearing a class", async () => {
     activeTab.value!.session.selection = [["children", 0]];
     await draw();
+    /* `aria-selected` is written only where it is TRUE. A `false` on every row is what tells
+       assistive technology a tree supports multiple selection, and `jx-tree`'s own
+       `aria-multiselectable` is where that answer lives — saying it twice, once per row, is how a
+       reader ends up hearing "not selected" on five thousand lines. */
     expect(at(["children", 0]).getAttribute("aria-selected")).toBe("true");
-    expect(at(["children", 1]).getAttribute("aria-selected")).toBe("false");
+    expect(at(["children", 1]).hasAttribute("aria-selected")).toBe(false);
     expect(at(["children", 0]).className).toBe("");
   });
 
   test("clicking the chevron collapses, hides descendants, and turns the glyph", async () => {
     await draw();
-    const toggle = () => at(["children", 0]).querySelector('[part="toggle"]') as HTMLElement;
+    const toggle = () => at(["children", 0]).querySelector('[part="twisty"]') as HTMLElement;
     expect(toggle().querySelector("jx-icon")).not.toBeNull();
 
     click(toggle());
@@ -264,7 +265,7 @@ describe("selection and collapse", () => {
 
   test("a row with nothing under it draws no chevron", async () => {
     await draw();
-    const toggle = at(["children", 4]).querySelector('[part="toggle"]') as HTMLElement;
+    const toggle = at(["children", 4]).querySelector('[part="twisty"]') as HTMLElement;
     expect(toggle.children).toHaveLength(0);
   });
 
@@ -405,8 +406,12 @@ describe("inline rename", () => {
 
     const input = at(["children", 1]).querySelector('[part="title-input"]') as HTMLInputElement;
     expect(input).not.toBeNull();
-    // The label is a `$switch` case, so it is GONE while the input stands — never hidden beside it.
-    expect(at(["children", 1]).querySelector('[part="label"]')).toBeNull();
+    /* The name is still the row's `label` — `jx-tree-item` writes it to `aria-label`, so the row
+       goes on naming itself to a reader while it is being renamed — and the row says it is being
+       renamed, which is what takes the drawn name off the screen. The predecessor removed the label
+       node instead and hid it with an inline `display:none` before that. */
+    expect(at(["children", 1]).dataset.editing).toBe("true");
+    expect(at(["children", 1]).getAttribute("aria-label")).toBe("First");
     expect(document.activeElement).toBe(input);
 
     input.value = "Hero paragraph";
@@ -567,7 +572,15 @@ describe("the mounted surface", () => {
     const content = host.querySelector(".panel-content") as HTMLElement;
     const handle = mountOutlineSurface(
       content,
-      { emptyLabel: "", emptyMessage: "", padBottom: "", padTop: "", rows: [], view: "empty" },
+      {
+        current: "",
+        emptyLabel: "",
+        emptyMessage: "",
+        padBottom: 0,
+        padTop: 0,
+        rows: [],
+        view: "empty",
+      },
       outlineActionSpies(),
     );
     handle.dispose();
@@ -600,7 +613,15 @@ describe("the mounted surface", () => {
     const content = host.querySelector(".panel-content") as HTMLElement;
     const handle = mountOutlineSurface(
       content,
-      { emptyLabel: "", emptyMessage: "", padBottom: "", padTop: "", rows: [], view: "empty" },
+      {
+        current: "",
+        emptyLabel: "",
+        emptyMessage: "",
+        padBottom: 0,
+        padTop: 0,
+        rows: [],
+        view: "empty",
+      },
       outlineActionSpies(),
     );
     await handle.ready;

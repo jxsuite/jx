@@ -31,7 +31,7 @@ With no project open, the palette lists your recent projects instead. Pick one t
 
 ## Keyboard controls
 
-- :kbd[↓] and :kbd[↑] move through the results.
+- :kbd[↓] and :kbd[↑] move through the results, and the list scrolls to keep the highlighted row in view.
 - :kbd[Enter] opens the highlighted result in a tab.
 - :kbd[Esc] closes the palette.
 

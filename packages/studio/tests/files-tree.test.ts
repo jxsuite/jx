@@ -189,11 +189,16 @@ function rows(): HTMLElement[] {
 }
 
 function names(): (string | null)[] {
-  return [...host.querySelectorAll<HTMLElement>('[part="row-name"]')].map((el) => el.textContent);
+  return [...host.querySelectorAll<HTMLElement>('[part="row"] [part="label"]')].map(
+    (el) => el.textContent,
+  );
 }
 
+/* `data-value` rather than `data-path`: `jx-tree-item` mirrors its own `value` there, and it is
+   what the drag island addresses a row by, so a second `data-path` saying the same thing would be
+   two answers to "which row is this". */
 function rowFor(path: string, expected = true): HTMLElement {
-  const row = host.querySelector<HTMLElement>(`[part="row"][data-path="${path}"]`);
+  const row = host.querySelector<HTMLElement>(`[part="row"][data-value="${path}"]`);
   if (expected) {
     expect(row).not.toBeNull();
   }
@@ -373,7 +378,7 @@ describe("the panel's three states", () => {
     await flush(3);
 
     expect(host.textContent).toContain("Loading…");
-    expect(host.querySelector('[part="row"][data-loading="true"]')).not.toBeNull();
+    expect(host.querySelector('[part="loading-row"]')).not.toBeNull();
     expect(rows()).toHaveLength(0);
     expect(requireProjectState().dirs.get(".")).toBeDefined();
     expect(renders).toBeGreaterThan(0);
@@ -418,14 +423,20 @@ describe("file tree listing", () => {
     expect(rowFor("beta.md").hasAttribute("aria-expanded")).toBe(false);
   });
 
-  test("the indent is a depth the document computes with, not a padding this module writes", async () => {
+  test("a row's depth is one number, and the element draws the indent from it", async () => {
     installFsPlatform();
     siteState();
     seedTreeState();
     await mountTree();
 
-    expect(rowFor("pages").getAttribute("style")).toContain("--depth:0");
-    expect(rowFor("pages/index.json").getAttribute("style")).toContain("--depth:1");
+    /* `level` and nothing else. It used to be said twice — `aria-level` for the reader and a
+       `--depth` custom property for the stylesheet — and `jx-tree-item` derives both from this one
+       prop, so the announced depth and the drawn indent can no longer disagree. */
+    expect(rowFor("pages").getAttribute("level")).toBe("1");
+    expect(rowFor("pages").getAttribute("aria-level")).toBe("1");
+    expect(rowFor("pages").getAttribute("style")).not.toContain("--depth");
+    expect(rowFor("pages/index.json").getAttribute("level")).toBe("2");
+    expect(rowFor("pages/index.json").getAttribute("aria-level")).toBe("2");
   });
 
   test("file-type icons match extensions; folder icons track expansion", async () => {
@@ -455,8 +466,12 @@ describe("file tree listing", () => {
     seedTreeState();
     await mountTree();
 
-    expect(rowFor("beta.md").dataset.selected).toBe("true");
-    expect(rowFor("zeta.json").dataset.selected).toBeUndefined();
+    /* `aria-selected`, written by the element from the row's `selected` prop, and it is the ONLY
+       writer of the selected drawing now — which is what stops the wash and the announcement
+       disagreeing. A `data-selected` beside it was the class this replaced wearing an attribute's
+       clothes. */
+    expect(rowFor("beta.md").getAttribute("aria-selected")).toBe("true");
+    expect(rowFor("zeta.json").hasAttribute("aria-selected")).toBe(false);
   });
 
   test("moving the selection redraws one attribute and keeps every row NODE", async () => {
@@ -473,8 +488,8 @@ describe("file tree listing", () => {
     // Keyed rows, and selection is one scope field the document compares against each row's path:
     // The nodes survive, so nothing the reader is on — a caret, a focus ring — is taken away.
     expect(rows()).toEqual(before);
-    expect(rowFor("zeta.json").dataset.selected).toBe("true");
-    expect(rowFor("beta.md").dataset.selected).toBeUndefined();
+    expect(rowFor("zeta.json").getAttribute("aria-selected")).toBe("true");
+    expect(rowFor("beta.md").hasAttribute("aria-selected")).toBe(false);
   });
 
   test("search query filters files but keeps directories", async () => {
@@ -1283,10 +1298,11 @@ describe("the tree's keyboard", () => {
   /**
    * The keyboard is driven against the REAL rendered tree, not a hand-built one.
    *
-   * The keys are bound to the ROW, not to the tree, so which row a key is about is that row's own
-   * `$map` item — there is no focused-element lookup left to get wrong, and there is nothing for a
-   * repaint to stack a second listener onto. ↑/↓ still step through the row MODEL, which is why the
-   * fixture has to go through the real projection.
+   * `jx-tree` owns the whole contract now, and it owns it from ONE listener on the tree — where
+   * every key used to be a `$switch` case under every row, and the same eight cases were written
+   * out again in `panel-outline.json` with nothing keeping the two in agreement. ↑/↓ step the drawn
+   * rows and hand the model steps back to `files.ts` as `move`, which is why the fixture has to go
+   * through the real projection.
    */
   async function keyboardTree(seed: Record<string, string> = {}) {
     const handle = installFsPlatform(seed);
@@ -1356,14 +1372,116 @@ describe("the tree's keyboard", () => {
     expect(handled.defaultPrevented).toBe(true);
   });
 
-  test("a key on the tree itself moves nothing — the rows own the keyboard", async () => {
+  test("the TREE owns the keyboard, and a key that reaches it lands on a row", async () => {
+    const { items } = await keyboardTree();
+    // Nothing focused, and the key arrives at the tree itself, which is what a click on the tree's
+    // Own background followed by ↓ is. It lands on the first drawn row rather than doing nothing,
+    // So the first key press always goes somewhere.
+    key(treeEl(), "ArrowDown");
+    expect(document.activeElement).toBe(items[0]!);
+  });
+
+  test("walking the rows moves the selection and opens nothing", async () => {
+    const { items } = await keyboardTree();
+    items[1]!.focus();
+
+    // Onto the DIRECTORY row, which is the one whose activation is observable from here.
+    key(items[1]!, "ArrowUp");
+    await flush(3);
+
+    /* A click on a row OPENS it and an arrow key must not, and both reach this tree as the same
+       `select` intent — so a tree that answered `select` by opening would unfold every directory
+       and open every file the reader arrowed past. The row is selected and it is still closed. */
+    expect(document.activeElement).toBe(rowFor("pages"));
+    expect(rowFor("pages").getAttribute("aria-selected")).toBe("true");
+    expect(requireProjectState().expanded.has("pages")).toBe(false);
+    expect(rowFor("pages").getAttribute("aria-expanded")).toBe("false");
+  });
+
+  test("clicking a folder moves the caret onto it, as well as opening it", async () => {
+    const { items } = await keyboardTree();
+
+    items[0]!.click();
+    await flush(3);
+
+    /* Two things, and the row's own handler is only one of them: it opens the folder, and the
+       TREE's delegated click moves the caret and the selection onto the row. A `stopPropagation`
+       in the row's handler takes the second away, and a reader who clicked a folder is then left
+       with the tab stop on whatever they last had open. */
+    expect(requireProjectState().expanded.has("pages")).toBe(true);
+    expect(rowFor("pages").getAttribute("aria-selected")).toBe("true");
+    expect(rowFor("pages").getAttribute("tabindex")).toBe("0");
+    expect(document.activeElement).toBe(rowFor("pages"));
+  });
+
+  test("Ctrl+↓ moves the caret alone, and the next repaint keeps it there", async () => {
+    const { items } = await keyboardTree();
+    items[0]!.focus();
+    key(items[0]!, "ArrowDown");
+    await flush(2);
+    expect(requireProjectState().selectedPath).toBe("a.json");
+
+    const held = new KeyboardEvent("keydown", {
+      bubbles: true,
+      cancelable: true,
+      ctrlKey: true,
+      key: "ArrowDown",
+    });
+    rowFor("a.json").dispatchEvent(held);
+    await flush(2);
+
+    /* The one gesture that moves the caret WITHOUT the selection, and the reason the flow keeps no
+       caret of its own: `jx-tree` owns it and holds it across a repaint that does not change
+       `current`, so the reader stays where they stepped to. The tab stop this replaced was
+       recomputed from `selectedPath` on every paint and would have pulled them back. */
+    expect(document.activeElement).toBe(rowFor("b.json"));
+    expect(requireProjectState().selectedPath).toBe("a.json");
+    repaint();
+    await flush();
+    expect(rowFor("b.json").getAttribute("tabindex")).toBe("0");
+    expect(rowFor("a.json").getAttribute("tabindex")).toBe("-1");
+  });
+
+  test("a click on a file's empty twisty expands nothing", async () => {
+    const { items } = await keyboardTree();
+    const twisty = rowFor("a.json").querySelector('[part="twisty"]') as HTMLElement;
+    expect(twisty.children).toHaveLength(0);
+
+    twisty.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    await flush(3);
+
+    /* A leaf's twisty box is drawn empty and still answers a click, and the element reads a leaf's
+       expansion as "open me" — so a FILE arrives at the flow asking to be expanded and has to be
+       told nothing happens. The click also stops at the twisty, so it does not open the file
+       either. */
+    expect(requireProjectState().expanded.size).toBe(0);
+    expect(workspace.tabs.size).toBe(0);
+    expect(items).toHaveLength(3);
+  });
+
+  test("Home and End reach the ends of the tree", async () => {
+    const { items } = await keyboardTree();
+    items[1]!.focus();
+
+    key(items[1]!, "End");
+    await flush();
+    expect(document.activeElement).toBe(rowFor("b.json"));
+
+    key(rowFor("b.json"), "Home");
+    await flush();
+    expect(document.activeElement).toBe(rowFor("pages"));
+  });
+
+  test("typing a letter jumps to the next row whose name starts with it", async () => {
     const { items } = await keyboardTree();
     items[0]!.focus();
 
-    key(treeEl(), "ArrowDown");
-    // The tree has no handler at all now: which row a key is about is the row's own, so a key that
-    // Reached no row can no longer walk a row it inferred from the focus.
-    expect(document.activeElement).toBe(items[0]!);
+    key(items[0]!, "b");
+    await flush();
+
+    // Neither tree had typeahead before the element did; a 300-file directory was ↓ three hundred
+    // Times.
+    expect(document.activeElement).toBe(rowFor("b.json"));
   });
 
   /* One step per keystroke, however many times the panel repaints. The predecessor's `afterRender`
@@ -1482,7 +1600,7 @@ describe("the drag island", () => {
     });
     await flush(3);
 
-    expect(host.querySelector('[part="row"][data-loading="true"]')).not.toBeNull();
+    expect(host.querySelector('[part="loading-row"]')).not.toBeNull();
     // There is no file there yet: a registration against a node the listing is about to replace is
     // One nothing could take back.
     expect(dnd.draggables).toHaveLength(0);
@@ -1511,7 +1629,7 @@ describe("the drag island", () => {
   test("draggable rows expose file-tree data, and the dragged row says so as STATE", async () => {
     await seededTree();
 
-    const drag = dnd.draggables.find((d) => d.element?.dataset?.path === "beta.md");
+    const drag = dnd.draggables.find((d) => d.element?.dataset?.value === "beta.md");
     expect(drag.getInitialData()).toEqual({
       entryType: "file",
       path: "beta.md",
@@ -1520,7 +1638,7 @@ describe("the drag island", () => {
 
     drag.onDragStart();
     await flush();
-    expect(rowFor("beta.md").dataset.dragging).toBe("true");
+    expect(rowFor("beta.md").dataset.dragging).toBe("");
     drag.onDrop();
     await flush();
     // A state the flow holds, not a class the handler adds and the next handler has to remember to
@@ -1554,14 +1672,14 @@ describe("the drag island", () => {
 
     target.onDragEnter();
     await flush();
-    expect(rowFor("assets").dataset.drop).toBe("true");
+    expect(rowFor("assets").dataset.drop).toBe("");
     target.onDragLeave();
     await flush();
     expect(rowFor("assets").dataset.drop).toBeUndefined();
     target.onDrag();
     target.onDrag(); // Idempotent — the second is a no-op, not a second projection
     await flush();
-    expect(rowFor("assets").dataset.drop).toBe("true");
+    expect(rowFor("assets").dataset.drop).toBe("");
     target.onDrop();
     await flush();
     expect(rowFor("assets").dataset.drop).toBeUndefined();
@@ -1588,7 +1706,7 @@ describe("the drag island", () => {
 
   test("a window that slid mid-drag would drop the sources, so it does not slide", async () => {
     await seededTree();
-    const drag = dnd.draggables.find((d) => d.element?.dataset?.path === "beta.md");
+    const drag = dnd.draggables.find((d) => d.element?.dataset?.value === "beta.md");
     drag.onDragStart();
     await flush();
     const before = renders;
@@ -1898,7 +2016,7 @@ describe("file tree external file drops", () => {
     expect(over.event.defaultPrevented).toBe(true);
     expect(over.dataTransfer.dropEffect).toBe("copy");
     await flush();
-    expect(rowFor("assets").dataset.drop).toBe("true");
+    expect(rowFor("assets").dataset.drop).toBe("");
 
     dragEvent(rowFor("assets"), "drop", [testFile("hero.png")]);
     await flush(3);

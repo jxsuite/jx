@@ -4,8 +4,13 @@
  *
  * The surface is a Jx document now, so every gesture is asserted a turn later than it used to be:
  * `mountSurface` settles after the kit is defined, and the `$switch` on `open` reconciles in a
- * microtask of its own. Everything is addressed by `part`, and the highlight by `data-selected` —
- * the document draws no classes at all.
+ * microtask of its own. Everything is addressed by `part`; the document draws no classes at all.
+ *
+ * The rows are the kit's `jx-listbox` and `jx-option`, so the highlight is asserted through
+ * `aria-selected` and nothing else. There is no `data-selected` beside it any more: the id in
+ * `active` IS the highlight, the listbox's sidecar is its single writer, and the two tests at the
+ * bottom of this file are what hold that — one that the field, the list and the row all name the
+ * same string, and one that moving the caret does not re-rank the catalog.
  */
 import "./with-dom.js";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
@@ -64,7 +69,12 @@ function searchInput(): HTMLInputElement {
 }
 
 function items(): HTMLElement[] {
-  return [...slot().querySelectorAll('[part="item"]')] as HTMLElement[];
+  return [...slot().querySelectorAll('[part="option"]')] as HTMLElement[];
+}
+
+/** The row the caret is on, as the kit's sidecar marks it. */
+function selected(): HTMLElement | null {
+  return slot().querySelector('[part="option"][aria-selected="true"]');
 }
 
 function partText(part: string): (string | null)[] {
@@ -102,7 +112,7 @@ describe("formula palette — open/close", () => {
     await open();
     expect(overlay()).toBeTruthy();
     expect(items().length).toBe(3);
-    expect(partText("section-label")).toEqual(["Logical", "Conditional", "Math"]);
+    expect(partText("group-heading")).toEqual(["Logical", "Conditional", "Math"]);
     expect(partText("badge")).toEqual(["operator", "operator", "global"]);
 
     closeFormulaPalette();
@@ -182,8 +192,8 @@ describe("formula palette — picking", () => {
     await open();
     items()[2]!.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
     await flush();
-    expect(items()[2]!.dataset.selected).toBe("");
-    expect(items()[0]!.dataset.selected).toBeUndefined();
+    expect(selected()).toBe(items()[2]!);
+    expect(items()[0]!.getAttribute("aria-selected")).toBe("false");
     items()[0]!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     await flush();
     expect(onPick).toHaveBeenCalledTimes(1);
@@ -220,5 +230,72 @@ describe("formula palette — the anchored panel", () => {
     const centred = slot().querySelector('[part="panel"]') as HTMLElement;
     expect(centred.dataset.anchored).toBeUndefined();
     anchor.remove();
+  });
+});
+
+describe("formula palette — the highlight is one id", () => {
+  test("the field, the list and the row all name the same string, and no row carries a second flag", async () => {
+    /*
+     * The duplication this closed: the document used to write
+     * `aria-selected="${$map.item.index === state.selectedIndex ? 'true' : 'false'}"` and a
+     * `data-selected` beside it, once per row, with nothing keeping the pair in agreement. Now the
+     * surface writes ONE string. `active` reaches the listbox, `aria-activedescendant` reaches the
+     * field, and the listbox's sidecar is the only thing that writes a row's flag.
+     */
+    await open();
+    await keydown("ArrowDown");
+
+    const field = searchInput();
+    const list = slot().querySelector('[part="results"]') as HTMLElement;
+    const active = field.getAttribute("aria-activedescendant");
+
+    expect(active).toBe("formula-palette-option-1");
+    expect(list.dataset.active).toBe(active!);
+    expect(list.getAttribute("aria-label")).toBe("Formulas");
+    expect(field.getAttribute("aria-controls")).toBe(list.id);
+    expect(selected()!.id).toBe(active!);
+    expect(slot().querySelectorAll("[data-selected]")).toHaveLength(0);
+  });
+
+  test("an empty result set points the field at no row at all", async () => {
+    await open();
+    await typeQuery("no-such-thing");
+    expect(searchInput().hasAttribute("aria-activedescendant")).toBe(false);
+    expect(searchInput().getAttribute("aria-expanded")).toBe("false");
+
+    // And an arrow key over nothing moves nothing: clamping an empty list lands on index 0, which
+    // Would name a row that is not there now that the id IS the highlight.
+    await keydown("ArrowDown");
+    expect(searchInput().hasAttribute("aria-activedescendant")).toBe(false);
+    expect((slot().querySelector('[part="results"]') as HTMLElement).dataset.active).toBe("");
+  });
+
+  test("a key moves the caret without re-ranking the catalog", async () => {
+    /*
+     * The property `groups` and `activeId` are separate fields FOR. `groupRows` reads every entry's
+     * `description` exactly once per projection, so a getter on one entry counts projections — and
+     * an arrow key must cost none of them. Typing does, which is what proves the counter works.
+     */
+    let projections = 0;
+    const counted: FormulaCatalogEntry = {
+      ...entry({ group: "Logical", label: "??", name: "??" }),
+      get description() {
+        projections += 1;
+        return "Nullish coalescing";
+      },
+    };
+    openFormulaPalette({ entries: [counted, ENTRIES[1]!, ENTRIES[2]!], onPick });
+    await flush();
+
+    const projected = projections;
+    expect(projected).toBeGreaterThan(0);
+
+    await keydown("ArrowDown");
+    await keydown("ArrowDown");
+    expect(projections).toBe(projected);
+    expect(selected()!.id).toBe("formula-palette-option-2");
+
+    await typeQuery("?");
+    expect(projections).toBeGreaterThan(projected);
   });
 });

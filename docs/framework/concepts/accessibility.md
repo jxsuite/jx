@@ -34,6 +34,7 @@ Each rule stays silent when the fact it needs is bound rather than written. A `$
 | `tablist-none-selected`          | A tablist whose tabs are none selected. A warning.                                                                                   | 4.1.2 Name, Role, Value      |
 | `dialog-unnamed`                 | A `dialog` with no `aria-label` or `aria-labelledby`. Its content does not name it.                                                  | 4.1.2 Name, Role, Value      |
 | `activedescendant-not-focusable` | `aria-activedescendant` on an element that cannot take focus itself.                                                                 | 2.1.1 Keyboard               |
+| `custom-element-in-select`       | A custom element inside a `select`. Native `option`, `optgroup`, `hr` and `slot` are the only things that belong there.              | 4.1.2 Name, Role, Value      |
 
 ## Naming a control
 
@@ -56,6 +57,8 @@ A text field is named by a `label` whose `for` matches its `id`, by a `label` wr
 ## Inside a component
 
 The three container rules do not judge the root of a component definition, and they do not judge anything under a custom element on a page. A `role="tab"` row you slot into a tabs component is checked inside that component's own definition, where its `tablist` lives, not against the page that uses it.
+
+`custom-element-in-select` works the other way round, and it is the one rule a custom element switches on rather than off. A `select` builds its own rows, so an element it does not know is not in `select.options`: it cannot be picked, the arrow keys never reach it, and no `change` event fires. It still renders, and with `role="option"` on it the accessibility tree reads as though the control worked, which is exactly what makes it worth a rule. If you need a list of rows you can style, build a listbox out of `jx-listbox` and `jx-option`; if you need a form control, every row of a `select` is a native `option`.
 
 They also accept a container that claims the element through `aria-owns`. ARIA states containment where the tree cannot, so a tab a `tablist` names in `aria-owns` is that tablist's child in the accessibility tree wherever you write it. The owner's role is what counts: a `role="group"` naming a tab in `aria-owns` owns nothing a tab may belong to, so that tab is still reported. A bound `aria-owns`, or a bound id on the element, silences the check the way a bound ancestor role does.
 

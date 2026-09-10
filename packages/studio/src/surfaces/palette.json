@@ -1,7 +1,7 @@
 {
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "StudioPalette",
-  "$description": "The command palette: a combobox over a listbox of rows the host projects. `rows` is the ranked set for the current mode and query; `selectedIndex` is the highlight, kept apart so a key moves it without the rows reconciling. Every gesture calls back into panels/quick-search.ts, which owns the modes, the recents and what a row does.",
+  "$description": "The command palette: a `role=\"combobox\"` field over the kit's `jx-listbox`, whose rows are `jx-option`s the host projects. `rows` is the ranked set for the current mode and query; `activeId` is the highlight, and it is ONE string — the id the field points `aria-activedescendant` at and the id the listbox is handed as `active`, so a key moves the caret without the rows reconciling and no row re-decides its own flag. The FIELD is not a `jx-combobox`: this one carries a mode chip inside its box, its Enter runs a command rather than committing a value, and its panel is a centred scrim rather than a popover under a control. Every gesture calls back into panels/quick-search.ts, which owns the modes, the ranking, the recents and what a row does.",
   "tagName": "div",
   "attributes": {
     "part": "palette"
@@ -81,49 +81,28 @@
       }
     },
     "& [part=\"results\"]": {
-      "overflowY": "auto",
-      "flex": "1"
+      "$description": "The list is the kit's: a `jx-listbox` of `jx-option`, so the highlight is ONE id — `active`, the same string the field points `aria-activedescendant` at — and the listbox's sidecar is the single writer of every row's `selected`. What this surface still decides is density. The kit's row pads itself by `--jx-space-3`; the other half of the 16px optical margin the panel has always had sits here, on the list, so the heading, the rows and the empty sentence line up on one edge instead of each naming it.",
+      "flex": "1",
+      "paddingInline": "var(--jx-space-3)"
     },
-    "& [part=\"item\"]": {
-      "display": "flex",
-      "alignItems": "center",
-      "gap": "var(--jx-space-3)",
-      "padding": "var(--jx-space-2) var(--jx-space-5)",
-      "cursor": "pointer",
-      "fontSize": "var(--jx-text-md)",
-      "color": "var(--jx-fg-dim)",
-      ":hover": {
-        "background": "var(--jx-hover-bg)"
-      }
+    "& [part=\"option\"] [part=\"label\"]": {
+      "fontWeight": "500"
     },
-    "& [part=\"item\"][data-selected]": {
-      "background": "var(--jx-accent-solid)",
-      "color": "var(--jx-accent-fg)"
+    "& [part=\"option\"] [part=\"description\"]": {
+      "$description": "A `jx-select` row's note is a category at the END of the row, so the kit pushes it there with an auto margin. A palette row's note is a CONTINUATION of its name — the file's directory, the command's category — and the far edge belongs to the chord, which is how this surface teaches the keyboard it replaced. So the auto margin moves to the end slot.",
+      "marginInlineStart": "0"
     },
-    "& [part=\"item\"][data-disabled]": {
-      "cursor": "default"
+    "& [part=\"option\"] [part=\"end\"]": {
+      "marginInlineStart": "auto"
     },
-    "& [part=\"item\"][data-disabled] [part=\"name\"], & [part=\"item\"][data-disabled] [part=\"icon\"]": {
+    "& [part=\"option\"][aria-disabled=\"true\"]": {
+      "$description": "An unavailable command is greyed with its `requires` sentence as the subtitle, and that sentence is the reason the row is on screen at all. The kit fades the whole row to 0.45, which would take a muted grey below any readable contrast — so the row keeps its ink and only the name and the glyph dim.",
+      "opacity": "1"
+    },
+    "& [part=\"option\"][aria-disabled=\"true\"] [part=\"label\"], & [part=\"option\"][aria-disabled=\"true\"] [part=\"icon\"]": {
       "opacity": "0.45"
     },
-    "& [part=\"icon\"]": {
-      "flexShrink": "0",
-      "opacity": "0.7",
-      "display": "inline-flex"
-    },
-    "& [part=\"name\"]": {
-      "fontWeight": "500",
-      "whiteSpace": "nowrap"
-    },
-    "& [part=\"detail\"]": {
-      "opacity": "0.5",
-      "fontSize": "var(--jx-text-sm)",
-      "whiteSpace": "nowrap",
-      "overflow": "hidden",
-      "textOverflow": "ellipsis"
-    },
     "& [part=\"chord\"]": {
-      "marginLeft": "auto",
       "flexShrink": "0",
       "fontFamily": "inherit",
       "fontSize": "var(--jx-text-xs)",
@@ -132,30 +111,16 @@
       "borderRadius": "var(--jx-radius-sm)",
       "padding": "0 5px"
     },
-    "& [part=\"item\"][data-selected] [part=\"chord\"]": {
+    "& [part=\"option\"][aria-selected=\"true\"] [part=\"chord\"]": {
       "color": "inherit",
       "borderColor": "currentColor"
     },
     "& [part=\"badge\"]": {
-      "marginLeft": "auto",
       "fontSize": "var(--jx-text-xs)",
       "padding": "1px var(--jx-space-2)",
       "borderRadius": "var(--jx-radius-sm)",
       "background": "var(--jx-border)",
       "color": "var(--jx-fg-dim)"
-    },
-    "& [part=\"empty\"]": {
-      "padding": "var(--jx-space-5)",
-      "textAlign": "center",
-      "color": "var(--jx-fg-muted)",
-      "fontSize": "var(--jx-text-md)"
-    },
-    "& [part=\"section-label\"]": {
-      "padding": "var(--jx-space-3) var(--jx-space-5) var(--jx-space-1)",
-      "fontSize": "var(--jx-text-xs)",
-      "textTransform": "uppercase",
-      "letterSpacing": "0.5px",
-      "color": "var(--jx-fg-muted)"
     },
     "& [part=\"hint\"]": {
       "padding": "var(--jx-space-2) var(--jx-space-5)",
@@ -269,7 +234,7 @@
                     "role": "combobox",
                     "aria-controls": "quick-search-listbox",
                     "aria-expanded": "${state.expanded ? 'true' : 'false'}",
-                    "aria-activedescendant": "${state.expanded ? state.activeId : null}",
+                    "aria-activedescendant": "${state.activeId || null}",
                     "aria-autocomplete": "list",
                     "aria-label": "${state.placeholder}",
                     "placeholder": "${state.placeholder}"
@@ -378,12 +343,31 @@
               ]
             },
             {
-              "tagName": "div",
+              "tagName": "jx-listbox",
               "attributes": {
                 "part": "results",
-                "role": "listbox",
-                "id": "quick-search-listbox",
-                "aria-label": "Results"
+                "id": "quick-search-listbox"
+              },
+              "$props": {
+                "label": "Results",
+                "active": "${state.activeId}"
+              },
+              "onselect": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/activateRow"
+                    },
+                    "value": [
+                      {
+                        "$ref": "event#/detail"
+                      }
+                    ]
+                  }
+                ],
+                "description": "One handler for every row, because a row's `select` bubbles. The detail is the row's `value`, which is the index it occupies in `rows` — the same number a hover names, and the number the id is built from."
               },
               "children": [
                 {
@@ -418,7 +402,7 @@
                     "true": {
                       "tagName": "div",
                       "attributes": {
-                        "part": "section-label"
+                        "part": "group-heading"
                       },
                       "textContent": "${state.sectionLabel}"
                     }
@@ -433,32 +417,23 @@
                     "$ref": "$map/item/key"
                   },
                   "map": {
-                    "tagName": "div",
+                    "tagName": "jx-option",
                     "attributes": {
-                      "part": "item",
-                      "role": "option",
+                      "part": "option",
                       "id": "quick-search-option-${$map.index}",
-                      "aria-selected": "${$map.index === state.selectedIndex ? 'true' : 'false'}",
-                      "data-selected": "${$map.index === state.selectedIndex ? '' : null}",
-                      "aria-disabled": "${$map.item.disabled ? 'true' : null}",
-                      "data-disabled": "${$map.item.disabled ? '' : null}",
                       "data-kind": "${$map.item.kind}"
                     },
-                    "onclick": {
-                      "$prototype": "Function",
-                      "body": [
-                        {
-                          "operator": "call",
-                          "target": {
-                            "$ref": "#/state/activateRow"
-                          },
-                          "value": [
-                            {
-                              "$ref": "$map/index"
-                            }
-                          ]
-                        }
-                      ]
+                    "$props": {
+                      "value": "${$map.index}",
+                      "label": {
+                        "$ref": "$map/item/name"
+                      },
+                      "description": {
+                        "$ref": "$map/item/detail"
+                      },
+                      "disabled": {
+                        "$ref": "$map/item/disabled"
+                      }
                     },
                     "onmouseenter": {
                       "$prototype": "Function",
@@ -478,40 +453,21 @@
                     },
                     "children": [
                       {
-                        "tagName": "span",
+                        "tagName": "jx-icon",
                         "attributes": {
-                          "part": "icon"
+                          "slot": "icon"
                         },
-                        "children": [
-                          {
-                            "tagName": "jx-icon",
-                            "$props": {
-                              "name": {
-                                "$ref": "$map/item/icon"
-                              }
-                            }
+                        "$props": {
+                          "name": {
+                            "$ref": "$map/item/icon"
                           }
-                        ]
+                        }
                       },
                       {
                         "tagName": "span",
                         "attributes": {
-                          "part": "name"
-                        },
-                        "textContent": "${$map.item.name}"
-                      },
-                      {
-                        "tagName": "span",
-                        "attributes": {
-                          "part": "detail"
-                        },
-                        "textContent": "${$map.item.detail}"
-                      },
-                      {
-                        "tagName": "span",
-                        "attributes": {
-                          "part": "trailing-slot",
-                          "role": "none"
+                          "slot": "end",
+                          "part": "trailing-slot"
                         },
                         "$switch": {
                           "$ref": "$map/item/trailing"

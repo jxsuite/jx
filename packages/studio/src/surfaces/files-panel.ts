@@ -8,12 +8,18 @@
  * into: the reactive scope the document reads, the discriminant it switches on, and the mount that
  * stays put while the Navigator repaints around it.
  *
+ * **The keyboard is the kit's now.** `jx-tree` owns the ARIA tree contract — the roving caret, the
+ * arrows, `Home`/`End`, the two that open and close a directory, typeahead — and this adapter
+ * carries the five events it answers with. What a row VIEW no longer says is the whole point: no
+ * role, no `aria-level`, no set counts, no `tabindex`. `panel-outline.ts` was the second copy of
+ * every one of those, and there was nothing keeping the two in agreement.
+ *
  * **Four facts are scope fields rather than row fields, and that is the whole reason a drag no
- * longer rebuilds the list.** The selected path, the dragged path, the drop target and the roving
- * tab stop are each one value the document compares against `$map.item.path`, so changing any of
- * them re-evaluates one attribute per DRAWN row and leaves every node — and the caret — where it
- * was. The predecessor recomputed `classMap` for the whole tree on each of the four, which is what
- * made a drag-over highlight cost a repaint of the panel the drag was happening in.
+ * longer rebuilds the list.** The current path, the selected path, the dragged path and the drop
+ * target are each one value the document compares against `$map.item.path`, so changing any of them
+ * re-evaluates one attribute per DRAWN row and leaves every node — and the caret — where it was.
+ * The predecessor recomputed `classMap` for the whole tree on each of the four, which is what made
+ * a drag-over highlight cost a repaint of the panel the drag was happening in.
  *
  * **The container is not cleared**, which is the one line where a panel differs from a settings
  * section. A section is handed the pane's whole content area and starts by emptying it; a panel
@@ -44,28 +50,27 @@ registerSurface("files-panel", filesPanelDoc as unknown as JxDocument);
  * One row the tree draws, with every field already a string.
  *
  * A row states what it IS and never what is currently true OF it: whether it is selected, being
- * dragged, under a drop or holding the tab stop are the four scope fields above, so this array only
+ * dragged, under a drop or holding the caret are the four scope fields above, so this array only
  * changes when the model or the window does.
  */
 export interface FileRowView {
   /** The reconcile key. A directory's own row and its "Loading…" placeholder name the same path. */
   key: string;
+  /** The row's `value`: what every event it provokes reports, and what `currentPath` matches. */
   path: string;
   name: string;
   /** `directory` or `file` — what the drag island asks the row about. */
   type: string;
-  /** Which of the two row shapes to draw: a `treeitem`, or the placeholder that is not one. */
+  /** Which of the two row shapes to draw: a `jx-tree-item`, or the placeholder that is not one. */
   kind: "item" | "loading";
-  /** The `--depth` custom property the indent is computed from. */
+  /** The `--depth` custom property the PLACEHOLDER's indent is computed from. */
   depth: string;
-  /** `aria-level`: the depth, one-based. */
+  /** `level`: the depth, one-based. The element writes `aria-level` and the indent from it. */
   level: string;
   posInSet: string;
   setSize: string;
-  /** `"true"` / `"false"` for a directory; `""` for a file, which has nothing to expand. */
+  /** `"true"` / `"false"` for a directory; `""` for a file, which is a leaf and gets no twisty. */
   ariaExpanded: string;
-  /** Which twisty to draw, or `none` for a row that cannot be opened. */
-  twisty: "expanded" | "collapsed" | "none";
   /** The kit icon name for the row's own glyph. */
   icon: string;
   localeState: "hidden" | "shown";
@@ -84,9 +89,9 @@ export interface FilesPanelValues {
   ignoredLabel: string;
   ignoredIcon: string;
   ignoredSelected: boolean;
-  /** The two spacers, as inline declarations reserving the scroll of the rows left out. */
-  padTop: string;
-  padBottom: string;
+  /** The two spacers, in pixels, reserving the scroll of the rows the window left out. */
+  padTop: number;
+  padBottom: number;
   rows: FileRowView[];
   /** The row the tree's cursor is on, or `""`. */
   selectedPath: string;
@@ -96,8 +101,14 @@ export interface FilesPanelValues {
   dropPath: string;
   /** `"true"` while a drag is over the tree background, which is the project root. */
   rootDrop: string;
-  /** The one row that is in the tab order. Always a row the window drew (§9.4). */
-  tabStopPath: string;
+  /**
+   * The row the caret is on.
+   *
+   * A row the window did not draw is allowed here, which is the difference from the tab stop this
+   * replaced: `jx-tree` falls back to the first DRAWN row for the tab stop and leaves `current`
+   * alone, so a caret that has scrolled away is remembered rather than clamped.
+   */
+  currentPath: string;
 }
 
 /** What a control can ask the tree to do. Every one of them is a decision the flow owns. */
@@ -108,14 +119,21 @@ export interface FilesPanelActions {
   refresh: () => void;
   toggleIgnored: () => void;
   search: (value: string) => void;
-  /** A click or Enter on a row: expand that directory, or open that file. */
+  /** A click, Enter or a double click on a row: expand that directory, or open that file. */
   activate: (path: string) => void;
   /** Right-click on a row, at the pointer. */
   contextMenu: (path: string, x: number, y: number) => void;
-  /** ↑/↓ from a row, by a step through the MODEL rather than through the drawn rows. */
-  moveFocus: (path: string, step: number) => void;
-  expandRow: (path: string) => void;
-  collapseRow: (path: string) => void;
+  /** The reader meant that row. Single-select, so every intent the element resolves is a replace. */
+  select: (path: string) => void;
+  /** A directory should be put into `expanded` — the twisty, `ArrowRight` or `ArrowLeft`. */
+  expand: (path: string, expanded: boolean) => void;
+  /**
+   * The caret has to reach a row the window did not draw.
+   *
+   * The element knows only that the pad on that side is not zero; which row `key` means, and how
+   * far to scroll to bring it into view, is a question about the MODEL and so is answered here.
+   */
+  move: (from: string, key: string) => void;
   /**
    * The tree element exists. The flow measures it — it is the only source of the window's geometry
    * — and hangs the project root's drop target off it.
@@ -162,26 +180,26 @@ function project(scope: FilesPanelScope, values: FilesPanelValues): void {
   scope.dragPath = values.dragPath;
   scope.dropPath = values.dropPath;
   scope.rootDrop = values.rootDrop;
-  scope.tabStopPath = values.tabStopPath;
+  scope.currentPath = values.currentPath;
 }
 
 /** The scope's starting shape, before the first projection lands on it. */
 export function emptyFilesPanelValues(): FilesPanelValues {
   return {
+    currentPath: "",
     dragPath: "",
     dropPath: "",
     headerState: "hidden",
     ignoredIcon: "eye-slash",
     ignoredLabel: "Show ignored files",
     ignoredSelected: false,
-    padBottom: "",
-    padTop: "",
+    padBottom: 0,
+    padTop: 0,
     projectName: "",
     query: "",
     rootDrop: "",
     rows: [],
     selectedPath: "",
-    tabStopPath: "",
     view: "none",
   };
 }
@@ -235,14 +253,15 @@ export function mountFilesPanelSurface(
         actions.treeHost(element);
         return;
       }
+      /* `"row"` is the `jx-tree-item`, and the placeholder is `"loading-row"` — which is how the
+         two are told apart now that they are different elements. A placeholder is not a drag source
+         and not a drop target: there is no file there yet, and a registration against a node that
+         is about to be replaced by the real listing would be one the flow could never take back. */
       if (part !== "row") {
         return;
       }
       const row = mappedRow(state);
-      /* The placeholder is not a drag source and not a drop target: there is no file there yet, and
-         a registration against a node that is about to be replaced by the real listing would be one
-         the flow could never take back. */
-      if (row && row.kind === "item") {
+      if (row) {
         actions.rowHost(element, row.path, row.type);
       }
     },

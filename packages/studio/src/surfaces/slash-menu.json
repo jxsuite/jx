@@ -1,7 +1,7 @@
 {
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "StudioSlashMenu",
-  "$description": "The slash menu: the element-insertion list that hangs under the caret. It is a LISTBOX rather than a `jx-menu`, and that is the one thing about this surface worth knowing — the panel must not take the keyboard, because the caret it is filtering for is in the canvas (often in the iframe realm), and every character the author types after the `/` has to keep landing there. A menu owns DOM focus by contract; this panel marks its active row with `aria-selected` and leaves the caret where it was. When the menu is opened BY NAME rather than by a slash there is no caret to protect, so it grows a filter field of its own and that field is what carries `aria-activedescendant`.",
+  "$description": "The slash menu: the element-insertion list that hangs under the caret. It is a LISTBOX rather than a `jx-menu`, and that is the one thing about this surface worth knowing — the panel must not take the keyboard, because the caret it is filtering for is in the canvas (often in the iframe realm), and every character the author types after the `/` has to keep landing there. A menu owns DOM focus by contract; this panel marks its active row and leaves the caret where it was. The rows are the kit's `jx-listbox` and `jx-option`, which is what makes that expressible rather than hand-rolled: a `jx-listbox` has no tab stop and never calls `focus()`, and the highlight is ONE string — the listbox's `active`, the id its owning field points `aria-activedescendant` at — instead of a per-row comparison the field and the rows could each answer differently. When the menu is opened BY NAME rather than by a slash there is no caret to protect, so it grows a filter field of its own and that field is what carries `aria-activedescendant`.",
   "tagName": "jx-popover",
   "$props": {
     "label": "Insert element",
@@ -48,46 +48,8 @@
           }
         },
         "& [part=\"list\"]": {
-          "flex": "1",
-          "minHeight": "0",
-          "overflowY": "auto"
-        },
-        "& [part=\"option\"]": {
-          "display": "flex",
-          "alignItems": "center",
-          "gap": "var(--jx-space-3)",
-          "padding": "var(--jx-space-2) var(--jx-space-3)",
-          "borderRadius": "var(--jx-radius-sm)",
-          "cursor": "pointer",
-          "color": "var(--jx-fg-dim)",
-          ":hover": {
-            "background": "var(--jx-hover-bg)"
-          }
-        },
-        "& [part=\"option\"][data-selected]": {
-          "$description": "The highlight follows the active row, not `:hover` — a pointer moving over the list writes that index, so the two can never disagree, and an arrow key arriving from the canvas moves the same mark the mouse does.",
-          "background": "var(--jx-accent-solid)",
-          "color": "var(--jx-accent-fg)"
-        },
-        "& [part=\"name\"]": {
-          "whiteSpace": "nowrap",
-          "color": "var(--jx-fg)"
-        },
-        "& [part=\"option\"][data-selected] [part=\"name\"]": {
-          "color": "inherit"
-        },
-        "& [part=\"detail\"]": {
-          "minWidth": "0",
-          "marginLeft": "auto",
-          "opacity": "0.6",
-          "fontSize": "var(--jx-text-sm)",
-          "whiteSpace": "nowrap",
-          "overflow": "hidden",
-          "textOverflow": "ellipsis"
-        },
-        "& [part=\"empty\"]": {
-          "padding": "var(--jx-space-3)",
-          "color": "var(--jx-fg-muted)"
+          "$description": "One declaration, because the list is a `jx-listbox` now and the element already draws itself: the scroll, the `min-block-size: 0` that lets it, the row rules, the highlight, the group headings and the empty sentence all live in its own definition. What is left is the one thing only this panel knows — that the list is the part of the body that gives.",
+          "flex": "1"
         }
       },
       "children": [
@@ -113,7 +75,7 @@
                 "autocomplete": "off",
                 "aria-controls": "slash-menu-listbox",
                 "aria-expanded": "${state.expanded ? 'true' : 'false'}",
-                "aria-activedescendant": "${state.expanded ? state.activeId : null}",
+                "aria-activedescendant": "${state.activeId || null}",
                 "aria-autocomplete": "list",
                 "aria-label": "Filter elements",
                 "placeholder": "Filter…"
@@ -141,12 +103,19 @@
           }
         },
         {
-          "tagName": "div",
+          "tagName": "jx-listbox",
           "attributes": {
             "part": "list",
-            "role": "listbox",
-            "id": "slash-menu-listbox",
-            "aria-label": "Elements"
+            "id": "slash-menu-listbox"
+          },
+          "$props": {
+            "label": "Elements",
+            "active": {
+              "$ref": "#/state/activeId"
+            }
+          },
+          "onselect": {
+            "$ref": "#/state/pick"
           },
           "children": [
             {
@@ -177,36 +146,13 @@
                 "$ref": "$map/item/key"
               },
               "map": {
-                "tagName": "div",
+                "tagName": "jx-option",
                 "attributes": {
                   "part": "option",
-                  "role": "option",
-                  "id": "slash-menu-option-${$map.item.index}",
-                  "data-tag": "${$map.item.key}",
-                  "aria-selected": "${$map.item.index === state.activeIndex ? 'true' : 'false'}",
-                  "data-selected": "${$map.item.index === state.activeIndex ? '' : null}"
-                },
-                "onclick": {
-                  "$prototype": "Function",
-                  "body": [
-                    {
-                      "preventDefault": true
-                    },
-                    {
-                      "stopPropagation": true
-                    },
-                    {
-                      "operator": "call",
-                      "target": {
-                        "$ref": "#/state/activateRow"
-                      },
-                      "value": [
-                        {
-                          "$ref": "$map/item/index"
-                        }
-                      ]
-                    }
-                  ]
+                  "id": "slash-menu-option-${$map.index}",
+                  "value": "${$map.item.key}",
+                  "label": "${$map.item.label}",
+                  "description": "${$map.item.description}"
                 },
                 "onmouseenter": {
                   "$prototype": "Function",
@@ -218,43 +164,12 @@
                       },
                       "value": [
                         {
-                          "$ref": "$map/item/index"
+                          "$ref": "$map/index"
                         }
                       ]
                     }
                   ]
-                },
-                "children": [
-                  {
-                    "tagName": "span",
-                    "attributes": {
-                      "part": "name"
-                    },
-                    "textContent": "${$map.item.label}"
-                  },
-                  {
-                    "tagName": "span",
-                    "attributes": {
-                      "part": "detail-slot",
-                      "role": "none"
-                    },
-                    "style": {
-                      "display": "contents"
-                    },
-                    "$switch": {
-                      "$ref": "$map/item/hasDescription"
-                    },
-                    "cases": {
-                      "true": {
-                        "tagName": "span",
-                        "attributes": {
-                          "part": "detail"
-                        },
-                        "textContent": "${$map.item.description}"
-                      }
-                    }
-                  }
-                ]
+                }
               }
             }
           ]

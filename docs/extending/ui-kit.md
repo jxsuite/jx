@@ -20,6 +20,8 @@ code:
   - packages/ui/src/behaviors/textfield.ts
   - packages/ui/src/behaviors/number-field.ts
   - packages/ui/src/behaviors/select.ts
+  - packages/ui/src/behaviors/listbox.ts
+  - packages/ui/src/behaviors/combobox.ts
   - packages/ui/src/behaviors/popover.ts
   - packages/ui/src/behaviors/tooltip.ts
   - packages/ui/src/behaviors/toast.ts
@@ -198,6 +200,67 @@ You can also write rows yourself, as children: native `option` and `optgroup` el
 
 :::doc-note
 The drawing needs a browser with customizable select: Chrome or Edge 135 and later. In an older engine the control still works, still submits and still reads correctly, but the browser draws the list and the faces, swatches and group headings do not show.
+:::
+
+## Comboboxes and lists
+
+`jx-combobox` is a text field you can also pick from. It is one native `<input>` carrying `role="combobox"` over a `jx-listbox` of rows, and it reaches that list only by id, through `aria-controls` and `aria-activedescendant`. Use it where a select would be wrong because the answer is not always on the list.
+
+```json
+{
+  "tagName": "jx-combobox",
+  "$props": {
+    "label": "Model",
+    "allowsCustomValue": true,
+    "value": "claude-sonnet",
+    "options": [
+      { "value": "claude-sonnet", "description": "anthropic" },
+      { "value": "gpt-4o", "description": "openai" }
+    ]
+  }
+}
+```
+
+A row is a `value` plus any of `label`, `description`, `disabled`, `face`, `swatch` and `line`, the same drawing channels a `jx-select` row carries. `value` is the text in the field, so a row's label is normally the same string it commits: a picker whose rows carry a hidden key is a `jx-select`.
+
+**The element does not filter.** `options` is the list it will draw, not a corpus it searches. You already know how to rank your own rows, so re-answer `options` when you hear the `input` event and the list redraws.
+
+**Typing highlights nothing.** After a keystroke nothing is selected, so Enter commits what the reader typed. Arrow onto a row first and Enter takes the row. That is what makes `allows-custom-value` mean something: with it set, anything the reader types stands, and the rows are suggestions. Without it the list is closed, and a value no row holds is put back to the last accepted one when the reader leaves the field. Either way the element says `change` exactly once per edit, and `event.target.value` is the value that stands.
+
+The arrows open the list and move through it, wrapping and stepping over disabled rows. `Alt` with the down arrow opens without choosing, and with the up arrow closes. Tab takes whatever row is highlighted on the way out. Escape closes the list and stops there, so a combobox inside a dialog does not close the dialog with it. Home and End stay with the text cursor, where the reader is typing.
+
+### A list of your own
+
+`jx-listbox` and `jx-option` are the same list on their own, for a panel you are building yourself: a command palette, a slash menu, a picker with a search field above it. The listbox never takes focus. Something else owns the keyboard, and you say which row is current by giving the listbox the `active` id:
+
+```json
+{
+  "tagName": "jx-listbox",
+  "attributes": { "id": "results" },
+  "$props": { "label": "Results", "active": "results-o1" },
+  "children": [
+    {
+      "tagName": "jx-option",
+      "attributes": { "id": "results-o0" },
+      "$props": { "value": "open", "label": "Open file", "description": "workspace" }
+    },
+    {
+      "tagName": "jx-option",
+      "attributes": { "id": "results-o1" },
+      "$props": { "value": "save", "label": "Save" }
+    }
+  ]
+}
+```
+
+That one id is the whole contract. Write it into the listbox's `active` and into your field's `aria-activedescendant`, and the listbox marks the row, clears the one before it, and scrolls the new one back into view. It keeps doing so when the rows themselves change, so a filter that rebuilds the list does not lose the highlight.
+
+A row's words are its `label`, and `description` is a muted note at the end of it. `slot="icon"` takes a glyph and `slot="end"` takes one mark or chord. Each channel you leave out draws nothing. `jx-option` sends a bubbling `select` event whose detail is its `value`, so one listener on the panel hears every row.
+
+Two parts are yours to write and the listbox draws them: a node carrying `part="group-heading"` above a run of rows, and a node carrying `part="empty"` for the sentence you show when nothing matched. What that sentence says is yours, because only you know what the reader was looking for.
+
+:::doc-warning
+A `jx-option` belongs in a `jx-listbox` and nowhere else. Put one inside a `<select>` or a `jx-select` and it renders, and the accessibility tree reads as though it worked, but the browser never counts it: it cannot be picked, the arrow keys skip it, and no `change` fires. The `custom-element-in-select` rule fails the document rather than letting it look right.
 :::
 
 ## Field rows
