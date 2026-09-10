@@ -37,7 +37,7 @@ export interface AccountAction {
   /** Stable key — the button's `data-action`, so a test names an intent rather than a label. */
   id: string;
   label: string;
-  /** Spectrum `variant`; omitted for the default treatment. */
+  /** The button's `variant`; omitted for the default treatment. */
   variant?: string;
   /** Do it. Async ones repaint the sheet when they settle. */
   run: () => void | Promise<void>;

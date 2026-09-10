@@ -54,7 +54,11 @@ const TOKENS_HEADER = `/* GENERATED FILE — do not edit.
 
    Every --name here is an ALIAS of a kit token (packages/ui/project.json, specs/ui.md §4). The
    fallbacks are the kit's DARK values, because the app boots dark; check-styles.ts holds them to
-   the table in specs/studio-ui-guidelines.md §1.1. */
+   the table in specs/studio-ui-guidelines.md §1.1.
+
+   The four --canvas-* steps are the exception and are meant to be: they colour surfaces that
+   render as a light DOCUMENT in both chromes, so they are mixed from the black and white keywords
+   and do not follow the theme. See tokens.json for what else moved here out of styles/spectrum.css. */
 `;
 
 const FORCED_COLORS_HEADER = `/* GENERATED FILE — do not edit.

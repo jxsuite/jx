@@ -8,6 +8,10 @@
       "$description": "The Bottom dock's track, declared on :root for the reason tokens.css gives for the two panel widths: `src/shell.ts`'s applyDockLayout() writes it as an inline style on document.documentElement, and a definition on any closer ancestor of #app would shadow that override and freeze the dock. It must also be declared SOMEWHERE — an unset custom property inside the grid-template-rows shorthand invalidates the whole declaration at computed-value time, and the shell would paint one frame with no grid at all.",
       "--dock-h-bottom": "220px"
     },
+    "#shell-root": {
+      "$description": "The element `src/shell/tree.ts` mounts the frame and the four overlay layers into. It was `<sp-theme>`, and `styles/spectrum.css` gave it exactly this box — the wrapper is all that survives Spectrum, because the mount needs a container it owns: `mountResizeEdges()` puts its own container on the body one line earlier, and a clear-and-eject aimed at the body would take the four resize edges with it. `height: 100%` is the whole of what it does; `#app` inside it is `height: 100%` too, and body is already the full viewport.",
+      "height": "100%"
+    },
     "#app": {
       "$description": "FOUR rows, not five. The pane's tab strip used to own row 2 of the APPLICATION grid, which is the one thing a per-pane surface can never be — so it is a row of the pane's own cell now and this grid is one row shorter. The columns are NAMED. Every rule below addressed them by index, so the four surfaces that left this grid would have meant re-counting `grid-column: 4` at seven sites and getting it wrong at one of them. A name survives an insertion; a number does not.",
       "display": "grid",
@@ -169,7 +173,7 @@
       "align-items": "stretch",
       "overflow": "hidden",
       "padding": "0 4px",
-      "font-size": "var(--spectrum-font-size-50, 11px)",
+      "font-size": "var(--jx-text-sm, 11px)",
       "color": "var(--fg-dim)",
       "background": "var(--bg)",
       "border-top": "1px solid var(--border)"

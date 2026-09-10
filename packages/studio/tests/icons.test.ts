@@ -4,19 +4,25 @@
  * The first version of this checker treated a record's `icon:` string as a custom-element tag. It
  * is not: it is a key into a resolver map. That single conflation passed the gate on a Source
  * Control rail button rendering a 20px hole, so most of what is asserted here is the DISTINCTION.
+ *
+ * The tag half used to be `<sp-icon-*>` against the hand-written table in `src/ui/spectrum.ts`.
+ * Spectrum is removed; a tag is now a `"tagName"` in a surface document, checked against `KIT_TAGS`
+ * — the same question about the substrate that replaced it. Two things went with the old registry
+ * rather than being re-aimed, and each is asserted here as an absence rather than left to be
+ * noticed: the element-name/import rules (a kit element is defined from the document that names it,
+ * so the tag and the class cannot disagree) and the `UNWRITTEN` allow-list (it existed because a
+ * Spectrum component registered icons into its own shadow DOM).
  */
 
 import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
+import { KIT_TAGS } from "@jxsuite/ui";
 import {
   checkIcons,
-  elementNameFor,
-  iconImports,
   iconKeysDeclared,
   iconProblems,
-  iconTagsRegistered,
-  iconTagsUsed,
+  kitTagsUsed,
   report,
   manifestNames,
 } from "../scripts/check-icons";
@@ -31,54 +37,53 @@ describe("check-icons", () => {
     expect(checkIcons().problems).toEqual([]);
   });
 
-  test("a tag becomes the module name Spectrum files it under", () => {
-    expect(elementNameFor("sp-icon-rail-right-open")).toBe("IconRailRightOpen");
-    expect(elementNameFor("sp-icon-alert")).toBe("IconAlert");
-  });
-
-  test("the specifier is READ, because the icons come from two packages", () => {
-    const from = iconImports(
-      'import { IconAlert } from "@spectrum-web-components/icons-workflow/src/elements/IconAlert.js";\n' +
-        'import { IconChevron100 } from "@spectrum-web-components/icons-ui/src/elements/IconChevron100.js";\n',
-    );
-    expect(from.get("IconAlert")).toContain("icons-workflow");
-    expect(from.get("IconChevron100")).toContain("icons-ui");
+  test("it actually read the tree — a walk that found nothing would pass every rule", () => {
+    const { keyCount, tagCount } = checkIcons();
+    expect(tagCount).toBeGreaterThan(10);
+    expect(keyCount).toBeGreaterThan(3);
   });
 
   /*
-   * The distinction, stated three ways. `<sp-icon-x>` is a tag; `"sp-icon-x"` is a key; and the two
-   * are spelled alike, which is the whole trap.
+   * The distinction, stated three ways. A `"tagName"` is a tag; an `icon:` string is a key; and on
+   * the day both were spelled `sp-icon-x` that was the whole trap. They are spelled differently
+   * now, which is a consequence of the migration rather than a reason to stop separating them.
    */
   describe("a tag is not a key", () => {
-    /**
-     * The repeat branches, on a fixture, because `src/` no longer answers them.
-     *
-     * `iconTagsUsed` records every FILE a tag is written in and de-duplicates within one file. Both
-     * paths ran against real source until this migration removed the last `<sp-icon-` from Studio —
-     * so the branch that appends a second file, and the one that skips a second mention in the same
-     * file, now have nothing live to exercise them. That is the migration succeeding, not coverage
-     * rotting, and a fixture is the honest way to keep asserting what the function does.
-     */
-    test("a tag written twice in one file is recorded once; in two files, twice", () => {
+    test("a tag declared twice in one document is recorded once; in two, twice", () => {
       const dir = join(tmpdir(), `jx-icons-${process.pid}`);
-      mkdirSync(join(dir, "nested"), { recursive: true });
-      writeFileSync(join(dir, "a.ts"), "html`<sp-icon-alert></sp-icon-alert><sp-icon-alert>`");
-      writeFileSync(join(dir, "nested", "b.ts"), "html`<sp-icon-alert>`");
+      mkdirSync(join(dir, "surfaces", "nested"), { recursive: true });
+      writeFileSync(
+        join(dir, "surfaces", "a.json"),
+        '{"tagName":"jx-icon","children":[{"tagName":"jx-icon"}]}',
+      );
+      writeFileSync(join(dir, "surfaces", "nested", "b.json"), '{"tagName":"jx-icon"}');
       try {
-        const tags = iconTagsUsed(dir);
-        expect(tags.get("sp-icon-alert")).toEqual(["a.ts", "nested/b.ts"]);
+        const tags = kitTagsUsed(dir);
+        expect(tags.get("jx-icon")).toEqual(["surfaces/a.json", "surfaces/nested/b.json"]);
       } finally {
         rmSync(dir, { force: true, recursive: true });
       }
     });
 
-    test("only the angle-bracket shape counts as a tag", () => {
-      const src = join(STUDIO, "src");
-      const tags = iconTagsUsed(src);
-      // `git-branch` is a KEY the rail draws through jx-icon; the tag shape never appears, because
-      // Spectrum ships no Git family and the kit's glyphs are never written as tags.
-      expect(tags.has("sp-icon-git-branch")).toBe(false);
-      expect(manifestNames()).toContain("git-branch");
+    test("only the tagName shape counts as a tag", () => {
+      const dir = join(tmpdir(), `jx-icons-shape-${process.pid}`);
+      mkdirSync(join(dir, "surfaces"), { recursive: true });
+      /* A kit tag named in prose, in a selector and on an `icon:` key — none of which constructs an
+         element. Reading any of them here is the conflation this file exists to prevent. */
+      writeFileSync(
+        join(dir, "surfaces", "a.json"),
+        JSON.stringify({
+          $description: "it draws a jx-swatch under the label",
+          style: { "& jx-menu-item": { color: "red" } },
+          icon: "jx-icon",
+          tagName: "jx-button",
+        }),
+      );
+      try {
+        expect([...kitTagsUsed(dir).keys()]).toEqual(["jx-button"]);
+      } finally {
+        rmSync(dir, { force: true, recursive: true });
+      }
     });
 
     test("every panel key names a glyph the kit ships", () => {
@@ -87,98 +92,74 @@ describe("check-icons", () => {
       expect([...keys].filter((k) => !glyphs.has(k))).toEqual([]);
     });
 
+    test("a key is not a tag — `git-branch` is a glyph and no document declares it", () => {
+      const tags = kitTagsUsed(join(STUDIO, "src"));
+      expect(tags.has("git-branch")).toBe(false);
+      expect(manifestNames()).toContain("git-branch");
+    });
+
     test("only registerPanel keys are collected — a command's icon has a visible fallback", () => {
       const keys = iconKeysDeclared(join(STUDIO, "src"));
       expect(keys.has("git-branch")).toBe(true);
       // Declared on command records, which fall back to the title. Sweeping those in is what let
       // The first version report 83 icons "all registered" with three rail buttons drawing nothing.
-      expect(keys.has("sp-icon-arrow-up")).toBe(false);
       expect(keys.has("arrow-up")).toBe(false);
     });
   });
 
   describe("the rules, over stated inputs", () => {
     const base = {
-      imported: new Map([["IconGhost", "real/IconGhost.js"]]),
-      installed: (s: string) => s.startsWith("real/"),
       keys: new Map<string, string>(),
       registered: new Set<string>(),
       rows: new Set<string>(),
       tags: new Map<string, string[]>(),
     };
 
-    test("a tag no element registers", () => {
-      const [problem] = iconProblems({ ...base, tags: new Map([["sp-icon-x", ["panels/a.ts"]]]) });
-      expect(problem).toContain("panels/a.ts");
+    test("a tag the kit does not define", () => {
+      const [problem] = iconProblems({ ...base, tags: new Map([["jx-x", ["surfaces/a.json"]]]) });
+      expect(problem).toContain("surfaces/a.json");
       expect(problem).toContain("empty box");
     });
 
     /**
-     * Two unregistered tags, so the SORT actually sorts.
+     * Two undefined tags, so the SORT actually sorts.
      *
      * `iconProblems` orders its findings with `toSorted(([a], [b]) => a.localeCompare(b))` so a
-     * report reads the same twice. A comparator is only invoked with two or more entries, and every
-     * other case here passes one — which was fine while `src/` still wrote `<sp-icon-` tags and the
-     * real run supplied dozens. It writes none now, so this is what keeps the ordering asserted.
+     * report reads the same twice, and a comparator is only invoked with two or more entries.
      */
     test("findings are ordered by tag, not by discovery", () => {
       expect(
         iconProblems({
           ...base,
           tags: new Map([
-            ["sp-icon-zebra", ["z.ts"]],
-            ["sp-icon-apple", ["a.ts"]],
+            ["jx-zebra", ["z.json"]],
+            ["jx-apple", ["a.json"]],
           ]),
         }).map((line) => line.slice(0, line.indexOf(">") + 1)),
-      ).toEqual(["<sp-icon-apple>", "<sp-icon-zebra>"]);
+      ).toEqual(["<jx-apple>", "<jx-zebra>"]);
     });
 
-    test("a registered tag with no import behind it", () => {
-      expect(
-        iconProblems({
-          ...base,
-          registered: new Set(["sp-icon-nope"]),
-          tags: new Map([["sp-icon-nope", ["a.ts"]]]),
-        }),
-      ).toEqual(["sp-icon-nope maps to IconNope, which ui/spectrum.ts never imports"]);
-    });
-
-    test("an import of a module the package does not ship — the rail-left case", () => {
-      expect(
-        iconProblems({
-          ...base,
-          imported: new Map([["IconGhost", "ghost/IconRailLeftOpen.js"]]),
-          registered: new Set(["sp-icon-ghost"]),
-          tags: new Map([["sp-icon-ghost", ["a.ts"]]]),
-        }),
-      ).toEqual(["sp-icon-ghost imports ghost/IconRailLeftOpen.js, which is not installed"]);
-    });
-
-    test("THE REGRESSION: a panel key the manifest lacks says registering will not help", () => {
+    test("THE REGRESSION: a panel key the manifest lacks says defining an element will not help", () => {
       const [problem] = iconProblems({
         ...base,
-        // Registered, imported and installed — which is exactly why the first checker passed.
-        imported: new Map([["IconBranch1", "real/IconBranch1.js"]]),
+        // The tag is defined and the document is fine — which is exactly why the first checker passed.
         keys: new Map([["branch-1", "panels/git-panel.ts:995"]]),
-        registered: new Set(["sp-icon-branch-1"]),
+        registered: new Set(["jx-icon"]),
         rows: new Set(["git-branch"]),
-        tags: new Map([["sp-icon-branch-1", ["ui/spectrum.ts"]]]),
+        tags: new Map([["jx-icon", ["surfaces/rail.json"]]]),
       });
       expect(problem).toContain("panels/git-panel.ts:995");
       expect(problem).toContain("renders NOTHING");
       expect(problem).toContain("manifest");
     });
 
-    test("an allow-listed orphan registration is silent; the imports still must resolve", () => {
-      // `sp-icon-chevron100` is registered for `sp-picker`'s OWN shadow DOM, so "no template writes
-      // It" is not evidence it can be deleted.
-      expect(
-        iconProblems({
-          ...base,
-          imported: new Map([["IconChevron100", "real/IconChevron100.js"]]),
-          registered: new Set(["sp-icon-chevron100"]),
-        }),
-      ).toEqual([]);
+    test("a kit tag no document declares is not a finding — the direction that left with Spectrum", () => {
+      /* The old rule 2 failed a REGISTERED tag nothing wrote, held back by an `UNWRITTEN`
+         allow-list, because Spectrum's registry was hand-written and a stale row was a real
+         mistake. The kit defines one element per document it ships, so a kit tag Studio does not
+         use is `@jxsuite/ui`'s business — asking this package about it would be asking it to
+         ratchet somebody else's inventory. */
+      expect(iconProblems({ ...base, registered: new Set(KIT_TAGS) })).toEqual([]);
     });
 
     test("a fully wired icon is silent", () => {
@@ -186,18 +167,12 @@ describe("check-icons", () => {
         iconProblems({
           ...base,
           keys: new Map([["ghost", "panels/a.ts:1"]]),
-          registered: new Set(["sp-icon-ghost"]),
+          registered: new Set(["jx-icon"]),
           rows: new Set(["ghost"]),
-          tags: new Map([["sp-icon-ghost", ["panels/files.ts"]]]),
+          tags: new Map([["jx-icon", ["surfaces/files.json"]]]),
         }),
       ).toEqual([]);
     });
-  });
-
-  test("registered tags are read from the registry rows, not from prose", () => {
-    expect([
-      ...iconTagsRegistered('// mentions "sp-icon-prose"\n  ["sp-icon-real", IconReal],\n'),
-    ]).toEqual(["sp-icon-real"]);
   });
 
   describe("report", () => {
@@ -217,11 +192,12 @@ describe("check-icons", () => {
       }
       const said = errors.flat().join(" ");
       expect(said).toContain("branch-1");
-      // The refusal has to name the RIGHT fix for each space, because "register it" is the wrong
-      // Advice for a key and following it is what produced the regression.
-      expect(said).toContain("src/ui/spectrum.ts");
+      // The refusal has to name the RIGHT fix for each space, because "define an element" is the
+      // Wrong advice for a key and following it is what produced the regression.
+      expect(said).toContain("packages/ui/components/");
       expect(said).toContain("manifest");
-      expect(logs.flat().join(" ")).toContain("74 tag(s)");
+      expect(said).not.toContain("spectrum");
+      expect(logs.flat().join(" ")).toContain("74 kit tag(s)");
       expect(logs.flat().join(" ")).toContain("11 panel key(s)");
     });
   });

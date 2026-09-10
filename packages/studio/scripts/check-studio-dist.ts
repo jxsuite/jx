@@ -10,9 +10,8 @@
  *
  * 1. **Every required manifest entry exists.** The floor.
  * 2. **Every emitted file under `dist/` is accounted for** — matched by a manifest entry or by the
- *    exclude list. This is the codicon catcher: the next unhashed asset Monaco or Spectrum drops
- *    into `dist/` is a red X on the day it appears rather than a silent 404 in three
- *    distributions.
+ *    exclude list. This is the codicon catcher: the next unhashed asset a dependency drops into
+ *    `dist/` is a red X on the day it appears rather than a silent 404 in three distributions.
  * 3. **Every `url()` in emitted CSS resolves**, against its own file's directory. Codicon again, from
  *    the reference side: `dist/studio.css` says `./codicon.ttf` and three chunk stylesheets say
  *    `../codicon.ttf`, and both have to land on a real file.

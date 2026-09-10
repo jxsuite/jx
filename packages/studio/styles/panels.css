@@ -16,7 +16,7 @@
   block-size: 24px;
   box-sizing: border-box;
   cursor: pointer;
-  font-size: var(--spectrum-font-size-75, 12px);
+  font-size: var(--jx-text-md, 12px);
   color: var(--fg);
   user-select: none;
 }
@@ -54,7 +54,7 @@
   gap: 6px;
 }
 .project-name {
-  font-size: var(--spectrum-font-size-75, 12px);
+  font-size: var(--jx-text-md, 12px);
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -129,7 +129,7 @@
   left: 6px;
   font-size: 9px;
   color: color-mix(in srgb, var(--map) 50%, transparent);
-  background: var(--spectrum-white, #fff);
+  background: white;
   padding: 0 3px;
   font-family: var(--font-mono);
   pointer-events: none;
@@ -171,7 +171,7 @@
   transform: translate(-50%, -50%);
   color: color-mix(in srgb, var(--fg-dim, #808080) 40%, transparent);
   font-style: italic;
-  font-size: var(--spectrum-font-size-50, 11px);
+  font-size: var(--jx-text-sm, 11px);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   pointer-events: none;
   white-space: nowrap;
@@ -203,7 +203,7 @@
   border-color: var(--accent);
 }
 .element-card-preview {
-  background: var(--spectrum-white, #fff);
+  background: white;
   padding: 6px 8px;
   min-height: 32px;
   max-height: 120px;
@@ -241,7 +241,7 @@
 }
 .empty-state-detail {
   max-width: 34ch;
-  font-size: var(--spectrum-font-size-50, 11px);
+  font-size: var(--jx-text-sm, 11px);
   color: var(--fg-dim);
   opacity: 0.8;
 }
@@ -252,7 +252,7 @@
   gap: 4px;
   padding: 8px 12px;
   text-align: left;
-  font-size: var(--spectrum-font-size-50, 11px);
+  font-size: var(--jx-text-sm, 11px);
 }
 
 /* ─── Canvas drop indicator ───────────────────── */
@@ -292,7 +292,7 @@
   border: 1.5px solid var(--accent);
   background: var(--bg-panel);
   color: var(--accent);
-  font-size: var(--spectrum-font-size-100, 14px);
+  font-size: var(--jx-text-lg, 14px);
   font-weight: 500;
   line-height: 1;
   cursor: pointer;

@@ -201,12 +201,13 @@ function d<T extends Element = HTMLElement>(sel: string) {
 /**
  * The dialog's button whose label contains `label`.
  *
- * Both families still, because the dialog layer is shared: Preferences and the provider form
- * mounted inside it are both documents over the kit, and a lit surface may be up beside them.
+ * One family now. It matched `sp-button` beside `jx-button` while the dialog layer was shared with
+ * lit surfaces over Spectrum; there are none, so that half of the selector matched nothing and a
+ * union that can never fire on one side reads as a substrate still in play.
  */
 function dialogButton(label: string) {
-  return [...document.querySelectorAll("#layer-dialog sp-button, #layer-dialog jx-button")].find(
-    (b) => b.textContent?.includes(label),
+  return [...document.querySelectorAll("#layer-dialog jx-button")].find((b) =>
+    b.textContent?.includes(label),
   ) as HTMLElement | undefined;
 }
 

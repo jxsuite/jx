@@ -620,7 +620,7 @@ export type IframeToParent =
   | { kind: "editEnd" }
   // ─── Slash-menu bridge ──────────────────────────────────────────────────────
   // The engine (in the iframe) detected "/" in a live edit session; the parent shows the real
-  // Lit/Spectrum menu. Re-posted with a new `filter` as the author keeps typing (the engine's
+  // Host-realm menu. Re-posted with a new `filter` as the author keeps typing (the engine's
   // UpdateSlashMenu drives it). `rect` is the edited element's bbox in IFRAME-VIEWPORT coords.
   /**
    * Show the parent's slash menu at this rect.

@@ -171,10 +171,6 @@ import {
   noteFileSaved,
 } from "./panels/git-panel";
 
-// ─── Spectrum Web Components ──────────────────────────────────────────────────
-// Explicit class imports + registration — bare side-effect imports are tree-shaken
-// By Bun's bundler despite sideEffects declarations in Spectrum's package.json.
-import { components as _swc } from "./ui/spectrum";
 import { registerKit } from "./ui/kit";
 import "./ui/panel-resize.js";
 // Built-in schema-form controls (schema-builder, secret) register on import
@@ -276,8 +272,6 @@ import { mountShellTree } from "./shell/tree";
  * `MonacoEnvironment.getWorker`.
  */
 setBundleBase(import.meta.url);
-
-void _swc;
 
 /**
  * What the derivation's commands and follows need from the rest of Studio: an opener, and a reader
@@ -525,7 +519,7 @@ setMediaChangedHandler(async (dir) => {
   await loadDirectory(dir);
   renderLeftPanel();
 });
-// The in-iframe "/" trigger drives the parent-realm Spectrum slash menu across the bridge.
+// The in-iframe "/" trigger drives the parent-realm slash menu across the bridge.
 setCanvasSlashHandler(canvasSlashHandler);
 // Canvas right-clicks show the parent-realm Jx element context menu across the bridge.
 setCanvasContextMenuHandler(makeCanvasContextMenuHandler());

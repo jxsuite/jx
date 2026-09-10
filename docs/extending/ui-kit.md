@@ -22,6 +22,8 @@ code:
   - packages/ui/src/behaviors/select.ts
   - packages/ui/src/behaviors/popover.ts
   - packages/ui/src/behaviors/tooltip.ts
+  - packages/ui/src/behaviors/toast.ts
+  - packages/ui/src/behaviors/toast-host.ts
   - packages/ui/src/behaviors/tabs.ts
   - packages/ui/src/behaviors/action-group.ts
   - packages/ui/src/behaviors/color-area.ts
@@ -322,6 +324,43 @@ Name it onto its control from the control's side, with `interestfor` where the b
 Give it a `label` when it stands alone, and leave the label off when it sits inside a button that is already named: without one the spinner hides itself from screen readers, so the button is not announced twice. A reader who asks for reduced motion gets a slower spin rather than a stopped one, because a stopped spinner reads as a hang.
 
 It draws in the colour of the text around it, so a spinner inside a button is visible on every variant without being told. Override `--jx-spin-color` and `--jx-spin-track-color` on the element or an ancestor to change that.
+
+## Toasts
+
+A toast reports one outcome beside the reader's work: a glyph, a line of text, at most one control that undoes or retries it, and a dismiss button that is always there. `jx-toast` is the message and `jx-toast-host` is the stack it lives in.
+
+```json
+{
+  "tagName": "jx-toast-host",
+  "children": [
+    {
+      "tagName": "jx-toast",
+      "$props": { "open": true, "variant": "negative", "timeout": 8000 },
+      "children": [
+        { "tagName": "span", "textContent": "Could not reach the deploy service." },
+        {
+          "tagName": "jx-button",
+          "attributes": { "slot": "action" },
+          "$props": { "size": "sm", "quiet": true },
+          "children": [{ "tagName": "span", "textContent": "Retry" }]
+        }
+      ]
+    }
+  ]
+}
+```
+
+`variant` is `info`, `positive`, `negative` or `warning`. It picks both the accent along the leading edge and the glyph, so the severity survives greyscale and a forced-colours theme. It is not announced, so write the message so that it says what happened on its own.
+
+`open` is yours to write: a toast appended without it draws nothing, so arriving and appearing stay two decisions. `timeout` is milliseconds and `0` is sticky, which is the default. The element writes `open` back to false when it retires itself and dispatches `close`, whose `detail.reason` is `timeout`, `dismissed` or `action`. Closing a toast from your own code with `open = false` dispatches nothing, because you already know.
+
+Anything in the `action` slot is the one thing a reader may do about the message. Using it closes the toast and reports `action`. The click is not stopped, so your own handler runs first and a listener above the toast hears it too. The dismiss button is always drawn and takes its name from `dismiss-label`.
+
+**A toast never takes the keyboard, and its clock stops the moment you reach it.** While the pointer is over a toast, while focus is inside it, or while anything in the same stack is being read, no toast in that stack is counting down, and the clock then resumes with the time that was left rather than starting over. So a control the reader has reached cannot expire under their hand, and an older message cannot vanish out from under someone answering a newer one.
+
+**Press `F8` to put the keyboard in the stack.** The stack sits at the end of the document, where Tab reaches it last, so the host offers a key instead. Focus goes to the first control in the first open toast, and Escape gives it back to wherever it came from. Dismissing the toast you are standing in gives it back the same way. Set `hotkey` to another key, or to the empty string if your application has a command of its own for this.
+
+`jx-toast-host` is the live region: the toasts inside it carry no role of their own, so a message is announced once. `live` is `polite` by default, `assertive` for the rare message that cannot wait, and `off` for an application that already announces outcomes somewhere else. `label` names the region, and `placement` pins the stack to `bottom-end`, `bottom-start`, `top-end` or `top-start`. The order is the order you write, in every corner, so what a reader hears, what they tab through and what they see agree.
 
 ## Tabs
 

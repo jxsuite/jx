@@ -28,8 +28,10 @@ import {
   setSettingsSection,
   settingsDocumentSection,
   settingsSectionKeys,
+  sortedSettingsSections,
   unregisterSettingsSection,
 } from "../src/settings/section-registry";
+import { ICON_NAMES } from "@jxsuite/ui/icons";
 import {
   detachSettingsPane,
   renderSettingsPane,
@@ -142,7 +144,7 @@ const parserExtensions: ExtensionsInfo[] = [
               newEntry: { schema: { properties: {}, required: [], type: "object" } },
               ui: { schema: { control: "schema-builder" } },
             },
-            icon: "sp-icon-view-grid",
+            icon: "grid-four",
             label: "Content Types",
             layout: "map",
             order: 50,
@@ -199,6 +201,29 @@ afterEach(async () => {
 });
 
 // ─── The inner nav ───────────────────────────────────────────────────────────
+
+describe("a section's icon", () => {
+  /**
+   * The key space, held to its resolver — because nothing draws it yet, and that is the point.
+   *
+   * `SettingsSection.icon` is documented as reserved: no surface reads it today. So every built-in
+   * carried an `sp-icon-*` name for a long time and nothing said so, because those name SPECTRUM
+   * ELEMENTS and this field is a KEY into the kit's glyph manifest (`studio.md` §13.5 — the two
+   * spaces are spelled alike and fail differently). `check-icons.ts` deliberately does not sweep
+   * these in: its rule 3 is scoped to rail panel records, whose miss is silent AT RUNTIME, and
+   * inflating it with fields nobody draws is the mistake its docstring records. A miss here is
+   * silent in the other direction — nothing draws it, so nothing can go wrong until the inner nav
+   * grows icons and every one of them is missing at once. This is the assertion that closes that.
+   */
+  test("every built-in names a glyph the kit ships", async () => {
+    await mount();
+    const sections = sortedSettingsSections().filter((section) => section.icon !== undefined);
+    expect(sections.length).toBeGreaterThan(0);
+    for (const section of sections) {
+      expect(ICON_NAMES, `${section.key}: icon "${section.icon!}"`).toContain(section.icon!);
+    }
+  });
+});
 
 describe("the settings document", () => {
   test("renders its sections as inner nav, Overview first and active", async () => {

@@ -2,9 +2,9 @@
 
 ## Extension Packages, Schema Composition, and the Capability Contract
 
-**Version:** 0.4.3-draft\
+**Version:** 0.4.4-draft\
 **Status:** Partial\
-**Updated:** 2026-08-31\
+**Updated:** 2026-09-10\
 **License:** MIT
 
 Supersedes v1 ("Format-Extension Classes and the Capability Contract"). The format-class contract from v1 survives unchanged (§6–§8); v2 adds the package layer around it: extension packages, manifest-driven registration, JSON-Schema composition, project sections, server mounts, and the studio settings vocabulary. The relationships vocabulary has a companion spec: [relationships.md](./relationships.md).
@@ -432,7 +432,7 @@ The `project` class's `$studio` block may declare a settings section, rendered g
 ```json
 "$studio": {
   "settings": {
-    "icon": "sp-icon-view-grid",
+    "icon": "grid-four",
     "label": "Content Types",
     "order": 50,
     "layout": "map",
@@ -446,7 +446,7 @@ The `project` class's `$studio` block may declare a settings section, rendered g
 
 | Key              | Meaning                                                                                                                                                                                                   |
 | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `icon`           | Section icon in the settings nav.                                                                                                                                                                         |
+| `icon`           | Section icon in the settings nav — a glyph NAME from the Jx UI kit's icon set (`@jxsuite/ui/icons`), never an element tag. A name the kit does not ship draws nothing.                                    |
 | `label`          | Section label (defaults to `project.title`).                                                                                                                                                              |
 | `order`          | Sort position among contributed sections.                                                                                                                                                                 |
 | `layout`         | `"map"` — master-detail for `type: object` + `additionalProperties` sections: key list left (add/rename/delete, slugified), entry form right. `"form"` (default) — one form over the whole section value. |
@@ -739,6 +739,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.4.4-draft** (2026-09-10) — A settings section's icon is a key in the Jx UI kit's glyph manifest, never an element tag; the §9.1 example named a Spectrum element, which resolved to nothing.
 - **0.4.3-draft** (2026-08-31) — The extension catalogue (§9.2): a host answers for what it can run, with bundled and installed probed rather than declared; §2 lists feed.
 - **0.4.2-draft** (2026-08-29) — A format may declare rewrite: replace authored values in its own source text, for a format that is read but never round-tripped.
 - **0.4.1-draft** (2026-08-27) — Studio conversion and creation are parse/serialize consumers; what parse returns is decided by documentKinds.
@@ -769,4 +770,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx Extensions Specification v0.4.3-draft_
+_Jx Extensions Specification v0.4.4-draft_

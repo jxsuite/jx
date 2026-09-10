@@ -1,8 +1,8 @@
 /// <reference lib="dom" />
 /**
  * Iframe-realm slash-menu bridge — the inline-edit engine detects "/" and drives a DI'd
- * {@link SlashController}; the real lit/Spectrum menu can't render in the slim iframe bundle, so
- * this controller proxies it across the postMessage bridge. It posts `slashShow` (with the edited
+ * {@link SlashController}; the real host-realm menu can't render in the slim iframe bundle, so this
+ * controller proxies it across the postMessage bridge. It posts `slashShow` (with the edited
  * element's IFRAME-VIEWPORT rect + the typed filter) / `slashDismiss`; the host shows the parent
  * menu and posts back `slashSelect` / `slashDismissed`.
  *

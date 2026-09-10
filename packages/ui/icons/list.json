@@ -63,6 +63,7 @@
   "lightning": ["regular", "fill"],
   "link": ["regular"],
   "list": ["regular"],
+  "lock-simple": ["regular"],
   "list-bullets": ["regular"],
   "magnifying-glass": ["regular"],
   "minus": ["regular", "bold"],

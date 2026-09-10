@@ -22,7 +22,7 @@
 
   "$studio": {
     "settings": {
-      "icon": "sp-icon-table",
+      "icon": "rows",
       "label": "Data Tables",
       "order": 55,
       "layout": "map",

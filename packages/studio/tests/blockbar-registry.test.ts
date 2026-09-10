@@ -507,7 +507,11 @@ describe("role=toolbar and the roving tabindex", () => {
 
   test("⌥↑ is refused while a modal owns the keyboard, and when there is no bar", async () => {
     const slot = document.createElement("div");
-    slot.innerHTML = "<sp-dialog-wrapper open></sp-dialog-wrapper>";
+    /* The shape `surfaces/dialog.json` leaves in the layer: the kit host mirroring `open` onto
+       `data-open`, around the native `<dialog>` it opens modally. It was `<sp-dialog-wrapper open>`,
+       which `ui/layers.ts`'s `UNDERLAID` no longer answers for — an unregistered tag paints no
+       scrim, so a match on it would stand the keyboard down under nothing. */
+    slot.innerHTML = "<jx-dialog data-open><dialog open></dialog></jx-dialog>";
     document.querySelector("#layer-dialog")!.append(slot);
     const blocked = new KeyboardEvent("keydown", {
       altKey: true,

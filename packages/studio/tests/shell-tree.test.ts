@@ -62,23 +62,45 @@ describe("the frame", () => {
     expect(ids.length).toBe(new Set(ids).size);
   });
 
-  /* Spectrum's theming reaches its descendants through sp-theme, and the whole chrome stylesheet is
-     written against a light tree beneath it. A frame rendered outside it is unstyled. */
-  test("renders inside the Spectrum theme host", async () => {
+  /* The frame used to be wrapped in `<sp-theme>`, because Spectrum's tokens reached a descendant
+     and nothing else. The kit declares every token at `:root` and `applyChromeTheme()` stamps the
+     scheme on `<html>` (studio-ui-guidelines.md §1.1), so the wrapper themes nothing. What it
+     still does is OWN the mount: `mountResizeEdges()` appends to `document.body` one line before
+     `mountShellTree()` in `src/studio.ts`, so the clear-and-eject a remount needs cannot be aimed
+     at the body without wiping the four resize edges off it. */
+  test("renders inside a root of its own rather than straight into the host", async () => {
     const built = await frame();
-    const theme = built.querySelector("sp-theme");
-    expect(theme).not.toBeNull();
-    expect(theme!.querySelector("#app")).not.toBeNull();
-    expect(theme!.getAttribute("system")).toBe("spectrum");
+    const root = built.querySelector("#shell-root");
+    expect(root).not.toBeNull();
+    expect(root!.querySelector("#app")).not.toBeNull();
+    expect(root!.querySelector("#layer-toast")).not.toBeNull();
   });
 
-  test("mounting twice reuses the one theme host rather than nesting another", async () => {
+  test("themes through no element of its own — no Spectrum host survives the mount", async () => {
+    const built = await frame();
+    expect(built.querySelector("sp-theme")).toBeNull();
+    expect(built.innerHTML).not.toContain("sp-");
+  });
+
+  test("leaves what the host already held alone", async () => {
+    /* The reason the root exists at all. `mountResizeEdges()` has already put its container on the
+       body by the time the frame mounts, and a mount that cleared the host would take it with it. */
+    const host = document.createElement("div");
+    const prior = document.createElement("div");
+    prior.id = "resize-edges";
+    host.append(prior);
+    await mountShellTree(host);
+    await mountShellTree(host);
+    expect(host.querySelector("#resize-edges")).toBe(prior);
+  });
+
+  test("mounting twice reuses the one root rather than nesting another", async () => {
     /* The `#app` half is the one the document mount added: a runtime mount APPENDS, so without the
        clear a remount leaves two frames and every `querySelector` silently picks the stale one. */
     const host = document.createElement("div");
     await mountShellTree(host);
     await mountShellTree(host);
-    expect(host.querySelectorAll("sp-theme")).toHaveLength(1);
+    expect(host.querySelectorAll("#shell-root")).toHaveLength(1);
     expect(host.querySelectorAll("#app")).toHaveLength(1);
     expect(host.querySelectorAll("#layer-toast")).toHaveLength(1);
   });

@@ -73,7 +73,7 @@ The section class's `$studio` block may declare a settings section, rendered gen
 ```json
 "$studio": {
   "settings": {
-    "icon": "sp-icon-lock-closed",
+    "icon": "lock-simple",
     "label": "Authentication",
     "order": 58,
     "layout": "form",
@@ -89,7 +89,7 @@ The section class's `$studio` block may declare a settings section, rendered gen
 
 | Key              | Meaning                                                                                                                                                                              |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `icon`           | Section icon in the settings nav.                                                                                                                                                    |
+| `icon`           | Section icon in the settings nav. Names a glyph from the Jx UI kit icon set (`@jxsuite/ui/icons`), never an element tag. A name the kit does not ship draws nothing.                 |
 | `label`          | Section label (defaults to `project.title`).                                                                                                                                         |
 | `order`          | Sort position among contributed sections.                                                                                                                                            |
 | `layout`         | `"form"` (default) renders one form over the whole section value. `"map"` gives master-detail for `type: object` + `additionalProperties` sections: key list left, entry form right. |

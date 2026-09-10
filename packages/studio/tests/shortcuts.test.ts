@@ -290,6 +290,23 @@ function focusTextField(tag = "input"): HTMLElement {
   return el;
 }
 
+/**
+ * A kit field as the DOM actually holds one: a host with the native control inside it.
+ *
+ * The Spectrum spelling was `focusTextField("sp-textfield")` — one element, because the `<input>`
+ * was in a shadow root and focus retargeted onto the host. No kit element declares `$shadow`
+ * (`ui.md` §3.2), so this is two nodes and the inner one is what takes focus; `TEXT_ENTRY` in
+ * `commands/live-context.ts` reads the control, not the wrapper.
+ */
+function focusKitField(): HTMLElement {
+  const field = document.createElement("jx-textfield");
+  const input = document.createElement("input");
+  field.append(input);
+  document.body.append(field);
+  input.focus();
+  return input;
+}
+
 function childCount(): number {
   return (activeTab.value!.doc.document.children as unknown[]).length;
 }
@@ -816,9 +833,19 @@ describe("the old dispatch — seven bare keys", () => {
 
 describe("the old dispatch — the three blanket guards", () => {
   /* Guard 1: `if (isModalOpen()) return`. Now the `palette`-only scope stack. */
+  /**
+   * The fixture is the DOM a dialog surface actually leaves in the layer.
+   *
+   * It was `<sp-dialog-wrapper open>`, which `ui/layers.ts`'s `UNDERLAID` still named after the
+   * last Spectrum dialog went, on the argument that answering for a tag nobody renders costs
+   * nothing. With the registry unregistered that tag is an `HTMLUnknownElement`: it paints no
+   * scrim, so matching it would stand every chord down under a surface that blocks nothing. The
+   * shape here is `surfaces/dialog.json`'s — a `jx-dialog` mirroring `open` onto `data-open`, with
+   * the native `<dialog>` it opens modally inside it.
+   */
   test("every chord stands down while a modal surface is up", () => {
     const slot = document.createElement("div");
-    slot.innerHTML = "<sp-dialog-wrapper open></sp-dialog-wrapper>";
+    slot.innerHTML = "<jx-dialog data-open><dialog open></dialog></jx-dialog>";
     document.querySelector("#layer-dialog")!.append(slot);
     activeTab.value!.session.selection = [["children", 0]];
 
@@ -832,6 +859,29 @@ describe("the old dispatch — the three blanket guards", () => {
     expect(del.defaultPrevented).toBe(false);
 
     slot.remove();
+    pressDoc("p", { ctrlKey: true });
+    expect(openQuickSearch).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * The other half of `UNDERLAID`, on its own — the native element is what actually blocks.
+   *
+   * `jx-dialog[data-open]` is the host this package mounts; `dialog[open]` is the substrate, and it
+   * is what makes the rule "whatever blocks the mouse blocks the keyboard" true rather than a
+   * convention about one wrapper. A surface that opens a bare `<dialog>` in a layer — no kit host
+   * around it — must stand the chords down too, and nothing else in this file would notice if it
+   * stopped.
+   */
+  test("a bare modal dialog in the layer stands them down as well", () => {
+    const bare = document.createElement("dialog");
+    bare.setAttribute("open", "");
+    document.querySelector("#layer-modal")!.append(bare);
+    activeTab.value!.session.selection = [["children", 0]];
+
+    pressDoc("p", { ctrlKey: true });
+    expect(openQuickSearch).not.toHaveBeenCalled();
+
+    bare.remove();
     pressDoc("p", { ctrlKey: true });
     expect(openQuickSearch).toHaveBeenCalledTimes(1);
   });
@@ -889,7 +939,7 @@ describe("the old dispatch — the three blanket guards", () => {
     test.each([
       ["a canvas caret", () => (caretActive = true)],
       ["a focused text field", () => focusTextField()],
-      ["a focused sp-textfield", () => focusTextField("sp-textfield")],
+      ["a focused jx-textfield", () => focusKitField()],
     ])("%s: ⌘S still saves", (_label, arrange) => {
       arrange();
       pressDoc("s", { ctrlKey: true });
@@ -1256,6 +1306,29 @@ describe("focusShellRegion", () => {
       expect(shell.focusRegion).toBe("navigator");
     } finally {
       button.remove();
+    }
+  });
+
+  /**
+   * The region's focusable is the native control a kit element renders, not the kit element.
+   *
+   * `REGION_FOCUSABLE` used to name `sp-action-button`, `sp-tab`, `sp-textfield` and `sp-picker`
+   * beside the native tags, because a Spectrum control kept its `<button>` in a shadow root and
+   * `querySelector` could not reach it. The kit declares no shadow root (`ui.md` §3.2), so the
+   * button is right here — and adding the kit tags back "for symmetry" would MATCH THE WRAPPER,
+   * which comes first in document order, and focus a node that is not the control. That is what
+   * this pins: the host is skipped, the button is focused.
+   */
+  test("a kit control is entered at its native button, not at its host", () => {
+    const host = document.createElement("jx-action-button");
+    const button = document.createElement("button");
+    host.append(button);
+    document.querySelector("#left-panel")!.append(host);
+    try {
+      expect(focusShellRegion("navigator")).toBe(true);
+      expect(document.activeElement).toBe(button);
+    } finally {
+      host.remove();
     }
   });
 

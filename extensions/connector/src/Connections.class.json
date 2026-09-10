@@ -14,7 +14,7 @@
 
   "$studio": {
     "settings": {
-      "icon": "sp-icon-data",
+      "icon": "database",
       "label": "Connections",
       "order": 60,
       "layout": "map",

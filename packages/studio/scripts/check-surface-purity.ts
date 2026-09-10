@@ -1,14 +1,22 @@
 /**
- * Coexistence is surface-level (specs/studio-ui-guidelines.md §1, §9.4): a surface is either a lit
- * template over Spectrum or a Jx document over the UI kit, never a mix. Three things would make it
- * a mix, and each is cheap to catch from the source alone:
+ * A surface is ONE substrate (specs/studio-ui-guidelines.md §1, §9.4): a Jx document over the UI
+ * kit, with lit reserved for the overlay layers, the canvas realm and the grid's cell editors. Two
+ * things would blur that, and each is cheap to catch from the source alone:
  *
- * 1. A surface document (`src/surfaces/*.json`) that renders a Spectrum element — the kit is the only
- *    element set a document may use.
- * 2. A lit template that renders a kit element — the migration path is a document, not a tag swap, and
+ * 1. A lit template that renders a kit element — the migration path is a document, not a tag swap, and
  *    a kit element under lit would need the child-part bridge this design avoids.
- * 3. An adapter (`src/surfaces/*.ts`) that imports lit — an adapter passes state in; its markup is the
+ * 2. An adapter (`src/surfaces/*.ts`) that imports lit — an adapter passes state in; its markup is the
  *    document beside it.
+ *
+ * **There were three, and the third is retired rather than kept as a matcher over a dead string.**
+ * It failed on a surface document whose `tagName` began `sp-`, because a document could only use
+ * the kit while Adobe Spectrum still drew half the app. Spectrum is removed, and two other gates
+ * cover between them what that rule did — in both directions rather than one. `check-styles.ts`
+ * bans `sp-` anywhere in the package, document or not, with an allow-list that is empty on purpose;
+ * and `check-icons.ts` fails on a `"tagName": "jx-*"` the kit will not define, which is the general
+ * form of "a document may only name an element that exists" that the old rule only ever asked about
+ * one library. A third copy pointed at a string that can no longer appear would read as a live
+ * constraint on a dead subject.
  *
  * Usage: `bun --cwd packages/studio scripts/check-surface-purity.ts` (CI's `checks` job).
  */
@@ -29,10 +37,8 @@ export interface PurityFinding {
   text: string;
 }
 
-const SURFACE_JSON = /^src\/surfaces\/.*\.json$/;
 const ADAPTER_TS = /^src\/surfaces\/.*\.ts$/;
 const STUDIO_TS = /^src\/.*\.ts$/;
-const SPECTRUM_TAG = /"tagName":\s*"sp-/;
 const LIT_IMPORT = /from\s+["'](?:lit|lit-html)(?:\/[^"']*)?["']/;
 const KIT_TAG_IN_TEMPLATE = /<(jx-[a-z0-9-]+)/g;
 
@@ -51,18 +57,6 @@ export function surfacePurityFindings(
   const findings: PurityFinding[] = [];
   for (const { path, text } of files) {
     const lines = text.split("\n");
-    if (SURFACE_JSON.test(path)) {
-      for (const [i, line] of lines.entries()) {
-        if (SPECTRUM_TAG.test(line)) {
-          findings.push({
-            file: path,
-            line: i + 1,
-            text: "a surface document renders a Spectrum element; a document may only use the kit (ui.md §5)",
-          });
-        }
-      }
-      continue;
-    }
     if (!STUDIO_TS.test(path)) {
       continue;
     }
@@ -123,15 +117,28 @@ export function report(
   }
   return {
     failed: false,
-    lines: [
-      "✓ check-surface-purity: no Spectrum tag in a surface document, no kit tag in a lit template, no lit import in an adapter",
-    ],
+    lines: ["✓ check-surface-purity: no kit tag in a lit template, no lit import in an adapter"],
   };
 }
 
-if (import.meta.main) {
-  const root = resolve(dirname(new URL(import.meta.url).pathname), "..");
+/**
+ * Collect, judge, print, and hand back the exit code.
+ *
+ * Separate from the `import.meta.main` block for the reason `check-icons.ts` and `check-styles.ts`
+ * give at their own entry points: a function that RETURNS the code is one a test can run, where a
+ * `process.exit` inside the block is one nothing can. It became worth extracting when this file
+ * lost its Spectrum rule — the module got smaller, the four unreachable lines did not, and a file's
+ * coverage floor is a ratio.
+ *
+ * @param {string} [root] Default is the package root this script sits in
+ * @returns {number} 0 when the package is pure, 1 when it is not
+ */
+export function runCli(root = resolve(dirname(new URL(import.meta.url).pathname), "..")): number {
   const { failed, lines } = report(surfacePurityFindings(collectSources(root)), root);
   console.log(lines.join("\n"));
-  process.exit(failed ? 1 : 0);
+  return failed ? 1 : 0;
+}
+
+if (import.meta.main) {
+  process.exit(runCli());
 }

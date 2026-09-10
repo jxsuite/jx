@@ -1,14 +1,12 @@
 /**
  * Coverage-gap tests for scattered UI/support modules:
  *
- * - Value-selector: the textfield click-containment arrow.
  * - Jxsuite-update: the non-semver dev-build bailout and the missing-capability bailout.
  * - Page-params: the dev-proxy fetch fallback for ContentCollection resolution, extensions without
  *   the class, and the state-less resolveParamBoundState guard.
  */
 import { installMockPlatform } from "./harness";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { JxValueSelector } from "../src/ui/value-selector";
 import { applyJxsuiteUpdate, checkJxsuiteUpdate } from "../src/packages/jxsuite-update";
 import { invalidateParamValues, loadParamValues, resolveParamBoundState } from "../src/page-params";
 import { refreshFormats, setExtensions } from "../src/format/format-host";
@@ -17,29 +15,6 @@ const realFetch = globalThis.fetch;
 
 afterEach(() => {
   globalThis.fetch = realFetch;
-});
-
-// ─── Value selector ──────────────────────────────────────────────────────────
-
-describe("value-selector textfield click containment", () => {
-  if (!customElements.get("jx-value-selector")) {
-    customElements.define("jx-value-selector", JxValueSelector);
-  }
-
-  test("clicks inside the textfield stop propagating (the overlay trigger must not fire)", async () => {
-    const el = document.createElement("jx-value-selector") as JxValueSelector;
-    el.options = [{ label: "Italic", value: "italic" }] as JxValueSelector["options"];
-    document.body.append(el);
-    await el.updateComplete;
-    const tf = el.querySelector("sp-textfield")!;
-    let escaped = 0;
-    el.addEventListener("click", () => {
-      escaped += 1;
-    });
-    tf.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
-    expect(escaped).toBe(0);
-    el.remove();
-  });
 });
 
 // ─── Jxsuite update bailouts ─────────────────────────────────────────────────

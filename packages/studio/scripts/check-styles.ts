@@ -1,28 +1,45 @@
 /**
  * Guard the studio UI against hard-coded styling values and undefined CSS classes.
  *
- * The studio drives its styling from Spectrum design tokens (`--spectrum-*`) and a thin studio
- * semantic layer (`--bg`, `--accent`, `--radius`, `--font-mono`, …) declared on the `<sp-theme>`
- * element in `styles/tokens.css`. Raw hex colours bypass that system and stop the UI from
- * responding to the Spectrum theme, so this guard fails (exit 1) when it finds a hard-coded hex
- * that is not:
+ * The studio drives its styling from the Jx UI kit's design tokens (`--jx-*`) and a thin studio
+ * semantic layer (`--bg`, `--accent`, `--radius`, `--font-mono`, …) that aliases them at `:root` in
+ * `styles/tokens.css`. Raw hex colours bypass that system and stop the UI from responding to the
+ * theme, so this guard fails (exit 1) when it finds a hard-coded hex that is not:
  *
  * - A fallback inside a token reference: var(--token, #hex)
  * - An explicitly allow-listed brand/structural colour (see ALLOWED_HEX)
  * - A colour _value_ in a data file (colour pickers, the CSS-var editor)
  *
  * It also _warns_ (without failing) on `font-size` / `border-radius` px literals that have an exact
- * Spectrum token equivalent, to nudge new code toward tokens. Spacing, structural dimensions,
- * z-index, and rgba() shadow/scrim values are intentionally not policed — Spectrum's scale is
- * coarse and a dense editor UI legitimately uses off-grid structural px. See STYLING.md for the
- * full policy.
+ * kit token equivalent, to nudge new code toward tokens. Spacing, structural dimensions, z-index,
+ * and rgba() shadow/scrim values are intentionally not policed — the kit's scale is coarse and a
+ * dense editor UI legitimately uses off-grid structural px. See STYLING.md for the full policy.
  *
  * The second rule is the mirror image: a class name emitted by a `src/**` template that no
  * stylesheet in the package defines. An orphan class is a surface that opted out of the design
  * system — it is invariably being held together by inline `style=` attributes instead, which is how
  * half the app drifted away from the tokens in the first place. See ALLOWED_ORPHANS.
  *
- * The third rule is the FOCUS RING. UX-REDESIGN-PLAN §12 P0 workstream 7 replaced eight bare
+ * The third rule is the SPECTRUM BAN, and it is the one rule here with an allow-list that is empty
+ * on purpose. Adobe Spectrum Web Components drew every Studio surface until the kit replaced them;
+ * the last of it left in §C8, and this is what stops it coming back one convenient import at a
+ * time. Two names are banned — an `sp-` tag, and a `--spectrum-*` custom property — over the four
+ * globs {@link scanStyles} walks: the stylesheets, the CSS and TypeScript under `src`, and the
+ * surface documents. That is what SHIPS, and it is the honest scope. `tests` is outside it on
+ * purpose: a dozen assertions there read `querySelector("sp-underlay")` and expect null, which is
+ * the ban working rather than violating it, and a rule that reddened on them would be teaching
+ * people to delete the proof. Neither name resolves to anything any more — an `sp-` tag parses as
+ * `HTMLUnknownElement`, which paints nothing and blocks nothing, and a `--spectrum-*` read silently
+ * takes its hex fallback and stops following the theme. Both failures are invisible, which is
+ * exactly why they need a mechanical rule rather than a review habit.
+ *
+ * **It reads code, not commentary.** Comments in `.ts` and `.css` are blanked first, and
+ * `$description`/`$comment` values in a surface document are skipped, because the migration record
+ * is the most valuable thing those files carry: seventy-seven of them say what a part's value USED
+ * to be and why it is what it is now. A rule that forced those to be coy would delete more than it
+ * protected.
+ *
+ * The fourth rule is the FOCUS RING. UX-REDESIGN-PLAN §12 P0 workstream 7 replaced eight bare
  * `outline: none` declarations with `:focus-visible` pairs and promised "a stylelint rule bans bare
  * `outline: none`" — the sweep landed and the rule never did, so the next `outline: none` would
  * have gone in unremarked and taken a control off the keyboard with it. A ban alone would have been
@@ -31,7 +48,7 @@
  * verifies that rule still exists and still sets an outline — deleting the restore turns the
  * allowance red at the line the suppression is on. See FOCUS_RING_ALLOWANCES.
  *
- * The fourth and fifth rules are about SILENCE rather than styling, and they live here because this
+ * The fifth and sixth rules are about SILENCE rather than styling, and they live here because this
  * file is the package's idiom for "a wide, shallow property with a ratcheting allow-list" — the
  * shape UX-REDESIGN-PLAN §7.1 asks for by name:
  *
@@ -75,20 +92,24 @@ const ALLOWED_HEX = new Set([
   "#c9252d",
 ]);
 
-/** Files where a hex is a colour _value_ (user data), not chrome styling. */
+/**
+ * Files where a hex is a colour _value_ (user data), not chrome styling.
+ *
+ * Two entries left with Spectrum and are not here any more. `src/ui/jx-theme.ts` was the brand ramp
+ * that re-valued Spectrum's palette from the kit's, and it is deleted. `src/ui/color-selector.ts`
+ * was a control that drew a swatch and a picker; it is a projection of the project's named colours
+ * now, holds no literal at all, and an exemption for a file that no longer needs one is an
+ * exemption nobody would notice going stale.
+ */
 const DATA_FILES = [
-  "src/ui/color-selector.ts",
+  /* <input type="color"> needs a real hex default. */
   "src/settings/css-vars-editor.ts",
-  /* Brand ramp source of truth: defines the Jx palette as Spectrum `-rgb`
-     triplets; hexes appear only in the annotation comments. */
-  "src/ui/jx-theme.ts",
-  /* <input type="color"> needs a real hex default; same category as color-selector.ts. */
   /* Example project.json style block shown to the LLM as prompt content, not actual
      chrome CSS — the hexes are illustrative data, like a colour picker's default. */
   "src/services/ai-system-prompt.ts",
 ];
 
-/** Px values that have an exact Spectrum token and should be tokenized in new code. */
+/** Px values that have an exact kit token and should be tokenized in new code. */
 const TOKENIZABLE_FONT_PX = new Set(["10", "11", "12", "14"]); // Kit --jx-text-xs / -sm / -md / -lg
 const TOKENIZABLE_RADIUS_PX = new Set(["2", "4", "6", "10"]); // Kit --jx-radius-xs / -sm / -md / -lg
 
@@ -107,8 +128,6 @@ const VENDOR_CLASS_PREFIXES = [
   "mtk", // Monaco token classes
   "codicon", // Monaco / VS Code icon font
   "tabulator", // Tabulator-tables
-  "sp-", // Spectrum Web Components
-  "spectrum-", // Spectrum CSS
 ];
 
 /**
@@ -153,9 +172,10 @@ export const ALLOWED_ORPHANS = new Set<string>([
      is drawn inside. `array-object-*` and `expr-live-badge` are shared with ui/schema-form.ts and
      ui/formula-chips.ts, which still pass their own inline copies; the rule they now inherit is
      the wrap and the shrink. */
-  // Owner: ui/value-selector.ts
-  "jx-combobox-picker",
-  "jx-combobox-popover",
+  /* Owner: ui/value-selector.ts — the module is gone. Its two names were the picker and the
+     popover of a dual-mode combobox that had already lost every caller: the Style tab's unit row
+     and the Logic tab's event name are documents over the kit. Deleting the file discharged the
+     entries, which is the only way this list is ever meant to shrink. */
 ]);
 
 export interface Finding {
@@ -229,6 +249,95 @@ export const FOCUS_RING_ALLOWANCES: readonly FocusRingAllowance[] = [
   },
 ];
 
+/* ------------------------------------------------------------------------- the Spectrum ban --- */
+
+/**
+ * Spectrum names this package may still write. It is EMPTY, and that is the whole rule.
+ *
+ * Every previous shape of this policy was an exemption: `VENDOR_CLASS_PREFIXES` carried `sp-` and
+ * `spectrum-` so Spectrum's own class names were not read as design-system escapes, `DATA_FILES`
+ * carried the brand ramp, and `check-lit-conventions.ts` carried a per-file `SPECTRUM_DEBT`. All
+ * three were correct while Spectrum drew surfaces. None of them is now, and an exemption whose
+ * subject is gone is worse than no rule at all, because it looks like the policy still has one.
+ *
+ * The list stays as an array rather than being deleted because a ban with nowhere to write an
+ * exception is a ban somebody eventually edits the regex to get past. If a name ever has to come
+ * back, it comes back here with a sentence saying why, and the sentence is reviewable.
+ */
+export const SPECTRUM_ALLOWED: readonly string[] = [];
+
+/**
+ * An `sp-` element tag.
+ *
+ * The tag is the half that fails LOUDEST and is therefore the half people assume is safe: an
+ * unregistered `sp-picker` parses fine, lays out as an inline box, paints nothing and swallows
+ * every event aimed at the control it was standing in for.
+ *
+ * Word-bounded, so `resp-` inside a word does not match — but a HYPHEN is a word boundary, so a
+ * name like `data-jx-sp-open` would be read as the tag `sp-open`. That is a known false positive
+ * and it is recorded rather than worked around: excluding a preceding hyphen would stop matching
+ * `.foo sp-picker`, which is the selector shape this rule most needs to catch. No `-sp-` name
+ * exists in the package today. If one arrives, rename it or give it an entry in
+ * {@link SPECTRUM_ALLOWED} with a sentence.
+ */
+const SPECTRUM_TAG_RE = /\bsp-[a-z][a-z0-9]*(?:-[a-z0-9]+)*/g;
+
+/** A `--spectrum-*` custom property, in a declaration or a `var()`. */
+const SPECTRUM_TOKEN_RE = /--spectrum-[a-z0-9-]+/g;
+
+/**
+ * A `@spectrum-web-components/*` module specifier — and the reason this rule reads three patterns
+ * rather than two.
+ *
+ * `.oxlintrc.json` bans the same specifier with `no-restricted-imports`, which would make this
+ * redundant if it caught every form. It does not: a BARE side-effect import (`import
+ * "@spectrum-web-components/base/src/define-element.js";`) passes it, and a side-effect import is
+ * precisely how Spectrum registered — `src/ui/spectrum.ts` carried one deliberately, for
+ * `sp-tooltip`. So the one shape the removal is most likely to come back in is the one the lint
+ * rule cannot see, and the gate that can is this one.
+ */
+const SPECTRUM_PACKAGE_RE = /@spectrum-web-components\/[a-z0-9-]+/g;
+
+/** Every banned Spectrum name in one file's text, which the caller has already de-commented. */
+export function scanSpectrum(rel: string, text: string): Finding[] {
+  const findings: Finding[] = [];
+  for (const [idx, line] of text.split("\n").entries()) {
+    for (const re of [SPECTRUM_TAG_RE, SPECTRUM_TOKEN_RE, SPECTRUM_PACKAGE_RE]) {
+      for (const [name] of line.matchAll(re)) {
+        if (SPECTRUM_ALLOWED.includes(name)) {
+          continue;
+        }
+        findings.push({ file: rel, line: idx + 1, text: name });
+      }
+    }
+  }
+  return findings;
+}
+
+/**
+ * A surface document with every `$description` and `$comment` value removed, newlines preserved.
+ *
+ * The documents are where the migration is WRITTEN DOWN — "it read `--spectrum-font-size-50` with
+ * an 11px fallback, which resolved only inside `<sp-theme>`" is why a part carries the value it
+ * carries. Forty-eight documents say something of that shape. They are prose, they are the reason a
+ * reviewer can tell a deliberate value from a copied one, and the ban must not reach them.
+ */
+export function stripDocProse(json: string): string {
+  return json.replaceAll(/"\$(?:description|comment)"\s*:\s*"(?:[^"\\]|\\.)*"/g, (block) =>
+    block.replaceAll(/[^\n]/g, " "),
+  );
+}
+
+/**
+ * A stylesheet with its `/* … *\/` comments blanked, newlines preserved.
+ *
+ * Same reason: `styles/*.css` carries the note saying which Spectrum token each declaration used to
+ * read, and those notes are what make the re-pointing reviewable.
+ */
+export function stripCssComments(css: string): string {
+  return css.replaceAll(/\/\*[\s\S]*?\*\//g, (block) => block.replaceAll(/[^\n]/g, " "));
+}
+
 /* --------------------------------------------------------------------------- silence rules --- */
 
 /**
@@ -278,6 +387,22 @@ const BARE_CATCH_RE = /catch\s*(?:\([^)]*\)\s*)?\{\s*\}/g;
  * commentary would force those two files to be coy about it.
  */
 export function stripCommentsAndStrings(src: string): string {
+  return stripTsComments(src, true);
+}
+
+/**
+ * Blank out comments only, leaving every string body intact.
+ *
+ * What the Spectrum ban reads. A Spectrum tag reaches the DOM through a selector string —
+ * `querySelector("sp-picker")`, a focusable-selector list, a fixture — at least as often as through
+ * a template, so a rule that blanked strings would exempt the shape it exists for. Comments are
+ * still blanked, because the migration record is written in them.
+ */
+export function stripComments(src: string): string {
+  return stripTsComments(src, false);
+}
+
+function stripTsComments(src: string, blankStrings: boolean): string {
   let out = "";
   let i = 0;
   const blank = (text: string) => text.replaceAll(/[^\n]/g, " ");
@@ -311,7 +436,8 @@ export function stripCommentsAndStrings(src: string): string {
         }
         j += 1;
       }
-      out += quote + blank(src.slice(i + 1, j - 1)) + (src[j - 1] ?? "");
+      const body = src.slice(i + 1, j - 1);
+      out += quote + (blankStrings ? blank(body) : body) + (src[j - 1] ?? "");
       i = j;
       continue;
     }
@@ -1062,47 +1188,89 @@ export function extractCssTemplates(source: string): string[] {
   return templateLiterals(source).filter((t) => CSS_SHAPE_RE.test(t));
 }
 
-/* ------------------------------------------------------------------------ underlay-stacking rule --- */
+/* --------------------------------------------------------------------- overlay-stacking rule --- */
 
 /**
- * The card an `<sp-underlay>` is opened beside, and the line it sits on.
+ * The four overlay layers, in the order they must paint — furthest back first.
  *
- * A modal body in this app is two siblings: the scrim and the surface. Only the FIRST element with
- * a class after the underlay is taken — that is the card; everything below it is inside it.
+ * **This rule replaces the `<sp-underlay>` one, and it is the same guarantee moved onto the shape
+ * that still exists.** The old rule found a modal card opened as a SIBLING of an `<sp-underlay>`
+ * and demanded some stylesheet give the card a positive z-index, because the scrim paints at
+ * z-index 1 and a card at `auto` beside it is visible through the scrim and unclickable. That
+ * shipped: a blocking progress modal whose only exit button could not be pressed.
+ *
+ * Three things retired the shape rather than the defect. `sp-underlay` is not an element any more —
+ * it parses as an `HTMLUnknownElement`, and the ban above is what keeps it that way, so the old
+ * rule now matches nothing and could never match again. Every modal is a `jx-dialog`, which renders
+ * a native `<dialog>` and opens it with `showModal()`: the browser's top layer is not z-index
+ * ordered, so a dialog cannot be under its own `::backdrop` whatever anyone forgets. And the one
+ * hand-drawn overlay left — the two palettes — puts its panel INSIDE the scrim part rather than
+ * beside it, where a descendant always paints above its ancestor's own background.
+ *
+ * What survives all three is the ORDER of the four layers, and `styles/shell-frame.json` says so in
+ * its own words: those z-indices were inline `style` attributes on four divs in `index.html`, which
+ * "put the one piece of ordering the whole overlay system depends on outside `check-styles.ts`'s
+ * stacking rule". They are classes now precisely so this rule can read them. A toast raised from a
+ * dialog must be readable, a dialog must sit over a modal, and a popover must not cover either —
+ * and every one of those is a silent failure, because CSS reports nothing when two layers tie.
  */
-export function extractUnderlayCards(source: string): { classes: string[]; line: number }[] {
-  const newlines = newlineOffsets(source);
-  const out: { classes: string[]; line: number }[] = [];
-  const underlay = /<sp-underlay\b/g;
-  let match: RegExpExecArray | null;
-  while ((match = underlay.exec(source))) {
-    const after = source.slice(match.index, match.index + 600);
-    const card = /<(?!sp-underlay\b)[a-z][\w-]*[^>]*?\bclass\s*=\s*"([^"]*)"/i.exec(after);
-    if (!card) {
+const OVERLAY_LAYERS = [
+  "jx-layer--popover",
+  "jx-layer--modal",
+  "jx-layer--dialog",
+  "jx-layer--toast",
+] as const;
+
+/** Class name → the positive `z-index` some rule in this stylesheet gives it. */
+export function stackedClasses(css: string): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const rule of extractRules(css)) {
+    const z = /(?:^|[;{\s])z-index\s*:\s*([1-9]\d*)/.exec(rule.body);
+    if (!z) {
       continue;
     }
-    const classes = card[1]!.split(/\s+/).filter((c) => c.length > 0 && !c.includes("$"));
-    if (classes.length > 0) {
-      out.push({ classes, line: lineOf(newlines, match.index) });
+    for (const selector of rule.selectors) {
+      for (const [, name] of selector.matchAll(SELECTOR_CLASS_RE)) {
+        out.set(name!, Number(z[1]));
+      }
     }
   }
   return out;
 }
 
-/** Class names that some rule in this stylesheet gives a positive `z-index`. */
-export function stackedClasses(css: string): Set<string> {
-  const out = new Set<string>();
-  for (const rule of extractRules(css)) {
-    if (!/(?:^|[;{\s])z-index\s*:\s*(?:[1-9]\d*|var\()/.test(rule.body)) {
+/**
+ * The four layers, each declared and each strictly above the one before it.
+ *
+ * Fails both ways on purpose: an undeclared layer is a layer at `auto`, which ties with everything
+ * and is resolved by document order, and an equal pair is the same tie written out loud.
+ */
+export function overlayOrderFindings(stacked: Map<string, number>): Finding[] {
+  const findings: Finding[] = [];
+  let previous = 0;
+  let previousName = "";
+  for (const name of OVERLAY_LAYERS) {
+    const z = stacked.get(name);
+    if (z === undefined) {
+      findings.push({
+        file: "styles/shell-frame.css",
+        line: 0,
+        text: `.${name} has no z-index, so it stacks by document order and ties with every other layer.`,
+      });
       continue;
     }
-    for (const selector of rule.selectors) {
-      for (const [, name] of selector.matchAll(SELECTOR_CLASS_RE)) {
-        out.add(name!);
-      }
+    if (z <= previous) {
+      findings.push({
+        file: "styles/shell-frame.css",
+        line: 0,
+        text:
+          `.${name} is at z-index ${z}, not above .${previousName} at ${previous} — ` +
+          `an overlay that cannot be seen over the thing that opened it.`,
+      });
     }
+    previous = z;
+    previousName = name;
   }
-  return out;
+  return findings;
 }
 
 /* ------------------------------------------------------------------------------ the run itself --- */
@@ -1316,8 +1484,10 @@ export interface StyleCheckResult {
   staleFocusRings: string[];
   /** Animation names defined more than once. Every definition of the name, so both sites are named. */
   duplicateAnimations: Finding[];
-  /** Modal cards opened beside an `sp-underlay` that no rule lifts above it. */
-  underScrim: Finding[];
+  /** Overlay layers with no z-index, or one that does not clear the layer below it. */
+  overlayOrder: Finding[];
+  /** Spectrum names — an `sp-` tag or a `--spectrum-*` token — still written in code. */
+  spectrum: Finding[];
   /** Required token pairs that miss the ratio WCAG 2.2 asks of them. */
   contrast: Finding[];
   /** Rows of `studio-ui-guidelines.md` §1.1 that disagree with `tokens.css`. */
@@ -1361,13 +1531,13 @@ export async function collect(root: string): Promise<StyleCheckResult> {
     }
   };
   const suppressedRings = new Set<string>();
-  /** Classes some rule gives a positive z-index — the underlay-stacking rule's evidence. */
-  const stacked = new Set<string>();
-  /** Every card opened beside an `sp-underlay`, with where it was opened. */
-  const underlayCards: { file: string; line: number; classes: string[] }[] = [];
+  /** Class → the positive z-index some rule gives it — the overlay-order rule's evidence. */
+  const stacked = new Map<string, number>();
+  /** Every Spectrum name still written in code, across every file kind in the package. */
+  const spectrum: Finding[] = [];
   const scanStacking = (css: string): void => {
-    for (const name of stackedClasses(css)) {
-      stacked.add(name);
+    for (const [name, z] of stackedClasses(css)) {
+      stacked.set(name, z);
     }
   };
   /** Run the focus-ring rule over one stylesheet, accumulating both halves of its answer. */
@@ -1407,6 +1577,7 @@ export async function collect(root: string): Promise<StyleCheckResult> {
     scanRings(rel, source);
     scanStacking(source);
     scanAnimations(rel, source);
+    spectrum.push(...scanSpectrum(rel, stripCssComments(source)));
     for (const name of extractDefinedClasses(source)) {
       defined.add(name);
     }
@@ -1438,6 +1609,10 @@ export async function collect(root: string): Promise<StyleCheckResult> {
     // Would force those two files to be coy about it. The catch rule reads the RAW source, because
     // There a comment is the answer rather than noise.
     banned.push(...scanBannedIdentifiers(rel, stripCommentsAndStrings(source)));
+    /* Comments blanked, STRINGS KEPT: a Spectrum tag reaches the DOM through a selector string
+       (`querySelector("sp-picker")`) far more often than through a template, so blanking strings
+       here would exempt the very shape the ban exists for. The prose lives in comments. */
+    spectrum.push(...scanSpectrum(rel, stripComments(source)));
     const bare = countBareCatches(source);
     if (bare > 0) {
       bareCatches.set(rel, bare);
@@ -1448,9 +1623,6 @@ export async function collect(root: string): Promise<StyleCheckResult> {
       for (const name of extractDefinedClasses(css)) {
         defined.add(name);
       }
-    }
-    for (const card of extractUnderlayCards(source)) {
-      underlayCards.push({ classes: card.classes, file: rel, line: card.line });
     }
     for (const [name, line] of extractEmittedClasses(source)) {
       if (!emitted.has(name)) {
@@ -1473,6 +1645,7 @@ export async function collect(root: string): Promise<StyleCheckResult> {
     hexErrors.push(...errors);
     pxWarnings.push(...warnings);
     scanAnimations(rel, source);
+    spectrum.push(...scanSpectrum(rel, stripDocProse(source)));
     for (const [name, line] of surfaceClasses(source)) {
       if (!emitted.has(name)) {
         emitted.set(name, { file: rel, line, text: name });
@@ -1504,20 +1677,7 @@ export async function collect(root: string): Promise<StyleCheckResult> {
     }
   }
 
-  /* An `sp-underlay` paints at `z-index: 1`. A card beside it at `auto` is therefore UNDER its own
-     scrim — visible through it, and unclickable, which is how a blocking progress modal shipped
-     with its only exit button unpressable. One rule anywhere giving one of the card's classes a
-     positive z-index is enough; this asks for evidence, not for a particular number. */
-  const underScrim: Finding[] = underlayCards
-    .filter((card) => !card.classes.some((name) => stacked.has(name)))
-    .map((card) => ({
-      file: card.file,
-      line: card.line,
-      text:
-        `.${card.classes.join(".")} is opened beside an <sp-underlay> but no rule stacks it. ` +
-        `The scrim paints at z-index 1, so the surface is under it: visible, and every click ` +
-        `lands on the underlay. Give the card a z-index.`,
-    }));
+  const overlayOrder = overlayOrderFindings(stacked);
 
   const staleFocusRings = FOCUS_RING_ALLOWANCES.filter(
     (a) => !suppressedRings.has(focusKey(a.file, normalizeSelector(a.selector))),
@@ -1547,7 +1707,8 @@ export async function collect(root: string): Promise<StyleCheckResult> {
     silentCatches: silentCatches.toSorted((a, b) => a.file.localeCompare(b.file)),
     focusRings,
     staleFocusRings,
-    underScrim,
+    overlayOrder,
+    spectrum,
     duplicateAnimations: [...animations.values()].filter((at) => at.length > 1).flat(),
   };
 }
@@ -1555,13 +1716,13 @@ export async function collect(root: string): Promise<StyleCheckResult> {
 /** Print the findings and return the process exit code. */
 export function report(result: StyleCheckResult): number {
   const { hexErrors, pxWarnings, orphans, staleAllowed, banned, silentCatches } = result;
-  const { focusRings, staleFocusRings, underScrim, contrast, guidelineTokens } = result;
+  const { focusRings, staleFocusRings, overlayOrder, spectrum, contrast, guidelineTokens } = result;
   const { duplicateAnimations } = result;
 
   if (pxWarnings.length > 0) {
     console.warn(
-      `\n⚠️  ${pxWarnings.length} px literal(s) with a Spectrum token equivalent ` +
-        `(prefer --spectrum-font-size-* / --spectrum-corner-radius-*):`,
+      `\n⚠️  ${pxWarnings.length} px literal(s) with an exact kit token equivalent ` +
+        `(prefer --jx-text-* / --jx-radius-*):`,
     );
     for (const w of pxWarnings.slice(0, 20)) {
       console.warn(`   ${w.file}:${w.line}  ${w.text}`);
@@ -1573,8 +1734,8 @@ export function report(result: StyleCheckResult): number {
 
   if (hexErrors.length > 0) {
     console.error(
-      `\n❌ ${hexErrors.length} hard-coded colour(s) found. Use a Spectrum token ` +
-        `(--spectrum-*) or a studio semantic token (--bg, --accent, …), optionally ` +
+      `\n❌ ${hexErrors.length} hard-coded colour(s) found. Use a kit token ` +
+        `(--jx-*) or a studio semantic token (--bg, --accent, …), optionally ` +
         `with a hex fallback: var(--token, #hex).`,
     );
     for (const e of hexErrors) {
@@ -1665,15 +1826,30 @@ export function report(result: StyleCheckResult): number {
     }
   }
 
-  if (underScrim.length > 0) {
+  if (overlayOrder.length > 0) {
     console.error(
-      `\n❌ ${underScrim.length} modal card(s) opened under their own scrim. <sp-underlay> paints ` +
-        `at z-index 1, so a card beside it at auto is visible THROUGH the scrim and unclickable — ` +
-        `which shipped a blocking progress modal whose only exit could not be pressed.`,
+      `\n❌ ${overlayOrder.length} overlay layer(s) mis-stacked. The four layers in ` +
+        `styles/shell-frame.json are the one piece of ordering the whole overlay system depends ` +
+        `on, and a tie is resolved silently by document order — which is how a blocking modal ` +
+        `once shipped above its own scrim with no reachable exit.`,
     );
-    for (const u of underScrim) {
-      console.error(`   ${u.file}:${u.line}  ${u.text}`);
+    for (const o of overlayOrder) {
+      console.error(`   ${o.file}  ${o.text}`);
     }
+  }
+
+  if (spectrum.length > 0) {
+    const names = [...new Set(spectrum.map((f) => f.text))].toSorted();
+    console.error(
+      `\n❌ ${spectrum.length} Spectrum name(s) in ${new Set(spectrum.map((f) => f.file)).size} ` +
+        `file(s). Adobe Spectrum Web Components are removed: an <sp-*> tag is an ` +
+        `HTMLUnknownElement that paints nothing and swallows every event, and a --spectrum-* read ` +
+        `silently takes its hex fallback and stops following the theme. Neither fails loudly.`,
+    );
+    for (const f of spectrum) {
+      console.error(`   ${f.file}:${f.line}  ${f.text}`);
+    }
+    console.error(`\n   Names: ${names.join(", ")}`);
   }
 
   if (contrast.length > 0) {
@@ -1700,7 +1876,8 @@ export function report(result: StyleCheckResult): number {
   }
 
   if (
-    underScrim.length > 0 ||
+    overlayOrder.length > 0 ||
+    spectrum.length > 0 ||
     contrast.length > 0 ||
     guidelineTokens.length > 0 ||
     hexErrors.length > 0 ||
@@ -1722,7 +1899,8 @@ export function report(result: StyleCheckResult): number {
       `(${ALLOWED_ORPHANS.size} allow-listed orphan(s) remaining), no banned identifiers, ` +
       `${silentTotal} allow-listed silent catch(es) remaining, ` +
       `${FOCUS_RING_ALLOWANCES.length} focus-ring suppression(s) each paired with its ` +
-      `:focus-visible restore, every underlay-bearing card stacked above its scrim, ` +
+      `:focus-visible restore, no Spectrum name (${SPECTRUM_ALLOWED.length} allowed), ` +
+      `the four overlay layers strictly stacked, ` +
       `${CONTRAST_PAIRS.length} contrast pair(s) checked ` +
       `(${Object.keys(CONTRAST_DEBT).length} on the debt list), ` +
       `and studio-ui-guidelines.md §1.1 agrees with tokens.css, ` +

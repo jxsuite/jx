@@ -1,16 +1,17 @@
 /**
- * An icon that reaches no DOM, in each of the two ways this codebase can produce one.
+ * An element or an icon that reaches no DOM, in each of the two ways this codebase can produce one.
  *
  * There are TWO key spaces here and they fail differently. Conflating them is not a hypothetical
  * mistake: the first version of this checker made it, passed, and certified a rail button that
  * renders a 20px hole.
  *
- * 1. **A tag written in a template** — `<sp-icon-x>` — resolves through `customElements`. An element
- *    the browser has never heard of is an `HTMLUnknownElement`: no shadow root, no content and no
- *    warning. The type checker is silent (the tag is a string in a template), the linter is silent,
- *    and happy-dom is as content to render nothing as Chrome is, so a test asserting
- *    `querySelector("sp-icon-x")` is not null PASSES while the icon draws nothing. Eleven shipped
- *    that way. Three named elements Spectrum has no such thing as.
+ * 1. **A tag written in a document** — `<jx-icon>`, `<jx-menu-item>` — resolves through
+ *    `customElements`. An element the browser has never heard of is an `HTMLUnknownElement`: no
+ *    shadow root, no content and no warning. The type checker is silent (the tag is a string in a
+ *    document), the linter is silent, and happy-dom is as content to render nothing as Chrome is,
+ *    so a test asserting `querySelector("jx-thing")` is not null PASSES while the element draws
+ *    nothing. Eleven shipped that way when the tags were Spectrum's. Three named elements the
+ *    library had no such thing as.
  * 2. **A key on a record** — `icon: "folder"` — resolves through the UI KIT'S MANIFEST, and never
  *    reaches `customElements` at all. `PanelRecord.icon` is drawn by the rail surface through
  *    `jx-icon`, whose manifest is `@jxsuite/ui`'s: a name absent from it draws nothing above the
@@ -18,90 +19,56 @@
  *    asks whether the button exists does not see. Three rail buttons once shipped that way, when
  *    the keys resolved through a hand-kept map in the rail module.
  *
- * So: tags are checked against the element registry, keys against the manifest, and the resolver
- * that matters most is the one whose miss is SILENT. `commandIcon()` falls back to the command's
- * title, so a miss there degrades visibly and is a judgement call; a record's key falls back to
- * nothing.
+ * So: tags are checked against what `registerKit()` will define, keys against the manifest, and the
+ * resolver that matters most is the one whose miss is SILENT. `commandIcon()` falls back to the
+ * command's title, so a miss there degrades visibly and is a judgement call; a record's key falls
+ * back to nothing.
+ *
+ * **Two rules left with Spectrum, and only one of them was re-aimed.** Rule 1 read `<sp-icon-*>`
+ * tags against the table in `src/ui/spectrum.ts`; the tags are `jx-*` now and the table is
+ * `KIT_TAGS`, so the rule is the same question about a substrate that still exists. Its allow-list
+ * is gone with it: `UNWRITTEN` held sixteen registered-but-unwritten `sp-icon-*` rows and existed
+ * because a Spectrum component registered icons into its OWN shadow DOM, so an unwritten row could
+ * not be deleted on that evidence. The kit defines an element per DOCUMENT it ships rather than per
+ * import a template happens to make, so a kit tag nothing writes is `@jxsuite/ui`'s business and
+ * not this package's, and the rule now only runs in the direction that can be silent here.
+ *
+ * The old rule 2 — "a registered element `ui/spectrum.ts` never imports, or imports from a package
+ * that is not installed" — is NOT re-aimed, and that is a decision rather than an omission. It
+ * existed because Spectrum's registry was hand-written: a row named a tag, a separate `import`
+ * named a class, and the two could disagree in three ways (a typo, a class from the wrong one of
+ * the two icon packages, an uninstalled dependency), none of which the type checker saw. The kit
+ * moved that seam rather than removing it, and this file is the wrong side of it. `registerUi()`
+ * defines each tag from the document itself, so a tag and a class can no longer disagree — but
+ * `packages/ui/src/documents.ts` is still a hand-written map, and a component whose JSON nothing
+ * imports there ships in the repository, passes every per-document check, and is not an element at
+ * runtime. That is the same failure one step along, and it is gated where it now lives:
+ * `packages/ui/tests/conformance.test.ts`'s "every authored component is a registered document"
+ * holds `components/*.json` and `documents` to the same set, and each key to the tag its document
+ * declares. Re-aiming rule 2 here would mean this script reading another package's registry to
+ * re-prove what that package's own suite proves.
  */
-
 import { fileURLToPath } from "node:url";
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { ICON_NAMES } from "@jxsuite/ui/icons";
+import { KIT_TAGS } from "@jxsuite/ui";
 import { join } from "node:path";
 import { Glob } from "bun";
 
 const STUDIO = fileURLToPath(new URL("..", import.meta.url));
-const MODULES = join(STUDIO, "../../node_modules");
 
 /**
- * Registered elements no template of ours writes — a RATCHETING allow-list, the same idiom
- * `check-styles.ts` uses for its orphan classes, and for a sharper reason than tidiness.
+ * Every `jx-*` TAG a surface document declares, mapped to the documents that declare it.
  *
- * This cannot be a hard rule, because a registration is not always for our own markup: Spectrum
- * components register icons into their OWN shadow DOM. `sp-icon-chevron100` is imported by
- * `@spectrum-web-components/picker`'s `Picker.js` — deleting that row on the evidence that no
- * template of ours writes it would break every picker in the app, which is precisely the shape of
- * mistake this whole file exists to stop making. So the list is seeded with what is here today and
- * may only shrink: a NEW orphan is a failure, an old one is a debt with a name.
- *
- * Retiring one is a two-line change — delete the registry row and delete it here — but check first
- * whether an `sp-*` component imports it.
+ * Only a `tagName` value. A quoted `"jx-icon"` somewhere else is prose or a selector; a name on an
+ * `icon:` key belongs to {@link iconKeysDeclared} — reading either here is the conflation this file
+ * exists to prevent.
  */
-const UNWRITTEN = new Set([
-  "sp-icon-artboard",
-  "sp-icon-brush",
-  "sp-icon-chat",
-  "sp-icon-checkmark",
-  "sp-icon-chevron100",
-  "sp-icon-copy",
-  "sp-icon-distribute-bottom-edge",
-  "sp-icon-distribute-space-vert",
-  "sp-icon-distribute-top-edge",
-  "sp-icon-file-single-web-page",
-  "sp-icon-full-screen",
-  "sp-icon-info",
-  "sp-icon-preview",
-  "sp-icon-properties",
-  "sp-icon-view-list",
-  "sp-icon-visibility",
-]);
-
-/** `sp-icon-rail-right-open` → `IconRailRightOpen`, the module Spectrum names it by. */
-export function elementNameFor(tag: string): string {
-  const words = tag.replace(/^sp-icon-/, "").split("-");
-  return `Icon${words.map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join("")}`;
-}
-
-/**
- * The class each tag is registered with, and the specifier it was imported from.
- *
- * Read from the import rather than derived from the tag, because the elements come from TWO
- * packages — `icons-workflow` for the app's icons and `icons-ui` for a handful of control glyphs
- * like `IconChevron100`. A check that assumed one of them would report the other's as missing,
- * which is a false alarm about a working icon, and the class this file exists to prevent is the
- * opposite one.
- */
-export function iconImports(spectrumSource: string): Map<string, string> {
-  const from = new Map<string, string>();
-  for (const m of spectrumSource.matchAll(
-    /import\s*\{\s*(Icon[A-Za-z0-9]+)\s*\}\s*from\s*"([^"]+)"/g,
-  )) {
-    from.set(m[1]!, m[2]!);
-  }
-  return from;
-}
-
-/**
- * Every `sp-icon-*` TAG a template writes, mapped to the files that write it.
- *
- * Only the `<sp-icon-x` shape. A quoted `"sp-icon-x"` is a resolver key and belongs to
- * {@link iconKeysDeclared} — reading it here is the conflation this file exists to prevent.
- */
-export function iconTagsUsed(root: string): Map<string, string[]> {
+export function kitTagsUsed(root: string): Map<string, string[]> {
   const used = new Map<string, string[]>();
-  for (const rel of new Glob("**/*.ts").scanSync(root)) {
+  for (const rel of new Glob("surfaces/**/*.json").scanSync(root)) {
     const text = readFileSync(join(root, rel), "utf8");
-    for (const m of text.matchAll(/<(sp-icon-[a-z0-9-]+)/g)) {
+    for (const m of text.matchAll(/"tagName":\s*"(jx-[a-z0-9-]+)"/g)) {
       const at = used.get(m[1]!);
       if (at) {
         if (!at.includes(rel)) {
@@ -113,11 +80,6 @@ export function iconTagsUsed(root: string): Map<string, string[]> {
     }
   }
   return used;
-}
-
-/** Every tag `ui/spectrum.ts` registers as an element. */
-export function iconTagsRegistered(spectrumSource: string): Set<string> {
-  return new Set([...spectrumSource.matchAll(/\["(sp-icon-[a-z0-9-]+)",/g)].map((m) => m[1]!));
 }
 
 /**
@@ -176,52 +138,31 @@ export function iconKeysDeclared(root: string): Map<string, string> {
 }
 
 /**
- * The three rules, over stated inputs.
+ * The two rules, over stated inputs.
  *
  * Pure so a test can hand it a registry that is wrong — the shipped tree is correct by
  * construction, so a checker that only ever reads the real files can never exercise the branch that
  * reports a problem, and the branch that reports a problem is the whole point of it.
  */
 export function iconProblems(input: {
-  /** Tag → the files writing `<tag`. */
+  /** Tag → the documents declaring it as a `tagName`. */
   tags: Map<string, string[]>;
-  /** Tags `ui/spectrum.ts` maps to an element. */
+  /** The tags `registerKit()` will define — `KIT_TAGS`. */
   registered: Set<string>;
-  /** Element name → the specifier it is imported from. */
-  imported: Map<string, string>;
   /** The glyph names the kit's manifest carries. */
   rows: Set<string>;
   /** Panel-record key → where it is declared. */
   keys: Map<string, string>;
-  /** Whether a specifier resolves to a file on disk. */
-  installed: (specifier: string) => boolean;
 }): string[] {
-  const { imported, installed, keys, registered, rows, tags } = input;
+  const { keys, registered, rows, tags } = input;
   const problems: string[] = [];
 
   for (const [tag, files] of [...tags].toSorted(([a], [b]) => a.localeCompare(b))) {
     if (!registered.has(tag)) {
       problems.push(
-        `<${tag}> is written by ${files.join(", ")} and ui/spectrum.ts registers no such ` +
-          `element — it renders as an empty box`,
-      );
-    }
-  }
-
-  for (const tag of [...registered].toSorted()) {
-    const element = elementNameFor(tag);
-    const specifier = imported.get(element);
-    if (!specifier) {
-      problems.push(`${tag} maps to ${element}, which ui/spectrum.ts never imports`);
-      continue;
-    }
-    if (!installed(specifier)) {
-      problems.push(`${tag} imports ${specifier}, which is not installed`);
-    }
-    if (!tags.has(tag) && !UNWRITTEN.has(tag)) {
-      problems.push(
-        `${tag} is registered as an element and no template writes <${tag}> — delete the row, ` +
-          `or add the tag to UNWRITTEN in this file with the component that needs it`,
+        `<${tag}> is declared by ${files.join(", ")} and the kit defines no such element — ` +
+          `it renders as an empty box (add the component to packages/ui/components/, or name ` +
+          `one the kit ships)`,
       );
     }
   }
@@ -246,14 +187,11 @@ export function iconProblems(input: {
  */
 export function checkIcons(): { problems: string[]; tagCount: number; keyCount: number } {
   const src = join(STUDIO, "src");
-  const tags = iconTagsUsed(src);
+  const tags = kitTagsUsed(src);
   const keys = iconKeysDeclared(src);
-  const spectrum = readFileSync(join(src, "ui/spectrum.ts"), "utf8");
   const problems = iconProblems({
-    imported: iconImports(spectrum),
-    installed: (specifier) => existsSync(join(MODULES, specifier)),
     keys,
-    registered: iconTagsRegistered(spectrum),
+    registered: new Set(KIT_TAGS),
     rows: manifestNames(),
     tags,
   });
@@ -274,17 +212,16 @@ export function report(problems: string[], tagCount: number, keyCount: number): 
       console.error(`   ${line}`);
     }
     console.error(
-      "\n   Two key spaces, two fixes. A TAG (`<sp-icon-x>`) needs a row in `src/ui/spectrum.ts`,\n" +
-        "   and the element has to be one Spectrum ships — it has `rail-right-open`/`close` and no\n" +
-        '   left-hand pair, and no Git family at all. A KEY (`icon: "sp-icon-x"` on a panel record)\n' +
-        "   needs a glyph in the kit's manifest (packages/ui/icons/list.json); registering an element does\n" +
-        "   NOT help, because a key that misses returns `nothing` before any tag is constructed.\n",
+      '\n   Two key spaces, two fixes. A TAG (`"tagName": "jx-x"` in a surface document) needs a\n' +
+        "   component document in `packages/ui/components/` — the kit defines one element per\n" +
+        '   document it ships. A KEY (`icon: "x"` on a panel record) needs a glyph in the\n' +
+        "   kit's manifest (packages/ui/icons/list.json, then `bun run build:icons`); defining an\n" +
+        "   element does NOT help, because a key that misses returns `nothing` before any tag is\n" +
+        "   constructed.\n",
     );
     return 1;
   }
-  console.log(
-    `✓ check-icons: ${tagCount} tag(s) registered and shipped, ${keyCount} panel key(s) resolved.`,
-  );
+  console.log(`✓ check-icons: ${tagCount} kit tag(s) defined, ${keyCount} panel key(s) resolved.`);
   return 0;
 }
 
