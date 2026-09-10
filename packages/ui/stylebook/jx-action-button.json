@@ -11,6 +11,9 @@
     },
     {
       "$ref": "../components/jx-action-button.json"
+    },
+    {
+      "$ref": "../components/jx-toolbar.json"
     }
   ],
   "state": {
@@ -68,10 +71,9 @@
       "textContent": "Icon-first tool buttons: quiet in a toolbar, a toggle with aria-pressed, an emphasized selection, a text-and-icon form, and a segmented radiogroup whose selection the HOST owns — one checked segment both announces itself and is drawn selected, tabindex roves, and the button never flips itself. Bold is ${state.bold ? 'on' : 'off'}."
     },
     {
-      "tagName": "div",
-      "attributes": {
-        "role": "toolbar",
-        "aria-label": "Formatting"
+      "tagName": "jx-toolbar",
+      "$props": {
+        "label": "Formatting"
       },
       "children": [
         {
@@ -112,10 +114,9 @@
       ]
     },
     {
-      "tagName": "div",
-      "attributes": {
-        "role": "toolbar",
-        "aria-label": "Emphasized and sized"
+      "tagName": "jx-toolbar",
+      "$props": {
+        "label": "Emphasized and sized"
       },
       "children": [
         {
@@ -223,10 +224,9 @@
       ]
     },
     {
-      "tagName": "div",
-      "attributes": {
-        "role": "toolbar",
-        "aria-label": "Working, and named from elsewhere"
+      "tagName": "jx-toolbar",
+      "$props": {
+        "label": "Working, and named from elsewhere"
       },
       "children": [
         {

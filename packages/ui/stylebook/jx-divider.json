@@ -5,7 +5,8 @@
   "$elements": [
     { "$ref": "../components/jx-icon.json" },
     { "$ref": "../components/jx-divider.json" },
-    { "$ref": "../components/jx-action-button.json" }
+    { "$ref": "../components/jx-action-button.json" },
+    { "$ref": "../components/jx-toolbar.json" }
   ],
   "style": {
     "fontFamily": "var(--jx-font-sans)",
@@ -70,11 +71,12 @@
       ]
     },
     {
-      "tagName": "div",
+      "tagName": "jx-toolbar",
+      "$props": {
+        "label": "Vertical, between tool groups"
+      },
       "attributes": {
-        "data-toolbar": "",
-        "role": "toolbar",
-        "aria-label": "Vertical, between tool groups"
+        "data-toolbar": ""
       },
       "children": [
         { "tagName": "jx-action-button", "$props": { "icon": "arrow-u-up-left", "label": "Undo" } },
@@ -93,11 +95,12 @@
       "textContent": "hidden removes the hairline AND its advance, in either orientation. The host declares a display of its own, so it re-states the hiding the UA rule would otherwise have done. The vertical branch declares one too, which is why there is a second, more specific rule for it."
     },
     {
-      "tagName": "div",
+      "tagName": "jx-toolbar",
+      "$props": {
+        "label": "Hidden, between the same two buttons"
+      },
       "attributes": {
-        "data-toolbar": "",
-        "role": "toolbar",
-        "aria-label": "Hidden, between the same two buttons"
+        "data-toolbar": ""
       },
       "children": [
         { "tagName": "jx-action-button", "$props": { "icon": "arrow-u-up-left", "label": "Undo" } },

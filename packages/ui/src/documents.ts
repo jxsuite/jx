@@ -28,6 +28,7 @@ import jxListbox from "../components/jx-listbox.json";
 import jxOption from "../components/jx-option.json";
 import jxSelect from "../components/jx-select.json";
 import jxSpinner from "../components/jx-spinner.json";
+import jxSplit from "../components/jx-split.json";
 import jxTooltip from "../components/jx-tooltip.json";
 import jxNumberField from "../components/jx-number-field.json";
 import jxSwatch from "../components/jx-swatch.json";
@@ -41,6 +42,7 @@ import jxToast from "../components/jx-toast.json";
 import jxTree from "../components/jx-tree.json";
 import jxTreeItem from "../components/jx-tree-item.json";
 import jxToastHost from "../components/jx-toast-host.json";
+import jxToolbar from "../components/jx-toolbar.json";
 
 /** Tag name → document, in registration order (a document's `$elements` come before it). */
 export const documents: Readonly<Record<string, JxDocument>> = {
@@ -61,6 +63,7 @@ export const documents: Readonly<Record<string, JxDocument>> = {
   "jx-listbox": jxListbox as unknown as JxDocument,
   "jx-combobox": jxCombobox as unknown as JxDocument,
   "jx-action-group": jxActionGroup as unknown as JxDocument,
+  "jx-toolbar": jxToolbar as unknown as JxDocument,
   "jx-tab": jxTab as unknown as JxDocument,
   "jx-tab-panel": jxTabPanel as unknown as JxDocument,
   "jx-tabs": jxTabs as unknown as JxDocument,
@@ -69,6 +72,7 @@ export const documents: Readonly<Record<string, JxDocument>> = {
   "jx-accordion-item": jxAccordionItem as unknown as JxDocument,
   "jx-accordion": jxAccordion as unknown as JxDocument,
   "jx-divider": jxDivider as unknown as JxDocument,
+  "jx-split": jxSplit as unknown as JxDocument,
   "jx-kbd": jxKbd as unknown as JxDocument,
   "jx-dot": jxDot as unknown as JxDocument,
   "jx-field": jxField as unknown as JxDocument,

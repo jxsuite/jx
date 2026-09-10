@@ -1,0 +1,342 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StylebookToolbar",
+  "tagName": "main",
+  "$elements": [
+    {
+      "$ref": "../components/jx-icon.json"
+    },
+    {
+      "$ref": "../components/jx-spinner.json"
+    },
+    {
+      "$ref": "../components/jx-button.json"
+    },
+    {
+      "$ref": "../components/jx-action-button.json"
+    },
+    {
+      "$ref": "../components/jx-action-group.json"
+    },
+    {
+      "$ref": "../components/jx-divider.json"
+    },
+    {
+      "$ref": "../components/jx-textfield.json"
+    },
+    {
+      "$ref": "../components/jx-toolbar.json"
+    }
+  ],
+  "state": {
+    "filter": "",
+    "setFilter": {
+      "$prototype": "Function",
+      "body": [
+        {
+          "operator": "=",
+          "target": {
+            "$ref": "#/state/filter"
+          },
+          "value": {
+            "$ref": "event#/target/value"
+          }
+        }
+      ]
+    },
+    "last": "nothing yet",
+    "did": {
+      "$prototype": "Function",
+      "body": [
+        {
+          "operator": "=",
+          "target": {
+            "$ref": "#/state/last"
+          },
+          "value": {
+            "$ref": "event#/currentTarget/dataset/verb"
+          }
+        }
+      ]
+    }
+  },
+  "style": {
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "color": "var(--jx-fg)",
+    "background": "var(--jx-bg)",
+    "padding": "var(--jx-space-6)",
+    "minHeight": "100vh",
+    "& > h1": {
+      "fontSize": "var(--jx-text-lg)",
+      "fontWeight": "600",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& > h2": {
+      "fontSize": "var(--jx-text-md)",
+      "fontWeight": "600",
+      "color": "var(--jx-fg-dim)",
+      "margin": "var(--jx-space-5) 0 var(--jx-space-2)"
+    },
+    "& > p": {
+      "color": "var(--jx-fg-dim)",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& > div": {
+      "margin": "0 0 var(--jx-space-4)",
+      "border": "1px solid var(--jx-border)",
+      "borderRadius": "var(--jx-radius-sm)",
+      "background": "var(--jx-bg-panel)"
+    },
+    "& jx-toolbar": {
+      "padding": "var(--jx-space-2) var(--jx-space-3)"
+    },
+    "& [part=\"filter\"]": {
+      "width": "180px",
+      "flex": "0 0 auto"
+    },
+    "& [part=\"spacer\"]": {
+      "flex": "1"
+    },
+    "& [part=\"count\"]": {
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--jx-fg-dim)",
+      "whiteSpace": "nowrap"
+    },
+    "& > div[data-vertical]": {
+      "width": "max-content"
+    }
+  },
+  "children": [
+    {
+      "tagName": "h1",
+      "textContent": "jx-toolbar"
+    },
+    {
+      "tagName": "p",
+      "textContent": "A container of ARBITRARY controls with one tab stop. jx-action-group is a row of action buttons that may be joined into a segmented control; this is the element for a row that also holds a text field, a divider and a plain button, which is what every real toolbar turns out to be. Arrows move between the controls, Home and End reach the ends — and the filter field below keeps those keys for itself while its caret still has text to walk, so you arrow in, type, and arrow out again with the same key. Last verb pressed: ${state.last}."
+    },
+    {
+      "tagName": "h2",
+      "textContent": "A mixed row — the shape Studio's grid toolbar has"
+    },
+    {
+      "tagName": "div",
+      "children": [
+        {
+          "tagName": "jx-toolbar",
+          "$props": {
+            "label": "Grid actions"
+          },
+          "children": [
+            {
+              "tagName": "jx-button",
+              "$props": {
+                "variant": "accent",
+                "size": "sm",
+                "label": "Save"
+              },
+              "attributes": {
+                "data-verb": "save"
+              },
+              "onclick": {
+                "$ref": "#/state/did"
+              },
+              "children": [
+                {
+                  "tagName": "span",
+                  "textContent": "Save"
+                }
+              ]
+            },
+            {
+              "tagName": "jx-action-button",
+              "$props": {
+                "size": "sm",
+                "label": "Refresh",
+                "hint": "Reload from source",
+                "icon": "arrows-clockwise"
+              },
+              "attributes": {
+                "data-verb": "refresh"
+              },
+              "onclick": {
+                "$ref": "#/state/did"
+              }
+            },
+            {
+              "tagName": "jx-divider",
+              "$props": {
+                "orientation": "vertical"
+              }
+            },
+            {
+              "tagName": "jx-action-button",
+              "$props": {
+                "size": "sm",
+                "label": "Add row",
+                "hint": "Add a row",
+                "icon": "plus"
+              },
+              "attributes": {
+                "data-verb": "add"
+              },
+              "onclick": {
+                "$ref": "#/state/did"
+              }
+            },
+            {
+              "tagName": "jx-action-button",
+              "$props": {
+                "size": "sm",
+                "label": "Delete rows",
+                "hint": "Nothing is selected",
+                "icon": "trash",
+                "disabled": true
+              }
+            },
+            {
+              "tagName": "jx-textfield",
+              "attributes": {
+                "part": "filter"
+              },
+              "$props": {
+                "size": "sm",
+                "type": "search",
+                "clearable": true,
+                "label": "Filter rows",
+                "placeholder": "Filter rows",
+                "value": {
+                  "$ref": "#/state/filter"
+                }
+              },
+              "oninput": {
+                "$ref": "#/state/setFilter"
+              }
+            },
+            {
+              "tagName": "span",
+              "attributes": {
+                "part": "spacer"
+              }
+            },
+            {
+              "tagName": "span",
+              "attributes": {
+                "part": "count"
+              },
+              "textContent": "filter: ${state.filter || '—'}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tagName": "h2",
+      "textContent": "orientation=\"vertical\""
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "data-vertical": ""
+      },
+      "children": [
+        {
+          "tagName": "jx-toolbar",
+          "$props": {
+            "label": "Node actions",
+            "orientation": "vertical"
+          },
+          "children": [
+            {
+              "tagName": "jx-action-button",
+              "$props": {
+                "size": "sm",
+                "stacked": true,
+                "label": "Move up",
+                "icon": "arrow-up"
+              },
+              "attributes": {
+                "data-verb": "up"
+              },
+              "onclick": {
+                "$ref": "#/state/did"
+              }
+            },
+            {
+              "tagName": "jx-action-button",
+              "$props": {
+                "size": "sm",
+                "stacked": true,
+                "label": "Move down",
+                "icon": "arrow-down"
+              },
+              "attributes": {
+                "data-verb": "down"
+              },
+              "onclick": {
+                "$ref": "#/state/did"
+              }
+            },
+            {
+              "tagName": "jx-action-button",
+              "$props": {
+                "size": "sm",
+                "stacked": true,
+                "label": "Duplicate",
+                "icon": "copy"
+              },
+              "attributes": {
+                "data-verb": "duplicate"
+              },
+              "onclick": {
+                "$ref": "#/state/did"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tagName": "h2",
+      "textContent": "What a toolbar does NOT rove"
+    },
+    {
+      "tagName": "p",
+      "textContent": "A jx-action-group runs a roving caret of its own, so it stands BESIDE a toolbar rather than inside one: two carets over one set of buttons is two writers of the same tabindex, and they do not agree. The group below is its own single tab stop, exactly as it is anywhere else."
+    },
+    {
+      "tagName": "div",
+      "children": [
+        {
+          "tagName": "jx-action-group",
+          "$props": {
+            "label": "Text style"
+          },
+          "children": [
+            {
+              "tagName": "jx-action-button",
+              "$props": {
+                "label": "Bold",
+                "hint": "Bold",
+                "icon": "text-b",
+                "quiet": false,
+                "toggles": true
+              }
+            },
+            {
+              "tagName": "jx-action-button",
+              "$props": {
+                "label": "Italic",
+                "hint": "Italic",
+                "icon": "text-italic",
+                "quiet": false,
+                "toggles": true
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

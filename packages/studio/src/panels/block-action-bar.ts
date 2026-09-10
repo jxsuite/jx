@@ -197,18 +197,13 @@ function repositionBlockActionBar(): void {
     applyBarView({ ..._view, offscreen: true });
     return;
   }
-  applyBarView({ ..._view, anchorVars: anchorVars(pos), offscreen: false });
+  applyBarView({ ..._view, barX: pos.left, barY: pos.top, offscreen: false });
   requestAnimationFrame(() => {
     const bar = surface.bar();
     if (bar) {
       clampBarToWindow(bar);
     }
   });
-}
-
-/** The bar's position as the two custom properties `block-action-bar.json` reads. */
-function anchorVars(pos: { left: number; top: number }): string {
-  return `--jx-bar-x: ${pos.left}px; --jx-bar-y: ${pos.top}px`;
 }
 
 /**
@@ -247,12 +242,20 @@ function barPosition(anchor: {
  *
  * A measurement and a write of the value it measured, which is why it stays imperative and stays
  * here: the bar's own box is the input, and no projection can carry a number that depends on the
- * layout the projection produced. It writes the same custom property the document's `left` reads,
- * so the next repaint that re-projects `anchorVars` overwrites it rather than fighting it.
+ * layout the projection produced. It writes the same custom property the document's `left` reads.
+ *
+ * **It releases its own previous write before measuring, and that is load-bearing.** The projected
+ * position is set on the document's ROOT and reaches the bar by inheritance, while this override is
+ * set on the bar itself — and a value an element carries always beats one it inherits, at every
+ * specificity. So a clamp that was never released would pin the bar at the right edge for the rest
+ * of the session, and every later `barX` would be projected into a variable nothing reads. Removing
+ * it first also makes the measurement the right one: the box is read at the position the projection
+ * asked for, rather than at the position the last clamp left it in.
  *
  * @param {HTMLElement} bar
  */
 function clampBarToWindow(bar: HTMLElement): void {
+  bar.style.removeProperty("--jx-bar-x");
   const barRect = rectOf(bar);
   if (barRect.right > window.innerWidth) {
     bar.style.setProperty("--jx-bar-x", `${Math.max(0, window.innerWidth - barRect.width)}px`);
@@ -1411,7 +1414,8 @@ function projectBar(): BlockBarView | null {
   const canDrag = structuralTarget(selection) !== null;
 
   return {
-    anchorVars: anchorVars(pos),
+    barX: pos.left,
+    barY: pos.top,
     canDrag,
     dragHint: canDrag ? "Drag to reorder" : "Drag to reorder — the document root cannot move",
     formats,

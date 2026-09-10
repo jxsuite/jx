@@ -134,6 +134,7 @@ interface Mounted {
   changes: { detail: string; current: string }[];
   selects: { value: string; mode: string; anchor: string }[];
   moves: { from: string; key: string }[];
+  seeks: { from: string; char: string }[];
   expands: { value: string; expanded: boolean }[];
   activates: string[];
   toggles: string[];
@@ -148,6 +149,7 @@ async function render(doc: JxDocument): Promise<Mounted> {
   const changes: { detail: string; current: string }[] = [];
   const selects: { value: string; mode: string; anchor: string }[] = [];
   const moves: { from: string; key: string }[] = [];
+  const seeks: { from: string; char: string }[] = [];
   const expands: { value: string; expanded: boolean }[] = [];
   const activates: string[] = [];
   const toggles: string[] = [];
@@ -164,6 +166,9 @@ async function render(doc: JxDocument): Promise<Mounted> {
   });
   host.addEventListener("move", (e) => {
     moves.push((e as CustomEvent).detail as { from: string; key: string });
+  });
+  host.addEventListener("typeahead", (e) => {
+    seeks.push((e as CustomEvent).detail as { from: string; char: string });
   });
   host.addEventListener("expand", (e) => {
     expands.push((e as CustomEvent).detail as { value: string; expanded: boolean });
@@ -183,6 +188,7 @@ async function render(doc: JxDocument): Promise<Mounted> {
     host,
     moves,
     rows: itemsOf(tree) as ItemEl[],
+    seeks,
     selects,
     toggles,
     tree,
@@ -405,6 +411,78 @@ describe("jx-tree", () => {
     expect(tree.current).toBe("body");
     key(tree, "z");
     expect(tree.current).toBe("body");
+  });
+
+  test("a windowed tree asks the HOST for the letter, and answers none of them itself", async () => {
+    /*
+     * The gap this closed. `typeaheadHit` searches the drawn rows and wraps INSIDE them, so over a
+     * five-thousand-row model `h` reached whichever of the six painted rows started with `h` and
+     * called that the tree's next match. Unlike a move that runs off the end of the slice, the
+     * element cannot DISCOVER that: the search always answers, and the answer is simply the wrong
+     * row. So the pad is consulted before the rows — the order Home and End already use — and every
+     * printable character is dispatched.
+     */
+    const { tree, rows, seeks, changes } = await render(
+      treeDoc({ current: "footer", padbottom: 18_480, padtop: 960 }),
+    );
+    enter(rows);
+    const before = changes.length;
+
+    // `h` names TWO drawn rows. The element still refuses to pick one.
+    key(tree, "h");
+    expect(seeks).toEqual([{ char: "h", from: "footer" }]);
+    expect(tree.current).toBe("footer");
+    expect(changes).toHaveLength(before);
+
+    // Including a letter no drawn row starts with, and including a capital, lowercased.
+    key(tree, "z");
+    expect(seeks.at(-1)).toEqual({ char: "z", from: "footer" });
+    key(tree, "P", { shift: true });
+    expect(seeks.at(-1)).toEqual({ char: "p", from: "footer" });
+    expect(tree.current).toBe("footer");
+
+    // The host answers by writing `current`, exactly as it answers `move`.
+    tree.current = "prose";
+    await flush();
+    key(tree, "b");
+    expect(seeks.at(-1)).toEqual({ char: "b", from: "prose" });
+  });
+
+  test("ONE pad is enough: a tree scrolled to either end is still windowed", async () => {
+    /* The state a tree spends most of its life in. At the top `padtop` is zero and the model still
+       continues below; at the bottom the reverse. Reading "windowed" as both pads at once would let
+       the letter be resolved over the slice in exactly the two positions a reader reaches first. */
+    const top = await render(treeDoc({ current: "body", padbottom: 18_480 }));
+    key(top.tree, "h");
+    expect(top.seeks).toEqual([{ char: "h", from: "body" }]);
+    expect(top.tree.current).toBe("body");
+    dispose?.();
+
+    const bottom = await render(treeDoc({ current: "footer", padtop: 18_480 }));
+    key(bottom.tree, "h");
+    expect(bottom.seeks).toEqual([{ char: "h", from: "footer" }]);
+    expect(bottom.tree.current).toBe("footer");
+  });
+
+  test("with no pad the same letter is resolved here, and the host is asked nothing", async () => {
+    // The slice IS the model, so the element's own search is the right answer rather than a guess.
+    const { tree, rows, seeks } = await render(treeDoc());
+    enter(rows);
+    key(tree, "h");
+    expect(tree.current).toBe("header");
+    expect(seeks).toEqual([]);
+  });
+
+  test("a chord is never a typeahead letter, windowed or not", async () => {
+    // The WCAG 2.5.7 pass-through, checked on the branch that now dispatches: `Ctrl`+`X` must
+    // Neither move the caret nor be announced to the host as the letter `x`.
+    const { tree, rows, seeks } = await render(
+      treeDoc({ current: "footer", padbottom: 18_480, padtop: 960 }),
+    );
+    enter(rows);
+    const event = key(tree, "x", { ctrl: true });
+    expect(seeks).toEqual([]);
+    expect(event.defaultPrevented).toBe(false);
   });
 
   test("selection follows the caret, and the modifiers say what the reader meant", async () => {

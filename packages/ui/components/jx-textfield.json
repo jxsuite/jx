@@ -138,6 +138,11 @@
       "attribute": "autocomplete",
       "description": "The autocomplete purpose, forwarded to the control."
     },
+    "tabindex": {
+      "type": "string",
+      "default": "",
+      "description": "Forwarded to the inner control as its tabindex, which is what makes a roving caret possible: the focusable node is the control inside, not the host, so a jx-toolbar moving focus writes this rather than reaching into a child's internals. It is a PROPERTY ONLY (el.tabindex = \"0\") and deliberately not an observed attribute: written as an attribute it would land on the host as well, and a host carrying tabindex is itself focusable, so the one control would become two tab stops. The clear button is NOT given it: it is already tabindex=\"-1\" by construction, so the field is one stop whatever the toolbar writes."
+    },
     "error": {
       "type": "string",
       "default": "",
@@ -508,6 +513,7 @@
             "aria-labelledby": "${state.labelledby || null}",
             "aria-describedby": "${[state.hasError && state.uid ? state.uid + '-error' : null, state.hasHelp && state.uid ? state.uid + '-help' : null, state.describedby || null].filter(Boolean).join(' ') || null}",
             "aria-invalid": "${state.invalid ? 'true' : null}",
+            "tabindex": "${state.tabindex || null}",
             "name": "${state.name || null}",
             "autocomplete": "${state.autocomplete || null}",
             "disabled": {
@@ -538,6 +544,7 @@
             "aria-labelledby": "${state.labelledby || null}",
             "aria-describedby": "${[state.hasError && state.uid ? state.uid + '-error' : null, state.hasHelp && state.uid ? state.uid + '-help' : null, state.describedby || null].filter(Boolean).join(' ') || null}",
             "aria-invalid": "${state.invalid ? 'true' : null}",
+            "tabindex": "${state.tabindex || null}",
             "name": "${state.name || null}",
             "autocomplete": "${state.autocomplete || null}",
             "disabled": {

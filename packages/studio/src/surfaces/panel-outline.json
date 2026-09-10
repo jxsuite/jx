@@ -240,6 +240,26 @@
         ],
         "description": "The caret has to reach a row the window did not draw. The element knows only that the pad on that side is not zero; where the row is in the model, and how far to scroll to bring it into view, is the panel's."
       },
+      "ontypeahead": {
+        "$prototype": "Function",
+        "body": [
+          {
+            "operator": "call",
+            "target": {
+              "$ref": "#/state/typeahead"
+            },
+            "value": [
+              {
+                "$ref": "event#/detail/from"
+              },
+              {
+                "$ref": "event#/detail/char"
+              }
+            ]
+          }
+        ],
+        "description": "A printable character, on a windowed tree. The same hand-off as `onmove` and for a sharper reason: a move off the end of the slice announces itself, and a letter never does — the element's own search over the drawn rows always answers, and in a five-thousand-node document the answer is whichever of the twenty painted rows happened to start with that letter. So the element dispatches EVERY such character and the panel answers it over the model."
+      },
       "children": [
         {
           "tagName": "div",

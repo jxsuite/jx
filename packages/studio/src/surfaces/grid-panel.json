@@ -17,9 +17,7 @@
     "fontSize": "var(--jx-text-md)",
     "color": "var(--fg)",
     "& [part=\"toolbar\"]": {
-      "display": "flex",
-      "alignItems": "center",
-      "gap": "var(--jx-space-2)",
+      "$description": "The band the toolbar sits in, and nothing about the row itself: `display: flex`, `align-items: center` and the `--jx-space-2` gap left with the `<div>` that used to carry them, because `jx-toolbar` declares all three in its own definition. What is left is what a BAND is — its inset, its hairline, its panel fill, and its refusal to shrink.",
       "padding": "6px var(--jx-space-3)",
       "borderBottom": "1px solid var(--border)",
       "background": "var(--bg-panel)",
@@ -191,11 +189,13 @@
           },
           "children": [
             {
-              "tagName": "div",
+              "tagName": "jx-toolbar",
+              "$description": "The kit's toolbar, which is what the four lines this node used to carry have become: a hand-written `role=\"toolbar\"`, a hand-written `aria-label`, no tab-order collapse at all, and no arrow keys. `jx-action-group` could not be it — that element roves `jx-action-button` and nothing else, and this row holds a `jx-button`, a `jx-divider` and the filter `jx-textfield` beside its action buttons, so it would have found two of the controls and left the rest as five more tab stops. The field keeps its own arrows while its caret has text to walk, which is the one thing that makes a text box legal in a toolbar at all (ui.md §5.5).",
               "attributes": {
-                "part": "toolbar",
-                "role": "toolbar",
-                "aria-label": "Grid actions"
+                "part": "toolbar"
+              },
+              "$props": {
+                "label": "Grid actions"
               },
               "children": [
                 {

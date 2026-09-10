@@ -1,0 +1,81 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "JxToolbar",
+  "tagName": "jx-toolbar",
+  "observedAttributes": ["label", "orientation"],
+  "state": {
+    "label": {
+      "type": "string",
+      "default": "",
+      "attribute": "label",
+      "description": "The accessible name of the toolbar, and it is not optional in practice: a toolbar is a container a reader is told they have entered, and an unnamed one is announced by its role alone. toolbar is in neither of the accessibility lint's named-role sets, so nothing lints its absence — the element's own test pins it instead, and so does every surface that mounts one."
+    },
+    "orientation": {
+      "type": "string",
+      "default": "horizontal",
+      "attribute": "orientation",
+      "description": "horizontal or vertical. It chooses which arrow pair moves the caret between controls, and it turns the row through 90 degrees off aria-orientation — which role=toolbar both supports and defaults to horizontal, so unlike jx-action-group there is no second data- attribute to key the layout on."
+    },
+    "onKeydown": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/toolbar.ts",
+      "$export": "onToolbarKeydown",
+      "description": "The toolbar keyboard contract: the arrow pair of its own axis moves the roving caret between reachable controls with wrap, Home and End go to the ends, and a control that answers the key itself keeps it — a text field holds the arrows while its caret has text left to walk in that direction, and holds Home and End always."
+    },
+    "onReady": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/toolbar.ts",
+      "$export": "onToolbarReady",
+      "description": "Collapses the toolbar to one tab stop once it has rendered, and keeps it collapsed to one as controls come and go. It listens for the element's own jx-ready because onMount is handed the reactive scope alone, and placing a caret needs the host."
+    },
+    "onMount": {
+      "$prototype": "Function",
+      "body": [
+        {
+          "dispatchEvent": "jx-ready",
+          "bubbles": true
+        }
+      ],
+      "emits": [
+        {
+          "name": "jx-ready",
+          "description": "The toolbar has rendered and distributed its children, so its caret can be placed."
+        }
+      ],
+      "description": "Announces that the element has rendered. The toolbar's own onReady listens for it, and a host may too."
+    }
+  },
+  "attributes": {
+    "role": "toolbar",
+    "aria-label": "${state.label || null}",
+    "aria-orientation": "${state.orientation}"
+  },
+  "onkeydown": {
+    "$ref": "#/state/onKeydown"
+  },
+  "onjx-ready": {
+    "$ref": "#/state/onReady"
+  },
+  "style": {
+    "display": "flex",
+    "&[hidden]": {
+      "display": "none"
+    },
+    "boxSizing": "border-box",
+    "alignItems": "center",
+    "gap": "var(--jx-space-2)",
+    "minWidth": "0",
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "color": "var(--jx-fg)",
+    "&[aria-orientation=\"vertical\"]": {
+      "flexDirection": "column",
+      "alignItems": "stretch"
+    }
+  },
+  "children": [
+    {
+      "tagName": "slot"
+    }
+  ]
+}

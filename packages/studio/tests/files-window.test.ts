@@ -318,6 +318,52 @@ describe("the keyboard walks the model", () => {
     expect(scroller.scrollTop).toBe(top);
     expect((document.activeElement as HTMLElement).dataset.value).toBe(lastPath);
   });
+
+  test("a letter reaches a row two hundred above the window, not one of the eleven drawn", async () => {
+    /*
+     * The gap this closed. `jx-tree`'s own typeahead searches the DRAWN rows and wraps inside them,
+     * so over three hundred rows a letter reached whichever of the eleven painted rows started with
+     * it and called that the tree's next match. Unlike a move off the end of the slice the element
+     * cannot discover the mistake: the search always answers, and the answer is simply the wrong
+     * row. So a windowed tree dispatches every printable character and the flow resolves it here.
+     *
+     * `index.json` is row 1 of 303 and is the only row in the project whose name starts with `i`.
+     * From row 150 it is a hundred and fifty rows above the window: unreachable by the element under
+     * any implementation that looks at elements.
+     */
+    await scrollTo(FILE_ROW_HEIGHT * 150);
+    const first = rows()[0]!;
+    expect(rowFor("pages/index.json")).toBeNull();
+    first.focus();
+
+    first.dispatchEvent(
+      new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "i" }),
+    );
+    await flush();
+    await flush();
+
+    expect(rowFor("pages/index.json")).not.toBeNull();
+    expect((document.activeElement as HTMLElement).dataset.value).toBe("pages/index.json");
+    // Selection follows the caret, exactly as it does for a `move` the window could not satisfy.
+    expect(rowFor("pages/index.json")!.getAttribute("aria-selected")).toBe("true");
+  });
+
+  test("a letter no row in the MODEL starts with moves nothing", async () => {
+    await scrollTo(FILE_ROW_HEIGHT * 150);
+    const first = rows()[0]!;
+    const at = first.dataset.value;
+    const top = scroller.scrollTop;
+    first.focus();
+
+    first.dispatchEvent(
+      new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "q" }),
+    );
+    await flush();
+    await flush();
+
+    expect(scroller.scrollTop).toBe(top);
+    expect((document.activeElement as HTMLElement).dataset.value).toBe(at);
+  });
 });
 
 describe("← climbs to a parent the window is not drawing", () => {

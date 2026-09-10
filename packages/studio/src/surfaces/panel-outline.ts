@@ -170,6 +170,15 @@ export interface OutlineActions {
    * three levels up — and so is answered by the panel.
    */
   move: (from: string, keyName: string) => void;
+  /**
+   * A letter has to be resolved against a model the window did not draw.
+   *
+   * Dispatched for every printable character while the tree is windowed — not only when the drawn
+   * rows hold no match, because a search over a slice always answers and the answer is the wrong
+   * row. Which row the model's next `char` after `from` is, is the panel's question, and so is
+   * whether the row is a tree item at all.
+   */
+  typeahead: (from: string, char: string) => void;
   /** The pointer entered a row, and left the tree. */
   hover: (key: string) => void;
   hoverOut: () => void;
@@ -267,6 +276,7 @@ export function mountOutlineSurface(
     runRow: actions.runRow,
     select: actions.select,
     treeReady: actions.treeReady,
+    typeahead: actions.typeahead,
     view: "empty",
   }) as OutlineScope;
   project(scope, values);

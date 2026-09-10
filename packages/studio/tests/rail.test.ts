@@ -191,10 +191,22 @@ describe("renderActivityBar", () => {
   });
 
   test("the two groups are named and separated by exactly one divider", async () => {
+    /* The divider is `jx-divider` rather than an `<hr role="separator">` this document writes. The
+       rail hand-rolled the one pattern the kit already ships — a hairline that announces itself —
+       and the ONLY thing it actually owned was where the line sits, which is what its style rule
+       still says. Counting the element rather than the `<hr>` is what makes this an assertion about
+       the collapse: the inner rule is the element's, so an `<hr>` count would go on passing if the
+       surface went back to writing its own. */
     await render();
     const groups = [...bar().querySelectorAll('[role="group"]')];
     expect(groups.map((g) => g.getAttribute("aria-label"))).toEqual(["Project", "Document"]);
+    const dividers = [...bar().querySelectorAll("jx-divider")];
+    expect(dividers).toHaveLength(1);
     expect(bar().querySelectorAll("hr")).toHaveLength(1);
+    // And the announcement comes from the ELEMENT, which is the whole reason the surface can drop it.
+    expect(dividers[0]!.querySelector("hr")?.getAttribute("role")).toBe("separator");
+    // Nothing in the rail writes a separator role of its own any more.
+    expect(bar().querySelectorAll('[role="separator"]')).toHaveLength(1);
   });
 
   test("every rail button carries a visible text label, which is also its accessible name", async () => {

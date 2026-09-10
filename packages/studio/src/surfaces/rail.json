@@ -19,11 +19,9 @@
       "display": "flex",
       "flexDirection": "column"
     },
-    "& hr": {
-      "height": "1px",
-      "margin": "var(--jx-space-3) var(--jx-space-4)",
-      "border": "0",
-      "background": "var(--jx-border)"
+    "& jx-divider": {
+      "$description": "The element draws the hairline and announces it; what the rail owns is where it sits. The rule outranks `jx-divider`'s own margin by one element in the selector, which is the sanctioned way a host retunes a kit element (ui.md §3.2) and the reason the divider's spacing is on its HOST rather than on the rule inside it.",
+      "margin": "var(--jx-space-3) var(--jx-space-4)"
     },
     "& > [part=\"foot\"]": {
       "marginTop": "auto",
@@ -85,10 +83,7 @@
                 },
                 "cases": {
                   "true": {
-                    "tagName": "hr",
-                    "attributes": {
-                      "role": "separator"
-                    }
+                    "tagName": "jx-divider"
                   }
                 }
               },

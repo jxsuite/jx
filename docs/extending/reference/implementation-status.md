@@ -27,11 +27,11 @@ This page is generated from the `> **Status: …**` markers in the specification
 | `schema.md`               | 0.4.9-draft  | Partial     | 2026-09-02 |
 | `server.md`               | 0.2.23       | Implemented | 2026-08-31 |
 | `site-architecture.md`    | 0.6.11-draft | Partial     | 2026-09-10 |
-| `spec.md`                 | 0.6.20-draft | Partial     | 2026-09-10 |
+| `spec.md`                 | 0.6.21-draft | Partial     | 2026-09-10 |
 | `standards.md`            | 0.1.17-draft | Partial     | 2026-09-02 |
 | `studio-ui-guidelines.md` | 0.8.2-draft  | Partial     | 2026-09-10 |
 | `studio.md`               | 0.11.0-draft | Partial     | 2026-09-10 |
-| `ui.md`                   | 0.1.28-draft | Partial     | 2026-09-10 |
+| `ui.md`                   | 0.1.31-draft | Partial     | 2026-09-10 |
 
 ## Sections not yet implemented
 

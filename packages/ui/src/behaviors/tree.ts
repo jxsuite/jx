@@ -1,6 +1,6 @@
 /**
  * `jx-tree`'s behaviour sidecar: the roving caret, the ARIA tree keyboard, typeahead, the
- * multi-select anchor, and the one thing a WINDOWED tree cannot do for itself.
+ * multi-select anchor, and the two things a WINDOWED tree cannot do for itself.
  *
  * A `<jx-tree>` IS the `role="tree"` and its `<jx-tree-item>` children are its items, so every part
  * of the APG's tree pattern a native control would supply is this module's. What it does beyond
@@ -19,6 +19,12 @@
  * stops, leaving the host to scroll and write `current`. A tree with no pads is not windowed, the
  * ends of the slice are the ends of the model, and the same code clamps there instead — which is
  * the APG's answer for a tree, where the arrows deliberately do NOT wrap.
+ *
+ * **Typeahead is the second of those, and it does not look like the first.** A move announces its
+ * own failure; a letter never does, because the search over a slice always answers and the answer
+ * is simply the wrong row. A windowed tree therefore dispatches `typeahead` for EVERY printable
+ * character rather than only when the slice holds no match — the pad is consulted before the rows,
+ * the same order Home and End already use, and for the same reason.
  *
  * {@link syncTree} is the single writer of every drawn item's `caret`, and it is reached three ways
  * that are all the same call: from `onTreeMount`, because `defineElement` runs `applyAttributes`
@@ -60,6 +66,14 @@ export interface TreeMoveDetail {
   from: string;
   /** The key that asked for the move, so the host knows which way and how far. */
   key: string;
+}
+
+/** The detail of the `typeahead` event: a letter the drawn slice cannot answer FOR THE MODEL. */
+export interface TreeTypeaheadDetail {
+  /** The row the caret is on now — where the search starts, and where it wraps back to. */
+  from: string;
+  /** The character the reader typed, lowercased: exactly what the element matches labels on. */
+  char: string;
 }
 
 /** The detail of the `expand` event: the expansion a row should be given. */
@@ -334,6 +348,36 @@ function beyond(host: HTMLElement, scope: TreeState, key: string): void {
 }
 
 /**
+ * Whether the drawn rows are only PART of the model. Both pads at zero is the only way they are
+ * not.
+ */
+function windowed(scope: TreeState): boolean {
+  return hasAbove(scope) || hasBelow(scope);
+}
+
+/**
+ * Ask the host to resolve a letter against the model.
+ *
+ * The same shape as {@link beyond} and for the same reason, but it is reached differently, and the
+ * difference is the whole point. A move off the end of the slice ANNOUNCES ITSELF: there is no
+ * element to land on, so the element discovers it has run out and asks. Typeahead never discovers
+ * anything — a drawn row starting with `f` either exists or does not, and whether it is the model's
+ * next `f` after the caret is a question the slice cannot even pose. Left to itself the search
+ * wraps inside the slice, so in a four-thousand-row directory `f` reached the twenty rows the
+ * viewport happened to hold and called that the tree.
+ *
+ * So the pad is consulted BEFORE the rows, exactly as Home and End consult it — and a windowed tree
+ * asks the host every time rather than only when it finds nothing, because "found nothing" and
+ * "found the wrong row" are the same state from in here.
+ */
+function seek(host: HTMLElement, scope: TreeState, char: string): void {
+  announce(host, "typeahead", {
+    char,
+    from: String(scope.current ?? ""),
+  } satisfies TreeTypeaheadDetail);
+}
+
+/**
  * Say what the reader meant by landing here, and keep the anchor.
  *
  * The tree owns the ANCHOR and dispatches an INTENT; the HOST owns the selection set. That split is
@@ -414,7 +458,8 @@ interface Step {
  * ends. `ArrowRight` opens a collapsed row and steps into an open one; `ArrowLeft` closes an open
  * row and steps out of a closed one. Enter activates. Space is a selection verb and never an
  * activation, so a multi-select tree has one key that adds a row without opening it. A printable
- * character is typeahead over the drawn rows.
+ * character is typeahead — over the drawn rows when the slice IS the model, and dispatched as
+ * `typeahead` for the host to resolve when a pad says it is not (see {@link seek}).
  *
  * **Selection follows the caret unless a modifier says otherwise.** Shift extends from the anchor,
  * `Ctrl`/`Cmd` moves the caret alone, and a plain move replaces — the three the APG names for a
@@ -534,6 +579,12 @@ export function onTreeKeydown(scope: TreeState, event: KeyboardEvent): void {
     default: {
       const char = typeaheadChar(event);
       if (char === null) {
+        return;
+      }
+      if (windowed(scope)) {
+        event.preventDefault();
+        event.stopPropagation();
+        seek(host, scope, char);
         return;
       }
       const hit = typeaheadHit(items, active, char);

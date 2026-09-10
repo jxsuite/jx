@@ -1,4 +1,4 @@
-import { flush, resetStudioState, resetWorkspaceWithTab } from "./harness";
+import { flush, resetStudioState, resetWorkspaceWithTab, stubRect } from "./harness";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
   PRIMARY_PANE,
@@ -39,7 +39,9 @@ import { cellForPane, mount, paneGridReady, reconcile, unmount } from "../src/pa
  * membership of neither cell.
  */
 
-const SPLITTER_SELECTOR = '[part="splitter"]';
+/* The kit element, not the part it is addressed by. Both match the same node today, and only one
+   of them goes red if the document ever writes its own separator again. */
+const SPLITTER_SELECTOR = "jx-split";
 
 function grid(): HTMLElement {
   return document.querySelector("#pane-grid") as HTMLElement;
@@ -323,14 +325,13 @@ describe("the second cell", () => {
   });
 
   test("the splitter drags the ratio, clamps at a usable pane, and double-click restores 50/50", async () => {
-    /* One dragger, not a third one: `ui/panel-resize.ts`'s `setupHandle` — the same capture,
-       dragging class, text-selection suppression, double-click reset and one-persist-on-release
-       the three dock handles use. A dock is sized in px and a split is a RATIO, which is the whole
-       of the difference, and `scale` is the one field that expresses it: the drag converts a
-       pointer delta in px into the target's own units, so the same layout survives a window
-       resize. The ratio lives on `shell.paneSplit` — pure LAYOUT, naming no tab, no document and no
-       pane identity — and persists with the dock widths through `persistDocks`. */
-    Object.defineProperty(grid(), "clientWidth", { configurable: true, value: 1000 });
+    /* `jx-split` owns the gesture now (ui.md §5.5) and this module owns two lines: `setPaneSplit`
+       on every `input` and `persistDocks` on every `change`. The element measures the grid ITSELF —
+       which is why the rect below is what has to be stubbed and `clientWidth` no longer is — so the
+       320px floor travels as pixels and is converted against the box actually being divided. The
+       ratio lives on `shell.paneSplit` — pure LAYOUT, naming no tab, no document and no pane
+       identity — and persists with the dock widths through `persistDocks`. */
+    stubRect(grid(), { height: 800, width: 1000 });
     await split();
     const splitter = grid().querySelector(SPLITTER_SELECTOR) as HTMLElement;
 
@@ -343,10 +344,10 @@ describe("the second cell", () => {
     // 150px right of centre, over a 1000px grid, is +0.15 of the ratio.
     drag(500, 650);
     expect(shell.paneSplit).toBeCloseTo(0.65, 5);
-    /* The one class on this element, and it is not this document's: `ui/panel-resize.ts` writes it
-       for the length of a gesture and the document STYLES it, the same way `grid-panel.json`
-       themes Tabulator's own DOM. Off again here, because the gesture ended. */
-    expect(splitter.classList.contains("dragging")).toBe(false);
+    /* The gesture's own mark, and it is an ATTRIBUTE the element mirrors rather than a class a
+       module reaches in and writes: the surface emits no classes at all. Off again here, because
+       the gesture ended. */
+    expect(splitter.dataset["dragging"]).toBeUndefined();
     reconcile();
     expect(grid().style.gridTemplateColumns).toBe("minmax(0, 0.65fr) 5px minmax(0, 0.35fr)");
 
@@ -356,8 +357,105 @@ describe("the second cell", () => {
     drag(500, 5000);
     expect(shell.paneSplit).toBeCloseTo(0.68, 5);
 
+    /* On a WIDE grid the 320px floor stops binding and the shell's own supported range is what is
+       left — which is the other half of the intersection, and the half no drag over a 1000px grid
+       can reach: 320 of 2000 is 0.16, so [0.2, 0.8] is the tighter pair. The two bounds answer
+       different questions and both have to be handed over, or a 4K window lets one pane take
+       everything but 320px of the other. */
+    stubRect(grid(), { height: 800, width: 2000 });
+    drag(1000, -5000);
+    expect(shell.paneSplit).toBeCloseTo(0.2, 5);
+    drag(1000, 5000);
+    expect(shell.paneSplit).toBeCloseTo(0.8, 5);
+    /* Read off the ELEMENT as well as the store, and that is the assertion with teeth:
+       `setPaneSplit` clamps to the same pair, so a splitter handed no bounds at all would still
+       leave `shell.paneSplit` at 0.8 — while announcing 0.84 and drawing its thumb there. A control
+       and the state it edits disagreeing about the layout is the failure this pins. */
+    expect(splitter.getAttribute("aria-valuenow")).toBe(String(shell.paneSplit));
+    expect(splitter.getAttribute("aria-valuemin")).toBe("0.2");
+    expect(splitter.getAttribute("aria-valuemax")).toBe("0.8");
+    stubRect(grid(), { height: 800, width: 1000 });
+    drag(500, 5000);
+
     splitter.dispatchEvent(new MouseEvent("dblclick"));
     expect(shell.paneSplit).toBe(DEFAULT_PANE_SPLIT);
+    /* And the trip BACK, which the double click never had: the element remembers where it was
+       collapsed from, so a second one returns there instead of doing nothing. */
+    splitter.dispatchEvent(new MouseEvent("dblclick"));
+    expect(shell.paneSplit).toBeCloseTo(0.68, 5);
+  });
+
+  test("the splitter is a tab stop with a keyboard, which is what no drag handle could be", async () => {
+    /* The gap this collapse closes. The pane split was the one dock-sized thing in Studio that no
+       keyboard could move: `setupHandle` binds pointer events and nothing else, so a reader who
+       cannot use a pointer had no way to reach the split at all — SC 2.1.1 — and no non-dragging
+       pointer gesture beyond the one-way reset — SC 2.5.7. Every assertion here is about a door
+       that did not exist, so none of them can be satisfied by the old handle. */
+    stubRect(grid(), { height: 800, width: 1000 });
+    await split();
+    const splitter = grid().querySelector(SPLITTER_SELECTOR) as HTMLElement;
+    expect(splitter.getAttribute("tabindex")).toBe("0");
+    expect(splitter.getAttribute("role")).toBe("separator");
+    expect(splitter.getAttribute("aria-label")).toBe("Pane split");
+    expect(splitter.getAttribute("aria-valuenow")).toBe("0.5");
+
+    const press = (key: string, shiftKey = false) => {
+      splitter.dispatchEvent(new KeyboardEvent("keydown", { cancelable: true, key, shiftKey }));
+    };
+    press("ArrowRight");
+    expect(shell.paneSplit).toBeCloseTo(0.52, 5);
+    press("ArrowLeft", true);
+    expect(shell.paneSplit).toBeCloseTo(0.42, 5);
+    // Home and End are the ends of the LEGAL range — the 320px floor, converted against the grid.
+    press("End");
+    expect(shell.paneSplit).toBeCloseTo(0.68, 5);
+    press("Home");
+    expect(shell.paneSplit).toBeCloseTo(0.32, 5);
+    // Enter is the double click's other door: the even split, and back.
+    press("Enter");
+    expect(shell.paneSplit).toBe(DEFAULT_PANE_SPLIT);
+    press("Enter");
+    expect(shell.paneSplit).toBeCloseTo(0.32, 5);
+    // The value the reader hears is the one the shell kept.
+    expect(splitter.getAttribute("aria-valuenow")).toBe(String(shell.paneSplit));
+  });
+
+  test("a commit PERSISTS, and a move on its own does not", async () => {
+    /* The two lines the flow still owns, and the only assertion that can tell them apart: `input`
+       writes `shell.paneSplit` and `change` writes the record. Splitting them is the whole reason
+       the element emits two events — a drag is five writes and one save, and a `persistDocks` on
+       every `pointermove` would serialise the dock record five times for one gesture. */
+    stubRect(grid(), { height: 800, width: 1000 });
+    await split();
+    const splitter = grid().querySelector(SPLITTER_SELECTOR) as HTMLElement;
+    const stored = () =>
+      (JSON.parse(localStorage.getItem("jx-studio-panel-widths") || "{}") as { paneSplit?: number })
+        .paneSplit;
+
+    localStorage.removeItem("jx-studio-panel-widths");
+    splitter.dispatchEvent(new PointerEvent("pointerdown", { clientX: 500, clientY: 0 }));
+    splitter.dispatchEvent(new PointerEvent("pointermove", { clientX: 600, clientY: 0 }));
+    expect(shell.paneSplit).toBeCloseTo(0.6, 5);
+    expect(stored()).toBeUndefined();
+
+    splitter.dispatchEvent(new PointerEvent("pointerup", { clientX: 600, clientY: 0 }));
+    expect(stored()).toBeCloseTo(0.6, 5);
+  });
+
+  test("a splitter drawn onto a grid that is ALREADY split opens where the shell left it", async () => {
+    /* The projection carries the live split, not a constant. It only reaches the element when the
+       pane set changes — which is exactly the moment a splitter is created — so a restored 0.7
+       session that opened its second pane with a 0.5 splitter would be a shell and a control
+       disagreeing about the layout the reader is looking at, with the grid's own tracks siding with
+       the shell. */
+    shell.paneSplit = 0.6;
+    stubRect(grid(), { height: 800, width: 1000 });
+    await split();
+    const splitter = grid().querySelector(SPLITTER_SELECTOR) as HTMLElement;
+    expect(splitter.getAttribute("aria-valuenow")).toBe("0.6");
+    // And it moves ON from there rather than from the default.
+    splitter.dispatchEvent(new KeyboardEvent("keydown", { cancelable: true, key: "ArrowRight" }));
+    expect(shell.paneSplit).toBeCloseTo(0.62, 5);
   });
 
   test("the splitter is built once and re-used across reconciles", async () => {
@@ -382,7 +480,7 @@ describe("the second cell", () => {
        markup at all — and because the splitter belongs to the second pane's row rather than to a
        position something has to recompute. `subtree: true`, because the splitter is inside that
        row wrapper now and a childList watch on the grid alone would no longer see it move. */
-    Object.defineProperty(grid(), "clientWidth", { configurable: true, value: 1000 });
+    stubRect(grid(), { height: 800, width: 1000 });
     await split();
     const splitter = grid().querySelector(SPLITTER_SELECTOR) as HTMLElement;
 

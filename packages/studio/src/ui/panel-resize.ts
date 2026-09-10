@@ -21,11 +21,19 @@ import type { DockId } from "../shell";
 /**
  * What a handle drags.
  *
- * Generalised out of the three dock rows so the pane splitter can be the fourth. A dock is sized in
- * px and a pane split is a ratio, which is the whole of the difference: `scale` converts a pointer
- * delta in px into the target's own units, and everything else — capture, the dragging class, the
- * text-selection suppression, the double-click reset, the one persist on release — is identical and
- * was worth having once.
+ * Generalised out of the three dock rows so the Edit column's own handle can be the fourth. Each is
+ * sized in px against a different reference, which is the whole of the difference: `scale` converts
+ * a pointer delta in px into the target's own units, and everything else — capture, the dragging
+ * class, the text-selection suppression, the double-click reset, the one persist on release — is
+ * identical and was worth having once.
+ *
+ * **The pane splitter was the fifth and is not any more**, and the reason is worth recording rather
+ * than quietly dropping: this module binds pointer events and nothing else, so anything it drives
+ * is unreachable from a keyboard. That is survivable for a dock, which has a command and a chord of
+ * its own, and it was not for the pane split, which had neither — so the splitter is `jx-split`
+ * (ui.md §5.5), an element with `role="separator"`, a tab stop, `aria-valuenow` and its own arrows.
+ * Every remaining caller here still owes that door to somebody; see this module's own backlog note
+ * in `specs/ui.md` §5.5.
  */
 export interface ResizeTarget {
   /** Which coordinate the drag reads. */
@@ -53,7 +61,7 @@ export interface ResizeTarget {
    * target outside the range simply does not take.
    *
    * The modifier state is passed because a snap has to be escapable: the Edit canvas offers Alt as
-   * the bypass. Omitted by the docks and the pane splitter, which snap to nothing.
+   * the bypass. Omitted by the three docks, which snap to nothing.
    */
   snap?: (value: number, modifiers: { altKey: boolean; shiftKey: boolean }) => number;
 }

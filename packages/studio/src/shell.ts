@@ -466,6 +466,17 @@ interface PersistedDocks {
 export const DEFAULT_PANE_SPLIT = 0.5;
 
 /**
+ * The supported range for {@link ShellState.paneSplit}, and the ONE place it is written down.
+ *
+ * It was written three times — the read clamp, the write clamp, and the drag's own bounds — which
+ * is three chances to disagree about one number. The surface now hands the same two values to
+ * `jx-split` as its `min` and `max`, so the element, the writer and the reader all bound the split
+ * alike, and a splitter can no longer report a position the store would refuse to keep.
+ */
+export const PANE_SPLIT_MIN = 0.2;
+export const PANE_SPLIT_MAX = 0.8;
+
+/**
  * Coerce a stored split into the supported range.
  *
  * Clamped here, at the READ, rather than at the drag site: the drag already refuses to leave the
@@ -473,12 +484,14 @@ export const DEFAULT_PANE_SPLIT = 0.5;
  * one caller that has to be defended.
  */
 function clampPaneSplit(value: unknown): number {
-  return typeof value === "number" && value >= 0.2 && value <= 0.8 ? value : DEFAULT_PANE_SPLIT;
+  return typeof value === "number" && value >= PANE_SPLIT_MIN && value <= PANE_SPLIT_MAX
+    ? value
+    : DEFAULT_PANE_SPLIT;
 }
 
 /** Move the splitter. Clamped, and the one writer every control routes through. */
 export function setPaneSplit(value: number): void {
-  shell.paneSplit = Math.min(0.8, Math.max(0.2, value));
+  shell.paneSplit = Math.min(PANE_SPLIT_MAX, Math.max(PANE_SPLIT_MIN, value));
 }
 
 /** Read the persisted dock record, tolerating absent/corrupt storage. */

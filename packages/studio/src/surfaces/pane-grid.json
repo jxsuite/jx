@@ -8,7 +8,7 @@
     "role": "none"
   },
   "style": {
-    "$description": "The pane's own layout, and the splitter's. The tracks of `#pane-grid` ITSELF are not here and must not be: the track count depends on `workspace.panes.length` and the split on `shell.paneSplit`, which is written on every `pointermove` of a drag — `panels/pane-grid.ts` writes them as one inline `grid-template-columns` on the host, so a drag moves a track edge and never a node. The `.dragging` selector names a class this document does not emit: `ui/panel-resize.ts` puts it on the handle for the length of a gesture, the same shape `surfaces/grid-panel.json` uses to theme Tabulator's own DOM from inside the document.",
+    "$description": "The pane's own layout, and the splitter's. The tracks of `#pane-grid` ITSELF are not here and must not be: the track count depends on `workspace.panes.length` and the split on `shell.paneSplit`, which is written on every `pointermove` of a drag — `panels/pane-grid.ts` writes them as one inline `grid-template-columns` on the host, so a drag moves a track edge and never a node. The splitter's own paint is not here either: `jx-split` owns the hairline, the cursors and the drag state it mirrors as `data-dragging`, so this block says only where the element is placed.",
     "display": "contents",
     "& > [part=\"row\"]": {
       "$description": "One pane's row: its leading splitter and its cell, generating no box of their own so both are grid items of `#pane-grid`.",
@@ -17,21 +17,14 @@
     "& > [part=\"row\"] > [part=\"splitter-slot\"]": {
       "display": "contents"
     },
-    "& > [part=\"row\"] > [part=\"splitter-slot\"] > [part=\"splitter\"]": {
-      "$description": "`styles/shell.css`'s `.pane-splitter` over `styles/shell-frame.css`'s `.resize-handle`, flattened to what the two together actually computed to. BOTH axes are `auto`: a definite row position — the `2 / 4` a column handle inherits on the APP grid, or the `1 / -1` this rule used to carry — moves the item into an earlier step of CSS Grid's auto-placement, so the splitter claimed column 1 and the two cells flowed around it into the 5px track and the second half. DOM order was already right; the placement algorithm was not reading it.",
+    "& > [part=\"row\"] > [part=\"splitter-slot\"] > jx-split": {
+      "$description": "WHERE the splitter sits, and nothing about what it looks like: the hairline, the two cursors, the hover and drag colours and the focus ring are `jx-split`'s own, and the `.dragging` class this block used to name is gone with the module that wrote it — the element mirrors its own gesture as `data-dragging` and paints itself. BOTH grid axes are `auto`: a definite row position — the `2 / 4` a column handle inherits on the APP grid, or the `1 / -1` this rule used to carry — moves the item into an earlier step of CSS Grid's auto-placement, so the splitter claimed column 1 and the two cells flowed around it into the 5px track and the second half. DOM order was already right; the placement algorithm was not reading it. `width: auto` with `justify-self: stretch` is what hands the thickness back to the TRACK `panels/pane-grid.ts` writes, so the element's own 5px default cannot disagree with the column it is placed in.",
       "gridRow": "auto",
       "gridColumn": "auto",
       "justifySelf": "stretch",
       "margin": "0",
       "width": "auto",
-      "position": "relative",
-      "zIndex": "10",
-      "cursor": "col-resize",
-      "background": "var(--border)"
-    },
-    "& > [part=\"row\"] > [part=\"splitter-slot\"] > [part=\"splitter\"]:hover, & > [part=\"row\"] > [part=\"splitter-slot\"] > [part=\"splitter\"].dragging": {
-      "background": "var(--accent, #3b82f6)",
-      "opacity": "0.5"
+      "zIndex": "10"
     },
     "& > [part=\"row\"] > [part=\"pane\"]": {
       "$description": "ONE PANE, and one COLUMN, declared. Three children name `grid-row: 2` in order to share the lower cell, and auto-placement answers that by inventing an implicit column each: the jump bar, the chrome layer and the stage lined up side by side, the stage taking a third of the pane and pinning the document to the right edge. `grid-template-columns` is what makes \"share the cell\" mean it, and every row-2 child restates `grid-column: 1` so a future fourth one cannot re-open the same hole. No unit test can see this — happy-dom does no layout, so every rect is zero — which is why the screenshot lane is what caught it.",
@@ -114,11 +107,38 @@
             "$switch": { "$ref": "$map/item/split" },
             "cases": {
               "shown": {
-                "tagName": "div",
+                "$description": "`jx-split` (ui.md §5.5), which is where `role=\"separator\"`, the tab stop, `aria-valuenow` and the whole keyboard now live. This document used to write the role on a bare div and hand the div to `ui/panel-resize.ts`, which made the pane split the one dock-sized thing in Studio a reader could not move without a mouse — an SC 2.1.1 failure with a drag handle drawn on it, and an SC 2.5.7 one besides. Every prop below is a CONSTANT except `value`: `min` and `max` are the shell's own supported range, and `gap` is the pixel floor the element converts against the track it measures itself, which is why nothing here has to be recomputed when the window resizes. `collapse` is the even split rather than the floor, because both sides of this splitter are real panes: the first Enter or double click is the 50/50 reset this gesture has always been, and the second one is the return trip it never had.",
+                "tagName": "jx-split",
                 "attributes": {
-                  "part": "splitter",
-                  "role": "separator",
-                  "aria-orientation": "vertical"
+                  "part": "splitter"
+                },
+                "$props": {
+                  "label": "Pane split",
+                  "value": { "$ref": "#/state/paneSplit" },
+                  "min": { "$ref": "#/state/splitMin" },
+                  "max": { "$ref": "#/state/splitMax" },
+                  "gap": { "$ref": "#/state/splitGap" },
+                  "collapse": { "$ref": "#/state/splitDefault" }
+                },
+                "oninput": {
+                  "$prototype": "Function",
+                  "body": [
+                    {
+                      "operator": "call",
+                      "target": { "$ref": "#/state/move" },
+                      "value": [{ "$ref": "event#/target/value" }]
+                    }
+                  ]
+                },
+                "onchange": {
+                  "$prototype": "Function",
+                  "body": [
+                    {
+                      "operator": "call",
+                      "target": { "$ref": "#/state/settle" },
+                      "value": []
+                    }
+                  ]
                 }
               }
             }

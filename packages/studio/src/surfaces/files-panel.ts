@@ -135,6 +135,14 @@ export interface FilesPanelActions {
    */
   move: (from: string, key: string) => void;
   /**
+   * A letter has to be resolved against a model the window did not draw.
+   *
+   * Dispatched for every printable character while the tree is windowed — not only when the drawn
+   * rows hold no match, because a search over a slice always answers and the answer is the wrong
+   * row. Which row the model's next `char` after `from` is, is a question about the MODEL.
+   */
+  typeahead: (from: string, char: string) => void;
+  /**
    * The tree element exists. The flow measures it — it is the only source of the window's geometry
    * — and hangs the project root's drop target off it.
    */

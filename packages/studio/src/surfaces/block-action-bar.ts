@@ -63,8 +63,10 @@ export interface BlockBarTool {
 export interface BlockBarView {
   /** Whether the bar is on screen at all. False draws nothing — the `$switch` at the root. */
   visible: boolean;
-  /** The bar's position, as the two custom properties the document's `left`/`top` read. */
-  anchorVars: string;
+  /** The bar's inline-start edge in viewport pixels; the document's own style binds it. */
+  barX: number;
+  /** The bar's block-start edge in viewport pixels. */
+  barY: number;
   /** The anchor left the stage: hidden by `visibility`, so the drag handle survives the scroll. */
   offscreen: boolean;
   parentLabel: string;
@@ -142,7 +144,8 @@ type PopoverElement = HTMLElement & {
 /** The empty projection: what the bar is before a selection has ever been made. */
 export function emptyBlockBarView(): BlockBarView {
   return {
-    anchorVars: "",
+    barX: 0,
+    barY: 0,
     canDrag: false,
     dragHint: "",
     formats: [],

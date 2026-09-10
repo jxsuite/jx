@@ -385,6 +385,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `spec.md`
 
+- **0.6.21-draft** (2026-09-10) — a style declaration may bind a value the host measured, which two surfaces had worked around as impossible.
 - **0.6.20-draft** (2026-09-10) — 8.8 gains custom-element-in-select: a select builds its own rows, so a custom element among them draws, reads convincingly and cannot be picked.
 - **0.6.19-draft** (2026-09-10) — the shell's Trusted Types sink list is one shorter: sp-theme left with Adobe Spectrum rather than being allow-listed.
 - **0.6.18-draft** (2026-09-10) — §4.3 listener options are not part of the on* grammar; §6.1 a binding writes when its source moves, so a document cannot re-assert or empty a bound control; §13.1 there is no document-local element fragment.
@@ -682,6 +683,9 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `ui.md`
 
+- **0.1.31-draft** (2026-09-10) — jx-split: a window splitter with role=separator, a tab stop, aria-valuenow, the arrows of its own axis and a collapse toggle on Enter or a double click; Studio's pane grid and rail no longer hand-roll a separator.
+- **0.1.30-draft** (2026-09-10) — jx-toolbar ships: one tab stop over a row of mixed controls, a text field that keeps the arrows until its caret runs out, and overflow left with the host that already answers it (5.1, 5.5, 7).
+- **0.1.29-draft** (2026-09-10) — jx-tree dispatches typeahead for a host to resolve against the model while it is windowed, and the APG's * key is recorded as a named deviation.
 - **0.1.28-draft** (2026-09-10) — jx-combobox, jx-listbox and jx-option ship: the highlight is one id the field and the row are both told, a listbox that never takes focus, and a lint replaces the absence that guarded the select (5.1, 5.3, 7, 11).
 - **0.1.27-draft** (2026-09-10) — jx-tree and jx-tree-item ship: a flat projected row list so the tree can be windowed, ARIA counts that describe the full set, multi-select as an intent the host resolves, and cut and paste kept reachable beside the drag island (5.5, 7, 11).
 - **0.1.26-draft** (2026-09-10) — the authoring model in 3 is enforced over every element by conformance.test.ts, and WAI-ARIA and WHATWG HTML are cited Subsets rather than promises.
