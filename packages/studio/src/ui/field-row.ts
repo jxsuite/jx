@@ -2,15 +2,11 @@
 /**
  * Field-row.js — the inspector's row vocabulary, in one module.
  *
- * Three rows, and every panel that draws one imports it from here:
- *
- * - {@link renderFieldRow} — label + widget, plus §7.1's **third notification tier** (an `error` line
- *   rendered at the control) and §6.2's **provenance chip** (where this value came from). The chip
- *   itself is `panels/provenance.ts`'s: one vocabulary, two cascades, one template.
- * - {@link renderKvRow} — an editable key/value pair with a delete affordance. Custom attributes and
- *   custom CSS properties are the same row; they were two.
- * - {@link renderStaticKvRow} — the read-only name/value line. Observed Attributes, CSS Properties
- *   and CSS Parts each hand-wrote it with the same inline style declarations.
+ * {@link renderFieldRow} is what is left of it: label + widget, plus §7.1's **third notification
+ * tier** (an `error` line rendered at the control) and §6.2's **provenance chip** (where this value
+ * came from). The chip itself is `panels/provenance.ts`'s: one vocabulary, two cascades, one
+ * template. The key/value rows that stood beside it — the editable pair and the read-only line —
+ * are Jx documents now, and went with the surfaces that drew them.
  *
  * **The error line.** The other two notification tiers are hosted records in `services/notify.ts`:
  * a toast is taken away on a timer, a problem is kept until somebody fixes it. An inline error is
@@ -120,130 +116,6 @@ export function renderFieldRow({
             </p>`
           : nothing
       }
-    </div>
-  `;
-}
-
-// ─── The editable key/value row ──────────────────────────────────────────────
-
-/** Options for {@link renderKvRow}. */
-export interface KvRowOptions {
-  /** The pair's current key. */
-  name: string;
-  /** The pair's current value. */
-  value: string;
-  /** Commit both cells, debounced, with the current contents of each. */
-  onCommit: (name: string, value: string) => void;
-  /** Remove the pair outright. */
-  onDelete: () => void;
-  /**
-   * The value cell's placeholder, resolved from the key — a CSS property's initial value, say.
-   *
-   * A resolver rather than a string because the key is editable: typing `display` into the key cell
-   * should offer `inline` under it before anything is committed, and only the caller knows the
-   * map.
-   */
-  placeholderFor?: ((name: string) => string) | undefined;
-  /** Debounce before {@link KvRowOptions.onCommit}, in ms. */
-  debounceMs?: number;
-}
-
-/**
- * An editable key/value pair with a delete affordance — the ONE implementation.
- *
- * Custom HTML attributes and custom CSS properties are the same row and were written twice, with
- * different rename behaviour (one committed on `input`, the other on `change`) and different
- * placeholder plumbing. They now differ only in what they pass in.
- *
- * @param {KvRowOptions} opts
- */
-export function renderKvRow({
-  name,
-  value,
-  onCommit,
-  onDelete,
-  placeholderFor,
-  debounceMs = 400,
-}: KvRowOptions) {
-  let debounce: ReturnType<typeof setTimeout> | undefined;
-  let currentName = name;
-  let currentValue = value;
-  const commit = () => {
-    clearTimeout(debounce);
-    debounce = setTimeout(() => onCommit(currentName, currentValue), debounceMs);
-  };
-  return html`
-    <div class="kv-row" data-prop=${name}>
-      <sp-textfield
-        size="s"
-        class="kv-key"
-        .value=${name}
-        @input=${(e: Event) => {
-          currentName = (e.target as HTMLInputElement).value;
-          commit();
-        }}
-        @change=${
-          placeholderFor
-            ? (e: Event) => {
-                const cell = (e.target as HTMLInputElement)
-                  .closest(".kv-row")
-                  ?.querySelector(".kv-val");
-                cell?.setAttribute(
-                  "placeholder",
-                  placeholderFor((e.target as HTMLInputElement).value),
-                );
-              }
-            : nothing
-        }
-      ></sp-textfield>
-      <sp-textfield
-        size="s"
-        class="kv-val"
-        .value=${value}
-        placeholder=${placeholderFor ? placeholderFor(name) : ""}
-        @input=${(e: Event) => {
-          currentValue = (e.target as HTMLInputElement).value;
-          commit();
-        }}
-      ></sp-textfield>
-      <sp-action-button size="xs" quiet title="Remove ${name}" @click=${onDelete}>
-        <sp-icon-close slot="icon"></sp-icon-close>
-      </sp-action-button>
-    </div>
-  `;
-}
-
-// ─── The read-only key/value row ─────────────────────────────────────────────
-
-/** Options for {@link renderStaticKvRow}. */
-export interface StaticKvRowOptions {
-  /** The thing being named — an attribute, a custom property, a part. Rendered as code. */
-  name: string;
-  /** What it maps to, rendered immediately after the name ("→ count", "<button>"). */
-  detail?: string | undefined;
-  /** Its value or type, rendered hard right. */
-  value?: string | undefined;
-  /** Flags, rendered hard right after the value ("reflects"). */
-  tags?: readonly string[] | undefined;
-}
-
-/**
- * A read-only name/value line.
- *
- * Observed Attributes, CSS Properties and CSS Parts each hand-wrote this with the same
- * `display:flex;gap:6px;align-items:center;padding:2px 0;font-size:…` inline block — three copies
- * of one row, none of them addressable by a stylesheet, and so none of them able to respond to the
- * theme. They differ only in which of the three slots they fill.
- *
- * @param {StaticKvRowOptions} opts
- */
-export function renderStaticKvRow({ name, detail, value, tags }: StaticKvRowOptions) {
-  return html`
-    <div class="kv-static-row" data-prop=${name}>
-      <code class="kv-static-name">${name}</code>
-      ${detail ? html`<span class="kv-static-detail">${detail}</span>` : nothing}
-      ${value ? html`<span class="kv-static-value">${value}</span>` : nothing}
-      ${(tags ?? []).map((tag) => html`<span class="kv-static-tag">${tag}</span>`)}
     </div>
   `;
 }

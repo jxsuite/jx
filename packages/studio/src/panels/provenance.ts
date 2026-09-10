@@ -69,8 +69,15 @@ const PROVENANCE_TITLES: Readonly<Record<ProvenanceState, string>> = {
   set: "Set here",
 };
 
-/** The chip's own text. The dots say nothing; the two informative states name a donor. */
-function provenanceText(p: FieldProvenance): string {
+/**
+ * The chip's own text. The dots say nothing; the two informative states name a donor.
+ *
+ * Exported because the drawing of the chip is no longer only this module's: the Style tab is a Jx
+ * document (`surfaces/style-panel.json`) and projects the words rather than calling a lit helper. A
+ * second copy of them there is exactly the two-vocabularies-for-one-idea this module exists to
+ * stop.
+ */
+export function provenanceText(p: FieldProvenance): string {
   if (p.state === "inherited") {
     return p.donor ? `from ${p.donor}` : "inherited";
   }
@@ -174,11 +181,6 @@ export function countProvenance(states: Iterable<ProvenanceState>): ProvenanceCo
   return counts;
 }
 
-/** Whether a tally has anything to show at all. */
-export function hasProvenance(counts: ProvenanceCounts): boolean {
-  return counts.set > 0 || counts.inherited > 0 || counts.bound > 0 || counts.mixed > 0;
-}
-
 /** "3 set here · 2 inherited · 1 bound" — the summary a collapsed section states on hover. */
 export function provenanceSummaryText(counts: ProvenanceCounts): string {
   const parts: string[] = [];
@@ -195,64 +197,4 @@ export function provenanceSummaryText(counts: ProvenanceCounts): string {
     parts.push(`${counts.mixed} mixed`);
   }
   return parts.length > 0 ? parts.join(" · ") : "nothing set";
-}
-
-/**
- * A collapsed accordion heading's provenance dots.
- *
- * This is what retires the Style tab's "Active" filter toggle. That toggle existed for one reason —
- * with a section closed there was no way to tell whether anything inside it was set, so the only
- * way to find your own overrides was to hide every property that had none. A heading that says "3
- * set here · 2 inherited" answers the question without changing what the panel shows.
- *
- * The `set` dot keeps its clear-all handler, so the heading loses no affordance.
- *
- * @param {ProvenanceCounts} counts
- * @param {{ onClearSet?: () => void; clearTitle?: string }} opts
- */
-export function renderProvenanceDots(
-  counts: ProvenanceCounts,
-  opts: { onClearSet?: (() => void) | undefined; clearTitle?: string | undefined } = {},
-) {
-  if (!hasProvenance(counts)) {
-    return nothing;
-  }
-  const summary = provenanceSummaryText(counts);
-  return html`
-    <span class="provenance-dots" title=${summary} aria-label=${summary}>
-      ${
-        counts.set > 0
-          ? renderProvenanceChip("section", {
-              state: "set",
-              title: opts.clearTitle ?? summary,
-              ...(opts.onClearSet ? { onClick: opts.onClearSet } : {}),
-            })
-          : nothing
-      }
-      ${
-        counts.inherited > 0
-          ? html`<span
-              class="provenance-chip provenance-chip--inherited set-dot"
-              title=${summary}
-            ></span>`
-          : nothing
-      }
-      ${
-        counts.bound > 0
-          ? html`<span
-              class="provenance-chip provenance-chip--bound set-dot"
-              title=${summary}
-            ></span>`
-          : nothing
-      }
-      ${
-        counts.mixed > 0
-          ? html`<span
-              class="provenance-chip provenance-chip--mixed set-dot"
-              title=${summary}
-            ></span>`
-          : nothing
-      }
-    </span>
-  `;
 }

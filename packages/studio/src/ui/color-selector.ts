@@ -12,7 +12,7 @@
  */
 
 import { LitElement, html, nothing } from "lit";
-import { html as litHtml } from "lit-html";
+import { html as litHtml, render as litRender } from "lit-html";
 import { live } from "lit-html/directives/live.js";
 import { debouncedStyleCommit } from "../store";
 import { activeTab } from "../workspace/workspace";
@@ -322,6 +322,33 @@ export function renderColorSelector(
       </sp-overlay>
     </div>
   `;
+}
+
+/**
+ * Paint the colour control into a host a DOCUMENT drew.
+ *
+ * The Style tab is a Jx document (`surfaces/style-panel.json`) and the kit's colour elements are
+ * `specs/ui.md` §5.6, which is **Pending** — there is no `jx-color-field`, no `jx-color-area` and
+ * no `jx-swatch` to draw a colour row with. So that ONE row stays on the seam it already has: the
+ * document draws an empty `[part="control-host"]`, announces it through `onNodeCreated`, and this
+ * is what fills it. It is the island `studio-ui-guidelines.md` §9.4 describes, and it goes whole
+ * when §5.6 lands rather than being replaced piece by piece.
+ *
+ * Lit owns the host from here: re-rendering the same template into it reconciles rather than
+ * rebuilds, so a swatch the reader has the picker open under is not taken away by a repaint.
+ *
+ * @param {HTMLElement} host The empty element the document drew.
+ * @param {string} prop The property key — the debounce namespace and the overlay trigger's id.
+ * @param {string | number | undefined} value The current colour.
+ * @param {(color: string) => void} onChange Commit callback.
+ */
+export function paintColorControl(
+  host: HTMLElement,
+  prop: string,
+  value: string | number | undefined,
+  onChange: (color: string) => void,
+): void {
+  litRender(renderColorSelector(prop, value, onChange), host);
 }
 
 /**

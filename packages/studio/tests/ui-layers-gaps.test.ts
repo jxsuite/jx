@@ -11,6 +11,7 @@ import {
   initLayers,
   isModalOpen,
   openModal,
+  renderPopover,
   showConfirmDialog,
   showDialog,
   showPromptDialog,
@@ -474,6 +475,188 @@ describe("layers after init", () => {
       expect(errorText()).toBe("");
       host.dispatchEvent(new Event("confirm"));
       expect(await promise).toBe("taken");
+    });
+  });
+
+  // ─── The keyboard contract the wrapper owns, not the body ──────────────────
+
+  /** The slot `openModal` created, which is the element the overlay contract listens on. */
+  function modalSlot(): HTMLElement {
+    return layer("modal").querySelector("[role='dialog']") as HTMLElement;
+  }
+
+  function key(slot: HTMLElement, init: KeyboardEventInit): KeyboardEvent {
+    const event = new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init });
+    slot.dispatchEvent(event);
+    return event;
+  }
+
+  describe("the Tab trap", () => {
+    test("cycles the body's focusables, and wraps at both ends", () => {
+      const handle = openModal(html`<button id="one">one</button><button id="two">two</button>`, {
+        label: "Trapped",
+      });
+      const slot = modalSlot();
+      const one = slot.querySelector<HTMLElement>("#one")!;
+      const two = slot.querySelector<HTMLElement>("#two")!;
+
+      one.focus();
+      // The trap answers Tab itself, so the browser's own walk never runs.
+      expect(key(slot, { key: "Tab" }).defaultPrevented).toBe(true);
+      expect(document.activeElement).toBe(two);
+      // Past the last one it wraps to the first, rather than walking into the app behind.
+      key(slot, { key: "Tab" });
+      expect(document.activeElement).toBe(one);
+      // Shift+Tab goes the other way, and wraps at the front for the same reason.
+      key(slot, { key: "Tab", shiftKey: true });
+      expect(document.activeElement).toBe(two);
+      handle.close();
+    });
+
+    test("Tab with focus outside the body enters it — at the top, or at the bottom going back", () => {
+      const handle = openModal(html`<button id="a">a</button><button id="b">b</button>`, {
+        label: "Entering",
+      });
+      const slot = modalSlot();
+      const outside = document.createElement("button");
+      document.body.append(outside);
+
+      outside.focus();
+      key(slot, { key: "Tab" });
+      expect((document.activeElement as HTMLElement).id).toBe("a");
+      outside.focus();
+      key(slot, { key: "Tab", shiftKey: true });
+      expect((document.activeElement as HTMLElement).id).toBe("b");
+
+      outside.remove();
+      handle.close();
+    });
+
+    test("a disabled control is not a stop on the cycle", () => {
+      const handle = openModal(
+        html`<button id="live">live</button><button id="dead" disabled>dead</button>`,
+        { label: "Disabled" },
+      );
+      const slot = modalSlot();
+      slot.querySelector<HTMLElement>("#live")!.focus();
+      key(slot, { key: "Tab" });
+      // One focusable means the cycle is a fixed point; landing on `dead` would be a dead end.
+      expect((document.activeElement as HTMLElement).id).toBe("live");
+      handle.close();
+    });
+
+    test("a body with nothing focusable keeps the caret where it is", () => {
+      /* Not "let Tab through": tabbing out of a surface the mouse cannot leave either would strand
+         the keyboard behind the underlay. */
+      const handle = openModal(html`<p>working…</p>`, { label: "Static" });
+      const slot = modalSlot();
+      const before = document.activeElement;
+      expect(key(slot, { key: "Tab" }).defaultPrevented).toBe(true);
+      expect(document.activeElement).toBe(before);
+      handle.close();
+    });
+
+    test("a key that is neither Escape nor Tab is left entirely alone", () => {
+      const handle = openModal(html`<button id="only">only</button>`, { label: "Passthrough" });
+      const slot = modalSlot();
+      slot.querySelector<HTMLElement>("#only")!.focus();
+      const event = key(slot, { key: "a" });
+      expect(event.defaultPrevented).toBe(false);
+      expect((document.activeElement as HTMLElement).id).toBe("only");
+      handle.close();
+    });
+  });
+
+  describe("Escape in a modal", () => {
+    test("dismisses it, and does not also reach the app behind", () => {
+      const reachedApp: Event[] = [];
+      const listener = (e: Event) => {
+        reachedApp.push(e);
+      };
+      document.body.addEventListener("keydown", listener);
+      const handle = openModal(html`<div id="dismissable">settings</div>`, { label: "Settings" });
+      const event = key(modalSlot(), { key: "Escape" });
+      document.body.removeEventListener("keydown", listener);
+
+      expect(layer("modal").querySelector("#dismissable")).toBeNull();
+      /* Both halves matter: `preventDefault` so the platform does nothing else with the key, and
+         `stopPropagation` so the app's own Escape — which clears the canvas selection — never sees
+         the keystroke that closed the surface sitting on top of it. */
+      expect(event.defaultPrevented).toBe(true);
+      expect(reachedApp).toEqual([]);
+      handle.close();
+    });
+
+    test("runs the caller's onDismiss INSTEAD of close, for a modal with bookkeeping of its own", () => {
+      const dismissed: number[] = [];
+      const handle = openModal(html`<div id="held">busy</div>`, {
+        label: "Held",
+        onDismiss: () => {
+          dismissed.push(1);
+        },
+      });
+      key(modalSlot(), { key: "Escape" });
+      expect(dismissed).toEqual([1]);
+      // The hook REPLACES close(), so the surface is still up until the caller takes it down.
+      expect(layer("modal").querySelector("#held")).not.toBeNull();
+      handle.close();
+      expect(layer("modal").querySelector("#held")).toBeNull();
+    });
+
+    test("is ignored — and not swallowed — by a modal that declares itself undismissable", () => {
+      const handle = openModal(html`<div id="running">running…</div>`, {
+        dismissible: false,
+        label: "Running",
+      });
+      const event = key(modalSlot(), { key: "Escape" });
+      expect(layer("modal").querySelector("#running")).not.toBeNull();
+      // A modal that will not answer the key must not eat it either.
+      expect(event.defaultPrevented).toBe(false);
+      handle.close();
+    });
+  });
+
+  describe("Escape in a showDialog body that HAS a wrapper", () => {
+    test("fires the wrapper's own close, and stops there", async () => {
+      /* The counterpart to "a bespoke body owns its own keys": when there is a wrapper, Escape is
+         translated into the `close` event each helper's `@close` binding already answers, so no
+         helper needs a keydown listener of its own. */
+      const reachedApp: Event[] = [];
+      const listener = (e: Event) => {
+        reachedApp.push(e);
+      };
+      document.body.addEventListener("keydown", listener);
+      const promise = showDialog<string>(
+        (done) =>
+          html`<sp-dialog-wrapper
+            headline="Rename"
+            @close=${() => {
+              done("dismissed");
+            }}
+          ></sp-dialog-wrapper>`,
+      );
+      const slot = layer("dialog").querySelector("[role='dialog']") as HTMLElement;
+      const event = key(slot, { key: "Escape" });
+      document.body.removeEventListener("keydown", listener);
+
+      expect(await promise).toBe("dismissed");
+      expect(layer("dialog").querySelector("sp-dialog-wrapper")).toBeNull();
+      expect(event.defaultPrevented).toBe(true);
+      expect(reachedApp).toEqual([]);
+    });
+  });
+
+  describe("renderPopover", () => {
+    test("update() re-renders into the same slot rather than opening a second popover", () => {
+      const handle = renderPopover(html`<p id="pop">first</p>`, { dismissOnOutsideClick: false });
+      const slot = handle.host;
+      expect(slot.parentElement).toBe(layer("popover"));
+      handle.update(html`<p id="pop">second</p>`);
+      expect(slot.querySelector("#pop")?.textContent).toBe("second");
+      // Same node: an owner holding `handle.host` (the zoom indicator does) keeps its reference.
+      expect(handle.host).toBe(slot);
+      handle.dismiss();
+      expect(slot.parentElement).toBeNull();
     });
   });
 });

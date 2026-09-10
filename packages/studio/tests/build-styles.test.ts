@@ -7,11 +7,14 @@
  */
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   SHEETS,
   commentOf,
   expandRule,
+  main,
   readSource,
   run,
   sheetCSS,
@@ -350,5 +353,160 @@ describe("the shell frame", () => {
        a document and took its rules with it — the class to name here is whichever one is still
        drawn by a lit template. */
     expect(shell).toContain(".tab-strip-tab");
+  });
+});
+
+describe("expandRule on punctuation that only looks like structure", () => {
+  test("an escaped quote keeps a selector's string open, so the brace inside it is a value", () => {
+    /* The scanner has to honour `\` inside a quote or it ends the string one character early — and
+       then the `{` that belongs to the attribute value reads as the start of the body, which cuts
+       the selector in half and emits a rule matching nothing. */
+    const selector = String.raw`a[title="x\{"]`;
+    expect(expandRule(`${selector} { c: 1 }`)).toBe(`${selector} {\n  c: 1;\n}`);
+  });
+
+  test("an escaped brace inside a declaration closes nothing, and survives verbatim", () => {
+    // Both scanners see this one: the body's end, and the split into declarations inside it.
+    const value = String.raw`"\}"`;
+    expect(expandRule(`a { content: ${value} }`)).toBe(`a {\n  content: ${value};\n}`);
+  });
+
+  test("a rule whose closing brace never arrives is closed rather than truncated", () => {
+    /* `closingBrace` runs off the end and answers with the length, so the body is everything that
+       was there. Emitting an unbalanced `{` instead would take the rest of the stylesheet with it. */
+    expect(expandRule("a { c: 1")).toBe("a {\n  c: 1;\n}");
+  });
+});
+
+/**
+ * A package root holding the real sources and a STALE `tokens.css`, plus two sheets that do not
+ * exist at all — which is what a working tree looks like the moment a style block is edited.
+ */
+async function staleRoot(): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), "jx-build-styles-"));
+  await mkdir(join(dir, "styles"));
+  for (const sheet of SHEETS) {
+    await cp(join(ROOT, sheet.source), join(dir, sheet.source));
+  }
+  await writeFile(join(dir, "styles/tokens.css"), "/* stale */\n.gone {\n  a: 1;\n}\n");
+  return dir;
+}
+
+/** Run `fn` with `console.error` collected line by line rather than printed. */
+async function captureErrors(fn: () => Promise<void>): Promise<string[]> {
+  const said: string[] = [];
+  const { error } = console;
+  console.error = (...args: unknown[]) => {
+    said.push(args.map(String).join(" "));
+  };
+  try {
+    await fn();
+  } finally {
+    console.error = error;
+  }
+  return said;
+}
+
+/** Run `fn` with `console.log` collected line by line rather than printed. */
+async function captureLog(fn: () => Promise<void>): Promise<string[]> {
+  const said: string[] = [];
+  const { log } = console;
+  console.log = (...args: unknown[]) => {
+    said.push(args.map(String).join(" "));
+  };
+  try {
+    await fn();
+  } finally {
+    console.log = log;
+  }
+  return said;
+}
+
+describe("drift, as the gate reports it", () => {
+  test("names every sheet that disagrees, both directions of the diff, and the fixer", async () => {
+    const dir = await staleRoot();
+    let ok = true;
+    const said = await captureErrors(async () => {
+      ok = await run(dir, false);
+    });
+    await rm(dir, { force: true, recursive: true });
+
+    expect(ok).toBe(false);
+    // Every sheet is judged. Stopping at the first disagreement would hide the other two.
+    for (const sheet of SHEETS) {
+      expect(said, sheet.output).toContain(`❌ ${sheet.output} does not match ${sheet.source}.`);
+    }
+    const minus = said.filter((line) => line.startsWith("   - ")).map((line) => line.slice(5));
+    const plus = said.filter((line) => line.startsWith("   + ")).map((line) => line.slice(5));
+    /* `-` is what the committed file says and no source does. `}` is in both, so it is reported
+       neither way — the report is a difference, not a dump of the stale file. */
+    expect(minus).toEqual(["/* stale */", ".gone {", "a: 1;"]);
+    expect(minus).not.toContain("}");
+    // `+` is capped at twelve lines per sheet, so three sheets of drift is 36 lines and not 3,000.
+    expect(plus).toHaveLength(12 * SHEETS.length);
+    expect(plus[0]).toBe("/* GENERATED FILE — do not edit.");
+    // What was not printed is counted instead, so the cap never hides how much moved.
+    expect(said.filter((line) => /^ {3}…and \d+ more line\(s\)$/.test(line))).toHaveLength(
+      SHEETS.length,
+    );
+    expect(said).toContain("\nRun `bun run styles:sync`. Never edit styles/tokens.css by hand.");
+  });
+
+  test("a sheet that matches is silent, and the gate answers true", async () => {
+    const said = await captureErrors(async () => {
+      expect(await run(ROOT, false)).toBe(true);
+    });
+    expect(said).toEqual([]);
+  });
+});
+
+describe("the fixer", () => {
+  test("writes each sheet — the stale one and the two that were missing — and then matches", async () => {
+    const dir = await staleRoot();
+    expect(await run(dir, true)).toBe(true);
+    // The point of the fixer: the gate it just satisfied is the same code path, with no report.
+    const said = await captureErrors(async () => {
+      expect(await run(dir, false)).toBe(true);
+    });
+    expect(said).toEqual([]);
+
+    const written = await readFile(join(dir, "styles/tokens.css"), "utf8");
+    expect(written).not.toContain(".gone");
+    expect(written).toBe(tokensCSS(await readSource(dir)));
+    // A sheet with no committed file at all is created rather than skipped as "nothing to compare".
+    expect(await readFile(join(dir, "styles/forced-colors.css"), "utf8")).toContain(
+      "@media (forced-colors: active) {",
+    );
+    await rm(dir, { force: true, recursive: true });
+  });
+});
+
+describe("the command line", () => {
+  test("answers 1 on drift, and says nothing green", async () => {
+    const dir = await staleRoot();
+    let code = -1;
+    const said = await captureLog(async () => {
+      await captureErrors(async () => {
+        code = await main(dir, []);
+      });
+    });
+    await rm(dir, { force: true, recursive: true });
+    expect(code).toBe(1);
+    expect(said).toEqual([]);
+  });
+
+  test("reads --fix from its own argv, and names every sheet it checked", async () => {
+    /* The flag is an argument rather than an ambient read of `process.argv`, which is the only
+       reason `styles:check` and `styles:sync` can be told apart from anywhere but a shell. */
+    const dir = await staleRoot();
+    let code = -1;
+    const said = await captureLog(async () => {
+      code = await main(dir, ["bun", "scripts/build-styles.ts", "--fix"]);
+    });
+    await rm(dir, { force: true, recursive: true });
+    expect(code).toBe(0);
+    expect(said).toEqual([
+      `✓ ${SHEETS.map((sheet) => sheet.output).join(" and ")} match their sources.`,
+    ]);
   });
 });

@@ -78,7 +78,6 @@ import { IconFileSingleWebPage } from "@spectrum-web-components/icons-workflow/s
 import { IconRefresh } from "@spectrum-web-components/icons-workflow/src/elements/IconRefresh.js";
 import { IconAdd } from "@spectrum-web-components/icons-workflow/src/elements/IconAdd.js";
 import { IconUpload } from "@spectrum-web-components/icons-workflow/src/elements/IconUpload.js";
-import { IconViewGrid } from "@spectrum-web-components/icons-workflow/src/elements/IconViewGrid.js";
 import { IconBrackets } from "@spectrum-web-components/icons-workflow/src/elements/IconBrackets.js";
 import { IconData } from "@spectrum-web-components/icons-workflow/src/elements/IconData.js";
 import { IconChevronDown } from "@spectrum-web-components/icons-workflow/src/elements/IconChevronDown.js";
@@ -103,28 +102,10 @@ import { IconArrowRight } from "@spectrum-web-components/icons-workflow/src/elem
 import { IconArrowLeft } from "@spectrum-web-components/icons-workflow/src/elements/IconArrowLeft.js";
 import { IconArrowDown } from "@spectrum-web-components/icons-workflow/src/elements/IconArrowDown.js";
 import { IconArrowUp } from "@spectrum-web-components/icons-workflow/src/elements/IconArrowUp.js";
-import { IconTextAlignLeft } from "@spectrum-web-components/icons-workflow/src/elements/IconTextAlignLeft.js";
-import { IconTextAlignCenter } from "@spectrum-web-components/icons-workflow/src/elements/IconTextAlignCenter.js";
-import { IconTextAlignRight } from "@spectrum-web-components/icons-workflow/src/elements/IconTextAlignRight.js";
-import { IconTextAlignJustify } from "@spectrum-web-components/icons-workflow/src/elements/IconTextAlignJustify.js";
-import { IconAlignTop } from "@spectrum-web-components/icons-workflow/src/elements/IconAlignTop.js";
-import { IconAlignBottom } from "@spectrum-web-components/icons-workflow/src/elements/IconAlignBottom.js";
-import { IconAlignMiddle } from "@spectrum-web-components/icons-workflow/src/elements/IconAlignMiddle.js";
-import { IconAlignLeft } from "@spectrum-web-components/icons-workflow/src/elements/IconAlignLeft.js";
-import { IconAlignRight } from "@spectrum-web-components/icons-workflow/src/elements/IconAlignRight.js";
-import { IconAlignCenter } from "@spectrum-web-components/icons-workflow/src/elements/IconAlignCenter.js";
-import { IconDistributeSpaceHoriz } from "@spectrum-web-components/icons-workflow/src/elements/IconDistributeSpaceHoriz.js";
 import { IconDistributeSpaceVert } from "@spectrum-web-components/icons-workflow/src/elements/IconDistributeSpaceVert.js";
-import { IconDistributeHorizontally } from "@spectrum-web-components/icons-workflow/src/elements/IconDistributeHorizontally.js";
-import { IconDistributeVertically } from "@spectrum-web-components/icons-workflow/src/elements/IconDistributeVertically.js";
 import { IconDistributeBottomEdge } from "@spectrum-web-components/icons-workflow/src/elements/IconDistributeBottomEdge.js";
 import { IconDistributeTopEdge } from "@spectrum-web-components/icons-workflow/src/elements/IconDistributeTopEdge.js";
-import { IconDistributeHorizontalCenter } from "@spectrum-web-components/icons-workflow/src/elements/IconDistributeHorizontalCenter.js";
-import { IconTextBaselineShift } from "@spectrum-web-components/icons-workflow/src/elements/IconTextBaselineShift.js";
-import { IconFlipVertical } from "@spectrum-web-components/icons-workflow/src/elements/IconFlipVertical.js";
-import { IconRemove } from "@spectrum-web-components/icons-workflow/src/elements/IconRemove.js";
 import { IconFullScreen } from "@spectrum-web-components/icons-workflow/src/elements/IconFullScreen.js";
-import { IconViewColumn } from "@spectrum-web-components/icons-workflow/src/elements/IconViewColumn.js";
 import { IconBox } from "@spectrum-web-components/icons-workflow/src/elements/IconBox.js";
 import { IconVisibility } from "@spectrum-web-components/icons-workflow/src/elements/IconVisibility.js";
 import { IconVisibilityOff } from "@spectrum-web-components/icons-workflow/src/elements/IconVisibilityOff.js";
@@ -208,7 +189,6 @@ const components = [
   ["sp-icon-refresh", IconRefresh],
   ["sp-icon-add", IconAdd],
   ["sp-icon-upload", IconUpload],
-  ["sp-icon-view-grid", IconViewGrid],
   ["sp-icon-brackets", IconBrackets],
   ["sp-icon-data", IconData],
   ["sp-icon-chevron-down", IconChevronDown],
@@ -231,29 +211,11 @@ const components = [
   ["sp-icon-arrow-left", IconArrowLeft],
   ["sp-icon-arrow-down", IconArrowDown],
   ["sp-icon-arrow-up", IconArrowUp],
-  ["sp-icon-text-align-left", IconTextAlignLeft],
-  ["sp-icon-text-align-center", IconTextAlignCenter],
-  ["sp-icon-text-align-right", IconTextAlignRight],
-  ["sp-icon-text-align-justify", IconTextAlignJustify],
-  ["sp-icon-align-top", IconAlignTop],
-  ["sp-icon-align-bottom", IconAlignBottom],
-  ["sp-icon-align-middle", IconAlignMiddle],
-  ["sp-icon-align-left", IconAlignLeft],
-  ["sp-icon-align-right", IconAlignRight],
-  ["sp-icon-align-center", IconAlignCenter],
-  ["sp-icon-distribute-space-horiz", IconDistributeSpaceHoriz],
   ["sp-icon-distribute-space-vert", IconDistributeSpaceVert],
-  ["sp-icon-distribute-horizontally", IconDistributeHorizontally],
-  ["sp-icon-distribute-vertically", IconDistributeVertically],
   ["sp-icon-distribute-bottom-edge", IconDistributeBottomEdge],
   ["sp-icon-distribute-top-edge", IconDistributeTopEdge],
-  ["sp-icon-distribute-horizontal-center", IconDistributeHorizontalCenter],
-  ["sp-icon-text-baseline-shift", IconTextBaselineShift],
-  ["sp-icon-flip-vertical", IconFlipVertical],
-  ["sp-icon-remove", IconRemove],
   ["sp-icon-full-screen", IconFullScreen],
   ["sp-icon-checkmark", IconCheckmark],
-  ["sp-icon-view-column", IconViewColumn],
   ["sp-icon-box", IconBox],
   ["sp-icon-visibility", IconVisibility],
   ["sp-icon-visibility-off", IconVisibilityOff],

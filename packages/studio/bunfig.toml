@@ -24,4 +24,8 @@ coveragePathIgnorePatterns = [
   # own run (0.95), and a build-only module such as `icons-build.ts` is 0% here by construction.
   "../ui/**",
 ]
-coverageThreshold = { lines = 0.95, functions = 0.94 }
+# Ratcheted to just under the workspace's worst file, per CLAUDE.md: `check-surface-purity.ts` is
+# the floor for lines (95.29) and `formula-catalog.ts` for functions (94.12). The margin is thin on
+# purpose — that is what a ratchet is — so a PR that drops either file below its current figure is
+# meant to go red rather than quietly spend the headroom.
+coverageThreshold = { lines = 0.952, functions = 0.941 }

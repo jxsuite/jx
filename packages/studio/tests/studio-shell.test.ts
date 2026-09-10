@@ -33,7 +33,6 @@ import { bufferWrites } from "../src/services/monaco-buffer";
 import { shell } from "../src/shell";
 import { resetZoom } from "../src/canvas/canvas-utils";
 import type { Tab } from "../src/tabs/tab";
-import type { JxMutableNode } from "@jxsuite/schema/types";
 
 // ─── Global stubs (must exist before studio.ts is imported) ──────────────────
 
@@ -351,7 +350,7 @@ const { platform, state } = installMockPlatform(
 );
 
 await import("../src/studio");
-const { renderLayoutPickerRow } = await import("../src/panels/head-panel");
+const { layoutPickerEntries } = await import("../src/panels/head-panel");
 
 await flush();
 
@@ -1404,15 +1403,13 @@ describe("filesystem events drop the derived caches", () => {
     expect(fsWatcher, "the boot must subscribe to the backend watcher").not.toBeNull();
     state.files.set("layouts/base.json", JSON.stringify({ tagName: "html" }));
 
-    const doc = { tagName: "main" } as unknown as JxMutableNode;
-    const apply = () => {};
-    // First paint populates the cache; the second is served from it.
-    renderLayoutPickerRow(doc, apply);
+    // First ask populates the cache; the second is served from it.
+    layoutPickerEntries();
     await waitFor(() => state.calls.some((c) => c[0] === "listDirectory" && c[1] === "layouts"));
     const afterFirst = state.calls.filter(
       (c) => c[0] === "listDirectory" && c[1] === "layouts",
     ).length;
-    renderLayoutPickerRow(doc, apply);
+    layoutPickerEntries();
     await flush();
     expect(state.calls.filter((c) => c[0] === "listDirectory" && c[1] === "layouts")).toHaveLength(
       afterFirst,
@@ -1420,7 +1417,7 @@ describe("filesystem events drop the derived caches", () => {
 
     // A file appears on disk. The next paint must go back and look.
     fsWatcher!([{ isDir: false, path: "layouts/marketing.json", type: "add" }]);
-    renderLayoutPickerRow(doc, apply);
+    layoutPickerEntries();
     await waitFor(
       () =>
         state.calls.filter((c) => c[0] === "listDirectory" && c[1] === "layouts").length >

@@ -122,7 +122,6 @@ const VENDOR_CLASS_PREFIXES = [
  * including these) if you ever need to regenerate the grouping wholesale.
  */
 export const ALLOWED_ORPHANS = new Set<string>([
-  // Owner: about/about-modal.ts
   // Owner: canvas/iframe-host.ts
   "jx-canvas-iframe",
   // Owner: canvas/iframe-overlay.ts
@@ -132,14 +131,10 @@ export const ALLOWED_ORPHANS = new Set<string>([
   "overlay-presence-tag",
   /* Owner: collab/presence-chips.ts — jx-presence, -chip, -status and the two new flags now have
      rules in styles/shell.css. The flagship co-editing affordance shipped unstyled (§7.4). */
-  // Owner: editor/slash-menu.ts
   // Owner: grid/grid-open.ts
   "jx-grid-picker",
   // Owner: grid/grid-panel.ts
   "jx-grid-replace-popover",
-  // Owner: new-project/location-fields.ts
-  // Owner: new-project/new-project-modal.ts
-  // Owner: panels/ai-chat/composer.ts
   // Owner: panels/data-grid.ts
   "data-action-grid",
   "data-action-push",
@@ -159,65 +154,39 @@ export const ALLOWED_ORPHANS = new Set<string>([
   // Owner: panels/drag-ghost.ts
   "jx-drag-ghost",
   // Owner: panels/events-panel.ts
-  "body-mode-code",
-  "body-mode-statements",
-  "body-mode-toggle",
-  "event-body-mode",
   /* Owner: panels/formula-workspace.ts — the seventeen `fw-*` classes that were here are styled in
      styles/panels.css now. The takeover held itself together with inline `style=` attributes; a
      dock tab cannot, because its height is the dock's rather than the stage's. Two remain: both
      are Spectrum action buttons the surface only needs a HANDLE on, and neither carries a rule. */
   "fw-browse-catalog",
   "fw-close",
-  // Owner: panels/head-panel.ts
-  "head-add-attr",
-  "head-add-tag",
-  "head-add-val",
-  "imports-section-title",
-  // Owner: panels/imports-panel.ts
   // Owner: panels/layers-panel.ts
   "layers-container",
   "layers-tree",
   /* Owner: panels/properties-panel.ts — the breakpoint form these three belonged to is gone.
      $media is defined in Project Settings › Contexts and nowhere else (plan §4.2). */
-  "link-target-field",
-  "link-target-kind",
-  "link-target-value",
-  "link-target-window",
-  "style-section-body",
   /* Owner: panels/statement-editor.ts — the whole surface (twenty names, including the two
      drag-feedback classes that had no rule anywhere) is styled in styles/inspector.css now. It
      held itself together with inline `style=` attributes, and an attribute cannot carry the
      `min-width: 0` a flex chain needs, so the Logic tab's operand controls were clipped by the
      right edge of the window at Inspector width. */
-  // Owner: panels/welcome-screen.ts
-  // Owner: settings/contributed-section.ts
   // Owner: settings/css-vars-editor.ts
   /* "css-vars-enable-dark" retired with the button: this section overrides tokens per scheme, it
      no longer DEFINES a scheme — that is Settings › Contexts (§2 principle 5). */
-  // Owner: settings/schema-field-ui.ts
-  "schema-field-label",
-  "schema-field-ref-target",
-  // Owner: ui/dynamic-slot.ts
-  "dynamic-slot",
-  "dynamic-slot-mode",
   /* Owner: ui/expression-editor.ts — styled in styles/inspector.css beside the statement editor it
      is drawn inside. `array-object-*` and `expr-live-badge` are shared with ui/schema-form.ts and
      ui/formula-chips.ts, which still pass their own inline copies; the rule they now inherit is
      the wrap and the shrink. */
   // Owner: ui/form-controls.ts
-  "schema-builder",
   "secret-field",
   // Owner: ui/formula-chips.ts
   "formula-chip",
   "formula-chip--group",
   "formula-chips",
-  // Owner: ui/layers.ts
   // Owner: ui/media-picker.ts
   "media-picker-browse",
   "media-picker-filter",
   "media-picker-upload",
-  // Owner: ui/schema-form.ts
   // Owner: ui/value-selector.ts
   "jx-combobox-picker",
   "jx-combobox-popover",

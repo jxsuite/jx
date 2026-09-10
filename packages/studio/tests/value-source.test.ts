@@ -165,9 +165,9 @@ describe("capsForPosition", () => {
   });
 
   test("every position derives at least one rung — there is no invented floor", () => {
-    /* `renderDynamicSlot` no longer falls back to fixed-value/from-data when a derivation comes
-       back empty, so a position whose schema moved out from under it would draw a chip with
-       nowhere to go. This is the check that says so first. */
+    /* The ladder no longer falls back to fixed-value/from-data when a derivation comes back
+       empty, so a position whose schema moved out from under it would draw a chip with nowhere to
+       go. This is the check that says so first. */
     for (const position of Object.keys(SLOT_POSITION_SCHEMAS) as SlotPosition[]) {
       expect(capsForPosition(position).length).toBeGreaterThan(0);
     }

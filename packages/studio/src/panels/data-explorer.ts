@@ -1,12 +1,13 @@
 /// <reference lib="dom" />
 // ─── Data Explorer ──────────────────────────────────────────────────────────
 
-import { html } from "lit-html";
+import { html, nothing } from "lit-html";
 import type { TemplateResult } from "lit-html";
 import { activeTab } from "../workspace/workspace";
 import { booleanArg, stringArg, stringProperty } from "../commands/command-args";
-import { disposeDetachedDataTrees, renderDataTreeSurface } from "../surfaces/panel-data";
+import { renderDataTreeSurface } from "../surfaces/panel-data";
 import { registerPanel } from "./panel-registry";
+import type { PanelBody } from "./panel-registry";
 import type { DataTreeRow } from "../surfaces/panel-data";
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
 
@@ -225,18 +226,19 @@ interface DataTreeRequest {
   path: string;
 }
 
-/** A host element carrying its request. */
-interface DataTreeHost extends HTMLElement {
-  jxDataTree?: DataTreeRequest;
-}
-
 /**
  * The host one value tree is drawn into, and the value it is to draw.
  *
  * It renders no tree of its own. The tree is a Jx document and a document is not a
- * `TemplateResult`, so what a lit template can contribute is the element it lands in;
- * {@link mountDataTrees}, the panel's `afterRender`, is what fills it. The signature is unchanged so
- * that the row template calling it does not have to know any of that.
+ * `TemplateResult`, so what a lit template can contribute is the element it lands in, and
+ * {@link paintDataTree} is what fills one. The signature is unchanged so that the row template
+ * calling it does not have to know any of that.
+ *
+ * **Its one remaining caller has no filler.** The Data panel is a document now and paints its own
+ * hosts directly; `panels/formula-workspace.ts` still renders this host and nothing has ever called
+ * a mounting pass with the Bottom dock's body, so the Logic tab's "resolved value" box has been
+ * empty since the tree became a document. The request is left on the host — it is exactly what a
+ * `ref()` calling {@link paintDataTree} needs — rather than the host being quietly deleted.
  *
  * @returns {import("lit-html").TemplateResult}
  */
@@ -253,37 +255,36 @@ export function renderDataTreeTemplate(
 }
 
 /**
- * Draw every value tree the last render asked for. The Data panel's `afterRender`.
+ * Draw one value tree into the host that was made for it, or bring the one already there up to
+ * date.
  *
- * Idempotent, because `afterRender` runs on EVERY render: a host that already holds its document is
- * assigned to rather than remounted, which is what keeps the reader's place inside a long tree. The
- * sweep goes first — a row the reader collapsed took its host out of the document, and the mount
- * registry holds a host by reference, so this pass is the only moment a closed tree can be taken
- * down.
+ * Idempotent, because it runs on EVERY repaint: a host that already holds its document is assigned
+ * to rather than remounted, which is what keeps the reader's place inside a long tree. Taking a
+ * CLOSED tree down is the panel's job rather than this one's — a row the reader collapsed never
+ * reaches here again — so `panels/signals-panel.ts` calls `disposeDetachedDataTrees()` once per
+ * repaint instead of this sweeping per host.
  *
- * @param {HTMLElement} host The painted panel body.
- * @param {() => void} rerender Repaint the Navigator, so that a raised limit is drawn.
+ * @param {HTMLElement} host The node the tree is drawn into.
+ * @param {unknown} value What the canvas resolved this entry to.
+ * @param {string} path The subtree's path, which is what a raised limit is remembered against.
+ * @param {() => void} rerender Repaint the panel, so that a raised limit is drawn.
+ * @param {number} [maxDepth] The default depth cap, before whatever the reader has raised.
  */
-export function mountDataTrees(host: HTMLElement, rerender: () => void): void {
-  disposeDetachedDataTrees();
-  for (const element of host.querySelectorAll<DataTreeHost>("[data-jx-tree]")) {
-    const request = element.jxDataTree;
-    if (!request) {
-      continue;
-    }
-    renderDataTreeSurface(
-      element,
-      dataTreeRows(request.value, request.depth, request.maxDepth, request.path),
-      {
-        showMore: (subtree, limit) => {
-          if (limit === "items" || limit === "keys" || limit === "depth") {
-            raiseDataLimit(subtree, limit);
-          }
-          rerender();
-        },
-      },
-    );
-  }
+export function paintDataTree(
+  host: HTMLElement,
+  value: unknown,
+  path: string,
+  rerender: () => void,
+  maxDepth = 5,
+): void {
+  renderDataTreeSurface(host, dataTreeRows(value, 0, maxDepth, path), {
+    showMore: (subtree, limit) => {
+      if (limit === "items" || limit === "keys" || limit === "depth") {
+        raiseDataLimit(subtree, limit);
+      }
+      rerender();
+    },
+  });
 }
 
 // ─── Commands ─────────────────────────────────────────────────────────────────
@@ -421,10 +422,13 @@ export function registerDataExplorerCommands(
  * Defining and watching are the same task interrupted: you add an entry, then look at what it
  * resolved to. Two panels made that two panels.
  *
- * **The value half is a Jx document now** (`surfaces/panel-data.{json,ts}`). `render` still returns
- * the definition rows as a lit template, because those are `signals-panel.ts`'s and are still drawn
- * over Spectrum; what each open row makes room for is a host, and `afterRender` is where the
- * document lands in it.
+ * **Both halves are documents now** — `surfaces/panel-signals.{json,ts}` for the entry list and its
+ * editors, `surfaces/panel-data.{json,ts}` for the value tree under an open row. So lit draws
+ * nothing at all here: `render` returns `nothing` and `afterRender` mounts against the painted DOM,
+ * which is the seam `panels/git-panel.ts` uses for the same reason. The mount comes through `deps`
+ * rather than an import — this module owns the expansion store that one reads, so importing it back
+ * would close a cycle — and it is idempotent, so running on every repaint is what keeps the
+ * projection current.
  */
 export function registerDataPanel(): void {
   registerPanel({
@@ -434,15 +438,14 @@ export function registerDataPanel(): void {
     dock: "navigator",
     icon: "database",
     requiresDocument: "Open a page to give it data — values it can read, compute or fetch.",
-    render: (ctx) =>
+    render: (): PanelBody => nothing,
+    afterRender: (ctx, host) => {
       // `ctx.doc!` — `requiresDocument` means the registry renders the empty state instead of
       // Calling this, the same assertion `head-panel.ts` makes for the same reason.
-      ctx.deps.renderSignalsTemplate(ctx.doc!, {
+      ctx.deps.mountSignalsPanel(host, ctx.doc!, {
         refreshData: ctx.deps.refreshData,
         renderLeftPanel: ctx.rerender,
-      }),
-    afterRender: (ctx, host) => {
-      mountDataTrees(host, ctx.rerender);
+      });
     },
   });
 }

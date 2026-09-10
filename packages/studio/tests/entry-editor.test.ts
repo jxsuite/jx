@@ -8,6 +8,12 @@
  * path never produces, because nothing splits a frontmatter block off a JSON file. That fixture
  * passed while the editor drew a blank form over a JSON entry full of data and discarded every edit
  * at save time. A test that invents the state under test can only ever agree with itself.
+ *
+ * **The editor is a document now** (`src/surfaces/entry-editor.json`), so everything inside it is
+ * addressed by `part` or by REGION: there is no `.entry-editor-header`, `.entry-editor-note` or
+ * `sp-action-button` left to find. The one exception is the draft PILL, which is still a lit
+ * `<span>` because it belongs to the tab chip rather than to this surface — the test that names its
+ * class says so.
  */
 import { flush, installMockPlatform, resetStudioState, surfaceOf } from "./harness";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
@@ -17,6 +23,7 @@ import { activeTab, closeAllTabs, workspace } from "../src/workspace/workspace";
 import { openFileInTab } from "../src/files/files";
 import { serializeDocument } from "../src/files/serialize-document";
 import { editorKindForMode } from "../src/commands/context";
+import { paneRegion } from "../src/ui/regions";
 import {
   ENTRY_MODE,
   detachEntryPane,
@@ -120,10 +127,16 @@ async function mount(tab: Tab): Promise<HTMLElement> {
   const host = document.createElement("div");
   document.body.append(host);
   renderEntryMode(surfaceOf(host), tab);
-  /* The form is a mounted document now: `mountSurface` settles when the document has rendered, and
-     a kit element's own template is one `connectedCallback` after that. */
-  await flush(6);
+  /* Both the editor and the form inside it are mounted documents now: `mountSurface` settles when
+     the document has rendered, and a kit element's own template is one `connectedCallback` after
+     that — for the editor, and then again for the island it announces. */
+  await flush(8);
   return host;
+}
+
+/** One `part` of the editor, whichever stage is drawn. */
+function part(host: HTMLElement, name: string): HTMLElement | null {
+  return host.querySelector<HTMLElement>(`[part="${name}"]`);
 }
 
 function fieldValue(host: HTMLElement, prop: string): unknown {
@@ -139,6 +152,11 @@ function typeInto(host: HTMLElement, prop: string, value: string): void {
   };
   el.value = value;
   el.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+/** The native checkbox inside the draft switch — where a reader actually clicks. */
+function draftInput(host: HTMLElement): HTMLInputElement | null {
+  return host.querySelector<HTMLInputElement>('[part="draft"] [part="input"]');
 }
 
 /** The form engine debounces text commits. */
@@ -187,18 +205,30 @@ describe("the two storage shapes the real open path produces", () => {
 describe("rendering", () => {
   test("a JSON entry's form is filled from the document, not from an empty frontmatter", async () => {
     const host = await mount(await openAda());
-    expect(host.querySelector(".entry-editor-collection")?.textContent).toBe("authors");
+    expect(part(host, "collection")?.textContent).toBe("authors");
+    expect(part(host, "name")?.textContent).toBe("ada.json");
     expect(fieldValue(host, "name")).toBe("Ada Lovelace");
     expect(fieldValue(host, "bio")).toBe("Mathematician");
   });
 
   test("a Markdown entry's form is filled from its frontmatter", async () => {
     const host = await mount(await openPost());
-    expect(host.querySelector(".entry-editor-collection")?.textContent).toBe("blog");
+    expect(part(host, "collection")?.textContent).toBe("blog");
+    expect(host.querySelectorAll('[part="fields"] [part="field"]').length).toBeGreaterThanOrEqual(
+      4,
+    );
     expect(fieldValue(host, "title")).toBe("Hello");
-    expect(
-      host.querySelectorAll('.entry-editor-fields [part="field"]').length,
-    ).toBeGreaterThanOrEqual(4);
+  });
+
+  /**
+   * The screenshot pipeline addresses the editor by region rather than by selector (§13.2), and
+   * both ids are DERIVED from the pane — so a shot keeps working across a rename of anything
+   * inside.
+   */
+  test("the stage and its field list are addressable as regions", async () => {
+    const host = await mount(await openAda());
+    expect(part(host, "entry")?.dataset.jxRegion).toBe(paneRegion("primary", "entry"));
+    expect(part(host, "fields")?.dataset.jxRegion).toBe(paneRegion("primary", "entry/fields"));
   });
 
   test("a valid JSON entry is not accused of missing its required field", async () => {
@@ -223,9 +253,12 @@ describe("rendering", () => {
 
   test("a document in no collection says so and offers the content types section", async () => {
     const host = await mount(await openEntry("pages/index.json", "{}"));
-    expect(host.textContent).toContain("is not an entry of any content collection");
-    expect(host.querySelector("sp-action-button")?.textContent).toContain("Content types");
-    expect(host.querySelector(".entry-editor-fields")).toBeNull();
+    expect(part(host, "empty-line")?.textContent).toContain(
+      "is not an entry of any content collection",
+    );
+    expect(part(host, "content-types")?.textContent).toContain("Content types");
+    // The two stages are exclusive: no field list is drawn where there is no schema to draw one.
+    expect(part(host, "fields")).toBeNull();
   });
 
   test("mounting is idempotent per tab and released by detach", async () => {
@@ -305,18 +338,18 @@ describe("a field edit reaches the file that gets saved", () => {
   test("a repaint follows a commit on either shape, without the canvas pipeline", async () => {
     const json = await openAda();
     const jsonHost = await mount(json);
-    expect(jsonHost.querySelector(".entry-editor-note")).toBeNull();
+    expect(part(jsonHost, "note")).toBeNull();
     setEntryDraft(json, true);
-    await flush();
-    expect(jsonHost.querySelector(".entry-editor-note")?.textContent).toContain("Marked a draft");
+    await flush(4);
+    expect(part(jsonHost, "note")?.textContent).toContain("Marked a draft");
 
     detachEntryPane("primary");
     const md = await openPost();
     const mdHost = await mount(md);
-    expect(mdHost.querySelector(".entry-editor-note")).toBeNull();
+    expect(part(mdHost, "note")).toBeNull();
     setEntryDraft(md, true);
-    await flush();
-    expect(mdHost.querySelector(".entry-editor-note")?.textContent).toContain("Marked a draft");
+    await flush(4);
+    expect(part(mdHost, "note")?.textContent).toContain("Marked a draft");
   });
 });
 
@@ -324,16 +357,47 @@ describe("drafts", () => {
   test("the switch writes the flag into the entry's own store", async () => {
     const tab = await openAda();
     const host = await mount(tab);
-    const toggle = host.querySelector(".entry-draft-switch") as
-      | (HTMLElement & { checked: boolean })
-      | null;
-    expect(toggle).not.toBeNull();
-    toggle!.checked = true;
-    toggle!.dispatchEvent(new Event("change", { bubbles: true }));
-    await flush();
+    const input = draftInput(host);
+    expect(input).not.toBeNull();
+    input!.checked = true;
+    input!.dispatchEvent(new Event("change", { bubbles: true }));
+    await flush(4);
     expect(tab.doc.document.draft).toBe(true);
     expect(tab.doc.content.frontmatter.draft).toBeUndefined();
     expect(tab.doc.dirty).toBe(true);
+  });
+
+  /**
+   * The switch's tooltip is the whole contract the pill carries: it names what a draft IS, and
+   * deliberately does not promise the build excludes it. `jx-switch` draws `hint` on the control.
+   */
+  test("the switch says what a draft means, and appears on no collection without the axis", async () => {
+    const withAxis = await mount(await openAda());
+    expect(
+      part(withAxis, "draft")?.querySelector('[part="control"]')?.getAttribute("title"),
+    ).toContain("does not exclude");
+
+    detachEntryPane("primary");
+    resetStudioState({
+      isSiteProject: true,
+      name: "Demo",
+      projectConfig: {
+        content: {
+          notes: {
+            format: "json",
+            schema: { properties: { body: { type: "string" } }, type: "object" },
+            source: "./content/notes/",
+          },
+        },
+        name: "Demo",
+      },
+      projectRoot: "/demo",
+    });
+    const noAxis = await mount(
+      await openEntry("content/notes/one.json", JSON.stringify({ body: "Hi" })),
+    );
+    expect(part(noAxis, "collection")?.textContent).toBe("notes");
+    expect(part(noAxis, "draft")).toBeNull();
   });
 
   test("setEntryDraft is a setter: false is written, not deleted — in both stores", async () => {
@@ -348,6 +412,11 @@ describe("drafts", () => {
     expect(md.doc.content.frontmatter.draft).toBe(false);
   });
 
+  /**
+   * The pill is the one fragment of this module that is still lit, because it is drawn on the tab
+   * CHIP — `panels/tab-strip.ts` interpolates it into a `repeat()` that rebuilds on every strip
+   * repaint. It converts when that surface does; until then it keeps its class and its rule.
+   */
   test("the pill names both states, and appears on no document without the axis", async () => {
     const host = document.createElement("div");
 

@@ -8,8 +8,22 @@ customElements.define("sp-toast", PreexistingToast);
 const { components } = await import("../src/ui/spectrum");
 
 describe("spectrum component registry", () => {
+  /**
+   * The manifest only ever SHRINKS now, so its size is a scoreboard rather than a floor.
+   *
+   * It used to assert `> 100` — "the manifest is full" — which was the right shape while Spectrum
+   * was the design system. Every converted surface unregisters the tags it was the last writer of,
+   * so that assertion became a countdown to its own failure, and it reached one at 97. A ceiling
+   * that ratchets down is the same statement the rest of this package's gates make: a number may
+   * fall, and raising it needs saying why. It reaches 0 when C8 deletes Spectrum.
+   */
+  const CEILING = 97;
+
   test("exports the full tag/constructor manifest", () => {
-    expect(components.length).toBeGreaterThan(100);
+    expect(components.length).toBeGreaterThan(0);
+    expect(components.length, "lower CEILING; the manifest only ratchets down").toBeLessThanOrEqual(
+      CEILING,
+    );
     const tags = components.map(([tag]) => tag);
     expect(new Set(tags).size).toBe(tags.length); // No duplicate tags
     for (const [tag, ctor] of components as [string, CustomElementConstructor][]) {

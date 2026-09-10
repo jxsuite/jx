@@ -259,22 +259,11 @@ function isExcluded(file: string): boolean {
 export const SPECTRUM_DEBT: Record<string, number> = {
   "files/files.ts": 1,
   "panels/block-action-bar.ts": 1,
-  "panels/events-panel.ts": 3,
-  "panels/head-panel.ts": 1,
   "panels/pane-context.ts": 5,
-  "panels/properties-panel.ts": 4,
-  "panels/signals-panel.ts": 3,
-  "panels/statement-editor.ts": 2,
   /* Content-type field cards. Rebuilt wholesale on every edit today, so the reader has no window
      in which to diverge — which is why they are here rather than fixed. */
-  "settings/schema-field-ui.ts": 9,
   "ui/color-selector.ts": 1,
-  /* `value=${refVal || nothing}` — the attribute form is load-bearing here: `nothing` REMOVES the
-     attribute, and sp-picker shows its placeholder. A property binding sets undefined instead,
-     which needs checking against the real component before it is called equivalent. */
-  "ui/dynamic-slot.ts": 1,
   "ui/expression-editor.ts": 1,
-  "ui/field-row.ts": 2,
   "ui/form-controls.ts": 2,
 };
 
@@ -300,15 +289,12 @@ export const SELF_QUERY_DEBT: Record<string, number> = {
   "panels/layers-panel.ts": 4,
   "panels/left-panel.ts": 1,
   "panels/pane-context.ts": 1,
-  "panels/statement-editor.ts": 1,
   /* Four reads of the strip and its chips, all for MEASUREMENT (scrollWidth, offsetLeft) or
      scrollIntoView. The uses stay imperative; it is the acquisition that wants one per-pane ref. */
   "panels/tab-strip.ts": 4,
-  "settings/schema-field-ui.ts": 1,
   /* `isColorPopoverOpen()` derives modality from the live DOM, document-wide, and right-panel
      calls it as a blockWhile on every scheduled render. State read back out of markup. */
   "ui/color-selector.ts": 1,
-  "ui/field-row.ts": 1,
   "ui/value-selector.ts": 1,
 };
 

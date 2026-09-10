@@ -1,27 +1,29 @@
 /**
- * Signals panel — plugin schema-driven forms: renderSchemaFieldsTemplate (enum/boolean/number/
- * json-schema/array-of-objects/json controls, contentType $ref enums) and
- * renderExternalPrototypeEditorTemplate (source/prototype fields, schema cache, async loading).
+ * The Data panel's plugin config form: the schema-driven fields an external `$prototype` gets, and
+ * the Source/Kind/Export rows above them.
+ *
+ * The panel is a document (`src/surfaces/panel-signals.json`) and the form is a document of its own
+ * (`src/ui/schema-form.ts`), so the two meet at an ISLAND: the panel draws an empty
+ * `[part="slot-host"][data-slot="schema"]` and `panels/signals-panel.ts` puts the form's host in
+ * it. Every test here mounts the real panel and then scopes to that host, which is what
+ * `renderSchemaFieldsTemplate` used to hand back — so what the form draws is asserted exactly as it
+ * was, and the panel's own decisions (the reserved-key filter, the context pointers, the sibling
+ * signals a value may bind to, and the cache) are on the same path they take in the app.
  */
 import {
-  flush,
-  installMockPlatform,
-  pointer,
-  resetStudioState,
-  resetWorkspaceWithTab,
-} from "./harness";
+  clearSignalPanels,
+  drawSignals,
+  editorFor,
+  openEntry,
+  settle,
+} from "./signals-panel-fixture";
+import { flush, installMockPlatform, pointer, resetStudioState } from "./harness";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { html, render } from "lit-html";
 import { activeTab } from "../src/workspace/workspace";
-import {
-  renderExternalPrototypeEditorTemplate,
-  renderSchemaFieldsTemplate,
-} from "../src/panels/signals-panel";
 import { resetSlotModeMemory } from "../src/ui/dynamic-slot";
 import { resetSchemaForms } from "../src/ui/schema-form";
 import { initLayers } from "../src/ui/layers";
 import { pluginSchemaCache } from "../src/services/code-services";
-import type { JxMutableNode } from "@jxsuite/schema/types";
 
 for (const id of ["layer-popover", "layer-modal", "layer-dialog"]) {
   const el = document.createElement("div");
@@ -31,6 +33,11 @@ for (const id of ["layer-popover", "layer-modal", "layer-dialog"]) {
 initLayers();
 
 type ValueEl = HTMLElement & { value: string };
+
+/** The `$src` every plugin entry in this file is defined against. */
+const SRC = "./w.js";
+/** The cache key `SRC` plus the prototype resolve to. */
+const KEY = `${SRC}::Widget`;
 
 /** The native control a kit field is made of — what a reader actually types into or picks from. */
 function native(el: Element): Element {
@@ -67,52 +74,43 @@ function pluginDef(): Record<string, unknown> {
   >;
 }
 
-/** Every container this file has attached, so one test's DOM never outlives it. */
-const mounted: HTMLElement[] = [];
+/** The last panel drawn, so a test can ask it for a repaint or read its counts. */
+let panel: HTMLElement;
+let repaints: { repaints: number; refreshes: number };
+let redraw: () => void;
 
 /**
- * Open a tab whose state holds a single `plugin` def and render schema fields for it.
+ * Open a document whose one entry is an external `Widget`, with `schema` already cached, and hand
+ * back the island the config form was mounted into.
  *
- * The schema form is a document now, so `renderSchemaFieldsTemplate` interpolates the element the
- * form lives in rather than a template: the container is ATTACHED (a kit element renders on
- * connect) and the mount is awaited before anything is asserted. Re-mounting under the same signal
- * name updates the STANDING form and moves its host into the new container, which is exactly what a
- * repaint of the panel does.
+ * The schema is SEEDED rather than fetched, which is what makes this a test of the form rather than
+ * of the platform: the fetch path is exercised on its own below.
  */
 async function mountSchema(
   schema: Record<string, unknown> | null,
   def: Record<string, unknown>,
-  ctx: { renderLeftPanel: () => void } | null = null,
   documentPath?: string,
 ): Promise<HTMLElement> {
-  resetWorkspaceWithTab({
-    children: [],
-    state: { plugin: def },
-    tagName: "div",
-  } as unknown as JxMutableNode);
-  const container = document.createElement("div");
-  document.body.append(container);
-  mounted.push(container);
-  const tab = activeTab.value;
-  if (!tab) {
-    throw new Error("no active tab");
-  }
-  const S = {
-    document: tab.doc.document,
-    ...(documentPath != null && { documentPath }),
-  } as never;
-  render(
-    html`${renderSchemaFieldsTemplate(
-      schema as never,
-      pluginDef() as never,
-      "plugin",
-      S,
-      ctx as never,
-    )}`,
-    container,
+  pluginSchemaCache.set(KEY, schema as never);
+  const drawn = await drawSignals(
+    { plugin: { $prototype: "Widget", $src: SRC, ...def } },
+    ...(documentPath === undefined ? [] : [{ documentPath }]),
   );
-  await flush(6);
-  return container;
+  ({ counts: repaints, panel, repaint: redraw } = drawn);
+  await openEntry(panel, "plugin");
+  drawn.resetCounts();
+  return schemaHost();
+}
+
+/** The island the config form stands in, or a throw naming what the panel drew instead. */
+function schemaHost(): HTMLElement {
+  const host = editorFor(panel, "plugin").querySelector<HTMLElement>(
+    '[part="slot-host"][data-slot="schema"]',
+  );
+  if (!host) {
+    throw new Error("the panel drew no config-form island for this entry");
+  }
+  return host;
 }
 
 /**
@@ -148,6 +146,9 @@ function fieldEl<T extends Element>(scope: HTMLElement, prop: string, selector: 
 }
 
 beforeEach(() => {
+  /* First, because the schema cache is reactive and a standing render effect from the last test
+     would run against a workspace this one has not built yet. */
+  clearSignalPanels();
   resetStudioState();
   installMockPlatform();
   pluginSchemaCache.clear();
@@ -157,17 +158,23 @@ beforeEach(() => {
 
 afterEach(() => {
   resetSchemaForms();
-  for (const node of mounted.splice(0)) {
-    node.remove();
-  }
+  clearSignalPanels();
 });
 
 // ─── renderSchemaFieldsTemplate basics ───────────────────────────────────────
 
 describe("renderSchemaFieldsTemplate basics", () => {
-  test("no schema or missing properties → renders nothing", async () => {
-    const none = await mountSchema(null, {});
-    expect(none.children).toHaveLength(0);
+  test("no schema draws no island; a schema with no properties draws an empty one", async () => {
+    // The two are different answers: a schema the platform said was `null` is a plugin with
+    // Nothing to configure, and the panel offers no section at all; a schema that arrived and
+    // Declares no properties still has a host, so the day it grows one there is nowhere new to put
+    // It.
+    pluginSchemaCache.set(KEY, null);
+    const drawn = await drawSignals({ plugin: { $prototype: "Widget", $src: SRC } });
+    ({ panel } = drawn);
+    const opened = await openEntry(panel, "plugin");
+    expect(opened.querySelector('[part="slot-host"][data-slot="schema"]')).toBeNull();
+
     const noProps = await mountSchema({ type: "object" }, {});
     expect(noProps.children).toHaveLength(0);
   });
@@ -541,23 +548,15 @@ describe("array-of-objects fields", () => {
     expect((cols()[0]! as { align?: string }).align).toBeUndefined();
   });
 
-  test("add button appends a row seeded with item defaults and notifies ctx", async () => {
-    let renders = 0;
-    const container = await mountSchema(
-      columnsSchema,
-      {},
-      {
-        renderLeftPanel: () => {
-          renders += 1;
-        },
-      },
-    );
+  test("add button appends a row seeded with item defaults and repaints the panel", async () => {
+    const container = await mountSchema(columnsSchema, {});
     pointer(container.querySelector('[part="row-add"] [part="control"]') as Element, "click");
     expect((pluginDef() as { columns: never[] }).columns).toEqual([{ label: "col" }] as never[]);
-    expect(renders).toBe(1);
+    // The form asks its host to repaint, and the host is this panel.
+    expect(repaints.repaints).toBeGreaterThan(0);
   });
 
-  test("delete removes a row, clearing the key for the last one (null ctx ok)", async () => {
+  test("delete removes a row, clearing the key for the last one", async () => {
     let container = await mountSchema(columnsSchema, {
       columns: [{ label: "a" }, { label: "b" }],
     });
@@ -621,7 +620,7 @@ describe("binding a config field", () => {
   }
 
   test("the rungs are the ladder's own words, not a private Static / param / Custom… list", async () => {
-    const container = await mountSchema(stringSchema, { id: "abc" }, null, skuDoc);
+    const container = await mountSchema(stringSchema, { id: "abc" }, skuDoc);
     const chip = container.querySelector('[data-prop="id"] [part="source"]')!;
     expect(chip.textContent!.trim()).toBe("Fixed value");
     expect(await rungs(container, "id")).toEqual(["literal", "ref", "template"]);
@@ -633,18 +632,13 @@ describe("binding a config field", () => {
   });
 
   test("a plain string field can START a binding — the gesture that did not exist", async () => {
-    const container = await mountSchema(stringSchema, { id: "abc" }, null, skuDoc);
+    const container = await mountSchema(stringSchema, { id: "abc" }, skuDoc);
     await chooseRung(container, "id", "ref");
     expect((pluginDef() as { id: unknown }).id).toEqual({ $ref: "#/$params/sku" } as never);
   });
 
   test("a $ref value renders the pointer, never [object Object]", async () => {
-    const container = await mountSchema(
-      stringSchema,
-      { id: { $ref: "#/$params/sku" } },
-      null,
-      skuDoc,
-    );
+    const container = await mountSchema(stringSchema, { id: { $ref: "#/$params/sku" } }, skuDoc);
     const combo = fieldEl<ValueEl>(container, "id", '[part="pointer"]');
     expect(combo.value).toBe("#/$params/sku");
     expect(container.querySelector('[data-prop="id"] [part="source"]')!.textContent!.trim()).toBe(
@@ -657,7 +651,6 @@ describe("binding a config field", () => {
     const container = await mountSchema(
       stringSchema,
       { id: { $ref: "#/$params/a" } },
-      null,
       "pages/[a]/[b].json",
     );
     commitValue(fieldEl(container, "id", '[part="pointer"]'), "#/$params/b");
@@ -665,73 +658,43 @@ describe("binding a config field", () => {
   });
 
   test("a pointer outside the offered list is still accepted, and blank clears the key", async () => {
-    const container = await mountSchema(
-      stringSchema,
-      { id: { $ref: "#/$params/sku" } },
-      null,
-      skuDoc,
-    );
+    const container = await mountSchema(stringSchema, { id: { $ref: "#/$params/sku" } }, skuDoc);
     commitValue(fieldEl(container, "id", '[part="pointer"]'), "#/other/path");
     expect((pluginDef() as { id: unknown }).id).toEqual({ $ref: "#/other/path" } as never);
 
-    const blank = await mountSchema(stringSchema, { id: { $ref: "#/custom/ref" } }, null, skuDoc);
+    const blank = await mountSchema(stringSchema, { id: { $ref: "#/custom/ref" } }, skuDoc);
     commitValue(fieldEl(blank, "id", '[part="pointer"]'), "  ");
     expect((pluginDef() as { id?: unknown }).id).toBeUndefined();
   });
 
   test("going back to Fixed value drops the binding", async () => {
-    const container = await mountSchema(
-      stringSchema,
-      { id: { $ref: "#/$params/sku" } },
-      null,
-      skuDoc,
-    );
+    const container = await mountSchema(stringSchema, { id: { $ref: "#/$params/sku" } }, skuDoc);
     await chooseRung(container, "id", "literal");
     expect((pluginDef() as { id?: unknown }).id).toBeUndefined();
   });
 
   test("a document with no route params and no other signal offers no source", async () => {
-    const container = await mountSchema(stringSchema, { id: "abc" }, null, "pages/index.json");
+    const container = await mountSchema(stringSchema, { id: "abc" }, "pages/index.json");
     expect(container.querySelector('[data-prop="id"] [part="source"]')).toBeNull();
     expect(fieldEl<ValueEl>(container, "id", '[part="text"]').value).toBe("abc");
   });
 
   test("a sibling signal is a source too, and the def never offers itself", async () => {
-    resetWorkspaceWithTab({
-      children: [],
-      state: { count: { default: 0, type: "number" }, plugin: { id: "abc" } },
-      tagName: "div",
-    } as unknown as JxMutableNode);
-    const container = document.createElement("div");
-    document.body.append(container);
-    mounted.push(container);
-    const tab = activeTab.value!;
-    render(
-      html`${renderSchemaFieldsTemplate(
-        stringSchema as never,
-        (tab.doc.document.state as Record<string, unknown>).plugin as never,
-        "plugin",
-        { document: tab.doc.document } as never,
-        null,
-      )}`,
-      container,
-    );
-    await flush(6);
-    await chooseRung(container, "id", "ref");
-    expect(
-      (
-        (tab.doc.document.state as Record<string, Record<string, unknown>>).plugin as {
-          id: unknown;
-        }
-      ).id,
-    ).toEqual({ $ref: "#/state/count" } as never);
+    pluginSchemaCache.set(KEY, stringSchema as never);
+    const drawn = await drawSignals({
+      count: { default: 0, type: "number" },
+      plugin: { $prototype: "Widget", $src: SRC, id: "abc" },
+    });
+    ({ panel } = drawn);
+    await openEntry(panel, "plugin");
+    await chooseRung(schemaHost(), "id", "ref");
+    expect((pluginDef() as { id: unknown }).id).toEqual({ $ref: "#/state/count" } as never);
   });
 
   test("an enum prop keeps its choices and gains the binding rung, but never Mixed text", async () => {
     const container = await mountSchema(
       { properties: { layout: { enum: ["grid", "list"] } } },
       { layout: "grid" },
-      null,
       skuDoc,
     );
     expect(await rungs(container, "layout")).toEqual(["literal", "ref"]);
@@ -743,7 +706,6 @@ describe("binding a config field", () => {
     const container = await mountSchema(
       { properties: { shape: { format: "json-schema", type: "object" } } },
       { shape: { $ref: "#/defs/thing" } },
-      null,
       skuDoc,
     );
     expect(container.querySelector('[data-prop="shape"] [part="json"]')).not.toBeNull();
@@ -772,149 +734,138 @@ describe("binding a config field", () => {
   });
 });
 
-// ─── renderExternalPrototypeEditorTemplate ───────────────────────────────────
+// ─── The Source / Kind / Export rows and the schema cache ────────────────────
 
-interface ExternalMount {
-  container: HTMLElement;
-  calls: { left: number };
-  rerender: () => void;
-  /**
-   * What the panel said on its FIRST paint, before anything settled.
-   *
-   * A schema fetch is in flight at that moment and the config form below it is a document being
-   * mounted, so "Loading schema…" is only observable here — by the time the mount has settled the
-   * fetch it triggered has resolved too.
-   */
-  initialText: string;
-}
-
+/**
+ * Open a document whose one entry is `def`, and hand back its editor.
+ *
+ * Nothing is seeded here: this is the half of the path that ASKS for a schema, so what the cache
+ * holds at the end of a draw is the result rather than the setup.
+ */
 async function mountExternal(
   def: Record<string, unknown>,
   opts: { documentPath?: string } = {},
-): Promise<ExternalMount> {
-  resetWorkspaceWithTab({
-    children: [],
-    state: { plugin: def },
-    tagName: "div",
-  } as unknown as JxMutableNode);
-  const container = document.createElement("div");
-  document.body.append(container);
-  mounted.push(container);
-  const calls = { left: 0 };
-  const tab = activeTab.value;
-  if (!tab) {
-    throw new Error("no active tab");
-  }
-  const S = {
-    document: tab.doc.document,
-    ...(opts.documentPath != null && { documentPath: opts.documentPath }),
-  } as never;
-  const ctx = {
-    renderLeftPanel: () => {
-      calls.left += 1;
-      render(
-        html`${renderExternalPrototypeEditorTemplate(S, "plugin", pluginDef() as never, ctx)}`,
-        container,
-      );
-    },
-  };
-  const rerender = () =>
-    render(
-      html`${renderExternalPrototypeEditorTemplate(S, "plugin", pluginDef() as never, ctx)}`,
-      container,
-    );
-  rerender();
-  const initialText = container.textContent ?? "";
-  await flush(6);
-  return { calls, container, initialText, rerender };
+): Promise<HTMLElement> {
+  const drawn = await drawSignals(
+    { plugin: def },
+    ...(opts.documentPath === undefined ? [] : [{ documentPath: opts.documentPath }]),
+  );
+  ({ counts: repaints, panel, repaint: redraw } = drawn);
+  const opened = await openEntry(panel, "plugin");
+  drawn.resetCounts();
+  return opened;
 }
 
-describe("renderExternalPrototypeEditorTemplate", () => {
-  test("shows Source/Kind fields when the prototype is not imported", async () => {
-    const m = await mountExternal({ $prototype: "Widget", $src: "./w.js" });
-    expect(m.container.querySelector('[data-prop="Source"]')).not.toBeNull();
-    expect(m.container.querySelector('[data-prop="Kind"]')).not.toBeNull();
-    expect(m.container.querySelector('[data-prop="Export"]')).toBeNull();
+/** The editor as it stands now — a repaint replaces nodes a `$switch` re-chose. */
+function pluginEditor(): HTMLElement {
+  return editorFor(panel, "plugin");
+}
+
+describe("an external prototype's own rows", () => {
+  test("shows Source and Kind when the prototype is not a project import", async () => {
+    pluginSchemaCache.set(KEY, null);
+    const el = await mountExternal({ $prototype: "Widget", $src: SRC });
+    expect(el.querySelector('[data-prop="Source"]')).not.toBeNull();
+    expect(el.querySelector('[data-prop="Kind"]')).not.toBeNull();
+    expect(el.querySelector('[data-prop="Export"]')).toBeNull();
   });
 
-  test("Source/Kind commits update the def and invalidate the schema cache", async () => {
-    pluginSchemaCache.set("./w.js::Widget", null);
+  test("Source and Kind commits update the entry and invalidate the schema cache", async () => {
+    pluginSchemaCache.set(KEY, null);
     pluginSchemaCache.set("./new.js::Widget", { properties: {} });
-    const m = await mountExternal({ $prototype: "Widget", $src: "./w.js" });
-    commitValue(fieldEl(m.container, "Source", "sp-textfield"), "./new.js");
+    const el = await mountExternal({ $prototype: "Widget", $src: SRC });
+    commitValue(fieldEl(el, "Source", '[part="text"]'), "./new.js");
     expect((pluginDef() as { $src: string }).$src).toBe("./new.js");
     expect(pluginSchemaCache.has("./new.js::Widget")).toBe(false);
 
     pluginSchemaCache.set("./new.js::Gadget", { properties: {} });
-    m.rerender();
-    commitValue(fieldEl(m.container, "Kind", "sp-textfield"), "Gadget");
+    await settle();
+    commitValue(fieldEl(pluginEditor(), "Kind", '[part="text"]'), "Gadget");
     expect((pluginDef() as { $prototype: string }).$prototype).toBe("Gadget");
     expect(pluginSchemaCache.has("./new.js::Gadget")).toBe(false);
   });
 
-  test("Export field appears when $export is set and commits changes", async () => {
-    pluginSchemaCache.set("./w.js::Widget", null);
-    const m = await mountExternal({ $export: "make", $prototype: "Widget", $src: "./w.js" });
-    commitValue(fieldEl(m.container, "Export", "sp-textfield"), "build");
+  test("Export appears when $export is set, and commits changes", async () => {
+    pluginSchemaCache.set(KEY, null);
+    const el = await mountExternal({ $export: "make", $prototype: "Widget", $src: SRC });
+    commitValue(fieldEl(el, "Export", '[part="text"]'), "build");
     expect((pluginDef() as { $export: string }).$export).toBe("build");
   });
 
-  test("imported prototypes show a hint instead of Source/Prototype fields", async () => {
+  test("an imported prototype names itself instead of offering Source and Kind", async () => {
     resetStudioState({ projectConfig: { imports: { Widget: "./plugins/widget.js" } } });
     pluginSchemaCache.set("./plugins/widget.js::Widget", null);
-    const m = await mountExternal({ $prototype: "Widget" });
-    expect(m.container.querySelector('[data-prop="Source"]')).toBeNull();
-    expect(m.container.querySelector(".signal-hint")?.textContent?.trim()).toBe("Widget");
+    const el = await mountExternal({ $prototype: "Widget" });
+    expect(el.querySelector('[data-prop="Source"]')).toBeNull();
+    expect(el.querySelector('[part="hint"]')?.textContent?.trim()).toBe("Widget");
   });
 
-  test("cached schema renders its description and config fields", async () => {
-    pluginSchemaCache.set("./w.js::Widget", {
+  test("a cached schema draws its description and its config fields", async () => {
+    pluginSchemaCache.set(KEY, {
       description: "A fine widget",
       properties: { color: { type: "string" } },
     });
-    const m = await mountExternal({ $prototype: "Widget", $src: "./w.js" });
-    expect(m.container.textContent).toContain("A fine widget");
-    expect(m.container.querySelector('[data-prop="color"] [part="text"]')).not.toBeNull();
+    const el = await mountExternal({ $prototype: "Widget", $src: SRC });
+    expect(el.textContent).toContain("A fine widget");
+    expect(el.querySelector('[data-prop="color"] [part="text"]')).not.toBeNull();
   });
 
-  test("cached null schema renders no config section", async () => {
-    pluginSchemaCache.set("./w.js::Widget", null);
-    const m = await mountExternal({ $prototype: "Widget", $src: "./w.js" });
-    expect(m.container.textContent).not.toContain("Loading schema");
-    // Source + Prototype only, and those two rows are `ui/field-row.ts`'s — still lit.
-    expect(m.container.querySelectorAll(".style-row")).toHaveLength(2);
+  test("a cached null schema draws no config section at all", async () => {
+    pluginSchemaCache.set(KEY, null);
+    const el = await mountExternal({ $prototype: "Widget", $src: SRC });
+    expect(el.textContent).not.toContain("Loading schema");
+    expect(el.querySelector('[part="slot-host"][data-slot="schema"]')).toBeNull();
+    // Name, Source and Kind — the entry's own three rows, and nothing under them.
+    expect(
+      [...el.querySelectorAll<HTMLElement>('[part="field"]')].map((f) => f.dataset["prop"]),
+    ).toEqual(["Name", "Source", "Kind"]);
   });
 
-  test("uncached schema shows a loading hint, fetches, then re-renders the panel", async () => {
+  test("an unanswered schema says it is loading, and asks for it exactly once", async () => {
+    // The wait is held open on purpose: "Loading schema…" is a STATE, and racing a resolved fetch
+    // To observe it is what made this assertion flaky before. The count is the other half — the
+    // Navigator repaints on every document change, and one request per repaint is a bug.
+    let asked = 0;
+    installMockPlatform({
+      fetchPluginSchema: async () => {
+        asked += 1;
+        return new Promise(() => {}) as never;
+      },
+    });
+    const el = await mountExternal(
+      { $prototype: "Widget", $src: SRC },
+      { documentPath: "pages/index.json" },
+    );
+    expect(el.querySelector('[part="hint"]')?.textContent).toContain("Loading schema…");
+    redraw();
+    await settle();
+    expect(asked).toBe(1);
+  });
+
+  test("a schema that arrives repaints the panel with its fields in place", async () => {
     installMockPlatform({
       fetchPluginSchema: async () => ({ properties: { size: { type: "integer" } } }),
     });
-    const m = await mountExternal(
-      { $prototype: "Widget", $src: "./w.js" },
-      { documentPath: "pages/index.json" },
-    );
-    expect(m.initialText).toContain("Loading schema…");
+    await mountExternal({ $prototype: "Widget", $src: SRC }, { documentPath: "pages/index.json" });
     await flush();
-    expect(m.calls.left).toBe(1);
-    expect(pluginSchemaCache.get("./w.js::Widget")).toEqual({
-      properties: { size: { type: "integer" } },
-    });
-    expect(m.container.querySelector('[data-prop="size"] [part="number"]')).not.toBeNull();
+    expect(pluginSchemaCache.get(KEY)).toEqual({ properties: { size: { type: "integer" } } });
+    await settle();
+    expect(pluginEditor().querySelector('[data-prop="size"] [part="number"]')).not.toBeNull();
   });
 
-  test("fetch resolving to null leaves the panel without a schema section", async () => {
-    const m = await mountExternal({ $prototype: "Widget", $src: "./w.js" });
-    expect(m.initialText).toContain("Loading schema…");
+  test("a fetch resolving to null leaves the entry without a schema section", async () => {
+    const el = await mountExternal({ $prototype: "Widget", $src: SRC });
+    expect(el.querySelector('[part="hint"]')?.textContent).toContain("Loading schema…");
     await flush();
-    expect(m.calls.left).toBe(0);
-    expect(pluginSchemaCache.get("./w.js::Widget")).toBeNull();
-    m.rerender();
-    expect(m.container.textContent).not.toContain("Loading schema");
+    expect(pluginSchemaCache.get(KEY)).toBeNull();
+    redraw();
+    await settle();
+    expect(pluginEditor().textContent).not.toContain("Loading schema");
   });
 
-  test("def without $prototype renders the plain Source/Prototype fields and no schema", async () => {
-    const m = await mountExternal({ $src: "./w.js" });
-    expect(m.container.querySelector('[data-prop="Source"]')).not.toBeNull();
-    expect(m.container.textContent).not.toContain("Loading schema");
+  test("a prototype with nowhere to resolve from gets the plain rows and no schema", async () => {
+    const el = await mountExternal({ $prototype: "Widget" });
+    expect(el.querySelector('[data-prop="Source"]')).not.toBeNull();
+    expect(el.textContent).not.toContain("Loading schema");
   });
 });

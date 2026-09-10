@@ -50,7 +50,7 @@ Buttons and inputs get an **Interactive** section holding the two [popover](/doc
 
 `popover` itself is a global attribute and lives in **Identity**, beside `hidden`. Its value is one of `auto`, `manual` or `hint`. `auto` is the one you almost always want, and the only one that closes on Escape and on a click outside. Whether the popover is currently _open on the canvas_ is a view control, not a value in the file: see [The canvas](/docs/studio/interface/canvas).
 
-Anything not covered lives in the **Custom** section: click **+ Add attribute** to add any attribute by name, edit its value inline, or remove it with **✕**.
+Anything not covered lives in the **Custom** section: click **+ Add attribute** to add any attribute by name, edit its value inline, or remove it with the **Remove** button at the end of its row.
 
 ## Make any value dynamic
 

@@ -12,7 +12,7 @@
 import {
   flush,
   installMockPlatform,
-  renderInto,
+  pointer,
   resetStudioState,
   resetWorkspaceWithTab,
 } from "./harness";
@@ -33,9 +33,9 @@ void mock.module("../src/commands/active-registry", () => ({
   activeRegistry: () => ({ run: () => {} }),
 }));
 
-const { renderStylePanelTemplate } = await import("../src/panels/style-panel");
-const { renderPropertiesPanelTemplate } = await import("../src/panels/properties-panel");
-const { renderLogicPanelTemplate } = await import("../src/panels/events-panel");
+const { bindStyleHost } = await import("../src/panels/style-panel");
+const { bindContentHost, renderPropertiesPanel } = await import("../src/panels/properties-panel");
+const { bindLogicPanelHost } = await import("../src/panels/events-panel");
 const { initCssData } = await import("../src/panels/style-utils");
 const { initLayers } = await import("../src/ui/layers");
 const { getNodeAtPath } = await import("../src/store");
@@ -89,16 +89,80 @@ function node(path: (string | number)[]): JxMutableNode {
 }
 
 const styleRow = (c: HTMLElement, prop: string) =>
-  c.querySelector(`.style-row[data-prop="${prop}"]`) as HTMLElement | null;
+  c.querySelector(`[part="row"][data-prop="${prop}"]`) as HTMLElement | null;
 const contentRow = (c: HTMLElement, prop: string) =>
   c.querySelector(`[data-prop="${prop}"]`) as HTMLElement | null;
-const chip = (row: HTMLElement | null) =>
-  row?.querySelector(".provenance-chip") as HTMLElement | null;
+const chip = (row: HTMLElement | null) => row?.querySelector('[part="chip"]') as HTMLElement | null;
 
-const renderStyle = () => renderInto(renderStylePanelTemplate({ getCanvasMode: () => "edit" }));
-const renderContent = () =>
-  renderInto(renderPropertiesPanelTemplate({ navigateToComponent: () => {} }));
-const renderLogic = () => renderInto(renderLogicPanelTemplate({ isCustomElementDoc: () => false }));
+/** The state a chip is in. A document says such things with data, not with a class. */
+const chipState = (row: HTMLElement | null) => chip(row)?.dataset.state ?? "";
+
+/** A row's own control — a kit field's native input, wherever the row puts one. */
+const control = (row: HTMLElement | null, part = "text") =>
+  row?.querySelector(`[part="${part}"] [part="input"]`) as HTMLInputElement;
+
+/**
+ * The Style tab is a mounted Jx document too, bound to a host rather than rendered into one, and it
+ * keeps itself current — so a test binds once and the effect answers every later change.
+ */
+let styleHost: HTMLElement | null = null;
+async function renderStyle(): Promise<HTMLElement> {
+  if (!styleHost) {
+    styleHost = document.createElement("div");
+    document.body.append(styleHost);
+  }
+  bindStyleHost(styleHost, { getCanvasMode: () => "edit" });
+  await flush(4);
+  return styleHost;
+}
+
+/**
+ * The Content tab is a mounted Jx document, so it is bound to a host rather than rendered into one.
+ *
+ * Its chip is `[part="chip"]` carrying `data-state`, not `.provenance-chip--mixed`: the state is a
+ * fact about the row's value and a document says such things with data. The vocabulary is
+ * `panels/provenance.ts`'s either way, which is what the assertions here are about.
+ */
+let contentHost: HTMLElement | null = null;
+async function renderContent(): Promise<HTMLElement> {
+  if (!contentHost) {
+    contentHost = document.createElement("div");
+    document.body.append(contentHost);
+    bindContentHost(contentHost);
+  }
+  renderPropertiesPanel();
+  await flush(6);
+  return contentHost;
+}
+const contentChip = (c: HTMLElement, prop: string) =>
+  contentRow(c, prop)?.querySelector('[part="chip"]') as HTMLElement | null;
+/**
+ * The Logic tab is a mounted Jx document too, bound to a host the Inspector owns for the life of
+ * the window rather than rendered into one.
+ *
+ * Its Mixed state is `[part="dot"]` carrying `data-state`, not `.provenance-chip--mixed`: the state
+ * is a fact about the row's value and a document says such things with data. And there is ONE
+ * control that clears a binding now, where there used to be a chip and a trash button doing the
+ * same thing beside each other (§12.5).
+ */
+let logicHost: HTMLElement | null = null;
+async function renderLogic(): Promise<HTMLElement> {
+  if (!logicHost) {
+    logicHost = document.createElement("div");
+    document.body.append(logicHost);
+  }
+  bindLogicPanelHost(logicHost);
+  await flush(6);
+  return logicHost;
+}
+
+/** The binding row for one event key. */
+const eventRow = (c: HTMLElement, key: string) =>
+  c.querySelector(`[data-event="${key}"][part="binding"]`) as HTMLElement;
+
+/** Its clear control's dot, which is where `set` / `mixed` lands. */
+const eventDot = (c: HTMLElement, key: string) =>
+  eventRow(c, key).querySelector('[part="event-clear"] [part="dot"]') as HTMLElement;
 
 beforeEach(() => {
   installMockPlatform();
@@ -106,6 +170,15 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  bindContentHost(null);
+  contentHost?.remove();
+  contentHost = null;
+  bindLogicPanelHost(null);
+  logicHost?.remove();
+  logicHost = null;
+  bindStyleHost(null);
+  styleHost?.remove();
+  styleHost = null;
   closeAllTabs();
 });
 
@@ -115,16 +188,14 @@ describe("Style tab", () => {
   test("one selected element renders the ordinary set chip, never Mixed", async () => {
     setup(twoCards(), [A]);
     const c = await renderStyle();
-    const dot = chip(styleRow(c, "aspectRatio"));
-    expect(dot?.classList.contains("provenance-chip--mixed")).toBe(false);
-    expect(dot?.classList.contains("provenance-chip--set")).toBe(true);
+    expect(chipState(styleRow(c, "aspectRatio"))).toBe("set");
   });
 
   test("two elements that disagree render Mixed, naming how many", async () => {
     setup(twoCards(), [A, B]);
     const c = await renderStyle();
     const dot = chip(styleRow(c, "aspectRatio"))!;
-    expect(dot.classList.contains("provenance-chip--mixed")).toBe(true);
+    expect(dot.dataset.state).toBe("mixed");
     expect(dot.textContent!.trim()).toBe("mixed (2)");
     expect(dot.getAttribute("title")).toContain("different values for aspectRatio");
   });
@@ -132,21 +203,17 @@ describe("Style tab", () => {
   test("two elements that agree are not Mixed — they are simply set", async () => {
     setup(twoIdenticalCards(), [A, B]);
     const c = await renderStyle();
-    const dot = chip(styleRow(c, "aspectRatio"))!;
-    expect(dot.classList.contains("provenance-chip--mixed")).toBe(false);
-    expect(dot.classList.contains("provenance-chip--set")).toBe(true);
+    expect(chipState(styleRow(c, "aspectRatio"))).toBe("set");
   });
 
   test("typing into a Mixed field sets every selected element, in ONE undo step", async () => {
     const tab = setup(twoCards(), [A, B]);
     const before = tab.history.index;
     const c = await renderStyle();
-    const input = styleRow(c, "aspectRatio")!.querySelector(
-      "jx-value-selector, sp-textfield, input",
-    ) as HTMLInputElement;
-    input.value = "4/3";
-    input.dispatchEvent(new Event("change", { bubbles: true }));
-    await flush();
+    const field = control(styleRow(c, "aspectRatio"));
+    field.value = "4/3";
+    field.dispatchEvent(new Event("change", { bubbles: true }));
+    await flush(2);
     expect(node(A).style!.aspectRatio).toBe("4/3");
     expect(node(B).style!.aspectRatio).toBe("4/3");
     expect(tab.history.index).toBe(before + 1);
@@ -159,7 +226,7 @@ describe("Style tab", () => {
     chip(styleRow(c, "aspectRatio"))!.dispatchEvent(
       new MouseEvent("click", { bubbles: true, cancelable: true }),
     );
-    await flush();
+    await flush(2);
     expect(node(A).style?.padding).toBeUndefined();
     expect(node(B).style?.padding).toBeUndefined();
     expect(tab.history.index).toBe(before + 1);
@@ -186,8 +253,7 @@ function twoSections(styles: [JxMutableNode["style"], JxMutableNode["style"]]): 
   } as unknown as JxMutableNode;
 }
 
-const shorthandField = (c: HTMLElement, prop: string) =>
-  styleRow(c, prop)!.querySelector(".style-shorthand-header sp-textfield") as HTMLInputElement;
+const shorthandField = (c: HTMLElement, prop: string) => control(styleRow(c, prop));
 
 describe("Style tab — shorthand rows", () => {
   test("typing a shorthand writes it to EVERY selected element, in ONE undo step", async () => {
@@ -197,7 +263,7 @@ describe("Style tab — shorthand rows", () => {
     const field = shorthandField(c, "padding");
     field.value = "12px";
     field.dispatchEvent(new Event("input", { bubbles: true }));
-    await flush();
+    await flush(2);
     expect(node(A).style!.padding).toBe("12px");
     expect(node(B).style!.padding).toBe("12px");
     expect(tab.history.index).toBe(before + 1);
@@ -207,10 +273,10 @@ describe("Style tab — shorthand rows", () => {
     setup(twoSections([{ padding: "4px" }, { padding: "20px" }]), [A, B]);
     const c = await renderStyle();
     const dot = chip(styleRow(c, "padding"))!;
-    expect(dot.classList.contains("provenance-chip--mixed")).toBe(true);
+    expect(dot.dataset.state).toBe("mixed");
     expect(dot.textContent!.trim()).toBe("mixed (2)");
     // The plain clear dot is what the row used to offer INSTEAD of saying so.
-    expect(dot.classList.contains("set-dot")).toBe(false);
+    expect(dot.dataset.state).not.toBe("set");
   });
 
   test("a shorthand is Mixed when the selection disagrees about one of its longhands", async () => {
@@ -224,9 +290,7 @@ describe("Style tab — shorthand rows", () => {
   test("a shorthand the selection agrees about is simply set", async () => {
     setup(twoSections([{ padding: "4px" }, { padding: "4px" }]), [A, B]);
     const c = await renderStyle();
-    const dot = chip(styleRow(c, "padding"))!;
-    expect(dot.classList.contains("provenance-chip--mixed")).toBe(false);
-    expect(dot.classList.contains("provenance-chip--set")).toBe(true);
+    expect(chipState(styleRow(c, "padding"))).toBe("set");
   });
 
   // The rows show the PRIMARY element's values — `primarySelection` is the last path selected — so
@@ -236,12 +300,10 @@ describe("Style tab — shorthand rows", () => {
     tab.session.ui.styleShorthands = { padding: true };
     const before = tab.history.index;
     const c = await renderStyle();
-    const child = styleRow(c, "paddingTop")!.querySelector(
-      "jx-value-selector, sp-textfield, input",
-    ) as HTMLInputElement;
+    const child = control(styleRow(c, "paddingTop"));
     child.value = "7px";
     child.dispatchEvent(new Event("change", { bubbles: true }));
-    await flush();
+    await flush(2);
     expect(node(A).style!.padding).toBe("7px 2px 3px 4px");
     expect(node(B).style!.padding).toBe("7px 2px 3px 4px");
     expect(tab.history.index).toBe(before + 1);
@@ -254,7 +316,7 @@ describe("Style tab — shorthand rows", () => {
     chip(styleRow(c, "padding"))!.dispatchEvent(
       new MouseEvent("click", { bubbles: true, cancelable: true }),
     );
-    await flush();
+    await flush(2);
     expect(node(A).style).toBeUndefined();
     expect(node(B).style).toBeUndefined();
     expect(tab.history.index).toBe(before + 1);
@@ -264,13 +326,10 @@ describe("Style tab — shorthand rows", () => {
     const tab = setup(twoSections([{ padding: "4px" }, { padding: "4px" }]), [A, B]);
     const before = tab.history.index;
     const c = await renderStyle();
-    const spacing = [...c.querySelectorAll("sp-accordion-item")].find(
-      (el) => el.getAttribute("label") === "Spacing",
-    )!;
-    spacing
-      .querySelector(".provenance-dots .provenance-chip--set")!
-      .dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
-    await flush();
+    c.querySelector(
+      '[part="section"][data-section="spacing"] [part="dot"][data-clear="spacing"]',
+    )!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    await flush(2);
     expect(node(A).style).toBeUndefined();
     expect(node(B).style).toBeUndefined();
     expect(tab.history.index).toBe(before + 1);
@@ -280,10 +339,10 @@ describe("Style tab — shorthand rows", () => {
     const tab = setup(twoSections([{ "--brand": "red" }, { "--brand": "blue" }]), [A, B]);
     const before = tab.history.index;
     const c = await renderStyle();
-    const key = c.querySelector(".kv-row .kv-key") as HTMLInputElement;
+    const key = control(styleRow(c, "--brand"), "kv-key");
     key.value = "--accent";
     key.dispatchEvent(new Event("change", { bubbles: true }));
-    await flush();
+    await flush(2);
     expect(node(A).style).toEqual({ "--accent": "red" });
     expect(node(B).style).toEqual({ "--accent": "blue" });
     expect(tab.history.index).toBe(before + 1);
@@ -296,35 +355,31 @@ describe("Content tab", () => {
   test("one selected element renders the ordinary set chip on an attribute row", async () => {
     setup(twoCards(), [A]);
     const c = await renderContent();
-    const dot = chip(contentRow(c, "alt"));
-    expect(dot?.classList.contains("provenance-chip--mixed")).toBe(false);
+    expect(contentChip(c, "alt")?.dataset.state).toBe("set");
   });
 
   test("two elements with different alt text render Mixed", async () => {
     setup(twoCards(), [A, B]);
     const c = await renderContent();
-    const dot = chip(contentRow(c, "alt"))!;
-    expect(dot.classList.contains("provenance-chip--mixed")).toBe(true);
+    const dot = contentChip(c, "alt")!;
+    expect(dot.dataset.state).toBe("mixed");
     expect(dot.textContent!.trim()).toBe("mixed (2)");
   });
 
   test("two elements with the same alt text are not Mixed", async () => {
     setup(twoIdenticalCards(), [A, B]);
     const c = await renderContent();
-    const dot = chip(contentRow(c, "alt"))!;
-    expect(dot.classList.contains("provenance-chip--mixed")).toBe(false);
+    expect(contentChip(c, "alt")!.dataset.state).not.toBe("mixed");
   });
 
   test("clearing a Mixed attribute clears it everywhere, in ONE undo step", async () => {
     const tab = setup(twoCards(), [A, B]);
     const before = tab.history.index;
     const c = await renderContent();
-    chip(contentRow(c, "alt"))!.dispatchEvent(
-      new MouseEvent("click", { bubbles: true, cancelable: true }),
-    );
+    contentChip(c, "alt")!.click();
     await flush();
-    expect(node(A).attributes?.href).toBeUndefined();
-    expect(node(B).attributes?.href).toBeUndefined();
+    expect(node(A).attributes?.alt).toBeUndefined();
+    expect(node(B).attributes?.alt).toBeUndefined();
     expect(tab.history.index).toBe(before + 1);
   });
 });
@@ -347,37 +402,39 @@ function twoButtons(sameHandler: boolean): JxMutableNode {
 }
 
 describe("Logic tab", () => {
-  test("one selected element renders the ordinary set chip on its event row", async () => {
+  test("one selected element renders the ordinary set dot on its event row", async () => {
     setup(twoButtons(false), [A]);
     const c = await renderLogic();
-    const dot = c.querySelector(".provenance-chip") as HTMLElement;
-    expect(dot.classList.contains("provenance-chip--mixed")).toBe(false);
-    expect(dot.classList.contains("provenance-chip--set")).toBe(true);
+    expect(eventDot(c, "onclick").dataset.state).toBe("set");
+    expect(eventDot(c, "onclick").getAttribute("tone")).toBeNull();
   });
 
   test("two elements bound to different handlers render Mixed on that event", async () => {
     setup(twoButtons(false), [A, B]);
     const c = await renderLogic();
-    const dot = c.querySelector(".provenance-chip") as HTMLElement;
-    expect(dot.classList.contains("provenance-chip--mixed")).toBe(true);
-    expect(dot.getAttribute("title")).toContain("bind onclick differently");
+    expect(eventDot(c, "onclick").dataset.state).toBe("mixed");
+    expect(
+      eventRow(c, "onclick")
+        .querySelector('[part="event-clear"] [part="control"]')!
+        .getAttribute("aria-label"),
+    ).toContain("bind onclick differently");
   });
 
   test("two elements bound to the same handler are not Mixed", async () => {
     setup(twoButtons(true), [A, B]);
     const c = await renderLogic();
-    const dot = c.querySelector(".provenance-chip") as HTMLElement;
-    expect(dot.classList.contains("provenance-chip--mixed")).toBe(false);
+    expect(eventDot(c, "onclick").dataset.state).toBe("set");
   });
 
   test("clearing an event removes it from every selected element, in ONE undo step", async () => {
     const tab = setup(twoButtons(false), [A, B]);
     const before = tab.history.index;
     const c = await renderLogic();
-    (c.querySelector(".provenance-chip") as HTMLElement).dispatchEvent(
-      new MouseEvent("click", { bubbles: true, cancelable: true }),
+    pointer(
+      eventRow(c, "onclick").querySelector('[part="event-clear"] [part="control"]')!,
+      "click",
     );
-    await flush();
+    await flush(4);
     expect(node(A).onclick).toBeUndefined();
     expect(node(B).onclick).toBeUndefined();
     expect(tab.history.index).toBe(before + 1);
@@ -387,10 +444,14 @@ describe("Logic tab", () => {
     const tab = setup(twoButtons(false), [A, B]);
     const before = tab.history.index;
     const c = await renderLogic();
-    const mode = c.querySelector(".event-mode") as HTMLInputElement;
-    mode.value = "function";
-    mode.dispatchEvent(new Event("change", { bubbles: true }));
-    await flush();
+    pointer(
+      eventRow(c, "onclick").querySelector('[part="event-source"] [part="control"]')!,
+      "click",
+    );
+    await flush(6);
+    const menu = document.querySelector('[data-jx-region="overlay.menu:value-source"] jx-menu')!;
+    menu.querySelector<HTMLElement>('[data-command-id="function"]')!.click();
+    await flush(4);
     expect((node(A).onclick as Record<string, unknown>).$prototype).toBe("Function");
     expect((node(B).onclick as Record<string, unknown>).$prototype).toBe("Function");
     expect(tab.history.index).toBe(before + 1);

@@ -1,4 +1,4 @@
-import { flush, renderInto, resetStudioState, resetWorkspaceWithTab } from "./harness";
+import { flush, resetStudioState, resetWorkspaceWithTab } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { activeTab, closeAllTabs } from "../src/workspace/workspace";
 import { shell } from "../src/shell";
@@ -23,8 +23,7 @@ void mock.module("../src/services/references", () => ({
   usageFiles: (result: { files: unknown[] }) => result.files,
 }));
 
-const { renderStylePanelTemplate, resetAffectedDisclosure } =
-  await import("../src/panels/style-panel");
+const { bindStyleHost, resetAffectedDisclosure } = await import("../src/panels/style-panel");
 const { initCssData } = await import("../src/panels/style-utils");
 
 function ready(files: { path: string; count: number }[], refsTotal: number): UsageState {
@@ -51,17 +50,27 @@ function setupLayoutTab() {
   return tab;
 }
 
+/** Every host a mount has put in the document, so a test never inherits the last one's band. */
+const painted: HTMLElement[] = [];
+
 /**
- * Paint the panel and let the Target Line's document settle.
+ * Mount the tab and let both documents settle.
  *
- * The line is a mounted surface now (`surfaces/target-line.json`), not a lit fragment: the panel's
- * own render puts an empty host on screen and the document lands a couple of turns later.
+ * Two land here — the tab's own (`surfaces/style-panel.json`) and the Target Line's inside it,
+ * announced through `onNodeCreated` — so the band a `[part="warning-text"]` names is two mounts
+ * deep and needs more turns than a lit render.
  */
-async function renderPanel() {
-  const c = await renderInto(renderStylePanelTemplate({ getCanvasMode: () => "stylebook" }));
-  await flush(2);
-  return c;
+async function renderPanel(): Promise<HTMLElement> {
+  const host = document.createElement("div");
+  document.body.append(host);
+  painted.push(host);
+  bindStyleHost(host, { getCanvasMode: () => "stylebook" });
+  await flush(4);
+  return host;
 }
+
+/** Let the tab's own effect re-project after the disclosure moved. */
+const settle = () => flush(2);
 
 beforeEach(() => {
   initCssData({ cssProps: [["display", "inline"]] });
@@ -70,8 +79,13 @@ beforeEach(() => {
   usage = null;
 });
 
-afterEach(() => {
+afterEach(async () => {
+  bindStyleHost(null);
   closeAllTabs();
+  await flush();
+  for (const host of painted.splice(0)) {
+    host.remove();
+  }
 });
 
 describe("the project-wide warning band", () => {
@@ -96,21 +110,23 @@ describe("the project-wide warning band", () => {
   test("a ready answer is counted, pluralised, and listed on demand", async () => {
     setupLayoutTab();
     usage = ready([{ count: 7, path: "pages/index.json" }], 7);
-    let c = await renderPanel();
+    const c = await renderPanel();
     expect(c.querySelector('[part="warning-text"]')!.textContent).toContain("7 elements in 1 file");
     expect(c.querySelector('[part="affected"]')).toBeNull();
 
+    // The tab keeps itself current, so the disclosure needs no repaint of anything: the click is
+    // The whole gesture.
     c.querySelector('[part="warning-action"]')!.dispatchEvent(
       new MouseEvent("click", { bubbles: true }),
     );
-    c = await renderPanel();
+    await settle();
     expect(c.querySelector('[part="affected-path"]')!.textContent).toBe("pages/index.json");
 
     // And it folds away again — the disclosure is a toggle with an idempotent reset behind it.
     c.querySelector('[part="warning-action"]')!.dispatchEvent(
       new MouseEvent("click", { bubbles: true }),
     );
-    c = await renderPanel();
+    await settle();
     expect(c.querySelector('[part="affected"]')).toBeNull();
   });
 

@@ -1,0 +1,607 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioStatements",
+  "$description": "The statement editor (spec §20): a Function entry's `body: JxStatement[]` edited as STRUCTURE rather than as text. The rows arrive FLAT. A statement tree nests to any depth — an `if` holds two lanes, a `$switch` holds one per case plus a default, and either may hold another of both — while a document's one repeater is `$prototype: \"Array\"` over a list, so `panels/statement-editor.ts` walks the tree once and hands over rows that already carry their own indent; recursion is a property of the walk, exactly as it is for the Data panel's value tree. Four kinds of row come out of that walk: a statement CARD (its header, and the fields that statement is made of), a LANE header naming a branch, the ADD control that ends every lane, and an ACTION that grows the statement itself (`+ Add else`, `+ Add case`). Two hosts draw this — the Navigator's State panel and the Inspector's Logic tab — and neither is named here: the region is stamped on the host, because a shared control cannot know where it is. An operand is an ISLAND: the document renders `[part=\"control-host\"]` and nothing inside it, and the flow fills it with the expression editor (studio-ui-guidelines.md §9.4).",
+  "tagName": "div",
+  "attributes": {
+    "part": "statements"
+  },
+  "style": {
+    "$description": "The whole of the editor's look, and the conversion moved three things rather than transcribing them. THE INDENT IS A VARIABLE: a lane's depth used to be a nested `<div class=\"statement-lane\">` per level, so a card six deep was six boxes; `--stmt-indent` is written inline per row and read by one shared rule, so a tree of any depth interns one declaration. THE DRAG FEEDBACK IS DATA, NOT CLASSES: `dragging`, `drop-above` and `drop-below` were class toggles with no rule anywhere in the package — they are `data-dragging` and `data-drop` now, and they finally draw. AND `min-width: 0` IS ON EVERY LINK OF THE CHAIN, which is the defect that sent this surface to a stylesheet in the first place: an inline `style=` attribute could not carry it, so at Inspector width an If/Else card pushed its operand controls past the right edge of the window.",
+    "display": "flex",
+    "flexDirection": "column",
+    "gap": "var(--jx-space-1)",
+    "minWidth": "0",
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-sm)",
+    "color": "var(--fg)",
+    "& [part=\"card\"]": {
+      "$description": "One statement. A box rather than a bare row because a statement CONTAINS things — its operands, and the lanes under it — and the border is what says where it stops.",
+      "boxSizing": "border-box",
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-1)",
+      "minWidth": "0",
+      "marginInlineStart": "var(--stmt-indent, 0)",
+      "padding": "var(--jx-space-2)",
+      "border": "1px solid var(--jx-border)",
+      "borderRadius": "var(--jx-radius-sm)",
+      "background": "var(--jx-bg-input)"
+    },
+    "& [part=\"card\"][data-dragging]": {
+      "opacity": "0.4"
+    },
+    "& [part=\"card\"][data-drop=\"above\"]": {
+      "borderBlockStartColor": "var(--jx-accent)"
+    },
+    "& [part=\"card\"][data-drop=\"below\"]": {
+      "borderBlockEndColor": "var(--jx-accent)"
+    },
+    "& [part=\"card-head\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-2)",
+      "minWidth": "0"
+    },
+    "& [part=\"drag\"]": {
+      "$description": "A plain span, not a button: the drag adapter needs an element native drag events pass straight through, and a control would swallow the pointer press that starts the drag. Keyboard reorder is the lane's own concern (WCAG 2.2 SC 2.5.7) and is not carried by this handle.",
+      "flex": "0 0 auto",
+      "display": "inline-flex",
+      "color": "var(--fg-dim)",
+      "cursor": "grab"
+    },
+    "& [part=\"kind\"]": {
+      "flex": "1 1 auto",
+      "minWidth": "0",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"card-body\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-1)",
+      "minWidth": "0"
+    },
+    "& [part=\"field\"]": {
+      "minWidth": "0"
+    },
+    "& [part=\"control-host\"]": {
+      "$description": "Where the expression editor lands. Sized by the row rather than by what is dropped into it, so a formula that grows a row of chips does not widen the Inspector.",
+      "display": "block",
+      "minWidth": "0"
+    },
+    "& [part=\"flags\"]": {
+      "display": "flex",
+      "flexWrap": "wrap",
+      "gap": "var(--jx-space-3)",
+      "minWidth": "0"
+    },
+    "& [part=\"lane\"]": {
+      "$description": "A branch's name. The rule on the leading edge is the connector: it is what makes the cards under a `Then` read as being inside it rather than after it.",
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-2)",
+      "minWidth": "0",
+      "marginInlineStart": "var(--stmt-indent, 0)",
+      "paddingInlineStart": "var(--jx-space-2)",
+      "borderInlineStart": "2px solid var(--jx-border)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"lane-label\"]": {
+      "flex": "1 1 auto",
+      "minWidth": "0",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap"
+    },
+    "& [part=\"lane-key\"]": {
+      "flex": "1 1 auto",
+      "minWidth": "0"
+    },
+    "& [part=\"add\"], & [part=\"action\"]": {
+      "display": "flex",
+      "minWidth": "0",
+      "marginInlineStart": "var(--stmt-indent, 0)"
+    }
+  },
+  "children": [
+    {
+      "$prototype": "Array",
+      "items": {
+        "$ref": "#/state/rows"
+      },
+      "key": {
+        "$ref": "$map/item/key"
+      },
+      "map": {
+        "tagName": "div",
+        "attributes": {
+          "part": "row-slot",
+          "role": "none"
+        },
+        "style": {
+          "display": "contents"
+        },
+        "$switch": {
+          "$ref": "$map/item/kind"
+        },
+        "cases": {
+          "card": {
+            "$description": "`data-stmt-row`, `data-stmt-lane` and `data-stmt-index` are the drag adapter's addressing, unchanged from the lit version: a card may only be dropped into the lane it came from, and the lane id is what says so.",
+            "tagName": "div",
+            "attributes": {
+              "part": "card",
+              "data-stmt-row": "",
+              "data-stmt-kind": "${$map.item.stmt}",
+              "data-stmt-lane": "${$map.item.lane}",
+              "data-stmt-index": "${$map.item.index}"
+            },
+            "style": {
+              "--stmt-indent": {
+                "$ref": "$map/item/indent"
+              }
+            },
+            "children": [
+              {
+                "tagName": "div",
+                "attributes": {
+                  "part": "card-head"
+                },
+                "children": [
+                  {
+                    "tagName": "span",
+                    "attributes": {
+                      "part": "drag",
+                      "title": "Drag to reorder",
+                      "aria-hidden": "true"
+                    },
+                    "children": [
+                      {
+                        "tagName": "jx-icon",
+                        "$props": {
+                          "name": "dots-three-vertical"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "tagName": "span",
+                    "attributes": {
+                      "part": "kind"
+                    },
+                    "textContent": "${$map.item.label}"
+                  },
+                  {
+                    "tagName": "jx-action-button",
+                    "attributes": {
+                      "part": "delete"
+                    },
+                    "$props": {
+                      "size": "sm",
+                      "quiet": true,
+                      "icon": "trash",
+                      "label": "${$map.item.title}"
+                    },
+                    "onclick": {
+                      "$prototype": "Function",
+                      "body": [
+                        {
+                          "operator": "call",
+                          "target": {
+                            "$ref": "#/state/remove"
+                          },
+                          "value": [
+                            {
+                              "$ref": "$map/item/key"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              {
+                "tagName": "div",
+                "attributes": {
+                  "part": "card-body"
+                },
+                "children": [
+                  {
+                    "$prototype": "Array",
+                    "items": {
+                      "$ref": "$map/item/fields"
+                    },
+                    "key": {
+                      "$ref": "$map/item/key"
+                    },
+                    "map": {
+                      "$description": "One operand of the statement. Every field is `span` — the Inspector is 280px and the guidelines' standard row is vertically stacked (§4.1) — and every field carries `data-prop`, which is what `inspector/field:<prop>` addresses. The key is `<row>::<prop>`, self-contained because this `$map` shadows the row's own `$map.item`.",
+                      "tagName": "jx-field",
+                      "attributes": {
+                        "part": "field",
+                        "data-prop": "${$map.item.prop}"
+                      },
+                      "$props": {
+                        "label": {
+                          "$ref": "$map/item/label"
+                        },
+                        "span": true
+                      },
+                      "children": [
+                        {
+                          "tagName": "div",
+                          "attributes": {
+                            "part": "widget-slot",
+                            "role": "none"
+                          },
+                          "style": {
+                            "display": "contents"
+                          },
+                          "$switch": {
+                            "$ref": "$map/item/kind"
+                          },
+                          "cases": {
+                            "control": {
+                              "tagName": "div",
+                              "attributes": {
+                                "part": "control-host",
+                                "data-field": "${$map.item.key}"
+                              }
+                            },
+                            "text": {
+                              "tagName": "jx-textfield",
+                              "attributes": {
+                                "part": "text"
+                              },
+                              "$props": {
+                                "size": "sm",
+                                "label": {
+                                  "$ref": "$map/item/label"
+                                },
+                                "value": {
+                                  "$ref": "$map/item/value"
+                                },
+                                "placeholder": {
+                                  "$ref": "$map/item/placeholder"
+                                }
+                              },
+                              "oninput": {
+                                "$prototype": "Function",
+                                "body": [
+                                  {
+                                    "operator": "call",
+                                    "target": {
+                                      "$ref": "#/state/setField"
+                                    },
+                                    "value": [
+                                      {
+                                        "$ref": "$map/item/key"
+                                      },
+                                      {
+                                        "$ref": "event#/target/value"
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            },
+                            "select": {
+                              "tagName": "jx-select",
+                              "attributes": {
+                                "part": "select"
+                              },
+                              "$props": {
+                                "size": "sm",
+                                "label": {
+                                  "$ref": "$map/item/label"
+                                },
+                                "value": {
+                                  "$ref": "$map/item/value"
+                                },
+                                "options": {
+                                  "$ref": "$map/item/options"
+                                }
+                              },
+                              "onchange": {
+                                "$prototype": "Function",
+                                "body": [
+                                  {
+                                    "operator": "call",
+                                    "target": {
+                                      "$ref": "#/state/setField"
+                                    },
+                                    "value": [
+                                      {
+                                        "$ref": "$map/item/key"
+                                      },
+                                      {
+                                        "$ref": "event#/target/value"
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            },
+                            "flags": {
+                              "tagName": "div",
+                              "attributes": {
+                                "part": "flags"
+                              },
+                              "children": [
+                                {
+                                  "$prototype": "Array",
+                                  "items": {
+                                    "$ref": "$map/item/flags"
+                                  },
+                                  "key": {
+                                    "$ref": "$map/item/key"
+                                  },
+                                  "map": {
+                                    "tagName": "jx-checkbox",
+                                    "attributes": {
+                                      "part": "flag",
+                                      "data-flag": "${$map.item.key}"
+                                    },
+                                    "$props": {
+                                      "size": "sm",
+                                      "label": {
+                                        "$ref": "$map/item/label"
+                                      },
+                                      "checked": {
+                                        "$ref": "$map/item/checked"
+                                      }
+                                    },
+                                    "onchange": {
+                                      "$prototype": "Function",
+                                      "body": [
+                                        {
+                                          "operator": "call",
+                                          "target": {
+                                            "$ref": "#/state/setFlag"
+                                          },
+                                          "value": [
+                                            {
+                                              "$ref": "$map/item/key"
+                                            },
+                                            {
+                                              "$ref": "event#/target/checked"
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
+                              ]
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "lane": {
+            "tagName": "div",
+            "attributes": {
+              "part": "lane",
+              "data-lane": "${$map.item.lane}"
+            },
+            "style": {
+              "--stmt-indent": {
+                "$ref": "$map/item/indent"
+              }
+            },
+            "children": [
+              {
+                "tagName": "div",
+                "attributes": {
+                  "part": "lane-name-slot",
+                  "role": "none"
+                },
+                "style": {
+                  "display": "contents"
+                },
+                "$switch": {
+                  "$ref": "$map/item/editable"
+                },
+                "cases": {
+                  "false": {
+                    "tagName": "span",
+                    "attributes": {
+                      "part": "lane-label"
+                    },
+                    "textContent": "${$map.item.label}"
+                  },
+                  "true": {
+                    "$description": "A `$switch` case's value is its own name, so the lane header of a case IS a text field. It commits on change rather than on input: renaming a case rebuilds the branch under it, and doing that per keystroke would take the caret out of the field being typed into.",
+                    "tagName": "jx-textfield",
+                    "attributes": {
+                      "part": "lane-key"
+                    },
+                    "$props": {
+                      "size": "sm",
+                      "label": "Case value",
+                      "placeholder": "value",
+                      "value": {
+                        "$ref": "$map/item/label"
+                      }
+                    },
+                    "onchange": {
+                      "$prototype": "Function",
+                      "body": [
+                        {
+                          "operator": "call",
+                          "target": {
+                            "$ref": "#/state/rename"
+                          },
+                          "value": [
+                            {
+                              "$ref": "$map/item/key"
+                            },
+                            {
+                              "$ref": "event#/target/value"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "tagName": "div",
+                "attributes": {
+                  "part": "lane-actions-slot",
+                  "role": "none"
+                },
+                "style": {
+                  "display": "contents"
+                },
+                "$switch": {
+                  "$ref": "$map/item/removable"
+                },
+                "cases": {
+                  "true": {
+                    "tagName": "jx-action-button",
+                    "attributes": {
+                      "part": "lane-remove"
+                    },
+                    "$props": {
+                      "size": "sm",
+                      "quiet": true,
+                      "icon": "trash",
+                      "label": "${$map.item.title}"
+                    },
+                    "onclick": {
+                      "$prototype": "Function",
+                      "body": [
+                        {
+                          "operator": "call",
+                          "target": {
+                            "$ref": "#/state/remove"
+                          },
+                          "value": [
+                            {
+                              "$ref": "$map/item/key"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          "add": {
+            "$description": "The end of every lane. It opens the kit's menu rather than being a picker of its own: a select that has to snap back to its placeholder after each pick is a control fighting the runtime's skip-an-equal-write, and §12.5 asks for one list of actions rather than a second.",
+            "tagName": "div",
+            "attributes": {
+              "part": "add",
+              "data-lane": "${$map.item.lane}"
+            },
+            "style": {
+              "--stmt-indent": {
+                "$ref": "$map/item/indent"
+              }
+            },
+            "children": [
+              {
+                "tagName": "jx-action-button",
+                "attributes": {
+                  "part": "add-statement"
+                },
+                "$props": {
+                  "size": "sm",
+                  "quiet": true,
+                  "icon": "plus",
+                  "haspopup": "menu",
+                  "label": "${$map.item.title}"
+                },
+                "onclick": {
+                  "$prototype": "Function",
+                  "body": [
+                    {
+                      "operator": "call",
+                      "target": {
+                        "$ref": "#/state/add"
+                      },
+                      "value": [
+                        {
+                          "$ref": "$map/item/key"
+                        },
+                        {
+                          "$ref": "event#/currentTarget"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "children": [
+                  {
+                    "tagName": "span",
+                    "textContent": "${$map.item.label}"
+                  }
+                ]
+              }
+            ]
+          },
+          "action": {
+            "tagName": "div",
+            "attributes": {
+              "part": "action"
+            },
+            "style": {
+              "--stmt-indent": {
+                "$ref": "$map/item/indent"
+              }
+            },
+            "children": [
+              {
+                "tagName": "jx-action-button",
+                "attributes": {
+                  "part": "grow",
+                  "data-action": "${$map.item.key}"
+                },
+                "$props": {
+                  "size": "sm",
+                  "quiet": true,
+                  "icon": "plus",
+                  "label": "${$map.item.label}"
+                },
+                "onclick": {
+                  "$prototype": "Function",
+                  "body": [
+                    {
+                      "operator": "call",
+                      "target": {
+                        "$ref": "#/state/act"
+                      },
+                      "value": [
+                        {
+                          "$ref": "$map/item/key"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "children": [
+                  {
+                    "tagName": "span",
+                    "textContent": "${$map.item.label}"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

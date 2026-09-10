@@ -6,11 +6,10 @@ spec:
   - studio.md#6.7
 code:
   - packages/studio/src/panels/style-panel.ts
+  - packages/studio/src/surfaces/style-panel.ts
   - packages/studio/src/surfaces/target-line.ts
   - packages/studio/src/panels/provenance.ts
-  - packages/studio/src/panels/style-inputs.ts
   - packages/studio/src/utils/inherited-style.ts
-  - packages/studio/src/ui/dynamic-slot.ts
   - packages/studio/src/ui/value-source.ts
   - packages/studio/src/ui/unit-selector.ts
   - packages/studio/src/ui/color-selector.ts
@@ -69,7 +68,7 @@ Collapsed section headers carry the same states as a tally: a heading with dots 
 
 ## Sections and the filter
 
-Properties are grouped into accordion sections: **Layout**, **Size**, **Spacing**, **Positioning**, **Typography**, **Background**, **Border**, and **Effects**. Sections that already have values open automatically. The filter box narrows the list. Type part of a property's name or label, and every matching section stays open while you filter.
+Properties are grouped into accordion sections: **Layout**, **Size**, **Spacing**, **Positioning**, **Typography**, **Background**, **Border**, and **Effects**. A section that already has values in it opens by itself the first time you meet it, and a section you close stays closed while you work. The filter box narrows the list. Type part of a property's name or label, and every matching section stays open while you filter.
 
 Clicking the accent dot on a section header clears everything set in that section.
 
@@ -81,8 +80,8 @@ Each property gets a control built for it:
 
 - **Number + unit**: type the number, pick the unit (`px`, `rem`, `%`, `vw`, and friends) or a keyword like `auto` from the attached menu.
 - **Color**: a swatch that opens a full picker, with your project's color tokens on offer; a token shows by its name, like **Primary Blue**. See **[Design tokens](/docs/studio/design/tokens)**.
-- **Font family**: a combobox listing your font tokens and a set of ready-made font stacks; the menu previews each option in its own face. Picking a preset saves it as a font token automatically.
-- **Keyword menus**: properties with fixed values get a dropdown; typography menus preview each choice (weights render at their weight, transforms as they transform).
+- **Font family**: type a font stack, or take one from the attached menu, which lists your font tokens first and then a set of ready-made stacks. Picking a ready-made stack saves it as a font token automatically, so the next element that wants it points at the token rather than repeating the stack.
+- **Keyword menus**: a property with a known set of values offers them from an attached menu. The field stays typable, because a CSS keyword list is a set of suggestions rather than a closed one: a value the menu does not offer is still a value you can write.
 
 Shorthand rows like **Padding** and **Margin** take a combined value, or expand with their chevron into per-side fields; border rows expand into width, style, and color. Studio recombines the sides into the shortest form when it writes the value. A shorthand's chip answers for the whole family. It reads **set here** when the shorthand or any one side is set, and clicking it clears all five at once.
 

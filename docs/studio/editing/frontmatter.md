@@ -5,6 +5,7 @@ spec:
   - site-architecture.md#8.6
 code:
   - packages/studio/src/panels/head-panel.ts
+  - packages/studio/src/surfaces/panel-page.ts
   - packages/studio/src/panels/frontmatter-panel.ts
   - packages/studio/src/panels/seo-modal.ts
   - packages/studio/src/panels/frontmatter-fields.ts
@@ -55,7 +56,7 @@ The card shown when the page is shared on social platforms: **Title**, **Descrip
 
 ### Custom Tags
 
-The escape hatch for everything else that can live in a page's head: analytics, a verification token, a webfont. Pick a tag (`meta`, `link`, or `script`), type its attribute and value, and click the add button. Existing custom entries are listed with a remove button each; before you add the first one the section says what it's for, with the add form right beneath. Most sites never need this section.
+The escape hatch for everything else that can live in a page's head: analytics, a verification token, a webfont. Pick a tag (`meta`, `link`, or `script`), type its attribute and value, and click the add button or press :kbd[Enter] in either field. Existing custom entries are listed with a remove button each; before you add the first one the section says what it's for, with the add form right beneath. Most sites never need this section.
 
 ## The Document Header card
 

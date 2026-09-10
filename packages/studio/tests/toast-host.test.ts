@@ -158,6 +158,22 @@ describe("the recovery action", () => {
     expect(host().querySelector('[part="action"]')).toBeNull();
   });
 
+  test("pressed with no registry to reach, it leaves the toast where it is", async () => {
+    /* `retireToast` runs only once the command is actually going to run. A press that cannot reach
+       a registry — the shell tearing down, a window closing — must not take the notification away
+       as though it had been dealt with: the thing that went wrong is still true. */
+    notify.warn("Pasted", { action: "edit.undo", timeoutMs: 0 });
+    await flush();
+    const button = host().querySelector('[part="action"] [part="control"]') as HTMLElement;
+    expect(button).not.toBeNull();
+    setActiveRegistry(null);
+    await flush();
+    button.click();
+    await flush();
+    expect(ran).toEqual([]);
+    expect(toasts.map((record) => record.message)).toEqual(["Pasted"]);
+  });
+
   test("no action named — no button", async () => {
     notify.info("Syncing…", { timeoutMs: 0 });
     await flush();

@@ -29,10 +29,16 @@
  * and an inspector row. A host that names no source — the project settings forms — draws no chip
  * and edits fixed values.
  *
- * **The one thing still drawn in lit is a registered control.** The registry's contract
- * (specs/extensions.md §9.1) is a function returning a lit template, and an extension's control is
- * its own surface rather than part of this one — so the document draws an empty host for it and
- * this module renders into that host, which is the same seam a lit caller uses to embed the form.
+ * **A registered control is drawn into a host, and it may now be either kind.** The registry's
+ * published contract (specs/extensions.md §9.1) is a function returning a lit template, and that
+ * stays — an extension's control is its own surface rather than part of this one, and the `secret`
+ * and `reference` built-ins are still templates, the second because `panels/frontmatter-fields.ts`
+ * interpolates it into a lit widget of its own. Beside it there is now a MOUNT form
+ * ({@link SchemaFormMountedControl}), because a Jx document clears the host it is given and cannot
+ * be interpolated at all: `schema-builder` is one, and it is handed the empty
+ * `[part="control-host"]` this form's document already draws, which is the same seam a lit caller
+ * uses to embed the form itself. So this module still imports lit — for the template half of the
+ * registry, not for anything of its own.
  */
 
 import { render as litRender } from "lit-html";
@@ -123,6 +129,35 @@ export interface SchemaFormControlArgs {
 
 export type SchemaFormControl = (args: SchemaFormControlArgs) => TemplateResult;
 
+/**
+ * A control that OWNS a host element instead of returning a template.
+ *
+ * The second half of the registry's contract, and the one a Jx document can satisfy: a document
+ * clears the host it is given and cannot be interpolated into a lit template
+ * (specs/studio-ui-guidelines.md §9.4), so a converted control is handed the empty host this form
+ * already draws for it and keeps the mount for the life of the field. `mount` is called ONCE per
+ * host; every later repaint of the form reaches the control through
+ * {@link SchemaFormControlHandle.update} instead, which is what keeps the caret in a name the reader
+ * is part-way through typing when the value beside it commits.
+ */
+export interface SchemaFormMountedControl {
+  mount: (host: HTMLElement, args: SchemaFormControlArgs) => SchemaFormControlHandle;
+}
+
+/** A standing mounted control: brought up to date, and taken down with the form. */
+export interface SchemaFormControlHandle {
+  update: (args: SchemaFormControlArgs) => void;
+  dispose: () => void;
+}
+
+/** What may be registered under a control name: a template, or a mount. */
+export type SchemaFormControlEntry = SchemaFormControl | SchemaFormMountedControl;
+
+/** Which of the two a registry entry is. A template control is a bare function. */
+function isMounted(entry: SchemaFormControlEntry): entry is SchemaFormMountedControl {
+  return typeof entry !== "function";
+}
+
 /** Options for {@link mountSchemaForm}. */
 export interface RenderFormOptions {
   onChange: (patch: Record<string, unknown>) => void;
@@ -161,16 +196,27 @@ export interface RenderFormOptions {
 
 // ─── Control registry ────────────────────────────────────────────────────────
 
-const controlRegistry = new Map<string, SchemaFormControl>();
+const controlRegistry = new Map<string, SchemaFormControlEntry>();
 
-/** Register (or replace) a named form control. */
-export function registerFormControl(name: string, control: SchemaFormControl): void {
+/**
+ * Register (or replace) a named form control, in either of its two shapes: a function returning a
+ * lit template, or a {@link SchemaFormMountedControl} that draws into the host it is given.
+ */
+export function registerFormControl(name: string, control: SchemaFormControlEntry): void {
   controlRegistry.set(name, control);
 }
 
-/** Look up a registered form control by name. */
+/**
+ * Look up a registered TEMPLATE control by name.
+ *
+ * A mounted control answers `undefined` here, deliberately: every caller of this is a lit template
+ * interpolating the result (`panels/frontmatter-fields.ts`'s widget), and a document cannot be
+ * interpolated — it needs a host of its own. The engine's own dispatch reads the registry directly
+ * and so sees both kinds; nothing outside it has a host to give a mounted control.
+ */
 export function getFormControl(name: string): SchemaFormControl | undefined {
-  return controlRegistry.get(name);
+  const entry = controlRegistry.get(name);
+  return entry !== undefined && !isMounted(entry) ? entry : undefined;
 }
 
 // ─── References between collections ──────────────────────────────────────────
@@ -365,8 +411,13 @@ interface FieldPlan {
   /** The ladder, when this position offers one. */
   ladder?: { fieldKey: string; mode: SlotMode; offered: SlotMode[]; sources: SignalOption[] };
   /** A registered control owns the whole field; args are rebuilt for it on every repaint. */
-  control?: SchemaFormControl | undefined;
-  /** Registered controls owning one cell, keyed by the cell's host id. */
+  control?: SchemaFormControlEntry | undefined;
+  /**
+   * Registered controls owning one cell, keyed by the cell's host id.
+   *
+   * Template controls only, and that is the dispatch rather than a limitation: the one control a
+   * cell is ever given is `reference` (see {@link deriveCell}), which is a template.
+   */
   cellControls?: Map<
     string,
     { control: SchemaFormControl; schema: JsonSchema; row: string; key: string }
@@ -459,6 +510,8 @@ function createController(): FormController {
   const plans = new Map<string, FieldPlan>();
   const timers = new Map<string, ReturnType<typeof setTimeout>>();
   const controlHosts = new Map<string, HTMLElement>();
+  /** Standing mounted controls, by host id, with the element each was mounted into. */
+  const mountedControls = new Map<string, { host: HTMLElement; handle: SchemaFormControlHandle }>();
   /** The rung picker, while one is up. One at a time, and it goes down with the form. */
   let sourceMenu: MenuHandle | null = null;
 
@@ -695,18 +748,30 @@ function createController(): FormController {
    */
   function paintControl(id: string, host: HTMLElement): void {
     const plan = plans.get(id);
-    if (plan?.control) {
-      litRender(
-        plan.control({
-          ctx,
-          key: plan.prop,
-          onChange: (next) => patch(plan.prop, next),
-          rerender: opts.rerender,
-          schema: plan.schema,
-          value: value[plan.prop],
-        }),
-        host,
-      );
+    const control = plan?.control;
+    if (control && plan) {
+      const args: SchemaFormControlArgs = {
+        ctx,
+        key: plan.prop,
+        onChange: (next) => patch(plan.prop, next),
+        rerender: opts.rerender,
+        schema: plan.schema,
+        value: value[plan.prop],
+      };
+      if (!isMounted(control)) {
+        litRender(control(args), host);
+        return;
+      }
+      /* A mounted control is built once per host and updated after that. The host element is what
+         identifies it: the reconciler may replace the node, and a handle left pointing at the old
+         one would go on updating a document nobody can see. */
+      const standing = mountedControls.get(id);
+      if (standing?.host === host) {
+        standing.handle.update(args);
+        return;
+      }
+      standing?.handle.dispose();
+      mountedControls.set(id, { handle: control.mount(host, args), host });
       return;
     }
     const cell = cellControlFor(id);
@@ -715,8 +780,20 @@ function createController(): FormController {
     }
   }
 
+  /** Take down a mounted control whose field is no longer one — or is no longer here at all. */
+  function sweepMountedControls(): void {
+    for (const [id, standing] of mountedControls) {
+      const control = plans.get(id)?.control;
+      if (control === undefined || !isMounted(control)) {
+        standing.handle.dispose();
+        mountedControls.delete(id);
+      }
+    }
+  }
+
   /** Redraw every control this form has been handed a host for. */
   function paintControls(): void {
+    sweepMountedControls();
     for (const [id, host] of controlHosts) {
       paintControl(id, host);
     }
@@ -760,6 +837,10 @@ function createController(): FormController {
       timers.clear();
       sourceMenu?.close();
       sourceMenu = null;
+      for (const standing of mountedControls.values()) {
+        standing.handle.dispose();
+      }
+      mountedControls.clear();
       controlHosts.clear();
       plans.clear();
       surface.dispose();
@@ -1069,7 +1150,11 @@ function deriveCell(
     return cell;
   }
   if (referenceTarget(cellSchema) !== null) {
-    const reference = controlRegistry.get("reference");
+    /* A CELL's control is rendered into a host of the cell's own, and the one control a cell is
+       ever given is the reference picker — a template. Should it ever become a document, a cell
+       host is the same seam as a field host and this becomes the same dispatch `paintControl`
+       makes; what it must not become is a template rendered into a host a document already owns. */
+    const reference = getFormControl("reference");
     if (reference) {
       cell.kind = "control";
       plan.cellControls?.set(id, {

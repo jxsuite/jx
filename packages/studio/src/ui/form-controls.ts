@@ -1,31 +1,79 @@
 /// <reference lib="dom" />
 /**
- * Built-in schema-form controls (specs/extensions.md §9.1): "schema-builder" (visual JSON-Schema
- * field editor wrapping settings/schema-field-ui), "secret" (value committed via the host's secret
- * store, never project.json) and "reference" (an entry of another content collection). The fourth
- * built-in, "binding", registers from panels/signals-panel.ts because it owns panel-local ephemeral
- * UI state (custom-ref mode) and the route-param picker semantics.
+ * Built-in schema-form controls (specs/extensions.md §9.1): "schema-builder" (the visual
+ * JSON-Schema field editor), "secret" (value committed via the host's secret store, never
+ * project.json) and "reference" (an entry of another content collection).
+ *
+ * Three, not the four the spec still lists: `"binding"` was the signal/route-param picker, and P5
+ * replaced it with the value-source ladder every scalar field now carries (`ui/dynamic-slot.ts`,
+ * `ui/value-source.ts`). Nothing has registered it since, so a descriptor naming it falls through
+ * to the control its type would have had anyway.
+ *
+ * **Two of the three are still lit, and which two is a fact rather than a stage.** `schema-builder`
+ * is a Jx document (`surfaces/schema-builder.json`), mounted into the host the form draws for it.
+ * `secret` is one password field. `reference` is a picker whose markup is ALSO interpolated by
+ * `panels/frontmatter-fields.ts` into a lit widget of its own — a document cannot be interpolated,
+ * so converting it means converting that panel, and until then a template is what its second caller
+ * can use.
  *
  * Imported once for side effects from studio startup.
  */
 
 import { html, nothing } from "lit-html";
-import { repeat } from "lit-html/directives/repeat.js";
 import { until } from "lit-html/directives/until.js";
 import { errorMessage } from "@jxsuite/schema/parse";
 import { referenceTarget, registerFormControl } from "./schema-form";
 import {
-  addFieldFormTpl,
+  FIELD_TYPES,
+  FORMAT_OPTIONS,
   detectFieldFormat,
-  fieldCardTpl,
+  detectFieldType,
   schemaForType,
 } from "../settings/schema-field-ui";
-import { toCamelCase } from "../utils/studio-utils";
+import { mountSchemaBuilderSurface } from "../surfaces/schema-builder";
+import { camelToLabel, toCamelCase } from "../utils/studio-utils";
 
-import type { FieldHandlers, SchemaProperty } from "../settings/schema-field-ui";
-import type { SchemaFormControlArgs } from "./schema-form";
+import type { SchemaProperty } from "../settings/schema-field-ui";
+import type {
+  NestedSchemaFieldView,
+  SchemaBuilderView,
+  SchemaFieldChoice,
+  SchemaFieldView,
+} from "../surfaces/schema-builder";
+import type {
+  SchemaFormContext,
+  SchemaFormControlArgs,
+  SchemaFormControlHandle,
+  SchemaFormMountedControl,
+} from "./schema-form";
 
 // ─── Schema-builder control ──────────────────────────────────────────────────
+
+/**
+ * The visual JSON-Schema field editor: `surfaces/schema-builder.json` draws it, and everything
+ * below decides it.
+ *
+ * It is a MOUNTED control (`ui/schema-form.ts`'s {@link SchemaFormMountedControl}) rather than a
+ * template one, which is the whole of this conversion: the form's own document announces an empty
+ * `[part="control-host"]` per field, a Jx document clears the host it is given, and the two facts
+ * together are what let the last lit consumer of the registry become a document. Three things the
+ * move settled, and each was a defect rather than a translation:
+ *
+ * - **The add rows no longer read themselves.** The nested add row found its own name field and its
+ *   own picker with `closest()` and `querySelector` at click time — a node found by selector is
+ *   real only until the next render — so what the reader had typed lived in the DOM and nowhere
+ *   else, and an outside repaint took it away. Each object field carries its draft in
+ *   {@link BuilderUi.drafts} now.
+ * - **A refused rename snaps back because the value moves, not because a handler writes to an
+ *   input.** The lit card assigned `target.value = fieldName` from inside its change handler. A
+ *   document's binding only writes when the scope value CHANGES, and after a refusal the scope
+ *   still holds what the schema says — so every rename says what the control now holds first
+ *   ({@link say}), and the snap-back is then a real move.
+ * - **A vanished field is a no-op, not an empty commit.** Every handler used to clone the value, run
+ *   a mutation that returned early, and commit the clone anyway — so an edit to a card whose field
+ *   had gone underneath it wrote the schema back minus nothing, and the host recorded an edit that
+ *   was not one. A refusal now commits nothing at all.
+ */
 
 /** The JSON-Schema object shape the schema-builder edits. */
 interface BuilderSchema {
@@ -34,260 +82,533 @@ interface BuilderSchema {
   required?: string[];
 }
 
-interface AddFieldState {
-  format: string;
+/** A draft with its three lists filled in, which is what a mutation is handed. */
+interface BuilderDraft extends BuilderSchema {
+  properties: Record<string, SchemaProperty>;
+  required: string[];
+}
+
+/** One object field's unsubmitted nested field. */
+interface NestedDraft {
   name: string;
-  required: boolean;
   type: string;
 }
 
-const blankAddFieldState = (): AddFieldState => ({
-  format: "",
-  name: "",
-  required: false,
-  type: "string",
-});
+/**
+ * What the reader is part-way through, per mounted control.
+ *
+ * Per mount rather than per module, which is what the host element buys: two panes may each be
+ * showing a content type's schema, and the module-level `Map` keyed on `${fieldKeyPrefix}.${key}`
+ * this replaced gave the second one the first one's open add form.
+ */
+interface BuilderUi {
+  addOpen: boolean;
+  add: { format: string; name: string; required: boolean; type: string };
+  /** Each object field's nested add row, by the field's name in the schema. */
+  drafts: Map<string, NestedDraft>;
+  /**
+   * The ONE control whose value has parted from the schema, and what it holds.
+   *
+   * One at a time is the whole truth of it: a `change` commits one control, and the decision about
+   * it is synchronous, so there is never a second control in flight. See {@link say}.
+   */
+  echo: { id: string; value: string | boolean } | null;
+}
 
-/** Per-field add-field form state, keyed by `${fieldKeyPrefix}.${key}`. */
-const addFieldOpen = new Set<string>();
-const addFieldStates = new Map<string, AddFieldState>();
+/** The field types, as picker rows. One array, made once: an equal write re-runs no binding. */
+const TYPE_ROWS: SchemaFieldChoice[] = FIELD_TYPES.map((type) => ({ label: type, value: type }));
 
-/** Reset schema-builder ephemeral UI state (test hook). */
+/** The formats, with the empty one named: a blank row says nothing about what choosing it does. */
+const FORMAT_ROWS: SchemaFieldChoice[] = FORMAT_OPTIONS.map((format) => ({
+  label: format || "(none)",
+  value: format,
+}));
+
+/** What a new field starts as. */
+const BLANK_FIELD = { format: "", name: "", required: false, type: "string" };
+
+/** The last target list, so an unchanged one is the same array and re-runs no binding. */
+let targetRows: SchemaFieldChoice[] = [];
+let targetNames = " ";
+
+/**
+ * Forget the memoised reference-target rows (test hook).
+ *
+ * The builder's own ephemeral state — which add form is open, what each add row holds — lives with
+ * the mount now and goes when the control does, so this is what is left of a module-level reset.
+ */
 export function resetFormControlUiState(): void {
-  addFieldOpen.clear();
-  addFieldStates.clear();
+  targetRows = [];
+  targetNames = " ";
+}
+
+/**
+ * The content types a `reference` field can point at, through the host's context.
+ *
+ * The same list `settings/defs-editor.ts` reads straight off the live config: this one goes through
+ * `#/$context/content` because a form control is given a context and never the project.
+ */
+function targetsFor(ctx: SchemaFormContext): SchemaFieldChoice[] {
+  const content = ctx.resolvePointer("#/$context/content");
+  const names =
+    content && typeof content === "object" && !Array.isArray(content) ? Object.keys(content) : [];
+  const id = names.join(" ");
+  if (id !== targetNames) {
+    targetNames = id;
+    targetRows = names.map((name) => ({ label: name, value: name }));
+  }
+  return targetRows;
+}
+
+/** Whether a type carries a format at all — only `string` and `array` do. */
+function takesFormat(type: string): boolean {
+  return type === "string" || type === "array";
+}
+
+/** The value as a schema object: anything else is an object with no fields in it yet. */
+function readSchema(value: unknown): BuilderSchema {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as BuilderSchema)
+    : { properties: {}, required: [], type: "object" };
 }
 
 /** Working clone of the schema value — JSON round-trip, as values may be reactive proxies. */
-function cloneSchema(value: unknown): BuilderSchema {
-  const base =
-    value && typeof value === "object" && !Array.isArray(value)
-      ? value
-      : { properties: {}, required: [], type: "object" };
+function cloneSchema(value: unknown): BuilderDraft {
   // oxlint-disable-next-line unicorn/prefer-structured-clone
-  return JSON.parse(JSON.stringify(base)) as BuilderSchema;
+  const draft = JSON.parse(JSON.stringify(readSchema(value))) as BuilderSchema;
+  draft.type ??= "object";
+  draft.properties ??= {};
+  draft.required ??= [];
+  return draft as BuilderDraft;
 }
 
-/** Visual JSON-Schema field editor wrapping the shared schema-field-ui templates. */
-function schemaBuilderControl({ key, value, onChange, ctx, rerender }: SchemaFormControlArgs) {
-  const schema =
-    value && typeof value === "object" && !Array.isArray(value)
-      ? (value as BuilderSchema)
-      : ({ properties: {}, required: [], type: "object" } as BuilderSchema);
-  const properties = schema.properties ?? {};
-  const required = schema.required ?? [];
-  const stateKey = `${ctx.fieldKeyPrefix ?? ""}.${key}`;
+/** The id of a field's name control. */
+function nameId(key: string): string {
+  return `name:${key}`;
+}
 
-  const update = (mutate: (draft: BuilderSchema) => void) => {
-    const draft = cloneSchema(value);
-    draft.type ??= "object";
-    draft.properties ??= {};
-    draft.required ??= [];
-    mutate(draft);
-    onChange(draft);
-    rerender?.();
+/** The id of a field's required switch. */
+function requiredId(key: string): string {
+  return `required:${key}`;
+}
+
+/** A child is addressed by both halves, because two objects may hold the same child name. */
+function nestedId(parent: string, key: string): string {
+  return `${parent} ${key}`;
+}
+
+/** What a control shows: what it was last told it holds, or what the schema says. */
+function shown<T extends string | boolean>(ui: BuilderUi, id: string, held: T): T {
+  return ui.echo?.id === id ? (ui.echo.value as T) : held;
+}
+
+/** One child of an object field, as the document draws it. */
+function nestedView(
+  ui: BuilderUi,
+  parent: string,
+  key: string,
+  schema: SchemaProperty,
+  required: boolean,
+): NestedSchemaFieldView {
+  const id = nestedId(parent, key);
+  const type = detectFieldType(schema);
+  return {
+    format: detectFieldFormat(schema),
+    hasFormat: takesFormat(type),
+    key,
+    name: shown(ui, nameId(id), key),
+    parent,
+    required: shown(ui, requiredId(id), required),
+    type,
+  };
+}
+
+/** One field of the object, as the document draws it. */
+function fieldView(
+  ui: BuilderUi,
+  key: string,
+  schema: SchemaProperty,
+  required: boolean,
+  hasTargets: boolean,
+): SchemaFieldView {
+  const type = detectFieldType(schema);
+  const nested = type === "object";
+  const draft = ui.drafts.get(key);
+  const childRequired = schema.required ?? [];
+  return {
+    children: nested
+      ? Object.entries(schema.properties ?? {}).map(([child, sub]) =>
+          nestedView(ui, key, child, sub, childRequired.includes(child)),
+        )
+      : [],
+    draftName: draft?.name ?? "",
+    draftType: draft?.type ?? "string",
+    /* A reference with nothing to point at draws no picker: a control whose list is empty offers
+       the reader no answer, which is why the lit card gated on the same thing. */
+    extra: type === "reference" && hasTargets ? "reference" : nested ? "nested" : "none",
+    format: detectFieldFormat(schema),
+    hasFormat: takesFormat(type),
+    key,
+    label: camelToLabel(key),
+    name: shown(ui, nameId(key), key),
+    refTarget: schema.$ref ? schema.$ref.replace(/^#\/[^/]+\//, "") : "",
+    required: shown(ui, requiredId(key), required),
+    type,
+  };
+}
+
+/** A property map with one key renamed, rebuilt in place so a rename never reorders the list. */
+function renameKey<T>(properties: Record<string, T>, from: string, to: string): void {
+  const next: Record<string, T> = {};
+  for (const [key, value] of Object.entries(properties)) {
+    next[key === from ? to : key] = value;
+    delete properties[key];
+  }
+  Object.assign(properties, next);
+}
+
+/** Add or remove a name from a `required` list, made on first use. */
+function markRequired(
+  holder: { required?: string[] | undefined },
+  key: string,
+  required: boolean,
+): void {
+  holder.required ??= [];
+  const at = holder.required.indexOf(key);
+  if (required && at === -1) {
+    holder.required.push(key);
+  }
+  if (!required && at !== -1) {
+    holder.required.splice(at, 1);
+  }
+}
+
+/**
+ * Mount the schema-builder into the host the form drew for it.
+ *
+ * @param {HTMLElement} host - The field's `[part="control-host"]`
+ * @param {SchemaFormControlArgs} args - The value, the context and the commit hook
+ * @returns {SchemaFormControlHandle}
+ */
+function mountSchemaBuilder(
+  host: HTMLElement,
+  args: SchemaFormControlArgs,
+): SchemaFormControlHandle {
+  let latest = args;
+  /**
+   * The schema this control last committed, until the host hands one back.
+   *
+   * Every host that draws this control redraws on a commit, and the redraw arrives as an `update`
+   * carrying the new value — but the frontmatter renderer passes no `rerender` at all, and a host
+   * that never came back would leave the cards showing the schema as it was before the edit. The
+   * commit is what is shown until the value itself moves.
+   */
+  let committed: BuilderSchema | null = null;
+  const ui: BuilderUi = {
+    add: { ...BLANK_FIELD },
+    addOpen: false,
+    drafts: new Map(),
+    echo: null,
   };
 
-  // Content types available as reference targets, resolved through the host context
-  const contentTypesValue = ctx.resolvePointer("#/$context/content");
-  const contentTypeNames =
-    contentTypesValue && typeof contentTypesValue === "object"
-      ? Object.keys(contentTypesValue)
-      : [];
+  /** What the cards are drawn from. */
+  const source = (): BuilderSchema => committed ?? readSchema(latest.value);
 
-  const handlers: FieldHandlers = {
-    onAddNestedField: (parentName, fieldState) =>
-      update((draft) => {
-        const parent = draft.properties?.[parentName];
-        const name = toCamelCase(fieldState.name);
-        if (!parent || !name) {
-          return;
-        }
-        parent.properties ??= {};
-        parent.properties[name] = schemaForType(fieldState.type);
-        if (fieldState.required) {
-          parent.required ??= [];
-          if (!parent.required.includes(name)) {
-            parent.required.push(name);
-          }
-        }
-      }),
-    onChangeFormat: (name, format) =>
-      update((draft) => {
-        const prop = draft.properties?.[name];
-        if (!prop) {
-          return;
-        }
-        draft.properties![name] = schemaForType(prop.type || "string", format || undefined);
-      }),
-    onChangeNestedFormat: (parentName, childName, format) =>
-      update((draft) => {
-        const parent = draft.properties?.[parentName];
-        const prop = parent?.properties?.[childName];
-        if (!prop) {
-          return;
-        }
-        parent!.properties![childName] = schemaForType(prop.type || "string", format || undefined);
-      }),
-    onChangeNestedType: (parentName, childName, newType) =>
-      update((draft) => {
-        const parent = draft.properties?.[parentName];
-        const prop = parent?.properties?.[childName];
-        if (!prop) {
-          return;
-        }
-        const oldFormat =
-          newType === "string" || newType === "array" ? detectFieldFormat(prop) : undefined;
-        parent!.properties![childName] = schemaForType(newType, oldFormat || undefined);
-      }),
-    onChangeRefTarget: (name, target) =>
-      update((draft) => {
-        if (!draft.properties?.[name]) {
-          return;
-        }
-        draft.properties[name] = { $ref: `#/content/${target}` };
-      }),
-    onChangeType: (name, newType) =>
-      update((draft) => {
-        const prop = draft.properties?.[name];
-        if (!prop) {
-          return;
-        }
-        const oldFormat =
-          newType === "string" || newType === "array" ? detectFieldFormat(prop) : undefined;
-        draft.properties![name] = schemaForType(newType, oldFormat || undefined);
-      }),
-    onDelete: (name) =>
-      update((draft) => {
-        delete draft.properties?.[name];
-        draft.required = (draft.required ?? []).filter((r) => r !== name);
-      }),
-    onDeleteNested: (parentName, childName) =>
-      update((draft) => {
-        const parent = draft.properties?.[parentName];
-        if (!parent?.properties) {
-          return;
-        }
-        delete parent.properties[childName];
-        if (parent.required) {
-          parent.required = parent.required.filter((r) => r !== childName);
-        }
-      }),
-    onRename: (oldName, newName) =>
-      update((draft) => {
-        const normalized = toCamelCase(newName);
-        if (!draft.properties || !normalized || draft.properties[normalized]) {
-          return;
-        }
-        const next: Record<string, SchemaProperty> = {};
-        for (const [k, v] of Object.entries(draft.properties)) {
-          next[k === oldName ? normalized : k] = v;
-        }
-        draft.properties = next;
-        draft.required = (draft.required ?? []).map((r) => (r === oldName ? normalized : r));
-      }),
-    onRenameNested: (parentName, oldChild, newChild) =>
-      update((draft) => {
-        const parent = draft.properties?.[parentName];
-        const normalized = toCamelCase(newChild);
-        if (!parent?.properties || !normalized || parent.properties[normalized]) {
-          return;
-        }
-        const next: Record<string, SchemaProperty> = {};
-        for (const [k, v] of Object.entries(parent.properties)) {
-          next[k === oldChild ? normalized : k] = v;
-        }
-        parent.properties = next;
-        if (parent.required) {
-          parent.required = parent.required.map((r) => (r === oldChild ? normalized : r));
-        }
-      }),
-    onToggleNestedRequired: (parentName, childName) =>
-      update((draft) => {
-        const parent = draft.properties?.[parentName];
-        if (!parent) {
-          return;
-        }
-        parent.required ??= [];
-        const idx = parent.required.indexOf(childName);
-        if (idx === -1) {
-          parent.required.push(childName);
-        } else {
-          parent.required.splice(idx, 1);
-        }
-      }),
-    onToggleRequired: (name) =>
-      update((draft) => {
-        draft.required ??= [];
-        const idx = draft.required.indexOf(name);
-        if (idx === -1) {
-          draft.required.push(name);
-        } else {
-          draft.required.splice(idx, 1);
-        }
-      }),
+  const project = (): SchemaBuilderView => {
+    const schema = source();
+    const required = schema.required ?? [];
+    const rows = targetsFor(latest.ctx);
+    return {
+      addFormat: ui.add.format,
+      addHasFormat: takesFormat(ui.add.type),
+      addName: ui.add.name,
+      addRequired: ui.add.required,
+      addState: ui.addOpen ? "open" : "closed",
+      addType: ui.add.type,
+      fields: Object.entries(schema.properties ?? {}).map(([key, property]) =>
+        fieldView(ui, key, property, required.includes(key), rows.length > 0),
+      ),
+      formatOptions: FORMAT_ROWS,
+      targets: rows,
+      typeOptions: TYPE_ROWS,
+    };
   };
 
-  const fieldCards = repeat(
-    Object.entries(properties),
-    ([name]) => name,
-    ([name, def]) => fieldCardTpl(name, def, required.includes(name), handlers, contentTypeNames),
-  );
+  const redraw = (): void => surface.update(project());
 
-  const addFieldState = addFieldStates.get(stateKey) ?? blankAddFieldState();
+  /**
+   * Say what a control now holds, before anything is decided about it.
+   *
+   * This is what `live()` did for the lit card. A document's binding writes only when the SCOPE
+   * value changes, and after a refusal the scope still holds what the schema says — so without this
+   * nothing is written back and the refused text stays in the field.
+   */
+  const say = (id: string, value: string | boolean): void => {
+    ui.echo = { id, value };
+    redraw();
+  };
 
-  return html`
-    <div class="schema-builder">
-      <div class="schema-field-list">${fieldCards}</div>
-      ${
-        addFieldOpen.has(stateKey)
-          ? addFieldFormTpl(addFieldState, {
-              onCancel: () => {
-                addFieldOpen.delete(stateKey);
-                addFieldStates.delete(stateKey);
-                rerender?.();
-              },
-              onConfirm: () => {
-                const raw = addFieldState.name.trim();
-                const name = toCamelCase(raw);
-                if (!name) {
-                  return;
-                }
-                // Close the form before update() rerenders with the committed value
-                addFieldOpen.delete(stateKey);
-                addFieldStates.delete(stateKey);
-                update((draft) => {
-                  draft.properties![name] = schemaForType(
-                    addFieldState.type,
-                    addFieldState.format || undefined,
-                  );
-                  if (addFieldState.required && !draft.required!.includes(name)) {
-                    draft.required!.push(name);
-                  }
-                });
-              },
-              onInput: (field, val) => {
-                addFieldStates.set(stateKey, { ...addFieldState, [field]: val });
-                rerender?.();
-              },
-            })
-          : html`
-              <sp-action-button
-                size="s"
-                quiet
-                @click=${() => {
-                  addFieldOpen.add(stateKey);
-                  addFieldStates.set(stateKey, blankAddFieldState());
-                  rerender?.();
-                }}
-              >
-                <sp-icon-add slot="icon"></sp-icon-add> Add Field
-              </sp-action-button>
-            `
+  /** A refusal: every control goes back to what the schema says, and nothing is committed. */
+  const refuse = (): void => {
+    ui.echo = null;
+    redraw();
+  };
+
+  /**
+   * Edit the schema and commit the result.
+   *
+   * The draft is a clone, so a mutation that answers `false` costs nothing: it is a REFUSAL, and
+   * the host hears nothing at all. A mutation that answers `true` is what the field now holds, and
+   * it is shown from this moment rather than when the host gets round to redrawing.
+   */
+  const write = (mutate: (draft: BuilderDraft) => boolean): void => {
+    const draft = cloneSchema(source());
+    if (!mutate(draft)) {
+      refuse();
+      return;
+    }
+    committed = draft;
+    ui.echo = null;
+    latest.onChange(draft);
+    redraw();
+  };
+
+  /** The parent object a nested edit is about, or `undefined` when it has gone underneath. */
+  const parentOf = (draft: BuilderDraft, parent: string): SchemaProperty | undefined =>
+    draft.properties[parent];
+
+  /** One object field's add-row draft, made on first use. */
+  const draftOf = (parent: string): NestedDraft => {
+    let draft = ui.drafts.get(parent);
+    if (!draft) {
+      draft = { name: "", type: "string" };
+      ui.drafts.set(parent, draft);
+    }
+    return draft;
+  };
+
+  const surface = mountSchemaBuilderSurface(host, {
+    addNested(parent) {
+      const draft = draftOf(parent);
+      const name = toCamelCase(draft.name.trim());
+      if (!name) {
+        return;
       }
-    </div>
-  `;
+      write((next) => {
+        const holder = parentOf(next, parent);
+        if (!holder) {
+          return false;
+        }
+        holder.properties ??= {};
+        holder.properties[name] = schemaForType(draft.type || "string");
+        /* The name clears and the type does not: adding three strings in a row is the ordinary
+           case, and re-choosing the type each time would be the editor asking what it just heard. */
+        draft.name = "";
+        return true;
+      });
+    },
+    cancelAdd() {
+      ui.addOpen = false;
+      ui.add = { ...BLANK_FIELD };
+      redraw();
+    },
+    confirmAdd() {
+      const name = toCamelCase(ui.add.name.trim());
+      if (!name) {
+        return;
+      }
+      const { format, required, type } = ui.add;
+      ui.addOpen = false;
+      ui.add = { ...BLANK_FIELD };
+      write((next) => {
+        next.properties[name] = schemaForType(type, format || undefined);
+        if (required) {
+          markRequired(next, name, true);
+        }
+        return true;
+      });
+    },
+    editAddFormat(value) {
+      ui.add.format = value;
+      redraw();
+    },
+    editAddName(value) {
+      ui.add.name = value;
+      redraw();
+    },
+    editAddRequired(required) {
+      ui.add.required = required;
+      redraw();
+    },
+    editAddType(value) {
+      ui.add.type = value;
+      redraw();
+    },
+    editDraftName(parent, value) {
+      draftOf(parent).name = value;
+      redraw();
+    },
+    editDraftType(parent, value) {
+      draftOf(parent).type = value;
+      redraw();
+    },
+    openAdd() {
+      ui.addOpen = true;
+      ui.add = { ...BLANK_FIELD };
+      redraw();
+    },
+    removeField(key) {
+      write((next) => {
+        if (!next.properties[key]) {
+          return false;
+        }
+        delete next.properties[key];
+        next.required = next.required.filter((name) => name !== key);
+        return true;
+      });
+    },
+    removeNested(parent, key) {
+      write((next) => {
+        const holder = parentOf(next, parent);
+        if (!holder?.properties?.[key]) {
+          return false;
+        }
+        delete holder.properties[key];
+        if (holder.required) {
+          holder.required = holder.required.filter((name) => name !== key);
+        }
+        return true;
+      });
+    },
+    renameField(key, value) {
+      say(nameId(key), value);
+      const name = toCamelCase(value.trim());
+      write((next) => {
+        if (!next.properties[key] || !name || name === key || next.properties[name]) {
+          return false;
+        }
+        renameKey(next.properties, key, name);
+        next.required = next.required.map((entry) => (entry === key ? name : entry));
+        return true;
+      });
+    },
+    renameNested(parent, key, value) {
+      say(nameId(nestedId(parent, key)), value);
+      const name = toCamelCase(value.trim());
+      write((next) => {
+        const holder = parentOf(next, parent);
+        if (!holder?.properties?.[key] || !name || name === key || holder.properties[name]) {
+          return false;
+        }
+        renameKey(holder.properties, key, name);
+        if (holder.required) {
+          holder.required = holder.required.map((entry) => (entry === key ? name : entry));
+        }
+        return true;
+      });
+    },
+    setFormat(key, value) {
+      write((next) => {
+        const property = next.properties[key];
+        if (!property) {
+          return false;
+        }
+        next.properties[key] = schemaForType(property.type || "string", value || undefined);
+        return true;
+      });
+    },
+    setNestedFormat(parent, key, value) {
+      write((next) => {
+        const holder = parentOf(next, parent);
+        const property = holder?.properties?.[key];
+        if (!holder?.properties || !property) {
+          return false;
+        }
+        holder.properties[key] = schemaForType(property.type || "string", value || undefined);
+        return true;
+      });
+    },
+    setNestedRequired(parent, key, required) {
+      say(requiredId(nestedId(parent, key)), required);
+      write((next) => {
+        const holder = parentOf(next, parent);
+        if (!holder) {
+          return false;
+        }
+        markRequired(holder, key, required);
+        return true;
+      });
+    },
+    setNestedType(parent, key, value) {
+      write((next) => {
+        const holder = parentOf(next, parent);
+        const property = holder?.properties?.[key];
+        if (!holder?.properties || !property) {
+          return false;
+        }
+        /* A format survives a move between the two types that carry one, and is dropped by any type
+           that does not: `schemaForType` is handed the old format only when the new type takes it. */
+        const format = takesFormat(value) ? detectFieldFormat(property) : undefined;
+        holder.properties[key] = schemaForType(value, format || undefined);
+        return true;
+      });
+    },
+    setRequired(key, required) {
+      say(requiredId(key), required);
+      write((next) => {
+        if (!next.properties[key]) {
+          return false;
+        }
+        markRequired(next, key, required);
+        return true;
+      });
+    },
+    setTarget(key, value) {
+      write((next) => {
+        if (!next.properties[key]) {
+          return false;
+        }
+        /* The pointer form is `#/content/<type>` — the same one `settings/defs-editor.ts` writes,
+           so a reference authored here and one authored in Data Shapes are the same value. */
+        next.properties[key] = { $ref: `#/content/${value}` };
+        return true;
+      });
+    },
+    setType(key, value) {
+      write((next) => {
+        const property = next.properties[key];
+        if (!property) {
+          return false;
+        }
+        const format = takesFormat(value) ? detectFieldFormat(property) : undefined;
+        next.properties[key] = schemaForType(value, format || undefined);
+        return true;
+      });
+    },
+  });
+
+  redraw();
+
+  return {
+    dispose: () => surface.dispose(),
+    update(next) {
+      latest = next;
+      /* The host has spoken: what it says the value is wins over what this control last committed,
+         and any control that had parted from it is put back. */
+      committed = null;
+      ui.echo = null;
+      redraw();
+    },
+  };
 }
+
+/**
+ * The schema-builder as the registry holds it — a MOUNT, because it is a Jx document
+ * (`src/surfaces/schema-builder.json`) and a document needs a host of its own rather than a
+ * template slot. Named rather than written inline at the registration below so a test can drive the
+ * control the way the engine does, without the registry growing a second public lookup for it.
+ */
+export const schemaBuilderControl: SchemaFormMountedControl = { mount: mountSchemaBuilder };
 
 registerFormControl("schema-builder", schemaBuilderControl);
 

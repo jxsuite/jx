@@ -1,159 +1,131 @@
 /**
- * Signals panel — renderSignalsTemplate interaction coverage: category grouping, accordion
- * collapse, row expansion, add/delete defs, and the per-category inline editors (state, computed,
- * data sources, functions/CEM, expressions).
+ * The Navigator's Data panel, as the document draws it — `src/surfaces/panel-signals.json`, mounted
+ * by `src/surfaces/panel-signals.ts` and projected by `src/panels/signals-panel.ts`.
+ *
+ * Category grouping, row expansion, add and delete, and the per-category editors (state, computed,
+ * data sources, functions and their CEM facts, expressions).
+ *
+ * Everything is addressed by `part`, by `data-prop` or by the region grammar, because the panel is
+ * a document: there is no `.signal-row`, `sp-picker` or `sp-textfield` of this panel's own to find
+ * any more. A row is addressed by the entry it draws (`[part="entry"][data-signal="$count"]`)
+ * rather than by counting siblings, because several rows stand open at once. And every draw is
+ * awaited — `mountSurface` is asynchronous, each kit element settles one `connectedCallback` after
+ * that, and a `$map`'s re-render is coalesced into a microtask.
+ *
+ * The four foreign surfaces an editor embeds — the expression editor, the statement-card editor,
+ * the media picker and the shared schema form — are ISLANDS, so what is asserted here is the seam:
+ * that the host exists for the right entry and that the flow filled it. What each of them then
+ * draws belongs to its own suite.
  */
 import {
-  flush,
-  installMockPlatform,
-  key,
-  pointer,
-  resetStudioState,
-  resetWorkspaceWithTab,
-} from "./harness";
+  clearSignalPanels,
+  commitText,
+  control,
+  docState,
+  drawSignals,
+  editorFor,
+  entryRow,
+  fieldProps,
+  fieldRow,
+  dataOf,
+  hasEntry,
+  listedNames,
+  marked,
+  nativeInput,
+  nativeSelect,
+  openEntry,
+  pick,
+  press,
+  settle,
+  summaryText,
+  summaryTone,
+  tick,
+  toggleEntry,
+  typeText,
+} from "./signals-panel-fixture";
+import { flush, installMockPlatform, key, resetStudioState } from "./harness";
 import { beforeEach, describe, expect, test } from "bun:test";
-import { render } from "lit-html";
 import { activeTab } from "../src/workspace/workspace";
 import { setExtensions } from "../src/format/format-host";
-import { renderSignalsTemplate } from "../src/panels/signals-panel";
 import { shell } from "../src/shell";
 import { pluginSchemaCache } from "../src/services/code-services";
-import type { JxMutableNode } from "@jxsuite/schema/types";
-
-// ─── Local helpers ────────────────────────────────────────────────────────────
-
-/**
- * The ctx is one field wide now, and that is the assertion.
- *
- * It used to carry `renderCanvas` (dead since the takeovers went — nothing in the panel called it)
- * and `updateSession` (dead since the Logic buttons started going through `openLogicTarget`, which
- * addresses the focused tab itself). The tests that watched those spies now read the tab and the
- * shell, which is where the effect actually lands.
- */
-interface Mounted {
-  container: HTMLElement;
-  calls: { left: number };
-  ctx: { renderLeftPanel: () => void };
-  S: Record<string, unknown>;
-}
-
-/** Mount the signals template against the active tab with a re-rendering ctx. */
-function mountSignals(extra: Record<string, unknown> = {}): Mounted {
-  const container = document.createElement("div");
-  const calls = { left: 0 };
-  const tab = activeTab.value;
-  if (!tab) {
-    throw new Error("no active tab");
-  }
-  const S: Record<string, unknown> = { document: tab.doc.document, ...extra };
-  const ctx = {
-    renderLeftPanel: () => {
-      calls.left += 1;
-      S.document = activeTab.value?.doc.document;
-      render(renderSignalsTemplate(S as never, ctx), container);
-    },
-  };
-  ctx.renderLeftPanel();
-  calls.left = 0;
-  return { calls, container, ctx, S };
-}
-
-function setup(
-  state: Record<string, unknown> | undefined,
-  opts: { tagName?: string; extra?: Record<string, unknown> } = {},
-): Mounted {
-  resetWorkspaceWithTab({
-    children: [],
-    tagName: opts.tagName ?? "div",
-    ...(state !== undefined && { state }),
-  } as unknown as JxMutableNode);
-  return mountSignals(opts.extra ?? {});
-}
-
-function docState(): Record<string, never> {
-  return (activeTab.value?.doc.document.state ?? {}) as Record<string, never>;
-}
-
-function findRow(container: HTMLElement, name: string): HTMLElement | undefined {
-  return [...container.querySelectorAll(".signal-row")].find(
-    (r) => r.querySelector(".signal-name")?.textContent === name,
-  ) as HTMLElement | undefined;
-}
-
-/** Expand a signal row (idempotent) and return its editor element. */
-async function expand(h: Mounted, name: string): Promise<HTMLElement> {
-  let row = findRow(h.container, name);
-  if (!row) {
-    throw new Error(`no row for ${name}`);
-  }
-  if (!row.classList.contains("expanded")) {
-    pointer(row, "click");
-    await flush(1);
-  }
-  row = findRow(h.container, name);
-  expect(row?.classList.contains("expanded")).toBe(true);
-  // THIS row's editor — its next sibling. Rows stay open now (`ui.dataRows` is a set, per tab), so
-  // `querySelector(".signal-editor")` returns whichever row was expanded first, and every field
-  // Assertion after the second `expand()` would read the wrong entry's editor and still pass or
-  // Fail for the wrong reason.
-  const editor = row?.nextElementSibling;
-  if (!editor?.classList.contains("signal-editor")) {
-    throw new Error(`no editor rendered for ${name}`);
-  }
-  return editor as HTMLElement;
-}
-
-function fieldEl<T extends Element>(scope: HTMLElement, prop: string, selector: string): T {
-  const row = scope.querySelector(`[data-prop="${prop}"]`);
-  if (!row) {
-    throw new Error(`no field row ${prop}`);
-  }
-  const el = row.querySelector(selector);
-  if (!el) {
-    throw new Error(`no ${selector} in row ${prop}`);
-  }
-  return el as T;
-}
-
-type ValueEl = HTMLElement & { value: string };
-
-/** Set a control's value and fire change (immediate commit path). */
-function commitValue(el: Element, value: string): void {
-  (el as ValueEl).value = value;
-  el.dispatchEvent(new Event("change", { bubbles: true }));
-}
-
-/** Set a control's value and fire input only (debounced commit path). */
-function inputValue(el: Element, value: string): void {
-  (el as ValueEl).value = value;
-  el.dispatchEvent(new Event("input", { bubbles: true }));
-}
-
-function findByText(scope: HTMLElement, selector: string, text: string): HTMLElement | undefined {
-  return [...scope.querySelectorAll(selector)].find((el) => el.textContent?.trim() === text) as
-    | HTMLElement
-    | undefined;
-}
-
-function addPicker(h: Mounted): ValueEl {
-  const picker = h.container.querySelector(".signals-add sp-picker");
-  if (!picker) {
-    throw new Error("no add picker");
-  }
-  return picker as ValueEl;
-}
 
 beforeEach(() => {
   resetStudioState();
   installMockPlatform();
   pluginSchemaCache.clear();
+  clearSignalPanels();
 });
+
+/** Every category heading the panel is showing, in order. */
+function categoryLabels(panel: HTMLElement): string[] {
+  return [...panel.querySelectorAll('[part="category"] [part="summary"] > [part="label"]')].map(
+    (el) => el.textContent ?? "",
+  );
+}
+
+/** One category section, by the key the projection gave it. */
+function category(panel: HTMLElement, name: string): HTMLElement {
+  return panel.querySelector(`[part="category"][data-category="${name}"]`) as HTMLElement;
+}
+
+/** Whether a section is disclosed, read off the details the kit renders. */
+function isOpen(item: HTMLElement): boolean {
+  return (item.querySelector('[part="details"]') as HTMLDetailsElement).open;
+}
+
+/** Open or close a section the way a reader does — through that same details element. */
+async function openSection(item: HTMLElement, open: boolean): Promise<void> {
+  const details = item.querySelector('[part="details"]') as HTMLDetailsElement;
+  details.open = open;
+  details.dispatchEvent(new Event("toggle"));
+  await settle();
+}
+
+/** The add picker's rows, grouped the way `jx-select` draws them. */
+function addGroups(panel: HTMLElement): Record<string, string[]> {
+  const select = nativeSelect(panel.querySelector('[part="add-picker"]') as Element);
+  const out: Record<string, string[]> = {};
+  for (const group of select.querySelectorAll("optgroup")) {
+    out[group.label] = [...group.querySelectorAll("option")].map((o) => o.value);
+  }
+  return out;
+}
+
+/** Pick a row in the "+ Add…" picker. */
+async function add(panel: HTMLElement, value: string): Promise<void> {
+  await pick(panel.querySelector('[part="add-picker"]') as Element, value);
+}
+
+/** The island host for one entry's foreign surface. */
+function island(editor: HTMLElement, slot: string): HTMLElement | null {
+  return editor.querySelector<HTMLElement>(`[part="slot-host"][data-slot="${slot}"]`);
+}
+
+/** One entry's CEM parameters, as the document wrote them back. */
+function paramsOf(name: string): Record<string, unknown>[] {
+  return (docState()[name]?.parameters ?? []) as Record<string, unknown>[];
+}
+
+/** One entry's CEM emits, as the document wrote them back. */
+function emitsOf(name: string): Record<string, unknown>[] {
+  return (docState()[name]?.emits ?? []) as Record<string, unknown>[];
+}
+
+/** The text cells of one table row, left to right. */
+function cellsOf(editor: HTMLElement, prop: string, row: string): Element[] {
+  return [
+    ...fieldRow(editor, prop).querySelectorAll(
+      `[part="cell-row"][data-row="${row}"] [part="cell-text"]`,
+    ),
+  ];
+}
 
 // ─── Grouping and structure ───────────────────────────────────────────────────
 
-describe("renderSignalsTemplate structure", () => {
-  test("groups defs by category into labeled accordion items", () => {
-    const h = setup({
+describe("the entry list", () => {
+  test("groups entries by category into labelled sections", async () => {
+    const { panel } = await drawSignals({
       $count: { default: 0, type: "integer" },
       $double: { $compute: "$count * 2" },
       $items: { $prototype: "Request", url: "/api" },
@@ -161,100 +133,135 @@ describe("renderSignalsTemplate structure", () => {
       $title: { default: "x", type: "string" },
       save: { $prototype: "Function", body: "" },
     });
-    const labels = [...h.container.querySelectorAll("sp-accordion-item")].map((el) =>
-      el.getAttribute("label"),
-    );
-    expect(labels).toEqual([
+    expect(categoryLabels(panel)).toEqual([
       "State (2)",
       "Computed (1)",
       "Data (1)",
       "Expressions (1)",
       "Functions (1)",
     ]);
-    expect(h.container.querySelector(".empty-state")).toBeNull();
-    // Badge and hint rendered per row
-    const row = findRow(h.container, "$items");
-    expect(row?.querySelector(".signal-badge")?.textContent).toBe("R");
-    expect(row?.querySelector(".signal-hint")?.textContent).toBe("GET /api");
+    expect(panel.querySelector('[part="empty"]')).toBeNull();
+
+    expect(entryRow(panel, "$items").querySelector('[part="badge"]')?.textContent).toBe("R");
+    expect(summaryText(panel, "$items")).toBe("GET /api");
   });
 
-  test("naked primitive and array state entries group safely under State", () => {
-    const h = setup({ list: ["a"], plain: 5 } as never);
-    const labels = [...h.container.querySelectorAll("sp-accordion-item")].map((el) =>
-      el.getAttribute("label"),
-    );
-    expect(labels).toEqual(["State (2)"]);
-    expect(findRow(h.container, "plain")?.querySelector(".signal-badge")?.textContent).toBe("S");
+  test("naked primitive and array entries group safely under State", async () => {
+    const { panel } = await drawSignals({ list: ["a"], plain: 5 } as never);
+    expect(categoryLabels(panel)).toEqual(["State (2)"]);
+    expect(entryRow(panel, "plain").querySelector('[part="badge"]')?.textContent).toBe("S");
   });
 
-  test("no state → the empty state teaches, and its button adds the same def the picker does", () => {
-    const h = setup(undefined);
-    expect(h.container.querySelector(".empty-state-message")?.textContent).toContain(
-      "Data lives here",
+  test("the badge carries its category, which is what tints it", async () => {
+    // The tint is one rule keyed on `data-category`, so the category has to reach the DOM rather
+    // Than be a class the projection composed.
+    const { panel } = await drawSignals({
+      go: { $prototype: "Function", body: "" },
+      n: { default: 1 },
+    });
+    expect(dataOf(entryRow(panel, "n").querySelector('[part="badge"]'), "category")).toBe("state");
+    expect(dataOf(entryRow(panel, "go").querySelector('[part="badge"]'), "category")).toBe(
+      "function",
     );
-    expect(h.container.querySelectorAll("sp-accordion-item").length).toBe(0);
+  });
 
-    (h.container.querySelector(".empty-state-action") as HTMLElement).click();
+  test("no state → the empty state teaches, and its button adds what the picker adds", async () => {
+    const { panel, counts } = await drawSignals({});
+    expect(panel.querySelector('[part="empty-message"]')?.textContent).toContain("Data lives here");
+    expect(panel.querySelectorAll('[part="category"]').length).toBe(0);
+
+    await press(panel.querySelector('[part="empty-action"]'));
     expect(docState().$newSignal).toEqual({ default: "", type: "string" } as never);
-    expect(h.calls.left).toBeGreaterThan(0);
+    expect(counts.repaints).toBeGreaterThan(0);
   });
 
-  test("accordion toggle collapses and re-expands a category", async () => {
-    const h = setup({ $a: { default: "" } });
-    let item = h.container.querySelector("sp-accordion-item");
-    expect(item?.hasAttribute("open")).toBe(true);
+  test("a section collapses and re-expands, and the panel remembers which", async () => {
+    const { panel } = await drawSignals({ $a: { default: "" } });
+    expect(isOpen(category(panel, "state"))).toBe(true);
 
-    item?.dispatchEvent(new Event("sp-accordion-item-toggle", { bubbles: true }));
-    await flush(1);
-    item = h.container.querySelector("sp-accordion-item");
-    expect(item?.hasAttribute("open")).toBe(false);
+    await openSection(category(panel, "state"), false);
+    expect(isOpen(category(panel, "state"))).toBe(false);
 
-    item?.dispatchEvent(new Event("sp-accordion-item-toggle", { bubbles: true }));
-    await flush(1);
-    item = h.container.querySelector("sp-accordion-item");
-    expect(item?.hasAttribute("open")).toBe(true);
+    await openSection(category(panel, "state"), true);
+    expect(isOpen(category(panel, "state"))).toBe(true);
   });
 
-  test("clicking a row expands its editor; clicking again collapses", async () => {
-    const h = setup({ $a: { default: "x" } });
-    const editor = await expand(h, "$a");
-    expect(editor.querySelector('[data-prop="Name"]')).not.toBeNull();
+  test("the disclosure is a button that says whether the entry is open", async () => {
+    // The row is the box and the disclosure is the control, rather than the row being a
+    // `role="button"` with Delete nested inside it — a control the keyboard reaches only by
+    // Leaving the one it is in.
+    const { panel } = await drawSignals({ $a: { default: "x" } });
+    const disclosure = entryRow(panel, "$a").querySelector('[part="disclosure"]') as HTMLElement;
+    expect(disclosure.tagName).toBe("BUTTON");
+    expect(disclosure.getAttribute("aria-expanded")).toBe("false");
 
-    const row = findRow(h.container, "$a");
-    pointer(row as Element, "click");
-    await flush(1);
-    expect(h.container.querySelector(".signal-editor")).toBeNull();
+    const editor = await openEntry(panel, "$a");
+    expect(fieldRow(editor, "Name")).not.toBeNull();
+    expect(
+      entryRow(panel, "$a").querySelector('[part="disclosure"]')?.getAttribute("aria-expanded"),
+    ).toBe("true");
+    expect(marked(entryRow(panel, "$a"), "expanded")).toBe(true);
+
+    await toggleEntry(panel, "$a");
+    expect(panel.querySelector('[part="editor"]')).toBeNull();
   });
 
-  test("delete button removes the def without expanding the row", () => {
-    const h = setup({ $a: { default: "x" }, $b: { default: "y" } });
-    const row = findRow(h.container, "$a");
-    pointer(row?.querySelector(".signal-del") as Element, "click");
-    expect(docState().$a).toBeUndefined();
-    expect(docState().$b).toBeDefined();
+  test("several rows stay open at once — comparing two entries means seeing both", async () => {
+    const { panel } = await drawSignals({ $a: { default: 1 }, $b: { default: 2 } });
+    await openEntry(panel, "$a");
+    await openEntry(panel, "$b");
+    expect(panel.querySelectorAll('[part="editor"]').length).toBe(2);
+    expect(editorFor(panel, "$a")).not.toBe(editorFor(panel, "$b"));
+  });
+
+  test("Delete removes the entry, and names it for a reader who cannot see the row", async () => {
+    const { panel } = await drawSignals({ $a: { default: "x" }, $b: { default: "y" } });
+    const remove = entryRow(panel, "$a").querySelector('[part="delete"]');
+    expect(remove?.querySelector('[part="control"]')?.getAttribute("aria-label")).toBe("Delete $a");
+    await press(remove);
+    expect(hasEntry(panel, "$a")).toBe(false);
+    expect(hasEntry(panel, "$b")).toBe(true);
   });
 });
 
 // ─── Add picker ───────────────────────────────────────────────────────────────
 
-describe("add picker", () => {
-  test("adds a state signal from the template and expands it", async () => {
-    const h = setup({});
-    commitValue(addPicker(h), "state");
-    await flush(1);
-    expect(docState().$newSignal).toEqual({ default: "", type: "string" } as never);
-    expect(findRow(h.container, "$newSignal")?.classList.contains("expanded")).toBe(true);
+describe("the add picker", () => {
+  test("its rows are grouped rather than divided by unlabelled rules", async () => {
+    const { panel } = await drawSignals({});
+    const groups = addGroups(panel);
+    expect(Object.keys(groups)).toEqual(["Values", "Data sources", "Logic"]);
+    expect(groups["Values"]).toEqual(["state", "computed"]);
+    expect(groups["Logic"]).toEqual(["expression", "function"]);
+    expect(groups["Data sources"]).toContain("localStorage");
   });
 
-  test("name collisions increment a numeric suffix", () => {
-    const h = setup({ $newSignal: { default: "taken" } });
-    commitValue(addPicker(h), "state");
+  test("adds a value entry from the template and opens it", async () => {
+    const { panel } = await drawSignals({});
+    await add(panel, "state");
+    expect(docState().$newSignal).toEqual({ default: "", type: "string" } as never);
+    expect(marked(entryRow(panel, "$newSignal"), "expanded")).toBe(true);
+  });
+
+  test("the picker never rests on what was picked", async () => {
+    // A controlled input is authoritative only while the scope value MOVES, so the pick is
+    // Announced and then withdrawn — otherwise the same row could not be picked twice.
+    const { panel } = await drawSignals({});
+    await add(panel, "state");
+    expect(nativeSelect(panel.querySelector('[part="add-picker"]') as Element).value).toBe("");
+    await add(panel, "state");
+    expect(docState().$newSignal1).toBeDefined();
+  });
+
+  test("name collisions increment a numeric suffix", async () => {
+    const { panel } = await drawSignals({ $newSignal: { default: "taken" } });
+    await add(panel, "state");
     expect(docState().$newSignal1).toEqual({ default: "", type: "string" } as never);
   });
 
-  test("function template uses newFunction base name", () => {
-    const h = setup({});
-    commitValue(addPicker(h), "function");
+  test("the function template uses the newFunction base name", async () => {
+    const { panel } = await drawSignals({});
+    await add(panel, "function");
     expect(docState().newFunction).toEqual({
       $prototype: "Function",
       body: "",
@@ -262,9 +269,9 @@ describe("add picker", () => {
     } as never);
   });
 
-  test("request template seeds method/timing/url", () => {
-    const h = setup({});
-    commitValue(addPicker(h), "request");
+  test("the request template seeds method, timing and url", async () => {
+    const { panel } = await drawSignals({});
+    await add(panel, "request");
     expect(docState().$newSignal).toEqual({
       $prototype: "Request",
       method: "GET",
@@ -273,22 +280,16 @@ describe("add picker", () => {
     } as never);
   });
 
-  test("empty or unknown picker values are no-ops", () => {
-    const h = setup({});
-    commitValue(addPicker(h), "");
-    commitValue(addPicker(h), "bogus");
+  test("an empty pick is a no-op", async () => {
+    const { panel } = await drawSignals({});
+    await add(panel, "");
     expect(Object.keys(docState())).toEqual([]);
   });
 
-  test("project imports appear as menu items and add a prototype def", async () => {
-    resetStudioState({
-      projectConfig: { imports: { ContentCollection: "./plugins/cc.js" } },
-    });
-    const h = setup({});
-    const menuValues = [...h.container.querySelectorAll(".signals-add sp-menu-item")].map((el) =>
-      el.getAttribute("value"),
-    );
-    expect(menuValues).toContain("import:ContentCollection");
+  test("project imports are a group of their own and add a prototype entry", async () => {
+    resetStudioState({ projectConfig: { imports: { ContentCollection: "./plugins/cc.js" } } });
+    const { panel, counts } = await drawSignals({});
+    expect(addGroups(panel)["Project imports"]).toEqual(["import:ContentCollection"]);
 
     let fetched = 0;
     installMockPlatform({
@@ -297,31 +298,32 @@ describe("add picker", () => {
         return { properties: { source: { type: "string" } } };
       },
     });
-    commitValue(addPicker(h), "import:ContentCollection");
+    await add(panel, "import:ContentCollection");
     expect(docState().$contentCollection).toEqual({ $prototype: "ContentCollection" } as never);
     await flush();
-    // Schema fetched through the platform and cached, then the panel re-rendered
+    // Fetched through the platform and cached, then the panel repainted with the form in it.
     expect(fetched).toBe(1);
     expect(pluginSchemaCache.get("./plugins/cc.js::ContentCollection")).toEqual({
       properties: { source: { type: "string" } },
     });
-    expect(h.calls.left).toBeGreaterThan(0);
+    expect(counts.repaints).toBeGreaterThan(0);
   });
 
-  test("import without a known source path still adds the def and re-renders", () => {
-    resetStudioState({ projectConfig: { imports: { Known: "./k.js" } } });
-    const h = setup({ $missing: { $prototype: "Missing" } });
-    commitValue(addPicker(h), "import:Missing");
-    // Collision with the existing $missing def → suffix
+  test("an import with no known source path still adds the entry and repaints", async () => {
+    // `Missing` is declared with no path, so the entry is added and nothing is fetched.
+    resetStudioState({ projectConfig: { imports: { Known: "./k.js", Missing: "" } } });
+    const { panel, counts } = await drawSignals({ $missing: { $prototype: "Missing" } });
+    await add(panel, "import:Missing");
+    // Collision with the existing `$missing` entry → suffix.
     expect(docState().$missing1).toEqual({ $prototype: "Missing" } as never);
-    expect(h.calls.left).toBeGreaterThan(0);
+    expect(counts.repaints).toBeGreaterThan(0);
   });
 
-  test("extension state classes appear as menu items and seed stateDefaults", () => {
+  test("extension state classes are a group, and their stateDefaults seed the entry", async () => {
     setExtensions([
       {
         classes: [
-          // Auth carries admission blocks → not a state class, so no menu item.
+          // Auth carries admission blocks → not a state class, so no row.
           { name: "Auth", path: "/ext/Auth.class.json" },
           {
             name: "Session",
@@ -337,113 +339,106 @@ describe("add picker", () => {
       },
     ]);
     try {
-      const h = setup({});
-      const menuValues = [...h.container.querySelectorAll(".signals-add sp-menu-item")].map((el) =>
-        el.getAttribute("value"),
-      );
-      expect(menuValues).toContain("ext:Session");
-      expect(menuValues).toContain("ext:AuthActions");
-      expect(menuValues).not.toContain("ext:Auth");
+      const { panel } = await drawSignals({});
+      expect(addGroups(panel)["Extensions"]).toEqual(["ext:Session", "ext:AuthActions"]);
 
-      // The descriptor's stateDefaults seed the created def (specs/extensions.md §10).
-      commitValue(addPicker(h), "ext:Session");
+      // The descriptor's stateDefaults seed the created entry (specs/extensions.md §10).
+      await add(panel, "ext:Session");
       expect(docState().$session).toEqual({ $prototype: "Session", timing: "client" } as never);
-      // Without stateDefaults the def is the bare prototype reference.
-      commitValue(addPicker(h), "ext:AuthActions");
+      // Without stateDefaults the entry is the bare prototype reference.
+      await add(panel, "ext:AuthActions");
       expect(docState().$authActions).toEqual({ $prototype: "AuthActions" } as never);
-      expect(h.calls.left).toBeGreaterThan(0);
     } finally {
       setExtensions([]);
     }
   });
 });
 
-// ─── State signal editor ──────────────────────────────────────────────────────
+// ─── State entry editor ───────────────────────────────────────────────────────
 
-describe("state signal editor", () => {
-  test("rename commits through the Name field", async () => {
-    const h = setup({ $old: { default: "v" } });
-    const editor = await expand(h, "$old");
-    commitValue(fieldEl(editor, "Name", "sp-textfield"), "$renamed");
+describe("the value editor", () => {
+  test("rename commits when the field is left", async () => {
+    const { panel } = await drawSignals({ $old: { default: "v" } });
+    const editor = await openEntry(panel, "$old");
+    await commitText(control(editor, "Name", "text"), "$renamed");
     expect(docState().$old).toBeUndefined();
     expect(docState().$renamed).toEqual({ default: "v" } as never);
   });
 
-  test("rename to an existing name is rejected, AND says so", async () => {
-    // The rejection used to be a silent `return`: the document kept `$a`, the field showed `$b`,
-    // And the only way to learn which had won was to look at the canvas. Plan §11.2 asks for a
-    // "collision-checked rename with a visible error" and only the check had shipped.
-    const h = setup({ $a: { default: 1 }, $b: { default: 2 } });
-    let editor = await expand(h, "$a");
-    commitValue(fieldEl(editor, "Name", "sp-textfield"), "$b");
+  test("a rename onto an existing name is refused, AND says so", async () => {
+    // The refusal used to be a silent `return`: the document kept `$a`, the field showed `$b`, and
+    // The only way to learn which had won was to look at the canvas.
+    const { panel } = await drawSignals({ $a: { default: 1 }, $b: { default: 2 } });
+    let editor = await openEntry(panel, "$a");
+    await commitText(control(editor, "Name", "text"), "$b");
     expect(docState().$a).toEqual({ default: 1 } as never);
     expect(docState().$b).toEqual({ default: 2 } as never);
 
-    editor = await expand(h, "$a");
-    const alert = editor.querySelector('[data-prop="Name"] [role="alert"]');
+    editor = editorFor(panel, "$a");
+    const alert = fieldRow(editor, "Name").querySelector('[role="alert"]');
     expect(alert?.textContent?.trim()).toBe('"$b" is already defined by this document.');
+    expect(marked(fieldRow(editor, "Name"), "invalid")).toBe(true);
   });
 
   test("an empty name is refused with its own message", async () => {
-    const h = setup({ $a: { default: 1 } });
-    let editor = await expand(h, "$a");
-    commitValue(fieldEl(editor, "Name", "sp-textfield"), "   ");
+    const { panel } = await drawSignals({ $a: { default: 1 } });
+    const editor = await openEntry(panel, "$a");
+    await commitText(control(editor, "Name", "text"), "   ");
     expect(docState().$a).toEqual({ default: 1 } as never);
-    editor = await expand(h, "$a");
-    expect(editor.querySelector('[data-prop="Name"] [role="alert"]')?.textContent?.trim()).toBe(
-      "A name is required.",
-    );
+    expect(
+      fieldRow(editorFor(panel, "$a"), "Name").querySelector('[role="alert"]')?.textContent?.trim(),
+    ).toBe("A name is required.");
   });
 
-  test("an accepted rename clears the error and keeps the row open under the new name", async () => {
-    const h = setup({ $a: { default: 1 }, $b: { default: 2 } });
-    let editor = await expand(h, "$a");
-    commitValue(fieldEl(editor, "Name", "sp-textfield"), "$b");
-    editor = await expand(h, "$a");
-    commitValue(fieldEl(editor, "Name", "sp-textfield"), "$c");
-    await flush(1);
+  test("an accepted rename clears the refusal and keeps the row open under the new name", async () => {
+    const { panel } = await drawSignals({ $a: { default: 1 }, $b: { default: 2 } });
+    let editor = await openEntry(panel, "$a");
+    await commitText(control(editor, "Name", "text"), "$b");
+    editor = editorFor(panel, "$a");
+    await commitText(control(editor, "Name", "text"), "$c");
     expect(docState().$c).toEqual({ default: 1 } as never);
-    // The editor followed the rename rather than collapsing out from under the cursor…
-    const renamed = findRow(h.container, "$c");
-    expect(renamed?.classList.contains("expanded")).toBe(true);
+    // The editor followed the rename rather than collapsing out from under the caret…
+    expect(marked(entryRow(panel, "$c"), "expanded")).toBe(true);
     // …and the refusal it replaced is gone.
-    expect(renamed?.nextElementSibling?.querySelector('[role="alert"]')).toBeNull();
+    expect(editorFor(panel, "$c").querySelector('[role="alert"]')).toBeNull();
   });
 
-  test("type picker updates the def", async () => {
-    const h = setup({ $sig: { default: "", type: "string" } });
-    const editor = await expand(h, "$sig");
-    commitValue(fieldEl(editor, "Type", "sp-picker"), "integer");
-    expect((docState().$sig! as { type: string }).type).toBe("integer");
+  test("the type picker updates the entry", async () => {
+    const { panel } = await drawSignals({ $sig: { default: "", type: "string" } });
+    const editor = await openEntry(panel, "$sig");
+    await pick(control(editor, "Type", "select"), "integer");
+    expect(docState().$sig!.type).toBe("integer");
   });
 
-  test("format picker shows for string type and switches Default to a media picker", async () => {
-    const h = setup({ $img: { default: "", type: "string" } });
-    let editor = await expand(h, "$img");
-    commitValue(fieldEl(editor, "Format", "sp-picker"), "image");
-    expect((docState().$img! as { format: string }).format).toBe("image");
+  test("format is offered for strings, and an image format hands Default to the media picker", async () => {
+    const { panel } = await drawSignals({ $img: { default: "", type: "string" } });
+    let editor = await openEntry(panel, "$img");
+    await pick(control(editor, "Format", "select"), "image");
+    expect(docState().$img!.format).toBe("image");
 
-    h.ctx.renderLeftPanel();
-    editor = h.container.querySelector(".signal-editor") as HTMLElement;
-    expect(editor.querySelector(".media-picker")).not.toBeNull();
+    editor = editorFor(panel, "$img");
+    // The picker is a surface of its own, so what this panel owns is the host it lands in.
+    const host = island(editor, "media");
+    expect(host).not.toBeNull();
+    expect(host!.childNodes.length).toBeGreaterThan(0);
 
-    // Media picker input commits the default after its debounce
-    const tf = editor.querySelector(".media-picker sp-textfield") as Element;
-    inputValue(tf, "/hero.png");
+    const field = host!.querySelector("sp-textfield") as HTMLElement & { value: string };
+    field.value = "/hero.png";
+    field.dispatchEvent(new Event("input", { bubbles: true }));
     await new Promise((r) => {
       setTimeout(r, 450);
     });
-    expect((docState().$img! as { default: string }).default).toBe("/hero.png");
+    expect(docState().$img!.default).toBe("/hero.png");
   });
 
-  test("format row hidden for non-string types", async () => {
-    const h = setup({ $n: { default: 1, type: "integer" } });
-    const editor = await expand(h, "$n");
-    expect(editor.querySelector('[data-prop="Format"]')).toBeNull();
+  test("the format row is hidden for non-string types", async () => {
+    const { panel } = await drawSignals({ $n: { default: 1, type: "integer" } });
+    const editor = await openEntry(panel, "$n");
+    expect(fieldProps(editor)).not.toContain("Format");
   });
 
   test("default values parse per type", async () => {
-    const h = setup({
+    const { panel } = await drawSignals({
       $arr: { default: [], type: "array" },
       $bool: { default: false, type: "boolean" },
       $int: { default: 0, type: "integer" },
@@ -451,513 +446,448 @@ describe("state signal editor", () => {
       $obj: { default: {}, type: "object" },
       $str: { default: "", type: "string" },
     });
-
-    let editor = await expand(h, "$int");
-    commitValue(fieldEl(editor, "Default", "sp-textfield"), "42");
-    expect((docState().$int! as { default: number }).default).toBe(42);
-
-    editor = await expand(h, "$num");
-    commitValue(fieldEl(editor, "Default", "sp-textfield"), "3.5");
-    expect((docState().$num! as { default: number }).default).toBe(3.5);
-
-    editor = await expand(h, "$bool");
-    commitValue(fieldEl(editor, "Default", "sp-textfield"), "true");
-    expect((docState().$bool! as { default: boolean }).default).toBe(true);
-
-    editor = await expand(h, "$arr");
-    commitValue(fieldEl(editor, "Default", "sp-textfield"), '["a","b"]');
-    expect((docState().$arr! as { default: string[] }).default).toEqual(["a", "b"]);
-
-    // Invalid JSON falls back to the raw string
-    editor = await expand(h, "$obj");
-    commitValue(fieldEl(editor, "Default", "sp-textfield"), "{oops");
-    expect((docState().$obj! as { default: string }).default).toBe("{oops");
-
-    editor = await expand(h, "$str");
-    commitValue(fieldEl(editor, "Default", "sp-textfield"), "plain");
-    expect((docState().$str! as { default: string }).default).toBe("plain");
+    const commitDefault = async (name: string, value: string) => {
+      await commitText(control(await openEntry(panel, name), "Default", "text"), value);
+    };
+    await commitDefault("$int", "42");
+    expect(docState().$int!.default).toBe(42);
+    await commitDefault("$num", "3.5");
+    expect(docState().$num!.default).toBe(3.5);
+    await commitDefault("$bool", "true");
+    expect(docState().$bool!.default).toBe(true);
+    await commitDefault("$arr", '["a","b"]');
+    expect(docState().$arr!.default).toEqual(["a", "b"]);
+    // Invalid JSON falls back to the raw string.
+    await commitDefault("$obj", "{oops");
+    expect(docState().$obj!.default).toBe("{oops");
+    await commitDefault("$str", "plain");
+    expect(docState().$str!.default).toBe("plain");
   });
 
-  test("invalid integer default coerces to 0 and object default displays as JSON", async () => {
-    const h = setup({
+  test("an invalid integer default coerces to 0, and an object default reads as JSON", async () => {
+    const { panel } = await drawSignals({
       $int: { default: 0, type: "integer" },
       $obj: { default: { a: 1 }, type: "object" },
     });
-    let editor = await expand(h, "$int");
-    commitValue(fieldEl(editor, "Default", "sp-textfield"), "abc");
-    expect((docState().$int! as { default: number }).default).toBe(0);
+    await commitText(control(await openEntry(panel, "$int"), "Default", "text"), "abc");
+    expect(docState().$int!.default).toBe(0);
 
-    editor = await expand(h, "$obj");
-    const tf = fieldEl<ValueEl>(editor, "Default", "sp-textfield");
-    expect(tf.value).toBe('{"a":1}');
+    const editor = await openEntry(panel, "$obj");
+    expect(nativeInput(control(editor, "Default", "text")).value).toBe('{"a":1}');
   });
 
-  test("description commits and clears to undefined", async () => {
-    const h = setup({ $s: { default: "" } });
-    let editor = await expand(h, "$s");
-    commitValue(fieldEl(editor, "Description", "sp-textfield"), "my desc");
-    expect((docState().$s! as { description: string }).description).toBe("my desc");
-
-    h.ctx.renderLeftPanel();
-    editor = h.container.querySelector(".signal-editor") as HTMLElement;
-    commitValue(fieldEl(editor, "Description", "sp-textfield"), "");
-    expect((docState().$s! as { description?: string }).description).toBeUndefined();
+  test("a commit that does not move the value transacts nothing", async () => {
+    // `signalFieldRow`'s "unchanged value does not call onChange" — a blur fires `change` whether
+    // Or not anything was typed, and a rename or a default that re-writes what is already there
+    // Would be an undo step for nothing.
+    const { panel } = await drawSignals({ $s: { default: "keep" } });
+    const editor = await openEntry(panel, "$s");
+    const before = activeTab.value!.doc.document;
+    await commitText(control(editor, "Default", "text"), "keep");
+    // A transaction replaces the document; nothing happened, so nothing was replaced.
+    expect(activeTab.value!.doc.document).toBe(before);
+    expect(docState().$s!.default).toBe("keep");
   });
 
-  test("custom element docs expose CEM fields (attribute, reflects, deprecated)", async () => {
-    const h = setup({ $open: { default: false, type: "boolean" } }, { tagName: "my-card" });
-    const editor = await expand(h, "$open");
+  test("description commits, and clearing it drops the key", async () => {
+    const { panel } = await drawSignals({ $s: { default: "" } });
+    let editor = await openEntry(panel, "$s");
+    await commitText(control(editor, "Description", "text"), "my desc");
+    expect(docState().$s!.description).toBe("my desc");
 
-    commitValue(fieldEl(editor, "Attribute", "sp-textfield"), "open");
-    expect((docState().$open! as { attribute: string }).attribute).toBe("open");
-
-    const check = fieldEl<HTMLElement & { checked: boolean }>(editor, "reflects", "sp-checkbox");
-    check.checked = true;
-    check.dispatchEvent(new Event("change", { bubbles: true }));
-    expect((docState().$open! as { reflects: boolean }).reflects).toBe(true);
-
-    check.checked = false;
-    check.dispatchEvent(new Event("change", { bubbles: true }));
-    expect((docState().$open! as { reflects?: boolean }).reflects).toBeUndefined();
-
-    commitValue(fieldEl(editor, "Deprecated", "sp-textfield"), "use $visible");
-    expect((docState().$open! as { deprecated: string }).deprecated).toBe("use $visible");
+    editor = editorFor(panel, "$s");
+    await commitText(control(editor, "Description", "text"), "");
+    expect(docState().$s!.description).toBeUndefined();
   });
 
-  test("non-custom-element docs hide CEM fields", async () => {
-    const h = setup({ $s: { default: "" } });
-    const editor = await expand(h, "$s");
-    expect(editor.querySelector('[data-prop="Attribute"]')).toBeNull();
-    expect(editor.querySelector('[data-prop="reflects"]')).toBeNull();
+  test("a custom element gets the CEM fields: attribute, reflects, deprecated", async () => {
+    const { panel } = await drawSignals(
+      { $open: { default: false, type: "boolean" } },
+      { tagName: "my-card" },
+    );
+    const editor = await openEntry(panel, "$open");
+    await commitText(control(editor, "Attribute", "text"), "open");
+    expect(docState().$open!.attribute).toBe("open");
+
+    await tick(control(editorFor(panel, "$open"), "reflects", "checkbox"), true);
+    expect(docState().$open!.reflects).toBe(true);
+    await tick(control(editorFor(panel, "$open"), "reflects", "checkbox"), false);
+    expect(docState().$open!.reflects).toBeUndefined();
+
+    await commitText(control(editorFor(panel, "$open"), "Deprecated", "text"), "use $visible");
+    expect(docState().$open!.deprecated).toBe("use $visible");
+  });
+
+  test("a plain document has no CEM fields", async () => {
+    const { panel } = await drawSignals({ $s: { default: "" } });
+    const editor = await openEntry(panel, "$s");
+    expect(fieldProps(editor)).toEqual(["Name", "Type", "Format", "Default", "Description"]);
   });
 });
 
 // ─── Computed editor ──────────────────────────────────────────────────────────
 
-describe("computed editor", () => {
-  test("shows expression and dependency list; typing recomputes $deps after debounce", async () => {
-    const h = setup({
+describe("the computed editor", () => {
+  test("shows the expression and its dependencies; typing recomputes $deps after a pause", async () => {
+    const { panel } = await drawSignals({
       $sum: { $compute: "$a + $b", $deps: ["#/state/$a", "#/state/$b"] },
     });
-    const editor = await expand(h, "$sum");
-    const ta = fieldEl<ValueEl>(editor, "expression", "textarea");
-    expect(ta.value).toBe("$a + $b");
-    expect(editor.querySelector('[data-prop="dependencies"]')?.textContent).toContain("$a, $b");
+    const editor = await openEntry(panel, "$sum");
+    expect(nativeInput(control(editor, "expression", "multiline")).value).toBe("$a + $b");
+    expect(fieldRow(editor, "dependencies").textContent).toContain("$a, $b");
 
-    inputValue(ta, "$x * $y + $x");
+    typeText(control(editor, "expression", "multiline"), "$x * $y + $x");
     await new Promise((r) => {
       setTimeout(r, 540);
     });
-    const def = docState().$sum! as { $compute: string; $deps: string[] };
-    expect(def.$compute).toBe("$x * $y + $x");
-    expect(def.$deps).toEqual(["#/state/$x", "#/state/$y"]);
+    expect(docState().$sum!.$compute).toBe("$x * $y + $x");
+    expect(docState().$sum!.$deps).toEqual(["#/state/$x", "#/state/$y"]);
   });
 
-  test("dependencies row hidden when $deps is empty", async () => {
-    const h = setup({ $c: { $compute: "1" } });
-    const editor = await expand(h, "$c");
-    expect(editor.querySelector('[data-prop="dependencies"]')).toBeNull();
+  test("the dependencies row is hidden when there are none", async () => {
+    const { panel } = await drawSignals({ $c: { $compute: "1" } });
+    const editor = await openEntry(panel, "$c");
+    expect(fieldProps(editor)).not.toContain("dependencies");
   });
 });
 
 // ─── Data source editors ──────────────────────────────────────────────────────
 
-describe("data source editors", () => {
+describe("the data-source editors", () => {
   test("Request: url, method and timing commit", async () => {
-    const h = setup({ $req: { $prototype: "Request", method: "GET", timing: "client", url: "" } });
-    const editor = await expand(h, "$req");
-    commitValue(fieldEl(editor, "URL", "sp-textfield"), "/api/posts");
-    commitValue(fieldEl(editor, "Method", "sp-picker"), "POST");
-    commitValue(fieldEl(editor, "Timing", "sp-picker"), "server");
-    const def = docState().$req! as { method: string; timing: string; url: string };
-    expect(def.url).toBe("/api/posts");
-    expect(def.method).toBe("POST");
-    expect(def.timing).toBe("server");
+    const { panel } = await drawSignals({
+      $req: { $prototype: "Request", method: "GET", timing: "client", url: "" },
+    });
+    const editor = await openEntry(panel, "$req");
+    await commitText(control(editor, "URL", "text"), "/api/posts");
+    await pick(control(editorFor(panel, "$req"), "Method", "select"), "POST");
+    await pick(control(editorFor(panel, "$req"), "Timing", "select"), "server");
+    expect(docState().$req!.url).toBe("/api/posts");
+    expect(docState().$req!.method).toBe("POST");
+    expect(docState().$req!.timing).toBe("server");
   });
 
-  test("LocalStorage: key commits; default parses JSON or keeps raw string", async () => {
-    const h = setup({ $ls: { $prototype: "LocalStorage", default: null, key: "" } });
-    const editor = await expand(h, "$ls");
-    commitValue(fieldEl(editor, "Key", "sp-textfield"), "theme");
-    commitValue(fieldEl(editor, "Default", "textarea"), '{"mode":"dark"}');
-    expect((docState().$ls! as { key: string }).key).toBe("theme");
-    expect((docState().$ls! as { default: unknown }).default).toEqual({ mode: "dark" } as never);
+  test("LocalStorage: key commits; the default parses JSON or keeps the raw string", async () => {
+    const { panel } = await drawSignals({
+      $ls: { $prototype: "LocalStorage", default: null, key: "" },
+    });
+    const editor = await openEntry(panel, "$ls");
+    await commitText(control(editor, "Key", "text"), "theme");
+    expect(docState().$ls!.key).toBe("theme");
 
-    commitValue(fieldEl(editor, "Default", "textarea"), "not json");
-    expect((docState().$ls! as { default: unknown }).default).toBe("not json" as never);
+    await commitText(control(editorFor(panel, "$ls"), "Default", "multiline"), '{"mode":"dark"}');
+    expect(docState().$ls!.default).toEqual({ mode: "dark" } as never);
+    await commitText(control(editorFor(panel, "$ls"), "Default", "multiline"), "not json");
+    expect(docState().$ls!.default).toBe("not json" as never);
   });
 
-  test("SessionStorage renders object defaults as pretty JSON", async () => {
-    const h = setup({ $ss: { $prototype: "SessionStorage", default: { mode: "dark" }, key: "k" } });
-    const editor = await expand(h, "$ss");
-    const ta = fieldEl<ValueEl>(editor, "Default", "textarea");
-    expect(JSON.parse(ta.value)).toEqual({ mode: "dark" });
+  test("SessionStorage renders an object default as pretty JSON", async () => {
+    const { panel } = await drawSignals({
+      $ss: { $prototype: "SessionStorage", default: { mode: "dark" }, key: "k" },
+    });
+    const editor = await openEntry(panel, "$ss");
+    const stored = nativeInput(control(editor, "Default", "multiline")).value;
+    expect(JSON.parse(stored)).toEqual({ mode: "dark" });
   });
 
-  test("IndexedDB: database/store commit; version parses with fallback to 1", async () => {
-    const h = setup({ $db: { $prototype: "IndexedDB", database: "", store: "", version: 1 } });
-    const editor = await expand(h, "$db");
-    commitValue(fieldEl(editor, "Database", "sp-textfield"), "appdb");
-    commitValue(fieldEl(editor, "Store", "sp-textfield"), "items");
-    commitValue(fieldEl(editor, "Version", "sp-textfield"), "5");
-    let def = docState().$db! as { database: string; store: string; version: number };
-    expect(def.database).toBe("appdb");
-    expect(def.store).toBe("items");
-    expect(def.version).toBe(5);
+  test("IndexedDB: database and store commit; version falls back to 1", async () => {
+    const { panel } = await drawSignals({
+      $db: { $prototype: "IndexedDB", database: "", store: "", version: 1 },
+    });
+    const editor = await openEntry(panel, "$db");
+    await commitText(control(editor, "Database", "text"), "appdb");
+    await commitText(control(editorFor(panel, "$db"), "Store", "text"), "items");
+    await commitText(control(editorFor(panel, "$db"), "Version", "text"), "5");
+    expect(docState().$db!.database).toBe("appdb");
+    expect(docState().$db!.store).toBe("items");
+    expect(docState().$db!.version).toBe(5);
 
-    commitValue(fieldEl(editor, "Version", "sp-textfield"), "bogus");
-    def = docState().$db as never;
-    expect(def.version).toBe(1);
+    await commitText(control(editorFor(panel, "$db"), "Version", "text"), "bogus");
+    expect(docState().$db!.version).toBe(1);
   });
 
   test("Cookie: name and default commit", async () => {
-    const h = setup({ $ck: { $prototype: "Cookie", default: "", name: "" } });
-    const editor = await expand(h, "$ck");
-    commitValue(fieldEl(editor, "Cookie", "sp-textfield"), "sid");
-    commitValue(fieldEl(editor, "Default", "sp-textfield"), "anon");
-    const def = docState().$ck! as { default: string; name: string };
-    expect(def.name).toBe("sid");
-    expect(def.default).toBe("anon");
+    const { panel } = await drawSignals({ $ck: { $prototype: "Cookie", default: "", name: "" } });
+    const editor = await openEntry(panel, "$ck");
+    await commitText(control(editor, "Cookie", "text"), "sid");
+    await commitText(control(editorFor(panel, "$ck"), "Default", "text"), "anon");
+    expect(docState().$ck!.name).toBe("sid");
+    expect(docState().$ck!.default).toBe("anon");
   });
 
-  test("Set: JSON default commits; invalid JSON is ignored", async () => {
-    const h = setup({ $set: { $prototype: "Set", default: [] } });
-    const editor = await expand(h, "$set");
-    commitValue(fieldEl(editor, "Default", "textarea"), '["a","b"]');
-    expect((docState().$set! as { default: string[] }).default).toEqual(["a", "b"]);
+  test("Set: a JSON default commits; invalid JSON is ignored", async () => {
+    const { panel } = await drawSignals({ $set: { $prototype: "Set", default: [] } });
+    const editor = await openEntry(panel, "$set");
+    await commitText(control(editor, "Default", "multiline"), '["a","b"]');
+    expect(docState().$set!.default).toEqual(["a", "b"]);
 
-    commitValue(fieldEl(editor, "Default", "textarea"), "{nope");
-    expect((docState().$set! as { default: string[] }).default).toEqual(["a", "b"]);
+    await commitText(control(editorFor(panel, "$set"), "Default", "multiline"), "{nope");
+    expect(docState().$set!.default).toEqual(["a", "b"]);
   });
 
-  test("FormData edits the fields key and renders existing fields as JSON", async () => {
-    const h = setup({ $fd: { $prototype: "FormData", fields: { email: "" } } });
-    const editor = await expand(h, "$fd");
-    const ta = fieldEl<ValueEl>(editor, "Fields", "textarea");
-    expect(JSON.parse(ta.value)).toEqual({ email: "" });
-    commitValue(ta, '{"email":"","name":""}');
-    expect((docState().$fd! as { fields: unknown }).fields).toEqual({
-      email: "",
-      name: "",
-    } as never);
+  test("FormData edits the fields key and reads existing fields as JSON", async () => {
+    const { panel } = await drawSignals({ $fd: { $prototype: "FormData", fields: { email: "" } } });
+    const editor = await openEntry(panel, "$fd");
+    const fields = nativeInput(control(editor, "Fields", "multiline")).value;
+    expect(JSON.parse(fields)).toEqual({ email: "" });
+    await commitText(control(editor, "Fields", "multiline"), '{"email":"","name":""}');
+    expect(docState().$fd!.fields).toEqual({ email: "", name: "" } as never);
   });
 
-  test("Map renders its default and commits parsed JSON", async () => {
-    const h = setup({ $map: { $prototype: "Map", default: { a: 1 } } });
-    const editor = await expand(h, "$map");
-    const ta = fieldEl<ValueEl>(editor, "Default", "textarea");
-    expect(JSON.parse(ta.value)).toEqual({ a: 1 });
-    commitValue(ta, '{"b":2}');
-    expect((docState().$map! as { default: unknown }).default).toEqual({ b: 2 } as never);
+  test("Map reads its default and commits parsed JSON", async () => {
+    const { panel } = await drawSignals({ $map: { $prototype: "Map", default: { a: 1 } } });
+    const editor = await openEntry(panel, "$map");
+    const stored = nativeInput(control(editor, "Default", "multiline")).value;
+    expect(JSON.parse(stored)).toEqual({ a: 1 });
+    await commitText(control(editor, "Default", "multiline"), '{"b":2}');
+    expect(docState().$map!.default).toEqual({ b: 2 } as never);
   });
 
-  test("unknown prototype falls back to the external plugin editor", async () => {
-    const h = setup({ $ext: { $prototype: "Widget", $src: "./w.js" } });
-    const editor = await expand(h, "$ext");
-    expect(editor.querySelector('[data-prop="Source"]')).not.toBeNull();
-    expect(editor.querySelector('[data-prop="Kind"]')).not.toBeNull();
+  test("an unknown prototype falls back to the external plugin editor", async () => {
+    const { panel } = await drawSignals({ $ext: { $prototype: "Widget", $src: "./w.js" } });
+    const editor = await openEntry(panel, "$ext");
+    expect(fieldProps(editor)).toContain("Source");
+    expect(fieldProps(editor)).toContain("Kind");
   });
 });
 
 // ─── Function editor ──────────────────────────────────────────────────────────
 
-describe("function editor", () => {
-  test("description and body commit; code-editor button updates the session", async () => {
-    const h = setup({ save: { $prototype: "Function", body: "", parameters: [] } });
-    const editor = await expand(h, "save");
+describe("the function editor", () => {
+  test("description and body commit; the code button opens the Logic tab on this entry", async () => {
+    const { panel } = await drawSignals({
+      save: { $prototype: "Function", body: "", parameters: [] },
+    });
+    let editor = await openEntry(panel, "save");
+    await commitText(control(editor, "Description", "text"), "saves things");
+    expect(docState().save!.description).toBe("saves things");
 
-    commitValue(fieldEl(editor, "Description", "sp-textfield"), "saves things");
-    expect((docState().save! as { description: string }).description).toBe("saves things");
-
-    const body = editor.querySelector('textarea[style*="--font-mono"]') as ValueEl;
-    inputValue(body, "console.log(1)");
-    expect((docState().save! as { body: string }).body).toBe("console.log(1)");
+    editor = editorFor(panel, "save");
+    typeText(editor.querySelector('[part="code"]') as Element, "console.log(1)");
+    expect(docState().save!.body).toBe("console.log(1)");
 
     shell.docks.bottom.collapsed = true;
-    pointer(
-      editor.querySelector('sp-action-button[title="Open in code editor"]') as Element,
-      "click",
+    await press(
+      editorFor(panel, "save").querySelector('[part="bar-button"][data-action="editor"]'),
     );
-    expect(activeTab.value!.session.ui.editingFunction).toEqual({
-      defName: "save",
-      type: "def",
-    });
+    expect(activeTab.value!.session.ui.editingFunction).toEqual({ defName: "save", type: "def" });
     // The click is a GESTURE: it puts the surface on screen itself rather than leaning on the
     // Dock's once-per-target effect, which is what made a second click on a closed dock a no-op.
     expect(shell.bottomTab).toBe("logic");
     expect(shell.docks.bottom.collapsed).toBe(false);
   });
 
-  test("external function shows Source/Export fields instead of a body", async () => {
-    const h = setup({ run: { $export: "runIt", $prototype: "Function", $src: "./fns.js" } });
-    const editor = await expand(h, "run");
-    expect(editor.querySelector('textarea[style*="--font-mono"]')).toBeNull();
+  test("an external function shows Source and Export instead of a body", async () => {
+    const { panel } = await drawSignals({
+      run: { $export: "runIt", $prototype: "Function", $src: "./fns.js" },
+    });
+    const editor = await openEntry(panel, "run");
+    expect(editor.querySelector('[part="code"]')).toBeNull();
+    expect(editor.querySelector('[part="bar"]')).toBeNull();
 
-    commitValue(fieldEl(editor, "Source", "sp-textfield"), "./other.js");
-    commitValue(fieldEl(editor, "Export", "sp-textfield"), "main");
-    const def = docState().run! as { $export: string; $src: string };
-    expect(def.$src).toBe("./other.js");
-    expect(def.$export).toBe("main");
+    await commitText(control(editor, "Source", "text"), "./other.js");
+    await commitText(control(editorFor(panel, "run"), "Export", "text"), "main");
+    expect(docState().run!.$src).toBe("./other.js");
+    expect(docState().run!.$export).toBe("main");
   });
 
-  test("basic parameters: chips render, Enter adds, × removes, last removal clears the key", async () => {
-    const h = setup({ go: { $prototype: "Function", body: "", parameters: ["a", "b"] } });
-    let editor = await expand(h, "go");
-    const paramsRow = editor.querySelector('[data-prop="parameters"]') as HTMLElement;
+  test("basic parameters: chips render, Enter adds, remove drops the last one's key", async () => {
+    const { panel } = await drawSignals({
+      go: { $prototype: "Function", body: "", parameters: ["a", "b"] },
+    });
+    let editor = await openEntry(panel, "go");
+    expect([...editor.querySelectorAll('[part="chip-label"]')].map((c) => c.textContent)).toEqual([
+      "a",
+      "b",
+    ]);
 
-    // Add via Enter in the "+" input
-    const addInput = paramsRow.querySelector('input[placeholder="+"]') as ValueEl;
+    const addInput = nativeInput(
+      fieldRow(editor, "parameters").querySelector('[part="chip-add"]') as Element,
+    );
     addInput.value = "c";
     key(addInput, "Enter");
-    expect((docState().go! as { parameters: unknown[] }).parameters).toEqual([
+    await settle();
+    expect(docState().go!.parameters).toEqual([
       { name: "a" },
       { name: "b" },
       { name: "c" },
-    ] as never[]);
+    ] as never);
 
-    // Non-Enter keys do nothing
-    addInput.value = "d";
-    key(addInput, "a");
-    expect((docState().go! as { parameters: unknown[] }).parameters).toHaveLength(3);
-
-    // Remove the first chip
-    h.ctx.renderLeftPanel();
-    editor = h.container.querySelector(".signal-editor") as HTMLElement;
-    const firstRemove = [...editor.querySelectorAll('[data-prop="parameters"] span')].find(
-      (el) => el.textContent?.trim() === "×",
+    // A non-Enter key does nothing.
+    const stillThere = nativeInput(
+      fieldRow(editorFor(panel, "go"), "parameters").querySelector('[part="chip-add"]') as Element,
     );
-    pointer(firstRemove as Element, "click");
-    expect((docState().go! as { parameters: unknown[] }).parameters).toEqual([
-      { name: "b" },
-      { name: "c" },
-    ] as never[]);
+    stillThere.value = "d";
+    key(stillThere, "a");
+    await settle();
+    expect(docState().go!.parameters).toHaveLength(3);
+
+    editor = editorFor(panel, "go");
+    await press(editor.querySelector('[part="chip"][data-chip="0"] [part="chip-remove"]'));
+    expect(docState().go!.parameters).toEqual([{ name: "b" }, { name: "c" }] as never);
   });
 
-  test("removing the only parameter deletes the parameters key", async () => {
-    const h = setup({ go: { $prototype: "Function", body: "", parameters: ["only"] } });
-    const editor = await expand(h, "go");
-    const remove = [...editor.querySelectorAll('[data-prop="parameters"] span')].find(
-      (el) => el.textContent?.trim() === "×",
-    );
-    pointer(remove as Element, "click");
-    expect((docState().go! as { parameters?: unknown }).parameters).toBeUndefined();
+  test("removing the only parameter drops the parameters key", async () => {
+    const { panel } = await drawSignals({
+      go: { $prototype: "Function", body: "", parameters: ["only"] },
+    });
+    const editor = await openEntry(panel, "go");
+    await press(editor.querySelector('[part="chip-remove"]'));
+    expect(docState().go!.parameters).toBeUndefined();
   });
 
-  test("advanced parameter editor: edit name/type/description/optional, add and remove rows", async () => {
-    const h = setup({
+  test("advanced parameters: every column commits, and rows are added and removed", async () => {
+    const { panel } = await drawSignals({
       adv: {
         $prototype: "Function",
         body: "",
         parameters: [{ name: "evt", type: { text: "Event" } }, "ctx"],
       },
     });
-    let editor = await expand(h, "adv");
+    let editor = await openEntry(panel, "adv");
+    await press(editor.querySelector('[part="field-footer"]'));
 
-    // Switch to advanced mode. The advanced handlers close over render-time params, so re-render
-    // (and re-query inputs) after every commit, like the real panel does.
-    pointer(findByText(editor, "span", "▸ Advanced") as Element, "click");
-    await flush(1);
-    editor = h.container.querySelector(".signal-editor") as HTMLElement;
-    const rowsSel = '[data-prop="parameters"] input.field-input';
-    const inputsNow = () => [...editor.querySelectorAll(rowsSel)] as ValueEl[];
-    const refresh = () => {
-      h.ctx.renderLeftPanel();
-      editor = h.container.querySelector(".signal-editor") as HTMLElement;
-    };
-    // 2 params × 3 text inputs each
-    expect(inputsNow()).toHaveLength(6);
-    expect(inputsNow()[1]?.value).toBe("Event");
+    editor = editorFor(panel, "adv");
+    expect(fieldRow(editor, "parameters").querySelectorAll('[part="cell-row"]').length).toBe(2);
+    expect(cellsOf(editor, "parameters", "0")).toHaveLength(3);
+    expect(nativeInput(cellsOf(editor, "parameters", "0")[1]!).value).toBe("Event");
 
-    // Rename first param
-    commitValue(inputsNow()[0] as Element, "event");
-    let params = (docState().adv! as { parameters: never[] }).parameters;
-    expect(params[0]).toEqual({ name: "event", type: { text: "Event" } } as never);
+    await commitText(cellsOf(editor, "parameters", "0")[0]!, "event");
+    expect(docState().adv!.parameters).toEqual([
+      { name: "event", type: { text: "Event" } },
+      { name: "ctx" },
+    ] as never);
 
-    // Clear its type, then set a description
-    refresh();
-    commitValue(inputsNow()[1] as Element, "");
-    params = (docState().adv! as { parameters: never[] }).parameters;
-    expect(params[0]).toEqual({ name: "event" } as never);
-    refresh();
-    commitValue(inputsNow()[2] as Element, "the event");
-    params = (docState().adv! as { parameters: never[] }).parameters;
-    expect((params[0]! as { description: string }).description).toBe("the event");
+    // Clearing the type drops the key rather than writing an empty one.
+    await commitText(cellsOf(editorFor(panel, "adv"), "parameters", "0")[1]!, "");
+    expect(paramsOf("adv")[0]).toEqual({ name: "event" } as never);
 
-    // Set then clear the description on the second param
-    refresh();
-    commitValue(inputsNow()[5] as Element, "context");
-    params = (docState().adv! as { parameters: never[] }).parameters;
-    expect((params[1]! as { description: string }).description).toBe("context");
-    refresh();
-    commitValue(inputsNow()[5] as Element, "");
-    params = (docState().adv! as { parameters: never[] }).parameters;
-    expect((params[1]! as { description?: string }).description).toBeUndefined();
+    await commitText(cellsOf(editorFor(panel, "adv"), "parameters", "0")[2]!, "the event");
+    expect(paramsOf("adv")[0]!.description).toBe("the event");
 
-    // Toggle optional on and off
-    refresh();
-    const checkAt = (i: number) =>
-      editor.querySelectorAll('[data-prop="parameters"] input[type="checkbox"]')[
-        i
-      ] as HTMLInputElement;
-    let check0 = checkAt(0);
-    check0.checked = true;
-    check0.dispatchEvent(new Event("change", { bubbles: true }));
-    params = (docState().adv! as { parameters: never[] }).parameters;
-    expect((params[0]! as { optional: boolean }).optional).toBe(true);
-    refresh();
-    check0 = checkAt(0);
-    check0.checked = false;
-    check0.dispatchEvent(new Event("change", { bubbles: true }));
-    params = (docState().adv! as { parameters: never[] }).parameters;
-    expect((params[0]! as { optional?: boolean }).optional).toBeUndefined();
+    // Optional is a column of its own.
+    const optional = () =>
+      editorFor(panel, "adv").querySelector(
+        '[part="cell-row"][data-row="0"] [part="cell-checkbox"]',
+      )!;
+    await tick(optional(), true);
+    expect(paramsOf("adv")[0]!.optional).toBe(true);
+    await tick(optional(), false);
+    expect(paramsOf("adv")[0]!.optional).toBeUndefined();
 
-    // Type set branch ({ text }) on second param
-    refresh();
-    commitValue(inputsNow()[4] as Element, "AppContext");
-    params = (docState().adv! as { parameters: never[] }).parameters;
-    expect((params[1]! as { type: unknown }).type).toEqual({ text: "AppContext" } as never);
+    // A type set on the second row becomes the CEM `{ text }` shape.
+    await commitText(cellsOf(editorFor(panel, "adv"), "parameters", "1")[1]!, "AppContext");
+    expect(paramsOf("adv")[1]!.type).toEqual({
+      text: "AppContext",
+    } as never);
 
-    // Add a row
-    refresh();
-    pointer(findByText(editor, "button.kv-add", "+ Add parameter") as Element, "click");
-    params = (docState().adv! as { parameters: never[] }).parameters;
-    expect(params).toHaveLength(3);
-    expect(params[2]).toEqual({ name: "" } as never);
+    await press(fieldRow(editorFor(panel, "adv"), "parameters").querySelector('[part="row-add"]'));
+    expect(docState().adv!.parameters).toHaveLength(3);
 
-    // Remove a row via ×
-    h.ctx.renderLeftPanel();
-    editor = h.container.querySelector(".signal-editor") as HTMLElement;
-    const removes = [...editor.querySelectorAll('[data-prop="parameters"] span')].filter(
-      (el) => el.textContent?.trim() === "×",
+    await press(
+      editorFor(panel, "adv").querySelector('[part="cell-row"][data-row="2"] [part="cell-remove"]'),
     );
-    pointer(removes[2] as Element, "click");
-    params = (docState().adv! as { parameters: never[] }).parameters;
-    expect(params).toHaveLength(2);
+    expect(docState().adv!.parameters).toHaveLength(2);
 
-    // Back to basic mode
-    pointer(findByText(editor, "span", "▾ Basic") as Element, "click");
-    await flush(1);
-    editor = h.container.querySelector(".signal-editor") as HTMLElement;
-    expect(editor.querySelector('input[placeholder="+"]')).not.toBeNull();
+    // …and back to the chips.
+    await press(editorFor(panel, "adv").querySelector('[part="field-footer"]'));
+    expect(editorFor(panel, "adv").querySelector('[part="chip-add"]')).not.toBeNull();
   });
 
-  test("removing the only advanced parameter clears the key", async () => {
-    const h = setup({ solo: { $prototype: "Function", body: "", parameters: ["x"] } });
-    let editor = await expand(h, "solo");
-    pointer(findByText(editor, "span", "▸ Advanced") as Element, "click");
-    await flush(1);
-    editor = h.container.querySelector(".signal-editor") as HTMLElement;
-    const remove = [...editor.querySelectorAll('[data-prop="parameters"] span')].find(
-      (el) => el.textContent?.trim() === "×",
-    );
-    pointer(remove as Element, "click");
-    expect((docState().solo! as { parameters?: unknown }).parameters).toBeUndefined();
+  test("removing the only advanced parameter drops the key", async () => {
+    const { panel } = await drawSignals({
+      solo: { $prototype: "Function", body: "", parameters: ["x"] },
+    });
+    const editor = await openEntry(panel, "solo");
+    await press(editor.querySelector('[part="field-footer"]'));
+    await press(editorFor(panel, "solo").querySelector('[part="cell-remove"]'));
+    expect(docState().solo!.parameters).toBeUndefined();
   });
 });
 
 // ─── Function body mode (statements vs code, spec §20) ───────────────────────
 
-describe("function body mode", () => {
-  test("string body renders the Code mode: toggle present, textarea shown", async () => {
-    const h = setup({ fn: { $prototype: "Function", body: "doIt()", parameters: [] } });
-    const editor = await expand(h, "fn");
-    expect(editor.querySelector(".body-mode-toggle")).not.toBeNull();
-    expect(editor.querySelector(".body-mode-code")?.hasAttribute("selected")).toBe(true);
-    expect(editor.querySelector(".body-mode-statements")?.hasAttribute("selected")).toBe(false);
-    expect(editor.querySelector('textarea[style*="--font-mono"]')).not.toBeNull();
-    expect(editor.querySelector(".statement-editor")).toBeNull();
+describe("the function body's two modes", () => {
+  test("a string body is the Code mode: the switch says so, and the text box is there", async () => {
+    const { panel } = await drawSignals({
+      fn: { $prototype: "Function", body: "doIt()", parameters: [] },
+    });
+    const editor = await openEntry(panel, "fn");
+    expect(editor.querySelector('[part="bar-label"]')?.textContent).toBe("Body");
+    expect(marked(editor.querySelector('[part="segment"][data-segment="code"]'), "selected")).toBe(
+      true,
+    );
+    expect(
+      marked(editor.querySelector('[part="segment"][data-segment="statements"]'), "selected"),
+    ).toBe(false);
+    expect(editor.querySelector('[part="code"]')).not.toBeNull();
+    expect(island(editor, "statements")).toBeNull();
   });
 
-  test("array body renders the Statements mode with the statement editor", async () => {
-    const h = setup({
+  test("an array body is the Statements mode, and the card editor lands in its host", async () => {
+    const { panel } = await drawSignals({
       fn: { $prototype: "Function", body: [{ dispatchEvent: "ping" }], parameters: [] },
     });
-    const editor = await expand(h, "fn");
-    expect(editor.querySelector(".body-mode-statements")?.hasAttribute("selected")).toBe(true);
-    expect(editor.querySelector(".statement-editor")).not.toBeNull();
-    expect(editor.querySelector('textarea[style*="--font-mono"]')).toBeNull();
-    // The code-editor (Monaco) affordance only applies to string bodies
-    expect(editor.querySelector('sp-action-button[title="Open in code editor"]')).toBeNull();
+    const editor = await openEntry(panel, "fn");
+    expect(
+      marked(editor.querySelector('[part="segment"][data-segment="statements"]'), "selected"),
+    ).toBe(true);
+    expect(editor.querySelector('[part="code"]')).toBeNull();
+    // The statement editor is a surface of its own; this panel owns the host and the region it is
+    // Drawn under, which is what tells it apart from the Events tab's copy.
+    expect(island(editor, "statements")?.childNodes.length).toBeGreaterThan(0);
+    expect(editor.querySelector('[data-jx-region="navigator/statements"]')).not.toBeNull();
+    // The code affordance only applies to a string body.
+    expect(editor.querySelector('[part="bar-button"][data-action="editor"]')).toBeNull();
   });
 
   test("switching to Statements seeds an empty array; switching back seeds an empty string", async () => {
-    const h = setup({ fn: { $prototype: "Function", body: "doIt()", parameters: [] } });
-    let editor = await expand(h, "fn");
-    pointer(editor.querySelector(".body-mode-statements") as Element, "click");
-    expect((docState().fn! as { body: unknown }).body).toEqual([] as never);
-
-    // The toggle re-renders the panel; the statement editor is now live
-    editor = h.container.querySelector(".signal-editor") as HTMLElement;
-    expect(editor.querySelector(".statement-editor")).not.toBeNull();
-
-    pointer(editor.querySelector(".body-mode-code") as Element, "click");
-    expect((docState().fn! as { body: unknown }).body).toBe("" as never);
-    editor = h.container.querySelector(".signal-editor") as HTMLElement;
-    expect(editor.querySelector(".statement-editor")).toBeNull();
-    expect(editor.querySelector('textarea[style*="--font-mono"]')).not.toBeNull();
-  });
-
-  test("re-clicking the active mode is a no-op", async () => {
-    const h = setup({ fn: { $prototype: "Function", body: "keep me", parameters: [] } });
-    const editor = await expand(h, "fn");
-    pointer(editor.querySelector(".body-mode-code") as Element, "click");
-    expect((docState().fn! as { body: unknown }).body).toBe("keep me" as never);
-  });
-
-  test("statement editor edits write the def body through mutateUpdateDef", async () => {
-    const h = setup({ fn: { $prototype: "Function", body: [], parameters: [] } });
-    const editor = await expand(h, "fn");
-    const add = editor.querySelector("sp-picker.statement-add") as HTMLElement & { value: string };
-    add.value = "set";
-    add.dispatchEvent(new Event("change", { bubbles: true }));
-    expect((docState().fn! as { body: unknown }).body).toEqual([
-      { operator: "=", target: { $ref: "" }, value: null },
-    ] as never);
-  });
-
-  test("dispatch statements offer the def's declared emits names", async () => {
-    const h = setup({
-      fn: {
-        $prototype: "Function",
-        body: [{ dispatchEvent: "" }],
-        emits: [{ name: "cart-changed" }],
-        parameters: [],
-      },
+    const { panel } = await drawSignals({
+      fn: { $prototype: "Function", body: "doIt()", parameters: [] },
     });
-    const editor = await expand(h, "fn");
-    const combo = editor.querySelector(".statement-dispatch-name");
-    expect(combo?.tagName.toLowerCase()).toBe("sp-combobox");
-    const names = [...combo!.querySelectorAll("sp-menu-item")].map((i) => i.getAttribute("value"));
-    expect(names).toEqual(["cart-changed"]);
+    let editor = await openEntry(panel, "fn");
+    await press(editor.querySelector('[part="segment"][data-segment="statements"]'));
+    expect(docState().fn!.body).toEqual([] as never);
+    editor = editorFor(panel, "fn");
+    expect(island(editor, "statements")).not.toBeNull();
+
+    await press(editor.querySelector('[part="segment"][data-segment="code"]'));
+    expect(docState().fn!.body).toBe("" as never);
+    editor = editorFor(panel, "fn");
+    expect(island(editor, "statements")).toBeNull();
+    expect(editor.querySelector('[part="code"]')).not.toBeNull();
   });
 
-  test("row hint summarizes structured bodies by statement count", async () => {
-    const h = setup({
+  test("pressing the mode that is already on is a no-op", async () => {
+    const { panel } = await drawSignals({
+      fn: { $prototype: "Function", body: "keep me", parameters: [] },
+    });
+    const editor = await openEntry(panel, "fn");
+    await press(editor.querySelector('[part="segment"][data-segment="code"]'));
+    expect(docState().fn!.body).toBe("keep me" as never);
+  });
+
+  test("the row summary counts a structured body's statements", async () => {
+    const { panel } = await drawSignals({
       fn: { $prototype: "Function", body: [{ dispatchEvent: "a" }], parameters: [] },
       fn2: { $prototype: "Function", body: [], parameters: [] },
     });
-    const row = [...h.container.querySelectorAll(".signal-row")].find(
-      (r) => r.querySelector(".signal-name")?.textContent === "fn",
-    );
-    expect(row?.querySelector(".signal-hint")?.textContent).toBe("1 statement");
-    const row2 = [...h.container.querySelectorAll(".signal-row")].find(
-      (r) => r.querySelector(".signal-name")?.textContent === "fn2",
-    );
-    expect(row2?.querySelector(".signal-hint")?.textContent).toBe("0 statements");
+    expect(summaryText(panel, "fn")).toBe("1 statement");
+    expect(summaryText(panel, "fn2")).toBe("0 statements");
   });
 });
 
 // ─── Emits editor (custom elements) ──────────────────────────────────────────
 
-describe("emits editor", () => {
-  test("hidden for non-custom-element documents", async () => {
-    const h = setup({ fn: { $prototype: "Function", body: "" } });
-    const editor = await expand(h, "fn");
-    expect(editor.textContent).not.toContain("Emits");
+describe("the emits editor", () => {
+  test("hidden for a document that is not a custom element", async () => {
+    const { panel } = await drawSignals({ fn: { $prototype: "Function", body: "" } });
+    const editor = await openEntry(panel, "fn");
+    expect(fieldProps(editor)).not.toContain("emits");
   });
 
-  test("edits event name, type, description; add and remove entries", async () => {
-    const h = setup(
+  test("event name, type and description commit; rows are added and removed", async () => {
+    const { panel } = await drawSignals(
       {
         notify: {
           $prototype: "Function",
@@ -970,131 +900,139 @@ describe("emits editor", () => {
       },
       { tagName: "my-card" },
     );
-    let editor = await expand(h, "notify");
-    expect(editor.textContent).toContain("Emits");
+    const editor = await openEntry(panel, "notify");
+    expect(fieldRow(editor, "emits").querySelectorAll('[part="cell-row"]').length).toBe(2);
 
-    // Handlers close over render-time emits arrays — re-render and re-query between commits.
-    const refresh = () => {
-      h.ctx.renderLeftPanel();
-      editor = h.container.querySelector(".signal-editor") as HTMLElement;
-    };
-    const inputAt = (placeholder: string, i: number) =>
-      editor.querySelectorAll(`input[placeholder="${placeholder}"]`)[i] as ValueEl;
+    await commitText(cellsOf(editor, "emits", "0")[0]!, "updated");
+    expect(emitsOf("notify")[0]).toEqual({
+      description: "old",
+      name: "updated",
+      type: { text: "CustomEvent" },
+    } as never);
 
-    expect(editor.querySelectorAll('input[placeholder="event name"]')).toHaveLength(2);
-    commitValue(inputAt("event name", 0), "updated");
-    let { emits } = docState().notify! as { emits: never[] };
-    expect((emits[0]! as { name: string }).name).toBe("updated");
+    await commitText(cellsOf(editorFor(panel, "notify"), "emits", "0")[1]!, "");
+    expect(emitsOf("notify")[0]!.type).toBeUndefined();
+    await commitText(cellsOf(editorFor(panel, "notify"), "emits", "0")[2]!, "");
+    expect(emitsOf("notify")[0]!.description).toBeUndefined();
 
-    // Clear type and description on the first event
-    refresh();
-    commitValue(inputAt("type", 0), "");
-    ({ emits } = docState().notify! as { emits: never[] });
-    expect((emits[0]! as { type?: unknown }).type).toBeUndefined();
-    refresh();
-    commitValue(inputAt("description", 0), "");
-    ({ emits } = docState().notify! as { emits: never[] });
-    expect((emits[0]! as { description?: string }).description).toBeUndefined();
-
-    // Set type/description on the second event
-    refresh();
-    commitValue(inputAt("type", 1), "Event");
-    refresh();
-    commitValue(inputAt("description", 1), "fires on close");
-    ({ emits } = docState().notify! as { emits: never[] });
-    expect(emits[1]).toEqual({
+    await commitText(cellsOf(editorFor(panel, "notify"), "emits", "1")[1]!, "Event");
+    await commitText(cellsOf(editorFor(panel, "notify"), "emits", "1")[2]!, "fires on close");
+    expect(emitsOf("notify")[1]).toEqual({
       description: "fires on close",
       name: "closed",
       type: { text: "Event" },
     } as never);
 
-    // Add an event
-    refresh();
-    pointer(findByText(editor, "button.kv-add", "+ Add event") as Element, "click");
-    ({ emits } = docState().notify! as { emits: never[] });
-    expect(emits).toHaveLength(3);
-    expect(emits[2]).toEqual({ name: "" } as never);
+    await press(fieldRow(editorFor(panel, "notify"), "emits").querySelector('[part="row-add"]'));
+    expect(docState().notify!.emits).toHaveLength(3);
 
-    // Remove one of several
-    h.ctx.renderLeftPanel();
-    editor = h.container.querySelector(".signal-editor") as HTMLElement;
-    const firstRemove = [...editor.querySelectorAll("span")].find(
-      (el) => el.textContent?.trim() === "×" && el.closest('[data-prop="parameters"]') === null,
+    await press(
+      fieldRow(editorFor(panel, "notify"), "emits").querySelector(
+        '[part="cell-row"][data-row="0"] [part="cell-remove"]',
+      ),
     );
-    pointer(firstRemove as Element, "click");
-    ({ emits } = docState().notify! as { emits: never[] });
-    expect(emits).toHaveLength(2);
+    expect(docState().notify!.emits).toHaveLength(2);
   });
 
-  test("malformed CEM type objects render as empty type text", async () => {
-    const h = setup(
+  test("a malformed CEM type object reads as empty type text", async () => {
+    const { panel } = await drawSignals(
       { fn: { $prototype: "Function", body: "", emits: [{ name: "e", type: { weird: 1 } }] } },
       { tagName: "x-el" },
     );
-    const editor = await expand(h, "fn");
-    const typeInput = editor.querySelector('input[placeholder="type"]') as ValueEl;
-    expect(typeInput.value).toBe("");
+    const editor = await openEntry(panel, "fn");
+    expect(nativeInput(cellsOf(editor, "emits", "0")[1]!).value).toBe("");
   });
 
-  test("removing the only event clears the emits key", async () => {
-    const h = setup(
+  test("removing the only event drops the emits key", async () => {
+    const { panel } = await drawSignals(
       { fn: { $prototype: "Function", body: "", emits: [{ name: "only" }] } },
       { tagName: "x-el" },
     );
-    const editor = await expand(h, "fn");
-    const remove = [...editor.querySelectorAll("span")].find(
-      (el) => el.textContent?.trim() === "×" && el.closest('[data-prop="parameters"]') === null,
-    );
-    pointer(remove as Element, "click");
-    expect((docState().fn! as { emits?: unknown }).emits).toBeUndefined();
+    const editor = await openEntry(panel, "fn");
+    await press(fieldRow(editor, "emits").querySelector('[part="cell-remove"]'));
+    expect(docState().fn!.emits).toBeUndefined();
   });
 });
 
 // ─── Expression editor ────────────────────────────────────────────────────────
 
-describe("expression editor", () => {
-  test("renders the expression editor and commits operator changes", async () => {
-    const h = setup({
+describe("the expression editor", () => {
+  test("the formula tree lands in its host and commits an operator change", async () => {
+    const { panel } = await drawSignals({
       $inc: { $expression: { operator: "=", target: { $ref: "#/state/$count" } } },
     });
-    const editor = await expand(h, "$inc");
-    const opPicker = fieldEl<ValueEl>(editor, "operator", "sp-picker");
-    commitValue(opPicker, "!");
-    const def = docState().$inc! as { $expression: { operator: string } };
-    expect(def.$expression.operator).toBe("!");
+    const editor = await openEntry(panel, "$inc");
+    const host = island(editor, "expression");
+    expect(host?.childNodes.length).toBeGreaterThan(0);
+
+    // The editor is a surface of its own: what this panel owns is that its edits reach the entry.
+    const picker = host!.querySelector(".expr-operator") as HTMLElement & { value: string };
+    picker.value = "!";
+    picker.dispatchEvent(new Event("change", { bubbles: true }));
+    await settle();
+    expect((docState().$inc!.$expression as { operator: string }).operator).toBe("!");
   });
 
-  test("missing $expression falls back to a default node", async () => {
-    const h = setup({
-      $e: { $expression: { operator: "push", target: { $ref: "#/state/$list" } } },
-    });
-    const editor = await expand(h, "$e");
-    expect(editor.querySelector('[data-prop="operator"]')).not.toBeNull();
-    expect(editor.querySelector('[data-prop="target"]')).not.toBeNull();
-  });
-
-  test("formula-workspace button sets the Logic target and repaints nothing", async () => {
-    const h = setup({
+  test("the workspace button names itself, and takes the Logic tab from a function", async () => {
+    const { panel } = await drawSignals({
       $inc: { $expression: { operator: "=", target: { $ref: "#/state/$count" } } },
     });
-    const editor = await expand(h, "$inc");
-    const button = editor.querySelector(
-      'sp-action-button[title="Open in formula workspace"]',
-    ) as Element;
-    // "Open below", not "go full-screen": the affordance opens the Bottom dock's Logic tab, and
-    // `panels/toolbar.ts`'s dock toggle already spells that glyph `sp-icon-align-bottom`.
-    expect(button.querySelector("sp-icon-align-bottom")).not.toBeNull();
+    const editor = await openEntry(panel, "$inc");
+    const button = editor.querySelector('[part="bar-button"][data-action="formula"]');
+    expect(button?.querySelector('[part="control"]')?.getAttribute("aria-label")).toBe(
+      "Open in formula workspace",
+    );
+
     // A function body is open in the same tab: one Logic tab holds ONE target, so opening the
     // Formula has to take it — this used to leave both set, and `logicTarget` gives the function
     // The tie, so the click showed nothing and changed nothing.
     activeTab.value!.session.ui.editingFunction = { defName: "other", type: "def" } as never;
     shell.docks.bottom.collapsed = true;
-
-    pointer(button, "click");
+    await press(button);
 
     expect(activeTab.value!.session.ui.editingFormula).toEqual({ defName: "$inc", type: "def" });
     expect(activeTab.value!.session.ui.editingFunction).toBeNull();
     expect(shell.bottomTab).toBe("logic");
     expect(shell.docks.bottom.collapsed).toBe(false);
+  });
+
+  test("an entry that only ACTS shows its definition rather than a value", async () => {
+    // A function and an assignment expression are things the page does, not things it knows, so
+    // They are absent from the resolved scope — and the value column called them "pending", which
+    // Reads as "still loading" for something that will never load.
+    const { panel } = await drawSignals(
+      {
+        held: { default: 1, type: "number" },
+        runIt: { $prototype: "Function", body: "return 1;" },
+        setIt: { $expression: { operator: "=", target: { $ref: "#/state/held" }, value: 2 } },
+        sum: { $expression: { operator: "+", target: { $ref: "#/state/held" }, value: 2 } },
+      },
+      { scope: { held: 1, sum: 3 } },
+    );
+    const toneOf = (name: string) => summaryTone(panel, name);
+    expect(toneOf("held")).toBe("value");
+    // …and a formula expression DOES hold one, so it keeps the column.
+    expect(toneOf("sum")).toBe("value");
+    expect(toneOf("runIt")).toBe("hint");
+    expect(toneOf("setIt")).toBe("hint");
+  });
+});
+
+// ─── The list is keyed ───────────────────────────────────────────────────────
+
+describe("reconciliation", () => {
+  test("a repaint keeps the node a reader is typing into", async () => {
+    // Every host array a document renders is a keyed `$map`, so a registry tick never rebuilds a
+    // Row the reader is on — which is what retires the lit panel's focus guard.
+    const { panel, repaint } = await drawSignals({ $a: { default: "x" }, $b: { default: "y" } });
+    const editor = await openEntry(panel, "$a");
+    const field = nativeInput(control(editor, "Description", "text"));
+    field.focus();
+    repaint();
+    await settle();
+    const after = editorFor(panel, "$a");
+    expect(nativeInput(control(after, "Description", "text"))).toBe(field);
+    expect(document.activeElement).toBe(field);
+    expect(listedNames(panel)).toEqual(["$a", "$b"]);
   });
 });

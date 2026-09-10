@@ -439,13 +439,6 @@ const KNOWN_UNREACHABLE: Record<string, Record<string, string>> = {
   },
   "ui/dynamic-slot.ts": { resetSlotModeMemory: TEST_RESET },
   "ui/schema-form.ts": { resetSchemaForms: TEST_RESET },
-  "ui/field-input.ts": {
-    clearDraft:
-      "discards a field's in-flight draft and cancels its debounced commit. Nothing discards — " +
-      "drafts resolve by committing. The caller would be Escape-in-a-field, which today commits " +
-      "like any other blur",
-    hasDraft: "the predicate beside `clearDraft`, unread for the same reason",
-  },
   "ui/form-controls.ts": { resetFormControlUiState: TEST_RESET },
   "ui/value-source.ts": { resetCapsCache: TEST_RESET },
   "utils/geometry.ts": {

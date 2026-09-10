@@ -9,18 +9,19 @@
  *   refusal instead of reporting the entry as colliding with itself.
  * - `document.openSeo` over no document, which refuses by name rather than opening an empty modal.
  */
+import { flush, installMockPlatform, resetStudioState, resetWorkspaceWithTab } from "./harness";
 import {
-  flush,
-  installMockPlatform,
-  pointer,
-  resetStudioState,
-  resetWorkspaceWithTab,
-} from "./harness";
+  clearSignalPanels,
+  commitText,
+  control,
+  drawSignals,
+  editorFor,
+  openEntry,
+  settle,
+} from "./signals-panel-fixture";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { render } from "lit-html";
 import { PRIMARY_PANE, activeTab, closeAllTabs } from "../src/workspace/workspace";
 import { attachJumpBarHost, renderJumpBar, unmountJumpBar } from "../src/panels/jump-bar";
-import { renderSignalsTemplate } from "../src/panels/signals-panel";
 import { seoCommands } from "../src/panels/seo-modal";
 import { createCommandRegistry } from "../src/commands/registry";
 import { makeContext } from "../src/commands/context";
@@ -28,12 +29,14 @@ import { setActiveRegistry } from "../src/commands/active-registry";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 
 beforeEach(() => {
+  clearSignalPanels();
   resetStudioState({ name: "My Site", projectRoot: "/p" });
   installMockPlatform();
 });
 
 afterEach(() => {
   unmountJumpBar();
+  clearSignalPanels();
   closeAllTabs();
   setActiveRegistry(null);
 });
@@ -128,112 +131,62 @@ describe("attachJumpBarHost", () => {
   });
 });
 
-// ─── The State editor's rename field ─────────────────────────────────────────
+// ─── The Data panel's rename field ──────────────────────────────────────────
 
 describe("the rename field's own name", () => {
-  interface Mounted {
-    container: HTMLElement;
-    repaint: () => void;
+  /**
+   * Draw the Data panel over two entries and open the first one's editor.
+   *
+   * The panel is a document now, so the field is `[part="field"][data-prop="Name"]` and a commit is
+   * an `input` plus a `change` on the control inside it — which is what leaving the field is.
+   */
+  async function openRename(): Promise<{ panel: HTMLElement; repaint: () => void }> {
+    const drawn = await drawSignals({ $a: { default: 1 }, $b: { default: 2 } });
+    await openEntry(drawn.panel, "$a");
+    return { panel: drawn.panel, repaint: drawn.repaint };
   }
 
-  /** Mount the signals template over the active tab, repainting into the same container. */
-  function mountSignals(): Mounted {
-    const container = document.createElement("div");
-    const tab = activeTab.value;
-    if (!tab) {
-      throw new Error("no active tab");
-    }
-    const S: Record<string, unknown> = { document: tab.doc.document };
-    const ctx = {
-      renderLeftPanel: () => {
-        S.document = activeTab.value?.doc.document;
-        render(renderSignalsTemplate(S as never, ctx), container);
-      },
-    };
-    ctx.renderLeftPanel();
-    return { container, repaint: ctx.renderLeftPanel };
+  /** The refusal under the Name field, if there is one. */
+  function alertText(panel: HTMLElement): string | undefined {
+    return editorFor(panel, "$a")
+      .querySelector('[part="field"][data-prop="Name"] [role="alert"]')
+      ?.textContent?.trim();
   }
 
-  function findRow(container: HTMLElement, name: string): HTMLElement {
-    const row = [...container.querySelectorAll(".signal-row")].find(
-      (r) => r.querySelector(".signal-name")?.textContent === name,
-    );
-    if (!row) {
-      throw new Error(`no row for ${name}`);
-    }
-    return row as HTMLElement;
-  }
-
-  /** Expand a signal row (idempotent) and return THIS row's editor. */
-  async function expand(h: Mounted, name: string): Promise<HTMLElement> {
-    let row = findRow(h.container, name);
-    if (!row.classList.contains("expanded")) {
-      pointer(row, "click");
-      await flush(3);
-      row = findRow(h.container, name);
-    }
-    const editor = row.nextElementSibling;
-    if (!editor?.classList.contains("signal-editor")) {
-      throw new Error(`no editor rendered for ${name}`);
-    }
-    return editor as HTMLElement;
-  }
-
-  function commitName(editor: HTMLElement, value: string): void {
-    const field = editor.querySelector('[data-prop="Name"] sp-textfield');
-    if (!field) {
-      throw new Error("no Name field");
-    }
-    (field as HTMLElement & { value: string }).value = value;
-    field.dispatchEvent(new Event("change", { bubbles: true }));
-  }
-
-  function alertText(editor: HTMLElement): string | undefined {
-    return editor.querySelector('[data-prop="Name"] [role="alert"]')?.textContent?.trim();
+  async function commitName(panel: HTMLElement, value: string): Promise<void> {
+    await commitText(control(editorFor(panel, "$a"), "Name", "text"), value);
   }
 
   test("re-committing the same name (padded) is accepted, and clears a standing refusal", async () => {
     // The whitespace is what makes this a COMMIT at all — the field only fires when the string
     // Differs from the one it was rendered with. What the author typed still names this entry, so
     // The panel must neither rename anything nor report the entry as colliding with itself.
-    const h = mountSignals();
-    let editor = await expand(h, "$a");
-    commitName(editor, "$b");
-    editor = await expand(h, "$a");
-    expect(alertText(editor)).toBe('"$b" is already defined by this document.');
+    const { panel, repaint } = await openRename();
+    await commitName(panel, "$b");
+    expect(alertText(panel)).toBe('"$b" is already defined by this document.');
 
-    commitName(editor, "  $a  ");
-    // The accepted case commits nothing and repaints nothing, so the refusal is cleared in state
-    // And the panel shows it on its next paint.
-    h.repaint();
-    await flush(3);
-    editor = await expand(h, "$a");
-    expect(alertText(editor)).toBeUndefined();
-    expect(editor.querySelector('[data-prop="Name"] [role="alert"]')).toBeNull();
+    await commitName(panel, "  $a  ");
+    // The accepted case commits nothing to the document, so the refusal is cleared in state and
+    // The panel shows it on its next paint.
+    repaint();
+    await settle();
+    expect(alertText(panel)).toBeUndefined();
+    expect(
+      editorFor(panel, "$a").querySelector('[part="field"][data-prop="Name"] [role="alert"]'),
+    ).toBeNull();
   });
 
   test("it leaves the document exactly as it found it — no second entry, no reorder", async () => {
-    const h = mountSignals();
-    let editor = await expand(h, "$a");
-    commitName(editor, " $a ");
-    await flush(3);
+    const { panel, repaint } = await openRename();
+    await commitName(panel, " $a ");
     const state = (activeTab.value?.doc.document.state ?? {}) as Record<string, unknown>;
     expect(Object.keys(state)).toEqual(["$a", "$b"]);
     expect(state.$a).toEqual({ default: 1 } as never);
     // And it is not refused either: an entry cannot collide with itself, which is what a fall
     // Through into the collision check would report.
-    h.repaint();
-    await flush(3);
-    editor = await expand(h, "$a");
-    expect(alertText(editor)).toBeUndefined();
-  });
-
-  beforeEach(() => {
-    resetWorkspaceWithTab({
-      children: [],
-      state: { $a: { default: 1 }, $b: { default: 2 } },
-      tagName: "div",
-    } as unknown as JxMutableNode);
+    repaint();
+    await settle();
+    expect(alertText(panel)).toBeUndefined();
   });
 });
 

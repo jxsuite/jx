@@ -1,10 +1,14 @@
 /**
  * Signals panel — pure helper coverage: defCategory, defBadgeLabel, defHint, isCustomElementDoc,
- * collectCssParts, resolveDefaultForCanvas, normParam, signalFieldRow.
+ * collectCssParts, resolveDefaultForCanvas and normParam.
+ *
+ * `signalFieldRow` is gone with the lit template: the panel is a document and a text row is one
+ * case of its field vocabulary, so what that helper stood for — a row carrying `data-prop`, a
+ * commit when the field is left, and NO commit for a value that has not moved — is asserted against
+ * the drawn panel in `signals-panel-template.test.ts`.
  */
 import "./harness";
 import { describe, expect, test } from "bun:test";
-import { html, render } from "lit-html";
 import {
   collectCssParts,
   defBadgeLabel,
@@ -13,7 +17,6 @@ import {
   isCustomElementDoc,
   normParam,
   resolveDefaultForCanvas,
-  signalFieldRow,
 } from "../src/panels/signals-panel";
 import type { SignalDef } from "../src/panels/signals-panel";
 
@@ -273,39 +276,5 @@ describe("normParam", () => {
   test("object passes through unchanged", () => {
     const p = { name: "x", optional: true };
     expect(normParam(p)).toBe(p);
-  });
-});
-
-// ─── signalFieldRow ───────────────────────────────────────────────────────────
-
-describe("signalFieldRow", () => {
-  test("renders a field row with label and textfield value", () => {
-    const container = document.createElement("div");
-    render(html`${signalFieldRow("Name", "current", () => {})}`, container);
-    const row = container.querySelector('[data-prop="Name"]');
-    expect(row).not.toBeNull();
-    const tf = row?.querySelector("sp-textfield") as { value?: string } | null;
-    expect(tf).not.toBeNull();
-    expect(tf?.value).toBe("current");
-  });
-
-  test("change event commits a new value", () => {
-    const container = document.createElement("div");
-    const seen: string[] = [];
-    render(html`${signalFieldRow("Name", "old", (v) => seen.push(v))}`, container);
-    const tf = container.querySelector("sp-textfield") as HTMLElement & { value: string };
-    tf.value = "renamed";
-    tf.dispatchEvent(new Event("change", { bubbles: true }));
-    expect(seen).toEqual(["renamed"]);
-  });
-
-  test("unchanged value does not call onChange", () => {
-    const container = document.createElement("div");
-    const seen: string[] = [];
-    render(html`${signalFieldRow("Name", "same", (v) => seen.push(v))}`, container);
-    const tf = container.querySelector("sp-textfield") as HTMLElement & { value: string };
-    tf.value = "same";
-    tf.dispatchEvent(new Event("change", { bubbles: true }));
-    expect(seen).toEqual([]);
   });
 });

@@ -8,17 +8,15 @@ import { html } from "lit-html";
 import { mount, render, unmount } from "../src/panels/left-panel";
 import { initShellRefs, leftPanel } from "../src/store";
 import { activeTab, closeAllTabs } from "../src/workspace/workspace";
+import { mountSignalsPanel } from "../src/panels/signals-panel";
 import { view } from "../src/view";
 import { shell } from "../src/shell";
-import type { JxMutableNode } from "@jxsuite/schema/types";
-
-type AnyFn = (...args: any[]) => any;
 
 let ctx: Record<string, any>;
-let captured: { head: any; imports: any; signals: any[]; git: any[] };
+let captured: { head: any; imports: any; git: any[] };
 
 function makeCtx(overrides: Record<string, unknown> = {}) {
-  captured = { git: [], head: null, imports: null, signals: [] };
+  captured = { git: [], head: null, imports: null };
   return {
     cloneRepository: mock(() => {}),
     defaultDef: (tag: string) => ({ tagName: tag }),
@@ -30,12 +28,18 @@ function makeCtx(overrides: Record<string, unknown> = {}) {
     registerElementsDnD: mock(() => {}),
     registerFileTreeDnD: mock(() => {}),
     registerLayersDnD: mock(() => {}),
+    // The Data panel's one verb that is not a repaint: it re-fires automatic `Request` entries,
+    // And its presence is what puts the Refresh button on screen.
+    refreshData: mock(() => {}),
     renderCanvas: mock(() => {}),
     renderFilesTemplate: mock(() => html`<div class="file-tree" id="files-rendered"></div>`),
     renderGitPanel: mock((...args: unknown[]) => {
       captured.git = args;
       return html`<div id="git-rendered"></div>`;
     }),
+    // The REAL mount: the Data panel is a document, and the assertion below is that what the
+    // Navigator hands it reaches the drawn rows.
+    mountSignalsPanel,
     renderHeadTemplate: mock((opts: unknown) => {
       captured.head = opts;
       return html`<div id="head-rendered"></div>`;
@@ -43,10 +47,6 @@ function makeCtx(overrides: Record<string, unknown> = {}) {
     renderImportsTemplate: mock((opts: unknown) => {
       captured.imports = opts;
       return html`<div id="imports-rendered"></div>`;
-    }),
-    renderSignalsTemplate: mock((...args: unknown[]) => {
-      captured.signals = args;
-      return html`<div id="signals-rendered"></div>`;
     }),
     setCanvasMode: mock(() => {}),
     setGitDiffState: mock(() => {}),
@@ -227,25 +227,31 @@ describe("left panel — document tabs", () => {
     expect(leftPanel.querySelector("#imports-rendered")).toBeNull();
   });
 
-  test("the data tab renders the ONE template, over the whole tab", async () => {
-    // `state` and `data` were two tabs calling two templates with two slices of the same tab —
-    // `renderSignalsTemplate` got a snapshot, `renderDataExplorerTemplate` got `document.state` and
-    // `canvas.scope` separately. One panel takes the tab record itself, so the definitions and the
-    // Values it resolved to cannot come from different reads.
-    activeTab.value!.doc.document.state = { count: 1 } as never;
+  test("the data tab draws ONE panel over the whole tab", async () => {
+    /*
+     * `state` and `data` were two tabs calling two templates with two slices of the same tab: one
+     * got a document snapshot, the other got `document.state` and `canvas.scope` separately. One
+     * panel takes the tab record itself, so the definition and the value it resolved to cannot come
+     * from different reads — which is what a row carrying BOTH its badge and its resolved type is
+     * evidence of.
+     *
+     * It is drawn as a document (`surfaces/panel-signals.json`), so lit renders nothing here and
+     * the assertion is against the mounted DOM rather than against an injected stub.
+     */
+    activeTab.value!.doc.document.state = { count: { default: 0 } } as never;
     activeTab.value!.session.canvas.scope = { count: 1 };
     shell.leftTab = "data";
     await mountWith();
-    expect(leftPanel.querySelector("#signals-rendered")).not.toBeNull();
-    const [snapshot, deps] = captured.signals as [Record<string, unknown>, Record<string, AnyFn>];
-    expect(snapshot.document).toBe(activeTab.value!.doc.document);
-    expect(snapshot.selection).toBe(activeTab.value!.session.selection);
-    expect((snapshot.canvas as Record<string, unknown>).scope).toBe(
-      activeTab.value!.session.canvas.scope,
-    );
-    // A repaint and a refetch. `renderCanvas` and `updateSession` were threaded through here until
-    // Nothing in the panel read either — see `SignalsPanelCtx`.
-    expect(Object.keys(deps).toSorted()).toEqual(["refreshData", "renderLeftPanel"]);
+    await flush(8);
+    const row = leftPanel.querySelector('[part="entry"][data-signal="count"]');
+    expect(row).not.toBeNull();
+    expect(row!.querySelector('[part="badge"]')?.textContent).toBe("S");
+    const summary = row!.querySelector<HTMLElement>('[part="summary"]');
+    expect(summary?.dataset["tone"]).toBe("value");
+    expect(summary?.textContent).toBe("number");
+    // A repaint and a refetch, and the refetch is what the Refresh button spends. `renderCanvas`
+    // And `updateSession` were threaded through here until nothing in the panel read either.
+    expect(leftPanel.querySelector('[part="refresh"]')).not.toBeNull();
   });
 
   test("there is no `state` tab left to render", async () => {
@@ -296,65 +302,14 @@ describe("left panel — document tabs", () => {
   });
 });
 
-describe("left panel — page panel", () => {
-  test("non-content mode passes the document and transacts mutations directly", async () => {
-    shell.leftTab = "page";
-    await mountWith();
-    expect(leftPanel.querySelector("#head-rendered")).not.toBeNull();
-    expect(captured.head.document).toBe(activeTab.value!.doc.document);
-
-    captured.head.applyMutation((doc: JxMutableNode) => {
-      doc.title = "Page title";
-    });
-    expect(activeTab.value!.doc.document.title).toBe("Page title");
-  });
-
-  test("content mode overlays frontmatter title/$head onto the head document", async () => {
-    const tab = activeTab.value!;
-    tab.doc.mode = "content";
-    tab.doc.content.frontmatter = {
-      $head: [{ content: "x", tag: "meta" }],
-      title: "FM Title",
-    };
-    shell.leftTab = "page";
-    await mountWith();
-    expect(captured.head.document.title).toBe("FM Title");
-    expect(captured.head.document.$head).toEqual([{ content: "x", tag: "meta" }]);
-  });
-
-  test("content-mode applyMutation routes title and $head into frontmatter", async () => {
-    const tab = activeTab.value!;
-    tab.doc.mode = "content";
-    tab.doc.content.frontmatter = { title: "Old" };
-    shell.leftTab = "page";
-    await mountWith();
-
-    captured.head.applyMutation((doc: JxMutableNode) => {
-      doc.title = "New";
-      doc.$head = [{ href: "a.css", tag: "link" }] as never;
-    });
-    expect(tab.doc.content.frontmatter.title).toBe("New");
-    expect(tab.doc.content.frontmatter.$head).toEqual([{ href: "a.css", tag: "link" }]);
-    expect(tab.doc.dirty).toBe(true);
-  });
-
-  test("content-mode applyMutation clears $head when emptied and keeps equal title", async () => {
-    const tab = activeTab.value!;
-    tab.doc.mode = "content";
-    tab.doc.content.frontmatter = {
-      $head: [{ content: "x", tag: "meta" }],
-      title: "Same",
-    };
-    shell.leftTab = "page";
-    await mountWith();
-
-    captured.head.applyMutation((doc: JxMutableNode) => {
-      (doc.$head as unknown[]).length = 0;
-    });
-    expect(tab.doc.content.frontmatter.$head).toBeUndefined();
-    expect(tab.doc.content.frontmatter.title).toBe("Same");
-  });
-});
+/*
+ * `describe("left panel — page panel")` lived here and read the arguments the Navigator handed a lit
+ * renderer. The Page panel is a document now (`src/surfaces/panel-page.json`) and its record mounts
+ * in `afterRender`, so there is no injected renderer left to capture. The four assertions moved to
+ * `tests/head-panel.test.ts` — "the Page panel record" — where the same contract is read off the
+ * mounted document: which document a pane's panel is drawn for, and where each commit lands. What
+ * stays here is the Navigator's own routing, which is what this file is about.
+ */
 
 describe("left panel — lifecycle and recovery", () => {
   test("reactive effect re-renders on selection change", async () => {

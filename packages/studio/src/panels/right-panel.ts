@@ -33,16 +33,14 @@ import { createPanelScheduler } from "./panel-scheduler";
 import type { PanelScheduler } from "./panel-scheduler";
 import { activeTab } from "../workspace/workspace";
 import { primarySelection } from "../tabs/selection";
-import { openPageAction, renderEmptyState } from "./empty-state";
-import { renderLogicPanelTemplate } from "./events-panel";
-import { isCustomElementDoc } from "./signals-panel";
+import { bindLogicPanelHost } from "./events-panel";
+import { bindContentHost } from "./properties-panel";
 
 import { DEFAULT_INSPECTOR_TAB, isInspectorTabId, shell } from "../shell";
 import { INSPECTOR_TABS } from "../commands/defaults";
 import { inspectorTabRegion, REGION_ATTR } from "../ui/regions";
 import { isColorPopoverOpen } from "../ui/color-selector";
-import { renderStylePanelTemplate } from "./style-panel";
-import { renderPropertiesPanelTemplate } from "./properties-panel";
+import { bindStyleHost } from "./style-panel";
 
 import type { InspectorTabId } from "../shell";
 import type { TemplateResult } from "lit-html";
@@ -130,6 +128,11 @@ export function unmount() {
   _ctx = null;
   _scheduler?.unbind();
   _scheduler = null;
+  // The Logic and Content tabs' documents and their watchers belong to the containers being
+  // Dropped; nothing else hears about that, because the dock simply stops rendering.
+  bindLogicPanelHost(null);
+  bindContentHost(null);
+  bindStyleHost(null);
   _containers = null;
   _detached.tab = DEFAULT_INSPECTOR_TAB;
 }
@@ -190,6 +193,22 @@ function _ensureContainers(ctx: RightPanelCtx): Map<InspectorTabId, HTMLElement>
   // The assistant owns its container for the life of the window: it is the mount point for the
   // Assistant's own Jx document, and rebuilding it would drop the transcript and the composer draft.
   ctx.mountAssistant(_containers.get("assistant")!);
+  /* Logic is the same bargain, reached from the other side. It is a mounted document too
+     (`surfaces/logic-panel.json`), and it must NOT go through this dock's scheduler: the focus
+     guard there exists because a lit repaint takes the node a reader is typing into, and a
+     document's binding skips a write that resolved to the value the control already holds. The tab
+     watches its own facts and re-projects. */
+  bindLogicPanelHost(_containers.get("events")!);
+  /* Content is the third, and it needs one thing from the dock that the other two do not: the way
+     to open a component's definition, which is `studio.ts`'s and reaches this module as ctx. */
+  bindContentHost(_containers.get("properties")!, {
+    navigateToComponent: ctx.navigateToComponent,
+  });
+  /* Style is the fourth and last, so this dock now renders no tab BODY at all: every one of them
+     is a mounted document that keeps itself current. The canvas mode is what the tab cannot read
+     for itself — Stylebook edits a tag catalogue entry and Edit edits the selection — so it comes
+     in from `studio.ts` the same way the Content tab's navigation door does. */
+  bindStyleHost(_containers.get("style")!, { getCanvasMode: ctx.getCanvasMode });
   return _containers;
 }
 
@@ -258,21 +277,21 @@ function tabsTpl(tab: InspectorTabId): TemplateResult {
   `;
 }
 
-/** The inspector's no-document state, rendered into a document tab's own body. */
-function noDocumentTpl(): TemplateResult {
-  return renderEmptyState({
-    actions: [openPageAction()],
-    message: "Open a page to inspect and style what you click.",
-  });
-}
-
+/**
+ * Draw the dock's own chrome, and show the tab that is selected.
+ *
+ * It draws no tab BODY. All four are mounted Jx documents in containers this module makes once
+ * (`panels/ai-panel.ts`, `panels/events-panel.ts`, `panels/properties-panel.ts`,
+ * `panels/style-panel.ts`), each driven by its own effect and each drawing its own no-document
+ * state in its own words — so a render here that painted over one would take the field a reader is
+ * typing into, which is exactly what the containers were made permanent to prevent.
+ */
 function _doRender() {
   if (!_ctx) {
     return;
   }
   try {
     const ctx = _ctx as RightPanelCtx;
-    const aTab = activeTab.value;
     const tab = inspectorTab();
 
     litRender(html`${headerTpl(tab)}${tabsTpl(tab)}`, rightPanel);
@@ -283,44 +302,6 @@ function _doRender() {
       el.style.display = key === tab ? "" : "none";
       if (!el.parentNode) {
         rightPanel.append(el);
-      }
-    }
-
-    const body = containers.get(tab)!;
-    // The assistant is a mounted Jx document in this very container, driven by its own effect
-    // (`panels/ai-panel.ts`), so the host must not render over it.
-    if (tab === "assistant") {
-      return;
-    }
-    if (!aTab) {
-      litRender(noDocumentTpl(), body);
-      return;
-    }
-    if (tab === "properties") {
-      litRender(
-        renderPropertiesPanelTemplate({
-          navigateToComponent: ctx.navigateToComponent,
-        }),
-        body,
-      );
-    } else if (tab === "events") {
-      litRender(
-        renderLogicPanelTemplate({
-          isCustomElementDoc: () =>
-            isCustomElementDoc({
-              document: aTab.doc.document,
-              mode: aTab.doc.mode,
-              selection: aTab.session.selection,
-              ui: aTab.session.ui,
-            }),
-        }),
-        body,
-      );
-    } else {
-      try {
-        litRender(renderStylePanelTemplate({ getCanvasMode: ctx.getCanvasMode }), body);
-      } catch (error) {
-        console.error("[renderStylePanelTemplate]", error);
       }
     }
   } catch (error) {

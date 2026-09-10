@@ -105,9 +105,9 @@ function leftCtx(overrides: Record<string, unknown> = {}) {
     renderGitPanel: mock(
       () => html`<div class="git-commit-area" data-jx-region="navigator/panel:git/commit"></div>`,
     ),
+    mountSignalsPanel: mock(() => {}),
     renderHeadTemplate: mock(() => html`<div id="head-rendered"></div>`),
     renderImportsTemplate: mock(() => html`<div id="imports-rendered"></div>`),
-    renderSignalsTemplate: mock(() => html`<div id="signals-rendered"></div>`),
     setCanvasMode: mock(() => {}),
     setGitDiffState: mock(() => {}),
     setupTreeKeyboard: mock(() => {}),

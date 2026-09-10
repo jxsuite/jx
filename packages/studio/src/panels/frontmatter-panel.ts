@@ -65,7 +65,7 @@ import { workspace } from "../workspace/workspace";
 import { tabOfPane } from "../canvas/canvas-surface";
 import { paneRegion } from "../ui/regions";
 import { effect, effectScope } from "../reactivity";
-import { collectFmFields } from "./frontmatter-fields";
+import { collectFmFields, projectFmField } from "./frontmatter-fields";
 import { LIVE_PREVIEW } from "../ui/timing";
 import { mutateUpdateFrontmatter, transact, transactDoc } from "../tabs/transact";
 import { pageRoute } from "./tab-strip";
@@ -82,14 +82,8 @@ import {
 import { isGoogleFontEntry, isGoogleFontPreconnect } from "../utils/google-fonts";
 import { activeRegistry } from "../commands/active-registry";
 import { invalidateLayoutCache } from "../site-context";
-import { isMediaFormat } from "../utils/studio-utils";
-import { referenceTarget } from "../ui/schema-form";
-import { referenceEntryState } from "../ui/form-controls";
-import { previewAssetSrc } from "../canvas/asset-refs";
-import { IMAGE_EXTENSIONS, extensionOf } from "../files/media-upload";
 import { mountDocHeaderSurface } from "../surfaces/doc-header";
 
-import type { JsonValue } from "../types";
 import type { JxHeadEntry, JxMutableNode } from "@jxsuite/schema/types";
 import type { Tab } from "../tabs/tab";
 import type { FmSchemaEntry } from "./frontmatter-fields";
@@ -499,6 +493,12 @@ function layoutName(path: string): string {
 /**
  * One schema-driven frontmatter field, as the row that draws it and the write that commits it.
  *
+ * **What the row LOOKS like is `panels/frontmatter-fields.ts`'s answer, not this module's.** The
+ * Navigator's Page panel draws the same field set from the same schemas, and the two surfaces
+ * deciding independently that a `$ref` is a picker, that `"uri-reference"` is a media format or
+ * that an array is a comma-separated line is exactly how they came to disagree about `title`. What
+ * stays here is what the card COMMITS INTO — this tab's frontmatter, through its transaction log.
+ *
  * `tab` is a parameter because this used to commit to `activeTab.value` at each of seven widgets,
  * which is right for the Navigator's Document panel and wrong for a card drawn once per pane: a
  * collection field edited on the card in one pane wrote into whichever document had the keyboard.
@@ -512,125 +512,12 @@ function fieldRow(
   commits: Map<string, RowCommit>,
 ): DocHeaderRow {
   const key = `fm:${field}`;
-  const label = field.replaceAll(/([A-Z])/g, " $1").replace(/^./, (s) => s.toUpperCase());
-  const row = blankRow(key, field, label + (requiredFields.has(field) ? " *" : ""));
-  row.clearLabel = `Clear ${field}`;
-  row.isSet = value !== undefined && value !== "" && value !== false;
-  const write = (next: JsonValue | undefined) =>
-    transactDoc(tab, (t) => mutateUpdateFrontmatter(t, field, next));
+  const { parse, row } = projectFmField(field, entry, value, requiredFields, { rerender: render });
   commits.set(key, {
     clear: () => transactDoc(tab, (t) => mutateUpdateFrontmatter(t, field)),
-    commit: () => {},
+    commit: (raw) => transactDoc(tab, (t) => mutateUpdateFrontmatter(t, field, parse(raw))),
   });
-  const commit = (fn: (raw: string | boolean) => void) => {
-    commits.get(key)!.commit = fn;
-  };
-
-  /* A relationship to another collection is a PICKER, not a text box. Before this branch existed a
-     `$ref` field fell through to the textfield at the bottom of this function, so the author typed
-     an entry id from memory with no way to see what ids exist and no sign when the one they typed
-     was wrong. The choices are `ui/form-controls.ts`'s read, shared with the control the entry
-     editor and the settings forms draw; the CONTROL is drawn here, because a document cannot
-     interpolate that module's lit template. */
-  const collection = referenceTarget(entry);
-  if (collection !== null) {
-    const current = typeof value === "string" ? value : "";
-    const state = referenceEntryState(collection, render);
-    commit((raw) => write(String(raw) || undefined));
-    row.kind = "select";
-    row.value = current;
-    if (state === null) {
-      row.options = [{ label: "Loading…", value: current }];
-      return row;
-    }
-    if ("error" in state) {
-      // The value stays EDITABLE as text with the reason beside it: swapping a failed read for an
-      // Empty dropdown would present "no entries" and "could not find out" as the same screen.
-      row.kind = "text";
-      row.note = `Could not list ${collection} entries — ${state.error}`;
-      row.hasNote = true;
-      return row;
-    }
-    const dangling = current !== "" && !state.ids.includes(current);
-    row.options = [
-      { label: "—", value: "" },
-      ...(dangling ? [{ label: `${current} — not found`, value: current }] : []),
-      ...state.ids.map((id) => ({ label: id, value: id })),
-    ];
-    if (state.ids.length === 0) {
-      row.note = `No ${collection} entries yet.`;
-      row.hasNote = true;
-    }
-    return row;
-  }
-
-  if (entry.type === "boolean") {
-    commit((raw) => write(raw === true || undefined));
-    row.kind = "boolean";
-    row.checked = Boolean(value);
-    return row;
-  }
-
-  if (entry.type === "array") {
-    commit((raw) => {
-      const list = String(raw);
-      write(
-        list
-          ? list
-              .split(",")
-              .map((s) => s.trim())
-              .filter(Boolean)
-          : undefined,
-      );
-    });
-    row.value = Array.isArray(value) ? value.join(", ") : text(value);
-    row.placeholder = "comma, separated";
-    return row;
-  }
-
-  if (Array.isArray(entry.enum)) {
-    commit((raw) => write(String(raw) || undefined));
-    row.kind = "select";
-    row.value = text(value);
-    row.options = [
-      { label: "—", value: "" },
-      ...entry.enum.map((opt: string) => ({ label: opt, value: opt })),
-    ];
-    return row;
-  }
-
-  /* Both spellings. `"uri-reference"` is the one the SPEC uses and the one the content loader keys
-     its asset rewrite on (`rewriteEntryAssets`), so a schema written against the spec got a plain
-     text box here while the same field got a media picker in the properties panel. */
-  if (isMediaFormat(entry.format)) {
-    commit((raw) => write(String(raw) || undefined));
-    const current = text(value);
-    row.kind = "media";
-    row.value = current;
-    row.hasThumb = current !== "" && IMAGE_EXTENSIONS.has(extensionOf(current));
-    row.thumb = row.hasThumb ? previewAssetSrc(current) : "";
-    return row;
-  }
-
-  if (entry.type === "number") {
-    commit((raw) => {
-      const raw2 = String(raw).trim();
-      write(raw2 === "" ? undefined : Number(raw2));
-    });
-    row.kind = "number";
-    row.value = value === undefined ? "" : String(value);
-    return row;
-  }
-
-  commit((raw) => write(String(raw) || undefined));
-  row.value = text(value);
-  row.placeholder = entry.format === "date" ? "YYYY-MM-DD" : "";
-  return row;
-}
-
-/** A frontmatter value as the text a field shows. An object is not a string and never pretends. */
-function text(value: unknown): string {
-  return typeof value === "string" ? value : "";
+  return { ...blankRow(key, field, row.label), ...row, clearLabel: `Clear ${field}` };
 }
 
 /**

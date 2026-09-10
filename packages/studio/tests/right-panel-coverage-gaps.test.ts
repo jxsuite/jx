@@ -1,17 +1,24 @@
 /**
  * Coverage-gap tests for src/panels/right-panel.ts: the scheduled-render-after-unmount guard and
- * the style-panel render catch (a throwing style template must not take down the panel).
+ * the dock's own render catch.
+ *
+ * The second one used to be about a throwing style TEMPLATE, which the dock rendered on every
+ * repaint inside a `try`. The Style tab is a mounted document now and the dock renders no tab body
+ * at all, so the template and its catch are both gone — what survives is the contract they stood
+ * for, re-aimed at the seam that replaced them: a tab whose bind throws must not stop the dock's
+ * own chrome from drawing, and must not escape as an unhandled error.
  */
 import { flush, resetStudioState, resetWorkspaceWithTab } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 
 let styleThrows = false;
 void mock.module("../src/panels/style-panel", () => ({
-  renderStylePanelTemplate: () => {
-    if (styleThrows) {
-      throw new Error("style template exploded");
+  /* Only the BIND throws; the unbind (`null`) is what `unmount()` calls, and a teardown that threw
+     would fail the afterEach rather than the behaviour under test. */
+  bindStyleHost: (el: HTMLElement | null) => {
+    if (el && styleThrows) {
+      throw new Error("style tab exploded");
     }
-    return null;
   },
 }));
 
@@ -82,20 +89,17 @@ describe("right panel gaps", () => {
     expect(visible[0]!.textContent).not.toContain("Select an element");
   });
 
-  test("a throwing style template is caught without breaking the panel", async () => {
+  test("a tab that throws while binding is caught, and the dock still draws its chrome", async () => {
     resetWorkspaceWithTab();
     styleThrows = true;
     mount(makeCtx() as never);
     updateUi(activeTab.value, "rightTab", "style");
     render();
     await flush(4);
-    // The tabs header still rendered; the style body simply stayed empty.
+    // The header and the tab strip are rendered BEFORE the containers are made, so the dock is
+    // Still navigable: the reader can leave the tab that failed.
     expect(store.rightPanel.querySelector("sp-tabs")).not.toBeNull();
-    const visible = [...store.rightPanel.querySelectorAll(".panel-body")].filter(
-      (el) => (el as HTMLElement).style.display !== "none",
-    );
-    expect(visible).toHaveLength(1);
-    expect(visible[0]!.textContent).toBe("");
+    expect(store.rightPanel.querySelectorAll("sp-tab")).not.toHaveLength(0);
   });
 });
 

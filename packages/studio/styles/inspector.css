@@ -114,13 +114,6 @@ textarea.field-input {
   color: var(--fg-dim);
   text-align: right;
 }
-.signal-editor .field-row sp-field-label {
-  width: 65px;
-  font-size: 10px;
-}
-.signal-editor .field-row sp-textfield {
-  --spectrum-textfield-height: 24px;
-}
 
 /* ─── Style editor (key-value list) ──────────── */
 .kv-row {
@@ -412,146 +405,10 @@ jx-styled-combobox sp-picker {
   min-width: 0;
   overflow: hidden;
 }
-
-/* ─── Signals tab ────────────────────────────── */
-.signal-row {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
-  cursor: pointer;
-  border-left: 2px solid transparent;
-  user-select: none;
-}
-.signal-row:hover {
-  background: var(--hover-bg);
-}
-.signal-row.expanded {
-  background: var(--accent-10);
-  border-left-color: var(--accent);
-}
-.signal-badge {
-  padding: 0 4px;
-  font-size: 10px;
-  border-radius: var(--spectrum-corner-radius-75, 2px);
-  font-weight: 600;
-  flex-shrink: 0;
-  min-width: 18px;
-  text-align: center;
-}
-.signal-badge.state {
-  background: color-mix(in srgb, var(--signal) 25%, transparent);
-  color: var(--signal);
-}
-.signal-badge.computed {
-  background: color-mix(in srgb, var(--success) 25%, transparent);
-  color: var(--success);
-}
-.signal-badge.data {
-  background: color-mix(in srgb, var(--tag) 25%, transparent);
-  color: var(--tag);
-}
-.signal-badge.handler {
-  background: color-mix(in srgb, var(--handler) 25%, transparent);
-  color: var(--handler);
-}
-/* The NAME is what you came for, so it is the last thing to be elided. It used to sit at `flex: 1`
-   beside a hint pinned at `flex-shrink: 0`, so a long-prototype row rendered as `re… ContentCollect…`
-   — the summary intact and the identity gone. */
-.signal-name {
-  flex: 1 1 auto;
-  min-width: 8em;
-  white-space: nowrap;
-  font-family: var(--font-mono);
-  font-size: var(--spectrum-font-size-50, 11px);
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.signal-hint {
-  font-size: 10px;
-  color: var(--fg-dim);
-  flex: 0 1 auto;
-  min-width: 0;
-  max-width: 64px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.signal-del {
-  visibility: hidden;
-  cursor: pointer;
-  color: var(--danger);
-  font-size: var(--spectrum-font-size-50, 11px);
-  flex-shrink: 0;
-}
-.signal-row:hover .signal-del {
-  visibility: visible;
-}
-.signal-editor {
-  padding: 4px 8px 8px 26px;
-  border-bottom: 1px solid var(--border);
-}
-/* Signals panel accordion (matches style-sidebar pattern) */
-.signals-panel sp-accordion {
-  border: none;
-}
-.signals-panel sp-accordion-item {
-  --spectrum-accordion-item-header-font-size: var(--spectrum-font-size-50, 11px);
-}
-.signals-add {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 6px 8px;
-}
-
-/* ─── Data explorer ──────────────────────────── */
-.data-explorer-toolbar {
-  padding: 4px 8px;
-  border-bottom: 1px solid var(--border);
-  display: flex;
-  justify-content: flex-end;
-}
-.data-refresh-btn {
-  font-size: var(--spectrum-font-size-50, 11px);
-  padding: 2px 8px;
-  background: var(--bg-input);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  color: var(--fg);
-  cursor: pointer;
-}
-.data-refresh-btn:hover {
-  border-color: var(--accent);
-}
-/* The Data panel's own row list is gone — the definition rows carry the resolved value now
-   (plan §11.2). `.data-row`, `.data-row-header` and `.data-name` went with it; what is left here
-   dresses the value INSIDE a `.signal-editor`. */
-.data-type {
-  font-size: 10px;
-  color: var(--fg-dim);
-  flex-shrink: 0;
-}
 .data-more:hover,
 .data-more:focus-visible {
   color: var(--accent);
   text-decoration: underline;
-}
-
-/* The resolved value, under the fields that define it. The rule above it is the seam between
-   "what this is" and "what it became" — the two halves that used to be two panels. */
-.signal-live {
-  margin-top: 8px;
-  padding-top: 6px;
-  border-top: 1px solid var(--border);
-}
-.signal-live-label {
-  display: block;
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--fg-dim);
-  margin-bottom: 2px;
 }
 .data-tree {
   padding: 2px 0;
@@ -568,18 +425,6 @@ jx-styled-combobox sp-picker {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* PENDING IS A RESTING STATE, not progress. While you are editing, an automatic `Request` is
-   deliberately not fetched — so a value that has not arrived is dim and STILL, and the pulse is
-   kept for the one moment something is actually in flight. An animation that never stops is a
-   spinner for a thing that is not loading, and it is why `probe.idle()` could never call this panel
-   quiet: the screenshot lane timed out on "2 animation(s) running" in a panel at rest. */
-.data-pending {
-  opacity: 0.55;
-}
-.signals-panel.is-refreshing .data-pending {
-  opacity: 1;
-  animation: pulse 1.5s ease-in-out infinite;
-}
 @keyframes pulse {
   0%,
   100% {
@@ -595,53 +440,6 @@ jx-styled-combobox sp-picker {
 }
 .bind-toggle.bound {
   color: var(--accent);
-}
-
-/* ─── Events section ─────────────────────────── */
-.events-panel {
-  padding: 8px;
-}
-.events-section {
-  margin-bottom: 8px;
-}
-.declared-event-row {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  padding: 2px 0;
-  font-size: var(--spectrum-font-size-50, 11px);
-}
-.event-code {
-  font-family: monospace;
-  color: var(--accent);
-}
-.event-source {
-  color: var(--fg-dim);
-  font-size: 10px;
-}
-.event-type {
-  margin-left: auto;
-  color: var(--fg-dim);
-  font-size: 10px;
-}
-.event-binding {
-  margin-bottom: 8px;
-}
-.event-row {
-  display: flex;
-  gap: 4px;
-  align-items: center;
-}
-.event-name {
-  flex: 1;
-  min-width: 0;
-}
-.event-mode {
-  width: 72px;
-  flex-shrink: 0;
-}
-.event-handler {
-  width: 100%;
 }
 .event-body-row {
   display: flex;
@@ -915,155 +713,6 @@ button.provenance-chip:focus-visible {
   color: var(--spectrum-red-600, #e34850);
 }
 
-/* ─── The statement editor (studio-ui-guidelines.md §4.6) ────────────────────────────────────────
-   A Function body as cards on a connector line — `panels/statement-editor.ts`.
-   Until this block existed the surface had NO stylesheet at all: every frame,
-   indent and connector was an inline `style=` attribute, and twenty class names
-   sat in check-styles.ts's orphan list.
-
-   An attribute cannot carry the one declaration the layout needs. A flex item's
-   automatic minimum size is its min-content width, so a chain with no
-   `min-width: 0` on it refuses to shrink: an operand row asking for a 112px
-   picker + a 56px picker + a Spectrum field (192px by default) is wider than a
-   280px Inspector, and Operator, Target and Value were clipped by the right
-   edge of the WINDOW. The editor is drawn in three docks of very different
-   widths — the Navigator's State panel, the Inspector's Events tab and the
-   Bottom dock's Logic tab — so a pixel layout is wrong by construction.
-
-   Colours here are the ones the attributes already carried: this is a layout
-   change and nothing else. */
-.statement-editor {
-  min-width: 0;
-}
-/* One indent per nesting level, drawn once. The lane used to add a 6px margin of
-   its own on top of the list's 4px + 2px + 8px, so a three-deep branch spent
-   48px of a 240px panel on indentation alone. */
-.statement-list {
-  min-width: 0;
-  padding: 2px 0 0 8px;
-  border-left: 2px solid var(--spectrum-gray-300, #3c3c3c);
-}
-.statement-lane {
-  min-width: 0;
-  margin: 4px 0;
-}
-.statement-lane-header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px;
-  min-width: 0;
-}
-/* The card is the draggable object, so its frame is what carries the weight. */
-.statement-card {
-  min-width: 0;
-  margin: 0 0 6px;
-  padding: 4px 6px;
-  border: 1px solid var(--spectrum-gray-300, #3c3c3c);
-  border-radius: var(--radius);
-  background: var(--spectrum-gray-75, #1e1e1e);
-}
-.statement-card-header {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-.statement-card-body {
-  min-width: 0;
-}
-.statement-drag-handle {
-  flex-shrink: 0;
-  color: var(--spectrum-gray-500, #6e6e6e);
-  font-size: var(--spectrum-font-size-50, 11px);
-  line-height: 1;
-  cursor: grab;
-  user-select: none;
-}
-/* The kind label and a lane's name are the same 10px caption. */
-.statement-kind-label,
-.statement-lane-label {
-  min-width: 0;
-  color: var(--fg-dim);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-/* "Dispatch event" beside a drag handle and a delete button is already most of a
-   narrow header, so the kind ellipsizes rather than widening the card. */
-.statement-kind-label {
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-/* A `$switch` case renames itself in the lane header, so this label slot holds a
-   text FIELD rather than a word — hence a flex row and no `overflow: hidden`,
-   which would clip the field's focus ring. */
-.statement-lane-label {
-  display: flex;
-  align-items: center;
-}
-/* The uppercase and the 10px belong to the label, not to the value: inherited
-   properties cross the shadow boundary, so `case 1` rendered as `CASE 1` in the
-   field you were about to type into. */
-.statement-case-key {
-  /* It may not GROW: the lane's remove button shares this header, and a key
-     field that takes the whole line pushes it onto one of its own. */
-  flex: 0 1 6rem;
-  min-width: 0;
-  font-size: var(--spectrum-font-size-50, 11px);
-  font-weight: 400;
-  letter-spacing: normal;
-  text-transform: none;
-}
-/* Hard right, and it used to take a `<span style="flex:1">` spacer to get there. */
-.statement-delete {
-  flex-shrink: 0;
-  margin-left: auto;
-}
-.statement-lane-remove {
-  flex-shrink: 0;
-}
-.statement-add,
-.statement-add-case,
-.statement-add-else {
-  max-width: 100%;
-}
-/* A direct child of `.style-row`, which is a flex COLUMN — so `flex: 1` here was
-   never a width, it was permission to grow TALL, and a flex-basis would have been
-   a height outright. That is the empty column the bug report photographed. Width
-   comes from the `.style-row > sp-textfield` stretch rule above; all this row
-   needs of its own is permission to shrink. */
-.statement-dispatch-name {
-  min-width: 0;
-}
-/* `bubbles` and `composed` read as one row and stack when they cannot. */
-.statement-dispatch-options {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 12px;
-  min-width: 0;
-}
-.statement-dispatch-bubbles,
-.statement-dispatch-composed {
-  flex: 0 0 auto;
-  max-width: 100%;
-}
-/* Drag feedback. `dragging`, `drop-above` and `drop-below` are toggled by
-   registerStatementsDnD and had no rule anywhere, so a drag showed the cursor
-   moving and nothing else until the drop landed. */
-.statement-card.dragging {
-  opacity: 0.4;
-}
-.statement-card.drop-above {
-  box-shadow: inset 0 2px 0 0 var(--accent);
-}
-.statement-card.drop-below {
-  box-shadow: inset 0 -2px 0 0 var(--accent);
-}
-
 /* ─── The expression editor ──────────────────────────────────────────────────
    `ui/expression-editor.ts`, drawn inside a statement card, inside the Data
    panel's signal editor, and on its own in the Bottom dock's formula workspace.
@@ -1216,19 +865,9 @@ button.provenance-chip:focus-visible {
 .switch-cases sp-action-button {
   flex: 0 0 auto;
 }
-/* The belt, for both editors. A Spectrum field is `--spectrum-field-width` wide
-   by default (192px) and declares its own min-inline-size; a field row that
-   never says otherwise is therefore ~200px of demand per control, which is the
-   whole width of the rail. Outer-tree rules win over a shadow root's `:host`,
-   so this is where that demand is answered. */
-.statement-editor .style-row,
 .expression-editor .style-row {
   min-width: 0;
 }
-.statement-editor sp-picker,
-.statement-editor sp-textfield,
-.statement-editor sp-number-field,
-.statement-editor sp-combobox,
 .expression-editor sp-picker,
 .expression-editor sp-textfield,
 .expression-editor sp-number-field,

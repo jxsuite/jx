@@ -2,9 +2,9 @@
 
 ## Visual Builder for Jx Documents
 
-**Version:** 0.10.16-draft\
+**Version:** 0.10.17-draft\
 **Status:** Partial\
-**Updated:** 2026-09-02\
+**Updated:** 2026-09-09\
 **License:** MIT
 
 ---
@@ -1265,7 +1265,7 @@ Six of these nine rows were still marked **Pending** long after they shipped —
 
 | Feature                      | Description                                                    | Status                                                                                                                                                                                                                                                                             |
 | ---------------------------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| CSS custom properties panel  | Declare `--custom-property` interfaces for CEM                 | **Partial** — the Logic tab's **CSS Properties** section lists the `--*` entries of the component's root `style`, read-only (`renderStaticKvRow`). Declaring one means authoring a style value; there is no interface form                                                         |
+| CSS custom properties panel  | Declare `--custom-property` interfaces for CEM                 | **Partial** — the Logic tab's **CSS Properties** section lists the `--*` entries of the component's root `style`, read-only (`surfaces/logic-panel.json`, the `cssprops` section). Declaring one means authoring a style value; there is no interface form                         |
 | CSS parts panel              | Declare `::part()` styling hooks for CEM                       | **Partial** — same shape: the Logic tab's **CSS Parts** section lists the parts collected from the tree, read-only. The tree is the declaration                                                                                                                                    |
 | Full CEM document export     | Generate complete Custom Elements Manifest JSON                | **Pending** — `services/cem-export.ts` builds a complete CEM 2.1.0 manifest, `cssProperties` and `cssParts` included, and **nothing invokes it**. `tests/reachability.test.ts` carries the ledger entry: no menu offers it, and it still takes the deleted flat state shape        |
 | Component library management | Browse, install, and manage component packages                 | **Implemented** — the Packages panel adds and removes npm packages (`platform.addPackage` / `removePackage`) and cherry-picks components per document through the one `$elements` service (§11.2)                                                                                  |
@@ -1831,6 +1831,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.10.17-draft** (2026-09-09) — The Logic tab's read-only CSS Properties list is drawn by surfaces/logic-panel.json; renderStaticKvRow is gone (§16.5).
 - **0.10.16-draft** (2026-09-02) — the overlay lints take a custom-element scope (16.6); the canvas de-link reaches a stamped instance's own internals (4.2.2).
 - **0.10.15-draft** (2026-09-02) — the canvas UA-substitute overlay rules are installed wherever the de-link runs, not only in design/edit.
 - **0.10.14-draft** (2026-09-02) — a canvas invoker command aimed at the other kind of overlay is ignored, not thrown (§4.2.3).
@@ -1956,4 +1957,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_`@jxsuite/studio` Specification v0.10.16-draft_
+_`@jxsuite/studio` Specification v0.10.17-draft_

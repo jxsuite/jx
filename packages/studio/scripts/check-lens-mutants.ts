@@ -916,10 +916,12 @@ const MUTANTS: Mutant[] = [
 
   // ─── panels/properties-panel.ts ─────────────────────────────────────────────
   {
+    /* The Content tab is a Jx document now, so the guard is a projected FLAG rather than a
+       conditional in a template — same discriminator, one line further back. */
     edits: [
       {
-        find: `\${deriveRefusal(workspace.activePaneId) === null ? openLayoutTpl() : nothing}`,
-        replace: `\${openLayoutTpl()}`,
+        find: `    layoutCanOpen: deriveRefusal(workspace.activePaneId) === null,`,
+        replace: `    layoutCanOpen: true,`,
       },
     ],
     file: "src/panels/properties-panel.ts",
