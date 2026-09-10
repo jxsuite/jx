@@ -964,7 +964,7 @@ export const INSERT_HIDE_DELAY = 300;
  * The parent-realm insertion handler: open the slash menu anchored at the "+" `btn` and, on select,
  * run `transactDoc → mutateInsertNode` for the captured `zone`. Injected from studio.ts (which owns
  * the slash-menu / transact / defaultDef wiring) so this host module — and its tests — stay free of
- * the lit/Spectrum slash-menu and the mutation pipeline, mirroring the native-drag handler.
+ * the slash-menu and the mutation pipeline, mirroring the native-drag handler.
  */
 let insertZoneClickHandler: ((btn: HTMLElement, zone: InsertZone) => void) | null = null;
 
@@ -1082,8 +1082,8 @@ export interface CanvasSlashRequest {
 
 /**
  * The parent-realm slash-menu surface the canvas iframe drives (show at a rect, navigate by key,
- * dismiss). Injected from studio.ts (which owns the lit/Spectrum menu) so this host module — and
- * its tests — stay free of it, mirroring {@link insertZoneClickHandler}.
+ * dismiss). Injected from studio.ts (which owns the menu) so this host module — and its tests —
+ * stay free of it, mirroring {@link insertZoneClickHandler}.
  */
 export interface CanvasSlashHandler {
   show: (req: CanvasSlashRequest) => void;

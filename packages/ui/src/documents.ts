@@ -34,6 +34,8 @@ import jxTab from "../components/jx-tab.json";
 import jxTabPanel from "../components/jx-tab-panel.json";
 import jxTabs from "../components/jx-tabs.json";
 import jxTextfield from "../components/jx-textfield.json";
+import jxToast from "../components/jx-toast.json";
+import jxToastHost from "../components/jx-toast-host.json";
 
 /** Tag name → document, in registration order (a document's `$elements` come before it). */
 export const documents: Readonly<Record<string, JxDocument>> = {
@@ -61,6 +63,8 @@ export const documents: Readonly<Record<string, JxDocument>> = {
   "jx-dot": jxDot as unknown as JxDocument,
   "jx-field": jxField as unknown as JxDocument,
   "jx-dialog": jxDialog as unknown as JxDocument,
+  "jx-toast": jxToast as unknown as JxDocument,
+  "jx-toast-host": jxToastHost as unknown as JxDocument,
   "jx-color-area": jxColorArea as unknown as JxDocument,
   "jx-color-slider": jxColorSlider as unknown as JxDocument,
   "jx-swatch": jxSwatch as unknown as JxDocument,

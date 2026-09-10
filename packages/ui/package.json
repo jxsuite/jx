@@ -36,6 +36,8 @@
     "./behaviors/dialog": "./src/behaviors/dialog.ts",
     "./behaviors/textfield": "./src/behaviors/textfield.ts",
     "./behaviors/number-field": "./src/behaviors/number-field.ts",
+    "./behaviors/toast": "./src/behaviors/toast.ts",
+    "./behaviors/toast-host": "./src/behaviors/toast-host.ts",
     "./testing/popover-shim": "./src/testing/popover-shim.ts",
     "./icons/manifest.json": "./icons/manifest.json"
   },

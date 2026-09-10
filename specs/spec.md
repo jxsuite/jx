@@ -2,7 +2,7 @@
 
 ## Declarative Document Object Model — JSON Edition
 
-**Version:** 0.6.18-draft\
+**Version:** 0.6.19-draft\
 **Status:** Partial\
 **Updated:** 2026-09-10\
 **License:** MIT
@@ -2333,7 +2333,7 @@ That settles the staging question by removing it. The shell is not a deployment 
 
 - **No `innerHTML` write remains in code Jx ships.** The four in `@jxsuite/runtime` and the one the compiler emitted into every light-DOM element module became `replaceChildren()` — identical semantics for clearing an element, and not an injection sink. That is a real reduction in a shipped site's surface, independent of any policy.
 - **The shell's markdown goes through a policy that asserts.** `createHTML` throws naming what it found (`packages/studio/src/services/trusted-types.ts`); `createScript` and `createScriptURL` refuse outright. A `createHTML` returning its input unchanged would satisfy the API and defend nothing.
-- **Enforcement is not planned, on either profile.** The canvas evaluates permanently (§21.3). The shell evaluates too — Ajv's codegen in `jx-validate.ts`, Monaco's worker URL, and the interpreter itself running in the shell document for Library preview, render-check and component preview — and its remaining DOM sinks belong to its dependencies: `<sp-theme>` writes `templateElement.innerHTML` before any author has clicked anything, and Tabulator and Monaco carry their own. None is reachable from `jx-studio`, and the only lever over them is a `trusted-types` allow-list, which admits the pass-through this section rejects.
+- **Enforcement is not planned, on either profile.** The canvas evaluates permanently (§21.3). The shell evaluates too — Ajv's codegen in `jx-validate.ts`, Monaco's worker URL, and the interpreter itself running in the shell document for Library preview, render-check and component preview — and its remaining DOM sinks belong to its dependencies: Tabulator and Monaco each carry their own. None is reachable from `jx-studio`, and the only lever over them is a `trusted-types` allow-list, which admits the pass-through this section rejects. The list was one longer while Adobe Spectrum was registered — `<sp-theme>` wrote `templateElement.innerHTML` before any author had clicked anything — and that one left with the library rather than being solved, which is the only kind of progress an allow-list cannot make.
 
 **The observation stage ran, and has been removed.** Both servers briefly sent the shell `Content-Security-Policy-Report-Only: require-trusted-types-for 'script'` and filed each `SecurityPolicyViolationEvent` as a Problem. It answered its question — every violation belongs to a dependency or to the interpreter, and no Jx-owned sink remained — so it was deleted along with the header that fed it. Keeping it would have put a permanent warning in §16's Problems panel about a decision already taken, and a panel that reports what its reader cannot act on teaches its reader to stop looking. Four properties of the standard were established during that run and are recorded here because they would otherwise have to be rediscovered:
 
@@ -2565,6 +2565,7 @@ This rewrites the mutating handlers of Appendix A's idiom using `$expression`, l
 
 ## Changelog
 
+- **0.6.19-draft** (2026-09-10) — the shell's Trusted Types sink list is one shorter: sp-theme left with Adobe Spectrum rather than being allow-listed.
 - **0.6.18-draft** (2026-09-10) — §4.3 listener options are not part of the on* grammar; §6.1 a binding writes when its source moves, so a document cannot re-assert or empty a bound control; §13.1 there is no document-local element fragment.
 - **0.6.17-draft** (2026-09-09) — a style block may document itself: $description is prose carried on the rule, and every $-prefixed key is metadata rather than a declaration.
 - **0.6.16-draft** (2026-09-09) — a declaration at-rule may be written more than once, as an array of blocks — the only spelling @font-face has for a family's second weight.
@@ -2647,4 +2648,4 @@ This rewrites the mutating handlers of Appendix A's idiom using `$expression`, l
 
 ---
 
-_Jx Specification v0.6.18-draft — subject to revision_
+_Jx Specification v0.6.19-draft — subject to revision_

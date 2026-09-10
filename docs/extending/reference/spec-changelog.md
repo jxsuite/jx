@@ -144,6 +144,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `extensions.md`
 
+- **0.4.4-draft** (2026-09-10) — A settings section's icon is a key in the Jx UI kit's glyph manifest, never an element tag; the §9.1 example named a Spectrum element, which resolved to nothing.
 - **0.4.3-draft** (2026-08-31) — The extension catalogue (§9.2): a host answers for what it can run, with bundled and installed probed rather than declared; §2 lists feed.
 - **0.4.2-draft** (2026-08-29) — A format may declare rewrite: replace authored values in its own source text, for a format that is read but never round-tripped.
 - **0.4.1-draft** (2026-08-27) — Studio conversion and creation are parse/serialize consumers; what parse returns is decided by documentKinds.
@@ -297,6 +298,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `site-architecture.md`
 
+- **0.6.11-draft** (2026-09-10) — the CSV table-editor backlog item names a grid rather than a Spectrum element that no longer exists.
 - **0.6.10-draft** (2026-08-29) — A site deployed under a subpath: url's path is the base every emitted reference resolves against, applied to every output a host reads and answered by the dev server alongside the bare path.
 - **0.6.9-draft** (2026-08-29) — A reference inside a format that cannot round-trip is repaired through the rewrite capability rather than reported as a remainder.
 - **0.6.8-draft** (2026-08-29) — Media reachable only through a cross-root asset mount has no project-relative name, which is why it has no usage count; addressing it is a host file-API question, not an engine one.
@@ -383,6 +385,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `spec.md`
 
+- **0.6.19-draft** (2026-09-10) — the shell's Trusted Types sink list is one shorter: sp-theme left with Adobe Spectrum rather than being allow-listed.
 - **0.6.18-draft** (2026-09-10) — §4.3 listener options are not part of the on* grammar; §6.1 a binding writes when its source moves, so a document cannot re-assert or empty a bound control; §13.1 there is no document-local element fragment.
 - **0.6.17-draft** (2026-09-09) — a style block may document itself: $description is prose carried on the rule, and every $-prefixed key is metadata rather than a declaration.
 - **0.6.16-draft** (2026-09-09) — a declaration at-rule may be written more than once, as an array of blocks — the only spelling @font-face has for a family's second weight.
@@ -486,6 +489,9 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `studio-ui-guidelines.md`
 
+- **0.8.1-draft** (2026-09-10) — The bound on surviving lit templates is a gate (LIT_TEMPLATE_AUTHORS) rather than prose (§9.3).
+- **0.8.0-draft** (2026-09-10) — Adobe Spectrum is removed: one element family, styles/spectrum.css re-homed into the token source, and the inventory in 6.1 replaced by a ban with an empty allow-list.
+- **0.7.0-draft** (2026-09-10) — Studio owns no custom elements: §6.2 graduates as the last LitElement (jx-value-selector) is deleted with its two retired callers, and the checklist item that governed them names the kit instead.
 - **0.6.1-draft** (2026-09-10) — showDialog and its slot helper are gone: Open Project's three-way question was never bespoke and calls openDialogSurface, so the last lit dialog body converted; the empty-state pattern is one spec with two renderers and no class of its own; the inspector row vocabulary drops .style-row/.field-row with ui/field-row.ts.
 - **0.6.0-draft** (2026-09-10) — renderPopover is gone: the tab strip's overflow list and context/tab menu are projections handed to the kit menu, which leaves the lit popover helper with no caller and takes its row out of the layers API table.
 - **0.5.1-draft** (2026-09-10) — The pane tab strip is a Jx document over jx-tabs; every strip in the shell now carries real tab semantics (gap:apg-coverage).
@@ -545,6 +551,8 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `studio.md`
 
+- **0.11.0-draft** (2026-09-10) — Adobe Spectrum is removed: the dependency row goes, the colour picker is jx-color-field, the dual-mode row is a composition rather than a class, and check-icons keeps one of its two element rules.
+- **0.10.19-draft** (2026-09-10) — The Props widget's enum control is jx-select and the Logic tab's event name is the kit menu plus the prompt dialog; both named jx-value-selector, which no surface had rendered since its callers converted.
 - **0.10.18-draft** (2026-09-10) — The pane tab strip is a real tablist: one stop in the tab order, arrows with wrap, Home and End, Delete closing a document, and its three marks as slots on jx-tab (§14.4).
 - **0.10.17-draft** (2026-09-09) — The Logic tab's read-only CSS Properties list is drawn by surfaces/logic-panel.json; renderStaticKvRow is gone (§16.5).
 - **0.10.16-draft** (2026-09-02) — the overlay lints take a custom-element scope (16.6); the canvas de-link reaches a stamped instance's own internals (4.2.2).
@@ -672,6 +680,8 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `ui.md`
 
+- **0.1.26-draft** (2026-09-10) — the authoring model in 3 is enforced over every element by conformance.test.ts, and WAI-ARIA and WHATWG HTML are cited Subsets rather than promises.
+- **0.1.25-draft** (2026-09-10) — jx-toast and jx-toast-host ship: the stack owns the live region, the clock pauses on attention and resumes with what was left, and a hotkey is the way into a status message (§5.2, §7, §11).
 - **0.1.24-draft** (2026-09-10) — a value the colour field cannot decompose is kept and drawn rather than refused, so a project's own tokens live in the same field as a colour.
 - **0.1.23-draft** (2026-09-10) — the colour elements are built: two transparent native ranges behind a 2D square, a styled range over a gradient, a contrast-measured swatch, a roving swatch group, and a composed colour field that dispatches from itself.
 - **0.1.22-draft** (2026-09-10) — §5.1 jx-select cannot draw an unlabelled separator between projected rows, and jx-menu is a list of actions rather than a media browser.

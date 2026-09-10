@@ -121,7 +121,7 @@ describe("deriveSettingsSection", () => {
       studio: {
         settings: {
           entry: { newEntry: { source: "./content/${key}/" } },
-          icon: "sp-icon-view-grid",
+          icon: "grid-four",
           label: "Content Types",
           layout: "map",
           order: 50,
@@ -129,7 +129,7 @@ describe("deriveSettingsSection", () => {
       },
     })!;
     expect(derived.label).toBe("Content Types");
-    expect(derived.icon).toBe("sp-icon-view-grid");
+    expect(derived.icon).toBe("grid-four");
     expect(derived.order).toBe(50);
     expect(derived.contribution.entrySchema).toEqual({
       properties: { source: { type: "string" } },

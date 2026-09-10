@@ -43,10 +43,10 @@
       "borderColor": "var(--accent)"
     },
     "& [part=\"panel-viewport\"]": {
-      "$description": "The white page surface. `color-scheme: light` is pinned whatever the chrome theme is: the author's document renders against paper, and native form controls and scrollbars inside it must match that rather than the editor around it. The width is a variable so the one declaration serves a board with a declared breakpoint and one without.",
+      "$description": "The white page surface. `color-scheme: light` is pinned whatever the chrome theme is: the author's document renders against paper, and native form controls and scrollbars inside it must match that rather than the editor around it. The background is the `white` KEYWORD and not a token, for the same reason: it was `var(--spectrum-white, #fff)`, which resolved to white inside `<sp-theme>` and to its fallback everywhere else, so a token was never what it meant. A themed token here would put the editor's ground under the author's page in the dark chrome. The width is a variable so the one declaration serves a board with a declared breakpoint and one without.",
       "position": "relative",
       "width": "var(--panel-viewport-w, auto)",
-      "background": "var(--spectrum-white, #fff)",
+      "background": "white",
       "border": "1px solid var(--border)",
       "colorScheme": "light"
     },

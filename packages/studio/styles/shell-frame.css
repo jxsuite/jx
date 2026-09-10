@@ -18,6 +18,15 @@
 :root {
   --dock-h-bottom: 220px;
 }
+/* The element `src/shell/tree.ts` mounts the frame and the four overlay layers into. It was
+   `<sp-theme>`, and `styles/spectrum.css` gave it exactly this box — the wrapper is all that
+   survives Spectrum, because the mount needs a container it owns: `mountResizeEdges()` puts its
+   own container on the body one line earlier, and a clear-and-eject aimed at the body would take
+   the four resize edges with it. `height: 100%` is the whole of what it does; `#app` inside it is
+   `height: 100%` too, and body is already the full viewport. */
+#shell-root {
+  height: 100%;
+}
 /* FOUR rows, not five. The pane's tab strip used to own row 2 of the APPLICATION grid, which is
    the one thing a per-pane surface can never be — so it is a row of the pane's own cell now and
    this grid is one row shorter. The columns are NAMED. Every rule below addressed them by index,
@@ -194,7 +203,7 @@
   align-items: stretch;
   overflow: hidden;
   padding: 0 4px;
-  font-size: var(--spectrum-font-size-50, 11px);
+  font-size: var(--jx-text-sm, 11px);
   color: var(--fg-dim);
   background: var(--bg);
   border-top: 1px solid var(--border);

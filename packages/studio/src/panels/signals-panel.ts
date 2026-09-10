@@ -800,7 +800,9 @@ function dataFields(S: SignalsPanelState, name: string, def: SignalDef): SignalF
           value: stored,
           write: (v: string) => {
             try {
-              patch({ default: JSON.parse(v) });
+              // `JSON.parse` answers `any`; the value written is a document default, which is a
+              // `JsonValue` by construction — naming it keeps the assignment checked.
+              patch({ default: JSON.parse(v) as JsonValue });
             } catch {
               patch({ default: v });
             }

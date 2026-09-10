@@ -464,9 +464,19 @@ export function nextRegion(
   return null;
 }
 
-/** The first element inside a region that can take the caret. */
+/**
+ * The first element inside a region that can take the caret.
+ *
+ * It also listed `sp-action-button`, `sp-tab`, `sp-textfield` and `sp-picker`, and those four were
+ * load-bearing while Spectrum drew the chrome: a Spectrum control keeps its real control in a
+ * SHADOW ROOT, so `querySelector` inside a region host reached the custom element and nothing else.
+ * The kit has no shadow root anywhere (`ui.md` §3.2 — no element declares `$shadow`), so each of
+ * its controls puts a native `<button>`, `<input>` or `<select>` in the region's own tree, and the
+ * native entries already in this list find them. Naming the kit tags beside them would match the
+ * WRAPPER, one node earlier in document order than the thing that takes focus.
+ */
 const REGION_FOCUSABLE =
-  'a[href], button, input, textarea, select, sp-action-button, sp-tab, sp-textfield, sp-picker, [tabindex]:not([tabindex="-1"])';
+  'a[href], button, input, textarea, select, [tabindex]:not([tabindex="-1"])';
 
 /**
  * Move focus into a region and record that it moved.

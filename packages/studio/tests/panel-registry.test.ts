@@ -44,7 +44,7 @@ function record(over: Partial<PanelRecord> = {}): PanelRecord {
     title: "Fixture",
     level: "project",
     dock: "navigator",
-    icon: "sp-icon-folder",
+    icon: "folder",
     render: () => html`<p>body</p>`,
     ...over,
   };
@@ -466,7 +466,7 @@ describe("railPanelSet", () => {
       title: "Late",
       level: "project",
       dock: "navigator",
-      icon: "sp-icon-folder",
+      icon: "folder",
       render: () => html``,
     });
     const registration = listPanels().map((p) => p.id);

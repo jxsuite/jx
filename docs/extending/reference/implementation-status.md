@@ -12,26 +12,26 @@ This page is generated from the `> **Status: …**` markers in the specification
 
 ## Specs at a glance
 
-| Spec                      | Version       | Status      | Updated    |
-| ------------------------- | ------------- | ----------- | ---------- |
-| `ai.md`                   | 0.1.12-draft  | Partial     | 2026-08-31 |
-| `collab.md`               | 0.2.5-draft   | Partial     | 2026-08-20 |
-| `compiler.md`             | 0.4.3-draft   | Partial     | 2026-09-01 |
-| `desktop.md`              | 0.4.10-draft  | Pending     | 2026-09-02 |
-| `embedding.md`            | 0.1.3         | Implemented | 2026-09-10 |
-| `extensions.md`           | 0.4.3-draft   | Partial     | 2026-08-31 |
-| `imports.md`              | 0.1.10-draft  | Partial     | 2026-08-27 |
-| `jx-markdown.md`          | 0.1.10-draft  | Partial     | 2026-08-31 |
-| `parser.md`               | 0.2.10-draft  | Partial     | 2026-08-27 |
-| `relationships.md`        | 0.1.4-draft   | Partial     | 2026-08-15 |
-| `schema.md`               | 0.4.9-draft   | Partial     | 2026-09-02 |
-| `server.md`               | 0.2.23        | Implemented | 2026-08-31 |
-| `site-architecture.md`    | 0.6.10-draft  | Partial     | 2026-08-29 |
-| `spec.md`                 | 0.6.18-draft  | Partial     | 2026-09-10 |
-| `standards.md`            | 0.1.17-draft  | Partial     | 2026-09-02 |
-| `studio-ui-guidelines.md` | 0.6.1-draft   | Partial     | 2026-09-10 |
-| `studio.md`               | 0.10.18-draft | Partial     | 2026-09-10 |
-| `ui.md`                   | 0.1.24-draft  | Partial     | 2026-09-10 |
+| Spec                      | Version      | Status      | Updated    |
+| ------------------------- | ------------ | ----------- | ---------- |
+| `ai.md`                   | 0.1.12-draft | Partial     | 2026-08-31 |
+| `collab.md`               | 0.2.5-draft  | Partial     | 2026-08-20 |
+| `compiler.md`             | 0.4.3-draft  | Partial     | 2026-09-01 |
+| `desktop.md`              | 0.4.10-draft | Pending     | 2026-09-02 |
+| `embedding.md`            | 0.1.3        | Implemented | 2026-09-10 |
+| `extensions.md`           | 0.4.4-draft  | Partial     | 2026-09-10 |
+| `imports.md`              | 0.1.10-draft | Partial     | 2026-08-27 |
+| `jx-markdown.md`          | 0.1.10-draft | Partial     | 2026-08-31 |
+| `parser.md`               | 0.2.10-draft | Partial     | 2026-08-27 |
+| `relationships.md`        | 0.1.4-draft  | Partial     | 2026-08-15 |
+| `schema.md`               | 0.4.9-draft  | Partial     | 2026-09-02 |
+| `server.md`               | 0.2.23       | Implemented | 2026-08-31 |
+| `site-architecture.md`    | 0.6.11-draft | Partial     | 2026-09-10 |
+| `spec.md`                 | 0.6.19-draft | Partial     | 2026-09-10 |
+| `standards.md`            | 0.1.17-draft | Partial     | 2026-09-02 |
+| `studio-ui-guidelines.md` | 0.8.1-draft  | Partial     | 2026-09-10 |
+| `studio.md`               | 0.11.0-draft | Partial     | 2026-09-10 |
+| `ui.md`                   | 0.1.26-draft | Partial     | 2026-09-10 |
 
 ## Sections not yet implemented
 
@@ -49,12 +49,7 @@ This page is generated from the `> **Status: …**` markers in the specification
 - `spec.md` §11.4 — Server Timing — RPC Function Boundary
 - `spec.md` §16.8 — CEM-Compatible Annotations
 - `spec.md` §21 — Evaluation Surface
-- `studio-ui-guidelines.md` §1 — Design System Foundation
-- `studio-ui-guidelines.md` §6.1 — Spectrum Components in Use
 - `studio-ui-guidelines.md` §8 — Interactive Patterns
-- `studio-ui-guidelines.md` §8.4 — Menus
-- `studio-ui-guidelines.md` §8.7 — Dialogs and Overlay Layers
-- `studio-ui-guidelines.md` §9.3 — Render Orchestration
 - `studio.md` §6.8 — The `From data…` picker addresses only what it can list
 - `studio.md` §13 — Command Registry and Context Keys
 - `studio.md` §14 — Tabs and Document Identity
@@ -63,6 +58,7 @@ This page is generated from the `> **Status: …**` markers in the specification
 - `studio.md` §20 — Internationalization Surfaces
 - `studio.md` §20.2 — Rendering Language
 - `ui.md` §1 — Overview
+- `ui.md` §3 — Authoring Model
 - `ui.md` §4 — Theme and Tokens
 - `ui.md` §5 — Element Catalogue
 - `ui.md` §5.1 — Primitives
@@ -78,10 +74,7 @@ This page is generated from the `> **Status: …**` markers in the specification
 
 - `desktop.md` §4.3 — Single File Mode
 - `site-architecture.md` §12.3 — Incremental Builds
-- `studio-ui-guidelines.md` §6.2 — Custom Components
-- `studio-ui-guidelines.md` §9.4 — Template Conventions
 - `ui.md` §2 — Principles
-- `ui.md` §3 — Authoring Model
 - `ui.md` §5.5 — Builder
 - `ui.md` §10 — Studio Integration
 

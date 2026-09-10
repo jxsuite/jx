@@ -7,7 +7,7 @@
     "part": "outline"
   },
   "style": {
-    "$description": "What `.layers-container`, `.layer-row` and their nine siblings said in `styles/panels.css`, keyed on `part` and carried here. Four Spectrum names could not come with the declarations and are the kit's instead, at the same values: `--spectrum-corner-radius-75` (2px) is `--jx-radius-xs`, `--spectrum-font-size-50` (11px) is `--jx-text-sm`, the badge's 10px is `--jx-text-xs` and the focus ring is `--jx-focus-ring`. Two colours could not: `--case-c` and `--slot-c` are declared on `<sp-theme>` rather than at `:root` (`styles/spectrum.css` says why), so each carries a `:root` token as its fallback — the badge keeps today's colour where the theme element is an ancestor and degrades to a real colour rather than to nothing on the day it is not. THE INDENT IS A VARIABLE, for the reason `panel-data.json` gives: a per-row `padding-left` declaration interns one rule per row, while `--row-indent` is written inline under its own name and read by one shared rule. AND THE ROW STATES ARE ATTRIBUTES: `selected`, `dragging` and `drop-target` were classes, and a document styles through `part` and data attributes rather than through a class (`ui.md` §3.1) — so `aria-selected` is now the only writer of the selected drawing, which is also what stops the wash and the announcement disagreeing.",
+    "$description": "What `.layers-container`, `.layer-row` and their nine siblings said in `styles/panels.css`, keyed on `part` and carried here. Four Spectrum names could not come with the declarations and are the kit's instead, at the same values: `--spectrum-corner-radius-75` (2px) is `--jx-radius-xs`, `--spectrum-font-size-50` (11px) is `--jx-text-sm`, the badge's 10px is `--jx-text-xs` and the focus ring is `--jx-focus-ring`. Two colours could not at first: `--case-c` and `--slot-c` were declared on `<sp-theme>` rather than at `:root`, so each carried a `:root` token as its fallback — the badge keeping today's colour where the theme element was an ancestor and degrading to a real colour rather than to nothing on the day it was not. That day came with Spectrum's removal, and the fallbacks are gone with it: both names are declared at `:root` in `styles/tokens.json` now, at exactly the values written here as their fallbacks (`--accent` and `--success`), in the same alias idiom `--switch-c` already used. A `var()` fallback that can no longer be reached is not a safety net, it is a second answer nobody will keep in step. THE INDENT IS A VARIABLE, for the reason `panel-data.json` gives: a per-row `padding-left` declaration interns one rule per row, while `--row-indent` is written inline under its own name and read by one shared rule. AND THE ROW STATES ARE ATTRIBUTES: `selected`, `dragging` and `drop-target` were classes, and a document styles through `part` and data attributes rather than through a class (`ui.md` §3.1) — so `aria-selected` is now the only writer of the selected drawing, which is also what stops the wash and the announcement disagreeing.",
     "display": "block",
     "position": "relative",
     "fontFamily": "var(--jx-font-sans)",
@@ -91,12 +91,12 @@
     },
     "& [part=\"badge\"][data-kind=\"case\"]": {
       "maxWidth": "60px",
-      "background": "var(--case-c, var(--accent))",
+      "background": "var(--case-c)",
       "fontSize": "9px",
       "fontStyle": "italic"
     },
     "& [part=\"badge\"][data-kind=\"slot\"]": {
-      "background": "var(--slot-c, var(--success))"
+      "background": "var(--slot-c)"
     },
     "& [part=\"badge\"][data-kind=\"text\"]": {
       "$description": "The one badge that names no tag, so it is drawn in the neutral rather than in the tag colour — and on the page background rather than on `--accent-fg`, which is white and would sit on a light grey at a contrast nobody can read in the light theme.",

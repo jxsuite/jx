@@ -197,8 +197,11 @@ async function search(value: string): Promise<void> {
 beforeEach(() => {
   closePreferences();
   localStorage.clear();
+  /* The three overlay layers and nothing else. There was an `sp-theme` element above them, because
+     the chrome's tokens were declared ON it and reached only its descendants; the kit declares them
+     at `:root` and the theme is a `data-theme` stamp on `<html>`, so the wrapper is not part of the
+     fixture any more. Verified dead before deleting: all 38 tests here pass identically without it. */
   document.body.innerHTML = `
-    <sp-theme color="dark"></sp-theme>
     <div id="layer-popover"></div><div id="layer-modal"></div><div id="layer-dialog"></div>
   `;
   initLayers();
@@ -297,7 +300,11 @@ describe("opening and closing", () => {
 });
 
 describe("Appearance", () => {
-  test("renders the theme the shell record holds, and writing it paints <sp-theme>", async () => {
+  /* The title said "paints `sp-theme`" and the body never asserted it. That element is gone and
+     `applyChromeTheme()` has one channel left — the `data-theme` stamp on `<html>`, which
+     `chrome-theme.test.ts` owns. What this test actually covers is the SHEET: the pressed state
+     repaints so the button does not lie about the theme the record now holds. */
+  test("renders the theme the shell record holds, and choosing one repaints the row", async () => {
     void openPreferences("appearance");
     await flush(3);
     const buttons = dAll('[part="theme"]');

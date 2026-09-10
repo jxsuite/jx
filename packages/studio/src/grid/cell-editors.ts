@@ -49,6 +49,11 @@
  * lifetime problem is left, which needs a teardown hook Tabulator does not have.
  */
 import { html, render } from "lit-html";
+/* The two cell editors below are re-rendered while they are open — the pill editor calls its own
+   `doRender()` on every Enter — and an `<input>` moves `value`/`checked` itself without reflecting
+   either. A plain property binding is dirty-checked against what lit last committed, so the write
+   would be skipped exactly when the reader had changed it. `check-lit-conventions.ts` rule 1. */
+import { live } from "lit-html/directives/live.js";
 import { cellToText, coerceCellInput } from "./schema-columns";
 import type { GridCellValue, GridColumn } from "./grid-source";
 
@@ -94,7 +99,7 @@ function inputEditor(makeHost: HostFactory, column: GridColumn, inputType: strin
       html`<input
         class="jx-grid-input"
         type=${inputType}
-        .value=${initial}
+        .value=${live(initial)}
         @keydown=${(e: KeyboardEvent) => {
           if (e.key === "Enter") {
             commit((e.target as HTMLInputElement).value);
@@ -123,7 +128,7 @@ function checkboxEditor(makeHost: HostFactory): CellEditorFn {
       html`<input
         class="jx-grid-checkbox"
         type="checkbox"
-        .checked=${cell.getValue() === true}
+        .checked=${live(cell.getValue() === true)}
         @change=${(e: Event) => {
           if (!done) {
             done = true;

@@ -65,12 +65,21 @@ export function initLayers() {
 /**
  * Anything in the modal/dialog layers that paints a viewport-wide underlay over the app.
  *
- * The two Spectrum halves are kept deliberately even though nothing in this package renders one any
- * more: the selector is a question about the LIVE DOM ("whatever blocks the mouse"), so it costs
- * nothing to keep answering it for an element an extension or a not-yet-converted surface could
- * still put in a layer, and dropping them would be a silent narrowing of a safety rule.
+ * It read `jx-dialog[data-open], sp-dialog-wrapper[open], sp-underlay[open]`, and the two Spectrum
+ * halves were kept deliberately: the selector is a question about the LIVE DOM ("whatever blocks
+ * the mouse"), so it cost nothing to keep answering it for an element a not-yet-converted surface
+ * could still put in a layer. With Spectrum unregistered that argument inverts. `sp-underlay` is no
+ * longer an element anybody can construct — it parses as an `HTMLUnknownElement`, which paints
+ * nothing and blocks nothing — so a match on it would be a FALSE positive: the shortcuts would
+ * stand down for a scrim that is not there, and ⌘S would stop working under a stray tag.
+ *
+ * `dialog[open]` replaces both, and it is the substrate rather than a second vocabulary:
+ * `jx-dialog` renders a native `<dialog>` and opens it with `showModal()`, so the platform's top
+ * layer and `::backdrop` are what actually blocks the mouse. The kit host is kept beside it because
+ * it is the thing this package mounts and the attribute it mirrors is the one a test can set; a
+ * surface that ever opens a bare `<dialog>` in a layer is answered by the second half.
  */
-const UNDERLAID = "jx-dialog[data-open], sp-dialog-wrapper[open], sp-underlay[open]";
+const UNDERLAID = "jx-dialog[data-open], dialog[open]";
 
 /**
  * Whether a surface with an underlay is up — a dialog from {@link showConfirmDialog} and its two
@@ -290,7 +299,7 @@ export interface PromptDialogOptions {
 }
 
 /**
- * Show a single-field text-entry dialog — the Spectrum replacement for `window.prompt()`.
+ * Show a single-field text-entry dialog — the in-app replacement for `window.prompt()`.
  *
  * Resolves the trimmed value, or `null` when cancelled/dismissed. Confirming with an invalid value
  * keeps the dialog open and surfaces the validation message as negative help text.

@@ -24,6 +24,8 @@ import * as swatchGroup from "./behaviors/swatch-group.ts";
 import * as tabs from "./behaviors/tabs.ts";
 import * as tooltip from "./behaviors/tooltip.ts";
 import * as textfield from "./behaviors/textfield.ts";
+import * as toast from "./behaviors/toast.ts";
+import * as toastHost from "./behaviors/toast-host.ts";
 import { documents } from "./documents.ts";
 import * as icons from "./icons.ts";
 import { installTheme } from "./theme.ts";
@@ -58,6 +60,8 @@ export const KIT_MODULES: Readonly<Record<string, Record<string, unknown>>> = {
   "jx-ui:/behaviors/tabs.ts": tabs,
   "jx-ui:/behaviors/tooltip.ts": tooltip,
   "jx-ui:/behaviors/textfield.ts": textfield,
+  "jx-ui:/behaviors/toast.ts": toast,
+  "jx-ui:/behaviors/toast-host.ts": toastHost,
   "jx-ui:/color.ts": color,
   "jx-ui:/icons.ts": icons,
 };

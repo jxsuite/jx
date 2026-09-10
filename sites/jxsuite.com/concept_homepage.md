@@ -68,7 +68,7 @@ A grid of four cards. This is where the "we are everything" claim gets concrete 
 
 **Subhead:** Most stacks are five products glued together. Jx is one model, expressed four ways.
 
-**Card 1 — Jx Studio** **THE VISUAL IDE** Design, edit, and ship from one canvas. Responsive design with real breakpoints. WYSIWYG markdown editing. Inline scripting. Schema-driven content forms. Component library management. Built on Adobe Spectrum, runs in your browser or as a desktop app.
+**Card 1 — Jx Studio** **THE VISUAL IDE** Design, edit, and ship from one canvas. Responsive design with real breakpoints. WYSIWYG markdown editing. Inline scripting. Schema-driven content forms. Component library management. Built on the Jx UI kit, runs in your browser or as a desktop app.
 
 **Card 2 — File-based CMS** **CONTENT WITHOUT A DATABASE** Content collections live as Markdown, JSON, and CSV files on disk. Schema-validated. Queryable. Git-versioned. No backend to maintain, no admin panel to secure, no migration anxiety. Your writers edit in any text editor. Your editors edit in Studio.
 

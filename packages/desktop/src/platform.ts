@@ -744,21 +744,56 @@ export function createDesktopPlatform() {
   return platform satisfies StudioPlatform;
 }
 
+/**
+ * The "an update is ready" notice, in the kit rather than in Spectrum.
+ *
+ * `jx-toast-host`, `jx-toast` and `jx-button` are `@jxsuite/ui` elements, and this webview has them
+ * because it hosts the studio bundle, whose `registerKit()` defines the kit into this document.
+ * Nothing here imports the kit and nothing needs to: an un-upgraded custom element is an ordinary
+ * unknown element that upgrades the moment its definition arrives, so a notice raised before the
+ * studio bundle has finished loading still draws itself when it does.
+ *
+ * That is the same relationship the `<sp-toast>` this replaces had with Spectrum's registry — and
+ * it is why `platform.test.ts` holds these three tag names to the kit's own `KIT_TAGS`. The
+ * Spectrum version was written against a registry no manifest in this package declared, so a rename
+ * on the other side would have drawn nothing here with nothing going red.
+ *
+ * **The notice is sticky and it does not claim the stack's key.** `timeout="0"` because an update
+ * the reader has not answered is not an outcome that may retire itself, and `hotkey=""` because
+ * Studio's own toast stack lives in this same document and owns `F8`: two hosts listening for one
+ * key on one document would each move focus to their own first control, and the reader's press
+ * would land wherever the last listener ran. Nothing is lost by declining it, because a sticky
+ * toast cannot expire before a reader reaches it. `live="polite"` is kept, unlike Studio's stack —
+ * that one is silent because `services/notify.ts` announces every record through its own announcer,
+ * and this notice is not one of those records, so this host is the only thing that can speak it.
+ *
+ * @param version The version that has been downloaded and is waiting for a restart.
+ * @param rpc The webview's RPC handle, for the restart itself.
+ */
 function showUpdateToast(version: string, rpc: { request: { updaterApplyUpdate: () => unknown } }) {
   const container = document.createElement("div");
   container.className = "update-toast-container";
+  /* A toast that retires itself takes its wrapper with it. The element writes its own `open` back
+     to false when the reader dismisses it or uses the recovery control, and the wrapper would
+     otherwise sit in the body for the rest of the session — one more per update message. `close` is
+     dispatched only when the ELEMENT decided (ui.md §5.2), so this can never answer a removal this
+     code performed itself. */
+  const onClose = () => container.remove();
   litRender(
     html`
-      <sp-toast open variant="info">
-        Version ${version} is ready
-        <sp-button
-          slot="action"
-          variant="overBackground"
-          @click=${() => rpc.request.updaterApplyUpdate()}
-        >
-          Restart to update
-        </sp-button>
-      </sp-toast>
+      <jx-toast-host label="Software updates" live="polite" hotkey="" @close=${onClose}>
+        <jx-toast open variant="info" timeout="0" dismiss-label="Dismiss update notice">
+          Version ${version} is ready
+          <jx-button
+            slot="action"
+            variant="accent"
+            size="sm"
+            @click=${() => rpc.request.updaterApplyUpdate()}
+          >
+            Restart to update
+          </jx-button>
+        </jx-toast>
+      </jx-toast-host>
     `,
     container,
   );

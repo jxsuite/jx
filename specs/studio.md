@@ -2,7 +2,7 @@
 
 ## Visual Builder for Jx Documents
 
-**Version:** 0.10.18-draft\
+**Version:** 0.11.0-draft\
 **Status:** Partial\
 **Updated:** 2026-09-10\
 **License:** MIT
@@ -353,7 +353,7 @@ Only applicable buttons render for each row's position in the tree. Clicking a m
 
 **§5.3 and §5.4 are one panel — Insert (`insert`).** They were two rail tabs listing two kinds of thing you drag onto the canvas, and the question a user has ("what can I put here?") does not distinguish them. The sections stay separate because the two catalogues have different sources and different rules; the surface does not.
 
-HTML element palette organized by category using Spectrum accordions (`sp-accordion` with `allow-multiple`). Each element displays as a full-width card with:
+HTML element palette organized by category using the kit's accordion (`jx-accordion` with `multiple`). Each element displays as a full-width card with:
 
 - **Live preview**: Actual DOM element rendered at natural browser sizes
 - **Tag label**: Element tag name below the preview
@@ -377,7 +377,7 @@ Git-integrated source control panel providing commit, staging, branch management
 
 #### Layout (top to bottom)
 
-1. **Toolbar** — Branch picker (`sp-picker`, quiet) + action button group (Fetch, Pull, Push, Refresh)
+1. **Toolbar** — Branch picker (`jx-select`, quiet) + action button group (Fetch, Pull, Push, Refresh)
 2. **Sync indicator** — Shows commits ahead/behind remote when applicable
 3. **Commit area** — Multi-line text field with `Ctrl+Enter` to commit + Commit button
 4. **Staged Changes** — Section with file list and per-file Unstage button; section header has Unstage All button
@@ -481,7 +481,7 @@ When a Jx component is selected, the property panel renders its declared `state`
 1. `format` → format-specific control (see table)
 2. `type === "boolean"` → checkbox
 3. `type === "number"` → number field
-4. `type` has enum/union → combobox (`jx-value-selector`)
+4. `type` has enum/union → select (`jx-select`)
 5. Fallback → text field
 
 | `format`  | Control                                                          |
@@ -494,7 +494,7 @@ Each prop's value source is chosen from the shared ladder (§6.6) rather than a 
 
 **A draft belongs to a node.** The in-progress text of a field that has not been committed yet is keyed by node path AND field name. Keyed by field name alone — as the Element rows were — every element shared one draft slot per field: typing a class name, clicking a sibling before blurring, and blurring there committed your text to the wrong element.
 
-**An event name is typed, not picked.** The Logic tab's event rows use the same `jx-value-selector` combobox: the ten common `on*` names are SUGGESTIONS, and any handler name may be entered — a closed list of ten made `ondragover`, `onpointerdown`, `onwheel` and every custom event a component emits unbindable from the Inspector. The field is free-form, not unchecked: a name that is not an `on*` handler is refused, because the list that used to constrain it is gone.
+**An event name is typed, not picked.** The Logic tab's event rows open the kit menu on the name: what this element already binds, the ten common `on*` names as SUGGESTIONS, and **Other name…**, which is the prompt dialog of §8.7. Any handler name may be entered — a closed list of ten made `ondragover`, `onpointerdown`, `onwheel` and every custom event a component emits unbindable from the Inspector. The field is free-form, not unchecked: a name that is not an `on*` handler is refused on the way out of the prompt, because the list that used to constrain it is gone.
 
 ### 6.2 Style Sidebar (Metadata-Driven)
 
@@ -565,12 +565,12 @@ Organized, metadata-driven style sections. Metadata loaded from `css-meta.json` 
 
 #### Color Picker
 
-Inline color editing via Spectrum color components (`sp-color-area`, `sp-color-slider`, `sp-swatch`, `sp-textfield`). Features:
+Inline color editing through the kit's `jx-color-field` (`ui.md` §5.6), drawn by the Style and Content tabs in their own documents. Features:
 
-- Swatch button opens popover with color area + hue slider + hex text field
+- Swatch button opens a popover with a colour area, a hue slider and a hex text field
 - All three controls stay in sync — area, slider, and text field update each other in real time
 - Hex values always `#`-prefixed for valid CSS
-- Right panel swatch and field update live during color picking (bypasses focus-guard optimization in `_update`)
+- The project's NAMED colours are offered beside the free picker, and choosing one commits the reference (`var(--color-accent)`) rather than the literal behind it: committing the literal would resolve the token at the moment of the click and quietly opt that declaration out of the palette for ever. `src/ui/color-selector.ts` is that projection and nothing else — the control it used to be was the last Spectrum surface in Studio
 
 #### Font Family (Combobox with Modern Font Stacks)
 
@@ -597,29 +597,18 @@ The `fontFamily` property uses the `jx-styled-combobox` component — a dual-mod
 
 **Free-text entry:** Typing a plain font family string (e.g. "serif", "Arial, sans-serif") sets the value directly — no `var()` wrapping.
 
-**Mode switching:** When the current value matches a dropdown option (e.g. a `--font-*` variable name), the component renders as a native `sp-picker`. Selecting "—" clears the value and returns to combobox mode.
+**Mode switching:** When the current value matches a dropdown option (e.g. a `--font-*` variable name), the row renders as a `jx-select`. Selecting "—" clears the value and returns to combobox mode.
 
-#### `jx-styled-combobox` Component
+#### The dual-mode row
 
-A custom LitElement (no shadow DOM) used across all dual-mode style inputs. Replaces the former `sp-combobox` (which stripped inline styling) and the ad-hoc manual overlay pattern.
+A row that must accept both a fixed option and arbitrary text is a **composition**, not an element: a `jx-textfield` beside a button that opens a `jx-menu` of the styled options, drawn by the surface that wants it.
 
-**Properties:**
+It was a custom `LitElement` — `jx-styled-combobox`, and `jx-value-selector` behind it — introduced because `sp-combobox` stripped the inline styling each option needs to preview its own typeface. Both classes are deleted. The reason is worth keeping rather than the code: a control whose two modes differ in what they COMMIT, not in what they look like, is two widgets a surface already has, and wrapping them in a third element only moved the width-matching, the overlay placement and the mode switch somewhere a test could not reach. The kit's menu places and clamps itself, so the width-matching hack that replicated `sp-picker`'s internal `containerStyles` went with the class.
 
-- `value` (String) — current value
-- `placeholder` (String) — placeholder text for combobox mode
-- `size` (String) — Spectrum sizing token (e.g. `"s"`)
-- `options` (Array) — `[{ value, label, style? }, { divider: true }, ...]`
+- **Picker mode** (`value` matches an option) — a `jx-select` of the styled options plus a "—" clear row
+- **Combobox mode** (`value` is empty or custom) — the field, with the menu on its trailing button
 
-**Events:** `change` (on menu selection), `input` (on textfield typing)
-
-**Modes:**
-
-- **Picker mode** (`value` matches an option) — renders `sp-picker` with styled items + "—" clear option
-- **Combobox mode** (`value` is empty/custom) — renders `sp-textfield` + `sp-picker-button` + `sp-overlay` + `sp-popover` + `sp-menu` with styled items
-
-**Width matching:** The combobox popover width matches the trigger width via `@sp-opened` handler, replicating `sp-picker`'s internal `containerStyles` behavior.
-
-**Used by:** `renderKeywordInput` (fontWeight, fontStyle, fontVariant, textTransform, textDecoration), `renderComboboxInput` (fontFamily), `renderSelectInput` (enum properties).
+**Used by:** the Style tab's keyword rows (fontWeight, fontStyle, fontVariant, textTransform, textDecoration), its fontFamily row, and its enum rows — each drawing the pair in `style-panel.json` rather than through a shared class.
 
 #### Conditional Display (`$show`)
 
@@ -920,7 +909,7 @@ The studio tracks:
 
 ### 9.1.1 Create, Rename, Delete
 
-Every name the user supplies is collected through the Spectrum dialogs in §8.7 of studio-ui-guidelines.md — no native browser prompts:
+Every name the user supplies is collected through the dialog flows in §8.7 of studio-ui-guidelines.md — no native browser prompts:
 
 | Action                                                        | Dialog                                                                                                                          |
 | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
@@ -1204,11 +1193,10 @@ Where the built site is browsable is unchanged: a loopback origin rooted AT the 
 | `@jxsuite/runtime`                  | Canvas rendering, and the chrome's surface documents (`embedding.md`) |
 | `@jxsuite/ui`                       | The UI kit: chrome elements, theme tokens, icons (`ui.md`)            |
 | `@atlaskit/pragmatic-drag-and-drop` | Layer tree drag-and-drop                                              |
-| `lit-html`                          | Template rendering for the surfaces not yet migrated                  |
+| `lit-html`                          | The overlay layers, the canvas realm and the grid's cell editors      |
 | `monaco-editor`                     | Code editor (loaded on demand — §11.1)                                |
 | `yaml`                              | YAML frontmatter parsing                                              |
 | `unified` / `remark-*`              | Markdown conversion pipeline                                          |
-| `@spectrum-web-components/*` (15+)  | Adobe Spectrum UI components, for the surfaces not yet migrated       |
 
 ### 11.1 Bundle Layout
 
@@ -1391,11 +1379,13 @@ One reactive record (`commands/context.ts`), derived from the reactive `shell` r
 
 All four run in CI, and `createCommandRegistry` applies the placement check again at registration so a violation cannot reach a running app either.
 
-**An icon is checked because nothing else can see it — and there are TWO key spaces, which fail differently.** A TAG written in a template (`<sp-icon-x>`) resolves through `customElements`, and an element the browser has never heard of is an `HTMLUnknownElement`: no shadow root, no content, no warning, an empty box the size of the missing glyph. The type checker is silent (the tag is a string in a template), and happy-dom is as content to render nothing as Chrome is, so a test asserting the element is present passes. Eleven shipped that way. Three named elements Spectrum has no such thing as — `sp-icon-rail-left-open`/`-close`, written by symmetry with the right-hand pair, which exists.
+**An icon is checked because nothing else can see it — and there are TWO key spaces, which fail differently.** A TAG written in a surface document (`"tagName": "jx-icon"`) resolves through `customElements`, and an element the browser has never heard of is an `HTMLUnknownElement`: no shadow root, no content, no warning, an empty box the size of the missing glyph. The type checker is silent (the tag is a string in a document), and happy-dom is as content to render nothing as Chrome is, so a test asserting the element is present passes. Eleven shipped that way while the tags were Spectrum's. Three named elements the library had no such thing as — `sp-icon-rail-left-open`/`-close`, written by symmetry with the right-hand pair, which existed.
 
-A KEY on a record (`icon: "sp-icon-x"`) is **not a tag**. It resolves through a map, and never reaches `customElements` at all. A panel record's key goes to `activity-bar.ts`'s `tabIcon()`, whose tail is `return fn ? fn(size) : nothing`: a key with no row is not a missing element, it is zero nodes, and registering the element does nothing because the tag is never constructed.
+A KEY on a record (`icon: "folder"`) is **not a tag**. It resolves through the kit's icon MANIFEST, and never reaches `customElements` at all. A panel record's key is drawn by the rail through `jx-icon`: a key with no glyph is not a missing element, it is zero nodes above the label and one console warning, and defining an element does nothing because the tag is never constructed.
 
-**Conflating the two is not hypothetical.** Both spaces are spelled `sp-icon-*`, and one of the map's own rows — `sp-icon-git-branch` — is not a Spectrum element but a hand-drawn inline `<svg>`, because the workflow set ships no Git family. Reading that key as a tag says a working, pixel-perfect glyph is broken; "correcting" it to a real Spectrum name replaced it with a key nothing resolved, and a checker that asked only about registration passed the result. So keys are checked against their resolver, and the resolver that is enforced is the one whose miss is SILENT: `commandIcon()` falls back to the command's title and degrades visibly, `tabIcon()` falls back to nothing. A dead ROW is checked too — the orphan left behind by that regression was still being exercised by a test, which is how the suite went on proving a glyph rendered while the shipped panel pointed elsewhere.
+**Conflating the two is not hypothetical.** Both spaces were spelled `sp-icon-*`, and one of the map's own rows — `sp-icon-git-branch` — was not a Spectrum element but a hand-drawn inline `<svg>`, because the workflow set shipped no Git family. Reading that key as a tag said a working, pixel-perfect glyph was broken; "correcting" it to a real Spectrum name replaced it with a key nothing resolved, and a checker that asked only about registration passed the result. The two spaces no longer share a spelling — a tag is `jx-*` and a key is a bare glyph name — which removes the trap and not the rule: keys are still checked against their resolver, and the resolver that is enforced is the one whose miss is SILENT. `commandIcon()` falls back to the command's title and degrades visibly; a rail key falls back to nothing.
+
+**One of the two rules that used to sit here went with Spectrum, and its absence is a decision.** A registered element no template wrote was a finding, because Spectrum's registry was hand-written: a row named a tag, a separate import named a class, and the two could disagree in ways nothing type-checked. The kit defines one element per component document it ships, so there is no second list to fall out of step with the first, and asking this package to ratchet `@jxsuite/ui`'s inventory would be asking it about somebody else's file.
 
 **The scripting surface is a rendering, and these three rules are what make that true.** `window.__jxAutomation` (installed only under `?automation=1`) exposes `run(id, args)`, `seed(id, args)` and a read-only `probe`, and nothing else.
 
@@ -1833,6 +1823,8 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.11.0-draft** (2026-09-10) — Adobe Spectrum is removed: the dependency row goes, the colour picker is jx-color-field, the dual-mode row is a composition rather than a class, and check-icons keeps one of its two element rules.
+- **0.10.19-draft** (2026-09-10) — The Props widget's enum control is jx-select and the Logic tab's event name is the kit menu plus the prompt dialog; both named jx-value-selector, which no surface had rendered since its callers converted.
 - **0.10.18-draft** (2026-09-10) — The pane tab strip is a real tablist: one stop in the tab order, arrows with wrap, Home and End, Delete closing a document, and its three marks as slots on jx-tab (§14.4).
 - **0.10.17-draft** (2026-09-09) — The Logic tab's read-only CSS Properties list is drawn by surfaces/logic-panel.json; renderStaticKvRow is gone (§16.5).
 - **0.10.16-draft** (2026-09-02) — the overlay lints take a custom-element scope (16.6); the canvas de-link reaches a stamped instance's own internals (4.2.2).
@@ -1960,4 +1952,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_`@jxsuite/studio` Specification v0.10.18-draft_
+_`@jxsuite/studio` Specification v0.11.0-draft_

@@ -261,22 +261,29 @@ describe("view.setNavigator / view.setRightPanel / view.setAssistant", () => {
 });
 
 describe("view.setTheme", () => {
-  test("writes the record, persists it and paints <sp-theme>", () => {
-    const theme = document.createElement("sp-theme");
-    theme.setAttribute("color", "dark");
-    document.body.append(theme);
+  test("writes the record, persists it and stamps the scheme on the document", () => {
+    /* The stamp is what it asserted on the element it replaced. There were TWO channels — this
+       attribute and a `color` on the `sp-theme` element the frame was wrapped in — and a theme
+       could half-apply because of it; the second one is gone with Spectrum, so this is the whole
+       projection. */
+    /* Read through a function: a bare `delete document.documentElement.dataset.theme` narrows the
+       property to `undefined` for the rest of the block, and every assertion below it would then be
+       type-checked against a value the test is about to change. */
+    const stamped = (): string | undefined => document.documentElement.dataset.theme;
+    delete document.documentElement.dataset.theme;
     mountShell();
 
     void registry.run("view.setTheme", { color: "light" });
     expect(shell.theme).toBe("light");
-    expect(theme.getAttribute("color")).toBe("light");
+    expect(stamped()).toBe("light");
     expect(localStorage.getItem("jx-studio-theme")).toBe("light");
     unmountShell();
   });
 
-  test("applies without an <sp-theme> present rather than throwing", () => {
+  test("applies with no frame mounted at all rather than throwing", () => {
     setChromeTheme("light");
     expect(() => applyChromeTheme()).not.toThrow();
+    expect(document.documentElement.dataset.theme).toBe("light");
   });
 
   test("setting the theme it already has is a no-op that still persists nothing new", () => {

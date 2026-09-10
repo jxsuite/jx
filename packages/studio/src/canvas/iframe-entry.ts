@@ -394,7 +394,7 @@ export function startCanvasIframe(opts: {
     getMode: () => currentMode,
     getShadowDoc: () => shadowDoc,
   });
-  // Bridge the engine's slash menu to the parent's Spectrum menu (show/nav/select over the channel).
+  // Bridge the engine's slash menu to the parent's own menu (show/nav/select over the channel).
   const stopSlashBridge = startIframeSlashBridge(channel, container.ownerDocument);
   // Auto-recover canvas images that 404 on a cold first render (component <img>s created in
   // ConnectedCallback fire late, before the loopback server is warm). Re-fires the failed request a

@@ -5,13 +5,23 @@
  * `classMap` and `ref` throughout. What it lacked was a rule about where the template's authority
  * ends, and both failures this file checks shipped because of that:
  *
- * - A Spectrum control bound by ATTRIBUTE. `sp-textfield`, `sp-picker` and friends do not reflect
- *   `value` (nor `sp-accordion-item` its `open`), and they mutate that property themselves when the
- *   reader touches them. So lit commits an attribute, the component moves the property, and the
- *   next render carrying the value lit already wrote is dirty-checked away — the write it needed to
- *   make is the one it skips. `.value=${live(x)}` compares against the live property and cannot be
- *   fooled. The bug is invisible: nothing throws, the control simply keeps a value the document
- *   does not have.
+ * - A control that owns its own state, bound by ATTRIBUTE or by a plain property. A control the
+ *   reader can type into or click does not reflect `value` (nor a `<details>` its `open`), and it
+ *   moves that property itself. So lit commits, the control moves the property, and the next render
+ *   carrying the value lit already wrote is dirty-checked away — the write it needed to make is the
+ *   one it skips. `.value=${live(x)}` compares against the LIVE property and cannot be fooled. The
+ *   bug is invisible: nothing throws, the control simply keeps a value the document does not have.
+ *
+ *   **The tag list is the native controls now, and that is the rule outliving its first subject.** It
+ *   was `sp-textfield|picker|search|number-field|combobox|checkbox|switch|slider|radio|
+ *   accordion-item` — Adobe Spectrum's self-mutating set — and every one of those is gone. Nothing
+ *   about the hazard was Spectrum's: it is why lit ships `live()` at all, and `<input>`, `<select>`
+ *   and `<textarea>` have it by specification. `grid/cell-editors.ts` still renders all three from
+ *   lit templates — it is the one module left that does — so the rule has a live subject rather than
+ *   a re-pointed name, and re-aiming it turned up two real sites there on the first run. It
+ *   deliberately does NOT cover the kit's `jx-*` controls: those are only ever written by a Jx
+ *   document, `check-surface-purity.ts` rule 1 refuses one inside a lit template, and a document's
+ *   binding is not dirty-checked against what lit last committed.
  * - A module reaching a node it renders itself, by selector. The node is real until the next render
  *   replaces it, and then the handle is detached or the query finds a sibling pane's copy instead.
  *   `packages/studio/src/surfaces/target-line.ts` states the rule in its own header — "a
@@ -36,15 +46,13 @@ import { join } from "node:path";
 
 const SRC = join(import.meta.dir, "..", "src");
 
-// ─── Rule 1: Spectrum controls bind their self-mutated state as a live property ──────────────
+// ─── Rule 1: a self-mutating control binds its own state as a live property ──────────────────
 
 /**
- * Spectrum elements that own a piece of state the reader can change directly. The list is not
- * "every SWC element" — it is the ones whose own interaction writes a property lit also writes.
+ * Elements that own a piece of state the reader can change directly. The list is not "every form
+ * element" — it is the ones whose own interaction writes a property lit also writes.
  */
-const SWC_SELF_MUTATING =
-  /sp-(?:picker|textfield|textarea|search|number-field|combobox|checkbox|switch|slider|radio|accordion-item)/
-    .source;
+const SELF_MUTATING = /(?:input|select|textarea|details)/.source;
 
 /** The properties those elements move behind lit's back. */
 const GUARDED_PROPS = ["value", "checked", "open"] as const;
@@ -84,10 +92,14 @@ function readExpression(source: string, i: number): { expr: string; end: number 
   return null;
 }
 
-/** The opening-tag text of every self-mutating Spectrum element in `source`, with its line. */
-function spectrumOpenTags(source: string): { tag: string; attrs: string; line: number }[] {
+/** The opening-tag text of every self-mutating element in `source`, with its line. */
+export function selfMutatingOpenTags(source: string): {
+  tag: string;
+  attrs: string;
+  line: number;
+}[] {
   const out: { tag: string; attrs: string; line: number }[] = [];
-  for (const m of source.matchAll(new RegExp(String.raw`<(${SWC_SELF_MUTATING})\b`, "g"))) {
+  for (const m of source.matchAll(new RegExp(String.raw`<(${SELF_MUTATING})\b`, "g"))) {
     let k = m.index + m[0].length;
     let depth = 0;
     while (k < source.length) {
@@ -111,15 +123,15 @@ function spectrumOpenTags(source: string): { tag: string; attrs: string; line: n
 }
 
 /**
- * Bindings on a self-mutating Spectrum control that lit cannot be trusted to re-commit: an
- * attribute binding, or a property binding without {@link live}.
+ * Bindings on a self-mutating control that lit cannot be trusted to re-commit: an attribute
+ * binding, or a property binding without {@link live}.
  *
- * A constant (`.open=${false}`) is not a finding — there is nothing for the component to diverge
+ * A constant (`.open=${false}`) is not a finding — there is nothing for the control to diverge
  * from.
  */
-export function unguardedSpectrumBindings(file: string, source: string): Finding[] {
+export function unguardedLiveBindings(file: string, source: string): Finding[] {
   const found: Finding[] = [];
-  for (const { tag, attrs, line } of spectrumOpenTags(source)) {
+  for (const { tag, attrs, line } of selfMutatingOpenTags(source)) {
     for (const prop of GUARDED_PROPS) {
       const asProperty = new RegExp(String.raw`\.` + prop + String.raw`=(?=\$\{)`).exec(attrs);
       const asAttribute = new RegExp(String.raw`(?<![.\w])\??` + prop + String.raw`=(?=\$\{)`).exec(
@@ -212,6 +224,47 @@ export function selfQueries(file: string, source: string): Finding[] {
  * modules run in another realm that lit does not reach at all. Applying a template rule to them
  * would not improve them, and leaving them merely unmentioned would read as an oversight.
  */
+/**
+ * The modules that may still WRITE a lit template, each with the reason it is not a document.
+ *
+ * §9.3 says lit is "named and bounded" now. It was prose: nothing carried the names, so the
+ * sentence could go stale without a gate noticing, and an adversarial pass found exactly that. This
+ * is the list, and it only ratchets DOWN — a module that stops drawing must leave it, and a module
+ * that starts drawing has to argue for an entry.
+ *
+ * An `import { nothing }` is NOT drawing: a panel record whose `render` returns the sentinel and
+ * whose `afterRender` mounts a document is the seam, not a survival. Only `html`-tagged templates
+ * count, which is what {@link litTemplateCount} measures.
+ */
+export const LIT_TEMPLATE_AUTHORS: Record<string, string> = {
+  "grid/cell-editors.ts":
+    "renders INTO Tabulator's cells. `Edit.edit()` appends the editor and reads its own subtree in " +
+    "the same synchronous statement, so a mount that resolves a microtask later is always too late",
+  "panels/activity-panel.ts":
+    "two empty containers for two mounted documents — the panel seam itself, drawn once",
+  "format/convert-file.ts":
+    "a rich confirm BODY, which §9.4 sanctions as an island: `showConfirmDialog`'s `message` takes " +
+    'a template and the dialog document renders it into `[part="island"]`. It reaches lit through ' +
+    'a DYNAMIC `await import("lit-html")`, which is why every static inventory of this migration ' +
+    "was one module short until this rule existed",
+  "shell/tree.ts":
+    "the four #layer-* hosts. Their rules are a LINKED stylesheet because the frame must be laid " +
+    "out by the first paint, which is why surfaces/shell.json carries no style key",
+};
+
+/**
+ * How many `html`-tagged templates a module writes. An imported `nothing` is not one.
+ *
+ * Matched by the POSITION a tagged template can occupy — after an operator, a bracket, a comma or
+ * whitespace — rather than by "not a word character before it". Prose is full of near misses that
+ * the loose form counts: `` `index.html` `` ends in the same two characters a template starts with,
+ * `lit-html` does too, and a docstring listing `` `css` / `html` / `json` `` does it a third way.
+ * All eleven of those read as lit authors before this was tightened.
+ */
+export function litTemplateCount(source: string): number {
+  return (source.match(/(?:^|[\s(,=[{:?>&|!;])html`/g) ?? []).length;
+}
+
 export const EXCLUDED: Record<string, string> = {
   "canvas/canvas-patcher.ts":
     "classifies document ops so that nothing re-renders; contains no DOM and no markup",
@@ -256,7 +309,7 @@ function isExcluded(file: string): boolean {
  * one-shot dialog has no re-render for the dirty-check to skip. Inline comments mark the files
  * where there is something more specific to say.
  */
-export const SPECTRUM_DEBT: Record<string, number> = {
+export const LIVE_BINDING_DEBT: Record<string, number> = {
   /* Empty, and that is the ratchet arriving at zero rather than a list waiting to be filled. The
      last entry was the colour row's `<sp-picker>` of tokens, held open because `specs/ui.md` §5.6
      was Pending; §5.6 landed, the row is a `jx-color-field` in the Style tab's own document, and
@@ -273,53 +326,65 @@ export const SPECTRUM_DEBT: Record<string, number> = {
  * to; it objects to re-finding the node by selector every time instead of holding it.
  */
 export const SELF_QUERY_DEBT: Record<string, number> = {
-  /* `isColorPopoverOpen()` derives modality from the live DOM, document-wide, and right-panel
-     calls it as a blockWhile on every scheduled render. State read back out of markup. */
-  "ui/value-selector.ts": 1,
+  /* Empty, and — as with LIVE_BINDING_DEBT above — that is the ratchet arriving at zero rather than a
+     list waiting to be filled. The last entry was `ui/value-selector.ts`, whose `_setPopoverWidth`
+     re-found its own `sp-popover` by selector on every open to copy the trigger's width onto it.
+     The dual-mode combobox it belonged to had already lost every caller — the Style tab's unit row
+     and the Logic tab's event name are documents over the kit now — so the module was deleted whole
+     rather than given a `ref()`. A new entry needs the reason a handle cannot be taken at the site
+     that renders the node, as every retired one carried. */
 };
 
 // ─── Runner ──────────────────────────────────────────────────────────────────────────────────
 
 export interface Report {
-  spectrum: Finding[];
+  liveBindings: Finding[];
   selfQuery: Finding[];
-  staleSpectrum: string[];
+  staleLiveBindings: string[];
   staleSelfQuery: string[];
   unknownExclusions: string[];
+  /** Modules writing a lit template with no entry in {@link LIT_TEMPLATE_AUTHORS}. */
+  undeclaredAuthors: string[];
+  /** Entries whose module writes no template any more — the list only ratchets down. */
+  staleAuthors: string[];
 }
 
 export function analyze(root = SRC): Report {
   const files = [...new Glob("**/*.ts").scanSync(root)]
     .map((f) => f.replaceAll("\\", "/"))
     .toSorted();
-  const spectrum: Finding[] = [];
+  const liveBindings: Finding[] = [];
   const selfQuery: Finding[] = [];
-  const spectrumBy = new Map<string, number>();
+  const liveBindingsBy = new Map<string, number>();
   const selfQueryBy = new Map<string, number>();
+  const authoring = new Set<string>();
 
   for (const file of files) {
     if (isExcluded(file)) {
       continue;
     }
     const source = readFileSync(join(root, file), "utf8");
-    const s = unguardedSpectrumBindings(file, source);
+    if (litTemplateCount(source) > 0) {
+      authoring.add(file);
+    }
+    const s = unguardedLiveBindings(file, source);
     const q = selfQueries(file, source);
     if (s.length > 0) {
-      spectrumBy.set(file, s.length);
+      liveBindingsBy.set(file, s.length);
     }
     if (q.length > 0) {
       selfQueryBy.set(file, q.length);
     }
-    spectrum.push(...s.filter(() => (SPECTRUM_DEBT[file] ?? 0) === 0));
+    liveBindings.push(...s.filter(() => (LIVE_BINDING_DEBT[file] ?? 0) === 0));
     selfQuery.push(...q.filter(() => (SELF_QUERY_DEBT[file] ?? 0) === 0));
   }
 
   // Over budget in a file that has one: report the excess, named.
-  for (const [file, actual] of spectrumBy) {
-    const allowed = SPECTRUM_DEBT[file] ?? 0;
+  for (const [file, actual] of liveBindingsBy) {
+    const allowed = LIVE_BINDING_DEBT[file] ?? 0;
     if (allowed > 0 && actual > allowed) {
-      spectrum.push({
-        detail: `${actual} unguarded Spectrum binding(s), ${allowed} allowed`,
+      liveBindings.push({
+        detail: `${actual} unguarded live binding(s), ${allowed} allowed`,
         file,
         line: 0,
       });
@@ -335,14 +400,18 @@ export function analyze(root = SRC): Report {
   const known = new Set(files);
   return {
     selfQuery,
-    spectrum,
+    liveBindings,
     staleSelfQuery: Object.entries(SELF_QUERY_DEBT)
       .filter(([f, n]) => (selfQueryBy.get(f) ?? 0) < n)
       .map(([f, n]) => `${f} (allows ${n}, found ${selfQueryBy.get(f) ?? 0})`),
-    staleSpectrum: Object.entries(SPECTRUM_DEBT)
-      .filter(([f, n]) => (spectrumBy.get(f) ?? 0) < n)
-      .map(([f, n]) => `${f} (allows ${n}, found ${spectrumBy.get(f) ?? 0})`),
+    staleLiveBindings: Object.entries(LIVE_BINDING_DEBT)
+      .filter(([f, n]) => (liveBindingsBy.get(f) ?? 0) < n)
+      .map(([f, n]) => `${f} (allows ${n}, found ${liveBindingsBy.get(f) ?? 0})`),
     unknownExclusions: Object.keys(EXCLUDED).filter((f) => !known.has(f)),
+    undeclaredAuthors: [...authoring].filter((f) => !(f in LIT_TEMPLATE_AUTHORS)).toSorted(),
+    staleAuthors: Object.keys(LIT_TEMPLATE_AUTHORS)
+      .filter((f) => !authoring.has(f))
+      .toSorted(),
   };
 }
 
@@ -371,11 +440,11 @@ export function reportLines(
 export function report(r: Report): { lines: string[]; failed: boolean } {
   const lines = [
     ...reportLines(
-      r.spectrum,
-      "Spectrum controls bound so that lit cannot re-commit them:",
-      "These components move `value` / `checked` / `open` themselves and do not reflect them, so " +
+      r.liveBindings,
+      "Self-mutating controls bound so that lit cannot re-commit them:",
+      "These controls move `value` / `checked` / `open` themselves and do not reflect them, so " +
         "an attribute binding — or a property binding without live() — is dirty-checked away " +
-        "exactly when it was needed. Bind `.prop=${live(expr)}`, or add the file to SPECTRUM_DEBT " +
+        "exactly when it was needed. Bind `.prop=${live(expr)}`, or add the file to LIVE_BINDING_DEBT " +
         "with the reason it cannot be.",
     ),
     ...reportLines(
@@ -387,7 +456,7 @@ export function report(r: Report): { lines: string[]; failed: boolean } {
     ),
   ];
   for (const [label, stale] of [
-    ["SPECTRUM_DEBT", r.staleSpectrum],
+    ["LIVE_BINDING_DEBT", r.staleLiveBindings],
     ["SELF_QUERY_DEBT", r.staleSelfQuery],
   ] as const) {
     if (stale.length > 0) {
@@ -401,6 +470,27 @@ export function report(r: Report): { lines: string[]; failed: boolean } {
       );
     }
   }
+  if (r.undeclaredAuthors.length > 0) {
+    lines.push(
+      "",
+      "These modules write a lit template and are not in LIT_TEMPLATE_AUTHORS:",
+      "",
+      ...r.undeclaredAuthors.map((f) => `  ${f}`),
+      "",
+      "  Studio's chrome is Jx documents (studio-ui-guidelines.md §9.3). A module that draws with",
+      "  lit needs an entry saying why it cannot be a document — or it needs to become one.",
+    );
+  }
+  if (r.staleAuthors.length > 0) {
+    lines.push(
+      "",
+      "Stale LIT_TEMPLATE_AUTHORS entr(ies) — the list only ratchets down:",
+      "",
+      ...r.staleAuthors.map((f) => `  ${f} writes no template any more`),
+      "",
+      "  Delete the entry.",
+    );
+  }
   if (r.unknownExclusions.length > 0) {
     lines.push(
       "",
@@ -413,16 +503,17 @@ export function report(r: Report): { lines: string[]; failed: boolean } {
     return { failed: true, lines };
   }
   /* One sum over both lists rather than one per list. Two `reduce`s meant two callbacks, and a
-     `reduce` over an empty array with a seed never calls its own — so the moment SPECTRUM_DEBT
+     `reduce` over an empty array with a seed never calls its own — so the moment LIVE_BINDING_DEBT
      ratcheted to zero, half of this line stopped being executed while still reading as covered. */
-  const debt = [...Object.values(SPECTRUM_DEBT), ...Object.values(SELF_QUERY_DEBT)].reduce(
+  const debt = [...Object.values(LIVE_BINDING_DEBT), ...Object.values(SELF_QUERY_DEBT)].reduce(
     (a, n) => a + n,
     0,
   );
   return {
     failed: false,
     lines: [
-      `✓ check-lit-conventions: Spectrum state binds live, no module queries its own nodes ` +
+      `✓ check-lit-conventions: self-mutated state binds live, no module queries its own nodes, ` +
+        `${Object.keys(LIT_TEMPLATE_AUTHORS).length} module(s) still author a lit template ` +
         `(${debt} allow-listed site(s) remaining, ${Object.keys(EXCLUDED).length} module(s) excluded ` +
         `by design).`,
     ],

@@ -668,7 +668,10 @@ function walkArgs(
   path: (string | number)[],
   naming: { labels: string[]; fallbackLabel: string },
 ): void {
-  const safeArgs = Array.isArray(args) ? args : [];
+  /* `Array.isArray` narrows an `unknown` to `any[]`, so every spread of it reads as unsafe to
+     the type-aware lint. The elements ARE unknown — each is an operand this walk discriminates
+     — so saying so restores the check rather than silencing it. */
+  const safeArgs: unknown[] = Array.isArray(args) ? args : [];
   for (const [idx, arg] of safeArgs.entries()) {
     const argPath = [...path, "value", idx];
     const label = naming.labels[idx] ?? naming.fallbackLabel;

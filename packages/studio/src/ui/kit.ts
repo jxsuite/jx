@@ -5,9 +5,10 @@
  * carries and adopts the kit's theme into the document — no network, once. A surface awaits
  * {@link kitReady} before it mounts, so a document never renders a tag that is not yet defined.
  *
- * Spectrum keeps registering beside it through `spectrum.ts` until the last lit surface goes:
- * coexistence is surface-level (specs/studio-ui-guidelines.md §9.3), and the two families read the
- * same palette because the brand fragment is re-valued from the kit's ramp (`jx-theme.ts`).
+ * It is the only element registry Studio has. Adobe Spectrum Web Components registered beside it
+ * through `ui/spectrum.ts` for the length of the migration, and the two families were held to one
+ * palette by a brand fragment re-valued from the kit's ramp; both files are gone with the last lit
+ * surface (specs/studio-ui-guidelines.md §9.3).
  *
  * @docs extending/ui-kit
  */

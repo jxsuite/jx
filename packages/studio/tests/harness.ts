@@ -391,22 +391,20 @@ export function setValue(el: HTMLInputElement | HTMLTextAreaElement, value: stri
 // ─── Dialog helpers ───────────────────────────────────────────────────────────
 
 /**
- * The topmost dialog mounted in the #layer-dialog layer, if any: a kit `jx-dialog` (the confirm,
- * save-or-discard and prompt flows) or a Spectrum wrapper (the bespoke bodies still on lit).
+ * The topmost `jx-dialog` mounted in the #layer-dialog layer, if any.
+ *
+ * It also matched `sp-dialog-wrapper`, for the bespoke bodies that were still lit. Spectrum is
+ * removed, so that half matched nothing before it was deleted — and a selector that can never match
+ * reads like a substrate still in play, which is the one thing a test harness must not imply.
  */
 export function topDialog(): HTMLElement | null {
-  const dialogs = [
-    ...document.querySelectorAll("#layer-dialog jx-dialog, #layer-dialog sp-dialog-wrapper"),
-  ];
+  const dialogs = [...document.querySelectorAll("#layer-dialog jx-dialog")];
   return (dialogs.at(-1) as HTMLElement | undefined) ?? null;
 }
 
-/** The prompt's field control: the kit's native input, or the Spectrum field it replaced. */
+/** The prompt's field control — the native input the kit's field draws inside itself. */
 function promptField(dialog: HTMLElement): HTMLInputElement | null {
-  return (
-    dialog.querySelector<HTMLInputElement>('jx-textfield [part="input"]') ??
-    (dialog.querySelector("sp-textfield") as HTMLInputElement | null)
-  );
+  return dialog.querySelector<HTMLInputElement>('jx-textfield [part="input"]');
 }
 
 /**
@@ -451,9 +449,7 @@ export async function answerPromptDialog(
  */
 export async function pickPromptFormat(value: string): Promise<void> {
   const dialog = topDialog();
-  const picker =
-    dialog?.querySelector<HTMLSelectElement>('[part="choice"] select') ??
-    (dialog?.querySelector("sp-picker") as HTMLInputElement | null);
+  const picker = dialog?.querySelector<HTMLSelectElement>('[part="choice"] select');
   if (!picker) {
     return;
   }
@@ -469,16 +465,9 @@ export function promptFormatOptions(): [string, string][] {
      element and the `<select>` inside it carries `part="control"`. Rows the element stands in for a
      value no list holds are excluded — they are the element saying it holds something unlisted,
      never an offer. */
-  const native = [
-    ...(dialog?.querySelectorAll<HTMLOptionElement>('[part="choice"] option') ?? []),
-  ].filter((el) => el.getAttribute("part") !== "unlisted");
-  if (native.length > 0) {
-    return native.map((el) => [el.value, el.textContent?.trim() ?? ""]);
-  }
-  return [...(dialog?.querySelectorAll("sp-picker sp-menu-item") ?? [])].map((el) => [
-    el.getAttribute("value") ?? "",
-    el.textContent?.trim() ?? "",
-  ]);
+  return [...(dialog?.querySelectorAll<HTMLOptionElement>('[part="choice"] option') ?? [])]
+    .filter((el) => el.getAttribute("part") !== "unlisted")
+    .map((el) => [el.value, el.textContent?.trim() ?? ""]);
 }
 
 // ─── New Project wizard field accessors ──────────────────────────────────────

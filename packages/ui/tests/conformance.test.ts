@@ -31,6 +31,31 @@ const stylebook: Record<string, JxDocument> = Object.fromEntries(
 const list = JSON.parse(readFileSync(resolve(root, "icons/list.json"), "utf8")) as IconList;
 
 /**
+ * `src/documents.ts` IS a hand-maintained second list, and this is what keeps it in step.
+ *
+ * `check-icons.ts` retired its Spectrum rule 2 — "a registered element the registry never imports"
+ * — on the stated ground that the kit has no such seam, because `registerUi()` defines each tag
+ * from the document itself. That is half true: there is no tag/class split any more, but a
+ * component whose JSON is never IMPORTED here is silently not a kit element at all. It ships in the
+ * repository, passes every per-document check below, and does not exist at runtime — the same class
+ * of failure the old rule caught, one seam further along, so it gets the same treatment.
+ */
+describe("every authored component is a registered document", () => {
+  test("components/*.json and documents name the same tags", () => {
+    const authored = readdirSync(resolve(root, "components"))
+      .filter((name) => name.endsWith(".json"))
+      .map((name) => name.replace(/\.json$/, ""))
+      .toSorted();
+    expect(Object.keys(documents).toSorted()).toEqual(authored);
+    /* And each key is the tag the document declares, so the map cannot file one under another's
+       name — the second half of the seam, and the half a key list alone would not see. */
+    for (const [tag, doc] of Object.entries(documents)) {
+      expect((doc as { tagName?: string }).tagName, tag).toBe(tag);
+    }
+  });
+});
+
+/**
  * Every element node below the root, depth-first.
  *
  * @yields {[string, JxElement]} A label for messages, and the node

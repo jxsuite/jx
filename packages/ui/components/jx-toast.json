@@ -1,0 +1,255 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "JxToast",
+  "tagName": "jx-toast",
+  "observedAttributes": ["variant", "open", "timeout", "dismiss-label"],
+  "$elements": [
+    {
+      "$ref": "./jx-icon.json"
+    },
+    {
+      "$ref": "./jx-action-button.json"
+    }
+  ],
+  "state": {
+    "variant": {
+      "type": "string",
+      "default": "info",
+      "attribute": "variant",
+      "description": "info, positive, negative or warning: what kind of outcome this is. It picks the accent along the toast's leading edge AND the glyph beside the message, so the severity survives greyscale, a colour-blind reader and a forced-colours theme — colour alone would be a WCAG 1.4.1 failure. It is not announced: the glyph is decorative and the toast carries no role of its own, so what a screen reader hears is the message, which is why the message has to SAY what happened rather than lean on the colour to say it."
+    },
+    "open": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "open",
+      "description": "Whether the toast is showing. It is the host's to write — a toast appended with no open attribute draws nothing, deliberately, so that arriving and appearing are two decisions rather than one — and the element writes it back to false when it retires itself. It is also what runs the clock: opening starts timeout, and closing stops it."
+    },
+    "timeout": {
+      "type": "number",
+      "default": 0,
+      "attribute": "timeout",
+      "description": "How long the toast rests before retiring itself, in milliseconds. 0 is sticky and is the DEFAULT, which is what makes the number safe as a number: a removed attribute coerces through Number() to 0 (ui.md §5.3), and here that lands on the reading a numeric prop can never spell otherwise — nothing disappears unless a host asked for it to. The clock is suspended while the pointer is on the toast, while focus is inside it, and while the stack it belongs to is being read, and resumes with what was LEFT, so a reader who reaches the recovery control cannot have it expire under their hand."
+    },
+    "dismissLabel": {
+      "type": "string",
+      "default": "Dismiss",
+      "attribute": "dismiss-label",
+      "description": "The name of the dismiss button, which is always drawn: a toast that can only be waited out is one a reader cannot get rid of, and a sticky one would then be permanent. Write what is being dismissed where a page raises several kinds (\"Dismiss notification\"), because the button is named by this alone — the message beside it is a consumer's slotted content and cannot be read into a name."
+    },
+    "icon": "${state.variant === 'positive' ? 'check' : state.variant === 'negative' ? 'warning-circle' : state.variant === 'warning' ? 'warning' : 'info'}",
+    "onMount": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/toast.ts",
+      "$export": "onToastMount",
+      "emits": [
+        {
+          "name": "close",
+          "description": "The toast closed itself; detail.reason is timeout when the clock ran out."
+        }
+      ],
+      "description": "Learns the element and starts the clock, then follows open through data-open for the rest of the toast's life."
+    },
+    "onUnmount": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/toast.ts",
+      "$export": "onToastUnmount",
+      "description": "Stops the clock when the toast leaves the document, so a toast the host has already taken away cannot retire itself afterwards."
+    },
+    "onHold": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/toast.ts",
+      "$export": "onToastHold",
+      "description": "The pointer arrived, focus arrived, or the stack said to wait: the clock is suspended with its remaining time kept. Three separate reasons, held together, because a pointer leaving a toast the reader has tabbed into must not restart a clock the focus is still holding."
+    },
+    "onRelease": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/toast.ts",
+      "$export": "onToastRelease",
+      "description": "The last of those reasons went away, so the clock runs again for what was left of it. A focusout whose focus landed on another control inside this same toast is not a departure and releases nothing."
+    },
+    "onDismiss": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/toast.ts",
+      "$export": "onToastDismiss",
+      "emits": [
+        {
+          "name": "close",
+          "description": "The reader dismissed the toast; detail.reason is dismissed."
+        }
+      ],
+      "description": "The dismiss button closes the toast and says who closed it."
+    },
+    "onAction": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/toast.ts",
+      "$export": "onToastAction",
+      "emits": [
+        {
+          "name": "close",
+          "description": "The recovery control was used; detail.reason is action."
+        }
+      ],
+      "description": "A click on the control slotted into action closes the toast, without stopping the click: the control is the target, so its own handler has already run and a host listening above the toast is entitled to hear it. An answer that has been given is not still being asked."
+    }
+  },
+  "onpointerenter": {
+    "$ref": "#/state/onHold"
+  },
+  "onpointerleave": {
+    "$ref": "#/state/onRelease"
+  },
+  "onfocusin": {
+    "$ref": "#/state/onHold"
+  },
+  "onfocusout": {
+    "$ref": "#/state/onRelease"
+  },
+  "onjx-toast-pause": {
+    "$ref": "#/state/onHold"
+  },
+  "onjx-toast-resume": {
+    "$ref": "#/state/onRelease"
+  },
+  "attributes": {
+    "data-variant": "${state.variant}",
+    "data-open": "${state.open ? '' : null}"
+  },
+  "style": {
+    "$description": "The toast carries NO live region and no role of its own, which is the one decision in this block that is about sound rather than about pixels: jx-toast-host owns the region, and a role here would announce every toast twice in the one arrangement the kit exists to serve. A toast used without a host is drawn and not announced, and the answer to that is a host.",
+    "display": "none",
+    "boxSizing": "border-box",
+    "alignItems": "center",
+    "gap": "var(--jx-space-3)",
+    "maxInlineSize": "min(420px, calc(100vw - 2 * var(--jx-space-4)))",
+    "padding": "var(--jx-space-3)",
+    "border": "1px solid var(--jx-border)",
+    "borderInlineStartWidth": "3px",
+    "borderInlineStartColor": "var(--jx-toast-accent)",
+    "borderRadius": "var(--jx-radius-md)",
+    "background": "var(--jx-bg-overlay)",
+    "color": "var(--jx-fg)",
+    "boxShadow": "var(--jx-shadow-popover)",
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-sm)",
+    "lineHeight": "var(--jx-leading-sm)",
+    "textAlign": "start",
+    "pointerEvents": "auto",
+    "opacity": "0",
+    "translate": "0 var(--jx-space-3)",
+    "transition": "opacity var(--jx-dur-1) var(--jx-ease-out), translate var(--jx-dur-1) var(--jx-ease-out), display var(--jx-dur-1) allow-discrete",
+    "--jx-toast-accent": "var(--jx-accent)",
+    "&[data-variant=\"positive\"]": {
+      "--jx-toast-accent": "var(--jx-success)"
+    },
+    "&[data-variant=\"negative\"]": {
+      "--jx-toast-accent": "var(--jx-danger)"
+    },
+    "&[data-variant=\"warning\"]": {
+      "--jx-toast-accent": "var(--jx-warning)"
+    },
+    "&[data-open]": {
+      "display": "flex",
+      "opacity": "1",
+      "translate": "0 0"
+    },
+    "@starting-style": {
+      "&[data-open]": {
+        "opacity": "0",
+        "translate": "0 var(--jx-space-3)"
+      }
+    },
+    "&[hidden]": {
+      "$description": "AFTER the open rule, and only because of it: [data-jx][hidden] and [data-jx][data-open] weigh the same, so the later one wins and a hidden open toast would otherwise still be drawn. The UA's own [hidden] rule cannot settle it either, since the element's own display beats it at any specificity.",
+      "display": "none"
+    },
+    "& [part=\"icon\"]": {
+      "display": "inline-flex",
+      "flex": "none",
+      "alignSelf": "flex-start",
+      "color": "var(--jx-toast-accent)"
+    },
+    "& [part=\"message\"]": {
+      "flex": "1",
+      "minInlineSize": "0",
+      "overflowWrap": "anywhere"
+    },
+    "& [part=\"action-slot\"]": {
+      "display": "contents"
+    },
+    "& [part=\"dismiss\"]": {
+      "flex": "none",
+      "alignSelf": "flex-start"
+    }
+  },
+  "children": [
+    {
+      "tagName": "span",
+      "attributes": {
+        "part": "icon",
+        "aria-hidden": "true"
+      },
+      "children": [
+        {
+          "tagName": "jx-icon",
+          "attributes": {
+            "part": "glyph"
+          },
+          "$props": {
+            "name": {
+              "$ref": "#/state/icon"
+            },
+            "weight": "bold"
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "message"
+      },
+      "children": [
+        {
+          "tagName": "slot"
+        }
+      ]
+    },
+    {
+      "tagName": "span",
+      "attributes": {
+        "part": "action-slot",
+        "role": "none"
+      },
+      "onclick": {
+        "$ref": "#/state/onAction"
+      },
+      "children": [
+        {
+          "tagName": "slot",
+          "attributes": {
+            "name": "action"
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "jx-action-button",
+      "attributes": {
+        "part": "dismiss"
+      },
+      "$props": {
+        "icon": "x",
+        "size": "sm",
+        "label": {
+          "$ref": "#/state/dismissLabel"
+        },
+        "hint": {
+          "$ref": "#/state/dismissLabel"
+        }
+      },
+      "onclick": {
+        "$ref": "#/state/onDismiss"
+      }
+    }
+  ]
+}

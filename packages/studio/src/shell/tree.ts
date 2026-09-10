@@ -68,41 +68,43 @@ export function overlayLayers(): TemplateResult {
  * @param host Where the frame goes. Defaults to the document body.
  */
 export async function mountShellTree(host: ParentNode = document.body): Promise<void> {
-  const theme = themeHost(host);
+  const root = shellRoot(host);
   /* The same clear-and-eject the lit mount did, for the same two reasons — a fixture that empties
      the host leaves lit's part marker pointing at comment nodes that are gone, and ejecting without
      clearing makes a second mount paint a second frame beside the first — and now for a third: the
      document mount APPENDS, so without this a remount leaves two `#app`s and every `querySelector`
      silently picks the stale one. */
-  theme.textContent = "";
+  root.textContent = "";
   // @ts-expect-error -- _$litPart$ is lit's private render-part marker, not in the DOM types
-  delete theme["_$litPart$"];
-  await mountShellSurface(theme);
+  delete root["_$litPart$"];
+  await mountShellSurface(root);
   /* After the frame, so the layers are its siblings in the order they always were. lit's `render`
      manages only the range between its own markers, so appending here leaves `#app` alone. */
-  litRender(overlayLayers(), theme);
+  litRender(overlayLayers(), root);
 }
 
 /**
- * The Spectrum theme wrapper, created once and reused.
+ * The element the frame and its layers are mounted into, created once and reused.
  *
- * It is NOT part of {@link shellTree}, and the reason is a real constraint rather than taste. lit
- * instantiates a template by cloning it with `importNode`, and cloning a registered custom element
- * enqueues its `attributeChangedCallback` before the constructor body has run — Spectrum's Theme
- * then reaches for a field it assigns in that body and throws. `createElement` runs the constructor
- * first, so the attributes are safe to set afterwards.
+ * This was `<sp-theme>`, and the wrapper is all that survives it. Spectrum's tokens were declared
+ * ON that element and reached only its descendants, so the frame had to be inside one or every
+ * `var(--spectrum-*)` in the chrome fell to a hex fallback. The kit declares every token at `:root`
+ * and `applyChromeTheme()` stamps the scheme on `<html>`, so nothing here themes anything
+ * (studio-ui-guidelines.md §1.1).
  *
- * `shell.ts` rewrites `color` on the first theme effect, so the value here is only the first frame.
+ * It stays because the mount needs a container it OWNS. `src/studio.ts` calls `mountResizeEdges()`
+ * one line before this, which appends its own container to `document.body` — so the clear-and-eject
+ * above cannot be aimed at the host without taking the four resize edges with it. A plain div is
+ * also what makes the layers' `position: fixed` mean the viewport: an element that established a
+ * containing block here would move all four of them, silently.
  */
-function themeHost(host: ParentNode): HTMLElement {
-  const existing = host.querySelector?.("sp-theme");
+function shellRoot(host: ParentNode): HTMLElement {
+  const existing = host.querySelector?.("#shell-root");
   if (existing) {
     return existing as HTMLElement;
   }
-  const theme = document.createElement("sp-theme");
-  theme.setAttribute("color", "dark");
-  theme.setAttribute("scale", "medium");
-  theme.setAttribute("system", "spectrum");
-  (host as HTMLElement).append(theme);
-  return theme;
+  const root = document.createElement("div");
+  root.id = "shell-root";
+  (host as HTMLElement).append(root);
+  return root;
 }
