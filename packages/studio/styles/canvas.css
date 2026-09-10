@@ -38,47 +38,6 @@
   min-height: 0;
 }
 
-/* ─── Pane tab strips ──────────────────────────
-   shell.css owns the base `.tab-strip*` rules; these are the states the pane model adds — a pinned
-   head, an italic preview chip, the drag ghost, and the unfocused pane's dimmed strip. */
-.tab-strip-row:not(.focused) .tab-strip-tab.active {
-  border-bottom-color: var(--border);
-}
-.tab-strip-tab.preview .tab-strip-label {
-  font-style: italic;
-}
-.tab-strip-tab.dragging {
-  opacity: 0.4;
-}
-.tab-strip-pin {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  padding: 0;
-  border: none;
-  background: none;
-  color: var(--fg-dim);
-  font-size: var(--spectrum-font-size-75, 12px);
-  line-height: 1;
-  border-radius: var(--radius);
-  cursor: pointer;
-  opacity: 0;
-}
-.tab-strip-tab:hover .tab-strip-pin,
-.tab-strip-tab.active .tab-strip-pin,
-.tab-strip-tab.pinned .tab-strip-pin {
-  opacity: 1;
-}
-.tab-strip-pin:hover {
-  background: var(--hover-bg);
-  color: var(--fg);
-}
-.tab-strip-tab.pinned .tab-strip-pin {
-  color: var(--accent);
-}
-
 /* ─── Document Header card ─────────────────────
    Region ⑧: the artefact's own header, drawn IN the stage. `#frontmatter-panel` — a fourth
    full-width band up to 40vh that appeared and vanished as a side effect of the canvas mode — is

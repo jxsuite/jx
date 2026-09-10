@@ -365,11 +365,11 @@ describe("the tab strip", () => {
   }
 
   function chips(): HTMLElement[] {
-    return [...stripHost.querySelectorAll(".tab-strip-tab")] as HTMLElement[];
+    return [...stripHost.querySelectorAll('[part="tab"]')] as HTMLElement[];
   }
 
   function strip(): HTMLElement {
-    return stripHost.querySelector(".tab-strip") as HTMLElement;
+    return stripHost.querySelector('[part="tabs"]') as HTMLElement;
   }
 
   /** Happy-dom performs no layout (scrollWidth/clientWidth are 0); stub them to fake overflow. */
@@ -450,7 +450,7 @@ describe("the tab strip", () => {
 
     expect(dataTransfer.effectAllowed).toBe("move");
     expect(dataTransfer.data.get("text/plain")).toBe("a");
-    expect(chips()[0]!.classList.contains("dragging")).toBe(true);
+    expect(chips()[0]!.dataset.dragging !== undefined).toBe(true);
 
     chips()[0]!.dispatchEvent(new Event("dragend", { bubbles: true }));
     await flush();
@@ -465,7 +465,7 @@ describe("the tab strip", () => {
     open("c");
     await flush();
 
-    (stripHost.querySelector(".tab-strip-overflow") as HTMLElement).click();
+    (stripHost.querySelector('[part="overflow"]:not([hidden])') as HTMLElement).click();
     await flush();
     expect(popovers()).toHaveLength(1);
     await frame();
@@ -496,7 +496,7 @@ describe("the tab strip", () => {
     open("c");
     await flush();
 
-    const chevron = () => stripHost.querySelector(".tab-strip-overflow") as HTMLElement;
+    const chevron = () => stripHost.querySelector('[part="overflow"]:not([hidden])') as HTMLElement;
     chevron().click();
     await flush();
     await frame();

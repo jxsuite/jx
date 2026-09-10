@@ -1000,8 +1000,8 @@ const MUTANTS: Mutant[] = [
   {
     edits: [
       {
-        find: `<span class="tab-derivation-of">${"${"}of ? tabLabel(of) : "no document"}</span>`,
-        replace: `<span class="tab-derivation-of">${"${"}of ? tabLabel(of) : ""}</span>`,
+        find: `  const subject = of ? tabLabel(of) : "no document";`,
+        replace: `  const subject = of ? tabLabel(of) : "";`,
       },
     ],
     file: "src/panels/tab-strip.ts",
@@ -1014,12 +1014,8 @@ const MUTANTS: Mutant[] = [
   {
     edits: [
       {
-        find:
-          `      class=\${classMap({ focused: isPaneFocused(pane.id), "tab-strip-row": true })}\n` +
-          `      @mousedown=\${() => focusPane(pane.id)}`,
-        replace:
-          `      class=\${classMap({ focused: isPaneFocused(pane.id), "tab-strip-row": true })}\n` +
-          `      @mousedown=\${() => void pane.id}`,
+        find: `      focusPane(drawnPane(host)?.id ?? PRIMARY_PANE);`,
+        replace: `      void drawnPane(host);`,
       },
     ],
     file: "src/panels/tab-strip.ts",
@@ -1760,17 +1756,19 @@ const MUTANTS: Mutant[] = [
      screenshot, and shell.css says so at the rule.
      **This list is now empty.** An honest exclusion is still available — see {@link Mutant.browserOnly} —
      but every claim in the table is executed. */
+  /* Moved with its subject. The rule was `.tab-derivation` in `styles/shell.css` until the strip
+     became a document; it is the same declaration, now inside the surface that draws it. */
   {
     edits: [
       {
-        find: `  padding: 4px 10px;\n  border-bottom: 2px solid transparent;`,
-        replace: `  padding: 0;\n  border-bottom: 2px solid transparent;`,
+        find: `"padding": "4px 10px",\n      "borderBottom": "2px solid transparent",`,
+        replace: `"padding": "0",\n      "borderBottom": "2px solid transparent",`,
       },
     ],
-    file: "styles/shell.css",
-    id: "shell.css · a derivation chip's row keeps the tab row's vertical box",
+    file: "src/surfaces/tab-strip.json",
+    id: "tab-strip.json · a derivation chip's row keeps the tab row's vertical box",
     means: "the derived pane's strip collapses against the tab row in the pane beside it",
-    test: "tests/lens-chrome.test.ts",
+    test: "tests/tab-strip.test.ts",
   },
 ];
 

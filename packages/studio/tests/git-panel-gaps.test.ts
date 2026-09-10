@@ -234,8 +234,22 @@ function callNames() {
 }
 
 /** One of the panel's own controls, by the `part` the document gives it. */
+/**
+ * The GIT PANEL's own part, never a kit element's internals.
+ *
+ * A `part` name belongs to the definition that owns the box, and in light DOM those names share one
+ * tree: this panel's two sub-tabs are `jx-tab`s, and a `jx-tab` ships a `[part="status"]` of its
+ * own — the wrapper its `status` slot distributes into — which stands EARLIER in the document than
+ * the panel's own status line. An unscoped `querySelector` therefore answered with an empty span
+ * and the loading indicator read as missing. Every kit element's parts are addressed through the
+ * element (`ui.md` §3.2), so the way to ask for one of this document's own is to step over them.
+ */
 function part(panel: HTMLElement, name: string): HTMLElement | null {
-  return panel.querySelector<HTMLElement>(`[part="${name}"]`);
+  return (
+    [...panel.querySelectorAll<HTMLElement>(`[part="${name}"]`)].find(
+      (el) => el.parentElement?.closest("jx-tab") == null,
+    ) ?? null
+  );
 }
 
 /**

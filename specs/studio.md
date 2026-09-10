@@ -2,9 +2,9 @@
 
 ## Visual Builder for Jx Documents
 
-**Version:** 0.10.17-draft\
+**Version:** 0.10.18-draft\
 **Status:** Partial\
-**Updated:** 2026-09-09\
+**Updated:** 2026-09-10\
 **License:** MIT
 
 ---
@@ -1451,15 +1451,17 @@ The rule that generalises: **a stack needs a push, and the push is the part to s
 
 ### 14.4 The tab strip
 
-| Behaviour        | Rule                                                                                                                                                                                                                                                    |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Label            | The shortest **unique** path suffix among the open tabs. A page labels by its **route** (`/blog/[slug]`), because a realistic session has four files named `index.md`. A tab with no path uses its own name (a grid tab's table, otherwise "Untitled"). |
-| Widening         | Only the tabs that actually collide grow a segment; one collision does not put a directory on every tab.                                                                                                                                                |
-| Overflow         | A chevron at the strip's fixed right edge lists the tabs currently out of view and activates the chosen one. The scrollbar is hidden by design and the wheel is a mouse-only affordance, so the chevron is the pointer-independent route.               |
-| Activation       | Activating a tab points the **file tree** at its document — the tree and the strip never disagree about where you are — and promotes it in the MRU order.                                                                                               |
-| Dirty            | A dot; closing a dirty tab asks before it discards — see §14.7. `⌘W` and the tab's `×` are one implementation, because two copies of that prompt drifted apart once already.                                                                            |
-| `⌃Tab` / `⌃⇧Tab` | Cycle the **MRU** order, not the strip order (§14.5).                                                                                                                                                                                                   |
-| `⌘⇧T`            | Reopen the most recently closed document (§14.6).                                                                                                                                                                                                       |
+| Behaviour        | Rule                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Label            | The shortest **unique** path suffix among the open tabs. A page labels by its **route** (`/blog/[slug]`), because a realistic session has four files named `index.md`. A tab with no path uses its own name (a grid tab's table, otherwise "Untitled").                                                                                                                                                              |
+| Widening         | Only the tabs that actually collide grow a segment; one collision does not put a directory on every tab.                                                                                                                                                                                                                                                                                                             |
+| Overflow         | A chevron at the strip's fixed right edge lists the tabs currently out of view and activates the chosen one. The scrollbar is hidden by design and the wheel is a mouse-only affordance, so the chevron is the pointer-independent route.                                                                                                                                                                            |
+| Activation       | Activating a tab points the **file tree** at its document — the tree and the strip never disagree about where you are — and promotes it in the MRU order.                                                                                                                                                                                                                                                            |
+| Marks            | Three, and each is a slot on the kit's tab rather than a chip this surface hand-draws: the drill-in `↳` (§14.2) before the label, and after it the draft pill (§7.6) and the pin. The dot and the `×` are the element's own and always come last, so a mark Studio adds can never push the close button off the end of a chip.                                                                                       |
+| Dirty            | A dot; closing a dirty tab asks before it discards — see §14.7. `⌘W` and the tab's `×` are one implementation, because two copies of that prompt drifted apart once already.                                                                                                                                                                                                                                         |
+| Keyboard         | The strip is a real `tablist` and each chip a `tab` (`ui.md` §5.4), so it is **one stop** in the tab order with a roving caret inside it: the arrows walk it and switch as they land, `Home` and `End` reach its ends, and `Delete` closes the tab the caret is on — through the same close the `×` runs, prompt included. A control on a chip (the pin) is in the tab order only while its chip is the current one. |
+| `⌃Tab` / `⌃⇧Tab` | Cycle the **MRU** order, not the strip order (§14.5).                                                                                                                                                                                                                                                                                                                                                                |
+| `⌘⇧T`            | Reopen the most recently closed document (§14.6).                                                                                                                                                                                                                                                                                                                                                                    |
 
 ### 14.5 MRU cycling
 
@@ -1831,6 +1833,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.10.18-draft** (2026-09-10) — The pane tab strip is a real tablist: one stop in the tab order, arrows with wrap, Home and End, Delete closing a document, and its three marks as slots on jx-tab (§14.4).
 - **0.10.17-draft** (2026-09-09) — The Logic tab's read-only CSS Properties list is drawn by surfaces/logic-panel.json; renderStaticKvRow is gone (§16.5).
 - **0.10.16-draft** (2026-09-02) — the overlay lints take a custom-element scope (16.6); the canvas de-link reaches a stamped instance's own internals (4.2.2).
 - **0.10.15-draft** (2026-09-02) — the canvas UA-substitute overlay rules are installed wherever the de-link runs, not only in design/edit.
@@ -1957,4 +1960,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_`@jxsuite/studio` Specification v0.10.17-draft_
+_`@jxsuite/studio` Specification v0.10.18-draft_

@@ -484,6 +484,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `studio-ui-guidelines.md`
 
+- **0.5.1-draft** (2026-09-10) — The pane tab strip is a Jx document over jx-tabs; every strip in the shell now carries real tab semantics (gap:apg-coverage).
 - **0.5.0-draft** (2026-09-10) — openModal and the hand-rolled Tab trap are deleted with their last caller; a persistent modal is a jx-dialog surface document (§8.7).
 - **0.4.21-draft** (2026-09-10) — The dock tab strips carry real tab semantics; the pane strip waits on a slot in jx-tab (gap:apg-coverage).
 - **0.4.20-draft** (2026-09-10) — The Files tree's per-row menu is the kit menu: the tree's own verbs and the declared context/file records in one list, and the hand-written viewport clamp gone with the sp-popover.
@@ -540,6 +541,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `studio.md`
 
+- **0.10.18-draft** (2026-09-10) — The pane tab strip is a real tablist: one stop in the tab order, arrows with wrap, Home and End, Delete closing a document, and its three marks as slots on jx-tab (§14.4).
 - **0.10.17-draft** (2026-09-09) — The Logic tab's read-only CSS Properties list is drawn by surfaces/logic-panel.json; renderStaticKvRow is gone (§16.5).
 - **0.10.16-draft** (2026-09-02) — the overlay lints take a custom-element scope (16.6); the canvas de-link reaches a stamped instance's own internals (4.2.2).
 - **0.10.15-draft** (2026-09-02) — the canvas UA-substitute overlay rules are installed wherever the de-link runs, not only in design/edit.
@@ -666,6 +668,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `ui.md`
 
+- **0.1.20-draft** (2026-09-10) — jx-tab takes slotted content in three named slots (icon, status, actions); label becomes required once anything is slotted, because aria-label is what keeps a slotted mark out of the tab's name.
 - **0.1.19-draft** (2026-09-10) — The Studio facade list drops openModal: a persistent modal is a jx-dialog surface document (§6).
 - **0.1.18-draft** (2026-09-08) — jx-select: the default slot and its once-at-mount distribution, the slotted hr separator, and the property-only rows.
 - **0.1.17-draft** (2026-09-04) — jx-select is a native select under appearance: base-select — the four things a document must never author, the sidecar that keeps selectedness alive, and why the kit ships no jx-option.

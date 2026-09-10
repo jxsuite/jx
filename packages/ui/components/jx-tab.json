@@ -19,7 +19,7 @@
       "type": "string",
       "default": "",
       "attribute": "label",
-      "description": "The words on the tab, and its accessible name — written to aria-label as well as drawn, because a tab naming itself from its content would swallow the close button's own name and announce the label twice. Write it as an ATTRIBUTE: the runtime does not reflect a property write back to an attribute, so a host that sets el.label breaks every getAttribute(\"label\") selector aimed at the strip while looking correct. A count belongs in this string, not in a badge of its own."
+      "description": "The words on the tab, and its accessible name — written to aria-label as well as drawn, because a tab naming itself from its content would swallow the close button's own name and announce the label twice. That is also what makes the slots safe: aria-label wins over name-from-content, so nothing a consumer slots in — a marker, a pill, a pin — ever joins the tab's name, and each slotted control keeps announcing its own. The corollary is that label is REQUIRED once anything is slotted: with none there is no aria-label, name-from-content comes back, and a tab whose only content is a pin button is announced \"Pin\". Write it as an ATTRIBUTE: the runtime does not reflect a property write back to an attribute, so a host that sets el.label breaks every getAttribute(\"label\") selector aimed at the strip while looking correct. A count belongs in this string, not in a badge of its own."
     },
     "selected": {
       "type": "boolean",
@@ -85,6 +85,15 @@
         }
       ],
       "description": "The click stops at the close button, so closing a tab does not also select it."
+    },
+    "onActions": {
+      "$prototype": "Function",
+      "body": [
+        {
+          "stopPropagation": true
+        }
+      ],
+      "description": "A click inside the actions slot stops there, so activating a control a consumer put on the tab never ALSO selects the tab — the same judgement onClose makes for the close button, which is the one such control the element ships itself. It stops at the CONTAINER rather than at the host: stopPropagation halts an event at the node it is called on and every node after it, never the other listeners on that node or the ones already run below it, so the slotted control's own handler has fired (it is the target) and only the tab's onclick is cut off. Nothing is stopped for icon or status: those hold marks rather than controls, and a click on a mark is a click on the tab."
     }
   },
   "attributes": {
@@ -132,6 +141,10 @@
       "textOverflow": "ellipsis",
       "whiteSpace": "nowrap"
     },
+    "& [part=\"icon\"], & [part=\"status\"], & [part=\"actions\"]": {
+      "$description": "The three consumer zones, and they generate no box of their own. display: contents is what makes an EMPTY one cost nothing: as ordinary flex items three unused containers would each take the tab's gap, which is dead space on every tab that slotted nothing — the same measurement (8px of trailing gap, the label visibly off-centre) that gave [part=\"dirty-slot\"] its own contents. It is also what puts slotted content in the TAB's flex row rather than one box deeper, so a marker, a pill and a pin line up with the label, the dot and the close button on one gap rather than on two.",
+      "display": "contents"
+    },
     "& [part=\"dirty-slot\"], & [part=\"close-slot\"]": {
       "display": "contents"
     },
@@ -177,9 +190,54 @@
     {
       "tagName": "span",
       "attributes": {
+        "part": "icon"
+      },
+      "children": [
+        {
+          "tagName": "slot",
+          "attributes": {
+            "name": "icon"
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "span",
+      "attributes": {
         "part": "label"
       },
       "textContent": "${state.label}"
+    },
+    {
+      "tagName": "span",
+      "attributes": {
+        "part": "status"
+      },
+      "children": [
+        {
+          "tagName": "slot",
+          "attributes": {
+            "name": "status"
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "span",
+      "attributes": {
+        "part": "actions"
+      },
+      "onclick": {
+        "$ref": "#/state/onActions"
+      },
+      "children": [
+        {
+          "tagName": "slot",
+          "attributes": {
+            "name": "actions"
+          }
+        }
+      ]
     },
     {
       "tagName": "span",

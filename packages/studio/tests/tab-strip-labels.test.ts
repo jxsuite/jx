@@ -26,7 +26,7 @@ function open(id: string, documentPath: string | null = `pages/${id}.md`) {
 }
 
 function labels(): string[] {
-  return [...host.querySelectorAll(".tab-strip-label")].map((el) => el.textContent ?? "");
+  return [...host.querySelectorAll('[part="label"]')].map((el) => el.textContent ?? "");
 }
 
 /** Happy-dom performs no layout; stub the two metrics the overflow check reads. */
@@ -36,7 +36,7 @@ function stubMetrics(el: HTMLElement, scrollWidth: number, clientWidth: number) 
 }
 
 function strip(): HTMLElement {
-  return host.querySelector(".tab-strip") as HTMLElement;
+  return host.querySelector('[part="tabs"]') as HTMLElement;
 }
 
 beforeEach(() => {
@@ -179,9 +179,21 @@ describe("drill-in relationship", () => {
     });
     expect(child.session.openedFrom).not.toBeNull();
     await flush();
-    const chips = [...host.querySelectorAll(".tab-strip-tab")] as HTMLElement[];
-    expect(chips[0]!.querySelector(".tab-strip-origin")).toBeNull();
-    expect(chips[1]!.querySelector(".tab-strip-origin")!.textContent).toBe("↳");
+    const chips = [...host.querySelectorAll('[part="tab"]')] as HTMLElement[];
+    /* The marker is a slotted child of `jx-tab`'s icon slot, drawn BEFORE the label, and it is
+       always in the tree: a bound `hidden` is what takes it off screen, so "absent" is asked as
+       `:not([hidden])` rather than as a missing node. It is `aria-hidden` because the tab already
+       names itself — a `↳` announced beside a file name says nothing, and the tooltip is where a
+       reader is told what it was opened from. */
+    expect(chips[0]!.querySelector('[part="origin"]:not([hidden])')).toBeNull();
+    const marker = chips[1]!.querySelector('[part="origin"]:not([hidden])')!;
+    expect(marker.textContent).toBe("↳");
+    expect(marker.getAttribute("aria-hidden")).toBe("true");
+    expect(marker.getAttribute("slot")).toBe("icon");
+    // Before the label, which is the whole reason it is the `icon` slot and not the `status` one.
+    expect(marker.compareDocumentPosition(chips[1]!.querySelector('[part="label"]')!)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
     expect(chips[1]!.getAttribute("title")).toBe(
       "components/card.json\nOpened from pages/index.md",
     );
@@ -190,7 +202,7 @@ describe("drill-in relationship", () => {
   test("an ordinary tab's tooltip is just its path", async () => {
     open("a", "components/card.json");
     await flush();
-    const chip = host.querySelector(".tab-strip-tab") as HTMLElement;
+    const chip = host.querySelector('[part="tab"]') as HTMLElement;
     expect(chip.getAttribute("title")).toBe("components/card.json");
   });
 });
@@ -200,7 +212,7 @@ describe("overflow chevron", () => {
     open("a");
     await flush();
     stubMetrics(strip(), 100, 100);
-    expect(host.querySelector(".tab-strip-overflow")).toBeNull();
+    expect(host.querySelector('[part="overflow"]:not([hidden])')).toBeNull();
   });
 
   test("appears once the strip overflows, and lists the hidden tabs", async () => {
@@ -211,7 +223,7 @@ describe("overflow chevron", () => {
     stubMetrics(strip(), 500, 100);
     open("c");
     await flush();
-    const chevron = host.querySelector(".tab-strip-overflow") as HTMLElement;
+    const chevron = host.querySelector('[part="overflow"]:not([hidden])') as HTMLElement;
     expect(chevron).not.toBeNull();
     // ONE accessible name: `title` alone, with the glyph aria-hidden (guidelines §10).
     expect(chevron.getAttribute("title")).toBe("Show hidden tabs");
@@ -231,7 +243,7 @@ describe("overflow chevron", () => {
     stubMetrics(strip(), 500, 100);
     open("c");
     await flush();
-    (host.querySelector(".tab-strip-overflow") as HTMLElement).click();
+    (host.querySelector('[part="overflow"]:not([hidden])') as HTMLElement).click();
     await flush();
     const first = document.querySelector("#layer-popover sp-menu-item") as HTMLElement;
     first.click();
@@ -247,7 +259,7 @@ describe("overflow chevron", () => {
     stubMetrics(strip(), 500, 100);
     open("c");
     await flush();
-    const chevron = host.querySelector(".tab-strip-overflow") as HTMLElement;
+    const chevron = host.querySelector('[part="overflow"]:not([hidden])') as HTMLElement;
     chevron.click();
     await flush();
     chevron.click();
@@ -263,7 +275,7 @@ describe("overflow chevron", () => {
     const el = strip();
     stubMetrics(el, 500, 100);
     el.scrollLeft = 0;
-    const chips = [...el.querySelectorAll(".tab-strip-tab")] as HTMLElement[];
+    const chips = [...el.querySelectorAll('[part="tab"]')] as HTMLElement[];
     const place = (chip: HTMLElement, left: number, width: number) => {
       Object.defineProperty(chip, "offsetLeft", { configurable: true, value: left });
       Object.defineProperty(chip, "offsetWidth", { configurable: true, value: width });

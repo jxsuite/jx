@@ -276,9 +276,11 @@ export const SPECTRUM_DEBT: Record<string, number> = {
  * to; it objects to re-finding the node by selector every time instead of holding it.
  */
 export const SELF_QUERY_DEBT: Record<string, number> = {
-  /* Four reads of the strip and its chips, all for MEASUREMENT (scrollWidth, offsetLeft) or
-     scrollIntoView. The uses stay imperative; it is the acquisition that wants one per-pane ref. */
-  "panels/tab-strip.ts": 4,
+  /* `panels/tab-strip.ts` had four — the strip and its chips, all for MEASUREMENT (scrollWidth,
+     offsetLeft) or scrollIntoView — and has none: the strip is a Jx document, so the module emits
+     no class to query, and `surfaces/tab-strip.ts` hands it the `jx-tabs` element as that element
+     is created. The uses are still imperative, which is not what this rule objects to; the
+     ACQUISITION is a handle now. */
   /* `isColorPopoverOpen()` derives modality from the live DOM, document-wide, and right-panel
      calls it as a blockWhile on every scheduled render. State read back out of markup. */
   "ui/value-selector.ts": 1,

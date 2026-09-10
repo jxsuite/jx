@@ -1,0 +1,448 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioTabStrip",
+  "$description": "One pane's tab strip, as a Jx document over the kit: a real `tablist` of `jx-tab`s, or — for a pane that owns no document — the derivation chip naming what it is a projection of, and in both cases one trailing button. `panels/tab-strip.ts` keeps every decision: which pane a host is drawing, what each tab is called (the shortest unique suffix, and a page's ROUTE), what its tooltip says, whether closing it needs a prompt, what the overflow chevron lists and what the context menu offers. This document owns the markup, the ARIA, the keyboard and the style, and it holds THREE things the old chip drew by hand and the kit now draws: the tab's own selected state (`aria-selected`, not an `.active` class), its close button, and its dirty dot. The three that are Studio's alone go in `jx-tab`'s slots — the drill-in marker in `icon`, the draft pill in `status`, the pin toggle in `actions` (ui.md §5.4) — which is the gap that kept this strip out of the tab pattern until now.",
+  "tagName": "div",
+  "attributes": {
+    "part": "strip-row",
+    "data-focused": "${state.focused ? '' : null}",
+    "hidden": "${state.mode === 'empty' ? '' : null}"
+  },
+  "onmousedown": {
+    "$prototype": "Function",
+    "body": [
+      {
+        "operator": "call",
+        "target": { "$ref": "#/state/focusPane" },
+        "value": []
+      }
+    ]
+  },
+  "style": {
+    "$description": "`styles/shell.css`'s `.tab-strip*` rules and `styles/canvas.css`'s pane-state rules, keyed on `part` and carried in. What did NOT come with them is the point: the chip's own hover, its selected underline, its close button and its dirty dot are `jx-tab`'s, and the strip's flex row and hairline are `jx-tabs`'s. What is left here is the pane strip's own shape — the scroll container the chevron exists for, the 11px type of a chrome row, the states the PANE model adds (pinned, preview, dragging, an unfocused pane's dimmed underline), and the three slotted marks.",
+    "display": "flex",
+    "alignItems": "stretch",
+    "minWidth": "0",
+    "background": "var(--bg-panel)",
+    "borderBottom": "1px solid var(--border)",
+    "fontFamily": "var(--jx-font-sans)",
+    "&[hidden]": {
+      "display": "none"
+    },
+    "& [part=\"tabs\"]": {
+      "$description": "`.tab-strip`. The kit's strip draws its own hairline; the ROW draws this one, so the strip's is taken off rather than doubled. The scrollbar is hidden by design — the wheel handler is a mouse affordance and the chevron is the pointer-independent route to the same tabs — so `overflow-x: auto` here is a scrolling box with no visible bar.",
+      "flex": "1 1 auto",
+      "minWidth": "0",
+      "gap": "0",
+      "padding": "0 var(--jx-space-2)",
+      "border": "0",
+      "overflowX": "auto",
+      "overflowY": "hidden",
+      "scrollbarWidth": "none",
+      "fontSize": "var(--jx-text-sm)",
+      "&::-webkit-scrollbar": {
+        "display": "none"
+      }
+    },
+    "& [part=\"tab\"]": {
+      "$description": "`.tab-strip-tab`. The kit's tab caps itself at 220px and reserves a control's height; a chrome row is tighter than that and its labels are the shortest unique suffix, so both are re-declared. `flex-shrink: 0` is what makes the strip scroll rather than squeeze fifteen documents into one width.",
+      "gap": "var(--jx-space-1)",
+      "padding": "4px var(--jx-space-2)",
+      "minHeight": "0",
+      "maxWidth": "none",
+      "flexShrink": "0",
+      "marginBlockEnd": "0",
+      "color": "var(--fg-dim)",
+      "cursor": "pointer",
+      ":hover": {
+        "color": "var(--fg)",
+        "background": "var(--hover-bg)"
+      },
+      "&[aria-selected=\"true\"]": {
+        "color": "var(--fg)",
+        "borderBlockEndColor": "var(--accent)"
+      },
+      "&[data-dragging]": {
+        "opacity": "0.4"
+      }
+    },
+    "& [part=\"tab\"] [part=\"label\"]": {
+      "maxWidth": "140px"
+    },
+    "& [part=\"tab\"][data-preview] [part=\"label\"]": {
+      "fontStyle": "italic"
+    },
+    "&:not([data-focused]) [part=\"tab\"][aria-selected=\"true\"]": {
+      "$description": "The unfocused pane's strip still says which of ITS documents is current, in a colour that does not compete with the pane holding the keyboard.",
+      "borderBlockEndColor": "var(--border)"
+    },
+    "& [part=\"tab\"] [part=\"close\"]": {
+      "$description": "`.tab-strip-close`'s reveal, applied to the kit's own close button: a row of fifteen ✕ glyphs is noise, so the affordance appears on the tab under the pointer and on the current one. The button keeps its own 24px target either way (SC 2.5.8) — this moves no pixel of layout.",
+      "opacity": "0"
+    },
+    "& [part=\"tab\"]:hover [part=\"close\"], & [part=\"tab\"][aria-selected=\"true\"] [part=\"close\"]": {
+      "opacity": "1"
+    },
+    "& [part=\"origin\"]": {
+      "$description": "`.tab-strip-origin` — the drill-in marker, in `jx-tab`'s icon slot. Hidden from assistive technology by the document that writes it: a reader hears where a document was opened from in the tooltip, and an arrow announced beside a file name says nothing.",
+      "color": "var(--fg-dim)",
+      "fontSize": "var(--jx-text-sm)",
+      "lineHeight": "1"
+    },
+    "& [part=\"pill\"]": {
+      "$description": "`.entry-pill` — the draft pill (§7.6), in `jx-tab`'s status slot. It is ON THE CHIP and not only inside the entry editor because the mistake it prevents, publishing something you believed was private, is made while glancing at a row of tabs. \"Published\" is deliberately as visible as \"Draft\": a state you can only see one half of is a state you cannot check. The two Spectrum colours it used to name are `--jx-signal` against `--jx-bg`, which flips with the theme where a fixed yellow and a fixed black did not.",
+      "padding": "0 5px",
+      "borderRadius": "var(--radius)",
+      "background": "var(--bg)",
+      "color": "var(--fg-dim)",
+      "fontSize": "var(--jx-text-sm)",
+      "lineHeight": "15px",
+      "whiteSpace": "nowrap"
+    },
+    "& [part=\"pill\"][data-draft]": {
+      "background": "var(--jx-signal)",
+      "color": "var(--jx-bg)"
+    },
+    "& [part=\"pin\"]": {
+      "$description": "`.tab-strip-pin`, in `jx-tab`'s actions slot. A click on it never also selects the tab, and that is the KIT's doing now rather than a `stopPropagation` this document has to remember: `jx-tab` stops a click inside its actions slot exactly as it stops one on its own close button.",
+      "display": "flex",
+      "alignItems": "center",
+      "justifyContent": "center",
+      "width": "16px",
+      "height": "16px",
+      "padding": "0",
+      "border": "none",
+      "background": "none",
+      "color": "var(--fg-dim)",
+      "font": "inherit",
+      "fontSize": "var(--jx-text-md)",
+      "lineHeight": "1",
+      "borderRadius": "var(--radius)",
+      "cursor": "pointer",
+      "opacity": "0",
+      ":hover": {
+        "background": "var(--hover-bg)",
+        "color": "var(--fg)"
+      },
+      ":focus-visible": {
+        "outline": "var(--jx-focus-ring)",
+        "outlineOffset": "-1px"
+      }
+    },
+    "& [part=\"tab\"]:hover [part=\"pin\"], & [part=\"tab\"][aria-selected=\"true\"] [part=\"pin\"], & [part=\"tab\"][data-pinned] [part=\"pin\"]": {
+      "opacity": "1"
+    },
+    "& [part=\"tab\"][data-pinned] [part=\"pin\"]": {
+      "color": "var(--accent)"
+    },
+    "& [part=\"derivation\"]": {
+      "$description": "A LENS pane's strip: one chip naming the projection and the document it projects, where an ordinary pane draws tab chips. It is not a tab and must not look like one — no close ✕ of its own, because a lens owns no document to close. Its vertical box is a tab chip's, `4px` top and bottom plus the 2px underline `[part=\"tab\"]` reserves, so the lens's one-chip row sits on the same baseline grid as the tab row in the pane beside it; `tab-strip.test.ts` compares the two declarations rather than the two boxes, because happy-dom lays nothing out and a 19px strip against a 28px one is the class of defect only a picture catches. Horizontally it is 10px rather than a chip's 8px: this row is one chip wide with nothing to sit beside, and a chip's tighter inset exists so several of them read as a series.",
+      "display": "flex",
+      "flex": "1 1 auto",
+      "alignItems": "baseline",
+      "gap": "6px",
+      "minWidth": "0",
+      "padding": "4px 10px",
+      "borderBottom": "2px solid transparent",
+      "whiteSpace": "nowrap",
+      "overflow": "hidden"
+    },
+    "& [part=\"preset\"]": {
+      "color": "var(--fg)",
+      "fontSize": "var(--jx-text-md)"
+    },
+    "& [part=\"subject\"]": {
+      "color": "var(--fg-dim)",
+      "fontSize": "var(--jx-text-sm)",
+      "textOverflow": "ellipsis",
+      "overflow": "hidden"
+    },
+    "& [part=\"overflow\"]": {
+      "$description": "`.tab-strip-overflow`. It sits OUTSIDE the scrolling strip, so it stays reachable at any scroll offset — which is the whole point of it. One button draws both trailing affordances, because they are the same control in the same place: the chevron that lists the tabs currently out of view, and, on a derived pane, the ✕ that is a lens's only exit.",
+      "flex": "0 0 auto",
+      "display": "flex",
+      "alignItems": "center",
+      "justifyContent": "center",
+      "width": "22px",
+      "padding": "0",
+      "border": "none",
+      "borderLeft": "1px solid var(--border)",
+      "background": "none",
+      "color": "var(--fg-dim)",
+      "font": "inherit",
+      "fontSize": "var(--jx-text-lg)",
+      "lineHeight": "1",
+      "cursor": "pointer",
+      ":hover": {
+        "background": "var(--hover-bg)",
+        "color": "var(--fg)"
+      },
+      ":focus-visible": {
+        "outline": "var(--jx-focus-ring)",
+        "outlineOffset": "-2px"
+      }
+    },
+    "& [part=\"overflow\"][hidden]": {
+      "display": "none"
+    }
+  },
+  "children": [
+    {
+      "$description": "One row draws one pane, and a pane is either a set of open documents or a projection of somebody else's. A third answer — a pane with neither — draws nothing at all, which is the case with no branch here: the row itself is `hidden`.",
+      "tagName": "div",
+      "attributes": {
+        "part": "body"
+      },
+      "style": {
+        "$description": "The switch container generates no box: the branch inside it IS the row's flex item, so a lens chip and a tab strip sit at the same depth and take the same `flex` the row gives them.",
+        "display": "contents"
+      },
+      "$switch": {
+        "$ref": "#/state/mode"
+      },
+      "cases": {
+        "tabs": {
+          "tagName": "jx-tabs",
+          "attributes": {
+            "part": "tabs",
+            "label": "${state.stripLabel}",
+            "selected": "${state.active}"
+          },
+          "onchange": {
+            "$prototype": "Function",
+            "body": [
+              {
+                "operator": "call",
+                "target": { "$ref": "#/state/activate" },
+                "value": [{ "$ref": "event#/detail" }]
+              }
+            ]
+          },
+          "onclose": {
+            "$prototype": "Function",
+            "body": [
+              {
+                "operator": "call",
+                "target": { "$ref": "#/state/closeTab" },
+                "value": [{ "$ref": "event#/detail" }]
+              }
+            ]
+          },
+          "onwheel": {
+            "$ref": "#/state/wheel"
+          },
+          "children": [
+            {
+              "$prototype": "Array",
+              "items": { "$ref": "#/state/tabs" },
+              "key": { "$ref": "$map/item/key" },
+              "map": {
+                "tagName": "jx-tab",
+                "attributes": {
+                  "part": "tab",
+                  "data-tab": "${$map.item.key}",
+                  "value": "${$map.item.key}",
+                  "label": "${$map.item.label}",
+                  "title": "${$map.item.title}",
+                  "closable": "",
+                  "draggable": "true",
+                  "dirty": "${$map.item.dirty ? '' : null}",
+                  "data-pinned": "${$map.item.pinned ? '' : null}",
+                  "data-preview": "${$map.item.preview ? '' : null}",
+                  "data-dragging": "${$map.item.dragging ? '' : null}"
+                },
+                "ondblclick": {
+                  "$prototype": "Function",
+                  "body": [
+                    {
+                      "operator": "call",
+                      "target": { "$ref": "#/state/promote" },
+                      "value": [{ "$ref": "$map/item/key" }]
+                    }
+                  ]
+                },
+                "onauxclick": {
+                  "$prototype": "Function",
+                  "body": [
+                    {
+                      "if": {
+                        "operator": "===",
+                        "target": { "$ref": "event#/button" },
+                        "value": 1
+                      },
+                      "then": [
+                        { "preventDefault": true },
+                        {
+                          "operator": "call",
+                          "target": { "$ref": "#/state/closeTab" },
+                          "value": [{ "$ref": "$map/item/key" }]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "oncontextmenu": {
+                  "$prototype": "Function",
+                  "body": [
+                    { "preventDefault": true },
+                    { "stopPropagation": true },
+                    {
+                      "operator": "call",
+                      "target": { "$ref": "#/state/context" },
+                      "value": [
+                        { "$ref": "$map/item/key" },
+                        { "$ref": "event#/clientX" },
+                        { "$ref": "event#/clientY" }
+                      ]
+                    }
+                  ]
+                },
+                "ondragstart": {
+                  "$prototype": "Function",
+                  "body": [
+                    {
+                      "operator": "call",
+                      "target": { "$ref": "#/state/dragStart" },
+                      "value": [{ "$ref": "$map/item/key" }, { "$ref": "event#/dataTransfer" }]
+                    }
+                  ]
+                },
+                "ondragend": {
+                  "$prototype": "Function",
+                  "body": [
+                    {
+                      "operator": "call",
+                      "target": { "$ref": "#/state/dragEnd" },
+                      "value": []
+                    }
+                  ]
+                },
+                "ondragover": {
+                  "$prototype": "Function",
+                  "body": [{ "preventDefault": true }]
+                },
+                "ondrop": {
+                  "$prototype": "Function",
+                  "body": [
+                    { "preventDefault": true },
+                    {
+                      "operator": "call",
+                      "target": { "$ref": "#/state/drop" },
+                      "value": [{ "$ref": "$map/item/index" }, { "$ref": "event#/dataTransfer" }]
+                    }
+                  ]
+                },
+                "children": [
+                  {
+                    "$description": "The drill-in marker: this document was opened FROM another one. `jx-tab`'s icon slot draws it before the label, which is where it has always been.",
+                    "tagName": "span",
+                    "attributes": {
+                      "slot": "icon",
+                      "part": "origin",
+                      "aria-hidden": "true",
+                      "hidden": "${$map.item.origin ? null : ''}"
+                    },
+                    "textContent": "↳"
+                  },
+                  {
+                    "$description": "The draft pill. It is a `<span>` in the status slot rather than a mounted document of its own, which is what kept it a lit fragment inside `content/entry-editor.ts` until the strip converted: a document mounted per chip would be an async mount inside a synchronous rebuild. `entryDraftPill` states the two facts; this draws them.",
+                    "tagName": "span",
+                    "attributes": {
+                      "slot": "status",
+                      "part": "pill",
+                      "title": "${$map.item.pillTitle}",
+                      "data-draft": "${$map.item.draft ? '' : null}",
+                      "hidden": "${$map.item.pill ? null : ''}"
+                    },
+                    "textContent": "${$map.item.pill}"
+                  },
+                  {
+                    "$description": "The pin, in the actions slot. `title` is the whole accessible name (§10): the glyph is hidden, so a matching `aria-label` would announce it twice. `tabindex` follows the tab's own selectedness, exactly as the close button's does — the strip is ONE stop in the tab order, and a control inside every chip that took the platform's default would make fifteen.",
+                    "tagName": "button",
+                    "attributes": {
+                      "slot": "actions",
+                      "part": "pin",
+                      "type": "button",
+                      "title": "${$map.item.pinTitle}",
+                      "tabindex": "${$map.item.tabindex}"
+                    },
+                    "onclick": {
+                      "$prototype": "Function",
+                      "body": [
+                        {
+                          "operator": "call",
+                          "target": { "$ref": "#/state/togglePin" },
+                          "value": [{ "$ref": "$map/item/key" }]
+                        }
+                      ]
+                    },
+                    "children": [
+                      {
+                        "tagName": "span",
+                        "attributes": {
+                          "part": "pin-glyph",
+                          "aria-hidden": "true"
+                        },
+                        "textContent": "${$map.item.pinGlyph}"
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "derivation": {
+          "$description": "THE CHIP FINISHES ITS OWN SENTENCE, and both halves are the flow's: two of the presets are labelled with an unfinished phrase — \"Same page at\", \"Same page in\" — because the interesting half is the value, and a chip whose source pane shows nothing says \"no document\" rather than trailing off.",
+          "tagName": "div",
+          "attributes": {
+            "part": "derivation",
+            "title": "${state.chipTitle}"
+          },
+          "children": [
+            {
+              "tagName": "span",
+              "attributes": { "part": "preset" },
+              "textContent": "${state.preset}"
+            },
+            {
+              "tagName": "span",
+              "attributes": { "part": "subject" },
+              "textContent": "${state.subject}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "tagName": "button",
+      "attributes": {
+        "part": "overflow",
+        "type": "button",
+        "title": "${state.trailingTitle}",
+        "hidden": "${state.trailing ? null : ''}"
+      },
+      "onclick": {
+        "$prototype": "Function",
+        "body": [
+          { "stopPropagation": true },
+          {
+            "operator": "call",
+            "target": { "$ref": "#/state/openTrailing" },
+            "value": [{ "$ref": "event#/currentTarget" }]
+          }
+        ]
+      },
+      "children": [
+        {
+          "tagName": "span",
+          "attributes": {
+            "part": "overflow-glyph",
+            "aria-hidden": "true"
+          },
+          "textContent": "${state.trailingGlyph}"
+        }
+      ]
+    }
+  ]
+}

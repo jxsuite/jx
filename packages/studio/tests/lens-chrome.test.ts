@@ -18,7 +18,7 @@
  */
 import { flush, installMockPlatform, resetStudioState, resetWorkspaceWithTab } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { documents as kitDocuments } from "@jxsuite/ui/documents";
 import type { Tab } from "../src/tabs/tab";
 
 const paneContext = await import("../src/panels/pane-context");
@@ -737,13 +737,13 @@ describe("the tab strip in a derived pane", () => {
     tabStrip.mount(stripHost);
     await flush();
 
-    expect(stripHost.querySelector(".tab-derivation-preset")?.textContent?.trim()).toBe(
+    expect(stripHost.querySelector('[part="preset"]')?.textContent?.trim()).toBe(
       "Component definition",
     );
     // The pane owns no tab, so "what it is a projection of" is the SOURCE pane's document.
-    expect(stripHost.querySelector(".tab-derivation-of")?.textContent?.trim()).toBe("/");
+    expect(stripHost.querySelector('[part="subject"]')?.textContent?.trim()).toBe("/");
     // …and the ✕ is there, which is the only way out of a pane that draws nothing.
-    expect(stripHost.querySelector(".tab-strip-overflow")).not.toBeNull();
+    expect(stripHost.querySelector('[part="overflow"]:not([hidden])')).not.toBeNull();
   });
 
   test("draws ONE derivation chip and no tab chips", async () => {
@@ -755,12 +755,12 @@ describe("the tab strip in a derived pane", () => {
     tabStrip.mount(stripHost);
     await flush();
 
-    expect(stripHost.querySelector(".tab-derivation")).not.toBeNull();
-    expect(stripHost.querySelectorAll(".tab-strip-tab")).toHaveLength(0);
+    expect(stripHost.querySelector('[part="derivation"]')).not.toBeNull();
+    expect(stripHost.querySelectorAll('[part="tab"]')).toHaveLength(0);
     // The chip names the projection AND the document it is a projection of.
-    expect(stripHost.querySelector(".tab-derivation-preset")?.textContent?.trim()).toBe("Code");
+    expect(stripHost.querySelector('[part="preset"]')?.textContent?.trim()).toBe("Code");
     // `tabLabel` prints a page's ROUTE, and `pages/index.json` is the home route.
-    expect(stripHost.querySelector(".tab-derivation-of")?.textContent?.trim()).toBe("/");
+    expect(stripHost.querySelector('[part="subject"]')?.textContent?.trim()).toBe("/");
   });
 
   /* "no document" IS A NAME, and it is the one state the chip has no other way to say. A
@@ -773,15 +773,15 @@ describe("the tab strip in a derived pane", () => {
     focusPane(SECONDARY_PANE);
     tabStrip.mount(stripHost);
     await flush();
-    expect(stripHost.querySelector(".tab-derivation-of")?.textContent?.trim()).toBe("/");
+    expect(stripHost.querySelector('[part="subject"]')?.textContent?.trim()).toBe("/");
 
     // The pane this one follows loses its document — the welcome-screen state, beside a projection.
     paneById(PRIMARY_PANE)!.activeTabId = null;
     await flush();
 
-    expect(stripHost.querySelector(".tab-derivation-of")?.textContent?.trim()).toBe("no document");
+    expect(stripHost.querySelector('[part="subject"]')?.textContent?.trim()).toBe("no document");
     // The chip's tooltip says the same thing, so hover and label cannot disagree.
-    expect(stripHost.querySelector(".tab-derivation")?.getAttribute("title")).toBe(
+    expect(stripHost.querySelector('[part="derivation"]')?.getAttribute("title")).toBe(
       "Code · no document",
     );
   });
@@ -832,7 +832,7 @@ describe("the tab strip in a derived pane", () => {
     try {
       tabStrip.mount(stripHost);
       await flush();
-      expect(sideStripHost.querySelectorAll(".tab-strip-tab")).toHaveLength(1);
+      expect(sideStripHost.querySelectorAll('[part="tab"]')).toHaveLength(1);
       scrolled.length = 0;
 
       await registry.run("pane.derive", { preset: "layout" });
@@ -840,7 +840,19 @@ describe("the tab strip in a derived pane", () => {
 
       // Back where it started, under a derivation — and the strip scrolled to it.
       expect(paneById(SECONDARY_PANE)!.activeTabId).toBe("layouts/base.json");
-      expect(sideStripHost.querySelectorAll(".tab-strip-tab")).toHaveLength(1);
+      expect(sideStripHost.querySelectorAll('[part="tab"]')).toHaveLength(1);
+      /* IN THE SAME PAINT, and that is what `scrolled` is really measuring. A pane that stops
+         being a projection changes SHAPE and CONTENT at once, so the projection assigns `mode`
+         last: written first it would build the tablist against the tabs the derivation chip was
+         showing — none — and the chip would arrive one assignment later, into a `jx-tabs` that had
+         already connected and distributed its slot around nothing. Measured before that ordering:
+         one live tablist with no children, the chip drawn elsewhere in the host, and nothing for
+         the reveal below to find. */
+      const strip = sideStripHost.querySelector('[part="tabs"]')!;
+      expect(sideStripHost.querySelectorAll('[part="tabs"]')).toHaveLength(1);
+      expect(([...strip.children] as HTMLElement[]).map((chip) => chip.dataset.tab)).toEqual([
+        "layouts/base.json",
+      ]);
       expect(scrolled.filter((el) => sideStripHost.contains(el))).not.toHaveLength(0);
     } finally {
       Element.prototype.scrollIntoView = original;
@@ -862,14 +874,14 @@ describe("the tab strip in a derived pane", () => {
     focusPane(SECONDARY_PANE);
     tabStrip.mount(stripHost);
     await flush();
-    expect(stripHost.querySelector(".tab-derivation-preset")?.textContent?.trim()).toBe(
+    expect(stripHost.querySelector('[part="preset"]')?.textContent?.trim()).toBe(
       "Same page at Tablet",
     );
 
     // The base lens says Base, which is a name and not an absence.
     Object.assign(derivationOfPane(SECONDARY_PANE)!, { media: null });
     await flush();
-    expect(stripHost.querySelector(".tab-derivation-preset")?.textContent?.trim()).toBe(
+    expect(stripHost.querySelector('[part="preset"]')?.textContent?.trim()).toBe(
       "Same page at Base",
     );
   });
@@ -894,7 +906,7 @@ describe("the tab strip in a derived pane", () => {
     tabStrip.mount(stripHost);
     await flush();
 
-    expect(stripHost.querySelector(".tab-derivation-preset")?.textContent?.trim()).toBe(
+    expect(stripHost.querySelector('[part="preset"]')?.textContent?.trim()).toBe(
       "Same page in français",
     );
 
@@ -903,9 +915,7 @@ describe("the tab strip in a derived pane", () => {
        hand-built state a stale session or a bad argument could still produce. */
     Object.assign(derivationOfPane(SECONDARY_PANE)!, { locale: null });
     await flush();
-    expect(stripHost.querySelector(".tab-derivation-preset")?.textContent?.trim()).toBe(
-      "Same page in —",
-    );
+    expect(stripHost.querySelector('[part="preset"]')?.textContent?.trim()).toBe("Same page in —");
   });
 
   /* THE CHIP'S LABEL IS A RENDER INPUT, and re-deriving a pane rewrites it in place. `pane.derive`
@@ -919,14 +929,12 @@ describe("the tab strip in a derived pane", () => {
     focusPane(SECONDARY_PANE);
     tabStrip.mount(stripHost);
     await flush();
-    expect(stripHost.querySelector(".tab-derivation-preset")?.textContent?.trim()).toBe("Code");
+    expect(stripHost.querySelector('[part="preset"]')?.textContent?.trim()).toBe("Code");
 
     Object.assign(derivationOfPane(SECONDARY_PANE)!, { mode: "git-diff", preset: "diff" });
     await flush();
 
-    expect(stripHost.querySelector(".tab-derivation-preset")?.textContent?.trim()).toBe(
-      "Diff vs HEAD",
-    );
+    expect(stripHost.querySelector('[part="preset"]')?.textContent?.trim()).toBe("Diff vs HEAD");
   });
 
   /* THE CHIP ROW'S OWN mousedown, and it is the only thing that can focus a derived pane from its
@@ -945,9 +953,9 @@ describe("the tab strip in a derived pane", () => {
       focusPane(PRIMARY_PANE);
       tabStrip.mount(stripHost);
       await flush();
-      expect(sideStrip.querySelector(".tab-derivation")).not.toBeNull();
+      expect(sideStrip.querySelector('[part="derivation"]')).not.toBeNull();
 
-      (sideStrip.querySelector(".tab-strip-row") as HTMLElement).dispatchEvent(
+      (sideStrip.querySelector('[part="strip-row"]') as HTMLElement).dispatchEvent(
         new MouseEvent("mousedown", { bubbles: true }),
       );
       await flush();
@@ -965,14 +973,14 @@ describe("the tab strip in a derived pane", () => {
     await flush();
     // The primary draws into the shared host while it has focus; the row's mousedown is what moves
     // Focus to the pane a click lands in.
-    (stripHost.querySelector(".tab-strip-row") as HTMLElement).dispatchEvent(
+    (stripHost.querySelector('[part="strip-row"]') as HTMLElement).dispatchEvent(
       new MouseEvent("mousedown", { bubbles: true }),
     );
     await flush();
     focusPane(SECONDARY_PANE);
     await flush();
 
-    const close = stripHost.querySelector(".tab-strip-overflow") as HTMLElement;
+    const close = stripHost.querySelector('[part="overflow"]:not([hidden])') as HTMLElement;
     expect(close).not.toBeNull();
     close.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     await flush();
@@ -1050,25 +1058,20 @@ describe("the tab strip in a derived pane", () => {
   });
 });
 
-/* THE ONE STYLE CLAIM THIS FILE CAN MAKE, and it was an exclusion for a round because the claim
-   above it — that the one-chip strip keeps the tab row's HEIGHT — is a computed height, and
-   happy-dom lays nothing out. That is still true. But the RULE the height rests on is a
-   DECLARATION, and happy-dom does resolve the cascade for declarations: `getComputedStyle` on an
-   element in the document returns the padding and border a stylesheet gave it. The height is
-   `packages/studio:verify`'s and a screenshot's; the declaration is here.
+/* The chip is not a tab and must not look like one, but it stands in the same row as one and has
+   to sit on the same baseline grid. The two boxes are compared against EACH OTHER rather than
+   against numbers copied out of a stylesheet, so letting them drift apart is a failure.
 
-   It is not a tautology. The stylesheet is read from disk, the elements are the ones
-   `derivationChipTpl` and `tabChip` actually emit, and the two are compared against each other
-   rather than against numbers copied out of the CSS — so renaming `.tab-derivation` on either side,
-   or letting the two boxes drift apart, is a failure. A `find` string in the mutation gate could
-   check none of that: rename the class in all four places and it still matches once. */
+   It used to read `styles/shell.css` off disk. There is no rule for either box there now: the
+   chip's is `surfaces/tab-strip.json`'s and the tab's is `jx-tab`'s, and the runtime's own sheet is
+   what `getComputedStyle` resolves. The underline is the one declaration that cannot be read back
+   that way — the kit writes `border-block-end`, a LOGICAL property happy-dom does not map onto
+   `borderBottomWidth` — so the 2px the chip reserves is checked against the 2px the kit's own
+   document declares, which is where a tab chip's underline is now defined. */
 describe("the derivation chip's box", () => {
   test("a derivation chip's row keeps the tab row's vertical box", async () => {
     const page = twoPaneGrid();
     page.doc.document.$layout = "layouts/base.json";
-    const style = document.createElement("style");
-    style.textContent = readFileSync(new URL("../styles/shell.css", import.meta.url), "utf8");
-    document.head.append(style);
     const sideStripHost = document.createElement("div");
     sideStripHost.dataset.jxRegion = tabStrip.paneStripRegion(SECONDARY_PANE);
     document.body.append(sideStripHost);
@@ -1088,8 +1091,8 @@ describe("the derivation chip's box", () => {
       tabStrip.mount(stripHost);
       await flush();
 
-      const chip = sideStripHost.querySelector(".tab-derivation");
-      const tab = stripHost.querySelector(".tab-strip-tab");
+      const chip = sideStripHost.querySelector('[part="derivation"]');
+      const tab = stripHost.querySelector('[part="tab"]');
       expect(chip).not.toBeNull();
       expect(tab).not.toBeNull();
       const chipBox = getComputedStyle(chip as Element);
@@ -1098,16 +1101,20 @@ describe("the derivation chip's box", () => {
       /* The chip's row is a `4px` inset plus the `2px` underline a tab chip reserves, so the two
          rows sit on one baseline grid. Asserted as an equality — the numbers are the tab chip's,
          whatever they become — plus one absolute check, so a stylesheet that failed to load (every
-         box `0px`, every equality trivially true) cannot pass. */
-      expect([chipBox.paddingTop, chipBox.paddingBottom, chipBox.borderBottomWidth]).toEqual([
+         box empty, every equality trivially true) cannot pass. */
+      expect([chipBox.paddingTop, chipBox.paddingBottom]).toEqual([
         tabBox.paddingTop,
         tabBox.paddingBottom,
-        tabBox.borderBottomWidth,
       ]);
       expect(tabBox.paddingTop).toBe("4px");
-      expect(tabBox.borderBottomWidth).toBe("2px");
+      expect(chipBox.borderBottomWidth).toBe("2px");
+      // The tab's own underline, read where it is declared. `jx-tab` is the single owner of a tab
+      // Chip's selected mark, so this is the value the chip above is holding a place for.
+      const kitTab = kitDocuments["jx-tab"]!;
+      expect((kitTab.style as Record<string, string>)["borderBlockEnd"]).toBe(
+        "2px solid transparent",
+      );
     } finally {
-      style.remove();
       sideStripHost.remove();
     }
   });

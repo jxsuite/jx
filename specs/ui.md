@@ -2,7 +2,7 @@
 
 ## Interface Elements Authored as Jx Documents
 
-**Version:** 0.1.19-draft\
+**Version:** 0.1.20-draft\
 **Status:** Partial\
 **Updated:** 2026-09-10\
 **License:** MIT\
@@ -213,6 +213,10 @@ Each of the three wraps ONE native control and writes none of the ARIA the platf
 
 **The keyboard is the element's, because the platform gives a role-carrying custom element none of it**: arrows with wrap, Home and End, `activation="auto"` selecting as the caret moves against `"manual"` waiting for Enter or Space, and Delete closing a `closable` tab, which is the APG's answer and a path Studio's own × has never had. **A key pressed on a control INSIDE a tab belongs to that control**: the close button is a real button, and Enter or Space on it must close the tab rather than select it — a focusable control with no keyboard operation of its own is a failure of SC 2.1.1, not a rough edge.
 
+**`jx-tab` takes slotted content in three named slots, and none of it can reach the tab's name.** `icon` draws before the label, `status` and `actions` after it and before the tab's own dirty dot and close button. The division is the CLICK rather than the position: `status` holds a mark ABOUT the document (a draft pill, a count, a sync state) and a click on a mark is a click on the tab, while `actions` holds a control (a pin, a lock) and a click inside it stops there — the same judgement the close button already makes, so activating a control never also moves the selection. There is deliberately no default slot: a tab's words are its `label` attribute, so unnamed content has nowhere to go, and a default slot would invite back the icon-only tabs one Studio panel removed along with three hover probes.
+
+**The `label` attribute is what makes those slots safe, and it becomes REQUIRED once anything is slotted.** A `tab` names itself from its content, so a marker, a pill and a pin would all join the tab's own name; `aria-label` wins over name-from-content in accname's precedence order, so the name stays exactly the string the tab draws and each slotted control keeps announcing its own. With no `label` there is no `aria-label`, name-from-content comes back, and a tab whose only content is a pin button is announced "Pin". Nothing lints that either, for the same reason a missing tablist name is unlinted, so it is the element's own test that holds it. Two more consequences the element does not take on itself: a control in `actions` is in the tab order only while its tab is the current one — the consumer binds its `tabindex` the way the close button's is bound, and `jx-action-button` takes one as a property for exactly this, because a strip of ten tabs with ten tab stops is not a roving caret — and a slotted mark that says nothing to a reader is the consumer's to hide, because only the consumer knows whether it is decoration. Each of the three containers is `display: contents`, so an empty one generates no box and a tab that slotted nothing pays no gap for the ones it did not use.
+
 **Nothing lints a missing `label` on a tablist**, because a bound role makes the naming rules stand down and `tablist` is in neither named-role set, so the element's own test asserts it. The same absence is why `jx-tabs` re-syncs when its tab set changes: a strip that loses the tab holding `tabindex="0"` drops out of the tab order entirely, and no gate would have said so.
 
 **`jx-accordion` and `jx-accordion-item` are both elements, and they own different things.** The item earns its keep on the native `<details>` and `<summary>` beneath it and on `name`, which makes a group exclusive with no script. The container draws a stack: one hairline between sections and never above the first, which is a declaration and therefore belongs to a definition (§3.1). It was a recipe while the kit still had them, and the reason given — that a container "earns nothing" when every consumer allows more than one section open — measured behaviour rather than boxes; the kind is decided by how many definitions draw the box.
@@ -223,12 +227,12 @@ Each of the three wraps ONE native control and writes none of the ARIA the platf
 
 **A host may own the pressed state without the button flipping itself.** `selected` drives the visual whoever wrote it, `aria-pressed` stays gated on `toggles`, `aria-checked` on `checked`, and only the FLIP is gated on `toggles` — two Studio call sites need a segment that looks pressed and does not self-toggle, because clicking the selected one clears the property rather than re-setting it.
 
-| Element                             | Owns                                                                                                                              | Replaces                                   |
-| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
-| `jx-tabs`, `jx-tab`, `jx-tab-panel` | real `tablist`/`tab`/`tabpanel`, `aria-selected`, `aria-controls`, roving focus, `activation="auto\|manual"`, `closable`, `dirty` | `sp-tabs`, and Studio's hand-rolled strips |
-| `jx-accordion-item`                 | a native `<details>`/`<summary>`; `name` for an exclusive group; a re-announced `toggle` that stops at the element                | `sp-accordion`, `sp-accordion-item`        |
-| `jx-action-group`                   | `selects="none\|single\|multiple"` → `toolbar`/`radiogroup`/`group`; `compact` with `single` is the segmented control             | `sp-action-group`                          |
-| `jx-accordion`                      | the stack: one hairline between sections, never above the first                                                                   | `sp-accordion`                             |
+| Element                             | Owns                                                                                                                                                                                                                                                                 | Replaces                                   |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| `jx-tabs`, `jx-tab`, `jx-tab-panel` | real `tablist`/`tab`/`tabpanel`, `aria-selected`, `aria-controls`, roving focus, `activation="auto\|manual"`, `closable`, `dirty`; `jx-tab` slots `icon` (before the label), `status` (a mark; clicking it selects) and `actions` (a control; the click stops there) | `sp-tabs`, and Studio's hand-rolled strips |
+| `jx-accordion-item`                 | a native `<details>`/`<summary>`; `name` for an exclusive group; a re-announced `toggle` that stops at the element                                                                                                                                                   | `sp-accordion`, `sp-accordion-item`        |
+| `jx-action-group`                   | `selects="none\|single\|multiple"` → `toolbar`/`radiogroup`/`group`; `compact` with `single` is the segmented control                                                                                                                                                | `sp-action-group`                          |
+| `jx-accordion`                      | the stack: one hairline between sections, never above the first                                                                                                                                                                                                      | `sp-accordion`                             |
 
 ### 5.5 Builder
 
@@ -319,6 +323,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.1.20-draft** (2026-09-10) — jx-tab takes slotted content in three named slots (icon, status, actions); label becomes required once anything is slotted, because aria-label is what keeps a slotted mark out of the tab's name.
 - **0.1.19-draft** (2026-09-10) — The Studio facade list drops openModal: a persistent modal is a jx-dialog surface document (§6).
 - **0.1.18-draft** (2026-09-08) — jx-select: the default slot and its once-at-mount distribution, the slotted hr separator, and the property-only rows.
 - **0.1.17-draft** (2026-09-04) — jx-select is a native select under appearance: base-select — the four things a document must never author, the sidecar that keeps selectedness alive, and why the kit ships no jx-option.
@@ -342,4 +347,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx UI Kit Specification v0.1.19-draft_
+_Jx UI Kit Specification v0.1.20-draft_
