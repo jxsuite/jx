@@ -240,35 +240,39 @@ describe("the control", () => {
 });
 
 describe("every consumer gets it without asking", () => {
-  test("the frontmatter renderer reaches the registry rather than its own ladder", async () => {
-    const { renderFmField } = await import("../src/panels/frontmatter-fields");
-    // The renderer takes its tab now (it is drawn per pane by the Document Header card), so the
-    // Document it commits into has to exist before the widget is built.
-    const { closeAllTabs, openTab } = await import("../src/workspace/workspace");
-    closeAllTabs();
-    const tab = openTab({
-      document: { children: [], tagName: "div" },
-      documentPath: "content/blog/hello.md",
-      frontmatter: { author: "ada" },
-      id: "content/blog/hello.md",
+  test("the frontmatter projection reaches the registry rather than its own ladder", async () => {
+    /* This used to render `renderFmField`, a lit template with one host. Both frontmatter surfaces
+       are documents now, so what they share is `projectFmField` — a PROJECTION rather than markup —
+       and the contract it stands for is unchanged: a `$ref` to a collection is a picker over that
+       collection's entry ids, not a text box you type an id into from memory. Where the picker's
+       rows come from is `ui/form-controls.ts`'s read, which the tests above pin. */
+    const { projectFmField } = await import("../src/panels/frontmatter-fields");
+    const first = projectFmField("author", { $ref: "#/content/authors" }, "ada", new Set(), {
+      rerender: () => {},
     });
-    const container = document.createElement("div");
-    render(
-      html`${renderFmField(tab, "author", { $ref: "#/content/authors" }, "ada", new Set())}`,
-      container,
-    );
+    // The first ask starts the read, so it can only offer what it already holds.
+    expect(first.row.kind).toBe("select");
+    expect(first.row.options).toEqual([{ label: "Loading…", value: "ada" }]);
     await flush();
-    // Before this dispatch a `$ref` field fell through to a bare textfield: an entry id typed from
-    // Memory, with no list and no sign when it was wrong.
-    expect(container.querySelector("sp-picker.reference-field")).not.toBeNull();
-    expect((container.querySelector(".style-row") as HTMLElement | null)?.dataset.prop).toBe(
-      "author",
-    );
 
-    // And it commits through the document's transaction log, like every other frontmatter widget.
-    choose(container.querySelector("sp-picker.reference-field")!, "grace");
-    expect(tab.doc.content.frontmatter.author).toBe("grace");
-    closeAllTabs();
+    const settled = projectFmField("author", { $ref: "#/content/authors" }, "ada", new Set(), {
+      rerender: () => {},
+    });
+    expect(settled.row.options.map((o) => o.label)).toEqual(["—", "ada", "grace"]);
+    expect(settled.row.value).toBe("ada");
+    // And what a surface reads back off the control is the frontmatter value, empty meaning delete.
+    expect(settled.parse("grace")).toBe("grace");
+    expect(settled.parse("")).toBeUndefined();
+  });
+
+  test("a required field carries its marker, and a plain string field stays a text box", async () => {
+    const { projectFmField } = await import("../src/panels/frontmatter-fields");
+    const required = projectFmField("title", { type: "string" }, "", new Set(["title"]), {
+      rerender: () => {},
+    });
+    expect(required.row.label).toBe("Title *");
+    expect(required.row.kind).toBe("text");
+    expect(required.row.isSet).toBe(false);
   });
 
   test("a settled collection renders synchronously — no Loading flash on every repaint", async () => {

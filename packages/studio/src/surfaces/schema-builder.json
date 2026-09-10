@@ -1,0 +1,1011 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioSchemaBuilder",
+  "$description": "The `schema-builder` form control (specs/extensions.md §9.1): the visual editor for a JSON Schema object, drawn as one card per property. A descriptor names it with `\"ui\": { \"<prop>\": { \"control\": \"schema-builder\" } }`, and `ui/schema-form.ts` mounts it into the empty host its own document announces for that field. The adapter (`surfaces/schema-builder.ts`) hands in the fields already classified and every draft the reader is part-way through typing; `ui/form-controls.ts` decides what a field may be renamed to and what reaches the host's `onChange`. Nothing here reads a schema: a document that re-derived a field's type while drawing would be a second opinion about what one module already owns. **The card is `surfaces/settings-defs.json`'s, part for part.** Data Shapes edits the project's `$defs` and this edits a content type's `schema`; they are the same object with the same six controls per row, so the row vocabulary — `card`, `field-row`, `field-label`, `field-name`, `field-type`, `field-format`, `field-required`, `field-delete`, `nested`, `nested-card`, `nested-add-name`/`-type`/`-button`, `ref-target`, `add-form` — is ONE vocabulary, and the row views it is drawn from are that surface's own types rather than a second declaration of them. What differs is only what encloses it: Data Shapes carries the two-column chrome that chooses WHICH shape is being edited, and this one is handed the object to edit.",
+  "tagName": "div",
+  "attributes": {
+    "part": "builder"
+  },
+  "style": {
+    "$description": "What `.schema-builder`, `.schema-field-list`, `.schema-field-card`, `.schema-field-row`, `.schema-field-nested`, `.schema-field-name-input`, `.schema-nested-add`, `.schema-nested-add-name` and `.schema-add-field` said in `styles/overlays.css`, keyed on `part` and re-pointed at the studio token layer — the same translation `surfaces/settings-defs.json` carries, because it is the same card. Two values could not come with them. `.schema-field-card--nested` read `var(--spectrum-gray-300, #444)`, and the caption was an `sp-field-label` at whatever size Spectrum drew it; a document is mounted in the pane rather than inside `<sp-theme>`, so both would have taken their hard-coded fallback every time. The nested card takes the studio layer's `--border`, and the caption says what it is in the type ramp instead.",
+    "display": "block",
+    "& [part=\"fields\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "4px",
+      "marginBottom": "12px"
+    },
+    "& [part=\"card\"], & [part=\"nested-card\"]": {
+      "border": "1px solid var(--border)",
+      "borderRadius": "var(--radius)",
+      "padding": "6px 10px"
+    },
+    "& [part=\"field-row\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "8px"
+    },
+    "& [part=\"field-label\"]": {
+      "$description": "The field's name in words: a caption on the row rather than a label for a control, since the raw key beside it is what the reader edits and what carries the accessible name.",
+      "flex": "none",
+      "minWidth": "84px",
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--fg-dim)",
+      "overflowWrap": "anywhere"
+    },
+    "& [part=\"field-name\"]": {
+      "flex": "1",
+      "maxWidth": "140px"
+    },
+    "& [part=\"nested\"]": {
+      "marginLeft": "16px",
+      "marginTop": "6px",
+      "paddingLeft": "8px",
+      "borderLeft": "2px solid var(--border)",
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "4px"
+    },
+    "& [part=\"ref-target\"]": {
+      "display": "flex",
+      "marginTop": "6px",
+      "maxWidth": "220px"
+    },
+    "& [part=\"nested-add\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "6px",
+      "padding": "4px 0"
+    },
+    "& [part=\"nested-add-name\"]": {
+      "flex": "1",
+      "maxWidth": "120px"
+    },
+    "& [part=\"add-form\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "8px",
+      "padding": "8px 0"
+    }
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "fields"
+      },
+      "children": [
+        {
+          "$prototype": "Array",
+          "items": {
+            "$ref": "#/state/fields"
+          },
+          "key": {
+            "$ref": "$map/item/key"
+          },
+          "map": {
+            "tagName": "div",
+            "attributes": {
+              "part": "card",
+              "data-field": "${$map.item.key}"
+            },
+            "children": [
+              {
+                "tagName": "div",
+                "attributes": {
+                  "part": "field-row"
+                },
+                "children": [
+                  {
+                    "tagName": "span",
+                    "attributes": {
+                      "part": "field-label"
+                    },
+                    "textContent": "${$map.item.label}"
+                  },
+                  {
+                    "tagName": "jx-textfield",
+                    "attributes": {
+                      "part": "field-name"
+                    },
+                    "$props": {
+                      "label": "Name for ${$map.item.label}",
+                      "size": "sm",
+                      "value": {
+                        "$ref": "$map/item/name"
+                      }
+                    },
+                    "onchange": {
+                      "$prototype": "Function",
+                      "body": [
+                        {
+                          "operator": "call",
+                          "target": {
+                            "$ref": "#/state/renameField"
+                          },
+                          "value": [
+                            {
+                              "$ref": "$map/item/key"
+                            },
+                            {
+                              "$ref": "event#/target/value"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "tagName": "jx-select",
+                    "attributes": {
+                      "part": "field-type"
+                    },
+                    "$props": {
+                      "label": "Type for ${$map.item.label}",
+                      "size": "sm",
+                      "options": {
+                        "$ref": "#/state/typeOptions"
+                      },
+                      "value": {
+                        "$ref": "$map/item/type"
+                      }
+                    },
+                    "onchange": {
+                      "$prototype": "Function",
+                      "body": [
+                        {
+                          "operator": "call",
+                          "target": {
+                            "$ref": "#/state/setType"
+                          },
+                          "value": [
+                            {
+                              "$ref": "$map/item/key"
+                            },
+                            {
+                              "$ref": "event#/target/value"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "tagName": "div",
+                    "attributes": {
+                      "part": "format-slot",
+                      "role": "none"
+                    },
+                    "style": {
+                      "display": "contents"
+                    },
+                    "$switch": {
+                      "$ref": "$map/item/hasFormat"
+                    },
+                    "cases": {
+                      "true": {
+                        "tagName": "jx-select",
+                        "attributes": {
+                          "part": "field-format"
+                        },
+                        "$props": {
+                          "label": "Format for ${$map.item.label}",
+                          "size": "sm",
+                          "options": {
+                            "$ref": "#/state/formatOptions"
+                          },
+                          "value": {
+                            "$ref": "$map/item/format"
+                          }
+                        },
+                        "onchange": {
+                          "$prototype": "Function",
+                          "body": [
+                            {
+                              "operator": "call",
+                              "target": {
+                                "$ref": "#/state/setFormat"
+                              },
+                              "value": [
+                                {
+                                  "$ref": "$map/item/key"
+                                },
+                                {
+                                  "$ref": "event#/target/value"
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "tagName": "jx-switch",
+                    "$description": "Whether the object requires this field. The word on screen is the name: `Req` is slotted rather than passed as `label`, because the kit's switch wraps its control in the label the slot lands in, and a second name would be announced over the top of it. Which row it belongs to is the tooltip's job instead, which is what `hint` is.",
+                    "attributes": {
+                      "part": "field-required"
+                    },
+                    "$props": {
+                      "hint": "Require ${$map.item.label}",
+                      "size": "sm",
+                      "checked": {
+                        "$ref": "$map/item/required"
+                      }
+                    },
+                    "onchange": {
+                      "$prototype": "Function",
+                      "body": [
+                        {
+                          "operator": "call",
+                          "target": {
+                            "$ref": "#/state/setRequired"
+                          },
+                          "value": [
+                            {
+                              "$ref": "$map/item/key"
+                            },
+                            {
+                              "$ref": "event#/target/checked"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "children": [
+                      {
+                        "tagName": "span",
+                        "textContent": "Req"
+                      }
+                    ]
+                  },
+                  {
+                    "tagName": "jx-action-button",
+                    "attributes": {
+                      "part": "field-delete"
+                    },
+                    "$props": {
+                      "label": "Delete ${$map.item.label}",
+                      "hint": "Delete ${$map.item.label}",
+                      "icon": "trash",
+                      "quiet": true,
+                      "size": "sm"
+                    },
+                    "onclick": {
+                      "$prototype": "Function",
+                      "body": [
+                        {
+                          "operator": "call",
+                          "target": {
+                            "$ref": "#/state/removeField"
+                          },
+                          "value": [
+                            {
+                              "$ref": "$map/item/key"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              {
+                "tagName": "div",
+                "attributes": {
+                  "part": "extra-slot",
+                  "role": "none"
+                },
+                "style": {
+                  "display": "contents"
+                },
+                "$switch": {
+                  "$ref": "$map/item/extra"
+                },
+                "cases": {
+                  "reference": {
+                    "tagName": "div",
+                    "attributes": {
+                      "part": "ref-target"
+                    },
+                    "children": [
+                      {
+                        "tagName": "jx-select",
+                        "attributes": {
+                          "part": "ref-target-select"
+                        },
+                        "$props": {
+                          "label": "Target for ${$map.item.label}",
+                          "size": "sm",
+                          "options": {
+                            "$ref": "#/state/targets"
+                          },
+                          "value": {
+                            "$ref": "$map/item/refTarget"
+                          }
+                        },
+                        "onchange": {
+                          "$prototype": "Function",
+                          "body": [
+                            {
+                              "operator": "call",
+                              "target": {
+                                "$ref": "#/state/setTarget"
+                              },
+                              "value": [
+                                {
+                                  "$ref": "$map/item/key"
+                                },
+                                {
+                                  "$ref": "event#/target/value"
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  },
+                  "nested": {
+                    "tagName": "div",
+                    "attributes": {
+                      "part": "nested"
+                    },
+                    "children": [
+                      {
+                        "$prototype": "Array",
+                        "items": {
+                          "$ref": "$map/item/children"
+                        },
+                        "key": {
+                          "$ref": "$map/item/key"
+                        },
+                        "map": {
+                          "tagName": "div",
+                          "attributes": {
+                            "part": "nested-card",
+                            "data-nested": "${$map.item.key}"
+                          },
+                          "children": [
+                            {
+                              "tagName": "div",
+                              "attributes": {
+                                "part": "field-row"
+                              },
+                              "children": [
+                                {
+                                  "tagName": "jx-textfield",
+                                  "attributes": {
+                                    "part": "field-name"
+                                  },
+                                  "$props": {
+                                    "label": "Name for ${$map.item.parent}.${$map.item.key}",
+                                    "size": "sm",
+                                    "value": {
+                                      "$ref": "$map/item/name"
+                                    }
+                                  },
+                                  "onchange": {
+                                    "$prototype": "Function",
+                                    "body": [
+                                      {
+                                        "operator": "call",
+                                        "target": {
+                                          "$ref": "#/state/renameNested"
+                                        },
+                                        "value": [
+                                          {
+                                            "$ref": "$map/item/parent"
+                                          },
+                                          {
+                                            "$ref": "$map/item/key"
+                                          },
+                                          {
+                                            "$ref": "event#/target/value"
+                                          }
+                                        ]
+                                      }
+                                    ]
+                                  }
+                                },
+                                {
+                                  "tagName": "jx-select",
+                                  "attributes": {
+                                    "part": "field-type"
+                                  },
+                                  "$props": {
+                                    "label": "Type for ${$map.item.parent}.${$map.item.key}",
+                                    "size": "sm",
+                                    "options": {
+                                      "$ref": "#/state/typeOptions"
+                                    },
+                                    "value": {
+                                      "$ref": "$map/item/type"
+                                    }
+                                  },
+                                  "onchange": {
+                                    "$prototype": "Function",
+                                    "body": [
+                                      {
+                                        "operator": "call",
+                                        "target": {
+                                          "$ref": "#/state/setNestedType"
+                                        },
+                                        "value": [
+                                          {
+                                            "$ref": "$map/item/parent"
+                                          },
+                                          {
+                                            "$ref": "$map/item/key"
+                                          },
+                                          {
+                                            "$ref": "event#/target/value"
+                                          }
+                                        ]
+                                      }
+                                    ]
+                                  }
+                                },
+                                {
+                                  "tagName": "div",
+                                  "attributes": {
+                                    "part": "format-slot",
+                                    "role": "none"
+                                  },
+                                  "style": {
+                                    "display": "contents"
+                                  },
+                                  "$switch": {
+                                    "$ref": "$map/item/hasFormat"
+                                  },
+                                  "cases": {
+                                    "true": {
+                                      "tagName": "jx-select",
+                                      "attributes": {
+                                        "part": "field-format"
+                                      },
+                                      "$props": {
+                                        "label": "Format for ${$map.item.parent}.${$map.item.key}",
+                                        "size": "sm",
+                                        "options": {
+                                          "$ref": "#/state/formatOptions"
+                                        },
+                                        "value": {
+                                          "$ref": "$map/item/format"
+                                        }
+                                      },
+                                      "onchange": {
+                                        "$prototype": "Function",
+                                        "body": [
+                                          {
+                                            "operator": "call",
+                                            "target": {
+                                              "$ref": "#/state/setNestedFormat"
+                                            },
+                                            "value": [
+                                              {
+                                                "$ref": "$map/item/parent"
+                                              },
+                                              {
+                                                "$ref": "$map/item/key"
+                                              },
+                                              {
+                                                "$ref": "event#/target/value"
+                                              }
+                                            ]
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  }
+                                },
+                                {
+                                  "tagName": "jx-switch",
+                                  "attributes": {
+                                    "part": "field-required"
+                                  },
+                                  "$props": {
+                                    "hint": "Require ${$map.item.parent}.${$map.item.key}",
+                                    "size": "sm",
+                                    "checked": {
+                                      "$ref": "$map/item/required"
+                                    }
+                                  },
+                                  "onchange": {
+                                    "$prototype": "Function",
+                                    "body": [
+                                      {
+                                        "operator": "call",
+                                        "target": {
+                                          "$ref": "#/state/setNestedRequired"
+                                        },
+                                        "value": [
+                                          {
+                                            "$ref": "$map/item/parent"
+                                          },
+                                          {
+                                            "$ref": "$map/item/key"
+                                          },
+                                          {
+                                            "$ref": "event#/target/checked"
+                                          }
+                                        ]
+                                      }
+                                    ]
+                                  },
+                                  "children": [
+                                    {
+                                      "tagName": "span",
+                                      "textContent": "Req"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "tagName": "jx-action-button",
+                                  "attributes": {
+                                    "part": "field-delete"
+                                  },
+                                  "$props": {
+                                    "label": "Delete ${$map.item.parent}.${$map.item.key}",
+                                    "hint": "Delete ${$map.item.parent}.${$map.item.key}",
+                                    "icon": "trash",
+                                    "quiet": true,
+                                    "size": "sm"
+                                  },
+                                  "onclick": {
+                                    "$prototype": "Function",
+                                    "body": [
+                                      {
+                                        "operator": "call",
+                                        "target": {
+                                          "$ref": "#/state/removeNested"
+                                        },
+                                        "value": [
+                                          {
+                                            "$ref": "$map/item/parent"
+                                          },
+                                          {
+                                            "$ref": "$map/item/key"
+                                          }
+                                        ]
+                                      }
+                                    ]
+                                  }
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "tagName": "div",
+                        "attributes": {
+                          "part": "nested-add"
+                        },
+                        "children": [
+                          {
+                            "tagName": "jx-textfield",
+                            "attributes": {
+                              "part": "nested-add-name"
+                            },
+                            "$props": {
+                              "label": "New field in ${$map.item.label}",
+                              "placeholder": "field name",
+                              "size": "sm",
+                              "value": {
+                                "$ref": "$map/item/draftName"
+                              }
+                            },
+                            "oninput": {
+                              "$prototype": "Function",
+                              "body": [
+                                {
+                                  "operator": "call",
+                                  "target": {
+                                    "$ref": "#/state/editDraftName"
+                                  },
+                                  "value": [
+                                    {
+                                      "$ref": "$map/item/key"
+                                    },
+                                    {
+                                      "$ref": "event#/target/value"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            "onkeydown": {
+                              "$prototype": "Function",
+                              "body": [
+                                {
+                                  "$switch": {
+                                    "$ref": "event#/key"
+                                  },
+                                  "cases": {
+                                    "Enter": [
+                                      {
+                                        "preventDefault": true
+                                      },
+                                      {
+                                        "operator": "call",
+                                        "target": {
+                                          "$ref": "#/state/addNested"
+                                        },
+                                        "value": [
+                                          {
+                                            "$ref": "$map/item/key"
+                                          }
+                                        ]
+                                      }
+                                    ]
+                                  }
+                                }
+                              ]
+                            }
+                          },
+                          {
+                            "tagName": "jx-select",
+                            "attributes": {
+                              "part": "nested-add-type"
+                            },
+                            "$props": {
+                              "label": "Type of the new field in ${$map.item.label}",
+                              "size": "sm",
+                              "options": {
+                                "$ref": "#/state/typeOptions"
+                              },
+                              "value": {
+                                "$ref": "$map/item/draftType"
+                              }
+                            },
+                            "onchange": {
+                              "$prototype": "Function",
+                              "body": [
+                                {
+                                  "operator": "call",
+                                  "target": {
+                                    "$ref": "#/state/editDraftType"
+                                  },
+                                  "value": [
+                                    {
+                                      "$ref": "$map/item/key"
+                                    },
+                                    {
+                                      "$ref": "event#/target/value"
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          },
+                          {
+                            "tagName": "jx-action-button",
+                            "attributes": {
+                              "part": "nested-add-button"
+                            },
+                            "$props": {
+                              "label": "Add a field to ${$map.item.label}",
+                              "hint": "Add a field to ${$map.item.label}",
+                              "icon": "plus",
+                              "quiet": true,
+                              "size": "sm"
+                            },
+                            "onclick": {
+                              "$prototype": "Function",
+                              "body": [
+                                {
+                                  "operator": "call",
+                                  "target": {
+                                    "$ref": "#/state/addNested"
+                                  },
+                                  "value": [
+                                    {
+                                      "$ref": "$map/item/key"
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "add-slot",
+        "role": "none"
+      },
+      "style": {
+        "display": "contents"
+      },
+      "$switch": {
+        "$ref": "#/state/addState"
+      },
+      "cases": {
+        "closed": {
+          "tagName": "jx-action-button",
+          "attributes": {
+            "part": "add-open"
+          },
+          "$props": {
+            "label": "Add Field",
+            "icon": "plus",
+            "quiet": true,
+            "size": "sm"
+          },
+          "onclick": {
+            "$prototype": "Function",
+            "body": [
+              {
+                "operator": "call",
+                "target": {
+                  "$ref": "#/state/openAdd"
+                },
+                "value": []
+              }
+            ]
+          },
+          "children": [
+            {
+              "tagName": "span",
+              "textContent": "Add Field"
+            }
+          ]
+        },
+        "open": {
+          "tagName": "div",
+          "attributes": {
+            "part": "add-form"
+          },
+          "children": [
+            {
+              "tagName": "jx-textfield",
+              "attributes": {
+                "part": "add-name"
+              },
+              "$props": {
+                "label": "New field name",
+                "placeholder": "Field name",
+                "size": "sm",
+                "value": {
+                  "$ref": "#/state/addName"
+                }
+              },
+              "oninput": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/editAddName"
+                    },
+                    "value": [
+                      {
+                        "$ref": "event#/target/value"
+                      }
+                    ]
+                  }
+                ]
+              },
+              "onkeydown": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "$switch": {
+                      "$ref": "event#/key"
+                    },
+                    "cases": {
+                      "Enter": [
+                        {
+                          "preventDefault": true
+                        },
+                        {
+                          "operator": "call",
+                          "target": {
+                            "$ref": "#/state/confirmAdd"
+                          },
+                          "value": []
+                        }
+                      ],
+                      "Escape": [
+                        {
+                          "preventDefault": true
+                        },
+                        {
+                          "operator": "call",
+                          "target": {
+                            "$ref": "#/state/cancelAdd"
+                          },
+                          "value": []
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "tagName": "jx-select",
+              "attributes": {
+                "part": "add-type"
+              },
+              "$props": {
+                "label": "Type of the new field",
+                "size": "sm",
+                "options": {
+                  "$ref": "#/state/typeOptions"
+                },
+                "value": {
+                  "$ref": "#/state/addType"
+                }
+              },
+              "onchange": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/editAddType"
+                    },
+                    "value": [
+                      {
+                        "$ref": "event#/target/value"
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "add-format-slot",
+                "role": "none"
+              },
+              "style": {
+                "display": "contents"
+              },
+              "$switch": {
+                "$ref": "#/state/addHasFormat"
+              },
+              "cases": {
+                "true": {
+                  "tagName": "jx-select",
+                  "attributes": {
+                    "part": "add-format"
+                  },
+                  "$props": {
+                    "label": "Format of the new field",
+                    "size": "sm",
+                    "options": {
+                      "$ref": "#/state/formatOptions"
+                    },
+                    "value": {
+                      "$ref": "#/state/addFormat"
+                    }
+                  },
+                  "onchange": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/editAddFormat"
+                        },
+                        "value": [
+                          {
+                            "$ref": "event#/target/value"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            {
+              "tagName": "jx-switch",
+              "attributes": {
+                "part": "add-required"
+              },
+              "$props": {
+                "hint": "Require the new field",
+                "size": "sm",
+                "checked": {
+                  "$ref": "#/state/addRequired"
+                }
+              },
+              "onchange": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/editAddRequired"
+                    },
+                    "value": [
+                      {
+                        "$ref": "event#/target/checked"
+                      }
+                    ]
+                  }
+                ]
+              },
+              "children": [
+                {
+                  "tagName": "span",
+                  "textContent": "Required"
+                }
+              ]
+            },
+            {
+              "tagName": "jx-button",
+              "attributes": {
+                "part": "add-confirm"
+              },
+              "$props": {
+                "size": "sm"
+              },
+              "onclick": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/confirmAdd"
+                    },
+                    "value": []
+                  }
+                ]
+              },
+              "children": [
+                {
+                  "tagName": "span",
+                  "textContent": "Add"
+                }
+              ]
+            },
+            {
+              "tagName": "jx-button",
+              "attributes": {
+                "part": "add-cancel"
+              },
+              "$props": {
+                "size": "sm",
+                "quiet": true
+              },
+              "onclick": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/cancelAdd"
+                    },
+                    "value": []
+                  }
+                ]
+              },
+              "children": [
+                {
+                  "tagName": "span",
+                  "textContent": "Cancel"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

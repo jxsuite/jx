@@ -1,7 +1,12 @@
 /// <reference lib="dom" />
 /**
- * Style panel — CSS property editor under the **Target Line** (§6.1), with provenance-coded rows
- * (§6.2), a section accordion, shorthand expand/compress, and a property filter.
+ * Style panel — the FLOW behind the Inspector's Style tab (§6).
+ *
+ * The tab itself is a Jx document over the kit (`surfaces/style-panel.json`, mounted by
+ * `surfaces/style-panel.ts`), so this module draws no markup: it projects. What stays here is
+ * everything that is a DECISION — which compound coordinate the tab is editing, what css-meta says
+ * a property is, where a value came from, what a commit writes and into how many elements, and
+ * which of the four lists a control offers. The surface reads values.
  *
  * The panel resolves a compound coordinate before it can commit anything: `(selection, breakpoint,
  * scheme layer, nested selector)`. It has always computed that tuple — it is the per-field key and
@@ -10,22 +15,39 @@
  * gone: the breakpoint and scheme axes are selected on the pane context bar (region ⑦), and the
  * selector is the one axis this tab owns.
  *
- * Every row then says where its value came from. `provenance.ts` supplies the chip;
+ * Every row then says where its value came from. `provenance.ts` supplies the vocabulary;
  * `computeInheritedSources()` supplies the donor breakpoint the cascade walk always knew and this
  * panel used to throw away.
+ *
+ * Three consequences of the conversion are worth knowing before editing it.
+ *
+ * **The tab keeps ITSELF up to date, and must never go back through the scheduler.**
+ * `panels/panel-scheduler.ts`'s focus guard exists because a lit repaint of the whole dock could
+ * take the field a reader is typing into; {@link mountStyleTab} owns an `effect()` instead, so a
+ * commit, a breakpoint change and a settled usage query each reach the document as one write per
+ * bound property, and an equal write is skipped. `renderOnly("rightPanel")` is gone from this file
+ * with it.
+ *
+ * **Two controls are lists, and the list is the KIT MENU** (`surfaces/menu.ts`, §12.5). The unit
+ * picker and the keyword suggestions were each an `sp-overlay` + `sp-menu` of their own; the Value
+ * Source picker was a third. All three are `openMenu()` now, which is also how roving focus,
+ * typeahead and Escape arrive here without a line of keyboard code.
+ *
+ * **One control is an island, and it is named.** `specs/ui.md` §5.6 (Colour) is Pending — there is
+ * no `jx-color-field` — so a colour row draws an announced `[part="control-host"]` and
+ * `ui/color-selector.ts`'s `paintColorControl` fills it. That is the whole of the Spectrum left on
+ * this surface, and it goes when §5.6 lands.
+ *
+ * @docs studio/design/style-inspector
  */
 
-import { html, nothing } from "lit-html";
-import { dialogPathFor } from "../canvas/dialog-path";
 import { getNestedStyle } from "@jxsuite/schema/guards";
-import { live } from "lit-html/directives/live.js";
-import { ifDefined } from "lit-html/directives/if-defined.js";
-import { ref } from "lit-html/directives/ref.js";
+import { effect, effectScope, reactive } from "../reactivity";
 import {
+  cancelStyleDebounce,
   debouncedStyleCommit,
   getNodeAtPath,
   isNestedSelector,
-  renderOnly,
   updateUi,
 } from "../store";
 import { activeTab } from "../workspace/workspace";
@@ -43,30 +65,35 @@ import {
   mutateUpdateStyle,
   transactDoc,
 } from "../tabs/transact";
-import { inferInputType, propLabel } from "../utils/studio-utils";
+import {
+  abbreviateValue,
+  friendlyNameToVar,
+  inferInputType,
+  kebabToLabel,
+  propLabel,
+  varDisplayName,
+} from "../utils/studio-utils";
 import { stringArg } from "../commands/command-args";
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
-import { renderFieldRow } from "../ui/field-row";
 import { showPromptDialog } from "../ui/layers";
-import { renderDynamicSlot } from "../ui/dynamic-slot";
 import { parseMediaEntries, schemeOfQuery } from "../utils/canvas-media";
 import { getEffectiveMedia, getEffectiveStyle } from "../site-context";
 import { computeInheritedSources } from "../utils/inherited-style";
 import { loadUsages, peekUsages, usageFiles } from "../services/references";
 import { mediaDisplayName } from "./shared";
-import { countProvenance, renderProvenanceChip, renderProvenanceDots } from "./provenance";
+import {
+  countProvenance,
+  provenanceSummaryText,
+  provenanceText,
+  provenanceTitle,
+} from "./provenance";
 import {
   attachTargetLine,
   openSelectorMenu,
   resetTargetLine as resetTargetSelector,
   setTargetLine,
 } from "../surfaces/target-line";
-import {
-  clickAnythingTo,
-  openPageAction,
-  renderEmptyState,
-  staleSelectionMessage,
-} from "./empty-state";
+import { clickAnythingTo, openPageAction, staleSelectionMessage } from "./empty-state";
 import {
   allConditionsPass,
   autoOpenSections,
@@ -76,12 +103,32 @@ import {
   expandBorderSide,
   expandShorthand,
   getCssInitialMap,
+  getFontVars,
   getLonghands,
 } from "./style-utils";
-import { widgetForType } from "./style-inputs";
+import { UNIT_RE } from "../ui/unit-selector";
+import { paintColorControl } from "../ui/color-selector";
+import { mountStylePanelSurface } from "../surfaces/style-panel";
+import { openMenu } from "../surfaces/menu";
+import type { MenuHandle } from "../surfaces/menu";
+import { rectOf } from "../utils/geometry";
+import { cloneValue } from "../tabs/doc-op-apply";
+import { effectiveSlotMode, slotModeSeed, switchSlotMode } from "../ui/dynamic-slot";
+import { slotCaps, VALUE_SOURCE_HINTS, VALUE_SOURCE_LABELS } from "../ui/value-source";
+import { dialogPathFor } from "../canvas/dialog-path";
 
+import type { SlotMode } from "../ui/value-source";
 import type { FieldProvenance, ProvenanceState } from "./provenance";
 import type { TargetScope, TargetSegment } from "../surfaces/target-line";
+import type {
+  StyleButtonView,
+  StylePanelActions,
+  StylePanelSurface,
+  StylePanelView,
+  StyleRowView,
+  StyleSectionView,
+} from "../surfaces/style-panel";
+import type { EffectScope } from "../reactivity";
 import type { Tab } from "../tabs/tab";
 import type { JxPath } from "../state";
 import type { JsonValue } from "../types";
@@ -259,217 +306,6 @@ function mixedStyleProps(
   return mixed;
 }
 
-// ─── Row renderers ──────────────────────────────────────────────────────────
-
-function renderStyleRow(
-  entry: CssPropertyEntry,
-  prop: string,
-  value: string,
-  onCommit: (v: string | undefined) => void,
-  isWarning: boolean,
-  gridMode: boolean,
-  inheritedValue: string | undefined,
-  templateSignals: string[] = [],
-  fieldKey: string = prop,
-  provenance?: FieldProvenance,
-) {
-  const chip: FieldProvenance = provenance ?? DEFAULT_PROVENANCE;
-  const type = inferInputType(entry);
-  const hasVal = value !== undefined && value !== "";
-  const placeholder = !hasVal && inheritedValue ? String(inheritedValue) : "";
-  const spanVal = gridMode && (entry as Record<string, unknown>).$span === 2 ? 2 : undefined;
-  // The rungs come from `StyleObject.additionalProperties`, not from a list here (§6.6 rule 2).
-  // That derives literal + ${} template: a CSS value carrying `${…}` IS a signal binding, which
-  // `emitStyleString` compiles to a reactive declaration, and `$ref` is not admitted by JxStyle.
-  // Naming the POSITION rather than the answer is the point — a schema that later admits another
-  // Rung cannot then be contradicted by a hand-written array sitting here.
-  const slot = renderDynamicSlot({
-    caps: "styleProperty",
-    fieldKey,
-    onChange: (v?: JsonValue) => onCommit(v === undefined || v === "" ? undefined : String(v)),
-    staticWidget: widgetForType(type, entry, prop, value, onCommit, { placeholder }),
-    stateDefs: templateSignals,
-    value,
-  });
-  // `hasValue` is false because the chip supersedes the row's derived set-dot: the dot could only
-  // Say set-or-not, and three of the four states this panel can now answer with were previously
-  // Indistinguishable from "unset".
-  return renderFieldRow({
-    prop,
-    label: propLabel(entry, prop),
-    hasValue: false,
-    widget: slot.widget,
-    provenance: chip,
-    labelExtra: slot.modeButton,
-    ...(spanVal != null && { span: spanVal }),
-    warning: isWarning,
-  });
-}
-
-/** What {@link renderShorthandRow} needs to draw one shorthand and its longhand children. */
-interface ShorthandRowOptions {
-  prop: string;
-  entry: CssPropertyEntry;
-  /** The style block at the edited coordinate — the primary element's, as every row reads it. */
-  style: Record<string, unknown>;
-  /** The write, already fanned across the selection. Called INSIDE a transaction. */
-  mutate: StyleMutateFn;
-  inherited: Record<string, string | number>;
-  ctx: ProvenanceCtx;
-}
-
-/**
- * A shorthand property row: the header field, plus one row per longhand when it is expanded.
- *
- * Two things were wrong with it, and they were the same thing. It took a single-target mutation
- * while every other row in the tab took the selection-wide one, so "set padding on six cards in one
- * decision" — the sentence §6.5 makes, with padding as its example — wrote to one card. And it drew
- * its own `.set-dot` rather than a provenance chip, so a shorthand `mixedStyleProps` had ALREADY
- * flagged as mixed offered a plain "Clear padding" affordance instead of saying so.
- *
- * Both are fixed by taking the same two things every other row takes: `mutate`, which fans across
- * the selection, and `ctx`, which answers where a value came from.
- */
-function renderShorthandRow({
-  prop: shortProp,
-  entry,
-  style,
-  mutate,
-  inherited,
-  ctx,
-}: ShorthandRowOptions) {
-  const tab = activeTab.value!;
-  const longhands = getLonghands(shortProp) as CssLonghand[];
-  const shortVal = style[shortProp];
-  const hasLonghands = longhands.some((l: CssLonghand) => style[l.name] !== undefined);
-  const isExpanded = tab.session.ui.styleShorthands[shortProp] ?? hasLonghands;
-  const hasAnyVal = shortVal !== undefined || hasLonghands;
-
-  /**
-   * Drop every longhand, then write the shorthand — the one write order this row has.
-   *
-   * The longhands go unconditionally rather than "the ones the panel can see set", because what the
-   * panel can see is the PRIMARY element's style: a second selected element with a `paddingTop` of
-   * its own would otherwise keep it and quietly out-rank the shorthand just written over it.
-   * Deleting a property an element does not have is a no-op on that element.
-   */
-  const writeShorthand = (val?: string | undefined) =>
-    transactDoc(activeTab.value, (t) => {
-      for (const l of longhands) {
-        mutate(t, l.name);
-      }
-      mutate(t, shortProp, val);
-    });
-  const clearAll = () =>
-    transactDoc(activeTab.value, (t) => {
-      mutate(t, shortProp);
-      for (const l of longhands) {
-        mutate(t, l.name);
-      }
-    });
-
-  const headerWidget = html`
-    <div class="style-shorthand-header">
-      <sp-textfield
-        size="s"
-        .value=${live(shortVal || "")}
-        placeholder=${
-          !shortVal && hasLonghands
-            ? longhands.map((l: CssLonghand) => style[l.name] || "0").join(" ")
-            : !shortVal && inherited[shortProp]
-              ? inherited[shortProp]
-              : !shortVal && longhands.some((l: CssLonghand) => inherited[l.name])
-                ? longhands.map((l: CssLonghand) => inherited[l.name] || "0").join(" ")
-                : ""
-        }
-        @input=${debouncedStyleCommit(`short:${shortProp}`, 400, (e: Event) => {
-          writeShorthand((e.target as HTMLInputElement).value || undefined);
-        })}
-      ></sp-textfield>
-      <sp-action-button
-        size="xs"
-        quiet
-        @click=${(e: Event) => {
-          e.stopPropagation();
-          activeTab.value!.session.ui.styleShorthands = {
-            ...activeTab.value!.session.ui.styleShorthands,
-            [shortProp]: !isExpanded,
-          };
-        }}
-      >
-        ${
-          isExpanded
-            ? html`<sp-icon-chevron-down slot="icon"></sp-icon-chevron-down>`
-            : html`<sp-icon-chevron-right slot="icon"></sp-icon-chevron-right>`
-        }
-      </sp-action-button>
-    </div>
-  `;
-
-  return html`
-    ${renderFieldRow({
-      prop: shortProp,
-      label: propLabel(entry, shortProp),
-      hasValue: hasAnyVal,
-      widget: headerWidget,
-      provenance: shorthandProvenance(shortProp, ctx, hasAnyVal ? clearAll : undefined),
-    })}
-    ${
-      isExpanded
-        ? (() => {
-            const isBorderSide =
-              (entry as Record<string, unknown>).$shorthandType === "border-side";
-            const expanded = shortVal
-              ? isBorderSide
-                ? expandBorderSide(shortVal as string)
-                : expandShorthand(shortVal as string, longhands.length)
-              : null;
-            const compress = isBorderSide ? compressBorderSide : compressShorthand;
-            const emptyVal = isBorderSide ? "" : "0";
-            /** This longhand becomes `val`; the others keep whatever they show. */
-            const recompress = (idx: number, val: string) =>
-              writeShorthand(
-                compress(
-                  longhands.map((l: CssLonghand, i: number) =>
-                    i === idx ? val : (style[l.name] ?? (expanded ? expanded[i] : emptyVal)),
-                  ) as string[],
-                ),
-              );
-            return longhands.map(({ name, entry: lEntry }: CssLonghand, idx: number) => {
-              const lVal = style[name] ?? (expanded ? expanded[idx] : "");
-              const hasLVal = lVal !== undefined && lVal !== "";
-              return html`
-                <div class="style-row style-row--child" data-prop=${name}>
-                  <div class="style-row-label">
-                    ${renderProvenanceChip(
-                      name,
-                      longhandProvenance(name, shortProp, hasLVal, ctx, () =>
-                        recompress(idx, emptyVal),
-                      ),
-                    )}
-                    <sp-field-label size="s" title=${name}
-                      >${propLabel(lEntry, name)}</sp-field-label
-                    >
-                  </div>
-                  ${widgetForType(
-                    inferInputType(lEntry),
-                    lEntry,
-                    name,
-                    lVal as string,
-                    (newVal: string) => recompress(idx, newVal || emptyVal),
-                    {
-                      placeholder: !lVal && inherited[name] ? String(inherited[name]) : "",
-                    },
-                  )}
-                </div>
-              `;
-            });
-          })()
-        : nothing
-    }
-  `;
-}
-
 // ─── The edit target ─────────────────────────────────────────────────────────
 
 /** Forget the selector menu's element handle — the Inspector unmounted, or a test starts clean. */
@@ -481,13 +317,15 @@ export function resetSelectorMenu(): void {
  * Whether the "show affected" list under a project-wide warning band is open.
  *
  * Module-local rather than a `session.ui` field: it is a disclosure on a project-level warning, and
- * a per-document field would make the same warning open in one tab and closed in another.
+ * a per-document field would make the same warning open in one tab and closed in another. Reactive
+ * because the tab is now driven by an `effect()` — a plain field would move the disclosure and
+ * nothing would redraw.
  */
-let _showAffected = false;
+const _disclosure = reactive({ showAffected: false, usageRevision: 0 });
 
 /** Fold the affected list away — the Inspector unmounted, or a test starts clean. */
 export function resetAffectedDisclosure(): void {
-  _showAffected = false;
+  _disclosure.showAffected = false;
 }
 
 /**
@@ -583,21 +421,32 @@ function projectScope(label: string, tagName: string | null): TargetScope {
     return { affected: "how many pages that is, is unknown", kind: "project", label };
   }
   const query = { tagName };
+  // The cache behind `peekUsages` is a plain Map, so a settled sweep is invisible to the effect
+  // Driving this tab. The revision is what makes it visible, and reading it here is what enrols
+  // The projection in it.
+  void _disclosure.usageRevision;
   const state = peekUsages(query);
   if (state === null) {
-    // First paint for this tag: ask once, and repaint when the answer lands. `loadUsages` joins an
-    // In-flight request, so a panel repainting sixty times a second is still one sweep.
-    void loadUsages(query).then(() => renderOnly("rightPanel"));
+    // First projection for this tag: ask once, and re-project when the answer lands. `loadUsages`
+    // Joins an in-flight request, so a tab re-projecting sixty times a second is still one sweep.
+    void loadUsages(query).then(() => {
+      /* The bump is conditional on the cache having actually SETTLED, and that condition is what
+         makes the loop terminate. Bumping unconditionally would re-run the effect, which would find
+         `peekUsages` still null, ask again and bump again — a spin, not a repaint. A host that
+         cannot answer this query at all is exactly the state that produces it. */
+      if (peekUsages(query) !== null) {
+        _disclosure.usageRevision += 1;
+      }
+    });
   }
   return {
     kind: "project",
     label,
     affected: affectedSentence(state),
     affectedFiles: state?.status === "ready" ? usageFiles(state.result) : [],
-    showAffected: _showAffected,
+    showAffected: _disclosure.showAffected,
     onToggleAffected: () => {
-      _showAffected = !_showAffected;
-      renderOnly("rightPanel");
+      _disclosure.showAffected = !_disclosure.showAffected;
     },
   };
 }
@@ -844,25 +693,698 @@ function sectionProvenance(
   );
 }
 
-// ─── Main template ──────────────────────────────────────────────────────────
+// ─── The row register ────────────────────────────────────────────────────────
+
+/** One choice a row's list offers. `divider` draws a rule above the entry. */
+interface StyleChoice {
+  value: string;
+  label: string;
+  divider?: boolean;
+  checked?: boolean;
+}
 
 /**
- * @param {JxMutableNode} node
- * @param {string | null} activeMediaTab
- * @param {string | null} activeSelector
- * @param {{ effectiveStyle?: JxStyle; stylebookSelector?: string | null }} [opts] —
- *   `effectiveStyle` is the site-merged style Stylebook edits against; `stylebookSelector` is the
- *   tag catalogue entry being styled, which is what makes the edit tag-wide rather than
- *   element-wide and therefore what the scope chip reports.
+ * What one projected row can DO, held beside the row the document draws.
+ *
+ * The document names a row by its `key` and nothing else, so this is where a key becomes a verb.
+ * Every handler is optional because rows differ in what they own: a longhand child has no Value
+ * Source ladder, a custom pair has no unit list, and the add-a-property field has no value to
+ * clear.
  */
-function styleSidebarTemplate(
+interface RowActions {
+  /** The reader is typing — debounced under {@link RowActions.debounceId}. */
+  edit?: (value: string) => void;
+  /** The reader left the field or pressed Enter. Cancels the pending debounce first. */
+  commit?: (value: string) => void;
+  debounceId?: string;
+  /** The provenance chip, a custom pair's remove and a nested rule's remove are one verb. */
+  chip?: () => void;
+  /** The list this row's chooser offers, and what taking one from it does. */
+  choices?: StyleChoice[];
+  choicesLabel?: string;
+  choose?: (value: string) => void;
+  /** The Value Source ladder for this position (§6.3). */
+  source?: {
+    mode: SlotMode;
+    caps: SlotMode[];
+    fieldKey: string;
+    value: unknown;
+    stateDefs: string[];
+    onChange: (value?: JsonValue) => void;
+  };
+  /** Expand or collapse a shorthand's longhands. */
+  toggle?: () => void;
+  /** Rename a custom property, keeping each element's own value. */
+  rename?: (name: string) => void;
+  /** Seed a new custom property. Returns whether anything was written. */
+  add?: (name: string) => boolean;
+  /** Open a nested rule as the active selector. */
+  open?: () => void;
+  /**
+   * The colour value an island is showing, and what a change to it commits.
+   *
+   * `prop` rather than the row's key, because the control makes a DOM id out of it and hangs its
+   * popover off that: a key carries the whole coordinate, `|` and `/` included, and an id with
+   * those in it is one the overlay's own trigger selector cannot resolve.
+   */
+  colour?: { prop: string; value: string; onChange: (value: string) => void };
+}
+
+/** Every row on screen, by key. Rebuilt whole on every projection; read by every action. */
+let _rows = new Map<string, RowActions>();
+
+/** What each section's clear-all dot does. Rebuilt with the sections it belongs to. */
+let _sectionClears = new Map<string, () => void>();
+
+/** What "+ Add" under Relative Styling does. Rebuilt with the section. */
+let _nestedAdd: (() => void) | null = null;
+
+/** The value each button-group row is holding — pressing the selected button again clears it. */
+let _buttonValues = new Map<string, string>();
+
+/** The colour islands the document has announced, by row key. */
+const _controlHosts = new Map<string, HTMLElement>();
+
+/** What each announced island is currently painted with, so an unchanged row is left alone. */
+const _paintedColours = new Map<string, string>();
+
+/** Look one row up. A key the projection no longer has is a stale click, and does nothing. */
+function rowActions(key: string): RowActions | undefined {
+  return _rows.get(key);
+}
+
+// ─── Widgets ─────────────────────────────────────────────────────────────────
+
+/** Whether a typed value is a bare number — the unit control's own test. */
+function isNumericValue(value: string): boolean {
+  return /^-?\d*\.?\d*$/.test(value);
+}
+
+/**
+ * Kit glyph names for the values a button-group offers.
+ *
+ * Only names the kit ACTUALLY has (`@jxsuite/ui/icons`) are here, and every other value falls back
+ * to `abbreviateValue`, which is the same fallback the group has always had for a value with no
+ * icon. The alternative was to guess an approximation — `align-left` for `justify-content:
+ * flex-start`, say, which is a text-alignment glyph — and a glyph that means something else is
+ * worse than three letters that mean what they say. The seventeen names still missing are recorded
+ * against the kit rather than approximated here.
+ */
+const BUTTON_GLYPHS: Readonly<Record<string, string>> = {
+  "arrow-down": "arrow-down",
+  "arrow-left": "arrow-left",
+  "arrow-right": "arrow-right",
+  "arrow-up": "arrow-up",
+  "text-align-center": "text-align-center",
+  "text-align-justify": "text-align-justify",
+  "text-align-left": "text-align-left",
+  "text-align-right": "text-align-right",
+};
+
+/** The buttons a button-group row draws, and the overflow list it hands to the kit menu. */
+function buttonGroup(
+  entry: CssPropertyEntry,
+  rowKey: string,
+  value: string,
+): { buttons: StyleButtonView[]; extra: string[] } {
+  const values = (entry.$buttonValues || entry.enum || []) as string[];
+  const iconMap = (entry.$icons || {}) as Record<string, string>;
+  const buttonValues = entry.$buttonValues as string[] | undefined;
+  const enumValues = entry.enum as string[] | undefined;
+  const extra =
+    buttonValues && enumValues && enumValues.length > buttonValues.length
+      ? enumValues.filter((v) => !buttonValues.includes(v))
+      : [];
+  const buttons = values.map((v) => {
+    const icon = BUTTON_GLYPHS[iconMap[v] ?? ""] ?? "";
+    return {
+      icon,
+      row: rowKey,
+      selected: v === value,
+      text: icon === "" ? abbreviateValue(v) : "",
+      title: v,
+      value: v,
+    };
+  });
+  return { buttons, extra };
+}
+
+/** The keyword list a select or combobox row offers, in the words the menu prints. */
+function keywordChoices(options: string[], value: string): StyleChoice[] {
+  return options.map((v) => ({
+    checked: v === value,
+    label: v.includes("-") ? kebabToLabel(v) : v.replace(/^./, (c) => c.toUpperCase()),
+    value: v,
+  }));
+}
+
+/**
+ * The font list: the document's own `--font-*` tokens first, then the presets it has not minted
+ * yet. Picking a preset MINTS the token and points the property at it, which is what makes a second
+ * element reusing the same font one decision rather than two copies of a stack.
+ */
+function fontChoices(entry: CssPropertyEntry, value: string): StyleChoice[] {
+  const fontVars = getFontVars();
+  const presets = Array.isArray(entry.presets)
+    ? (entry.presets as { title: string; value: string }[])
+    : [];
+  const varMatch = /^var\((--[^)]+)\)$/.exec(value);
+  const current = varMatch ? varMatch[1] : value;
+  const choices: StyleChoice[] = fontVars.map((fv) => ({
+    checked: fv.name === current,
+    label: varDisplayName(fv.name, "--font-"),
+    value: fv.name,
+  }));
+  const unadded = presets.filter(
+    (p) => !fontVars.some((fv) => fv.name === friendlyNameToVar(p.title, "--font-")),
+  );
+  for (const [index, p] of unadded.entries()) {
+    choices.push({
+      checked: false,
+      label: p.title,
+      value: `__preset__:${p.title}`,
+      ...(index === 0 && choices.length > 0 ? { divider: true } : {}),
+    });
+  }
+  return choices;
+}
+
+/**
+ * Take a font choice: an existing token points the property at it; a preset is minted into the
+ * document's own style first, so the token exists before anything references it.
+ */
+function applyFontChoice(
+  entry: CssPropertyEntry,
+  chosen: string,
+  onCommit: (value: string) => void,
+): void {
+  if (chosen.startsWith("__preset__:")) {
+    const title = chosen.slice("__preset__:".length);
+    const presets = Array.isArray(entry.presets)
+      ? (entry.presets as { title: string; value: string }[])
+      : [];
+    const preset = presets.find((p) => p.title === title);
+    if (!preset) {
+      return;
+    }
+    const varName = friendlyNameToVar(preset.title, "--font-");
+    if (!activeTab.value?.doc.document?.style?.[varName]) {
+      transactDoc(activeTab.value, (t) => mutateUpdateStyle(t, [], varName, preset.value));
+    }
+    onCommit(`var(${varName})`);
+    return;
+  }
+  onCommit(chosen.startsWith("--") ? `var(${chosen})` : chosen);
+}
+
+/** A blank row, so every `$switch` case reads a path that exists whatever the row draws. */
+function blankRow(key: string, prop: string, kind: StyleRowView["kind"]): StyleRowView {
+  return {
+    buttons: [],
+    child: false,
+    chip: "none",
+    chipState: "default",
+    chipText: "",
+    chipTitle: "",
+    choicesHint: "",
+    choicesLabel: "",
+    expandIcon: "caret-right",
+    expandLabel: "",
+    expanded: false,
+    hasChoices: false,
+    hasLabel: false,
+    hasSource: false,
+    key,
+    kind,
+    label: "",
+    max: "",
+    min: "",
+    mono: false,
+    name: "",
+    openTitle: "",
+    overflowSelected: false,
+    placeholder: "",
+    prop,
+    removeLabel: "",
+    sourceHint: "",
+    sourceLabel: "",
+    sourceState: "literal",
+    span: false,
+    step: "",
+    value: "",
+    warning: false,
+    widget: "text",
+  };
+}
+
+/** Fill a row's chip fields from the provenance answer, and register its click. */
+function applyChip(row: StyleRowView, actions: RowActions, prov: FieldProvenance): void {
+  if (prov.state === "default") {
+    row.chip = "none";
+    return;
+  }
+  row.chipState = prov.state;
+  row.chipText = provenanceText(prov);
+  row.chipTitle = provenanceTitle(row.prop, prov);
+  if (prov.onClick) {
+    row.chip = "button";
+    actions.chip = prov.onClick;
+  } else {
+    row.chip = "text";
+  }
+}
+
+// ─── The projection ──────────────────────────────────────────────────────────
+
+/** What {@link buildEditor} is handed once, having resolved the coordinate. */
+interface EditorCtx {
+  tab: Tab;
+  /** The block at the edited coordinate, as the rows display it. */
+  activeStyle: JxStyle;
+  activeSelector: string | null;
+  editMedia: string | null;
+  inheritedStyle: Record<string, string | number>;
+  provCtx: ProvenanceCtx;
+  templateSignals: string[];
+  /** One write, fanned across every selected element, inside the caller's transaction. */
+  mutate: StyleMutateFn;
+  /** The same write in a transaction of its own. */
+  commit: (prop: string, value?: string | Record<string, unknown> | undefined) => void;
+  /** The key prefix a row's identity is built from — the coordinate, spelled once. */
+  coord: string;
+  targets: readonly JxPath[];
+  filter: string;
+}
+
+/**
+ * The rungs a CSS declaration admits.
+ *
+ * Derived from `StyleObject.additionalProperties` rather than listed (§6.6 rule 2), minus `ref` —
+ * and that subtraction is the rule the panel already wrote down being enforced rather than a
+ * narrowing of it. **`JxStyle` has no `$ref` branch at all**: a CSS value carrying `${…}` IS the
+ * signal binding, which `emitStyleString` compiles to a reactive declaration, and a `{ $ref }` in a
+ * declaration is a document the schema refuses. The generic ladder offered the rung anyway whenever
+ * the document happened to declare a signal — the old panel's own test asserted "literal and
+ * template only" and passed only because its fixture had none — so a document with one signal in it
+ * put a control on every style row that writes an invalid style block.
+ */
+function styleCaps(): SlotMode[] {
+  return slotCaps("styleProperty").filter((mode) => mode !== "ref");
+}
+
+/** One ordinary property row: the label, the chip, the ladder and whichever control it draws. */
+function fieldRow(
+  ctx: EditorCtx,
+  entry: CssPropertyEntry,
+  prop: string,
+  value: string,
+  opts: {
+    child?: boolean;
+    warning?: boolean;
+    span?: boolean;
+    provenance: FieldProvenance;
+    onCommit: (value: string | undefined) => void;
+    placeholder?: string;
+  },
+): { row: StyleRowView; actions: RowActions } {
+  const key = `${ctx.coord}|${prop}${opts.child ? "|child" : ""}`;
+  const row = blankRow(key, prop, "field");
+  const actions: RowActions = {};
+  const type = inferInputType(entry);
+  const cssInitial = getCssInitialMap().get(prop) ?? "";
+  const placeholder = opts.placeholder || cssInitial;
+  const commitLiteral = (v: string) => opts.onCommit(v === "" ? undefined : v);
+
+  row.label = propLabel(entry, prop);
+  row.hasLabel = true;
+  row.child = opts.child === true;
+  row.warning = opts.warning === true;
+  row.span = opts.span === true;
+  row.value = value;
+  row.placeholder = placeholder;
+  applyChip(row, actions, opts.provenance);
+
+  // The Value Source ladder (§6.3), and only where the position has one to offer. A longhand child
+  // Is not a document position of its own — its value is a slice of the shorthand above it — so it
+  // Carries no chip, which is what it has always done.
+  if (!opts.child) {
+    const caps = styleCaps();
+    const fieldKey = `${ctx.coord}|${prop}`;
+    const mode = effectiveSlotMode(fieldKey, value === "" ? undefined : value);
+    row.hasSource = true;
+    row.sourceState = mode;
+    row.sourceLabel = VALUE_SOURCE_LABELS[mode];
+    row.sourceHint = `Value source: ${VALUE_SOURCE_LABELS[mode]} — click to change`;
+    actions.source = {
+      caps,
+      fieldKey,
+      mode,
+      onChange: (v) => opts.onCommit(v === undefined || v === "" ? undefined : String(v)),
+      stateDefs: ctx.templateSignals,
+      value: value === "" ? undefined : value,
+    };
+    if (mode === "template") {
+      // The `${…}` rung: a mixed-text value is committed when the field is LEFT, never while it is
+      // Typed — a half-written `${state.m` is not a binding, and writing one would move the row's
+      // Rung out from under the caret.
+      row.widget = "text";
+      row.mono = true;
+      row.placeholder = "${state.…}";
+      actions.commit = (v) => opts.onCommit(v === "" ? undefined : v);
+      return { actions, row };
+    }
+  }
+
+  switch (type) {
+    case "color": {
+      row.widget = "host";
+      actions.colour = { onChange: commitLiteral, prop, value };
+      break;
+    }
+    case "button-group": {
+      const { buttons, extra } = buttonGroup(entry, key, value);
+      row.widget = "buttons";
+      row.buttons = buttons;
+      row.hasChoices = extra.length > 0;
+      row.overflowSelected = extra.includes(value);
+      row.choicesLabel = "";
+      row.choicesHint = `More ${row.label.toLowerCase()} values`;
+      actions.choices = keywordChoices(extra, value);
+      actions.choose = commitLiteral;
+      break;
+    }
+    case "number-unit": {
+      const units = (entry.$units ?? []) as string[];
+      const keywords = (entry.$keywords ?? []) as string[];
+      const match = UNIT_RE.exec(value);
+      const isKeyword = !match && value !== "" && keywords.includes(value);
+      const currentUnit = isKeyword ? (units[0] ?? "") : (match?.[2] ?? units[0] ?? "");
+      row.widget = "group";
+      row.value = unitDisplayValue(value, match, isKeyword);
+      row.placeholder = unitPlaceholder(placeholder);
+      row.hasChoices = units.length > 0 || keywords.length > 0;
+      row.choicesLabel = currentUnit || units[0] || "";
+      row.choicesHint = `Unit for ${row.label.toLowerCase()}`;
+      actions.choices = [
+        ...units.map((u) => ({ checked: u === currentUnit, label: u, value: u })),
+        ...keywords.map((kw, index) => ({
+          checked: kw === value,
+          label: kw,
+          value: kw,
+          ...(index === 0 && units.length > 0 ? { divider: true } : {}),
+        })),
+      ];
+      actions.choose = (chosen) => {
+        if (keywords.includes(chosen)) {
+          opts.onCommit(chosen);
+          return;
+        }
+        const numPart = UNIT_RE.exec(value)?.[1];
+        if (numPart) {
+          opts.onCommit(numPart + chosen);
+        }
+      };
+      {
+        const commitUnitValue = (raw: string) => {
+          const v = raw.trim();
+          if (v === "") {
+            opts.onCommit("");
+            return;
+          }
+          opts.onCommit(isNumericValue(v) && units.length > 0 ? v + currentUnit : v);
+        };
+        actions.edit = commitUnitValue;
+        actions.commit = commitUnitValue;
+        actions.debounceId = `nui:${key}`;
+      }
+      break;
+    }
+    case "number": {
+      row.widget = "number";
+      row.min = entry.minimum === undefined ? "" : String(entry.minimum);
+      row.max = entry.maximum === undefined ? "" : String(entry.maximum);
+      row.step = typeof entry.maximum === "number" && entry.maximum <= 1 ? "0.1" : "";
+      actions.commit = commitLiteral;
+      break;
+    }
+    case "select":
+    case "combobox": {
+      // The one composite this document builds: a field the reader may type anything into, beside
+      // The values worth offering. `jx-combobox` (ui.md §5.3) is the element that replaces it.
+      const isFont = prop === "fontFamily";
+      const options = Array.isArray(entry.enum)
+        ? (entry.enum as string[])
+        : Array.isArray(entry.examples)
+          ? (entry.examples as string[])
+          : [];
+      row.widget = "group";
+      row.choicesLabel = "";
+      row.choicesHint = `Values for ${row.label.toLowerCase()}`;
+      if (isFont) {
+        const choices = fontChoices(entry, value);
+        // A token shows as its own name rather than as the `var()` around it: the field edits which
+        // Token this is, and `var(--font-body)` is punctuation the reader did not type.
+        row.value = /^var\((--[^)]+)\)$/.exec(value)?.[1] ?? value;
+        row.hasChoices = choices.length > 0;
+        actions.choices = choices;
+        actions.choose = (chosen) => applyFontChoice(entry, chosen, commitLiteral);
+      } else {
+        row.hasChoices = options.length > 0;
+        actions.choices = keywordChoices(options, value);
+        actions.choose = commitLiteral;
+      }
+      actions.edit = commitLiteral;
+      actions.commit = commitLiteral;
+      actions.debounceId = `kw:${key}`;
+      break;
+    }
+    default: {
+      row.widget = "text";
+      actions.edit = commitLiteral;
+      actions.commit = commitLiteral;
+      actions.debounceId = `text:${key}`;
+      break;
+    }
+  }
+  return { actions, row };
+}
+
+/** What a unit field SHOWS: the number alone, or the keyword, or whatever could not be parsed. */
+function unitDisplayValue(
+  value: string,
+  match: RegExpExecArray | null,
+  isKeyword: boolean,
+): string {
+  if (isKeyword) {
+    return value;
+  }
+  if (match) {
+    return match[1] ?? "";
+  }
+  if (value === "") {
+    return "";
+  }
+  // Intentional partial parse: a shorthand like "10px 20px" shows its leading number.
+  // oxlint-disable-next-line unicorn/prefer-number-coercion
+  const num = Number.parseFloat(value);
+  return Number.isNaN(num) ? value : String(num);
+}
+
+/** A unit field's placeholder is the inherited NUMBER — "500", not "500px". */
+function unitPlaceholder(placeholder: string): string {
+  return UNIT_RE.exec(placeholder)?.[1] ?? placeholder ?? "0";
+}
+
+/** A shorthand header row and, when it is expanded, the longhand children under it. */
+function shorthandRows(
+  ctx: EditorCtx,
+  entry: CssPropertyEntry,
+  shortProp: string,
+): { row: StyleRowView; actions: RowActions }[] {
+  const longhands = getLonghands(shortProp) as CssLonghand[];
+  const style = ctx.activeStyle as Record<string, unknown>;
+  const shortVal = style[shortProp];
+  const hasLonghands = longhands.some((l) => style[l.name] !== undefined);
+  const isExpanded = ctx.tab.session.ui.styleShorthands[shortProp] ?? hasLonghands;
+  const hasAnyVal = shortVal !== undefined || hasLonghands;
+  const inherited = ctx.inheritedStyle;
+
+  /**
+   * Drop every longhand, then write the shorthand — the one write order this row has.
+   *
+   * The longhands go unconditionally rather than "the ones the panel can see set", because what the
+   * panel can see is the PRIMARY element's style: a second selected element with a `paddingTop` of
+   * its own would otherwise keep it and quietly out-rank the shorthand just written over it.
+   * Deleting a property an element does not have is a no-op on that element.
+   */
+  const writeShorthand = (val?: string | undefined) =>
+    transactDoc(activeTab.value, (t) => {
+      for (const l of longhands) {
+        ctx.mutate(t, l.name);
+      }
+      ctx.mutate(t, shortProp, val);
+    });
+  const clearAll = () =>
+    transactDoc(activeTab.value, (t) => {
+      ctx.mutate(t, shortProp);
+      for (const l of longhands) {
+        ctx.mutate(t, l.name);
+      }
+    });
+
+  const key = `${ctx.coord}|${shortProp}`;
+  const row = blankRow(key, shortProp, "shorthand");
+  const actions: RowActions = {};
+  row.widget = "shorthand";
+  row.hasLabel = true;
+  row.label = propLabel(entry, shortProp);
+  row.value = typeof shortVal === "string" ? shortVal : "";
+  row.placeholder = shorthandPlaceholder(shortVal, longhands, style, inherited, shortProp);
+  row.expanded = isExpanded;
+  row.expandIcon = isExpanded ? "caret-down" : "caret-right";
+  row.expandLabel = `${isExpanded ? "Collapse" : "Expand"} ${row.label.toLowerCase()}`;
+  applyChip(
+    row,
+    actions,
+    shorthandProvenance(shortProp, ctx.provCtx, hasAnyVal ? clearAll : undefined),
+  );
+  actions.edit = (v) => writeShorthand(v || undefined);
+  actions.commit = (v) => writeShorthand(v || undefined);
+  actions.debounceId = `short:${key}`;
+  actions.toggle = () => {
+    const tab = activeTab.value;
+    if (tab) {
+      tab.session.ui.styleShorthands = {
+        ...tab.session.ui.styleShorthands,
+        [shortProp]: !isExpanded,
+      };
+    }
+  };
+
+  const out = [{ actions, row }];
+  if (!isExpanded) {
+    return out;
+  }
+
+  const isBorderSide = entry.$shorthandType === "border-side";
+  const expanded =
+    typeof shortVal === "string" && shortVal
+      ? isBorderSide
+        ? expandBorderSide(shortVal)
+        : expandShorthand(shortVal, longhands.length)
+      : null;
+  const compress = isBorderSide ? compressBorderSide : compressShorthand;
+  const emptyVal = isBorderSide ? "" : "0";
+  /** This longhand becomes `val`; the others keep whatever they show. */
+  const recompress = (idx: number, val: string) =>
+    writeShorthand(
+      compress(
+        longhands.map((l, i) =>
+          i === idx ? val : (style[l.name] ?? (expanded ? expanded[i] : emptyVal)),
+        ) as string[],
+      ),
+    );
+
+  for (const [idx, { name, entry: lEntry }] of longhands.entries()) {
+    const lVal = style[name] ?? (expanded ? expanded[idx] : "");
+    const hasLVal = lVal !== undefined && lVal !== "";
+    out.push(
+      fieldRow(ctx, lEntry, name, String(lVal ?? ""), {
+        child: true,
+        onCommit: (newVal) => recompress(idx, newVal || emptyVal),
+        placeholder: !lVal && inherited[name] !== undefined ? String(inherited[name]) : "",
+        provenance: longhandProvenance(name, shortProp, hasLVal, ctx.provCtx, () =>
+          recompress(idx, emptyVal),
+        ),
+      }),
+    );
+  }
+  return out;
+}
+
+/** The shorthand header's placeholder: the longhands it would compress, or what shows through. */
+function shorthandPlaceholder(
+  shortVal: unknown,
+  longhands: CssLonghand[],
+  style: Record<string, unknown>,
+  inherited: Record<string, string | number>,
+  shortProp: string,
+): string {
+  if (shortVal) {
+    return "";
+  }
+  if (longhands.some((l) => style[l.name] !== undefined)) {
+    return longhands.map((l) => style[l.name] || "0").join(" ");
+  }
+  if (inherited[shortProp] !== undefined) {
+    return String(inherited[shortProp]);
+  }
+  if (longhands.some((l) => inherited[l.name] !== undefined)) {
+    return longhands.map((l) => inherited[l.name] || "0").join(" ");
+  }
+  return "";
+}
+
+// ─── The whole view ──────────────────────────────────────────────────────────
+
+/** The three teaching states, and the one that offers a button. */
+function emptyView(message: string, withOpen: boolean): StylePanelView {
+  return {
+    emptyActionLabel: withOpen ? openPageAction().label : "",
+    emptyMessage: message,
+    filter: "",
+    hasEmptyAction: withOpen,
+    sections: [],
+    view: "empty",
+  };
+}
+
+/** What the tab is showing, from the state it can read right now. */
+function buildView(canvasMode: () => string): StylePanelView {
+  _rows = new Map();
+  const tab = activeTab.value;
+  if (!tab) {
+    return emptyView("Open a page to style what you click.", true);
+  }
+  if (canvasMode() === "stylebook" && shell.stylebook.selection) {
+    const node = tab.doc.document;
+    if (!node) {
+      return emptyView("Open a page to style what you click.", true);
+    }
+    // No separate `Styling: <h1>` header. It said the same thing the Target Line's scope chip says,
+    // Except that it said it as a caption, after the fact, and without the blast radius (§6.1).
+    return buildEditor(tab, node, {
+      effectiveStyle: getEffectiveStyle(node.style),
+      stylebookSelector: shell.stylebook.selection,
+    });
+  }
+  const selected = primarySelection(tab.session.selection);
+  if (!selected) {
+    return emptyView(clickAnythingTo("style it"), false);
+  }
+  const node = getNodeAtPath(tab.doc.document, selected) as JxMutableNode | undefined;
+  if (!node) {
+    return emptyView(staleSelectionMessage(), false);
+  }
+  return buildEditor(tab, node, {});
+}
+
+/**
+ * Resolve the coordinate, then project every section under it.
+ *
+ * @param {Tab} tab
+ * @param {JxMutableNode} node
+ * @param {{ effectiveStyle?: JxStyle; stylebookSelector?: string | null }} opts — `effectiveStyle`
+ *   is the site-merged style Stylebook edits against; `stylebookSelector` is the tag catalogue
+ *   entry being styled, which is what makes the edit tag-wide rather than element-wide and
+ *   therefore what the scope chip reports.
+ */
+function buildEditor(
+  tab: Tab,
   node: JxMutableNode,
-  activeMediaTab: string | null,
-  activeSelector: string | null,
-  opts: { effectiveStyle?: JxStyle | undefined; stylebookSelector?: string | null } = {},
-) {
+  opts: { effectiveStyle?: JxStyle | undefined; stylebookSelector?: string | null },
+): StylePanelView {
   const { effectiveStyle, stylebookSelector = null } = opts;
-  const tab = activeTab.value!;
   const sel = primarySelection(tab.session.selection) as JxPath;
   /** The document's OWN style — what a commit writes into. */
   const ownRootStyle: JxStyle = node.style || {};
@@ -877,7 +1399,8 @@ function styleSidebarTemplate(
     .map(([defName]) => defName);
   const { sizeBreakpoints } = parseMediaEntries(getEffectiveMedia(tab.doc.document.$media));
   const mediaNames = sizeBreakpoints.map((bp) => bp.name);
-  const mediaTab = activeMediaTab || null;
+  const mediaTab = tab.session.ui.activeMedia || null;
+  const { activeSelector } = tab.session.ui;
 
   // ── Scheme-layer routing (spec §9.5) ────────────────────────────────────────
   // With the tab-bar scheme control forcing a scheme that has a matching declared scheme query,
@@ -911,9 +1434,6 @@ function styleSidebarTemplate(
   ];
 
   // ── The Target Line (§6.1) ─────────────────────────────────────────────────
-  // The three widgets this replaces are gone: the breakpoint `<sp-tabs>` strip, the
-  // `.selector-select` picker and the `.style-scheme-badge`. The first two named axes the pane
-  // Context bar already selects; the third emitted a class with no CSS rule anywhere in the repo.
   const stylebookTag = stylebookTagOf(stylebookSelector);
   const elementLabel =
     stylebookTag ?? (typeof node.tagName === "string" ? node.tagName : "element");
@@ -924,7 +1444,11 @@ function styleSidebarTemplate(
       options: selectorOptions,
       declared: declaredSelectors,
       onSelect: (value) => {
-        activeTab.value!.session.ui.activeSelector = value;
+        const current = activeTab.value;
+        if (!current) {
+          return;
+        }
+        current.session.ui.activeSelector = value;
         /* §6.2's own rule: a control that selects a rendering context has to change the rendering,
            or it is a control over a label. `:hover` gets away with not doing this because you can
            hover the element; `:popover-open` cannot, because a closed popover is not on the screen
@@ -936,7 +1460,7 @@ function styleSidebarTemplate(
         // The dialog's open states, by the same rule, when the selection is in a dialog to open.
         if (
           (value?.startsWith("[open]") || value?.startsWith(":modal")) &&
-          dialogPathFor(activeTab.value!) !== null
+          dialogPathFor(current) !== null
         ) {
           runCommand("canvas.setDialogOpen", { open: true });
         }
@@ -951,38 +1475,14 @@ function styleSidebarTemplate(
           validate: (v) =>
             isNestedSelector(v.trim()) ? "" : 'A selector must start with ":", ".", "&" or "[".',
         }).then((value) => {
-          if (value) {
-            activeTab.value!.session.ui.activeSelector = value.trim();
-            renderOnly("rightPanel");
+          if (value && activeTab.value) {
+            activeTab.value.session.ui.activeSelector = value.trim();
           }
         });
       },
     },
     scope: resolveScope(tab, stylebookTag),
   });
-  /* An EMPTY host, and that is the seam rather than an omission: a document clears the node it is
-     given and lit renders beside foreign children, so the two can never share a container. The
-     `ref` is the hand-over — lit gives this module the element when the node is made and takes it
-     back when the part is torn down. */
-  const targetLineT = html`<div ${ref(attachTargetLine)}></div>`;
-
-  // ── Filter bar ─────────────────────────────────────────────────────────────
-  // One control. The "Active" toggle is gone: it existed only because provenance was invisible
-  // With a section closed, and a heading that says "3 set here · 2 inherited" answers the same
-  // Question without hiding two thirds of the panel to do it (§6.2).
-  const filterBarT = html`
-    <div class="style-filter-bar">
-      <sp-textfield
-        size="s"
-        class="style-filter-input"
-        placeholder="Filter properties…"
-        .value=${live(tab.session.ui.styleFilter || "")}
-        @input=${(e: Event) => {
-          activeTab.value!.session.ui.styleFilter = (e.target as HTMLInputElement).value;
-        }}
-      ></sp-textfield>
-    </div>
-  `;
 
   // ── Determine the active style object ──────────────────────────────────────
   const activeStyle = resolveContextStyle(style, activeSelector, editMedia);
@@ -1014,11 +1514,6 @@ function styleSidebarTemplate(
   };
   const commitStyle = (prop: string, val?: string | Record<string, unknown> | undefined) =>
     transactDoc(activeTab.value, (t) => mutateTargets(t, prop, val));
-  /** One target's OWN block at this coordinate — what a write that preserves values reads first. */
-  const targetStyleOf = (t: Tab, target: JxPath): JxStyle => {
-    const targetNode = getNodeAtPath(t.doc.document, target) as JxMutableNode | undefined;
-    return resolveContextStyle(targetNode?.style ?? {}, activeSelector, editMedia);
-  };
 
   // ── Compute inherited style, and NAME THE DONOR ────────────────────────────
   // Scheme layer: the base styles show through as inherited; breakpoint tabs inherit from lower
@@ -1061,390 +1556,598 @@ function styleSidebarTemplate(
     ...(mixedProps.size > 0 ? { mixed: { count: targets.length, props: mixedProps } } : {}),
   };
 
-  // Auto-open sections that have properties
+  // Auto-open sections that have properties. Written back only when it actually moves, so the
+  // Effect this runs inside settles after one extra pass rather than chasing its own write.
   const newSections = autoOpenSections({ style: activeStyle }, tab.session.ui.styleSections);
   if (JSON.stringify(newSections) !== JSON.stringify(tab.session.ui.styleSections)) {
     tab.session.ui.styleSections = newSections;
   }
 
-  // Partition properties into sections
+  const filterText = (tab.session.ui.styleFilter || "").toLowerCase();
+  const ctx: EditorCtx = {
+    activeSelector,
+    activeStyle,
+    commit: commitStyle,
+    coord: `style|${sel.join("/")}|${editMedia ?? ""}|${activeSelector ?? ""}`,
+    editMedia,
+    filter: filterText,
+    inheritedStyle,
+    mutate: mutateTargets,
+    provCtx,
+    tab,
+    targets,
+    templateSignals,
+  };
+
+  const sections = [...propertySections(ctx), ...nestedSection(ctx), ...customSection(ctx)];
+  return {
+    emptyActionLabel: "",
+    emptyMessage: "",
+    filter: tab.session.ui.styleFilter || "",
+    hasEmptyAction: false,
+    sections,
+    view: "editor",
+  };
+}
+
+/** Register a projected row's verbs, and hand back the row. */
+function register(entry: { row: StyleRowView; actions: RowActions }): StyleRowView {
+  _rows.set(entry.row.key, entry.actions);
+  return entry.row;
+}
+
+/** The css-meta sections, in their declared order, minus the catch-all. */
+function propertySections(ctx: EditorCtx): StyleSectionView[] {
+  const { activeStyle, tab } = ctx;
+  const isFiltering = ctx.filter.length > 0;
   const sectionProps: Record<string, { prop: string; entry: CssPropertyEntry }[]> = {};
   for (const sec of cssMeta.$sections) {
     sectionProps[sec.key] = [];
   }
-
   for (const [prop, entry] of Object.entries(cssMeta.$defs) as [string, CssPropertyEntry][]) {
-    if (typeof (entry as Record<string, unknown>).$shorthand === "string") {
+    if (typeof entry.$shorthand === "string") {
       continue;
     }
-    const sec = ((entry as Record<string, unknown>).$section as string) || "other";
-    sectionProps[sec]!.push({ entry, prop });
+    sectionProps[(entry.$section as string) || "other"]!.push({ entry, prop });
   }
   for (const sec of cssMeta.$sections) {
-    sectionProps[sec.key]!.sort(
-      (
-        a: { prop: string; entry: CssPropertyEntry },
-        b: { prop: string; entry: CssPropertyEntry },
-      ) =>
-        ((a.entry as Record<string, unknown>).$order as number) -
-        ((b.entry as Record<string, unknown>).$order as number),
-    );
+    sectionProps[sec.key]!.sort((a, b) => (a.entry.$order as number) - (b.entry.$order as number));
   }
 
-  const otherProps = [];
-  for (const prop of Object.keys(activeStyle)) {
+  const out: StyleSectionView[] = [];
+  for (const sec of cssMeta.$sections) {
+    if (sec.key === "other") {
+      continue;
+    }
+    const entries = sectionProps[sec.key]!;
+    const sectionActiveProps = entries.filter(({ prop, entry }) => {
+      if (activeStyle[prop] !== undefined) {
+        return true;
+      }
+      return (
+        inferInputType(entry) === "shorthand" &&
+        (getLonghands(prop) as CssLonghand[]).some((l) => activeStyle[l.name] !== undefined)
+      );
+    });
+    const clearSection = () => {
+      transactDoc(activeTab.value, (t) => {
+        for (const { prop, entry } of sectionActiveProps) {
+          if (activeStyle[prop] !== undefined) {
+            ctx.mutate(t, prop);
+          }
+          if (inferInputType(entry) === "shorthand") {
+            for (const l of getLonghands(prop) as CssLonghand[]) {
+              ctx.mutate(t, l.name);
+            }
+          }
+        }
+      });
+    };
+
+    // The heading's own answer to "is anything in here set, inherited or bound" — the question the
+    // Retired "Active" toggle answered by hiding everything that was not.
+    const counts = countProvenance(sectionProvenance(entries, ctx.provCtx));
+    const isOpen = isFiltering ? true : (tab.session.ui.styleSections[sec.key] ?? false);
+    const section = sectionShell(sec.key, sec.label, isOpen, counts, {
+      canClear: sectionActiveProps.length > 0,
+      clearTitle: `Clear all ${sec.label.toLowerCase()} properties`,
+      layout: sec.$layout === "grid" ? "grid" : "",
+      onClear: clearSection,
+    });
+    if (isOpen) {
+      section.rows = sectionRows(ctx, entries, sec.$layout === "grid");
+    }
+    if (isFiltering && section.rows.length === 0) {
+      continue;
+    }
+    out.push(section);
+  }
+  return out;
+}
+
+/** One section's rows: every property that is set, or whose `$show` condition passes. */
+function sectionRows(
+  ctx: EditorCtx,
+  entries: { prop: string; entry: CssPropertyEntry }[],
+  grid: boolean,
+): StyleRowView[] {
+  const { activeStyle } = ctx;
+  const rows: StyleRowView[] = [];
+  for (const { prop, entry } of entries) {
+    const val = activeStyle[prop];
+    const hasVal = val !== undefined;
+    const condMet = allConditionsPass(entry, activeStyle);
+    const type = inferInputType(entry);
+    if (!hasVal && !condMet) {
+      continue;
+    }
+    if (ctx.filter) {
+      const label = propLabel(entry, prop).toLowerCase();
+      if (!prop.includes(ctx.filter) && !label.includes(ctx.filter)) {
+        continue;
+      }
+    }
+    if (type === "shorthand") {
+      const longhands = getLonghands(prop) as CssLonghand[];
+      const hasAny = hasVal || longhands.some((l) => activeStyle[l.name] !== undefined);
+      if (!hasAny && !condMet) {
+        continue;
+      }
+      for (const built of shorthandRows(ctx, entry, prop)) {
+        rows.push(register(built));
+      }
+      continue;
+    }
+    const inherited = ctx.inheritedStyle[prop];
+    const built = fieldRow(ctx, entry, prop, (val as string) ?? "", {
+      onCommit: (newVal) => ctx.commit(prop, newVal || undefined),
+      placeholder: !hasVal && inherited !== undefined ? String(inherited) : "",
+      provenance: provenanceOf(prop, ctx.provCtx),
+      span: grid && entry.$span === 2,
+      warning: hasVal && !condMet,
+    });
+    rows.push(register(built));
+  }
+  return rows;
+}
+
+/** A section with its tally worked out and no rows yet. */
+function sectionShell(
+  key: string,
+  label: string,
+  open: boolean,
+  counts: ReturnType<typeof countProvenance>,
+  opts: { canClear: boolean; clearTitle: string; layout: string; onClear: () => void },
+): StyleSectionView {
+  const marks: { state: string }[] = [];
+  if (counts.inherited > 0) {
+    marks.push({ state: "inherited" });
+  }
+  if (counts.bound > 0) {
+    marks.push({ state: "bound" });
+  }
+  if (counts.mixed > 0) {
+    marks.push({ state: "mixed" });
+  }
+  const canClear = counts.set > 0 && opts.canClear;
+  if (canClear) {
+    _sectionClears.set(key, opts.onClear);
+  }
+  return {
+    canClear,
+    clearTitle: opts.clearTitle,
+    hasMarks: marks.length > 0,
+    key,
+    label,
+    layout: opts.layout,
+    marks,
+    open,
+    rows: [],
+    tally: provenanceSummaryText(counts),
+  };
+}
+
+/** Relative Styling — the nested rules declared at this coordinate, and the way to add one. */
+function nestedSection(ctx: EditorCtx): StyleSectionView[] {
+  const nestedRules: string[] = [];
+  for (const [prop, val] of Object.entries(ctx.activeStyle)) {
+    if (val !== null && typeof val === "object" && !Array.isArray(val) && !prop.startsWith("@")) {
+      nestedRules.push(prop);
+    }
+  }
+  if (nestedRules.length === 0) {
+    return [];
+  }
+  const open = ctx.tab.session.ui.styleSections.nested ?? true;
+  const section = sectionShell("nested", "Relative Styling", open, countProvenance([]), {
+    canClear: false,
+    clearTitle: "",
+    layout: "",
+    onClear: () => {},
+  });
+  if (!open) {
+    return [section];
+  }
+  for (const rule of nestedRules) {
+    const key = `${ctx.coord}|nested|${rule}`;
+    const row = blankRow(key, rule, "nested");
+    row.widget = "nested";
+    row.name = rule;
+    row.openTitle = `Edit ${rule} under this rule`;
+    row.removeLabel = `Remove ${rule}`;
+    _rows.set(key, {
+      chip: () => ctx.commit(rule),
+      open: () => {
+        const compound = ctx.activeSelector ? `${ctx.activeSelector} ${rule}` : rule;
+        selectStylebookTag(compound, undefined, { panCanvas: true });
+      },
+    });
+    section.rows.push(row);
+  }
+  const addKey = `${ctx.coord}|nested|+add`;
+  const addRow = blankRow(addKey, "+add", "nested-add");
+  addRow.widget = "nestedadd";
+  _rows.set(addKey, {});
+  section.rows.push(addRow);
+  _nestedAdd = () => {
+    void showPromptDialog("Add Nested Selector", {
+      confirmLabel: "Add",
+      message: "Enter a selector to nest under the current rule.",
+      placeholder: "th, :hover, .active",
+      validate: (v) => (v.trim() ? "" : "Enter a selector."),
+    }).then((name) => {
+      if (name) {
+        ctx.commit(name, {});
+      }
+    });
+  };
+  return [section];
+}
+
+/** Custom — every declaration css-meta does not know about, plus the field that adds one. */
+function customSection(ctx: EditorCtx): StyleSectionView[] {
+  const otherProps: string[] = [];
+  for (const prop of Object.keys(ctx.activeStyle)) {
     if (!(cssMeta.$defs as Record<string, unknown>)[prop]) {
-      const val = activeStyle[prop];
+      const val = ctx.activeStyle[prop];
       if (val !== null && typeof val === "object") {
         continue;
       }
       otherProps.push(prop);
     }
   }
-
-  const nestedRules: string[] = [];
-  for (const [prop, val] of Object.entries(activeStyle)) {
-    if (val !== null && typeof val === "object" && !Array.isArray(val) && !prop.startsWith("@")) {
-      nestedRules.push(prop);
-    }
+  const open = ctx.tab.session.ui.styleSections.other ?? otherProps.length > 0;
+  const section = sectionShell("other", "Custom", open, countProvenance([]), {
+    canClear: false,
+    clearTitle: "",
+    layout: "",
+    onClear: () => {},
+  });
+  if (!open) {
+    return [section];
   }
-
-  // ── Filter state ─────────────────────────────────────────────────────────
-  const filterText = (tab.session.ui.styleFilter || "").toLowerCase();
-  const isFiltering = filterText.length > 0;
-
-  // ── Section templates ────────────────────────────────────────────────────
-  const sectionTemplates = cssMeta.$sections
-    .filter((sec) => sec.key !== "other")
-    .map((sec) => {
-      const entries = sectionProps[sec.key]!;
-
-      const sectionActiveProps = entries.filter(
-        ({ prop, entry }: { prop: string; entry: CssPropertyEntry }) => {
-          if (activeStyle[prop] !== undefined) {
-            return true;
-          }
-          if (inferInputType(entry) === "shorthand") {
-            return (getLonghands(prop) as CssLonghand[]).some(
-              (l: CssLonghand) => activeStyle[l.name] !== undefined,
-            );
-          }
-          return false;
-        },
-      );
-
-      const clearSection = () => {
+  const cssInitialMap = getCssInitialMap();
+  /** One target's OWN block at this coordinate — what a write that preserves values reads first. */
+  const targetStyleOf = (t: Tab, target: JxPath): JxStyle => {
+    const targetNode = getNodeAtPath(t.doc.document, target) as JxMutableNode | undefined;
+    return resolveContextStyle(targetNode?.style ?? {}, ctx.activeSelector, ctx.editMedia);
+  };
+  for (const prop of otherProps) {
+    const key = `${ctx.coord}|custom|${prop}`;
+    const row = blankRow(key, prop, "custom");
+    row.widget = "kv";
+    row.name = prop;
+    row.value = String(ctx.activeStyle[prop]);
+    row.placeholder = cssInitialMap.get(prop) ?? "";
+    row.removeLabel = `Remove ${prop}`;
+    _rows.set(key, {
+      chip: () => ctx.commit(prop),
+      debounceId: `custom:${key}`,
+      edit: (value) => ctx.commit(prop, value),
+      rename: (raw) => {
+        const newProp = raw.trim();
+        if (!newProp || newProp === prop) {
+          return;
+        }
+        // A rename is the one write that cannot be fanned out with a single value: each element
+        // Keeps ITS OWN value under the new key. The old code batched half of the rename (the
+        // Delete) against the primary and the other half against the primary too, while the value
+        // Cell beside it wrote to the whole selection — so renaming a property the selection shared
+        // Moved it on one element and left it on the rest.
         transactDoc(activeTab.value, (t) => {
-          for (const { prop, entry } of sectionActiveProps) {
-            if (activeStyle[prop] !== undefined) {
-              mutateTargets(t, prop);
+          for (const target of ctx.targets) {
+            const current = targetStyleOf(t, target)[prop];
+            if (current === undefined) {
+              continue;
             }
-            if (inferInputType(entry) === "shorthand") {
-              for (const l of getLonghands(prop) as CssLonghand[]) {
-                mutateTargets(t, l.name);
-              }
-            }
+            const write = contextMutate(target, ctx.activeSelector, ctx.editMedia);
+            write(t, prop);
+            write(t, newProp, String(current));
           }
         });
-      };
-
-      // The heading's own answer to "is anything in here set, inherited or bound" — the question
-      // The retired "Active" toggle answered by hiding everything that was not.
-      const counts = countProvenance(sectionProvenance(entries, provCtx));
-      const headingT = html`
-        <span slot="heading" class="style-section-heading">
-          ${sec.label}
-          ${renderProvenanceDots(counts, {
-            onClearSet: sectionActiveProps.length > 0 ? clearSection : undefined,
-            clearTitle: `Clear all ${sec.label.toLowerCase()} properties`,
-          })}
-        </span>
-      `;
-
-      const isOpen = isFiltering ? true : (tab.session.ui.styleSections[sec.key] ?? false);
-
-      if (!isOpen) {
-        return html`
-          <sp-accordion-item
-            label=${sec.label}
-            .open=${false}
-            @sp-accordion-item-toggle=${(e: Event) => {
-              activeTab.value!.session.ui.styleSections = {
-                ...activeTab.value!.session.ui.styleSections,
-                [sec.key]: (e.target as HTMLElement & { open: boolean }).open,
-              };
-            }}
-          >
-            ${headingT}
-          </sp-accordion-item>
-        `;
-      }
-
-      const rows = [];
-      for (const { prop, entry } of entries) {
-        const val = activeStyle[prop];
-        const hasVal = val !== undefined;
-        const condMet = allConditionsPass(entry, activeStyle);
-        const type = inferInputType(entry);
-        if (!hasVal && !condMet) {
-          continue;
-        }
-
-        if (filterText) {
-          const label = propLabel(entry, prop).toLowerCase();
-          if (!prop.includes(filterText) && !label.includes(filterText)) {
-            continue;
-          }
-        }
-
-        if (type === "shorthand") {
-          const longhands = getLonghands(prop) as CssLonghand[];
-          const hasAny =
-            hasVal || longhands.some((l: CssLonghand) => activeStyle[l.name] !== undefined);
-          if (!hasAny && !condMet) {
-            continue;
-          }
-          rows.push(
-            renderShorthandRow({
-              prop,
-              entry,
-              style: activeStyle,
-              mutate: mutateTargets,
-              inherited: inheritedStyle,
-              ctx: provCtx,
-            }),
-          );
-        } else {
-          const isWarning = hasVal && !condMet;
-          if (hasVal || condMet) {
-            rows.push(
-              renderStyleRow(
-                entry,
-                prop,
-                (val as string) ?? "",
-                (newVal: string | undefined) => commitStyle(prop, newVal || undefined),
-                isWarning,
-                sec.$layout === "grid",
-                inheritedStyle[prop] as string | undefined,
-                templateSignals,
-                `style|${sel.join("/")}|${editMedia ?? ""}|${activeSelector ?? ""}|${prop}`,
-                provenanceOf(prop, provCtx),
-              ),
-            );
-          }
-        }
-      }
-
-      if (isFiltering && rows.length === 0) {
-        return nothing;
-      }
-
-      return html`
-        <sp-accordion-item
-          label=${sec.label}
-          .open=${live(isOpen)}
-          @sp-accordion-item-toggle=${(e: Event) => {
-            activeTab.value!.session.ui.styleSections = {
-              ...activeTab.value!.session.ui.styleSections,
-              [sec.key]: (e.target as HTMLElement & { open: boolean }).open,
-            };
-          }}
-        >
-          ${headingT}
-          <div class=${sec.$layout === "grid" ? "style-section-body--grid" : ""}>${rows}</div>
-        </sp-accordion-item>
-      `;
+      },
     });
-
-  // ── Custom section ─────────────────────────────────────────────────────────
-  const cssInitialMap = getCssInitialMap();
-  const customIsOpen = tab.session.ui.styleSections.other ?? otherProps.length > 0;
-  const customSectionT = html`
-    <sp-accordion-item
-      label="Custom"
-      .open=${live(customIsOpen)}
-      @sp-accordion-item-toggle=${(e: Event) => {
-        activeTab.value!.session.ui.styleSections = {
-          ...activeTab.value!.session.ui.styleSections,
-          other: (e.target as HTMLElement & { open: boolean }).open,
-        };
-      }}
-    >
-      <div>
-        ${otherProps.map(
-          (prop) => html`
-            <div class="kv-row">
-              <sp-textfield
-                size="s"
-                class="kv-key"
-                .value=${live(prop)}
-                @change=${(e: Event) => {
-                  const newProp = (e.target as HTMLInputElement).value.trim();
-                  if (!newProp || newProp === prop) {
-                    return;
-                  }
-                  // A rename is the one write that cannot be fanned out with a single value: each
-                  // Element keeps ITS OWN value under the new key. The old code batched half of the
-                  // Rename (the delete) against the primary and the other half against the primary
-                  // Too, while the value cell beside it wrote to the whole selection — so renaming
-                  // A property the selection shared moved it on one element and left it on the
-                  // Rest.
-                  transactDoc(activeTab.value, (t) => {
-                    for (const target of targets) {
-                      const current = targetStyleOf(t, target)[prop];
-                      if (current === undefined) {
-                        continue;
-                      }
-                      const write = contextMutate(target, activeSelector, editMedia);
-                      write(t, prop);
-                      write(t, newProp, String(current));
-                    }
-                  });
-                }}
-              ></sp-textfield>
-              <sp-textfield
-                size="s"
-                class="kv-val"
-                .value=${live(String(activeStyle[prop]))}
-                placeholder=${ifDefined(cssInitialMap.get(prop))}
-                @input=${debouncedStyleCommit(`custom:${prop}`, 400, (e: Event) => {
-                  commitStyle(prop, (e.target as HTMLInputElement).value);
-                })}
-              ></sp-textfield>
-              <sp-action-button size="xs" quiet @click=${() => commitStyle(prop)}>
-                <sp-icon-close slot="icon"></sp-icon-close>
-              </sp-action-button>
-            </div>
-          `,
-        )}
-        <div style="display:flex;gap:4px;padding-top:4px">
-          <sp-textfield
-            size="s"
-            placeholder="Property name…"
-            style="flex:1"
-            @keydown=${(e: KeyboardEvent) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                const prop = (e.target as HTMLInputElement).value.trim();
-                if (prop) {
-                  const initial = cssInitialMap.get(prop) || "";
-                  commitStyle(prop, initial || "");
-                  (e.target as HTMLInputElement).value = "";
-                }
-              }
-            }}
-          ></sp-textfield>
-        </div>
-      </div>
-    </sp-accordion-item>
-  `;
-
-  // ── Relative Styling section (nested rules) ───────────────────────────────
-  const nestedIsOpen = tab.session.ui.styleSections.nested ?? nestedRules.length > 0;
-  const nestedSectionT =
-    nestedRules.length > 0
-      ? html`
-          <sp-accordion-item
-            label="Relative Styling"
-            .open=${live(nestedIsOpen)}
-            @sp-accordion-item-toggle=${(e: Event) => {
-              activeTab.value!.session.ui.styleSections = {
-                ...activeTab.value!.session.ui.styleSections,
-                nested: (e.target as HTMLElement & { open: boolean }).open,
-              };
-            }}
-          >
-            <div style="display:flex;flex-direction:column;gap:4px;padding:4px 0">
-              ${nestedRules.map(
-                (rule) => html`
-                  <div style="display:flex;align-items:center;gap:4px">
-                    <button
-                      style="flex:1;text-align:left;padding:6px 10px;background:var(--spectrum-gray-200, #1a1a1a);border:none;border-radius:var(--radius);color:var(--spectrum-gray-900, #fafafa);font-size:var(--spectrum-font-size-75, 12px);cursor:pointer"
-                      @click=${() => {
-                        const newSelector = activeSelector ? `${activeSelector} ${rule}` : rule;
-                        selectStylebookTag(newSelector, undefined, {
-                          panCanvas: true,
-                        });
-                      }}
-                    >
-                      ${rule}
-                    </button>
-                    <sp-action-button size="xs" quiet @click=${() => commitStyle(rule)}>
-                      <sp-icon-delete slot="icon"></sp-icon-delete>
-                    </sp-action-button>
-                  </div>
-                `,
-              )}
-              <button
-                style="padding:6px 10px;background:none;border:1px dashed var(--spectrum-gray-400, #333);border-radius:var(--radius);color:var(--spectrum-gray-700, #a1a1aa);font-size:var(--spectrum-font-size-75, 12px);cursor:pointer"
-                @click=${async () => {
-                  const name = await showPromptDialog("Add Nested Selector", {
-                    confirmLabel: "Add",
-                    message: "Enter a selector to nest under the current rule.",
-                    placeholder: "th, :hover, .active",
-                    validate: (v) => (v.trim() ? "" : "Enter a selector."),
-                  });
-                  if (name) {
-                    commitStyle(name, {});
-                  }
-                }}
-              >
-                + Add
-              </button>
-            </div>
-          </sp-accordion-item>
-        `
-      : nothing;
-
-  return html`
-    <div class="style-sidebar">
-      ${targetLineT} ${filterBarT}
-      <sp-accordion allow-multiple size="s">
-        ${sectionTemplates} ${nestedSectionT} ${customSectionT}
-      </sp-accordion>
-    </div>
-  `;
+    section.rows.push(row);
+  }
+  const addKey = `${ctx.coord}|custom|+add`;
+  const addRow = blankRow(addKey, "+add", "custom-add");
+  addRow.widget = "kvadd";
+  _rows.set(addKey, {
+    add: (raw) => {
+      const prop = raw.trim();
+      if (!prop) {
+        return false;
+      }
+      ctx.commit(prop, cssInitialMap.get(prop) || "");
+      return true;
+    },
+  });
+  section.rows.push(addRow);
+  return [section];
 }
 
-// ─── Entry point ────────────────────────────────────────────────────────────
+// ─── The menus ───────────────────────────────────────────────────────────────
 
 /**
- * Top-level Style panel — returns a lit-html template.
+ * The popover slot every list on this tab opens in; its region is `overlay.menu:style-value`.
  *
- * @param {{ getCanvasMode: () => string }} ctx
- * @returns {import("lit-html").TemplateResult}
+ * ONE slot, because only one of these can be open at a time — a unit list, a keyword list and a
+ * Value Source picker are three uses of the same gesture, not three overlays — and a second menu
+ * opening in the same slot would otherwise leave the first one's document mounted under it.
  */
-export function renderStylePanelTemplate(ctx: { getCanvasMode: () => string }) {
-  const tab = activeTab.value;
-  const noDocument = () =>
-    renderEmptyState({
-      actions: [openPageAction()],
-      message: "Open a page to style what you click.",
-    });
-  if (!tab) {
-    return noDocument();
+const MENU_REGION = "style-value";
+
+/** The list that is open, so opening another closes it first. */
+let _menu: MenuHandle | null = null;
+
+/** Close the row list — every choice does this, so the row is readable straight after. */
+function closeRowMenu(): void {
+  const menu = _menu;
+  _menu = null;
+  menu?.close();
+}
+
+/** Open a list under the control that asked for it. One menu at a time, the kit's. */
+function openRowMenu(
+  anchor: unknown,
+  label: string,
+  choices: StyleChoice[],
+  run: (value: string) => void,
+): void {
+  const trigger = anchor instanceof HTMLElement ? anchor : null;
+  closeRowMenu();
+  if (!trigger || choices.length === 0) {
+    return;
   }
-  if (ctx.getCanvasMode() === "stylebook" && shell.stylebook.selection) {
-    const node = tab.doc.document;
-    if (!node) {
-      return noDocument();
+  const box = rectOf(trigger);
+  _menu = openMenu({
+    label,
+    onClosed: (closed) => {
+      if (_menu === closed) {
+        _menu = null;
+      }
+    },
+    opener: trigger,
+    origin: { x: Math.round(box.left), y: Math.round(box.bottom) },
+    region: MENU_REGION,
+    rows: choices.map((choice) => ({
+      ...(choice.checked === undefined
+        ? {}
+        : { checked: (choice.checked ? "true" : "false") as "true" | "false" }),
+      destructive: false,
+      disabled: false,
+      dividerAbove: choice.divider === true,
+      id: choice.value,
+      title: choice.label,
+    })),
+    run: (value) => run(value),
+  });
+}
+
+// ─── The mount ───────────────────────────────────────────────────────────────
+
+/** Everything the document can ask for, resolved through {@link rowActions}. */
+const ACTIONS: StylePanelActions = {
+  addCustom: (key, field) => {
+    const add = rowActions(key)?.add;
+    if (!add || !(field instanceof HTMLInputElement)) {
+      return;
     }
-    // No separate `Styling: <h1>` header. It said the same thing the Target Line's scope chip says,
-    // Except that it said it as a caption, after the fact, and without the blast radius (§6.1).
-    return styleSidebarTemplate(node, tab.session.ui.activeMedia, tab.session.ui.activeSelector, {
-      effectiveStyle: getEffectiveStyle(node.style),
-      stylebookSelector: shell.stylebook.selection,
+    if (add(field.value)) {
+      field.value = "";
+    }
+  },
+  addNested: () => _nestedAdd?.(),
+  chipClick: (key) => rowActions(key)?.chip?.(),
+  clearSection: (key) => _sectionClears.get(key)?.(),
+  commitText: (key, value) => {
+    const actions = rowActions(key);
+    if (!actions) {
+      return;
+    }
+    if (actions.debounceId) {
+      cancelStyleDebounce(actions.debounceId);
+    }
+    actions.commit?.(value);
+  },
+  editText: (key, value) => {
+    const actions = rowActions(key);
+    if (!actions?.edit) {
+      return;
+    }
+    if (actions.debounceId) {
+      debouncedStyleCommit(actions.debounceId, 400, actions.edit)(value);
+      return;
+    }
+    actions.edit(value);
+  },
+  openNested: (key) => rowActions(key)?.open?.(),
+  pickChoice: (key, anchor) => {
+    const actions = rowActions(key);
+    if (!actions?.choose || !actions.choices) {
+      return;
+    }
+    const { choose } = actions;
+    openRowMenu(anchor, "Values", actions.choices, (value) => choose(value));
+  },
+  pickSource: (key, anchor) => {
+    const source = rowActions(key)?.source;
+    if (!source) {
+      return;
+    }
+    openRowMenu(
+      anchor,
+      "Value source",
+      source.caps.map((mode) => ({
+        checked: mode === source.mode,
+        label: `${VALUE_SOURCE_LABELS[mode]} — ${VALUE_SOURCE_HINTS[mode]}`,
+        value: mode,
+      })),
+      (chosen) => {
+        const next = chosen as SlotMode;
+        if (next === source.mode) {
+          return;
+        }
+        source.onChange(
+          switchSlotMode(
+            source.fieldKey,
+            source.mode,
+            next,
+            cloneValue(source.value as JsonValue | undefined),
+            slotModeSeed(next, { stateDefs: source.stateDefs }),
+          ),
+        );
+      },
+    );
+  },
+  pressButton: (key, value) => {
+    const actions = rowActions(key);
+    actions?.choose?.(value === currentButtonValue(key) ? "" : value);
+  },
+  renameCustom: (key, name) => rowActions(key)?.rename?.(name),
+  runEmptyAction: () => openPageAction().run(),
+  setFilter: (value) => {
+    const tab = activeTab.value;
+    if (tab) {
+      tab.session.ui.styleFilter = value;
+    }
+  },
+  toggleSection: (key, open) => {
+    const tab = activeTab.value;
+    if (!tab) {
+      return;
+    }
+    tab.session.ui.styleSections = { ...tab.session.ui.styleSections, [key]: open };
+  },
+  toggleShorthand: (key) => rowActions(key)?.toggle?.(),
+};
+
+function currentButtonValue(key: string): string {
+  return _buttonValues.get(key) ?? "";
+}
+
+/** The standing mount: one per window, because the Inspector draws one Style tab. */
+let _standing: { host: HTMLElement; handle: StylePanelSurface; scope: EffectScope } | null = null;
+
+/** What the Style tab cannot read for itself: which mode the canvas beside it is in. */
+export interface StyleHostDeps {
+  /** `stylebook` edits a tag catalogue entry; anything else edits the element selection. */
+  getCanvasMode: () => string;
+}
+
+/** The default the tab falls back to when the dock names no mode. */
+const EDIT_MODE = () => "edit";
+
+/** The canvas mode the dock last reported — Stylebook edits a tag, Edit edits a selection. */
+let _canvasMode: () => string = EDIT_MODE;
+
+/**
+ * Paint every colour island the document has announced, and forget the ones it has taken away.
+ *
+ * The kit has no colour element (`ui.md` §5.6, Pending), so a colour row is the one control here
+ * that is still lit. An island is repainted only when its VALUE moved: `renderColorSelector` opens
+ * an `sp-overlay` the reader may be dragging inside, and re-rendering it under them is exactly the
+ * repaint the Inspector's focus guard used to exist for.
+ */
+function paintColourIslands(): void {
+  for (const [key, host] of _controlHosts) {
+    const colour = _rows.get(key)?.colour;
+    if (!colour) {
+      if (!host.isConnected) {
+        _controlHosts.delete(key);
+        _paintedColours.delete(key);
+      }
+      continue;
+    }
+    if (_paintedColours.get(key) === colour.value && host.childNodes.length > 0) {
+      continue;
+    }
+    _paintedColours.set(key, colour.value);
+    paintColorControl(host, colour.prop, colour.value, colour.onChange);
+  }
+}
+
+/** Remember the button values, so a second press on the selected one clears it. */
+function rememberButtons(view: StylePanelView): void {
+  _buttonValues = new Map();
+  for (const section of view.sections) {
+    for (const row of section.rows) {
+      if (row.widget === "buttons") {
+        _buttonValues.set(row.key, row.buttons.find((b) => b.selected)?.value ?? "");
+      }
+    }
+  }
+}
+
+/**
+ * Give the Style tab somewhere to draw, or take it away.
+ *
+ * The document is mounted once and then only ASSIGNED to: its own `effect()` re-projects whenever
+ * anything the projection read moves, and the surface writes one property per binding with an equal
+ * write skipped. It must NOT be routed through `panels/panel-scheduler.ts` — that scheduler defers
+ * a repaint while a field in the dock has focus, because a lit render of the whole panel replaces
+ * the node the reader is typing into, and here the deferral would buy nothing and make the canvas
+ * lag the keystroke.
+ *
+ * `null` takes the tab down: the dock unmounted, or a test is starting clean.
+ *
+ * @param {HTMLElement | null} el The Inspector's Style tab body.
+ * @param {StyleHostDeps} [ctx] What the tab cannot read for itself.
+ */
+export function bindStyleHost(el: HTMLElement | null, ctx?: StyleHostDeps): void {
+  closeRowMenu();
+  _standing?.scope.stop();
+  _standing?.handle.dispose();
+  _standing = null;
+  _controlHosts.clear();
+  _paintedColours.clear();
+  _rows = new Map();
+  _sectionClears = new Map();
+  _nestedAdd = null;
+  if (!el) {
+    return;
+  }
+  _canvasMode = ctx?.getCanvasMode ?? EDIT_MODE;
+  const first = buildView(_canvasMode);
+  rememberButtons(first);
+  const handle = mountStylePanelSurface(el, first, ACTIONS, {
+    control: (key, element) => {
+      _controlHosts.set(key, element);
+      _paintedColours.delete(key);
+      paintColourIslands();
+    },
+    target: (element) => attachTargetLine(element ?? undefined),
+  });
+  const scope = effectScope();
+  scope.run(() => {
+    effect(() => {
+      const view = buildView(_canvasMode);
+      rememberButtons(view);
+      handle.update(view);
+      paintColourIslands();
     });
-  }
-  const selected = primarySelection(tab.session.selection);
-  if (!selected) {
-    return renderEmptyState({ message: clickAnythingTo("style it") });
-  }
-  const node = getNodeAtPath(tab.doc.document, selected);
-  if (!node) {
-    return renderEmptyState({ message: staleSelectionMessage() });
-  }
-  return styleSidebarTemplate(node, tab.session.ui.activeMedia, tab.session.ui.activeSelector);
+  });
+  _standing = { handle, host: el, scope };
 }
 
 // ─── Commands ─────────────────────────────────────────────────────────────────
@@ -1455,9 +2158,9 @@ export function renderStylePanelTemplate(ctx: { getCanvasMode: () => string }) {
  * `style.openSelectorMenu` is the one command here that addresses a CONTROL rather than a state,
  * and it earns that on purpose: the shot it serves photographs the open menu, so the menu is the
  * subject. What it does not do is hand a CSS selector back to the runner for a synthetic mouse
- * press — the element comes from the Target Line's own `ref`, so a refactor of that markup moves
- * the handle with it. The menu it opens is now a segment of the Target Line rather than a picker on
- * a retired toolbar; the id, and therefore the shot, is unchanged.
+ * press — the element comes from the Target Line's own handle, so a refactor of that markup moves
+ * the handle with it. The menu it opens is a segment of the Target Line rather than a picker on a
+ * retired toolbar; the id, and therefore the shot, is unchanged.
  *
  * `style.setSelector` is the state half of the same idea, and it is what a caller that wants a
  * RESULT rather than a picture should use: the menu exists to choose a selector, and choosing one

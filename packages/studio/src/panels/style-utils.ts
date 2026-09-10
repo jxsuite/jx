@@ -2,9 +2,7 @@
 
 import type { JxMutableNode } from "@jxsuite/schema/types";
 
-import { getNodeAtPath } from "../store";
 import { activeTab } from "../workspace/workspace";
-import { primarySelection } from "../tabs/selection";
 import cssMeta from "../../data/css-meta.json";
 
 let cssInitialMap = new Map<string, string>();
@@ -48,7 +46,19 @@ export function allConditionsPass(
 
 // ─── Auto-open sections ─────────────────────────────────────────────────────
 
-/** @param {JxMutableNode} node @param {Record<string, boolean>} currentSections */
+/**
+ * Open every section that has a value in it — and leave alone every section somebody has DECIDED
+ * about.
+ *
+ * The distinction is `undefined` versus `false`, and it is what makes the Style tab's accordion
+ * obey a click. It used to test `!result[section]`, which cannot tell "never opened" from "the
+ * reader just closed it": with the tab drawn once per interaction that was invisible, because the
+ * close and the re-open happened on either side of a render nobody looked between. The tab is a
+ * document now and re-projects the moment the section record moves, so closing an auto-opened
+ * section re-opened it in the same frame.
+ *
+ * @param {JxMutableNode} node @param {Record<string, boolean>} currentSections
+ */
 export function autoOpenSections(node: JxMutableNode, currentSections: Record<string, boolean>) {
   const style = node.style || {};
   const result = { ...currentSections };
@@ -58,7 +68,7 @@ export function autoOpenSections(node: JxMutableNode, currentSections: Record<st
     }
     const entry = (cssMeta.$defs as Record<string, Record<string, unknown>>)[prop];
     const section = (entry?.$section as string) ?? "other";
-    if (!result[section]) {
+    if (result[section] === undefined) {
       result[section] = true;
     }
   }
@@ -234,21 +244,4 @@ export const TYPO_PREVIEW_PROPS = new Set([
   "textDecoration",
 ]);
 
-/** Resolve the current font family for typography preview (handles var() references) */
-export function currentFontFamily() {
-  const tab = activeTab.value;
-  const selected = primarySelection(tab?.session.selection);
-  const node = selected ? getNodeAtPath(tab!.doc.document, selected) : null;
-  const raw = node?.style?.fontFamily;
-  if (!raw) {
-    return "";
-  }
-  const m = typeof raw === "string" && raw.match(/^var\((--[^)]+)\)$/);
-  if (m) {
-    return tab?.doc.document?.style?.[m[1]!] || "";
-  }
-  return raw;
-}
-
 export { default as cssMeta } from "../../data/css-meta.json";
-export { camelToKebab } from "../utils/studio-utils";

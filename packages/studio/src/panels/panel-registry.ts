@@ -41,7 +41,7 @@ import type { nothing, TemplateResult } from "lit-html";
 import type { renderGitPanel } from "./git-panel";
 import type { renderHeadTemplate } from "./head-panel";
 import type { renderImportsTemplate } from "./imports-panel";
-import type { renderSignalsTemplate } from "./signals-panel";
+import type { mountSignalsPanel } from "./signals-panel";
 
 /**
  * The three docks that host panels.
@@ -69,7 +69,14 @@ export interface NavigatorPanelDeps {
   // Imports, so they are erased — the modules themselves are never pulled in through this file.
   renderImportsTemplate: typeof renderImportsTemplate;
   renderFilesTemplate: () => TemplateResult;
-  renderSignalsTemplate: typeof renderSignalsTemplate;
+  /**
+   * Draw the Data panel into the painted host.
+   *
+   * Injected rather than imported, and that is load-bearing rather than habit: `data-explorer.ts`
+   * owns the record and `signals-panel.ts` reads `data-explorer.ts`'s expansion store, so a direct
+   * import would close a cycle through `formula-workspace.ts`. A type-only import erases.
+   */
+  mountSignalsPanel: typeof mountSignalsPanel;
   renderHeadTemplate: typeof renderHeadTemplate;
   renderGitPanel: typeof renderGitPanel;
   renderCanvas: () => void;

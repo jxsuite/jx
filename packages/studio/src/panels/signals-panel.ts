@@ -1,13 +1,28 @@
 /// <reference lib="dom" />
 /**
- * Signals panel — signal/def helpers, signals template, CEM editors, plugin schema forms.
+ * The Data panel's flow — what a state entry IS, and every transaction that edits one.
  *
- * Extracted from studio.js to reduce file size.
+ * The markup is `surfaces/panel-signals.json`, mounted by `surfaces/panel-signals.ts`. What is left
+ * here is the half a document cannot hold: which category an entry falls in, what its badge and its
+ * one-line summary say, WHICH CONTROL each field of a `$prototype` gets, what a commit is worth,
+ * what a rename collides with, and the four foreign surfaces that arrive as islands.
+ *
+ * **The field list is a projection.** A `Request` entry and an `IndexedDB` entry differ only in the
+ * rows {@link signalsView} hands over, so a new prototype is a case here and no markup at all —
+ * which is why `renderDataSourceFields`, `renderFunctionFields`, `renderParameterEditorTemplate`
+ * and `renderEmitsEditorTemplate` are gone rather than moved: each was a template per shape, and
+ * there is one shape now.
+ *
+ * **A control hands back names, and this module looks up what they mean.** Every field is
+ * registered as a {@link FieldPlan} under its entry and key while the view is built, so
+ * `commitField("$items", "url", "/api")` finds the writer that knows `url` is a `Request`'s URL.
+ * Nothing crosses the seam but strings.
+ *
+ * @docs studio/logic/data
  */
 
-import { html, nothing } from "lit-html";
+import { render as litRender } from "lit-html";
 import { displayTagName } from "@jxsuite/schema/guards";
-import { classMap } from "lit-html/directives/class-map.js";
 import { dynamicRouteParams } from "../page-params";
 import { projectState } from "../state";
 import type { JsonValue } from "../types";
@@ -19,31 +34,30 @@ import {
   mutateUpdateDef,
   transactDoc,
 } from "../tabs/transact";
-import { renderFieldRow } from "../ui/field-row";
-import { rawTextArea, spTextField } from "../ui/field-input";
 import {
   expressionHint,
   isActionExpression,
   renderExpressionEditor,
 } from "../ui/expression-editor";
-import { renderEmptyState } from "./empty-state";
 import {
   dataTypeLabel,
   expandedDataRows,
   isDataRowExpanded,
-  renderDataTreeTemplate,
+  paintDataTree,
   setDataRowExpanded,
   unwrapSignal,
 } from "./data-explorer";
+import { disposeDetachedDataTrees } from "../surfaces/panel-data";
 import { openLogicTarget } from "./formula-workspace";
 import { bindableSignalNames } from "./properties-panel";
-import { renderStatementEditor } from "./statement-editor";
+import { mountStatementEditor } from "./statement-editor";
 import { NAVIGATOR_STATEMENTS_REGION } from "../ui/regions";
 import { livePreviewExpression } from "../services/live-preview";
 import { renderMediaPicker } from "../ui/media-picker";
 import { renderOnly } from "../store";
 import { mountSchemaForm } from "../ui/schema-form";
 import { resolveContextPointer } from "../services/context-resolver";
+import { mountSignalsSurface } from "../surfaces/panel-signals";
 import type { JsonSchema } from "../ui/schema-form";
 import type { TabUi } from "../tabs/tab";
 import type {
@@ -56,9 +70,21 @@ import type {
 import { fetchPluginSchema, pluginSchemaCache } from "../services/code-services";
 import { getExtensions, loadExtensions } from "../format/format-host";
 import { optionalStringArg, stringProperty } from "../commands/command-args";
-import type { TemplateResult } from "lit-html";
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
 import { isMediaFormat } from "../utils/studio-utils";
+import type {
+  SignalCategoryView,
+  SignalCellRowView,
+  SignalCellView,
+  SignalChipView,
+  SignalFieldKind,
+  SignalFieldView,
+  SignalOptionGroup,
+  SignalRowView,
+  SignalsActions,
+  SignalsSurfaceHandle,
+  SignalsView,
+} from "../surfaces/panel-signals";
 
 interface SignalsPanelState {
   document: JxMutableNode;
@@ -71,13 +97,12 @@ interface SignalsPanelState {
 }
 
 /**
- * What the State panel's template needs from its host: a repaint, and nothing else.
+ * What the Data panel's surface needs from its host: a repaint, and the one verb a repaint is not.
  *
  * It carried `renderCanvas` and `updateSession` too, and both are gone for the same reason. The
- * canvas hook lost its last caller when the takeovers went and was left threaded from
- * `registerStatePanel`; the session writer lost its two when the Logic buttons started going
- * through `openLogicTarget`, which addresses the focused tab itself. A ctx field with no reader is
- * an invitation to write the wrong thing through it.
+ * canvas hook lost its last caller when the takeovers went; the session writer lost its two when
+ * the Logic buttons started going through `openLogicTarget`, which addresses the focused tab
+ * itself. A ctx field with no reader is an invitation to write the wrong thing through it.
  */
 interface SignalsPanelCtx {
   renderLeftPanel: () => void;
@@ -133,7 +158,7 @@ export interface SignalDef {
 let renameError: { name: string; message: string } | null = null;
 
 /** Track which functions have the advanced param editor open. */
-const advancedParamOpen = new Set();
+const advancedParamOpen = new Set<string>();
 
 /** Default templates for creating new signal definitions. */
 const DEF_TEMPLATES = {
@@ -169,6 +194,9 @@ const STUDIO_RESERVED_KEYS = new Set([
   "emits",
 ]);
 
+/** How long a typed value waits before it is written, where typing commits at all. */
+const DEBOUNCE_MS = 500;
+
 // ─── Signals / defs helpers ──────────────────────────────────────────────────
 
 /**
@@ -196,7 +224,7 @@ export function extensionStateClasses(): {
 
 /**
  * View a state entry through the panel's flattened editing lens. Naked primitive and array entries
- * surface as an empty view — the renderers guard every field access.
+ * surface as an empty view — the builders guard every field access.
  *
  * @param {import("@jxsuite/schema/types").JxStateDefinition} def
  * @returns {SignalDef}
@@ -383,11 +411,11 @@ export function resolveDefaultForCanvas(
   }
   // Computed → expression indicator
   if (def.$compute) {
-    return `\u0192(${defName})`;
+    return `ƒ(${defName})`;
   }
   // Request → URL hint
   if (def.$prototype === "Request") {
-    return `\u27F3 ${def.url || "fetch"}`;
+    return `⟳ ${def.url || "fetch"}`;
   }
   // Storage → use default or key
   if (def.$prototype === "LocalStorage" || def.$prototype === "SessionStorage") {
@@ -403,40 +431,6 @@ export function resolveDefaultForCanvas(
     return `{${def.$prototype}}`;
   }
   return `{${defName}}`;
-}
-
-// ─── Simple field row ────────────────────────────────────────────────────────
-
-/**
- * Simple field row for signal editors — vertical stacked layout.
- *
- * `error` paints the row invalid and prints the message in a `role="alert"` line, which is how a
- * refused rename says so instead of silently keeping the old name.
- */
-export function signalFieldRow(
-  label: string,
-  value: string,
-  onChange: (value: string) => void,
-  error?: string | undefined,
-) {
-  return renderFieldRow({
-    prop: label,
-    label,
-    hasValue: false,
-    ...(error === undefined ? {} : { error }),
-    // CommitMode "blur": signal fields (rename, src, etc.) commit on blur/Enter only — a debounced
-    // Mid-typing commit would, e.g., rename the signal on every keystroke pause.
-    widget: spTextField(
-      `sig:${label}`,
-      value,
-      (v: string) => {
-        if (v !== value) {
-          onChange(v);
-        }
-      },
-      { commitMode: "blur" },
-    ),
-  });
 }
 
 /** Normalize a parameter entry to a CEM object. */
@@ -455,571 +449,856 @@ function cemTypeText(type: JsonValue | undefined): string {
   return "";
 }
 
-// ─── Left panel: Signals ─────────────────────────────────────────────────────
+/** A value as a field shows it: JSON for a structure, the string for anything else. */
+function asText(value: unknown, indent = false): string {
+  if (value === undefined || value === null) {
+    return "";
+  }
+  if (typeof value === "object") {
+    return indent ? JSON.stringify(value, null, 2) : JSON.stringify(value);
+  }
+  return String(value);
+}
+
+// ─── The field plans ─────────────────────────────────────────────────────────
 
 /**
- * Add a def from one of the built-in templates under a free name, and expand it for editing. Shared
- * by the "+ Add…" picker and the panel's empty state, so both create the same thing.
+ * What one field of one entry can be asked to do.
+ *
+ * The document hands back the entry's name and this field's key and nothing else, so this is where
+ * `url` becomes "a `Request`'s URL". Rebuilt on every projection, which is what keeps a writer
+ * closed over the def that is actually on screen.
  */
-function addTemplateDef(type: string, S: SignalsPanelState, ctx: SignalsPanelCtx) {
-  const template = DEF_TEMPLATES[type];
-  if (!template) {
-    return;
-  }
-  const nameBase = type === "function" ? "newFunction" : "$newSignal";
-  let n = nameBase;
-  let i = 1;
-  while (S.document.state && S.document.state[n]) {
-    n = nameBase + i;
-    i += 1;
-  }
-  transactDoc(activeTab.value, (t) =>
-    mutateAddDef(t, n, structuredClone(template) as Record<string, JsonValue>),
+interface FieldPlan {
+  /** What the projection put in the control — a commit equal to it is nothing happening. */
+  value: string;
+  /** What a KEYSTROKE is worth here: nothing (commit on leaving), a debounce, or a write. */
+  live: "none" | "debounce" | "commit";
+  write?: (value: string) => void;
+  check?: (checked: boolean) => void;
+  press?: (action: string) => void;
+  cell?: (row: string, cell: string, value: string) => void;
+  cellCheck?: (row: string, cell: string, checked: boolean) => void;
+  dropRow?: (row: string) => void;
+  addRow?: () => void;
+  addChip?: (value: string) => void;
+  dropChip?: (chip: string) => void;
+}
+
+/** Every field of every entry the last projection drew, by `<entry>` and `<field key>`. */
+const plans = new Map<string, FieldPlan>();
+
+/** Every island the last projection drew, by `<entry>/<slot>`. See {@link paintIsland}. */
+const islands = new Map<string, (host: HTMLElement) => void>();
+
+/** Debounced writes in flight, by the same key as {@link plans}. */
+const timers = new Map<string, ReturnType<typeof setTimeout>>();
+
+/** Plugin schemas asked for and not yet answered, by cache key. See {@link externalFields}. */
+const schemaRequests = new Set<string>();
+
+/** The panel state and host hooks the last render was given — what an action acts against. */
+let panelState: SignalsPanelState | null = null;
+let panelCtx: SignalsPanelCtx | null = null;
+
+/** One field's identity, as both maps key it. A state entry's name cannot contain a newline. */
+function planKey(signal: string, fieldKey: string): string {
+  return `${signal}\n${fieldKey}`;
+}
+
+/** Register what a field's controls do, and return the field the document draws. */
+function field(
+  spec: Partial<SignalFieldView> & { key: string; kind: SignalFieldKind; signal: string },
+  plan?: FieldPlan,
+): SignalFieldView {
+  const view: SignalFieldView = {
+    addLabel: "",
+    buttons: [],
+    cellRows: [],
+    checked: false,
+    chips: [],
+    error: "",
+    footer: "",
+    hasError: false,
+    hasFooter: false,
+    label: "",
+    mono: false,
+    options: [],
+    placeholder: "",
+    prop: spec.prop ?? spec.label ?? spec.key,
+    rows: "",
+    segments: [],
+    slot: "",
+    span: false,
+    value: "",
+    ...spec,
+  };
+  plans.set(planKey(spec.signal, spec.key), {
+    ...(plan ?? { live: "none", value: "" }),
+    value: view.value,
+  });
+  return view;
+}
+
+/** A text row committed when the reader leaves it — the shape every `signalFieldRow` had. */
+function textField(
+  signal: string,
+  key: string,
+  label: string,
+  value: string,
+  write: (value: string) => void,
+  extra: Partial<SignalFieldView> = {},
+): SignalFieldView {
+  return field(
+    { key, kind: "text", label, signal, value, ...extra },
+    { live: "none", value, write },
   );
-  setDataRowExpanded(n, true);
-  ctx.renderLeftPanel();
 }
 
-/**
- * @param {SignalsPanelState} S
- * @param {SignalsPanelCtx} ctx
- */
-/**
- * ONE summary slot per row, and the resolved value wins it as soon as there is one.
- *
- * The row wants to say four things about an entry — its category, its name, how it is defined and
- * what it became — and a 240px Navigator fits three. Eliding both summaries to make room produced
- * "recentproje… C… Array(3)": two truncated descriptions and a truncated identity. So the
- * definition hint holds the slot until the canvas resolves a value and then steps aside for it, and
- * the full definition is one click down in fields — which is what the hint was abbreviating.
- *
- * The switch is whether the canvas has reported a scope AT ALL, not whether this entry appears in
- * it. An entry the canvas ran and did not produce is "pending", which is a fact about the value; a
- * panel opened before the canvas has rendered knows nothing about any of them, and guessing
- * "pending" for the whole list there would be a fact about the panel dressed up as one about data.
- *
- * ENTRIES THAT CANNOT HOLD A VALUE never get the column. A function and an assignment expression
- * are things the page DOES, not things it knows, and they are absent from the resolved scope for
- * exactly that reason — so the value column called all eight of a component's `setFilter` handlers
- * "pending", which reads as "still loading" for something that will never load.
- */
-function summary(name: string, def: SignalDef, live: unknown, resolved: boolean) {
-  const holdsNoValue =
-    defCategory(def) === "function" ||
-    (def.$expression != null && isActionExpression(def.$expression));
-  if (!resolved || holdsNoValue) {
-    const hint = defHint(name, def);
-    return html`<span class="signal-hint" title=${hint}>${hint}</span>`;
-  }
-  return html`<span
-    class=${classMap({ "data-pending": unwrapSignal(live) === null, "data-type": true })}
-    title="What this resolved to on the canvas"
-    >${dataTypeLabel(live)}</span
-  >`;
-}
-
-export function renderSignalsTemplate(S: SignalsPanelState, ctx: SignalsPanelCtx) {
-  const defs = S.document.state || {};
-  const entries = Object.entries(defs);
-  // What the canvas actually resolved these to. `S.canvas` is the session's canvas record, so this
-  // Costs a property read — the panel already had the scope in hand and rendered it in a second
-  // Panel anyway.
-  const liveScope = (S.canvas?.scope ?? null) as Record<string, unknown> | null;
-  const scope = liveScope ?? {};
-  // A Refresh is out and the canvas has not answered. Read off the tab, so it survives the repaints
-  // Between the press and the `dataScope` that ends it.
-  const refreshing = S.canvas?.refreshing === true;
-
-  // Warm the extensions payload so manifest state classes appear in the add picker (the panel
-  // Re-renders constantly; loadExtensions memoizes, so this is a one-time fetch per project).
-  void loadExtensions();
-
-  // Group by category
-  const groups = {
-    computed: [],
-    data: [],
-    expression: [],
-    function: [],
-    state: [],
-  } as Record<string, [string, SignalDef][]>;
-  for (const [name, def] of entries) {
-    groups[defCategory(def)]!.push([name, asSignalDef(def)]);
-  }
-
-  const categories = [
-    { items: groups.state!, key: "state", label: "State" },
-    { items: groups.computed!, key: "computed", label: "Computed" },
-    { items: groups.data!, key: "data", label: "Data" },
-    { items: groups.expression!, key: "expression", label: "Expressions" },
-    { items: groups.function!, key: "function", label: "Functions" },
-  ];
-
-  S._collapsedSignalCats ||= new Set();
-  const collapsedCats = S._collapsedSignalCats;
-
-  const catTemplates = categories
-    .filter((c) => c.items.length > 0)
-    .map(
-      ({ key, label, items }) => html`
-        <sp-accordion-item
-          label="${label} (${items.length})"
-          ?open=${!collapsedCats.has(key)}
-          @sp-accordion-item-toggle=${() => {
-            if (collapsedCats.has(key)) {
-              collapsedCats.delete(key);
-            } else {
-              collapsedCats.add(key);
-            }
-            ctx.renderLeftPanel();
-          }}
-        >
-          ${items.map(([name, def]) => {
-            const isExpanded: boolean = isDataRowExpanded(name);
-            const live = scope[name];
-            return html`
-              <div
-                class=${classMap({ expanded: isExpanded, "signal-row": true })}
-                @click=${() => {
-                  setDataRowExpanded(name, !isExpanded);
-                  ctx.renderLeftPanel();
-                }}
-              >
-                <span class="signal-badge ${defCategory(def)}">${defBadgeLabel(def)}</span>
-                <span class="signal-name">${name}</span>
-                ${summary(name, def, live, liveScope !== null)}
-                <sp-action-button
-                  quiet
-                  size="xs"
-                  class="signal-del"
-                  @click=${(e: Event) => {
-                    e.stopPropagation();
-                    transactDoc(activeTab.value, (t) => mutateRemoveDef(t, name));
-                  }}
-                >
-                  <sp-icon-delete slot="icon"></sp-icon-delete>
-                </sp-action-button>
-              </div>
-              ${
-                isExpanded
-                  ? html`<div class="signal-editor">
-                      ${renderSignalEditorTemplate(S, name, def, ctx)}
-                      <div class="signal-live">
-                        <span class="signal-live-label">Resolved to</span>
-                        <div class="data-tree">
-                          ${renderDataTreeTemplate(unwrapSignal(live), 0, 5, name)}
-                        </div>
-                      </div>
-                    </div>`
-                  : nothing
-              }
-            `;
-          })}
-        </sp-accordion-item>
-      `,
-    );
-
-  return html`
-    <div class=${classMap({ "is-refreshing": refreshing, "signals-panel": true })}>
-      ${
-        ctx.refreshData && entries.length > 0
-          ? html`<div class="data-explorer-toolbar">
-              <sp-action-button
-                quiet
-                size="s"
-                class="data-refresh-btn"
-                ?disabled=${refreshing}
-                @click=${() => {
-                  ctx.refreshData?.();
-                  ctx.renderLeftPanel();
-                }}
-              >
-                ${
-                  refreshing
-                    ? html`<sp-progress-circle
-                        slot="icon"
-                        indeterminate
-                        size="s"
-                        label="Refreshing"
-                      ></sp-progress-circle>`
-                    : html`<sp-icon-refresh slot="icon"></sp-icon-refresh>`
-                }
-                ${refreshing ? "Refreshing…" : "Refresh"}
-              </sp-action-button>
-            </div>`
-          : nothing
-      }
-      <sp-accordion allow-multiple size="s"> ${catTemplates} </sp-accordion>
-      ${
-        entries.length === 0
-          ? renderEmptyState({
-              actions: [{ label: "Add a value", run: () => addTemplateDef("state", S, ctx) }],
-              message:
-                "Data lives here — values this page can read, compute or fetch, " +
-                "ready to bind to any element.",
-            })
-          : nothing
-      }
-      <div class="signals-add">
-        <sp-picker
-          size="s"
-          label="+ Add…"
-          placeholder="+ Add…"
-          @change=${(e: Event) => {
-            const type = (e.target as HTMLInputElement).value;
-            if (!type) {
-              return;
-            }
-
-            // Extension-manifest state classes ("ext:Session"): no $src needed — the registry
-            // Resolves them; the descriptor's stateDefaults seed the def (e.g. timing "client").
-            if (type.startsWith("ext:")) {
-              const protoName = type.slice(4);
-              const cls = extensionStateClasses().find((c) => c.name === protoName);
-              let n = `$${protoName.charAt(0).toLowerCase()}${protoName.slice(1)}`;
-              let i = 1;
-              const base = n;
-              while (S.document.state && S.document.state[n]) {
-                n = base + i;
-                i += 1;
-              }
-              transactDoc(activeTab.value, (t) =>
-                mutateAddDef(t, n, {
-                  $prototype: protoName,
-                  ...cls?.stateDefaults,
-                } as Record<string, JsonValue>),
-              );
-              setDataRowExpanded(n, true);
-              ctx.renderLeftPanel();
-              return;
-            }
-
-            // Handle import-based prototypes (e.g., "import:ContentCollection")
-            if (type.startsWith("import:")) {
-              const protoName = type.slice(7);
-              const src = projectState?.projectConfig?.imports?.[protoName];
-              let n = `$${protoName.charAt(0).toLowerCase()}${protoName.slice(1)}`;
-              let i = 1;
-              const base = n;
-              while (S.document.state && S.document.state[n]) {
-                n = base + i;
-                i += 1;
-              }
-              transactDoc(activeTab.value, (t) =>
-                mutateAddDef(
-                  t,
-                  n,
-                  /** @type {Record<string, JsonValue>} */ {
-                    $prototype: protoName,
-                  },
-                ),
-              );
-              setDataRowExpanded(n, true);
-              if (src) {
-                void fetchPluginSchema(
-                  { $prototype: protoName, $src: src },
-                  {
-                    ...(S.documentPath != null && {
-                      documentPath: S.documentPath,
-                    }),
-                  },
-                ).then(() => ctx.renderLeftPanel());
-              } else {
-                ctx.renderLeftPanel();
-              }
-              return;
-            }
-
-            addTemplateDef(type, S, ctx);
-          }}
-        >
-          <sp-menu-item value="state">Value</sp-menu-item>
-          <sp-menu-item value="computed">Computed</sp-menu-item>
-          <sp-menu-divider></sp-menu-divider>
-          <sp-menu-item value="request">Fetch from a URL</sp-menu-item>
-          <sp-menu-item value="localStorage">LocalStorage</sp-menu-item>
-          <sp-menu-item value="sessionStorage">SessionStorage</sp-menu-item>
-          <sp-menu-item value="indexedDB">IndexedDB</sp-menu-item>
-          <sp-menu-item value="cookie">Cookie</sp-menu-item>
-          <sp-menu-item value="set">Set</sp-menu-item>
-          <sp-menu-item value="map">Map</sp-menu-item>
-          <sp-menu-item value="formData">FormData</sp-menu-item>
-          <sp-menu-item value="external">From a module…</sp-menu-item>
-          ${
-            projectState?.projectConfig?.imports
-              ? html`<sp-menu-divider></sp-menu-divider>${Object.keys(
-                    projectState.projectConfig.imports,
-                  ).map(
-                    (k: string) => html`<sp-menu-item value="import:${k}">${k}</sp-menu-item>`,
-                  )}`
-              : nothing
-          }
-          ${
-            extensionStateClasses().length > 0
-              ? html`<sp-menu-divider></sp-menu-divider>${extensionStateClasses().map(
-                    (cls) => html`<sp-menu-item value="ext:${cls.name}">${cls.name}</sp-menu-item>`,
-                  )}`
-              : nothing
-          }
-          <sp-menu-divider></sp-menu-divider>
-          <sp-menu-item value="expression">Expression</sp-menu-item>
-          <sp-menu-item value="function">Function</sp-menu-item>
-        </sp-picker>
-      </div>
-    </div>
-  `;
-}
-
-/** Render inline editor fields for a specific signal/def type. */
-function renderSignalEditorTemplate(
-  S: SignalsPanelState,
-  name: string,
-  defArg: SignalDef,
-  ctx: SignalsPanelCtx,
-) {
-  const def = typeof defArg === "object" && defArg !== null ? defArg : { default: defArg };
-  const cat = defCategory(def);
-
-  // Helper for picker rows
-  const pickerRow = (
-    label: string,
-    options: string[],
-    currentVal: string,
-    onChange: (value: string) => void,
-  ) =>
-    renderFieldRow({
-      hasValue: false,
+/** A closed set of values, committed on the pick. */
+function selectField(
+  signal: string,
+  key: string,
+  label: string,
+  values: string[],
+  value: string,
+  write: (value: string) => void,
+): SignalFieldView {
+  return field(
+    {
+      key,
+      kind: "select",
       label,
-      prop: label,
-      widget: html`
-        <sp-picker
-          size="s"
-          value=${currentVal}
-          @change=${(e: Event) => onChange((e.target as HTMLInputElement).value)}
-        >
-          ${options.map((opt: string) => html`<sp-menu-item value=${opt}>${opt}</sp-menu-item>`)}
-        </sp-picker>
-      `,
-    });
-
-  // Helper for textarea rows — uses the shared draft layer (commits on blur/Enter and a 500ms
-  // Debounce) so a panel re-render mid-edit can't truncate the in-progress text.
-  const textareaRow = (
-    label: string,
-    value: string,
-    onChange: (value: string) => void,
-    opts: { minHeight?: string; mono?: boolean } = {},
-  ) =>
-    renderFieldRow({
-      hasValue: false,
-      label,
-      prop: label,
-      widget: rawTextArea(`sig:${label}`, value, onChange, {
-        debounceMs: 500,
-        ...(opts.minHeight != null && { minHeight: opts.minHeight }),
-        ...(opts.mono != null && { mono: opts.mono }),
-      }),
-    });
-
-  /*
-   * Name field (common to all).
-   *
-   * Every refusal SAYS SO. A collision silently kept the old name while the field showed the new
-   * one, so the panel and the document disagreed and only the canvas could tell you which had won —
-   * and an empty name did the same. The expansion follows the rename so the editor you are typing
-   * in is still the one on screen afterwards.
-   */
-  const nameField = signalFieldRow(
-    "Name",
-    name,
-    (v: string) => {
-      const next = v.trim();
-      if (next === name) {
-        renameError = null;
-        return;
-      }
-      if (!next) {
-        renameError = { message: "A name is required.", name };
-      } else if (S.document.state?.[next]) {
-        renameError = { message: `"${next}" is already defined by this document.`, name };
-      } else {
-        renameError = null;
-        // The expansion follows the rename, so the editor you are typing in is still the one on
-        // Screen when the row list repaints under the new name.
-        setDataRowExpanded(name, false);
-        setDataRowExpanded(next, true);
-        transactDoc(activeTab.value, (t) => mutateRenameDef(t, name, next));
-      }
-      ctx.renderLeftPanel();
+      options: values.map((v) => ({ label: v, value: v })),
+      signal,
+      value,
     },
-    renameError?.name === name ? renameError.message : undefined,
+    { live: "none", value, write },
   );
+}
 
-  let fields: TemplateResult | typeof nothing = nothing;
+// ─── The editor, field by field ──────────────────────────────────────────────
 
-  if (cat === "state") {
-    const defaultVal =
-      def.default !== undefined && def.default !== null
-        ? typeof def.default === "object"
-          ? JSON.stringify(def.default)
-          : String(def.default)
-        : "";
+/** The rename field, which every category starts with. */
+function nameField(S: SignalsPanelState, name: string): SignalFieldView {
+  const message = renameError?.name === name ? renameError.message : "";
+  return field(
+    {
+      error: message,
+      hasError: message !== "",
+      key: "name",
+      kind: "text",
+      label: "Name",
+      prop: "Name",
+      signal: name,
+      value: name,
+    },
+    {
+      live: "none",
+      value: name,
+      /*
+       * Every refusal SAYS SO. A collision silently kept the old name while the field showed the
+       * new one, so the panel and the document disagreed and only the canvas could tell you which
+       * had won — and an empty name did the same. The expansion follows the rename so the editor
+       * you are typing in is still the one on screen afterwards.
+       */
+      write: (v: string) => {
+        const next = v.trim();
+        if (next === name) {
+          renameError = null;
+          return;
+        }
+        if (!next) {
+          renameError = { message: "A name is required.", name };
+        } else if (S.document.state?.[next]) {
+          renameError = { message: `"${next}" is already defined by this document.`, name };
+        } else {
+          renameError = null;
+          setDataRowExpanded(name, false);
+          setDataRowExpanded(next, true);
+          transactDoc(activeTab.value, (t) => mutateRenameDef(t, name, next));
+        }
+        repaint();
+      },
+    },
+  );
+}
 
-    const cemFields = isCustomElementDoc(S)
-      ? html`
-          ${signalFieldRow("Attribute", def.attribute || "", (v: string) =>
-            transactDoc(activeTab.value, (t) =>
-              mutateUpdateDef(t, name, { attribute: v || undefined }),
-            ),
-          )}
-          ${renderFieldRow({
-            hasValue: false,
-            label: "Reflects",
-            prop: "reflects",
-            widget: html`
-              <sp-checkbox
-                class="field-check"
-                ?checked=${Boolean(def.reflects)}
-                @change=${(e: Event) =>
-                  transactDoc(activeTab.value, (t) =>
-                    mutateUpdateDef(t, name, {
-                      reflects: (e.target as HTMLInputElement).checked || undefined,
-                    }),
-                  )}
-              ></sp-checkbox>
-            `,
-          })}
-          ${signalFieldRow(
-            "Deprecated",
-            typeof def.deprecated === "string" ? def.deprecated : "",
-            (v: string) =>
-              transactDoc(activeTab.value, (t) =>
-                mutateUpdateDef(t, name, { deprecated: v || undefined }),
-              ),
-          )}
-        `
-      : nothing;
+/** A plain value entry: its type, its default, and the CEM facts a custom element adds. */
+function stateFields(S: SignalsPanelState, name: string, def: SignalDef): SignalFieldView[] {
+  const patch = (value: Record<string, JsonValue | undefined>): void => {
+    transactDoc(activeTab.value, (t) => mutateUpdateDef(t, name, value));
+  };
+  const defaultVal = asText(def.default);
+  const out: SignalFieldView[] = [
+    selectField(
+      name,
+      "type",
+      "Type",
+      ["string", "integer", "number", "boolean", "array", "object"],
+      def.type || "string",
+      (v) => patch({ type: v }),
+    ),
+  ];
+  if (def.type === "string" || !def.type) {
+    out.push(
+      selectField(name, "format", "Format", ["", "image", "date", "color"], def.format || "", (v) =>
+        patch({ format: v || undefined }),
+      ),
+    );
+  }
+  if (isMediaFormat(def.format)) {
+    out.push(
+      field({
+        key: "default",
+        kind: "slot-field",
+        label: "Default",
+        prop: "Default",
+        signal: name,
+        slot: "media",
+      }),
+    );
+    islands.set(`${name}/media`, (host) => {
+      litRender(
+        renderMediaPicker("default", defaultVal, (v: string) => patch({ default: v || undefined })),
+        host,
+      );
+    });
+  } else {
+    out.push(
+      textField(name, "default", "Default", defaultVal, (v: string) => {
+        let parsed: unknown = v;
+        if (def.type === "integer") {
+          parsed = Math.trunc(Number(v)) || 0;
+        } else if (def.type === "number") {
+          parsed = Number(v) || 0;
+        } else if (def.type === "boolean") {
+          parsed = v === "true";
+        } else if (def.type === "array" || def.type === "object") {
+          try {
+            parsed = JSON.parse(v);
+          } catch {
+            parsed = v;
+          }
+        }
+        patch({ default: parsed as JsonValue });
+      }),
+    );
+  }
+  out.push(
+    textField(name, "description", "Description", def.description || "", (v) =>
+      patch({ description: v || undefined }),
+    ),
+  );
+  if (isCustomElementDoc(S)) {
+    out.push(
+      textField(name, "attribute", "Attribute", def.attribute || "", (v) =>
+        patch({ attribute: v || undefined }),
+      ),
+      field(
+        {
+          checked: Boolean(def.reflects),
+          key: "reflects",
+          kind: "checkbox",
+          label: "Reflects",
+          prop: "reflects",
+          signal: name,
+        },
+        {
+          check: (checked) => patch({ reflects: checked || undefined }),
+          live: "none",
+          value: "",
+        },
+      ),
+      textField(
+        name,
+        "deprecated",
+        "Deprecated",
+        typeof def.deprecated === "string" ? def.deprecated : "",
+        (v) => patch({ deprecated: v || undefined }),
+      ),
+    );
+  }
+  return out;
+}
 
-    fields = html`
-      ${pickerRow(
-        "Type",
-        ["string", "integer", "number", "boolean", "array", "object"],
-        def.type || "string",
-        (v: string) => transactDoc(activeTab.value, (t) => mutateUpdateDef(t, name, { type: v })),
-      )}
-      ${
-        def.type === "string" || !def.type
-          ? pickerRow("Format", ["", "image", "date", "color"], def.format || "", (v: string) =>
-              transactDoc(activeTab.value, (t) =>
-                mutateUpdateDef(t, name, { format: v || undefined }),
-              ),
-            )
-          : nothing
-      }
-      ${
-        isMediaFormat(def.format)
-          ? renderFieldRow({
-              hasValue: false,
-              label: "Default",
-              prop: "Default",
-              widget: renderMediaPicker("default", defaultVal, (v: string) => {
-                transactDoc(activeTab.value, (t) =>
-                  mutateUpdateDef(t, name, { default: v || undefined }),
-                );
-              }),
-            })
-          : signalFieldRow("Default", defaultVal, (v: string) => {
-              let parsed: unknown = v;
-              if (def.type === "integer") {
-                parsed = Math.trunc(Number(v)) || 0;
-              } else if (def.type === "number") {
-                parsed = Number(v) || 0;
-              } else if (def.type === "boolean") {
-                parsed = v === "true";
-              } else if (def.type === "array" || def.type === "object") {
-                try {
-                  parsed = JSON.parse(v);
-                } catch {
-                  parsed = v;
-                }
-              }
-              transactDoc(activeTab.value, (t) =>
-                mutateUpdateDef(t, name, { default: parsed as JsonValue }),
-              );
-            })
-      }
-      ${signalFieldRow("Description", def.description || "", (v: string) =>
-        transactDoc(activeTab.value, (t) =>
-          mutateUpdateDef(t, name, { description: v || undefined }),
-        ),
-      )}
-      ${cemFields}
-    `;
-  } else if (cat === "computed") {
-    let debounce: ReturnType<typeof setTimeout> | undefined;
-    fields = html`
-      ${renderFieldRow({
-        hasValue: false,
+/** A derived value: the expression, and the dependencies it was read out of. */
+function computedFields(name: string, def: SignalDef): SignalFieldView[] {
+  const expression = def.$compute || "";
+  const out: SignalFieldView[] = [
+    field(
+      {
+        key: "expression",
+        kind: "multiline",
         label: "Expression",
         prop: "expression",
-        widget: html`
-          <textarea
-            class="field-input"
-            style="min-height:40px"
-            .value=${def.$compute || ""}
-            @input=${(e: Event) => {
-              clearTimeout(debounce);
-              debounce = setTimeout(() => {
-                const expr = (e.target as HTMLInputElement).value;
-                const depMatches = expr.match(/\$[a-zA-Z_]\w*/g) || [];
-                const deps = [...new Set(depMatches)].map((d) => `#/state/${d}`);
-                transactDoc(activeTab.value, (t) =>
-                  mutateUpdateDef(t, name, { $compute: expr, $deps: deps }),
-                );
-              }, 500);
-            }}
-          ></textarea>
-        `,
-      })}
-      ${
-        def.$deps && def.$deps.length > 0
-          ? renderFieldRow({
-              hasValue: false,
-              label: "Dependencies",
-              prop: "dependencies",
-              widget: html`
-                <span class="signal-hint" style="flex:1;max-width:none"
-                  >${def.$deps.map((d: string) => d.replace("#/state/", "")).join(", ")}</span
-                >
-              `,
-            })
-          : nothing
+        rows: "2",
+        signal: name,
+        value: expression,
+      },
+      {
+        live: "debounce",
+        value: expression,
+        write: (expr: string) => {
+          const depMatches = expr.match(/\$[a-zA-Z_]\w*/g) || [];
+          const deps = [...new Set(depMatches)].map((d) => `#/state/${d}`);
+          transactDoc(activeTab.value, (t) =>
+            mutateUpdateDef(t, name, { $compute: expr, $deps: deps }),
+          );
+        },
+      },
+    ),
+  ];
+  if (def.$deps && def.$deps.length > 0) {
+    out.push(
+      field({
+        key: "dependencies",
+        kind: "note",
+        label: "Dependencies",
+        prop: "dependencies",
+        signal: name,
+        value: def.$deps.map((d: string) => d.replace("#/state/", "")).join(", "),
+      }),
+    );
+  }
+  return out;
+}
+
+/** A fetched, stored or constructed value — one case per `$prototype`. */
+function dataFields(S: SignalsPanelState, name: string, def: SignalDef): SignalFieldView[] {
+  const patch = (value: Record<string, JsonValue | undefined>): void => {
+    transactDoc(activeTab.value, (t) => mutateUpdateDef(t, name, value));
+  };
+  const proto = def.$prototype;
+
+  if (proto === "Request") {
+    return [
+      textField(name, "url", "URL", def.url || "", (v) => patch({ url: v })),
+      selectField(
+        name,
+        "method",
+        "Method",
+        ["GET", "POST", "PUT", "DELETE", "PATCH"],
+        def.method || "GET",
+        (v) => patch({ method: v }),
+      ),
+      selectField(name, "timing", "Timing", ["client", "server"], def.timing || "client", (v) =>
+        patch({ timing: v }),
+      ),
+    ];
+  }
+  if (proto === "LocalStorage" || proto === "SessionStorage") {
+    const stored = asText(def.default, true);
+    return [
+      textField(name, "key", "Key", def.key || "", (v) => patch({ key: v })),
+      field(
+        {
+          key: "default",
+          kind: "multiline",
+          label: "Default",
+          prop: "Default",
+          rows: "3",
+          signal: name,
+          value: stored,
+        },
+        {
+          live: "debounce",
+          value: stored,
+          write: (v: string) => {
+            try {
+              patch({ default: JSON.parse(v) });
+            } catch {
+              patch({ default: v });
+            }
+          },
+        },
+      ),
+    ];
+  }
+  if (proto === "IndexedDB") {
+    return [
+      textField(name, "database", "Database", def.database || "", (v) => patch({ database: v })),
+      textField(name, "store", "Store", def.store || "", (v) => patch({ store: v })),
+      textField(name, "version", "Version", String(def.version || 1), (v) =>
+        patch({ version: Math.trunc(Number(v)) || 1 }),
+      ),
+    ];
+  }
+  if (proto === "Cookie") {
+    return [
+      textField(name, "cookie", "Cookie", def.name || "", (v) => patch({ name: v })),
+      textField(name, "default", "Default", String(def.default || ""), (v) =>
+        patch({ default: v }),
+      ),
+    ];
+  }
+  if (proto === "Set" || proto === "Map" || proto === "FormData") {
+    const isForm = proto === "FormData";
+    const key = isForm ? "fields" : "default";
+    const label = isForm ? "Fields" : "Default";
+    const text =
+      def.default !== undefined && def.default !== null
+        ? JSON.stringify(def.default, null, 2)
+        : isForm
+          ? JSON.stringify(def.fields || {}, null, 2)
+          : "";
+    return [
+      field(
+        { key, kind: "multiline", label, prop: label, rows: "3", signal: name, value: text },
+        {
+          live: "debounce",
+          value: text,
+          write: (v: string) => {
+            try {
+              patch({ [key]: JSON.parse(v) as JsonValue });
+            } catch {}
+          },
+        },
+      ),
+    ];
+  }
+  return externalFields(S, name, def);
+}
+
+/**
+ * An external `$prototype` — its source, and the config form its own schema describes.
+ *
+ * The schema arrives asynchronously and is cached, so the field list says "Loading schema…" once
+ * and the fetch's resolution is what repaints the panel with the form in it.
+ */
+function externalFields(S: SignalsPanelState, name: string, def: SignalDef): SignalFieldView[] {
+  const patch = (value: Record<string, JsonValue | undefined>): void => {
+    transactDoc(activeTab.value, (t) => mutateUpdateDef(t, name, value));
+  };
+  const importedPath = def.$prototype
+    ? projectState?.projectConfig?.imports?.[def.$prototype]
+    : null;
+  const out: SignalFieldView[] = [];
+
+  if (importedPath) {
+    out.push(field({ key: "prototype", kind: "hint", signal: name, value: def.$prototype || "" }));
+  } else {
+    out.push(
+      textField(name, "src", "Source", def.$src || "", (v) => {
+        patch({ $src: v || undefined });
+        pluginSchemaCache.delete(`${v}::${def.$prototype}`);
+      }),
+      textField(name, "kind", "Kind", def.$prototype || "", (v) => {
+        patch({ $prototype: v || undefined });
+        pluginSchemaCache.delete(`${def.$src}::${v}`);
+      }),
+    );
+  }
+  if (def.$export) {
+    out.push(
+      textField(name, "export", "Export", def.$export || "", (v) =>
+        patch({ $export: v || undefined }),
+      ),
+    );
+  }
+
+  const resolvedSrc = def.$src || importedPath;
+  if (!resolvedSrc || !def.$prototype) {
+    return out;
+  }
+  const cacheKey = `${resolvedSrc}::${def.$prototype}`;
+  if (!pluginSchemaCache.has(cacheKey)) {
+    out.push(
+      field({ key: "schema-loading", kind: "hint", signal: name, value: "Loading schema…" }),
+    );
+    /* ONE request per schema, not one per repaint. `fetchPluginSchema` caches what it got but has
+       nothing in flight to answer with, so two projections between the ask and the reply sent the
+       same request twice — and the Navigator repaints on every document change. */
+    if (!schemaRequests.has(cacheKey)) {
+      schemaRequests.add(cacheKey);
+      void fetchPluginSchema(def, {
+        ...(S.documentPath != null && { documentPath: S.documentPath }),
+      })
+        .then((schema) => {
+          if (schema) {
+            repaint();
+          }
+        })
+        .finally(() => schemaRequests.delete(cacheKey));
+    }
+    return out;
+  }
+  const schema = pluginSchemaCache.get(cacheKey);
+  if (!schema) {
+    return out;
+  }
+  if (schema.description) {
+    out.push(field({ key: "schema-note", kind: "hint", signal: name, value: schema.description }));
+  }
+  out.push(field({ key: "schema", kind: "slot", signal: name, slot: "schema" }));
+  islands.set(`${name}/schema`, (host) => {
+    placeSchemaForm(host, schema as JsonSchema, def, name, S);
+  });
+  return out;
+}
+
+/** Write one of the three CEM text columns, dropping the key when the value is emptied. */
+function writeCemField<T extends CemParameter | CemEvent>(
+  entry: T,
+  column: string,
+  value: string,
+): T {
+  if (column === "name") {
+    return { ...entry, name: value };
+  }
+  if (column === "type") {
+    const { type: _type, ...rest } = entry;
+    return (value ? { ...rest, type: { text: value } } : rest) as T;
+  }
+  const { description: _description, ...rest } = entry;
+  return (value ? { ...rest, description: value } : rest) as T;
+}
+
+/** One text column of a CEM table. */
+function cemCell(
+  key: string,
+  placeholder: string,
+  value: string,
+  grow: string,
+): Omit<SignalCellView, "field" | "row" | "signal"> {
+  return { checked: false, grow, key, kind: "text", label: placeholder, placeholder, value };
+}
+
+/** One row of a CEM table, with the identity every cell in it has to carry. */
+function cemRow(
+  signal: string,
+  fieldKey: string,
+  key: string,
+  label: string,
+  cells: Omit<SignalCellView, "field" | "row" | "signal">[],
+): SignalCellRowView {
+  return {
+    cells: cells.map((cell) => ({ ...cell, field: fieldKey, row: key, signal })),
+    field: fieldKey,
+    key,
+    removeLabel: `Remove ${label}`,
+    signal,
+  };
+}
+
+/** The CEM parameter editor, in whichever of its two views is open. */
+function parameterField(name: string, def: SignalDef): SignalFieldView {
+  const params = (def.parameters || []).map((p) => normParam(p));
+  const advanced = advancedParamOpen.has(name);
+  const write = (next: CemParameter[]): void => {
+    transactDoc(activeTab.value, (t) =>
+      mutateUpdateDef(t, name, { parameters: next.length > 0 ? next : undefined }),
+    );
+  };
+  const plan: FieldPlan = {
+    addChip: (value: string) => {
+      const trimmed = value.trim();
+      if (trimmed) {
+        write([...params, { name: trimmed }]);
       }
-    `;
-  } else if (cat === "data") {
-    fields = renderDataSourceFields(S, name, def, textareaRow, pickerRow, ctx);
-  } else if (cat === "function") {
-    fields = renderFunctionFields(S, name, def, textareaRow, ctx);
-  } else if (cat === "expression") {
-    const exprNode = def.$expression || { operator: "=", target: null };
-    fields = html`
-      <div style="display:flex;align-items:center;gap:4px">
-        <span class="field-label" style="flex:1">Expression</span>
-        <sp-action-button
-          size="xs"
-          quiet
-          title="Open in formula workspace"
-          @click=${() => {
-            // One call, because a click is BOTH events: it names the target and it asks for the
-            // Surface. Setting the field alone leaned on the dock's reveal effect, which fires at
-            // Most once per target — so clicking this again after closing the dock was a dead
-            // Click. It also left `editingFunction` set, and that one wins the tie.
-            openLogicTarget({ editing: { defName: name, type: "def" }, surface: "formula" });
-          }}
-        >
-          <sp-icon-align-bottom slot="icon"></sp-icon-align-bottom>
-        </sp-action-button>
-      </div>
-      ${renderExpressionEditor(
+    },
+    addRow: () => {
+      transactDoc(activeTab.value, (t) =>
+        mutateUpdateDef(t, name, { parameters: [...params, { name: "" }] }),
+      );
+    },
+    cell: (row: string, cell: string, value: string) => {
+      const next = [...params];
+      const current = next[Number(row)];
+      if (!current) {
+        return;
+      }
+      next[Number(row)] = writeCemField(current, cell, value);
+      write(next);
+    },
+    cellCheck: (row: string, _cell: string, checked: boolean) => {
+      const next = [...params];
+      const current = next[Number(row)];
+      if (!current) {
+        return;
+      }
+      const { optional: _optional, ...rest } = current;
+      next[Number(row)] = checked ? { ...rest, optional: true } : rest;
+      write(next);
+    },
+    dropChip: (chip: string) => write(params.filter((_, j) => j !== Number(chip))),
+    dropRow: (row: string) => write(params.filter((_, j) => j !== Number(row))),
+    live: "none",
+    press: (action: string) => {
+      if (action !== "footer") {
+        return;
+      }
+      if (advanced) {
+        advancedParamOpen.delete(name);
+      } else {
+        advancedParamOpen.add(name);
+      }
+      repaint();
+    },
+    value: "",
+  };
+
+  if (!advanced) {
+    const chips: SignalChipView[] = params.map((p, i) => ({
+      field: "parameters",
+      key: String(i),
+      label: p.name || "?",
+      removeLabel: `Remove ${p.name || "parameter"}`,
+      signal: name,
+    }));
+    return field(
+      {
+        addLabel: "Add a parameter",
+        chips,
+        footer: "▸ Advanced",
+        hasFooter: true,
+        key: "parameters",
+        kind: "chips",
+        label: "Parameters",
+        prop: "parameters",
+        signal: name,
+      },
+      plan,
+    );
+  }
+  return field(
+    {
+      addLabel: "Add parameter",
+      cellRows: params.map((p, i) =>
+        cemRow(name, "parameters", String(i), p.name || "parameter", [
+          cemCell("name", "name", p.name || "", "1"),
+          cemCell("type", "type", cemTypeText(p.type), "1"),
+          cemCell("description", "desc", p.description || "", "2"),
+          {
+            checked: Boolean(p.optional),
+            grow: "0",
+            key: "optional",
+            kind: "checkbox",
+            label: "Optional",
+            placeholder: "",
+            value: "",
+          },
+        ]),
+      ),
+      footer: "▾ Basic",
+      hasFooter: true,
+      key: "parameters",
+      kind: "rows",
+      label: "Parameters",
+      prop: "parameters",
+      signal: name,
+      span: true,
+    },
+    plan,
+  );
+}
+
+/** The CEM emits editor — the same table shape, over `emits`. */
+function emitsField(name: string, def: SignalDef): SignalFieldView {
+  const emits = def.emits || ([] as CemEvent[]);
+  const write = (next: CemEvent[]): void => {
+    transactDoc(activeTab.value, (t) =>
+      mutateUpdateDef(t, name, { emits: next.length > 0 ? next : undefined }),
+    );
+  };
+  return field(
+    {
+      addLabel: "Add event",
+      cellRows: emits.map((e, i) =>
+        cemRow(name, "emits", String(i), e.name || "event", [
+          cemCell("name", "event name", e.name || "", "1"),
+          cemCell("type", "type", cemTypeText(e.type), "1"),
+          cemCell("description", "description", e.description || "", "2"),
+        ]),
+      ),
+      key: "emits",
+      kind: "rows",
+      label: "Emits",
+      prop: "emits",
+      signal: name,
+      span: true,
+    },
+    {
+      addRow: () => {
+        transactDoc(activeTab.value, (t) =>
+          mutateUpdateDef(t, name, { emits: [...emits, { name: "" }] }),
+        );
+      },
+      cell: (row: string, cell: string, value: string) => {
+        const next = [...emits];
+        const current = next[Number(row)];
+        if (!current) {
+          return;
+        }
+        next[Number(row)] = writeCemField(current, cell, value);
+        write(next);
+      },
+      dropRow: (row: string) => write(emits.filter((_, j) => j !== Number(row))),
+      live: "none",
+      value: "",
+    },
+  );
+}
+
+/**
+ * A function: what it is for, what it takes, what it emits, and its body.
+ *
+ * Structured bodies (spec §20) are a body MODE rather than a new entity: "Statements" is the
+ * statement-card editor over `body: JxStatement[]`, "Code" is the text path over `body: string`.
+ * Switching modes replaces the body with the other representation's empty seed — an explicit mode
+ * change, nothing is converted.
+ */
+function functionFields(S: SignalsPanelState, name: string, def: SignalDef): SignalFieldView[] {
+  const patch = (value: Record<string, JsonValue | undefined>): void => {
+    transactDoc(activeTab.value, (t) => mutateUpdateDef(t, name, value));
+  };
+  const out: SignalFieldView[] = [
+    textField(name, "description", "Description", def.description || "", (v) =>
+      patch({ description: v || undefined }),
+    ),
+    parameterField(name, def),
+  ];
+  if (isCustomElementDoc(S)) {
+    out.push(emitsField(name, def));
+  }
+
+  if (def.$src) {
+    out.push(
+      textField(name, "src", "Source", def.$src || "", (v) => patch({ $src: v || undefined })),
+      textField(name, "export", "Export", def.$export || "", (v) =>
+        patch({ $export: v || undefined }),
+      ),
+    );
+    return out;
+  }
+
+  const statements = Array.isArray(def.body);
+  out.push(
+    field(
+      {
+        buttons: statements
+          ? []
+          : [
+              {
+                field: "body",
+                icon: "code",
+                key: "editor",
+                label: "Open in code editor",
+                signal: name,
+              },
+            ],
+        key: "body",
+        kind: "bar",
+        label: "Body",
+        prop: "Body",
+        segments: [
+          {
+            field: "body",
+            key: "statements",
+            label: "Statements",
+            selected: statements,
+            signal: name,
+          },
+          { field: "body", key: "code", label: "Code", selected: !statements, signal: name },
+        ],
+        signal: name,
+      },
+      {
+        live: "none",
+        press: (action: string) => {
+          if (action === "statements" && !statements) {
+            patch({ body: [] });
+            repaint();
+          } else if (action === "code" && statements) {
+            patch({ body: "" });
+            repaint();
+          } else if (action === "editor") {
+            // Target AND reveal, in one call. See the formula button below.
+            openLogicTarget({ editing: { defName: name, type: "def" }, surface: "function" });
+          }
+        },
+        value: "",
+      },
+    ),
+  );
+
+  if (statements) {
+    out.push(field({ key: "statements", kind: "slot", signal: name, slot: "statements" }));
+    islands.set(`${name}/statements`, (host) => {
+      mountStatementEditor(
+        host,
+        def.body as JxStatement[],
+        (next) => {
+          patch({ body: next as unknown as JsonValue });
+          repaint();
+        },
+        {
+          allowEventRef: true,
+          emits: def.emits ?? [],
+          // This editor is in the Navigator's Data panel; the Events tab's is not.
+          region: NAVIGATOR_STATEMENTS_REGION,
+          stateDefs: Object.keys(S.document.state || {}),
+          stateEntries: S.document.state || {},
+        },
+      );
+    });
+    return out;
+  }
+  const source = typeof def.body === "string" ? def.body : "";
+  out.push(
+    field(
+      {
+        key: "code",
+        kind: "code",
+        label: "Body",
+        prop: "Body",
+        rows: "3",
+        signal: name,
+        value: source,
+      },
+      { live: "commit", value: source, write: (v: string) => patch({ body: v }) },
+    ),
+  );
+  return out;
+}
+
+/** An assignment or a call the page performs — edited as a formula tree. */
+function expressionFields(S: SignalsPanelState, name: string, def: SignalDef): SignalFieldView[] {
+  const exprNode = def.$expression || { operator: "=", target: null };
+  const out: SignalFieldView[] = [
+    field(
+      {
+        buttons: [
+          {
+            field: "expression",
+            icon: "align-bottom",
+            key: "formula",
+            label: "Open in formula workspace",
+            signal: name,
+          },
+        ],
+        key: "expression",
+        kind: "bar",
+        label: "Expression",
+        prop: "Expression",
+        signal: name,
+      },
+      {
+        live: "none",
+        /* One call, because a click is BOTH events: it names the target and it asks for the
+           surface. Setting the field alone leaned on the dock's reveal effect, which fires at most
+           once per target — so clicking this again after closing the dock was a dead click. It also
+           left `editingFunction` set, and that one wins the tie. */
+        press: () =>
+          openLogicTarget({ editing: { defName: name, type: "def" }, surface: "formula" }),
+        value: "",
+      },
+    ),
+    field({ key: "editor", kind: "slot", signal: name, slot: "expression" }),
+  ];
+  islands.set(`${name}/expression`, (host) => {
+    litRender(
+      renderExpressionEditor(
         exprNode,
         (newNode: unknown) =>
           transactDoc(activeTab.value, (t) =>
@@ -1028,8 +1307,8 @@ function renderSignalEditorTemplate(
           ),
         {
           allowEventRef: false,
-          // Live-context evaluation in the canvas iframe, snapshot fallback (M6). The signals
-          // Panel lives in the left panel — re-render it when a fresh live result lands.
+          // Live-context evaluation in the canvas iframe, snapshot fallback (M6). The panel lives
+          // In the Navigator — re-render it when a fresh live result lands.
           preview: livePreviewExpression(activeTab.value, `def:${name}`, exprNode, null, () =>
             renderOnly("leftPanel"),
           ),
@@ -1040,507 +1319,39 @@ function renderSignalEditorTemplate(
           stateDefs: Object.keys(S.document.state || {}),
           stateEntries: S.document.state || {},
         },
-      )}
-    `;
-  }
-
-  return html`${nameField}${fields}`;
-}
-
-/** Data source fields for signal editor */
-function renderDataSourceFields(
-  S: SignalsPanelState,
-  name: string,
-  def: SignalDef,
-  textareaRow: (
-    label: string,
-    value: string,
-    onChange: (value: string) => void,
-    opts?: { minHeight?: string; mono?: boolean },
-  ) => TemplateResult,
-  pickerRow: (
-    label: string,
-    options: string[],
-    currentVal: string,
-    onChange: (value: string) => void,
-  ) => TemplateResult,
-  ctx: SignalsPanelCtx,
-) {
-  const proto = def.$prototype;
-
-  if (proto === "Request") {
-    return html`
-      ${signalFieldRow("URL", def.url || "", (v: string) =>
-        transactDoc(activeTab.value, (t) => mutateUpdateDef(t, name, { url: v })),
-      )}
-      ${pickerRow(
-        "Method",
-        ["GET", "POST", "PUT", "DELETE", "PATCH"],
-        def.method || "GET",
-        (v: string) => transactDoc(activeTab.value, (t) => mutateUpdateDef(t, name, { method: v })),
-      )}
-      ${pickerRow("Timing", ["client", "server"], def.timing || "client", (v: string) =>
-        transactDoc(activeTab.value, (t) => mutateUpdateDef(t, name, { timing: v })),
-      )}
-    `;
-  }
-  if (proto === "LocalStorage" || proto === "SessionStorage") {
-    const defaultStr =
-      def.default !== undefined && def.default !== null
-        ? typeof def.default === "object"
-          ? JSON.stringify(def.default, null, 2)
-          : String(def.default)
-        : "";
-    return html`
-      ${signalFieldRow("Key", def.key || "", (v: string) =>
-        transactDoc(activeTab.value, (t) => mutateUpdateDef(t, name, { key: v })),
-      )}
-      ${textareaRow("Default", defaultStr, (v: string) => {
-        try {
-          transactDoc(activeTab.value, (t) => mutateUpdateDef(t, name, { default: JSON.parse(v) }));
-        } catch {
-          transactDoc(activeTab.value, (t) => mutateUpdateDef(t, name, { default: v }));
-        }
-      })}
-    `;
-  }
-  if (proto === "IndexedDB") {
-    return html`
-      ${signalFieldRow("Database", def.database || "", (v: string) =>
-        transactDoc(activeTab.value, (t) => mutateUpdateDef(t, name, { database: v })),
-      )}
-      ${signalFieldRow("Store", def.store || "", (v: string) =>
-        transactDoc(activeTab.value, (t) => mutateUpdateDef(t, name, { store: v })),
-      )}
-      ${signalFieldRow("Version", String(def.version || 1), (v: string) =>
-        transactDoc(activeTab.value, (t) =>
-          mutateUpdateDef(t, name, { version: Math.trunc(Number(v)) || 1 }),
-        ),
-      )}
-    `;
-  }
-  if (proto === "Cookie") {
-    return html`
-      ${signalFieldRow("Cookie", def.name || "", (v: string) =>
-        transactDoc(activeTab.value, (t) => mutateUpdateDef(t, name, { name: v })),
-      )}
-      ${signalFieldRow("Default", String(def.default || ""), (v: string) =>
-        transactDoc(activeTab.value, (t) => mutateUpdateDef(t, name, { default: v })),
-      )}
-    `;
-  }
-  if (proto === "Set" || proto === "Map" || proto === "FormData") {
-    const fieldName = proto === "FormData" ? "fields" : "default";
-    const fieldLabel = proto === "FormData" ? "Fields" : "Default";
-    const defaultStr =
-      def.default !== undefined && def.default !== null
-        ? JSON.stringify(def.default, null, 2)
-        : proto === "FormData"
-          ? JSON.stringify(def.fields || {}, null, 2)
-          : "";
-    return textareaRow(fieldLabel, defaultStr, (v: string) => {
-      try {
-        transactDoc(activeTab.value, (t) =>
-          mutateUpdateDef(t, name, { [fieldName]: JSON.parse(v) as unknown }),
-        );
-      } catch {}
-    });
-  }
-  // Schema-driven fallback
-  return renderExternalPrototypeEditorTemplate(S, name, def, ctx);
-}
-
-/** Function fields for signal editor */
-function renderFunctionFields(
-  S: SignalsPanelState,
-  name: string,
-  def: SignalDef,
-  _textareaRow: (
-    label: string,
-    value: string,
-    onChange: (value: string) => void,
-    opts?: { minHeight?: string; mono?: boolean },
-  ) => TemplateResult,
-  ctx: SignalsPanelCtx,
-) {
-  const descriptionField = signalFieldRow("Description", def.description || "", (v: string) =>
-    transactDoc(activeTab.value, (t) => mutateUpdateDef(t, name, { description: v || undefined })),
-  );
-
-  // Structured bodies (spec §20) are a body MODE of the function category, not a new entity:
-  // "Statements" renders the statement-card editor over `body: JxStatement[]`; "Code" is the
-  // Textarea/Monaco path over `body: string`. Switching modes replaces the body with the other
-  // Representation's empty seed — an explicit mode change, nothing is converted.
-  const bodyIsStatements = Array.isArray(def.body);
-  const bodyModeToggle = html`
-    <sp-action-group size="s" compact class="body-mode-toggle">
-      <sp-action-button
-        size="s"
-        class="body-mode-statements"
-        ?selected=${bodyIsStatements}
-        @click=${() => {
-          if (!bodyIsStatements) {
-            transactDoc(activeTab.value, (t) => mutateUpdateDef(t, name, { body: [] }));
-            ctx.renderLeftPanel();
-          }
-        }}
-      >
-        Statements
-      </sp-action-button>
-      <sp-action-button
-        size="s"
-        class="body-mode-code"
-        ?selected=${!bodyIsStatements}
-        @click=${() => {
-          if (bodyIsStatements) {
-            transactDoc(activeTab.value, (t) => mutateUpdateDef(t, name, { body: "" }));
-            ctx.renderLeftPanel();
-          }
-        }}
-      >
-        Code
-      </sp-action-button>
-    </sp-action-group>
-  `;
-
-  const bodyField = def.$src
-    ? html`
-        ${signalFieldRow("Source", def.$src || "", (v: string) =>
-          transactDoc(activeTab.value, (t) => mutateUpdateDef(t, name, { $src: v || undefined })),
-        )}
-        ${signalFieldRow("Export", def.$export || "", (v: string) =>
-          transactDoc(activeTab.value, (t) =>
-            mutateUpdateDef(t, name, { $export: v || undefined }),
-          ),
-        )}
-      `
-    : html`
-        <div style="display:flex;align-items:center;gap:4px">
-          <span class="field-label" style="flex:1">Body</span>
-          ${bodyModeToggle}
-          ${
-            bodyIsStatements
-              ? nothing
-              : html`
-                  <sp-action-button
-                    size="xs"
-                    quiet
-                    title="Open in code editor"
-                    @click=${() => {
-                      // Target AND reveal, in one call. See the formula button above.
-                      openLogicTarget({
-                        editing: { defName: name, type: "def" },
-                        surface: "function",
-                      });
-                    }}
-                  >
-                    <sp-icon-code slot="icon"></sp-icon-code>
-                  </sp-action-button>
-                `
-          }
-        </div>
-        ${
-          bodyIsStatements
-            ? renderStatementEditor(
-                def.body as JxStatement[],
-                (next) => {
-                  transactDoc(activeTab.value, (t) =>
-                    mutateUpdateDef(t, name, { body: next as unknown as JsonValue }),
-                  );
-                  ctx.renderLeftPanel();
-                },
-                {
-                  allowEventRef: true,
-                  emits: def.emits ?? [],
-                  // This editor is in the Navigator's State panel; the Events tab's is not.
-                  region: NAVIGATOR_STATEMENTS_REGION,
-                  stateDefs: Object.keys(S.document.state || {}),
-                  stateEntries: S.document.state || {},
-                },
-              )
-            : html`
-                <textarea
-                  class="field-input"
-                  style="min-height:60px;font-family:var(--font-mono);font-size:var(--spectrum-font-size-50, 11px)"
-                  .value=${typeof def.body === "string" ? def.body : ""}
-                  @input=${(e: Event) => {
-                    const v = (e.target as HTMLInputElement).value;
-                    transactDoc(activeTab.value, (t) => mutateUpdateDef(t, name, { body: v }));
-                  }}
-                ></textarea>
-              `
-        }
-      `;
-
-  return html`
-    ${descriptionField} ${renderParameterEditorTemplate(S, name, def, ctx)}
-    ${isCustomElementDoc(S) ? renderEmitsEditorTemplate(S, name, def) : nothing} ${bodyField}
-  `;
-}
-
-// ─── CEM Editors ─────────────────────────────────────────────────────────────
-
-/** Render CEM parameter editor with basic/advanced toggle. */
-function renderParameterEditorTemplate(
-  _S: SignalsPanelState,
-  name: string,
-  def: SignalDef,
-  ctx: SignalsPanelCtx,
-) {
-  const params = (def.parameters || []).map((p) => normParam(p));
-  const isAdvanced = advancedParamOpen.has(name);
-
-  if (!isAdvanced) {
-    // Basic mode: name chips
-    return renderFieldRow({
-      hasValue: false,
-      label: "Parameters",
-      prop: "parameters",
-      widget: html`
-        <div style="display:flex;flex-wrap:wrap;gap:4px;align-items:center">
-          ${params.map(
-            (p: CemParameter, i: number) => html`
-              <span
-                style="display:inline-flex;align-items:center;gap:2px;padding:1px 6px;border-radius:var(--radius);background:var(--hover-bg);font-size:var(--spectrum-font-size-50, 11px);font-family:var(--font-mono)"
-              >
-                ${p.name || "?"}
-                <span
-                  style="cursor:pointer;opacity:0.5;margin-left:2px"
-                  @click=${() => {
-                    transactDoc(activeTab.value, (t) =>
-                      mutateUpdateDef(t, name, {
-                        parameters: params.some((_: unknown, j: number) => j !== i)
-                          ? params.filter((_: unknown, j: number) => j !== i)
-                          : undefined,
-                      }),
-                    );
-                  }}
-                  >×</span
-                >
-              </span>
-            `,
-          )}
-          <input
-            class="field-input"
-            style="width:60px;flex:0 0 auto;font-size:var(--spectrum-font-size-50, 11px)"
-            placeholder="+"
-            @keydown=${(e: KeyboardEvent) => {
-              if (e.key === "Enter" && (e.target as HTMLInputElement).value.trim()) {
-                transactDoc(activeTab.value, (t) =>
-                  mutateUpdateDef(t, name, {
-                    parameters: [...params, { name: (e.target as HTMLInputElement).value.trim() }],
-                  }),
-                );
-              }
-            }}
-          />
-        </div>
-        <span
-          style="font-size:10px;color:var(--fg-dim);cursor:pointer;width:100%;margin-top:2px"
-          @click=${() => {
-            advancedParamOpen.add(name);
-            ctx.renderLeftPanel();
-          }}
-          >▸ Advanced</span
-        >
-      `,
-    });
-  }
-
-  // Advanced mode: full rows
-  return renderFieldRow({
-    hasValue: false,
-    label: "Parameters",
-    prop: "parameters",
-    widget: html`
-      <div style="display:flex;flex-direction:column;gap:4px">
-        ${params.map(
-          (p: CemParameter, i: number) => html`
-            <div style="display:flex;gap:4px;align-items:center">
-              <input
-                class="field-input"
-                .value=${p.name || ""}
-                placeholder="name"
-                style="flex:1"
-                @change=${(e: Event) => {
-                  const next = [...params];
-                  next[i] = {
-                    ...next[i],
-                    name: (e.target as HTMLInputElement).value,
-                  };
-                  transactDoc(activeTab.value, (t) =>
-                    mutateUpdateDef(t, name, { parameters: next }),
-                  );
-                }}
-              />
-              <input
-                class="field-input"
-                .value=${cemTypeText(p.type)}
-                placeholder="type"
-                style="flex:1"
-                @change=${(e: Event) => {
-                  const next = [...params];
-                  const val = (e.target as HTMLInputElement).value;
-                  const { type: _t, ...rest } = next[i]!;
-                  next[i] = val ? { ...rest, type: { text: val } } : rest;
-                  transactDoc(activeTab.value, (t) =>
-                    mutateUpdateDef(t, name, { parameters: next }),
-                  );
-                }}
-              />
-              <input
-                class="field-input"
-                .value=${p.description || ""}
-                placeholder="desc"
-                style="flex:2"
-                @change=${(e: Event) => {
-                  const next = [...params];
-                  const val = (e.target as HTMLInputElement).value;
-                  const { description: _d, ...rest } = next[i]!;
-                  next[i] = val ? { ...rest, description: val } : rest;
-                  transactDoc(activeTab.value, (t) =>
-                    mutateUpdateDef(t, name, { parameters: next }),
-                  );
-                }}
-              />
-              <input
-                type="checkbox"
-                title="optional"
-                .checked=${Boolean(p.optional)}
-                @change=${(e: Event) => {
-                  const next = [...params];
-                  const { checked } = e.target as HTMLInputElement;
-                  const { optional: _o, ...rest } = next[i]!;
-                  next[i] = checked ? { ...rest, optional: true } : rest;
-                  transactDoc(activeTab.value, (t) =>
-                    mutateUpdateDef(t, name, { parameters: next }),
-                  );
-                }}
-              />
-              <span
-                style="cursor:pointer;opacity:0.5"
-                @click=${() => {
-                  const next = params.filter((_: unknown, j: number) => j !== i);
-                  transactDoc(activeTab.value, (t) =>
-                    mutateUpdateDef(t, name, {
-                      parameters: next.length > 0 ? next : undefined,
-                    }),
-                  );
-                }}
-                >×</span
-              >
-            </div>
-          `,
-        )}
-        <button
-          class="kv-add"
-          @click=${() =>
-            transactDoc(activeTab.value, (t) =>
-              mutateUpdateDef(t, name, {
-                parameters: [...params, { name: "" }],
-              }),
-            )}
-        >
-          + Add parameter
-        </button>
-      </div>
-      <span
-        style="font-size:10px;color:var(--fg-dim);cursor:pointer;width:100%;margin-top:2px"
-        @click=${() => {
-          advancedParamOpen.delete(name);
-          ctx.renderLeftPanel();
-        }}
-        >▾ Basic</span
-      >
-    `,
+      ),
+      host,
+    );
   });
+  return out;
 }
 
-/** Render CEM emits editor for function state entries. */
-function renderEmitsEditorTemplate(S: SignalsPanelState, name: string, def: SignalDef) {
-  const emits = def.emits || ([] as CemEvent[]);
-  if (emits.length === 0 && !isCustomElementDoc(S)) {
-    return nothing;
+/** Every field of one entry's editor, in the order they are read. */
+function editorFields(S: SignalsPanelState, name: string, def: SignalDef): SignalFieldView[] {
+  const head = nameField(S, name);
+  switch (defCategory(def)) {
+    case "state": {
+      return [head, ...stateFields(S, name, def)];
+    }
+    case "computed": {
+      return [head, ...computedFields(name, def)];
+    }
+    case "data": {
+      return [head, ...dataFields(S, name, def)];
+    }
+    case "function": {
+      return [head, ...functionFields(S, name, def)];
+    }
+    case "expression": {
+      return [head, ...expressionFields(S, name, def)];
+    }
+    default: {
+      return [head];
+    }
   }
-
-  return html`
-    <div
-      style="font-size:var(--spectrum-font-size-50, 11px);font-weight:600;color:var(--fg-dim);margin:8px 0 4px;text-transform:uppercase;letter-spacing:0.05em"
-    >
-      Emits
-    </div>
-    ${emits.map(
-      (ev: CemEvent, i: number) => html`
-        <div style="display:flex;gap:4px;align-items:center;margin-bottom:4px">
-          <input
-            class="field-input"
-            .value=${ev.name || ""}
-            placeholder="event name"
-            style="flex:1"
-            @change=${(e: Event) => {
-              const next = [...emits];
-              next[i] = {
-                ...next[i],
-                name: (e.target as HTMLInputElement).value,
-              };
-              transactDoc(activeTab.value, (t) => mutateUpdateDef(t, name, { emits: next }));
-            }}
-          />
-          <input
-            class="field-input"
-            .value=${cemTypeText(ev.type)}
-            placeholder="type"
-            style="flex:1"
-            @change=${(e: Event) => {
-              const next = [...emits];
-              const val = (e.target as HTMLInputElement).value;
-              const { type: _t, ...rest } = next[i]!;
-              next[i] = val ? { ...rest, type: { text: val } } : rest;
-              transactDoc(activeTab.value, (t) => mutateUpdateDef(t, name, { emits: next }));
-            }}
-          />
-          <input
-            class="field-input"
-            .value=${ev.description || ""}
-            placeholder="description"
-            style="flex:2"
-            @change=${(e: Event) => {
-              const next = [...emits];
-              const val = (e.target as HTMLInputElement).value;
-              const { description: _d, ...rest } = next[i]!;
-              next[i] = val ? { ...rest, description: val } : rest;
-              transactDoc(activeTab.value, (t) => mutateUpdateDef(t, name, { emits: next }));
-            }}
-          />
-          <span
-            style="cursor:pointer;opacity:0.5"
-            @click=${() => {
-              transactDoc(activeTab.value, (t) =>
-                mutateUpdateDef(t, name, {
-                  emits: emits.some((_: unknown, j: number) => j !== i)
-                    ? emits.filter((_: unknown, j: number) => j !== i)
-                    : undefined,
-                }),
-              );
-            }}
-            >×</span
-          >
-        </div>
-      `,
-    )}
-    <button
-      class="kv-add"
-      @click=${() =>
-        transactDoc(activeTab.value, (t) =>
-          mutateUpdateDef(t, name, { emits: [...emits, { name: "" }] }),
-        )}
-    >
-      + Add event
-    </button>
-  `;
 }
 
-// ─── Plugin schema-driven form rendering ────────────────────────────────────
+// ─── Plugin schema-driven form ───────────────────────────────────────────────
 
 /**
  * Resolve a schema context pointer for signal config forms — a thin wrapper over the generic
@@ -1567,26 +1378,34 @@ function resolveSignalsContextPointer(pointer: string, scope?: Record<string, un
 }
 
 /**
- * Render config form fields from a JSON Schema `properties` object — a thin wrapper over the shared
- * schema-form engine. Skips studio-reserved keys, resolves enum/context refs against the project
- * config, and commits every patch through transactDoc/mutateUpdateDef.
+ * Put the shared schema form into the node the document made for it.
+ *
+ * `ui/schema-form.ts` is a document too, and a document CLEARS the host it is given — so what comes
+ * back is the form's own host element rather than a template, and this function's whole job is to
+ * place it. Calling `mountSchemaForm` again with the same key updates the standing form in place,
+ * which is what keeps the caret in a field across the repaint a commit provokes.
+ *
+ * @param {HTMLElement} host - The empty node the document drew
+ * @param {JsonSchema} schema - The plugin's own schema
+ * @param {SignalDef} def - The entry being configured
+ * @param {string} name - The entry's name
+ * @param {SignalsPanelState} S - The focused document
  */
-export function renderSchemaFieldsTemplate(
-  schema: JsonSchema | null | undefined,
+function placeSchemaForm(
+  host: HTMLElement,
+  schema: JsonSchema,
   def: SignalDef,
   name: string,
   S: SignalsPanelState,
-  ctx: SignalsPanelCtx | null = null,
-) {
-  if (!schema?.properties) {
-    return nothing;
+): void {
+  if (!schema.properties) {
+    host.replaceChildren();
+    return;
   }
-
   const properties = Object.fromEntries(
     Object.entries(schema.properties).filter(([prop]) => !STUDIO_RESERVED_KEYS.has(prop)),
   );
-
-  return mountSchemaForm(
+  const form = mountSchemaForm(
     `signal:${name}`,
     { ...schema, properties },
     def as Record<string, unknown>,
@@ -1599,93 +1418,421 @@ export function renderSchemaFieldsTemplate(
         signals: bindableSignalNames(S.document).filter((signal) => signal !== name),
       },
       onChange: (patch) => transactDoc(activeTab.value, (t) => mutateUpdateDef(t, name, patch)),
-      ...(ctx && { rerender: () => ctx.renderLeftPanel() }),
+      rerender: repaint,
     },
   );
+  if (form.parentNode !== host) {
+    host.replaceChildren(form);
+  }
+}
+
+// ─── The projection ──────────────────────────────────────────────────────────
+
+/**
+ * ONE summary slot per row, and the resolved value wins it as soon as there is one.
+ *
+ * The row wants to say four things about an entry — its category, its name, how it is defined and
+ * what it became — and a 240px Navigator fits three. Eliding both summaries to make room produced
+ * "recentproje… C… Array(3)": two truncated descriptions and a truncated identity. So the
+ * definition hint holds the slot until the canvas resolves a value and then steps aside for it, and
+ * the full definition is one click down in fields — which is what the hint was abbreviating.
+ *
+ * The switch is whether the canvas has reported a scope AT ALL, not whether this entry appears in
+ * it. An entry the canvas ran and did not produce is "pending", which is a fact about the value; a
+ * panel opened before the canvas has rendered knows nothing about any of them, and guessing
+ * "pending" for the whole list there would be a fact about the panel dressed up as one about data.
+ *
+ * ENTRIES THAT CANNOT HOLD A VALUE never get the column. A function and an assignment expression
+ * are things the page DOES, not things it knows, and they are absent from the resolved scope for
+ * exactly that reason — so the value column called all eight of a component's `setFilter` handlers
+ * "pending", which reads as "still loading" for something that will never load.
+ */
+function summary(
+  name: string,
+  def: SignalDef,
+  live: unknown,
+  resolved: boolean,
+): { summary: string; summaryTitle: string; summaryTone: string } {
+  const holdsNoValue =
+    defCategory(def) === "function" ||
+    (def.$expression != null && isActionExpression(def.$expression));
+  if (!resolved || holdsNoValue) {
+    const hint = defHint(name, def);
+    return { summary: hint, summaryTitle: hint, summaryTone: "hint" };
+  }
+  return {
+    summary: dataTypeLabel(live),
+    summaryTitle: "What this resolved to on the canvas",
+    summaryTone: unwrapSignal(live) === null ? "pending" : "value",
+  };
+}
+
+/** The five categories, in the order the panel lists them. */
+const CATEGORY_LABELS: readonly { key: string; label: string }[] = [
+  { key: "state", label: "State" },
+  { key: "computed", label: "Computed" },
+  { key: "data", label: "Data" },
+  { key: "expression", label: "Expressions" },
+  { key: "function", label: "Functions" },
+];
+
+/**
+ * The picker's fixed rows.
+ *
+ * GROUPED rather than divided: `jx-select` draws both halves of a group's delimiter, so the three
+ * unlabelled `sp-menu-divider`s this replaces are named runs a reader can aim at.
+ */
+const ADD_GROUPS: readonly SignalOptionGroup[] = [
+  {
+    id: "values",
+    label: "Values",
+    rows: [
+      { label: "Value", value: "state" },
+      { label: "Computed", value: "computed" },
+    ],
+  },
+  {
+    id: "sources",
+    label: "Data sources",
+    rows: [
+      { label: "Fetch from a URL", value: "request" },
+      { label: "LocalStorage", value: "localStorage" },
+      { label: "SessionStorage", value: "sessionStorage" },
+      { label: "IndexedDB", value: "indexedDB" },
+      { label: "Cookie", value: "cookie" },
+      { label: "Set", value: "set" },
+      { label: "Map", value: "map" },
+      { label: "FormData", value: "formData" },
+      { label: "From a module…", value: "external" },
+    ],
+  },
+  {
+    id: "logic",
+    label: "Logic",
+    rows: [
+      { label: "Expression", value: "expression" },
+      { label: "Function", value: "function" },
+    ],
+  },
+];
+
+/** Everything the surface should be showing, from the panel state it was last handed. */
+export function signalsView(S: SignalsPanelState, ctx: SignalsPanelCtx): SignalsView {
+  plans.clear();
+  islands.clear();
+
+  const defs = S.document.state || {};
+  const entries = Object.entries(defs);
+  /* What the canvas actually resolved these to. `S.canvas` is the session's canvas record, so this
+     costs a property read — the panel already had the scope in hand. */
+  const liveScope = (S.canvas?.scope ?? null) as Record<string, unknown> | null;
+  const scope = liveScope ?? {};
+  /* A Refresh is out and the canvas has not answered. Read off the tab, so it survives the repaints
+     between the press and the `dataScope` that ends it. */
+  const refreshing = S.canvas?.refreshing === true;
+
+  /* Warm the extensions payload so manifest state classes appear in the add picker (the panel
+     re-renders constantly; loadExtensions memoizes, so this is a one-time fetch per project). */
+  void loadExtensions();
+
+  const grouped = new Map<string, [string, SignalDef][]>(
+    CATEGORY_LABELS.map(({ key }) => [key, []]),
+  );
+  for (const [name, raw] of entries) {
+    grouped.get(defCategory(raw))?.push([name, asSignalDef(raw)]);
+  }
+
+  S._collapsedSignalCats ||= new Set();
+  const collapsed = S._collapsedSignalCats;
+
+  const categories: SignalCategoryView[] = [];
+  for (const { key, label } of CATEGORY_LABELS) {
+    const items = grouped.get(key) ?? [];
+    if (items.length === 0) {
+      continue;
+    }
+    const rows: SignalRowView[] = items.map(([name, def]) => {
+      const expanded = isDataRowExpanded(name);
+      const live = scope[name];
+      if (expanded) {
+        islands.set(`${name}/tree`, (host) => {
+          paintDataTree(host, unwrapSignal(live), name, repaint);
+        });
+      }
+      return {
+        badge: defBadgeLabel(def),
+        category: defCategory(def),
+        categoryLabel: label,
+        deleteLabel: `Delete ${name}`,
+        expanded,
+        fields: expanded ? editorFields(S, name, def) : [],
+        key: name,
+        liveLabel: "Resolved to",
+        name,
+        ...summary(name, def, live, liveScope !== null),
+      };
+    });
+    categories.push({ key, label: `${label} (${items.length})`, open: !collapsed.has(key), rows });
+  }
+
+  const groups = [...ADD_GROUPS];
+  const imports = projectState?.projectConfig?.imports;
+  if (imports) {
+    groups.splice(2, 0, {
+      id: "imports",
+      label: "Project imports",
+      rows: Object.keys(imports).map((k) => ({ label: k, value: `import:${k}` })),
+    });
+  }
+  const classes = extensionStateClasses();
+  if (classes.length > 0) {
+    groups.splice(imports ? 3 : 2, 0, {
+      id: "extensions",
+      label: "Extensions",
+      rows: classes.map((cls) => ({ label: cls.name, value: `ext:${cls.name}` })),
+    });
+  }
+
+  return {
+    addGroups: groups,
+    addOptions: [{ label: "+ Add…", value: "" }],
+    addValue: "",
+    categories,
+    emptyMessage:
+      "Data lives here — values this page can read, compute or fetch, " +
+      "ready to bind to any element.",
+    listState: entries.length === 0 ? "empty" : "listed",
+    refreshState: ctx.refreshData && entries.length > 0 ? (refreshing ? "busy" : "idle") : "none",
+    refreshing,
+  };
+}
+
+// ─── Adding an entry ─────────────────────────────────────────────────────────
+
+/** The first free name of the form `<base>`, `<base>1`, `<base>2`… */
+function freeName(S: SignalsPanelState, base: string): string {
+  let candidate = base;
+  let i = 1;
+  while (S.document.state && S.document.state[candidate]) {
+    candidate = base + i;
+    i += 1;
+  }
+  return candidate;
 }
 
 /**
- * Render editor fields for an external $prototype + $src plugin. Shows $src/$export inputs plus
- * schema-driven config fields.
+ * Add a def from one of the built-in templates under a free name, and expand it for editing. Shared
+ * by the "+ Add…" picker and the panel's empty state, so both create the same thing.
  */
-export function renderExternalPrototypeEditorTemplate(
-  S: SignalsPanelState,
-  name: string,
-  def: SignalDef,
-  ctx: SignalsPanelCtx,
-) {
-  // Schema-driven config fields (async with cache)
-  let schemaContent: TemplateResult | typeof nothing = nothing;
-  const importedPath = def.$prototype
-    ? projectState?.projectConfig?.imports?.[def.$prototype]
-    : null;
-  const resolvedSrc = def.$src || importedPath;
-  if (resolvedSrc && def.$prototype) {
-    const cacheKey = `${resolvedSrc}::${def.$prototype}`;
-    if (pluginSchemaCache.has(cacheKey)) {
-      const schema = pluginSchemaCache.get(cacheKey);
-      if (schema) {
-        schemaContent = html`
-          ${
-            schema.description
-              ? html`<div class="signal-hint" style="padding:4px 0 8px">${schema.description}</div>`
-              : nothing
-          }
-          ${renderSchemaFieldsTemplate(schema as JsonSchema, def, name, S, ctx)}
-        `;
-      }
-    } else {
-      // Trigger async load — will re-render when cached
-      schemaContent = html`<div
-        style="padding:4px 0;font-size:var(--spectrum-font-size-50, 11px);color:var(--fg-dim);font-style:italic"
-      >
-        Loading schema…
-      </div>`;
-      void fetchPluginSchema(def, {
-        ...(S.documentPath != null && { documentPath: S.documentPath }),
-      }).then((schema) => {
-        if (schema) {
-          ctx.renderLeftPanel();
-        }
-      });
-    }
+function addTemplateDef(type: string, S: SignalsPanelState): void {
+  const template = DEF_TEMPLATES[type];
+  if (!template) {
+    return;
   }
+  const name = freeName(S, type === "function" ? "newFunction" : "$newSignal");
+  transactDoc(activeTab.value, (t) =>
+    mutateAddDef(t, name, structuredClone(template) as Record<string, JsonValue>),
+  );
+  setDataRowExpanded(name, true);
+  repaint();
+}
 
-  return html`
-    ${
-      importedPath
-        ? html`<div
-            class="signal-hint"
-            style="padding:4px 0 2px;font-size:var(--spectrum-font-size-50, 11px);color:var(--fg-dim)"
-          >
-            ${def.$prototype}
-          </div>`
-        : html`
-            ${signalFieldRow("Source", def.$src || "", (v: string) => {
-              transactDoc(activeTab.value, (t) =>
-                mutateUpdateDef(t, name, { $src: v || undefined }),
-              );
-              pluginSchemaCache.delete(`${v}::${def.$prototype}`);
-            })}
-            ${signalFieldRow("Kind", def.$prototype || "", (v: string) => {
-              transactDoc(activeTab.value, (t) =>
-                mutateUpdateDef(t, name, { $prototype: v || undefined }),
-              );
-              pluginSchemaCache.delete(`${def.$src}::${v}`);
-            })}
-          `
+/** The name a prototype-backed entry is created under: `$contentCollection` for `ContentCollection`. */
+function prototypeName(S: SignalsPanelState, proto: string): string {
+  return freeName(S, `$${proto.charAt(0).toLowerCase()}${proto.slice(1)}`);
+}
+
+/** Create the entry the picker names — a template, an extension class, or a project import. */
+function addSignalOfType(type: string): void {
+  const S = panelState;
+  if (!S || !type) {
+    return;
+  }
+  /* Extension-manifest state classes ("ext:Session"): no $src needed — the registry resolves them;
+     the descriptor's stateDefaults seed the def (e.g. timing "client"). */
+  if (type.startsWith("ext:")) {
+    const proto = type.slice(4);
+    const cls = extensionStateClasses().find((c) => c.name === proto);
+    const name = prototypeName(S, proto);
+    transactDoc(activeTab.value, (t) =>
+      mutateAddDef(t, name, {
+        $prototype: proto,
+        ...cls?.stateDefaults,
+      } as Record<string, JsonValue>),
+    );
+    setDataRowExpanded(name, true);
+    repaint();
+    return;
+  }
+  /* A project import ("import:ContentCollection") is the prototype name and nothing else — the
+     registry resolves the path. The schema is NOT fetched here: the entry is opened, and an open
+     entry's field list is what asks for it (see {@link externalFields}), which repaints when it
+     lands. Fetching in both places sent the same request twice. */
+  if (type.startsWith("import:")) {
+    const proto = type.slice(7);
+    const name = prototypeName(S, proto);
+    transactDoc(activeTab.value, (t) =>
+      mutateAddDef(t, name, { $prototype: proto } as Record<string, JsonValue>),
+    );
+    setDataRowExpanded(name, true);
+    repaint();
+    return;
+  }
+  addTemplateDef(type, S);
+}
+
+// ─── The panel ───────────────────────────────────────────────────────────────
+
+/** Ask the Navigator to paint again. Every action ends here or in a transaction. */
+function repaint(): void {
+  panelCtx?.renderLeftPanel();
+}
+
+/** The plan a control names, or `undefined` if the projection has moved on without it. */
+function planFor(signal: string, fieldKey: string): FieldPlan | undefined {
+  return plans.get(planKey(signal, fieldKey));
+}
+
+/** Write a value now, cancelling any debounce that was waiting to write the same field. */
+function commitNow(signal: string, fieldKey: string, value: string): void {
+  const key = planKey(signal, fieldKey);
+  clearTimeout(timers.get(key));
+  timers.delete(key);
+  const plan = plans.get(key);
+  if (!plan?.write || value === plan.value) {
+    return;
+  }
+  plan.write(value);
+}
+
+/** Everything a control in the document may ask for. */
+const ACTIONS: SignalsActions = {
+  addChip: (signal, fieldKey, value) => planFor(signal, fieldKey)?.addChip?.(value),
+  addRow: (signal, fieldKey) => planFor(signal, fieldKey)?.addRow?.(),
+  addSignal: (type) => addSignalOfType(type),
+  checkCell: (signal, fieldKey, row, cell, checked) =>
+    planFor(signal, fieldKey)?.cellCheck?.(row, cell, checked),
+  checkField: (signal, fieldKey, checked) => planFor(signal, fieldKey)?.check?.(checked),
+  commitField: (signal, fieldKey, value) => commitNow(signal, fieldKey, value),
+  dropChip: (signal, fieldKey, chip) => planFor(signal, fieldKey)?.dropChip?.(chip),
+  dropRow: (signal, fieldKey, row) => planFor(signal, fieldKey)?.dropRow?.(row),
+  dropSignal: (name) => transactDoc(activeTab.value, (t) => mutateRemoveDef(t, name)),
+  editCell: (signal, fieldKey, row, cell, value) =>
+    planFor(signal, fieldKey)?.cell?.(row, cell, value),
+  /*
+   * What a KEYSTROKE is worth is the field's own answer, which is why the document asks the same
+   * question of every control and this decides. A rename committed per keystroke would rename the
+   * entry eight times on the way to a nine-letter name.
+   */
+  inputField: (signal, fieldKey, value) => {
+    const key = planKey(signal, fieldKey);
+    const plan = plans.get(key);
+    if (!plan?.write || plan.live === "none") {
+      return;
     }
-    ${
-      def.$export
-        ? signalFieldRow("Export", def.$export || "", (v: string) =>
-            transactDoc(activeTab.value, (t) =>
-              mutateUpdateDef(t, name, { $export: v || undefined }),
-            ),
-          )
-        : nothing
+    if (plan.live === "commit") {
+      plan.write(value);
+      return;
     }
-    ${schemaContent}
-  `;
+    clearTimeout(timers.get(key));
+    timers.set(
+      key,
+      setTimeout(() => {
+        timers.delete(key);
+        plans.get(key)?.write?.(value);
+      }, DEBOUNCE_MS),
+    );
+  },
+  pressField: (signal, fieldKey, action) => planFor(signal, fieldKey)?.press?.(action),
+  refresh: () => {
+    panelCtx?.refreshData?.();
+    repaint();
+  },
+  toggleCategory: (key, open) => {
+    const collapsed = panelState?._collapsedSignalCats;
+    if (!collapsed) {
+      return;
+    }
+    if (open) {
+      collapsed.delete(key);
+    } else {
+      collapsed.add(key);
+    }
+    repaint();
+  },
+  toggleRow: (name) => {
+    setDataRowExpanded(name, !isDataRowExpanded(name));
+    repaint();
+  },
+};
+
+/**
+ * Fill one island: the four foreign surfaces an entry's editor embeds, plus its value tree.
+ *
+ * The painters are closures the projection built, so each is already holding the def that is on
+ * screen; a host whose entry has since gone finds nothing and is emptied rather than being painted
+ * from a stale closure.
+ *
+ * @param {HTMLElement} host - The empty node the document drew
+ * @param {string} signal - The entry it belongs to
+ * @param {string} slot - `expression`, `statements`, `media`, `schema` or `tree`
+ */
+function paintIsland(host: HTMLElement, signal: string, slot: string): void {
+  const painter = islands.get(`${signal}/${slot}`);
+  if (painter) {
+    painter(host);
+    return;
+  }
+  host.replaceChildren();
+}
+
+/** The mounted surface, and the container it is standing in. */
+let standing: { handle: SignalsSurfaceHandle; host: HTMLElement } | null = null;
+
+/**
+ * Draw the Data panel — mounting the document the first time, and projecting into it every time
+ * after.
+ *
+ * The document goes into `.panel-content`, not into the `.panel-body` this is handed, for the
+ * reason `panels/git-panel.ts` states: only one of them is the node lit renders this panel's body
+ * into, and appending to the other would leave the panel drawn under whatever the Navigator paints
+ * next.
+ *
+ * A container that has CHANGED means the Navigator rebuilt the panel, so the panel-local record of
+ * which parameter editor is in its advanced view — and which rename was refused — starts over with
+ * it. Neither belongs to the document, and neither should outlive the panel that was showing it.
+ *
+ * @param {HTMLElement} host - The painted `.panel-body`
+ * @param {SignalsPanelState} S - The focused document, as the Navigator reads it
+ * @param {SignalsPanelCtx} ctx - The repaint, and the Refresh verb
+ */
+export function mountSignalsPanel(
+  host: HTMLElement,
+  S: SignalsPanelState,
+  ctx: SignalsPanelCtx,
+): void {
+  const container = host.querySelector<HTMLElement>(".panel-content") ?? host;
+  panelState = S;
+  panelCtx = ctx;
+  /* A row the reader collapsed took its tree's host out of the page, and the tree registry holds a
+     host by reference — this is the one moment a closed tree can be taken down. */
+  disposeDetachedDataTrees();
+  if (standing && (standing.host !== container || !standing.handle.attached())) {
+    standing.handle.dispose();
+    standing = null;
+    advancedParamOpen.clear();
+    schemaRequests.clear();
+    renameError = null;
+  }
+  const view = signalsView(S, ctx);
+  if (standing) {
+    standing.handle.update(view);
+    return;
+  }
+  standing = {
+    handle: mountSignalsSurface(container, view, ACTIONS, paintIsland),
+    host: container,
+  };
 }
 
 // ─── Commands ─────────────────────────────────────────────────────────────────
@@ -1805,6 +1952,6 @@ export function registerSignalsCommands(registry: CommandRegistry): void {
    It was registered here `rail: false`, waiting for plan §11.2's merge into Data, and the merge did
    not follow: the button was removed and the editor was left reachable only by typing "State" into
    the palette. Declaring a state variable — or a component property, which is a state entry with a
-   default — is not an advanced move to hide behind a search box, so `renderSignalsTemplate` is now
-   rendered by the Data panel and there is no second record. A stored `leftTab: "state"` migrates to
+   default — is not an advanced move to hide behind a search box, so the entry list is now the Data
+   panel's own document and there is no second record. A stored `leftTab: "state"` migrates to
    `data` in `shell.ts`. */

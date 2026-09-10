@@ -16,13 +16,7 @@
  *   cells) exactly where it is, and a `reconcile()` after `unmount()` writing neither a cell nor a
  *   track into the element the module has let go of.
  */
-import {
-  flush,
-  installMockPlatform,
-  renderInto,
-  resetStudioState,
-  resetWorkspaceWithTab,
-} from "./harness";
+import { flush, installMockPlatform, resetStudioState, resetWorkspaceWithTab } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 
 import type { AnyCommand } from "../src/commands/registry";
@@ -65,11 +59,10 @@ const {
   invalidateLayoutHeadCache,
   invalidateLayoutPickerCache,
   layoutHeadEntries,
-  renderHeadTemplate,
 } = await import("../src/panels/head-panel");
 const paneContext = await import("../src/panels/pane-context");
 const paneGrid = await import("../src/panels/pane-grid");
-const { activeRegistry, setActiveRegistry } = await import("../src/commands/active-registry");
+const { setActiveRegistry } = await import("../src/commands/active-registry");
 const { createCommandRegistry } = await import("../src/commands/registry");
 const { emptyContext, makeContext } = await import("../src/commands/context");
 const { componentRegistry } = await import("../src/files/components");
@@ -396,51 +389,6 @@ describe("the layout `$head` read", () => {
     expect(reads).toHaveLength(1);
     // The one read did land, so the guard dropped a duplicate rather than the answer.
     expect(layoutHeadEntries(tab).entries).toHaveLength(1);
-  });
-});
-
-describe("the Page panel's door to Search appearance", () => {
-  beforeEach(() => {
-    installMockPlatform();
-    resetStudioState();
-    closeAllTabs();
-    invalidateLayoutPickerCache();
-    setActiveRegistry(null);
-  });
-
-  afterEach(() => {
-    setActiveRegistry(null);
-    closeAllTabs();
-  });
-
-  test("the button runs the shared command rather than opening the modal itself", async () => {
-    const ran: string[] = [];
-    const registry = createCommandRegistry({ getContext: emptyContext });
-    registry.register({
-      category: "Document",
-      id: "document.openSeo",
-      level: "document",
-      run: () => {
-        ran.push("document.openSeo");
-      },
-      title: "Search Appearance",
-      undo: "none",
-    });
-    setActiveRegistry(registry);
-
-    const container = await renderInto(
-      renderHeadTemplate({
-        applyMutation: () => {},
-        document: { tagName: "html" } as JxMutableNode,
-        renderLeftPanel: () => {},
-      }),
-    );
-    const button = container.querySelector(".head-seo-btn") as HTMLElement;
-    expect(button.textContent?.trim()).toBe("Search appearance…");
-
-    button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    expect(ran).toEqual(["document.openSeo"]);
-    expect(activeRegistry()).toBe(registry);
   });
 });
 

@@ -484,6 +484,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `studio-ui-guidelines.md`
 
+- **0.4.19-draft** (2026-09-09) — The migrated-surface list is the src/surfaces directory rather than an enumeration in the prose (§9.3).
 - **0.4.18-draft** (2026-09-09) — the About dialog is a document: the pattern a converted surface follows, and the readiness trap it hit.
 - **0.4.17-draft** (2026-09-09) — the shell frame is a Jx document, and mounting it is asynchronous because initShellRefs reads its cells on the next line.
 - **0.4.16-draft** (2026-09-09) — the shell frame's stylesheet is generated from a style block; its markup waits because initShellRefs reads the hosts synchronously.
@@ -536,6 +537,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `studio.md`
 
+- **0.10.17-draft** (2026-09-09) — The Logic tab's read-only CSS Properties list is drawn by surfaces/logic-panel.json; renderStaticKvRow is gone (§16.5).
 - **0.10.16-draft** (2026-09-02) — the overlay lints take a custom-element scope (16.6); the canvas de-link reaches a stamped instance's own internals (4.2.2).
 - **0.10.15-draft** (2026-09-02) — the canvas UA-substitute overlay rules are installed wherever the de-link runs, not only in design/edit.
 - **0.10.14-draft** (2026-09-02) — a canvas invoker command aimed at the other kind of overlay is ignored, not thrown (§4.2.3).

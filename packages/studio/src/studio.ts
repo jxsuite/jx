@@ -152,8 +152,8 @@ import { mountResizeEdges } from "./resize-edges";
 import {
   defBadgeLabel,
   defCategory,
+  mountSignalsPanel,
   registerSignalsCommands,
-  renderSignalsTemplate,
 } from "./panels/signals-panel";
 import { loadComponentRegistry } from "./files/components";
 import { ensureDependenciesInstalled } from "./packages/ensure-deps";
@@ -873,7 +873,7 @@ leftPanelMod.mount({
   renderGitPanel,
   renderHeadTemplate,
   renderImportsTemplate,
-  renderSignalsTemplate,
+  mountSignalsPanel,
   setCanvasMode,
   setGitDiffState: (state: GitDiffState | null) => {
     shell.git.diffState = state;

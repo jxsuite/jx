@@ -9,10 +9,17 @@
  * editor at all — it opened as a component tree, so `bio` was a node's property and `links` was a
  * child array.
  *
- * This is one editor over `renderForm`, so every improvement to the engine reaches content entries,
- * settings and the inspector at once — and the `reference` control in particular arrives here for
- * free, which is what makes `author: { "$ref": "#/content/authors" }` a picker instead of a text
- * field you have to type an id into.
+ * This is one editor over the schema form, so every improvement to the engine reaches content
+ * entries, settings and the inspector at once — and the `reference` control in particular arrives
+ * here for free, which is what makes `author: { "$ref": "#/content/authors" }` a picker instead of
+ * a text field you have to type an id into.
+ *
+ * **This module is the FLOW; `surfaces/entry-editor.json` is the markup.** Everything below decides
+ * something — which pane holds which tab, which collection a path belongs to, which record the
+ * fields live in, which required keys are absent, what a draft flag commits into — and hands the
+ * surface a projection with no decisions left in it. The form itself is an island the surface
+ * renders empty: `ui/schema-form.ts` hands back a host ELEMENT, and {@link renderEntryMode} places
+ * it in the node the document announces.
  *
  * **It is an editor of the same tab, not a second document.** Like `settings/settings-document.ts`,
  * it unshifts its mode onto the tab the file already has, so ⌘S, the dirty flag, the transaction
@@ -33,20 +40,21 @@
  * @docs studio/projects/content-types
  */
 
-import { html, nothing, render as litRender } from "lit-html";
-import { live } from "lit-html/directives/live.js";
+import { html, nothing } from "lit-html";
 import { activeRegistry } from "../commands/active-registry";
 import { effect, effectScope } from "../reactivity";
 import { projectState } from "../store";
 import { resolveContextPointer } from "../services/context-resolver";
 import { transactDoc } from "../tabs/transact";
 import { mountSchemaForm } from "../ui/schema-form";
+import { mountEntryEditorSurface } from "../surfaces/entry-editor";
 import { paneRegion } from "../ui/regions";
 import { activateTab, workspace } from "../workspace/workspace";
 import { commitEntryFields, entryFields, mutateEntryField } from "./entry-fields";
 import { DRAFT_FIELD, DRAFT_MEANING, hasDraftAxis, isDraftEntry } from "./draft-state";
 import { collectionOfPath, missingRequired } from "./entry-model";
 import type { EntryCollection } from "./entry-model";
+import type { EntryEditorSurfaceHandle, EntryEditorView } from "../surfaces/entry-editor";
 import type { JsonSchema, SchemaFormContext } from "../ui/schema-form";
 import type { Tab } from "../tabs/tab";
 import type { CanvasSurface } from "../canvas/canvas-surface";
@@ -65,6 +73,7 @@ interface ActiveEntryPane {
   paneId: string;
   tabId: string;
   wrap: HTMLElement;
+  surface: EntryEditorSurfaceHandle;
   scope: { stop: () => void; run: <T>(fn: () => T) => T | undefined };
 }
 
@@ -85,7 +94,9 @@ function activeIn(paneId: string): ActiveEntryPane | null {
 /** Whether this tab's entry form is already mounted in this pane and still in the document. */
 export function entryPaneMounted(paneId: string, tab: Tab): boolean {
   const panel = activeIn(paneId);
-  return panel !== null && panel.tabId === tab.id && panel.wrap.isConnected;
+  return (
+    panel !== null && panel.tabId === tab.id && panel.wrap.isConnected && panel.surface.attached()
+  );
 }
 
 /** Tear one pane's entry form down (mode change, tab switch, project close). Idempotent. */
@@ -95,6 +106,7 @@ export function detachEntryPane(paneId: string): void {
     return;
   }
   panel.scope.stop();
+  panel.surface.dispose();
   _active.delete(paneId);
 }
 
@@ -120,6 +132,12 @@ export function setEntryDraft(tab: Tab, draft: boolean): void {
  * mistake is made while looking at a tab, not while looking at a form. It renders for any entry
  * whose collection declares the field, so "Published" is as visible as "Draft"; a collection with
  * no draft workflow shows neither.
+ *
+ * **This is the ONE piece of markup left in this file, and it is not this surface's.** It is a
+ * fragment of the tab CHIP — a `<span>` lit interpolates into a `repeat()` that rebuilds on every
+ * strip repaint — so it converts when `panels/tab-strip.ts` converts, and a document mounted per
+ * chip would be an async mount inside a synchronous rebuild. `.entry-pill` keeps its rules in
+ * `styles/overlays.css` for exactly that long.
  */
 export function entryDraftPill(tab: Tab) {
   const collection = collectionOfPath(tab.documentPath);
@@ -168,61 +186,45 @@ function absentRequiredErrors(
   return errors;
 }
 
-/** The header: what this is, and whether it is a draft. */
-function headerTpl(tab: Tab, collection: EntryCollection) {
-  const fields = entryFields(tab);
-  const draftAxis = hasDraftAxis(collection.schema, fields);
-  const draft = isDraftEntry(fields);
-  return html`
-    <div class="entry-editor-header">
-      <h3>${tab.documentPath?.split("/").pop() ?? "Untitled"}</h3>
-      <span class="entry-editor-collection">${collection.name}</span>
-      ${
-        draftAxis
-          ? html`
-              <sp-switch
-                size="s"
-                class="entry-draft-switch"
-                .checked=${live(draft)}
-                title=${DRAFT_MEANING}
-                @change=${(e: Event) => setEntryDraft(tab, (e.target as HTMLInputElement).checked)}
-                >Draft</sp-switch
-              >
-            `
-          : nothing
-      }
-    </div>
-    ${draft ? html`<p class="entry-editor-note">${DRAFT_MEANING}</p>` : nothing}
-  `;
+/** What the document says when the file belongs to no collection: the reason, then the fix. */
+function emptyLine(tab: Tab): string {
+  return `${tab.documentPath ?? "This document"} is not an entry of any content collection, so there is no schema to draw a form from.`;
 }
 
-/**
- * What the editor says when the document is not an entry.
- *
- * The mode is reachable from the palette and from `__jxAutomation` on any tab, so this state is
- * real and must name the reason and the fix rather than drawing an empty form — "no fields" and
- * "this file belongs to no collection" are different sentences, and only one of them is true here.
- */
-function notAnEntryTpl(tab: Tab) {
-  return html`
-    <div class="entry-editor-empty">
-      <p>
-        ${tab.documentPath ?? "This document"} is not an entry of any content collection, so there
-        is no schema to draw a form from.
-      </p>
-      <p class="entry-editor-note">
-        A collection is a <code>content</code> entry in <code>project.json</code> whose
-        <code>source</code> directory contains this file and which declares a <code>schema</code>.
-      </p>
-      <sp-action-button
-        size="s"
-        @click=${() => {
-          void activeRegistry()?.run("settings.open", { section: "content" });
-        }}
-        >Content types…</sp-action-button
-      >
-    </div>
-  `;
+/** Everything the document draws, computed from the tab and the project's content map. */
+function entryView(paneId: string, tab: Tab, collection: EntryCollection | null): EntryEditorView {
+  const region = paneRegion(paneId, "entry");
+  const fieldsRegion = paneRegion(paneId, "entry/fields");
+  if (!collection) {
+    return {
+      collection: "",
+      draft: false,
+      draftAxis: "hidden",
+      draftHint: DRAFT_MEANING,
+      emptyLine: emptyLine(tab),
+      fieldsRegion,
+      name: "",
+      note: "",
+      noteState: "hidden",
+      region,
+      stage: "empty",
+    };
+  }
+  const fields = entryFields(tab);
+  const draft = isDraftEntry(fields);
+  return {
+    collection: collection.name,
+    draft,
+    draftAxis: hasDraftAxis(collection.schema, fields) ? "shown" : "hidden",
+    draftHint: DRAFT_MEANING,
+    emptyLine: "",
+    fieldsRegion,
+    name: tab.documentPath?.split("/").pop() ?? "Untitled",
+    note: DRAFT_MEANING,
+    noteState: draft ? "shown" : "hidden",
+    region,
+    stage: "entry",
+  };
 }
 
 /**
@@ -231,6 +233,9 @@ function notAnEntryTpl(tab: Tab) {
  * The same non-iframe-editor pattern as the grid, the Library and Project Settings: this owns its
  * own effect scope from here, so a field commit repaints the form and nothing else — repainting
  * through the canvas pipeline would remount the document's iframe on every keystroke.
+ *
+ * @param {CanvasSurface} surface
+ * @param {Tab} tab
  */
 export function renderEntryMode(surface: CanvasSurface, tab: Tab): void {
   const { paneId, wrap: canvasWrap } = surface;
@@ -239,45 +244,75 @@ export function renderEntryMode(surface: CanvasSurface, tab: Tab): void {
   }
   detachEntryPane(paneId);
 
-  const scope = effectScope();
-  const panel: ActiveEntryPane = { paneId, scope, tabId: tab.id, wrap: canvasWrap };
-  _active.set(paneId, panel);
+  let panel: ActiveEntryPane | null = null;
+  /**
+   * The node the document renders for the schema form, as the document announced it.
+   *
+   * Held rather than queried: it lives inside a `$switch` case, so the reconciler builds a NEW one
+   * whenever the file stops or starts belonging to a collection, and a handle found once by
+   * selector would be detached DOM from that moment on.
+   */
+  let formHost: HTMLElement | null = null;
 
-  const rerender = () => {
-    if (activeIn(paneId) === panel) {
+  const redraw = () => {
+    if (panel !== null && activeIn(paneId) === panel) {
       draw();
+    }
+  };
+
+  /**
+   * Put the schema form into the node the document made for it.
+   *
+   * `ui/schema-form.ts` hands back a host ELEMENT rather than a template, so this places it.
+   * Calling `mountSchemaForm` again with the same key updates the standing form in place, which is
+   * what keeps the caret in a field across the repaint a commit provokes.
+   */
+  const paintForm = (collection: EntryCollection | null) => {
+    if (!formHost || !collection) {
+      return;
+    }
+    const fields = entryFields(tab);
+    const form = mountSchemaForm(`entry:${paneId}`, collection.schema as JsonSchema, fields, {
+      context: formContext(tab),
+      errors: absentRequiredErrors(collection, fields),
+      onChange: (patch) => commitEntryFields(tab, patch),
+      rerender: redraw,
+    });
+    if (form.parentNode !== formHost) {
+      formHost.replaceChildren(form);
     }
   };
 
   const draw = () => {
     const collection = collectionOfPath(tab.documentPath);
     if (!collection) {
-      litRender(
-        html`<div class="entry-editor" data-jx-region=${paneRegion(paneId, "entry")}>
-          ${notAnEntryTpl(tab)}
-        </div>`,
-        canvasWrap,
-      );
-      return;
+      /* The `fields` node goes with the case that held it, so the handle is dropped here rather
+         than left pointing at a node the reconciler is about to remove. */
+      formHost = null;
     }
-    const fields = entryFields(tab);
-    litRender(
-      html`
-        <div class="entry-editor" data-jx-region=${paneRegion(paneId, "entry")}>
-          ${headerTpl(tab, collection)}
-          <div class="entry-editor-fields" data-jx-region=${paneRegion(paneId, "entry/fields")}>
-            ${mountSchemaForm(`entry:${paneId}`, collection.schema as JsonSchema, fields, {
-              context: formContext(tab),
-              errors: absentRequiredErrors(collection, fields),
-              onChange: (patch) => commitEntryFields(tab, patch),
-              rerender,
-            })}
-          </div>
-        </div>
-      `,
-      canvasWrap,
-    );
+    panel?.surface.update(entryView(paneId, tab, collection));
+    paintForm(collection);
   };
+
+  const scope = effectScope();
+  const mounted = mountEntryEditorSurface(
+    canvasWrap,
+    entryView(paneId, tab, collectionOfPath(tab.documentPath)),
+    {
+      openContentTypes: () => {
+        void activeRegistry()?.run("settings.open", { section: "content" });
+      },
+      setDraft: (draft) => setEntryDraft(tab, draft),
+    },
+    {
+      fieldsSlot: (host) => {
+        formHost = host;
+        paintForm(collectionOfPath(tab.documentPath));
+      },
+    },
+  );
+  panel = { paneId, scope, surface: mounted, tabId: tab.id, wrap: canvasWrap };
+  _active.set(paneId, panel);
 
   scope.run(() => {
     effect(() => {

@@ -13,13 +13,33 @@
  * - **Media breakpoint DEFINITIONS → Project Settings › Contexts** (P4). Nothing remains here: the
  *   only reason adding a breakpoint used to cost you your element selection.
  *
- * What is left is one accordion of rows, all of which go through `ui/field-row.ts`.
+ * **This module decides; `surfaces/properties-panel.json` draws.** Every question with an answer —
+ * which attributes apply to this tag, which cascade a value came from, which rungs of the value
+ * ladder the position permits, what a keystroke is worth, and what a commit writes — is answered
+ * here and handed over as sections whose every row is already decided. The document holds the
+ * markup, the ARIA and the style, and holds no idea what an attribute is.
+ *
+ * **It does not go through the panel scheduler, and that is the point.**
+ * `panels/panel-scheduler.ts` withholds a repaint while a text input inside the dock has focus,
+ * because a lit repaint rebuilds the field the reader is typing into and takes the caret with it. A
+ * document has one effect per bound property and skips a write equal to what is already there, so
+ * the Content tab is updated in place: the rows that changed change, the field being typed in is
+ * untouched, and there is nothing to guard against. What survives is the DRAFT layer
+ * (`ui/field-input.ts`), which is a different promise — it is what keeps a half-typed value from
+ * being replaced by the last committed one, and what keys that half-typed value to the NODE rather
+ * than to the field's name (§11.4).
+ *
+ * **Three leaves are still lit**, and each is its own surface with readers outside this tab: the
+ * media picker, the colour selector and the expression editor. The document draws an empty
+ * `[part="control-host"]` for them and this module renders into it, which is the seam
+ * `ui/schema-form.ts` established for an extension's registered control.
+ *
+ * @docs studio/design/properties
  */
 
-import { html, nothing } from "lit-html";
-import type { TemplateResult } from "lit-html";
-import { live } from "lit-html/directives/live.js";
-import { debouncedStyleCommit, getNodeAtPath, renderOnly } from "../store";
+import { render as litRender } from "lit-html";
+import { getNodeAtPath } from "../store";
+import { effect, effectScope, reactive } from "../reactivity";
 import { displayTagName, isRef, isTagExpression } from "@jxsuite/schema/guards";
 import type { DirEntry, JsonValue } from "../types";
 import {
@@ -44,11 +64,30 @@ import type { LayoutSelection } from "../shell";
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
 import { activeRegistry } from "../commands/active-registry";
 import { componentRegistry } from "../files/components";
-import { widgetForType } from "./style-inputs";
-import { renderFieldRow, renderKvRow } from "../ui/field-row";
+import { provenanceText, provenanceTitle } from "./provenance";
 import type { FieldProvenance } from "./provenance";
-import { renderDynamicSlot, slotMode } from "../ui/dynamic-slot";
-import { spTextArea, spTextField } from "../ui/field-input";
+import {
+  effectiveSlotMode,
+  hasStashedSlotValue,
+  slotModeSeed,
+  stashSlotValue,
+  switchSlotMode,
+} from "../ui/dynamic-slot";
+import { VALUE_SOURCE_LABELS, slotCaps, slotMode } from "../ui/value-source";
+import type { SlotCapsSource, SlotMode } from "../ui/value-source";
+import {
+  clearDraft,
+  commitField,
+  getFieldValue,
+  hasDraft,
+  scheduleDraftCommit,
+  setDraft,
+} from "../ui/field-input";
+import { INPUT_DEBOUNCE, LIVE_PREVIEW } from "../ui/timing";
+import { cloneValue } from "../tabs/doc-op-apply";
+import { rectOf } from "../utils/geometry";
+import { openMenu } from "../surfaces/menu";
+import type { MenuHandle } from "../surfaces/menu";
 import {
   attrLabel,
   camelToLabel,
@@ -58,14 +97,10 @@ import {
 } from "../utils/studio-utils";
 import { classifyHref, composeHref } from "../utils/link-target";
 import type { LinkKind } from "../utils/link-target";
-import {
-  clickAnythingTo,
-  openPageAction,
-  renderEmptyState,
-  staleSelectionMessage,
-} from "./empty-state";
+import { clickAnythingTo, openPageAction, staleSelectionMessage } from "./empty-state";
 import { renderMediaPicker } from "../ui/media-picker";
 import { renderColorSelector } from "../ui/color-selector";
+import { renderExpressionEditor } from "../ui/expression-editor";
 import {
   loadUsages,
   peekUsages,
@@ -78,7 +113,17 @@ import htmlMeta from "../../data/html-meta.json";
 import { popoverIdsIn } from "@jxsuite/schema/overlays";
 import { POPOVER_TAGS } from "@jxsuite/ui";
 import { showPromptDialog } from "../ui/layers";
+import { emptyContentView, mountContentSurface } from "../surfaces/properties-panel";
 
+import type {
+  ContentOption,
+  ContentPanelActions,
+  ContentPanelSurface,
+  ContentPanelView,
+  ContentRowView,
+  ContentSectionView,
+} from "../surfaces/properties-panel";
+import type { TemplateResult } from "lit-html";
 import type {
   JxAttributeValue,
   JxElement,
@@ -89,9 +134,13 @@ import type {
 } from "@jxsuite/schema/types";
 import type { SignalOption } from "../ui/dynamic-slot";
 import type { JxPath } from "../state";
+import type { EffectScope } from "@vue/reactivity";
 
 /** The picker's escape hatch: a popover declared in another file, typed by hand. */
 const POPOVER_TARGET_OTHER = "jx:other";
+
+/** The empty row a picker offers so a value can be taken away with the same control that set it. */
+const CLEAR_OPTION: ContentOption = { label: "—", value: "" };
 
 interface HtmlMetaEntry {
   $section: string;
@@ -166,8 +215,8 @@ function bindingDonor(value: unknown): string {
  * The state entry a bound value reads, when the chip can name one — a `$ref` or a `${…}` template.
  *
  * §6.2's table says a bound chip "click opens the source", and on the Content tab it did not: both
- * bound branches returned a `donor` and a `title` and no `onClick`, so `renderProvenanceChip` drew
- * a handler-less span. The Style tab's chip has jumped to the Data panel since P5; the same promise
+ * bound branches returned a `donor` and a `title` and no `onClick`, so the chip was drawn as a
+ * handler-less span. The Style tab's chip has jumped to the Data panel since P5; the same promise
  * on the other tab was a label. Same regex as `style-panel.ts`'s `templateSignalOf`, because both
  * spellings of a template (`${x}` and `${state.x}`) name the same entry.
  */
@@ -213,172 +262,6 @@ function boundProvenance(value: unknown, title: string): FieldProvenance {
     // Would be a worse answer than a chip that does not jump.
     ...(known && signal ? { onClick: () => revealSignal(signal) } : {}),
   };
-}
-
-// ─── Sub-templates ──────────────────────────────────────────────────────────
-
-/**
- * Component props, each row carrying §6.2's provenance chip — the SECOND cascade.
- *
- * A component instance's value for a prop either overrides the component's declared default or does
- * not exist, and until now the two were the same blank field. The chip states which, and in the
- * inherited case it names the donor AND jumps to it: the donor of a component default is the
- * component definition, which this panel can already open.
- */
-function renderComponentPropsFieldsTemplate(
-  node: JxMutableNode,
-  path: JxPath,
-  mapSignals: SignalOption[] | null,
-  navigateToComponent: (path: string) => void,
-) {
-  const tab = activeTab.value;
-  const comp = componentRegistry.find((c) => c.tagName === displayTagName(node.tagName));
-  const definitionOfThis = isComponentDefinitionOpen(node);
-  if (!comp || !comp.props) {
-    return renderEmptyState({
-      compact: true,
-      message: "This component is not in the project's library, so it has no settings to show.",
-    });
-  }
-  const isNpm = comp.source === "npm";
-  /* In the definition the "value" of a setting is its DECLARED DEFAULT — the state entry's
-     `default` — not a per-instance override, so the row reads and writes there instead. */
-  const stateEntries = (tab?.doc.document.state ?? {}) as Record<string, { default?: JsonValue }>;
-  const currentVals: Record<string, unknown> = definitionOfThis
-    ? Object.fromEntries(comp.props.map((prop) => [prop.name, stateEntries[prop.name]?.default]))
-    : isNpm
-      ? node.attributes || {}
-      : node.$props || {};
-  const updateFn = definitionOfThis
-    ? (name: string, v?: JsonValue) =>
-        transactDoc(activeTab.value, (t) => mutateUpdateDef(t, name, { default: v }))
-    : isNpm
-      ? (name: string, v?: JsonValue) =>
-          transactDoc(activeTab.value, (t) =>
-            mutateUpdateAttribute(
-              t,
-              path,
-              name,
-              v === "" ? undefined : (v as JxAttributeValue | undefined),
-            ),
-          )
-      : (name: string, v?: JsonValue) =>
-          transactDoc(activeTab.value, (t) => mutateUpdateProp(t, path, name, v));
-
-  const defs = tab!.doc.document.state || {};
-  const signalNames = bindableSignalNames(tab!.doc.document);
-  const extraSignals = mapSignals;
-
-  return html`
-    ${comp.props.map((prop) => {
-      const rawValue = currentVals[prop.name];
-      const boundRef = isRef(rawValue) ? rawValue.$ref : null;
-      const hasVal = rawValue !== undefined && rawValue !== null;
-      const parsed = parseCemType(prop.type);
-      const onChange = (v?: JsonValue) => updateFn(prop.name, v);
-      const staticVal = slotMode(rawValue) === "literal" ? String(rawValue ?? "") : "";
-
-      // De-escalating to literal restores the bound signal's declared default (old unbind behavior).
-      const literalDefault = boundRef
-        ? defaultAsString(defs[boundRef.startsWith("#/state/") ? boundRef.slice(8) : boundRef]) ||
-          undefined
-        : undefined;
-
-      /** @type {ReturnType<typeof setTimeout> | undefined} */
-      let debounce: ReturnType<typeof setTimeout> | undefined;
-      let widgetTpl;
-      if (isMediaFormat(prop.format)) {
-        widgetTpl = renderMediaPicker(prop.name, staticVal, onChange);
-      } else if (prop.format === "color") {
-        widgetTpl = renderColorSelector(prop.name, staticVal, onChange);
-      } else if (prop.format === "date") {
-        widgetTpl = spTextField(
-          `cprop:${prop.name}`,
-          String(staticVal),
-          (v: string) => onChange(v),
-          {
-            placeholder: "YYYY-MM-DD",
-          },
-        );
-      } else if (parsed.kind === "boolean") {
-        widgetTpl = html`<sp-checkbox
-          size="s"
-          .checked=${live(Boolean(staticVal))}
-          @change=${(e: Event) => onChange((e.target as HTMLInputElement).checked || undefined)}
-        ></sp-checkbox>`;
-      } else if (parsed.kind === "number") {
-        widgetTpl = html`<sp-number-field
-          size="s"
-          .value=${live(staticVal)}
-          @input=${(e: Event) => {
-            clearTimeout(debounce);
-            debounce = setTimeout(() => onChange((e.target as HTMLInputElement).value), 400);
-          }}
-        ></sp-number-field>`;
-      } else if (parsed.kind === "combobox") {
-        const options = parsed.options as string[];
-        widgetTpl = html`<jx-value-selector
-          .value=${String(staticVal)}
-          size="s"
-          placeholder="—"
-          .options=${options.map((o) => ({ label: camelToLabel(o), value: o }))}
-          @change=${(e: Event & { detail?: { value?: string } }) =>
-            onChange(e.detail?.value ?? (e.target as HTMLInputElement).value)}
-        ></jx-value-selector>`;
-      } else {
-        widgetTpl = spTextField(`cprop:${prop.name}`, String(staticVal), (v: string) =>
-          onChange(v),
-        );
-      }
-
-      const slot = renderDynamicSlot({
-        caps: "componentProp",
-        extraSignals,
-        fieldKey: `cprop|${path.join("/")}|${prop.name}`,
-        literalDefault,
-        onChange,
-        staticWidget: widgetTpl,
-        stateDefs: signalNames,
-        value: rawValue,
-      });
-
-      return renderFieldRow({
-        hasValue: hasVal,
-        label: camelToLabel(prop.name),
-        labelExtra: slot.modeButton,
-        prop: prop.name,
-        provenance: componentPropProvenance(prop, rawValue, hasVal, {
-          // No donor and no jump in the definition: the value IS the component's default, and
-          // "→ the component definition" would open the document already in front of you.
-          isDefinition: definitionOfThis,
-          onClear: () => updateFn(prop.name),
-          ...(definitionOfThis || !comp.path
-            ? {}
-            : { openDefinition: () => navigateToComponent(comp.path!) }),
-        }),
-        widget: slot.widget,
-      });
-    })}
-    ${
-      comp.props.length === 0
-        ? renderEmptyState({
-            compact: true,
-            message: definitionOfThis
-              ? "This component declares no settings yet. Add a state entry with a default to " +
-                "give whoever places it something to fill in."
-              : "This component has no settings to fill in yet.",
-          })
-        : nothing
-    }
-    ${
-      // A link to the definition, from inside the definition, is a link to here.
-      comp.path && !definitionOfThis
-        ? html`<span class="kv-add" @click=${() => navigateToComponent(comp.path!)}
-            >→ Edit definition</span
-          >`
-        : nothing
-    }
-  `;
 }
 
 /**
@@ -433,945 +316,6 @@ function componentPropProvenance(
   return { state: "default" };
 }
 
-/** Custom attrs fields template — attributes this element's schema does not know about. */
-function renderCustomAttrsFieldsTemplate(
-  path: JxPath,
-  attrs: Record<string, unknown>,
-  knownAttrNames: Set<string>,
-) {
-  const customAttrs = Object.entries(attrs).filter(([k]) => !knownAttrNames.has(k));
-  return html`
-    ${customAttrs.map(([attr, val]) =>
-      renderKvRow({
-        name: attr,
-        onCommit: (newAttr: string, newVal: string) => {
-          if (newAttr !== attr) {
-            transactDoc(activeTab.value, (t) => {
-              mutateUpdateAttribute(t, path, attr);
-              mutateUpdateAttribute(t, path, newAttr, newVal);
-            });
-          } else {
-            transactDoc(activeTab.value, (t) => mutateUpdateAttribute(t, path, attr, newVal));
-          }
-        },
-        onDelete: () => transactDoc(activeTab.value, (t) => mutateUpdateAttribute(t, path, attr)),
-        value: String(val),
-      }),
-    )}
-    <span
-      class="kv-add"
-      @click=${() => transactDoc(activeTab.value, (t) => mutateUpdateAttribute(t, path, "data-", ""))}
-      >+ Add attribute</span
-    >
-  `;
-}
-
-// ─── Page-route enumeration (for the Link-target Internal picker) ─────────────
-
-/** @type {string[] | null} — cached list of internal routes derived from the pages/ tree. */
-let pageRouteEntries: string[] | null = null;
-
-/**
- * Derive a site route from a page file path relative to `pages/`, following the file-based routing
- * convention: `index.json` → the directory route, `[slug].json` → `:slug`, all others drop their
- * extension. Directory routes get a trailing slash (`/about/`); the root is `/`.
- *
- * @param {string} relPath — path relative to `pages/`, forward-slashed (e.g. "blog/[slug].json").
- * @returns {string}
- */
-function routeForPagePath(relPath: string): string {
-  const withoutExt = relPath.replace(/\.[^./]+$/, "");
-  const segments = withoutExt
-    .split("/")
-    .map((seg) => (seg.startsWith("[") ? `:${seg.slice(1, -1)}` : seg));
-  const isIndex = segments.at(-1) === "index";
-  if (isIndex) {
-    segments.pop();
-  }
-  const body = segments.join("/");
-  if (!body) {
-    return "/";
-  }
-  // Dynamic routes keep no trailing slash; static routes are directory-style (trailing slash).
-  return isIndex || body.includes(":") ? `/${body}${isIndex ? "/" : ""}` : `/${body}/`;
-}
-
-/** Recursively walk the pages/ tree and populate {@link pageRouteEntries} with derived routes. */
-async function loadPageRouteEntries() {
-  const platform = getPlatform();
-  const routes: string[] = [];
-  const docExts = new Set([".json", ".md", ".html"]);
-  async function walk(dir: string, rel: string) {
-    let listing: DirEntry[];
-    try {
-      listing = await platform.listDirectory(dir);
-    } catch {
-      return;
-    }
-    for (const entry of listing) {
-      const childRel = rel ? `${rel}/${entry.name}` : entry.name;
-      if (entry.type === "directory") {
-        await walk(entry.path ?? `${dir}/${entry.name}`, childRel);
-      } else if (docExts.has(entry.name.slice(entry.name.lastIndexOf(".")))) {
-        routes.push(routeForPagePath(childRel));
-      }
-    }
-  }
-  await walk("pages", "");
-  pageRouteEntries = [...new Set(routes)].toSorted((a, b) => a.localeCompare(b));
-  renderOnly("rightPanel");
-}
-
-export function invalidatePageRouteCache() {
-  pageRouteEntries = null;
-}
-
-/**
- * Composite Link-target control for an anchor's `href` — a kind selector (Internal / External /
- * Anchor / Email / Phone) plus the matching input, backed by classifyHref/composeHref so edits
- * round-trip. Internal targets render an sp-picker of page routes enumerated from the pages/ tree.
- *
- * @param {JxMutableNode} node
- * @param {JxPath} path
- */
-/**
- * The `popovertarget` field: a picker over the popovers THIS document declares.
- *
- * A free-text field is what let Burntrock ship six invokers naming the wrong panel — an id that
- * matches nothing is silent, and an id that matches the wrong thing is worse. The list makes the
- * right answers the easy ones.
- *
- * It stays typeable, because the list can never be complete: a `popovertarget` resolves in the
- * RENDERED DOM, and a page composes components whose internals this document cannot see. So the
- * current value is offered even when it is not in the list (the `knownValue` trick
- * {@link renderLinkTargetField} already uses for a cross-file route), and a trailing item opens a
- * prompt. That same limit is why `@jxsuite/schema/overlays`'s `target-missing` rule only fires in a
- * document that declares at least one popover of its own.
- *
- * @param value The current attribute value.
- * @param commit Writes the attribute, or clears it when given undefined.
- */
-function renderPopoverTargetField(value: unknown, commit: (v?: JsonValue) => void) {
-  const current = typeof value === "string" ? value : "";
-  const ids = popoverIdsIn((activeTab.value?.doc.document ?? {}) as JxElement, {
-    popoverTags: POPOVER_TAGS,
-  });
-  const unlisted = current !== "" && !ids.includes(current);
-  return html`
-    <sp-picker
-      class="popover-target-value"
-      size="s"
-      .value=${live(current)}
-      @change=${(e: Event) => {
-        const next = (e.target as HTMLInputElement).value;
-        if (next === POPOVER_TARGET_OTHER) {
-          void showPromptDialog("Popover id", {
-            confirmLabel: "Use",
-            message: "The id of a popover in another file.",
-            placeholder: "site-mobile-menu",
-          }).then((typed) => commit(typed?.trim() || undefined));
-          return;
-        }
-        commit(next || undefined);
-      }}
-    >
-      ${unlisted ? html`<sp-menu-item value=${current}>${current}</sp-menu-item>` : nothing}
-      ${ids.map((id) => html`<sp-menu-item value=${id}>${id}</sp-menu-item>`)}
-      <sp-menu-item value=${POPOVER_TARGET_OTHER}>Type an id…</sp-menu-item>
-    </sp-picker>
-  `;
-}
-
-function renderLinkTargetField(node: JxMutableNode, path: JxPath) {
-  const raw = typeof node.attributes?.href === "string" ? node.attributes.href : "";
-  const { kind, value } = classifyHref(raw);
-
-  const commit = (nextKind: LinkKind, nextValue: string) => {
-    const composed = composeHref(nextKind, nextValue);
-    transactDoc(activeTab.value!, (t) =>
-      mutateUpdateAttribute(t, path, "href", composed || undefined),
-    );
-  };
-
-  const kindOptions: { value: LinkKind; label: string }[] = [
-    { label: "Internal Page", value: "internal" },
-    { label: "External URL", value: "external" },
-    { label: "Anchor", value: "anchor" },
-    { label: "Email", value: "mailto" },
-    { label: "Phone", value: "tel" },
-  ];
-
-  const kindSelector = html`
-    <sp-picker
-      class="link-target-kind"
-      size="s"
-      .value=${live(kind)}
-      @change=${(e: Event) => {
-        const nextKind = (e.target as HTMLInputElement).value as LinkKind;
-        // Switching kind reinterprets the current value under the new kind.
-        commit(nextKind, value);
-      }}
-    >
-      ${kindOptions.map((o) => html`<sp-menu-item value=${o.value}>${o.label}</sp-menu-item>`)}
-    </sp-picker>
-  `;
-
-  let valueInput;
-  if (kind === "internal") {
-    if (pageRouteEntries === null) {
-      void loadPageRouteEntries();
-    }
-    const routes = pageRouteEntries ?? [];
-    const knownValue = value !== "" && !routes.includes(value);
-    valueInput = html`
-      <sp-picker
-        class="link-target-value"
-        size="s"
-        .value=${live(value)}
-        @change=${(e: Event) => commit("internal", (e.target as HTMLInputElement).value)}
-      >
-        ${knownValue ? html`<sp-menu-item value=${value}>${value}</sp-menu-item>` : nothing}
-        ${routes.map((r) => html`<sp-menu-item value=${r}>${r}</sp-menu-item>`)}
-      </sp-picker>
-    `;
-  } else {
-    const placeholder =
-      kind === "mailto"
-        ? "name@example.com"
-        : kind === "tel"
-          ? "+15551234567"
-          : kind === "anchor"
-            ? "section-id"
-            : "https://example.com";
-    valueInput = html`
-      <sp-textfield
-        class="link-target-value"
-        size="s"
-        placeholder=${placeholder}
-        .value=${live(value)}
-        @input=${debouncedStyleCommit("link:href", 400, (e: Event) =>
-          commit(kind, (e.target as HTMLInputElement).value),
-        )}
-      ></sp-textfield>
-    `;
-  }
-
-  return renderFieldRow({
-    hasValue: raw !== "",
-    label: "Link",
-    onClear: () => transactDoc(activeTab.value, (t) => mutateUpdateAttribute(t, path, "href")),
-    prop: "href",
-    widget: html`<div class="link-target-field">${kindSelector}${valueInput}</div>`,
-  });
-}
-
-/**
- * Real enum picker (sp-picker) for the anchor `target` attribute, replacing the generic
- * jx-value-selector so the four browsing-context keywords are offered as a dropdown.
- *
- * @param {JxMutableNode} node
- * @param {JxPath} path
- * @param {HtmlMetaEntry} entry
- */
-function renderTargetField(node: JxMutableNode, path: JxPath, entry: HtmlMetaEntry) {
-  const options = Array.isArray(entry.enum) ? (entry.enum as string[]) : [];
-  const current = typeof node.attributes?.target === "string" ? node.attributes.target : "";
-  return renderFieldRow({
-    hasValue: current !== "",
-    label: attrLabel(entry, "target"),
-    onClear: () => transactDoc(activeTab.value, (t) => mutateUpdateAttribute(t, path, "target")),
-    prop: "target",
-    widget: html`
-      <sp-picker
-        class="link-target-window"
-        size="s"
-        .value=${live(current)}
-        @change=${(e: Event) =>
-          transactDoc(activeTab.value!, (t) =>
-            mutateUpdateAttribute(
-              t,
-              path,
-              "target",
-              (e.target as HTMLInputElement).value || undefined,
-            ),
-          )}
-      >
-        ${options.map((o) => html`<sp-menu-item value=${o}>${o}</sp-menu-item>`)}
-      </sp-picker>
-    `,
-  });
-}
-
-/**
- * True when an attribute value is a binding (a `$ref` object or a template string containing
- * `${…}`), so the Link-target special-case must fall back to the raw widget to keep it editable.
- */
-function isBoundAttrValue(value: unknown): boolean {
-  return isRef(value) || (typeof value === "string" && value.includes("${"));
-}
-
-// ─── Layout selection panel ─────────────────────────────────────────────────
-
-/*
- * There is no `openLayoutAtNode`, and every line of it was wrong by the time it was deleted.
- *
- * Its docstring said `navigateToComponent` "swaps the tab's document (pushing the page onto the
- * document stack)" — two releases stale: nothing has swapped since §14.1 landed and there is no
- * document stack. Then it did four things, and the last three were the defect:
- *
- * 1. **Navigate.** Now the command's job, and the command opens the layout BESIDE the page rather
- *    than over the page it is teaching about — §8.2's promise since P3, never shipped.
- * 2. **`setLayoutSelection(null)`.** Its stated reason — "the layout is now the open document, so
- *    its nodes are ordinary editable content" — stops being true the moment the layout opens beside
- *    the page rather than replacing it. Clearing it is precisely what killed the follow on its first
- *    frame, and it is what made the Inspector blank at the instant the layout appeared.
- * 3. **Re-select against `activeTab`.** The focus deliberately stays in the page now, so the tab
- *    this reached was the wrong one. The selection is carried by the derivation instead —
- *    `pane-derive.ts`'s `DerivedTarget.select`, read from `shell.layoutSelection`'s `layoutPath`
- *    and applied to the companion pane's tab once the open resolves. For one release that sentence
- *    was written here and nothing implemented it: `layoutPath` had no consumer outside the canvas
- *    hit test, `derivationFor("layout")` stored `{resolved: null}`, and the exact regression this
- *    ledger entry describes — dropped into a layout file with nothing selected — was back while
- *    the comment denied it.
- *
- *    The companion resolves `shell.layoutSelection.layoutFile` in preference to the page's own
- *    `$layout` for the same reason the old code did: they are different answers for a nested chain,
- *    and the one the author clicked is the one they meant.
- * 4. **`renderOnly("rightPanel")`.** `panels/right-panel.ts:106` tracks `shell.layoutSelection`
- *    itself and `:212` reads it, so the repaint was already subscribed — a second, imperative
- *    subscription that only looked necessary because the function above had just cleared the state
- *    the real one is keyed on.
- */
-
-/**
- * The Layout-element panel — what the inspector says when you click page chrome.
- *
- * It spent a release cycle unreachable: `shell.layoutSelection` had this reader and no writer, so
- * clicking the site name in the header — the first click a new user makes — did nothing at all. The
- * canvas hit test writes it now (§8.2), and `panels/right-panel.ts` tracks it, so the panel
- * renders.
- */
-/**
- * The chip that opens the layout beside the page.
- *
- * **Drawn only where it can run**, which is why the condition lives at the call site rather than
- * inside the handler. `canvas/iframe-host.ts` focuses the pane a layout click landed in — including
- * a LENS, which draws layout chrome because it draws the same document — and from a derived pane
- * `pane.derive` can only throw `an open document in a pane that is not itself derived`, into a
- * floating `void registry.run(…)` that swallows it. A chip that does nothing when you press it is
- * worse than no chip: the sentence above it already says where the element comes from, and in that
- * shell the layout is either already beside you or one Unsplit away.
- */
-function openLayoutTpl(): TemplateResult {
-  return html`<span
-    class="kv-add"
-    @click=${() => {
-      /* ONE command, addressed by id — the chip is a control, not a second definition site for
-         what "open the layout" means. It opens the layout BESIDE the page and leaves the keyboard
-         in the page, so the next click on layout chrome moves the side pane's selection instead of
-         teaching the author what a pane is. */
-      void activeRegistry()?.run("pane.derive", { preset: "layout" });
-    }}
-    >Open Layout →</span
-  >`;
-}
-
-function renderLayoutSelectionPanel() {
-  const selection = shell.layoutSelection as LayoutSelection;
-  const tagName = selection.tagName || "element";
-  const { className } = selection;
-  const displayPath = selection.layoutFile || "layout";
-
-  return html`
-    <div class="style-sidebar">
-      <sp-accordion allow-multiple size="s">
-        <sp-accordion-item label="Layout Element" open>
-          <div class="style-section-body">
-            <div class="layout-origin">
-              <span class="layout-origin-badge">Layout</span>
-              <code class="layout-origin-tag">&lt;${tagName}&gt;</code>
-            </div>
-            ${
-              className
-                ? renderFieldRow({
-                    hasValue: false,
-                    label: "Class",
-                    prop: "className",
-                    widget: html`<span class="layout-origin-class">${className}</span>`,
-                  })
-                : nothing
-            }
-            <p class="layout-origin-note">
-              This element comes from ${displayPath}, which wraps every page that uses it. Open the
-              layout to edit it.
-            </p>
-            ${deriveRefusal(workspace.activePaneId) === null ? openLayoutTpl() : nothing}
-          </div>
-        </sp-accordion-item>
-      </sp-accordion>
-    </div>
-  `;
-}
-
-// ─── Usages (§9.6) ───────────────────────────────────────────────────────────
-
-/**
- * The Usage section's key, in the same per-tab `inspectorSections` record every other section uses,
- * so `inspector.setSection` addresses it exactly like the rest and nothing needs a second store.
- */
-const USAGES_SECTION = "__usages";
-
-/**
- * The component instance's usage line — "Used on 7 pages →", expanding to the files.
- *
- * Three things this deliberately does NOT do. It does not render when the host cannot answer
- * (`usagesSupported()` is `capability.findReferences`): a confident "0" for a component used
- * everywhere is worse than no line at all. It does not ask on every paint — `peekUsages` is
- * side-effect-free and only a cold target starts a request, which repaints once when it lands. And
- * it does not swallow a failure: a failed count says so and offers Retry, because "we could not
- * check" and "nothing uses this" are the two answers a user must never confuse.
- *
- * @param tagName — the instance's custom-element tag.
- * @param componentPath — its definition file, when the registry knows one. Passing both asks the
- *   one question that covers file references AND element instances.
- */
-function renderUsagesSection(tagName: string, componentPath: string | null) {
-  const query = { tagName, ...(componentPath ? { path: componentPath } : {}) };
-  const state = peekUsages(query);
-  // ONE gate, and it is the peek itself: a host with no `findReferences` answers "unsupported"
-  // Synchronously, and the section does not exist. A separate `usagesSupported()` guard above this
-  // Would make the arm below unreachable, which is a branch nothing can ever test.
-  if (state?.status === "unsupported") {
-    return nothing;
-  }
-  if (state === null) {
-    // Cold: ask once, and repaint the inspector when the answer arrives.
-    void loadUsages(query).then(() => renderOnly("rightPanel"));
-  }
-
-  let body;
-  let heading = "Usage";
-  if (state === null || state.status === "pending") {
-    body = html`<div class="usage-note">Counting references…</div>`;
-  } else if (state.status === "failed") {
-    heading = "Usage · unknown";
-    body = html`
-      <div class="usage-note">
-        References could not be counted: ${state.message}. This is not the same as “unused”.
-      </div>
-      <sp-action-button
-        size="s"
-        quiet
-        @click=${() => {
-          void retryUsages(query).then(() => renderOnly("rightPanel"));
-        }}
-        >Retry</sp-action-button
-      >
-    `;
-  } else {
-    const files = usageFiles(state.result);
-    heading = usageHeadline(state.result);
-    body =
-      files.length === 0
-        ? html`<div class="usage-note">
-            Nothing else in this project places <code>&lt;${tagName}&gt;</code> yet.
-          </div>`
-        : html`${files.map(
-            (file) => html`
-              <button
-                class="usage-row"
-                type="button"
-                title=${file.refs.map((r) => `${r.refType} ${r.ref} ×${r.count}`).join(", ")}
-                @click=${() => openUsage(file.path)}
-              >
-                <span class="usage-row-path">${file.path}</span>
-                <span class="usage-row-count">${file.count}</span>
-              </button>
-            `,
-          )}`;
-  }
-
-  return html`
-    <sp-accordion-item
-      label=${heading}
-      ?open=${isInspectorSectionOpen(USAGES_SECTION, false)}
-      @sp-accordion-item-toggle=${() =>
-        setInspectorSection(USAGES_SECTION, !isInspectorSectionOpen(USAGES_SECTION, false))}
-    >
-      <div class="style-section-body">${body}</div>
-    </sp-accordion-item>
-  `;
-}
-
-/** Open a referencing file in a tab — the "→" half of "Used on N pages →". */
-function openUsage(path: string): void {
-  // Lazy import: `files/files.ts` imports this panel's siblings, and a static edge here would close
-  // The inspector → files → inspector cycle.
-  void import("../files/files").then((m) => m.openFileInTab(path));
-}
-
-/** Send the user to the tab that DOES answer, without this module importing the dock. */
-function showLogicTab(): void {
-  void import("./right-panel").then((m) => m.setInspectorTab("events"));
-}
-
-// ─── Main entry point ───────────────────────────────────────────────────────
-
-/**
- * The Content tab — lit-html template with accordion sections.
- *
- * @param {{ navigateToComponent: (path: string) => void }} ctx
- */
-export function renderPropertiesPanelTemplate(ctx: {
-  navigateToComponent: (path: string) => void;
-}) {
-  const tab = activeTab.value;
-  if (!tab) {
-    return renderEmptyState({
-      actions: [openPageAction()],
-      message: "Open a page to inspect and style what you click.",
-    });
-  }
-
-  // Layout element selected — show read-only info with link to open layout
-  if (shell.layoutSelection) {
-    return renderLayoutSelectionPanel();
-  }
-
-  const selected = primarySelection(tab.session.selection);
-  if (!selected) {
-    return renderEmptyState({ message: clickAnythingTo("edit its content") });
-  }
-  const path: JxPath = selected;
-  const node = getNodeAtPath(tab.doc.document, path);
-  if (!node) {
-    return renderEmptyState({ message: staleSelectionMessage() });
-  }
-
-  // A repeating list has no content of its own — it has a source and a template, and both are
-  // Wiring. Content says where the answer lives rather than drawing an empty accordion (§6.5).
-  if (node.$prototype === "Array") {
-    return renderEmptyState({
-      actions: [{ label: "Open Logic", run: showLogicTab }],
-      detail: "Its items, filter, sort and template are wiring, so they live in Logic.",
-      message: "A repeating list has no content of its own.",
-    });
-  }
-
-  // The whole selection the Content tab edits. `[path]` when one element is selected, which is
-  // Every existing call site's behaviour unchanged.
-  const targets: JxPath[] = tab.session.selection.length > 0 ? tab.session.selection : [path];
-  const doc = tab.doc.document;
-  const isCustomInstance = displayTagName(node.tagName).includes("-");
-  const chosenTag = isTagExpression(node.tagName) ? node.tagName.$expression : null;
-  const tagName = displayTagName(node.tagName) || "div";
-  const attrs = node.attributes || {};
-
-  const mapSignals = mapSignalsFor(path);
-  // Signals offered to attribute/textContent bindings (handlers and Functions excluded).
-  const bindableSignals = bindableSignalNames(tab.doc.document);
-
-  function renderAttrRow(attr: string, entry: HtmlMetaEntry, value: unknown) {
-    const type = inferInputType(entry);
-    const hasVal = value !== undefined && value !== "";
-    // One write per selected element, inside ONE transaction (§6.5). `targets` is `[path]` for a
-    // Single selection, so this is the same single mutation it has always been.
-    const commitAttr = (v?: JsonValue) =>
-      transactDoc(activeTab.value!, (t) => {
-        for (const target of targets) {
-          mutateUpdateAttribute(t, target, attr, v as JxAttributeValue | undefined);
-        }
-      });
-
-    // Enhanced Link handling: only for anchors (a/area) with a plain (non-binding) value. Bindings
-    // ($ref objects or ${…} template strings) fall through to the raw widget to stay editable.
-    const isAnchor = tagName === "a" || tagName === "area";
-    if (isAnchor && !isBoundAttrValue(value)) {
-      if (attr === "href") {
-        return renderLinkTargetField(node, path);
-      }
-      if (attr === "target") {
-        return renderTargetField(node, path, entry);
-      }
-    }
-
-    /* Same gate as the anchor fields above: a BOUND value falls through to the raw widget so it
-       stays editable as an expression rather than being flattened into a picker. */
-    if (entry.$input === "popover-target" && !isBoundAttrValue(value)) {
-      return renderFieldRow({
-        hasValue: hasVal,
-        label: attrLabel(entry, attr),
-        prop: attr,
-        provenance: attributeProvenance(
-          attr,
-          value,
-          hasVal,
-          () => commitAttr(),
-          mixedAcrossSelection(doc, targets, (n) => (n?.attributes ?? {})[attr] ?? null),
-        ),
-        widget: renderPopoverTargetField(value, commitAttr),
-      });
-    }
-
-    const attrSlot = (staticWidget: unknown) =>
-      renderDynamicSlot({
-        caps: "attribute",
-        extraSignals: mapSignals,
-        fieldKey: `attr|${path.join("/")}|${attr}`,
-        onChange: commitAttr,
-        staticWidget,
-        stateDefs: bindableSignals,
-        value,
-      });
-
-    const literalWidget =
-      entry.type === "boolean"
-        ? html`
-            <sp-checkbox
-              size="s"
-              .checked=${live(Boolean(value))}
-              @change=${(e: Event) => commitAttr((e.target as HTMLInputElement).checked ? "" : undefined)}
-            >
-            </sp-checkbox>
-          `
-        : widgetForType(type, entry, attr, isRef(value) ? "" : String(value || ""), (v: string) =>
-            commitAttr(v || undefined),
-          );
-    const slot = attrSlot(literalWidget);
-    return renderFieldRow({
-      hasValue: hasVal,
-      label: attrLabel(entry, attr),
-      labelExtra: slot.modeButton,
-      prop: attr,
-      provenance: attributeProvenance(
-        attr,
-        value,
-        hasVal,
-        () =>
-          transactDoc(activeTab.value, (t) => {
-            for (const target of targets) {
-              mutateUpdateAttribute(t, target, attr);
-            }
-          }),
-        mixedAcrossSelection(doc, targets, (n) => (n?.attributes ?? {})[attr] ?? null),
-      ),
-      widget: slot.widget,
-    });
-  }
-
-  // ── Collect applicable attributes from html-meta ──
-  const applicableAttrs = {} as Record<string, HtmlMetaEntry>;
-  for (const [attr, entry] of Object.entries(htmlMeta.$defs) as [string, HtmlMetaEntry][]) {
-    if (!entry.$elements || entry.$elements.includes(displayTagName(tagName))) {
-      // The $attr field aliases a $defs key to a different attribute name.
-      // This lets the same attribute (e.g. "name") carry per-element metadata.
-      applicableAttrs[entry.$attr ?? attr] = entry;
-    }
-  }
-
-  const attrSections: Record<string, { name: string; entry: HtmlMetaEntry }[]> = {};
-  for (const sec of htmlMeta.$sections) {
-    attrSections[sec.key] = [];
-  }
-  for (const [attr, entry] of Object.entries(applicableAttrs)) {
-    const secKey = entry.$section;
-    if (attrSections[secKey]) {
-      attrSections[secKey].push({ entry, name: attr });
-    }
-  }
-  for (const sec of htmlMeta.$sections) {
-    attrSections[sec.key]!.sort(
-      (a: { name: string; entry: HtmlMetaEntry }, b: { name: string; entry: HtmlMetaEntry }) =>
-        a.entry.$order - b.entry.$order,
-    );
-  }
-
-  const knownAttrNames = new Set(Object.keys(applicableAttrs));
-  if (isCustomInstance) {
-    const comp = componentRegistry.find((c) => c.tagName === node.tagName);
-    if (comp?.props) {
-      for (const p of comp.props) {
-        knownAttrNames.add(p.name);
-      }
-    }
-  }
-  const customAttrs = Object.entries(attrs).filter(([k]) => !knownAttrNames.has(k));
-
-  const autoOpen = new Set();
-  for (const [attr] of Object.entries(attrs)) {
-    const entry = applicableAttrs[attr];
-    if (entry) {
-      autoOpen.add(entry.$section);
-    }
-  }
-  if (customAttrs.length > 0) {
-    autoOpen.add("__custom");
-  }
-
-  function isSectionOpen(key: string) {
-    return isInspectorSectionOpen(key, autoOpen.has(key));
-  }
-
-  function toggleSection(key: string) {
-    // One writer: the accordion's own click and `inspector.setSection` land in the same function,
-    // So the command and the control cannot disagree about what "open" means.
-    setInspectorSection(key, !isSectionOpen(key));
-  }
-
-  // ── Build section templates ─────────────────────────────────────────
-
-  const textSlot = renderDynamicSlot({
-    caps: "textProperty",
-    extraSignals: mapSignals,
-    fieldKey: `prop|${path.join("/")}|textContent`,
-    onChange: (v?: JsonValue) =>
-      transactDoc(activeTab.value, (t) => mutateUpdateProperty(t, path, "textContent", v)),
-    staticWidget: spTextArea(
-      "prop:textContent",
-      typeof node.textContent === "string" ? node.textContent : "",
-      (v: string) =>
-        transactDoc(activeTab.value, (t) =>
-          mutateUpdateProperty(t, path, "textContent", v || undefined),
-        ),
-    ),
-    stateDefs: bindableSignals,
-    value: node.textContent,
-  });
-
-  /**
-   * A draft key for one field ON THIS NODE.
-   *
-   * The three Element rows used constant keys — `"prop:tagName"`, `"prop:$id"`, `"prop:className"`
-   * — and `ui/field-input.ts`'s draft map is module-global, so every element shared one draft slot
-   * per field. Type a class name, click a sibling before blurring, and the sibling's Class row
-   * showed the text you had typed for the first one; blur it there and the commit landed on the
-   * WRONG element. Plan §11.4 asks for "drafts keyed by node path (today all elements share one
-   * draft slot per field)".
-   */
-  const fieldKey = (name: string) => `prop:${path.join("/")}:${name}`;
-
-  /**
-   * The set-here chip for a document property, with the tooltip in the label's own words.
-   *
-   * The derived tooltip would read "Clear textContent"; the label above it reads "Text Content".
-   * The row's key and the row's name are different vocabularies, and the tooltip belongs to the one
-   * the user is looking at.
-   */
-  const propertyChip = (name: string, human: string): FieldProvenance => ({
-    onClick: () => transactDoc(activeTab.value, (t) => mutateUpdateProperty(t, path, name)),
-    state: "set",
-    title: `Clear ${human}`,
-  });
-
-  const elemT = html`
-    <sp-accordion-item
-      label="Element"
-      ?open=${isSectionOpen("__element") !== false}
-      @sp-accordion-item-toggle=${() => toggleSection("__element")}
-    >
-      <div class="style-section-body">
-        ${(() => {
-          /* THE SHARED SLOT, not a hand-rolled control.
-             `tagName` is a bindable position like any other — a literal name or a `TagExpression`
-             — so it gets the same Value Source chip and the same expression editor as `href`, a
-             style declaration or an event handler. The rungs are DERIVED from
-             `SLOT_POSITION_SCHEMAS.elementTag`, which is why only Fixed value and Formula are
-             offered: `TagName` carries a pattern, so `isFreeStringSchema` refuses a template rung,
-             and a `${…}` in tag position is precisely what that pattern exists to reject.
-
-             The seed is ours because the generic one is `{ operator: "??" }`, which a
-             `TagExpression` does not admit — clicking the chip would otherwise write a document
-             that fails its own validator. */
-          const tagSlot = renderDynamicSlot({
-            caps: "elementTag",
-            fieldKey: `${path.join(".")}:tagName`,
-            onChange: (next) => {
-              transactDoc(activeTab.value, (t) =>
-                mutateUpdateProperty(t, path, "tagName", next ?? undefined),
-              );
-            },
-            seedFor: (mode) =>
-              mode === "expression"
-                ? {
-                    $expression: {
-                      initial: tagName,
-                      operator: "?:",
-                      target: null,
-                      value: tagName,
-                    },
-                  }
-                : undefined,
-            staticWidget: spTextField(fieldKey("tagName"), tagName, (v: string) => {
-              transactDoc(activeTab.value, (t) =>
-                mutateUpdateProperty(t, path, "tagName", v || undefined),
-              );
-            }),
-            stateDefs: bindableSignalNames(activeTab.value!.doc.document),
-            value: node.tagName as JsonValue | undefined,
-          });
-          return renderFieldRow({
-            hasValue: chosenTag !== null,
-            label: "Tag",
-            labelExtra: tagSlot.modeButton,
-            prop: "tagName",
-            widget: tagSlot.widget,
-          });
-        })()}
-        ${renderFieldRow({
-          hasValue: Boolean(node.$id),
-          label: "ID",
-          prop: "$id",
-          ...(node.$id ? { provenance: propertyChip("$id", "ID") } : {}),
-          widget: spTextField(fieldKey("$id"), String(node.$id || ""), (v: string) =>
-            transactDoc(activeTab.value, (t) =>
-              mutateUpdateProperty(t, path, "$id", v || undefined),
-            ),
-          ),
-        })}
-        ${renderFieldRow({
-          hasValue: Boolean(node.className),
-          label: "Class",
-          prop: "className",
-          ...(node.className ? { provenance: propertyChip("className", "class") } : {}),
-          widget: spTextField(fieldKey("className"), String(node.className || ""), (v: string) =>
-            transactDoc(activeTab.value, (t) =>
-              mutateUpdateProperty(t, path, "className", v || undefined),
-            ),
-          ),
-        })}
-        ${
-          !Array.isArray(node.children) || node.children.length === 0
-            ? renderFieldRow({
-                hasValue: node.textContent !== undefined,
-                label: "Text Content",
-                labelExtra: textSlot.modeButton,
-                prop: "textContent",
-                widget: textSlot.widget,
-                ...(node.textContent === undefined
-                  ? {}
-                  : { provenance: propertyChip("textContent", "text") }),
-              })
-            : nothing
-        }
-        ${renderFieldRow({
-          hasValue: Boolean(node.hidden),
-          label: "Hidden",
-          prop: "hidden",
-          ...(node.hidden ? { provenance: propertyChip("hidden", "hidden") } : {}),
-          widget: html`
-            <sp-checkbox
-              size="s"
-              .checked=${live(Boolean(node.hidden))}
-              @change=${(e: Event) =>
-                transactDoc(activeTab.value, (t) =>
-                  mutateUpdateProperty(
-                    t,
-                    path,
-                    "hidden",
-                    (e.target as HTMLInputElement).checked || undefined,
-                  ),
-                )}
-            >
-            </sp-checkbox>
-          `,
-        })}
-      </div>
-    </sp-accordion-item>
-  `;
-
-  const editingDefinition = isCustomInstance && isComponentDefinitionOpen(node);
-  const compPropsT = isCustomInstance
-    ? html`
-        <sp-accordion-item
-          label=${editingDefinition ? "Component Defaults" : "Component Settings"}
-          open
-        >
-          <div class="style-section-body">
-            ${renderComponentPropsFieldsTemplate(node, path, mapSignals, ctx.navigateToComponent)}
-          </div>
-        </sp-accordion-item>
-      `
-    : nothing;
-
-  // "Used on N pages →". Only for a component instance: an ordinary <div> is not a thing that can
-  // Be reused, so the question does not arise.
-  const usagesT = isCustomInstance
-    ? renderUsagesSection(
-        displayTagName(tagName),
-        componentRegistry.find((c) => c.tagName === displayTagName(tagName))?.path ?? null,
-      )
-    : nothing;
-
-  const attrSectionTemplates = htmlMeta.$sections
-    .filter((sec) => attrSections[sec.key]!.length > 0)
-    .map((sec) => {
-      const sectionAttrs = attrSections[sec.key]!;
-      const setCount = sectionAttrs.filter(
-        (a: { name: string; entry: HtmlMetaEntry }) => attrs[a.name] !== undefined,
-      ).length;
-      return html`
-        <sp-accordion-item
-          label=${sec.label}
-          ?open=${isSectionOpen(sec.key)}
-          @sp-accordion-item-toggle=${() => toggleSection(sec.key)}
-        >
-          ${sectionDot(setCount)}
-          <div class="style-section-body">
-            ${sectionAttrs.map((a: { name: string; entry: HtmlMetaEntry }) =>
-              renderAttrRow(a.name, a.entry, attrs[a.name]),
-            )}
-          </div>
-        </sp-accordion-item>
-      `;
-    });
-
-  const customSectionT =
-    customAttrs.length > 0 || Object.keys(attrs).length > 0
-      ? html`
-          <sp-accordion-item
-            label="Custom"
-            ?open=${isSectionOpen("__custom")}
-            @sp-accordion-item-toggle=${() => toggleSection("__custom")}
-          >
-            ${sectionDot(customAttrs.length)}
-            <div class="style-section-body">
-              ${renderCustomAttrsFieldsTemplate(path, attrs, knownAttrNames)}
-            </div>
-          </sp-accordion-item>
-        `
-      : nothing;
-
-  return html`
-    <div class="style-sidebar">
-      <sp-accordion allow-multiple size="s">
-        ${elemT} ${compPropsT} ${usagesT} ${attrSectionTemplates} ${customSectionT}
-      </sp-accordion>
-    </div>
-  `;
-}
-
-/**
- * The collapsed-header provenance dot (§6.2), and the end of a false affordance.
- *
- * It inherited `.set-dot`'s `cursor: pointer` and its "turns red on hover" rule, which together say
- * "click me to clear this" — and nothing happened, because it never had a handler. It is not a
- * control and it is not deleted either: §6.2 puts a provenance dot on collapsed accordion headers
- * precisely so a section's state is legible while closed, and clicking anywhere in the header
- * already toggles the section, so a second, different meaning for the same click would be worse
- * than the silence. So it keeps the information and gives up the affordance: an inert, labelled
- * indicator that says how many values in the section are set.
- */
-function sectionDot(setCount: number) {
-  return setCount > 0
-    ? html`<span
-        slot="heading"
-        class="set-dot set-dot--section"
-        aria-hidden="true"
-        title=${`${setCount} value${setCount === 1 ? "" : "s"} set in this section`}
-      ></span>`
-    : nothing;
-}
-
 /** Which of §6.2's states an HTML-attribute row is in. Attributes have no third cascade layer. */
 function attributeProvenance(
   attr: string,
@@ -1398,11 +342,6 @@ function attributeProvenance(
  * The Content tab's two cascades (HTML attributes and component props) both need the same answer
  * about the same set, so the question is asked once here and answered with `unifyValues`, the same
  * comparison the Style tab uses.
- *
- * @param {JxMutableNode} doc
- * @param {readonly JxPath[]} targets
- * @param {(node: JxMutableNode | undefined) => unknown} read
- * @returns {number}
  */
 export function mixedAcrossSelection(
   doc: JxMutableNode,
@@ -1414,6 +353,87 @@ export function mixedAcrossSelection(
   }
   const values = targets.map((path) => read(getNodeAtPath(doc, path) as JxMutableNode | undefined));
   return unifyValues(values).mixed ? targets.length : 0;
+}
+
+/**
+ * True when an attribute value is a binding (a `$ref` object or a template string containing
+ * `${…}`), so the Link-target special-case must fall back to the raw widget to keep it editable.
+ */
+function isBoundAttrValue(value: unknown): boolean {
+  return isRef(value) || (typeof value === "string" && value.includes("${"));
+}
+
+// ─── Page-route enumeration (for the Link-target Internal picker) ─────────────
+
+/** Cached list of internal routes derived from the pages/ tree; `null` until one is asked for. */
+let pageRouteEntries: string[] | null = null;
+
+/** Whether a walk is already in flight, so a re-projection does not start a second one. */
+let pageRoutesLoading = false;
+
+/**
+ * Derive a site route from a page file path relative to `pages/`, following the file-based routing
+ * convention: `index.json` → the directory route, `[slug].json` → `:slug`, all others drop their
+ * extension. Directory routes get a trailing slash (`/about/`); the root is `/`.
+ */
+function routeForPagePath(relPath: string): string {
+  const withoutExt = relPath.replace(/\.[^./]+$/, "");
+  const segments = withoutExt
+    .split("/")
+    .map((seg) => (seg.startsWith("[") ? `:${seg.slice(1, -1)}` : seg));
+  const isIndex = segments.at(-1) === "index";
+  if (isIndex) {
+    segments.pop();
+  }
+  const body = segments.join("/");
+  if (!body) {
+    return "/";
+  }
+  // Dynamic routes keep no trailing slash; static routes are directory-style (trailing slash).
+  return isIndex || body.includes(":") ? `/${body}${isIndex ? "/" : ""}` : `/${body}/`;
+}
+
+/**
+ * Recursively walk the pages/ tree and populate {@link pageRouteEntries} with derived routes.
+ *
+ * The in-flight flag is released in a `finally` rather than after the walk: the projection starts
+ * this whenever the cache is empty, so a host with no platform registered — which throws on the
+ * first line — would otherwise leave the flag raised and the routes unenumerable for the life of
+ * the window.
+ */
+async function loadPageRouteEntries() {
+  pageRoutesLoading = true;
+  const routes: string[] = [];
+  const docExts = new Set([".json", ".md", ".html"]);
+  try {
+    const platform = getPlatform();
+    const walk = async (dir: string, rel: string): Promise<void> => {
+      let listing: DirEntry[];
+      try {
+        listing = await platform.listDirectory(dir);
+      } catch {
+        return;
+      }
+      for (const entry of listing) {
+        const childRel = rel ? `${rel}/${entry.name}` : entry.name;
+        if (entry.type === "directory") {
+          await walk(entry.path ?? `${dir}/${entry.name}`, childRel);
+        } else if (docExts.has(entry.name.slice(entry.name.lastIndexOf(".")))) {
+          routes.push(routeForPagePath(childRel));
+        }
+      }
+    };
+    await walk("pages", "");
+    pageRouteEntries = [...new Set(routes)].toSorted((a, b) => a.localeCompare(b));
+  } finally {
+    pageRoutesLoading = false;
+  }
+  renderPropertiesPanel();
+}
+
+export function invalidatePageRouteCache() {
+  pageRouteEntries = null;
+  renderPropertiesPanel();
 }
 
 // ─── Section state ────────────────────────────────────────────────────────────
@@ -1442,6 +462,15 @@ export const INSPECTOR_SECTION_KEYS = [
 
 export type InspectorSectionKey = (typeof INSPECTOR_SECTION_KEYS)[number];
 
+/** The Component Settings section's key — recorded rather than fixed, like an attribute section. */
+const PROPS_SECTION = "__props";
+
+/**
+ * The Usage section's key, in the same per-tab `inspectorSections` record every other section uses,
+ * so `inspector.setSection` addresses it exactly like the rest and nothing needs a second store.
+ */
+const USAGES_SECTION = "__usages";
+
 /** Section keys addressable right now: the fixed rows plus any already recorded for this tab. */
 export function inspectorSectionKeys(): string[] {
   const recorded = Object.keys(activeTab.value?.session.ui.inspectorSections ?? {});
@@ -1465,7 +494,7 @@ export function isInspectorSectionOpen(section: string, fallback: boolean): bool
  * The pair `{ section, open }` is the whole point: `inspector.toggleSection` named a DELTA against
  * a section whose state depended on the selected node's own attributes (`autoOpen`), so the same
  * three manifest steps opened a section on one document and closed it on the next. Writing a new
- * object rather than mutating in place is what the reactive read in `isSectionOpen` depends on.
+ * object rather than mutating in place is what the reactive read in the projection depends on.
  */
 export function setInspectorSection(section: string, open: boolean): void {
   const tab = activeTab.value;
@@ -1475,13 +504,1438 @@ export function setInspectorSection(section: string, open: boolean): void {
   tab.session.ui.inspectorSections = { ...tab.session.ui.inspectorSections, [section]: open };
 }
 
-// ─── Commands ─────────────────────────────────────────────────────────────────
+// ─── Row plans: how this module reads a gesture back ──────────────────────────
+
+/** The ladder as one row holds it, so a rung change needs nothing re-derived. */
+interface LadderPlan {
+  fieldKey: string;
+  mode: SlotMode;
+  offered: SlotMode[];
+  /** Every pointer the From data… rung offers, state entries and repeater signals alike. */
+  sources: SignalOption[];
+  /**
+   * The state entries alone, kept apart from {@link sources} because `slotModeSeed` reads them
+   * differently: a fresh Mixed text rung seeds `${state.<first>}` from a state entry and `${}` from
+   * anything else, so folding the two lists into one is how a bound prop dropped to an empty
+   * template instead of naming the signal it had just left.
+   */
+  stateDefs: string[];
+  extraSignals: SignalOption[];
+  value: JsonValue | undefined;
+  onChange: (v?: JsonValue) => void;
+  literalDefault: JsonValue | undefined;
+  seedFor: ((mode: SlotMode) => JsonValue | undefined) | undefined;
+}
 
 /**
- * The Inspector's section verb. **This is the setter that retires `inspector.toggleSection`.**
- *
- * @returns {AnyCommand[]}
+ * What a row's callbacks do. The document reports `commit("attr|href", "/about")` and nothing else;
+ * everything needed to turn that into a document write was decided when the row was built.
  */
+interface RowPlan {
+  /** Turn a committed string into a document value. */
+  commit?: ((raw: string) => void) | undefined;
+  commitChecked?: ((checked: boolean) => void) | undefined;
+  commitKind?: ((kind: string) => void) | undefined;
+  /** The provenance chip's verb: clear it, jump to the donor, open the source. */
+  chipAction?: (() => void) | undefined;
+  /** An `action` row's verb, and a `file` row's path. */
+  action?: (() => void) | undefined;
+  openPath?: string | undefined;
+  /** The draft key for a text control; absent when the row commits with no draft. */
+  draft?: string | undefined;
+  /** How long after a keystroke {@link commit} runs; `0` means only on change. */
+  debounceMs: number;
+  /**
+   * A key/value pair's two draft keys, what each cell currently holds on disk, and the write that
+   * lands both at once. The committed pair is carried because either cell may be edited alone, and
+   * a missing draft has to fall back to the value that is actually there — reading `""` for the
+   * name is how a value-only edit renamed the attribute to nothing.
+   */
+  kv?: {
+    nameKey: string;
+    valueKey: string;
+    name: string;
+    value: string;
+    write: (name: string, value: string) => void;
+  };
+  ladder?: LadderPlan | undefined;
+  /** A leaf still drawn in lit, rebuilt on every repaint. */
+  control?: (() => TemplateResult) | undefined;
+}
+
+/** A row view with every field filled in, before the caller narrows it. */
+function blankRow(key: string, prop: string, label: string): ContentRowView {
+  return {
+    checked: false,
+    chip: "",
+    chipState: "",
+    chipText: "",
+    chipTitle: "",
+    detail: "",
+    hasSource: false,
+    key,
+    kind: "text",
+    kindOptions: [],
+    label,
+    linkKind: "",
+    linkValueKind: "text",
+    mono: false,
+    name: "",
+    options: [],
+    placeholder: "",
+    prop,
+    removeLabel: "",
+    shape: "field",
+    source: "fixed",
+    sourceLabel: "",
+    sourceLocked: false,
+    sourceName: "",
+    text: "",
+    title: "",
+    value: "",
+  };
+}
+
+// ─── The panel ───────────────────────────────────────────────────────────────
+
+/** Where a control is navigated to when a row asks to open a component definition. */
+let navigateToComponent: (path: string) => void = () => {};
+
+/** The mounted document, once the Inspector has handed over its container. */
+let surface: ContentPanelSurface | null = null;
+
+/** The effect that watches everything the projection reads. */
+let panelScope: EffectScope | null = null;
+
+/** Row key → what its callbacks do. Rebuilt by every projection. */
+const plans = new Map<string, RowPlan>();
+
+/** The lit-owned control hosts the document has announced, by row key. */
+const controlHosts = new Map<string, HTMLElement>();
+
+/**
+ * Every draft key this tab has minted.
+ *
+ * `ui/field-input.ts`'s draft map is module-global and a draft deliberately OUTLIVES the commit it
+ * provoked — that is what keeps a field controlled by the text in it until the reader blurs. So the
+ * one moment a draft of this tab's is certainly dead is when the tab is unbound, and nothing but
+ * this set knows which of them were ours.
+ */
+const draftKeys = new Set<string>();
+
+/** Mint a draft key, remembering it for the unbind. */
+function draft(key: string): string {
+  draftKeys.add(key);
+  return key;
+}
+
+/** The rung picker, while one is up. One at a time, and it goes down with the panel. */
+let sourceMenu: MenuHandle | null = null;
+
+/**
+ * The repaint signal for state no reactive store carries — the component registry, the usage cache
+ * and the route walk, each of which lands asynchronously and used to repaint through
+ * `renderOnly("rightPanel")`.
+ */
+const pulse = reactive({ tick: 0 });
+
+/** Whether a projection is already queued for the end of this tick. */
+let projectionQueued = false;
+
+/**
+ * Ask the Content tab to re-read the world.
+ *
+ * Three of the facts the projection reads are NOT reactive stores — the component registry, the
+ * usage cache and the enumerated page routes — so they announce themselves here. Every other
+ * repaint arrives through the watcher below, which is why this is a signal rather than a render
+ * call.
+ */
+export function renderPropertiesPanel(): void {
+  /* The pulse is the whole of it: the watcher reads it, so a bump reaches the same coalescer every
+     other fact does. A second queue here would be a second scheduler for one surface. */
+  pulse.tick += 1;
+}
+
+/**
+ * Hand the Content tab its container, and subscribe to the state it draws.
+ *
+ * `null` unbinds — the document goes down and the watcher stops — which is what the Inspector's own
+ * teardown needs. The same seam rather than a second export, for the reason `panels/ai-panel.ts`
+ * gives: a teardown nothing but a teardown reaches is one the reachability ledger has to carry.
+ */
+export function bindContentHost(
+  el: HTMLElement | null,
+  ctx?: { navigateToComponent: (path: string) => void },
+): void {
+  panelScope?.stop();
+  panelScope = null;
+  surface?.dispose();
+  surface = null;
+  plans.clear();
+  controlHosts.clear();
+  for (const key of draftKeys) {
+    clearDraft(key);
+  }
+  draftKeys.clear();
+  sourceMenu?.close();
+  sourceMenu = null;
+  if (!el) {
+    return;
+  }
+  navigateToComponent = ctx?.navigateToComponent ?? (() => {});
+  surface = mountContentSurface(el, emptyContentView(), ACTIONS, (key, host) => {
+    controlHosts.set(key, host);
+    paintControl(key, host);
+  });
+  panelScope = effectScope();
+  panelScope.run(() => {
+    effect(() => {
+      // Everything the projection reads that a store can announce. The tab's own fields are read
+      // One by one because a bare `void tab` tracks the holder and not the document inside it.
+      const tab = activeTab.value;
+      void shell.layoutSelection;
+      void workspace.activePaneId;
+      void pulse.tick;
+      if (tab) {
+        void tab.doc.document;
+        void tab.documentPath;
+        // The whole SET, joined — a bare property read would not re-trigger when the selection
+        // Changes WITHIN the array.
+        void tab.session.selection.map((path) => path.join("/")).join("|");
+        void tab.session.ui.inspectorSections;
+      }
+      queueProjection();
+    });
+  });
+}
+
+/**
+ * Project once at the end of this tick.
+ *
+ * Coalesced on a microtask because one gesture writes several reactive facts — a transaction moves
+ * the document, the selection and the history index — and the projection walks every applicable
+ * attribute of the selected tag. Running it once per write would build the whole accordion three
+ * times for one edit.
+ */
+function queueProjection(): void {
+  if (projectionQueued || !surface) {
+    return;
+  }
+  projectionQueued = true;
+  queueMicrotask(() => {
+    projectionQueued = false;
+    surface?.update(projectPanel());
+    paintControls();
+  });
+}
+
+/**
+ * Draw one lit-owned leaf into the host the document announced for it.
+ *
+ * Connectedness is deliberately NOT consulted: a host is announced as it is CREATED, one reconcile
+ * step before it is in the page, so "is it connected" answers no for exactly the node that needs
+ * drawing.
+ */
+function paintControl(key: string, host: HTMLElement): void {
+  const build = plans.get(key)?.control;
+  if (build) {
+    litRender(build(), host);
+  }
+}
+
+/** Redraw every leaf this panel has been handed a host for, and forget the hosts that have gone. */
+function paintControls(): void {
+  for (const [key, host] of controlHosts) {
+    if (plans.has(key)) {
+      paintControl(key, host);
+    } else {
+      controlHosts.delete(key);
+    }
+  }
+}
+
+// ─── What a control asks for ─────────────────────────────────────────────────
+
+const ACTIONS: ContentPanelActions = {
+  chipAction: (key) => {
+    plans.get(key)?.chipAction?.();
+  },
+  commit: (key, raw) => {
+    const plan = plans.get(key);
+    if (!plan?.commit) {
+      return;
+    }
+    if (plan.draft) {
+      setDraft(plan.draft, raw);
+      commitField(plan.draft, plan.commit);
+      return;
+    }
+    plan.commit(raw);
+  },
+  commitChecked: (key, checked) => {
+    plans.get(key)?.commitChecked?.(checked);
+  },
+  commitKind: (key, kind) => {
+    plans.get(key)?.commitKind?.(kind);
+  },
+  edit: (key, raw) => {
+    const plan = plans.get(key);
+    if (!plan?.commit || !plan.draft || plan.debounceMs <= 0) {
+      return;
+    }
+    setDraft(plan.draft, raw);
+    scheduleDraftCommit(plan.draft, plan.debounceMs, plan.commit);
+  },
+  editName: (key, raw) => {
+    editKvCell(key, "nameKey", raw);
+  },
+  editValue: (key, raw) => {
+    editKvCell(key, "valueKey", raw);
+  },
+  openFile: (key) => {
+    const path = plans.get(key)?.openPath;
+    if (path) {
+      openUsage(path);
+    }
+  },
+  openLayout: () => {
+    /* ONE command, addressed by id — the chip is a control, not a second definition site for what
+       "open the layout" means. It opens the layout BESIDE the page and leaves the keyboard in the
+       page, so the next click on layout chrome moves the side pane's selection instead of teaching
+       the author what a pane is. */
+    void activeRegistry()?.run("pane.derive", { preset: "layout" });
+  },
+  pickSource: (key, anchor) => {
+    openSourceMenu(key, anchor);
+  },
+  removeRow: (key) => {
+    plans.get(key)?.action?.();
+  },
+  runAction: (key) => {
+    plans.get(key)?.action?.();
+  },
+  runEmptyAction: (id) => {
+    if (id === "open-page") {
+      // The one verb every "needs an open document" empty state offers, run from where it is
+      // Declared rather than re-implemented: `panels/empty-state.ts` owns both its words and its
+      // Lazy reach into Quick Access.
+      openPageAction().run();
+    } else if (id === "open-logic") {
+      showLogicTab();
+    }
+  },
+  setSection: (key, open) => {
+    // One writer: the accordion's own toggle and `inspector.setSection` land in the same function,
+    // So the command and the control cannot disagree about what "open" means.
+    setInspectorSection(key, open);
+  },
+};
+
+/** A keystroke in one cell of a key/value pair: draft it, and land both cells together. */
+function editKvCell(key: string, cell: "nameKey" | "valueKey", raw: string): void {
+  const plan = plans.get(key);
+  if (!plan?.kv) {
+    return;
+  }
+  const cellDraft = plan.kv[cell];
+  setDraft(cellDraft, raw);
+  scheduleDraftCommit(cellDraft, plan.debounceMs, () => {
+    commitKvPair(key);
+  });
+}
+
+/** Land a key/value pair: whatever is in both cells right now, in one transaction. */
+function commitKvPair(key: string): void {
+  const plan = plans.get(key);
+  if (!plan?.kv) {
+    return;
+  }
+  const { nameKey, valueKey, write } = plan.kv;
+  // Both cells schedule the same commit, so the second timer arrives with nothing left to say.
+  if (!hasDraft(nameKey) && !hasDraft(valueKey)) {
+    return;
+  }
+  const name = getFieldValue(nameKey, plan.kv.name);
+  const value = getFieldValue(valueKey, plan.kv.value);
+  clearDraft(nameKey);
+  clearDraft(valueKey);
+  write(name, value);
+}
+
+/** The rung picker: every source this position permits, one action away (§6.3). */
+function openSourceMenu(key: string, anchor: HTMLElement): void {
+  const ladder = plans.get(key)?.ladder;
+  if (!ladder) {
+    return;
+  }
+  const { fieldKey, mode, offered } = ladder;
+  const box = rectOf(anchor);
+  sourceMenu?.close();
+  sourceMenu = openMenu({
+    label: "Value source",
+    onClosed: () => {
+      sourceMenu = null;
+    },
+    opener: anchor,
+    origin: { x: box.left, y: box.bottom },
+    region: "value-source",
+    rows: offered.map((rung) => ({
+      checked: (rung === mode ? "true" : "false") as "true" | "false",
+      destructive: false,
+      disabled: false,
+      dividerAbove: false,
+      id: rung,
+      title: VALUE_SOURCE_LABELS[rung],
+    })),
+    run: (id) => {
+      const next = id as SlotMode;
+      if (next === mode) {
+        return;
+      }
+      /* Leaving From data… seeds an empty Fixed value stash with the signal's declared default, so
+         unbind-restores-default survives a detour (ref → mixed text → fixed value). */
+      if (
+        mode === "ref" &&
+        ladder.literalDefault !== undefined &&
+        !hasStashedSlotValue(fieldKey, "literal")
+      ) {
+        stashSlotValue(fieldKey, "literal", ladder.literalDefault);
+      }
+      ladder.onChange(
+        switchSlotMode(
+          fieldKey,
+          mode,
+          next,
+          cloneValue(ladder.value),
+          ladder.seedFor?.(next) ??
+            slotModeSeed(next, {
+              extraSignals: ladder.extraSignals,
+              literalDefault: ladder.literalDefault,
+              stateDefs: ladder.stateDefs,
+            }),
+        ),
+      );
+    },
+  });
+}
+
+/** Open a referencing file in a tab — the "→" half of "Used on N pages →". */
+function openUsage(path: string): void {
+  // Lazy import: `files/files.ts` imports this panel's siblings, and a static edge here would close
+  // The inspector → files → inspector cycle.
+  void import("../files/files").then((m) => m.openFileInTab(path));
+}
+
+/** Send the user to the tab that DOES answer, without this module importing the dock. */
+function showLogicTab(): void {
+  void import("./right-panel").then((m) => m.setInspectorTab("events"));
+}
+
+// ─── Row builders ────────────────────────────────────────────────────────────
+
+/** Record a row's plan and hand back the row, so a builder reads as one expression. */
+function withPlan(row: ContentRowView, plan: RowPlan): ContentRowView {
+  plans.set(row.key, plan);
+  return row;
+}
+
+/** Fill in a row's provenance chip from the vocabulary `panels/provenance.ts` owns. */
+function applyChip(
+  row: ContentRowView,
+  plan: RowPlan,
+  prop: string,
+  p: FieldProvenance | undefined,
+): void {
+  if (!p || p.state === "default") {
+    return;
+  }
+  row.chipState = p.state;
+  row.chipText = provenanceText(p);
+  row.chipTitle = provenanceTitle(prop, p);
+  row.chip = p.state === "set" ? "dot" : p.onClick ? "press" : "text";
+  plan.chipAction = p.onClick;
+}
+
+/** Everything a bindable position needs to offer the value ladder. */
+interface LadderOpts {
+  fieldKey: string;
+  caps: SlotCapsSource;
+  value: unknown;
+  onChange: (v?: JsonValue) => void;
+  stateDefs: string[];
+  extraSignals?: SignalOption[] | null;
+  literalDefault?: JsonValue | undefined;
+  seedFor?: ((mode: SlotMode) => JsonValue | undefined) | undefined;
+}
+
+/**
+ * Offer the value ladder on a row, and draw the rung it is actually at.
+ *
+ * The rungs are DERIVED from the schema at the named position, never listed by the caller, so a
+ * panel can no longer offer a rung the compiler would reject nor withhold one it would accept. The
+ * literal rung is whatever the caller already put on the row; every other rung replaces it.
+ */
+function applyLadder(row: ContentRowView, plan: RowPlan, opts: LadderOpts): void {
+  const caps = slotCaps(opts.caps);
+  const mode = effectiveSlotMode(opts.fieldKey, opts.value);
+  const sources: SignalOption[] = [
+    ...opts.stateDefs.map((name) => ({ label: name, value: `#/state/${name}` })),
+    ...(opts.extraSignals ?? []),
+  ];
+  // A ref rung with nothing to point at is a dead end — drop it rather than offer an empty picker.
+  const offered = caps.filter((m) => m !== "ref" || sources.length > 0);
+  const label = VALUE_SOURCE_LABELS[mode];
+  /* Locked only when the rung this value already sits on is the only one there is. A value on a
+     rung the position does NOT permit — a fixed string left in a `$switch`, say — is exactly the
+     case that needs the chip most, and counting rungs alone used to grey it out. */
+  const locked = !offered.some((m) => m !== mode);
+  row.hasSource = true;
+  row.sourceLabel = label;
+  row.sourceLocked = locked;
+  row.sourceName = locked
+    ? `Value source: ${label} (no other source available here)`
+    : `Value source: ${label} — click to change`;
+  row.source = mode === "literal" ? "fixed" : "bound";
+  plan.ladder = {
+    extraSignals: [...(opts.extraSignals ?? [])],
+    fieldKey: opts.fieldKey,
+    literalDefault: opts.literalDefault,
+    mode,
+    offered,
+    onChange: opts.onChange,
+    seedFor: opts.seedFor,
+    sources,
+    stateDefs: opts.stateDefs,
+    value: cloneValue(opts.value as JsonValue | undefined),
+  };
+  if (mode === "ref") {
+    row.kind = "select";
+    row.value = isRef(opts.value) ? opts.value.$ref : "";
+    row.options = [
+      { label: "— select signal —", value: "" },
+      ...sources.map((s) => ({ label: s.label, value: s.value })),
+    ];
+    plan.commit = (raw) => opts.onChange(raw ? { $ref: raw } : undefined);
+    plan.debounceMs = 0;
+    plan.draft = undefined;
+    plan.control = undefined;
+    return;
+  }
+  if (mode === "template") {
+    const templateDraft = draft(`${opts.fieldKey}:template`);
+    row.kind = "text";
+    row.mono = true;
+    row.placeholder = "${state.…}";
+    row.value = getFieldValue(templateDraft, typeof opts.value === "string" ? opts.value : "");
+    plan.commit = (raw) => opts.onChange(raw);
+    plan.debounceMs = LIVE_PREVIEW;
+    plan.draft = templateDraft;
+    plan.control = undefined;
+    return;
+  }
+  if (mode === "expression") {
+    const node = (opts.value as { $expression?: unknown } | undefined)?.$expression;
+    row.kind = "control";
+    plan.commit = undefined;
+    plan.draft = undefined;
+    plan.control = () =>
+      renderExpressionEditor(node, (next) => opts.onChange({ $expression: next } as JsonValue), {
+        allowEventRef: false,
+        preview: null,
+        stateDefs: opts.stateDefs,
+        stateEntries: null,
+      });
+  }
+}
+
+/** A text row bound to the draft layer: the one control every typed value in this tab goes through. */
+function textRow(opts: {
+  key: string;
+  prop: string;
+  label: string;
+  draft: string;
+  value: string;
+  placeholder?: string;
+  commit: (raw: string) => void;
+}): { row: ContentRowView; plan: RowPlan } {
+  const row = blankRow(opts.key, opts.prop, opts.label);
+  row.kind = "text";
+  row.value = getFieldValue(opts.draft, opts.value);
+  row.placeholder = opts.placeholder ?? "";
+  const plan: RowPlan = { commit: opts.commit, debounceMs: LIVE_PREVIEW, draft: draft(opts.draft) };
+  return { plan, row };
+}
+
+// ─── The projection ──────────────────────────────────────────────────────────
+
+/** An empty state, in the words §-6's copy rules ask for. */
+function emptyView(
+  message: string,
+  detail: string,
+  actions: { id: string; label: string }[],
+): ContentPanelView {
+  return {
+    ...emptyContentView(),
+    emptyActions: actions,
+    emptyDetail: detail,
+    emptyMessage: message,
+    hasEmptyActions: actions.length > 0,
+    hasEmptyDetail: detail !== "",
+    view: "empty",
+  };
+}
+
+/**
+ * The whole tab, as the document reads it.
+ *
+ * Every plan this panel can act on is rebuilt here, which is what makes a callback safe: a row key
+ * that is no longer in the projection has no plan, so a click on a control the reconciler has since
+ * taken away reaches nothing rather than the wrong node.
+ */
+function projectPanel(): ContentPanelView {
+  plans.clear();
+  const tab = activeTab.value;
+  if (!tab) {
+    return emptyView("Open a page to inspect and style what you click.", "", [
+      { id: "open-page", label: openPageAction().label },
+    ]);
+  }
+
+  // Layout chrome first: it is mutually exclusive with a document selection, and it is the one
+  // Target whose name has to say where it came FROM.
+  if (shell.layoutSelection) {
+    return layoutView(shell.layoutSelection as LayoutSelection);
+  }
+
+  const selected = primarySelection(tab.session.selection);
+  if (!selected) {
+    return emptyView(clickAnythingTo("edit its content"), "", []);
+  }
+  const path: JxPath = selected;
+  const node = getNodeAtPath(tab.doc.document, path);
+  if (!node) {
+    return emptyView(staleSelectionMessage(), "", []);
+  }
+
+  // A repeating list has no content of its own — it has a source and a template, and both are
+  // Wiring. Content says where the answer lives rather than drawing an empty accordion (§6.5).
+  if (node.$prototype === "Array") {
+    return emptyView(
+      "A repeating list has no content of its own.",
+      "Its items, filter, sort and template are wiring, so they live in Logic.",
+      [{ id: "open-logic", label: "Open Logic" }],
+    );
+  }
+
+  return {
+    ...emptyContentView(),
+    sections: sectionsFor(node, path),
+    view: "content",
+  };
+}
+
+/** The Layout-element card — what the inspector says when you click page chrome. */
+function layoutView(selection: LayoutSelection): ContentPanelView {
+  const displayPath = selection.layoutFile || "layout";
+  return {
+    ...emptyContentView(),
+    /* Drawn only where it can run. `canvas/iframe-host.ts` focuses the pane a layout click landed
+       in — including a LENS, which draws layout chrome because it draws the same document — and
+       from a derived pane `pane.derive` can only throw into a floating `void registry.run(…)` that
+       swallows it. A chip that does nothing when you press it is worse than no chip. */
+    layoutCanOpen: deriveRefusal(workspace.activePaneId) === null,
+    layoutClass: selection.className,
+    layoutHasClass: Boolean(selection.className),
+    layoutNote:
+      `This element comes from ${displayPath}, which wraps every page that uses it. ` +
+      "Open the layout to edit it.",
+    layoutTag: selection.tagName || "element",
+    view: "layout",
+  };
+}
+
+/** Every section the selected node draws, in reading order. */
+function sectionsFor(node: JxMutableNode, path: JxPath): ContentSectionView[] {
+  const tab = activeTab.value!;
+  const doc = tab.doc.document;
+  const targets: JxPath[] = tab.session.selection.length > 0 ? tab.session.selection : [path];
+  const tagName = displayTagName(node.tagName) || "div";
+  const isCustomInstance = displayTagName(node.tagName).includes("-");
+  const attrs = node.attributes || {};
+  const mapSignals = mapSignalsFor(path);
+  const bindableSignals = bindableSignalNames(doc);
+
+  // ── Which attributes this tag has, by section ──
+  const applicableAttrs = {} as Record<string, HtmlMetaEntry>;
+  for (const [attr, entry] of Object.entries(htmlMeta.$defs) as [string, HtmlMetaEntry][]) {
+    if (!entry.$elements || entry.$elements.includes(displayTagName(tagName))) {
+      // The $attr field aliases a $defs key to a different attribute name, so the same attribute
+      // (e.g. "name") can carry per-element metadata.
+      applicableAttrs[entry.$attr ?? attr] = entry;
+    }
+  }
+  const attrSections: Record<string, { name: string; entry: HtmlMetaEntry }[]> = {};
+  for (const sec of htmlMeta.$sections) {
+    attrSections[sec.key] = [];
+  }
+  for (const [attr, entry] of Object.entries(applicableAttrs)) {
+    attrSections[entry.$section]?.push({ entry, name: attr });
+  }
+  for (const sec of htmlMeta.$sections) {
+    attrSections[sec.key]!.sort((a, b) => a.entry.$order - b.entry.$order);
+  }
+
+  const knownAttrNames = new Set(Object.keys(applicableAttrs));
+  if (isCustomInstance) {
+    const comp = componentRegistry.find((c) => c.tagName === node.tagName);
+    for (const p of comp?.props ?? []) {
+      knownAttrNames.add(p.name);
+    }
+  }
+  const customAttrs = Object.entries(attrs).filter(([k]) => !knownAttrNames.has(k));
+
+  const autoOpen = new Set<string>();
+  for (const attr of Object.keys(attrs)) {
+    const entry = applicableAttrs[attr];
+    if (entry) {
+      autoOpen.add(entry.$section);
+    }
+  }
+  if (customAttrs.length > 0) {
+    autoOpen.add("__custom");
+  }
+
+  const sections: ContentSectionView[] = [
+    sectionView("__element", "Element", isInspectorSectionOpen("__element", false), [], 0),
+  ];
+  sections[0]!.rows = elementRows(node, path, tagName, mapSignals, bindableSignals);
+
+  if (isCustomInstance) {
+    const definitionOfThis = isComponentDefinitionOpen(node);
+    sections.push(
+      sectionView(
+        PROPS_SECTION,
+        definitionOfThis ? "Component Defaults" : "Component Settings",
+        isInspectorSectionOpen(PROPS_SECTION, true),
+        componentPropRows(node, path, mapSignals, definitionOfThis),
+        0,
+      ),
+    );
+    // "Used on N pages →". Only for a component instance: an ordinary <div> is not a thing that can
+    // Be reused, so the question does not arise.
+    const usages = usagesSection(
+      displayTagName(tagName),
+      componentRegistry.find((c) => c.tagName === displayTagName(tagName))?.path ?? null,
+    );
+    if (usages) {
+      sections.push(usages);
+    }
+  }
+
+  for (const sec of htmlMeta.$sections) {
+    const sectionAttrs = attrSections[sec.key]!;
+    if (sectionAttrs.length === 0) {
+      continue;
+    }
+    const setCount = sectionAttrs.filter((a) => attrs[a.name] !== undefined).length;
+    const attrCtx: AttrCtx = {
+      bindableSignals,
+      doc,
+      mapSignals,
+      node,
+      path,
+      tagName,
+      targets,
+    };
+    const rows = sectionAttrs.map((a) => attributeRow(a.name, a.entry, attrs[a.name], attrCtx));
+    const open = isInspectorSectionOpen(sec.key, autoOpen.has(sec.key));
+    sections.push(sectionView(sec.key, sec.label, open, rows, setCount));
+  }
+
+  if (customAttrs.length > 0 || Object.keys(attrs).length > 0) {
+    const custom = customRows(path, customAttrs);
+    const open = isInspectorSectionOpen("__custom", autoOpen.has("__custom"));
+    sections.push(sectionView("__custom", "Custom", open, custom, customAttrs.length));
+  }
+  return sections;
+}
+
+/**
+ * One accordion section, with §6.2's collapsed-header tally.
+ *
+ * The dot is an INDICATOR and not a control: it used to inherit `.set-dot`'s pointer cursor and its
+ * danger hover, which together say "click me to clear this", and nothing happened because it never
+ * had a handler. Clicking anywhere in the heading already toggles the section.
+ */
+function sectionView(
+  key: string,
+  label: string,
+  open: boolean,
+  rows: ContentRowView[],
+  setCount: number,
+): ContentSectionView {
+  return {
+    dotTitle: `${setCount} value${setCount === 1 ? "" : "s"} set in this section`,
+    hasDot: setCount > 0,
+    key,
+    label,
+    open,
+    rows,
+  };
+}
+
+// ─── The Element section ─────────────────────────────────────────────────────
+
+/**
+ * A draft key for one field ON THIS NODE.
+ *
+ * The three Element rows used constant keys — `"prop:tagName"`, `"prop:$id"`, `"prop:className"` —
+ * and `ui/field-input.ts`'s draft map is module-global, so every element shared one draft slot per
+ * field. Type a class name, click a sibling before blurring, and the sibling's Class row showed the
+ * text you had typed for the first one; blur it there and the commit landed on the WRONG element.
+ */
+function draftKey(path: JxPath, name: string): string {
+  return `prop:${path.join("/")}:${name}`;
+}
+
+function elementRows(
+  node: JxMutableNode,
+  path: JxPath,
+  tagName: string,
+  mapSignals: SignalOption[] | null,
+  bindableSignals: string[],
+): ContentRowView[] {
+  const chosenTag = isTagExpression(node.tagName) ? node.tagName.$expression : null;
+  /**
+   * The set-here chip for a document property, with the tooltip in the label's own words.
+   *
+   * The derived tooltip would read "Clear textContent"; the label above it reads "Text Content".
+   * The row's key and the row's name are different vocabularies, and the tooltip belongs to the one
+   * the user is looking at.
+   */
+  const propertyChip = (name: string, human: string): FieldProvenance => ({
+    onClick: () => transactDoc(activeTab.value, (t) => mutateUpdateProperty(t, path, name)),
+    state: "set",
+    title: `Clear ${human}`,
+  });
+  const writeProperty = (name: string) => (raw: string) => {
+    transactDoc(activeTab.value, (t) => mutateUpdateProperty(t, path, name, raw || undefined));
+  };
+
+  const rows: ContentRowView[] = [];
+
+  /* THE SHARED SLOT, not a hand-rolled control. `tagName` is a bindable position like any other — a
+     literal name or a `TagExpression` — so it gets the same Value Source chip and the same
+     expression editor as `href`, a style declaration or an event handler. The rungs are DERIVED
+     from `SLOT_POSITION_SCHEMAS.elementTag`, which is why only Fixed value and Formula are offered:
+     `TagName` carries a pattern, so a template rung is refused, and a `${…}` in tag position is
+     precisely what that pattern exists to reject.
+
+     The seed is ours because the generic one is `{ operator: "??" }`, which a `TagExpression` does
+     not admit — clicking the chip would otherwise write a document that fails its own validator. */
+  const tag = textRow({
+    commit: writeProperty("tagName"),
+    draft: draftKey(path, "tagName"),
+    key: "prop|tagName",
+    label: "Tag",
+    prop: "tagName",
+    value: tagName,
+  });
+  applyLadder(tag.row, tag.plan, {
+    caps: "elementTag",
+    fieldKey: `${path.join(".")}:tagName`,
+    onChange: (next) => {
+      transactDoc(activeTab.value, (t) =>
+        mutateUpdateProperty(t, path, "tagName", next ?? undefined),
+      );
+    },
+    seedFor: (mode) =>
+      mode === "expression"
+        ? { $expression: { initial: tagName, operator: "?:", target: null, value: tagName } }
+        : undefined,
+    stateDefs: bindableSignals,
+    value: node.tagName as JsonValue | undefined,
+  });
+  void chosenTag;
+  rows.push(withPlan(tag.row, tag.plan));
+
+  const id = textRow({
+    commit: writeProperty("$id"),
+    draft: draftKey(path, "$id"),
+    key: "prop|$id",
+    label: "ID",
+    prop: "$id",
+    value: String(node.$id || ""),
+  });
+  if (node.$id) {
+    applyChip(id.row, id.plan, "$id", propertyChip("$id", "ID"));
+  }
+  rows.push(withPlan(id.row, id.plan));
+
+  const cls = textRow({
+    commit: writeProperty("className"),
+    draft: draftKey(path, "className"),
+    key: "prop|className",
+    label: "Class",
+    prop: "className",
+    value: String(node.className || ""),
+  });
+  if (node.className) {
+    applyChip(cls.row, cls.plan, "className", propertyChip("className", "class"));
+  }
+  rows.push(withPlan(cls.row, cls.plan));
+
+  if (!Array.isArray(node.children) || node.children.length === 0) {
+    const textDraft = draft(draftKey(path, "textContent"));
+    const text = blankRow("prop|textContent", "textContent", "Text Content");
+    text.kind = "textarea";
+    text.value = getFieldValue(
+      textDraft,
+      typeof node.textContent === "string" ? node.textContent : "",
+    );
+    const plan: RowPlan = {
+      commit: writeProperty("textContent"),
+      debounceMs: LIVE_PREVIEW,
+      draft: textDraft,
+    };
+    applyLadder(text, plan, {
+      caps: "textProperty",
+      extraSignals: mapSignals,
+      fieldKey: `prop|${path.join("/")}|textContent`,
+      onChange: (v) =>
+        transactDoc(activeTab.value, (t) => mutateUpdateProperty(t, path, "textContent", v)),
+      stateDefs: bindableSignals,
+      value: node.textContent,
+    });
+    if (node.textContent !== undefined) {
+      applyChip(text, plan, "textContent", propertyChip("textContent", "text"));
+    }
+    rows.push(withPlan(text, plan));
+  }
+
+  const hidden = blankRow("prop|hidden", "hidden", "Hidden");
+  hidden.kind = "checkbox";
+  hidden.checked = Boolean(node.hidden);
+  const hiddenPlan: RowPlan = {
+    commitChecked: (checked) =>
+      transactDoc(activeTab.value, (t) =>
+        mutateUpdateProperty(t, path, "hidden", checked || undefined),
+      ),
+    debounceMs: 0,
+  };
+  if (node.hidden) {
+    applyChip(hidden, hiddenPlan, "hidden", propertyChip("hidden", "hidden"));
+  }
+  rows.push(withPlan(hidden, hiddenPlan));
+
+  return rows;
+}
+
+// ─── Component settings ──────────────────────────────────────────────────────
+
+/**
+ * Component props, each row carrying §6.2's provenance chip — the SECOND cascade.
+ *
+ * A component instance's value for a prop either overrides the component's declared default or does
+ * not exist, and until the chip landed the two were the same blank field. The chip states which,
+ * and in the inherited case it names the donor AND jumps to it: the donor of a component default is
+ * the component definition, which this panel can already open.
+ */
+function componentPropRows(
+  node: JxMutableNode,
+  path: JxPath,
+  mapSignals: SignalOption[] | null,
+  definitionOfThis: boolean,
+): ContentRowView[] {
+  const tab = activeTab.value!;
+  const comp = componentRegistry.find((c) => c.tagName === displayTagName(node.tagName));
+  if (!comp || !comp.props) {
+    return [
+      noteRow(
+        "props|unknown",
+        "This component is not in the project's library, so it has no settings to show.",
+      ),
+    ];
+  }
+  const isNpm = comp.source === "npm";
+  /* In the definition the "value" of a setting is its DECLARED DEFAULT — the state entry's
+     `default` — not a per-instance override, so the row reads and writes there instead. */
+  const stateEntries = (tab.doc.document.state ?? {}) as Record<string, { default?: JsonValue }>;
+  const currentVals: Record<string, unknown> = definitionOfThis
+    ? Object.fromEntries(comp.props.map((prop) => [prop.name, stateEntries[prop.name]?.default]))
+    : isNpm
+      ? node.attributes || {}
+      : node.$props || {};
+  const updateFn = definitionOfThis
+    ? (name: string, v?: JsonValue) =>
+        transactDoc(activeTab.value, (t) => mutateUpdateDef(t, name, { default: v }))
+    : isNpm
+      ? (name: string, v?: JsonValue) =>
+          transactDoc(activeTab.value, (t) =>
+            mutateUpdateAttribute(
+              t,
+              path,
+              name,
+              v === "" ? undefined : (v as JxAttributeValue | undefined),
+            ),
+          )
+      : (name: string, v?: JsonValue) =>
+          transactDoc(activeTab.value, (t) => mutateUpdateProp(t, path, name, v));
+
+  const defs = tab.doc.document.state || {};
+  const signalNames = bindableSignalNames(tab.doc.document);
+  const definitionPath = comp.path;
+  /* One closure for the whole list rather than one per prop: it says the same thing every time,
+     and building it inside the loop is what made every row carry its own copy of it. */
+  const openDefinition =
+    definitionPath && !definitionOfThis ? () => navigateToComponent(definitionPath) : undefined;
+  const rows: ContentRowView[] = [];
+
+  for (const prop of comp.props) {
+    const rawValue = currentVals[prop.name];
+    const boundRef = isRef(rawValue) ? rawValue.$ref : null;
+    const hasVal = rawValue !== undefined && rawValue !== null;
+    const parsed = parseCemType(prop.type);
+    const onChange = (v?: JsonValue) => updateFn(prop.name, v);
+    const staticVal = slotMode(rawValue) === "literal" ? String(rawValue ?? "") : "";
+    const key = `cprop|${prop.name}`;
+    const propDraft = draft(`cprop:${path.join("/")}:${prop.name}`);
+    const row = blankRow(key, prop.name, camelToLabel(prop.name));
+    const plan: RowPlan = { debounceMs: LIVE_PREVIEW };
+
+    if (isMediaFormat(prop.format)) {
+      row.kind = "control";
+      plan.control = () => renderMediaPicker(prop.name, staticVal, (v: string) => onChange(v));
+    } else if (prop.format === "color") {
+      row.kind = "control";
+      plan.control = () => renderColorSelector(prop.name, staticVal, (v: string) => onChange(v));
+    } else if (prop.format === "date") {
+      row.kind = "text";
+      row.placeholder = "YYYY-MM-DD";
+      row.value = getFieldValue(propDraft, staticVal);
+      plan.commit = (raw) => onChange(raw);
+      plan.draft = propDraft;
+    } else if (parsed.kind === "boolean") {
+      row.kind = "checkbox";
+      row.checked = Boolean(staticVal);
+      plan.commitChecked = (checked) => onChange(checked || undefined);
+    } else if (parsed.kind === "number") {
+      row.kind = "number";
+      row.value = getFieldValue(propDraft, staticVal);
+      plan.commit = (raw) => onChange(raw);
+      plan.draft = propDraft;
+    } else if (parsed.kind === "combobox") {
+      row.kind = "select";
+      row.value = staticVal;
+      row.options = [
+        CLEAR_OPTION,
+        ...(parsed.options as string[]).map((o) => ({ label: camelToLabel(o), value: o })),
+      ];
+      plan.commit = (raw) => onChange(raw || undefined);
+      plan.debounceMs = 0;
+    } else {
+      row.kind = "text";
+      row.value = getFieldValue(propDraft, staticVal);
+      plan.commit = (raw) => onChange(raw);
+      plan.draft = propDraft;
+    }
+
+    applyLadder(row, plan, {
+      caps: "componentProp",
+      extraSignals: mapSignals,
+      fieldKey: `cprop|${path.join("/")}|${prop.name}`,
+      // De-escalating to literal restores the bound signal's declared default (the old unbind).
+      literalDefault: boundRef
+        ? defaultAsString(defs[boundRef.startsWith("#/state/") ? boundRef.slice(8) : boundRef]) ||
+          undefined
+        : undefined,
+      onChange,
+      stateDefs: signalNames,
+      value: rawValue,
+    });
+    applyChip(
+      row,
+      plan,
+      prop.name,
+      componentPropProvenance(prop, rawValue, hasVal, {
+        // No donor and no jump in the definition: the value IS the component's default, and
+        // "→ the component definition" would open the document already in front of you.
+        isDefinition: definitionOfThis,
+        onClear: () => updateFn(prop.name),
+        ...(openDefinition ? { openDefinition } : {}),
+      }),
+    );
+    rows.push(withPlan(row, plan));
+  }
+
+  if (comp.props.length === 0) {
+    rows.push(
+      noteRow(
+        "props|empty",
+        definitionOfThis
+          ? "This component declares no settings yet. Add a state entry with a default to give " +
+              "whoever places it something to fill in."
+          : "This component has no settings to fill in yet.",
+      ),
+    );
+  }
+  // A link to the definition, from inside the definition, is a link to here.
+  if (openDefinition) {
+    rows.push(
+      actionRow("props|edit-definition", "editDefinition", "→ Edit definition", openDefinition),
+    );
+  }
+  return rows;
+}
+
+// ─── HTML attributes ─────────────────────────────────────────────────────────
+
+interface AttrCtx {
+  node: JxMutableNode;
+  path: JxPath;
+  doc: JxMutableNode;
+  targets: JxPath[];
+  tagName: string;
+  mapSignals: SignalOption[] | null;
+  bindableSignals: string[];
+}
+
+function attributeRow(
+  attr: string,
+  entry: HtmlMetaEntry,
+  value: unknown,
+  ctx: AttrCtx,
+): ContentRowView {
+  const { doc, node, path, tagName, targets } = ctx;
+  const hasVal = value !== undefined && value !== "";
+  const key = `attr|${attr}`;
+  const label = attrLabel(entry, attr);
+  // One write per selected element, inside ONE transaction (§6.5). `targets` is `[path]` for a
+  // Single selection, so this is the same single mutation it has always been.
+  const commitAttr = (v?: JsonValue) =>
+    transactDoc(activeTab.value!, (t) => {
+      for (const target of targets) {
+        mutateUpdateAttribute(t, target, attr, v as JxAttributeValue | undefined);
+      }
+    });
+  const clearAttr = () =>
+    transactDoc(activeTab.value, (t) => {
+      for (const target of targets) {
+        mutateUpdateAttribute(t, target, attr);
+      }
+    });
+  const chip = () =>
+    attributeProvenance(
+      attr,
+      value,
+      hasVal,
+      clearAttr,
+      mixedAcrossSelection(doc, targets, (n) => (n?.attributes ?? {})[attr] ?? null),
+    );
+
+  // Enhanced Link handling: only for anchors (a/area) with a plain (non-binding) value. Bindings
+  // ($ref objects or ${…} template strings) fall through to the raw widget to stay editable.
+  const isAnchor = tagName === "a" || tagName === "area";
+  if (isAnchor && !isBoundAttrValue(value)) {
+    if (attr === "href") {
+      return linkRow(key, label, node, path);
+    }
+    if (attr === "target") {
+      const row = blankRow(key, attr, label);
+      row.kind = "select";
+      row.value = typeof node.attributes?.target === "string" ? node.attributes.target : "";
+      row.options = [
+        CLEAR_OPTION,
+        ...(Array.isArray(entry.enum) ? (entry.enum as string[]) : []).map((o) => ({
+          label: o,
+          value: o,
+        })),
+      ];
+      const plan: RowPlan = { commit: (raw) => commitAttr(raw || undefined), debounceMs: 0 };
+      applyChip(row, plan, attr, chip());
+      return withPlan(row, plan);
+    }
+  }
+
+  /* Same gate as the anchor fields above: a BOUND value falls through to the raw widget so it stays
+     editable as an expression rather than being flattened into a picker. */
+  if (entry.$input === "popover-target" && !isBoundAttrValue(value)) {
+    const row = blankRow(key, attr, label);
+    row.kind = "select";
+    row.value = typeof value === "string" ? value : "";
+    row.options = [
+      CLEAR_OPTION,
+      ...popoverIdsIn((activeTab.value?.doc.document ?? {}) as JxElement, {
+        popoverTags: POPOVER_TAGS,
+      }).map((id) => ({ label: id, value: id })),
+      { label: "Type an id…", value: POPOVER_TARGET_OTHER },
+    ];
+    const plan: RowPlan = {
+      commit: (raw) => {
+        if (raw === POPOVER_TARGET_OTHER) {
+          /* It stays typeable, because the list can never be complete: a `popovertarget` resolves
+             in the RENDERED DOM, and a page composes components whose internals this document
+             cannot see. */
+          void showPromptDialog("Popover id", {
+            confirmLabel: "Use",
+            message: "The id of a popover in another file.",
+            placeholder: "site-mobile-menu",
+          }).then((typed) => commitAttr(typed?.trim() || undefined));
+          return;
+        }
+        commitAttr(raw || undefined);
+      },
+      debounceMs: 0,
+    };
+    applyChip(row, plan, attr, chip());
+    return withPlan(row, plan);
+  }
+
+  const row = blankRow(key, attr, label);
+  const attrDraft = draft(`attr:${path.join("/")}:${attr}`);
+  const plan: RowPlan = { debounceMs: INPUT_DEBOUNCE };
+  const type = inferInputType(entry);
+  if (entry.type === "boolean") {
+    row.kind = "checkbox";
+    row.checked = Boolean(value);
+    plan.commitChecked = (checked) => commitAttr(checked ? "" : undefined);
+  } else if (type === "media") {
+    row.kind = "control";
+    const staticVal = isRef(value) ? "" : String(value || "");
+    plan.control = () =>
+      renderMediaPicker(attr, staticVal, (v: string) => commitAttr(v || undefined));
+  } else if (type === "select") {
+    row.kind = "select";
+    row.value = isRef(value) ? "" : String(value || "");
+    row.options = [
+      CLEAR_OPTION,
+      ...(Array.isArray(entry.enum) ? (entry.enum as string[]) : []).map((o) => ({
+        label: o,
+        value: o,
+      })),
+    ];
+    plan.commit = (raw) => commitAttr(raw || undefined);
+    plan.debounceMs = 0;
+  } else {
+    row.kind = "text";
+    row.value = getFieldValue(attrDraft, isRef(value) ? "" : String(value || ""));
+    plan.commit = (raw) => commitAttr(raw || undefined);
+    plan.draft = attrDraft;
+  }
+
+  applyLadder(row, plan, {
+    caps: "attribute",
+    extraSignals: ctx.mapSignals,
+    fieldKey: `attr|${path.join("/")}|${attr}`,
+    onChange: commitAttr,
+    stateDefs: ctx.bindableSignals,
+    value,
+  });
+  applyChip(row, plan, attr, chip());
+  return withPlan(row, plan);
+}
+
+/**
+ * The Link target: a kind and a value over one `href`.
+ *
+ * `utils/link-target.ts` classifies the current value and composes the next one, so switching kind
+ * REINTERPRETS what is there rather than throwing it away — `a@b.com` picked as Email becomes
+ * `mailto:a@b.com`. Internal targets offer the routes enumerated from the `pages/` tree.
+ */
+function linkRow(key: string, label: string, node: JxMutableNode, path: JxPath): ContentRowView {
+  const raw = typeof node.attributes?.href === "string" ? node.attributes.href : "";
+  const { kind, value } = classifyHref(raw);
+  const commit = (nextKind: LinkKind, nextValue: string) => {
+    const composed = composeHref(nextKind, nextValue);
+    transactDoc(activeTab.value!, (t) =>
+      mutateUpdateAttribute(t, path, "href", composed || undefined),
+    );
+  };
+
+  const row = blankRow(key, "href", label);
+  row.kind = "link";
+  row.linkKind = kind;
+  row.kindOptions = [
+    { label: "Internal Page", value: "internal" },
+    { label: "External URL", value: "external" },
+    { label: "Anchor", value: "anchor" },
+    { label: "Email", value: "mailto" },
+    { label: "Phone", value: "tel" },
+  ];
+  const plan: RowPlan = {
+    commit: (next) => commit(kind, next),
+    commitKind: (nextKind) => commit(nextKind as LinkKind, value),
+    debounceMs: INPUT_DEBOUNCE,
+  };
+
+  if (kind === "internal") {
+    if (pageRouteEntries === null && !pageRoutesLoading) {
+      void loadPageRouteEntries();
+    }
+    row.linkValueKind = "route";
+    row.value = value;
+    // `jx-select` stands in a row for a value no option holds, so a route this document cannot
+    // Enumerate — one in another file, or a listing that failed — stays selected and offered.
+    row.options = (pageRouteEntries ?? []).map((r) => ({ label: r, value: r }));
+    plan.debounceMs = 0;
+  } else {
+    const linkDraft = draft(`link:${path.join("/")}:href`);
+    row.linkValueKind = "text";
+    row.value = getFieldValue(linkDraft, value);
+    row.placeholder =
+      kind === "mailto"
+        ? "name@example.com"
+        : kind === "tel"
+          ? "+15551234567"
+          : kind === "anchor"
+            ? "section-id"
+            : "https://example.com";
+    plan.draft = linkDraft;
+  }
+
+  applyChip(
+    row,
+    plan,
+    "href",
+    raw === ""
+      ? { state: "default" }
+      : {
+          onClick: () =>
+            transactDoc(activeTab.value, (t) => mutateUpdateAttribute(t, path, "href")),
+          state: "set",
+          title: "Clear href",
+        },
+  );
+  return withPlan(row, plan);
+}
+
+// ─── Custom attributes ───────────────────────────────────────────────────────
+
+function customRows(path: JxPath, customAttrs: [string, unknown][]): ContentRowView[] {
+  const rows: ContentRowView[] = customAttrs.map(([attr, val]) => {
+    const key = `kv|${attr}`;
+    const nameKey = draft(`kvname:${path.join("/")}:${attr}`);
+    const valueKey = draft(`kvval:${path.join("/")}:${attr}`);
+    const row = blankRow(key, attr, `${attr} value`);
+    row.shape = "kv";
+    row.name = getFieldValue(nameKey, attr);
+    row.value = getFieldValue(valueKey, String(val));
+    row.removeLabel = `Remove ${attr}`;
+    const plan: RowPlan = {
+      action: () => transactDoc(activeTab.value, (t) => mutateUpdateAttribute(t, path, attr)),
+      debounceMs: INPUT_DEBOUNCE,
+      kv: {
+        name: attr,
+        nameKey,
+        value: String(val),
+        valueKey,
+        write: (nextAttr, nextVal) => {
+          if (nextAttr !== attr) {
+            transactDoc(activeTab.value, (t) => {
+              mutateUpdateAttribute(t, path, attr);
+              mutateUpdateAttribute(t, path, nextAttr, nextVal);
+            });
+          } else {
+            transactDoc(activeTab.value, (t) => mutateUpdateAttribute(t, path, attr, nextVal));
+          }
+        },
+      },
+    };
+    return withPlan(row, plan);
+  });
+  rows.push(
+    actionRow("kv|add", "addAttribute", "+ Add attribute", () =>
+      transactDoc(activeTab.value, (t) => mutateUpdateAttribute(t, path, "data-", "")),
+    ),
+  );
+  return rows;
+}
+
+// ─── Usage (§9.6) ────────────────────────────────────────────────────────────
+
+/**
+ * The component instance's usage line — "Used on 7 pages →", expanding to the files.
+ *
+ * Three things this deliberately does NOT do. It does not render when the host cannot answer
+ * (`usagesSupported()` is `capability.findReferences`): a confident "0" for a component used
+ * everywhere is worse than no line at all. It does not ask on every paint — `peekUsages` is
+ * side-effect-free and only a cold target starts a request, which re-projects once when it lands.
+ * And it does not swallow a failure: a failed count says so and offers Retry, because "we could not
+ * check" and "nothing uses this" are the two answers a user must never confuse.
+ */
+function usagesSection(tagName: string, componentPath: string | null): ContentSectionView | null {
+  const query = { tagName, ...(componentPath ? { path: componentPath } : {}) };
+  const state = peekUsages(query);
+  // ONE gate, and it is the peek itself: a host with no `findReferences` answers "unsupported"
+  // Synchronously, and the section does not exist.
+  if (state?.status === "unsupported") {
+    return null;
+  }
+  if (state === null) {
+    // Cold: ask once, and re-project when the answer arrives.
+    void loadUsages(query).then(() => renderPropertiesPanel());
+  }
+
+  const rows: ContentRowView[] = [];
+  let heading = "Usage";
+  if (state === null || state.status === "pending") {
+    rows.push(noteRow("usage|pending", "Counting references…"));
+  } else if (state.status === "failed") {
+    heading = "Usage · unknown";
+    rows.push(
+      noteRow(
+        "usage|failed",
+        `References could not be counted: ${state.message}. This is not the same as “unused”.`,
+      ),
+      actionRow("usage|retry", "retryUsages", "Retry", () => {
+        void retryUsages(query).then(() => renderPropertiesPanel());
+      }),
+    );
+  } else {
+    const files = usageFiles(state.result);
+    heading = usageHeadline(state.result);
+    if (files.length === 0) {
+      rows.push(noteRow("usage|none", `Nothing else in this project places <${tagName}> yet.`));
+    } else {
+      for (const file of files) {
+        const row = blankRow(`usage|${file.path}`, file.path, file.path);
+        row.shape = "file";
+        row.text = file.path;
+        row.detail = String(file.count);
+        row.title = file.refs.map((r) => `${r.refType} ${r.ref} ×${r.count}`).join(", ");
+        rows.push(withPlan(row, { debounceMs: 0, openPath: file.path }));
+      }
+    }
+  }
+  return sectionView(
+    USAGES_SECTION,
+    heading,
+    isInspectorSectionOpen(USAGES_SECTION, false),
+    rows,
+    0,
+  );
+}
+
+// ─── The two rows that are not fields ────────────────────────────────────────
+
+function noteRow(key: string, text: string): ContentRowView {
+  const row = blankRow(key, key, "");
+  row.shape = "note";
+  row.text = text;
+  plans.set(key, { debounceMs: 0 });
+  return row;
+}
+
+function actionRow(key: string, prop: string, text: string, run: () => void): ContentRowView {
+  const row = blankRow(key, prop, text);
+  row.shape = "action";
+  row.text = text;
+  return withPlan(row, { action: run, debounceMs: 0 });
+}
+
+// ─── Commands ─────────────────────────────────────────────────────────────────
+
+/** The Inspector's section verb. **This is the setter that retires `inspector.toggleSection`.** */
 export function inspectorCommands(): AnyCommand[] {
   return [
     {
@@ -1540,7 +1994,7 @@ export function inspectorCommands(): AnyCommand[] {
         const componentPath = componentRegistry.find((c) => c.tagName === tagName)?.path ?? null;
         setInspectorSection(USAGES_SECTION, true);
         void loadUsages({ tagName, ...(componentPath ? { path: componentPath } : {}) }).then(() =>
-          renderOnly("rightPanel"),
+          renderPropertiesPanel(),
         );
       },
       title: "Find Usages",
@@ -1567,11 +2021,7 @@ function componentSelectionTag(): string | null {
   return tagName.includes("-") ? tagName : null;
 }
 
-/**
- * Register the Inspector's section verb.
- *
- * @param {CommandRegistry} registry
- */
+/** Register the Inspector's section verb. */
 export function registerInspectorCommands(registry: CommandRegistry): void {
   registry.registerAll(inspectorCommands());
 }

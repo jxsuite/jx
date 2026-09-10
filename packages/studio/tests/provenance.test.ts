@@ -3,11 +3,9 @@ import { describe, expect, test } from "bun:test";
 import { html } from "lit-html";
 import {
   countProvenance,
-  hasProvenance,
   provenanceSummaryText,
   provenanceTitle,
   renderProvenanceChip,
-  renderProvenanceDots,
 } from "../src/panels/provenance";
 import type { FieldProvenance, ProvenanceState } from "../src/panels/provenance";
 
@@ -78,8 +76,11 @@ describe("counting", () => {
 
   test("tallies the three informative states and ignores defaults", () => {
     expect(countProvenance(states)).toEqual({ bound: 1, inherited: 1, mixed: 0, set: 2 });
-    expect(hasProvenance(countProvenance(states))).toBe(true);
-    expect(hasProvenance(countProvenance(["default", "default"]))).toBe(false);
+    // A tally with nothing informative in it says so, which is what the heading it feeds draws
+    // Instead of a row of dots. `hasProvenance` used to answer this for a lit helper that no longer
+    // Exists: the Style tab's section heading is a document (`surfaces/style-panel.json`) and
+    // Projects the marks and the sentence, so the sentence IS the emptiness test.
+    expect(provenanceSummaryText(countProvenance(["default", "default"]))).toBe("nothing set");
   });
 
   test("reads the tally as a sentence", () => {
@@ -87,48 +88,5 @@ describe("counting", () => {
       "2 set here · 1 inherited · 1 bound",
     );
     expect(provenanceSummaryText(countProvenance(["default"]))).toBe("nothing set");
-  });
-});
-
-describe("renderProvenanceDots", () => {
-  test("nothing to say renders nothing", async () => {
-    const c = await renderInto(
-      html`${renderProvenanceDots({ bound: 0, inherited: 0, mixed: 0, set: 0 })}`,
-    );
-    expect(c.querySelector(".provenance-dots")).toBeNull();
-  });
-
-  test("one dot per informative state, with the tally as the accessible name", async () => {
-    const c = await renderInto(
-      html`${renderProvenanceDots({ bound: 1, inherited: 2, mixed: 0, set: 3 })}`,
-    );
-    const dots = c.querySelector(".provenance-dots")!;
-    expect(dots.getAttribute("aria-label")).toBe("3 set here · 2 inherited · 1 bound");
-    expect(dots.querySelectorAll(".provenance-chip").length).toBe(3);
-    expect(dots.querySelector(".provenance-chip--inherited")!.classList.contains("set-dot")).toBe(
-      true,
-    );
-  });
-
-  test("the set dot keeps the clear-all handler and its own tooltip", async () => {
-    let cleared = 0;
-    const c = await renderInto(
-      html`${renderProvenanceDots(
-        { bound: 0, inherited: 0, mixed: 0, set: 2 },
-        { clearTitle: "Clear all spacing properties", onClearSet: () => (cleared += 1) },
-      )}`,
-    );
-    const dot = c.querySelector(".provenance-chip--set")!;
-    expect(dot.getAttribute("title")).toBe("Clear all spacing properties");
-    dot.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
-    expect(cleared).toBe(1);
-  });
-
-  test("with no clear handler the set dot is inert rather than a lie", async () => {
-    const c = await renderInto(
-      html`${renderProvenanceDots({ bound: 0, inherited: 1, mixed: 0, set: 1 })}`,
-    );
-    const dot = c.querySelector(".provenance-chip--set")!;
-    expect(dot.getAttribute("title")).toBe("1 set here · 1 inherited");
   });
 });

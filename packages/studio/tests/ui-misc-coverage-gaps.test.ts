@@ -1,8 +1,6 @@
 /**
  * Coverage-gap tests for scattered UI/support modules:
  *
- * - Form-controls: schema-builder handler guards when the underlying value changed between the render
- *   and the interaction (stale field cards).
  * - Value-selector: the textfield click-containment arrow.
  * - Jxsuite-update: the non-semver dev-build bailout and the missing-capability bailout.
  * - Page-params: the dev-proxy fetch fallback for ContentCollection resolution, extensions without
@@ -10,154 +8,15 @@
  */
 import { installMockPlatform } from "./harness";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { html, render } from "lit-html";
-import { getFormControl } from "../src/ui/schema-form";
-import { resetFormControlUiState } from "../src/ui/form-controls";
 import { JxValueSelector } from "../src/ui/value-selector";
 import { applyJxsuiteUpdate, checkJxsuiteUpdate } from "../src/packages/jxsuite-update";
 import { invalidateParamValues, loadParamValues, resolveParamBoundState } from "../src/page-params";
 import { refreshFormats, setExtensions } from "../src/format/format-host";
-import type { SchemaFormContext } from "../src/ui/schema-form";
 
 const realFetch = globalThis.fetch;
 
 afterEach(() => {
   globalThis.fetch = realFetch;
-});
-
-// ─── Schema-builder stale-card guards ────────────────────────────────────────
-
-describe("schema-builder stale-card guards", () => {
-  type ValueEl = HTMLElement & { value: string };
-
-  const contentTypesCtx: SchemaFormContext = {
-    resolvePointer: (ptr) => (ptr === "#/$context/content" ? { page: {}, post: {} } : undefined),
-  };
-
-  function commitValue(el: Element, value: string): void {
-    (el as ValueEl).value = value;
-    el.dispatchEvent(new Event("change", { bubbles: true }));
-  }
-
-  interface BuilderSchemaValue {
-    properties: Record<string, Record<string, unknown>>;
-    required: string[];
-    type: string;
-  }
-
-  function mountStale(): { container: HTMLElement; patches: unknown[] } {
-    resetFormControlUiState();
-    const control = getFormControl("schema-builder")!;
-    const value: BuilderSchemaValue = {
-      properties: {
-        ghost: { type: "string" },
-        meta: {
-          properties: { child: { type: "string" } },
-          required: ["child"],
-          type: "object",
-        },
-        target: { $ref: "#/content/page" },
-      },
-      required: [],
-      type: "object",
-    };
-    const patches: unknown[] = [];
-    const container = document.createElement("div");
-    render(
-      html`${control({
-        ctx: contentTypesCtx,
-        key: "schema",
-        onChange: (v: unknown) => patches.push(v),
-        schema: { format: "json-schema", type: "object" },
-        value,
-      })}`,
-      container,
-    );
-    // The value the handlers closed over changes underneath them (an external edit landing
-    // Between render and interaction) — every handler must guard, not crash.
-    delete value.properties.ghost;
-    delete value.properties.meta;
-    delete value.properties.target;
-    return { container, patches };
-  }
-
-  function card(container: HTMLElement, fieldName: string): HTMLElement {
-    const input = container.querySelector(`.schema-field-name-input[value="${fieldName}"]`);
-    return input?.closest(".schema-field-card") as HTMLElement;
-  }
-
-  function pickerIn(scope: HTMLElement, label: string): ValueEl {
-    return scope.querySelector(`sp-picker[label="${label}"]`) as ValueEl;
-  }
-
-  const emptySchema = { properties: {}, required: [], type: "object" };
-
-  test("type, format, and reference-target changes on vanished fields are no-ops", () => {
-    const { container, patches } = mountStale();
-    commitValue(pickerIn(card(container, "ghost"), "Type"), "number");
-    commitValue(pickerIn(card(container, "ghost"), "Format"), "date");
-    commitValue(pickerIn(card(container, "target"), "Target"), "post");
-    expect(patches).toEqual([emptySchema, emptySchema, emptySchema]);
-  });
-
-  test("nested operations on a vanished parent are no-ops", () => {
-    const { container, patches } = mountStale();
-    const nested = card(container, "meta").querySelector(".schema-field-nested") as HTMLElement;
-    const childCard = nested
-      .querySelector('.schema-field-name-input[value="child"]')!
-      .closest(".schema-field-card") as HTMLElement;
-
-    commitValue(childCard.querySelector(".schema-field-name-input")!, "renamed");
-    commitValue(pickerIn(childCard, "Type"), "number");
-    commitValue(pickerIn(childCard, "Format"), "image");
-    childCard.querySelector("sp-switch")!.dispatchEvent(new Event("change", { bubbles: true }));
-    childCard
-      .querySelector('[title="Delete field"]')!
-      .dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
-
-    // Nested add on the vanished parent
-    const addName = nested.querySelector(".schema-nested-add-name") as ValueEl;
-    addName.value = "orphan";
-    addName.dispatchEvent(
-      new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "Enter" }),
-    );
-
-    expect(patches).toEqual([
-      emptySchema,
-      emptySchema,
-      emptySchema,
-      emptySchema,
-      emptySchema,
-      emptySchema,
-    ]);
-  });
-
-  test("renames to a taken or unusable name are no-ops", () => {
-    resetFormControlUiState();
-    const control = getFormControl("schema-builder")!;
-    const value = {
-      properties: { first: { type: "string" }, second: { type: "string" } },
-      required: ["first"],
-      type: "object",
-    };
-    const patches: unknown[] = [];
-    const container = document.createElement("div");
-    render(
-      html`${control({
-        ctx: contentTypesCtx,
-        key: "schema",
-        onChange: (v: unknown) => patches.push(v),
-        schema: { format: "json-schema", type: "object" },
-        value,
-      })}`,
-      container,
-    );
-    commitValue(card(container, "first").querySelector(".schema-field-name-input")!, "second");
-    commitValue(card(container, "second").querySelector(".schema-field-name-input")!, "$$$");
-    for (const patch of patches) {
-      expect(patch).toEqual(value);
-    }
-  });
 });
 
 // ─── Value selector ──────────────────────────────────────────────────────────

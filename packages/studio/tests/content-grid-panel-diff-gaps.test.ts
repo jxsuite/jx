@@ -50,7 +50,7 @@ const { activeTab, closeAllTabs, openTab, workspace } = await import("../src/wor
 const { createCommandRegistry } = await import("../src/commands/registry");
 const { makeContext } = await import("../src/commands/context");
 const { setActiveRegistry } = await import("../src/commands/active-registry");
-const { detachEntryPane, renderEntryMode, setEntryDraft } =
+const { detachEntryPane, entryPaneMounted, renderEntryMode, setEntryDraft } =
   await import("../src/content/entry-editor");
 const { getGridController } = await import("../src/grid/grid-controller");
 const {
@@ -123,13 +123,16 @@ describe("the entry editor's way out of a document with no schema", () => {
     }) as unknown as Tab;
     const el = host();
     renderEntryMode(surfaceOf(el), tab);
-    await flush();
+    /* The editor is a mounted document (`src/surfaces/entry-editor.json`): `mountSurface` settles
+       when it has rendered, and `jx-action-button` settles its own template one
+       `connectedCallback` after that. */
+    await flush(6);
     return el;
   }
 
   test("Content types… opens Project Settings AT the content section", async () => {
     const el = await mountNotAnEntry();
-    const button = el.querySelector("sp-action-button");
+    const button = el.querySelector('[part="content-types"]');
     expect(button?.textContent).toContain("Content types");
     expect(el.textContent).toContain("is not an entry of any content collection");
 
@@ -143,14 +146,14 @@ describe("the entry editor's way out of a document with no schema", () => {
   test("with no registry composed yet the button is inert rather than a crash", async () => {
     setActiveRegistry(null);
     const el = await mountNotAnEntry();
-    pointer(el.querySelector("sp-action-button")!, "click");
+    pointer(el.querySelector('[part="content-types"]')!, "click");
     expect(ran).toEqual([]);
   });
 
   test("that inertness is a no-op, not an exception the DOM swallowed", async () => {
     setActiveRegistry(null);
     const el = await mountNotAnEntry();
-    const button = el.querySelector("sp-action-button")!;
+    const button = el.querySelector('[part="content-types"]')!;
 
     // Happy-dom catches whatever a dispatched listener throws and re-raises it as an `error` event
     // On the window, so "nothing ran" and "it threw a TypeError" are the SAME observation from
@@ -181,7 +184,7 @@ describe("the entry editor's way out of a document with no schema", () => {
 
 describe("the entry form's repaints, and the pane that stops owning it", () => {
   /** A project with one JSON collection that has a draft axis, and a tab holding an entry of it. */
-  function mountEntry(): { el: HTMLElement; tab: Tab } {
+  async function mountEntry(): Promise<{ el: HTMLElement; tab: Tab }> {
     resetStudioState({
       projectConfig: {
         content: {
@@ -203,29 +206,32 @@ describe("the entry form's repaints, and the pane that stops owning it", () => {
     }) as unknown as Tab;
     const el = host();
     renderEntryMode(surfaceOf(el), tab);
+    await flush(8);
     return { el, tab };
   }
 
   test("a field commit repaints the form, and detaching the pane ends that for good", async () => {
-    const { el, tab } = mountEntry();
-    expect(el.querySelector(".entry-editor-collection")?.textContent).toContain("notes");
-    expect(el.querySelector(".entry-editor-note")).toBeNull();
+    const { el, tab } = await mountEntry();
+    expect(el.querySelector('[part="collection"]')?.textContent).toContain("notes");
+    expect(el.querySelector('[part="note"]')).toBeNull();
 
     // The form's effect owns the repaint: nothing calls `draw()` after a commit, the entry's own
     // Fields do. Inverting the effect's `activeIn(paneId) !== panel` guard blanks the pane on the
     // FIRST render, so both this line and the one above it fail.
     setEntryDraft(tab, true);
-    await flush();
-    expect(el.querySelector(".entry-editor-note")?.textContent).toContain("Marked a draft");
-    expect(el.querySelector(".entry-draft-switch")).not.toBeNull();
+    await flush(4);
+    expect(el.querySelector('[part="note"]')?.textContent).toContain("Marked a draft");
+    expect(el.querySelector('[part="draft"]')).not.toBeNull();
 
     detachEntryPane("primary");
     setEntryDraft(tab, false);
-    await flush();
-    // Frozen exactly as the pane left it. A detached form is not merely skipped when it repaints —
-    // Its scope is stopped, so it never repaints at all, which is why the effect's own guard cannot
-    // Be reached from here: an effect that has been stopped is not re-run to see it.
-    expect(el.querySelector(".entry-editor-note")).not.toBeNull();
+    await flush(4);
+    /* The pane has stopped owning a form at all. The lit version left its markup behind and this
+       line asserted it was FROZEN; a mounted document is TAKEN DOWN by the detach, which states
+       the same contract more strongly — the scope is stopped, so the commit above repaints
+       nothing, and there is nothing left in the stage for it to repaint. */
+    expect(el.querySelector('[part="entry"]')).toBeNull();
+    expect(entryPaneMounted("primary", tab)).toBe(false);
   });
 });
 

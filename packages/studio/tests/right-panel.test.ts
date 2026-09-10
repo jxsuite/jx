@@ -200,7 +200,15 @@ describe("the layout selection", () => {
     await flush(4);
 
     const body = visibleBodies()[0]!;
-    expect(body.querySelector('sp-accordion-item[label="Layout Element"]')).not.toBeNull();
+    /* The Content tab is a document now, so its sections are `jx-accordion-item`s addressed by the
+       key `inspector.setSection` uses — `label` is a property on the kit element rather than an
+       attribute a selector can match, which is why this reads the section by key and then its
+       heading. */
+    const layout = body.querySelector('[data-section="__layout"]') as
+      | (HTMLElement & { label?: string })
+      | null;
+    expect(layout).not.toBeNull();
+    expect(layout!.label).toBe("Layout Element");
     expect(body.textContent).toContain("<header>");
     expect(body.textContent).toContain("layouts/base.json");
   });
@@ -247,7 +255,7 @@ describe("the layout selection", () => {
 });
 
 describe("with no document open", () => {
-  test("the strip stays and the three document tabs teach what they need", async () => {
+  test("the strip stays, and the selected tab teaches what IT needs", async () => {
     closeAllTabs();
     mount(makeCtx() as never);
     render();
@@ -255,8 +263,18 @@ describe("with no document open", () => {
     // The strip does NOT vanish: the Assistant works with no document, so the dock has to stay
     // Navigable — which is why the containers are permanent now rather than rebuilt per render.
     expect(rightPanel.querySelector("sp-tabs")).not.toBeNull();
-    expect(rightPanel.querySelector(".empty-state-message")?.textContent).toBe(
-      "Open a page to inspect and style what you click.",
+    /* The dock's own "Open a page to inspect and style what you click" is gone with the last tab
+       body it rendered: all four tabs are mounted documents that keep themselves current, so each
+       draws the no-document state in ITS own words. That is the same contract stated one level
+       down — a dock with no file still says what to do — and it is asserted at the tab that says
+       it, which is what the Style tab's `[part="empty-message"]` is. */
+    setInspectorTab("style");
+    await flush(4);
+    // Scoped to the tab's own container: every tab's document is in the DOM at once (they are
+    // Shown and hidden rather than rebuilt), so an unscoped query finds whichever teaches first.
+    const styleBody = rightPanel.querySelector('[data-jx-region="inspector/tab:style"]')!;
+    expect(styleBody.querySelector('[part="empty-message"]')?.textContent).toBe(
+      "Open a page to style what you click.",
     );
   });
 

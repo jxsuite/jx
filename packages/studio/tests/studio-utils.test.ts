@@ -3,7 +3,6 @@ import { describe, expect, test } from "bun:test";
 import {
   abbreviateValue,
   attrLabel,
-  camelToKebab,
   camelToLabel,
   findContentTypeSchema,
   friendlyNameToVar,
@@ -13,30 +12,6 @@ import {
   propLabel,
   varDisplayName,
 } from "../src/utils/studio-utils";
-
-// ─── camelToKebab ────────────────────────────────────────────────────────────
-
-describe("camelToKebab", () => {
-  test("single word unchanged", () => {
-    expect(camelToKebab("color")).toBe("color");
-  });
-
-  test("converts camelCase", () => {
-    expect(camelToKebab("backgroundColor")).toBe("background-color");
-  });
-
-  test("multiple humps", () => {
-    expect(camelToKebab("marginTopLeft")).toBe("margin-top-left");
-  });
-
-  test("already kebab (no uppercase)", () => {
-    expect(camelToKebab("font-size")).toBe("font-size");
-  });
-
-  test("single char prefix", () => {
-    expect(camelToKebab("zIndex")).toBe("z-index");
-  });
-});
 
 // ─── camelToLabel ────────────────────────────────────────────────────────────
 

@@ -355,10 +355,25 @@ async function runSheet(root: string, fix: boolean, sheet: Sheet): Promise<boole
   return false;
 }
 
-if (import.meta.main) {
-  const ok = await run(ROOT, process.argv.includes("--fix"));
-  if (!ok) {
-    process.exit(1);
+/**
+ * The command line: compare or write, say so, and answer with an exit code.
+ *
+ * A function rather than five statements under `import.meta.main`, because that flag is false for
+ * every importer — so the half a person actually reads, the green line naming what matched, was the
+ * one half no test could reach. Everything but the exit itself lives here now.
+ *
+ * @param root The package directory
+ * @param argv The invocation, so `--fix` is an argument rather than an ambient fact
+ * @returns The process exit code: 0 when every sheet matches (or was just written), 1 on drift
+ */
+export async function main(root = ROOT, argv: readonly string[] = process.argv): Promise<number> {
+  if (!(await run(root, argv.includes("--fix")))) {
+    return 1;
   }
   console.log(`✓ ${SHEETS.map((sheet) => sheet.output).join(" and ")} match their sources.`);
+  return 0;
+}
+
+if (import.meta.main) {
+  process.exit(await main());
 }
