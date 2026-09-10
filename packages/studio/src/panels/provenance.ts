@@ -28,14 +28,15 @@
  * **One module, two cascades.** The Style tab reads provenance against the breakpoint / scheme /
  * site-token cascade; Component Props reads it against the component's declared defaults. Same
  * question, same words, same chip — so the two surfaces cannot drift into two vocabularies for one
- * idea. The chip's CSS lives in `styles/inspector.css` beside `.set-dot`, which the `set` state
- * reuses outright: a 6px accent dot that clears the value on click is exactly what the set state
- * has always been, and every stylesheet rule and test that addresses `.set-dot` keeps addressing
- * the same thing.
+ * idea.
+ *
+ * **This module is the vocabulary, not the drawing.** It used to hold the chip's lit template as
+ * well, and the `.provenance-chip*` / `.set-dot` rules in `styles/inspector.css` were what styled
+ * it. Both cascades are documents now and each draws its own `[part="provenance-chip"]` from the
+ * words below, so what is left here is the ANSWER — which state a value is in, what the chip reads,
+ * what its tooltip says, and how a section tallies a group of them — and nothing about how it
+ * looks. That is the split the header above always described; it is now the whole file.
  */
-
-import { html, nothing } from "lit-html";
-import { classMap } from "lit-html/directives/class-map.js";
 
 /** The states of §6.2 (four) plus §6.5's `mixed`, in the order the table lists them. */
 export type ProvenanceState = "set" | "inherited" | "default" | "bound" | "mixed";
@@ -112,48 +113,23 @@ export function provenanceTitle(prop: string, p: FieldProvenance): string {
   return `${lead} — ${prop} falls back to the browser default`;
 }
 
-/**
- * The provenance chip.
+/*
+ * `renderProvenanceChip` was here, and it is GONE rather than converted.
  *
- * `default` renders **nothing**, and that is the ghost: a dot on every unset row is 138 dots on the
- * Style tab and a uniform grey field on Content, which says less than silence. `.set-dot`'s own
- * documented rule already reads "only show when the property is explicitly set" (ui-guidelines
- * §4.2) — this keeps it, and gives the two states that were previously indistinguishable from
- * absence a chip of their own.
+ * It drew the chip as a lit template, and its only caller was `ui/field-row.ts`, whose only caller
+ * was `ui/expression-editor.ts` — a document now, like the Style tab and Component Props before it.
+ * So the last reader of the template went with that conversion and the function was three lit
+ * branches nothing could reach.
  *
- * @param {string} prop — the field key, used in the derived tooltip.
- * @param {FieldProvenance} p
- * @returns {import("lit-html").TemplateResult | typeof nothing}
+ * **What it stood for did not go with it.** The chip is drawn by the surfaces that own the fields:
+ * `surfaces/style-panel.json` and `surfaces/properties-panel.json` each draw a
+ * `[part="provenance-chip"]` from the words below, which is why {@link provenanceText} and
+ * {@link provenanceTitle} are exported and why they are still the ONE place either sentence is
+ * written. The two decisions the template carried are theirs now and are stated in their own
+ * documents: `default` draws nothing, because a dot on every unset row is 138 dots on the Style tab
+ * and says less than silence; and a chip that acts is a `button` rather than a 6px circle, because
+ * a circle that clears a property was reachable by mouse alone.
  */
-export function renderProvenanceChip(prop: string, p: FieldProvenance) {
-  if (p.state === "default") {
-    return nothing;
-  }
-  const text = provenanceText(p);
-  const title = provenanceTitle(prop, p);
-  const isDot = p.state === "set";
-  const classes = classMap({
-    "provenance-chip": true,
-    [`provenance-chip--${p.state}`]: true,
-    // The set state reuses `.set-dot`'s geometry — the chip is a generalisation of the dot, not a
-    // Replacement for it, and a 6px circle is not a button.
-    "set-dot": isDot,
-  });
-  const { onClick } = p;
-  if (!onClick) {
-    return html`<span class=${classes} title=${title}>${text}</span>`;
-  }
-  const activate = (e: Event) => {
-    e.stopPropagation();
-    e.preventDefault();
-    onClick();
-  };
-  return isDot
-    ? html`<span class=${classes} title=${title} @click=${activate}>${text}</span>`
-    : html`<button type="button" class=${classes} title=${title} @click=${activate}>
-        ${text}
-      </button>`;
-}
 
 // ─── Section summaries ────────────────────────────────────────────────────────
 

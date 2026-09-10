@@ -22,6 +22,7 @@ import {
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { PRIMARY_PANE, activeTab, closeAllTabs } from "../src/workspace/workspace";
 import { attachJumpBarHost, renderJumpBar, unmountJumpBar } from "../src/panels/jump-bar";
+import { PANE_SELECTOR } from "../src/surfaces/pane-grid";
 import { seoCommands } from "../src/panels/seo-modal";
 import { createCommandRegistry } from "../src/commands/registry";
 import { makeContext } from "../src/commands/context";
@@ -47,13 +48,15 @@ describe("attachJumpBarHost", () => {
   /**
    * A host inside a pane cell, which is where the grid puts it.
    *
-   * The offset variable is written on the host's `.pane` ancestor when it has one, so a bar that is
-   * taken away has to give its own cell's band back — not the root's, which the other pane is
-   * reading.
+   * The offset variable is written on the host's CELL when it has one, so a bar that is taken away
+   * has to give its own cell's band back — not the root's, which the other pane is reading. The
+   * cell is `surfaces/pane-grid.json`'s `[part="pane"]` and carries no class, so the fixture builds
+   * one the same way; `jb-pane` is only this suite's own handle for cleaning up.
    */
   function makeHost(id: string): HTMLElement {
     const pane = document.createElement("div");
-    pane.className = "pane jb-pane";
+    pane.setAttribute("part", "pane");
+    pane.className = "jb-pane";
     const el = document.createElement("div");
     el.id = id;
     pane.append(el);
@@ -62,7 +65,7 @@ describe("attachJumpBarHost", () => {
   }
 
   function bandOf(el: HTMLElement): string {
-    return el.closest<HTMLElement>(".pane")!.style.getPropertyValue("--jump-bar-h");
+    return el.closest<HTMLElement>(PANE_SELECTOR)!.style.getPropertyValue("--jump-bar-h");
   }
 
   /* Parts, not classes: the bar is `src/surfaces/jump-bar.json` now, and a document emits none. */

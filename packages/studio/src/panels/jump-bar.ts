@@ -60,6 +60,7 @@ import { primarySelection } from "../tabs/selection";
 import { activeRegistry } from "../commands/active-registry";
 import { openMenu } from "../surfaces/menu";
 import { mountJumpBarSurface } from "../surfaces/jump-bar";
+import { PANE_SELECTOR } from "../surfaces/pane-grid";
 import { rectOf } from "../utils/geometry";
 import type { CommandArgs, CommandRegistry } from "../commands/registry";
 import type { FormulaEditDef, FunctionEditDef } from "../types";
@@ -467,7 +468,7 @@ function openChoices(segment: JumpSegment, anchor: HTMLElement | null): void {
  * @param {HTMLElement | null} [host] The bar's host. Its cell takes the variable when it has one.
  */
 export function applyJumpBarOffset(height: number, host?: HTMLElement | null): void {
-  const target = host?.closest<HTMLElement>(".pane") ?? document.documentElement;
+  const target = host?.closest<HTMLElement>(PANE_SELECTOR) ?? document.documentElement;
   target.style.setProperty(JUMP_BAR_VAR, `${height}px`);
 }
 

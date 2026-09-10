@@ -53,7 +53,7 @@ import { getPanel, isPanelVisible, listPanels, panelContext } from "./panel-regi
 import { registerActivityPanel } from "./activity-panel";
 import { registerProblemsPanel } from "./problems-panel";
 import { logicTarget, registerLogicPanel, revealLogicPanel } from "./formula-workspace";
-import { renderEmptyState } from "./empty-state";
+import { emptyState } from "../surfaces/empty-state";
 import { mountBottomDockSurface } from "../surfaces/bottom-dock";
 import type { BottomDockHandle, BottomDockValues } from "../surfaces/bottom-dock";
 import type { CommandContext } from "../commands/context";
@@ -299,7 +299,7 @@ function paintBody(): void {
   litRender(
     active
       ? active.render(bottomContext())
-      : renderEmptyState({ message: "Nothing to show here yet." }),
+      : emptyState(host, { message: "Nothing to show here yet." }),
     host,
   );
   runAfterRender(host);

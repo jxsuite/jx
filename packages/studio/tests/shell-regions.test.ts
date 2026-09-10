@@ -67,15 +67,20 @@ describe("the frame's own regions, through mountShell", () => {
 
   test("the pane's ids come from its CELL, not from a `<div id>` in the table", async () => {
     const { mountShell, unmountShell } = await import("../src/shell");
+    const { paneGridReady } = await import("../src/panels/pane-grid");
     mountShell();
+    /* Awaited, exactly as `studio.ts` awaits it: the grid is a Jx document, so `mountShell()`
+       STARTING it is not the same event as the cells existing. */
+    await paneGridReady();
     try {
       /* No `.id` to assert against, and that is the change: `pane.primary` named `#canvas-wrap`
          and `pane.primary/tabs` named `#tab-strip`, two application-grid siblings that could only
          ever be one pane's. Both are derived from the pane id now, so the assertion is about the
-         SHAPE the grid built. */
+         SHAPE the grid built — asserted through `part`, because the grid is a document and emits
+         no class for either box. */
       const stage = resolveRegion("pane.primary");
-      expect(stage?.classList.contains("pane-stage")).toBe(true);
-      expect(resolveRegion("pane.primary/tabs")?.classList.contains("pane-strip")).toBe(true);
+      expect(stage?.getAttribute("part")).toBe("pane-stage");
+      expect(resolveRegion("pane.primary/tabs")?.getAttribute("part")).toBe("strip");
       // `pane` is the primary pane, so an id minted before the second pane still means what it did.
       expect(resolveRegion("pane")).toBe(stage);
       // And the cell is inside the grid host, not a sibling of it.
@@ -348,27 +353,50 @@ describe("overlay slots stamp themselves", () => {
     expect(resolveRegion("overlay.dialog:settings")).toBeNull();
   });
 
-  test("a popover is `overlay.menu`, and the topmost one wins", async () => {
-    const { initLayers, renderPopover } = await import("../src/ui/layers");
+  test("two overlays of a kind stack under one id, and the topmost one wins", async () => {
+    /* The contract `resolveAllRegions` was written for: an id that addresses several elements is
+       answerable, and `resolve` takes the LAST — the one on top. It is asserted over DIALOGS now
+       rather than over popovers, because every popover Studio opens is a named slot
+       (`getLayerSlot("popover", id)` under `surfaces/menu.ts`) and the bare `overlay.menu` id has
+       had no producer since the lit `renderPopover` went.
+
+       It used to stack two `showDialog` bodies, which is also gone: the last bespoke-body dialog
+       converted and `ui/layers.ts` no longer has that entry point. Two confirms are the same shape
+       of question and a shape the app really produces — a confirm raised from inside a dialog is
+       exactly how two land in the layer at once. */
+    const { initLayers, showConfirmDialog } = await import("../src/ui/layers");
     initLayers();
-    const first = renderPopover(html`<p>one</p>`, { dismissOnOutsideClick: false });
-    const second = renderPopover(html`<p>two</p>`, { dismissOnOutsideClick: false });
-    expect(resolveRegion("overlay.menu")).toBe(second.host);
-    second.dismiss();
-    expect(resolveRegion("overlay.menu")).toBe(first.host);
-    first.dismiss();
+    const first = showConfirmDialog("First", "one");
+    await flush();
+    const second = showConfirmDialog("Second", "two");
+    await flush();
+    const answer = (headline: string) => {
+      const dialogs = [...document.querySelectorAll("#layer-dialog jx-dialog")];
+      const match = dialogs.find((d) => d.getAttribute("headline") === headline)!;
+      match.dispatchEvent(new Event("cancel"));
+    };
+    expect(
+      resolveRegion("overlay.dialog")?.querySelector("jx-dialog")?.getAttribute("headline"),
+    ).toBe("Second");
+
+    answer("Second");
+    await second;
+    expect(
+      resolveRegion("overlay.dialog")?.querySelector("jx-dialog")?.getAttribute("headline"),
+    ).toBe("First");
+
+    answer("First");
+    await first;
+    expect(resolveRegion("overlay.dialog")).toBeNull();
   });
 
   test("a dialog slot stamps `overlay.dialog` while it is up", async () => {
-    const { initLayers, showDialog } = await import("../src/ui/layers");
+    const { initLayers, showConfirmDialog } = await import("../src/ui/layers");
     initLayers();
-    let done: ((v: string) => void) | null = null;
-    const pending = showDialog<string>((resolve) => {
-      done = resolve;
-      return html`<p>asking</p>`;
-    });
+    const pending = showConfirmDialog("Asking", "well?");
+    await flush();
     expect(resolveRegion("overlay.dialog")).not.toBeNull();
-    done!("ok");
+    document.querySelector("#layer-dialog jx-dialog")!.dispatchEvent(new Event("cancel"));
     await pending;
     expect(resolveRegion("overlay.dialog")).toBeNull();
   });
@@ -380,7 +408,10 @@ describe("focus regions resolve against the live shell", () => {
   test("every value shell.ts declares points at a real node once mounted", async () => {
     const { mountShell, unmountShell } = await import("../src/shell");
     const { REGION_FOR_FOCUS } = await import("../src/ui/regions");
+    const { paneGridReady } = await import("../src/panels/pane-grid");
     mountShell();
+    // `pane` resolves onto a cell the grid's document draws, so the mount has to have settled.
+    await paneGridReady();
     try {
       // `dock` is the Bottom dock, which does not exist yet — the id is minted, the node is not.
       for (const focus of ["rail", "navigator", "pane", "inspector", "status"] as const) {

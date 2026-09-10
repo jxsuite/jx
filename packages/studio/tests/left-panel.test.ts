@@ -277,7 +277,7 @@ describe("left panel — document tabs", () => {
     shell.leftTab = "state";
     await mountWith();
     const body = leftPanel.querySelector('[part="panel-body"]') as HTMLElement;
-    expect(body.querySelector(".empty-state-message")?.textContent).toBe(
+    expect(body.querySelector('[part="empty-message"]')?.textContent).toBe(
       'No Navigator panel is registered as "state".',
     );
   });
@@ -287,7 +287,7 @@ describe("left panel — document tabs", () => {
     await mountWith();
     const body = leftPanel.querySelector('[part="panel-body"]') as HTMLElement;
     expect(body).not.toBeNull();
-    expect(body.querySelector(".empty-state-message")?.textContent).toBe(
+    expect(body.querySelector('[part="empty-message"]')?.textContent).toBe(
       'No Navigator panel is registered as "bogus".',
     );
   });
@@ -297,10 +297,10 @@ describe("left panel — document tabs", () => {
     shell.leftTab = "layers";
     await mountWith();
     const body = leftPanel.querySelector('[part="panel-body"]') as HTMLElement;
-    expect(body.querySelector(".empty-state-message")?.textContent).toBe(
+    expect(body.querySelector('[part="empty-message"]')?.textContent).toBe(
       "Open a page to see the elements it is built from.",
     );
-    expect((body.querySelector(".empty-state-action") as HTMLElement).textContent?.trim()).toBe(
+    expect((body.querySelector('[part="empty-action"]') as HTMLElement).textContent?.trim()).toBe(
       "Open a page…",
     );
     expect(ctx.registerLayersDnD).not.toHaveBeenCalled();
@@ -312,7 +312,7 @@ describe("left panel — document tabs", () => {
     for (const tabName of ["layers", "packages", "data", "page"]) {
       shell.leftTab = tabName;
       await mountWith();
-      const message = leftPanel.querySelector(".empty-state-message")?.textContent ?? "";
+      const message = leftPanel.querySelector('[part="empty-message"]')?.textContent ?? "";
       expect(message.startsWith("Open a page to")).toBe(true);
       seen.add(message);
       unmount();

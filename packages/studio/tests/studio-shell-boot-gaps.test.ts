@@ -178,15 +178,16 @@ test("boot without a platform registers the dev-server PAL", () => {
   expect(getPlatform().id).toBe("devserver");
 });
 
-test("the idle css-props filler is a no-op once the datalist is gone", () => {
-  // The datalist rendered at import time; the filler was queued but has not run yet.
-  expect(idleCallbacks).toHaveLength(1);
-  const dl = document.querySelector("#css-props")!;
-  expect(dl).not.toBeNull();
-  dl.remove();
-  expect(() => idleCallbacks[0]!()).not.toThrow();
-  // Nothing re-created it — the filler bailed on the missing datalist.
+test("boot builds no datalist, and queues no idle work to fill one", () => {
+  /* This asserted that the `#css-props` filler bailed gracefully when its datalist was missing. Its
+     subject is gone: BOTH datalists were dead rather than convertible — a datalist is reached only
+     through `list="<id>"` on a control, and nothing has carried one since the Inspector's inputs
+     became documents, so boot was painting six hundred options into a hidden host for nothing to
+     read. The assertion now pins the DELETION, which is the thing a regression would undo: no
+     host, and no frame of idle work spent filling one. */
   expect(document.querySelector("#css-props")).toBeNull();
+  expect(document.querySelector("#tag-names")).toBeNull();
+  expect(idleCallbacks).toHaveLength(0);
 });
 
 test("the pane-context bar is wired to the three callbacks it still takes", async () => {

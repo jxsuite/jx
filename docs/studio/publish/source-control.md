@@ -11,6 +11,7 @@ code:
   - packages/studio/src/panels/git-diff-open.ts
   - packages/studio/src/canvas/diff-marks.ts
   - packages/studio/src/canvas/diff-toolbar.ts
+  - packages/studio/src/surfaces/diff-toolbar.ts
   - packages/studio/src/canvas/diff-view.ts
 ---
 

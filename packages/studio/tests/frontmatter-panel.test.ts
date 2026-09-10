@@ -95,16 +95,30 @@ void mock.module("../src/grid/sources/content-source", () => ({
   },
 }));
 
-const { attachDocumentHeaderHost, documentHeaderHost, hasDocumentHeader, mount, render, unmount } =
+const { attachDocumentHeaderHost, hasDocumentHeader, mount, render, unmount } =
   await import("../src/panels/frontmatter-panel");
 
-/** The node the card paints into — whatever the stage (here, the test) last handed over. */
+/**
+ * The node the card paints into, remembered by whoever handed it over — which in this file is the
+ * test, standing in for the stage.
+ *
+ * The module used to answer this itself. It no longer does, and it should not: the getter existed
+ * for lit's order-independent detach report, and a document states its placements instead. What the
+ * card is FOR is observable in the DOM, so that is what the assertions below read.
+ */
+let attached: HTMLElement | null = null;
+
+/** Hand the card a host (or take it away), the way the stage does. */
+function attach(el: HTMLElement | null): void {
+  attached = el;
+  attachDocumentHeaderHost("primary", el);
+}
+
 function host(): HTMLElement {
-  const el = documentHeaderHost("primary");
-  if (!el) {
+  if (!attached) {
     throw new Error("no Document Header host is attached");
   }
-  return el;
+  return attached;
 }
 
 /** The card's root, or `null` when the document has no header to draw. */
@@ -138,8 +152,8 @@ function setShell(withPanelHost = true) {
     <div id="toolbar"></div>
     <div id="activity-bar"></div><div id="left-panel"></div>
     <div class="pane-stage" data-jx-region="pane.primary">
-      <div class="content-edit-canvas"><div class="content-edit-column">
-        <div class="doc-header-host in-column"></div>
+      <div part="edit-canvas"><div part="edit-column">
+        <div part="doc-header" data-placement="in-column"></div>
       </div></div>
     </div>
     <div id="right-panel"></div>
@@ -147,10 +161,7 @@ function setShell(withPanelHost = true) {
   </div>`;
   initShellRefs();
   registerPrimaryStage();
-  attachDocumentHeaderHost(
-    "primary",
-    withPanelHost ? document.querySelector<HTMLElement>(".doc-header-host") : null,
-  );
+  attach(withPanelHost ? document.querySelector<HTMLElement>('[part="doc-header"]') : null);
 }
 
 function setupContentTab(
@@ -292,7 +303,7 @@ describe("the three deleted gates", () => {
 
     setShell(false);
     mount();
-    expect(documentHeaderHost("primary")).toBeNull();
+    expect(document.querySelector('[part="doc-header"] [part="card"]')).toBeNull();
     render(); // Must not throw with no host bound
   });
 });
@@ -303,23 +314,26 @@ describe("the stage owns the host", () => {
     await mountAndFlush();
     expect(card()).toBeTruthy();
 
+    const first = host();
     const second = document.createElement("div");
-    second.className = "doc-header-host pinned";
+    second.setAttribute("part", "doc-header");
+    second.dataset.placement = "pinned";
     document.querySelector(".pane-stage")!.append(second);
-    attachDocumentHeaderHost("primary", second);
+    attach(second);
     await flush(8);
 
-    expect(documentHeaderHost("primary")).toBe(second);
+    // The card MOVED: one node holds it and the other does not. Read off the DOM rather than off a
+    // Getter, because where the card is drawing is the fact anybody downstream depends on.
     expect(second.querySelector('[part="card"]')).toBeTruthy();
+    expect(first.querySelector('[part="card"]')).toBeNull();
   });
 
   test("re-attaching the SAME host is inert — the canvas re-renders far more often than it moves", async () => {
     setupContentTab({ title: "Hello" });
     await mountAndFlush();
     const el = host();
-    attachDocumentHeaderHost("primary", el);
+    attach(el);
     await flush(8);
-    expect(documentHeaderHost("primary")).toBe(el);
     expect(el.querySelectorAll('[part="card"]').length).toBe(1);
   });
 
@@ -353,9 +367,10 @@ describe("the stage owns the host", () => {
     expect(card()!.dataset.placement).toBe("in-column");
 
     const pinned = document.createElement("div");
-    pinned.className = "doc-header-host pinned";
+    pinned.setAttribute("part", "doc-header");
+    pinned.dataset.placement = "pinned";
     document.querySelector(".pane-stage")!.append(pinned);
-    attachDocumentHeaderHost("primary", pinned);
+    attach(pinned);
     await flush(8);
     expect(card()!.dataset.placement).toBe("pinned");
   });
@@ -838,7 +853,6 @@ describe("commits and reactivity", () => {
     const painted = host();
     expect(painted.querySelector('[part="card"]')).toBeTruthy();
     unmount();
-    expect(documentHeaderHost("primary")).toBeNull();
     expect(painted.querySelector('[part="card"]')).toBeNull();
     transactDoc(tab, (t: any) => mutateUpdateFrontmatter(t, "subtitle", "After"));
     await flush(8);

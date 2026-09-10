@@ -7,7 +7,7 @@
     "part": "form"
   },
   "style": {
-    "$description": "What `.style-row`, `.style-row-label`, `.style-row--invalid`, `.style-row-error`, `.style-row-error-count`, `.array-object-field`, `.array-object-row` and `.schema-param-editor` said in `styles/inspector.css`, keyed on `part` and re-pointed at the studio token layer. None of those rules is deleted from the stylesheet: `ui/field-row.ts` still draws the same row for eight inspector panels and `ui/expression-editor.ts` still draws the same array rows, both still lit, so this document carries its own copy until they convert. Every `--spectrum-font-size-*` reference is gone rather than renamed — those names resolve only inside `<sp-theme>`, and a document mounted in a settings pane or an entry editor is outside it, so each would silently have taken its hard-coded fallback.",
+    "$description": "What `.style-row`, `.style-row-label`, `.style-row--invalid`, `.style-row-error`, `.style-row-error-count`, `.array-object-field`, `.array-object-row` and `.schema-param-editor` said in `styles/inspector.css`, keyed on `part` and re-pointed at the studio token layer. Those rules are DEAD in the stylesheet now rather than shared: `ui/field-row.ts` drew the same row for the inspector panels and `ui/expression-editor.ts` the same array rows, and both converted, so this document's copy is the only emitter left. Every `--spectrum-font-size-*` reference is gone rather than renamed — those names resolve only inside `<sp-theme>`, and a document mounted in a settings pane or an entry editor is outside it, so each would silently have taken its hard-coded fallback.",
     "display": "contents",
     "& [part=\"field\"]": {
       "padding": "var(--jx-space-1) 0"
@@ -858,7 +858,7 @@
                                     }
                                   },
                                   "control": {
-                                    "$description": "A cell a registered control owns — a relationship to another collection is the one that reaches here. The document draws the empty host and nothing inside it; `ui/schema-form.ts` fills it, because the control registry's contract is still a lit template and an extension's control is its own surface rather than part of this one.",
+                                    "$description": "A cell a registered control owns — a relationship to another collection is the one that reaches here. The document draws the empty host and nothing inside it; `ui/schema-form.ts` mounts the control into it, by the same dispatch a FIELD host gets. An extension's control is its own surface rather than part of this one, and the seam between them is this empty node.",
                                     "tagName": "span",
                                     "attributes": {
                                       "part": "cell-control-host",
@@ -938,7 +938,7 @@
                     ]
                   },
                   "control": {
-                    "$description": "A field a registered control owns outright — `schema-builder`, `secret`, or the `reference` picker. The document draws the empty host and the flow renders the control into it: the registry's contract (specs/extensions.md §9.1) is a function returning a lit template, an extension's control is its own surface, and mounting a foreign surface into a host of its own is the same seam a lit caller uses to embed this one.",
+                    "$description": "A field a registered control owns outright — `schema-builder`, `secret`, or the `reference` picker. The document draws the empty host and the flow MOUNTS the control into it: the registry's contract (specs/extensions.md §9.1) is a control that owns a host, all three built-ins are documents of their own, and a document clears the host it is given — which is why this node is drawn empty and never written to twice.",
                     "tagName": "div",
                     "attributes": {
                       "part": "control-host",

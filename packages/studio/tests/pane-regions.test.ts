@@ -1,7 +1,6 @@
 import { flush, installMockPlatform, resetStudioState } from "./harness";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mountShellTree } from "../src/shell/tree";
-import { render as litRender } from "lit-html";
 import {
   REGION_ATTR,
   listRegions,
@@ -23,8 +22,7 @@ import * as paneGrid from "../src/panels/pane-grid";
 import * as paneContext from "../src/panels/pane-context";
 import * as frontmatter from "../src/panels/frontmatter-panel";
 import { closeSeoModal, openSeoModal } from "../src/panels/seo-modal";
-import { renderFieldRow } from "../src/ui/field-row";
-import { invalidateMediaCache, renderMediaPicker } from "../src/ui/media-picker";
+import { invalidateMediaCache, mountMediaPicker, unmountMediaPicker } from "../src/ui/media-picker";
 import { resetShellSurfaces } from "../src/shell";
 import {
   ALLOWED_ACTIVE_TAB_READS,
@@ -171,6 +169,7 @@ describe("uniqueness with two stages standing", () => {
   async function twoRealPanes() {
     await mountShellTree();
     paneGrid.mount();
+    await paneGrid.paneGridReady();
     openDocTab("regions-left", "pages/left.json");
     openDocTab("regions-right", "pages/right.json");
     expect(splitRight()?.id).toBe(SECONDARY_PANE);
@@ -183,10 +182,12 @@ describe("uniqueness with two stages standing", () => {
       if (paneId !== PRIMARY_PANE) {
         paneContext.attachPaneChromeHost(paneId, cell.chrome);
       }
-      /* Only if the stage's own render has not already handed the card a host. The canvas render
-         a new cell schedules mounts one for itself, and attaching a second is how a FIXTURE mints
-         the very ambiguity this file is here to detect. */
-      if (!frontmatter.documentHeaderHost(paneId)) {
+      /* Only if the stage's own render has not already drawn the card a host. The canvas render
+         a new cell schedules draws one for itself, and attaching a second is how a FIXTURE mints
+         the very ambiguity this file is here to detect. Read off the stage, because that is where
+         the host would be — `surfaces/canvas-stage.json` draws it, and the module that receives it
+         no longer answers questions about where it went. */
+      if (!cell.stage.querySelector('[part="doc-header"]')) {
         const card = document.createElement("div");
         cell.stage.append(card);
         frontmatter.attachDocumentHeaderHost(paneId, card);
@@ -245,13 +246,15 @@ describe("uniqueness with two stages standing", () => {
        media control that stamps an Inspector id is wrong from wherever it is drawn. So this asserts
        the property, not the old geometry: whatever media controls exist outside `#right-panel`,
        none is stamped. Search appearance is a document now, so its Browse controls are addressed by
-       `part` rather than by the picker's class — which is itself the point, since a document may
+       `part` rather than by the picker's class — and so is the STAGE they are counted inside — which is itself the point, since a document may
        not stamp an id the Inspector derives. The Document Header card is a document too now, so the
        two cards are counted by the region each stamps on itself rather than by a class. */
     await twoRealPanes();
     expect([...document.querySelectorAll('[data-jx-region$="/frontmatter"]')]).toHaveLength(2);
-    // The card's own pickers are gone; the ones that were there are in Search appearance now.
-    expect(document.querySelectorAll(".pane-stage .media-picker-browse")).toHaveLength(0);
+    // The card's own pickers are gone; the ones that were there are in Search appearance now. The
+    // Picker is a document, so the control is addressed by its `part` — the same handle the derived
+    // Region resolves through, which is what makes this assertion the one that matters.
+    expect(document.querySelectorAll('[part="pane-stage"] [part="browse"]')).toHaveLength(0);
 
     openSeoModal(activeTab.value!);
     await flush(12);
@@ -272,24 +275,51 @@ describe("uniqueness with two stages standing", () => {
 
   test("`inspector/field:<prop>/browse` is DERIVED, and finds the Inspector's own control", async () => {
     await twoRealPanes();
-    // The Inspector's row, built by the same two functions the properties panel uses.
     const inspector = document.querySelector("#right-panel") as HTMLElement;
-    litRender(
-      renderFieldRow({
-        hasValue: true,
-        label: "Image",
-        prop: "image",
-        widget: renderMediaPicker("image", "/hero.png", () => {}),
-      }),
-      inspector,
-    );
-    const own = inspector.querySelector<HTMLElement>(".media-picker-browse");
+    /* THE ROW IS WRITTEN OUT HERE, and that is a statement rather than a shortcut. It used to be
+       built by `ui/field-row.ts`'s `renderFieldRow`, which is gone: the Inspector's rows are
+       `surfaces/properties-panel.json` and `surfaces/style-panel.json` now, so there is no shared
+       function left that both this test and the app would go through. What the derivation actually
+       reads is two attributes — a `[data-prop]` row and a `[part="browse"]` control inside it — and
+       the pair below is exactly that, asserted against the documents themselves in the test after
+       this one so the hand-written shape cannot drift away from what the app emits.
+
+       The picker is a DOCUMENT, so the row draws an empty box and the picker is mounted into it —
+       the seam every caller uses now. */
+    const row = document.createElement("div");
+    row.dataset["prop"] = "image";
+    const pickerHost = document.createElement("div");
+    row.append(pickerHost);
+    inspector.append(row);
+    mountMediaPicker(pickerHost, "image", "/hero.png", () => {});
+    await flush();
+    const own = inspector.querySelector<HTMLElement>('[part="browse"]');
     expect(own).not.toBeNull();
     expect(resolveRegion("inspector/field:image/browse")).toBe(own);
     // The bare field id still answers with the row, exactly as it always has.
     expect(resolveRegion("inspector/field:image")?.dataset.prop).toBe("image");
     // A prop the Inspector is not showing resolves to nothing rather than to a card's control.
     expect(resolveRegion("inspector/field:icon/browse")).toBeNull();
+    unmountMediaPicker(pickerHost);
+    row.remove();
+  });
+
+  /*
+   * The other half of the test above: the two attributes the derivation reads are the two the
+   * Inspector's own documents emit. This is what the shared `renderFieldRow` used to guarantee by
+   * being the one producer — with the rows drawn by documents and the picker by another, the
+   * guarantee has to be stated, or a `part` rename would leave the derivation resolving to nothing
+   * with every test still green.
+   */
+  test("the two attributes it derives from are the ones the Inspector's documents emit", async () => {
+    const [properties, style, media] = await Promise.all([
+      Bun.file(new URL("../src/surfaces/properties-panel.json", import.meta.url)).text(),
+      Bun.file(new URL("../src/surfaces/style-panel.json", import.meta.url)).text(),
+      Bun.file(new URL("../src/surfaces/media-field.json", import.meta.url)).text(),
+    ]);
+    expect(properties).toContain('"data-prop"');
+    expect(style).toContain('"data-prop"');
+    expect(media).toContain('"part": "browse"');
   });
 });
 

@@ -65,6 +65,7 @@ import {
 } from "../workspace/pane-derive";
 import { openMenu } from "../surfaces/menu";
 import { emptyPaneContextView, mountPaneContextSurface } from "../surfaces/pane-context";
+import { PANE_SELECTOR } from "../surfaces/pane-grid";
 import { paneRegion } from "../ui/regions";
 import {
   fitToScreen,
@@ -307,7 +308,7 @@ export function unmount() {
  * @param {HTMLElement | null} [host] The bar's host. Its cell takes the variable when it has one.
  */
 export function applyPaneContextOffset(height: number, host?: HTMLElement | null): void {
-  const target = host?.closest<HTMLElement>(".pane") ?? document.documentElement;
+  const target = host?.closest<HTMLElement>(PANE_SELECTOR) ?? document.documentElement;
   target.style.setProperty(PANE_CONTEXT_VAR, `${height}px`);
 }
 

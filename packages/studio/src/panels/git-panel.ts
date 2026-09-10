@@ -22,10 +22,10 @@
  * menu `hidden` unconditionally and the two were fighting. `openMenu()` already owns roving focus,
  * light dismissal and Escape, so both the markup and the flag go.
  *
- * The third is the empty states. `panels/empty-state.ts` is a lit template a document cannot call,
- * so the three this panel used to render are drawn in the document — under the same §11 copy rules,
- * and, for the two that offer buttons, with the buttons still real. This was the last caller that
- * passed `EmptyStateAction.icon`, which is a `TemplateResult` of `sp-icon-*`.
+ * The third is the empty states. A document cannot call a lit helper, so the three this panel used
+ * to render are drawn in the document — under the same §11 copy rules, and, for the two that offer
+ * buttons, with the buttons still real. This was the last caller that passed
+ * `EmptyStateAction.icon`, a `TemplateResult` of `sp-icon-*`, and the field went with it.
  *
  * @docs studio/publish/source-control
  */

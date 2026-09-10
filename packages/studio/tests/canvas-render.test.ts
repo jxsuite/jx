@@ -92,7 +92,9 @@ const renderWelcome = mock((host: HTMLElement) => {
 const renderFunctionEditor = mock(() => {});
 const notified = mock((_message: string) => {});
 const overlaysRender = mock(() => {});
-const renderStylebookMode = mock((_surface: unknown, _helpers: unknown) => {});
+/* Async, because the real one is: the stage is a mounted document and the artboards land one
+   microtask after the view is written, so `renderCanvasImpl` chains its fit off the promise. */
+const renderStylebookMode = mock((_surface: unknown, _helpers: unknown) => Promise.resolve());
 const parseSourceForPathMock = mock(async (_path: string, _source: string) => ({
   document: { children: [{ tagName: "p", textContent: "parsed-md" }], tagName: "article" },
   format: MARKDOWN_FORMAT,
@@ -605,7 +607,7 @@ describe("tab close/reopen lifecycle", () => {
     setMode("edit");
     renderCanvas();
     await flush();
-    expect(stageEl().querySelector(".content-edit-column")).not.toBeNull();
+    expect(stageEl().querySelector('[part="edit-column"]')).not.toBeNull();
     // CanvasWrap now owns a Lit render part
     expect(litPart()).toBeDefined();
 
@@ -622,25 +624,25 @@ describe("tab close/reopen lifecycle", () => {
     setMode("edit");
     expect(() => renderCanvas()).not.toThrow();
     await flush();
-    expect(stageEl().querySelector(".content-edit-column")).not.toBeNull();
+    expect(stageEl().querySelector('[part="edit-column"]')).not.toBeNull();
   });
 
-  test("edit-mode column hugs a component definition (is-component) but fills for a page", async () => {
+  test("edit-mode column hugs a component definition (data-hug) but fills for a page", async () => {
     // A page root (plain div) → the column fills the viewport (document-like editing surface).
     openSyncedTab({ children: [{ tagName: "p", textContent: "Hi" }], tagName: "div" });
     setMode("edit");
     renderCanvas();
     await flush();
-    const pageColumn = stageEl().querySelector(".content-edit-column")!;
-    expect(pageColumn.classList.contains("is-component")).toBe(false);
+    const pageColumn = stageEl().querySelector('[part="edit-column"]')!;
+    expect((pageColumn as HTMLElement).dataset.hug).toBeUndefined();
 
     // A component-definition root (custom-element tag) → the column hugs its content.
     openSyncedTab({ children: [{ tagName: "h2", textContent: "Hi" }], tagName: "eer-cta" });
     setMode("edit");
     renderCanvas();
     await flush();
-    const compColumn = stageEl().querySelector(".content-edit-column")!;
-    expect(compColumn.classList.contains("is-component")).toBe(true);
+    const compColumn = stageEl().querySelector('[part="edit-column"]')!;
+    expect((compColumn as HTMLElement).dataset.hug).toBe("");
   });
 
   test("the edit column is as wide as the breakpoint the size switcher chose", async () => {
@@ -661,7 +663,7 @@ describe("tab close/reopen lifecycle", () => {
     } as never);
     setMode("edit");
     const columnWidth = () =>
-      (stageEl().querySelector(".content-edit-column") as HTMLElement).style.maxWidth;
+      (stageEl().querySelector('[part="edit-column"]') as HTMLElement).style.maxWidth;
 
     renderCanvas();
     await flush();
@@ -686,7 +688,7 @@ describe("tab close/reopen lifecycle", () => {
   });
 
   test("the column carries a resize handle on each side, and only in Edit", async () => {
-    const handles = () => stageEl().querySelectorAll(".edit-width-handle").length;
+    const handles = () => stageEl().querySelectorAll('[part="edit-handle"]').length;
     openSyncedTab({
       $media: { "--": "900px" },
       children: [{ tagName: "p", textContent: "Hi" }],
@@ -697,9 +699,9 @@ describe("tab close/reopen lifecycle", () => {
     renderCanvas();
     await flush();
     expect(handles()).toBe(2);
-    const column = stageEl().querySelector(".content-edit-column")!;
-    expect(column.querySelector(".edit-width-handle.start")).not.toBeNull();
-    expect(column.querySelector(".edit-width-handle.end")).not.toBeNull();
+    const column = stageEl().querySelector('[part="edit-column"]')!;
+    expect(column.querySelector('[part="edit-handle"][data-side="start"]')).not.toBeNull();
+    expect(column.querySelector('[part="edit-handle"][data-side="end"]')).not.toBeNull();
 
     // Design draws every breakpoint side by side, so a width gesture there would be a gesture over
     // Which artboard, not over the page. It has pan and zoom instead.
@@ -716,7 +718,7 @@ describe("tab close/reopen lifecycle", () => {
       tagName: "div",
     } as never);
     const columnWidth = () =>
-      (stageEl().querySelector(".content-edit-column") as HTMLElement).style.maxWidth;
+      (stageEl().querySelector('[part="edit-column"]') as HTMLElement).style.maxWidth;
 
     setMode("edit");
     renderCanvas();
@@ -751,7 +753,7 @@ describe("tab close/reopen lifecycle", () => {
       children: [{ tagName: "p", textContent: "Hi" }],
       tagName: "div",
     } as never);
-    const column = () => stageEl().querySelector(".content-edit-column") as HTMLElement;
+    const column = () => stageEl().querySelector('[part="edit-column"]') as HTMLElement;
     setMode("edit");
     renderCanvas();
     await flush();
@@ -780,7 +782,7 @@ describe("tab close/reopen lifecycle", () => {
     setMode("edit");
     renderCanvas();
     await flush();
-    expect((stageEl().querySelector(".content-edit-column") as HTMLElement).style.maxWidth).toBe(
+    expect((stageEl().querySelector('[part="edit-column"]') as HTMLElement).style.maxWidth).toBe(
       "900px",
     );
   });
@@ -889,9 +891,12 @@ describe("source mode", () => {
     const tab = openSyncedTab();
     setMode("source");
     renderCanvas();
-    // The container renders synchronously; the editor itself mounts once Monaco has loaded.
-    expect(stageEl().querySelector(".source-wrap")).not.toBeNull();
-    expect(stageEl().querySelector(".source-editor")).not.toBeNull();
+    /* The stage is a MOUNTED DOCUMENT, so its boxes land one turn later rather than on the next
+       line — see `surfaces/canvas-stage.ts` on why a mapped array reconciles on a microtask. The
+       editor itself mounts after that again, once Monaco has loaded. */
+    await flush();
+    expect(stageEl().querySelector('[part="source-wrap"]')).not.toBeNull();
+    expect(stageEl().querySelector('[part="source-editor"]')).not.toBeNull();
     await waitForEditors(1);
     expect(surfaceForPane("primary").monacoEditor).toBe(createdEditors[0] as never);
     expect(createdModels[0]!._value).toBe(JSON.stringify(tab.doc.document, null, 2));
@@ -1548,7 +1553,7 @@ describe("git-diff mode", () => {
     renderCanvas();
     await flush();
 
-    const headers = [...stageEl().querySelectorAll(".canvas-panel-header")].map((h) =>
+    const headers = [...stageEl().querySelectorAll('[part="panel-header"]')].map((h) =>
       h.textContent?.trim(),
     );
     expect(headers).toEqual(["Original", "Current"]);
@@ -1582,8 +1587,8 @@ describe("git-diff mode", () => {
     expect(ed.getModel()?.modified.getValue()).toBe('{"tagName":"div"}');
     // No pan/zoom surface and no artboards: a comparison read as text has neither.
     expect(canvasPanels.length).toBe(0);
-    expect(stageEl().querySelector(".panzoom-wrap")).toBeNull();
-    expect(stageEl().querySelector(".diff-code-editor")).not.toBeNull();
+    expect(stageEl().querySelector('[part="panzoom"]')).toBeNull();
+    expect(stageEl().querySelector('[part="diff-code-editor"]')).not.toBeNull();
   });
 
   test("the two models take disjoint URIs, and neither is the file's own", async () => {
@@ -1747,14 +1752,14 @@ describe("edit mode", () => {
     renderCanvas();
     await flush();
 
-    const column = stageEl().querySelector(".content-edit-column") as HTMLElement;
+    const column = stageEl().querySelector('[part="edit-column"]') as HTMLElement;
     expect(column).not.toBeNull();
     expect(column.style.maxWidth).toBe("320px");
-    expect(stageEl().querySelector(".content-edit-canvas")).not.toBeNull();
+    expect(stageEl().querySelector('[part="edit-canvas"]')).not.toBeNull();
     expect(canvasPanels.length).toBe(1);
 
     const panel = canvasPanels[0] as unknown as CanvasPanel;
-    expect(panel.scrollContainer?.classList.contains("content-edit-canvas")).toBe(true);
+    expect(panel.scrollContainer?.getAttribute("part")).toBe("edit-canvas");
     expect(panel.canvas?.querySelector("p")?.textContent).toBe("Hello");
     // The real tab document mounted, so the panel is patchable.
     expect(panel.ready).toBe(true);
@@ -1772,7 +1777,7 @@ describe("edit mode", () => {
     setMode("edit");
     renderCanvas();
     await flush();
-    const column = stageEl().querySelector(".content-edit-column") as HTMLElement;
+    const column = stageEl().querySelector('[part="edit-column"]') as HTMLElement;
     expect(column.style.maxWidth).toBe("600px");
   });
 
@@ -1783,7 +1788,7 @@ describe("edit mode", () => {
     await flush();
     // The column now exists — give it a measurable width (happy-dom performs no layout), set the
     // Persisted zoom, and re-render: the edit branch must re-fit from the LIVE column width.
-    const column = stageEl().querySelector(".content-edit-column") as HTMLElement;
+    const column = stageEl().querySelector('[part="edit-column"]') as HTMLElement;
     stubRect(column, { width: 800 });
     tab.session.ui.editZoom = 2;
     renderCanvas();
@@ -1872,8 +1877,8 @@ describe("design mode", () => {
     expect(surfaceForPane("primary").panzoomWrap).not.toBeNull();
     expect(canvasPanels.length).toBe(1);
     const panel = canvasPanels[0] as unknown as CanvasPanel;
-    expect(panel.element?.classList.contains("full-width")).toBe(true);
-    expect(stageEl().querySelector(".canvas-panel-header")).toBeNull();
+    expect(panel.element?.dataset.fullWidth).toBe("");
+    expect(stageEl().querySelector('[part="panel-header"]')).toBeNull();
     expect(surfaceForPane("primary").panzoomWrap?.style.transform).toContain("scale(1)");
     expect(panel.canvas?.querySelector("p")?.textContent).toBe("Hello");
   });
@@ -1888,10 +1893,13 @@ describe("design mode", () => {
     await flush();
     const panel = canvasPanels[0] as unknown as CanvasPanel;
     expect(panel.mediaName).toBe("base");
-    expect(panel.element?.querySelector(".canvas-panel-header")?.textContent?.trim()).toBe(
+    expect(panel.element?.querySelector('[part="panel-header"]')?.textContent?.trim()).toBe(
       "Base (600px)",
     );
-    expect(panel.viewport?.style.width).toBe("600px");
+    // The declared width reaches the viewport as a custom property on the board — see
+    // `canvasPanelEntry`, which carries it that way so `applyEditZoom` can still write
+    // `canvas.style.width` imperatively without a template fighting it back.
+    expect(panel.element?.style.getPropertyValue("--panel-viewport-w")).toBe("600px");
   });
 
   test("renders one panel per breakpoint plus base", async () => {
@@ -1904,21 +1912,26 @@ describe("design mode", () => {
     await flush();
 
     expect(canvasPanels.length).toBe(2);
-    const headers = [...stageEl().querySelectorAll(".canvas-panel-header")].map((h) =>
+    const headers = [...stageEl().querySelectorAll('[part="panel-header"]')].map((h) =>
       h.textContent?.trim(),
     );
     expect(headers).toEqual(["Base (320px)", "Md (768px)"]);
     // Base panel header is highlighted when activeMedia is null
     expect(
-      canvasPanels[0]!.element?.querySelector(".canvas-panel-header")?.classList.contains("active"),
-    ).toBe(true);
+      (canvasPanels[0]!.element?.querySelector('[part="panel-header"]') as HTMLElement | null)
+        ?.dataset.active,
+    ).toBe("");
     // Both panels rendered content (second one via deferred setTimeout)
     for (const panel of canvasPanels as unknown as CanvasPanel[]) {
       expect(panel.canvas?.querySelector("p")?.textContent).toBe("Hello");
     }
     // The md(768) panel's viewport is sized to its breakpoint width (observable without a layout
     // Engine; the real @media now evaluates natively inside each panel's iframe viewport).
-    expect((canvasPanels[1] as unknown as CanvasPanel).viewport?.style.width).toBe("768px");
+    expect(
+      (canvasPanels[1] as unknown as CanvasPanel).element?.style.getPropertyValue(
+        "--panel-viewport-w",
+      ),
+    ).toBe("768px");
   });
 
   test("every artboard of a pass mounts under that pass's generation", async () => {
@@ -2037,6 +2050,7 @@ describe("fit on entering Design", () => {
       stageEl().append(wrap);
       surfaceForPane("primary").panzoomWrap = wrap as HTMLDivElement;
       canvasPanels.push({ _width: 800 } as never);
+      return Promise.resolve();
     });
     try {
       openSyncedTab();
@@ -2046,7 +2060,7 @@ describe("fit on entering Design", () => {
       // The specimen sheet (800) + 32 padding of artboard in 700px of pane.
       expect(paneZoom()).toBeCloseTo(700 / 832);
     } finally {
-      renderStylebookMode.mockImplementation(() => {});
+      renderStylebookMode.mockImplementation(() => Promise.resolve());
     }
   });
 });
@@ -2060,12 +2074,12 @@ describe("preview mode", () => {
     renderCanvas();
     await flush();
 
-    expect(stageEl().querySelector(".preview-stage")).not.toBeNull();
-    expect(stageEl().querySelector(".panzoom-wrap")).toBeNull();
+    expect(stageEl().querySelector('[part="preview-stage"]')).not.toBeNull();
+    expect(stageEl().querySelector('[part="panzoom"]')).toBeNull();
     expect(surfaceForPane("primary").panzoomWrap).toBeNull();
     expect(canvasPanels.length).toBe(1);
     const panel = canvasPanels[0] as unknown as CanvasPanel;
-    expect(panel.element?.classList.contains("full-width")).toBe(true);
+    expect(panel.element?.dataset.fullWidth).toBe("");
     expect(panel.canvas?.querySelector("p")?.textContent).toBe("Hello");
   });
 
@@ -2075,20 +2089,20 @@ describe("preview mode", () => {
     const tab = openSyncedTab();
     renderCanvas();
     await flush();
-    expect(stageEl().querySelector(".panzoom-wrap")).not.toBeNull();
+    expect(stageEl().querySelector('[part="panzoom"]')).not.toBeNull();
 
     // The effective mode flips while the BASE mode stays "design" — the preview toggle.
     tab.session.ui.preview = true;
     renderCanvas();
     await flush();
-    expect(stageEl().querySelector(".preview-stage")).not.toBeNull();
-    expect(stageEl().querySelector(".panzoom-wrap")).toBeNull();
+    expect(stageEl().querySelector('[part="preview-stage"]')).not.toBeNull();
+    expect(stageEl().querySelector('[part="panzoom"]')).toBeNull();
 
     tab.session.ui.preview = false;
     renderCanvas();
     await flush();
-    expect(stageEl().querySelector(".preview-stage")).toBeNull();
-    expect(stageEl().querySelector(".panzoom-wrap")).not.toBeNull();
+    expect(stageEl().querySelector('[part="preview-stage"]')).toBeNull();
+    expect(stageEl().querySelector('[part="panzoom"]')).not.toBeNull();
   });
 
   test("preview over a base of edit still gets the stage, not the edit column", async () => {
@@ -2097,8 +2111,8 @@ describe("preview mode", () => {
     tab.session.ui.preview = true;
     renderCanvas();
     await flush();
-    expect(stageEl().querySelector(".preview-stage")).not.toBeNull();
-    expect(stageEl().querySelector(".content-edit-canvas")).toBeNull();
+    expect(stageEl().querySelector('[part="preview-stage"]')).not.toBeNull();
+    expect(stageEl().querySelector('[part="edit-canvas"]')).toBeNull();
     tab.session.ui.preview = false;
   });
 });
@@ -2117,8 +2131,10 @@ describe("stylebook mode", () => {
     const helpers = renderStylebookMode.mock.calls[0]![1] as Record<string, unknown>;
     for (const key of [
       "applyTransform",
-      "canvasPanelTemplate",
+      "canvasPanelEntry",
+      "drawStage",
       "observeCenterUntilStable",
+      "stageHost",
       "updateActivePanelHeaders",
     ]) {
       expect(typeof helpers[key]).toBe("function");
@@ -2304,7 +2320,7 @@ describe("the Document Header slot", () => {
     return tab;
   }
 
-  const slot = () => stageEl().querySelector(".doc-header-host");
+  const slot = () => stageEl().querySelector('[part="doc-header"]');
 
   test("Edit puts it INSIDE the document column, above the artefact", async () => {
     openHeaderedTab();
@@ -2312,11 +2328,19 @@ describe("the Document Header slot", () => {
     renderCanvas();
     await flush();
 
-    const column = stageEl().querySelector(".content-edit-column")!;
-    expect(column.firstElementChild?.classList.contains("doc-header-host")).toBe(true);
-    expect(slot()?.classList.contains("in-column")).toBe(true);
+    /* ORDER, which is what the contract was always about: the card is the column's first block and
+       the two resize handles are its last. Read across the column's own parts rather than off
+       `firstElementChild`, because a document's conditional branch is a `display: contents` box —
+       it generates no layout, so it is not what "first child" means to a reader or to the CSS, and
+       an assertion that keys on it would be testing the runtime's shape rather than the stage's. */
+    const column = stageEl().querySelector('[part="edit-column"]')!;
+    const blocks = [
+      ...column.querySelectorAll('[part="doc-header"], [part="panel"], [part="edit-handle"]'),
+    ].map((el) => el.getAttribute("part"));
+    expect(blocks).toEqual(["doc-header", "panel", "edit-handle", "edit-handle"]);
+    expect((slot() as HTMLElement | null)?.dataset.placement).toBe("in-column");
     // In the column means in the document's own scroller: it scrolls with the artefact.
-    expect(slot()?.closest(".content-edit-canvas")).not.toBeNull();
+    expect(slot()?.closest('[part="edit-canvas"]')).not.toBeNull();
   });
 
   test("Design pins it above the panzoom surface, and stacks the stage to make room", async () => {
@@ -2325,9 +2349,9 @@ describe("the Document Header slot", () => {
     renderCanvas();
     await flush();
 
-    expect(slot()?.classList.contains("pinned")).toBe(true);
+    expect((slot() as HTMLElement | null)?.dataset.placement).toBe("pinned");
     // The artboards are drawn under a transform; the card must not be inside it.
-    expect(slot()?.closest(".panzoom-wrap")).toBeNull();
+    expect(slot()?.closest('[part="panzoom"]')).toBeNull();
     expect(stageEl().style.flexDirection).toBe("column");
     expect(stageEl().style.alignItems).toBe("stretch");
   });
@@ -2344,8 +2368,8 @@ describe("the Document Header slot", () => {
     renderCanvas();
     await flush();
 
-    expect(stageEl().querySelectorAll(".doc-header-host").length).toBe(1);
-    expect(stageEl().querySelectorAll(".canvas-panel").length).toBeGreaterThan(1);
+    expect(stageEl().querySelectorAll('[part="doc-header"]').length).toBe(1);
+    expect(stageEl().querySelectorAll('[part="panel"]').length).toBeGreaterThan(1);
   });
 
   test("a document with no header gets no slot, and the stage stays a row", async () => {
@@ -2455,7 +2479,7 @@ describe("renderCanvas is addressed by pane", () => {
     scheduleCanvasRender(SECONDARY_PANE);
     await flush();
 
-    expect(stageEl().querySelector(".panzoom-wrap")).not.toBeNull();
+    expect(stageEl().querySelector('[part="panzoom"]')).not.toBeNull();
     // The second pane shows nothing, so its pass reset its stage rather than borrowing pane one's.
     expect(secondWrap.textContent).toBe("");
     expect(surfaceForPane(SECONDARY_PANE).panels).toHaveLength(0);
@@ -2562,8 +2586,8 @@ describe("a derived pane's stage", () => {
       renderCanvas(SECONDARY_PANE);
       await flush();
 
-      expect(stageEl().querySelector(".doc-header-host")).not.toBeNull();
-      expect(lensWrap.querySelector(".doc-header-host")).toBeNull();
+      expect(stageEl().querySelector('[part="doc-header"]')).not.toBeNull();
+      expect(lensWrap.querySelector('[part="doc-header"]')).toBeNull();
       lensWrap.remove();
     } finally {
       unmountDocHeader();
@@ -2659,7 +2683,7 @@ describe("a derived pane's stage", () => {
     expect(tabOfPane(SECONDARY_PANE)).not.toBeNull();
     expect(lensWrap.textContent).toContain("one document has one editor");
     // …and no editor was mounted over it.
-    expect(lensWrap.querySelector(".source-editor")).toBeNull();
+    expect(lensWrap.querySelector('[part="source-editor"]')).toBeNull();
     lensWrap.remove();
   });
 
@@ -2703,11 +2727,11 @@ describe("a derived pane's stage", () => {
 
       expect(wrap.textContent).toContain("This page has no layout.");
       // The document the strip is drawing a chip for, named on the stage that will not draw it.
-      expect(wrap.querySelector(".empty-state-detail")?.textContent).toContain(
+      expect(wrap.querySelector('[part="empty-detail"]')?.textContent).toContain(
         "is still open here",
       );
       // …and the one verb that ends the follow and leaves the tab standing (§18.4).
-      expect(wrap.querySelector(".empty-state-action")?.textContent?.trim()).toBe(
+      expect(wrap.querySelector('[part="empty-action"]')?.textContent?.trim()).toBe(
         "Keep This Document",
       );
     } finally {
@@ -2732,8 +2756,8 @@ describe("a derived pane's stage", () => {
     await flush();
 
     expect(lensWrap.textContent).toContain("one document has one editor");
-    expect(lensWrap.querySelector(".empty-state-detail")).toBeNull();
-    expect(lensWrap.querySelector(".empty-state-action")).toBeNull();
+    expect(lensWrap.querySelector('[part="empty-detail"]')).toBeNull();
+    expect(lensWrap.querySelector('[part="empty-action"]')).toBeNull();
     lensWrap.remove();
   });
 
@@ -2748,7 +2772,7 @@ describe("a derived pane's stage", () => {
     renderCanvas(SECONDARY_PANE);
     await flush();
 
-    expect(lensWrap.querySelectorAll(".canvas-panel").length).toBeGreaterThan(0);
+    expect(lensWrap.querySelectorAll('[part="panel"]').length).toBeGreaterThan(0);
     lensWrap.remove();
   });
 
@@ -2769,9 +2793,9 @@ describe("a derived pane's stage", () => {
     await flush();
 
     // The pane that owns the tab draws the whole board: base + two breakpoints.
-    expect(stageEl().querySelectorAll(".canvas-panel")).toHaveLength(3);
+    expect(stageEl().querySelectorAll('[part="panel"]')).toHaveLength(3);
     // The lens draws exactly the artboard it names.
-    const lensHeaders = [...lensWrap.querySelectorAll(".canvas-panel-header")].map((h) =>
+    const lensHeaders = [...lensWrap.querySelectorAll('[part="panel-header"]')].map((h) =>
       h.textContent?.trim(),
     );
     expect(lensHeaders).toHaveLength(1);
@@ -2799,8 +2823,8 @@ describe("a derived pane's stage", () => {
     renderCanvas(SECONDARY_PANE);
     await flush();
 
-    expect(stageEl().querySelectorAll(".canvas-panel")).toHaveLength(3);
-    const lensHeaders = [...lensWrap.querySelectorAll(".canvas-panel-header")].map((h) =>
+    expect(stageEl().querySelectorAll('[part="panel"]')).toHaveLength(3);
+    const lensHeaders = [...lensWrap.querySelectorAll('[part="panel-header"]')].map((h) =>
       h.textContent?.trim(),
     );
     expect(lensHeaders).toHaveLength(1);
@@ -2822,7 +2846,7 @@ describe("a derived pane's stage", () => {
     renderCanvas(SECONDARY_PANE);
     await flush();
 
-    expect(lensWrap.querySelectorAll(".canvas-panel")).toHaveLength(2);
+    expect(lensWrap.querySelectorAll('[part="panel"]')).toHaveLength(2);
     lensWrap.remove();
   });
 

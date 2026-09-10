@@ -1,6 +1,6 @@
 /**
- * Ui/layers — showDialog/showConfirmDialog resolution, renderPopover dismissal (outside click,
- * layer targeting), and named layer slots.
+ * Ui/layers — the three named dialog flows and how each maps a dismissal, `isModalOpen`'s reading
+ * of the live DOM, and named layer slots.
  */
 import { flush, mountOverlayLayers } from "./harness";
 import { beforeAll, describe, expect, test } from "bun:test";
@@ -10,9 +10,7 @@ import {
   getLayerSlot,
   initLayers,
   isModalOpen,
-  renderPopover,
   showConfirmDialog,
-  showDialog,
   showPromptDialog,
   showSaveDiscardDialog,
 } from "../src/ui/layers";
@@ -37,123 +35,21 @@ describe("layers after init", () => {
     initLayers();
   });
 
-  describe("showDialog", () => {
-    test("resolves with the done() value and removes the slot", async () => {
-      const promise = showDialog<string>(
-        (done) => html`<button
-          id="dlg-btn"
-          @click=${() => {
-            done("picked");
-          }}
-        >
-          pick
-        </button>`,
-      );
-      expect(layer("dialog").querySelector("#dlg-btn")).not.toBeNull();
-      (layer("dialog").querySelector("#dlg-btn") as HTMLElement).click();
-      expect(await promise).toBe("picked");
-      expect(layer("dialog").querySelector("#dlg-btn")).toBeNull();
-    });
-
-    test("a dialog says it is one, and that everything behind it is inert", async () => {
-      /*
-       * `aria-modal` is what constrains a screen reader's virtual cursor, which a Tab trap cannot:
-       * the virtual cursor does not use Tab. It is also why not trapping Tab is still correct — the
-       * wrapper's action buttons live in a shadow root a light-DOM cycle cannot enumerate.
-       */
-      let doneFn: ((v: string) => void) | null = null;
-      const promise = showDialog<string>((done) => {
-        doneFn = done;
-        return html`<sp-dialog-wrapper headline="Delete page?"></sp-dialog-wrapper>`;
-      });
-      const slot = layer("dialog").querySelector("[role='dialog']") as HTMLElement;
-      expect(slot).not.toBeNull();
-      expect(slot.getAttribute("aria-modal")).toBe("true");
-      // The name comes off the wrapper's headline, which only exists after the template has run.
-      expect(slot.getAttribute("aria-label")).toBe("Delete page?");
-      doneFn!("x");
-      await promise;
-    });
-
-    test("an explicit label wins, and a nameless dialog is left nameless", async () => {
-      let doneFn: ((v: string) => void) | null = null;
-      const labelled = showDialog<string>(
-        (done) => {
-          doneFn = done;
-          return html`<sp-dialog-wrapper headline="Ignored"></sp-dialog-wrapper>`;
-        },
-        { label: "Chosen" },
-      );
-      expect(
-        (layer("dialog").querySelector("[role='dialog']") as HTMLElement).getAttribute(
-          "aria-label",
-        ),
-      ).toBe("Chosen");
-      doneFn!("x");
-      await labelled;
-
-      // A caller that supplies neither has a defect of its own; inventing a name would hide it.
-      const bare = showDialog<string>((done) => {
-        doneFn = done;
-        return html`<span>body</span>`;
-      });
-      expect(
-        (layer("dialog").querySelector("[role='dialog']") as HTMLElement).hasAttribute(
-          "aria-label",
-        ),
-      ).toBe(false);
-      doneFn!("x");
-      await bare;
-    });
-
-    test("second done() call is ignored", async () => {
-      let doneFn: ((v: number) => void) | null = null;
-      const promise = showDialog<number>((done) => {
-        doneFn = done;
-        return html`<span>x</span>`;
-      });
-      doneFn!(1);
-      doneFn!(2);
-      expect(await promise).toBe(1);
-    });
-
-    test("takes the keyboard on open and hands focus back on close", async () => {
-      const opener = document.createElement("button");
-      document.body.append(opener);
-      opener.focus();
-      expect(document.activeElement).toBe(opener);
-
-      let doneFn: ((v: string) => void) | null = null;
-      const promise = showDialog<string>((done) => {
-        doneFn = done;
-        return html`<sp-dialog-wrapper open><input id="dlg-field" /></sp-dialog-wrapper>`;
-      });
-      // Focus lands a frame later — the wrapper's own buttons live in a shadow root Spectrum
-      // Renders asynchronously.
-      await flush();
-      expect(document.activeElement).toBe(layer("dialog").querySelector("#dlg-field"));
-
-      doneFn!("x");
-      await promise;
-      expect(document.activeElement).toBe(opener);
-      opener.remove();
-    });
-
-    test("does not steal focus from a body that already claimed it", async () => {
-      let doneFn: ((v: string) => void) | null = null;
-      const promise = showDialog<string>((done) => {
-        doneFn = done;
-        return html`<sp-dialog-wrapper open
-          ><input id="first" /><input id="second"
-        /></sp-dialog-wrapper>`;
-      });
-      (layer("dialog").querySelector("#second") as HTMLElement).focus();
-      await flush();
-      expect((document.activeElement as HTMLElement).id).toBe("second");
-      doneFn!("x");
-      await promise;
-    });
-
+  /*
+   * `describe("showDialog")` was here, and it held eight tests about machinery that no longer
+   * exists: a slot stamped `role="dialog"` and `aria-modal`, an accessible name scraped off an
+   * `sp-dialog-wrapper`'s `headline` after the template had run, a deferred focus move into the
+   * body or the wrapper's shadow buttons, a focus restore on close, and an Escape translated into
+   * the wrapper's own `close` event. All of it existed because a `showDialog` body was arbitrary
+   * markup rather than a dialog element.
+   *
+   * `surfaces/dialog.json` is a `jx-dialog` over the platform's `<dialog>`, and the platform owns
+   * every one of those. So the assertions are not re-implemented against a second mechanism — the
+   * ones that still have a subject are below, against the three named flows, and the rest went with
+   * the thing they described. What is kept here is the one that was never about the wrapper: how a
+   * dismissal reaches a flow.
+   */
+  describe("the flow dialogs", () => {
     test("Escape on a flow's dialog is the platform's cancel, and each helper maps it to its own value", async () => {
       const promise = showConfirmDialog("Hm", "really?");
       await flush();
@@ -165,24 +61,21 @@ describe("layers after init", () => {
       expect(layer("dialog").children).toHaveLength(0);
     });
 
-    test("Escape in a bespoke body with no wrapper is left to the body, and not swallowed", async () => {
-      let doneFn: ((v: string) => void) | null = null;
-      const promise = showDialog<string>((done) => {
-        doneFn = done;
-        return html`<div id="bespoke">no wrapper here</div>`;
-      });
-      const body = layer("dialog").querySelector("#bespoke") as HTMLElement;
-      const event = new KeyboardEvent("keydown", {
-        bubbles: true,
-        cancelable: true,
-        key: "Escape",
-      });
-      body.dispatchEvent(event);
-      expect(layer("dialog").querySelector("#bespoke")).not.toBeNull();
-      // A slot that will not answer the key must not eat it either — the body still gets its turn.
-      expect(event.defaultPrevented).toBe(false);
-      doneFn!("still here");
-      expect(await promise).toBe("still here");
+    test("names itself from its headline, and is the dialog rather than sitting inside one", async () => {
+      /* The name used to be scraped off the body and stamped on a wrapper div. It is the element's
+         own now: `jx-dialog` takes `headline` and labels its `[part="dialog"]` with it, so there is
+         no window in which the surface is up and nameless, and nothing outside the element claims
+         to be the dialog. */
+      const promise = showConfirmDialog("Delete page?", "This cannot be undone.");
+      await flush();
+      const dialog = layer("dialog").querySelector("jx-dialog")!;
+      expect(dialog.getAttribute("headline")).toBe("Delete page?");
+      expect(dialog.querySelector('[part="dialog"]')?.getAttribute("aria-label")).toBe(
+        "Delete page?",
+      );
+      expect(layer("dialog").querySelector("[role='dialog']")).toBeNull();
+      dialog.dispatchEvent(new Event("cancel"));
+      expect(await promise).toBe(false);
     });
   });
 
@@ -518,100 +411,11 @@ describe("layers after init", () => {
     });
   });
 
-  // ─── The keyboard contract the slot owns, not the body ─────────────────────
-
-  /** Dispatch a keydown on an overlay slot and hand back the event, to read what it did with it. */
-  function key(slot: HTMLElement, init: KeyboardEventInit): KeyboardEvent {
-    const event = new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init });
-    slot.dispatchEvent(event);
-    return event;
-  }
-
-  describe("Escape in a showDialog body that HAS a wrapper", () => {
-    test("fires the wrapper's own close, and stops there", async () => {
-      /* The counterpart to "a bespoke body owns its own keys": when there is a wrapper, Escape is
-         translated into the `close` event each helper's `@close` binding already answers, so no
-         helper needs a keydown listener of its own. */
-      const reachedApp: Event[] = [];
-      const listener = (e: Event) => {
-        reachedApp.push(e);
-      };
-      document.body.addEventListener("keydown", listener);
-      const promise = showDialog<string>(
-        (done) =>
-          html`<sp-dialog-wrapper
-            headline="Rename"
-            @close=${() => {
-              done("dismissed");
-            }}
-          ></sp-dialog-wrapper>`,
-      );
-      const slot = layer("dialog").querySelector("[role='dialog']") as HTMLElement;
-      const event = key(slot, { key: "Escape" });
-      document.body.removeEventListener("keydown", listener);
-
-      expect(await promise).toBe("dismissed");
-      expect(layer("dialog").querySelector("sp-dialog-wrapper")).toBeNull();
-      expect(event.defaultPrevented).toBe(true);
-      expect(reachedApp).toEqual([]);
-    });
-
-    test("the body's `@close` DECIDES: one that does not resolve keeps the dialog up", async () => {
-      /* Escape is translated into the wrapper's `close`; it is not a close. A body with bookkeeping
-         of its own — a flow mid-step, a running operation — answers the event and stays up, and
-         nothing takes the surface down until its own `done()` runs. */
-      const dismissed: number[] = [];
-      let doneFn: ((v: string) => void) | null = null;
-      const promise = showDialog<string>((done) => {
-        doneFn = done;
-        return html`<sp-dialog-wrapper
-          headline="Held"
-          @close=${() => {
-            dismissed.push(1);
-          }}
-        >
-          <p id="held">busy</p>
-        </sp-dialog-wrapper>`;
-      });
-      const slot = layer("dialog").querySelector("[role='dialog']") as HTMLElement;
-      key(slot, { key: "Escape" });
-      expect(dismissed).toEqual([1]);
-      expect(layer("dialog").querySelector("#held")).not.toBeNull();
-
-      doneFn!("closed by the body");
-      expect(await promise).toBe("closed by the body");
-      expect(layer("dialog").querySelector("#held")).toBeNull();
-    });
-  });
-
-  describe("a key the slot does not answer", () => {
-    test("is left entirely alone", async () => {
-      let doneFn: ((v: string) => void) | null = null;
-      const promise = showDialog<string>((done) => {
-        doneFn = done;
-        return html`<button id="only">only</button>`;
-      });
-      const slot = layer("dialog").querySelector("[role='dialog']") as HTMLElement;
-      slot.querySelector<HTMLElement>("#only")!.focus();
-      const event = key(slot, { key: "a" });
-      expect(event.defaultPrevented).toBe(false);
-      expect((document.activeElement as HTMLElement).id).toBe("only");
-      doneFn!("x");
-      await promise;
-    });
-  });
-
-  describe("renderPopover", () => {
-    test("update() re-renders into the same slot rather than opening a second popover", () => {
-      const handle = renderPopover(html`<p id="pop">first</p>`, { dismissOnOutsideClick: false });
-      const slot = handle.host;
-      expect(slot.parentElement).toBe(layer("popover"));
-      handle.update(html`<p id="pop">second</p>`);
-      expect(slot.querySelector("#pop")?.textContent).toBe("second");
-      // Same node: an owner holding `handle.host` (the zoom indicator does) keeps its reference.
-      expect(handle.host).toBe(slot);
-      handle.dismiss();
-      expect(slot.parentElement).toBeNull();
-    });
-  });
+  /*
+   * Two more describes stood here — "Escape in a showDialog body that HAS a wrapper" and "a key the
+   * slot does not answer" — and both tested `openOverlaySlot`'s keydown listener, which is gone
+   * with `showDialog`. A `jx-dialog` is a native modal: Escape reaches it as the platform's own
+   * `cancel`, which is asserted above against each of the three flows, and every other key is the
+   * body's without anything having to stand aside for it.
+   */
 });

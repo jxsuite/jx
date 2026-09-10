@@ -6,10 +6,10 @@
  *
  * The section around both is a Jx document (`src/surfaces/settings-contributed.json`), so the
  * container is appended to the page and every render awaited — a kit element renders in its
- * `connectedCallback`. The secret control and the actions row are the two ISLANDS this surface
- * renders empty host nodes for. `.secret-field` is still the right way to reach the first, because
- * that one is lit; the actions row is a document of its own now (`surfaces/data-actions.json`), so
- * it is reached by `part` like everything else the kit draws.
+ * `connectedCallback`. The secret control and the actions row are the two surfaces this section
+ * renders empty host nodes for, and both are documents now (`surfaces/secret-field.json`,
+ * `surfaces/data-actions.json`) — so both are reached by `part`, and the field's state is read off
+ * the native input the kit wraps rather than off the element.
  */
 import { flush, installMockPlatform, pointer, resetStudioState } from "./harness";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
@@ -51,8 +51,25 @@ const CONNECTIONS_CONTRIBUTION: SettingsContribution = {
   title: "Connections",
 };
 
-function commitValue(el: Element, value: string): void {
-  (el as HTMLElement & { value: string }).value = value;
+/** The native control a kit element wraps — the field the reader actually types into. */
+function control(el: Element): HTMLInputElement {
+  const inner = el.querySelector<HTMLInputElement>('input[part="input"]');
+  if (!inner) {
+    throw new Error(`no native control inside <${el.tagName.toLowerCase()}>`);
+  }
+  return inner;
+}
+
+/** The secret control's field, wherever in the section it was drawn. */
+function secretField(): HTMLInputElement {
+  const el = container.querySelector('[part="secret"] [part="field"]');
+  expect(el).not.toBeNull();
+  return control(el!);
+}
+
+function commitValue(el: HTMLInputElement, value: string): void {
+  el.value = value;
+  el.dispatchEvent(new Event("input", { bubbles: true }));
   el.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
@@ -109,8 +126,8 @@ describe("secret control inside a contributed section", () => {
       },
     });
     await selectEntry("main");
-    const field = container.querySelector(".secret-field")!;
-    expect(field.hasAttribute("disabled")).toBe(false);
+    const field = secretField();
+    expect(field.disabled).toBe(false);
     expect(field.getAttribute("placeholder")).toBe("Not set");
 
     commitValue(field, "postgres://user:pw@host/db");
@@ -126,16 +143,16 @@ describe("secret control inside a contributed section", () => {
     expect(written![2] as string).toContain('"urlEnv": "MAIN_URL"');
     expect(written![2] as string).not.toContain("postgres://");
 
-    // The rerendered field advertises where the secret lives.
-    const after = container.querySelector(".secret-field")!;
+    // The redrawn field advertises where the secret lives, and holds none of it.
+    const after = secretField();
     expect(after.getAttribute("placeholder")).toBe("Stored as MAIN_URL");
+    expect(after.value).toBe("");
   });
 
   test("renders disabled when the platform has no setSecrets surface", async () => {
     await mount();
     await selectEntry("main");
-    const field = container.querySelector(".secret-field")!;
-    expect(field.hasAttribute("disabled")).toBe(true);
+    expect(secretField().disabled).toBe(true);
   });
 });
 

@@ -32,6 +32,7 @@ import { view } from "../src/view";
 import { bufferWrites } from "../src/services/monaco-buffer";
 import { shell } from "../src/shell";
 import { resetZoom } from "../src/canvas/canvas-utils";
+import { getCssInitialMap } from "../src/panels/style-utils";
 import type { Tab } from "../src/tabs/tab";
 
 // ─── Global stubs (must exist before studio.ts is imported) ──────────────────
@@ -422,13 +423,20 @@ describe("bootstrap", () => {
     expect(shortcutsGet).not.toBeNull();
   });
 
-  test("renders tag-name datalist and populates css-props via requestIdleCallback", () => {
-    const tagList = document.querySelector("#tag-names");
-    expect(tagList).not.toBeNull();
-    expect(tagList!.querySelectorAll("option").length).toBeGreaterThan(0);
-    const cssList = document.querySelector("#css-props");
-    expect(cssList).not.toBeNull();
-    expect(cssList!.querySelectorAll("option").length).toBeGreaterThan(0);
+  /*
+   * This used to read "renders tag-name datalist and populates css-props via
+   * requestIdleCallback", and it was the only reader either datalist ever had. A `<datalist>` is
+   * reached through a `list="<id>"` on a control, and nothing in the package has carried one since
+   * the Inspector's inputs became documents — so the boot was appending a hidden host to the body,
+   * painting six hundred `<option>`s into it a frame later, and querying them back for nobody. Both
+   * are gone, and what is asserted instead is the half of "the boot wires webdata" that has a
+   * reader: the CSS initial-value map the Style tab consults to tell a set property from a
+   * defaulted one.
+   */
+  test("hands webdata to the CSS initial-value map, and paints no autocomplete source for it", () => {
+    expect(getCssInitialMap().size).toBeGreaterThan(0);
+    expect(getCssInitialMap().get("color")).toBeDefined();
+    expect(document.querySelector("datalist")).toBeNull();
   });
 
   test("probed the platform for a root project at import time", () => {

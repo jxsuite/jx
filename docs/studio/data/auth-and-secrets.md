@@ -4,6 +4,7 @@ description: "How Jx keeps secret values out of your project (names on the wire,
 code:
   - packages/server/src/dev-vars.ts
   - packages/studio/src/ui/form-controls.ts
+  - packages/studio/src/surfaces/secret-field.ts
   - packages/studio/src/services/data-service.ts
   - extensions/auth/src/Auth.class.json
   - extensions/auth/src/Session.class.json

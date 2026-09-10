@@ -22,12 +22,12 @@ import { setProjectState } from "../src/store";
 import { resetIgnoreCache } from "../src/files/gitignore";
 import { closeAllTabs, openTab } from "../src/workspace/workspace";
 import {
-  STAGE_CLASS,
   allCanvasSurfaces,
   registerCanvasSurface,
   unregisterCanvasSurface,
 } from "../src/canvas/surface-registry";
 import { REGION_ATTR, paneRegion } from "../src/ui/regions";
+import { STAGE_PART } from "../src/surfaces/pane-grid";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 import type { DirEntry, ProjectState, RenameResult, StudioPlatform } from "../src/types";
 
@@ -603,7 +603,7 @@ export function npDismiss(): void {
  *
  * Deliberately NOT `pane-grid.ts`'s own reconciler: a unit test for the Library should not have to
  * boot the shell, install stage gestures or own a `#pane-grid`. It builds the same shape the
- * reconciler builds — `.pane-stage`, stamped, registered — and nothing else.
+ * reconciler builds — `part="stage"`, stamped, registered — and nothing else.
  *
  * @param {string} [paneId]
  * @param {ParentNode} [parent] Where to attach. Defaults to `document.body`.
@@ -611,7 +611,7 @@ export function npDismiss(): void {
  */
 export function standUpPaneGrid(paneId = "primary", parent: ParentNode = document.body) {
   const stage = document.createElement("div");
-  stage.className = STAGE_CLASS;
+  stage.setAttribute("part", STAGE_PART);
   stage.setAttribute(REGION_ATTR, paneRegion(paneId));
   parent.append(stage);
   return registerCanvasSurface(paneId, stage);
@@ -649,9 +649,13 @@ export function surfaceOf(el: HTMLElement, paneId = "primary") {
  * @returns {CanvasSurface}
  */
 export function registerPrimaryStage(paneId = "primary") {
+  /* Found by its REGION, not by a class. A pane's stage is `surfaces/pane-grid.json`'s
+     `[part="stage"]` and carries no class at all, while the fixtures this adopts were written when
+     it did — so the id both spellings agree on is the one the shots crop. */
   const stage =
-    document.querySelector<HTMLElement>(`.${STAGE_CLASS}`) ?? document.createElement("div");
-  stage.className = STAGE_CLASS;
+    document.querySelector<HTMLElement>(`[${REGION_ATTR}="${paneRegion(paneId)}"]`) ??
+    document.createElement("div");
+  stage.setAttribute("part", STAGE_PART);
   stage.setAttribute(REGION_ATTR, paneRegion(paneId));
   if (!stage.isConnected) {
     (document.querySelector("#app") ?? document.body).append(stage);

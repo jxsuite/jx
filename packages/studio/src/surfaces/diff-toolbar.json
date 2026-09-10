@@ -1,0 +1,266 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioDiffToolbar",
+  "$description": "The Compare view's own bar: which half of a comparison is showing, how many changes there are, and how to walk them. `canvas/diff-toolbar.ts` keeps every decision — what the count means for the view that is showing, which step is reachable, whether this comparison has a visual half at all — and this document owns the markup, the ARIA, the keyboard and the style. The Visual/Code pair is a real radiogroup now rather than a role written by hand over a Spectrum button that overwrote it: `jx-action-group selects=\"single\"` is the group and `checked` is what makes each `jx-action-button` a radio, so the caret roves between them and `aria-checked` is the element's own rather than an attribute the template hoped would survive an upgrade.",
+  "tagName": "div",
+  "attributes": {
+    "part": "toolbar",
+    "role": "group",
+    "aria-label": "Changes against HEAD"
+  },
+  "style": {
+    "$description": "`styles/canvas.css`'s `.diff-toolbar-inner` and the three text runs under it, keyed on `part`. The bar's POSITION is not here: the stage draws the absolutely-positioned host this mounts into (`surfaces/canvas-stage.json`, `[part=\"diff-toolbar\"]`), because where a floating bar sits over a pan/zoom surface is a fact about the stage rather than about the bar.",
+    "display": "flex",
+    "gap": "var(--jx-space-2)",
+    "alignItems": "center",
+    "padding": "4px var(--jx-space-2)",
+    "border": "1px solid var(--border)",
+    "borderRadius": "var(--radius)",
+    "background": "var(--bg)",
+    "boxShadow": "var(--jx-shadow-popover)",
+    "fontFamily": "var(--jx-font-sans)",
+    "& [part=\"view\"]": {
+      "$description": "Spacing only: the segmented look is `jx-action-group`'s own `compact`, exactly as it was Spectrum's.",
+      "flexShrink": "0"
+    },
+    "& [part=\"view-static\"], & [part=\"count\"], & [part=\"note\"]": {
+      "color": "var(--fg)",
+      "fontSize": "var(--jx-text-sm)",
+      "whiteSpace": "nowrap"
+    },
+    "& [part=\"count\"]": {
+      "$description": "Tabular figures so the counter does not jitter its neighbours as it steps.",
+      "fontVariantNumeric": "tabular-nums"
+    },
+    "& [part=\"note\"]": {
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"stepper\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-2)"
+    }
+  },
+  "children": [
+    {
+      "$description": "The Visual/Code pair, or a static label. A control that cannot move is not drawn as a control — the rule `editorKindTpl` states for a document with one editor kind — so a comparison the canvas cannot draw says \"Code\" in words rather than offering a Visual button it would have to disable.",
+      "tagName": "div",
+      "attributes": {
+        "part": "view-slot"
+      },
+      "style": {
+        "display": "contents"
+      },
+      "$switch": {
+        "$ref": "#/state/viewMode"
+      },
+      "cases": {
+        "static": {
+          "tagName": "span",
+          "attributes": {
+            "part": "view-static"
+          },
+          "textContent": "Code"
+        },
+        "choice": {
+          "tagName": "jx-action-group",
+          "attributes": {
+            "part": "view"
+          },
+          "$props": {
+            "selects": "single",
+            "compact": true,
+            "label": "Diff view"
+          },
+          "children": [
+            {
+              "tagName": "jx-action-button",
+              "attributes": {
+                "part": "view-visual"
+              },
+              "$props": {
+                "size": "sm",
+                "checked": "${state.visualChecked}",
+                "hint": "Show the change on the page"
+              },
+              "onclick": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": { "$ref": "#/state/showVisual" },
+                    "value": []
+                  }
+                ]
+              },
+              "children": [
+                {
+                  "tagName": "span",
+                  "textContent": "Visual"
+                }
+              ]
+            },
+            {
+              "tagName": "jx-action-button",
+              "attributes": {
+                "part": "view-code"
+              },
+              "$props": {
+                "size": "sm",
+                "checked": "${state.codeChecked}",
+                "hint": "Show the change in the file's text"
+              },
+              "onclick": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": { "$ref": "#/state/showCode" },
+                    "value": []
+                  }
+                ]
+              },
+              "children": [
+                {
+                  "tagName": "span",
+                  "textContent": "Code"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "$description": "The count, and — only when there is somewhere to step — the two buttons around it. Before the first step it reads \"12 changes\" rather than \"0 of 12\", because the author is not on a change yet. The counter is text rather than a button because it has no verb.",
+      "tagName": "div",
+      "attributes": {
+        "part": "stepper-slot"
+      },
+      "style": {
+        "display": "contents"
+      },
+      "$switch": {
+        "$ref": "#/state/stepper"
+      },
+      "cases": {
+        "hidden": {
+          "tagName": "span",
+          "attributes": {
+            "part": "count"
+          },
+          "textContent": "${state.countLabel}"
+        },
+        "shown": {
+          "tagName": "span",
+          "attributes": {
+            "part": "stepper"
+          },
+          "children": [
+            {
+              "tagName": "jx-action-button",
+              "attributes": {
+                "part": "previous"
+              },
+              "$props": {
+                "size": "sm",
+                "quiet": true,
+                "icon": "caret-up",
+                "label": "Previous change",
+                "hint": "Previous change",
+                "disabled": { "$ref": "#/state/prevDisabled" }
+              },
+              "onclick": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": { "$ref": "#/state/previous" },
+                    "value": []
+                  }
+                ]
+              }
+            },
+            {
+              "tagName": "span",
+              "attributes": {
+                "part": "count"
+              },
+              "textContent": "${state.countLabel}"
+            },
+            {
+              "tagName": "jx-action-button",
+              "attributes": {
+                "part": "next"
+              },
+              "$props": {
+                "size": "sm",
+                "quiet": true,
+                "icon": "caret-down",
+                "label": "Next change",
+                "hint": "Next change",
+                "disabled": { "$ref": "#/state/nextDisabled" }
+              },
+              "onclick": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": { "$ref": "#/state/next" },
+                    "value": []
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "$description": "The alignment was degraded: a group of siblings was too large to pair up, so some changes are shown as an add and a remove rather than as one modification. Reported rather than hidden — a reader counting changes deserves to know the count is coarser than usual.",
+      "tagName": "div",
+      "attributes": {
+        "part": "degraded-slot"
+      },
+      "style": {
+        "display": "contents"
+      },
+      "$switch": {
+        "$ref": "#/state/degraded"
+      },
+      "cases": {
+        "shown": {
+          "tagName": "span",
+          "attributes": {
+            "part": "note",
+            "title": "A group of siblings was too large to pair up"
+          },
+          "textContent": "some shown as add/remove"
+        }
+      }
+    },
+    {
+      "$description": "A root key moved — `state`, `$media`, a document setting. Those are never tinted on the artboards, because they have no node to tint, so the bar states them in words and the tooltip names them.",
+      "tagName": "div",
+      "attributes": {
+        "part": "root-keys-slot"
+      },
+      "style": {
+        "display": "contents"
+      },
+      "$switch": {
+        "$ref": "#/state/rootKeys"
+      },
+      "cases": {
+        "shown": {
+          "tagName": "span",
+          "attributes": {
+            "part": "note",
+            "title": "${state.rootKeysTitle}"
+          },
+          "textContent": "document settings changed"
+        }
+      }
+    }
+  ]
+}

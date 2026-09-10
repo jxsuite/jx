@@ -7,6 +7,7 @@ spec:
   - studio-ui-guidelines.md#8.1
 code:
   - packages/studio/src/canvas/edit-width-drag.ts
+  - packages/studio/src/surfaces/canvas-stage.ts
   - packages/studio/src/editor/shortcuts.ts
   - packages/studio/src/panels/block-action-bar.ts
   - packages/studio/src/surfaces/block-action-bar.ts

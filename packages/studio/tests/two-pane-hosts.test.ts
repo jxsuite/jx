@@ -407,11 +407,13 @@ describe("one document on two stages", () => {
 
 describe("a live frame survives the grid", () => {
   test("a reconcile, a splitter drag and a focus flip move no node and drop no channel", async () => {
-    /* The reason the cells are a KEYED `repeat` and the splitter is part of the template. Every one
-       of these three is a pass through the grid's one effect, and re-parenting is not a move for an
-       `<iframe>`: it reloads, dropping its `iframe-channel` connection, its shadow document and
-       every panel that had reached `ready`. Zero childList mutations on the grid is the structural
-       version of the comment the old imperative reconciler carried. */
+    /* The reason the cells are a KEYED repeater and the splitter belongs to its pane's row. Every
+       one of these three is a pass through the grid's one effect, and re-parenting is not a move
+       for an `<iframe>`: it reloads, dropping its `iframe-channel` connection, its shadow document
+       and every panel that had reached `ready`. Zero childList mutations anywhere under the grid is
+       the structural version of the comment the old imperative reconciler carried — `subtree`,
+       because the cells are drawn inside the grid document's own `display: contents` rows now, so a
+       watch on the host's direct children would no longer see one move. */
     const { left, right } = await splitIntoTwoCanvasPanes();
     const home = await mountArtboard(PRIMARY_PANE, 1, {}, left.id);
     const side = await mountArtboard(SECONDARY_PANE, 2, {}, right.id);
@@ -422,14 +424,14 @@ describe("a live frame survives the grid", () => {
     const gridEl = document.querySelector("#pane-grid") as HTMLElement;
     Object.defineProperty(gridEl, "clientWidth", { configurable: true, value: 1000 });
     const observer = new MutationObserver(() => {});
-    observer.observe(gridEl, { childList: true });
+    observer.observe(gridEl, { childList: true, subtree: true });
 
     // 1 · A bare reconcile, twice.
     grid.reconcile();
     grid.reconcile();
     // 2 · A multi-step splitter drag — five `shell.paneSplit` writes, five passes through the
     // Effect. This is the gesture that used to remove and re-insert the handle on every move.
-    const splitter = gridEl.querySelector(".pane-splitter") as HTMLElement;
+    const splitter = gridEl.querySelector('[part="splitter"]') as HTMLElement;
     splitter.dispatchEvent(new PointerEvent("pointerdown", { clientX: 500, clientY: 0 }));
     for (const clientX of [520, 560, 600, 620, 640]) {
       splitter.dispatchEvent(new PointerEvent("pointermove", { clientX, clientY: 0 }));

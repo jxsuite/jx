@@ -20,7 +20,6 @@ import type { CanvasPanel } from "../types";
 import type { Tab } from "../tabs/tab";
 
 export {
-  STAGE_CLASS,
   allCanvasSurfaces,
   createPaneSurface,
   disposePaneSurface,

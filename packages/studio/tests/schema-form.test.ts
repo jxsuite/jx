@@ -12,10 +12,8 @@
  */
 import { flush, installMockPlatform, pointer } from "./harness";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { html } from "lit-html";
 import { initLayers } from "../src/ui/layers";
 import {
-  getFormControl,
   mountSchemaForm,
   parseNumericField,
   registerFormControl,
@@ -25,7 +23,41 @@ import {
 } from "../src/ui/schema-form";
 import { resolveContextPointer } from "../src/services/context-resolver";
 import { resetSlotModeMemory } from "../src/ui/dynamic-slot";
-import type { JsonSchema, RenderFormOptions, SchemaFormContext } from "../src/ui/schema-form";
+import type {
+  JsonSchema,
+  RenderFormOptions,
+  SchemaFormContext,
+  SchemaFormControlArgs,
+  SchemaFormMountedControl,
+} from "../src/ui/schema-form";
+
+/**
+ * A registered control the test drives, as the registry now holds one: a MOUNT that owns its host.
+ *
+ * `update` is the half worth stubbing. A standing control is brought up to date rather than
+ * rebuilt, so a stub that only drew on `mount` would report the same thing whether or not the
+ * engine ever told it the value had moved.
+ */
+function stubControl(
+  mark: string,
+  draw: (args: SchemaFormControlArgs) => string,
+): SchemaFormMountedControl {
+  return {
+    mount(host, args) {
+      host.dataset["stub"] = mark;
+      const paint = (next: SchemaFormControlArgs): void => {
+        host.textContent = draw(next);
+      };
+      paint(args);
+      return { dispose: () => host.replaceChildren(), update: paint };
+    },
+  };
+}
+
+/** The node a {@link stubControl} drew, by the mark it carries. */
+function stub(root: ParentNode, mark: string): HTMLElement | null {
+  return root.querySelector<HTMLElement>(`[data-stub="${mark}"]`);
+}
 
 installMockPlatform();
 
@@ -456,7 +488,10 @@ describe("binding a config field", () => {
   });
 
   test("fields edited as raw JSON, and fields a ui control owns, keep their whole widget", async () => {
-    registerFormControl("owns-it", ({ key }) => html`<div class="owns-it">${key}</div>`);
+    registerFormControl(
+      "owns-it",
+      stubControl("owns-it", ({ key }) => key),
+    );
     const m = await mountForm(
       {
         properties: {
@@ -471,7 +506,7 @@ describe("binding a config field", () => {
     for (const prop of ["fields", "shape", "token"]) {
       expect(row(m, prop).querySelector('[part="source"]')).toBeNull();
     }
-    expect(m.container.querySelector(".owns-it")).not.toBeNull();
+    expect(stub(m.container, "owns-it")).not.toBeNull();
   });
 
   test("the chip states a rung it cannot leave rather than going quiet", async () => {
@@ -496,38 +531,60 @@ describe("binding a config field", () => {
 // ─── The control registry ────────────────────────────────────────────────────
 
 describe("control registry and ui overrides", () => {
-  test("registered controls are retrievable and win via ui overrides", async () => {
-    registerFormControl(
-      "stub-control",
-      ({ key, value, onChange }) =>
-        html`<button class="stub-control" @click=${() => onChange(`${String(value)}!`)}>
-          ${key}
-        </button>`,
-    );
-    expect(getFormControl("stub-control")).toBeDefined();
-    expect(getFormControl("never-registered")).toBeUndefined();
+  /**
+   * There is no public lookup to assert against any more — `getFormControl` handed a TEMPLATE
+   * control to a lit caller that would interpolate it, and a mounted control needs a HOST, which
+   * only the engine has. So registration is proved the way it matters: the engine draws the
+   * registered control for the field the override names, and what the control commits reaches the
+   * host. The other half — a name nothing registered — is the fall-through test below.
+   */
+  test("a registered control wins via a ui override, and its commit reaches the host", async () => {
+    registerFormControl("stub-control", {
+      mount(host, args) {
+        let latest = args;
+        const button = document.createElement("button");
+        button.dataset["stub"] = "stub-control";
+        button.textContent = args.key;
+        button.addEventListener("click", () => latest.onChange(`${String(latest.value)}!`));
+        host.replaceChildren(button);
+        return {
+          dispose: () => host.replaceChildren(),
+          update: (next) => {
+            latest = next;
+          },
+        };
+      },
+    });
 
     const m = await mountForm(
       { properties: { field: { type: "string" } } },
       { field: "v" },
       { ui: { field: { control: "stub-control" } } },
     );
-    const stub = m.container.querySelector(".stub-control");
-    expect(stub).not.toBeNull();
-    pointer(stub!, "click");
+    const button = stub(m.container, "stub-control");
+    expect(button?.textContent).toBe("field");
+    pointer(button!, "click");
     expect(m.patches).toEqual([{ field: "v!" }]);
   });
 
   test("a control redraws from the value the last repaint handed the engine", async () => {
-    registerFormControl("echo", ({ value }) => html`<i class="echo">${String(value)}</i>`);
+    registerFormControl(
+      "echo",
+      stubControl("echo", ({ value }) => String(value)),
+    );
     const m = await mountForm(
       { properties: { field: { type: "string" } } },
       { field: "one" },
       { ui: { field: { control: "echo" } } },
     );
-    expect(m.container.querySelector(".echo")!.textContent).toBe("one");
+    const host = stub(m.container, "echo")!;
+    expect(host.textContent).toBe("one");
     await m.repaint({ field: "two" });
-    expect(m.container.querySelector(".echo")!.textContent).toBe("two");
+    /* The SAME host says the new value: the standing control was told the value moved rather than
+       being disposed and mounted again, which is what keeps a caret in a control the reader is in
+       when the field beside it commits. */
+    expect(stub(m.container, "echo")).toBe(host);
+    expect(host.textContent).toBe("two");
   });
 
   test("unknown ui overrides fall through to the default control", async () => {
@@ -537,6 +594,7 @@ describe("control registry and ui overrides", () => {
       { ui: { field: { control: "never-registered" } } },
     );
     expect(part(m, "field", "checkbox")).not.toBeNull();
+    expect(stub(m.container, "never-registered")).toBeNull();
   });
 
   test("ui enum overrides layer dynamic $context choices over a plain string field", async () => {

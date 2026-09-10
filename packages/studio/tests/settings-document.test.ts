@@ -77,13 +77,22 @@ function runOpen(args: Record<string, unknown> = {}): Promise<void> {
   return Promise.resolve(run({} as unknown as CommandContext, args));
 }
 
+/**
+ * The section list, addressed by `part` rather than by a class.
+ *
+ * It is a real vertical `tablist` now (`surfaces/settings-pane.json`), so a row names itself with
+ * `label` — `jx-tab` writes the words it draws to `aria-label` too, so a tab naming itself from its
+ * content cannot swallow a slotted control's own name.
+ */
 function navLabels(): (string | undefined)[] {
-  return [...host.querySelectorAll(".settings-nav-item")].map((b) => b.textContent?.trim());
+  return [...host.querySelectorAll('[part="nav-item"]')].map(
+    (b) => b.getAttribute("label") ?? undefined,
+  );
 }
 
 function navButton(label: string): HTMLElement {
-  const button = [...host.querySelectorAll(".settings-nav-item")].find(
-    (b) => b.textContent?.trim() === label,
+  const button = [...host.querySelectorAll('[part="nav-item"]')].find(
+    (b) => b.getAttribute("label") === label,
   );
   if (!button) {
     throw new Error(`no nav item "${label}" — have ${navLabels().join(", ")}`);
@@ -91,8 +100,9 @@ function navButton(label: string): HTMLElement {
   return button as HTMLElement;
 }
 
+/** The island a section renders into. */
 function body(): HTMLElement {
-  return host.querySelector(".settings-doc-content") as HTMLElement;
+  return host.querySelector('[part="body"]') as HTMLElement;
 }
 
 /**
@@ -194,8 +204,11 @@ describe("the settings document", () => {
   test("renders its sections as inner nav, Overview first and active", async () => {
     await mount();
     expect(navLabels()).toEqual(BUILTIN_LABELS);
-    expect(navButton("Overview").classList.contains("active")).toBe(true);
-    expect(navButton("Overview").getAttribute("aria-current")).toBe("page");
+    /* `aria-selected` on a real tab, where an `.active` class and an `aria-current="page"` used to
+       be. A settings section is not a page and choosing one moves no location, so `page` was the
+       wrong word for it; the list is a tablist and the row says which of them is showing. */
+    expect(navButton("Overview").getAttribute("aria-selected")).toBe("true");
+    expect(navButton("Contexts").getAttribute("aria-selected")).toBe("false");
     expect(body().querySelector('[part="title"]')?.textContent).toBe("Overview");
   });
 
@@ -209,7 +222,7 @@ describe("the settings document", () => {
     expect(settingsPaneMounted(surfaceOf(host))).toBe(false);
     // A change notification with nothing mounted must be a no-op rather than a null dereference.
     setSettingsSection("contexts");
-    expect(host.querySelector(".settings-doc")).not.toBeNull();
+    expect(host.querySelector('[part="doc"]')).toBeNull();
   });
 
   test("the Extensions section renders the backend's catalogue through the document", async () => {
@@ -246,8 +259,8 @@ describe("the settings document", () => {
     await mount();
     pointer(navButton("Data Shapes"), "click");
     await flush();
-    expect(navButton("Data Shapes").classList.contains("active")).toBe(true);
-    expect(navButton("Overview").classList.contains("active")).toBe(false);
+    expect(navButton("Data Shapes").getAttribute("aria-selected")).toBe("true");
+    expect(navButton("Overview").getAttribute("aria-selected")).toBe("false");
     /* Data Shapes is a document now, so the shape list is `[part="shape"]` rather than a panel of
        Spectrum buttons — the same reader-visible answer, addressed the way a document is. */
     await flush();
@@ -376,7 +389,7 @@ describe("deep links", () => {
     await flush();
 
     expect(settingsDocumentSection()).toBe("connections");
-    expect(navButton("Connections").classList.contains("active")).toBe(true);
+    expect(navButton("Connections").getAttribute("aria-selected")).toBe("true");
     unregisterSettingsSection("connections");
   });
 
@@ -623,7 +636,10 @@ describe("the ends of the document", () => {
     }
     await flush();
     expect(navLabels()).toEqual([]);
-    expect(body().textContent).toContain("No settings sections");
+    /* The sentence is the DOCUMENT's now, drawn beside the island rather than into it — a section
+       renderer is what fills the island, and with no section registered there is none to run. */
+    expect(body().textContent).toBe("");
+    expect(host.querySelector('[part="empty"]')?.textContent).toContain("No settings sections");
   });
 });
 

@@ -21,7 +21,6 @@
  * @docs studio/logic/data
  */
 
-import { render as litRender } from "lit-html";
 import { displayTagName } from "@jxsuite/schema/guards";
 import { dynamicRouteParams } from "../page-params";
 import { projectState } from "../state";
@@ -34,11 +33,7 @@ import {
   mutateUpdateDef,
   transactDoc,
 } from "../tabs/transact";
-import {
-  expressionHint,
-  isActionExpression,
-  renderExpressionEditor,
-} from "../ui/expression-editor";
+import { expressionHint, isActionExpression, mountExpressionEditor } from "../ui/expression-editor";
 import {
   dataTypeLabel,
   expandedDataRows,
@@ -53,7 +48,7 @@ import { bindableSignalNames } from "./properties-panel";
 import { mountStatementEditor } from "./statement-editor";
 import { NAVIGATOR_STATEMENTS_REGION } from "../ui/regions";
 import { livePreviewExpression } from "../services/live-preview";
-import { renderMediaPicker } from "../ui/media-picker";
+import { mountMediaPicker } from "../ui/media-picker";
 import { renderOnly } from "../store";
 import { mountSchemaForm } from "../ui/schema-form";
 import { resolveContextPointer } from "../services/context-resolver";
@@ -659,9 +654,8 @@ function stateFields(S: SignalsPanelState, name: string, def: SignalDef): Signal
       }),
     );
     islands.set(`${name}/media`, (host) => {
-      litRender(
-        renderMediaPicker("default", defaultVal, (v: string) => patch({ default: v || undefined })),
-        host,
+      mountMediaPicker(host, "default", defaultVal, (v: string) =>
+        patch({ default: v || undefined }),
       );
     });
   } else {
@@ -1297,30 +1291,28 @@ function expressionFields(S: SignalsPanelState, name: string, def: SignalDef): S
     field({ key: "editor", kind: "slot", signal: name, slot: "expression" }),
   ];
   islands.set(`${name}/expression`, (host) => {
-    litRender(
-      renderExpressionEditor(
-        exprNode,
-        (newNode: unknown) =>
-          transactDoc(activeTab.value, (t) =>
-            // Expression editors emit JSON expression nodes.
-            mutateUpdateDef(t, name, { $expression: newNode as JsonValue }),
-          ),
-        {
-          allowEventRef: false,
-          // Live-context evaluation in the canvas iframe, snapshot fallback (M6). The panel lives
-          // In the Navigator — re-render it when a fresh live result lands.
-          preview: livePreviewExpression(activeTab.value, `def:${name}`, exprNode, null, () =>
-            renderOnly("leftPanel"),
-          ),
-          onInsertDef: (defName, vendored) =>
-            transactDoc(activeTab.value, (t) =>
-              mutateAddDef(t, defName, vendored as Record<string, JsonValue>),
-            ),
-          stateDefs: Object.keys(S.document.state || {}),
-          stateEntries: S.document.state || {},
-        },
-      ),
+    mountExpressionEditor(
       host,
+      exprNode,
+      (newNode: unknown) =>
+        transactDoc(activeTab.value, (t) =>
+          // Expression editors emit JSON expression nodes.
+          mutateUpdateDef(t, name, { $expression: newNode as JsonValue }),
+        ),
+      {
+        allowEventRef: false,
+        // Live-context evaluation in the canvas iframe, snapshot fallback (M6). The panel lives
+        // In the Navigator — re-render it when a fresh live result lands.
+        preview: livePreviewExpression(activeTab.value, `def:${name}`, exprNode, null, () =>
+          renderOnly("leftPanel"),
+        ),
+        onInsertDef: (defName, vendored) =>
+          transactDoc(activeTab.value, (t) =>
+            mutateAddDef(t, defName, vendored as Record<string, JsonValue>),
+          ),
+        stateDefs: Object.keys(S.document.state || {}),
+        stateEntries: S.document.state || {},
+      },
     );
   });
   return out;

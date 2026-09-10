@@ -29,10 +29,13 @@
  * being replaced by the last committed one, and what keys that half-typed value to the NODE rather
  * than to the field's name (§11.4).
  *
- * **Three leaves are still lit**, and each is its own surface with readers outside this tab: the
- * media picker, the colour selector and the expression editor. The document draws an empty
- * `[part="control-host"]` for them and this module renders into it, which is the seam
- * `ui/schema-form.ts` established for an extension's registered control.
+ * **Three leaves are drawn elsewhere**, and each is its own surface with readers outside this tab:
+ * the media picker, the colour selector and the expression editor. The document draws an empty
+ * `[part="control-host"]` for them and this module fills it, which is the seam `ui/schema-form.ts`
+ * established for an extension's registered control. Two of them are lit and are RENDERED into the
+ * box; the media picker is a document and is MOUNTED into it, so a `control` takes the host instead
+ * of returning a template — a document cannot be handed back as a value, and it clears the host it
+ * is given.
  *
  * @docs studio/design/properties
  */
@@ -98,9 +101,9 @@ import {
 import { classifyHref, composeHref } from "../utils/link-target";
 import type { LinkKind } from "../utils/link-target";
 import { clickAnythingTo, openPageAction, staleSelectionMessage } from "./empty-state";
-import { renderMediaPicker } from "../ui/media-picker";
+import { mountMediaPicker, unmountMediaPicker } from "../ui/media-picker";
 import { renderColorSelector } from "../ui/color-selector";
-import { renderExpressionEditor } from "../ui/expression-editor";
+import { mountExpressionEditor } from "../ui/expression-editor";
 import {
   loadUsages,
   peekUsages,
@@ -123,7 +126,6 @@ import type {
   ContentRowView,
   ContentSectionView,
 } from "../surfaces/properties-panel";
-import type { TemplateResult } from "lit-html";
 import type {
   JxAttributeValue,
   JxElement,
@@ -559,8 +561,15 @@ interface RowPlan {
     write: (name: string, value: string) => void;
   };
   ladder?: LadderPlan | undefined;
-  /** A leaf still drawn in lit, rebuilt on every repaint. */
-  control?: (() => TemplateResult) | undefined;
+  /**
+   * A leaf the document does not draw, given the empty box it drew for it.
+   *
+   * It takes the host rather than returning a template because the three leaves no longer agree
+   * about what drawing means: the colour selector and the expression editor are lit and render into
+   * the box, the media picker is a document and is MOUNTED into it. Both are idempotent, so a
+   * repaint calls this again rather than deciding which of the two it is holding.
+   */
+  control?: ((host: HTMLElement) => void) | undefined;
 }
 
 /** A row view with every field filled in, before the caller narrows it. */
@@ -672,6 +681,9 @@ export function bindContentHost(
   surface?.dispose();
   surface = null;
   plans.clear();
+  for (const host of controlHosts.values()) {
+    unmountMediaPicker(host);
+  }
   controlHosts.clear();
   for (const key of draftKeys) {
     clearDraft(key);
@@ -737,10 +749,7 @@ function queueProjection(): void {
  * drawing.
  */
 function paintControl(key: string, host: HTMLElement): void {
-  const build = plans.get(key)?.control;
-  if (build) {
-    litRender(build(), host);
-  }
+  plans.get(key)?.control?.(host);
 }
 
 /** Redraw every leaf this panel has been handed a host for, and forget the hosts that have gone. */
@@ -750,6 +759,9 @@ function paintControls(): void {
       paintControl(key, host);
     } else {
       controlHosts.delete(key);
+      /* A media picker in that box is a MOUNTED document, and the surface registry holds its host:
+         dropping our handle on it would leave the mount alive with nothing left to draw. */
+      unmountMediaPicker(host);
     }
   }
 }
@@ -1038,13 +1050,18 @@ function applyLadder(row: ContentRowView, plan: RowPlan, opts: LadderOpts): void
     row.kind = "control";
     plan.commit = undefined;
     plan.draft = undefined;
-    plan.control = () =>
-      renderExpressionEditor(node, (next) => opts.onChange({ $expression: next } as JsonValue), {
-        allowEventRef: false,
-        preview: null,
-        stateDefs: opts.stateDefs,
-        stateEntries: null,
-      });
+    plan.control = (host) =>
+      mountExpressionEditor(
+        host,
+        node,
+        (next) => opts.onChange({ $expression: next } as JsonValue),
+        {
+          allowEventRef: false,
+          preview: null,
+          stateDefs: opts.stateDefs,
+          stateEntries: null,
+        },
+      );
   }
 }
 
@@ -1505,10 +1522,15 @@ function componentPropRows(
 
     if (isMediaFormat(prop.format)) {
       row.kind = "control";
-      plan.control = () => renderMediaPicker(prop.name, staticVal, (v: string) => onChange(v));
+      plan.control = (host) =>
+        mountMediaPicker(host, prop.name, staticVal, (v: string) => onChange(v));
     } else if (prop.format === "color") {
       row.kind = "control";
-      plan.control = () => renderColorSelector(prop.name, staticVal, (v: string) => onChange(v));
+      plan.control = (host) =>
+        litRender(
+          renderColorSelector(prop.name, staticVal, (v: string) => onChange(v)),
+          host,
+        );
     } else if (prop.format === "date") {
       row.kind = "text";
       row.placeholder = "YYYY-MM-DD";
@@ -1702,8 +1724,8 @@ function attributeRow(
   } else if (type === "media") {
     row.kind = "control";
     const staticVal = isRef(value) ? "" : String(value || "");
-    plan.control = () =>
-      renderMediaPicker(attr, staticVal, (v: string) => commitAttr(v || undefined));
+    plan.control = (host) =>
+      mountMediaPicker(host, attr, staticVal, (v: string) => commitAttr(v || undefined));
   } else if (type === "select") {
     row.kind = "select";
     row.value = isRef(value) ? "" : String(value || "");

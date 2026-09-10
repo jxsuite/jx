@@ -1,29 +1,9 @@
-/* Jx Studio — canvas surface.
-   Load after tokens.css, after shell.css.
-
-   Owns the multi-panel canvas frame (.pane-stage, .panzoom-wrap,
-   .canvas-panel*), the pane's context bar and floating zoom pod, the
-   content-edit-mode canvas column, the selection/hover/layout overlay
-   boxes drawn over the rendered document, and the unified block action
-   bar plus its link popover. */
-
-/* ─── Canvas (multi-panel) ────────────────────── */
-/* The stage's own axis. `shell.css` places the cell; this says what it does with it. Selected by
-   class rather than by `#canvas-wrap`, because there are as many stages as there are panes. */
-.pane-stage {
-  display: flex;
-  gap: 24px;
-  align-items: flex-start;
-}
 .panzoom-wrap {
   display: inline-flex;
   gap: 24px;
   align-items: flex-start;
   transform-origin: 0 0;
   margin-block: auto;
-}
-.canvas-panel {
-  flex-shrink: 0;
 }
 .source-wrap {
   display: flex;
@@ -86,23 +66,6 @@
   /* The containing block for the two resize handles. */
   position: relative;
 }
-
-/* ─── Edit-mode width handles ──────────────────
-   One on each side of the column, dragged symmetrically about its centre (`canvas/edit-width.ts`).
-   Physical `left`/`right` rather than logical properties, and deliberately: the sign the drag
-   applies is physical too, and Studio's own chrome is never mirrored — the artboard's `dir` is a
-   property of the document INSIDE the iframe. */
-.edit-width-handle {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 9px;
-  /* A component definition hugs its content (`.is-component` below), which can be a hundred pixels
-     tall; the grab target must not shrink with it. */
-  min-height: 120px;
-  cursor: col-resize;
-  z-index: 2;
-}
 .edit-width-handle.start {
   left: -9px;
 }
@@ -147,19 +110,6 @@
 .content-edit-column .canvas-panel-viewport {
   border: none;
   background: transparent;
-}
-.canvas-panel-header {
-  padding: 4px 8px;
-  font-size: var(--spectrum-font-size-50, 11px);
-  color: var(--fg-dim);
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  border-bottom: none;
-  border-radius: var(--radius) var(--radius) 0 0;
-  text-align: center;
-  cursor: pointer;
-  user-select: none;
-  font-family: var(--font-mono);
 }
 .canvas-panel-header.active {
   color: var(--accent);
@@ -206,10 +156,6 @@
   color: var(--spectrum-gray-500, #888);
   font-family: var(--font-mono);
   pointer-events: none;
-}
-/* Single-canvas fallback (no $media) */
-.canvas-panel.full-width {
-  min-width: 0;
 }
 /* ─── Preview stage ────────────────────────────
    Preview is the fidelity view: one frame, sized to the pane, scrolling its
@@ -262,19 +208,6 @@
   border-width: 1px;
   border-style: dashed;
 }
-/* Layout-chrome selection: the author clicked a header/footer the LAYOUT file contributes, not
-   page content. Purple + dashed says "selected, but not yours to edit here" — it must never read
-   as the ordinary accent-solid selection, because Backspace and typing do not apply to it.
-
-   This is the PARENT half of a two-realm affordance. The always-on treatment — the dimmed region
-   and its `LAYOUT · layouts/base.json` chip — cannot live here: layout nodes are inside the
-   cross-origin canvas iframe, so their rules ship in the CSS string in `canvas/iframe-render.ts`
-   (EDIT_PLACEHOLDER_CSS), a separate document. These two classes style the parent-drawn selection
-   overlay, which floats above the iframe in canvas space. */
-.overlay-layout {
-  border-style: dashed !important;
-  border-color: var(--spectrum-purple-600, #9256d9) !important;
-}
 .overlay-label {
   position: absolute;
   top: -20px;
@@ -297,34 +230,6 @@
   top: 8px;
   left: 50%;
   transform: translateX(-50%);
-}
-.diff-toolbar-inner {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  padding: 4px 8px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--bg);
-  box-shadow: var(--spectrum-drop-shadow-emphasized);
-}
-/* The Visual/Code radio pair. Spacing only: the segmented look is Spectrum's own. */
-.diff-view {
-  flex-shrink: 0;
-}
-.diff-view-static,
-.diff-step-count,
-.diff-note {
-  color: var(--fg);
-  font-size: var(--spectrum-font-size-50);
-  white-space: nowrap;
-}
-/* Tabular figures so the counter does not jitter its neighbours as it steps. */
-.diff-step-count {
-  font-variant-numeric: tabular-nums;
-}
-.diff-note {
-  color: var(--fg-dim);
 }
 
 /* The Code half of a comparison: one Monaco diff editor filling the stage, no artboards and no

@@ -11,6 +11,7 @@ code:
   - packages/studio/src/panels/data-grid.ts
   - packages/studio/src/ui/form-controls.ts
   - packages/studio/src/surfaces/schema-builder.ts
+  - packages/studio/src/surfaces/reference-field.ts
 ---
 
 # Data tables

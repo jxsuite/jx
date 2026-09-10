@@ -20,6 +20,7 @@ code:
   - packages/studio/src/settings/extension-rows.ts
   - packages/studio/src/settings/extension-commands.ts
   - packages/studio/src/panels/settings-pane.ts
+  - packages/studio/src/surfaces/settings-pane.ts
   - packages/studio/src/tabs/project-config.ts
 ---
 
@@ -27,7 +28,7 @@ code:
 
 Everything that applies to your whole site rather than one page (the name, the favicon, the fonts, the design tokens, the packages) lives in your project's configuration. In Studio that configuration is **a document**: it opens as a tab in the pane, with its sections listed down the left, and you edit, undo and save it exactly as you would a page.
 
-Open it from the **Settings** menu at the foot of the rail: **Open Project Settings**, whose submenu lists every section so you can land on the one you want. It is also on :kbd[⌘⇧,], on :kbd[⌘K] as **Open Project Settings**, and in the **⬢ menu** in the Command Bar. (:kbd[⌘,] is the other half of the pair: **Preferences**, which configures the app rather than this project.) Click a section on the left to move between them; the section you were last on is where you land next time.
+Open it from the **Settings** menu at the foot of the rail: **Open Project Settings**, whose submenu lists every section so you can land on the one you want. It is also on :kbd[⌘⇧,], on :kbd[⌘K] as **Open Project Settings**, and in the **⬢ menu** in the Command Bar. (:kbd[⌘,] is the other half of the pair: **Preferences**, which configures the app rather than this project.) Click a section on the left to move between them, or reach the list with :kbd[⇥] and walk it with :kbd[↑] and :kbd[↓]; the section you were last on is where you land next time.
 
 ![Project settings open on the Overview section, with the section list on the left](../../images/settings-document.png)
 

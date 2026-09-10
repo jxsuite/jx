@@ -234,8 +234,9 @@ describe("Logic tab — rendering bindings", () => {
     const c = await logic(makeDoc());
     const island = binding(c, "oninput")!.querySelector('[part="expression-host"]') as HTMLElement;
     expect(island).toBeTruthy();
-    // The document renders the host node and NOTHING inside it; the flow fills it (§9.4).
-    expect(island.querySelector(".expression-editor")).toBeTruthy();
+    // The document renders the host node and NOTHING inside it; the flow MOUNTS its own document
+    // Into it — the editor is a surface of its own now, not a lit template rendered beside one.
+    expect(island.querySelector('[part="expression"]')).toBeTruthy();
   });
 
   test("a ref body renders the handler select with the current ref and every function def", async () => {
@@ -440,12 +441,12 @@ describe("Logic tab — editing bindings", () => {
 
   test("the expression island writes back through $expression", async () => {
     const c = await logic(makeDoc());
-    const opPicker = binding(c, "oninput")!.querySelector(
-      '[part="expression-host"] .expression-editor sp-picker',
-    ) as HTMLElement & { value: string };
-    expect(opPicker).toBeTruthy();
-    opPicker.value = "push";
-    opPicker.dispatchEvent(new Event("change", { bubbles: true }));
+    const control = binding(c, "oninput")!.querySelector(
+      '[part="expression-host"] [part="operator"] [part="control"]',
+    ) as HTMLSelectElement;
+    expect(control).toBeTruthy();
+    control.value = "push";
+    control.dispatchEvent(new Event("change", { bubbles: true }));
     await settle();
     expect(
       (selectedNode().oninput as { $expression?: { operator?: string } }).$expression?.operator,

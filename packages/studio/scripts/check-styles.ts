@@ -153,16 +153,6 @@ export const ALLOWED_ORPHANS = new Set<string>([
      is drawn inside. `array-object-*` and `expr-live-badge` are shared with ui/schema-form.ts and
      ui/formula-chips.ts, which still pass their own inline copies; the rule they now inherit is
      the wrap and the shrink. */
-  // Owner: ui/form-controls.ts
-  "secret-field",
-  // Owner: ui/formula-chips.ts
-  "formula-chip",
-  "formula-chip--group",
-  "formula-chips",
-  // Owner: ui/media-picker.ts
-  "media-picker-browse",
-  "media-picker-filter",
-  "media-picker-upload",
   // Owner: ui/value-selector.ts
   "jx-combobox-picker",
   "jx-combobox-popover",

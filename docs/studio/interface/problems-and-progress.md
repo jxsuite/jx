@@ -9,7 +9,7 @@ code:
   - packages/studio/src/panels/formula-workspace.ts
   - packages/studio/src/panels/activity-panel.ts
   - packages/studio/src/ui/progress-modal.ts
-  - packages/studio/src/ui/field-row.ts
+  - packages/studio/src/surfaces/style-panel.ts
   - packages/studio/src/surfaces/statusbar.ts
   - packages/studio/src/services/connection.ts
 ---

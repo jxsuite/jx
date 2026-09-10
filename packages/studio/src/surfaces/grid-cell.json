@@ -1,7 +1,7 @@
 {
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "StudioGridCell",
-  "$description": "The value picker for a grid cell that cannot be edited in place. An image and a relationship both pick from a list that is bigger than a cell, and their pickers render OUTSIDE it — which Tabulator's range module reads as an outside interaction and blur-cancels. So these two kinds skip the in-cell editor session entirely: a double click opens this panel, anchored on the cell, and every pick writes straight through the edit buffer. The media picker is an ISLAND (§9.4): `[part=\"picker-host\"]` is drawn empty and `ui/media-picker.ts` fills it, because that surface is a lit one of its own and another conversion's to move.",
+  "$description": "The value picker for a grid cell that cannot be edited in place. An image and a relationship both pick from a list that is bigger than a cell, and their pickers render OUTSIDE it \u2014 which Tabulator's range module reads as an outside interaction and blur-cancels. So these two kinds skip the in-cell editor session entirely: a double click opens this panel, anchored on the cell, and every pick writes straight through the edit buffer. The media picker is an ISLAND (\u00a79.4): `[part=\"picker-host\"]` is drawn empty and `ui/media-picker.ts` mounts `media-field.json` into it. It stays an island now that it is a document too, because what goes in the box is the caller's decision rather than this panel's.",
   "tagName": "jx-popover",
   "attributes": {
     "part": "cell-panel"
@@ -136,7 +136,7 @@
                   }
                 },
                 {
-                  "$description": "An id the target collection does not hold is still a legal reference — a draft entry, or one another repository owns — so the list is a shortcut rather than the whole of what may be written.",
+                  "$description": "An id the target collection does not hold is still a legal reference \u2014 a draft entry, or one another repository owns \u2014 so the list is a shortcut rather than the whole of what may be written.",
                   "tagName": "jx-textfield",
                   "attributes": {
                     "part": "custom"
@@ -144,7 +144,7 @@
                   "$props": {
                     "size": "sm",
                     "label": "Custom id",
-                    "placeholder": "Custom id…",
+                    "placeholder": "Custom id\u2026",
                     "value": {
                       "$ref": "#/state/custom"
                     }

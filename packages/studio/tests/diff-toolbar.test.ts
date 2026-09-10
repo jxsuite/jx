@@ -3,8 +3,8 @@
  *
  * The toolbar renders per pane and re-renders itself, never through `renderCanvas` — a step that
  * rebuilt the stage would remount both artboard iframes, tearing down the documents it is trying to
- * move you through. These tests drive the template and the store directly; the measure and the pan
- * are `iframe-host`'s and `canvas-utils`'s, mocked because happy-dom has no layout.
+ * move you through. These tests drive the mounted surface and the store directly; the measure and
+ * the pan are `iframe-host`'s and `canvas-utils`'s, mocked because happy-dom has no layout.
  */
 
 import "./harness";
@@ -67,12 +67,12 @@ void mock.module("../src/services/announce.js", () => ({
   announce: (message: string) => announced.push(message),
 }));
 
-const { diffToolbarTpl, setDiffRepaint, stepDiffAndReveal } =
+const { renderDiffToolbar, setDiffRepaint, setDiffToolbarHost, stepDiffAndReveal } =
   await import("../src/canvas/diff-toolbar");
 setDiffRepaint((paneId: string) => repainted.push(paneId));
 const { diffStepOf, diffViewOf, resetDiffViews, setDiffChangeMap, setDiffView } =
   await import("../src/canvas/diff-view");
-const { flush, renderInto } = await import("./harness");
+const { flush } = await import("./harness");
 
 const mapOf = (steps: ChangeMap["steps"], extra: Partial<ChangeMap> = {}): ChangeMap => ({
   current: [],
@@ -89,13 +89,39 @@ const modified = (i: number) => ({
   originalPath: ["children", i],
 });
 
-const draw = (paneId: string) => renderInto(diffToolbarTpl(paneId));
-/* By ELEMENT, not by `[role='radio']`. The template sets that role, and `sp-action-button`
-   overwrites it with `role="button"` plus `aria-pressed` once Spectrum upgrades the element — which
-   happy-dom never does, so a role selector passes here and finds nothing in a browser. The
-   assertions below read `aria-checked`, which the template owns and which survives. */
+/**
+ * The bar draws into a host the stage gives it, and keeps ONE mounted document there — so this
+ * hands a pane the same host every time, exactly as a stage that is not being rebuilt does.
+ */
+const hosts = new Map<string, HTMLElement>();
+async function draw(paneId: string): Promise<HTMLElement> {
+  let host = hosts.get(paneId);
+  if (!host) {
+    host = document.createElement("div");
+    document.body.append(host);
+    hosts.set(paneId, host);
+    setDiffToolbarHost(paneId, host);
+  }
+  renderDiffToolbar(paneId);
+  await flush();
+  return host;
+}
+
+/* By ELEMENT, not by `[role='radio']`. The role is the KIT's now — `jx-action-group selects=single`
+   is the radiogroup and `checked` is what makes each button a radio — and it lands on the control
+   inside each button rather than on the host, which is exactly why the old spelling could not
+   survive: the template wrote `role="radio"` on `sp-action-button` and Spectrum overwrote it with
+   `role="button"` plus `aria-pressed` the moment the element upgraded. */
 const radios = (el: HTMLElement) =>
-  [...el.querySelectorAll(".diff-view sp-action-button")] as HTMLElement[];
+  [...el.querySelectorAll('[part="view"] jx-action-button')] as HTMLElement[];
+
+/** What a radio announces, read where the kit writes it: the control inside the button. */
+const checked = (button: HTMLElement) =>
+  button.querySelector('[part="control"]')?.getAttribute("aria-checked") ?? null;
+
+/** One stepper button, by the `part` the document draws it with. */
+const stepper = (el: HTMLElement, which: "previous" | "next") =>
+  el.querySelector(`[part="${which}"]`) as HTMLElement | null;
 
 beforeEach(() => {
   resetDiffViews();
@@ -108,6 +134,11 @@ beforeEach(() => {
   measureQueue = [];
   repainted.length = 0;
   surfaces.clear();
+  for (const [paneId, host] of hosts) {
+    setDiffToolbarHost(paneId, null);
+    host.remove();
+  }
+  hosts.clear();
 });
 
 describe("what the toolbar says", () => {
@@ -136,8 +167,10 @@ describe("what the toolbar says", () => {
     setDiffChangeMap("primary", mapOf([]));
     const el = await draw("primary");
     expect(el.textContent).toContain("No changes");
-    expect(el.querySelector(".diff-step-count")).not.toBeNull();
-    expect(el.querySelectorAll("sp-action-button[title$='change']")).toHaveLength(0);
+    expect(el.querySelector('[part="count"]')).not.toBeNull();
+    // No stepper at all — the count stands alone rather than between two dead buttons.
+    expect(stepper(el, "previous")).toBeNull();
+    expect(stepper(el, "next")).toBeNull();
   });
 
   test("reports a degraded alignment rather than hiding it", async () => {
@@ -163,7 +196,7 @@ describe("what the toolbar says", () => {
     // Never drawn disabled — that is the rule a one-value axis follows everywhere else.
     setDiffChangeMap("primary", null);
     const el = await draw("primary");
-    expect(el.querySelector(".diff-view-static")?.textContent).toBe("Code");
+    expect(el.querySelector('[part="view-static"]')?.textContent).toBe("Code");
     expect(radios(el)).toHaveLength(0);
     expect(el.textContent).toContain("Changed lines are marked");
   });
@@ -192,7 +225,7 @@ describe("what the toolbar says", () => {
     setDiffChangeMap("primary", mapOf([modified(0)]));
     setDiffView("primary", "code");
     const el = await draw("primary");
-    expect(radios(el).map((b) => b.getAttribute("aria-checked"))).toEqual(["false", "true"]);
+    expect(radios(el).map((button) => checked(button))).toEqual(["false", "true"]);
   });
 });
 
@@ -331,9 +364,9 @@ describe("the commands", () => {
 
 describe("the toolbar's host", () => {
   test("renders into the element the stage handed it, and forgets it on teardown", async () => {
-    const { renderDiffToolbar, setDiffToolbarHost } = await import("../src/canvas/diff-toolbar");
     setDiffChangeMap("primary", mapOf([modified(0), modified(1)]));
     const host = document.createElement("div");
+    document.body.append(host);
     setDiffToolbarHost("primary", host);
     renderDiffToolbar("primary");
     await flush();
@@ -345,10 +378,48 @@ describe("the toolbar's host", () => {
     renderDiffToolbar("primary");
     await flush();
     expect(host.textContent).toBe("");
+    host.remove();
   });
 
-  test("a redraw for a pane that never had a host does nothing", async () => {
-    const { renderDiffToolbar } = await import("../src/canvas/diff-toolbar");
+  test("a new host is a new mount; the old document does not keep drawing", async () => {
+    /* A stage rebuild hands the bar a different box. The mount is kept across a REDRAW — that is
+       what stops a step from remounting a document several times a second — so the one thing that
+       must still end it is the host changing underneath it. */
+    setDiffChangeMap("primary", mapOf([modified(0), modified(1)]));
+    const first = document.createElement("div");
+    document.body.append(first);
+    setDiffToolbarHost("primary", first);
+    renderDiffToolbar("primary");
+    await flush();
+    expect(first.textContent).toContain("2 changes");
+
+    const second = document.createElement("div");
+    document.body.append(second);
+    setDiffToolbarHost("primary", second);
+    renderDiffToolbar("primary");
+    await flush();
+    expect(second.textContent).toContain("2 changes");
+    expect(first.textContent).toBe("");
+    first.remove();
+    second.remove();
+  });
+
+  test("a host dropped inside the mount's own await leaves nothing behind", async () => {
+    /* A mode transition can land between the redraw and the document standing up — `kitReady()` is
+       a promise chain — and a bar that then attached would be drawing into a box the stage has
+       already thrown away. */
+    setDiffChangeMap("primary", mapOf([modified(0)]));
+    const into = document.createElement("div");
+    document.body.append(into);
+    setDiffToolbarHost("primary", into);
+    renderDiffToolbar("primary");
+    setDiffToolbarHost("primary", null);
+    await flush();
+    expect(into.childElementCount).toBe(0);
+    into.remove();
+  });
+
+  test("a redraw for a pane that never had a host does nothing", () => {
     expect(() => renderDiffToolbar("never-drawn")).not.toThrow();
   });
 });
@@ -358,14 +429,11 @@ describe("the stepper buttons", () => {
     setDiffChangeMap("primary", mapOf([modified(0), modified(1)]));
     measureQueue = [null, null, null, null];
     const el = await draw("primary");
-    const buttons = [...el.querySelectorAll("sp-action-button")] as HTMLElement[];
-    const next = buttons.find((b) => b.getAttribute("title") === "Next change")!;
-    next.click();
+    stepper(el, "next")!.click();
     await flush();
     expect(diffStepOf("primary")).toBe(0);
 
-    const back = buttons.find((b) => b.getAttribute("title") === "Previous change")!;
-    back.click();
+    stepper(el, "previous")!.click();
     await flush();
     // Already at the first change, so the step refuses and the cursor holds.
     expect(diffStepOf("primary")).toBe(0);
@@ -407,9 +475,7 @@ describe("a failing reveal", () => {
     setDiffChangeMap("primary", mapOf([modified(0), modified(1)]));
     measureThrows = true;
     const el = await draw("primary");
-    const next = [...el.querySelectorAll("sp-action-button")].find(
-      (b) => b.getAttribute("title") === "Next change",
-    ) as HTMLElement;
+    const next = stepper(el, "next")!;
     expect(() => next.click()).not.toThrow();
     await flush();
     expect(diffStepOf("primary")).toBe(0);

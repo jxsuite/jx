@@ -23,7 +23,8 @@ import type { JxMutableNode } from "@jxsuite/schema/types";
 
 void mock.module("../src/ui/media-picker.js", () => ({
   invalidateMediaCache: () => {},
-  renderMediaPicker: () => "",
+  mountMediaPicker: () => {},
+  unmountMediaPicker: () => {},
   uploadAndAssign: () => Promise.resolve(null),
 }));
 

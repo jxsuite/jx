@@ -64,10 +64,10 @@ function openTabWithMedia(media: Record<string, string> = DESKTOP_FIRST): Tab {
  */
 function standUpColumn(available: number, initialWidth?: number): HTMLElement {
   const canvas = document.createElement("div");
-  canvas.className = "content-edit-canvas";
+  canvas.setAttribute("part", "edit-canvas");
   Object.defineProperty(canvas, "clientWidth", { configurable: true, value: available });
   const column = document.createElement("div");
-  column.className = "content-edit-column";
+  column.setAttribute("part", "edit-column");
   if (initialWidth !== undefined) {
     column.style.maxWidth = `${initialWidth}px`;
   }
@@ -305,7 +305,8 @@ describe("editWidthTarget", () => {
 describe("mountEditWidthHandle", () => {
   function handleIn(column: HTMLElement): HTMLElement {
     const handle = document.createElement("div");
-    handle.className = "edit-width-handle end";
+    handle.setAttribute("part", "edit-handle");
+    handle.dataset.side = "end";
     column.append(handle);
     return handle;
   }
@@ -319,7 +320,7 @@ describe("mountEditWidthHandle", () => {
   test("a drag on the end handle resizes symmetrically — 2px of width per px of pointer", () => {
     const tab = openTabWithMedia();
     const column = standUpColumn(1400, 1000);
-    mountEditWidthHandle(surface, handleIn(column), 1);
+    mountEditWidthHandle(surface, handleIn(column), column, 1);
     drag(column.lastElementChild as HTMLElement, 0, -60);
     // 1000 − 2×60 = 880, past no magnet, so it lands exactly there.
     expect(column.style.maxWidth).toBe("880px");
@@ -330,8 +331,9 @@ describe("mountEditWidthHandle", () => {
     openTabWithMedia();
     const column = standUpColumn(1400, 800);
     const handle = handleIn(column);
-    handle.className = "edit-width-handle start";
-    mountEditWidthHandle(surface, handle, -1);
+    handle.setAttribute("part", "edit-handle");
+    handle.dataset.side = "start";
+    mountEditWidthHandle(surface, handle, column, -1);
     drag(handle, 0, -50);
     expect(column.style.maxWidth).toBe("900px");
   });
@@ -339,7 +341,7 @@ describe("mountEditWidthHandle", () => {
   test("a drag near a declared width snaps onto it", () => {
     const tab = openTabWithMedia();
     const column = standUpColumn(1400, 1000);
-    mountEditWidthHandle(surface, handleIn(column), 1);
+    mountEditWidthHandle(surface, handleIn(column), column, 1);
     // 1000 − 2×117 = 766, within 8px of the 768 the project declares for --md.
     drag(column.lastElementChild as HTMLElement, 0, -117);
     expect(column.style.maxWidth).toBe("768px");
@@ -349,7 +351,7 @@ describe("mountEditWidthHandle", () => {
   test("Alt drags through the magnet", () => {
     openTabWithMedia();
     const column = standUpColumn(1400, 1000);
-    mountEditWidthHandle(surface, handleIn(column), 1);
+    mountEditWidthHandle(surface, handleIn(column), column, 1);
     drag(column.lastElementChild as HTMLElement, 0, -117, { altKey: true });
     expect(column.style.maxWidth).toBe("766px");
   });
@@ -360,7 +362,7 @@ describe("mountEditWidthHandle", () => {
        readout and the rendered column would then disagree. */
     openTabWithMedia();
     const column = standUpColumn(1000, 900);
-    mountEditWidthHandle(surface, handleIn(column), 1);
+    mountEditWidthHandle(surface, handleIn(column), column, 1);
     drag(column.lastElementChild as HTMLElement, 0, 400);
     expect(column.style.maxWidth).toBe(`${1000 - 2 * EDIT_CANVAS_GUTTER}px`);
   });
@@ -369,16 +371,43 @@ describe("mountEditWidthHandle", () => {
     openTabWithMedia();
     const column = standUpColumn(1400, 1000);
     const handle = handleIn(column);
-    mountEditWidthHandle(surface, handle, 1);
-    mountEditWidthHandle(surface, handle, 1);
+    mountEditWidthHandle(surface, handle, column, 1);
+    mountEditWidthHandle(surface, handle, column, 1);
     drag(handle, 0, -60);
     // Wired twice, the second listener would read a startSize the first had already moved.
     expect(column.style.maxWidth).toBe("880px");
   });
 
-  test("lit calls a ref with undefined on disconnect, and an orphan handle is skipped", () => {
+  test("a frame with no column to size is skipped rather than half-wired", () => {
+    /* The stage draws the handles only where there IS a column, so both halves can be absent: the
+       Design and Preview frames draw neither. Naming both nodes is what makes that legible — the
+       handle used to find its column by walking up from itself, which meant "no column" could only
+       show up as a drag against the wrong element. */
     openTabWithMedia();
-    expect(() => mountEditWidthHandle(surface, undefined, 1)).not.toThrow();
-    expect(() => mountEditWidthHandle(surface, document.createElement("div"), 1)).not.toThrow();
+    const column = standUpColumn(1400, 1000);
+    expect(() => mountEditWidthHandle(surface, undefined, column, 1)).not.toThrow();
+    expect(() =>
+      mountEditWidthHandle(surface, document.createElement("div"), undefined, 1),
+    ).not.toThrow();
+  });
+
+  test("the column is the one it is GIVEN, not the handle's parent", () => {
+    /* The stage draws each handle inside the conditional slot that decides whether there is a
+       column at all, so `handle.parentElement` is that slot and not the column. A drag resolved
+       that way would size a `display: contents` box — no layout, no visible move — which is a
+       defect only a browser could show. */
+    openTabWithMedia();
+    const column = standUpColumn(1400, 1000);
+    const slot = document.createElement("div");
+    column.append(slot);
+    const handle = document.createElement("div");
+    handle.setAttribute("part", "edit-handle");
+    handle.dataset.side = "end";
+    slot.append(handle);
+
+    mountEditWidthHandle(surface, handle, column, 1);
+    drag(handle, 0, -60);
+    expect(column.style.maxWidth).toBe("880px");
+    expect(slot.style.maxWidth).toBe("");
   });
 });

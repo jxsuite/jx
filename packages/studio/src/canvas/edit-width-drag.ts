@@ -139,18 +139,22 @@ export function editWidthTarget(
 const _wired = new WeakSet<HTMLElement>();
 
 /**
- * Attach the drag to one handle. Idempotent per element; safe to call from a lit `ref`.
+ * Attach the drag to one handle. Idempotent per element.
  *
- * The column is the handle's own parent, so there is no second ref to keep in step: the two are
- * created and replaced by the same template, and a handle that outlived its column would be a
- * handle with nothing to size.
+ * **The column is passed rather than inferred**, and the two are still created and replaced
+ * together — a handle that outlived its column would be a handle with nothing to size. It used to
+ * be read off `handle.parentElement`, which was true of the lit template and is not true of the
+ * stage document: `surfaces/canvas-stage.json` draws each handle inside the conditional slot that
+ * decides whether there is a column to size at all, so the handle's parent is that slot. Naming
+ * both nodes is the honest fix — the caller already holds them — rather than flattening a document
+ * to keep a DOM assumption alive.
  */
 export function mountEditWidthHandle(
   surface: CanvasSurface,
   handle: HTMLElement | undefined,
+  column: HTMLElement | undefined,
   grow: 1 | -1,
 ): void {
-  const column = handle?.parentElement;
   if (!handle || !column || _wired.has(handle)) {
     return;
   }

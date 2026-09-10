@@ -15,7 +15,7 @@
  *   overflow menu reopened AFTER such a click is the live one, which is the reachable state a stale
  *   `_overflowHandle` would have to be visible in.
  */
-import { flush, key, mountOverlayLayers, resetWorkspaceWithTab, stubRect } from "./harness";
+import { flush, key, resetWorkspaceWithTab, stubRect } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import {
   activeTab,
@@ -25,8 +25,7 @@ import {
   workspace,
 } from "../src/workspace/workspace";
 import { view } from "../src/view";
-import { html } from "lit-html";
-import { initLayers, popoverLayerFor, renderPopover, toastsAreHeld } from "../src/ui/layers";
+import { getLayerSlot, initLayers, toastsAreHeld } from "../src/ui/layers";
 import { createCommandRegistry } from "../src/commands/registry";
 import { setActiveRegistry } from "../src/commands/active-registry";
 import { makeContext } from "../src/commands/context";
@@ -309,13 +308,25 @@ describe("a keyboard jump the repaint still cannot draw", () => {
 
 // ─── The overlay layers ───────────────────────────────────────────────────────
 
-describe("popoverLayerFor", () => {
+/*
+ * `popoverLayerFor` is gone, and the reason is worth more than the tests were.
+ *
+ * It answered "which layer must this popover use to paint above the surface that opened it", because
+ * the four hosts are sibling stacking contexts (popover 1000, modal 2000, dialog 3000, toast 4000)
+ * and a menu anchored inside a modal would otherwise render entirely beneath it. Every menu now
+ * opens as a native `popover` in the TOP LAYER, which is above every stacking context by definition
+ * — so the question has no answer left to give. Its last caller went with `renderPopover`.
+ *
+ * What replaces the assertion is the one below: a menu raised from inside a dialog is reachable,
+ * which is the behaviour the layer arithmetic existed to produce.
+ */
+describe("a popover opened from inside a dialog", () => {
   beforeEach(() => {
     document.body.innerHTML = `
-      <div id="layer-popover"><button id="in-popover"></button></div>
-      <div id="layer-modal"><button id="in-modal"></button></div>
+      <div id="layer-popover"></div>
+      <div id="layer-modal"></div>
       <div id="layer-dialog"><button id="in-dialog"></button></div>
-      <button id="in-app"></button>
+      <div id="layer-toast"></div>
     `;
     initLayers();
   });
@@ -324,11 +335,10 @@ describe("popoverLayerFor", () => {
     document.body.innerHTML = "";
   });
 
-  test("a control inside a dialog opens its popover in the dialog layer", () => {
-    expect(popoverLayerFor(document.querySelector("#in-dialog"))).toBe("dialog");
-    expect(popoverLayerFor(document.querySelector("#in-modal"))).toBe("modal");
-    expect(popoverLayerFor(document.querySelector("#in-app"))).toBe("popover");
-    expect(popoverLayerFor(null)).toBe("popover");
+  test("lands in the popover layer, because the top layer settles the stacking", () => {
+    const slot = getLayerSlot("popover", "from-dialog");
+    expect(slot.closest("#layer-popover")).not.toBeNull();
+    expect(slot.dataset.jxRegion).toBe("overlay.menu:from-dialog");
   });
 });
 
@@ -397,15 +407,13 @@ describe("the tab strip", () => {
     return dataTransfer;
   }
 
-  /** Let the popover's outside-click listener register — it waits a frame on purpose. */
-  async function frame(): Promise<void> {
-    await new Promise((resolve) => {
-      requestAnimationFrame(() => resolve(null));
-    });
-  }
-
+  /**
+   * Both menus are the kit's now (`surfaces/menu.ts`), so a menu on screen is a `jx-menu` in a
+   * popover slot — and its light dismissal is the platform's `popover="auto"` rather than a
+   * document listener this strip arms a frame after opening.
+   */
   function popovers(): Element[] {
-    return [...document.querySelectorAll("#layer-popover sp-popover")];
+    return [...document.querySelectorAll("#layer-popover jx-menu")];
   }
 
   function publishRegistry() {
@@ -466,12 +474,11 @@ describe("the tab strip", () => {
     await flush();
 
     (stripHost.querySelector('[part="overflow"]:not([hidden])') as HTMLElement).click();
-    await flush();
+    await flush(3);
     expect(popovers()).toHaveLength(1);
-    await frame();
 
     // A mousedown inside the menu is not "outside": the menu is there to be clicked.
-    const item = document.querySelector("#layer-popover sp-menu-item") as HTMLElement;
+    const item = document.querySelector("#layer-popover jx-menu-item") as HTMLElement;
     item.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
     await flush();
     expect(popovers()).toHaveLength(1);
@@ -498,9 +505,8 @@ describe("the tab strip", () => {
 
     const chevron = () => stripHost.querySelector('[part="overflow"]:not([hidden])') as HTMLElement;
     chevron().click();
-    await flush();
-    await frame();
-    expect(document.querySelectorAll("#layer-popover sp-menu-item")).toHaveLength(3);
+    await flush(3);
+    expect(document.querySelectorAll("#layer-popover jx-menu-item")).toHaveLength(3);
 
     document.body.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
     await flush();
@@ -511,10 +517,10 @@ describe("the tab strip", () => {
     open("d");
     await flush();
     chevron().click();
-    await flush();
+    await flush(3);
 
     expect(popovers()).toHaveLength(1);
-    expect(document.querySelectorAll("#layer-popover sp-menu-item")).toHaveLength(4);
+    expect(document.querySelectorAll("#layer-popover jx-menu-item")).toHaveLength(4);
 
     // And the strip's handle addresses THAT menu: the exported dismiss takes it off the screen.
     dismissOverflowMenu();
@@ -529,9 +535,8 @@ describe("the tab strip", () => {
     chips()[0]!.dispatchEvent(
       new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 5, clientY: 5 }),
     );
-    await flush();
+    await flush(3);
     expect(popovers()).toHaveLength(1);
-    await frame();
 
     document.body.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
     await flush();
@@ -541,80 +546,7 @@ describe("the tab strip", () => {
     chips()[0]!.dispatchEvent(
       new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 5, clientY: 5 }),
     );
-    await flush();
+    await flush(3);
     expect(popovers()).toHaveLength(1);
-  });
-});
-
-// ─── ui/layers.ts — a popover dismissed inside its own arming frame ───────────
-
-/**
- * `renderPopover` defers arming its outside-click listener by one frame, so the click that OPENED
- * the popover cannot immediately close it. A popover dismissed inside that frame — which a
- * double-click on any menu trigger produces — used to be armed anyway, one frame after its own
- * death: a document-wide capture listener belonging to a detached slot. The next mousedown then
- * counted as "outside" it and ran its owner's `onDismiss`, and owners null their handle field there
- * — so the corpse cleared the pointer to the LIVE popover and stranded it on screen.
- */
-describe("a popover dismissed before its listener is armed", () => {
-  beforeEach(() => {
-    mountOverlayLayers(document.body);
-    initLayers();
-  });
-
-  afterEach(() => {
-    document.body.innerHTML = "";
-  });
-
-  async function frame(): Promise<void> {
-    await new Promise((resolve) => {
-      requestAnimationFrame(() => resolve(null));
-    });
-  }
-
-  test("is never armed, so it cannot dismiss the popover that replaced it", async () => {
-    const dismissed: string[] = [];
-
-    const first = renderPopover(html`<div id="first">one</div>`, {
-      dismissOnOutsideClick: true,
-      onDismiss: () => dismissed.push("first"),
-    });
-    // Same frame, before the arming rAF — the double-click case.
-    first.dismiss();
-    await frame();
-
-    const second = renderPopover(html`<div id="second">two</div>`, {
-      dismissOnOutsideClick: true,
-      onDismiss: () => dismissed.push("second"),
-    });
-    await frame();
-
-    const inside = second.host.querySelector("#second") as HTMLElement;
-    inside.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
-    await flush();
-
-    // A mousedown INSIDE the live popover dismisses nothing at all — least of all via the corpse,
-    // Whose slot every target on the page is "outside" of.
-    expect(dismissed).toEqual([]);
-    expect(second.host.isConnected).toBe(true);
-    expect(document.querySelector("#second")).toBe(inside);
-
-    second.dismiss();
-    expect(document.querySelector("#second")).toBeNull();
-  });
-
-  test("…while a popover that WAS armed still closes on an outside click", async () => {
-    const dismissed: string[] = [];
-    const only = renderPopover(html`<div id="only">one</div>`, {
-      dismissOnOutsideClick: true,
-      onDismiss: () => dismissed.push("only"),
-    });
-    await frame();
-
-    document.body.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
-    await flush();
-
-    expect(dismissed).toEqual(["only"]);
-    expect(only.host.isConnected).toBe(false);
   });
 });

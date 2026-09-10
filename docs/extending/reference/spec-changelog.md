@@ -484,6 +484,8 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `studio-ui-guidelines.md`
 
+- **0.6.1-draft** (2026-09-10) — showDialog and its slot helper are gone: Open Project's three-way question was never bespoke and calls openDialogSurface, so the last lit dialog body converted; the empty-state pattern is one spec with two renderers and no class of its own; the inspector row vocabulary drops .style-row/.field-row with ui/field-row.ts.
+- **0.6.0-draft** (2026-09-10) — renderPopover is gone: the tab strip's overflow list and context/tab menu are projections handed to the kit menu, which leaves the lit popover helper with no caller and takes its row out of the layers API table.
 - **0.5.1-draft** (2026-09-10) — The pane tab strip is a Jx document over jx-tabs; every strip in the shell now carries real tab semantics (gap:apg-coverage).
 - **0.5.0-draft** (2026-09-10) — openModal and the hand-rolled Tab trap are deleted with their last caller; a persistent modal is a jx-dialog surface document (§8.7).
 - **0.4.21-draft** (2026-09-10) — The dock tab strips carry real tab semantics; the pane strip waits on a slot in jx-tab (gap:apg-coverage).
@@ -668,6 +670,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `ui.md`
 
+- **0.1.21-draft** (2026-09-10) — the layers façade no longer lists showDialog: a bespoke dialog body is a named flow with an island.
 - **0.1.20-draft** (2026-09-10) — jx-tab takes slotted content in three named slots (icon, status, actions); label becomes required once anything is slotted, because aria-label is what keeps a slotted mark out of the tab's name.
 - **0.1.19-draft** (2026-09-10) — The Studio facade list drops openModal: a persistent modal is a jx-dialog surface document (§6).
 - **0.1.18-draft** (2026-09-08) — jx-select: the default slot and its once-at-mount distribution, the slotted hr separator, and the property-only rows.

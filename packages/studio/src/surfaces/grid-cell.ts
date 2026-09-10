@@ -6,13 +6,11 @@
  * relationship column points at, what a pick writes through the edit buffer — and this is the panel
  * it draws into.
  *
- * **The media picker is an ISLAND** (specs/studio-ui-guidelines.md §9.4). `ui/media-picker.ts` is a
- * lit surface of its own and another conversion's to move, so the document draws
- * `[part="picker-host"]` empty and the CALLER fills it through
- * {@link GridCellSurfaceOptions.island} — the same seam `surfaces/dialog.ts` gives a rich dialog
- * body. An adapter may not import lit (`scripts/check-surface-purity.ts`), and that is the rule
- * working rather than a rule being dodged: the decision about what goes in the box stays with the
- * module that owns the box's contents.
+ * **The media picker is an ISLAND** (specs/studio-ui-guidelines.md §9.4), and it stayed one when it
+ * became a document. The document draws `[part="picker-host"]` empty and the CALLER fills it
+ * through {@link GridCellSurfaceOptions.island} — the same seam `surfaces/dialog.ts` gives a rich
+ * dialog body. What goes in the box is the decision of the module that owns the box's contents,
+ * which is why this adapter does not name the media picker at all.
  *
  * @docs studio/editing/grid
  */
