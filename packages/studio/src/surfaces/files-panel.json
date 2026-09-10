@@ -1,13 +1,13 @@
 {
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "StudioFilesPanel",
-  "$description": "The Navigator's Files tree, as a Jx document over the kit. `files/files.ts` keeps every decision — which directories are listed, which entries `.gitignore` masks, which rows the window draws, what a click on a row means, what the context menu offers and what each verb does to the filesystem — and hands this document one projection: a word saying which of three things to draw, a toolbar whose state is already resolved, and rows whose every field is already a string. Nothing here asks what a file is, how tall the Navigator is, or whether a directory has been read. The tree is a FLAT list and the DOM holds a window onto it, so the rows a `$map` renders are the visible slice: an expanded `node_modules` is eleven rows rather than ten thousand, and `aria-level` / `aria-posinset` / `aria-setsize` are what keep the ARIA true while it is. Four facts a row carries are bound against ONE scope field each — the selected path, the dragged path, the drop target and the roving tab stop — so moving the selection or dragging a file re-evaluates an attribute per drawn row instead of rebuilding the list under the reader's pointer. The pragmatic-drag-and-drop handles are an ISLAND: the document draws the rows and the tree, and the adapter attaches sources and targets to them through `onNodeCreated` (specs/studio-ui-guidelines.md §9.4).",
+  "$description": "The Navigator's Files tree, as a Jx document over the kit. `files/files.ts` keeps every decision — which directories are listed, which entries `.gitignore` masks, which rows the window draws, what a click on a row means, what the context menu offers and what each verb does to the filesystem — and hands this document one projection: a word saying which of three things to draw, a toolbar whose state is already resolved, and rows whose every field is already a string. Nothing here asks what a file is, how tall the Navigator is, or whether a directory has been read. THE TREE IS `jx-tree`, and that is what this document no longer says: `role=\"tree\"`, `role=\"treeitem\"`, `aria-level`, `aria-posinset`, `aria-setsize`, the roving `tabindex` and the five arrow-key cases were each written out here and written out again in `panel-outline.json`, two copies of one keyboard contract with nothing holding them in agreement. The element owns all of it; what is left here is what this tree IS — a flat projection of rows, each already carrying its own level and set counts, because the DOM holds a WINDOW onto the model and an expanded `node_modules` is eleven rows rather than ten thousand. The window reaches the element as `padtop`/`padbottom`, and a caret move past either comes back as `move` for the flow to scroll and repaint. Four facts a row carries are bound against ONE scope field each — the current path, the selected path, the dragged path and the drop target — so moving the caret or dragging a file re-evaluates an attribute per drawn row instead of rebuilding the list under the reader's pointer. The pragmatic-drag-and-drop handles are an ISLAND: the document draws the rows and the tree, and the adapter attaches sources and targets to them through `onNodeCreated` (specs/studio-ui-guidelines.md §9.4).",
   "tagName": "div",
   "attributes": {
     "part": "files"
   },
   "style": {
-    "$description": "What the twenty `.file-tree*`, `.files-toolbar`, `.project-header` and `.project-name` rules in `styles/panels.css` said, keyed on `part` and re-pointed at the studio token layer. Three names could not come with the declarations. The five `var(--spectrum-font-size-50 | -75, …)` reads are the kit's `--jx-text-sm` and `--jx-text-md`, which are the same 11px and 12px — a `--spectrum-*` name is declared by `<sp-theme>` and by nothing else in this package, so a document that reads one is a document whose type size changes when a component it does not use is removed. The `.selected`, `.dragging`, `.drag-over` and `.drag-over-root` classes are `data-` attributes on a part, because a part is the handle now and because a state a handler adds and forgets to take off is exactly the defect a cancelled drag used to leave on screen. And the row's indent was `padding-left:${8 + depth * 16}px` composed per row in TypeScript; it is a `--depth` custom property here, so the arithmetic that decides what a level LOOKS like lives with the rest of the styling.",
+    "$description": "What the twenty `.file-tree*`, `.files-toolbar`, `.project-header` and `.project-name` rules in `styles/panels.css` said, keyed on `part` and re-pointed at the studio token layer. Three names could not come with the declarations. The five `var(--spectrum-font-size-50 | -75, …)` reads are the kit's `--jx-text-sm` and `--jx-text-md`, which are the same 11px and 12px — a `--spectrum-*` name is declared by `<sp-theme>` and by nothing else in this package, so a document that reads one is a document whose type size changes when a component it does not use is removed. The `.selected`, `.dragging`, `.drag-over` and `.drag-over-root` classes are `data-` attributes on a part, because a part is the handle now and because a state a handler adds and forgets to take off is exactly the defect a cancelled drag used to leave on screen. MOST OF THE ROW'S OWN RULES ARE GONE, and that is the point of the element rather than an omission: `jx-tree-item` declares the flex line, the one-control-height box the window reserves scroll by, the indent (`--jx-tree-indent` times one less than `level` — exactly the `8 + depth * 16` this file composed per row), the hover and focus states, the selected wash and the faded dragged row. What is left here is what is TRUE OF THIS TREE and not of trees in general: it owns its own scrollbar, a click on a row opens it, and the row a drag is over wears the drop mark this file draws.",
     "display": "flex",
     "flexDirection": "column",
     "height": "100%",
@@ -16,10 +16,6 @@
     "fontFamily": "var(--jx-font-sans)",
     "fontSize": "var(--jx-text-md)",
     "color": "var(--fg)",
-    "& [part=\"view-slot\"], & [part=\"header-slot\"], & [part=\"locale-slot\"]": {
-      "$description": "A `$switch` renders its own container, and none of these three is a box: each stands exactly where its case does, so the case's own rule is the only one that lays anything out.",
-      "display": "contents"
-    },
     "& [part=\"empty\"]": {
       "$description": "The two states that are not a tree. They are two states and not one sentence: a window with no project at all and a monorepo root that has not been pointed at a site are different situations, and only the second has anything to offer (§11).",
       "padding": "var(--jx-space-6)",
@@ -68,77 +64,38 @@
       "minWidth": "0"
     },
     "& [part=\"tree\"]": {
-      "$description": "The scroller as well as the list. `ui/virtual-window.ts` walks up from the element it is given looking for the nearest thing that scrolls, and finding itself is the shortest answer.",
+      "$description": "The scroller as well as the list. `ui/virtual-window.ts` walks up from the element it is given looking for the nearest thing that scrolls, and finding itself is the shortest answer — which is why the element declares no `overflow` of its own and leaves the question to the two trees that answer it differently. The colour is re-declared because `jx-tree` sets `--jx-fg` on itself, and this panel's text colour is the studio alias of it.",
       "flex": "1",
       "minHeight": "0",
-      "overflowY": "auto"
+      "overflowY": "auto",
+      "color": "var(--fg)"
     },
     "& [part=\"tree\"][data-drop=\"true\"]": {
       "background": "var(--hover-bg)"
     },
-    "& [part=\"pad-top\"], & [part=\"pad-bottom\"]": {
-      "$description": "The two spacers reserve the scroll height of the rows the window left out. They are `aria-hidden` because a `role=\"tree\"` owns `treeitem`s, and an empty div that exists to be four thousand pixels tall is not one.",
-      "flexShrink": "0"
-    },
     "& [part=\"row\"]": {
-      "$description": "`block-size` is a CONTRACT, not a look: the tree is windowed, and a window can only reserve the right amount of scroll for the rows it did not draw if every row is the same known height. `--jx-control-h` is the kit's 24px — what the box already computed to — and it follows the density setting, which the hard-coded 24 could not. The renderer measures a real row anyway and believes the measurement over any declared number.",
+      "$description": "What the element does not decide. A click on a row OPENS it here — a directory unfolds, a file takes a tab — so the pointer is a pointer rather than the element's default arrow; and the gap is the wider one this tree has always drawn between a 16px file glyph and its name.",
+      "gap": "var(--jx-space-3)",
+      "cursor": "pointer"
+    },
+    "& [part=\"loading-row\"]": {
+      "$description": "A directory whose listing has not arrived yet. It holds the place and it is NOT a row: it is not a `jx-tree-item`, so the caret cannot land on it, the set counts do not include it and typeahead cannot match it — and it is replaced by the real rows on the repaint the listing provokes. It draws the same box by hand because it is the only line in this tree the element does not draw, and a placeholder of a different height would desynchronise the window's scroll reservation from the rows it reserves for.",
       "display": "flex",
       "alignItems": "center",
-      "gap": "var(--jx-space-3)",
-      "paddingInline": "calc(var(--jx-space-3) + var(--depth, 0) * 16px) var(--jx-space-3)",
-      "blockSize": "var(--jx-control-h)",
       "boxSizing": "border-box",
-      "cursor": "pointer",
-      "color": "var(--fg)",
-      "userSelect": "none",
-      ":hover": {
-        "background": "var(--hover-bg)"
-      },
-      ":focus-visible": {
-        "$description": "Roving tabindex moves focus between rows, so the ring is the only thing telling a keyboard user where they are.",
-        "outline": "var(--jx-focus-ring)",
-        "outlineOffset": "-2px"
-      }
-    },
-    "& [part=\"row\"][data-selected=\"true\"]": {
-      "background": "var(--accent-20)"
-    },
-    "& [part=\"row\"][data-dragging=\"true\"]": {
-      "opacity": "0.4"
-    },
-    "& [part=\"row\"][data-drop=\"true\"]": {
-      "background": "var(--accent-20)",
-      "outline": "1px solid var(--accent)",
-      "outlineOffset": "-1px"
-    },
-    "& [part=\"row\"][data-loading=\"true\"]": {
-      "$description": "A directory whose listing has not arrived yet. It holds the place and it is NOT a `treeitem`: the keyboard cannot land on it, the set counts do not include it, and it is replaced by the real rows on the repaint the listing provokes.",
+      "blockSize": "var(--jx-control-h)",
+      "paddingInline": "calc(var(--jx-space-3) + var(--depth, 0) * 16px) var(--jx-space-3)",
       "color": "var(--fg-dim)",
       "fontStyle": "italic",
-      "cursor": "default"
-    },
-    "& [part=\"twisty\"]": {
-      "$description": "A file has no case, so the box draws empty and keeps its width — which is what lines every name in the tree up whether or not its row can be opened.",
-      "inlineSize": "14px",
-      "flexShrink": "0",
-      "display": "flex",
-      "alignItems": "center",
-      "justifyContent": "center",
-      "color": "var(--fg-dim)",
-      "--jx-icon-size": "12px"
+      "cursor": "default",
+      "userSelect": "none",
+      "whiteSpace": "nowrap"
     },
     "& [part=\"row-icon\"]": {
       "flexShrink": "0",
       "display": "flex",
       "alignItems": "center",
       "--jx-icon-size": "16px"
-    },
-    "& [part=\"row-name\"]": {
-      "overflow": "hidden",
-      "textOverflow": "ellipsis",
-      "whiteSpace": "nowrap",
-      "flex": "1",
-      "minWidth": "0"
     },
     "& [part=\"locale\"]": {
       "$description": "The language chip. Deliberately declares no block size, no padding and no line height: the row above is one control-height by contract, and a chip that grew the box would desynchronise the window's scroll reservation from the height it reserves by. It only ever shrinks the text. A chip, not a filter term: the search matches the file's name alone, because a query that silently also matched a language would make “why is this file here” unanswerable from what is on screen.",
@@ -150,6 +107,10 @@
       "textOverflow": "ellipsis",
       "whiteSpace": "nowrap",
       "maxInlineSize": "6em"
+    },
+    "& [part=\"view-slot\"], & [part=\"header-slot\"], & [part=\"locale-slot\"]": {
+      "$description": "A `$switch` renders its own container, and none of these three is a box: each stands exactly where its case does, so the case's own rule is the only one that lays anything out.",
+      "display": "contents"
     }
   },
   "children": [
@@ -385,22 +346,91 @@
               ]
             },
             {
-              "tagName": "div",
+              "$description": "The `role=\"tree\"`, and everything that used to be spelled out under it. The element writes the role, the name, the roving tab stop and every row's `aria-level` / `aria-posinset` / `aria-setsize`, and it owns the whole ARIA keyboard: the arrows walk the drawn rows without wrapping, `Home` and `End` reach the ends of the MODEL by way of the pads, `ArrowRight` opens a directory and steps into an open one, `ArrowLeft` closes one and otherwise steps out to its parent, `Enter` activates and a printable character is typeahead. Every chord it does not own — cut, copy, paste, delete, rename — passes straight through to the flow, which is the WCAG 2.5.7 obligation this tree carries because dragging a file is the other way to move it. What reaches this document is five events, and each of them is a decision `files.ts` already owned.",
+              "tagName": "jx-tree",
               "attributes": {
                 "part": "tree",
-                "role": "tree",
-                "aria-label": "Project files",
+                "label": "Project files",
+                "current": "${state.currentPath}",
+                "padtop": "${state.padTop}",
+                "padbottom": "${state.padBottom}",
                 "data-drop": "${state.rootDrop || null}"
               },
-              "children": [
-                {
-                  "tagName": "div",
-                  "attributes": {
-                    "part": "pad-top",
-                    "aria-hidden": "true",
-                    "style": "${state.padTop}"
+              "onselect": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/select"
+                    },
+                    "value": [
+                      {
+                        "$ref": "event#/detail/value"
+                      }
+                    ]
                   }
-                },
+                ],
+                "description": "The reader meant that row. This tree is single-select, so the element resolves every modifier to `replace` before it gets here and the detail's `mode` and `anchor` are answers to a question this tree does not ask. There is no `change` handler beside it on purpose: the element OWNS the caret and keeps it across every repaint that does not change `current`, so a second copy of it in the flow would be a variable that only ever went stale."
+              },
+              "onactivate": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/activate"
+                    },
+                    "value": [
+                      {
+                        "$ref": "event#/detail"
+                      }
+                    ]
+                  }
+                ],
+                "description": "`Enter` or a double click. The same verb a single click reaches, by the same name."
+              },
+              "onexpand": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/expand"
+                    },
+                    "value": [
+                      {
+                        "$ref": "event#/detail/value"
+                      },
+                      {
+                        "$ref": "event#/detail/expanded"
+                      }
+                    ]
+                  }
+                ],
+                "description": "`ArrowRight`, `ArrowLeft` or the twisty, with ONE dispatcher between them: the detail says the state the row should be PUT INTO, so the flow never has to work out which way a toggle was going."
+              },
+              "onmove": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/move"
+                    },
+                    "value": [
+                      {
+                        "$ref": "event#/detail/from"
+                      },
+                      {
+                        "$ref": "event#/detail/key"
+                      }
+                    ]
+                  }
+                ],
+                "description": "The caret has to reach a row the window did not draw. The element knows only that the pad on that side is not zero; where the row is in the model, and how far to scroll to bring it into view, is the flow's — which is why this is an event and not a `scrollIntoView`."
+              },
+              "children": [
                 {
                   "$prototype": "Array",
                   "items": {
@@ -415,33 +445,31 @@
                       "part": "row-slot",
                       "role": "none"
                     },
+                    "style": {
+                      "display": "contents"
+                    },
                     "$switch": {
                       "$ref": "$map/item/kind"
                     },
                     "cases": {
                       "item": {
-                        "tagName": "div",
+                        "tagName": "jx-tree-item",
                         "attributes": {
                           "part": "row",
-                          "role": "treeitem",
-                          "style": "--depth:${$map.item.depth}",
-                          "data-path": "${$map.item.path}",
+                          "value": "${$map.item.path}",
+                          "label": "${$map.item.name}",
+                          "level": "${$map.item.level}",
+                          "posinset": "${$map.item.posInSet}",
+                          "setsize": "${$map.item.setSize}",
+                          "expanded": "${$map.item.ariaExpanded}",
+                          "selected": "${state.selectedPath === $map.item.path ? 'true' : 'false'}",
                           "data-type": "${$map.item.type}",
-                          "data-selected": "${state.selectedPath === $map.item.path ? 'true' : null}",
-                          "data-dragging": "${state.dragPath === $map.item.path ? 'true' : null}",
-                          "data-drop": "${state.dropPath === $map.item.path ? 'true' : null}",
-                          "aria-level": "${$map.item.level}",
-                          "aria-posinset": "${$map.item.posInSet}",
-                          "aria-setsize": "${$map.item.setSize}",
-                          "aria-expanded": "${$map.item.ariaExpanded || null}",
-                          "tabindex": "${state.tabStopPath === $map.item.path ? '0' : '-1'}"
+                          "data-dragging": "${state.dragPath === $map.item.path ? '' : null}",
+                          "data-drop": "${state.dropPath === $map.item.path ? '' : null}"
                         },
                         "onclick": {
                           "$prototype": "Function",
                           "body": [
-                            {
-                              "stopPropagation": true
-                            },
                             {
                               "operator": "call",
                               "target": {
@@ -454,7 +482,7 @@
                               ]
                             }
                           ],
-                          "description": "One verb for both kinds of row. What a click MEANS — expand this directory, open that file — is the flow's to decide, and a row that decided it here would be a second answer to it beside Enter's."
+                          "description": "A single click OPENS the row, which is this tree's own answer and not the element's. `jx-tree` answers a click with `change` and `select`, exactly as it answers an arrow key, and a tree that opened on `select` would open every file the reader arrowed past. So the opening verb is bound here, where a click is a click; what a click MEANS — unfold this directory, take a tab for that file — stays the flow's, and Enter reaches the same verb through `activate`. It does NOT stop the event, which is the correction: the tree's delegated click is what moves the caret and the selection onto the row, so a `stopPropagation` here would leave a reader who clicked a folder with the tab stop still on whatever they had open last. The twisty stops its own click, so opening a directory from the chevron does not also activate the row."
                         },
                         "oncontextmenu": {
                           "$prototype": "Function",
@@ -484,129 +512,11 @@
                             }
                           ]
                         },
-                        "onkeydown": {
-                          "$prototype": "Function",
-                          "body": [
-                            {
-                              "$switch": {
-                                "$ref": "event#/key"
-                              },
-                              "cases": {
-                                "ArrowDown": [
-                                  {
-                                    "preventDefault": true
-                                  },
-                                  {
-                                    "operator": "call",
-                                    "target": {
-                                      "$ref": "#/state/moveFocus"
-                                    },
-                                    "value": [
-                                      {
-                                        "$ref": "$map/item/path"
-                                      },
-                                      1
-                                    ]
-                                  }
-                                ],
-                                "ArrowUp": [
-                                  {
-                                    "preventDefault": true
-                                  },
-                                  {
-                                    "operator": "call",
-                                    "target": {
-                                      "$ref": "#/state/moveFocus"
-                                    },
-                                    "value": [
-                                      {
-                                        "$ref": "$map/item/path"
-                                      },
-                                      -1
-                                    ]
-                                  }
-                                ],
-                                "ArrowRight": [
-                                  {
-                                    "preventDefault": true
-                                  },
-                                  {
-                                    "operator": "call",
-                                    "target": {
-                                      "$ref": "#/state/expandRow"
-                                    },
-                                    "value": [
-                                      {
-                                        "$ref": "$map/item/path"
-                                      }
-                                    ]
-                                  }
-                                ],
-                                "ArrowLeft": [
-                                  {
-                                    "preventDefault": true
-                                  },
-                                  {
-                                    "operator": "call",
-                                    "target": {
-                                      "$ref": "#/state/collapseRow"
-                                    },
-                                    "value": [
-                                      {
-                                        "$ref": "$map/item/path"
-                                      }
-                                    ]
-                                  }
-                                ],
-                                "Enter": [
-                                  {
-                                    "preventDefault": true
-                                  },
-                                  {
-                                    "operator": "call",
-                                    "target": {
-                                      "$ref": "#/state/activate"
-                                    },
-                                    "value": [
-                                      {
-                                        "$ref": "$map/item/path"
-                                      }
-                                    ]
-                                  }
-                                ]
-                              }
-                            }
-                          ],
-                          "description": "The keyboard is bound to the ROW rather than to the tree, so which row a key is about is the row's own `$map` item and never a lookup. ↑ and ↓ step through the MODEL: the step can land on a row the window did not draw, and moving the scroller and letting the focus follow the repaint is the flow's answer to that. A key with no case here is not prevented, so typeahead, Tab and Home reach the browser."
-                        },
                         "children": [
-                          {
-                            "tagName": "div",
-                            "attributes": {
-                              "part": "twisty",
-                              "aria-hidden": "true"
-                            },
-                            "$switch": {
-                              "$ref": "$map/item/twisty"
-                            },
-                            "cases": {
-                              "expanded": {
-                                "tagName": "jx-icon",
-                                "$props": {
-                                  "name": "caret-down"
-                                }
-                              },
-                              "collapsed": {
-                                "tagName": "jx-icon",
-                                "$props": {
-                                  "name": "caret-right"
-                                }
-                              }
-                            }
-                          },
                           {
                             "tagName": "jx-icon",
                             "attributes": {
+                              "slot": "icon",
                               "part": "row-icon",
                               "aria-hidden": "true"
                             },
@@ -617,15 +527,9 @@
                             }
                           },
                           {
-                            "tagName": "span",
-                            "attributes": {
-                              "part": "row-name"
-                            },
-                            "textContent": "${$map.item.name}"
-                          },
-                          {
                             "tagName": "div",
                             "attributes": {
+                              "slot": "status",
                               "part": "locale-slot",
                               "role": "none"
                             },
@@ -645,9 +549,10 @@
                         ]
                       },
                       "loading": {
+                        "$description": "A directory whose listing has not arrived yet. Deliberately not a `jx-tree-item`: there is no file there to select, open, rename or drag, and a row the caret could land on that answers to none of the verbs the caret offers is a stop in the walk with nothing behind it.",
                         "tagName": "div",
                         "attributes": {
-                          "part": "row",
+                          "part": "loading-row",
                           "role": "none",
                           "data-loading": "true",
                           "style": "--depth:${$map.item.depth}"
@@ -655,14 +560,6 @@
                         "textContent": "Loading…"
                       }
                     }
-                  }
-                },
-                {
-                  "tagName": "div",
-                  "attributes": {
-                    "part": "pad-bottom",
-                    "aria-hidden": "true",
-                    "style": "${state.padBottom}"
                   }
                 }
               ]

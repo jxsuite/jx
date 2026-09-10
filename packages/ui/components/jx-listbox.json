@@ -1,0 +1,76 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "JxListbox",
+  "tagName": "jx-listbox",
+  "observedAttributes": ["label", "labelledby", "active"],
+  "state": {
+    "label": {
+      "type": "string",
+      "default": "",
+      "attribute": "label",
+      "description": "The list's accessible name, forwarded as aria-label. REQUIRED unless labelledby names a visible heading: listbox takes its name from a label rather than from its rows, so an unnamed one is announced as \"listbox\" and nothing else. Nothing lints it — a bound role makes the naming rules stand down — so the element's own test is what holds it."
+    },
+    "labelledby": {
+      "type": "string",
+      "default": "",
+      "attribute": "labelledby",
+      "description": "Forwarded as aria-labelledby, naming the element that already says what this list is."
+    },
+    "active": {
+      "type": "string",
+      "default": "",
+      "attribute": "active",
+      "description": "The ID of the row the caret is on; the empty string when none is. THIS IS THE ONE STRING A CONSUMER WRITES: the same id its owning field points aria-activedescendant at, so the field and the row are told the same thing once instead of the question being re-decided per row. The sidecar turns it into each row's selected and scrolls the new one back into view."
+    },
+    "onMount": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/listbox.ts",
+      "$export": "mountListbox",
+      "description": "Keeps every row's selected in step with active for as long as the element lives, and scrolls the active row into view. Both are things a document body cannot say: the flag lives on a foreign element, and scrolling is a measurement."
+    }
+  },
+  "attributes": {
+    "role": "listbox",
+    "aria-label": "${state.label || null}",
+    "aria-labelledby": "${state.labelledby || null}",
+    "data-active": "${state.active}"
+  },
+  "style": {
+    "$description": "There is deliberately NO tabindex here, and no rule that draws a focus ring: the element never takes DOM focus. One of its two owners is a field that must keep the caret, and the other is nothing at all — a panel filtering for a caret in another realm. A listbox that is operated from somewhere else is exactly the shape ARIA's aria-activedescendant exists for.",
+    "display": "block",
+    "&[hidden]": {
+      "display": "none"
+    },
+    "boxSizing": "border-box",
+    "minHeight": "0",
+    "maxBlockSize": "var(--jx-listbox-max-block-size, none)",
+    "overflowY": "auto",
+    "margin": "0",
+    "padding": "0",
+    "color": "var(--jx-fg)",
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "lineHeight": "var(--jx-leading-md)",
+    "& [part=\"group-heading\"]": {
+      "$description": "A furniture part a CONSUMER writes, styled from here because this is the definition that owns the box it sits in (ui.md 3.1). A grouped list is a role=\"group\" wrapper holding a heading and its rows — the formula palette's shape — and in a light DOM the container's own rule reaches it without a class, which is the whole point of the cascade being one.",
+      "display": "block",
+      "padding": "var(--jx-space-3) var(--jx-space-3) var(--jx-space-1)",
+      "fontSize": "var(--jx-text-xs)",
+      "textTransform": "uppercase",
+      "letterSpacing": "0.5px",
+      "color": "var(--jx-fg-muted)"
+    },
+    "& [part=\"empty\"]": {
+      "$description": "The other furniture part: the sentence a consumer draws when its own filter matched nothing. What that sentence SAYS belongs to the surface — \"No matches\", \"Nothing here yet\", a hint about the mode — so the element draws it and never writes it.",
+      "display": "block",
+      "padding": "var(--jx-space-4) var(--jx-space-3)",
+      "textAlign": "center",
+      "color": "var(--jx-fg-muted)"
+    }
+  },
+  "children": [
+    {
+      "tagName": "slot"
+    }
+  ]
+}

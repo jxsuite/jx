@@ -11,7 +11,15 @@
  * **The rows are ONE vocabulary, discriminated.** A text node's line and an element's line are the
  * same `part="row"` with a different `data-kind`, so the drag island, the window arithmetic and the
  * stylesheet each address rows once rather than twice — and the projection is what decides which of
- * the two a line is, exactly as `panel-data.json`'s rows do.
+ * the two a line is, exactly as `panel-data.json`'s rows do. Only the element line is a
+ * `jx-tree-item`: a text node cannot be moved, renamed, duplicated or deleted on its own, so a row
+ * the caret could land on would be a stop in the walk with no verb behind it.
+ *
+ * **The keyboard and the ARIA are the kit's.** `jx-tree` writes the role, the name, the roving tab
+ * stop and each row's level and set counts, and owns the walk; what a row VIEW says is what is TRUE
+ * of it, never what a reader may do to it. The projection therefore carries no `tabindex`, no
+ * `role`, no `aria-*` and no key names — those were written out here and written out again in
+ * `files-panel.ts`, one contract in two copies with nothing keeping them in agreement.
  *
  * **Three things reach the host through `onNodeCreated`** (guidelines §9.4), because each is a fact
  * about a node that only exists once it has been created:
@@ -77,20 +85,21 @@ export interface OutlineRowView {
   jxPath: string;
   /** The row's own left padding at this depth, as a CSS length. */
   indent: string;
-  /** `aria-level`, 1-based. */
+  /** The row's depth, 1-based. `jx-tree-item` writes `aria-level` and the indent from it. */
   level: string;
-  /** `aria-posinset` / `aria-setsize`: the row's place in the DOCUMENT, not in the window. */
+  /** The row's place in the DOCUMENT, not in the window — `aria-posinset` / `aria-setsize`. */
   posInSet: string;
   setSize: string;
   selected: string;
-  /** `""` on the row that carries the keyboard position, `null` on every other. */
-  primary: string | null;
-  /** `"true"`, `"false"`, or `null` on a row with nothing under it. */
-  expanded: string | null;
-  /** The single tab stop: `"0"` on one row of the window, `"-1"` on the rest. */
-  tabindex: string;
-  /** Which chevron to draw: `none`, `open` or `closed`. */
-  chevron: string;
+  /**
+   * `"true"`, `"false"`, or `""` on a row with nothing under it.
+   *
+   * Three values and not a boolean, because "closed" and "cannot open" are different things to a
+   * reader and to the keyboard: a leaf owns no `aria-expanded`, draws no chevron, and `ArrowRight`
+   * on it does nothing rather than descending into children it has not got. It is also the whole of
+   * what a chevron used to be said twice for.
+   */
+  expanded: string;
   /** The badge's text, and which of the six badge drawings it gets. */
   badge: string;
   badgeKind: string;
@@ -103,7 +112,7 @@ export interface OutlineRowView {
   /** What the rename input opens with, and what it shows when the title is empty. */
   editValue: string;
   placeholder: string;
-  /** `"true"` where the row offers the grab handle. */
+  /** `"true"` where the row offers the grab handle — `jx-tree-item`'s `grip`. */
   draggable: string;
   /** The four `data-dnd-*` attributes the drag island reads, or `null` on a row it may not move. */
   dndRow: string | null;
@@ -123,9 +132,17 @@ export interface OutlineValues {
   /** `rows` or `empty` — whether this document has anything in it at all. */
   view: string;
   rows: OutlineRowView[];
-  /** The windowed list's two spacers, as inline declarations. */
-  padTop: string;
-  padBottom: string;
+  /** The windowed list's two spacers, in pixels. */
+  padTop: number;
+  padBottom: number;
+  /**
+   * The row the caret is on.
+   *
+   * A row the window did not draw is allowed: `jx-tree` falls back to the first drawn row for the
+   * TAB STOP and leaves `current` exactly as it was given, so a reader whose row has scrolled away
+   * keeps their place and still has a way back in with Tab.
+   */
+  current: string;
   /** The empty state's sentence, and the label on the one action that answers it. */
   emptyMessage: string;
   emptyLabel: string;
@@ -133,16 +150,30 @@ export interface OutlineValues {
 
 /** What a control can ask the Outline to do. Every one of them is a decision the panel owns. */
 export interface OutlineActions {
-  /** A row was clicked, with the two accumulate modifiers and the range one. */
-  activate: (key: string, ctrl: boolean, meta: boolean, shift: boolean) => void;
-  /** The chevron was clicked: collapse or expand this row. */
-  toggle: (key: string) => void;
+  /** A row was clicked: bring the node it stands for into view on the canvas, and nothing else. */
+  reveal: (key: string) => void;
+  /**
+   * The reader meant that row, and `mode` says what by: `replace`, `toggle` or `range`.
+   *
+   * An INTENT rather than a set. Resolving a range means naming every row between two of them, and
+   * under windowing those are exactly the rows the DOM does not have — so the panel resolves it
+   * against the row MODEL, which is also where the shift-anchor already lived.
+   */
+  select: (key: string, mode: string) => void;
+  /** A row should be put into `expanded` — the twisty, `ArrowRight` or `ArrowLeft`. */
+  expand: (key: string, expanded: boolean) => void;
+  /**
+   * The caret has to reach a row the window did not draw.
+   *
+   * The element knows only that the pad on that side is not zero; which row `keyName` means is a
+   * question about the MODEL — ← climbs to a row's recorded parent, which may be a hundred rows and
+   * three levels up — and so is answered by the panel.
+   */
+  move: (from: string, keyName: string) => void;
   /** The pointer entered a row, and left the tree. */
   hover: (key: string) => void;
   hoverOut: () => void;
-  /** One key of the ARIA tree model, against the row it was pressed on. */
-  walk: (key: string, keyName: string, shift: boolean) => void;
-  /** Start renaming a row — a double-click, which is the pointer's F2. */
+  /** Start renaming a row: `Enter`, a double-click, or the F2 the element leaves alone. */
   rename: (key: string) => void;
   /**
    * A right-click.
@@ -189,6 +220,7 @@ function project(scope: OutlineScope, values: OutlineValues): void {
   scope.rows = values.rows;
   scope.padTop = values.padTop;
   scope.padBottom = values.padBottom;
+  scope.current = values.current;
   scope.emptyMessage = values.emptyMessage;
   scope.emptyLabel = values.emptyLabel;
 }
@@ -213,8 +245,8 @@ export function mountOutlineSurface(
   actions: OutlineActions,
 ): OutlineSurfaceHandle {
   const scope = reactive<OutlineScope>({
-    activate: actions.activate,
     contextMenu: actions.contextMenu,
+    current: "",
     editCancel: actions.editCancel,
     editCommit: actions.editCommit,
     editInput: actions.editInput,
@@ -222,18 +254,20 @@ export function mountOutlineSurface(
     emptyAction: actions.emptyAction,
     emptyLabel: "",
     emptyMessage: "",
+    expand: actions.expand,
     hover: actions.hover,
     hoverOut: actions.hoverOut,
+    move: actions.move,
     overflowRow: actions.overflowRow,
-    padBottom: "",
-    padTop: "",
+    padBottom: 0,
+    padTop: 0,
     rename: actions.rename,
+    reveal: actions.reveal,
     rows: [],
     runRow: actions.runRow,
-    toggle: actions.toggle,
+    select: actions.select,
     treeReady: actions.treeReady,
     view: "empty",
-    walk: actions.walk,
   }) as OutlineScope;
   project(scope, values);
 

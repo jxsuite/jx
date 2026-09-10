@@ -1,34 +1,3 @@
-.file-tree {
-  overflow-y: auto;
-}
-/* `block-size` is a CONTRACT, not a look: the tree is windowed (files/files.ts `FILE_ROW_HEIGHT`,
-   ui/virtual-window.ts), and a window can only reserve the right amount of scroll for the rows it
-   did not draw if every row is the same known height. 24px is what the box already computed to —
-   3px + 3px of padding around an 18px line box (12px font × the 1.5 line-height in tokens.css) —
-   so declaring it changes nothing on screen and stops the next padding tweak from silently
-   desynchronising the scrollbar. The renderer measures a real row anyway and believes the
-   measurement over this number. */
-.file-tree-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 3px 8px;
-  block-size: 24px;
-  box-sizing: border-box;
-  cursor: pointer;
-  font-size: var(--jx-text-md, 12px);
-  color: var(--fg);
-  user-select: none;
-}
-.file-tree-item:hover {
-  background: var(--hover-bg);
-}
-/* Roving tabindex (src/files/files.ts) moves focus between rows, so the ring is
-   the only thing telling a keyboard user where they are. */
-.file-tree-item:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
-}
 .file-tree-item.selected {
   background: var(--accent-20);
 }
@@ -46,56 +15,9 @@
 .file-tree-toggle.empty {
   visibility: hidden;
 }
-.project-header {
-  display: flex;
-  align-items: center;
-  padding: 6px 12px;
-  border-bottom: 1px solid var(--border);
-  gap: 6px;
-}
-.project-name {
-  font-size: var(--jx-text-md, 12px);
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* ─── Layers ─────────────────────────────────── */
-/* The Outline used to scroll sideways inside a 240px column: `overflow-y: auto` on #left-panel
-   computes overflow-x to `auto` too, and a row's intrinsic width was indent (16px × unbounded
-   depth) + badge (a full custom-element tag) + label + five in-flow action buttons. All four are
-   bounded now — the indent caps at 6 levels (layers-panel.ts `indentWidth`), the badge truncates,
-   the label shrinks, and the action cluster is positioned out of flow. */
-/* The fixed `block-size` is the same contract the file tree carries, for the same reason
-   (panels/layers-panel.ts `OUTLINE_ROW_HEIGHT`): the Outline is windowed, and a window reserves
-   scroll height for rows it did not draw. 24px is what an Outline row already computed to — the
-   18px line box of a 12px label, plus 3px of padding either side — and it makes the chevron rows
-   and the text-node rows agree, which they only did by coincidence before. */
-.layer-row {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 8px;
-  block-size: 24px;
-  box-sizing: border-box;
-  cursor: grab;
-  white-space: nowrap;
-  user-select: none;
-  border-left: 2px solid transparent;
-  transition: transform 150ms ease;
-}
-.layer-row:hover {
-  background: var(--hover-bg);
-}
 .layer-row.selected {
   background: var(--accent-20);
   border-left-color: var(--accent);
-}
-.layer-row:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
 }
 .layer-row.dragging {
   opacity: 0.4;

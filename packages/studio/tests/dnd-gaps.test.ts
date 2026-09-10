@@ -93,8 +93,11 @@ function makeRow(path: string, depth: number, flags: { void?: boolean; expanded?
      no classes at all, so `part` is how this island addresses the rows it registers. */
   row.setAttribute("part", "row");
   row.dataset.dndRow = "";
-  row.dataset.path = path;
-  const dataset: AnyRec = { dndDepth: String(depth), dndRow: "", path };
+  /* `data-value`, which is `jx-tree-item`'s own mirror of its `value`. The rows are kit elements
+     now, so the island addresses them by the attribute the element writes rather than by a second
+     one the document would have had to keep in step. */
+  row.dataset.value = path;
+  const dataset: AnyRec = { dndDepth: String(depth), dndRow: "", value: path };
   if (flags.void) {
     dataset.dndVoid = "";
   }
@@ -177,10 +180,12 @@ describe("registerLayersDnD — registration", () => {
     });
   });
 
-  test("canDrag rejects drags starting on layer action buttons", async () => {
+  test("canDrag rejects drags starting on the row's verb cluster", async () => {
     const { rows } = await setupLayers();
+    /* `verbs`, not `actions`. `actions` is the name of `jx-tree-item`'s own slot container, and a
+       selector matching both would answer about whichever the query reached first. */
     const actions = document.createElement("div");
-    actions.setAttribute("part", "actions");
+    actions.setAttribute("part", "verbs");
     const button = document.createElement("button");
     actions.append(button);
     rows[0]!.append(actions);
@@ -273,7 +278,7 @@ describe("showLayerDropGap / clearLayerDropGap", () => {
     view.layerDragSourceHeight = 24;
     dropFor(rows[2]!).onDrag({ self: { data: { __instr: { type: "reorder-above" } } } });
     dropFor(rows[2]!).onDrag({ self: { data: { __instr: { type: "make-child" } } } });
-    expect(rows[2]!.dataset.dropTarget).toBe("");
+    expect(rows[2]!.dataset.drop).toBe("");
     expect(rows[3]!.style.transform).toBe("");
     expect(view._currentDropTargetRow).toBe(rows[2]!);
   });
@@ -282,8 +287,8 @@ describe("showLayerDropGap / clearLayerDropGap", () => {
     const { rows } = await setupLayers();
     dropFor(rows[2]!).onDrag({ self: { data: { __instr: { type: "make-child" } } } });
     dropFor(rows[3]!).onDrag({ self: { data: { __instr: { type: "make-child" } } } });
-    expect(rows[2]!.dataset.dropTarget).toBeUndefined();
-    expect(rows[3]!.dataset.dropTarget).toBe("");
+    expect(rows[2]!.dataset.drop).toBeUndefined();
+    expect(rows[3]!.dataset.drop).toBe("");
   });
 
   test("a blocked or missing instruction clears the gap", async () => {

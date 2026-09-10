@@ -28,6 +28,7 @@ export type A11yRule =
   | "tablist-none-selected"
   | "menuitem-outside-menu"
   | "option-outside-listbox"
+  | "custom-element-in-select"
   | "dialog-unnamed"
   | "activedescendant-not-focusable";
 
@@ -418,6 +419,42 @@ function nativeNameRoute(
     : "unnamed";
 }
 
+/** The two tags whose rows the platform builds itself, so nothing authored may stand among them. */
+const SELECT_TAGS = new Set(["select", "jx-select"]);
+
+/**
+ * A custom element anywhere inside a `<select>` — or inside a `jx-select`, which is one.
+ *
+ * **This rule is what replaced an absence.** `specs/ui.md` §5.1 used to argue that the kit shipping
+ * no `jx-option` WAS the defence, because a custom element inside a `<select>` is a convincing
+ * forgery: it survives insertion, it draws, and with `role="option"` the open accessibility tree
+ * reads `combobox expanded → MenuListPopup → option "Alpha" selectable`. Measured in Chrome against
+ * a real one, the control does nothing: `select.options.length` is 0, ArrowDown then Enter gives
+ * `value ""` and `selectedIndex -1`, and no `change` event fires. A test asserting the TREE passes
+ * while the control is inert, so an absence was the only defence that held.
+ *
+ * §5.3's `jx-option` is built now, as a `jx-listbox` row, so the absence is gone and this is what
+ * stands in its place. It is deliberately broader than the element that provoked it: an
+ * `<option>`'s content model is text, so a `jx-icon` inside one is the same forgery with a
+ * different tag, and every custom element in that position fails the same way for the same reason.
+ * A native `option`, `optgroup`, `hr` or `slot` is untouched, which is the whole legal vocabulary
+ * of a `<select>`.
+ */
+function customElementInSelect(visit: Ancestry): A11yDefect | null {
+  const { node, path, tags } = visit;
+  const tag = tagOf(node);
+  if (!tag.includes("-") || !tags.some((ancestor) => SELECT_TAGS.has(ancestor))) {
+    return null;
+  }
+  return defect(
+    "custom-element-in-select",
+    path,
+    `<${tag}> is a custom element inside a <select>.`,
+    `A <select> builds its own rows: an element it does not know is not in select.options, so it cannot be picked, cannot be reached with the arrow keys, and fires no change event — while role="option" on it still makes the accessibility tree read as though it could. Every row of a <select> is a native <option>; a listbox whose rows are jx-option elements is a jx-listbox.`,
+    "4.1.2",
+  );
+}
+
 function imgAltMissing(visit: Ancestry): A11yDefect | null {
   const { node, path } = visit;
   if (tagOf(node) !== "img") {
@@ -704,6 +741,7 @@ export function findA11yDefects(doc: JxElement): A11yDefect[] {
       unnamedInteractive(visit, labelledIds),
       imgAltMissing(visit),
       roleOutsideContainer(visit, owned),
+      customElementInSelect(visit),
       tablistNoneSelected(visit),
       dialogUnnamed(visit),
       activedescendantNotFocusable(visit),

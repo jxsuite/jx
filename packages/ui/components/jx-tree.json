@@ -1,0 +1,198 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "JxTree",
+  "tagName": "jx-tree",
+  "$description": "The `role=\"tree\"` itself, over a FLAT list of `jx-tree-item` rows. Four decisions are the whole design, and each of them is forced by the same fact: a Studio tree windows, so the DOM holds a SLICE and the element must never mistake it for the model. (1) THE HOST OWNS THE ROW SET. The element takes a flat projection — one row per drawn line, each carrying its own `level`, `posinset`, `setsize` and `expanded` — rather than a nested structure, because a nested one cannot be windowed at all: a subtree is a variable number of lines and a viewport is a fixed number of them. Both Studio trees already project flat rows for exactly this reason, and neither can go back. (2) THE COUNTS DESCRIBE THE FULL SET. `aria-setsize` and `aria-posinset` are the row's props and are never derived from `items.length`, which is how a reader ends up told a directory holds eleven files when it holds ten thousand. (3) MULTI-SELECT IS AN INTENT, NOT A SET. The tree owns the ANCHOR and dispatches `select` with a mode — `replace`, `toggle` or `range` — and the HOST resolves it, because resolving a range means naming every row between two of them and the rows between are precisely the ones the drawn slice does not have. (4) DRAG AND DROP IS AN ISLAND. Pragmatic-drag-and-drop attaches through the host (studio-ui-guidelines.md §9.4); the element's job is to make every row addressable (`data-value` on each) and to keep the non-drag alternative alive, which means the roving caret reaches every row and every chord the tree does not own — cut, paste, delete, rename, select-all — passes straight through to the host (WCAG 2.2 SC 2.5.7, guidelines §8.2). The windowing contract is `padtop` and `padbottom` plus the `move` event, and it is deliberately NOT a second geometry engine: the pads are the element's only knowledge of what it cannot see, and a caret move past one is dispatched rather than performed.",
+  "observedAttributes": ["label", "multiple", "current", "padtop", "padbottom"],
+  "state": {
+    "label": {
+      "type": "string",
+      "default": "Tree",
+      "attribute": "label",
+      "description": "The accessible name of the tree. A `tree` takes no name from its rows and nothing lints a missing one — a bound role switches the naming rules off — so name every tree. \"Document outline\", \"Project files\": what this tree is OF, since a window may hold two."
+    },
+    "multiple": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "multiple",
+      "description": "Whether more than one row may be selected, announced as `aria-multiselectable`. It is also the gate on the modifiers: with it off, every `select` the element dispatches is `replace` however many keys the reader is holding, so a host that never asked for multi-select cannot be handed a `toggle` it has no code for. This is where the multi answer lives rather than on the rows, because a `aria-selected=\"false\"` on every row is the OTHER way to say it and a row cannot see its tree."
+    },
+    "current": {
+      "type": "string",
+      "default": "",
+      "attribute": "current",
+      "description": "The `value` of the row holding the roving caret. The tree is the single writer of every drawn row's `caret`, derived from this, so a host moves the caret by writing HERE and never a row's own state. Under windowing the row it names is routinely not drawn; the tab stop then falls back to the first drawn row so the tree cannot drop out of the tab order, and `current` itself is left exactly as the host wrote it."
+    },
+    "anchor": {
+      "type": "string",
+      "default": "",
+      "description": "The row a `Shift` range extends from. The tree owns it — it is a fact about the reader's gesture rather than about the document — and writes it on every `replace` and `toggle`. A host may seed it to restore a session; it never has to."
+    },
+    "padtop": {
+      "type": "number",
+      "default": 0,
+      "attribute": "padtop",
+      "description": "The height, in pixels, of the rows the window left ABOVE the drawn slice, reserved as a spacer so the scrollbar stays the length of the whole model. It is also the element's only knowledge that those rows exist: a caret move off the top of the slice dispatches `move` when this is non-zero and clamps when it is zero, which is how one code path serves a windowed tree and a small one that draws every row."
+    },
+    "padbottom": {
+      "type": "number",
+      "default": 0,
+      "attribute": "padbottom",
+      "description": "The same, below. Zero at both ends means the slice IS the model, and the ends of the drawn rows are the ends of the tree."
+    },
+    "applyCurrent": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/tree.ts",
+      "$export": "applyCurrent",
+      "parameters": ["scope"],
+      "description": "Writes the caret onto the rows and returns it. Idempotent: it runs inside a render effect."
+    },
+    "sync": "${state.applyCurrent(state)}",
+    "onKeydown": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/tree.ts",
+      "$export": "onTreeKeydown",
+      "description": "The ARIA tree keyboard contract: the arrows walk the drawn rows without wrapping, Home and End go to the ends, ArrowRight opens a closed row and steps into an open one, ArrowLeft closes an open row and steps out of a closed one, Enter activates, Space is a selection verb, and a printable character is typeahead. Shift extends from the anchor and Ctrl or Cmd moves the caret alone. Every other key is left alone, which is what keeps the host's cut, paste, delete and rename chords reachable from a focused row.",
+      "emits": [
+        {
+          "name": "change",
+          "description": "The caret moved to a drawn row; detail is that row's value. `current` is written before this is dispatched, so a listener reading `e.target.current` sees the new value."
+        },
+        {
+          "name": "select",
+          "description": "The reader meant something by landing there; detail is `{ value, mode, anchor }` where mode is `replace`, `toggle` or `range`. An INTENT: the host owns the selection set and resolves the range."
+        },
+        {
+          "name": "move",
+          "description": "The caret must reach a row the drawn slice does not have; detail is `{ from, key }`. The host scrolls, repaints and writes `current`. Dispatched only when a pad says there are rows that way."
+        },
+        {
+          "name": "expand",
+          "description": "A row should be opened or closed; detail is `{ value, expanded }`, and `expanded` is the state it should be PUT INTO rather than the state it is in."
+        },
+        {
+          "name": "activate",
+          "description": "A row was activated with Enter; detail is its value. What that means — open the file, start the rename — is the host's."
+        }
+      ]
+    },
+    "onClick": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/tree.ts",
+      "$export": "onTreeClick",
+      "description": "A pointer landed on a row: the caret follows it and the modifiers say what it meant. Delegated on the TREE rather than dispatched by each row, which is the one place the kit departs from its own child-dispatches-select idiom — a selection intent IS the modifier state, and a row would have to copy three booleans out of the mouse event for the tree to read them back.",
+      "emits": [
+        {
+          "name": "change",
+          "description": "The caret moved to the clicked row; detail is its value."
+        },
+        {
+          "name": "select",
+          "description": "The selection intent the click carried; detail is `{ value, mode, anchor }`."
+        }
+      ]
+    },
+    "onDblClick": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/tree.ts",
+      "$export": "onTreeDblClick",
+      "description": "A double click means what Enter means. One verb for both, so a pointer-only reader and a keyboard-only reader reach the same thing.",
+      "emits": [
+        {
+          "name": "activate",
+          "description": "A row was activated with a double click; detail is its value."
+        }
+      ]
+    },
+    "onToggle": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/tree.ts",
+      "$export": "onTreeToggle",
+      "description": "A row's twisty was pressed. The row says only which row it was; the tree works out which way it should go and answers with its own `expand`, so that event has ONE dispatcher and `e.target` is the element the host wrote whether the reader used the twisty or ArrowLeft.",
+      "emits": [
+        {
+          "name": "expand",
+          "description": "The row should be opened or closed; detail is `{ value, expanded }`."
+        }
+      ]
+    },
+    "onReady": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/tree.ts",
+      "$export": "onTreeMount",
+      "description": "Gives the tree its first sight of itself, syncs the caret and starts watching the row set. Not optional: `applyAttributes` runs before `distributeSlots`, so no row exists when the root's bindings first evaluate — and a scroll replaces the whole slice, so the watch is what keeps one tab stop alive afterwards."
+    },
+    "onMount": {
+      "$prototype": "Function",
+      "body": [
+        {
+          "dispatchEvent": "jx-ready",
+          "bubbles": true
+        }
+      ],
+      "description": "Announces that the tree has rendered and taken its slotted rows, which is how onReady reaches the element itself."
+    }
+  },
+  "attributes": {
+    "role": "tree",
+    "aria-label": "${state.label}",
+    "aria-multiselectable": "${state.multiple ? 'true' : null}",
+    "tabindex": "-1",
+    "data-current": "${state.sync}"
+  },
+  "onkeydown": {
+    "$ref": "#/state/onKeydown"
+  },
+  "onclick": {
+    "$ref": "#/state/onClick"
+  },
+  "ondblclick": {
+    "$ref": "#/state/onDblClick"
+  },
+  "ontoggle": {
+    "$ref": "#/state/onToggle"
+  },
+  "onjx-ready": {
+    "$ref": "#/state/onReady"
+  },
+  "style": {
+    "$description": "The tree declares no `overflow` and owns no scrollbar, which is a decision rather than an omission: one Studio tree scrolls inside itself and the other scrolls inside the panel that also holds its toolbar, and a windowing observer resolves the nearest scrolling ancestor either way. Declaring one here would settle that question wrongly for one of them. The indent is a custom property on the CONTAINER so it inherits to every row and a consumer can retune the whole tree with one declaration.",
+    "display": "block",
+    "&[hidden]": {
+      "display": "none"
+    },
+    "boxSizing": "border-box",
+    "--jx-tree-indent": "16px",
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "lineHeight": "var(--jx-leading-md)",
+    "color": "var(--jx-fg)",
+    "outline": "none",
+    "& [part=\"pad-top\"], & [part=\"pad-bottom\"]": {
+      "$description": "The rows the window left out, as the height they would have occupied, so the scrollbar stays the length of the whole model. `aria-hidden` because a `role=\"tree\"` owns `treeitem`s and a div that exists to be four thousand pixels tall is not one.",
+      "display": "block",
+      "flex": "none"
+    }
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "pad-top",
+        "aria-hidden": "true",
+        "style": "block-size: ${state.padtop}px"
+      }
+    },
+    {
+      "tagName": "slot"
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "pad-bottom",
+        "aria-hidden": "true",
+        "style": "block-size: ${state.padbottom}px"
+      }
+    }
+  ]
+}

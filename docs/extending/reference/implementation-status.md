@@ -27,11 +27,11 @@ This page is generated from the `> **Status: …**` markers in the specification
 | `schema.md`               | 0.4.9-draft  | Partial     | 2026-09-02 |
 | `server.md`               | 0.2.23       | Implemented | 2026-08-31 |
 | `site-architecture.md`    | 0.6.11-draft | Partial     | 2026-09-10 |
-| `spec.md`                 | 0.6.19-draft | Partial     | 2026-09-10 |
+| `spec.md`                 | 0.6.20-draft | Partial     | 2026-09-10 |
 | `standards.md`            | 0.1.17-draft | Partial     | 2026-09-02 |
-| `studio-ui-guidelines.md` | 0.8.1-draft  | Partial     | 2026-09-10 |
+| `studio-ui-guidelines.md` | 0.8.2-draft  | Partial     | 2026-09-10 |
 | `studio.md`               | 0.11.0-draft | Partial     | 2026-09-10 |
-| `ui.md`                   | 0.1.26-draft | Partial     | 2026-09-10 |
+| `ui.md`                   | 0.1.28-draft | Partial     | 2026-09-10 |
 
 ## Sections not yet implemented
 
@@ -65,6 +65,7 @@ This page is generated from the `> **Status: …**` markers in the specification
 - `ui.md` §5.2 — Overlays
 - `ui.md` §5.3 — Forms
 - `ui.md` §5.4 — Containers
+- `ui.md` §5.5 — Builder
 - `ui.md` §6 — Overlay Model
 - `ui.md` §7 — Keyboard and Focus
 - `ui.md` §8 — Icons
@@ -75,7 +76,6 @@ This page is generated from the `> **Status: …**` markers in the specification
 - `desktop.md` §4.3 — Single File Mode
 - `site-architecture.md` §12.3 — Incremental Builds
 - `ui.md` §2 — Principles
-- `ui.md` §5.5 — Builder
 - `ui.md` §10 — Studio Integration
 
 ### Removed

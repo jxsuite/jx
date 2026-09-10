@@ -155,11 +155,22 @@ function input(): HTMLInputElement {
 }
 
 function items(): HTMLElement[] {
-  return [...document.querySelectorAll('[part="item"]')] as HTMLElement[];
+  return [...document.querySelectorAll('[part="option"]')] as HTMLElement[];
 }
 
 function names(): (string | undefined)[] {
-  return items().map((el) => el.querySelector('[part="name"]')?.textContent ?? undefined);
+  return items().map((el) => el.querySelector('[part="label"]')?.textContent ?? undefined);
+}
+
+/**
+ * The row the caret is on, as the kit's listbox sidecar marks it.
+ *
+ * The flag is written a microtask after the id moves — the listbox observes its own `data-active`
+ * and is the single writer of every row's `selected` — so every assertion about the highlight
+ * follows a {@link flush}, while `Enter` and a click still read the index synchronously.
+ */
+function selected(): HTMLElement | null {
+  return document.querySelector('[part="option"][aria-selected="true"]');
 }
 
 function keydown(keyName: string) {
@@ -385,7 +396,9 @@ describe("files mode", () => {
     expect(searches).toEqual([["searchFiles", "", [".md"]]]);
     // A basename substring backend could never have answered "pgblog".
     expect(names()).toEqual(["index.md"]);
-    expect(items()[0]!.querySelector('[part="detail"]')?.textContent).toBe("/project/pages/blog");
+    expect(items()[0]!.querySelector('[part="description"]')?.textContent).toBe(
+      "/project/pages/blog",
+    );
   });
 
   test("Enter opens the ranked row and tracks it as recent", async () => {
@@ -403,7 +416,7 @@ describe("files mode", () => {
     trackRecentFile({ name: "old.md", path: "/project/posts/old.md", root: PROJECT_ROOT });
     trackRecentFile({ name: "fresh.json", path: "/project/pages/fresh.json", root: PROJECT_ROOT });
     await open("files");
-    expect(document.querySelector('[part="section-label"]')?.textContent).toBe("Recently opened");
+    expect(document.querySelector('[part="group-heading"]')?.textContent).toBe("Recently opened");
     expect(names()).toEqual(["fresh.json", "old.md"]);
     expect(items()[0]!.querySelector('[part="badge"]')?.textContent).toBe("recent");
     items()[0]!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -429,7 +442,7 @@ describe("files mode", () => {
   test("a file at the search root has an empty directory subtitle", async () => {
     await open("files");
     await type("rootfile");
-    expect(items()[0]!.querySelector('[part="detail"]')?.textContent).toBe("");
+    expect(items()[0]!.querySelector('[part="description"]')?.textContent).toBe("");
   });
 
   test("a failing backend leaves the mode usable and says No results", async () => {
@@ -448,21 +461,24 @@ describe("files mode", () => {
     await open("files");
     await type("doc");
     items()[1]!.dispatchEvent(new MouseEvent("mouseenter", { bubbles: false }));
-    expect(items()[1]!.dataset["selected"] !== undefined).toBe(true);
+    await flush();
+    expect(selected()).toBe(items()[1]!);
   });
 
   test("arrow keys clamp at both ends", async () => {
     await open("files");
     await type("doc");
-    expect(items()[0]!.dataset["selected"] !== undefined).toBe(true);
+    expect(selected()).toBe(items()[0]!);
     for (let i = 0; i < 6; i++) {
       keydown("ArrowDown");
     }
-    expect(items().at(-1)!.dataset["selected"] !== undefined).toBe(true);
+    await flush();
+    expect(selected()).toBe(items().at(-1)!);
     for (let i = 0; i < 6; i++) {
       keydown("ArrowUp");
     }
-    expect(items()[0]!.dataset["selected"] !== undefined).toBe(true);
+    await flush();
+    expect(selected()).toBe(items()[0]!);
   });
 
   test("Enter with no rows is a no-op", async () => {
@@ -490,12 +506,17 @@ describe("command mode", () => {
     await open("commands");
     await type("undo");
     const row = items()[0]!;
-    expect(row.dataset["disabled"] !== undefined).toBe(true);
     expect(row.getAttribute("aria-disabled")).toBe("true");
-    expect(row.querySelector('[part="detail"]')?.textContent).toBe("a change to undo");
+    expect(row.querySelector('[part="description"]')?.textContent).toBe("a change to undo");
 
     // Enter on a greyed row does nothing AND leaves the palette open with its reason on screen.
     keydown("Enter");
+    expect(overlay()).toBeTruthy();
+    expect(ran).toEqual([]);
+
+    // Nor does a click: a disabled `jx-option` dispatches no `select` at all, so the refusal is the
+    // Kit's now rather than a second guard on this side of the event.
+    row.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     expect(overlay()).toBeTruthy();
     expect(ran).toEqual([]);
   });
@@ -517,7 +538,7 @@ describe("command mode", () => {
 
     // Recents pin above the rest on the next empty-query open.
     await open("commands");
-    expect(document.querySelector('[part="section-label"]')?.textContent).toBe("Recently used");
+    expect(document.querySelector('[part="group-heading"]')?.textContent).toBe("Recently used");
     expect(names()[0]).toBe("View: Zen Mode");
     expect(items()[0]!.querySelector('[part="chord"]')?.textContent).toBe("⌘.");
   });
@@ -542,7 +563,7 @@ describe("command mode", () => {
     await flush();
     expect(document.querySelector('[part="chip"]')?.textContent).toContain("Set Palette Theme");
     expect(names()).toEqual(["light", "dark"]);
-    expect(items()[0]!.querySelector('[part="detail"]')?.textContent).toBe(
+    expect(items()[0]!.querySelector('[part="description"]')?.textContent).toBe(
       "Set Palette Theme → color",
     );
 
@@ -763,7 +784,7 @@ describe("projects mode", () => {
     await open("projects");
     expect(document.querySelector('[part="chip"]')?.textContent).toContain("Recent Projects");
     expect(names()).toEqual(["Alpha", "Beta"]);
-    expect(items()[0]!.querySelector('[part="detail"]')?.textContent?.trim()).toBe("~/alpha");
+    expect(items()[0]!.querySelector('[part="description"]')?.textContent?.trim()).toBe("~/alpha");
     expect((items()[0]!.querySelector("jx-icon") as HTMLElement & { name: string }).name).toBe(
       "folder-open",
     );
@@ -825,6 +846,73 @@ describe("quick search announces its results", () => {
     const active = el.getAttribute("aria-activedescendant");
     expect(active).not.toBeNull();
     expect(document.querySelector(`#${active}`)?.getAttribute("aria-selected")).toBe("true");
+  });
+
+  test("the highlight is ONE id: the field, the list and the row all name it", async () => {
+    /*
+     * The duplication this closed. Every row used to carry
+     * `aria-selected="${$map.index === state.selectedIndex ? 'true' : 'false'}"` AND a
+     * `data-selected` beside it, in three palettes, with nothing keeping the pair in agreement.
+     * Now the surface writes one string: `active` reaches the kit's listbox, the same string
+     * reaches the field as `aria-activedescendant`, and the listbox's sidecar is the only thing
+     * that writes a row's flag.
+     */
+    await open("commands");
+    await type("a");
+    keydown("ArrowDown");
+    await flush();
+
+    const list = document.querySelector('[part="results"]') as HTMLElement;
+    const active = input().getAttribute("aria-activedescendant");
+
+    expect(active).toBe("quick-search-option-1");
+    expect(list.dataset.active).toBe(active!);
+    expect(list.getAttribute("aria-label")).toBe("Results");
+    expect(selected()!.id).toBe(active!);
+    expect(document.querySelectorAll("[data-selected]")).toHaveLength(0);
+  });
+
+  test("a key moves the caret without re-ranking the rows", async () => {
+    /*
+     * The property `rows` and `activeId` are separate fields FOR, and the one thing about this
+     * surface a kit element could have taken away. `commandRows` asks the registry for its visible
+     * records once per projection, so counting that counts projections — and an arrow key must
+     * cost none. Typing does, which is what proves the counter is wired to anything.
+     */
+    const registry = installRegistry();
+    let projections = 0;
+    const visible = registry.visible.bind(registry);
+    registry.visible = () => {
+      projections += 1;
+      return visible();
+    };
+
+    await open("commands");
+    const projected = projections;
+    expect(projected).toBeGreaterThan(0);
+
+    keydown("ArrowDown");
+    keydown("ArrowDown");
+    await flush();
+    expect(projections).toBe(projected);
+    expect(selected()!.id).toBe("quick-search-option-2");
+
+    await type("save");
+    expect(projections).toBeGreaterThan(projected);
+  });
+
+  test("with nothing to show, the field points at no row at all", async () => {
+    await open("commands");
+    await type("zzzzz-no-such-command-zzzzz");
+    expect(input().hasAttribute("aria-activedescendant")).toBe(false);
+    expect((document.querySelector('[part="results"]') as HTMLElement).dataset.active).toBe("");
+
+    // And an arrow key over nothing moves nothing: clamping an empty list lands on index 0, which
+    // Would name a row that is not there now that the id IS the highlight.
+    keydown("ArrowDown");
+    await flush();
+    expect(input().hasAttribute("aria-activedescendant")).toBe(false);
+    expect((document.querySelector('[part="results"]') as HTMLElement).dataset.active).toBe("");
   });
 
   test("aria-expanded is honest about whether a popup is showing", async () => {

@@ -583,6 +583,75 @@ describe("activedescendant-not-focusable", () => {
   });
 });
 
+describe("custom-element-in-select", () => {
+  test("a jx-option inside a select is reported, and so is any other custom element", () => {
+    const found = findA11yDefects(
+      doc([
+        {
+          attributes: { "aria-label": "Font" },
+          children: [
+            { attributes: { value: "a" }, children: ["Alpha"], tagName: "jx-option" },
+            { attributes: { value: "b" }, children: ["Beta"], tagName: "option" },
+            { children: [{ tagName: "jx-icon" }], tagName: "option" },
+          ],
+          tagName: "select",
+        },
+      ]),
+    );
+    expect(found.map((d) => [d.rule, d.path])).toEqual([
+      ["custom-element-in-select", ["children", 0, "children", 0]],
+      ["custom-element-in-select", ["children", 0, "children", 2, "children", 0]],
+    ]);
+    expect(found[0]).toMatchObject({
+      criterion: "4.1.2",
+      message: "<jx-option> is a custom element inside a <select>.",
+      severity: "error",
+    });
+    expect(found[0]!.detail).toContain("select.options");
+  });
+
+  test("a jx-select is the same select, and a listbox is not", () => {
+    expect(
+      rules(
+        doc([
+          {
+            children: [{ attributes: { value: "a" }, children: ["Alpha"], tagName: "jx-option" }],
+            tagName: "jx-select",
+          },
+        ]),
+      ),
+    ).toEqual(["custom-element-in-select"]);
+    expect(
+      rules(
+        doc([
+          {
+            children: [{ attributes: { value: "a" }, children: ["Alpha"], tagName: "jx-option" }],
+            tagName: "jx-listbox",
+          },
+        ]),
+      ),
+    ).toEqual([]);
+  });
+
+  test("it reaches a mapped row and a switch branch, where a row list is actually written", () => {
+    expect(
+      findA11yDefects(
+        doc([
+          {
+            attributes: { "aria-label": "Font" },
+            children: {
+              $prototype: "Array",
+              items: [],
+              map: { children: ["${$map.item.label}"], tagName: "jx-option" },
+            },
+            tagName: "select",
+          },
+        ] as unknown[]),
+      ).map((d) => [d.rule, d.path]),
+    ).toEqual([["custom-element-in-select", ["children", 0, "children", "map"]]]);
+  });
+});
+
 describe("the walk", () => {
   test("reaches a mapped-array template, a $map row and every $switch case, with their paths", () => {
     const found = findA11yDefects(

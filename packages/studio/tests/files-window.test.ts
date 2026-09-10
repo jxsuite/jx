@@ -123,12 +123,19 @@ function rows(): HTMLElement[] {
 }
 
 function rowFor(path: string): HTMLElement | null {
-  return host.querySelector<HTMLElement>(`[part="row"][data-path="${CSS.escape(path)}"]`);
+  return host.querySelector<HTMLElement>(`[part="row"][data-value="${CSS.escape(path)}"]`);
 }
 
+/**
+ * The two spacers, in pixels.
+ *
+ * `jx-tree` draws them from its own `padtop`/`padbottom` props, so what the window reserves is read
+ * off the element the host handed the numbers to rather than off a declaration the host composed —
+ * which is the same evidence, one writer later.
+ */
 function pads(): number[] {
   return [...host.querySelectorAll<HTMLElement>('[part="pad-top"], [part="pad-bottom"]')].map(
-    (el) => Number(el.style.height.replace("px", "")),
+    (el) => Number(/(-?[\d.]+)px/.exec(el.getAttribute("style") ?? "")?.[1] ?? 0),
   );
 }
 
@@ -169,7 +176,7 @@ describe("the window", () => {
     expect(drawn.length).toBeLessThan(20);
     expect(drawn.length).toBeLessThan(ROW_COUNT);
     // An expanded directory contributes its children right after itself, in display order.
-    expect(drawn.slice(0, 3).map((el) => el.dataset.path)).toEqual([
+    expect(drawn.slice(0, 3).map((el) => el.dataset.value)).toEqual([
       "pages",
       "pages/about.json",
       "pages/index.json",
@@ -217,7 +224,7 @@ describe("the window", () => {
     // Panel the Tab key skips entirely.
     const stops = rows().filter((el) => el.tabIndex === 0);
     expect(stops).toHaveLength(1);
-    expect(stops[0]!.dataset.path).toBe(rows()[0]!.dataset.path);
+    expect(stops[0]!.dataset.value).toBe(rows()[0]!.dataset.value);
   });
 
   test("the selected row takes the tab stop while it is on screen", async () => {
@@ -229,14 +236,26 @@ describe("the window", () => {
 });
 
 describe("the keyboard walks the model", () => {
-  /* The keydown is bound to the ROW in `surfaces/files-panel.json`, so mounting the document is all
-     the wiring there is — and which row the key is about is that row's own `$map` item rather than
-     anything looked up from the focus. */
+  /* `jx-tree` owns the keyboard, and it walks the DRAWN rows: the slice is all it can see, so ↓ on
+     the last of them has nowhere to land and it says `move` instead of performing anything. That
+     event is the whole windowing contract, and answering it — which model row is next, and how far
+     to scroll to bring it into view — is what `files.ts` still owns. */
   test("↓ steps past the last DRAWN row instead of stopping at it", async () => {
     const last = rows().at(-1)!;
-    last.focus();
+    const from = last.dataset.value!;
+    /* The row the model has next. The window starts at the top, and its first three rows are the
+       directory and its two children, so the file after the last drawn one is that many in. */
+    const next = fileName(rows().length - 3);
+    /* The caret is put on the row the key is pressed on, which is the app's own invariant rather
+       than a convenience: Tab lands on the tab stop, and every gesture that moves the focus writes
+       the caret before it moves anything. A test that focused a row the caret was not on would be
+       measuring a state the tree cannot be in. */
+    requireProjectState().selectedPath = from;
+    await renderTree();
+    const row = rowFor(from)!;
+    row.focus();
 
-    last.dispatchEvent(
+    row.dispatchEvent(
       new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "ArrowDown" }),
     );
     await flush();
@@ -244,7 +263,116 @@ describe("the keyboard walks the model", () => {
 
     // The row below the window: the walk scrolled to it and the repaint handed it the keyboard.
     expect(scroller.scrollTop).toBeGreaterThan(0);
-    expect((document.activeElement as HTMLElement).dataset.path).not.toBe(last.dataset.path);
+    expect(next).not.toBe(from);
+    expect((document.activeElement as HTMLElement).dataset.value).toBe(next);
+    /* And the selection went with it, exactly as it does for a step the element could perform
+       itself: `jx-tree` raises `select` beside `change` on every arrow inside the drawn slice, so a
+       step the window could not satisfy must not be the one step that silently does not. It is also
+       what puts the tab stop on the revealed row — without it the element's caret is still on a row
+       the new window does not draw, and the reader is FOCUSED on one row while Tab comes back to
+       another. */
+    expect(rowFor(next)!.getAttribute("aria-selected")).toBe("true");
+    expect(rowFor(next)!.tabIndex).toBe(0);
+    expect(rows().filter((el) => el.tabIndex === 0)).toHaveLength(1);
+  });
+
+  test("Tab into a scrolled tree lands on a row, and ↑ from it walks the model", async () => {
+    await scrollTo(FILE_ROW_HEIGHT * 200);
+    expect(requireProjectState().selectedPath).toBeNull();
+    /* The state a reader is in the first time they reach a scrolled tree: nothing selected, and the
+       ONE tab stop is wherever `jx-tree` could put it — the first row the window drew, because the
+       row `current` names is not one of them. The caret has to name that row too, or the first key
+       press reports a move `from` nothing and the flow answers it about the top of the project,
+       two hundred rows away from what is on screen. */
+    const first = rows()[0]!;
+    expect(first.tabIndex).toBe(0);
+    const index = Number(first.dataset.value!.slice("file-".length, -".json".length));
+    first.focus();
+
+    first.dispatchEvent(
+      new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "ArrowUp" }),
+    );
+    await flush();
+    await flush();
+
+    expect(rowFor(fileName(index - 1))).not.toBeNull();
+    expect((document.activeElement as HTMLElement).dataset.value).toBe(fileName(index - 1));
+  });
+
+  test("↓ at the very bottom of the MODEL stays put — a tree does not wrap", async () => {
+    const lastPath = fileName(FILE_COUNT - 1);
+    requireProjectState().selectedPath = lastPath;
+    await renderTree();
+    // Scroll it into the window, then hand it the keyboard.
+    await scrollTo(ROW_COUNT * FILE_ROW_HEIGHT);
+    const row = rowFor(lastPath)!;
+    row.focus();
+    const top = scroller.scrollTop;
+
+    row.dispatchEvent(
+      new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "ArrowDown" }),
+    );
+    await flush();
+    await flush();
+
+    expect(scroller.scrollTop).toBe(top);
+    expect((document.activeElement as HTMLElement).dataset.value).toBe(lastPath);
+  });
+});
+
+describe("← climbs to a parent the window is not drawing", () => {
+  /** One expanded directory holding every file, so its own row is what scrolls away. */
+  function seedDeepProject(): void {
+    setProjectState({
+      dirs: new Map<string, DirEntry[]>([
+        [".", [{ name: "deep", path: "deep", type: "directory" }]],
+        [
+          "deep",
+          Array.from({ length: FILE_COUNT }, (_v, index) => ({
+            name: fileName(index),
+            path: `deep/${fileName(index)}`,
+            type: "file" as const,
+          })),
+        ],
+      ]),
+      expanded: new Set(["deep"]),
+      isSiteProject: true,
+      name: "Demo",
+      projectConfig: { name: "Demo" },
+      projectDirs: [],
+      projectRoot: ".",
+      searchQuery: "",
+      selectedPath: null,
+    } as never);
+  }
+
+  beforeEach(async () => {
+    seedDeepProject();
+    await renderWindowed();
+  });
+
+  test("the parent is the model's, not the nearest row on screen", async () => {
+    await scrollTo(FILE_ROW_HEIGHT * 200);
+    expect(rowFor("deep")).toBeNull();
+    // Every row on screen is a sibling at the same level, so a scan for "the nearest drawn row at a
+    // Shallower level" has nothing at all to find.
+    expect(rows().every((el) => el.getAttribute("aria-level") === "2")).toBe(true);
+    const row = rowFor(`deep/${fileName(200)}`)!;
+    requireProjectState().selectedPath = `deep/${fileName(200)}`;
+    await renderTree();
+    rowFor(`deep/${fileName(200)}`)!.focus();
+
+    row.dispatchEvent(
+      new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "ArrowLeft" }),
+    );
+    await flush();
+    await flush();
+
+    /* The one key that could never have been the element's: `jx-tree` climbs to the nearest DRAWN
+       row at a shallower level, and the answer here is a hundred and ninety rows above the window.
+       The flow scans its own row model for it. */
+    expect(requireProjectState().selectedPath).toBe("deep");
+    expect(scroller.scrollTop).toBeLessThan(FILE_ROW_HEIGHT * 200);
   });
 });
 

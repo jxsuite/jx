@@ -12,7 +12,7 @@
  * selection made somewhere else, the ARIA set counts, and the drag that must not have the rows
  * pulled out from under it.
  *
- * The body is a Jx document now, so the rows are `[part="row"]`, the spacers are `[part="pad"]`,
+ * The body is a Jx document now, so the rows are `[part="row"]`, the spacers are `jx-tree`'s own
  * and the drag mark the repaint guard looks for is `data-dragging` rather than a class.
  */
 import { flush, resetWorkspaceWithTab, stubRect } from "./harness";
@@ -102,9 +102,16 @@ function selection(): JxPath[] {
 }
 
 /** The two spacers that stand in for the rows the window left out. */
+/**
+ * The two spacers, in pixels.
+ *
+ * `jx-tree` draws them from its own `padtop`/`padbottom` props, so what the window reserves is read
+ * off the element the panel handed the numbers to rather than off a declaration the panel composed
+ * — the same evidence, one writer later.
+ */
 function pads(): number[] {
-  return [...host.querySelectorAll<HTMLElement>('[part="pad"]')].map((el) =>
-    Number(el.style.height.replace("px", "")),
+  return [...host.querySelectorAll<HTMLElement>('[part="pad-top"], [part="pad-bottom"]')].map(
+    (el) => Number(/(-?[\d.]+)px/.exec(el.getAttribute("style") ?? "")?.[1] ?? 0),
   );
 }
 
@@ -172,7 +179,7 @@ describe("the window", () => {
     expect(drawn.length).toBeGreaterThan(0);
     expect(drawn.length).toBeLessThan(20);
     expect(drawn.length).toBeLessThan(ROW_COUNT);
-    expect(drawn[0]!.dataset.path).toBe("");
+    expect(drawn[0]!.dataset.value).toBe("");
   });
 
   test("reserves the scroll height of every row it did not draw", () => {
@@ -226,6 +233,43 @@ describe("the keyboard reaches rows the window does not hold", () => {
     expect(rowFor(CHILD_COUNT - 1)).not.toBeNull();
   });
 
+  test("Tab into a scrolled tree lands on a row, and ↑ from it walks the model", async () => {
+    await scrollTo(OUTLINE_ROW_HEIGHT * 150);
+    expect(selection()).toEqual([]);
+    /* The state a reader is in the first time they reach a scrolled tree: nothing selected, and the
+       ONE tab stop is wherever the element could put it — the first row the window drew, because
+       the row `current` names is not one of them. The caret has to name that row too, or the first
+       key press reports a move `from` nothing and the panel answers it about the top of the
+       document, a hundred and fifty rows away from what is on screen. */
+    const first = treeItems(host)[0]!;
+    expect(first.tabIndex).toBe(0);
+    const index = Number(first.dataset.value!.split("/")[1]);
+
+    press(first, "ArrowUp");
+    await flush();
+
+    expect(selection()).toEqual([childPath(index - 1)]);
+  });
+
+  test("← climbs to a parent the window is not drawing", async () => {
+    await scrollTo(OUTLINE_ROW_HEIGHT * 150);
+    const child = rowFor(150)!;
+    click(child);
+    await flush();
+    // The parent is the ROOT, and it scrolled off the top a hundred and fifty rows ago.
+    expect(rowFor(0)).toBeNull();
+    expect(treeItems(host).every((el) => el.getAttribute("aria-level") === "2")).toBe(true);
+
+    press(child, "ArrowLeft");
+    await flush();
+
+    /* The one key that could never have been the element's. `jx-tree` climbs to the nearest DRAWN
+       row at a shallower level, and every row on screen here is a sibling — so it says `move` and
+       the panel answers from the parent index the row model recorded as it built the rows. A scan
+       backwards for a smaller level would have found nothing at all. */
+    expect(selection()).toEqual([[]]);
+  });
+
   test("Home comes back to the root", async () => {
     await scrollTo(OUTLINE_ROW_HEIGHT * 150);
     press(rowFor(150)!, "Home");
@@ -236,7 +280,14 @@ describe("the keyboard reaches rows the window does not hold", () => {
 
   test("↓ walks past the last DRAWN row instead of stopping at it", async () => {
     const last = treeItems(host).at(-1)!;
-    const lastIndex = Number(last.dataset.path!.split("/")[1]);
+    const lastIndex = Number(last.dataset.value!.split("/")[1]);
+    /* The caret is put on the row the key is pressed on, which is the app's own invariant rather
+       than a convenience: Tab lands on the tab stop, and every gesture that moves the focus writes
+       the caret before it moves anything. `jx-tree` reports the CARET's row as the one a move is
+       from, so a test that pressed a key on a row the caret was not on would be measuring a state
+       the tree cannot be in. */
+    click(last);
+    await flush();
     press(last, "ArrowDown");
     await flush();
     expect(selection()).toEqual([childPath(lastIndex + 1)]);

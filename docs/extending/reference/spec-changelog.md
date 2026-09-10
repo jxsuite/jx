@@ -385,6 +385,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `spec.md`
 
+- **0.6.20-draft** (2026-09-10) — 8.8 gains custom-element-in-select: a select builds its own rows, so a custom element among them draws, reads convincingly and cannot be picked.
 - **0.6.19-draft** (2026-09-10) — the shell's Trusted Types sink list is one shorter: sp-theme left with Adobe Spectrum rather than being allow-listed.
 - **0.6.18-draft** (2026-09-10) — §4.3 listener options are not part of the on* grammar; §6.1 a binding writes when its source moves, so a document cannot re-assert or empty a bound control; §13.1 there is no document-local element fragment.
 - **0.6.17-draft** (2026-09-09) — a style block may document itself: $description is prose carried on the rule, and every $-prefixed key is metadata rather than a declaration.
@@ -489,6 +490,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `studio-ui-guidelines.md`
 
+- **0.8.2-draft** (2026-09-10) — Both Studio trees are jx-tree: the role, the counts, the roving tab stop and the arrow keys are the element's, and the two hand-written copies of that contract are gone; §8.2's drop highlight is named as the element's data-drop.
 - **0.8.1-draft** (2026-09-10) — The bound on surviving lit templates is a gate (LIT_TEMPLATE_AUTHORS) rather than prose (§9.3).
 - **0.8.0-draft** (2026-09-10) — Adobe Spectrum is removed: one element family, styles/spectrum.css re-homed into the token source, and the inventory in 6.1 replaced by a ban with an empty allow-list.
 - **0.7.0-draft** (2026-09-10) — Studio owns no custom elements: §6.2 graduates as the last LitElement (jx-value-selector) is deleted with its two retired callers, and the checklist item that governed them names the kit instead.
@@ -680,6 +682,8 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `ui.md`
 
+- **0.1.28-draft** (2026-09-10) — jx-combobox, jx-listbox and jx-option ship: the highlight is one id the field and the row are both told, a listbox that never takes focus, and a lint replaces the absence that guarded the select (5.1, 5.3, 7, 11).
+- **0.1.27-draft** (2026-09-10) — jx-tree and jx-tree-item ship: a flat projected row list so the tree can be windowed, ARIA counts that describe the full set, multi-select as an intent the host resolves, and cut and paste kept reachable beside the drag island (5.5, 7, 11).
 - **0.1.26-draft** (2026-09-10) — the authoring model in 3 is enforced over every element by conformance.test.ts, and WAI-ARIA and WHATWG HTML are cited Subsets rather than promises.
 - **0.1.25-draft** (2026-09-10) — jx-toast and jx-toast-host ship: the stack owns the live region, the clock pauses on attention and resumes with what was left, and a hotkey is the way into a status message (§5.2, §7, §11).
 - **0.1.24-draft** (2026-09-10) — a value the colour field cannot decompose is kept and drawn rather than refused, so a project's own tokens live in the same field as a colour.

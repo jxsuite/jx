@@ -1,0 +1,332 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StylebookCombobox",
+  "tagName": "main",
+  "$elements": [
+    {
+      "$ref": "../components/jx-field.json"
+    },
+    {
+      "$ref": "../components/jx-combobox.json"
+    }
+  ],
+  "state": {
+    "model": "claude-sonnet",
+    "font": "Georgia, serif",
+    "models": [
+      {
+        "value": "claude-sonnet",
+        "label": "claude-sonnet",
+        "description": "anthropic"
+      },
+      {
+        "value": "claude-haiku",
+        "label": "claude-haiku",
+        "description": "anthropic"
+      },
+      {
+        "value": "gpt-4o",
+        "label": "gpt-4o",
+        "description": "openai"
+      },
+      {
+        "value": "llama-3.1-70b",
+        "label": "llama-3.1-70b",
+        "description": "self-hosted"
+      }
+    ],
+    "faces": [
+      {
+        "value": "Georgia, serif",
+        "label": "Georgia",
+        "face": "Georgia, serif"
+      },
+      {
+        "value": "\"Courier New\", monospace",
+        "label": "Courier New",
+        "face": "\"Courier New\", monospace"
+      },
+      {
+        "value": "system-ui",
+        "label": "system-ui",
+        "description": "system",
+        "face": "system-ui"
+      }
+    ],
+    "note": {
+      "$prototype": "Function",
+      "body": [
+        {
+          "operator": "=",
+          "target": {
+            "$ref": "#/state/model"
+          },
+          "value": {
+            "$ref": "event#/target/value"
+          }
+        }
+      ]
+    }
+  },
+  "style": {
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "color": "var(--jx-fg)",
+    "background": "var(--jx-bg)",
+    "padding": "var(--jx-space-6)",
+    "minHeight": "100vh",
+    "& > h1": {
+      "fontSize": "var(--jx-text-lg)",
+      "fontWeight": "600",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& > h2": {
+      "fontSize": "var(--jx-text-md)",
+      "fontWeight": "600",
+      "margin": "var(--jx-space-6) 0 var(--jx-space-3)"
+    },
+    "& > p": {
+      "color": "var(--jx-fg-dim)",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& [role=\"group\"]": {
+      "display": "flex",
+      "alignItems": "flex-start",
+      "flexWrap": "wrap",
+      "gap": "var(--jx-space-3)",
+      "margin": "0 0 var(--jx-space-4)"
+    },
+    "& [role=\"group\"] > span": {
+      "width": "200px",
+      "color": "var(--jx-fg-muted)",
+      "fontSize": "var(--jx-text-sm)"
+    },
+    "& jx-combobox": {
+      "width": "280px"
+    }
+  },
+  "children": [
+    {
+      "tagName": "h1",
+      "textContent": "jx-combobox"
+    },
+    {
+      "tagName": "p",
+      "textContent": "One native input carrying role=combobox over a jx-listbox it reaches only through aria-controls and aria-activedescendant — id references, which is why the whole kit is light DOM. The arrows open and move through the list, Enter and Tab take the highlighted row, Escape closes the list and nothing else, and Home and End stay with the text caret."
+    },
+    {
+      "tagName": "h2",
+      "textContent": "Suggestions, never a whitelist"
+    },
+    {
+      "tagName": "p",
+      "textContent": "allows-custom-value is the case this element was asked for: a model id field whose catalogue is what a provider happens to list, not what the field will accept. A keystroke highlights nothing, so Enter commits what you typed until you arrow onto a row."
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "role": "group",
+        "aria-label": "Open list"
+      },
+      "children": [
+        {
+          "tagName": "jx-combobox",
+          "$props": {
+            "label": "Model",
+            "allowsCustomValue": true,
+            "placeholder": "provider/model",
+            "options": {
+              "$ref": "#/state/models"
+            },
+            "value": {
+              "$ref": "#/state/model"
+            },
+            "help": "Type any id your gateway accepts."
+          },
+          "onchange": {
+            "$ref": "#/state/note"
+          }
+        },
+        {
+          "tagName": "span",
+          "textContent": "${state.model}"
+        }
+      ]
+    },
+    {
+      "tagName": "h2",
+      "textContent": "A closed list refuses on the commit"
+    },
+    {
+      "tagName": "p",
+      "textContent": "Without allows-custom-value the rows are the whole answer: type something no row holds and leave the field, and the last accepted value comes back. The refusal stops the control's own change and says one of its own, so one edit is one change rather than two."
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "role": "group",
+        "aria-label": "Closed list"
+      },
+      "children": [
+        {
+          "tagName": "jx-combobox",
+          "$props": {
+            "label": "Model",
+            "options": {
+              "$ref": "#/state/models"
+            },
+            "value": "gpt-4o",
+            "help": "Only a listed id is accepted."
+          }
+        },
+        {
+          "tagName": "jx-combobox",
+          "$props": {
+            "label": "Refused",
+            "invalid": true,
+            "error": "That model is not available on this account.",
+            "options": {
+              "$ref": "#/state/models"
+            },
+            "value": "gpt-4o"
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "h2",
+      "textContent": "Rows that are their own preview"
+    },
+    {
+      "tagName": "p",
+      "textContent": "A row may draw a face, a colour chip or a border rule — the same three channels a jx-select row carries, which is what makes this the value selector's replacement rather than a plainer version of it."
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "role": "group",
+        "aria-label": "Previews"
+      },
+      "children": [
+        {
+          "tagName": "jx-combobox",
+          "$props": {
+            "label": "Font",
+            "allowsCustomValue": true,
+            "options": {
+              "$ref": "#/state/faces"
+            },
+            "value": {
+              "$ref": "#/state/font"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "h2",
+      "textContent": "Sizes and states"
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "role": "group",
+        "aria-label": "Sizes"
+      },
+      "children": [
+        {
+          "tagName": "jx-combobox",
+          "$props": {
+            "label": "Small",
+            "size": "sm",
+            "options": {
+              "$ref": "#/state/models"
+            },
+            "value": "gpt-4o"
+          }
+        },
+        {
+          "tagName": "jx-combobox",
+          "$props": {
+            "label": "Medium",
+            "options": {
+              "$ref": "#/state/models"
+            },
+            "value": "gpt-4o"
+          }
+        },
+        {
+          "tagName": "jx-combobox",
+          "$props": {
+            "label": "Large",
+            "size": "lg",
+            "options": {
+              "$ref": "#/state/models"
+            },
+            "value": "gpt-4o"
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "role": "group",
+        "aria-label": "States"
+      },
+      "children": [
+        {
+          "tagName": "jx-combobox",
+          "$props": {
+            "label": "Disabled",
+            "disabled": true,
+            "options": {
+              "$ref": "#/state/models"
+            },
+            "value": "gpt-4o"
+          }
+        },
+        {
+          "tagName": "jx-combobox",
+          "$props": {
+            "label": "Read-only",
+            "readonly": true,
+            "options": {
+              "$ref": "#/state/models"
+            },
+            "value": "gpt-4o",
+            "help": "Every row is an edit, so a read-only field never opens its list."
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "h2",
+      "textContent": "In a field row"
+    },
+    {
+      "tagName": "jx-field",
+      "$props": {
+        "label": "Default model",
+        "description": "Used by every assistant panel in this project."
+      },
+      "attributes": {
+        "data-prop": "defaultModel"
+      },
+      "children": [
+        {
+          "tagName": "jx-combobox",
+          "$props": {
+            "allowsCustomValue": true,
+            "options": {
+              "$ref": "#/state/models"
+            },
+            "value": {
+              "$ref": "#/state/model"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

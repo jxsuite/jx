@@ -1,7 +1,7 @@
 {
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "StudioFormulaPalette",
-  "$description": "The formula palette (spec §19.9): a search field over the formula catalog, its results grouped by the catalog's own group order, and one pick that hands an entry back to whoever opened it. The same shape as `palette.json` — a scrim, a framed panel, a borderless field, a listbox — because it is the same gesture over a different corpus, and the two used to share a stylesheet by sharing its class names. `groups` is the filtered catalog already grouped; `selectedIndex` is the highlight, kept apart from the rows so a key moves it without the list reconciling, which is why every row carries the FLAT index it would otherwise have to be asked for. Panel position is the caller's: centred under the top edge by default, and pinned under an anchor control when one was named, which is the only thing about this surface a document cannot decide for itself.",
+  "$description": "The formula palette (spec §19.9): a search field over the formula catalog, its results grouped by the catalog's own group order, and one pick that hands an entry back to whoever opened it. The same shape as `palette.json` — a scrim, a framed panel, a borderless field, a listbox — because it is the same gesture over a different corpus, and the two used to share a stylesheet by sharing its class names. `groups` is the filtered catalog already grouped; `activeId` is the highlight, and it is ONE string — the id the field points `aria-activedescendant` at and the id the listbox is handed as `active` — kept apart from the rows so a key moves it without the list reconciling, which is why every row carries the FLAT index it would otherwise have to be asked for. Panel position is the caller's: centred under the top edge by default, and pinned under an anchor control when one was named, which is the only thing about this surface a document cannot decide for itself.",
   "tagName": "div",
   "attributes": {
     "part": "palette"
@@ -61,58 +61,26 @@
       }
     },
     "& [part=\"results\"]": {
-      "overflowY": "auto",
-      "flex": "1"
+      "$description": "The list is the kit's `jx-listbox`, its groups the `role=\"group\"` wrappers that element's own definition names as the shape it draws headings for, and its rows `jx-option`s. The kit's row pads itself by `--jx-space-3`; the other half of the panel's 16px optical margin sits here, on the list, so the heading, the rows and the empty sentence all line up on one edge.",
+      "flex": "1",
+      "paddingInline": "var(--jx-space-3)"
     },
     "& [part=\"empty-slot\"]": {
       "display": "contents"
     },
-    "& [part=\"empty\"]": {
-      "padding": "var(--jx-space-5)",
-      "textAlign": "center",
-      "color": "var(--jx-fg-muted)",
-      "fontSize": "var(--jx-text-md)"
-    },
-    "& [part=\"section-label\"]": {
-      "padding": "var(--jx-space-3) var(--jx-space-5) var(--jx-space-1)",
-      "fontSize": "var(--jx-text-xs)",
-      "textTransform": "uppercase",
-      "letterSpacing": "0.5px",
-      "color": "var(--jx-fg-muted)"
-    },
-    "& [part=\"item\"]": {
-      "display": "flex",
-      "alignItems": "center",
-      "gap": "var(--jx-space-3)",
-      "padding": "var(--jx-space-2) var(--jx-space-5)",
-      "cursor": "pointer",
-      "fontSize": "var(--jx-text-md)",
-      "color": "var(--jx-fg-dim)",
-      ":hover": {
-        "background": "var(--jx-hover-bg)"
-      }
-    },
-    "& [part=\"item\"][data-selected]": {
-      "$description": "The highlight follows `selectedIndex`, not `:hover` — a pointer moving over the list writes that index, so the two can never disagree, and an arrow key moves the same mark the mouse does.",
-      "background": "var(--jx-accent-solid)",
-      "color": "var(--jx-accent-fg)"
-    },
-    "& [part=\"name\"]": {
-      "$description": "Monospaced because these are identifiers the reader will type: `??`, `?:`, `Math.max`. The old rule asked for `--spectrum-code-font-family`, which resolved to nothing outside a Spectrum theme and left every entry in the UI face.",
+    "& [part=\"option\"] [part=\"label\"]": {
+      "$description": "Monospaced because these are identifiers the reader will type: `??`, `?:`, `Math.max`. It is a rule rather than the kit's per-row `face`, because the whole catalogue draws this way — `face` is data a row carries, and every row carrying the same string would be this decision written once per entry.",
       "fontFamily": "var(--jx-font-mono)",
-      "fontWeight": "500",
-      "whiteSpace": "nowrap"
+      "fontWeight": "500"
     },
-    "& [part=\"detail\"]": {
-      "minWidth": "0",
-      "opacity": "0.5",
-      "fontSize": "var(--jx-text-sm)",
-      "whiteSpace": "nowrap",
-      "overflow": "hidden",
-      "textOverflow": "ellipsis"
+    "& [part=\"option\"] [part=\"description\"]": {
+      "$description": "A `jx-select` row's note is a category at the END of the row, so the kit pushes it there with an auto margin. Here the note is what the identifier MEANS and reads as a definition beside it, while the far edge belongs to the kind badge. So the auto margin moves to the end slot.",
+      "marginInlineStart": "0"
+    },
+    "& [part=\"option\"] [part=\"end\"]": {
+      "marginInlineStart": "auto"
     },
     "& [part=\"badge\"]": {
-      "marginLeft": "auto",
       "flexShrink": "0",
       "fontSize": "var(--jx-text-xs)",
       "padding": "1px var(--jx-space-2)",
@@ -120,7 +88,8 @@
       "background": "var(--jx-border)",
       "color": "var(--jx-fg-dim)"
     },
-    "& [part=\"item\"][data-selected] [part=\"badge\"]": {
+    "& [part=\"option\"][aria-selected=\"true\"] [part=\"badge\"]": {
+      "$description": "The highlight is keyed on `aria-selected`, which the listbox's sidecar is the single writer of — so the state a reader hears and the state a reader sees are one attribute rather than two that could disagree.",
       "background": "transparent",
       "border": "1px solid currentColor",
       "color": "inherit"
@@ -172,7 +141,7 @@
                 "role": "combobox",
                 "aria-controls": "formula-palette-listbox",
                 "aria-expanded": "${state.expanded ? 'true' : 'false'}",
-                "aria-activedescendant": "${state.expanded ? state.activeId : null}",
+                "aria-activedescendant": "${state.activeId || null}",
                 "aria-autocomplete": "list",
                 "aria-label": "Search formulas, operators and globals",
                 "placeholder": "Search formulas, operators, globals…"
@@ -258,12 +227,31 @@
               }
             },
             {
-              "tagName": "div",
+              "tagName": "jx-listbox",
               "attributes": {
                 "part": "results",
-                "role": "listbox",
-                "id": "formula-palette-listbox",
-                "aria-label": "Formulas"
+                "id": "formula-palette-listbox"
+              },
+              "$props": {
+                "label": "Formulas",
+                "active": "${state.activeId}"
+              },
+              "onselect": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/activateRow"
+                    },
+                    "value": [
+                      {
+                        "$ref": "event#/detail"
+                      }
+                    ]
+                  }
+                ],
+                "description": "One handler for every row, because a row's `select` bubbles. The detail is the row's `value`, which is the FLAT index it occupies across all the groups — the number the nested map cannot count for itself, and the number the id is built from."
               },
               "children": [
                 {
@@ -304,7 +292,7 @@
                       {
                         "tagName": "div",
                         "attributes": {
-                          "part": "section-label",
+                          "part": "group-heading",
                           "aria-hidden": "true"
                         },
                         "textContent": "${$map.item.label}"
@@ -318,30 +306,21 @@
                           "$ref": "$map/item/key"
                         },
                         "map": {
-                          "tagName": "div",
+                          "tagName": "jx-option",
                           "attributes": {
-                            "part": "item",
-                            "role": "option",
+                            "part": "option",
                             "id": "formula-palette-option-${$map.item.index}",
-                            "aria-selected": "${$map.item.index === state.selectedIndex ? 'true' : 'false'}",
-                            "data-selected": "${$map.item.index === state.selectedIndex ? '' : null}",
+                            "title": "${$map.item.description}",
                             "data-kind": "${$map.item.kind}"
                           },
-                          "onclick": {
-                            "$prototype": "Function",
-                            "body": [
-                              {
-                                "operator": "call",
-                                "target": {
-                                  "$ref": "#/state/activateRow"
-                                },
-                                "value": [
-                                  {
-                                    "$ref": "$map/item/index"
-                                  }
-                                ]
-                              }
-                            ]
+                          "$props": {
+                            "value": "${$map.item.index}",
+                            "label": {
+                              "$ref": "$map/item/label"
+                            },
+                            "description": {
+                              "$ref": "$map/item/description"
+                            }
                           },
                           "onmouseenter": {
                             "$prototype": "Function",
@@ -363,21 +342,7 @@
                             {
                               "tagName": "span",
                               "attributes": {
-                                "part": "name"
-                              },
-                              "textContent": "${$map.item.label}"
-                            },
-                            {
-                              "tagName": "span",
-                              "attributes": {
-                                "part": "detail",
-                                "title": "${$map.item.description}"
-                              },
-                              "textContent": "${$map.item.description}"
-                            },
-                            {
-                              "tagName": "span",
-                              "attributes": {
+                                "slot": "end",
                                 "part": "badge"
                               },
                               "textContent": "${$map.item.kind}"

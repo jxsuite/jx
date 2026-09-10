@@ -2,11 +2,11 @@
  * Gap tests for the slash menu — the filter-field mode (`showFilter`), light dismissal, click
  * selection, and the keyboard edge cases with an empty result list.
  *
- * The panel is a Jx document over `jx-popover` (`surfaces/slash-menu.json`), so a row is
- * `[part="option"]` and the field is `[part="filter"]`; there is no class and no Spectrum tag to
- * name. Two behaviours moved OUT of the flow with the markup and are asserted here as the
- * platform's: the outside press that closes an `auto` popover, and the fact that a keystroke no
- * longer rebuilds the field it was typed into.
+ * The panel is a Jx document over `jx-popover`, `jx-listbox` and `jx-option`
+ * (`surfaces/slash-menu.json`), so a row is `[part="option"]` and the field is `[part="filter"]`;
+ * there is no class and no Spectrum tag to name. Two behaviours moved OUT of the flow with the
+ * markup and are asserted here as the platform's: the outside press that closes an `auto` popover,
+ * and the fact that a keystroke no longer rebuilds the field it was typed into.
  */
 import { flush, mountOverlayLayers, stubRect } from "./harness";
 import { afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
@@ -82,7 +82,7 @@ describe("showFilter mode", () => {
     typeFilter("img");
     const list = await rows();
     expect(list.length).toBe(1);
-    expect(list[0]!.dataset.tag).toBe("img");
+    expect(list[0]!.getAttribute("value")).toBe("img");
   });
 
   test("clearing the filter restores the full list", async () => {
@@ -101,6 +101,14 @@ describe("showFilter mode", () => {
     expect(shown.length).toBe(0);
     expect(document.querySelector('#layer-popover [part="empty"]')?.textContent).toContain(
       "No matches",
+    );
+    /* No row to take means no row NAMED either. The flow still counts its active row from zero
+       with nothing to count, so the id that reaches both readers has to be the empty one — a
+       field pointing `aria-activedescendant` at an element that is not in the document announces
+       a choice that cannot be made. */
+    expect(filterInput()!.hasAttribute("aria-activedescendant")).toBe(false);
+    expect(document.querySelector<HTMLElement>("#layer-popover jx-listbox")!.dataset.active).toBe(
+      "",
     );
   });
 
@@ -148,7 +156,7 @@ describe("showFilter mode", () => {
     typeFilter("bet");
     const list = await rows();
     expect(list.length).toBe(1);
-    expect(list[0]!.dataset.tag).toBe("b1");
+    expect(list[0]!.getAttribute("value")).toBe("b1");
   });
 });
 

@@ -68,13 +68,20 @@ interface DragMonitorDropArgs {
  * How the drag island addresses the Outline, which is a Jx document and emits no classes.
  *
  * `surfaces/panel-outline.json` is the tree; `part` is the only style and query hook a document
- * offers (`ui.md` §3.1), so these three selectors are the contract between it and this module. The
- * two per-row STATES this file writes — `data-dragging` and `data-drop-target` — are attributes for
- * the same reason: a class the document would have to style is a class the document may not have.
+ * offers (`ui.md` §3.1), so these three selectors are the contract between it and this module.
+ *
+ * The two per-row STATES this file writes are `jx-tree-item`'s own, and that is the whole of what
+ * the kit changed here: the element STYLES `data-dragging` and `data-drop` and deliberately BINDS
+ * neither, because a prop mirroring either would be a second writer that a repaint clears mid-drag.
+ * `data-drop-target` is what this file used to write, and it was a name only this file and one
+ * stylesheet rule knew — so the row wore a state the element could not draw. The verb cluster is
+ * `[part="verbs"]` rather than `[part="actions"]` for the neighbouring reason: `actions` is the
+ * name of the ELEMENT's slot container, and a selector that matched both would be answering about
+ * whichever the query happened to reach first.
  */
 const OUTLINE_ROOT = '[part="outline"]';
 const OUTLINE_ROWS = '[part="row"]';
-const OUTLINE_ACTIONS = '[part="actions"]';
+const OUTLINE_ACTIONS = '[part="verbs"]';
 
 /** Register DnD on layer rows — called from left-panel.js after render */
 export function registerLayersDnD() {
@@ -85,7 +92,7 @@ export function registerLayersDnD() {
     }
 
     for (const row of container.querySelectorAll("[data-dnd-row]") as NodeListOf<HTMLElement>) {
-      const rowPath = (row.dataset.path as string)
+      const rowPath = (row.dataset.value as string)
         .split("/")
         .map((s: string) => (/^\d+$/.test(s) ? Math.trunc(Number(s)) : s)) as JxPath;
       const rowDepth = Math.trunc(Number(row.dataset.dndDepth as string)) || 0;
@@ -294,10 +301,10 @@ export function registerElementsDnD() {
  * @param {HTMLElement} container
  */
 function hideDescendantRows(parentRow: HTMLElement, container: HTMLElement) {
-  const prefix = `${parentRow.dataset.path}/`;
+  const prefix = `${parentRow.dataset.value}/`;
   const rows = container.querySelectorAll(OUTLINE_ROWS);
   for (const r of rows) {
-    if ((r as HTMLElement).dataset.path?.startsWith(prefix)) {
+    if ((r as HTMLElement).dataset.value?.startsWith(prefix)) {
       (r as HTMLElement).style.display = "none";
     }
   }
@@ -317,7 +324,7 @@ export function showLayerDropGap(
 
   // Clear the previous drop-target mark
   if (view._currentDropTargetRow && view._currentDropTargetRow !== rowEl) {
-    delete view._currentDropTargetRow.dataset.dropTarget;
+    delete view._currentDropTargetRow.dataset.drop;
   }
 
   if (!instruction || instruction.type === "instruction-blocked") {
@@ -327,12 +334,12 @@ export function showLayerDropGap(
 
   if (instruction.type === "make-child") {
     clearLayerDropGap(container);
-    rowEl.dataset.dropTarget = "";
+    rowEl.dataset.drop = "";
     view._currentDropTargetRow = rowEl;
     return;
   }
 
-  delete rowEl.dataset.dropTarget;
+  delete rowEl.dataset.drop;
   view._currentDropTargetRow = rowEl;
 
   // Shift rows to create gap
@@ -355,7 +362,7 @@ export function showLayerDropGap(
 /** @param {HTMLElement} container */
 export function clearLayerDropGap(container: HTMLElement) {
   if (view._currentDropTargetRow) {
-    delete view._currentDropTargetRow.dataset.dropTarget;
+    delete view._currentDropTargetRow.dataset.drop;
     view._currentDropTargetRow = null;
   }
   const rows = container.querySelectorAll(OUTLINE_ROWS);

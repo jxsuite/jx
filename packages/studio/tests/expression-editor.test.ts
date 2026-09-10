@@ -501,7 +501,9 @@ describe("browse catalog", () => {
     document.querySelector('[data-jx-region="overlay.menu:formula-palette"]');
   const overlay = () => paletteSlot()?.querySelector('[part="overlay"]') ?? null;
   const names = () =>
-    [...(paletteSlot()?.querySelectorAll('[part="name"]') ?? [])].map((n) => n.textContent);
+    [...(paletteSlot()?.querySelectorAll('[part="option"] [part="label"]') ?? [])].map(
+      (n) => n.textContent,
+    );
 
   test("the button beside the operator picker opens the palette; picking inserts the entry", async () => {
     const m = await mount({ operator: "+", target: 1, value: 2 });
@@ -511,8 +513,8 @@ describe("browse catalog", () => {
     await flush(4);
     expect(overlay()).not.toBeNull();
 
-    const item = [...paletteSlot()!.querySelectorAll('[part="item"]')].find(
-      (i) => i.querySelector('[part="name"]')?.textContent === "?:",
+    const item = [...paletteSlot()!.querySelectorAll('[part="option"]')].find(
+      (i) => i.querySelector('[part="label"]')?.textContent === "?:",
     )!;
     pointer(item, "click");
     await flush(4);

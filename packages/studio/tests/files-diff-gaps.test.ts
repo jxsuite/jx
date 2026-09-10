@@ -260,8 +260,8 @@ describe("an empty file", () => {
 describe("the ↓ walk and the Loading… placeholder", () => {
   test("steps over a directory still being listed onto the next real row", async () => {
     // An expanded directory nobody has listed yet contributes a placeholder row, and a placeholder
-    // Is not a destination: it has no `data-path` of its own — it carries its DIRECTORY's — so
-    // Stopping on it would hand the keyboard straight back to the row ↓ was pressed on.
+    // Is not a destination: it is not a `jx-tree-item` at all, so the element's own walk cannot see
+    // It and the model step past it lands on the next real row.
     const { platform } = installFsPlatform();
     platform.listDirectory = async (dir: string) => {
       if (dir === "assets") {
@@ -297,13 +297,13 @@ describe("the ↓ walk and the Loading… placeholder", () => {
     const tree = host.querySelector('[part="tree"]') as HTMLElement;
     // Model: assets · Loading… · one.json · two.json
     expect(
-      [...tree.querySelectorAll('[part="row"]')].map((el) => el.textContent?.trim()),
+      [...tree.querySelectorAll('[part="row"], [part="loading-row"]')].map((el) =>
+        el.textContent?.trim(),
+      ),
     ).toContain("Loading…");
     // The placeholder is not a `treeitem`, so the keyboard cannot land on it at all.
-    expect(tree.querySelector('[part="row"][data-loading="true"]')?.getAttribute("role")).toBe(
-      "none",
-    );
-    const assets = tree.querySelector('[part="row"][data-path="assets"]') as HTMLElement;
+    expect(tree.querySelector('[part="loading-row"]')?.getAttribute("role")).toBe("none");
+    const assets = tree.querySelector('[part="row"][data-value="assets"]') as HTMLElement;
     assets.focus();
 
     assets.dispatchEvent(
@@ -311,7 +311,7 @@ describe("the ↓ walk and the Loading… placeholder", () => {
     );
     await flush();
 
-    expect((document.activeElement as HTMLElement).dataset.path).toBe("one.json");
+    expect((document.activeElement as HTMLElement).dataset.value).toBe("one.json");
     unmountFilesPanel();
     host.remove();
   });

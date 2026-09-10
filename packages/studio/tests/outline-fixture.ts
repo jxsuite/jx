@@ -82,11 +82,19 @@ export function resetOutline(): void {
   document.body.innerHTML = "";
 }
 
-/** One row by the `pathKey` it stands for, or null when the window does not hold it. */
+/**
+ * One row by the `pathKey` it stands for, or null when the window does not hold it.
+ *
+ * `data-value` and not `data-path`: `jx-tree-item` mirrors its own `value` there, it is what the
+ * drag island addresses a row by, and it is the detail of every event the row provokes — so a
+ * second attribute saying the same thing would be two answers to "which row is this". The text
+ * lines, which are not `jx-tree-item`s, carry it too for exactly the same reason.
+ */
 export function row(host: HTMLElement, key: string): HTMLElement | null {
   return (
-    [...host.querySelectorAll<HTMLElement>('[part="row"]')].find((el) => el.dataset.path === key) ??
-    null
+    [...host.querySelectorAll<HTMLElement>('[part="row"]')].find(
+      (el) => el.dataset.value === key,
+    ) ?? null
   );
 }
 
@@ -99,7 +107,7 @@ export function needRow(host: HTMLElement, key: string): HTMLElement {
   return found;
 }
 
-/** Every `role="treeitem"` row in the window, in visual order — the rows a keyboard walks. */
+/** Every `jx-tree-item` in the window, in visual order — the rows the caret walks. */
 export function treeItems(host: HTMLElement): HTMLElement[] {
   return [...host.querySelectorAll<HTMLElement>('[part="row"][role="treeitem"]')];
 }

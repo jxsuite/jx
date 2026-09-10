@@ -967,7 +967,8 @@ describe("block action bar", () => {
     press(part("insert-data"));
     expect(isSlashMenuOpen()).toBe(true);
     const slashed = await slashRows();
-    const labels = slashed.map((el) => el.querySelector('[part="name"]')!.textContent!.trim());
+    // A row is a `jx-option` now, so its words are the kit's `[part="label"]`.
+    const labels = slashed.map((el) => el.querySelector('[part="label"]')!.textContent!.trim());
     expect(labels).toContain("item");
     expect(labels).toContain("index");
     expect(labels).toContain("item.data.title");

@@ -191,12 +191,13 @@ function chipByLabel(label: string): HTMLElement {
  *
  * The palette is a Jx document mounted in its own popover slot (`surfaces/formula-palette.ts`), so
  * it is addressed by `part` inside that slot rather than by the `.quick-search-*` classes it used
- * to borrow from the command palette's stylesheet.
+ * to borrow from the command palette's stylesheet. Its rows are the kit's `jx-option`, so the row
+ * is `[part="option"]` and its words are the element's own `[part="label"]`.
  */
 function paletteItem(name: string): HTMLElement | undefined {
   const host = document.querySelector('[data-jx-region="overlay.menu:formula-palette"]');
-  return [...(host?.querySelectorAll('[part="item"]') ?? [])].find(
-    (el) => el.querySelector('[part="name"]')?.textContent === name,
+  return [...(host?.querySelectorAll('[part="option"]') ?? [])].find(
+    (el) => el.querySelector('[part="label"]')?.textContent === name,
   ) as HTMLElement | undefined;
 }
 

@@ -87,7 +87,7 @@ async function renderOutline(rowCount: number): Promise<void> {
 function rowByKey(pathKey: string): HTMLElement | null {
   return (
     [...host.querySelectorAll<HTMLElement>('[part="row"]')].find(
-      (el) => el.dataset.path === pathKey,
+      (el) => el.dataset.value === pathKey,
     ) ?? null
   );
 }
@@ -159,7 +159,7 @@ describe("the Outline's walk off the end of its model", () => {
     // Runs out of model.
     const tail = [...host.querySelectorAll<HTMLElement>('[part="row"]')].at(-1)!;
     expect(tail.textContent).toContain("just words");
-    expect(tail.getAttribute("role")).toBeNull();
+    expect(tail.localName).not.toBe("jx-tree-item");
 
     const last = rowByKey("children/1")!;
     last.click();

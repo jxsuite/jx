@@ -284,7 +284,14 @@ export function paletteArgs(command: AnyCommand): PaletteArgs {
  * nothing.
  */
 
-/** A stable per-row id, so `aria-activedescendant` has something to point at. */
+/**
+ * A stable per-row id — the ONE string the highlight is, written once.
+ *
+ * The field points `aria-activedescendant` at it and the `jx-listbox` is handed the same string as
+ * `active`; the listbox's sidecar is what turns it into the row's `selected`. The document spells
+ * the same id on each row, which is what makes the reference resolve without either side reading
+ * the other.
+ */
 function optionId(index: number): string {
   return `quick-search-option-${index}`;
 }
@@ -840,9 +847,13 @@ interface PaletteScope extends Record<string, unknown> {
   placeholder: string;
   query: string;
   expanded: boolean;
+  /**
+   * The highlighted row's element id — the field's `aria-activedescendant` AND the listbox's
+   * `active`, which is the one string this surface writes to move the caret. `""` when there is no
+   * row to put it on.
+   */
   activeId: string;
   rows: PaletteRowProjection[];
-  selectedIndex: number;
   isEmpty: boolean;
   emptyHint: string;
   showSection: boolean;
@@ -854,7 +865,7 @@ interface PaletteScope extends Record<string, unknown> {
   activate: () => void;
   clearMode: () => void;
   hover: (index: number) => void;
-  activateRow: (index: number) => void;
+  activateRow: (value: unknown) => void;
 }
 
 registerSurface("palette", paletteDoc as unknown as JxDocument);
@@ -873,8 +884,10 @@ function scope(): PaletteScope {
         selectRow(row);
       }
     },
-    activateRow: (index) => {
-      const row = _rows[index];
+    activateRow: (value) => {
+      /* The row's own `select` carries its `value`, which is the index the document spelled — a
+         string, because an attribute is what a row's value is. */
+      const row = _rows[Number(value)];
       if (row) {
         selectRow(row);
       }
@@ -889,14 +902,22 @@ function scope(): PaletteScope {
     hasChip: false,
     hover: (index) => {
       _selectedIndex = index;
-      scope().selectedIndex = index;
       scope().activeId = optionId(index);
     },
     input: onInput,
     isEmpty: true,
     move: (delta) => {
+      /* ONE field, and the rows are not among the things it touches: the listbox is handed the id
+         and its sidecar moves every row's `selected`. Arrow keys CLAMP rather than wrap — the kit's
+         combobox wraps, and this list is a ranking whose first row is the answer, so falling off
+         the bottom onto it would undo the search. */
+      if (_rows.length === 0) {
+        /* Nothing to move through, nothing to name. Clamping an empty list lands on index 0, and
+           now that the id IS the highlight that would point the field at a row which is not
+           there. */
+        return;
+      }
       _selectedIndex = Math.max(0, Math.min(_selectedIndex + delta, _rows.length - 1));
-      scope().selectedIndex = _selectedIndex;
       scope().activeId = optionId(_selectedIndex);
     },
     open: false,
@@ -904,7 +925,6 @@ function scope(): PaletteScope {
     query: "",
     rows: [],
     sectionLabel: "",
-    selectedIndex: 0,
     showSection: false,
   }) as PaletteScope;
   return _scope;
@@ -922,9 +942,11 @@ function focusInput(): void {
 /**
  * Project the palette's state onto the document's scope.
  *
- * The rows and the highlight are separate fields on purpose: a key moves `selectedIndex`, and every
- * row's `aria-selected` follows synchronously, while `rows` changes only when the query or the mode
- * does and the keyed list reconciles.
+ * The rows and the highlight are separate fields on purpose: a key moves `activeId` and nothing
+ * else, while `rows` changes only when the query or the mode does and the keyed list reconciles.
+ * The kit's `jx-listbox` is handed that one id as `active` and its sidecar is the single writer of
+ * every `jx-option`'s `selected` — so the highlight costs one attribute write on the list rather
+ * than a per-row comparison, and the row a reader hears is the row the field named.
  */
 function renderOverlay() {
   const state = scope();
@@ -955,9 +977,10 @@ function renderOverlay() {
     name: row.name,
     trailing: rowTrailing(row, showingRecent),
   }));
-  state.selectedIndex = _selectedIndex;
   state.expanded = rows.length > 0;
-  state.activeId = optionId(_selectedIndex);
+  /* No rows, no active descendant: an id pointing at a row that is not there is a field claiming a
+     highlight a reader would never find. */
+  state.activeId = rows.length > 0 ? optionId(_selectedIndex) : "";
   state.isEmpty = rows.length === 0;
   state.emptyHint = emptyHint(mode, query);
   state.showSection = showingRecent && rows.length > 0;

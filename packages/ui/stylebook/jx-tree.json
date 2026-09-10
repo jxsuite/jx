@@ -1,0 +1,429 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StylebookTree",
+  "tagName": "main",
+  "$elements": [
+    {
+      "$ref": "../components/jx-icon.json"
+    },
+    {
+      "$ref": "../components/jx-tree-item.json"
+    },
+    {
+      "$ref": "../components/jx-tree.json"
+    }
+  ],
+  "state": {
+    "outline": [
+      {
+        "key": "body",
+        "label": "body",
+        "level": 1,
+        "posinset": 1,
+        "setsize": 1,
+        "expanded": "true"
+      },
+      {
+        "key": "header",
+        "label": "header",
+        "level": 2,
+        "posinset": 1,
+        "setsize": 3,
+        "expanded": "false"
+      },
+      {
+        "key": "main",
+        "label": "main",
+        "level": 2,
+        "posinset": 2,
+        "setsize": 3,
+        "expanded": "true"
+      },
+      {
+        "key": "hero",
+        "label": "Hero",
+        "level": 3,
+        "posinset": 1,
+        "setsize": 2,
+        "expanded": ""
+      },
+      {
+        "key": "prose",
+        "label": "Article body",
+        "level": 3,
+        "posinset": 2,
+        "setsize": 2,
+        "expanded": ""
+      },
+      {
+        "key": "footer",
+        "label": "footer",
+        "level": 2,
+        "posinset": 3,
+        "setsize": 3,
+        "expanded": ""
+      }
+    ],
+    "files": [
+      {
+        "key": "src",
+        "label": "src",
+        "level": 1,
+        "posinset": 41,
+        "setsize": 4096,
+        "expanded": "true",
+        "icon": "folder"
+      },
+      {
+        "key": "src/index.page.json",
+        "label": "index.page.json",
+        "level": 2,
+        "posinset": 1,
+        "setsize": 812,
+        "expanded": "",
+        "icon": "file"
+      },
+      {
+        "key": "src/about.page.json",
+        "label": "about.page.json",
+        "level": 2,
+        "posinset": 2,
+        "setsize": 812,
+        "expanded": "",
+        "icon": "file"
+      },
+      {
+        "key": "src/pricing.page.json",
+        "label": "pricing.page.json",
+        "level": 2,
+        "posinset": 3,
+        "setsize": 812,
+        "expanded": "",
+        "icon": "file"
+      }
+    ],
+    "current": "body",
+    "picked": "body",
+    "mode": "replace",
+    "anchor": "body",
+    "asked": "nothing yet",
+    "beyond": "nothing yet",
+    "onChange": {
+      "$prototype": "Function",
+      "body": [
+        {
+          "operator": "=",
+          "target": {
+            "$ref": "#/state/current"
+          },
+          "value": {
+            "$ref": "event#/detail"
+          }
+        }
+      ]
+    },
+    "onSelect": {
+      "$prototype": "Function",
+      "body": [
+        {
+          "operator": "=",
+          "target": {
+            "$ref": "#/state/picked"
+          },
+          "value": {
+            "$ref": "event#/detail/value"
+          }
+        },
+        {
+          "operator": "=",
+          "target": {
+            "$ref": "#/state/mode"
+          },
+          "value": {
+            "$ref": "event#/detail/mode"
+          }
+        },
+        {
+          "operator": "=",
+          "target": {
+            "$ref": "#/state/anchor"
+          },
+          "value": {
+            "$ref": "event#/detail/anchor"
+          }
+        }
+      ]
+    },
+    "onExpand": {
+      "$prototype": "Function",
+      "body": [
+        {
+          "operator": "=",
+          "target": {
+            "$ref": "#/state/asked"
+          },
+          "value": {
+            "$ref": "event#/detail/value"
+          }
+        }
+      ]
+    },
+    "onMove": {
+      "$prototype": "Function",
+      "body": [
+        {
+          "operator": "=",
+          "target": {
+            "$ref": "#/state/beyond"
+          },
+          "value": {
+            "$ref": "event#/detail/key"
+          }
+        }
+      ]
+    }
+  },
+  "style": {
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "color": "var(--jx-fg)",
+    "background": "var(--jx-bg)",
+    "padding": "var(--jx-space-6)",
+    "minHeight": "100vh",
+    "& > h1": {
+      "fontSize": "var(--jx-text-lg)",
+      "fontWeight": "600",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& > h2": {
+      "fontSize": "var(--jx-text-md)",
+      "fontWeight": "600",
+      "margin": "var(--jx-space-6) 0 var(--jx-space-3)"
+    },
+    "& > p": {
+      "color": "var(--jx-fg-dim)",
+      "margin": "0 0 var(--jx-space-5)",
+      "maxWidth": "72ch"
+    },
+    "& jx-tree": {
+      "maxWidth": "280px",
+      "border": "1px solid var(--jx-border)",
+      "borderRadius": "var(--jx-radius-sm)",
+      "background": "var(--jx-bg-panel)",
+      "padding": "var(--jx-space-1) 0"
+    },
+    "& [part=\"scroller\"]": {
+      "$description": "The tree owns no scrollbar, so the windowed example supplies one — which is exactly the arrangement a host is in.",
+      "maxWidth": "280px",
+      "maxHeight": "120px",
+      "overflowY": "auto",
+      "border": "1px solid var(--jx-border)",
+      "borderRadius": "var(--jx-radius-sm)",
+      "background": "var(--jx-bg-panel)"
+    },
+    "& [part=\"scroller\"] jx-tree": {
+      "maxWidth": "none",
+      "border": "0",
+      "borderRadius": "0"
+    }
+  },
+  "children": [
+    {
+      "tagName": "h1",
+      "textContent": "jx-tree"
+    },
+    {
+      "tagName": "p",
+      "textContent": "The host IS the tree and its rows are its own children, with nothing generic between them. Rows are FLAT and already projected: each carries its own level, position and set size, because a windowed tree draws a slice of a model that may be thousands of rows long."
+    },
+    {
+      "tagName": "h2",
+      "textContent": "An outline"
+    },
+    {
+      "tagName": "p",
+      "textContent": "Arrows walk the rows and do not wrap. Right opens a closed row and steps into an open one; Left closes an open row and steps out of a closed one. Caret: ${state.current}. Last expand asked for: ${state.asked}."
+    },
+    {
+      "tagName": "jx-tree",
+      "attributes": {
+        "label": "Document outline",
+        "current": "${state.current}"
+      },
+      "onchange": {
+        "$ref": "#/state/onChange"
+      },
+      "onselect": {
+        "$ref": "#/state/onSelect"
+      },
+      "onexpand": {
+        "$ref": "#/state/onExpand"
+      },
+      "children": [
+        {
+          "$prototype": "Array",
+          "items": {
+            "$ref": "#/state/outline"
+          },
+          "key": {
+            "$ref": "$map/item/key"
+          },
+          "map": {
+            "tagName": "jx-tree-item",
+            "$props": {
+              "value": {
+                "$ref": "$map/item/key"
+              },
+              "label": {
+                "$ref": "$map/item/label"
+              },
+              "level": {
+                "$ref": "$map/item/level"
+              },
+              "posinset": {
+                "$ref": "$map/item/posinset"
+              },
+              "setsize": {
+                "$ref": "$map/item/setsize"
+              },
+              "expanded": {
+                "$ref": "$map/item/expanded"
+              },
+              "selected": "${state.picked === $map.item.key}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "h2",
+      "textContent": "Multiple selection"
+    },
+    {
+      "tagName": "p",
+      "textContent": "Shift extends from the anchor, Ctrl or Cmd toggles, a plain move replaces. The element dispatches the INTENT and the host resolves it, because the rows a range covers are exactly the ones a windowed tree may not have drawn. Last intent: ${state.mode} of ${state.picked}, anchored at ${state.anchor}."
+    },
+    {
+      "tagName": "jx-tree",
+      "attributes": {
+        "label": "Outline, multi-select",
+        "multiple": ""
+      },
+      "onselect": {
+        "$ref": "#/state/onSelect"
+      },
+      "children": [
+        {
+          "$prototype": "Array",
+          "items": {
+            "$ref": "#/state/outline"
+          },
+          "key": {
+            "$ref": "$map/item/key"
+          },
+          "map": {
+            "tagName": "jx-tree-item",
+            "$props": {
+              "value": {
+                "$ref": "$map/item/key"
+              },
+              "label": {
+                "$ref": "$map/item/label"
+              },
+              "level": {
+                "$ref": "$map/item/level"
+              },
+              "posinset": {
+                "$ref": "$map/item/posinset"
+              },
+              "setsize": {
+                "$ref": "$map/item/setsize"
+              },
+              "expanded": {
+                "$ref": "$map/item/expanded"
+              },
+              "grip": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "h2",
+      "textContent": "Windowed"
+    },
+    {
+      "tagName": "p",
+      "textContent": "Four rows of a project holding 812 files, with the rest reserved as two spacers. The counts a reader hears are the MODEL's; a caret move past a spacer dispatches move rather than clamping, and the host scrolls. Last move the slice could not answer: ${state.beyond}."
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "scroller"
+      },
+      "children": [
+        {
+          "tagName": "jx-tree",
+          "attributes": {
+            "label": "Project files",
+            "padtop": "960",
+            "padbottom": "18480"
+          },
+          "onmove": {
+            "$ref": "#/state/onMove"
+          },
+          "onselect": {
+            "$ref": "#/state/onSelect"
+          },
+          "children": [
+            {
+              "$prototype": "Array",
+              "items": {
+                "$ref": "#/state/files"
+              },
+              "key": {
+                "$ref": "$map/item/key"
+              },
+              "map": {
+                "tagName": "jx-tree-item",
+                "$props": {
+                  "value": {
+                    "$ref": "$map/item/key"
+                  },
+                  "label": {
+                    "$ref": "$map/item/label"
+                  },
+                  "level": {
+                    "$ref": "$map/item/level"
+                  },
+                  "posinset": {
+                    "$ref": "$map/item/posinset"
+                  },
+                  "setsize": {
+                    "$ref": "$map/item/setsize"
+                  },
+                  "expanded": {
+                    "$ref": "$map/item/expanded"
+                  }
+                },
+                "children": [
+                  {
+                    "tagName": "jx-icon",
+                    "attributes": {
+                      "slot": "icon"
+                    },
+                    "$props": {
+                      "name": {
+                        "$ref": "$map/item/icon"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

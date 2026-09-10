@@ -2,7 +2,7 @@
 
 ## Declarative Document Object Model — JSON Edition
 
-**Version:** 0.6.19-draft\
+**Version:** 0.6.20-draft\
 **Status:** Partial\
 **Updated:** 2026-09-10\
 **License:** MIT
@@ -844,8 +844,11 @@ A Jx document is judged for the accessibility facts that can be read off its tre
 | `tablist-none-selected`          | A `tablist` whose tabs carry literal `aria-selected` values and none is `true`. A warning.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | 4.1.2     |
 | `dialog-unnamed`                 | A `<dialog>`, or a `dialog` or `alertdialog` role, with no `aria-label` or `aria-labelledby`; a dialog's content does not name it.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | 4.1.2     |
 | `activedescendant-not-focusable` | `aria-activedescendant` on an element that is not natively focusable and has no `tabindex`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | 2.1.1     |
+| `custom-element-in-select`       | A custom element anywhere inside a `<select>`, or inside a definition that IS one. A `<select>` builds its own rows, so an element it does not know is not in `select.options`: it cannot be picked, cannot be reached with the arrow keys and fires no `change` — while `role="option"` on it still makes the accessibility tree read as though it could. Native `option`, `optgroup`, `hr` and `slot` are untouched, which is the whole legal vocabulary of a `<select>`.                                                                                                                                                          | 4.1.2     |
 
 The three container rules are silent for the document root and under any custom-element ancestor, because a definition supplies its own container roles at its usage site — a `role="tab"` row slotted into a `jx-tabs` is judged inside `jx-tabs`'s definition, not against the page. They are silent under a bound ancestor role for the same reason.
+
+**`custom-element-in-select` is the one rule that does the opposite**, and the asymmetry is the point: it is keyed on the ANCESTOR being a custom element rather than silenced by it, because `jx-select` is a `<select>` and a row put inside one is exactly the case it exists to refuse. It replaced a structural defence rather than adding to a set of them. A custom element inside a `<select>` survives insertion, draws, and with `role="option"` reads convincingly in the accessibility tree while the control does nothing at all — measured in Chrome as `select.options.length` 0, ArrowDown then Enter giving `value ""` and `selectedIndex -1`, and no `change` event. A test asserting the TREE passes while the control is inert, so as long as the UI kit shipped no `jx-option` the absence of the element was the only defence that held (ui.md §5.1). The element exists now, as a `jx-listbox` row, so this rule is what stands in its place.
 
 They are also silent for an element a container of the right role claims through `aria-owns`. ARIA states containment where the DOM tree cannot: an element a `tablist` names in `aria-owns` is that tablist's child in the accessibility tree wherever it sits in the markup, and the attribute exists for exactly the arrangements a subtree cannot express. The owner's role is what decides, so this is a silence rather than a hole: a `role="group"` that names a tab in `aria-owns` owns nothing a tab may belong to, and the tab is still reported. A bound `aria-owns`, or a bound id on the element itself, silences the family for the same reason a bound ancestor role does.
 
@@ -2565,6 +2568,7 @@ This rewrites the mutating handlers of Appendix A's idiom using `$expression`, l
 
 ## Changelog
 
+- **0.6.20-draft** (2026-09-10) — 8.8 gains custom-element-in-select: a select builds its own rows, so a custom element among them draws, reads convincingly and cannot be picked.
 - **0.6.19-draft** (2026-09-10) — the shell's Trusted Types sink list is one shorter: sp-theme left with Adobe Spectrum rather than being allow-listed.
 - **0.6.18-draft** (2026-09-10) — §4.3 listener options are not part of the on* grammar; §6.1 a binding writes when its source moves, so a document cannot re-assert or empty a bound control; §13.1 there is no document-local element fragment.
 - **0.6.17-draft** (2026-09-09) — a style block may document itself: $description is prose carried on the rule, and every $-prefixed key is metadata rather than a declaration.
@@ -2648,4 +2652,4 @@ This rewrites the mutating handlers of Appendix A's idiom using `$expression`, l
 
 ---
 
-_Jx Specification v0.6.19-draft — subject to revision_
+_Jx Specification v0.6.20-draft — subject to revision_

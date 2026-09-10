@@ -1,9 +1,10 @@
 /**
  * The slash menu — the element-insertion list that hangs under the caret.
  *
- * It is a Jx document (`surfaces/slash-menu.json`) over the kit's `jx-popover`, so nothing here
- * names a class or a Spectrum tag: a row is `[part="option"]` with `role="option"`, and the active
- * one is the one carrying `aria-selected="true"`. The panel deliberately does NOT take focus — the
+ * It is a Jx document (`surfaces/slash-menu.json`) over the kit's `jx-popover`, `jx-listbox` and
+ * `jx-option`, so nothing here names a class or a Spectrum tag: a row is `[part="option"]` with
+ * `role="option"`, and the active one is the one carrying `aria-selected="true"` — written by the
+ * listbox from the single id the panel hands it. The panel deliberately does NOT take focus — the
  * caret it filters for is in the canvas — so "which row is active" is an attribute rather than
  * `document.activeElement`, and the arrow keys arrive at a document-level listener.
  */
@@ -129,10 +130,13 @@ describe("Slash Menu", () => {
       expect(shown2.length).toBe(1);
     });
 
+    /* The tag is the row's `value` — the kit's own word for what a row stands for, and the detail
+       of the `select` event a pick dispatches. It used to be a `data-tag` beside it, which was a
+       second spelling of one fact for a test to read. */
     test("a row names the tag it inserts, so a test never matches its prose", async () => {
       showSlashMenu(anchor, "img", { onSelect: () => {} });
       const shown = await rows();
-      expect(shown[0]!.dataset.tag).toBe("img");
+      expect(shown[0]!.getAttribute("value")).toBe("img");
     });
   });
 
@@ -191,6 +195,78 @@ describe("Slash Menu", () => {
       const marked = list.find((el) => el.getAttribute("aria-selected") === "true")!;
       expect(marked.contains(document.activeElement)).toBe(false);
       expect(document.activeElement?.closest('[role="listbox"]')).toBeFalsy();
+    });
+  });
+
+  // ─── The panel never takes the keyboard ──────────────────────────────────
+
+  /* The reason this surface is a listbox rather than a `jx-menu`, asserted as a property rather
+     than left to the prose. A conversion that only checked "the right row is marked" would pass
+     while the author's next character went to the panel instead of the document being edited. */
+  describe("the panel never takes the keyboard", () => {
+    test("opening it leaves the caret where it was, and the list has no tab stop at all", async () => {
+      // Stand in for the canvas's `contenteditable`: something that HOLDS the caret, so a panel
+      // That took focus would be seen taking it rather than merely being seen not to have it.
+      const caret = document.createElement("input");
+      document.body.append(caret);
+      caret.focus();
+      expect(document.activeElement).toBe(caret);
+
+      showSlashMenu(anchor, "", { onSelect: () => {} });
+      await flush(3);
+      const list = document.querySelector<HTMLElement>("#layer-popover jx-listbox");
+      expect(list).not.toBeNull();
+
+      expect(document.activeElement).toBe(caret);
+      // Not "nothing is focused inside it" — nothing inside it COULD be.
+      expect(list!.hasAttribute("tabindex")).toBe(false);
+      expect(
+        list!.querySelectorAll("[tabindex], a[href], button, input, select, textarea").length,
+      ).toBe(0);
+
+      // And driving it does not move the caret either: the keys are read where they landed.
+      pressKey("ArrowDown");
+      await flush(3);
+      const shown = await rows();
+      const marked = shown.find((el) => el.getAttribute("aria-selected") === "true")!;
+      expect(marked).toBeDefined();
+      expect(document.activeElement).toBe(caret);
+      expect(marked.contains(document.activeElement)).toBe(false);
+
+      caret.remove();
+    });
+
+    /* The other mode: opened BY NAME, with no caret to protect, so the panel grows a field of its
+       own. The mark is still an ARIA state on a row — what moves is which element is FOCUSED, and
+       the row is never it. One id reaches both readers: the listbox turns it into the row's
+       `selected`, the field announces it, and neither computes it. */
+    test("with a filter field, the field is focused and the row is only named", async () => {
+      showSlashMenu(anchor, "", { onSelect: () => {}, showFilter: true });
+      await flush(3);
+      const field = document.querySelector<HTMLInputElement>('#layer-popover [part="filter"]')!;
+      const list = document.querySelector<HTMLElement>("#layer-popover jx-listbox")!;
+      expect(document.activeElement).toBe(field);
+      expect(field.closest("jx-listbox")).toBeNull();
+
+      const drawn = await rows();
+      const marked = drawn.filter((el) => el.getAttribute("aria-selected") === "true");
+      expect(marked.length).toBe(1);
+      const [row] = marked;
+      const { id } = row!;
+      expect(id).not.toBe("");
+      expect(field.getAttribute("aria-activedescendant")).toBe(id);
+      expect(list.dataset.active).toBe(id);
+      expect(row!.contains(document.activeElement)).toBe(false);
+
+      // And the two stay one string when the mark moves.
+      pressKey("ArrowDown");
+      await flush(3);
+      const after = await rows();
+      const moved = after.find((el) => el.getAttribute("aria-selected") === "true")!;
+      expect(moved.id).not.toBe(id);
+      expect(field.getAttribute("aria-activedescendant")).toBe(moved.id);
+      expect(list.dataset.active).toBe(moved.id);
+      expect(document.activeElement).toBe(field);
     });
   });
 

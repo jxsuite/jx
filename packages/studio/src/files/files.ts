@@ -674,6 +674,27 @@ function fileStep(index: number, step: 1 | -1): number {
 }
 
 /**
+ * The row at `index`'s parent: the nearest row above it at a shallower depth; -1 at the top level.
+ *
+ * Over the MODEL, which is the whole reason `jx-tree` asks rather than answering. The element's own
+ * `ArrowLeft` climbs to the nearest DRAWN row at a shallower level, and a directory whose contents
+ * fill the viewport is precisely the case where its own row is the one scrolled off the top.
+ */
+function fileParentIndex(index: number): number {
+  const row = _fileRows[index];
+  if (!row) {
+    return -1;
+  }
+  for (let i = index - 1; i >= 0; i--) {
+    const above = _fileRows[i]!;
+    if (!above.loading && above.depth < row.depth) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+/**
  * Repaint the tree because its window changed.
  *
  * Deferred to a microtask so a scroll arriving mid-commit cannot re-enter the projection producing
@@ -753,10 +774,12 @@ function fileRowView(row: FileRow): FileRowView {
       path: row.path,
       posInSet: "",
       setSize: "",
-      twisty: "none",
       type: row.type,
     };
   }
+  /* `""` for a file, and it is not "no answer": an empty `expanded` is what tells `jx-tree-item` the
+     row is a LEAF, so it draws no twisty, writes no `aria-expanded`, and `ArrowRight` on it does
+     nothing rather than stepping into a directory the row does not have. */
   const isDir = row.type === "directory";
   return {
     ariaExpanded: isDir ? String(row.expanded) : "",
@@ -771,7 +794,6 @@ function fileRowView(row: FileRow): FileRowView {
     path: row.path,
     posInSet: String(row.posInSet),
     setSize: String(row.setSize),
-    twisty: isDir ? (row.expanded ? "expanded" : "collapsed") : "none",
     type: row.type,
   };
 }
@@ -810,30 +832,37 @@ function filesPanelValues(): FilesPanelValues {
   // Is being built. There is none before the first mount, and `listWindow` then answers "all of
   // Them".
   const range = listWindow(_fileList, { count: _fileRows.length, rowHeight: fileRowHeight() });
-  // The roving tab stop is decided from the MODEL — the first DRAWN row of a windowed tree is
-  // Usually not the first row of the tree — and then clamped INTO the window, because a tab stop
-  // That is not in the document is not a tab stop: a tree whose selected row has scrolled away
-  // Would otherwise have no tabbable row at all, and Tab would skip the whole panel.
-  const wanted = Math.max(0, fileIndexOfPath(state.selectedPath ?? undefined));
-  const tabStop = Math.min(Math.max(wanted, range.start), Math.max(range.start, range.end - 1));
-  const tabStopRow = _fileRows[tabStop];
+  const drawn = _fileRows.slice(range.start, range.end);
+  /* The caret is a SEED, not a clamp. `jx-tree` owns it, keeps it across every repaint that does
+     not change `current`, and falls back to the first drawn row for the TAB STOP on its own — so a
+     reader whose row has scrolled three hundred rows away keeps their place and still has a way
+     back in with Tab. What this replaced recomputed the stop from the selection on every paint and
+     clamped it into the window, which moved the reader on a wheel.
+
+     It must still NAME a row, and the fallback is what guarantees it rather than tidiness: `move`
+     reports the caret's own row as `from`, and a tree nobody has touched would report `""` and send
+     every ↓ off the bottom of the window back to the first row of the project. */
+  const caret =
+    (state.selectedPath !== null && fileRowAt(state.selectedPath) ? state.selectedPath : "") ||
+    drawn.find((row) => !row.loading)?.path ||
+    "";
   const showingIgnored = showIgnoredFiles();
 
   const values: FilesPanelValues = {
+    currentPath: caret,
     dragPath: _dragPath,
     dropPath: _dropPath,
     headerState: state.isSiteProject ? "shown" : "hidden",
     ignoredIcon: showingIgnored ? "eye" : "eye-slash",
     ignoredLabel: showingIgnored ? "Hide ignored files" : "Show ignored files",
     ignoredSelected: showingIgnored,
-    padBottom: `height:${range.padBottom}px`,
-    padTop: `height:${range.padTop}px`,
+    padBottom: range.padBottom,
+    padTop: range.padTop,
     projectName: state.projectConfig?.name || state.name,
     query: state.searchQuery,
     rootDrop: _rootDrop,
-    rows: _fileRows.slice(range.start, range.end).map((row) => fileRowView(row)),
+    rows: drawn.map((row) => fileRowView(row)),
     selectedPath: state.selectedPath ?? "",
-    tabStopPath: tabStopRow && !tabStopRow.loading ? tabStopRow.path : "",
     view: "tree",
   };
   _lastValues = values;
@@ -901,15 +930,25 @@ function activateFileRow(path: string): void {
   void openFileInTab(path);
 }
 
-/** Move the keyboard `step` rows through the MODEL from the row it is on. */
-function moveFileFocus(path: string, step: number): void {
-  focusFileRow(fileStep(fileIndexOfPath(path), step >= 0 ? 1 : -1));
-}
-
-/** → : open a COLLAPSED directory, and nothing else. */
-function expandFileRow(path: string): void {
+/**
+ * `jx-tree` says a row should be OPENED or CLOSED; this is what that means to a directory.
+ *
+ * One entry point for the twisty, `ArrowRight` and `ArrowLeft` alike, because the element resolves
+ * all three into the state the row should be PUT INTO before it asks. The guard is still load
+ * bearing: a leaf's twisty box is drawn empty and still answers a click, so a file can arrive here
+ * asking to be expanded and must be told nothing happens.
+ */
+function expandFileRow(path: string, expanded: boolean): void {
   const state = requireProjectState();
-  if (fileRowAt(path)?.type !== "directory" || state.expanded.has(path)) {
+  if (fileRowAt(path)?.type !== "directory" || state.expanded.has(path) === expanded) {
+    return;
+  }
+  if (!expanded) {
+    state.expanded.delete(path);
+    // It used to leave the repaint to "the caller who sets up keyboard", and there was no such
+    // Caller: ← changed the state and left the children on screen until something else happened to
+    // Redraw the panel.
+    repaintFiles();
     return;
   }
   // The expansion repaints THROUGH the panel. It used to synthesise a click on the focused row to
@@ -918,34 +957,94 @@ function expandFileRow(path: string): void {
   void toggleTreeDirectory(path).then(() => repaintFiles());
 }
 
-/** ← : close an EXPANDED directory, and nothing else. */
-function collapseFileRow(path: string): void {
-  const state = requireProjectState();
-  if (fileRowAt(path)?.type !== "directory" || !state.expanded.has(path)) {
+/**
+ * The reader meant that row.
+ *
+ * The tree is single-select, so `jx-tree` has already resolved every modifier to one replace before
+ * this is reached. Selection follows the caret here where it used to lag behind it: the tab stop
+ * was computed FROM `selectedPath`, so an arrow key moved the focus and left the highlight on the
+ * row the reader had left.
+ *
+ * The selection is also the only thing this module remembers about where the caret IS. It does not
+ * need a second variable: `jx-tree` owns the caret and keeps it across every repaint that does not
+ * change `current`, so what the projection owes it is a SEED — a row to start on, and a row to come
+ * back to when the one it was on has gone.
+ */
+function selectFileRow(path: string): void {
+  if (!projectState || requireProjectState().selectedPath === path) {
     return;
   }
-  state.expanded.delete(path);
-  // It used to leave the repaint to "the caller who sets up keyboard", and there was no such
-  // Caller: ← changed the state and left the children on screen until something else happened to
-  // Redraw the panel.
+  requireProjectState().selectedPath = path;
   repaintFiles();
 }
 
-/** Move the keyboard to the model row at `index`, bringing it into the window if it is outside. */
+/**
+ * The caret has to reach a row the window did not draw.
+ *
+ * `jx-tree` walks the DRAWN rows and stops at the ends of the slice; when a pad says the model
+ * continues that way it dispatches this instead of performing anything, because where the row is
+ * and how far to scroll are facts about the model. Each key is answered here exactly as the element
+ * would have answered it over a slice that held everything.
+ */
+function moveFileCaret(from: string, key: string): void {
+  const index = fileIndexOfPath(from);
+  let target: number;
+  switch (key) {
+    case "Home": {
+      target = fileStep(-1, 1);
+      break;
+    }
+    case "End": {
+      target = fileStep(_fileRows.length, -1);
+      break;
+    }
+    case "ArrowUp": {
+      target = fileStep(index, -1);
+      break;
+    }
+    case "ArrowLeft": {
+      target = fileParentIndex(index);
+      break;
+    }
+    // ↓ and → both ask for the next drawn row; over the model they are the same step.
+    case "ArrowDown":
+    case "ArrowRight": {
+      target = fileStep(index, 1);
+      break;
+    }
+    default: {
+      return;
+    }
+  }
+  focusFileRow(target);
+}
+
+/**
+ * Move the keyboard to the model row at `index`, bringing it into the window if it is outside.
+ *
+ * The SELECTION moves with it, and that is not a flourish: `jx-tree` raises `select` alongside
+ * `change` on every arrow it can perform itself, so a step the window could not satisfy must not be
+ * the one step that silently does not. It is also what puts the tab stop on the revealed row —
+ * without it the element's caret is still on a row the new window does not draw, and the reader
+ * ends up FOCUSED on one row while Tab would come back to another.
+ *
+ * The focus itself waits for the row to exist: {@link takePendingFocus} spends the request as the
+ * element announces itself.
+ */
 function focusFileRow(index: number): void {
   const row = _fileRows[index];
   if (!row) {
     return;
   }
+  selectFileRow(row.path);
   const el = fileRowElement(row.path);
   if (el) {
     el.focus();
     return;
   }
-  if (revealListRow(_fileList, index, fileRowHeight())) {
-    _pendingFocusPath = row.path;
-    repaintFiles();
-  }
+  _pendingFocusPath = row.path;
+  revealListRow(_fileList, index, fileRowHeight());
+  repaintFiles();
 }
 
 /** Expand or collapse one directory, listing it the first time it is opened. */
@@ -2319,10 +2418,9 @@ export function registerFilesPanel(): void {
 /** Everything a control on the surface can ask for, defined once. */
 const FILE_ACTIONS: FilesPanelActions = {
   activate: activateFileRow,
-  collapseRow: collapseFileRow,
   contextMenu: showFileContextMenu,
-  expandRow: expandFileRow,
-  moveFocus: moveFileFocus,
+  expand: expandFileRow,
+  move: moveFileCaret,
   newFile: () => {
     void createNewFile(".", repaintFiles);
   },
@@ -2340,6 +2438,7 @@ const FILE_ACTIONS: FilesPanelActions = {
     requireProjectState().searchQuery = value;
     repaintFiles();
   },
+  select: selectFileRow,
   toggleIgnored: () => {
     /* A repaint and nothing else: the ignored entries were never dropped from `projectState.dirs`,
        only from the rows built out of it. */

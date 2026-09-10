@@ -15,11 +15,15 @@
  * `getLayerSlot` hands back the same slot every time until something clears it, which is the one
  * case that re-mounts: a slot the layer no longer holds is not one this module may render into.
  *
- * **The rows and the highlight are separate fields**, exactly as `surfaces/palette.json`'s are. A
- * key moves `selectedIndex` and every row's `aria-selected` follows synchronously, while `groups`
- * changes only when the query does and the keyed lists reconcile. That is also why each row carries
- * the FLAT index it occupies across all the groups: the rows are a nested `$map`, and an inner map
- * cannot reach the outer one's counter.
+ * **The rows and the highlight are separate fields**, exactly as `surfaces/palette.json`'s are —
+ * and the highlight is now ONE field rather than a per-row comparison. A key moves `activeId`, the
+ * kit's `jx-listbox` is handed that id as `active`, and its sidecar is the single writer of every
+ * `jx-option`'s `selected`; `groups` changes only when the query does, and the keyed lists
+ * reconcile then and only then. The same string is what the field points `aria-activedescendant`
+ * at, so the row a reader hears and the row a reader sees cannot come apart. That is also why each
+ * row carries the FLAT index it occupies across all the groups: the rows are a nested `$map`, an
+ * inner map cannot reach the outer one's counter, and the index is what the id, the row's `value`
+ * and a hover all name.
  *
  * @docs studio/logic/formulas
  */
@@ -57,7 +61,8 @@ interface RowProjection {
    * Where this row sits in the FLAT list of matches — what a key, a click and a hover all address.
    *
    * The rows are a `$map` inside a `$map`, and the inner one's `$map.index` counts within its own
-   * group. A row that only knew that could not be compared against `selectedIndex`.
+   * group. A row that only knew that could neither build the id the highlight is named by nor carry
+   * it as the `value` its own `select` event hands back.
    */
   index: number;
   label: string;
@@ -77,8 +82,11 @@ interface FormulaPaletteScope extends Record<string, unknown> {
   open: boolean;
   query: string;
   groups: GroupProjection[];
-  selectedIndex: number;
-  /** The highlighted row's element id, for `aria-activedescendant`. */
+  /**
+   * The highlighted row's element id — the field's `aria-activedescendant` AND the listbox's
+   * `active`, which is the one string this surface writes to move the caret. `""` when no row can
+   * take it.
+   */
   activeId: string;
   /** Whether the listbox has anything in it — the combobox's `aria-expanded`. */
   expanded: boolean;
@@ -93,7 +101,7 @@ interface FormulaPaletteScope extends Record<string, unknown> {
   move: (delta: number) => void;
   activate: () => void;
   hover: (index: number) => void;
-  activateRow: (index: number) => void;
+  activateRow: (value: unknown) => void;
 }
 
 let _open = false;
@@ -177,8 +185,10 @@ function scope(): FormulaPaletteScope {
         pickEntry(entry);
       }
     },
-    activateRow: (index) => {
-      const entry = _matches[index];
+    activateRow: (value) => {
+      /* The row's own `select` carries its `value`, which is the flat index as the document spelled
+         it — a string, because an attribute is what a row's value is. */
+      const entry = _matches[Number(value)];
       if (entry) {
         pickEntry(entry);
       }
@@ -200,21 +210,29 @@ function scope(): FormulaPaletteScope {
     },
     isEmpty: true,
     move: (delta) => {
+      /* Nothing to move through, nothing to name. Clamping an empty list lands on index 0, and now
+         that the id IS the highlight that would point the field at a row which is not there. */
+      if (_matches.length === 0) {
+        return;
+      }
       select(Math.max(0, Math.min(_selectedIndex + delta, _matches.length - 1)));
     },
     open: false,
     query: "",
-    selectedIndex: 0,
   }) as FormulaPaletteScope;
   return _scope;
 }
 
-/** Move the highlight without touching the rows, so nothing reconciles on an arrow key. */
+/**
+ * Move the highlight without touching the rows, so nothing reconciles on an arrow key.
+ *
+ * ONE field is written. The listbox turns that id into the active row's `selected`; before the kit
+ * owned it, this wrote a second field as well and every row re-decided its own `aria-selected` and
+ * `data-selected` against it.
+ */
 function select(index: number): void {
   _selectedIndex = index;
-  const state = scope();
-  state.selectedIndex = index;
-  state.activeId = optionId(index);
+  scope().activeId = optionId(index);
 }
 
 /**
@@ -253,8 +271,9 @@ function project(): void {
   state.isEmpty = entries.length === 0;
   state.emptyHint = _query.trim() === "" ? "No entries available" : "No results";
   state.expanded = entries.length > 0;
-  state.selectedIndex = _selectedIndex;
-  state.activeId = optionId(_selectedIndex);
+  /* No rows, no active descendant: an id pointing at a row that is not there is a field claiming a
+     highlight a reader would never find. */
+  state.activeId = entries.length > 0 ? optionId(_selectedIndex) : "";
 }
 
 /**

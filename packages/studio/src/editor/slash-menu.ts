@@ -139,10 +139,8 @@ function view(): SlashMenuView {
   return {
     activeIndex: activeIdx,
     filter: filterText,
-    rows: filteredItems.map((cmd, index): SlashMenuRow => ({
+    rows: filteredItems.map((cmd): SlashMenuRow => ({
       description: cmd.description,
-      hasDescription: Boolean(cmd.description),
-      index,
       key: cmd.tag,
       label: cmd.label,
     })),
@@ -282,6 +280,11 @@ function onFilterInput(value: string) {
  * rendering, and a key that arrives while the document is still reconciling would otherwise be
  * counting a list that has not caught up.
  *
+ * Nothing here scrolls the new row into view, and that is the kit's rather than an omission: the
+ * panel writes ONE id, the listbox's `active`, and `mountListbox` is what turns that into a row's
+ * `selected` and brings it back on screen. Measurement belongs to the element that can see the
+ * box.
+ *
  * @param {string} key — "ArrowDown" | "ArrowUp" | "Enter" | "Escape"
  */
 export function handleSlashMenuKey(key: string): void {
@@ -296,14 +299,12 @@ export function handleSlashMenuKey(key: string): void {
     }
     activeIdx = (activeIdx + 1) % count;
     paint();
-    _surface?.revealActive();
   } else if (key === "ArrowUp") {
     if (count === 0) {
       return;
     }
     activeIdx = (activeIdx - 1 + count) % count;
     paint();
-    _surface?.revealActive();
   } else if (key === "Enter") {
     const cmd = filteredItems[activeIdx];
     if (cmd) {
