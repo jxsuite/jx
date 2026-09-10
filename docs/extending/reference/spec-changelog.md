@@ -137,6 +137,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `embedding.md`
 
+- **0.1.3** (2026-09-10) — §2.4 the node hooks: onNodeCreated fires before a node's bindings are applied, and there is no detach counterpart.
 - **0.1.2** (2026-09-02) — A second realm forwards redefineElement across its bridge and re-renders (§7).
 - **0.1.1** (2026-09-02) — redefineElement and elementDefinition: a definition is read through the registry at connection, so a host may replace it live (§7); every section is now implemented.
 - **0.1.0-draft** (2026-09-02) — Initial release: mount() with dispose and AbortSignal, host scope, host functions through call, events out, per-mount context, preloadDocument and preloadModule.
@@ -382,6 +383,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `spec.md`
 
+- **0.6.18-draft** (2026-09-10) — §4.3 listener options are not part of the on* grammar; §6.1 a binding writes when its source moves, so a document cannot re-assert or empty a bound control; §13.1 there is no document-local element fragment.
 - **0.6.17-draft** (2026-09-09) — a style block may document itself: $description is prose carried on the rule, and every $-prefixed key is metadata rather than a declaration.
 - **0.6.16-draft** (2026-09-09) — a declaration at-rule may be written more than once, as an array of blocks — the only spelling @font-face has for a family's second weight.
 - **0.6.15-draft** (2026-09-03) — a style declaration value may be a ref; a reactive custom property on a self-target rule is written inline so rows share one rule; a static build reports what it drops; color-scheme lands on :root.
@@ -670,6 +672,9 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `ui.md`
 
+- **0.1.24-draft** (2026-09-10) — a value the colour field cannot decompose is kept and drawn rather than refused, so a project's own tokens live in the same field as a colour.
+- **0.1.23-draft** (2026-09-10) — the colour elements are built: two transparent native ranges behind a 2D square, a styled range over a gradient, a contrast-measured swatch, a roving swatch group, and a composed colour field that dispatches from itself.
+- **0.1.22-draft** (2026-09-10) — §5.1 jx-select cannot draw an unlabelled separator between projected rows, and jx-menu is a list of actions rather than a media browser.
 - **0.1.21-draft** (2026-09-10) — the layers façade no longer lists showDialog: a bespoke dialog body is a named flow with an island.
 - **0.1.20-draft** (2026-09-10) — jx-tab takes slotted content in three named slots (icon, status, actions); label becomes required once anything is slotted, because aria-label is what keeps a slotted mark out of the tab's name.
 - **0.1.19-draft** (2026-09-10) — The Studio facade list drops openModal: a persistent modal is a jx-dialog surface document (§6).

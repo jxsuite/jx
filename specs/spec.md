@@ -2,9 +2,9 @@
 
 ## Declarative Document Object Model — JSON Edition
 
-**Version:** 0.6.17-draft\
+**Version:** 0.6.18-draft\
 **Status:** Partial\
-**Updated:** 2026-09-09\
+**Updated:** 2026-09-10\
 **License:** MIT
 
 ---
@@ -203,6 +203,8 @@ export function handleInput(state, event) {
 ```
 
 `this` is never used in Jx-managed code. All component state is accessed via `state`.
+
+**Listener options are not part of the grammar.** An `on*` key is attached with `addEventListener(type, fn)` and nothing else, in every one of the four spellings a handler has — a `$ref` to a function, a structured body (§20), a string body, an `$expression` — so `capture`, `once`, `passive` and a listener `signal` cannot be written in a document at all. Capture is the one of the four that changes an outcome rather than a cost: a handler declared on an ancestor runs AFTER a descendant's, so anything inside the subtree that calls `stopPropagation` silently takes the ancestor's handler with it, and the document has no way to say it meant to go first. A host that needs the capture phase attaches that one listener itself, after the mount, on a node it holds — `watchPaneFocus` in `packages/studio/src/panels/pane-grid.ts` is the worked example, and it records at its own definition site that it lives there because a document cannot express the option. A custom element may do the same from its behaviour sidecar. Either way the listener's lifetime is the node's, so nothing has to remove it.
 
 ---
 
@@ -548,6 +550,8 @@ Template literal syntax `${}` is valid **anywhere a string value appears in the 
   "hidden": "${state.items.length === 0}"
 }
 ```
+
+**A binding writes when its SOURCE moves, not when its target differs.** The effect behind `"value": "${state.query}"` re-runs only when something it read changed, and it then skips a write equal to what the element already holds — the second half is deliberate, because re-setting `value` on a focused control moves the caret and collapses the selection. Together they mean a document cannot RE-ASSERT a value it has already written. After the reader has typed over a bound control, writing the scope value the scope already held is not a change, so the effect never re-runs and the field keeps what the reader typed; the write that would have emptied it is exactly the one that is skipped. There is no write-only spelling that fires on every pass, and reaching for the element and assigning `value` is not the alternative — that is the host writing into a tree the document owns. The host makes the correction visible instead: it announces the raw value the control now holds, and the value it settled on is then a real move rather than an equal write. `packages/studio/src/ui/form-controls.ts` carries that bounce so a refused rename snaps back, and `packages/studio/src/panels/git-panel.ts` so that dismissing a "New branch…" pick can put the picker back on the branch that is checked out.
 
 ### 6.2 Reactive style properties
 
@@ -1469,6 +1473,8 @@ A component instance is created by **registering** the component document in the
 ```
 
 > **Status: Removed.** A node-level external `$ref` child — `{ "$ref": "./card.json", "$props": {…} }` placed directly in `children` — is **not** a component instance. The runtime does not fetch or render it (it produces an empty `<div>`, and `renderNode` emits a one-time console warning). Register the document in `$elements` and instantiate it by its custom-element tag, as above. `$switch` cases (§14) and `$elements` entries (§16) are the resolved external-`$ref` positions.
+
+**There is no document-local element fragment either, and that is the more common cost.** A `$ref` in `children` renders an empty `<div>` and warns whatever it points at — an intra-document pointer as much as an external URL — and `#/$defs` could not be the place for one anyway: `$defs` holds JSON Schema type definitions and nothing else (§5.2), so a subtree parked there would be neither a schema nor reachable. The two positions that DO resolve a `$ref` to a document, an `$elements` entry (§16) and a `$switch` case (§14), both resolve an EXTERNAL one into an isolated scope — which is the property that makes them component boundaries and also the reason neither answers this. A fragment drawn inside a `$map` row reads that row, and neither position can see it without a props contract, a tag name and a definition of its own; that is the price of a component, and a row is not one. So a subtree drawn in two places is authored twice, and two shapes pay for it today. Where the two lists differ only by data, the host folds them into ONE projection carrying a discriminant and the document draws a single keyed `$map` over it — `packages/studio/src/surfaces/seo.json` says exactly that of its two groups, whose headings are data so the row template below them stays single. Where they do not, the fragment is repeated: `packages/studio/src/surfaces/panel-signals.json` writes its `[part="error-slot"]` subtree eight times, once inside each inline case of the `$switch` that picks a field's control.
 
 ### 13.2 Explicit Props
 
@@ -2559,6 +2565,7 @@ This rewrites the mutating handlers of Appendix A's idiom using `$expression`, l
 
 ## Changelog
 
+- **0.6.18-draft** (2026-09-10) — §4.3 listener options are not part of the on* grammar; §6.1 a binding writes when its source moves, so a document cannot re-assert or empty a bound control; §13.1 there is no document-local element fragment.
 - **0.6.17-draft** (2026-09-09) — a style block may document itself: $description is prose carried on the rule, and every $-prefixed key is metadata rather than a declaration.
 - **0.6.16-draft** (2026-09-09) — a declaration at-rule may be written more than once, as an array of blocks — the only spelling @font-face has for a family's second weight.
 - **0.6.15-draft** (2026-09-03) — a style declaration value may be a ref; a reactive custom property on a self-target rule is written inline so rows share one rule; a static build reports what it drops; color-scheme lands on :root.
@@ -2640,4 +2647,4 @@ This rewrites the mutating handlers of Appendix A's idiom using `$expression`, l
 
 ---
 
-_Jx Specification v0.6.17-draft — subject to revision_
+_Jx Specification v0.6.18-draft — subject to revision_

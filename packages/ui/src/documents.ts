@@ -11,6 +11,9 @@ import jxActionButton from "../components/jx-action-button.json";
 import jxActionGroup from "../components/jx-action-group.json";
 import jxButton from "../components/jx-button.json";
 import jxCheckbox from "../components/jx-checkbox.json";
+import jxColorArea from "../components/jx-color-area.json";
+import jxColorField from "../components/jx-color-field.json";
+import jxColorSlider from "../components/jx-color-slider.json";
 import jxDialog from "../components/jx-dialog.json";
 import jxDivider from "../components/jx-divider.json";
 import jxDot from "../components/jx-dot.json";
@@ -24,6 +27,8 @@ import jxSelect from "../components/jx-select.json";
 import jxSpinner from "../components/jx-spinner.json";
 import jxTooltip from "../components/jx-tooltip.json";
 import jxNumberField from "../components/jx-number-field.json";
+import jxSwatch from "../components/jx-swatch.json";
+import jxSwatchGroup from "../components/jx-swatch-group.json";
 import jxSwitch from "../components/jx-switch.json";
 import jxTab from "../components/jx-tab.json";
 import jxTabPanel from "../components/jx-tab-panel.json";
@@ -56,6 +61,11 @@ export const documents: Readonly<Record<string, JxDocument>> = {
   "jx-dot": jxDot as unknown as JxDocument,
   "jx-field": jxField as unknown as JxDocument,
   "jx-dialog": jxDialog as unknown as JxDocument,
+  "jx-color-area": jxColorArea as unknown as JxDocument,
+  "jx-color-slider": jxColorSlider as unknown as JxDocument,
+  "jx-swatch": jxSwatch as unknown as JxDocument,
+  "jx-swatch-group": jxSwatchGroup as unknown as JxDocument,
+  "jx-color-field": jxColorField as unknown as JxDocument,
 };
 
 /** Every tag the kit defines. */

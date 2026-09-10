@@ -29,18 +29,18 @@
  * being replaced by the last committed one, and what keys that half-typed value to the NODE rather
  * than to the field's name (§11.4).
  *
- * **Three leaves are drawn elsewhere**, and each is its own surface with readers outside this tab:
- * the media picker, the colour selector and the expression editor. The document draws an empty
- * `[part="control-host"]` for them and this module fills it, which is the seam `ui/schema-form.ts`
- * established for an extension's registered control. Two of them are lit and are RENDERED into the
- * box; the media picker is a document and is MOUNTED into it, so a `control` takes the host instead
- * of returning a template — a document cannot be handed back as a value, and it clears the host it
- * is given.
+ * **Two leaves are drawn elsewhere**, and each is its own surface with readers outside this tab:
+ * the media picker and the expression editor. The document draws an empty `[part="control-host"]`
+ * for them and this module fills it, which is the seam `ui/schema-form.ts` established for an
+ * extension's registered control. The expression editor is lit and is RENDERED into the box; the
+ * media picker is a document and is MOUNTED into it, so a `control` takes the host instead of
+ * returning a template — a document cannot be handed back as a value, and it clears the host it is
+ * given. There were three: a `format: "color"` prop was the middle one, and it is a
+ * `jx-color-field` in the document now that `ui.md` §5.6 has landed.
  *
  * @docs studio/design/properties
  */
 
-import { render as litRender } from "lit-html";
 import { getNodeAtPath } from "../store";
 import { effect, effectScope, reactive } from "../reactivity";
 import { displayTagName, isRef, isTagExpression } from "@jxsuite/schema/guards";
@@ -102,7 +102,7 @@ import { classifyHref, composeHref } from "../utils/link-target";
 import type { LinkKind } from "../utils/link-target";
 import { clickAnythingTo, openPageAction, staleSelectionMessage } from "./empty-state";
 import { mountMediaPicker, unmountMediaPicker } from "../ui/media-picker";
-import { renderColorSelector } from "../ui/color-selector";
+import { colorTokens } from "../ui/color-selector";
 import { mountExpressionEditor } from "../ui/expression-editor";
 import {
   loadUsages,
@@ -564,10 +564,10 @@ interface RowPlan {
   /**
    * A leaf the document does not draw, given the empty box it drew for it.
    *
-   * It takes the host rather than returning a template because the three leaves no longer agree
-   * about what drawing means: the colour selector and the expression editor are lit and render into
-   * the box, the media picker is a document and is MOUNTED into it. Both are idempotent, so a
-   * repaint calls this again rather than deciding which of the two it is holding.
+   * It takes the host rather than returning a template because the two leaves do not agree about
+   * what drawing means: the expression editor is lit and renders into the box, the media picker is
+   * a document and is MOUNTED into it. Both are idempotent, so a repaint calls this again rather
+   * than deciding which of the two it is holding.
    */
   control?: ((host: HTMLElement) => void) | undefined;
 }
@@ -582,6 +582,7 @@ function blankRow(key: string, prop: string, label: string): ContentRowView {
     chipTitle: "",
     detail: "",
     hasSource: false,
+    hasTokens: false,
     key,
     kind: "text",
     kindOptions: [],
@@ -601,6 +602,7 @@ function blankRow(key: string, prop: string, label: string): ContentRowView {
     sourceName: "",
     text: "",
     title: "",
+    tokens: [],
     value: "",
   };
 }
@@ -1525,12 +1527,12 @@ function componentPropRows(
       plan.control = (host) =>
         mountMediaPicker(host, prop.name, staticVal, (v: string) => onChange(v));
     } else if (prop.format === "color") {
-      row.kind = "control";
-      plan.control = (host) =>
-        litRender(
-          renderColorSelector(prop.name, staticVal, (v: string) => onChange(v)),
-          host,
-        );
+      row.kind = "color";
+      row.tokens = colorTokens();
+      row.hasTokens = row.tokens.length > 0;
+      row.value = getFieldValue(propDraft, staticVal);
+      plan.commit = (raw) => onChange(raw);
+      plan.draft = propDraft;
     } else if (prop.format === "date") {
       row.kind = "text";
       row.placeholder = "YYYY-MM-DD";

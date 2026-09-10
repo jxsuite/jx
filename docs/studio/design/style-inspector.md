@@ -79,7 +79,7 @@ Some rows appear only when they're relevant: alignment and gap controls show onc
 Each property gets a control built for it:
 
 - **Number + unit**: type the number, pick the unit (`px`, `rem`, `%`, `vw`, and friends) or a keyword like `auto` from the attached menu.
-- **Color**: a swatch that opens a full picker, with your project's color tokens on offer; a token shows by its name, like **Primary Blue**. See **[Design tokens](/docs/studio/design/tokens)**.
+- **Color**: a swatch beside the value, and behind the swatch a picker holding a saturation square, a hue track, an opacity track and your project's color tokens. Picking a token writes the reference, so the value reads `var(--color-primary-blue)` and follows the token wherever you take it; moving any of the tracks replaces it with a literal, because that is what moving a picker means. The value box takes anything CSS can read, a named color or a `color-mix()` included, and keeps it as you wrote it. See **[Design tokens](/docs/studio/design/tokens)**.
 - **Font family**: type a font stack, or take one from the attached menu, which lists your font tokens first and then a set of ready-made stacks. Picking a ready-made stack saves it as a font token automatically, so the next element that wants it points at the token rather than repeating the stack.
 - **Keyword menus**: a property with a known set of values offers them from an attached menu. The field stays typable, because a CSS keyword list is a set of suggestions rather than a closed one: a value the menu does not offer is still a value you can write.
 

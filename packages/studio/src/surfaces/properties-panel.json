@@ -47,8 +47,8 @@
       "padding": "0 var(--jx-space-2) var(--jx-space-2)",
       "minWidth": "0"
     },
-    "& [part=\"row\"]": {
-      "$description": "§4.1's standard form row, stacked: the label sits above a control that takes the whole width. `min-width: 0` is what keeps it honest in a narrow dock — a field refuses to shrink below its own min-content without it.",
+    "& [part=\"section-body\"] > [part=\"row\"], & [part=\"layout-class-slot\"] > [part=\"row\"]": {
+      "$description": "§4.1's standard form row, stacked: the label sits above a control that takes the whole width. `min-width: 0` is what keeps it honest in a narrow dock — a field refuses to shrink below its own min-content without it. Scoped to the tab's OWN rows rather than to every `part=\"row\"` beneath it, which a colour row made load-bearing: the kit is light DOM and one cascade, so a bare descendant selector also matches `jx-color-field`'s internal row — and at equal specificity with the kit's own `& > [part=\"row\"]` the winner is whichever sheet was interned later, which is not a thing a stylesheet may depend on. `[part=\"chip\"]` moved under `[part=\"chip-slot\"]` for the same reason and a sharper one: its `background: transparent` and its border would otherwise have erased a swatch's colour and drawn a box round it. The `layout-class-slot` half of the pair is there because that slot is `display: contents`, so its row is a grandchild in the DOM even though it is a child in the box tree.",
       "display": "flex",
       "flexDirection": "column",
       "alignItems": "stretch",
@@ -72,7 +72,26 @@
       "width": "100%",
       "minWidth": "0"
     },
-    "& [part=\"chip\"]": {
+    "& [part=\"color\"]": {
+      "display": "flex",
+      "width": "100%",
+      "minWidth": "0"
+    },
+    "& [part=\"color\"] > [part=\"color-field\"]": {
+      "flex": "1",
+      "minWidth": "0"
+    },
+    "& [part=\"color-field\"] > [part=\"row\"]": {
+      "$description": "The field is `inline-flex` around a row sized to its own contents, which is wrong where the control IS the width of the dock. Two declarations, not a restatement of the kit's layout.",
+      "flex": "1",
+      "minWidth": "0"
+    },
+    "& [part=\"color-field\"] [part=\"text\"]": {
+      "flex": "1",
+      "inlineSize": "auto",
+      "minInlineSize": "0"
+    },
+    "& [part=\"chip-slot\"] > [part=\"chip\"]": {
       "$description": "§6.2's provenance chip. `set` is the 6px accent dot it has always been — a circle is not a button, whatever element draws it — and the three states that carry a donor are bordered chips naming it. The fourth state, `default`, draws nothing at all: a ghost dot on every unset row says less than silence.",
       "flexShrink": "0",
       "display": "inline-flex",
@@ -90,27 +109,27 @@
       "textOverflow": "ellipsis",
       "cursor": "default"
     },
-    "& button[part=\"chip\"]": {
+    "& [part=\"chip-slot\"] > button[part=\"chip\"]": {
       "cursor": "pointer"
     },
-    "& button[part=\"chip\"]:hover": {
+    "& [part=\"chip-slot\"] > button[part=\"chip\"]:hover": {
       "background": "var(--hover-bg)"
     },
-    "& button[part=\"chip\"]:focus-visible": {
+    "& [part=\"chip-slot\"] > button[part=\"chip\"]:focus-visible": {
       "background": "var(--hover-bg)",
       "outline": "2px solid var(--accent)",
       "outlineOffset": "1px"
     },
-    "& [part=\"chip\"][data-state=\"inherited\"]": {
+    "& [part=\"chip-slot\"] > [part=\"chip\"][data-state=\"inherited\"]": {
       "color": "var(--warning)"
     },
-    "& [part=\"chip\"][data-state=\"bound\"]": {
+    "& [part=\"chip-slot\"] > [part=\"chip\"][data-state=\"bound\"]": {
       "color": "var(--handler)"
     },
-    "& [part=\"chip\"][data-state=\"mixed\"]": {
+    "& [part=\"chip-slot\"] > [part=\"chip\"][data-state=\"mixed\"]": {
       "color": "var(--text-secondary)"
     },
-    "& [part=\"chip\"][data-state=\"set\"]": {
+    "& [part=\"chip-slot\"] > [part=\"chip\"][data-state=\"set\"]": {
       "width": "6px",
       "height": "6px",
       "padding": "0",
@@ -118,7 +137,7 @@
       "borderRadius": "50%",
       "background": "var(--accent)"
     },
-    "& [part=\"chip\"][data-state=\"set\"]:hover": {
+    "& [part=\"chip-slot\"] > [part=\"chip\"][data-state=\"set\"]:hover": {
       "background": "var(--danger)"
     },
     "& [part=\"source\"][data-source=\"fixed\"]": {
@@ -1168,6 +1187,148 @@
                                               }
                                             }
                                           }
+                                        }
+                                      ]
+                                    },
+                                    "color": {
+                                      "$description": "A prop whose schema says `format: \"color\"`. It was the second of the three lit leaves this tab drew into `[part=\"control-host\"]`; `ui.md` §5.6 landed and it is `jx-color-field` here, beside every other control. The listener is on the WRAPPER and not on the field, and that is the field's own contract rather than a preference. `jx-color-field` stops its five inner controls' native events at its root and re-says the platform's two names FROM the host, so an ancestor hears exactly one `input` and one `change` per gesture with `e.target` being the field — while a listener on the field itself hears BOTH, including the raw `change` of a text box holding a half-typed word the field has just refused. Bound there, `not a colour` would have been committed as a colour.",
+                                      "tagName": "div",
+                                      "attributes": {
+                                        "part": "color",
+                                        "role": "none"
+                                      },
+                                      "oninput": {
+                                        "$prototype": "Function",
+                                        "body": [
+                                          {
+                                            "operator": "call",
+                                            "target": {
+                                              "$ref": "#/state/edit"
+                                            },
+                                            "value": [
+                                              {
+                                                "$ref": "$map/item/key"
+                                              },
+                                              {
+                                                "$ref": "event#/target/value"
+                                              }
+                                            ]
+                                          }
+                                        ]
+                                      },
+                                      "onchange": {
+                                        "$prototype": "Function",
+                                        "body": [
+                                          {
+                                            "operator": "call",
+                                            "target": {
+                                              "$ref": "#/state/commit"
+                                            },
+                                            "value": [
+                                              {
+                                                "$ref": "$map/item/key"
+                                              },
+                                              {
+                                                "$ref": "event#/target/value"
+                                              }
+                                            ]
+                                          }
+                                        ]
+                                      },
+                                      "children": [
+                                        {
+                                          "tagName": "jx-color-field",
+                                          "attributes": {
+                                            "part": "color-field"
+                                          },
+                                          "$props": {
+                                            "size": "sm",
+                                            "label": "${$map.item.label}",
+                                            "value": {
+                                              "$ref": "$map/item/value"
+                                            },
+                                            "alpha": true
+                                          },
+                                          "children": [
+                                            {
+                                              "tagName": "span",
+                                              "attributes": {
+                                                "part": "palette-slot",
+                                                "slot": "tokens",
+                                                "role": "none"
+                                              },
+                                              "style": {
+                                                "display": "contents"
+                                              },
+                                              "$switch": {
+                                                "$ref": "$map/item/hasTokens"
+                                              },
+                                              "cases": {
+                                                "true": {
+                                                  "$description": "The palette's `change` is caught HERE, on the group, because it never gets out: the field routes it as its `palette` channel, stops it, and then declines it — a swatch that stands for `var(--color-accent)` is not a string the field can parse as a colour, which is exactly why the reference survives the click. A row that let the field answer instead would have committed the literal behind the token and quietly opted one declaration out of the palette for ever.",
+                                                  "tagName": "jx-swatch-group",
+                                                  "attributes": {
+                                                    "part": "palette"
+                                                  },
+                                                  "$props": {
+                                                    "label": "Colour tokens",
+                                                    "value": {
+                                                      "$ref": "$map/item/value"
+                                                    }
+                                                  },
+                                                  "onchange": {
+                                                    "$prototype": "Function",
+                                                    "body": [
+                                                      {
+                                                        "operator": "call",
+                                                        "target": {
+                                                          "$ref": "#/state/commit"
+                                                        },
+                                                        "value": [
+                                                          {
+                                                            "$ref": "$map/item/key"
+                                                          },
+                                                          {
+                                                            "$ref": "event#/target/value"
+                                                          }
+                                                        ]
+                                                      }
+                                                    ]
+                                                  },
+                                                  "children": [
+                                                    {
+                                                      "$prototype": "Array",
+                                                      "items": {
+                                                        "$ref": "$map/item/tokens"
+                                                      },
+                                                      "key": {
+                                                        "$ref": "$map/item/value"
+                                                      },
+                                                      "map": {
+                                                        "tagName": "jx-swatch",
+                                                        "attributes": {
+                                                          "part": "token",
+                                                          "data-token": "${$map.item.value}"
+                                                        },
+                                                        "$props": {
+                                                          "size": "sm",
+                                                          "color": {
+                                                            "$ref": "$map/item/color"
+                                                          },
+                                                          "value": {
+                                                            "$ref": "$map/item/value"
+                                                          },
+                                                          "label": {
+                                                            "$ref": "$map/item/label"
+                                                          }
+                                                        }
+                                                      }
+                                                    }
+                                                  ]
+                                                }
+                                              }
+                                            }
+                                          ]
                                         }
                                       ]
                                     },

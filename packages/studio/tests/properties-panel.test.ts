@@ -593,9 +593,11 @@ describe("component props section", () => {
     expect(sec.querySelector('[data-prop="featured"] jx-checkbox')).not.toBeNull();
     expect(sec.querySelector('[data-prop="count"] jx-number-field')).not.toBeNull();
     expect(sec.querySelector('[data-prop="variant"] jx-select')).not.toBeNull();
-    // The media picker is a document mounted into an announced host, the colour selector still lit.
+    // The media picker is a document mounted into an announced host; the colour field is the kit's.
     expect(sec.querySelector('[data-prop="image"] [part="media-field"]')).not.toBeNull();
-    expect(sec.querySelector('[data-prop="tint"] [part="control-host"]')).not.toBeNull();
+    expect(
+      sec.querySelector('[data-prop="tint"] jx-color-field[part="color-field"]'),
+    ).not.toBeNull();
     expect(control(sec, "published").getAttribute("placeholder")).toBe("YYYY-MM-DD");
   });
 
@@ -613,6 +615,42 @@ describe("component props section", () => {
     activeTab.value!.session.selection = [[]];
     await renderPanel();
     expect(box.querySelector('[part="media-field"]')).toBeNull();
+  });
+
+  test("a colour prop is the kit's field, and typing a colour commits it", async () => {
+    registerCard();
+    openDoc(cardDoc({ tint: "#ff0000" }), ["children", 0]);
+    const c = await renderPanel();
+    const field = row(c, "tint").querySelector<HTMLElement & { value: string }>(
+      'jx-color-field[part="color-field"]',
+    )!;
+    expect(field.value).toBe("#ff0000");
+
+    commit(control(c, "tint", "text"), "#00ff00");
+    expect((docNow().children as JxMutableNode[])[0]!.$props!.tint).toBe("#00ff00");
+
+    /* A word that is not a colour is refused by the field and its own event is stopped at the
+       field's root, so nothing reaches the row — which is why the row listens ABOVE the field
+       rather than on it. Bound on the field, this would have landed in `$props`. */
+    commit(control(c, "tint", "text"), "not a colour");
+    expect((docNow().children as JxMutableNode[])[0]!.$props!.tint).toBe("#00ff00");
+  });
+
+  test("a colour prop's palette is the project's tokens, and a pick commits the reference", async () => {
+    registerCard();
+    const tab = openDoc(cardDoc({ tint: "#ff0000" }), ["children", 0]);
+    (tab.doc.document as JxMutableNode).style = { "--color-brand": "#0000ff" };
+    const c = await renderPanel();
+    const swatch = row(c, "tint").querySelector<HTMLElement>('jx-swatch[part="token"]')!;
+    expect(swatch.dataset.token).toBe("var(--color-brand)");
+
+    swatch
+      .querySelector('[part="control"]')!
+      .dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await flush();
+    /* The reference, not the literal: the field declines a token it cannot parse, which is what
+       leaves the group's own answer standing. */
+    expect((docNow().children as JxMutableNode[])[0]!.$props!.tint).toBe("var(--color-brand)");
   });
 
   test("text prop commits into $props on change; clear dot removes it", async () => {

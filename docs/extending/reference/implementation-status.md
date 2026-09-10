@@ -18,7 +18,7 @@ This page is generated from the `> **Status: …**` markers in the specification
 | `collab.md`               | 0.2.5-draft   | Partial     | 2026-08-20 |
 | `compiler.md`             | 0.4.3-draft   | Partial     | 2026-09-01 |
 | `desktop.md`              | 0.4.10-draft  | Pending     | 2026-09-02 |
-| `embedding.md`            | 0.1.2         | Implemented | 2026-09-02 |
+| `embedding.md`            | 0.1.3         | Implemented | 2026-09-10 |
 | `extensions.md`           | 0.4.3-draft   | Partial     | 2026-08-31 |
 | `imports.md`              | 0.1.10-draft  | Partial     | 2026-08-27 |
 | `jx-markdown.md`          | 0.1.10-draft  | Partial     | 2026-08-31 |
@@ -27,11 +27,11 @@ This page is generated from the `> **Status: …**` markers in the specification
 | `schema.md`               | 0.4.9-draft   | Partial     | 2026-09-02 |
 | `server.md`               | 0.2.23        | Implemented | 2026-08-31 |
 | `site-architecture.md`    | 0.6.10-draft  | Partial     | 2026-08-29 |
-| `spec.md`                 | 0.6.17-draft  | Partial     | 2026-09-09 |
+| `spec.md`                 | 0.6.18-draft  | Partial     | 2026-09-10 |
 | `standards.md`            | 0.1.17-draft  | Partial     | 2026-09-02 |
 | `studio-ui-guidelines.md` | 0.6.1-draft   | Partial     | 2026-09-10 |
 | `studio.md`               | 0.10.18-draft | Partial     | 2026-09-10 |
-| `ui.md`                   | 0.1.21-draft  | Partial     | 2026-09-10 |
+| `ui.md`                   | 0.1.24-draft  | Partial     | 2026-09-10 |
 
 ## Sections not yet implemented
 
@@ -83,7 +83,6 @@ This page is generated from the `> **Status: …**` markers in the specification
 - `ui.md` §2 — Principles
 - `ui.md` §3 — Authoring Model
 - `ui.md` §5.5 — Builder
-- `ui.md` §5.6 — Colour
 - `ui.md` §10 — Studio Integration
 
 ### Removed

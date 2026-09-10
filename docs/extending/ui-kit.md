@@ -9,6 +9,7 @@ spec:
   - ui.md#5.1 # primitives
   - ui.md#5.3 # forms
   - ui.md#5.4 # containers
+  - ui.md#5.6 # colour
   - ui.md#8 # icons
   - ui.md#9 # build and distribution
 code:
@@ -23,6 +24,11 @@ code:
   - packages/ui/src/behaviors/tooltip.ts
   - packages/ui/src/behaviors/tabs.ts
   - packages/ui/src/behaviors/action-group.ts
+  - packages/ui/src/behaviors/color-area.ts
+  - packages/ui/src/behaviors/color-slider.ts
+  - packages/ui/src/behaviors/swatch-group.ts
+  - packages/ui/src/behaviors/color-field.ts
+  - packages/ui/src/color.ts
 ---
 
 # The Jx UI kit
@@ -406,6 +412,100 @@ The element fires `toggle` when a section opens or closes, and that event stops 
 `selects` decides what the row is: `"none"` is a toolbar of separate actions, `"single"` is a set of choices where one wins, and `"multiple"` is a set of independent switches. Arrow keys move within the row and Tab leaves it, so a toolbar of ten buttons costs one tab stop rather than ten. `compact` joins the buttons into one segmented control.
 
 For a single-choice row, set `checked` to `"true"` or `"false"` on each button rather than `selected`, and do not set `toggles`. A button that both announces a chosen state and flips itself would fight the host that owns the value, so the element refuses the combination.
+
+## Colours
+
+`jx-color-field` is the whole control: a swatch that opens a picker, a text box for the value, and the doors to the system's own picker.
+
+```json
+{
+  "tagName": "jx-color-field",
+  "$props": { "label": "Background", "value": "#3b82f6", "alpha": true }
+}
+```
+
+`label` says what the colour is for. Every control inside takes its name from it, so the text box is "Background", the swatch button is "Pick Background", and the screen picker is "Pick Background from the screen".
+
+The element writes hex by default. Set `format` to `"oklch"` and it writes `oklch()` instead. That decides what it writes, never what it reads: a reader may type hex, `rgb()` or `oklch()` into the text box either way, and a half-typed value is only refused once they commit it.
+
+A value the field cannot take apart is kept rather than refused. Hand it `var(--brand-accent)` or a named colour and it holds the string, shows it in the text box, and still draws it in the swatch, because the browser resolves it. Only the picker's sliders are stale, and the first thing the reader moves replaces the token with a literal.
+
+`alpha` adds the opacity track to the picker and the alpha channel to the value. Leave it off and every value the field writes is opaque, so a field feeding a property with no alpha cannot be handed one by accident.
+
+`system` and `eyedropper` control the two doors. `system` is a native `<input type="color">`, which opens whatever picker the operating system has. `eyedropper` is the screen picker, and its button appears only on engines that have the API, so you never get a control that does nothing when you press it. Turn both off where the colours must come from the project's own palette.
+
+Listen for `input` and `change` on the element. They come from the element itself whichever of the five controls the reader touched, so `e.target.value` is always the colour:
+
+```json
+{
+  "tagName": "jx-color-field",
+  "$props": { "label": "Accent", "value": { "$ref": "#/state/accent" } },
+  "onchange": {
+    "$prototype": "Function",
+    "body": [
+      {
+        "operator": "=",
+        "target": { "$ref": "#/state/accent" },
+        "value": { "$ref": "event#/target/value" }
+      }
+    ]
+  }
+}
+```
+
+### A palette in the picker
+
+Anything slotted into `tokens` is drawn under the sliders, and choosing from it sets the field's value:
+
+```json
+{
+  "tagName": "jx-swatch-group",
+  "attributes": { "slot": "tokens" },
+  "$props": { "label": "Project palette", "columns": 5, "value": "#0ea5e9" },
+  "children": [
+    { "tagName": "jx-swatch", "$props": { "color": "#0ea5e9", "label": "Sky" } },
+    { "tagName": "jx-swatch", "$props": { "color": "#22c55e", "label": "Green" } }
+  ]
+}
+```
+
+### Swatches on their own
+
+`jx-swatch` is a colour chip that is a real button. Give every one a `label`: that is its accessible name, and without it a reader hears the hex code one character at a time. Set `value` when the swatch stands for a token rather than for the literal colour, and the `select` event carries that instead.
+
+`jx-swatch-group` makes a set of them a radio group with one tab stop. Either arrow pair moves between swatches and chooses the one it lands on, Home and End go to the ends, and disabled swatches are stepped over. The group owns the selection: write its `value` and it moves the swatches, and listen for `change` on the group rather than for `select` on a swatch.
+
+`columns` lays the swatches out on a fixed grid. Leave it at 0 and they wrap on their own.
+
+### The picker's own parts
+
+`jx-color-area` is the saturation and brightness square, and `jx-color-slider` is a hue or alpha track. Use them directly when you are building a picker of your own rather than using `jx-color-field`.
+
+```json
+{
+  "tagName": "jx-color-area",
+  "$props": { "label": "Accent colour", "hue": 265, "saturation": 72, "brightness": 88 }
+}
+```
+
+The square holds two hidden range inputs, one for each axis, so it is fully operable from the keyboard. Left and right move the saturation, up and down move the brightness, Home and End go to the ends of the axis you are on, and holding :kbd[Shift] moves ten steps at a time. Every colour the pointer can reach is reachable this way, and a single click sets the colour outright, so nothing here needs a drag.
+
+The square never writes the hue. Give it one from a `jx-color-slider` beside it, and dragging into the grey corner leaves the hue where the reader put it.
+
+```json
+{
+  "tagName": "jx-color-slider",
+  "$props": { "label": "Hue", "channel": "hue", "value": { "$ref": "#/state/hue" } }
+}
+```
+
+`channel` is `"hue"` or `"alpha"`. It chooses the gradient, the units the value is announced in, and the top of the range, so a hue track runs to 360 and an alpha track to 100 without your writing `max`. An alpha track fades from whatever you pass as `color`.
+
+Both elements say `input` and `change` from themselves rather than from the range inside, so read `e.target.saturation` and `e.target.brightness` from a square and `e.target.value` from a track.
+
+:::doc-note
+Colour maths lives in `@jxsuite/ui/color`: hex, `rgb()` and `oklch()` parsing, sRGB to OKLCH and back, WCAG relative luminance and contrast ratio, and `preferredInk`, which answers with the black or white that can actually be seen on a colour. The kit uses that last one for a swatch's own boundary and tick, and you can use it for anything you draw on a colour a user chose.
+:::
 
 ## Open the kit in Studio
 

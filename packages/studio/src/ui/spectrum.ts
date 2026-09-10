@@ -90,7 +90,6 @@ import { IconCheckmark } from "@spectrum-web-components/icons-workflow/src/eleme
 
 // Custom studio components
 import { JxValueSelector } from "./value-selector";
-import { JxColorPopover } from "./color-selector";
 
 // UI icons (used internally by Spectrum components like accordion, picker, combobox)
 import { IconChevron100 } from "@spectrum-web-components/icons-ui/src/elements/IconChevron100.js";
@@ -163,7 +162,6 @@ const components = [
   ["sp-icon-chevron100", IconChevron100],
   // Custom studio components
   ["jx-value-selector", JxValueSelector],
-  ["jx-color-popover", JxColorPopover],
 ];
 
 for (const [tag, ctor] of components as [string, CustomElementConstructor][]) {
