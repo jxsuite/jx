@@ -16,7 +16,7 @@
  * navigator/panel:git           the Source Control panel inside it
  * navigator/panel:git/commit    a leaf within that panel
  * inspector/tab:style           the Style tab's body
- * inspector/field:href          a field row (ui/field-row.ts already emits `data-prop`)
+ * inspector/field:href          a field row (the Inspector's documents already emit `data-prop`)
  * pane.primary/tabs             the primary pane's own tab strip
  * overlay.dialog:settings       a named overlay slot
  * ```
@@ -133,11 +133,13 @@ function regionRoot(root?: RegionRoot): RegionRoot {
 /**
  * Ids answered by an attribute the app ALREADY emits, rather than by a `data-jx-region` stamp.
  *
- * `ui/field-row.ts` has emitted `data-prop=${prop}` on every inspector row since it landed, and the
- * screenshot manifest has been addressing `#right-panel [data-prop='href']` through it for as long.
- * Restamping several hundred rows with a second attribute saying the same thing would be pure
- * duplication, so the grammar reads the existing one — `inspector/field:href` is the id, and the
- * precedent is the reason that part of the grammar was specified the way it was.
+ * `data-prop=${prop}` has been on every inspector row since the rows landed — first from
+ * `ui/field-row.ts`, and, now that both cascades are documents, from
+ * `surfaces/properties-panel.json` and `surfaces/style-panel.json`. The screenshot manifest has
+ * been addressing `#right-panel [data-prop='href']` through it for as long. Restamping several
+ * hundred rows with a second attribute saying the same thing would be pure duplication, so the
+ * grammar reads the existing one — `inspector/field:href` is the id, and the precedent is the
+ * reason that part of the grammar was specified the way it was.
  */
 const DERIVED_RESOLVERS: readonly {
   pattern: RegExp;
@@ -146,6 +148,10 @@ const DERIVED_RESOLVERS: readonly {
   /*
    * The Browse control of an Inspector field — ORDER MATTERS, it must precede the bare field rule,
    * which would otherwise claim `image/browse` as a prop named "image/browse".
+   *
+   * The handle is the control's `part`. It was `.media-picker-browse` until the picker became a
+   * document (`surfaces/media-field.json`), and a document emits no class — `part` is the one
+   * external hook it has (`ui.md` §3.1), which is exactly what a derived region wants.
    *
    * `ui/media-picker.ts` used to STAMP this id on the button itself, and the id was a lie about
    * where the button is: the same picker draws the Document Header card's Icon and og:image fields,
@@ -164,7 +170,7 @@ const DERIVED_RESOLVERS: readonly {
   {
     locate: ([, prop], root) => {
       const row = resolveRegion(`inspector/field:${prop!}`, root);
-      const browse = row?.querySelector<HTMLElement>(".media-picker-browse");
+      const browse = row?.querySelector<HTMLElement>('[part="browse"]');
       return browse ? [browse] : [];
     },
     pattern: /^inspector\/field:(.+)\/browse$/,

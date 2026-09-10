@@ -14,12 +14,13 @@
  * | `toast`   | the fourth overlay layer   | timed, dismissible | reversible, or needs no action |
  * | `problem` | the Bottom dock's Problems | until it is fixed  | it must be fixed               |
  *
- * §7.1 names a third tier — **inline**, the `error` slot on `ui/field-row.ts`'s `renderFieldRow`.
- * It is deliberately NOT a member of {@link NotificationTier}: an inline error is a value a control
- * renders next to the field the user is editing, not a record the app posts to a host, and it has
- * no store to live in. Declaring a tier here whose only possible outcome is being dropped on the
- * floor would be exactly the silence this module exists to end, so the union has two members and
- * the third tier arrives as `renderFieldRow`'s own parameter (P4.4).
+ * §7.1 names a third tier — **inline**, the refusal a field draws at the control (`jx-field`'s own
+ * `[part="error"]`, projected by whichever inspector document owns the row). It is deliberately NOT
+ * a member of {@link NotificationTier}: an inline error is a value a control renders next to the
+ * field the user is editing, not a record the app posts to a host, and it has no store to live in.
+ * Declaring a tier here whose only possible outcome is being dropped on the floor would be exactly
+ * the silence this module exists to end, so the union has two members and the third tier arrives as
+ * a field's own projected value (P4.4).
  *
  * **Recovery is a command id, not a per-call-site closure.** `notify.error("Save failed", { action:
  * "file.save" })` gives the toast and the Problems row a Retry button whose label, availability,

@@ -62,6 +62,7 @@ const {
 } = await import("../src/panels/head-panel");
 const paneContext = await import("../src/panels/pane-context");
 const paneGrid = await import("../src/panels/pane-grid");
+const { PANE_SELECTOR } = await import("../src/surfaces/pane-grid");
 const { setActiveRegistry } = await import("../src/commands/active-registry");
 const { createCommandRegistry } = await import("../src/commands/registry");
 const { emptyContext, makeContext } = await import("../src/commands/context");
@@ -631,11 +632,12 @@ describe("mounting the pane grid twice", () => {
     closeAllTabs();
   });
 
-  test("the second mount is inert — the live grid keeps its cells", () => {
+  test("the second mount is inert — the live grid keeps its cells", async () => {
     paneGrid.mount();
+    await paneGrid.paneGridReady();
     const cell = paneGrid.cellForPane(PRIMARY_PANE);
     expect(cell).not.toBeNull();
-    expect(gridA.querySelectorAll(".pane")).toHaveLength(1);
+    expect(gridA.querySelectorAll(PANE_SELECTOR)).toHaveLength(1);
 
     /* A second `#pane-grid` appears and `mount()` is called again — a project switch that forgot to
        unmount. Re-rendering the cells into it would re-parent every stage, and an `<iframe>` that
@@ -646,16 +648,21 @@ describe("mounting the pane grid twice", () => {
     document.body.append(gridB);
 
     paneGrid.mount();
+    await paneGrid.paneGridReady();
 
     expect(gridB.childElementCount).toBe(0);
-    expect(gridA.querySelectorAll(".pane")).toHaveLength(1);
-    expect(cell!.root.parentElement).toBe(gridA);
+    expect(gridA.querySelectorAll(PANE_SELECTOR)).toHaveLength(1);
+    /* CONTAINS rather than `parentElement`: the cell is drawn inside a `display: contents` row of
+       the grid's document, so its parent is that row and the claim was always which GRID it is
+       still in. */
+    expect(gridA.contains(cell!.root)).toBe(true);
     expect(cell!.stage.isConnected).toBe(true);
   });
 
-  test("a reconcile after unmount lays neither a cell nor a track into the grid it let go of", () => {
+  test("a reconcile after unmount lays neither a cell nor a track into the grid it let go of", async () => {
     paneGrid.mount();
-    expect(gridA.querySelectorAll(".pane")).toHaveLength(1);
+    await paneGrid.paneGridReady();
+    expect(gridA.querySelectorAll(PANE_SELECTOR)).toHaveLength(1);
     expect(gridA.style.gridTemplateColumns).toBe("minmax(0, 1fr)");
 
     paneGrid.unmount();

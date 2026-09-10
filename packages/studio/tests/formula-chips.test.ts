@@ -2,28 +2,50 @@
  * The chip pipeline: target-chain unrolling, live value badges, parenthesized group chips, and
  * click-to-path reporting.
  *
- * **It is two files now**, and the split is the conversion. `src/ui/formula-chips.ts` is the MODEL
- * — {@link formulaChipStrip}, the chips one expression node reads as — because the strip has two
- * surfaces: the Logic dock draws it as a Jx document over the kit (`surfaces/logic-workspace.json`,
- * covered by `formula-workspace.test.ts`) and `src/ui/expression-editor.ts` still draws it in lit
- * over Spectrum. So the drawing asserted below is the LIT one, imported from the editor that owns
- * it; every assertion about what a chip SAYS is made against the model, where it is a comparison
- * rather than a DOM walk.
+ * **It is two files, and the split is the conversion.** `src/ui/formula-chips.ts` is the MODEL —
+ * {@link formulaChipStrip}, the chips one expression node reads as — because the strip has two
+ * surfaces: the Logic dock draws it as a Jx document (`surfaces/logic-workspace.json`, covered by
+ * `formula-workspace.test.ts`) and the expression editor draws it as another
+ * (`surfaces/expression-editor.json`). Neither drawing is lit any more, so the strip's own module
+ * draws nothing at all — every assertion about what a chip SAYS is made against the model, where it
+ * is a comparison rather than a DOM walk, and the drawing asserted below is the editor's document.
  */
-import "./with-dom.js";
-import { describe, expect, test } from "bun:test";
-import { render } from "lit-html";
+import { flush, pointer } from "./harness";
+import { afterEach, describe, expect, test } from "bun:test";
 import { chipSummary, formulaChipStrip } from "../src/ui/formula-chips";
-import { renderFormulaChips } from "../src/ui/expression-editor";
-import type { ChipPreview } from "../src/ui/formula-chips";
+import { mountExpressionEditor } from "../src/ui/expression-editor";
 
-function mount(node: unknown, opts: Record<string, unknown> = {}) {
+const hosts: HTMLElement[] = [];
+
+afterEach(() => {
+  for (const host of hosts.splice(0)) {
+    host.remove();
+  }
+});
+
+interface MountedStrip {
+  container: HTMLElement;
+  picks: (string | number)[][];
+}
+
+/**
+ * Mount the editor over a node and hand back its host.
+ *
+ * The strip is the editor's depth-0 header, so the whole editor is what draws it — which is also
+ * what makes these tests the drawing's real contract rather than a helper's.
+ */
+async function mount(node: unknown, opts: Record<string, unknown> = {}): Promise<MountedStrip> {
   const picks: (string | number)[][] = [];
   const container = document.createElement("div");
-  render(
-    renderFormulaChips(node, (p: (string | number)[]) => picks.push(p), opts as never),
-    container,
-  );
+  document.body.append(container);
+  hosts.push(container);
+  mountExpressionEditor(container, node, () => {}, {
+    allowEventRef: false,
+    onChipSelect: (p: (string | number)[]) => picks.push(p),
+    stateDefs: ["count", "factor", "status", "busy", "flag", "n", "lineTotal"],
+    ...opts,
+  } as never);
+  await flush(6);
   return { container, picks };
 }
 
@@ -33,11 +55,18 @@ function strip(node: unknown, opts: Record<string, unknown> = {}): string[] {
 }
 
 function chips(container: HTMLElement): HTMLElement[] {
-  return [...container.querySelectorAll(".formula-chip")] as HTMLElement[];
+  return [...container.querySelectorAll('[part="chip"]')] as HTMLElement[];
 }
 
 function chipLabels(container: HTMLElement): string[] {
-  return chips(container).map((c) => (c.querySelector("span") as HTMLElement).textContent!.trim());
+  return chips(container).map(
+    (c) => (c.querySelector('[part="chip-label"]') as HTMLElement).textContent!,
+  );
+}
+
+/** The one chip drawn as a branch off the chain rather than a link of it. */
+function groupChip(container: HTMLElement): HTMLElement {
+  return container.querySelector('[part="chip"][data-group="true"]') as HTMLElement;
 }
 
 const CHAIN_NODE = {
@@ -124,29 +153,31 @@ describe("formulaChipStrip", () => {
   });
 });
 
-describe("the lit drawing — chain unrolling", () => {
-  test("unrolls the target chain deepest-first: head operand, then operators outward", () => {
-    const { container } = mount(CHAIN_NODE);
+describe("the document drawing — chain unrolling", () => {
+  test("unrolls the target chain deepest-first: head operand, then operators outward", async () => {
+    const { container } = await mount(CHAIN_NODE);
     expect(chipLabels(container)).toEqual(["count", "*", "+"]);
-    const paths = chips(container).map((c) => c.dataset.path);
-    expect(paths).toEqual(["target/target", "target", ""]);
+    expect(chips(container).map((c) => c.dataset["path"])).toEqual(["target/target", "target", ""]);
   });
 
-  test("a base path prefixes every chip path", () => {
-    const { container } = mount(CHAIN_NODE, { path: ["value"] });
-    const paths = chips(container).map((c) => c.dataset.path);
-    expect(paths).toEqual(["value/target/target", "value/target", "value"]);
+  test("a base path prefixes every chip path", async () => {
+    const { container } = await mount(CHAIN_NODE, { path: ["value"] });
+    expect(chips(container).map((c) => c.dataset["path"])).toEqual([
+      "value/target/target",
+      "value/target",
+      "value",
+    ]);
   });
 
-  test("literal and null head operands render as chips too", () => {
-    const { container } = mount({ operator: "!", target: null });
+  test("literal and null head operands render as chips too", async () => {
+    const { container } = await mount({ operator: "!", target: null });
     expect(chipLabels(container)).toEqual(["null", "!"]);
-    const { container: c2 } = mount({ operator: "+", target: "hi", value: 1 });
+    const { container: c2 } = await mount({ operator: "+", target: "hi", value: 1 });
     expect(chipLabels(c2)).toEqual(['"hi"', "+"]);
   });
 
-  test("call chips show the callee ref as the head chip", () => {
-    const { container } = mount({
+  test("call chips show the callee ref as the head chip", async () => {
+    const { container } = await mount({
       operator: "call",
       target: { $ref: "window#/Math/max" },
       value: [1, 2],
@@ -154,28 +185,33 @@ describe("the lit drawing — chain unrolling", () => {
     expect(chipLabels(container)).toEqual(["Math.max", "call"]);
   });
 
-  test("non-node input renders nothing", () => {
-    const { container } = mount(null);
-    expect(chips(container).length).toBe(0);
-    const { container: c2 } = mount("text");
-    expect(chips(c2).length).toBe(0);
+  test("a non-node input draws the strip of the default the editor substituted", async () => {
+    // The model answers "no strip" for a non-node (asserted above); the DOCUMENT never sees one,
+    // Because the editor substitutes `= null` for anything it cannot read. So the strip a reader
+    // Gets is that node's, which is the same answer said about the thing actually on screen.
+    const { container } = await mount(null);
+    expect(chipLabels(container)).toEqual(["null", "="]);
+    const { container: c2 } = await mount("text");
+    expect(chipLabels(c2)).toEqual(["null", "="]);
   });
 });
 
-describe("the lit drawing — badges", () => {
-  test("shows live value badges from the preview keyed by chip path", () => {
-    const preview: ChipPreview = {
+describe("the document drawing — badges", () => {
+  test("shows live value badges from the preview keyed by chip path", async () => {
+    const preview = {
+      error: null,
+      mutating: false,
       values: new Map([
         ["", "7"],
         ["target", "6"],
         ["target/target", "3"],
       ]),
     };
-    const { container } = mount(CHAIN_NODE, { preview });
+    const { container } = await mount(CHAIN_NODE, { preview });
     const badgeByPath = new Map(
       chips(container).map((c) => [
-        c.dataset.path,
-        c.querySelector(".expr-live-badge")?.textContent ?? null,
+        c.dataset["path"],
+        c.querySelector('[part="badge"]')?.textContent ?? null,
       ]),
     );
     expect(badgeByPath.get("target/target")).toBe("3");
@@ -183,64 +219,60 @@ describe("the lit drawing — badges", () => {
     expect(badgeByPath.get("")).toBe("7");
   });
 
-  test("renders no badges without a preview", () => {
-    const { container } = mount(CHAIN_NODE);
-    expect(container.querySelector(".expr-live-badge")).toBeNull();
+  test("renders no badges without a preview", async () => {
+    const { container } = await mount(CHAIN_NODE);
+    expect(container.querySelector('[part="chip"] [part="badge"]')).toBeNull();
   });
 });
 
-describe("the lit drawing — group chips", () => {
-  test("nested non-target value operand renders a parenthesized group chip", () => {
-    const { container } = mount({
+describe("the document drawing — group chips", () => {
+  test("nested non-target value operand renders a parenthesized group chip", async () => {
+    const { container } = await mount({
       operator: "+",
       target: { $ref: "#/state/count" },
       value: { operator: "*", target: { $ref: "#/state/factor" }, value: 2 },
     });
-    const group = container.querySelector(".formula-chip--group") as HTMLElement;
+    const group = groupChip(container);
     expect(group).not.toBeNull();
-    expect(group.dataset.path).toBe("value");
-    expect(group.querySelector("span")!.textContent).toBe("(factor › *)");
+    expect(group.dataset["path"]).toBe("value");
+    expect(group.querySelector('[part="chip-label"]')!.textContent).toBe("(factor › *)");
     expect(chipLabels(container)).toEqual(["count", "+", "(factor › *)"]);
   });
 
-  test("nested initial and switch case operands render group chips", () => {
-    const { container } = mount({
+  test("nested initial and switch case operands render group chips", async () => {
+    const { container } = await mount({
       cases: { done: { operator: "!", target: { $ref: "#/state/busy" } } },
       default: null,
       operator: "switch",
       target: { $ref: "#/state/status" },
     });
-    const group = container.querySelector(".formula-chip--group") as HTMLElement;
-    expect(group.dataset.path).toBe("cases/done");
+    expect(groupChip(container).dataset["path"]).toBe("cases/done");
 
-    const { container: c2 } = mount({
+    const { container: c2 } = await mount({
       initial: { operator: "-", target: { $ref: "#/state/n" } },
       operator: "?:",
       target: { $ref: "#/state/flag" },
       value: 1,
     });
-    const group2 = c2.querySelector(".formula-chip--group") as HTMLElement;
-    expect(group2.dataset.path).toBe("initial");
+    expect(groupChip(c2).dataset["path"]).toBe("initial");
   });
 
-  test("expression nodes inside an args array render indexed group chips", () => {
-    const { container } = mount({
+  test("expression nodes inside an args array render indexed group chips", async () => {
+    const { container } = await mount({
       operator: "call",
       target: { $ref: "#/state/lineTotal" },
       value: [{ operator: "+", target: 1, value: 2 }, 5],
     });
-    const group = container.querySelector(".formula-chip--group") as HTMLElement;
-    expect(group.dataset.path).toBe("value/0");
+    expect(groupChip(container).dataset["path"]).toBe("value/0");
   });
 });
 
-describe("the lit drawing — selection", () => {
-  test("clicking a chip reports its node path", () => {
-    const { container, picks } = mount(CHAIN_NODE);
-    const [head, mul, plus] = chips(container);
-    head!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    mul!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    plus!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+describe("the document drawing — selection", () => {
+  test("clicking a chip reports its node path", async () => {
+    const { container, picks } = await mount(CHAIN_NODE);
+    for (const chip of chips(container)) {
+      pointer(chip, "click");
+    }
     expect(picks).toEqual([["target", "target"], ["target"], []]);
   });
 });

@@ -1219,8 +1219,13 @@ describe("tab context menu", () => {
   /** Paths `document.reopenClosed` asked to open. */
   let reopened: string[];
 
+  /**
+   * The rows on screen. It is the KIT menu now (`surfaces/menu.ts`) rather than an `sp-popover`
+   * this file drew by hand, so a row is a `jx-menu-item` carrying the command id it runs — which is
+   * what makes every assertion below addressable by record rather than by rendered text.
+   */
   function menuItems(): HTMLElement[] {
-    return [...document.querySelectorAll("#layer-popover sp-menu-item")] as HTMLElement[];
+    return [...document.querySelectorAll("#layer-popover jx-menu-item")] as HTMLElement[];
   }
 
   /** A row's label without the `Needs …` sentence a disabled row prints under it. */
@@ -1309,8 +1314,13 @@ describe("tab context menu", () => {
     await flush();
 
     rightClick(tabs()[0]!);
-    await flush();
+    await flush(3);
 
+    /* One named panel, addressable as `overlay.menu:tab` — the strip hands rows to the kit menu
+       and draws no popover of its own. */
+    const menu = document.querySelector("#layer-popover jx-menu")!;
+    expect(menu.getAttribute("aria-label")).toBe("Tab actions");
+    expect(menu.parentElement!.dataset["jxRegion"]).toBe("overlay.menu:tab");
     // Sorted by `group` then title, by `forPlacement` — not by this file.
     expect(labels()).toEqual([
       "Close Document",
@@ -1320,8 +1330,9 @@ describe("tab context menu", () => {
       "Set Draft",
       "Split Right",
     ]);
-    // A group change draws a divider: 1_file → 3_document → 5_pane is two of them.
-    expect(document.querySelectorAll("#layer-popover sp-menu-divider")).toHaveLength(2);
+    // A group change draws a divider: 1_file → 3_document → 5_pane is two of them. The kit menu
+    // Draws it as an `<hr>` between rows rather than as a Spectrum element of its own.
+    expect(document.querySelectorAll("#layer-popover jx-menu hr")).toHaveLength(2);
   });
 
   test("with no registry published there are no rows — so no menu opens at all", async () => {
@@ -1329,15 +1340,15 @@ describe("tab context menu", () => {
     publishRegistry();
     await flush();
     rightClick(tabs()[0]!);
-    await flush();
+    await flush(3);
     expect(menuItems().length).toBeGreaterThan(0);
 
     // The defect this whole surface fixes, in reverse: every row came from the registry, so
     // Without one there is nothing to draw — and an empty popover is a dead control.
     setActiveRegistry(null);
     rightClick(tabs()[0]!);
-    await flush();
-    expect(document.querySelector("#layer-popover sp-popover")).toBeNull();
+    await flush(3);
+    expect(document.querySelector("#layer-popover jx-menu")).toBeNull();
   });
 
   test("right-click activates the chip it was aimed at, so the rows describe THAT tab", async () => {
@@ -1353,7 +1364,7 @@ describe("tab context menu", () => {
     expect(workspace.activeTabId).toBe("other");
 
     rightClick(tabs()[0]!);
-    await flush();
+    await flush(3);
 
     // Every one of these records reads the ACTIVE document. Without activation the menu would
     // State `other`'s enablement — "Keep Document Open" greyed out over a preview tab.
@@ -1369,14 +1380,14 @@ describe("tab context menu", () => {
     await flush();
 
     rightClick(tabs()[0]!);
-    await flush();
+    await flush(3);
     rowFor("Pin / Unpin Document").dispatchEvent(new MouseEvent("click", { bubbles: true }));
     await flush();
 
     expect(workspace.tabs.get("a")!.pinned).toBeTrue();
     expect(workspace.tabs.get("b")!.pinned).toBeFalse();
     // Running a row dismisses the menu.
-    expect(document.querySelector("#layer-popover sp-popover")).toBeNull();
+    expect(document.querySelector("#layer-popover jx-menu")).toBeNull();
   });
 
   test("Close Document closes the tab the menu was opened on, not the one that was active", async () => {
@@ -1386,7 +1397,7 @@ describe("tab context menu", () => {
     await flush();
 
     rightClick(tabs()[0]!);
-    await flush();
+    await flush(3);
     rowFor("Close Document").dispatchEvent(new MouseEvent("click", { bubbles: true }));
     await flush();
 
@@ -1400,25 +1411,25 @@ describe("tab context menu", () => {
     await flush();
 
     rightClick(tabs()[0]!);
-    await flush();
+    await flush(3);
     const row = rowFor("Set Draft");
-    // A setter names the state it REACHES, so the row says where the tab is now and the click
-    // Takes it to the other one. Stated in the description rather than as a checkbox role:
-    // Spectrum's `Menu` reassigns every item's role one frame after connect when the menu declares
-    // No `selects`, so `menuitemcheckbox` does not survive in a real browser — and this test could
-    // Not see that, because happy-dom never runs the reassignment.
-    expect(row.querySelector('[slot="description"]')?.textContent).toBe("Draft: no");
+    /* A setter names the state it REACHES, so the row says where the tab is now and the click takes
+       it to the other one. It states that as a real checkbox row, which it could not under
+       Spectrum: `sp-menu` reassigned every item's role one frame after connect whenever the menu
+       declared no `selects`, so `menuitemcheckbox` did not survive in a real browser and the state
+       had to be printed as a sentence ("Draft: no") in the description line. `jx-menu-item` derives
+       both `role` and `aria-checked` from `checked` and nothing rewrites them. */
+    expect(row.getAttribute("role")).toBe("menuitemcheckbox");
+    expect(row.getAttribute("aria-checked")).toBe("false");
 
     row.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     await flush();
     expect((entry.doc.document as unknown as Record<string, unknown>).draft).toBeTrue();
 
     rightClick(tabs()[0]!);
-    await flush();
+    await flush(3);
     // Re-opened, the row states the value the click produced — and now offers the way back.
-    expect(rowFor("Set Draft").querySelector('[slot="description"]')?.textContent).toBe(
-      "Draft: yes",
-    );
+    expect(rowFor("Set Draft").getAttribute("aria-checked")).toBe("true");
   });
 
   test("a tab that is no collection's entry states no `draft`, so the row is absent, not refusing", async () => {
@@ -1427,13 +1438,18 @@ describe("tab context menu", () => {
     await flush();
 
     rightClick(tabs()[0]!);
-    await flush();
+    await flush(3);
     expect(labels()).not.toContain("Set Draft");
     // The rows that need nothing of the tab are still there.
     expect(labels()).toContain("Close Document");
-    // A no-arg row names no state, so it says nothing under its label — the description slot is
-    // Reserved for a `requires` sentence or a stated value, and an empty one would be noise.
-    expect(rowFor("Pin / Unpin Document").querySelector('[slot="description"]')).toBeNull();
+    /* A no-arg row names no state, so it stays a plain `menuitem` with no `aria-checked` at all —
+       and no description line under its label, which is reserved for a `requires` sentence. Under
+       the old menu this could not be had either way: declaring `selects` to keep one checkbox row
+       would have made all six of them checkboxes. */
+    const plain = rowFor("Pin / Unpin Document");
+    expect(plain.getAttribute("role")).toBe("menuitem");
+    expect(plain.hasAttribute("aria-checked")).toBeFalse();
+    expect(plain.querySelector('[slot="description"]')?.textContent ?? "").toBe("");
   });
 
   test("a disabled row prints the record's own sentence and survives being clicked", async () => {
@@ -1442,18 +1458,22 @@ describe("tab context menu", () => {
     await flush();
 
     rightClick(tabs()[0]!);
-    await flush();
+    await flush(3);
     // Nothing has been closed in this session, so `document.reopenClosed` is visible-but-disabled.
     const row = rowFor("Reopen Closed Document");
-    expect(row.hasAttribute("disabled")).toBeTrue();
+    /* `aria-disabled` rather than a bare `disabled` attribute, which is what the kit derives from
+       the row's state — and the record's own sentence reaches the reader twice: as the row's
+       tooltip and as the description line under its label. Neither is re-worded here; both are the
+       `requires` string the palette and the assistant print. */
     expect(row.getAttribute("aria-disabled")).toBe("true");
+    expect(row.getAttribute("title")).toBe("a document closed in this session");
     expect(row.textContent).toContain("Needs a document closed in this session");
 
     row.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     await flush();
     expect(reopened).toEqual([]);
     // A row that explains itself has to stay on screen long enough to be read.
-    expect(document.querySelector("#layer-popover sp-popover")).not.toBeNull();
+    expect(document.querySelector("#layer-popover jx-menu")).not.toBeNull();
   });
 
   test("Reopen Closed Document is enabled once a document has been closed, and opens it", async () => {
@@ -1465,28 +1485,40 @@ describe("tab context menu", () => {
     await flush();
 
     rightClick(tabs()[0]!);
-    await flush();
+    await flush(3);
     rowFor("Reopen Closed Document").dispatchEvent(new MouseEvent("click", { bubbles: true }));
     await flush();
 
     expect(reopened).toEqual(["/project/a.json"]);
   });
 
-  test("the menu is clamped to the viewport, and a second right-click replaces the first", async () => {
+  /**
+   * The clamp used to be arithmetic in this file — `Math.min(clientX, innerWidth - 4)` — and it is
+   * the kit's now: `jx-menu`'s own toggle handler measures the panel once the platform has laid it
+   * out and pulls it back inside the viewport, which is exact where a guess from the pointer alone
+   * was not (`packages/ui/tests/popover.test.ts` owns that assertion, and happy-dom lays nothing
+   * out so it could never be made here). What the STRIP owes is the half that is still its own: the
+   * pointer reaches the menu unmodified, so the panel opens where the author right-clicked rather
+   * than at a corner this file re-derived.
+   */
+  test("the right-click point reaches the menu unmodified, and a second right-click replaces the first", async () => {
     open("a");
     open("b", "/project/b.json");
     publishRegistry();
     await flush();
 
     rightClick(tabs()[0]!, { clientX: 2000, clientY: 2000 });
-    await flush();
-    const popover = document.querySelector("#layer-popover sp-popover") as HTMLElement;
-    expect(popover.style.left).toBe(`${window.innerWidth - 4}px`);
-    expect(popover.style.top).toBe(`${window.innerHeight - 4}px`);
+    await flush(3);
+    const menu = document.querySelector("#layer-popover jx-menu") as HTMLElement & {
+      x: number;
+      y: number;
+    };
+    expect(menu.x).toBe(2000);
+    expect(menu.y).toBe(2000);
 
     rightClick(tabs()[1]!);
-    await flush();
-    expect(document.querySelectorAll("#layer-popover sp-popover")).toHaveLength(1);
+    await flush(3);
+    expect(document.querySelectorAll("#layer-popover jx-menu")).toHaveLength(1);
   });
 
   test("the overflow menu and the context menu never share the screen", async () => {
@@ -1502,11 +1534,11 @@ describe("tab context menu", () => {
       new MouseEvent("click", { bubbles: true }),
     );
     await flush();
-    expect(document.querySelectorAll("#layer-popover sp-popover")).toHaveLength(1);
+    expect(document.querySelectorAll("#layer-popover jx-menu")).toHaveLength(1);
 
     rightClick(tabs()[0]!);
-    await flush();
-    expect(document.querySelectorAll("#layer-popover sp-popover")).toHaveLength(1);
+    await flush(3);
+    expect(document.querySelectorAll("#layer-popover jx-menu")).toHaveLength(1);
     expect(labels()).toContain("Close Document");
   });
 
@@ -1515,11 +1547,11 @@ describe("tab context menu", () => {
     publishRegistry();
     await flush();
     rightClick(tabs()[0]!);
-    await flush();
-    expect(document.querySelector("#layer-popover sp-popover")).not.toBeNull();
+    await flush(3);
+    expect(document.querySelector("#layer-popover jx-menu")).not.toBeNull();
 
     unmount();
-    expect(document.querySelector("#layer-popover sp-popover")).toBeNull();
+    expect(document.querySelector("#layer-popover jx-menu")).toBeNull();
     mount(host);
   });
 });

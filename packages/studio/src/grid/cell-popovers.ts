@@ -8,13 +8,12 @@
  *
  * **What is left here is the decision, not the markup.** The panel is a document; this module says
  * which of the two pickers it draws, what the relationship column points at, and what a pick means.
- * The media picker itself is still a lit surface (`ui/media-picker.ts`), so it arrives through the
- * document's island seam (specs/studio-ui-guidelines.md §9.4) — which is exactly why this module
- * may import lit and the surface's adapter may not.
+ * The media picker is a document of its own now (`surfaces/media-field.json`), so it still arrives
+ * through the panel's island seam (specs/studio-ui-guidelines.md §9.4) — the box is drawn by one
+ * document and filled by another, and nothing in this file renders anything.
  */
-import { render as litRender } from "lit-html";
 import { openGridCellSurface } from "../surfaces/grid-cell";
-import { renderMediaPicker } from "../ui/media-picker";
+import { mountMediaPicker } from "../ui/media-picker";
 import { listCollectionEntryIds } from "./sources/content-source";
 import { cellToText } from "./schema-columns";
 import type { GridCellValue, GridColumn } from "./grid-source";
@@ -97,7 +96,7 @@ export async function openCellValuePopover(args: CellPopoverArgs): Promise<void>
 
   openGridCellSurface({
     island: (host) => {
-      litRender(renderMediaPicker(column.field, current, pick), host);
+      mountMediaPicker(host, column.field, current, pick);
     },
     pick,
     view: {

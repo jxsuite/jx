@@ -25,16 +25,8 @@
  */
 
 import type { CanvasPanel } from "../types";
+import type { CanvasStageHandle } from "../surfaces/canvas-stage";
 import type { DiffSurface, MonacoSurface } from "../view";
-
-/**
- * The class name every pane's stage element carries.
- *
- * Declared here rather than in the grid because it is what the two genuinely document-level
- * gestures test with `closest()` — "is this event over SOME stage" is a question about surfaces,
- * not about the reconciler that happens to build them.
- */
-export const STAGE_CLASS = "pane-stage";
 
 /** One pane's stage: where it renders, what it mounted there, and what it last drew. */
 export interface CanvasSurface {
@@ -64,6 +56,15 @@ export interface CanvasSurface {
    * last, so a fit computed for one pane wrote a transform onto the other's artboards.
    */
   panzoomWrap: HTMLElement | null;
+  /**
+   * The mounted stage document drawing this pane's artboards, or null in the modes that own the
+   * stage themselves (grid, library, entry, media, settings) and before the first pass.
+   *
+   * Per-surface for the reason every field here is, and it OUTLIVES a repaint: every artboard holds
+   * a live iframe, so keeping the mount across a content-only render is the difference between a
+   * repaint and a reload. `canvas/canvas-render.ts` ends it on a real mode transition.
+   */
+  stage: CanvasStageHandle | null;
   /** The observer that re-centres this stage until the author pans it. One per stage. */
   centerObserver: ResizeObserver | null;
   /** Whether this stage still wants re-centring — cleared by the first deliberate pan. */
@@ -157,6 +158,7 @@ function freshSurface(paneId: string): CanvasSurface {
     panels: [],
     paneId,
     panzoomWrap: null,
+    stage: null,
     prevCanvasMode: null,
     prevStylebookCustomizedOnly: null,
     prevStylebookFilter: null,

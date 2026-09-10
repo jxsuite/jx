@@ -100,10 +100,10 @@ beforeEach(() => {
   // The real pan path writes `surfaceForPane("primary").panY` and reads `#canvas-wrap` — stand the shell up rather than
   // Mocking canvas-utils, so `revealCanvasPath` is exercised end to end.
   document.body.innerHTML =
-    '<div class="pane-stage" data-jx-region="pane.primary"><div class="panzoom-wrap"></div></div>';
+    '<div class="pane-stage" data-jx-region="pane.primary"><div part="panzoom"></div></div>';
   initShellRefs();
   registerPrimaryStage();
-  surfaceForPane("primary").panzoomWrap = document.querySelector(".panzoom-wrap");
+  surfaceForPane("primary").panzoomWrap = document.querySelector('[part="panzoom"]');
   surfaceForPane("primary").panX = 0;
   surfaceForPane("primary").panY = 0;
   surfaceForPane("primary").panels.length = 0;

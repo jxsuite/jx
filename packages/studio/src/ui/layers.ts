@@ -62,12 +62,20 @@ export function initLayers() {
   mountToastHost();
 }
 
-/** Anything in the modal/dialog layers that paints a viewport-wide underlay over the app. */
+/**
+ * Anything in the modal/dialog layers that paints a viewport-wide underlay over the app.
+ *
+ * The two Spectrum halves are kept deliberately even though nothing in this package renders one any
+ * more: the selector is a question about the LIVE DOM ("whatever blocks the mouse"), so it costs
+ * nothing to keep answering it for an element an extension or a not-yet-converted surface could
+ * still put in a layer, and dropping them would be a silent narrowing of a safety rule.
+ */
 const UNDERLAID = "jx-dialog[data-open], sp-dialog-wrapper[open], sp-underlay[open]";
 
 /**
- * Whether a surface with an underlay is up — a dialog from {@link showDialog}, or a `jx-dialog`
- * surface mounted into the modal layer (`surfaces/progress-modal.ts`, `surfaces/publish.ts`).
+ * Whether a surface with an underlay is up — a dialog from {@link showConfirmDialog} and its two
+ * siblings, or a `jx-dialog` surface mounted into the modal layer (`surfaces/progress-modal.ts`,
+ * `surfaces/publish.ts`).
  *
  * Read by the app-level keyboard handlers, which must stand down while one is: an underlay swallows
  * every pointer event across the viewport, so leaving shortcuts live means <kbd>Delete</kbd>,
@@ -79,172 +87,28 @@ export function isModalOpen(): boolean {
   return Boolean(_dialogLayer?.querySelector(UNDERLAID) || _modalLayer?.querySelector(UNDERLAID));
 }
 
-/** Focusable candidates in an overlay body, in the order a keyboard user would reach them. */
-const BODY_FOCUSABLE =
-  'a[href], input, textarea, select, button, sp-textfield, sp-button, sp-action-button, sp-picker, sp-checkbox, sp-menu-item, [tabindex]:not([tabindex="-1"])';
-
-/** The body's focusables that can actually take the caret right now. */
-function focusablesIn(slot: HTMLElement): HTMLElement[] {
-  return [...slot.querySelectorAll<HTMLElement>(BODY_FOCUSABLE)].filter(
-    (el) => !el.hasAttribute("disabled") && el.getAttribute("aria-hidden") !== "true",
-  );
-}
-
-/**
- * Hand the keyboard to a freshly opened overlay.
+/*
+ * `showDialog` was here, with `openOverlaySlot`, `focusOverlay`, `focusablesIn` and
+ * `BODY_FOCUSABLE` under it — and all five are GONE together.
  *
- * `sp-dialog-wrapper` only throws focus into itself when an `<sp-overlay>` drives it. Opened
- * directly through its `open` attribute — Studio's pattern, because this layer stack owns stacking
- * rather than Spectrum's overlay system — NOTHING does, so focus stays on whatever sits behind the
- * underlay: the surface is unreachable by keyboard, <kbd>Escape</kbd> never reaches it, and
- * keystrokes keep landing in the app the underlay is blocking.
+ * It was the last bespoke-body path: a caller handed it a lit template, usually an
+ * `sp-dialog-wrapper` it had written itself, and this module wrapped the machinery a hand-written
+ * dialog needs around it — a slot with a region id, `role="dialog"` and `aria-modal`, an accessible
+ * name scraped off the wrapper's `headline` after the render, a deferred focus move into the body
+ * or the wrapper's shadow-root buttons, an Escape that had to be translated into the wrapper's own
+ * `close` event, and a focus restore on the way out. Every line of that existed because the body
+ * was arbitrary markup rather than a dialog element.
  *
- * Prefers the first focusable in the BODY (a bespoke form's opening field), else the wrapper's own
- * cancel button — DialogWrapper renders cancel → secondary → confirm, so the first shadow button is
- * the least destructive landing spot — else the slot itself, which carries `tabindex="-1"` so a
- * body made only of static content (a progress spinner) still receives <kbd>Escape</kbd>. A body
- * that already claimed focus ({@link showPromptDialog}'s field) is left alone.
+ * `surfaces/dialog.json` is a `jx-dialog`, and the platform's `<dialog>` owns modality, the
+ * backdrop, Escape, the initial focus and the focus restore. So the machinery is not reimplemented
+ * anywhere — it is not needed. The last caller, `editor/shortcuts.ts`'s "where should this project
+ * open" question, was a three-way confirm all along and calls `openDialogSurface` directly
+ * (studio-ui-guidelines.md §12.5); `showConfirmDialog`, `showSaveDiscardDialog` and
+ * `showPromptDialog` below are the three named questions, and they go through the same document.
+ *
+ * A body that is genuinely richer than a sentence is an ISLAND, not a new dialog: `message` accepts
+ * a lit template and `messageOptions` renders it into the document's `[part="island"]` (§9.4).
  */
-function focusOverlay(slot: HTMLElement): void {
-  // Deferred a frame: the wrapper's buttons live in a shadow root Spectrum renders asynchronously.
-  requestAnimationFrame(() => {
-    if (!slot.isConnected || slot.contains(document.activeElement)) {
-      return;
-    }
-    const wrapper = slot.querySelector("sp-dialog-wrapper");
-    const target =
-      focusablesIn(slot)[0] ?? wrapper?.shadowRoot?.querySelector<HTMLElement>("sp-button") ?? slot;
-    target.focus();
-  });
-}
-
-/** How an overlay slot behaves once it is up. */
-interface OverlaySlotOptions {
-  /** Layer host the slot is appended to. */
-  layer: HTMLElement;
-  /** Which layer this is, for the slot's region id. */
-  kind: LayerKind;
-  /**
-   * Optional instance name, making the slot `overlay.<instance>:<id>` instead of the bare
-   * `overlay.<instance>`. A surface that can be open alongside another one of its kind wants this.
-   */
-  regionId?: string | undefined;
-  /** Handle <kbd>Escape</kbd> pressed inside the slot; the callback owns `preventDefault`. */
-  onEscape?: (e: KeyboardEvent, slot: HTMLElement) => void;
-}
-
-/**
- * Open a slot in a layer with the full overlay keyboard contract: focus in on open, focus back to
- * the opener on close, and centralised <kbd>Escape</kbd>.
- *
- * {@link showDialog} is a thin wrapper over this — one contract, one implementation, so no lit body
- * can ship without the machinery. There is no Tab trap: a `jx-dialog` surface is opened with
- * `showModal()`, which makes the rest of the page inert by itself, and a `showDialog` body's action
- * buttons live in a shadow root a light-DOM cycle cannot enumerate.
- */
-function openOverlaySlot(opts: OverlaySlotOptions): { slot: HTMLElement; release: () => void } {
-  const slot = document.createElement("div");
-  slot.style.pointerEvents = "auto";
-  slot.setAttribute(REGION_ATTR, overlayRegion(opts.kind, opts.regionId));
-  // Focusable as a last resort, so a body with no controls still owns the keyboard (focusOverlay).
-  slot.tabIndex = -1;
-  // The slot is a zero-height wrapper around fixed-position bodies, so its own focus ring would
-  // Paint as a stray line across the top of the layer.
-  slot.style.outline = "none";
-  opts.layer.append(slot);
-  // Whoever held focus before the overlay took it, so it can be handed back (a dialog opened from a
-  // Toolbar button returns the caret to that button, not to <body>).
-  const restoreTo = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-  const onKeydown = (e: KeyboardEvent) => {
-    if (e.key === "Escape") {
-      opts.onEscape?.(e, slot);
-    }
-  };
-  slot.addEventListener("keydown", onKeydown);
-  return {
-    release() {
-      slot.removeEventListener("keydown", onKeydown);
-      litRender(nothing, slot);
-      slot.remove();
-      if (restoreTo?.isConnected) {
-        restoreTo.focus();
-      }
-    },
-    slot,
-  };
-}
-
-/**
- * Show an ephemeral dialog. Returns a Promise that resolves when the dialog is dismissed.
- *
- * Takes the keyboard on open ({@link focusOverlay}) and hands it back to the previously focused
- * element on close. <kbd>Escape</kbd> dismisses by firing the wrapper's `close` event, so each
- * helper's own `@close` binding decides what "dismissed" resolves to; a bespoke body with no
- * `sp-dialog-wrapper` owns its own keys.
- *
- * @template T
- * @param {(done: (value: T) => void) => import("lit-html").TemplateResult} templateFn
- * @returns {Promise<T>}
- */
-export function showDialog<T>(
-  templateFn: (done: (value: T) => void) => TemplateResult,
-  opts: { region?: string; label?: string } = {},
-): Promise<T> {
-  return new Promise((resolve) => {
-    const { release, slot } = openOverlaySlot({
-      kind: "dialog",
-      // `layerHost`, not the raw binding: it is the one that falls back to `<body>`, and reading
-      // The binding directly threw before `initLayers()` had run — which is any test that stands up
-      // A shell without the four layer hosts, and the boot window before layers are bound.
-      layer: layerHost("dialog"),
-      regionId: opts.region,
-      onEscape(e, host) {
-        const wrapper = host.querySelector("sp-dialog-wrapper");
-        if (!wrapper) {
-          return;
-        }
-        // Stop it ALSO reaching the app behind (which clears the canvas selection on Escape).
-        e.preventDefault();
-        e.stopPropagation();
-        wrapper.dispatchEvent(new Event("close", { bubbles: true }));
-      },
-      // No Tab trap: the wrapper's action buttons live in a shadow root a light-DOM cycle cannot
-      // Enumerate, so trapping here would strand the caret on the body and never reach Cancel.
-    });
-    /*
-     * The slot IS the dialog, so it says so.
-     *
-     * `aria-modal` is also the answer to the comment above: it tells assistive technology that
-     * everything outside this element is inert, which constrains a screen reader's virtual cursor —
-     * the thing a Tab trap cannot reach anyway, since the virtual cursor does not use Tab. So the
-     * caret still escapes into the shadow-root buttons, as it must, and a reader is no longer free
-     * to wander the page behind a modal that is covering it.
-     */
-    slot.setAttribute("role", "dialog");
-    slot.setAttribute("aria-modal", "true");
-    let resolved = false;
-    const done = (value: T) => {
-      if (resolved) {
-        return;
-      }
-      resolved = true;
-      release();
-      resolve(value);
-    };
-    litRender(templateFn(done), slot);
-    /*
-     * The name, after render, because the usual source of one is the wrapper's own `headline` —
-     * which does not exist until the template has run. An explicit `label` wins; a dialog with
-     * neither is nameless, which is a defect in the caller rather than something to invent here.
-     */
-    const headline =
-      opts.label ?? slot.querySelector("sp-dialog-wrapper")?.getAttribute("headline") ?? null;
-    if (headline !== null && headline !== "") {
-      slot.setAttribute("aria-label", headline);
-    }
-    focusOverlay(slot);
-  });
-}
 
 /**
  * Show a confirm/cancel dialog. Returns true if confirmed, false otherwise.
@@ -537,75 +401,6 @@ export function showPromptDialog(
   });
 }
 
-/**
- * Render a popover into a layer.
- *
- * @param {import("lit-html").TemplateResult} template
- * @param {{
- *   dismissOnOutsideClick?: boolean;
- *   onDismiss?: () => void;
- *   layer?: LayerKind;
- *   region?: string;
- * }} [opts]
- */
-export function renderPopover(
-  template: TemplateResult,
-  opts: {
-    dismissOnOutsideClick?: boolean;
-    onDismiss?: () => void;
-    layer?: LayerKind;
-    /** Instance name for this popover's region — `overlay.menu:blockbar`. */
-    region?: string;
-  } = {},
-) {
-  const kind = opts.layer ?? "popover";
-  const slot = document.createElement("div");
-  slot.style.pointerEvents = "auto";
-  slot.setAttribute(REGION_ATTR, overlayRegion(kind, opts.region));
-  layerHost(kind).append(slot);
-  litRender(template, slot);
-
-  let outsideClickHandler: ((e: MouseEvent) => void) | null = null;
-  if (opts.dismissOnOutsideClick !== false) {
-    outsideClickHandler = (e: MouseEvent) => {
-      if (!slot.contains(e.target as Node)) {
-        handle.dismiss();
-        opts.onDismiss?.();
-      }
-    };
-    requestAnimationFrame(() => {
-      if (outsideClickHandler) {
-        document.addEventListener("mousedown", outsideClickHandler, true);
-      }
-    });
-  }
-
-  const handle = {
-    dismiss() {
-      if (outsideClickHandler) {
-        document.removeEventListener("mousedown", outsideClickHandler, true);
-        /* Disarm the PENDING arming too, not just the armed listener. The `addEventListener` above
-           is deferred a frame so the click that opened this popover cannot immediately close it —
-           so a popover dismissed within that frame (open the same menu twice in one frame, which a
-           double-click does) would otherwise be armed AFTER its own death: a document-wide capture
-           listener on a detached slot, never removed, that answers the next mousedown by calling
-           its owner's `onDismiss`. Owners null their handle field there, so the corpse's callback
-           cleared the pointer to the LIVE popover and stranded it on screen, un-dismissable. The
-           `if` in the rAF was always written for this; nothing had ever nulled the variable. */
-        outsideClickHandler = null;
-      }
-      litRender(nothing, slot);
-      slot.remove();
-    },
-    host: slot,
-    /** @param {import("lit-html").TemplateResult} tpl */
-    update(tpl: TemplateResult) {
-      litRender(tpl, slot);
-    },
-  };
-  return handle;
-}
-
 const _namedSlots = new Map<string, HTMLElement>();
 
 /**
@@ -621,26 +416,6 @@ const _namedSlots = new Map<string, HTMLElement>();
  * @param {string} id
  * @returns {HTMLElement}
  */
-/**
- * The layer a transient popover must use to appear ABOVE the surface that opened it.
- *
- * The four layer hosts are sibling stacking contexts (`index.html`): popover 1000, modal 2000,
- * dialog 3000, toast 4000. So a popover anchored to a control INSIDE a modal — the media picker's
- * Browse button in Search appearance, say — renders into a layer that paints entirely beneath the
- * modal body, and the author clicks Browse and sees nothing happen. Putting it in the modal's own
- * layer makes it a later sibling of the modal body instead, which is exactly the relationship it
- * should have: above the surface that opened it, below any dialog.
- *
- * @param {Element | null} anchor The control the popover is anchored to.
- * @returns {LayerKind}
- */
-export function popoverLayerFor(anchor: Element | null): LayerKind {
-  if (anchor?.closest("#layer-dialog")) {
-    return "dialog";
-  }
-  return anchor?.closest("#layer-modal") ? "modal" : "popover";
-}
-
 export function getLayerSlot(layer: LayerKind, id: string) {
   const key = `${layer}:${id}`;
   let slot = _namedSlots.get(key);

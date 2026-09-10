@@ -19,12 +19,14 @@
  * manifest has addressed the `href` row through it since the region grammar landed. A row emits it
  * whatever shape it is drawn as.
  *
- * **A control host is announced, never queried.** Three leaves are still lit — the media picker,
- * the colour selector and the expression editor, each of which is its own surface with its own
- * readers elsewhere — so the document draws an empty `[part="control-host"]` for them and the flow
- * renders into it, which is the seam `ui/schema-form.ts` established for a registered control. The
- * runtime reports the host through `onNodeCreated` as it is created, so the flow holds the element
- * rather than re-finding it by selector on every repaint.
+ * **A control host is announced, never queried.** Three leaves are drawn by somebody else — the
+ * media picker, the colour selector and the expression editor, each of which is its own surface
+ * with its own readers elsewhere — so the document draws an empty `[part="control-host"]` for them
+ * and the flow fills it, which is the seam `ui/schema-form.ts` established for a registered
+ * control. The runtime reports the host through `onNodeCreated` as it is created, so the flow holds
+ * the element rather than re-finding it by selector on every repaint. TWO of the three are still
+ * lit; the media picker is a document mounted into the same box, which is why the seam hands over
+ * the HOST rather than taking a template back.
  *
  * @docs studio/design/properties
  */

@@ -1,0 +1,977 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioExpressionEditor",
+  "$description": "The expression editor (spec §19.9): a `$expression` node edited as STRUCTURE — an operator, the operands that operator needs, and the live value of each. The rows arrive FLAT. An expression nests to any depth (an operand may be another expression, an aggregate's per-item body is one, and either may hold more of both) while a document's one repeater is `$prototype: \"Array\"` over a list, so `ui/expression-editor.ts` walks the tree once and hands over rows that already carry their own indent — recursion is a property of the walk, exactly as it is for the statement tree and the Data panel's value tree. Six kinds of row come out of that walk: the CHIP strip that summarises the whole pipeline, the preview's ERROR line, the OPERATOR row, an OPERAND row (the workhorse, which carries the value ladder and every literal control), a section LABEL, and an ACTION that grows the node. Five surfaces draw this — the Inspector's Content and Logic tabs, the Navigator's State panel, the statement editor and the Logic dock — and none of them is named here: each host has already said where it is, so this document stamps no region of its own.",
+  "tagName": "div",
+  "attributes": {
+    "part": "expression"
+  },
+  "style": {
+    "$description": "What `.expression-editor`, `.expr-*`, `.switch-case-*`, `.array-object-*` and `.formula-chip*` said across `styles/inspector.css` and this module's own inline `style=` strings, keyed on `part` and re-pointed at the studio token layer. Three things changed on the way in. THE NESTING IS A VARIABLE: `.expression-editor--nested` was a bordered box per level, so an operand four deep was four boxes; `--expr-indent` is written per row and read by one shared rule, so a tree of any depth interns one declaration. `min-width: 0` IS ON EVERY LINK OF THE CHAIN, which is the defect that sent this editor to a stylesheet in the first place — a flex item's automatic minimum is its min-content width, so at Inspector width (280px) Operator, Target and Value were clipped by the right edge of the window. And every `--spectrum-*` reference is gone rather than renamed: those names resolve only inside `<sp-theme>`, and a document mounted in the Inspector's tab body, in a settings pane or in the Bottom dock is outside it, so each would silently have taken its hard-coded fallback and stopped following the theme.",
+    "display": "flex",
+    "flexDirection": "column",
+    "gap": "2px",
+    "minWidth": "0",
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-sm)",
+    "color": "var(--fg)",
+    "& [part=\"chips\"]": {
+      "$description": "The pipeline reads left to right and wraps rather than scrolling sideways: a chip you have to find by scrolling is one you do not know is there. Drawn from the same model the Logic dock draws (`ui/formula-chips.ts`), in this surface's own element set.",
+      "display": "flex",
+      "flexWrap": "wrap",
+      "gap": "4px",
+      "alignItems": "center",
+      "minWidth": "0",
+      "padding": "2px 0 6px"
+    },
+    "& [part=\"chip\"]": {
+      "display": "inline-flex",
+      "alignItems": "center",
+      "gap": "4px",
+      "maxWidth": "180px",
+      "minWidth": "0",
+      "padding": "1px 7px",
+      "border": "1px solid var(--border)",
+      "borderRadius": "var(--jx-radius-lg)",
+      "background": "var(--bg-input)",
+      "color": "var(--fg)",
+      "fontFamily": "var(--font-mono, monospace)",
+      "fontSize": "var(--jx-text-xs)",
+      "lineHeight": "18px",
+      "cursor": "pointer"
+    },
+    "& [part=\"chip\"]:hover": {
+      "borderColor": "var(--accent)"
+    },
+    "& [part=\"chip\"]:focus-visible": {
+      "outline": "2px solid var(--accent)",
+      "outlineOffset": "1px"
+    },
+    "& [part=\"chip\"][data-group=\"true\"]": {
+      "$description": "A parenthesised non-target operand — a `value`, an `initial`, one case of a `switch`. It is a branch off the chain rather than a link of it, and the dashed rule is what says so; `.formula-chip--group` carried no rule at all, so the distinction the model draws was invisible.",
+      "borderStyle": "dashed"
+    },
+    "& [part=\"chip-label\"]": {
+      "maxWidth": "110px",
+      "overflow": "hidden",
+      "whiteSpace": "nowrap",
+      "textOverflow": "ellipsis"
+    },
+    "& [part=\"row\"]": {
+      "$description": "§4.1's standard form row, stacked, with its own indent. `display: flex` rather than `block` because an operand row carries a leading cell (an argument's name, a case's key) beside the field.",
+      "boxSizing": "border-box",
+      "display": "flex",
+      "alignItems": "flex-start",
+      "flexWrap": "wrap",
+      "gap": "4px",
+      "minWidth": "0",
+      "padding": "2px 0",
+      "marginInlineStart": "var(--expr-indent, 0)"
+    },
+    "& [part=\"row\"][data-nested=\"true\"]": {
+      "$description": "A nested expression reads as being INSIDE the operand above it. The rule on the leading edge is the connector, which is what `.expression-editor--nested` drew with a whole box per level.",
+      "borderInlineStart": "2px solid var(--border)",
+      "paddingInlineStart": "var(--jx-space-2)"
+    },
+    "& [part=\"field\"]": {
+      "flex": "1 1 auto",
+      "minWidth": "0"
+    },
+    "& [part=\"widget\"]": {
+      "$description": "The control line: what the row is edited with, and the live value beside it. It wraps, so a value-source picker and a literal editor stack rather than overflowing a 280px Inspector.",
+      "display": "flex",
+      "flexWrap": "wrap",
+      "alignItems": "center",
+      "gap": "4px",
+      "minWidth": "0"
+    },
+    "& [part=\"source\"], & [part=\"literal-type\"]": {
+      "flex": "0 1 auto",
+      "minWidth": "0"
+    },
+    "& [part=\"ref\"], & [part=\"literal-text\"], & [part=\"literal-number\"], & [part=\"operator\"]": {
+      "flex": "1 1 auto",
+      "minWidth": "0"
+    },
+    "& [part=\"literal\"]": {
+      "display": "flex",
+      "flexWrap": "wrap",
+      "alignItems": "center",
+      "gap": "4px",
+      "flex": "1 1 auto",
+      "minWidth": "0"
+    },
+    "& [part=\"literal-null\"]": {
+      "color": "var(--fg-dim)",
+      "fontFamily": "var(--font-mono, monospace)",
+      "fontSize": "var(--jx-text-xs)"
+    },
+    "& [part=\"badge\"]": {
+      "$description": "The live value (spec §19.9). A resolved formula is arbitrary text — an object, a URL, a paragraph — so it ellipsizes inside the line it annotates and never sets that line's width.",
+      "flex": "0 1 auto",
+      "minWidth": "0",
+      "maxWidth": "120px",
+      "overflow": "hidden",
+      "padding": "0 5px",
+      "borderRadius": "var(--jx-radius-sm)",
+      "background": "var(--bg)",
+      "color": "var(--success)",
+      "fontFamily": "var(--font-mono, monospace)",
+      "fontSize": "var(--jx-text-xs)",
+      "lineHeight": "16px",
+      "whiteSpace": "nowrap",
+      "textOverflow": "ellipsis"
+    },
+    "& [part=\"preview-error\"]": {
+      "$description": "§7.1's inline tier: not a toast and not a problem record, because it is a property of the value currently in the editor and lives exactly as long as that value does.",
+      "margin": "0",
+      "padding": "2px 0",
+      "minWidth": "0",
+      "color": "var(--danger)",
+      "fontFamily": "var(--font-mono, monospace)",
+      "fontSize": "var(--jx-text-xs)",
+      "lineHeight": "1.5"
+    },
+    "& [part=\"section\"]": {
+      "flex": "1 1 auto",
+      "minWidth": "0",
+      "color": "var(--fg-dim)",
+      "fontSize": "var(--jx-text-xs)"
+    },
+    "& [part=\"lead\"]": {
+      "$description": "An argument's positional name, or the `default` case's word. A fixed column so the operands under it line up at any width — which the inline `style=` string could never guarantee, because it could not carry `min-width: 0` for what sat beside it.",
+      "flex": "0 0 auto",
+      "width": "56px",
+      "overflow": "hidden",
+      "whiteSpace": "nowrap",
+      "textOverflow": "ellipsis",
+      "paddingBlockStart": "6px",
+      "color": "var(--fg-dim)",
+      "fontSize": "var(--jx-text-xs)"
+    },
+    "& [part=\"case-key\"]": {
+      "flex": "0 1 90px",
+      "minWidth": "0"
+    },
+    "& [part=\"empty\"]": {
+      "$description": "The one empty-state pattern (`panels/empty-state.ts`), compact, drawn here because a document cannot render a lit helper. A picker whose only entry is a disabled \"No state defined\" is a dead end; this says what a binding IS instead.",
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "2px",
+      "flex": "1 1 auto",
+      "minWidth": "0",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"empty-message\"]": {
+      "margin": "0",
+      "maxWidth": "34ch",
+      "lineHeight": "1.5",
+      "fontSize": "var(--jx-text-sm)"
+    },
+    "& [part=\"empty-detail\"]": {
+      "margin": "0",
+      "maxWidth": "34ch",
+      "fontSize": "var(--jx-text-xs)",
+      "opacity": "0.8"
+    },
+    "& [part=\"action\"]": {
+      "flex": "0 0 auto"
+    }
+  },
+  "children": [
+    {
+      "$prototype": "Array",
+      "items": {
+        "$ref": "#/state/rows"
+      },
+      "key": {
+        "$ref": "$map/item/key"
+      },
+      "map": {
+        "tagName": "div",
+        "attributes": {
+          "part": "row-slot",
+          "role": "none"
+        },
+        "style": {
+          "display": "contents"
+        },
+        "$switch": {
+          "$ref": "$map/item/kind"
+        },
+        "cases": {
+          "chips": {
+            "tagName": "div",
+            "attributes": {
+              "part": "chips",
+              "role": "group",
+              "aria-label": "Formula pipeline"
+            },
+            "children": [
+              {
+                "$prototype": "Array",
+                "items": {
+                  "$ref": "$map/item/chips"
+                },
+                "key": {
+                  "$ref": "$map/item/key"
+                },
+                "map": {
+                  "$description": "A chip's key is the joined node path, which is self-contained on purpose: this `$map` shadows the row's own `$map.item`, so nothing inside it can reach back to the row.",
+                  "tagName": "button",
+                  "attributes": {
+                    "part": "chip",
+                    "type": "button",
+                    "data-path": "${$map.item.key}",
+                    "data-group": "${$map.item.group}",
+                    "title": "${$map.item.label}"
+                  },
+                  "onclick": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/pickChip"
+                        },
+                        "value": [
+                          {
+                            "$ref": "$map/item/key"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "children": [
+                    {
+                      "tagName": "span",
+                      "attributes": {
+                        "part": "chip-label"
+                      },
+                      "textContent": "${$map.item.label}"
+                    },
+                    {
+                      "tagName": "span",
+                      "attributes": {
+                        "part": "chip-badge-slot",
+                        "role": "none"
+                      },
+                      "style": {
+                        "display": "contents"
+                      },
+                      "$switch": {
+                        "$ref": "$map/item/hasBadge"
+                      },
+                      "cases": {
+                        "true": {
+                          "tagName": "span",
+                          "attributes": {
+                            "part": "badge",
+                            "title": "${$map.item.badge}"
+                          },
+                          "textContent": "${$map.item.badge}"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          "error": {
+            "tagName": "p",
+            "attributes": {
+              "part": "preview-error",
+              "role": "alert"
+            },
+            "textContent": "${$map.item.label}"
+          },
+          "operator": {
+            "tagName": "div",
+            "attributes": {
+              "part": "row",
+              "data-prop": "${$map.item.prop}",
+              "data-nested": "${$map.item.nested}"
+            },
+            "style": {
+              "--expr-indent": {
+                "$ref": "$map/item/indent"
+              }
+            },
+            "children": [
+              {
+                "tagName": "jx-field",
+                "attributes": {
+                  "part": "field"
+                },
+                "$props": {
+                  "label": {
+                    "$ref": "$map/item/label"
+                  },
+                  "span": true
+                },
+                "children": [
+                  {
+                    "tagName": "div",
+                    "attributes": {
+                      "part": "widget"
+                    },
+                    "children": [
+                      {
+                        "tagName": "jx-select",
+                        "attributes": {
+                          "part": "operator"
+                        },
+                        "$props": {
+                          "size": "sm",
+                          "label": {
+                            "$ref": "$map/item/label"
+                          },
+                          "value": {
+                            "$ref": "$map/item/value"
+                          },
+                          "groups": {
+                            "$ref": "$map/item/groups"
+                          }
+                        },
+                        "onchange": {
+                          "$prototype": "Function",
+                          "body": [
+                            {
+                              "operator": "call",
+                              "target": {
+                                "$ref": "#/state/setOperator"
+                              },
+                              "value": [
+                                {
+                                  "$ref": "$map/item/key"
+                                },
+                                {
+                                  "$ref": "event#/target/value"
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "tagName": "span",
+                        "attributes": {
+                          "part": "catalog-slot",
+                          "role": "none"
+                        },
+                        "style": {
+                          "display": "contents"
+                        },
+                        "$switch": {
+                          "$ref": "$map/item/catalog"
+                        },
+                        "cases": {
+                          "true": {
+                            "tagName": "jx-action-button",
+                            "attributes": {
+                              "part": "catalog"
+                            },
+                            "$props": {
+                              "size": "sm",
+                              "quiet": true,
+                              "icon": "brackets-curly",
+                              "haspopup": "dialog",
+                              "label": {
+                                "$ref": "$map/item/title"
+                              }
+                            },
+                            "onclick": {
+                              "$prototype": "Function",
+                              "body": [
+                                {
+                                  "operator": "call",
+                                  "target": {
+                                    "$ref": "#/state/browse"
+                                  },
+                                  "value": [
+                                    {
+                                      "$ref": "$map/item/key"
+                                    },
+                                    {
+                                      "$ref": "event#/currentTarget"
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "tagName": "span",
+                        "attributes": {
+                          "part": "badge-slot",
+                          "role": "none"
+                        },
+                        "style": {
+                          "display": "contents"
+                        },
+                        "$switch": {
+                          "$ref": "$map/item/hasBadge"
+                        },
+                        "cases": {
+                          "true": {
+                            "tagName": "span",
+                            "attributes": {
+                              "part": "badge",
+                              "title": "${$map.item.badge}"
+                            },
+                            "textContent": "${$map.item.badge}"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          "operand": {
+            "tagName": "div",
+            "attributes": {
+              "part": "row",
+              "data-prop": "${$map.item.prop}",
+              "data-nested": "${$map.item.nested}",
+              "data-source": "${$map.item.source}"
+            },
+            "style": {
+              "--expr-indent": {
+                "$ref": "$map/item/indent"
+              }
+            },
+            "children": [
+              {
+                "$description": "The leading cell: an argument's positional name, one `switch` case's matched value (which is EDITABLE, because a case's key IS the value it matches), or the `default` case's word. `none` draws nothing at all, which is every ordinary Target / Value / Initial row.",
+                "tagName": "div",
+                "attributes": {
+                  "part": "lead-slot",
+                  "role": "none"
+                },
+                "style": {
+                  "display": "contents"
+                },
+                "$switch": {
+                  "$ref": "$map/item/lead"
+                },
+                "cases": {
+                  "arg": {
+                    "tagName": "span",
+                    "attributes": {
+                      "part": "lead"
+                    },
+                    "textContent": "${$map.item.leadLabel}"
+                  },
+                  "default": {
+                    "tagName": "span",
+                    "attributes": {
+                      "part": "lead"
+                    },
+                    "textContent": "${$map.item.leadLabel}"
+                  },
+                  "case": {
+                    "$description": "Committed on change rather than on input: renaming a case rebuilds the branch under it, and doing that per keystroke would take the caret out of the field being typed into.",
+                    "tagName": "jx-textfield",
+                    "attributes": {
+                      "part": "case-key"
+                    },
+                    "$props": {
+                      "size": "sm",
+                      "label": "Case value",
+                      "placeholder": "value",
+                      "value": {
+                        "$ref": "$map/item/leadValue"
+                      }
+                    },
+                    "onchange": {
+                      "$prototype": "Function",
+                      "body": [
+                        {
+                          "operator": "call",
+                          "target": {
+                            "$ref": "#/state/renameCase"
+                          },
+                          "value": [
+                            {
+                              "$ref": "$map/item/key"
+                            },
+                            {
+                              "$ref": "event#/target/value"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "tagName": "jx-field",
+                "attributes": {
+                  "part": "field"
+                },
+                "$props": {
+                  "label": {
+                    "$ref": "$map/item/label"
+                  },
+                  "span": true
+                },
+                "children": [
+                  {
+                    "tagName": "div",
+                    "attributes": {
+                      "part": "widget"
+                    },
+                    "children": [
+                      {
+                        "$description": "The value ladder (§6.3), in the one vocabulary `ui/value-source.ts` owns. It is absent where the position admits a single shape — an assignment target, a `call`'s callee — because a picker with one entry is a control that asks a question with one answer.",
+                        "tagName": "span",
+                        "attributes": {
+                          "part": "source-slot",
+                          "role": "none"
+                        },
+                        "style": {
+                          "display": "contents"
+                        },
+                        "$switch": {
+                          "$ref": "$map/item/chooser"
+                        },
+                        "cases": {
+                          "true": {
+                            "tagName": "jx-select",
+                            "attributes": {
+                              "part": "source"
+                            },
+                            "$props": {
+                              "size": "sm",
+                              "label": "Value source",
+                              "value": {
+                                "$ref": "$map/item/source"
+                              },
+                              "options": {
+                                "$ref": "$map/item/sourceOptions"
+                              }
+                            },
+                            "onchange": {
+                              "$prototype": "Function",
+                              "body": [
+                                {
+                                  "operator": "call",
+                                  "target": {
+                                    "$ref": "#/state/setSource"
+                                  },
+                                  "value": [
+                                    {
+                                      "$ref": "$map/item/key"
+                                    },
+                                    {
+                                      "$ref": "event#/target/value"
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "$description": "The rung itself. `expression` draws NOTHING: the rows beneath this one, one indent deeper, are the nested expression — which is what makes recursion a property of the walk rather than of this document.",
+                        "tagName": "div",
+                        "attributes": {
+                          "part": "rung-slot",
+                          "role": "none"
+                        },
+                        "style": {
+                          "display": "contents"
+                        },
+                        "$switch": {
+                          "$ref": "$map/item/source"
+                        },
+                        "cases": {
+                          "literal": {
+                            "tagName": "div",
+                            "attributes": {
+                              "part": "literal"
+                            },
+                            "children": [
+                              {
+                                "tagName": "jx-select",
+                                "attributes": {
+                                  "part": "literal-type"
+                                },
+                                "$props": {
+                                  "size": "sm",
+                                  "label": "Literal type",
+                                  "value": {
+                                    "$ref": "$map/item/literalType"
+                                  },
+                                  "options": {
+                                    "$ref": "$map/item/typeOptions"
+                                  }
+                                },
+                                "onchange": {
+                                  "$prototype": "Function",
+                                  "body": [
+                                    {
+                                      "operator": "call",
+                                      "target": {
+                                        "$ref": "#/state/setLiteralType"
+                                      },
+                                      "value": [
+                                        {
+                                          "$ref": "$map/item/key"
+                                        },
+                                        {
+                                          "$ref": "event#/target/value"
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              },
+                              {
+                                "tagName": "div",
+                                "attributes": {
+                                  "part": "literal-slot",
+                                  "role": "none"
+                                },
+                                "style": {
+                                  "display": "contents"
+                                },
+                                "$switch": {
+                                  "$ref": "$map/item/literal"
+                                },
+                                "cases": {
+                                  "text": {
+                                    "tagName": "jx-textfield",
+                                    "attributes": {
+                                      "part": "literal-text"
+                                    },
+                                    "$props": {
+                                      "size": "sm",
+                                      "label": {
+                                        "$ref": "$map/item/label"
+                                      },
+                                      "value": {
+                                        "$ref": "$map/item/value"
+                                      }
+                                    },
+                                    "oninput": {
+                                      "$prototype": "Function",
+                                      "body": [
+                                        {
+                                          "operator": "call",
+                                          "target": {
+                                            "$ref": "#/state/setText"
+                                          },
+                                          "value": [
+                                            {
+                                              "$ref": "$map/item/key"
+                                            },
+                                            {
+                                              "$ref": "event#/target/value"
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  "number": {
+                                    "tagName": "jx-number-field",
+                                    "attributes": {
+                                      "part": "literal-number"
+                                    },
+                                    "$props": {
+                                      "size": "sm",
+                                      "label": {
+                                        "$ref": "$map/item/label"
+                                      },
+                                      "value": {
+                                        "$ref": "$map/item/value"
+                                      }
+                                    },
+                                    "onchange": {
+                                      "$prototype": "Function",
+                                      "body": [
+                                        {
+                                          "operator": "call",
+                                          "target": {
+                                            "$ref": "#/state/setNumber"
+                                          },
+                                          "value": [
+                                            {
+                                              "$ref": "$map/item/key"
+                                            },
+                                            {
+                                              "$ref": "event#/target/value"
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  "bool": {
+                                    "tagName": "jx-checkbox",
+                                    "attributes": {
+                                      "part": "literal-bool"
+                                    },
+                                    "$props": {
+                                      "size": "sm",
+                                      "label": "true",
+                                      "checked": {
+                                        "$ref": "$map/item/checked"
+                                      }
+                                    },
+                                    "onchange": {
+                                      "$prototype": "Function",
+                                      "body": [
+                                        {
+                                          "operator": "call",
+                                          "target": {
+                                            "$ref": "#/state/setBool"
+                                          },
+                                          "value": [
+                                            {
+                                              "$ref": "$map/item/key"
+                                            },
+                                            {
+                                              "$ref": "event#/target/checked"
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  "null": {
+                                    "tagName": "span",
+                                    "attributes": {
+                                      "part": "literal-null"
+                                    },
+                                    "textContent": "null"
+                                  }
+                                }
+                              }
+                            ]
+                          },
+                          "ref": {
+                            "$description": "A ref the list does not hold keeps its own row: the kit's select synthesises a stand-in for a value no option carries, so the `__custom__` sentinel this editor used to draw — a row that had to be ignored inside its own change handler — is gone.",
+                            "tagName": "jx-select",
+                            "attributes": {
+                              "part": "ref"
+                            },
+                            "$props": {
+                              "size": "sm",
+                              "label": {
+                                "$ref": "$map/item/label"
+                              },
+                              "value": {
+                                "$ref": "$map/item/value"
+                              },
+                              "options": {
+                                "$ref": "$map/item/refOptions"
+                              },
+                              "groups": {
+                                "$ref": "$map/item/refGroups"
+                              }
+                            },
+                            "onchange": {
+                              "$prototype": "Function",
+                              "body": [
+                                {
+                                  "operator": "call",
+                                  "target": {
+                                    "$ref": "#/state/setRef"
+                                  },
+                                  "value": [
+                                    {
+                                      "$ref": "$map/item/key"
+                                    },
+                                    {
+                                      "$ref": "event#/target/value"
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          },
+                          "empty": {
+                            "tagName": "div",
+                            "attributes": {
+                              "part": "empty"
+                            },
+                            "children": [
+                              {
+                                "tagName": "p",
+                                "attributes": {
+                                  "part": "empty-message"
+                                },
+                                "textContent": "${$map.item.emptyMessage}"
+                              },
+                              {
+                                "tagName": "p",
+                                "attributes": {
+                                  "part": "empty-detail"
+                                },
+                                "textContent": "${$map.item.emptyDetail}"
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      {
+                        "tagName": "span",
+                        "attributes": {
+                          "part": "badge-slot",
+                          "role": "none"
+                        },
+                        "style": {
+                          "display": "contents"
+                        },
+                        "$switch": {
+                          "$ref": "$map/item/hasBadge"
+                        },
+                        "cases": {
+                          "true": {
+                            "tagName": "span",
+                            "attributes": {
+                              "part": "badge",
+                              "title": "${$map.item.badge}"
+                            },
+                            "textContent": "${$map.item.badge}"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "tagName": "div",
+                "attributes": {
+                  "part": "remove-slot",
+                  "role": "none"
+                },
+                "style": {
+                  "display": "contents"
+                },
+                "$switch": {
+                  "$ref": "$map/item/removable"
+                },
+                "cases": {
+                  "true": {
+                    "tagName": "jx-action-button",
+                    "attributes": {
+                      "part": "remove"
+                    },
+                    "$props": {
+                      "size": "sm",
+                      "quiet": true,
+                      "icon": "trash",
+                      "label": {
+                        "$ref": "$map/item/title"
+                      }
+                    },
+                    "onclick": {
+                      "$prototype": "Function",
+                      "body": [
+                        {
+                          "operator": "call",
+                          "target": {
+                            "$ref": "#/state/remove"
+                          },
+                          "value": [
+                            {
+                              "$ref": "$map/item/key"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          "label": {
+            "tagName": "div",
+            "attributes": {
+              "part": "row",
+              "data-prop": "${$map.item.prop}",
+              "data-nested": "${$map.item.nested}"
+            },
+            "style": {
+              "--expr-indent": {
+                "$ref": "$map/item/indent"
+              }
+            },
+            "children": [
+              {
+                "tagName": "span",
+                "attributes": {
+                  "part": "section"
+                },
+                "textContent": "${$map.item.label}"
+              }
+            ]
+          },
+          "action": {
+            "tagName": "div",
+            "attributes": {
+              "part": "row",
+              "data-nested": "${$map.item.nested}"
+            },
+            "style": {
+              "--expr-indent": {
+                "$ref": "$map/item/indent"
+              }
+            },
+            "children": [
+              {
+                "tagName": "jx-action-button",
+                "attributes": {
+                  "part": "action",
+                  "data-action": "${$map.item.key}"
+                },
+                "$props": {
+                  "size": "sm",
+                  "quiet": true,
+                  "icon": "plus",
+                  "label": {
+                    "$ref": "$map/item/label"
+                  }
+                },
+                "onclick": {
+                  "$prototype": "Function",
+                  "body": [
+                    {
+                      "operator": "call",
+                      "target": {
+                        "$ref": "#/state/act"
+                      },
+                      "value": [
+                        {
+                          "$ref": "$map/item/key"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "children": [
+                  {
+                    "tagName": "span",
+                    "textContent": "${$map.item.label}"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

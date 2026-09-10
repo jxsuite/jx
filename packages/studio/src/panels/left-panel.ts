@@ -33,7 +33,8 @@ import { activeTab } from "../workspace/workspace";
 import { shell } from "../shell";
 
 import { navigatorPanelRegion } from "../ui/regions";
-import { openPageAction, renderEmptyState } from "./empty-state";
+import { openPageAction } from "./empty-state";
+import { emptyState } from "../surfaces/empty-state";
 import { getPanel, isPanelVisible, panelContext } from "./panel-registry";
 import { registerNavigatorPanels } from "./navigator-panels";
 import { mountNavigatorDock } from "../surfaces/navigator-dock";
@@ -242,7 +243,7 @@ function paintContent(): void {
 function paintInto(deps: NavigatorPanelDeps, panel: PanelRecord | null, host: HTMLElement): void {
   if (!panel) {
     litRender(
-      renderEmptyState({ message: `No Navigator panel is registered as "${shell.leftTab}".` }),
+      emptyState(host, { message: `No Navigator panel is registered as "${shell.leftTab}".` }),
       host,
     );
     return;
@@ -254,7 +255,7 @@ function paintInto(deps: NavigatorPanelDeps, panel: PanelRecord | null, host: HT
   litRender(
     needed === undefined
       ? panel.render(ctx)
-      : renderEmptyState({ actions: [openPageAction()], message: needed }),
+      : emptyState(host, { actions: [openPageAction()], message: needed }),
     host,
   );
   if (needed === undefined) {

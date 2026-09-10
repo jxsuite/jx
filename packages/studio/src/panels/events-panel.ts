@@ -42,7 +42,6 @@
  */
 
 import { getNodeAtPath, renderOnly } from "../store";
-import { render as litRender } from "lit-html";
 import { activeTab } from "../workspace/workspace";
 import { primarySelection, unifyValues } from "../tabs/selection";
 import {
@@ -54,7 +53,7 @@ import {
   transactDoc,
 } from "../tabs/transact";
 import { clickAnythingTo, openPageAction, staleSelectionMessage } from "./empty-state";
-import { renderExpressionEditor } from "../ui/expression-editor";
+import { mountExpressionEditor } from "../ui/expression-editor";
 import { mountStatementEditor } from "./statement-editor";
 import { inspectorStatementsRegion } from "../ui/regions";
 import { livePreviewExpression } from "../services/live-preview";
@@ -337,13 +336,15 @@ function addField(
   if (mode === "expression") {
     const node = (spec.value as { $expression?: unknown } | undefined)?.$expression;
     plan.paint = (host) =>
-      litRender(
-        renderExpressionEditor(node, (next) => spec.onChange({ $expression: next } as JsonValue), {
+      mountExpressionEditor(
+        host,
+        node,
+        (next) => spec.onChange({ $expression: next } as JsonValue),
+        {
           allowEventRef: false,
           stateDefs: [...spec.stateDefs],
           stateEntries: null,
-        }),
-        host,
+        },
       );
   }
   fields.set(key, plan);
@@ -642,16 +643,13 @@ function bindingView(
         mutateAddDef(t, defName, def as Record<string, JsonValue>),
       );
     plan.paint = (host) =>
-      litRender(
-        renderExpressionEditor(expression, commitExpression, {
-          allowEventRef: true,
-          onInsertDef: insertDef,
-          preview,
-          stateDefs: Object.keys(defs),
-          stateEntries: defs as never,
-        }),
-        host,
-      );
+      mountExpressionEditor(host, expression, commitExpression, {
+        allowEventRef: true,
+        onInsertDef: insertDef,
+        preview,
+        stateDefs: Object.keys(defs),
+        stateEntries: defs as never,
+      });
   }
   bindings.set(evKey, plan);
 

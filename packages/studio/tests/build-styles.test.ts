@@ -348,13 +348,19 @@ describe("the shell frame", () => {
       expect(frame, selector).toContain(selector);
     }
     expect(overlays).not.toContain(".jx-layer {");
-    /* The pane cell stayed: it is a lit surface (`panels/pane-grid.ts` renders `.pane-strip`), and
-       it moves with its surface, not with this. This used to name `.ai-chat-header`, then
-       `.tab-strip-tab`, and each stopped saying anything the day its surface became a document and
-       took its rules with it — the class to name here is whichever one is still drawn by a lit
-       template. `.tab-strip-tab`'s rules are still in this file and now draw NOTHING, which is the
-       dead-rule sweep's business rather than this assertion's. */
-    expect(shell).toContain(".pane-strip");
+    /* "Nothing else came with it" means the extraction took the frame's rules and no others — so
+       what has to be true is that shell.css STILL HAS RULES. This named a specific surviving class
+       for three rounds (`.ai-chat-header`, then `.tab-strip-tab`, then `.pane-strip`) and each one
+       stopped saying anything the day its surface became a document and took its rules with it.
+       Naming a fourth would buy one more round; the claim underneath never depended on which class
+       it was. When the last non-frame rule legitimately leaves this file, RETIRE this assertion
+       rather than re-pointing it a fifth time — an empty shell.css is then the correct state, not
+       a failure. */
+    expect(
+      shell.trim(),
+      "shell.css lost rules the frame extraction should not have taken",
+    ).not.toBe("");
+    expect(shell).toMatch(/^[^@\s][^{]*\{/m);
   });
 });
 

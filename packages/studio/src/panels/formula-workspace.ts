@@ -41,7 +41,7 @@
  * canvas is still mounted the patch lands in a page you can watch.
  */
 
-import { render as litRender, nothing } from "lit-html";
+import { nothing } from "lit-html";
 import { getEventBinding, isExpressionDef, isJsonObject } from "@jxsuite/schema/guards";
 
 import { effect, effectScope, shallowRef } from "../reactivity";
@@ -51,7 +51,7 @@ import { mutateAddDef, mutateUpdateDef, mutateUpdateProperty, transactDoc } from
 import { setBottomTab } from "../shell";
 import { bottomPanelRegion, REGION_ATTR } from "../ui/regions";
 import { chipSummary, formulaChipStrip } from "../ui/formula-chips";
-import { renderExpressionEditor } from "../ui/expression-editor";
+import { mountExpressionEditor } from "../ui/expression-editor";
 import { applyCatalogPick, formulaCatalog } from "../ui/formula-catalog";
 import { openFormulaPalette } from "../surfaces/formula-palette";
 import { livePreviewExpression } from "../services/live-preview";
@@ -483,10 +483,13 @@ const _treeHosts = new Map<string, HTMLElement>();
 /**
  * Draw the expression editor into the host the document made for it.
  *
- * The editor is a lit surface of its own (`ui/expression-editor.ts`), so this is `litRender` into a
- * node a Jx document owns — the island seam of studio-ui-guidelines.md §9.4. Re-rendering the same
- * template into it RECONCILES, which is what keeps a picker the reader has open from being taken
- * away by a projection.
+ * The editor is a MOUNTED DOCUMENT of its own now (`ui/expression-editor.ts` is its flow), so this
+ * is one document's surface standing inside a node another document owns — the same hand-over the
+ * statement editor makes at `[part="control-host"]`. Calling it again ASSIGNS to the standing
+ * mount, which is what keeps a picker the reader has open from being taken away by a projection.
+ *
+ * Nothing resolved means nothing to edit: the host is emptied, which also takes down the mount on
+ * the next sweep because the document it held is no longer in the page.
  */
 function paintEditor(): void {
   const host = _editorHost;
@@ -495,21 +498,18 @@ function paintEditor(): void {
   }
   const held = _resolved;
   if (!held) {
-    litRender(nothing, host);
+    host.textContent = "";
     return;
   }
-  litRender(
-    renderExpressionEditor(held.selected, writeSelected, {
-      allowEventRef: held.allowEventRef,
-      depth: 1,
-      onInsertDef: insertDef,
-      path: held.selectedPath,
-      preview: held.preview,
-      stateDefs: Object.keys(held.stateEntries),
-      stateEntries: held.stateEntries,
-    }),
-    host,
-  );
+  mountExpressionEditor(host, held.selected, writeSelected, {
+    allowEventRef: held.allowEventRef,
+    depth: 1,
+    onInsertDef: insertDef,
+    path: held.selectedPath,
+    preview: held.preview,
+    stateDefs: Object.keys(held.stateEntries),
+    stateEntries: held.stateEntries,
+  });
 }
 
 /** Draw one rail entry's value tree. Idempotent: a host that holds its document is assigned to. */

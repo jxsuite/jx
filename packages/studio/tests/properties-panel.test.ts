@@ -593,10 +593,26 @@ describe("component props section", () => {
     expect(sec.querySelector('[data-prop="featured"] jx-checkbox')).not.toBeNull();
     expect(sec.querySelector('[data-prop="count"] jx-number-field')).not.toBeNull();
     expect(sec.querySelector('[data-prop="variant"] jx-select')).not.toBeNull();
-    // The media picker and the colour selector are still lit, drawn into an announced host.
-    expect(sec.querySelector('[data-prop="image"] .media-picker')).not.toBeNull();
+    // The media picker is a document mounted into an announced host, the colour selector still lit.
+    expect(sec.querySelector('[data-prop="image"] [part="media-field"]')).not.toBeNull();
     expect(sec.querySelector('[data-prop="tint"] [part="control-host"]')).not.toBeNull();
     expect(control(sec, "published").getAttribute("placeholder")).toBe("YYYY-MM-DD");
+  });
+
+  test("a media picker whose row goes away is taken down with it", async () => {
+    registerCard();
+    openDoc(cardDoc({ title: "Hi" }), ["children", 0]);
+    const c = await renderPanel();
+    const box = c.querySelector('[data-prop="image"] [part="control-host"]') as HTMLElement;
+    expect(box.querySelector('[part="media-field"]')).not.toBeNull();
+
+    /* Select the root instead: `my-card`'s props are gone, so the plan the picker's host belonged
+       to is gone, and `paintControls` drops the host. The picker in it is a MOUNTED document and the
+       surface registry holds that host, so nothing would ever collect it if the panel merely forgot
+       the box. */
+    activeTab.value!.session.selection = [[]];
+    await renderPanel();
+    expect(box.querySelector('[part="media-field"]')).toBeNull();
   });
 
   test("text prop commits into $props on change; clear dot removes it", async () => {

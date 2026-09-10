@@ -231,9 +231,38 @@ describe("overflow chevron", () => {
     expect(chevron.querySelector("[aria-hidden]")!.textContent!.trim()).toBe("⌄");
 
     chevron.click();
-    await flush();
-    const items = [...document.querySelectorAll("#layer-popover sp-menu-item")];
+    await flush(3);
+    /* The panel takes the trigger's own words, and it is addressable: the slot carries
+       `overlay.menu:tab-overflow`, so a shot could name it without a selector. */
+    const menu = document.querySelector("#layer-popover jx-menu")!;
+    expect(menu.getAttribute("aria-label")).toBe("Hidden tabs");
+    expect(menu.parentElement!.dataset["jxRegion"]).toBe("overlay.menu:tab-overflow");
+    const items = [...document.querySelectorAll("#layer-popover jx-menu-item")];
     expect(items.map((el) => el.textContent?.trim())).toEqual(["/a", "/b", "/c"]);
+    // A row is addressed by the tab it activates, which is what the kit menu carries.
+    expect(items.map((el) => (el as HTMLElement).dataset.commandId)).toEqual(["a", "b", "c"]);
+  });
+
+  /**
+   * The strip's own chips say which tab is showing with `aria-selected`; a row in a list of tabs
+   * could not, under the popover this menu replaced — `?selected` on an `sp-menu-item` drew a
+   * highlight and announced nothing. `checked` on every row is the shape this shell already settled
+   * on for one-of-N (`panels/pane-context.ts`), so the current tab now states itself.
+   */
+  test("the row for the tab already showing states that it is the current one", async () => {
+    open("a");
+    open("b");
+    await flush();
+    stubMetrics(strip(), 500, 100);
+    open("c");
+    await flush();
+    (host.querySelector('[part="overflow"]:not([hidden])') as HTMLElement).click();
+    await flush(3);
+
+    const rows = [...document.querySelectorAll<HTMLElement>("#layer-popover jx-menu-item")];
+    expect(rows.map((el) => el.getAttribute("aria-checked"))).toEqual(["false", "false", "true"]);
+    // A checkbox row is a checkbox row: the role follows the state it carries.
+    expect(rows.every((el) => el.getAttribute("role") === "menuitemcheckbox")).toBeTrue();
   });
 
   test("choosing a hidden tab activates it and closes the menu", async () => {
@@ -244,12 +273,12 @@ describe("overflow chevron", () => {
     open("c");
     await flush();
     (host.querySelector('[part="overflow"]:not([hidden])') as HTMLElement).click();
-    await flush();
-    const first = document.querySelector("#layer-popover sp-menu-item") as HTMLElement;
+    await flush(3);
+    const first = document.querySelector("#layer-popover jx-menu-item") as HTMLElement;
     first.click();
     await flush();
     expect(workspace.activeTabId).toBe("a");
-    expect(document.querySelector("#layer-popover sp-menu-item")).toBeNull();
+    expect(document.querySelector("#layer-popover jx-menu-item")).toBeNull();
   });
 
   test("re-opening the menu replaces the previous one", async () => {
@@ -261,10 +290,10 @@ describe("overflow chevron", () => {
     await flush();
     const chevron = host.querySelector('[part="overflow"]:not([hidden])') as HTMLElement;
     chevron.click();
-    await flush();
+    await flush(3);
     chevron.click();
-    await flush();
-    expect(document.querySelectorAll("#layer-popover sp-menu").length).toBe(1);
+    await flush(3);
+    expect(document.querySelectorAll("#layer-popover jx-menu").length).toBe(1);
   });
 
   test("hiddenTabIds reports the chips outside the scroll viewport", async () => {

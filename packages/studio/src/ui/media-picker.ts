@@ -1,30 +1,35 @@
 /// <reference lib="dom" />
 /**
- * Media Picker — combobox-style widget for selecting or uploading project media files.
+ * Media Picker — the project's media, and the two surfaces that offer them.
  *
- * Shows an editable text input for manual URL entry, an Upload button that adds a new file to the
- * project and assigns it, and a Browse dropdown of media already in the project's public/
- * directory, with thumbnail previews for images.
+ * The FIELD (`surfaces/media-field.json`) is a control a row draws: a thumbnail of what the value
+ * names, the value itself, an Upload button that adds a new file to the project and assigns it, and
+ * a Browse button. The BROWSER (`surfaces/media-browser.json`) is the panel Browse opens: a search
+ * box over the files under `public/`, with thumbnail previews for images.
+ *
+ * **This module is the flow, not the markup.** Both surfaces are Jx documents now; what is left
+ * here is which files count as media, what a row's caption says, how long a keystroke waits before
+ * it becomes a document write, and what a pick commits. Callers that used to interpolate a template
+ * returned from here draw an empty box and call {@link mountMediaPicker} instead — a document
+ * cannot be handed back as a value, and a document CLEARS the host it is given, so the two could
+ * never have shared a container anyway.
  *
  * **The browse list carries metadata, and it costs nothing.** Size comes from the directory listing
  * the widget already performs to enumerate the files (`seedMediaMeta`), and pixel dimensions come
  * from the thumbnails it already loads (`recordImageSize`) — measuring an image is a decode the
  * `<img>` has finished by the time `load` fires, so the caption is a read of work already done
  * rather than a second fetch per row. What is NOT here is a usage count: `findReferences` sweeps
- * every document in the project per query, and fifty of those to caption a dropdown is the wrong
- * trade. Usage is asked once, about one file, where it changes a decision — the delete confirmation
+ * every document in the project per query, and fifty of those to caption a list is the wrong trade.
+ * Usage is asked once, about one file, where it changes a decision — the delete confirmation
  * (`files/media-usage.ts`).
  *
  * @docs studio/projects/media
  */
 
-import { html, render as litRender, nothing } from "lit-html";
-import { live } from "lit-html/directives/live.js";
-import { ref } from "lit-html/directives/ref.js";
 import { getPlatform } from "../platform";
 import { debouncedStyleCommit, renderOnly } from "../store";
-import { getLayerSlot, popoverLayerFor } from "./layers";
-import type { LayerKind } from "./layers";
+import { mountMediaFieldSurface } from "../surfaces/media-field";
+import { openMediaBrowserSurface } from "../surfaces/media-browser";
 import { rectOf } from "../utils/geometry";
 import { previewAssetSrc } from "../canvas/asset-refs";
 import {
@@ -42,6 +47,8 @@ import {
   seedMediaMeta,
 } from "../files/media-meta";
 import { mediaSiteUrl, previewFileSrc } from "../files/media-paths";
+import type { MediaBrowserRow, MediaBrowserSurfaceHandle } from "../surfaces/media-browser";
+import type { MediaFieldHandle, MediaFieldView } from "../surfaces/media-field";
 
 // ─── Media file cache ────────────────────────────────────────────────────────
 
@@ -101,7 +108,7 @@ async function loadMediaCache() {
   const platform = getPlatform();
   mediaCache = await collectMedia("public", platform);
   mediaCacheLoaded = true;
-  // Re-render the host panels so the browse popover has entries to show once the async listing
+  // Re-render the host panels so the browse panel has entries to show once the async listing
   // Resolves. Mirrors loadLayoutEntries()'s renderOnly() in head-panel.
   renderOnly("leftPanel", "rightPanel", "frontmatterPanel");
 }
@@ -118,70 +125,59 @@ export function invalidateMediaCache() {
   invalidateMediaMeta();
 }
 
-// ─── Popover state ───────────────────────────────────────────────────────────
+// ─── The browser ─────────────────────────────────────────────────────────────
 
-/** @type {((val: string) => void) | null} */
-let _popoverOnCommit: ((val: string) => void) | null = null;
+/** The most rows the panel lists. Everything past it is counted rather than drawn. */
+const BROWSE_LIMIT = 50;
 
-/** @type {HTMLElement | null} */
-let _popoverAnchorEl: HTMLElement | null = null;
-/**
- * Which layer the open popover is living in.
- *
- * Chosen from the anchor at open time and then REMEMBERED, because `getLayerSlot` keys its slots by
- * `${layer}:${id}`: dismissing through a different layer than the one that opened would clear an
- * empty slot and leave the real popover on screen.
- */
-let _popoverLayer: LayerKind = "popover";
+/** The open panel, and what a pick in it commits. One at a time. */
+let _browser: MediaBrowserSurfaceHandle | null = null;
+let _browserCommit: ((value: string) => void) | null = null;
+let _browserFilter = "";
+/** Where the panel was opened, kept so a filter keystroke does not move it. */
+let _browserOrigin = { x: 0, y: 0 };
 
-/** The open popover's slot — the one place that names the layer and the id together. */
-function popoverSlot(): HTMLElement {
-  return getLayerSlot(_popoverLayer, "media-picker");
+/** What the panel shows for the filter that stands now. */
+function browserView() {
+  const query = _browserFilter.toLowerCase();
+  const filtered = query
+    ? mediaCache.filter(
+        (m) => m.path.toLowerCase().includes(query) || m.name.toLowerCase().includes(query),
+      )
+    : mediaCache;
+  const listed = filtered.slice(0, BROWSE_LIMIT);
+  const rows: MediaBrowserRow[] = listed.map((m) => {
+    const caption = mediaMetaSummary(peekMediaMeta(m.file));
+    return {
+      caption,
+      captionState: caption ? "shown" : "hidden",
+      file: m.file,
+      key: m.file,
+      name: m.name,
+      path: m.path,
+      thumbSrc: m.isImage ? previewFileSrc(m.file) : "",
+      thumbState: m.isImage ? "shown" : "hidden",
+    };
+  });
+  return {
+    emptyLabel: "No matches",
+    filter: _browserFilter,
+    moreLabel: `…${filtered.length - BROWSE_LIMIT} more`,
+    moreState: (filtered.length > BROWSE_LIMIT ? "shown" : "hidden") as "hidden" | "shown",
+    rows,
+    rowsState: (rows.length > 0 ? "listed" : "empty") as "empty" | "listed",
+    x: _browserOrigin.x,
+    y: _browserOrigin.y,
+  };
 }
 
-/**
- * The popover's z-index, which depends on the company it is keeping.
- *
- * In `#layer-popover` it has the layer to itself and 30 is enough — that is what it has always
- * been, and every panel-hosted picker keeps rendering identically. Sharing a layer with a modal
- * body is different: those declare `z-index: 1000` (`.seo-modal`, `.about-modal`, `.settings-modal`
- * — the house shape), so a picker anchored inside one is a later sibling that still paints beneath
- * it. Beating that number is the whole point of moving layers in the first place.
- */
-function popoverZIndex(): number {
-  return _popoverLayer === "popover" ? 30 : 1001;
-}
-
-/** @type {HTMLInputElement | null} */
-let _popoverFilterEl: HTMLInputElement | null = null;
-
-let _popoverFilter = "";
-
+/** Take the panel down. Idempotent, and it forgets what a pick would have committed. */
 function dismissMediaPickerPopover() {
-  _popoverFilter = "";
-  _popoverOnCommit = null;
-  _popoverAnchorEl = null;
-  _popoverFilterEl = null;
-  document.removeEventListener("keydown", onPopoverKeydown, true);
-  document.removeEventListener("mousedown", onPopoverOutsideClick, true);
-  litRender(nothing, popoverSlot());
-}
-
-/** @param {KeyboardEvent} e */
-function onPopoverKeydown(e: KeyboardEvent) {
-  if (e.key === "Escape") {
-    dismissMediaPickerPopover();
-    e.preventDefault();
-    e.stopPropagation();
-  }
-}
-
-/** @param {MouseEvent} e */
-function onPopoverOutsideClick(e: MouseEvent) {
-  const host = popoverSlot();
-  if (!host.contains(e.target as Node)) {
-    dismissMediaPickerPopover();
-  }
+  const open = _browser;
+  _browser = null;
+  _browserCommit = null;
+  _browserFilter = "";
+  open?.close();
 }
 
 /** A repaint scheduled by a thumbnail that just reported its size, or 0 when none is pending. */
@@ -189,187 +185,65 @@ let _sizeRepaint = 0;
 
 /**
  * Fold a loaded thumbnail's intrinsic size into the metadata cache and, if that was news, repaint
- * the popover once so the caption appears.
+ * the panel once so the caption appears.
  *
- * The repaint is coalesced across a whole grid of images landing in the same frame, and it cannot
- * loop: re-rendering recreates the `<img>` elements, whose `load` fires again from cache, and
- * `recordImageSize` returns false the second time because the measurement has not changed.
+ * The repaint is coalesced across a whole list of images landing in the same frame, and it cannot
+ * loop: a repaint that changes nothing about a row leaves its `<img>` alone, and a row that IS
+ * rebuilt fires `load` again from cache, where `recordImageSize` returns false the second time
+ * because the measurement has not changed.
  */
-function noteImageSize(file: string, target: EventTarget | null) {
-  const img = target as HTMLImageElement | null;
-  if (!img || !recordImageSize(file, img.naturalWidth, img.naturalHeight) || _sizeRepaint !== 0) {
+function noteImageSize(file: string, width: number, height: number) {
+  if (!recordImageSize(file, width, height) || _sizeRepaint !== 0) {
     return;
   }
   _sizeRepaint = requestAnimationFrame(() => {
     _sizeRepaint = 0;
-    if (_popoverAnchorEl) {
-      renderMediaPickerPopover();
-    }
-  });
-}
-
-function renderMediaPickerPopover() {
-  const host = popoverSlot();
-  const rect = _popoverAnchorEl ? rectOf(_popoverAnchorEl) : undefined;
-  if (!rect) {
-    return;
-  }
-
-  const query = _popoverFilter.toLowerCase();
-  const filtered = query
-    ? mediaCache.filter(
-        (m) => m.path.toLowerCase().includes(query) || m.name.toLowerCase().includes(query),
-      )
-    : mediaCache;
-  const options = filtered.slice(0, 50);
-
-  // Compute initial position below the anchor
-  let { left } = rect;
-  let top = rect.bottom + 4;
-
-  // Estimate popover dimensions for viewport clamping before first paint
-  const estimatedWidth = 280;
-  const estimatedHeight = Math.min(options.length * 36 + 48, 360);
-
-  if (left + estimatedWidth > window.innerWidth - 8) {
-    left = Math.max(8, window.innerWidth - estimatedWidth - 8);
-  }
-  if (top + estimatedHeight > window.innerHeight - 8) {
-    top = Math.max(8, rect.top - estimatedHeight - 4);
-  }
-
-  let _popoverEl: HTMLElement | null = null;
-
-  litRender(
-    html`
-      <sp-popover
-        open
-        data-jx-region="overlay.menu:media-picker"
-        ${ref((el) => {
-          _popoverEl = (el as HTMLElement | undefined) || null;
-        })}
-        style="position:fixed;left:${left}px;top:${top}px;z-index:${popoverZIndex()};max-height:360px;overflow-y:auto;min-width:240px"
-      >
-        <input
-          class="media-picker-filter"
-          type="text"
-          placeholder="Search images…"
-          autocomplete="off"
-          style="display:block;width:100%;box-sizing:border-box;padding:6px 10px;border:none;border-bottom:1px solid var(--border, #444);outline:none;font-size:13px;background:transparent;color:inherit"
-          ${ref((el) => {
-            _popoverFilterEl = (el as HTMLInputElement | null) || null;
-          })}
-          @input=${(e: Event) => {
-            _popoverFilter = (e.target as HTMLInputElement).value;
-            renderMediaPickerPopover();
-          }}
-          @click=${(e: MouseEvent) => e.stopPropagation()}
-        />
-        <sp-menu
-          style="min-width:220px"
-          @change=${(e: Event) => {
-            _popoverOnCommit?.((e.target as HTMLInputElement).value);
-            dismissMediaPickerPopover();
-          }}
-        >
-          ${
-            options.length > 0
-              ? options.map((m) => {
-                  const caption = mediaMetaSummary(peekMediaMeta(m.file));
-                  return html`
-                    <sp-menu-item value=${m.path}>
-                      ${
-                        m.isImage
-                          ? html`<img
-                              slot="icon"
-                              src=${previewFileSrc(m.file)}
-                              alt=""
-                              style="width:24px;height:24px;object-fit:cover;border-radius:var(--spectrum-corner-radius-75, 2px)"
-                              @load=${(e: Event) => noteImageSize(m.file, e.target)}
-                            />`
-                          : nothing
-                      }
-                      ${m.name}
-                      ${caption ? html`<span slot="description">${caption}</span>` : nothing}
-                    </sp-menu-item>
-                  `;
-                })
-              : html`<sp-menu-item disabled>No matches</sp-menu-item>`
-          }
-          ${
-            filtered.length > 50
-              ? html`<sp-menu-item disabled>…${filtered.length - 50} more</sp-menu-item>`
-              : nothing
-          }
-        </sp-menu>
-      </sp-popover>
-    `,
-    host,
-  );
-
-  // Fine-tune position after render using actual measured dimensions
-  requestAnimationFrame(() => {
-    if (_popoverEl) {
-      const popoverRect = rectOf(_popoverEl);
-      let adjLeft = popoverRect.left;
-      let adjTop = popoverRect.top;
-      let needsAdjust = false;
-
-      if (popoverRect.right > window.innerWidth - 4) {
-        adjLeft = Math.max(4, window.innerWidth - popoverRect.width - 4);
-        needsAdjust = true;
-      }
-      if (popoverRect.bottom > window.innerHeight - 4) {
-        adjTop = Math.max(4, window.innerHeight - popoverRect.height - 4);
-        needsAdjust = true;
-      }
-      if (popoverRect.left < 4) {
-        adjLeft = 4;
-        needsAdjust = true;
-      }
-      if (popoverRect.top < 4) {
-        adjTop = 4;
-        needsAdjust = true;
-      }
-
-      if (needsAdjust) {
-        _popoverEl.style.left = `${adjLeft}px`;
-        _popoverEl.style.top = `${adjTop}px`;
-      }
-    }
-
-    if (_popoverFilterEl) {
-      _popoverFilterEl.focus();
-    }
+    _browser?.update(browserView());
   });
 }
 
 /**
  * Open the media browser under `anchorEl` and commit whatever is picked.
  *
- * Exported because the popover is a SURFACE OF ITS OWN — it renders into the popover layer, not
- * into the field that opened it — so a converted surface can offer the same browser without
- * re-implementing it and without a lit template inside a document. `surfaces/doc-header.ts`'s
- * Browse button is the first such caller.
+ * Exported because the panel is a SURFACE OF ITS OWN — it renders into the popover layer, not into
+ * the field that opened it — so a converted surface can offer the same browser without
+ * re-implementing it. `surfaces/doc-header.ts`'s Browse button is the first such caller.
  *
  * @param {HTMLElement} anchorEl
  * @param {(val: string) => void} onCommit
  */
 export function showMediaPickerPopover(anchorEl: HTMLElement, onCommit: (val: string) => void) {
   dismissMediaPickerPopover();
-  _popoverOnCommit = onCommit;
-  _popoverAnchorEl = anchorEl;
-  // Before the first render, so every later `popoverSlot()` agrees with where it was drawn.
-  _popoverLayer = popoverLayerFor(anchorEl);
-  _popoverFilter = "";
-  renderMediaPickerPopover();
-  document.addEventListener("keydown", onPopoverKeydown, true);
-  requestAnimationFrame(() => {
-    document.addEventListener("mousedown", onPopoverOutsideClick, true);
-  });
+  _browserCommit = onCommit;
+  const box = rectOf(anchorEl);
+  /* Where it opens, once. `jx-popover` clamps a freshly shown panel into the viewport itself, so
+     nothing here measures the panel or flips it above a low anchor — that was the layer-div
+     popover's job because a layer div has no platform behind it. */
+  _browserOrigin = { x: box.left, y: box.bottom + 4 };
+  _browser = openMediaBrowserSurface(
+    browserView(),
+    {
+      dismissed: () => {
+        _browser = null;
+        _browserCommit = null;
+        _browserFilter = "";
+      },
+      measure: noteImageSize,
+      pick: (path: string) => {
+        const commit = _browserCommit;
+        dismissMediaPickerPopover();
+        commit?.(path);
+      },
+      setFilter: (value: string) => {
+        _browserFilter = value;
+        _browser?.update(browserView());
+      },
+    },
+    anchorEl,
+  );
 }
 
-// ─── Render ──────────────────────────────────────────────────────────────────
+// ─── Upload ──────────────────────────────────────────────────────────────────
 
 /**
  * Upload files chosen in a media field's file input and assign the first one to the field. Exported
@@ -392,7 +266,7 @@ export async function uploadAndAssign(
 
 /**
  * Open the OS file picker for a media field. The input is created per click and discarded after — a
- * persistent hidden input in the template would be recreated by lit on every panel re-render.
+ * persistent hidden input would be one more node every host has to own.
  *
  * Exported for the same reason {@link showMediaPickerPopover} is: it opens an OS dialog rather than
  * rendering anything, so a surface that is a document can offer Upload without drawing a widget.
@@ -412,63 +286,98 @@ export function pickAndUpload(onCommit: (val: string) => void) {
   input.click();
 }
 
+// ─── The field ───────────────────────────────────────────────────────────────
+
+/** The standard live-preview debounce for a typed media path. */
+const FIELD_DEBOUNCE_MS = 400;
+
+/** One mounted field, and the decisions that move under it between repaints. */
+interface FieldEntry {
+  handle: MediaFieldHandle;
+  prop: string;
+  commit: (value: string) => void;
+}
+
 /**
- * Render the media picker widget for src-type attributes.
+ * The fields this module has mounted, by the host they were mounted into.
  *
- * @param {string} prop — attribute name (e.g. "src")
- * @param {string} value — current attribute value
- * @param {(val: string) => void} onCommit — commit callback
- * @returns {import("lit-html").TemplateResult}
+ * A WeakMap rather than a list: the caller owns the box, and a box that has gone should take its
+ * entry with it. It is not a substitute for {@link unmountMediaPicker} — a mount is recorded in
+ * `services/surface-registry.ts`, which holds the host — but it is what makes a repeated
+ * {@link mountMediaPicker} an update instead of a second document in the same box.
  */
-export function renderMediaPicker(prop: string, value: string, onCommit: (val: string) => void) {
-  // Kick off async load (won't block render)
+const _fields = new WeakMap<HTMLElement, FieldEntry>();
+
+/** What the control draws for a value. */
+function fieldView(prop: string, value: string): MediaFieldView {
+  const isImage = IMAGE_EXTENSIONS.has(extensionOf(value));
+  return {
+    label: prop,
+    thumbSrc: isImage && value ? previewAssetSrc(value) : "",
+    thumbState: isImage && value ? "shown" : "hidden",
+    value,
+  };
+}
+
+/**
+ * Draw the media field into a host the caller owns, or bring the one already there up to date.
+ *
+ * The idempotence is the point: the Content tab repaints its controls on every projection, and a
+ * second mount into the same box would be a second document over the first. A repeat call moves the
+ * scope instead, so the field the reader is typing in keeps its caret.
+ *
+ * @param {HTMLElement} host - An empty box the caller drew
+ * @param {string} prop - The attribute or prop being edited; the field's accessible name
+ * @param {string} value - What it holds now
+ * @param {(val: string) => void} onCommit - What a pick or a settled keystroke writes
+ */
+export function mountMediaPicker(
+  host: HTMLElement,
+  prop: string,
+  value: string,
+  onCommit: (val: string) => void,
+): void {
+  // Kick off async load (won't block the mount)
   void loadMediaCache();
+  const existing = _fields.get(host);
+  if (existing) {
+    existing.prop = prop;
+    existing.commit = onCommit;
+    existing.handle.update(fieldView(prop, value));
+    return;
+  }
+  const entry: FieldEntry = { commit: onCommit, handle: null as unknown as MediaFieldHandle, prop };
+  entry.handle = mountMediaFieldSurface(host, fieldView(prop, value), {
+    browse: (anchor: HTMLElement) => {
+      void loadMediaCache();
+      showMediaPickerPopover(anchor, (val: string) => entry.commit(val));
+    },
+    /* Debounced under the prop's own key, so the canvas follows the typing without a document write
+       per keystroke and two fields never share a timer. */
+    edit: (next: string) =>
+      debouncedStyleCommit(`media:${entry.prop}`, FIELD_DEBOUNCE_MS, (v: string) =>
+        entry.commit(v),
+      )(next),
+    upload: () => pickAndUpload((val: string) => entry.commit(val)),
+    warm: () => {
+      void loadMediaCache();
+    },
+  });
+  _fields.set(host, entry);
+}
 
-  const currentValue = value || "";
-  const isImage = IMAGE_EXTENSIONS.has(extensionOf(currentValue));
-
-  return html`
-    <div class="media-picker">
-      ${
-        isImage && currentValue
-          ? html`<img class="media-picker-thumb" src=${previewAssetSrc(currentValue)} alt="" />`
-          : nothing
-      }
-      <sp-textfield
-        size="s"
-        placeholder="/image.jpg"
-        .value=${live(currentValue)}
-        @input=${debouncedStyleCommit(`media:${prop}`, 400, (e: Event) =>
-          onCommit((e.target as HTMLInputElement).value),
-        )}
-        @focus=${() => loadMediaCache()}
-      ></sp-textfield>
-      <sp-action-button
-        class="media-picker-upload"
-        size="xs"
-        quiet
-        title="Upload media"
-        @click=${() => pickAndUpload(onCommit)}
-      >
-        <sp-icon-upload slot="icon"></sp-icon-upload>
-      </sp-action-button>
-      <!-- No data-jx-region here. The class IS the handle: ui/regions.ts derives
-           inspector/field:PROP/browse by finding this button inside the Inspector's own
-           [data-prop] row, so the id resolves to one element however many panes are drawing a
-           media picker. The stamp claimed an inspector/... id on every picker the app renders,
-           including the two the Document Header card draws inside each pane's STAGE. -->
-      <sp-action-button
-        class="media-picker-browse"
-        size="xs"
-        quiet
-        title="Browse media"
-        @click=${(e: MouseEvent) => {
-          void loadMediaCache();
-          showMediaPickerPopover(e.currentTarget as HTMLElement, onCommit);
-        }}
-      >
-        <sp-icon-image slot="icon"></sp-icon-image>
-      </sp-action-button>
-    </div>
-  `;
+/**
+ * Take a mounted field down and forget its host.
+ *
+ * The caller has to say so: a mount is recorded in the surface registry, which holds the host
+ * strongly, so a box dropped from a projection would otherwise keep its document alive.
+ *
+ * @param {HTMLElement} host
+ */
+export function unmountMediaPicker(host: HTMLElement): void {
+  const entry = _fields.get(host);
+  if (entry) {
+    _fields.delete(host);
+    entry.handle.dispose();
+  }
 }

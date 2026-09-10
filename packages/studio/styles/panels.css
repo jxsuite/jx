@@ -1,15 +1,3 @@
-/* ─── File tree ──────────────────────────────── */
-.files-toolbar {
-  display: flex;
-  gap: 4px;
-  padding: 4px 8px;
-  border-bottom: 1px solid var(--border);
-  align-items: center;
-}
-.files-toolbar sp-search {
-  flex: 1;
-  --spectrum-textfield-height: 24px;
-}
 .file-tree {
   overflow-y: auto;
 }
@@ -35,19 +23,6 @@
 .file-tree-item:hover {
   background: var(--hover-bg);
 }
-/* The language chip. Deliberately declares no `block-size`, no padding and no line-height: the row
-   above is 24px by CONTRACT (see the note there), and a chip that grew the box would desynchronise
-   the window's scroll reservation from `FILE_ROW_HEIGHT`. It only ever shrinks the text. */
-.file-tree-locale {
-  margin-inline-start: auto;
-  flex-shrink: 0;
-  font-size: var(--spectrum-font-size-50, 11px);
-  color: var(--fg-dim);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-inline-size: 6em;
-}
 /* Roving tabindex (src/files/files.ts) moves focus between rows, so the ring is
    the only thing telling a keyboard user where they are. */
 .file-tree-item:focus-visible {
@@ -68,42 +43,8 @@
 .file-tree.drag-over-root {
   background: var(--hover-bg);
 }
-.file-tree-toggle {
-  width: 14px;
-  text-align: center;
-  font-size: 8px;
-  color: var(--fg-dim);
-  flex-shrink: 0;
-  cursor: pointer;
-}
 .file-tree-toggle.empty {
   visibility: hidden;
-}
-.file-tree-icon {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-}
-.file-tree-icon sp-icon-folder,
-.file-tree-icon sp-icon-folder-open,
-.file-tree-icon sp-icon-document,
-.file-tree-icon sp-icon-file-code,
-.file-tree-icon sp-icon-file-txt,
-.file-tree-icon sp-icon-file-css,
-.file-tree-icon sp-icon-image {
-  --spectrum-icon-size-100: 16px;
-}
-.file-tree-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  flex: 1;
-}
-.file-tree-empty {
-  padding: 24px;
-  text-align: center;
-  color: var(--fg-dim);
-  font-size: var(--spectrum-font-size-75, 12px);
 }
 .project-header {
   display: flex;
@@ -165,34 +106,6 @@
   outline: 1px dashed var(--accent);
   outline-offset: -1px;
 }
-.layer-indent {
-  flex-shrink: 0;
-}
-/* Row actions exist for the SELECTED row and the hovered one, and for no other row — five
-   sp-action-buttons per row is ~5 custom elements with shadow roots per visible row, which is what
-   made a large document's layer tree slow to render, and a row that always shows its verbs has no
-   way to show which row is being acted on. This is a DOM rule, not a `display:none` one
-   (layers-panel.ts `mountHoverActions`): a hidden custom element still costs everything but the
-   pixels. On every other row the span below is empty, so it draws nothing. The row itself stays
-   fully draggable (dnd's canDrag excludes only .layer-actions), so reordering is unaffected.
-
-   The cluster is absolutely positioned so it never contributes to the row's intrinsic width: in a
-   240px column, four in-flow buttons plus an indent is exactly what pushed the tree sideways. */
-.layer-actions {
-  display: flex;
-  align-items: center;
-  gap: 0;
-  position: absolute;
-  right: 2px;
-  top: 50%;
-  transform: translateY(-50%);
-  border-radius: var(--spectrum-corner-radius-75, 2px);
-}
-.layer-actions:not(:empty) {
-  padding-left: 8px;
-  background: var(--bg-panel);
-  box-shadow: -8px 0 8px -8px rgba(0, 0, 0, 0.4);
-}
 .layer-row:hover .layer-drag-handle,
 .layer-row.selected .layer-drag-handle,
 .layer-row:focus-within .layer-drag-handle {
@@ -201,79 +114,6 @@
 /* Renaming owns the row: the verbs would sit on top of the input's right edge. */
 .layer-row:has(.layer-title-input) .layer-actions {
   display: none;
-}
-/* The grab affordance is a plain span, so it stays on every row (revealed on hover) while the
-   Spectrum action buttons are built for the selected row only. It sits OUTSIDE .layer-actions
-   so dnd's canDrag no longer refuses drags that start on it. */
-.layer-drag-handle {
-  display: none;
-  color: var(--fg-dim);
-  opacity: 0.6;
-  font-size: var(--spectrum-font-size-50, 11px);
-  cursor: grab;
-  padding: 0 4px 0 0;
-}
-.layer-toggle {
-  width: 14px;
-  text-align: center;
-  font-size: 9px;
-  color: var(--fg-dim);
-  cursor: pointer;
-  flex-shrink: 0;
-}
-.layer-tag {
-  padding: 0 4px;
-  font-size: 10px;
-  border-radius: var(--spectrum-corner-radius-75, 2px);
-  color: var(--accent-fg);
-  background: var(--tag);
-  flex-shrink: 0;
-  /* A long custom-element tag is a badge, not a paragraph: it truncates rather than pushing the
-     label out of a 240px column. */
-  max-width: 12ch;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.layer-label {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 24px;
-  flex: 1;
-}
-/* Stretches into the row's content box rather than setting its own height: the row is a fixed 24px
-   now, and an input taller than that would push its borders through the rows either side. */
-.layer-title-input {
-  width: 100%;
-  align-self: stretch;
-  box-sizing: border-box;
-  background: var(--bg);
-  color: inherit;
-  border: 1px solid var(--accent, #3b82f6);
-  border-radius: var(--spectrum-corner-radius-75, 2px);
-  font: inherit;
-  font-size: inherit;
-  padding: 0 2px;
-}
-.layer-title-input:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -1px;
-}
-/* One rule for every registry-rendered row verb; `.layer-delete` is the `destructive: true` half. */
-.layer-action {
-  flex-shrink: 0;
-}
-.layer-overflow {
-  flex-shrink: 0;
-}
-.layer-delete {
-  color: var(--danger);
-}
-.map-tag {
-  background: var(--map) !important;
-  color: var(--accent-fg) !important;
-  font-size: 9px;
-  letter-spacing: 0.5px;
 }
 .repeater-perimeter {
   border: 1px dashed color-mix(in srgb, var(--map) 25%, transparent);
@@ -340,27 +180,6 @@
   outline: 1px solid var(--accent) !important;
   outline-offset: -1px;
 }
-.switch-tag {
-  background: var(--switch-c) !important;
-  color: var(--accent-fg) !important;
-}
-.case-tag {
-  background: var(--case-c) !important;
-  color: var(--accent-fg) !important;
-  font-style: italic;
-  font-size: 9px;
-  max-width: 60px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.slot-tag {
-  background: var(--slot-c) !important;
-  color: var(--accent-fg) !important;
-}
-.component-row {
-  opacity: 0.9;
-  cursor: grab;
-}
 .component-row.available {
   opacity: 0.6;
 }
@@ -420,37 +239,11 @@
   text-align: center;
   font-family: var(--font-mono);
 }
-
-/* ─── Teaching empty states ──────────────────── */
-/* The one empty-state pattern, emitted by src/panels/empty-state.ts: a sentence
-   saying what the region is for, then the button that fills it. `.empty-state`
-   itself (padding, centring, dimmed colour) is declared in overlays.css; these
-   rules add the teaching layout on top of it, and the compact variant wins on
-   specificity because overlays.css loads last. */
-.empty-state--teach {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-}
-.empty-state-message {
-  max-width: 34ch;
-  line-height: 1.5;
-}
 .empty-state-detail {
   max-width: 34ch;
   font-size: var(--spectrum-font-size-50, 11px);
   color: var(--fg-dim);
   opacity: 0.8;
-}
-.empty-state-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 8px;
-}
-.empty-state-action {
-  flex: none;
 }
 /* Inline section inside an otherwise populated panel — reads as a note above its
    own add form rather than as a whole empty region. */
@@ -460,19 +253,6 @@
   padding: 8px 12px;
   text-align: left;
   font-size: var(--spectrum-font-size-50, 11px);
-}
-.empty-state--compact .empty-state-actions {
-  justify-content: flex-start;
-}
-
-/* ─── Drop indicator ──────────────────────────── */
-.drop-indicator {
-  display: none;
-  position: absolute;
-  height: 2px;
-  background: var(--accent);
-  z-index: 5;
-  pointer-events: none;
 }
 
 /* ─── Canvas drop indicator ───────────────────── */
@@ -591,113 +371,4 @@
   top: anchor(center);
   left: anchor(center);
   translate: -50% -50%;
-}
-.activity-clear {
-  padding: 2px 8px;
-  border: 1px solid var(--border);
-  border-radius: var(--spectrum-corner-radius-75, 2px);
-  background: transparent;
-  color: var(--fg-dim);
-  font: inherit;
-  font-size: var(--spectrum-font-size-50, 11px);
-  cursor: pointer;
-}
-.activity-clear:hover {
-  color: var(--fg);
-  background: var(--hover-bg);
-}
-.activity-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.activity-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 6px 8px;
-  border: 1px solid var(--border);
-  border-left: 3px solid var(--fg-dim);
-  border-radius: var(--radius);
-  background: var(--bg-panel);
-  color: var(--fg);
-  font-size: var(--spectrum-font-size-75, 12px);
-}
-.activity-icon {
-  flex: none;
-  width: 14px;
-  text-align: center;
-  font-weight: 700;
-  line-height: 1.5;
-}
-.activity-body {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-/* The captured log the progress modal used to own. It scrolls inside the row rather than growing
-   it, so one 400-line `bun install` failure does not become the whole panel. */
-.activity-log {
-  max-height: 180px;
-  margin: 2px 0 0;
-  padding: 6px;
-  overflow: auto;
-  border-radius: var(--spectrum-corner-radius-75, 2px);
-  background: var(--bg);
-  color: var(--fg-dim);
-  font-family: var(--font-mono);
-  font-size: var(--spectrum-font-size-50, 11px);
-  white-space: pre-wrap;
-}
-.activity-cancel {
-  flex: none;
-  padding: 2px 8px;
-  border: 1px solid var(--border);
-  border-radius: var(--spectrum-corner-radius-75, 2px);
-  background: transparent;
-  color: var(--accent);
-  font: inherit;
-  cursor: pointer;
-}
-.activity-cancel:hover:not(:disabled) {
-  background: var(--hover-bg);
-}
-.activity-source,
-/* The duration is pushed to the far edge so a column of rows reads as a column of times. */
-.activity-duration {
-  margin-left: auto;
-}
-
-/* ─── Project Settings, in the pane ───────────────────────────────────────────
-   The settings document (settings/settings-document.ts, panels/settings-pane.ts). Its section
-   internals are the .settings-* rules in overlays.css, unchanged: the modal's IA was never the
-   problem, its modality was, so only the SHELL is new. It fills the pane cell instead of an
-   inset:40px overlay, which is why there is no header row here — the tab strip already names the
-   document and the pane already has a frame. */
-.settings-doc {
-  display: flex;
-  height: 100%;
-  min-height: 0;
-  background: var(--bg);
-  text-align: initial;
-}
-.settings-doc-nav {
-  width: 180px;
-  min-width: 180px;
-  padding: 8px 0;
-  border-right: 1px solid var(--border);
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-}
-.settings-doc-content {
-  flex: 1;
-  overflow-y: auto;
-  padding: 24px;
-  min-width: 0;
 }

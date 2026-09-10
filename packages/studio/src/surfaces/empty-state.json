@@ -1,0 +1,152 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioEmptyState",
+  "$description": "The one empty-state pattern (studio-ui-guidelines.md §11), as the document every region draws it from. Nine surfaces had already copied it into their own JSON — `git-panel.json`, `logic-panel.json`, `panel-outline.json` and the rest each carry a `[part=\"empty\"]` block written from the same rules — because `panels/empty-state.ts` is a lit template a document cannot call. This is the copy those were waiting for: the region that has NO document of its own hands its box to this one instead of rendering the helper, so a shell with three surfaces still lit and eight converted has one empty state rather than two. The copy rules stay where they are stated, in `panels/empty-state.ts`'s header: one sentence saying what the region is FOR, the action that fills it, and one shared verb across equivalent surfaces. Nothing here decides any of them — the adapter is handed a message, an optional second sentence and a list of buttons, and this draws exactly that.",
+  "tagName": "div",
+  "attributes": {
+    "part": "empty",
+    "data-compact": "${state.compact ? '' : null}"
+  },
+  "style": {
+    "$description": "What `.empty-state`, `.empty-state--teach`, `.empty-state-message`, `.empty-state-detail`, `.empty-state-actions`, `.empty-state-action` and the `--compact` pair said across `styles/overlays.css` and `styles/panels.css`, keyed on `part`. Neither stylesheet loses its rules: `ui/expression-editor.ts` still renders the lit helper for its own compact state, so this is a copy until that surface converts. Two values did not travel. `.empty-state`'s `font-size: 13px` was a number nothing else in the shell uses and is the kit's `--jx-text-md`; `.empty-state-detail`'s `var(--spectrum-font-size-50, 11px)` resolves only inside `<sp-theme>`, and a document mounted into a Navigator body or a canvas stage is outside it, so it would silently have taken its hard-coded fallback on every paint — it is `--jx-text-sm`, which is the step it was.",
+    "display": "flex",
+    "flexDirection": "column",
+    "alignItems": "center",
+    "gap": "var(--jx-space-3)",
+    "padding": "var(--jx-space-6)",
+    "textAlign": "center",
+    "color": "var(--fg-dim)",
+    "fontSize": "var(--jx-text-md)",
+    "& [part=\"empty-message\"]": {
+      "margin": "0",
+      "maxWidth": "34ch",
+      "lineHeight": "1.5"
+    },
+    "& [part=\"empty-detail\"]": {
+      "$description": "The second sentence: where the region's content comes from. Dimmer than the first, because the first is the one a reader has to take in.",
+      "margin": "0",
+      "maxWidth": "34ch",
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--fg-dim)",
+      "opacity": "0.8"
+    },
+    "& [part=\"empty-actions\"]": {
+      "display": "flex",
+      "flexWrap": "wrap",
+      "justifyContent": "center",
+      "gap": "var(--jx-space-3)"
+    },
+    "& [part=\"empty-action\"]": {
+      "flex": "none"
+    },
+    "&[data-compact]": {
+      "$description": "An inline section inside an otherwise populated panel — tighter and left-aligned, because it sits directly above its own add form rather than filling a region on its own.",
+      "alignItems": "flex-start",
+      "gap": "var(--jx-space-2)",
+      "padding": "var(--jx-space-3) var(--jx-space-4)",
+      "textAlign": "left",
+      "fontSize": "var(--jx-text-sm)"
+    },
+    "&[data-compact] [part=\"empty-actions\"]": {
+      "justifyContent": "flex-start"
+    }
+  },
+  "children": [
+    {
+      "tagName": "p",
+      "attributes": {
+        "part": "empty-message"
+      },
+      "textContent": "${state.message}"
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "empty-detail-slot",
+        "role": "none"
+      },
+      "style": {
+        "display": "contents"
+      },
+      "$switch": {
+        "$ref": "#/state/hasDetail"
+      },
+      "cases": {
+        "true": {
+          "tagName": "p",
+          "attributes": {
+            "part": "empty-detail"
+          },
+          "textContent": "${state.detail}"
+        }
+      }
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "empty-actions-slot",
+        "role": "none"
+      },
+      "style": {
+        "display": "contents"
+      },
+      "$switch": {
+        "$ref": "#/state/hasActions"
+      },
+      "cases": {
+        "true": {
+          "tagName": "div",
+          "attributes": {
+            "part": "empty-actions"
+          },
+          "children": [
+            {
+              "$prototype": "Array",
+              "items": {
+                "$ref": "#/state/actions"
+              },
+              "key": {
+                "$ref": "$map/item/id"
+              },
+              "map": {
+                "tagName": "jx-button",
+                "attributes": {
+                  "part": "empty-action"
+                },
+                "$props": {
+                  "size": "sm",
+                  "variant": "secondary",
+                  "disabled": {
+                    "$ref": "$map/item/disabled"
+                  }
+                },
+                "onclick": {
+                  "$prototype": "Function",
+                  "body": [
+                    {
+                      "operator": "call",
+                      "target": {
+                        "$ref": "#/state/runAction"
+                      },
+                      "value": [
+                        {
+                          "$ref": "$map/item/id"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "children": [
+                  {
+                    "tagName": "span",
+                    "textContent": "${$map.item.label}"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

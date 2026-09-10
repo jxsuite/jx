@@ -11,9 +11,11 @@ import {
   standUpPaneGrid,
 } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { html } from "lit-html";
+import { mountCanvasStage } from "../src/surfaces/canvas-stage";
+import type { CanvasStageHandle, CanvasStageView } from "../src/surfaces/canvas-stage";
+import type { CanvasSurface } from "../src/canvas/canvas-surface";
+import type { CanvasPanelEntry } from "../src/canvas/canvas-utils";
 import type { JxMutableNode } from "@jxsuite/schema/types";
-import type { CanvasPanel } from "../src/types";
 import { resetProjectShell, shell } from "../src/shell";
 import { PROJECT_STYLES_TITLE, PROJECT_STYLES_VIEW } from "../src/style/project-styles";
 import { surfaceForPane } from "../src/canvas/surface-registry";
@@ -48,6 +50,7 @@ void mock.module("../src/canvas/iframe-host", () => ({
 }));
 
 const { renderStylebookMode, selectStylebookTag } = await import("../src/panels/stylebook-panel");
+const { bindCanvasPanels, canvasPanelEntry } = await import("../src/canvas/canvas-utils");
 const { initShellRefs } = await import("../src/store");
 const { activeCanvasSurface } = await import("../src/canvas/canvas-surface");
 /* Panels belong to a pane's stage now (`src/canvas/canvas-surface.ts`), not to the app. */
@@ -72,30 +75,43 @@ function setupShell() {
 /** The primary pane's stage, stood up by {@link setupShell}. */
 let stage = surfaceForPane("primary");
 
-const panelTemplateCalls: unknown[][] = [];
+const panelEntryCalls: unknown[][] = [];
+/** The singleton hosts the stage announced on the last draw, by part. */
+const stageHosts = new Map<string, HTMLElement>();
+/** The stage standing in the pane, so a second draw does not leave the first one running. */
+let standingStage: CanvasStageHandle | null = null;
+
+/* The two geometry helpers stay mocks — this suite is about the catalogue, not the pan maths — but
+   the ARTBOARDS are real now, drawn by `surfaces/canvas-stage.json` through the same seam
+   `canvas-render.ts` uses. A hand-rolled `{ element, canvas }` pair would no longer prove anything:
+   the whole point of the conversion is that the boards come from the stage document. */
 const ctx = {
   applyTransform: mock(() => {}),
-  canvasPanelTemplate: (
+  canvasPanelEntry: (
     mediaName: string | null,
     label: string | null,
     fullWidth: boolean,
     width?: number | null,
   ) => {
-    panelTemplateCalls.push([mediaName, label, fullWidth, width]);
-    const element = document.createElement("div");
-    const canvas = document.createElement("div");
-    element.append(canvas);
-    const panel = {
-      _width: width ?? null,
-      canvas,
-      element,
-      mediaName,
-    } as unknown as CanvasPanel;
-    return { panel, tpl: html`${element}` };
+    panelEntryCalls.push([mediaName, label, fullWidth, width]);
+    return canvasPanelEntry(mediaName, label, fullWidth, width ?? null);
+  },
+  drawStage: async (surface: CanvasSurface, view: CanvasStageView, entries: CanvasPanelEntry[]) => {
+    standingStage?.dispose();
+    stageHosts.clear();
+    const handle = mountCanvasStage(surface.wrap, view, {
+      host: (part, element) => stageHosts.set(part, element),
+      pickPanel: () => {},
+    });
+    standingStage = handle;
+    await handle.ready;
+    bindCanvasPanels(entries, handle);
+    return handle;
   },
   observeCenterUntilStable: mock(() => {}),
+  stageHost: (_surface: CanvasSurface, part: string) => stageHosts.get(part) ?? null,
   updateActivePanelHeaders: mock(() => {}),
-} as Parameters<typeof renderStylebookMode>[1];
+} as unknown as Parameters<typeof renderStylebookMode>[1];
 
 const ctxMocks = ctx as unknown as Record<string, ReturnType<typeof mock>>;
 
@@ -141,7 +157,10 @@ beforeEach(() => {
   resetProjectShell();
   canvasPanels.length = 0;
   componentRegistry.length = 0;
-  panelTemplateCalls.length = 0;
+  standingStage?.dispose();
+  standingStage = null;
+  stageHosts.clear();
+  panelEntryCalls.length = 0;
   mounts.length = 0;
   pans.length = 0;
   stage.renderGeneration = 7;
@@ -158,10 +177,10 @@ afterEach(() => {
 // ─── renderStylebookMode ──────────────────────────────────────────────────────
 
 describe("renderStylebookMode", () => {
-  test("no $media → one full-width panel mounting the generated doc", () => {
+  test("no $media → one full-width panel mounting the generated doc", async () => {
     makeTab();
-    renderStylebookMode(stage, ctx);
-    expect(panelTemplateCalls).toEqual([[null, null, true, undefined]]);
+    await renderStylebookMode(stage, ctx);
+    expect(panelEntryCalls).toEqual([[null, null, true, undefined]]);
     expect(canvasPanels).toHaveLength(1);
     expect(mounts).toHaveLength(1);
     expect(mounts[0]!.gen).toBe(7);
@@ -174,9 +193,9 @@ describe("renderStylebookMode", () => {
     expect(ctxMocks.observeCenterUntilStable).toHaveBeenCalled();
   });
 
-  test("$media breakpoints → base + one panel per breakpoint, SAME generated doc for all", () => {
+  test("$media breakpoints → base + one panel per breakpoint, SAME generated doc for all", async () => {
     makeTab({ $media: { "--": "320px", md: "(min-width: 768px)" } });
-    renderStylebookMode(stage, ctx);
+    await renderStylebookMode(stage, ctx);
     expect(canvasPanels.map((panel) => panel.mediaName)).toEqual(["base", "md"]);
     expect(mounts).toHaveLength(2);
     expect(mounts[0]!.generated).toBe(mounts[1]!.generated);
@@ -187,7 +206,7 @@ describe("renderStylebookMode", () => {
   test("the chrome bar filter narrows the generated doc; Customized toggles the session flag", async () => {
     makeTab();
     shell.stylebook.filter = "h1";
-    renderStylebookMode(stage, ctx);
+    await renderStylebookMode(stage, ctx);
     await flush();
     expect(mounts[0]!.generated.tagToCardPath.has("h1")).toBe(true);
     expect(mounts[0]!.generated.tagToCardPath.has("ul")).toBe(false);
@@ -198,7 +217,7 @@ describe("renderStylebookMode", () => {
     /* The click is what the READER does; the render is what the app does next — `studio.ts`
        subscribes the canvas to this flag. Recording it here is what keeps the element's own
        pressed state and the scope that projects it from parting. */
-    renderStylebookMode(stage, ctx);
+    await renderStylebookMode(stage, ctx);
     await flush();
 
     const input = filterControl();
@@ -213,7 +232,7 @@ describe("renderStylebookMode", () => {
        the surface has one name and not one per control. The wire value must never surface here. */
     makeTab();
     shell.stylebook.customizedOnly = false;
-    renderStylebookMode(stage, ctx);
+    await renderStylebookMode(stage, ctx);
     await flush();
     expect(chromeBar().getAttribute("role")).toBe("toolbar");
     expect(chromeBar().getAttribute("aria-label")).toBe(PROJECT_STYLES_TITLE);
@@ -228,7 +247,7 @@ describe("renderStylebookMode", () => {
     expect(toggle.getAttribute("title")).toBeTruthy();
     toggle.click();
     await flush();
-    renderStylebookMode(stage, ctx);
+    await renderStylebookMode(stage, ctx);
     await flush();
     expect(customizedControl().getAttribute("aria-pressed")).toBe("true");
   });
@@ -237,14 +256,14 @@ describe("renderStylebookMode", () => {
     /* The stage is rebuilt on every filter keystroke — that is what narrows the catalogue — so the
        bar must be the same element afterwards or the field loses the caret that caused it. */
     makeTab();
-    renderStylebookMode(stage, ctx);
+    await renderStylebookMode(stage, ctx);
     await flush();
     const bar = chromeBar();
     expect([...bar.querySelectorAll("[class]")]).toEqual([]);
     expect(bar.getAttribute("class")).toBeNull();
 
     shell.stylebook.filter = "table";
-    renderStylebookMode(stage, ctx);
+    await renderStylebookMode(stage, ctx);
     await flush();
     expect(chromeBar()).toBe(bar);
     expect(filterControl().value).toBe("table");
@@ -255,10 +274,10 @@ describe("renderStylebookMode", () => {
        moves it, so this is the belt-and-braces path — and the surface that stops answering is one
        nothing else in the app would ever report. */
     makeTab();
-    renderStylebookMode(stage, ctx);
+    await renderStylebookMode(stage, ctx);
     await flush();
     chromeBar().remove();
-    renderStylebookMode(stage, ctx);
+    await renderStylebookMode(stage, ctx);
     await flush();
     expect(chromeBar().getAttribute("role")).toBe("toolbar");
     expect(document.querySelectorAll('[part="chrome"]')).toHaveLength(1);

@@ -485,7 +485,7 @@ describe("a Document Header repaint that lands after the host is gone", () => {
     resetStudioState({ projectConfig: {} });
     document.body.innerHTML = `<div id="app">
       <div class="pane-stage" data-jx-region="pane.primary">
-        <div class="doc-header-host"></div>
+        <div part="doc-header"></div>
       </div>
     </div>`;
     initShellRefs();
@@ -496,7 +496,7 @@ describe("a Document Header repaint that lands after the host is gone", () => {
     });
     tab.doc.document.title = "Hello";
 
-    const el = document.querySelector<HTMLElement>(".doc-header-host")!;
+    const el = document.querySelector<HTMLElement>('[part="doc-header"]')!;
     frontmatterPanel.attachDocumentHeaderHost("primary", el);
     await flush(8);
     expect(el.querySelector('[part="card"]')).not.toBeNull();
@@ -508,7 +508,6 @@ describe("a Document Header repaint that lands after the host is gone", () => {
     frontmatterPanel.attachDocumentHeaderHost("primary", null);
     await flush(8);
 
-    expect(frontmatterPanel.documentHeaderHost("primary")).toBeNull();
     expect(frameErrors).toEqual([]);
     /* The stage's own node is left as it found it — nothing hides it and nothing else is written
        into it — but the CARD goes with the hand-back. It is a mounted document now, and a document

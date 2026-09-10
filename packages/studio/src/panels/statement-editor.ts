@@ -40,8 +40,7 @@ import {
   extractInstruction,
 } from "@atlaskit/pragmatic-drag-and-drop-hitbox/tree-item";
 import { isJsonObject } from "@jxsuite/schema/guards";
-import { render as litRender } from "lit-html";
-import { renderExpressionEditor, renderOperandEditor } from "../ui/expression-editor";
+import { mountExpressionEditor, mountOperandEditor } from "../ui/expression-editor";
 import { openMenu } from "../surfaces/menu";
 import { rectOf } from "../utils/geometry";
 import { disposeDetachedStatementEditors, renderStatementsSurface } from "../surfaces/statements";
@@ -396,14 +395,11 @@ export function flattenStatements(
       const s = stmt as JxIfStatement;
       fields.set(field("if"), {
         paint: (host) =>
-          litRender(
-            renderOperandEditor(
-              s.if,
-              (v) => commit({ ...s, if: v } as JxStatement),
-              operandOpts(opts),
-            ),
-            host,
-          ),
+          mountOperandEditor(host, s.if, (v) => commit({ ...s, if: v } as JxStatement), {
+            ...operandOpts(opts),
+            label: "If",
+            prop: "if",
+          }),
       });
       return [emptyField({ key: field("if"), kind: "control", label: "If", prop: "if" })];
     }
@@ -411,14 +407,11 @@ export function flattenStatements(
       const s = stmt as JxSwitchStatement;
       fields.set(field("$switch"), {
         paint: (host) =>
-          litRender(
-            renderOperandEditor(
-              s.$switch,
-              (v) => commit({ ...s, $switch: v } as JxStatement),
-              operandOpts(opts),
-            ),
-            host,
-          ),
+          mountOperandEditor(host, s.$switch, (v) => commit({ ...s, $switch: v } as JxStatement), {
+            ...operandOpts(opts),
+            label: "Switch on",
+            prop: "$switch",
+          }),
       });
       return [
         emptyField({ key: field("$switch"), kind: "control", label: "Switch on", prop: "$switch" }),
@@ -431,13 +424,15 @@ export function flattenStatements(
       });
       fields.set(field("detail"), {
         paint: (host) =>
-          litRender(
-            renderOperandEditor(
-              s.detail ?? null,
-              (v) => commit({ ...s, detail: v } as JxStatement),
-              operandOpts(opts),
-            ),
+          mountOperandEditor(
             host,
+            s.detail ?? null,
+            (v) => commit({ ...s, detail: v } as JxStatement),
+            {
+              ...operandOpts(opts),
+              label: "Detail",
+              prop: "detail",
+            },
           ),
       });
       fields.set(field("eventInit"), {
@@ -479,14 +474,11 @@ export function flattenStatements(
     }
     fields.set(field("expression"), {
       paint: (host) =>
-        litRender(
-          renderExpressionEditor(stmt, (n) => commit(n as JxStatement), {
-            allowEventRef: opts.allowEventRef,
-            stateDefs: opts.stateDefs,
-            stateEntries: opts.stateEntries ?? null,
-          }),
-          host,
-        ),
+        mountExpressionEditor(host, stmt, (n) => commit(n as JxStatement), {
+          allowEventRef: opts.allowEventRef,
+          stateDefs: opts.stateDefs,
+          stateEntries: opts.stateEntries ?? null,
+        }),
     });
     /* No label: the card header already names the statement, and the expression editor draws its
        own Operator / Target / Value rows underneath. The surface hides an empty label node. */

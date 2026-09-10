@@ -207,12 +207,18 @@ function paletteItem(name: string): HTMLElement | undefined {
  * surface over Spectrum, so it reaches this document as an ISLAND rather than as markup
  * (studio-ui-guidelines.md §9.4), and asserting on the host is what says the seam held.
  */
-function operatorPicker(): HTMLElement & { value: string } {
-  const picker = part("editor-host")?.querySelector("sp-picker");
+/**
+ * The operator picker of the node the editor is showing — the FIRST one in the island.
+ *
+ * The editor is a document now and nests by emitting more rows, so a formula with an operand
+ * formula inside it has two operator pickers side by side; the selected node's is the first.
+ */
+function operatorPicker(): HTMLSelectElement {
+  const picker = part("editor-host")?.querySelector('[part="operator"] [part="control"]');
   if (!picker) {
     throw new Error("no operator picker in the editor island");
   }
-  return picker as HTMLElement & { value: string };
+  return picker as HTMLSelectElement;
 }
 
 function changeValue(el: HTMLElement & { value: string }, value: string) {
@@ -255,10 +261,13 @@ describe("def-type target", () => {
     // Chip pipeline: head operand (count), then the + and * operator links.
     expect(parts("chip").map((c) => c.getAttribute("title"))).toEqual(["count", "+", "*"]);
     // Live badges from the dataScope snapshot: count=2 → 2, 3, 30 along the chain.
-    expect(parts("badge").map((b) => b.textContent?.trim())).toEqual(["2", "3", "30"]);
+    // Scoped to the strip: the editor beside it draws badges of its own on the rows it shows.
+    expect(
+      [...part("chips")!.querySelectorAll('[part="badge"]')].map((b) => b.textContent?.trim()),
+    ).toEqual(["2", "3", "30"]);
 
     // Main pane: the selected sub-node form (root by default), drawn into the announced island.
-    expect(part("editor-host")?.querySelector(".expression-editor")).not.toBeNull();
+    expect(part("editor-host")?.querySelector('[part="expression"]')).not.toBeNull();
     expect(text("selected-node")).toBe("root");
     expect(operatorPicker().value).toBe("*");
 

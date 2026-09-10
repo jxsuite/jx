@@ -68,13 +68,7 @@ import { TableRow } from "@spectrum-web-components/table/src/TableRow.js";
 import { TableCell } from "@spectrum-web-components/table/src/TableCell.js";
 
 // Icons
-import { IconImage } from "@spectrum-web-components/icons-workflow/src/elements/IconImage.js";
 import { IconFileSingleWebPage } from "@spectrum-web-components/icons-workflow/src/elements/IconFileSingleWebPage.js";
-import { IconUpload } from "@spectrum-web-components/icons-workflow/src/elements/IconUpload.js";
-import { IconBrackets } from "@spectrum-web-components/icons-workflow/src/elements/IconBrackets.js";
-import { IconChevronDown } from "@spectrum-web-components/icons-workflow/src/elements/IconChevronDown.js";
-import { IconChevronUp } from "@spectrum-web-components/icons-workflow/src/elements/IconChevronUp.js";
-import { IconDelete } from "@spectrum-web-components/icons-workflow/src/elements/IconDelete.js";
 import { IconCopy } from "@spectrum-web-components/icons-workflow/src/elements/IconCopy.js";
 import { IconPreview } from "@spectrum-web-components/icons-workflow/src/elements/IconPreview.js";
 import { IconBrush } from "@spectrum-web-components/icons-workflow/src/elements/IconBrush.js";
@@ -150,13 +144,7 @@ const components = [
   ["sp-table-body", TableBody],
   ["sp-table-row", TableRow],
   ["sp-table-cell", TableCell],
-  ["sp-icon-image", IconImage],
   ["sp-icon-file-single-web-page", IconFileSingleWebPage],
-  ["sp-icon-upload", IconUpload],
-  ["sp-icon-brackets", IconBrackets],
-  ["sp-icon-chevron-down", IconChevronDown],
-  ["sp-icon-chevron-up", IconChevronUp],
-  ["sp-icon-delete", IconDelete],
   ["sp-icon-copy", IconCopy],
   ["sp-icon-preview", IconPreview],
   ["sp-icon-brush", IconBrush],

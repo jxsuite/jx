@@ -9,18 +9,28 @@
  */
 import { flush, installMockPlatform, mountOverlayLayers, resetStudioState } from "./harness";
 import { beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
-import { html } from "lit-html";
+import { html, render as litRender } from "lit-html";
 import { initLayers } from "../src/ui/layers";
 import type { GridColumn } from "../src/grid/grid-source";
 
-// The real media picker drags in caches/timers — a stub input keeps the contract observable.
+/* The real media picker drags in caches/timers — a stub input keeps the contract observable. It is
+   MOUNTED into the island host now rather than returned as a template, which is the seam the picker
+   gained when it became a document; the double is what proves this module reaches that seam. */
 void mock.module("../src/ui/media-picker.js", () => ({
-  renderMediaPicker: (_prop: string, value: string, onCommit: (val: string) => void) =>
-    html`<input
-      data-testid="media"
-      .value=${value}
-      @change=${(e: Event) => onCommit((e.target as HTMLInputElement).value)}
-    />`,
+  mountMediaPicker: (
+    host: HTMLElement,
+    _prop: string,
+    value: string,
+    onCommit: (val: string) => void,
+  ) =>
+    litRender(
+      html`<input
+        data-testid="media"
+        .value=${value}
+        @change=${(e: Event) => onCommit((e.target as HTMLInputElement).value)}
+      />`,
+      host,
+    ),
 }));
 
 const { hasPopoverEditor, openCellValuePopover, referenceTargetType } =

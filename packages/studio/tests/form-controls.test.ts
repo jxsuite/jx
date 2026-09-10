@@ -16,25 +16,26 @@
  *   its own input's event and lets it bubble on, so writing the host's `value` property would be
  *   moving the control without telling it.
  *
- * The secret control is still a lit template over Spectrum (its header says why), so its tests
- * render it and address Spectrum elements, exactly as before.
+ * The secret control is a document too (`src/surfaces/secret-field.json`), so the same four apply
+ * to the second half of this file — with one addition it is the whole reason that control exists: a
+ * surface never renders back the secret it describes, and the test that says so drives the field
+ * rather than reading a template.
  */
 import { flush, key, pointer } from "./harness";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { html, render } from "lit-html";
 import {
   builtinFormControls,
+  referenceControl,
   resetFormControlUiState,
   schemaBuilderControl,
+  secretControl,
 } from "../src/ui/form-controls";
-import { getFormControl, mountSchemaForm, resetSchemaForms } from "../src/ui/schema-form";
+import { mountSchemaForm, resetSchemaForms } from "../src/ui/schema-form";
 import type {
   SchemaFormContext,
   SchemaFormControlArgs,
   SchemaFormControlHandle,
 } from "../src/ui/schema-form";
-
-type ValueEl = HTMLElement & { value: string };
 
 const inertCtx: SchemaFormContext = {
   resolvePointer: () => {
@@ -234,22 +235,19 @@ afterEach(() => {
 // ─── Registration ─────────────────────────────────────────────────────────────
 
 describe("registration", () => {
-  test("all three built-ins are registered on import", () => {
+  /**
+   * There is one shape left, and this is where that is said: the registry held templates beside
+   * mounts while two built-ins were still lit, and `getFormControl` was the lookup a lit caller
+   * used to interpolate one. All three are documents now, so a control needs a HOST — which only
+   * the engine has — and the lookup went with the template half. What is asserted here is the KIND;
+   * that each is reachable through the registry is asserted by the dispatch tests below,
+   * `reference-control.test.ts` and `secret-commit.test.ts`.
+   */
+  test("all three built-ins are registered on import, and every one is a mount", () => {
     expect(builtinFormControls).toEqual(["schema-builder", "secret", "reference"]);
     expect(schemaBuilderControl.mount).toBeInstanceOf(Function);
-    expect(getFormControl("secret")).toBeDefined();
-    expect(getFormControl("reference")).toBeDefined();
-  });
-
-  /**
-   * The template lookup refuses a mounted control, on purpose: a lit caller that interpolated one
-   * would get a document's handle where a template belongs. The two templates answer it, so the
-   * refusal is about the KIND rather than about the name being unregistered.
-   */
-  test("a mounted control is not offered as a template", () => {
-    expect(getFormControl("schema-builder")).toBeUndefined();
-    expect(getFormControl("secret")).toBeDefined();
-    expect(getFormControl("reference")).toBeDefined();
+    expect(secretControl.mount).toBeInstanceOf(Function);
+    expect(referenceControl.mount).toBeInstanceOf(Function);
   });
 });
 
@@ -859,114 +857,225 @@ describe("mounted through the schema form", () => {
 
 // ─── Secret control ──────────────────────────────────────────────────────────
 
+/**
+ * The secret control, mounted the way the engine mounts it.
+ *
+ * The rule these tests exist for is one sentence: **a surface never renders back the secret it
+ * describes.** What is on screen is the env-var NAME the store answered with, in the placeholder;
+ * what the reader typed leaves the field the moment it is handed over, before the platform round
+ * trip rather than after it.
+ */
 describe("secret control", () => {
-  function commitValue(el: Element, value: string): void {
-    (el as ValueEl).value = value;
-    el.dispatchEvent(new Event("change", { bubbles: true }));
+  interface SecretMount {
+    host: HTMLElement;
+    handle: SchemaFormControlHandle;
+    /** Every value committed to the secret store, as `[key, value]`. */
+    commits: [string, string][];
+    /** Every value the control asked the host to persist. */
+    changes: unknown[];
+    /** Redraw the control the way a host's repaint does. */
+    repaint: (value: unknown) => Promise<void>;
   }
 
-  function mountSecret(
+  async function mountSecret(
     ctx: SchemaFormContext,
     value?: unknown,
-    onChange: (next: unknown) => void = () => {
-      // Default: ignore the committed env name
-    },
-  ) {
-    const secret = getFormControl("secret")!;
-    const container = document.createElement("div");
-    render(
-      html`${secret({
-        ctx,
-        key: "urlEnv",
-        onChange,
-        schema: { format: "secret", type: "string" },
-        value,
-      })}`,
-      container,
-    );
-    return container;
+    { commits = [], changes = [] }: { commits?: [string, string][]; changes?: unknown[] } = {},
+  ): Promise<SecretMount> {
+    const host = document.createElement("div");
+    document.body.append(host);
+    hosts.push(host);
+    const state = { value };
+    const args = (): SchemaFormControlArgs => ({
+      ctx,
+      key: "urlEnv",
+      onChange: (next) => {
+        changes.push(next);
+        state.value = next;
+      },
+      schema: { format: "secret", type: "string" },
+      value: state.value,
+    });
+    const handle = secretControl.mount(host, args());
+    await settle();
+    return {
+      changes,
+      commits,
+      handle,
+      host,
+      async repaint(next) {
+        state.value = next;
+        handle.update(args());
+        await settle();
+      },
+    };
   }
 
-  test("renders disabled without a commitSecret hook (backend has no secrets surface)", () => {
-    const container = mountSecret(inertCtx);
-    const field = container.querySelector("sp-textfield")!;
-    expect(field.hasAttribute("disabled")).toBe(true);
-    expect(field.getAttribute("placeholder")).toBe("Not set");
-    expect(field.getAttribute("type")).toBe("password");
-    // Change events are inert while disabled
-    commitValue(field, "ignored");
+  /** The field the document drew. */
+  function field(m: SecretMount): HTMLElement {
+    return part(m.host, "field");
+  }
+
+  /** A context whose secret store records what it was given and answers with `name`. */
+  function storing(name: string, commits: [string, string][]): SchemaFormContext {
+    return {
+      commitSecret: (key_, value) => {
+        commits.push([key_, value]);
+        return name;
+      },
+      resolvePointer: () => {
+        // No context data
+      },
+    };
+  }
+
+  test("renders disabled without a commitSecret hook (backend has no secrets surface)", async () => {
+    const m = await mountSecret(inertCtx);
+    const input = control(field(m));
+    expect(input.disabled).toBe(true);
+    expect(input.getAttribute("placeholder")).toBe("Not set");
+    expect(input.getAttribute("type")).toBe("password");
+    // A change is inert while disabled: there is nowhere for the value to go.
+    setAndFire(field(m), "ignored");
+    await settle();
+    expect(m.changes).toEqual([]);
   });
 
   test("stores the VALUE via commitSecret and persists only the returned env NAME", async () => {
     const commits: [string, string][] = [];
+    const m = await mountSecret(storing("MAIN_URL", commits), undefined, { commits });
+    expect(control(field(m)).disabled).toBe(false);
+
+    setAndFire(field(m), "postgres://secret");
+    await settle();
+    expect(commits).toEqual([["urlEnv", "postgres://secret"]]);
+    expect(m.changes).toEqual(["MAIN_URL"]);
+  });
+
+  /**
+   * The rule, asserted where it can fail.
+   *
+   * A document's binding writes only when the SCOPE value changes, and the scope holds the empty
+   * string before the commit and after it — so an assignment of `""` is a no-op and the credential
+   * would sit in the field until the next thing moved it. The control bounces the binding through a
+   * value that is neither the secret nor empty, and this is the assertion that says so.
+   */
+  test("the entered secret never lingers in the field, and a repaint does not bring it back", async () => {
+    const commits: [string, string][] = [];
+    const m = await mountSecret(storing("MAIN_URL", commits), undefined, { commits });
+    setAndFire(field(m), "postgres://secret");
+    expect(shows(field(m))).toBe("");
+    await settle();
+    expect(shows(field(m))).toBe("");
+
+    // The host came back with the env name the commit produced; the field says where, not what.
+    await m.repaint("MAIN_URL");
+    expect(shows(field(m))).toBe("");
+    expect(control(field(m)).getAttribute("placeholder")).toBe("Stored as MAIN_URL");
+  });
+
+  test("a recommit under the same env name never patches project.json", async () => {
+    const commits: [string, string][] = [];
+    const m = await mountSecret(storing("MAIN_URL", commits), "MAIN_URL", { commits });
+    expect(control(field(m)).getAttribute("placeholder")).toBe("Stored as MAIN_URL");
+
+    setAndFire(field(m), "rotated-value");
+    await settle();
+    // The secret moved; the NAME did not, so there is nothing for the document to record.
+    expect(commits).toEqual([["urlEnv", "rotated-value"]]);
+    expect(m.changes).toEqual([]);
+    expect(shows(field(m))).toBe("");
+  });
+
+  test("blank input never commits", async () => {
+    const commits: [string, string][] = [];
+    const m = await mountSecret(storing("X", commits), undefined, { commits });
+    setAndFire(field(m), "");
+    await settle();
+    expect(commits).toEqual([]);
+    expect(m.changes).toEqual([]);
+  });
+
+  test("an asynchronous secret store is awaited, and the field is emptied before it answers", async () => {
+    let answer: ((name: string) => void) | null = null;
     const changes: unknown[] = [];
-    const container = mountSecret(
+    const m = await mountSecret(
       {
-        commitSecret: (key_, value) => {
-          commits.push([key_, value]);
-          return "MAIN_URL";
-        },
+        commitSecret: async () =>
+          new Promise<string>((resolve) => {
+            answer = resolve;
+          }),
         resolvePointer: () => {
           // No context data
         },
       },
       undefined,
-      (next) => changes.push(next),
+      { changes },
     );
-    const field = container.querySelector("sp-textfield")!;
-    expect(field.hasAttribute("disabled")).toBe(false);
-    commitValue(field, "postgres://secret");
-    await flush();
-    expect(commits).toEqual([["urlEnv", "postgres://secret"]]);
+    setAndFire(field(m), "postgres://secret");
+    /* Before the platform has answered: the credential is already off the screen. Clearing after
+       the round trip would leave it there for its length, and for good if the call refused. */
+    expect(shows(field(m))).toBe("");
+    expect(changes).toEqual([]);
+
+    answer!("MAIN_URL");
+    await settle();
     expect(changes).toEqual(["MAIN_URL"]);
-    // The entered secret never lingers in the field
-    expect((field as ValueEl).value).toBe("");
   });
 
-  test("shows the stored env NAME as placeholder and rerenders on a same-name recommit", async () => {
-    let rerenders = 0;
-    const secret = getFormControl("secret")!;
-    const container = document.createElement("div");
-    render(
-      html`${secret({
-        ctx: {
-          commitSecret: () => "MAIN_URL",
-          resolvePointer: () => {
-            // No context data
-          },
-        },
-        key: "urlEnv",
-        onChange: () => {
-          throw new Error("unchanged env names must not patch project.json");
-        },
-        rerender: () => {
-          rerenders += 1;
-        },
-        schema: { format: "secret", type: "string" },
-        value: "MAIN_URL",
-      })}`,
-      container,
-    );
-    const field = container.querySelector("sp-textfield")!;
-    expect(field.getAttribute("placeholder")).toBe("Stored as MAIN_URL");
-    commitValue(field, "rotated-value");
-    await flush();
-    expect(rerenders).toBe(1);
-  });
-
-  test("blank input never commits", async () => {
-    const commits: unknown[] = [];
-    const container = mountSecret({
-      commitSecret: (key_, value) => {
-        commits.push([key_, value]);
-        return "X";
+  /** Disposing before the mount has settled must not leave a document running in a detached host. */
+  test("dispose during the mount takes down the surface that arrives after it", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    hosts.push(host);
+    const handle = secretControl.mount(host, {
+      ctx: inertCtx,
+      key: "urlEnv",
+      onChange: () => {
+        // Nothing commits here
       },
-      resolvePointer: () => {
-        // No context data
-      },
+      schema: { format: "secret", type: "string" },
+      value: undefined,
     });
-    commitValue(container.querySelector("sp-textfield")!, "");
-    await flush();
-    expect(commits).toEqual([]);
+    handle.dispose();
+    await settle();
+    expect(host.childNodes.length).toBe(0);
+  });
+
+  /**
+   * A host the document has been taken out of — the form's own repaint replacing the control host,
+   * or a caller emptying it — is the one case an assignment to the scope cannot answer.
+   */
+  test("an update after the host was emptied mounts the document again", async () => {
+    const commits: [string, string][] = [];
+    const m = await mountSecret(storing("MAIN_URL", commits), "MAIN_URL", { commits });
+    expect(control(field(m)).getAttribute("placeholder")).toBe("Stored as MAIN_URL");
+
+    m.host.textContent = "";
+    await m.repaint("MAIN_URL");
+    expect(control(field(m)).getAttribute("placeholder")).toBe("Stored as MAIN_URL");
+    m.handle.dispose();
+  });
+
+  test("the engine mounts it for a field a ui override names", async () => {
+    const host = mountSchemaForm(
+      "test:secret",
+      { properties: { token: { type: "string" } }, type: "object" },
+      { token: "TOKEN_ENV" },
+      {
+        onChange: () => {
+          // Nothing commits here
+        },
+        ui: { token: { control: "secret" } },
+      },
+    );
+    document.body.append(host);
+    hosts.push(host);
+    await settle();
+    const island = host.querySelector('[data-prop="token"]');
+    const drawn = island?.querySelector('[part="control-host"] [part="secret"]');
+    expect(drawn).not.toBeNull();
+    expect(control(part(drawn!, "field")).getAttribute("placeholder")).toBe("Stored as TOKEN_ENV");
+    resetSchemaForms();
   });
 });

@@ -9,18 +9,17 @@
  * `ui/value-source.ts`). Nothing has registered it since, so a descriptor naming it falls through
  * to the control its type would have had anyway.
  *
- * **Two of the three are still lit, and which two is a fact rather than a stage.** `schema-builder`
- * is a Jx document (`surfaces/schema-builder.json`), mounted into the host the form draws for it.
- * `secret` is one password field. `reference` is a picker whose markup is ALSO interpolated by
- * `panels/frontmatter-fields.ts` into a lit widget of its own — a document cannot be interpolated,
- * so converting it means converting that panel, and until then a template is what its second caller
- * can use.
+ * **All three are Jx documents, and the registry has one shape again.** Each is registered as a
+ * MOUNT (`ui/schema-form.ts`'s {@link SchemaFormMountedControl}): the form's own document announces
+ * an empty `[part="control-host"]` per field, a document clears the host it is given, and the flow
+ * for each control lives here while its markup lives beside it in `surfaces/schema-builder.json`,
+ * `surfaces/secret-field.json` and `surfaces/reference-field.json`. The template half of the
+ * registry went with the last of them — this module was its only producer, and `ui/schema-form.ts`
+ * imported lit for nothing else.
  *
  * Imported once for side effects from studio startup.
  */
 
-import { html, nothing } from "lit-html";
-import { until } from "lit-html/directives/until.js";
 import { errorMessage } from "@jxsuite/schema/parse";
 import { referenceTarget, registerFormControl } from "./schema-form";
 import {
@@ -31,6 +30,8 @@ import {
   schemaForType,
 } from "../settings/schema-field-ui";
 import { mountSchemaBuilderSurface } from "../surfaces/schema-builder";
+import { mountReferenceFieldSurface } from "../surfaces/reference-field";
+import { mountSecretFieldSurface } from "../surfaces/secret-field";
 import { camelToLabel, toCamelCase } from "../utils/studio-utils";
 
 import type { SchemaProperty } from "../settings/schema-field-ui";
@@ -40,6 +41,7 @@ import type {
   SchemaFieldChoice,
   SchemaFieldView,
 } from "../surfaces/schema-builder";
+import type { ReferenceChoice, ReferenceFieldView } from "../surfaces/reference-field";
 import type {
   SchemaFormContext,
   SchemaFormControlArgs,
@@ -614,34 +616,90 @@ registerFormControl("schema-builder", schemaBuilderControl);
 
 // ─── Secret control ──────────────────────────────────────────────────────────
 
-// Secret VALUES commit through the host's secret store (ctx.commitSecret → platform setSecrets),
-// Never project.json; the field itself persists only the derived env-var NAME commitSecret
-// Returns. Hosts without a secrets surface leave the control disabled.
-registerFormControl("secret", ({ key, value, onChange, ctx, rerender }) => {
-  const { commitSecret } = ctx;
-  const envName = typeof value === "string" && value ? value : null;
-  return html`<sp-textfield
-    size="s"
-    type="password"
-    class="secret-field"
-    placeholder=${envName ? `Stored as ${envName}` : "Not set"}
-    ?disabled=${!commitSecret}
-    @change=${async (e: Event) => {
-      const target = e.target as HTMLInputElement;
-      const secretValue = target.value;
-      if (!commitSecret || !secretValue) {
+/**
+ * The env-var name a field currently points at, or `null` when it points at nothing.
+ *
+ * The field persists a NAME — the value itself went to the platform's secret store — so a non-empty
+ * string here is the whole of what a screen may say about the secret.
+ */
+function envNameOf(value: unknown): string | null {
+  return typeof value === "string" && value ? value : null;
+}
+
+/**
+ * Mount the secret field into the host the form drew for it.
+ *
+ * Secret VALUES commit through the host's secret store (`ctx.commitSecret` → the platform's
+ * `setSecrets`), never project.json; the field itself persists only the derived env-var NAME that
+ * call answers with. A host with no secrets surface leaves the control disabled, because there is
+ * nowhere for what the reader types to go.
+ *
+ * **The field is emptied the moment the value leaves it, not when the commit lands.** The commit is
+ * asynchronous and the clear is not, so ordering them the other way round would leave the
+ * credential on screen for the length of a platform round trip — and would leave it there for good
+ * if the call refused. This way a failure costs the reader their typing, which is the direction a
+ * mistake in a secret field should fail in.
+ *
+ * @param {HTMLElement} host - The field's `[part="control-host"]`
+ * @param {SchemaFormControlArgs} args - The value, the context and the commit hook
+ * @returns {SchemaFormControlHandle}
+ */
+function mountSecret(host: HTMLElement, args: SchemaFormControlArgs): SchemaFormControlHandle {
+  let latest = args;
+
+  const redraw = (): void => {
+    const envName = envNameOf(latest.value);
+    surface.update({
+      disabled: !latest.ctx.commitSecret,
+      /* The FIELD's key, exactly as the row above shows it: `surfaces/schema-form.json` draws a
+         `jx-field` whose visible label is the raw property name, and the kit names a slotted
+         control from that label — but this control is mounted into a plain host, which a label
+         cannot point at. So the control carries the accessible name itself, and it is the same
+         string a sighted reader sees rather than a prettier one (WCAG 2.5.3). */
+      label: latest.key,
+      placeholder: envName ? `Stored as ${envName}` : "Not set",
+    });
+  };
+
+  const surface = mountSecretFieldSurface(host, {
+    commit(value) {
+      const { commitSecret } = latest.ctx;
+      if (!commitSecret || !value) {
         return;
       }
-      const name = await commitSecret(key, secretValue);
-      target.value = "";
-      if (typeof name === "string" && name && name !== envName) {
-        onChange(name);
-      } else {
-        rerender?.();
-      }
-    }}
-  ></sp-textfield>`;
-});
+      surface.clear();
+      const { key, onChange } = latest;
+      const envName = envNameOf(latest.value);
+      void Promise.resolve(commitSecret(key, value)).then((name) => {
+        /* A name equal to the one the field already holds is not an edit: the same secret was
+           rotated in place, the store answered with the same env var, and a patch would rewrite
+           project.json with the bytes it already has. */
+        if (typeof name === "string" && name && name !== envName) {
+          onChange(name);
+        }
+      });
+    },
+  });
+
+  redraw();
+
+  return {
+    dispose: () => surface.dispose(),
+    update(next) {
+      latest = next;
+      redraw();
+    },
+  };
+}
+
+/**
+ * The secret control as the registry holds it. Named rather than written inline at the registration
+ * below so a test can drive it the way the engine does, without the registry growing a second
+ * public lookup for it.
+ */
+export const secretControl: SchemaFormMountedControl = { mount: mountSecret };
+
+registerFormControl("secret", secretControl);
 
 // ─── Reference control ───────────────────────────────────────────────────────
 
@@ -657,8 +715,10 @@ registerFormControl("secret", ({ key, value, onChange, ctx, rerender }) => {
  *
  * Three states, and none of them lies:
  *
- * - **loading** — a disabled picker saying so, replaced when the read lands (which is why the control
- *   needs `rerender`; without it there is no second frame and "Loading…" is forever);
+ * - **loading** — a disabled picker saying so, replaced when the read lands. The control redraws
+ *   ITSELF when that happens now: it used to need the host's `rerender`, and the frontmatter
+ *   renderer passes none, so lit's `until` was standing in for a second frame the control could not
+ *   ask for;
  * - **failed** — the current value stays EDITABLE as text, with the reason and a Retry beside it.
  *   Swapping a failed read for an empty dropdown would present "no entries" and "could not find
  *   out" as the same screen, which is §16.1's complaint in miniature;
@@ -673,15 +733,25 @@ const entryIdCache = new Map<string, Promise<string[]>>();
 /**
  * What the read ENDED as, per collection.
  *
- * Kept beside the promise so a settled collection renders synchronously. Without it every repaint
- * of the enclosing form hands `until` a fresh unsettled promise, `until` falls back to its
- * placeholder, and a picker that has had its answer for ten minutes flashes "Loading…" on every
- * keystroke in the field beside it.
+ * Kept beside the promise so a settled collection is answered without waiting. Without it every
+ * repaint of the enclosing form would go back to a promise, and a picker that has had its answer
+ * for ten minutes would flash "Loading…" on every keystroke in the field beside it.
  */
 const entryIdResult = new Map<string, { ids: string[] } | { error: string }>();
 
-/** Collections whose settle handler is already attached, so a repaint never attaches a second. */
-const entryIdWatched = new Set<string>();
+/**
+ * Who is waiting for a collection's read to land, by collection. Emptied when it does.
+ *
+ * A SET rather than a flag, and the difference is a field that never finishes loading. It was one
+ * boolean per collection — "a settle handler is already attached" — so the first control to ask got
+ * the answer and every later one was told nothing at all. That was survivable while the only asker
+ * was a lit template (`until` held a promise of its own) or a whole panel repainting on the first
+ * control's behalf; with three independently mounted documents on one collection, the second and
+ * third would sit on "Loading…" for the life of the pane. Repeated asks from one waiter dedupe by
+ * identity, and the set is dropped whole the moment the read settles, so it cannot grow past the
+ * length of one listing.
+ */
+const entryIdWaiting = new Map<string, Set<() => void>>();
 
 /**
  * Forget cached entry ids — for one collection, or all of them.
@@ -694,11 +764,11 @@ export function invalidateReferenceEntries(collection?: string): void {
   if (collection === undefined) {
     entryIdCache.clear();
     entryIdResult.clear();
-    entryIdWatched.clear();
+    entryIdWaiting.clear();
   } else {
     entryIdCache.delete(collection);
     entryIdResult.delete(collection);
-    entryIdWatched.delete(collection);
+    entryIdWaiting.delete(collection);
   }
 }
 
@@ -721,16 +791,16 @@ function entryIdsFor(collection: string): Promise<string[]> {
 /**
  * How listing a collection's entry ids ENDED, for a surface that draws its own picker.
  *
- * `null` means the read is still in flight, and `onSettled` is called once when it lands — which is
- * the second frame the registered control gets from `until` and a document has to be given.
+ * `null` means the read is still in flight, and `onSettled` is called when it lands — which is the
+ * second frame a document has to be GIVEN, since nothing repaints it on the read's behalf.
  *
- * Exported because the `reference` control's MARKUP is a lit template and a surface that is a Jx
- * document cannot interpolate one (specs/studio-ui-guidelines.md §9.4). What such a surface needs
- * is not the widget but the answer behind it, and taking it from here rather than calling
- * `listCollectionEntryIds` directly is what keeps ONE cache and ONE invalidation: a collection
- * listed for the Document Header card is not listed again for the entry editor, and
- * {@link invalidateReferenceEntries} after an entry is created is still the single event that
- * forgets it.
+ * Exported because two surfaces draw the choices and neither is this control: the Document Header
+ * card and the Navigator's Page panel project a `$ref` field as a picker row of their own
+ * (`panels/frontmatter-fields.ts`), and what they need is not the widget but the answer behind it.
+ * Taking it from here rather than calling `listCollectionEntryIds` directly is what keeps ONE cache
+ * and ONE invalidation: a collection listed for the Document Header card is not listed again for
+ * the entry editor, and {@link invalidateReferenceEntries} after an entry is created is still the
+ * single event that forgets it.
  *
  * @param {string} collection
  * @param {() => void} [onSettled]
@@ -745,139 +815,169 @@ export function referenceEntryState(
     return done;
   }
   const pending = entryIdsFor(collection);
-  if (entryIdWatched.has(collection)) {
+  const waiting = entryIdWaiting.get(collection);
+  if (waiting) {
+    if (onSettled) {
+      waiting.add(onSettled);
+    }
     return null;
   }
-  entryIdWatched.add(collection);
+  entryIdWaiting.set(collection, new Set(onSettled ? [onSettled] : []));
+  /**
+   * Record how the read ended and tell everyone who asked — unless this is not the read anyone is
+   * waiting for any more.
+   *
+   * A Retry invalidates the collection and starts a second read while the first is still in flight,
+   * so without the identity check the loser writes its stale answer over the winner's and notifies
+   * a set of waiters that belongs to the other read. An invalidated read settles into nothing,
+   * which is what "forget this collection" has to mean.
+   */
+  const settle = (result: { ids: string[] } | { error: string }): void => {
+    if (entryIdCache.get(collection) !== pending) {
+      return;
+    }
+    const listeners = entryIdWaiting.get(collection);
+    entryIdWaiting.delete(collection);
+    entryIdResult.set(collection, result);
+    for (const run of listeners ?? []) {
+      run();
+    }
+  };
   void pending.then(
-    (ids) => {
-      entryIdWatched.delete(collection);
-      entryIdResult.set(collection, { ids });
-      onSettled?.();
-    },
-    (error: unknown) => {
-      entryIdWatched.delete(collection);
-      entryIdResult.set(collection, { error: errorMessage(error) });
-      onSettled?.();
-    },
+    (ids) => settle({ ids }),
+    (error: unknown) => settle({ error: errorMessage(error) }),
   );
   return null;
 }
 
-/** Plain text editing of the reference id — the fallback when the choices cannot be listed. */
-function referenceTextField(current: string, onChange: (next: unknown) => void) {
-  return html`<sp-textfield
-    size="s"
-    class="reference-field"
-    .value=${current}
-    @change=${(e: Event) => onChange((e.target as HTMLInputElement).value.trim() || undefined)}
-  ></sp-textfield>`;
-}
+/**
+ * The view a reference field is drawn from, given what the flow knows right now.
+ *
+ * Every branch answers with a whole view rather than patching one, so the three states cannot leak
+ * into each other: a picker that failed to list is a TEXT field, and a text field's `options` is
+ * empty rather than stale.
+ */
+function referenceView(args: SchemaFormControlArgs, onSettled: () => void): ReferenceFieldView {
+  const current = typeof args.value === "string" ? args.value : "";
+  const base = {
+    canRetry: false,
+    disabled: false,
+    hasNote: false,
+    /* The row's own visible label, verbatim — see the secret control's note on why the control
+       carries its accessible name rather than inheriting one from the field around it. */
+    label: args.key,
+    note: "",
+    noteTone: "dim",
+    options: [] as ReferenceChoice[],
+    value: current,
+  } satisfies Omit<ReferenceFieldView, "kind">;
 
-/** The picker, once the ids are in. */
-function referencePicker(
-  collection: string,
-  ids: string[],
-  current: string,
-  onChange: (next: unknown) => void,
-) {
-  const dangling = current !== "" && !ids.includes(current);
-  return html`
-    <sp-picker
-      size="s"
-      class="reference-field"
-      value=${current || "__none__"}
-      @change=${(e: Event) => {
-        const chosen = (e.target as HTMLInputElement).value;
-        onChange(chosen === "__none__" ? undefined : chosen);
-      }}
-    >
-      <sp-menu-item value="__none__">—</sp-menu-item>
-      ${
-        dangling
-          ? html`<sp-menu-item class="reference-missing" value=${current}
-              >${current} — not found</sp-menu-item
-            >`
-          : nothing
-      }
-      ${ids.map((id) => html`<sp-menu-item value=${id}>${id}</sp-menu-item>`)}
-    </sp-picker>
-    ${ids.length === 0 ? html`<span class="reference-note">No ${collection} entries yet.</span>` : nothing}
-  `;
-}
-
-registerFormControl("reference", ({ schema, value, onChange, rerender }: SchemaFormControlArgs) => {
-  const collection = referenceTarget(schema);
-  const current = typeof value === "string" ? value : "";
+  const collection = referenceTarget(args.schema);
   if (collection === null) {
     /* The control was named by a `ui.control` override on a property that references nothing. The
        field is still editable — refusing to draw it would lose the value — and the note says which
        half of the declaration is missing. */
-    return html`<div class="reference-control">
-      ${referenceTextField(current, onChange)}
-      <span class="reference-note"
-        >No collection referenced — add <code>"$ref": "#/content/&lt;type&gt;"</code> to this
-        field.</span
-      >
-    </div>`;
+    return {
+      ...base,
+      hasNote: true,
+      kind: "text",
+      note: 'No collection referenced — add "$ref": "#/content/<type>" to this field.',
+    };
   }
 
-  const failedTpl = (error: string) => html`
-    ${referenceTextField(current, onChange)}
-    <span class="reference-note reference-note--failed"
-      >Could not list ${collection} entries — ${error}</span
-    >
-    ${
-      /* Retry only where a repaint is possible. A button that cannot do the thing it is named
-           after is worse than its absence — the field beside it still edits the value. */
-      rerender
-        ? html`<sp-action-button
-            size="s"
-            quiet
-            @click=${() => {
-              invalidateReferenceEntries(collection);
-              rerender();
-            }}
-            >Retry</sp-action-button
-          >`
-        : nothing
+  const state = referenceEntryState(collection, onSettled);
+  if (state === null) {
+    // Only the FIRST paint of a collection waits; a settled one is answered from the cache above.
+    return {
+      ...base,
+      disabled: true,
+      kind: "picker",
+      options: [{ label: "Loading…", value: current }],
+    };
+  }
+  if ("error" in state) {
+    return {
+      ...base,
+      canRetry: true,
+      hasNote: true,
+      kind: "text",
+      note: `Could not list ${collection} entries — ${state.error}`,
+      noteTone: "danger",
+    };
+  }
+
+  const dangling = current !== "" && !state.ids.includes(current);
+  return {
+    ...base,
+    hasNote: state.ids.length === 0,
+    kind: "picker",
+    note: state.ids.length === 0 ? `No ${collection} entries yet.` : "",
+    options: [
+      { label: "—", value: "" },
+      ...(dangling ? [{ label: `${current} — not found`, value: current }] : []),
+      ...state.ids.map((id) => ({ label: id, value: id })),
+    ],
+  };
+}
+
+/**
+ * Mount the reference picker into the host the form drew for it.
+ *
+ * @param {HTMLElement} host - The field's `[part="control-host"]`, or a row cell's own host
+ * @param {SchemaFormControlArgs} args - The value, the schema and the commit hook
+ * @returns {SchemaFormControlHandle}
+ */
+function mountReference(host: HTMLElement, args: SchemaFormControlArgs): SchemaFormControlHandle {
+  let latest = args;
+  let disposed = false;
+
+  /* The read lands turns after the control asked for it, and the field may be gone by then — a
+     cell whose row was removed, a form the pane took down. A redraw after that would update a scope
+     nothing is mounted on. */
+  const redraw = (): void => {
+    if (!disposed) {
+      surface.update(referenceView(latest, redraw));
     }
-  `;
+  };
 
-  // Already answered: render it now. Only the FIRST paint of a collection waits.
-  const done = entryIdResult.get(collection);
-  if (done) {
-    return html`<div class="reference-control">
-      ${
-        "ids" in done
-          ? referencePicker(collection, done.ids, current, onChange)
-          : failedTpl(done.error)
+  const surface = mountReferenceFieldSurface(host, {
+    choose(value) {
+      latest.onChange(value === "" ? undefined : value);
+    },
+    edit(value) {
+      latest.onChange(value.trim() || undefined);
+    },
+    retry() {
+      const collection = referenceTarget(latest.schema);
+      if (collection !== null) {
+        invalidateReferenceEntries(collection);
       }
-    </div>`;
-  }
-
-  /* `until` rather than a host repaint: a form control cannot ask its host to draw a second frame,
-     and the frontmatter renderer passes no `rerender` at all — with one, this field would have said
-     "Loading…" for the life of the panel. */
-  const resolved = entryIdsFor(collection).then(
-    (ids) => {
-      entryIdResult.set(collection, { ids });
-      return referencePicker(collection, ids, current, onChange);
+      redraw();
     },
-    (error: unknown) => {
-      const message = errorMessage(error);
-      entryIdResult.set(collection, { error: message });
-      return failedTpl(message);
-    },
-  );
+  });
 
-  return html`<div class="reference-control">
-    ${until(
-      resolved,
-      html`<sp-picker size="s" class="reference-field" disabled label="Loading…"></sp-picker>`,
-    )}
-  </div>`;
-});
+  redraw();
+
+  return {
+    dispose() {
+      disposed = true;
+      surface.dispose();
+    },
+    update(next) {
+      latest = next;
+      redraw();
+    },
+  };
+}
+
+/**
+ * The reference control as the registry holds it. Named rather than written inline at the
+ * registration below so a test can drive it the way the engine does, without the registry growing a
+ * second public lookup for it.
+ */
+export const referenceControl: SchemaFormMountedControl = { mount: mountReference };
+
+registerFormControl("reference", referenceControl);
 
 // Keep an explicit export so hosts can assert the built-ins module loaded
 export const builtinFormControls = ["schema-builder", "secret", "reference"] as const;

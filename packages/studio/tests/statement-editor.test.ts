@@ -371,7 +371,7 @@ describe("the document draws the four kinds", () => {
     expect(host).toBeTruthy();
     // The document renders the host node and NOTHING inside it; the flow fills it (§9.4).
     expect(host.dataset.field).toBe("[]#0::expression");
-    expect(host.querySelector(".expression-editor")).toBeTruthy();
+    expect(host.querySelector('[part="expression"]')).toBeTruthy();
   });
 
   test("if card renders the test operand, a Then lane, and an Add else action", async () => {

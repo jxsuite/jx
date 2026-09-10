@@ -99,7 +99,8 @@ const AUTHOR_CONFIG = {
 /**
  * Draw one reference field into `container`.
  *
- * The schema form is a document now, so what the engine hands back is the element the form lives in
+ * The schema form is a document now, and so is the control it dispatches to
+ * (`surfaces/reference-field.json`), so what the engine hands back is the element the form lives in
  * rather than a template: the container is ATTACHED (a kit element renders on connect) and the host
  * is placed in it. Re-mounting under the same key is what the control's own `rerender` hook does.
  */
@@ -123,7 +124,9 @@ function mountReference(container: HTMLElement, key: string): void {
 }
 
 function optionsIn(container: HTMLElement): (string | null)[] {
-  return [...container.querySelectorAll("sp-menu-item")].map((item) => item.textContent);
+  return [...container.querySelectorAll('[part="picker"] option [part="text"]')].map(
+    (text) => text.textContent,
+  );
 }
 
 function directoryReads(state: MockPlatformState): unknown[] {
@@ -153,9 +156,10 @@ describe("the reference control reads a collection once", () => {
     resetStudioState({ projectConfig: AUTHOR_CONFIG });
     invalidateReferenceEntries();
 
-    // Both mounts happen in the same tick: the cache holds an UNSETTLED promise, which is the only
-    // Moment the in-flight branch is reachable (a settled collection renders straight from
-    // `entryIdResult` and never asks again).
+    /* Both mounts happen in the same tick: the cache holds an UNSETTLED promise, which is the only
+       moment the in-flight branch is reachable (a settled collection renders straight from
+       `entryIdResult` and never asks again). Both fields must still END UP with the entries — one
+       READ is the guard, not one waiter, and the second control redraws itself when it lands. */
     resetSchemaForms();
     const first = document.createElement("div");
     const second = document.createElement("div");

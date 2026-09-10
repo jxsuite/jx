@@ -261,10 +261,6 @@ export const SPECTRUM_DEBT: Record<string, number> = {
      (`jx-color-field`, `jx-color-area`, `jx-swatch`) is Pending, so the Style tab draws an empty
      `[part="control-host"]` and this island fills it — and it goes whole when §5.6 lands. */
   "ui/color-selector.ts": 1,
-  /* Content-type field cards. Rebuilt wholesale on every edit today, so the reader has no window
-     in which to diverge — which is why they are here rather than fixed. */
-  "ui/expression-editor.ts": 1,
-  "ui/form-controls.ts": 2,
 };
 
 /**
@@ -276,11 +272,6 @@ export const SPECTRUM_DEBT: Record<string, number> = {
  * to; it objects to re-finding the node by selector every time instead of holding it.
  */
 export const SELF_QUERY_DEBT: Record<string, number> = {
-  /* `panels/tab-strip.ts` had four — the strip and its chips, all for MEASUREMENT (scrollWidth,
-     offsetLeft) or scrollIntoView — and has none: the strip is a Jx document, so the module emits
-     no class to query, and `surfaces/tab-strip.ts` hands it the `jx-tabs` element as that element
-     is created. The uses are still imperative, which is not what this rule objects to; the
-     ACQUISITION is a handle now. */
   /* `isColorPopoverOpen()` derives modality from the live DOM, document-wide, and right-panel
      calls it as a blockWhile on every scheduled render. State read back out of markup. */
   "ui/value-selector.ts": 1,

@@ -5,7 +5,6 @@ code:
   - packages/studio/src/panels/events-panel.ts
   - packages/studio/src/surfaces/logic-panel.ts
   - packages/studio/src/panels/provenance.ts
-  - packages/studio/src/ui/field-row.ts
 ---
 
 # Logic tab

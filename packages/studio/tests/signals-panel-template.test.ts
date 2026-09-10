@@ -422,9 +422,13 @@ describe("the value editor", () => {
     expect(host).not.toBeNull();
     expect(host!.childNodes.length).toBeGreaterThan(0);
 
-    const field = host!.querySelector("sp-textfield") as HTMLElement & { value: string };
-    field.value = "/hero.png";
-    field.dispatchEvent(new Event("input", { bubbles: true }));
+    /* The picker's own text control, addressed by part: it is `surfaces/media-field.json` over the
+       kit now, so the value lives on the native input inside `[part="value"]` rather than on an
+       `<sp-textfield>`'s own property. */
+    const field = host!.querySelector<HTMLInputElement>('[part="value"] [part="input"]');
+    expect(field).not.toBeNull();
+    field!.value = "/hero.png";
+    field!.dispatchEvent(new Event("input", { bubbles: true }));
     await new Promise((r) => {
       setTimeout(r, 450);
     });
@@ -966,7 +970,7 @@ describe("the expression editor", () => {
     expect(host?.childNodes.length).toBeGreaterThan(0);
 
     // The editor is a surface of its own: what this panel owns is that its edits reach the entry.
-    const picker = host!.querySelector(".expr-operator") as HTMLElement & { value: string };
+    const picker = host!.querySelector('[part="operator"] [part="control"]') as HTMLSelectElement;
     picker.value = "!";
     picker.dispatchEvent(new Event("change", { bubbles: true }));
     await settle();

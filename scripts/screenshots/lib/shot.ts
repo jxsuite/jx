@@ -483,7 +483,7 @@ function measureRegionInPage(
     const field = browse ? null : /^inspector\/field:(.+)$/.exec(canonical);
     if (inspector && browse) {
       const row = inspector.querySelector<HTMLElement>(`[data-prop="${CSS.escape(browse[1]!)}"]`);
-      const button = row?.querySelector<HTMLElement>(".media-picker-browse");
+      const button = row?.querySelector<HTMLElement>('[part="browse"]');
       matches = button ? [button] : [];
     } else if (inspector && field) {
       matches = [

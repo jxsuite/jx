@@ -13,7 +13,8 @@ import {
 import { listRegions, resolveAllRegions, resolveRegion } from "../src/ui/regions";
 import { DEFAULT_PANE_SPLIT, resetShellSurfaces, shell } from "../src/shell";
 import { surfaceForPane } from "../src/canvas/surface-registry";
-import { cellForPane, mount, paneCells, reconcile, unmount } from "../src/panels/pane-grid";
+import { PANE_SELECTOR, STAGE_SELECTOR } from "../src/surfaces/pane-grid";
+import { cellForPane, mount, paneGridReady, reconcile, unmount } from "../src/panels/pane-grid";
 
 /**
  * The pane grid, as DOM.
@@ -21,27 +22,41 @@ import { cellForPane, mount, paneCells, reconcile, unmount } from "../src/panels
  * Three properties, and the first two are the ones no other gate can see:
  *
  * 1. **A cell is complete before it is published** (§18.1 rule 1). The stage, the strip and both
- *    region stamps exist in the same tick the `.pane` first appears in the document.
+ *    region stamps exist in the same tick the cell first appears in the document.
  * 2. **Reconciling twice does nothing.** The grid is driven by a reactive effect over
  *    `workspace.panes`, which re-runs for reasons that are not pane changes; a reconciler that
- *    rebuilt would throw away the canvas's lit render part and every live iframe with it.
+ *    rebuilt would throw away the canvas's render root and every live iframe with it.
  * 3. **Region ids are derived from the pane, and UNIQUE.** `pane.primary` used to be a row of the
  *    `SHELL_REGION_HOSTS` table pointing at `#canvas-wrap`. Sixty screenshots crop it and its two
  *    siblings. Each has to still resolve, to exactly one element, and to the PRIMARY cell's stage
  *    rather than to the whole cell or to the side pane's.
+ *
+ * **Nothing below names a class**, and that is the conversion's own gate: the grid is a Jx document
+ * now, so `.pane`, `.pane-stage` and `.pane-splitter` are gone and every query here is a `part`, a
+ * region or a role. The one assertion that could not survive verbatim is the splitter's place in
+ * the grid — it lived between two cells as their sibling and now lives inside its own row wrapper,
+ * which generates no box — so it is re-authored as what it always stood for: DOCUMENT ORDER, and
+ * membership of neither cell.
  */
 
-function standUpGrid(): HTMLElement {
-  document.body.innerHTML = `<div id="app"><div id="pane-grid"></div></div>`;
+const SPLITTER_SELECTOR = '[part="splitter"]';
+
+function grid(): HTMLElement {
   return document.querySelector("#pane-grid") as HTMLElement;
 }
 
-beforeEach(() => {
+function standUpGrid(): HTMLElement {
+  document.body.innerHTML = `<div id="app"><div id="pane-grid"></div></div>`;
+  return grid();
+}
+
+beforeEach(async () => {
   resetStudioState();
   closeAllTabs();
   shell.paneSplit = DEFAULT_PANE_SPLIT;
   standUpGrid();
   mount();
+  await paneGridReady();
 });
 
 afterEach(() => {
@@ -64,7 +79,26 @@ describe("the cell", () => {
   test("`pane.primary` names the STAGE, not the cell — widening it would widen nine shots", () => {
     const cell = cellForPane(PRIMARY_PANE)!;
     expect(resolveRegion("pane.primary")).not.toBe(cell.root);
-    expect(cell.stage.classList.contains("pane-stage")).toBe(true);
+    /* The stage's identity is a `part` and nothing else. It was a `.pane-stage` class, which is
+       what `editor/shortcuts.ts`'s ctrl-wheel guard tested with `closest()`; the document emits no
+       class, so the guard's selector is the one exported beside the document. */
+    expect(cell.stage.getAttribute("part")).toBe("pane-stage");
+    expect(cell.stage.className).toBe("");
+    expect(cell.stage.closest(STAGE_SELECTOR)).toBe(cell.stage);
+    expect(cell.root.getAttribute("part")).toBe("pane");
+    expect(cell.stage.closest(PANE_SELECTOR)).toBe(cell.root);
+  });
+
+  test("nothing the grid draws carries a class at all", () => {
+    /* The conversion's own gate. Every box below was a class in `styles/shell.css`; the rules moved
+       into the document and are keyed on `part`, so a class reappearing here is a surface that has
+       quietly opted back out of the design system. */
+    const cell = cellForPane(PRIMARY_PANE)!;
+    const classed = [...grid().querySelectorAll("*")].filter((el) => el.className !== "");
+    expect(classed.map((el) => `${el.nodeName.toLowerCase()}.${el.className}`)).toEqual([]);
+    for (const el of [cell.root, cell.strip, cell.jump, cell.chrome, cell.stage]) {
+      expect(el.className).toBe("");
+    }
   });
 
   test("the surface is registered against the stage before the cell is in the document", () => {
@@ -82,13 +116,12 @@ describe("the cell", () => {
 describe("reconcile", () => {
   test("is idempotent: a second pass performs no DOM operation at all", () => {
     /* Watched rather than mocked. `grid.append` was the only way in when the reconciler built its
-       own nodes; lit inserts through `insertBefore`, so a mocked `append` would pass this test
-       without ever proving anything. A subtree `childList` observer answers the real question —
-       did the second pass touch one node — whichever call it would have used. */
-    const grid = document.querySelector("#pane-grid") as HTMLElement;
+       own nodes; a document's repeater inserts through `insertBefore`, so a mocked `append` would
+       pass this test without ever proving anything. A subtree `childList` observer answers the real
+       question — did the second pass touch one node — whichever call it would have used. */
     const before = cellForPane(PRIMARY_PANE)!.root;
     const observer = new MutationObserver(() => {});
-    observer.observe(grid, { childList: true, subtree: true });
+    observer.observe(grid(), { childList: true, subtree: true });
     reconcile();
     reconcile();
     const touched = observer.takeRecords().length;
@@ -97,7 +130,7 @@ describe("reconcile", () => {
     expect(cellForPane(PRIMARY_PANE)!.root).toBe(before);
   });
 
-  test("the stage element survives a reconcile, so the canvas keeps its lit render part", () => {
+  test("the stage element survives a reconcile, so the canvas keeps its render root", () => {
     const { stage } = cellForPane(PRIMARY_PANE)!;
     const marker = document.createElement("span");
     stage.append(marker);
@@ -115,14 +148,14 @@ describe("reconcile", () => {
     await flush();
     const ghost = cellForPane("ghost");
     expect(ghost).not.toBeNull();
-    expect(document.querySelectorAll(".pane")).toHaveLength(2);
+    expect(document.querySelectorAll(PANE_SELECTOR)).toHaveLength(2);
 
     workspace.panes = workspace.panes.filter((pane) => pane.id !== "ghost");
     await flush();
     expect(cellForPane("ghost")).toBeNull();
     expect(ghost!.root.isConnected).toBe(false);
     expect(resolveAllRegions("pane.ghost")).toHaveLength(0);
-    expect(document.querySelectorAll(".pane")).toHaveLength(1);
+    expect(document.querySelectorAll(PANE_SELECTOR)).toHaveLength(1);
   });
 
   test("gaining a pane does not touch the cell that was already there", async () => {
@@ -131,6 +164,10 @@ describe("reconcile", () => {
        that had reached `ready`. A grid that rebuilt on every pane change would blank the pane you
        were NOT splitting. */
     resetWorkspaceWithTab();
+    /* Drained first. Building a cell schedules a canvas render for it, and that pass owns the
+       stage's children — so a marker planted before the boot render lands is wiped by the canvas
+       doing its job rather than by the grid rebuilding anything. */
+    await flush();
     const before = cellForPane(PRIMARY_PANE)!;
     const marker = document.createElement("span");
     before.stage.append(marker);
@@ -153,22 +190,29 @@ describe("reconcile", () => {
 
 describe("the grid's own tracks", () => {
   test("one cell is one full-width track, and there is no splitter", () => {
-    const grid = document.querySelector("#pane-grid") as HTMLElement;
-    expect(grid.style.gridTemplateColumns).toBe("minmax(0, 1fr)");
-    expect(grid.querySelector(".pane-splitter")).toBeNull();
+    expect(grid().style.gridTemplateColumns).toBe("minmax(0, 1fr)");
+    expect(grid().querySelector(SPLITTER_SELECTOR)).toBeNull();
   });
 
   test("`shell.paneSplit` clamps, and is inert while the grid is unsplit", () => {
-    const grid = document.querySelector("#pane-grid") as HTMLElement;
     shell.paneSplit = 0.3;
     reconcile();
     // Still one cell, so still one track: a restored split with nothing to split is harmless.
-    expect(grid.style.gridTemplateColumns).toBe("minmax(0, 1fr)");
+    expect(grid().style.gridTemplateColumns).toBe("minmax(0, 1fr)");
+  });
+
+  test("the tracks are written on the HOST, which is outside the document", () => {
+    /* Where they are is the whole of defect S2's fix. `#pane-grid` is `surfaces/shell.json`'s cell,
+       not anything this grid draws, so the one property a `pointermove` writes cannot be part of a
+       projection and can never move a node. */
+    expect(grid().id).toBe("pane-grid");
+    expect(grid().hasAttribute("part")).toBe(false);
+    expect(cellForPane(PRIMARY_PANE)!.root.parentElement).not.toBe(grid());
   });
 });
 
 describe("unmount", () => {
-  test("disposes every cell and forgets the grid", () => {
+  test("disposes every cell and forgets the grid", async () => {
     const cell = cellForPane(PRIMARY_PANE)!;
     unmount();
     expect(cell.root.isConnected).toBe(false);
@@ -176,6 +220,7 @@ describe("unmount", () => {
     expect(resolveAllRegions("pane.primary")).toHaveLength(0);
     // Idempotent: mounting again after an unmount is what a project switch does.
     mount();
+    await paneGridReady();
     expect(cellForPane(PRIMARY_PANE)).not.toBeNull();
   });
 
@@ -200,7 +245,11 @@ describe("the second cell", () => {
     resetWorkspaceWithTab(undefined, { documentPath: "/project/other.json", id: "other" });
     expect(splitRight()?.id).toBe(SECONDARY_PANE);
     await flush();
-    return paneCells();
+    /* Read back through `workspace.panes` rather than through an exported `paneCells()`. The
+       reconciler no longer needs such a list — `layout()` counts PANES, because the document's rows
+       land one microtask after the model does — and `tests/reachability.test.ts` refuses an export
+       whose only caller is a test. */
+    return workspace.panes.map((pane) => cellForPane(pane.id)!);
   }
 
   test("a split draws a second cell, complete, with its own stamps and its own surface", async () => {
@@ -248,20 +297,29 @@ describe("the second cell", () => {
     expect(resolveRegion("pane")).toBe(cellForPane(PRIMARY_PANE)!.stage);
   });
 
-  test("two tracks and a splitter between them, sized from `shell.paneSplit`", async () => {
-    const grid = document.querySelector("#pane-grid") as HTMLElement;
+  test("two tracks, and the splitter is between the cells and inside neither", async () => {
     const cells = await split();
-    expect(grid.style.gridTemplateColumns).toBe("minmax(0, 0.5fr) 5px minmax(0, 0.5fr)");
+    expect(grid().style.gridTemplateColumns).toBe("minmax(0, 0.5fr) 5px minmax(0, 0.5fr)");
 
-    const splitter = grid.querySelector(".pane-splitter");
+    const splitter = grid().querySelector<HTMLElement>(SPLITTER_SELECTOR);
     expect(splitter).not.toBeNull();
-    // BETWEEN them: the splitter sits after the first cell and before the second.
-    expect(splitter!.previousElementSibling).toBe(cells[0]!.root);
-    expect(splitter!.nextElementSibling).toBe(cells[1]!.root);
+    /* BETWEEN them, asserted as DOCUMENT ORDER rather than as `previousElementSibling`. Each pane
+       is drawn in a `display: contents` row wrapper holding its own leading splitter, so the three
+       are grid items of `#pane-grid` in this order without being siblings in the tree — and the
+       thing that mattered was always the order the grid places them in. Compared as NAMES: bun's
+       diff printer does not come back from a live happy-dom element. */
+    const order = [...grid().querySelectorAll(`${PANE_SELECTOR}, ${SPLITTER_SELECTOR}`)];
+    const label = (node: Element) =>
+      node === splitter ? "splitter" : ((node as HTMLElement).dataset["paneId"] ?? "?");
+    expect(order.map((node) => label(node))).toEqual([PRIMARY_PANE, "splitter", SECONDARY_PANE]);
+    expect(order[0]).toBe(cells[0]!.root);
+    expect(order[2]).toBe(cells[1]!.root);
+    // And in NEITHER cell, which is what keeps a drag on it out of the pane-focus listener.
+    expect(splitter!.closest(PANE_SELECTOR)).toBeNull();
 
     shell.paneSplit = 0.7;
     reconcile();
-    expect(grid.style.gridTemplateColumns).toBe(`minmax(0, 0.7fr) 5px minmax(0, ${1 - 0.7}fr)`);
+    expect(grid().style.gridTemplateColumns).toBe(`minmax(0, 0.7fr) 5px minmax(0, ${1 - 0.7}fr)`);
   });
 
   test("the splitter drags the ratio, clamps at a usable pane, and double-click restores 50/50", async () => {
@@ -272,10 +330,9 @@ describe("the second cell", () => {
        pointer delta in px into the target's own units, so the same layout survives a window
        resize. The ratio lives on `shell.paneSplit` — pure LAYOUT, naming no tab, no document and no
        pane identity — and persists with the dock widths through `persistDocks`. */
-    const grid = document.querySelector("#pane-grid") as HTMLElement;
-    Object.defineProperty(grid, "clientWidth", { configurable: true, value: 1000 });
+    Object.defineProperty(grid(), "clientWidth", { configurable: true, value: 1000 });
     await split();
-    const splitter = grid.querySelector(".pane-splitter") as HTMLElement;
+    const splitter = grid().querySelector(SPLITTER_SELECTOR) as HTMLElement;
 
     const drag = (from: number, to: number) => {
       splitter.dispatchEvent(new PointerEvent("pointerdown", { clientX: from, clientY: 0 }));
@@ -286,9 +343,12 @@ describe("the second cell", () => {
     // 150px right of centre, over a 1000px grid, is +0.15 of the ratio.
     drag(500, 650);
     expect(shell.paneSplit).toBeCloseTo(0.65, 5);
+    /* The one class on this element, and it is not this document's: `ui/panel-resize.ts` writes it
+       for the length of a gesture and the document STYLES it, the same way `grid-panel.json`
+       themes Tabulator's own DOM. Off again here, because the gesture ended. */
     expect(splitter.classList.contains("dragging")).toBe(false);
     reconcile();
-    expect(grid.style.gridTemplateColumns).toBe("minmax(0, 0.65fr) 5px minmax(0, 0.35fr)");
+    expect(grid().style.gridTemplateColumns).toBe("minmax(0, 0.65fr) 5px minmax(0, 0.35fr)");
 
     // The floor is a PANE, not a sliver: 320px of a 1000px grid, on both sides, symmetrically.
     drag(500, -5000);
@@ -301,13 +361,12 @@ describe("the second cell", () => {
   });
 
   test("the splitter is built once and re-used across reconciles", async () => {
-    const grid = document.querySelector("#pane-grid") as HTMLElement;
     await split();
-    const splitter = grid.querySelector(".pane-splitter");
+    const splitter = grid().querySelector(SPLITTER_SELECTOR);
     reconcile();
     reconcile();
-    expect(grid.querySelectorAll(".pane-splitter")).toHaveLength(1);
-    expect(grid.querySelector(".pane-splitter")).toBe(splitter);
+    expect(grid().querySelectorAll(SPLITTER_SELECTOR)).toHaveLength(1);
+    expect(grid().querySelector(SPLITTER_SELECTOR)).toBe(splitter);
   });
 
   test("a multi-step drag never removes the handle from the grid — not once", async () => {
@@ -316,16 +375,19 @@ describe("the second cell", () => {
        the drag — and `.before()` on an already-positioned node is a REMOVE plus an insert. In
        Chrome that fires `lostpointercapture` on move #1, the rest of the gesture goes to whatever
        is under the cursor, and a drag asking for +0.20 lands +0.03.
-       Zero childList mutations on the grid is the structural statement: a node that is never
-       removed cannot lose its capture. It is true because the splitter is part of the template now
-       — lit commits it once, and a re-render with unchanged bindings writes no DOM at all. */
-    const grid = document.querySelector("#pane-grid") as HTMLElement;
-    Object.defineProperty(grid, "clientWidth", { configurable: true, value: 1000 });
+
+       Zero childList mutations anywhere under the grid is the structural statement: a node that is
+       never removed cannot lose its capture. It is true because the projection is SKIPPED when the
+       pane set has not changed — the five `shell.paneSplit` writes this gesture makes reach no
+       markup at all — and because the splitter belongs to the second pane's row rather than to a
+       position something has to recompute. `subtree: true`, because the splitter is inside that
+       row wrapper now and a childList watch on the grid alone would no longer see it move. */
+    Object.defineProperty(grid(), "clientWidth", { configurable: true, value: 1000 });
     await split();
-    const splitter = grid.querySelector(".pane-splitter") as HTMLElement;
+    const splitter = grid().querySelector(SPLITTER_SELECTOR) as HTMLElement;
 
     const observer = new MutationObserver(() => {});
-    observer.observe(grid, { childList: true });
+    observer.observe(grid(), { childList: true, subtree: true });
 
     splitter.dispatchEvent(new PointerEvent("pointerdown", { clientX: 500, clientY: 0 }));
     for (const clientX of [520, 560, 600, 640, 660]) {
@@ -344,7 +406,9 @@ describe("the second cell", () => {
        inside the callback and `unicorn(prefer-spread)` refuses `Array.from`, so this is the one
        spelling both rules accept — and it is the one the first rule's own help text names. */
     const name = (node: Node) =>
-      node instanceof Element ? `${node.nodeName.toLowerCase()}.${node.className}` : node.nodeName;
+      node instanceof Element
+        ? `${node.nodeName.toLowerCase()}[${node.getAttribute("part")}]`
+        : node.nodeName;
     const removed: string[] = [];
     const added: string[] = [];
     for (const record of records) {
@@ -361,7 +425,7 @@ describe("the second cell", () => {
     // The whole drag landed, not the first move's worth of it. 660 of a 1000px grid is +0.16 on the
     // Ratio, inside the 320px-a-side floor that caps this grid's drag at 0.68.
     expect(shell.paneSplit).toBeCloseTo(0.66, 5);
-    expect(grid.querySelector(".pane-splitter")).toBe(splitter);
+    expect(grid().querySelector(SPLITTER_SELECTOR)).toBe(splitter);
     expect(splitter.isConnected).toBe(true);
   });
 
@@ -374,11 +438,43 @@ describe("the second cell", () => {
     expect(cellForPane(SECONDARY_PANE)).toBeNull();
     expect(side.root.isConnected).toBe(false);
     expect(resolveAllRegions("pane.secondary")).toHaveLength(0);
-    const grid = document.querySelector("#pane-grid") as HTMLElement;
-    expect(grid.querySelector(".pane-splitter")).toBeNull();
-    expect(grid.style.gridTemplateColumns).toBe("minmax(0, 1fr)");
+    expect(grid().querySelector(SPLITTER_SELECTOR)).toBeNull();
+    expect(grid().style.gridTemplateColumns).toBe("minmax(0, 1fr)");
     // And the survivor is untouched, still holding its own stage.
     expect(surfaceForPane(PRIMARY_PANE).wrap).toBe(cellForPane(PRIMARY_PANE)!.stage);
+  });
+
+  test("a departing pane is taken apart, bars and record and all", async () => {
+    /* The half of the teardown a framework used to provide, and the one thing that had to be
+       re-derived. lit notified a part of its disconnection and only then removed the nodes, so a
+       `ref` detach ran the ordered teardown for free; a document's repeater drops a departed row
+       and tells nobody. `panels/pane-grid.ts` therefore diffs the pane set and runs the teardown
+       itself, in the document's own order, before it projects — and this is what proves the diff is
+       there at all. Delete that loop and the pane's bars go on standing, its surface record goes on
+       naming a stage nothing can reach, and every frame under it outlives the pane.
+
+       Three witnesses, one per step: `panels/jump-bar.ts` and `panels/pane-context.ts` each write
+       their `--*-h` back to `0px` through the host they still hold, and `disposePaneSurface` clears
+       the record the canvas hosts resolve through. The marker is the fourth: nothing emptied the
+       stage on the way past, which is what `releaseCanvasHosts` needs in order to find the frames
+       inside it. */
+    await split();
+    // Drained, for the reason `gaining a pane` gives: the cell's own boot render owns the stage's
+    // Children, and this marker is about what the TEARDOWN does to them.
+    await flush();
+    const side = cellForPane(SECONDARY_PANE)!;
+    const marker = document.createElement("span");
+    side.stage.append(marker);
+    expect(surfaceForPane(SECONDARY_PANE).wrap).toBe(side.stage);
+
+    closePane(SECONDARY_PANE);
+    await flush();
+
+    expect(surfaceForPane(SECONDARY_PANE).wrap).toBeNull();
+    expect(side.root.style.getPropertyValue("--jump-bar-h")).toBe("0px");
+    expect(side.root.style.getPropertyValue("--pane-context-h")).toBe("0px");
+    // The stage kept its children through the teardown, which is what `releaseCanvasHosts` needs.
+    expect(marker.parentElement).toBe(side.stage);
   });
 });
 
@@ -431,8 +527,13 @@ describe("a pointer in a cell moves the keyboard into it", () => {
   });
 
   test("a handler that stops propagation cannot take the pane's focus with it", async () => {
-    /* Capture phase, so a control inside the cell that swallows the event — a picker, a drag
-       start — cannot leave the keyboard in the other pane. */
+    /* CAPTURE phase, so a control inside the cell that swallows the event — a picker, a drag
+       start — cannot leave the keyboard in the other pane.
+
+       This is the one thing the document could not say. A Jx `on*` key binds through
+       `addEventListener` with no options, so capture is not expressible; the listener is added by
+       `panels/pane-grid.ts` to the cell element the document hands it. Delete the `{ capture: true
+       }` and this case is the one that goes red. */
     await split();
     const side = cellForPane(SECONDARY_PANE)!;
     const swallow = document.createElement("button");
@@ -443,12 +544,11 @@ describe("a pointer in a cell moves the keyboard into it", () => {
   });
 
   test("the SPLITTER is not in a cell, so a drag on it never moves focus", async () => {
-    /* The one interaction that must not be disturbed mid-gesture. It is a sibling of the cells in
-       the grid rather than a child of either, so the listener structurally cannot see it. */
+    /* The one interaction that must not be disturbed mid-gesture. It is a child of its pane's ROW
+       rather than of either cell, so the listener structurally cannot see it. */
     await split();
-    const grid = document.querySelector("#pane-grid") as HTMLElement;
-    const splitter = grid.querySelector(".pane-splitter") as HTMLElement;
-    expect(splitter.closest(".pane")).toBeNull();
+    const splitter = grid().querySelector(SPLITTER_SELECTOR) as HTMLElement;
+    expect(splitter.closest(PANE_SELECTOR)).toBeNull();
     down(splitter);
     expect(workspace.activePaneId).toBe(PRIMARY_PANE);
   });

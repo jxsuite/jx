@@ -27,7 +27,6 @@
  */
 import { flush, installMockPlatform, key, pointer, resetStudioState } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { html } from "lit-html";
 import { registerFormControl, resetSchemaForms } from "../src/ui/schema-form";
 import { projectState } from "../src/store";
 import type { MockPlatformState } from "./harness";
@@ -247,16 +246,21 @@ describe("form layout", () => {
   });
 
   test("entry.ui control overrides apply to the form", async () => {
-    registerFormControl(
-      "stub-section-control",
-      ({ key: prop }) => html`<div class="stub-section-control">${prop}</div>`,
-    );
+    /* A registered control is a MOUNT now, whichever surface it is drawn on: the section's form
+       announces an empty `[part="control-host"]` and the control owns what goes in it. */
+    registerFormControl("stub-section-control", {
+      mount(host, { key: prop }) {
+        host.dataset.stub = "section";
+        host.textContent = prop;
+        return { dispose: () => host.replaceChildren(), update: () => {} };
+      },
+    });
     renderContributedSection(container, {
       ...formContribution,
       settings: { entry: { ui: { id: { control: "stub-section-control" } } }, layout: "form" },
     });
     await settle();
-    expect(container.querySelector(".stub-section-control")?.textContent).toBe("id");
+    expect(container.querySelector('[data-stub="section"]')?.textContent).toBe("id");
   });
 
   test("renders without a project config and drops edits silently", async () => {
@@ -452,10 +456,13 @@ describe("map layout", () => {
   });
 
   test("entry.ui overrides apply to the entry form", async () => {
-    registerFormControl(
-      "stub-entry-control",
-      ({ value }) => html`<div class="stub-entry-control">${String(value)}</div>`,
-    );
+    registerFormControl("stub-entry-control", {
+      mount(host, { value }) {
+        host.dataset.stub = "entry";
+        host.textContent = String(value);
+        return { dispose: () => host.replaceChildren(), update: () => {} };
+      },
+    });
     renderContributedSection(container, {
       ...mapContribution,
       settings: {
@@ -465,7 +472,7 @@ describe("map layout", () => {
     });
     await settle();
     await selectEntry(container, "main");
-    expect(container.querySelector(".stub-entry-control")?.textContent).toBe("d1");
+    expect(container.querySelector('[data-stub="entry"]')?.textContent).toBe("d1");
   });
 
   test("creates the section object on demand when missing", async () => {

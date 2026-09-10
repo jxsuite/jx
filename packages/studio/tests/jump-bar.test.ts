@@ -671,14 +671,21 @@ describe("the bar is wired to the app, not to a stub", () => {
       "utf8",
     );
     expect(bootstrap).toContain("mountJumpBar(primaryCell");
+    /* The cell is a Jx DOCUMENT now, so the host is a `part` the document draws and the bar is
+       handed that element as it is CREATED — `surfaces/pane-grid.ts` reports the node, and
+       `panels/pane-grid.ts` passes it on. Two files, because the markup and the flow are two
+       files; the class the template used to carry is gone from both. */
+    const doc = readFileSync(
+      join(resolve(import.meta.dir, "..", "src"), "surfaces", "pane-grid.json"),
+      "utf8",
+    );
+    expect(doc).toContain('"part": "jump"');
+    expect(doc).not.toContain('"class"');
     const grid = readFileSync(
       join(resolve(import.meta.dir, "..", "src"), "panels", "pane-grid.ts"),
       "utf8",
     );
-    // The cell is a lit template now, so the host is a `class="pane-jump"` in it and the bar is
-    // Handed the element by the `ref()` beside it rather than by a `createElement` + `append`.
-    expect(grid).toContain('<div class="pane-jump"');
-    expect(grid).toContain("attachJumpBarHost(paneId,");
+    expect(grid).toContain("attachJumpBarHost(paneId, element)");
     /* And the FRAME really has a pane grid and no bar of its own. Asserted against the rendered
        tree rather than index.html's text: the frame is src/shell/tree.ts now, and the document
        carries an empty body. */

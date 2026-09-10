@@ -328,17 +328,17 @@ describe("wheel handler", () => {
     expect(setPan).toHaveBeenCalledWith(-30, 0);
   });
 
-  test("edit mode without a content-edit-canvas lets native scrolling happen", () => {
+  test("edit mode without an edit-canvas scroller lets native scrolling happen", () => {
     canvasMode = "edit";
     const e = wheel(wrapEl(), { deltaY: 20 });
     expect(e.defaultPrevented).toBe(false);
     expect(setPan).not.toHaveBeenCalled();
   });
 
-  test("edit mode scrolls the content-edit-canvas and prevents default", () => {
+  test("edit mode scrolls the stage's edit-canvas and prevents default", () => {
     canvasMode = "edit";
     const sc = document.createElement("div");
-    sc.className = "content-edit-canvas";
+    sc.setAttribute("part", "edit-canvas");
     sc.scrollTop = 0;
     sc.scrollLeft = 0;
     wrapEl().append(sc);
@@ -395,7 +395,10 @@ describe("wheel handler", () => {
   test("a wheel over a scroller inside the settings pane is left alone", () => {
     canvasMode = "settings";
     const doc = document.createElement("div");
-    doc.className = "settings-doc-content";
+    // The settings pane's scrolling column, as `surfaces/settings-pane.json` draws it. The
+    // Exemption is decided by the canvas MODE rather than by anything on this element; it is
+    // Spelled the way the pane spells it so a reader is not sent looking for a class that is gone.
+    doc.setAttribute("part", "content");
     const pre = document.createElement("pre");
     pre.className = "settings-raw-json";
     doc.append(pre);
@@ -508,9 +511,9 @@ test("window resize re-applies the edit zoom from the live column width", () => 
   canvasMode = "edit";
   activeTab.value!.session.ui.editZoom = 2;
   const sc = document.createElement("div");
-  sc.className = "content-edit-canvas";
+  sc.setAttribute("part", "edit-canvas");
   const column = document.createElement("div");
-  column.className = "content-edit-column";
+  column.setAttribute("part", "edit-column");
   const viewport = document.createElement("div");
   const canvas = document.createElement("div");
   const iframe = document.createElement("iframe");
@@ -1272,8 +1275,15 @@ describe("focusShellRegion", () => {
 // ─── Project: Open… ───────────────────────────────────────────────────────────
 
 describe("openProjectFlow", () => {
+  /*
+   * The dialog is `surfaces/dialog.json` — the same `jx-dialog` Save-or-Discard opens — because
+   * this question was never bespoke: a headline, a sentence and confirm / secondary / cancel is
+   * that document, and the hand-written `sp-dialog-wrapper` this flow passed to `showDialog` was a
+   * second answer to it. The three answers are still dispatched by name, which is what makes the
+   * substitution visible here as a tag change and nothing else.
+   */
   function dialogWrapper(): HTMLElement | null {
-    return document.querySelector("sp-dialog-wrapper");
+    return document.querySelector("jx-dialog");
   }
 
   /** A platform that can BOTH open a window elsewhere and pick a project without binding to it. */
@@ -1300,7 +1310,10 @@ describe("openProjectFlow", () => {
     await flush();
     const wrapper = dialogWrapper()!;
     expect(wrapper.getAttribute("headline")).toBe("Open Project");
+    expect(wrapper.getAttribute("confirm-label")).toBe("New Window");
     expect(wrapper.getAttribute("secondary-label")).toBe("This Window");
+    // The sentence names the project being left behind, so "this window" is not a riddle.
+    expect(wrapper.textContent).toContain("is open in this window");
     wrapper.dispatchEvent(new Event("confirm", { bubbles: true }));
     await pending;
     expect(openProject).toHaveBeenCalledWith("newWindow");

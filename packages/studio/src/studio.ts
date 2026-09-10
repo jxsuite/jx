@@ -92,7 +92,7 @@ import { canvasSlashHandler } from "./editor/canvas-slash-bridge";
 import { makeCanvasContextMenuHandler } from "./editor/canvas-context-menu";
 import { mountStatusbar, renderStatusbar } from "./surfaces/statusbar";
 import { mountJumpBar } from "./panels/jump-bar";
-import { cellForPane } from "./panels/pane-grid";
+import { cellForPane, paneGridReady } from "./panels/pane-grid";
 import { notify } from "./services/notify";
 import { beginActivity } from "./panels/activity-panel";
 import {
@@ -159,8 +159,6 @@ import { loadComponentRegistry } from "./files/components";
 import { ensureDependenciesInstalled } from "./packages/ensure-deps";
 import { maybePromptJxsuiteUpdate } from "./packages/jxsuite-update";
 import { autoSyncProjectOnOpen } from "./packages/pull-package-sync";
-
-import { html, render as litRender } from "lit-html";
 
 import webdata from "../data/webdata.json";
 import { registerDataExplorerCommands } from "./panels/data-explorer";
@@ -418,35 +416,21 @@ async function navigateToComponent(componentPath: string) {
 // A drilled-in component is a real tab now, and `panels/tab-strip.ts` owns the prompt for closing
 // One. That prompt is two-way where this was three-way — see `showSaveDiscardDialog`'s ledger entry.
 
-// ─── Webdata: datalists for autocomplete ──────────────────────────────────────
+// ─── Webdata ──────────────────────────────────────────────────────────────────
 
-const datalistHost = document.createElement("div");
-datalistHost.style.display = "contents";
-document.body.append(datalistHost);
-litRender(
-  html`
-    <datalist id="tag-names">
-      ${webdata.allTags.map((tag: string) => html`<option value=${tag}></option>`)}
-    </datalist>
-    <datalist id="css-props"></datalist>
-  `,
-  datalistHost,
-);
-
-requestIdleCallback(() => {
-  const dl = document.querySelector("#css-props");
-  if (!dl) {
-    return;
-  }
-  const frag = document.createDocumentFragment();
-  for (const [name] of webdata.cssProps) {
-    const opt = document.createElement("option");
-    opt.value = name!;
-    frag.append(opt);
-  }
-  dl.append(frag);
-});
-
+/*
+ * The two `<datalist>`s that used to be built here — `#tag-names` from `webdata.allTags`, and
+ * `#css-props` filled with ~600 options in a `requestIdleCallback` — are GONE, and they were dead
+ * rather than convertible. A datalist is reached only through a `list="<id>"` on a control, and
+ * nothing in this package has carried one since the Inspector's inputs became documents: `grep -rn
+ * "tag-names" packages sites` found this file and the test that asserted this file. So the boot was
+ * appending a hidden host to `<body>`, painting six hundred elements into it a frame later, and
+ * reaching back for them with `document.querySelector` — for nothing to read.
+ *
+ * Converting them would have written a surface whose consumer does not exist. What survives is the
+ * half that had one: `initCssData` fills the CSS initial-value map the Style tab reads to decide
+ * whether a property is set or merely defaulted, and it takes `webdata` directly.
+ */
 initCssData(webdata);
 
 // ─── Module-level UI state (must be before render() call) ─────────────────────
@@ -497,9 +481,12 @@ initLayers();
 initQuickSearch({ openRecentProject: (root: string) => openRecentProject(root) });
 
 /* The pane's four surfaces come from its CELL, not from `document.querySelector`.
-   `panels/pane-grid.ts` mounted through `mountShell()` above, so the primary's cell exists by now;
-   each of these three modules still holds one host, which is exactly right while the grid draws one
-   cell and is what `mountForPane` replaces when it draws two. */
+   AWAITED, for the reason `mountShellTree()` gives one line up: the grid is a Jx document now, and
+   the runtime waits for the kit to be defined before it renders — so `mountShell()` STARTING the
+   grid is not the same event as the grid existing, and the three mounts below read the primary
+   cell's boxes on the line after it. Each of those modules still holds one host, which is exactly
+   right while the grid draws one cell and is what `mountForPane` replaces when it draws two. */
+await paneGridReady();
 const primaryCell = cellForPane(PRIMARY_PANE);
 
 tabStrip.mount(primaryCell?.strip ?? document.createElement("div"));

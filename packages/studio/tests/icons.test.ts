@@ -21,6 +21,9 @@ import {
   manifestNames,
 } from "../scripts/check-icons";
 
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+
 const STUDIO = fileURLToPath(new URL("..", import.meta.url));
 
 describe("check-icons", () => {
@@ -47,6 +50,28 @@ describe("check-icons", () => {
    * are spelled alike, which is the whole trap.
    */
   describe("a tag is not a key", () => {
+    /**
+     * The repeat branches, on a fixture, because `src/` no longer answers them.
+     *
+     * `iconTagsUsed` records every FILE a tag is written in and de-duplicates within one file. Both
+     * paths ran against real source until this migration removed the last `<sp-icon-` from Studio —
+     * so the branch that appends a second file, and the one that skips a second mention in the same
+     * file, now have nothing live to exercise them. That is the migration succeeding, not coverage
+     * rotting, and a fixture is the honest way to keep asserting what the function does.
+     */
+    test("a tag written twice in one file is recorded once; in two files, twice", () => {
+      const dir = join(tmpdir(), `jx-icons-${process.pid}`);
+      mkdirSync(join(dir, "nested"), { recursive: true });
+      writeFileSync(join(dir, "a.ts"), "html`<sp-icon-alert></sp-icon-alert><sp-icon-alert>`");
+      writeFileSync(join(dir, "nested", "b.ts"), "html`<sp-icon-alert>`");
+      try {
+        const tags = iconTagsUsed(dir);
+        expect(tags.get("sp-icon-alert")).toEqual(["a.ts", "nested/b.ts"]);
+      } finally {
+        rmSync(dir, { force: true, recursive: true });
+      }
+    });
+
     test("only the angle-bracket shape counts as a tag", () => {
       const src = join(STUDIO, "src");
       const tags = iconTagsUsed(src);
@@ -86,6 +111,26 @@ describe("check-icons", () => {
       const [problem] = iconProblems({ ...base, tags: new Map([["sp-icon-x", ["panels/a.ts"]]]) });
       expect(problem).toContain("panels/a.ts");
       expect(problem).toContain("empty box");
+    });
+
+    /**
+     * Two unregistered tags, so the SORT actually sorts.
+     *
+     * `iconProblems` orders its findings with `toSorted(([a], [b]) => a.localeCompare(b))` so a
+     * report reads the same twice. A comparator is only invoked with two or more entries, and every
+     * other case here passes one — which was fine while `src/` still wrote `<sp-icon-` tags and the
+     * real run supplied dozens. It writes none now, so this is what keeps the ordering asserted.
+     */
+    test("findings are ordered by tag, not by discovery", () => {
+      expect(
+        iconProblems({
+          ...base,
+          tags: new Map([
+            ["sp-icon-zebra", ["z.ts"]],
+            ["sp-icon-apple", ["a.ts"]],
+          ]),
+        }).map((line) => line.slice(0, line.indexOf(">") + 1)),
+      ).toEqual(["<sp-icon-apple>", "<sp-icon-zebra>"]);
     });
 
     test("a registered tag with no import behind it", () => {

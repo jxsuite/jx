@@ -25,15 +25,24 @@ import type { ExtensionContributionInfo, ExtensionsInfo } from "../src/types";
 
 let host: HTMLElement;
 
-/** Mount the settings document on a throwaway host and read its inner nav. */
+/**
+ * Mount the settings document on a throwaway host and read its inner nav.
+ *
+ * The chrome is a document now (`surfaces/settings-pane.json`) and its list is a real vertical
+ * `tablist`, so a row is addressed by `part` and names itself with `label` — and the mount is
+ * asynchronous, which is why three turns rather than one.
+ */
 async function navLabels(): Promise<(string | undefined)[]> {
   renderSettingsPane(surfaceOf(host));
-  await flush();
-  return [...host.querySelectorAll(".settings-nav-item")].map((b) => b.textContent?.trim());
+  await flush(3);
+  return [...host.querySelectorAll('[part="nav-item"]')].map(
+    (b) => b.getAttribute("label") ?? undefined,
+  );
 }
 
+/** The island a section renders into. */
 function body(): HTMLElement {
-  return host.querySelector(".settings-doc-content") as HTMLElement;
+  return host.querySelector('[part="body"]') as HTMLElement;
 }
 
 const guestbookContribution: ExtensionContributionInfo = {
