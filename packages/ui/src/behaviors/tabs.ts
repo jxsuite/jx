@@ -18,6 +18,8 @@
  * `onTabsMount` installs, because the tab SET moves too. Closing a tab is the whole reason
  * `closable` exists, and a strip that does not answer it is left with no `tabindex="0"` at all —
  * unreachable by Tab, with nothing for a host to press to repair it.
+ *
+ * @docs extending/ui-kit
  */
 
 /** The tag of the tablist. */

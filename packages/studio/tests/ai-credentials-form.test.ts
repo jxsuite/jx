@@ -9,6 +9,11 @@
  * `sp-textfield` or `.ai-creds-field` to find any more. Every render is awaited — `mountSurface`
  * settles when the document has rendered, and the kit's own template is one `connectedCallback`
  * after that, so a detached container or a synchronous assertion finds nothing at all.
+ *
+ * The model field is one `jx-combobox` with `allows-custom-value` over the fetched catalogue, so
+ * its rows are `jx-option`s under the field and a pick is a click on one; the text field and the
+ * `jx-select` that stood in for it while the kit had no combobox are gone, and so is the
+ * `[part="unlisted"]` row the select synthesised for a value it did not list.
  */
 import { clearSeededSettings, flush, installMockPlatform, seedSettings } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
@@ -86,23 +91,38 @@ function type(container: HTMLElement, field: string, value: string) {
   el.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
-/** Every row the listed-models control offers, by value. */
+/** The model field: one `jx-combobox` over the fetched catalogue, with its state accessors. */
+function modelField(container: HTMLElement) {
+  return part(container, "model") as HTMLElement & {
+    value: string;
+    activeIndex: number;
+    allowsCustomValue: boolean;
+    open: boolean;
+  };
+}
+
+/** Every row the model field's list offers, by value — the catalogue as fetched, nothing added. */
 function listedValues(container: HTMLElement) {
-  return [...container.querySelectorAll('[part="model-list"] option')].map((row) =>
+  return [...container.querySelectorAll('[part="model"] jx-option')].map((row) =>
     row.getAttribute("value"),
   );
 }
 
-/** Choose a listed model the way the native control reports one. */
+/** Choose a listed model the way a reader does: a click on its row. */
 function chooseListed(container: HTMLElement, value: string) {
-  const el = container.querySelector(
-    '[part="model-list"] [part="control"]',
-  ) as HTMLSelectElement | null;
-  if (!el) {
-    throw new Error("the listed-models control is not on screen");
+  const row = [...container.querySelectorAll<HTMLElement>('[part="model"] jx-option')].find(
+    (el) => el.getAttribute("value") === value,
+  );
+  if (!row) {
+    throw new Error(`the catalogue does not list ${value}`);
   }
-  el.value = value;
-  el.dispatchEvent(new Event("change", { bubbles: true }));
+  row.click();
+}
+
+/** Drop the model field's list the way a reader does: the chevron. */
+async function openModelList(container: HTMLElement) {
+  (part(container, "model")!.querySelector('[part="toggle"]') as HTMLElement).click();
+  await flush(2);
 }
 
 beforeEach(() => {
@@ -151,9 +171,9 @@ describe("ai-credentials-form", () => {
     expect(headers["X-Api-Key"]).toBe("sk-fetch-key");
     expect(headers["X-Api-Base-URL"]).toBe("http://localhost:9999/v1");
 
-    // The listed-models control appeared beside the free-text field, offering both models.
-    expect(listedValues(c.container)).toContain("x");
-    expect(part(c.container, "model-list")).not.toBeNull();
+    // The catalogue is the model field's own list now, offering both models under the field.
+    expect(listedValues(c.container)).toEqual(["gpt-4o", "x"]);
+    expect(modelField(c.container).matches("[data-empty]")).toBe(false);
     expect(c.container.textContent).toContain("Model X");
     expect(part(c.container, "fetch")!.textContent).toContain("Refresh models");
 
@@ -164,25 +184,59 @@ describe("ai-credentials-form", () => {
   });
 
   /**
-   * The combobox that was here is two controls now, because the kit has no combobox — so the free
-   * text and the catalogue are separate controls bound to ONE draft. This is the half a closed list
-   * would have taken away.
+   * The catalogue is FETCHED, so the rows arrive after the field is drawn — and after whatever the
+   * reader typed while they waited. The field is one `jx-combobox` with `allows-custom-value`, so a
+   * self-hosted id the catalogue does not list stands exactly as typed: no row is synthesised for
+   * it, and nothing about the rows arriving touches the value.
    */
-  test("a typed model id survives the catalogue arriving, and the list still shows it", async () => {
+  test("a value typed before the catalogue lands is not clobbered when it does", async () => {
     fetchImpl = async () => Response.json({ models: [{ id: "gpt-4o" }] }, { status: 200 });
     const c = await makeForm();
+    // No rows yet: the field is a text field, with no chevron to open an empty list.
+    expect(modelField(c.container).matches("[data-empty]")).toBe(true);
     type(c.container, "model", "my-self-hosted-model");
     press(c.container, "fetch");
     await flush(4);
 
     expect(input(c.container, "model").value).toBe("my-self-hosted-model");
-    // A select whose value matches no option synthesises the row rather than falling to index 0.
-    expect(part(c.container, "model-list")!.querySelector('[part="unlisted"]')).not.toBeNull();
+    expect(modelField(c.container).value).toBe("my-self-hosted-model");
+    expect(modelField(c.container).matches("[data-empty]")).toBe(false);
+    /* The list is the catalogue and only the catalogue: a custom value is the FIELD's, and the old
+       select's synthesised `[part="unlisted"]` row has nothing to stand in for. */
+    expect(listedValues(c.container)).toEqual(["gpt-4o"]);
+    expect(c.container.querySelector('[part="unlisted"]')).toBeNull();
+    /* The blur on the way to Save is the COMMIT, and the commit is where a closed list would put
+       the last accepted value back — the empty field. `allows-custom-value` is what lets it stand. */
+    input(c.container, "model").dispatchEvent(new Event("change", { bubbles: true }));
+    await c.repaint();
+    expect(input(c.container, "model").value).toBe("my-self-hosted-model");
     press(c.container, "save");
     expect(globalThis.localStorage.getItem("jx.ai.model")).toBe("my-self-hosted-model");
   });
 
-  test("a listed pick writes the free-text field, and typing writes back", async () => {
+  test("a fetched list containing the typed value shows it highlighted, not as a custom entry", async () => {
+    fetchImpl = async () =>
+      Response.json({ models: [{ id: "gpt-4o" }, { id: "o3" }] }, { status: 200 });
+    const c = await makeForm();
+    type(c.container, "model", "o3");
+    press(c.container, "fetch");
+    await flush(4);
+    expect(input(c.container, "model").value).toBe("o3");
+
+    /* Opening the list lands on the reader's own row: the field names it as the active descendant
+       and the row says selected — rather than a list with nothing chosen beside a value it holds. */
+    await openModelList(c.container);
+    const field = modelField(c.container);
+    expect(field.open).toBe(true);
+    expect(field.activeIndex).toBe(1);
+    const row = c.container.querySelector('[part="model"] jx-option[value="o3"]')!;
+    expect(row.getAttribute("aria-selected")).toBe("true");
+    expect(input(c.container, "model").getAttribute("aria-activedescendant")).toBe(row.id);
+    expect(listedValues(c.container)).toEqual(["gpt-4o", "o3"]);
+    expect(c.container.querySelector('[part="unlisted"]')).toBeNull();
+  });
+
+  test("a listed pick writes the field, and Save persists the pick", async () => {
     fetchImpl = async () =>
       Response.json({ models: [{ id: "gpt-4o" }, { id: "o3" }] }, { status: 200 });
     const c = await makeForm();
@@ -192,13 +246,34 @@ describe("ai-credentials-form", () => {
     chooseListed(c.container, "o3");
     await c.repaint();
     expect(input(c.container, "model").value).toBe("o3");
+    expect(modelField(c.container).open).toBe(false);
+    press(c.container, "save");
+    expect(globalThis.localStorage.getItem("jx.ai.model")).toBe("o3");
+  });
 
-    type(c.container, "model", "gpt-4o");
+  /**
+   * A listed id typed in the wrong case commits in the catalogue's spelling — the row is what the
+   * value means — and the element has already written that spelling, to itself AND to its control,
+   * when the control's own `change` reaches the surface. That is the surface's contract under test:
+   * the draft and the stored model follow the row rather than the keystrokes. It does NOT tell the
+   * handler's `event#/currentTarget/value` from `event#/target/value`, and nothing can: the
+   * runtime's bindings are synchronous, so the control reads the same string as the element at
+   * every event the surface hears. The ref is a statement of which node the form means, not a
+   * behaviour.
+   */
+  test("a listed id typed in the wrong case commits in the catalogue's spelling", async () => {
+    fetchImpl = async () => Response.json({ models: [{ id: "gpt-4o" }] }, { status: 200 });
+    const c = await makeForm();
+    press(c.container, "fetch");
+    await flush(4);
+    type(c.container, "model", "GPT-4O");
+    expect(modelField(c.container).value).toBe("GPT-4O");
+    input(c.container, "model").dispatchEvent(new Event("change", { bubbles: true }));
     await c.repaint();
-    const listed = c.container.querySelector(
-      '[part="model-list"] [part="control"]',
-    ) as HTMLSelectElement;
-    expect(listed.value).toBe("gpt-4o");
+    expect(modelField(c.container).value).toBe("gpt-4o");
+    expect(input(c.container, "model").value).toBe("gpt-4o");
+    press(c.container, "save");
+    expect(globalThis.localStorage.getItem("jx.ai.model")).toBe("gpt-4o");
   });
 
   test("fetchModels surfaces an error, and offers no catalogue", async () => {
@@ -207,8 +282,9 @@ describe("ai-credentials-form", () => {
     press(c.container, "fetch");
     await flush(4);
     expect(part(c.container, "models-error")!.textContent).toContain("HTTP 500");
-    // Still on the free-text-only branch — no models arrived.
-    expect(part(c.container, "model-list")).toBeNull();
+    // Still a bare text field — no models arrived, so there is no list and no chevron.
+    expect(listedValues(c.container)).toEqual([]);
+    expect(modelField(c.container).matches("[data-empty]")).toBe(true);
   });
 
   test("Save persists key, endpoint, and model and fires onSaved", async () => {
@@ -291,17 +367,18 @@ describe("ai-credentials-form", () => {
     expect(preferredModel()).toBe("gpt-4o");
   });
 
-  test("Save keeps the fetched catalogue, so the list control does not collapse", async () => {
+  test("Save keeps the fetched catalogue, so the model field does not collapse", async () => {
     fetchImpl = async () => Response.json({ models: [{ id: "gpt-4o" }] }, { status: 200 });
     const c = await makeForm();
     type(c.container, "key", "sk-list");
     press(c.container, "fetch");
     await flush(4);
-    expect(part(c.container, "model-list")).not.toBeNull();
+    expect(listedValues(c.container)).toEqual(["gpt-4o"]);
 
     press(c.container, "save");
     await flush(2);
-    expect(part(c.container, "model-list")).not.toBeNull();
+    expect(listedValues(c.container)).toEqual(["gpt-4o"]);
+    expect(modelField(c.container).matches("[data-empty]")).toBe(false);
     expect(part(c.container, "fetch")!.textContent).toContain("Refresh models");
   });
 
@@ -340,6 +417,12 @@ describe("ai-credentials-form", () => {
     expect(input(c.container, "key").getAttribute("aria-label")).toBe("AI provider key");
     expect(input(c.container, "model").getAttribute("aria-label")).toBe("Model ID");
     expect(input(c.container, "endpoint").getAttribute("aria-label")).toBe("Endpoint");
+    /* The model field is ONE control: a combobox that accepts anything, over the catalogue. The
+       text field and the select that stood in for it while the kit had no combobox are gone. */
+    expect(modelField(c.container).localName).toBe("jx-combobox");
+    expect(modelField(c.container).allowsCustomValue).toBe(true);
+    expect(input(c.container, "model").getAttribute("role")).toBe("combobox");
+    expect(part(c.container, "model-list")).toBeNull();
     // The form names itself, which the old `<div class="ai-creds-form">` never did.
     expect(part(c.container, "ai-creds-form")!.getAttribute("role")).toBe("group");
     expect(part(c.container, "ai-creds-form")!.getAttribute("aria-label")).toBe("AI provider key");

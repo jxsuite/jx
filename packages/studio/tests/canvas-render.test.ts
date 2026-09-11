@@ -699,9 +699,24 @@ describe("tab close/reopen lifecycle", () => {
     renderCanvas();
     await flush();
     expect(handles()).toBe(2);
-    const column = stageEl().querySelector('[part="edit-column"]')!;
-    expect(column.querySelector('[part="edit-handle"][data-side="start"]')).not.toBeNull();
-    expect(column.querySelector('[part="edit-handle"][data-side="end"]')).not.toBeNull();
+    /* BESIDE the column, not inside it: a `jx-split` measures the first boxed ancestor as the track
+       it divides, and inside the column that would be the column — the very thing the gesture
+       resizes. So the canvas's row reads handle, column, handle, and each handle is the element
+       that owes a keyboard user a door (ui.md §5.5), named after the edge it moves. */
+    const canvas = stageEl().querySelector('[part="edit-canvas"]')!;
+    const column = canvas.querySelector('[part="edit-column"]')!;
+    expect(column.querySelector('[part="edit-handle"]')).toBeNull();
+    const row = [...canvas.querySelectorAll('[part="edit-handle"], [part="edit-column"]')].map(
+      (el) =>
+        `${el.localName}:${el.getAttribute("part")}:${(el as HTMLElement).dataset.side ?? ""}`,
+    );
+    expect(row).toEqual([
+      "jx-split:edit-handle:start",
+      "div:edit-column:",
+      "jx-split:edit-handle:end",
+    ]);
+    const start = canvas.querySelector('[part="edit-handle"][data-side="start"]')!;
+    expect(start.getAttribute("title")).toContain("Alt");
 
     // Design draws every breakpoint side by side, so a width gesture there would be a gesture over
     // Which artboard, not over the page. It has pan and zoom instead.
@@ -2329,15 +2344,16 @@ describe("the Document Header slot", () => {
     await flush();
 
     /* ORDER, which is what the contract was always about: the card is the column's first block and
-       the two resize handles are its last. Read across the column's own parts rather than off
-       `firstElementChild`, because a document's conditional branch is a `display: contents` box —
-       it generates no layout, so it is not what "first child" means to a reader or to the CSS, and
-       an assertion that keys on it would be testing the runtime's shape rather than the stage's. */
+       the artefact follows it; the two resize handles are not in the column at all. Read across the
+       column's own parts rather than off `firstElementChild`, because a document's conditional
+       branch is a `display: contents` box — it generates no layout, so it is not what "first child"
+       means to a reader or to the CSS, and an assertion that keys on it would be testing the
+       runtime's shape rather than the stage's. */
     const column = stageEl().querySelector('[part="edit-column"]')!;
     const blocks = [
       ...column.querySelectorAll('[part="doc-header"], [part="panel"], [part="edit-handle"]'),
     ].map((el) => el.getAttribute("part"));
-    expect(blocks).toEqual(["doc-header", "panel", "edit-handle", "edit-handle"]);
+    expect(blocks).toEqual(["doc-header", "panel"]);
     expect((slot() as HTMLElement | null)?.dataset.placement).toBe("in-column");
     // In the column means in the document's own scroller: it scrolls with the artefact.
     expect(slot()?.closest('[part="edit-canvas"]')).not.toBeNull();

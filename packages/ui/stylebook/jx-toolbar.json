@@ -25,6 +25,9 @@
       "$ref": "../components/jx-textfield.json"
     },
     {
+      "$ref": "../components/jx-color-field.json"
+    },
+    {
       "$ref": "../components/jx-toolbar.json"
     }
   ],
@@ -37,6 +40,21 @@
           "operator": "=",
           "target": {
             "$ref": "#/state/filter"
+          },
+          "value": {
+            "$ref": "event#/target/value"
+          }
+        }
+      ]
+    },
+    "fill": "#3b82f6",
+    "setFill": {
+      "$prototype": "Function",
+      "body": [
+        {
+          "operator": "=",
+          "target": {
+            "$ref": "#/state/fill"
           },
           "value": {
             "$ref": "event#/target/value"
@@ -226,6 +244,81 @@
                 "part": "count"
               },
               "textContent": "filter: ${state.filter || '—'}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tagName": "h2",
+      "textContent": "A colour well in the row"
+    },
+    {
+      "tagName": "p",
+      "textContent": "A jx-color-field is four controls of its own — the swatch, a text field, the eyedropper and the system's colour well — and in a toolbar it is ONE stop: the swatch. Arrow onto it and Enter opens the picker; the three controls beside it leave the tab order while the field is roved, and take their own stops back anywhere else. Fill: ${state.fill}."
+    },
+    {
+      "tagName": "div",
+      "children": [
+        {
+          "tagName": "jx-toolbar",
+          "$props": {
+            "label": "Text style"
+          },
+          "children": [
+            {
+              "tagName": "jx-action-button",
+              "$props": {
+                "size": "sm",
+                "label": "Bold",
+                "hint": "Bold",
+                "icon": "text-b",
+                "toggles": true
+              }
+            },
+            {
+              "tagName": "jx-action-button",
+              "$props": {
+                "size": "sm",
+                "label": "Italic",
+                "hint": "Italic",
+                "icon": "text-italic",
+                "toggles": true
+              }
+            },
+            {
+              "tagName": "jx-divider",
+              "$props": {
+                "orientation": "vertical"
+              }
+            },
+            {
+              "tagName": "jx-color-field",
+              "$props": {
+                "size": "sm",
+                "label": "Fill",
+                "value": {
+                  "$ref": "#/state/fill"
+                }
+              },
+              "onchange": {
+                "$ref": "#/state/setFill"
+              }
+            },
+            {
+              "tagName": "jx-divider",
+              "$props": {
+                "orientation": "vertical"
+              }
+            },
+            {
+              "tagName": "jx-action-button",
+              "$props": {
+                "size": "sm",
+                "label": "Align left",
+                "hint": "Align left",
+                "icon": "text-align-left"
+              }
             }
           ]
         }

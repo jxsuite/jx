@@ -63,7 +63,7 @@ Below the Cloudflare option (or on its own, everywhere else) is the **AI provide
 
 1. Paste an API key. Any OpenAI-compatible key works: OpenAI itself, a compatible hosted provider, or a local model server.
 2. Optionally set an **Endpoint**. Leave it empty for OpenAI, or point it at a compatible server such as a local LLM (for example `http://localhost:11434/v1`).
-3. Pick a **Model**. Click **Fetch models** to list what your key can use, or type a model ID directly. Leave it empty to use your provider's own default.
+3. Pick a **Model**. Click **Fetch models** to list what your key can use under the field, then open the list and choose one, or type a model ID directly: anything you type is accepted, whether or not the list has it, and if it does the list opens on your row. Leave it empty to use your provider's own default.
 4. Click **Save**. The form keeps showing what it saved, so you can see the endpoint it kept and the model it recorded.
 
 To change any of this later, click the gear button (**API key & endpoint**) at the bottom of the tab. It reopens **Preferences › Assistant**. You can also switch models per conversation with the model picker next to the message box.

@@ -96,7 +96,7 @@ Clicking a heading opens that surface where you last left it; following its subm
 
 The dock to the right of the rail shows one panel at a time, under a header naming the panel and the level it works at: `FILES · project`, `OUTLINE · document`. That header is how you always know which panel you're looking at and whether closing the last document would empty it.
 
-Drag the dock's inner edge to resize it (up to half the window), and double-click that edge to snap back to the default width.
+Drag the dock's inner edge to resize it (up to half the window), and double-click that edge to snap back to the default width. The edge is a keyboard stop too: :kbd[Tab] to it, then :kbd[←] and :kbd[→] move it a step at a time (:kbd[Shift] for a larger one), :kbd[Home] and :kbd[End] take it to its narrowest and widest, and :kbd[Enter] snaps it back to the default width the way a double-click does. The bottom dock's edge answers :kbd[↑] and :kbd[↓] instead.
 
 Both trees in the dock, **Files** and **[Outline](/docs/studio/design/layers)**, answer the same keys. :kbd[Tab] enters the tree at the row you were last on, :kbd[↑] and :kbd[↓] walk the rows, :kbd[→] opens a folder or steps into it, :kbd[←] closes it or steps out to the one it sits in, and :kbd[Home] / :kbd[End] jump to the ends of the whole tree rather than to the ends of what is on screen. Typing a letter jumps to the next row whose name starts with it. Everything the tree does not use reaches your commands untouched, so cut, paste and delete still work on the row you are standing on.
 

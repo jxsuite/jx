@@ -15,8 +15,17 @@
  * The body is a Jx document now, so the rows are `[part="row"]`, the spacers are `jx-tree`'s own
  * and the drag mark the repaint guard looks for is `data-dragging` rather than a class.
  */
-import { flush, resetWorkspaceWithTab, stubRect } from "./harness";
-import { click, outlineHost, press, resetOutline, row, tree, treeItems } from "./outline-fixture";
+import { flush, installResizeObserver, resetWorkspaceWithTab, stubRect } from "./harness";
+import {
+  allRows,
+  click,
+  outlineHost,
+  press,
+  resetOutline,
+  row,
+  tree,
+  treeItems,
+} from "./outline-fixture";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { activeTab, closeAllTabs } from "../src/workspace/workspace";
 import { view } from "../src/view";
@@ -115,7 +124,8 @@ function pads(): number[] {
   );
 }
 
-beforeEach(async () => {
+/** Stand the Navigator up around a fresh document and let the Outline window it. */
+async function mountWindowed(): Promise<void> {
   host = outlineHost(true);
   scroller = document.querySelector("#scroller") as HTMLElement;
   scroller.style.overflowY = "auto";
@@ -131,13 +141,17 @@ beforeEach(async () => {
   // Watch's opening measurement is what asks for the second, windowed one.
   await flush(3);
   place();
-});
+}
 
-afterEach(() => {
+function tearDown(): void {
   resetOutline();
   closeAllTabs();
   resetPanels();
-});
+}
+
+beforeEach(mountWindowed);
+
+afterEach(tearDown);
 
 describe("the shift-range is a range over the MODEL", () => {
   test("holds when the anchor has scrolled out of the window", async () => {
@@ -371,6 +385,34 @@ describe("the reveal that follows a selection made elsewhere", () => {
     await draw();
 
     expect(scroller.scrollTop).toBeLessThan(OUTLINE_ROW_HEIGHT * 20);
+  });
+});
+
+describe("a density switch", () => {
+  test("re-measures the spacers without a scroll, from the tree's own resize", async () => {
+    // `[data-density=compact]` makes `--jx-control-h` 20px: every drawn row shrinks in place, the
+    // Navigator's box is exactly what it was, and no scroll arrives. The browser measured the
+    // Spacers still standing at 24px a row until the next scroll — a scrollbar three rows too long
+    // Over rows that had already shrunk. Happy-dom cannot shrink a row, so the rows' measurement
+    // Is stubbed and the tree's resize is delivered by hand, to the element the watch observed.
+    tearDown();
+    const ro = installResizeObserver();
+    try {
+      await mountWindowed();
+      const list = tree(host);
+      expect(ro.observes(list)).toBe(true);
+      const COMPACT = 20;
+      for (const el of allRows(host)) {
+        Object.defineProperty(el, "offsetHeight", { configurable: true, value: COMPACT });
+      }
+      ro.resize(list);
+      await flush(3);
+      const [padTop, padBottom] = pads();
+      expect(padTop).toBe(0);
+      expect(padTop! + allRows(host).length * COMPACT + padBottom!).toBe(ROW_COUNT * COMPACT);
+    } finally {
+      ro.restore();
+    }
   });
 });
 

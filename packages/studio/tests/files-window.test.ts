@@ -7,7 +7,7 @@
  * the questions below answerable: which row is below this one, where does this row sit among its
  * siblings, and where is the tab stop when the selected row has scrolled out of the DOM.
  */
-import { flush, installMockPlatform, stubRect } from "./harness";
+import { flush, installMockPlatform, installResizeObserver, stubRect } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { requireProjectState, setProjectState } from "../src/store";
 import { initLayers } from "../src/ui/layers";
@@ -139,7 +139,8 @@ function pads(): number[] {
   );
 }
 
-beforeEach(async () => {
+/** Stand the Navigator up around a seeded project and let the tree window it. */
+async function mountWindowed(): Promise<void> {
   document.body.innerHTML = `
     <div id="scroller"><div id="host"></div></div>
     <div id="layer-popover"></div>
@@ -161,13 +162,17 @@ beforeEach(async () => {
   draggables.length = 0;
   seedProject();
   await renderWindowed();
-});
+}
 
-afterEach(() => {
+function tearDown(): void {
   unmountFilesPanel();
   setProjectState(null);
   document.body.innerHTML = "";
-});
+}
+
+beforeEach(mountWindowed);
+
+afterEach(tearDown);
 
 describe("the window", () => {
   test("draws the viewport and its overscan, not the project", () => {
@@ -488,6 +493,33 @@ describe("a multilingual project", () => {
     await scrollTo(FILE_ROW_HEIGHT * 200);
     expect(rowFor(fileName(200))!.getAttribute("aria-posinset")).toBe("202");
     expect(rowFor(fileName(200))!.getAttribute("aria-setsize")).toBe(String(FILE_COUNT + 1));
+  });
+});
+
+describe("a density switch", () => {
+  test("re-measures the spacers without a scroll, from the tree's own resize", async () => {
+    // The same drift the Outline had, through the same primitive: the rows shrink in place under
+    // `[data-density=compact]`, nothing scrolls, the Navigator's box is unchanged, and the spacers
+    // Stood at 24px a row. Happy-dom cannot shrink a row, so the drawn rows' measurement is
+    // Stubbed and the tree's resize is delivered by hand, to the element the watch observed.
+    tearDown();
+    const ro = installResizeObserver();
+    try {
+      await mountWindowed();
+      const list = host.querySelector<HTMLElement>('[part="tree"]')!;
+      expect(ro.observes(list)).toBe(true);
+      const COMPACT = 20;
+      for (const el of rows()) {
+        Object.defineProperty(el, "offsetHeight", { configurable: true, value: COMPACT });
+      }
+      ro.resize(list);
+      await flush(3);
+      const [padTop, padBottom] = pads();
+      expect(padTop).toBe(0);
+      expect(padTop! + rows().length * COMPACT + padBottom!).toBe(ROW_COUNT * COMPACT);
+    } finally {
+      ro.restore();
+    }
   });
 });
 

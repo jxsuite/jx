@@ -5,6 +5,8 @@ import { afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { documentStyleText } from "@jxsuite/runtime";
 
 import { registerUi } from "../src/index.ts";
+import { splitModifiersOf } from "../src/behaviors/split.ts";
+import type { SplitModifiers } from "../src/behaviors/split.ts";
 
 const tick = () =>
   new Promise((r) => {
@@ -79,9 +81,15 @@ function measure(el: Element, width: number, height: number): void {
 }
 
 /** A pointer event with a coordinate, built by hand because happy-dom ships no PointerEvent. */
-function pointer(type: string, clientX: number, clientY = 0, button = 0): Event {
+function pointer(
+  type: string,
+  clientX: number,
+  clientY = 0,
+  button = 0,
+  modifiers: Partial<SplitModifiers> = {},
+): Event {
   const event = new Event(type, { bubbles: true, cancelable: true });
-  Object.assign(event, { button, clientX, clientY, pointerId: 7 });
+  Object.assign(event, { button, clientX, clientY, pointerId: 7, ...modifiers });
   return event;
 }
 
@@ -567,5 +575,81 @@ describe("the collapse toggle — the SC 2.5.7 door", () => {
     el.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
     el.dispatchEvent(key("Enter"));
     expect(el.value).toBe(0.7);
+  });
+});
+
+describe("the modifiers a step carried", () => {
+  /* The element does not know what a breakpoint is. What it can do is say, on every `input` and
+     `change`, which keys the hand was holding for THAT step — a fact about one event, which is why
+     it rides on the event as `detail` rather than living in the state, where it would be stale the
+     moment the key was released. */
+  const details = (el: HTMLElement) => {
+    const out = { change: [] as SplitModifiers[], input: [] as SplitModifiers[] };
+    const above = el.parentElement!.parentElement!.parentElement!;
+    above.addEventListener("input", (e) => {
+      out.input.push(splitModifiersOf(e));
+    });
+    above.addEventListener("change", (e) => {
+      out.change.push(splitModifiersOf(e));
+    });
+    return out;
+  };
+  const none: SplitModifiers = { altKey: false, ctrlKey: false, metaKey: false, shiftKey: false };
+
+  test("a pointer move reports the modifiers of THAT move, and the release reports its own", async () => {
+    const { el, track } = await split({ value: "0.5" });
+    measure(track, 1000, 200);
+    captures(el);
+    const seen = details(el);
+    el.dispatchEvent(pointer("pointerdown", 500));
+    el.dispatchEvent(pointer("pointermove", 540, 0, 0, { altKey: true }));
+    el.dispatchEvent(pointer("pointermove", 580));
+    el.dispatchEvent(pointer("pointerup", 580, 0, 0, { metaKey: true, shiftKey: true }));
+    expect(seen.input).toEqual([{ ...none, altKey: true }, none]);
+    expect(seen.change).toEqual([{ ...none, metaKey: true, shiftKey: true }]);
+  });
+
+  test("a key reports Shift even though the element spent it on the large step", async () => {
+    const { el, track } = await split({ value: "0.5" });
+    measure(track, 1000, 200);
+    const seen = details(el);
+    el.dispatchEvent(key("ArrowRight", true));
+    expect(el.value).toBeCloseTo(0.6, 5);
+    expect(seen.input).toEqual([{ ...none, shiftKey: true }]);
+    expect(seen.change).toEqual([{ ...none, shiftKey: true }]);
+    el.dispatchEvent(
+      new KeyboardEvent("keydown", { altKey: true, bubbles: true, cancelable: true, key: "Home" }),
+    );
+    expect(seen.input[1]).toEqual({ ...none, altKey: true });
+  });
+
+  test("the toggle reports the click's modifiers", async () => {
+    const { el, track } = await split({ min: "0.2", value: "0.7" });
+    measure(track, 1000, 200);
+    const seen = details(el);
+    el.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, ctrlKey: true }));
+    expect(seen.input).toEqual([{ ...none, ctrlKey: true }]);
+    expect(seen.change).toEqual([{ ...none, ctrlKey: true }]);
+  });
+
+  test("the detail is still an Event to a listener that only wanted the value", async () => {
+    const { el, track } = await split({ value: "0.5" });
+    measure(track, 1000, 200);
+    const events = heard(el);
+    captures(el);
+    el.dispatchEvent(pointer("pointerdown", 500));
+    el.dispatchEvent(pointer("pointermove", 600, 0, 0, { altKey: true }));
+    expect(events.input).toEqual([0.6]);
+  });
+
+  test("splitModifiersOf reads no modifiers off anything that is not this element's detail", () => {
+    expect(splitModifiersOf(new Event("input"))).toEqual(none);
+    // A UIEvent's `detail` is a click count, and a number is not a modifier record.
+    expect(splitModifiersOf(new CustomEvent("input", { detail: 2 }))).toEqual(none);
+    expect(splitModifiersOf(new CustomEvent("input", { detail: null }))).toEqual(none);
+    // Only an exact `true` counts: a truthy string is not a held key.
+    expect(
+      splitModifiersOf(new CustomEvent("input", { detail: { altKey: "yes", shiftKey: true } })),
+    ).toEqual({ ...none, shiftKey: true });
   });
 });

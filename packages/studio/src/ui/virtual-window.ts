@@ -114,9 +114,24 @@ export function computeWindow(spec: WindowSpec): WindowRange {
   };
 }
 
-/** Two ranges are the same window — the guard that keeps scrolling from repainting every frame. */
+/**
+ * Two ranges are the same window — the guard that keeps scrolling from repainting every frame.
+ *
+ * The SPACERS count, not only the slice. Both are pure functions of the same four inputs, so while
+ * the row height holds still a range with the same slice has the same spacers and the guard is
+ * exactly as quiet as it was. It is when the row height MOVES that the two come apart: the same
+ * eleven rows at a new height reserve a different number of pixels either side, and a guard that
+ * looked at the slice alone called that "nothing changed" and left the tree's declared height
+ * disagreeing with its own rows.
+ */
 export function sameWindow(a: WindowRange, b: WindowRange): boolean {
-  return a.start === b.start && a.end === b.end && a.totalRows === b.totalRows;
+  return (
+    a.start === b.start &&
+    a.end === b.end &&
+    a.totalRows === b.totalRows &&
+    a.padTop === b.padTop &&
+    a.padBottom === b.padBottom
+  );
 }
 
 // ─── The observer ────────────────────────────────────────────────────────────
@@ -160,6 +175,20 @@ export interface VirtualWindowOptions {
  * rAF hop would paint the spacer before the content one frame in three. `ResizeObserver` covers the
  * pane being resized; where the environment has none (happy-dom), `measure()` is the whole contract
  * and the caller drives it — which is also how the perf test drives it.
+ *
+ * **The list is observed as well as the scroller, and that is the whole of how a row-height change
+ * reaches the window.** The window has two inputs nothing else reports: the scroller's box, which
+ * its own observer covers, and the height of one row, which the host measures live off a drawn row
+ * — but only when something asks for a measurement. A density switch asks for nothing: the rows
+ * shrink from 24px to 20px in place, the scroller's box is exactly what it was, and no scroll
+ * arrives, so the spacers stayed at 24px a row until the reader happened to scroll, and the tree
+ * declared 1320px over a 62-row model whose rows now totalled 1240. The list's height, though, is
+ * `padTop + drawn × rowHeight + padBottom` with the two spacers fixed in pixels, so ANY change to
+ * the row height changes the list's box by `drawn × Δ`, and observing the list is what turns that
+ * into the ask. It is deliberately not an observer on `data-density`: Studio writes no such
+ * attribute (the kit declares the rule and a consumer sets it), and the same drift follows a late
+ * web font, a zoom, or a stylesheet that overrides `--jx-control-h` — none of which touch an
+ * attribute, all of which move the list's box.
  */
 export function createVirtualWindow(options: VirtualWindowOptions): VirtualWindow {
   const { scroller, list, count, rowHeight, columns, onChange, overscanRows } = options;
@@ -187,10 +216,38 @@ export function createVirtualWindow(options: VirtualWindowOptions): VirtualWindo
 
   scroller.addEventListener("scroll", measure, { passive: true });
 
+  /*
+   * A resize is measured ONE FRAME LATER, and the reason is the list observer above.
+   *
+   * Measuring inside the observer's own callback is how a scroll is answered, and for a scroll it
+   * is right. For a resize it is a loop: the measure repaints the spacers, the spacers are part of
+   * the list's box, the box the observer is watching changes during delivery, and the browser —
+   * which will not deliver a second observation in the same frame — reports "ResizeObserver loop
+   * completed with undelivered notifications" as a window `error` instead. One per density toggle,
+   * measured; zero before the list was observed. A frame hop is the documented remedy: the write
+   * lands in the next frame, the observer sees it as a fresh observation, and the second measure
+   * finds the window unchanged and writes nothing. Two observations in one frame collapse into
+   * one measure, which is also what a pane resize wants. Measured again with the hop in place:
+   * zero errors across seven density toggles over a 386-row windowed model, first visits included.
+   */
+  let pending = 0;
+  const measureNextFrame = (): void => {
+    if (pending !== 0) {
+      return;
+    }
+    pending = requestAnimationFrame(() => {
+      pending = 0;
+      measure();
+    });
+  };
+
   let resizeObserver: ResizeObserver | null = null;
   if (typeof ResizeObserver === "function") {
-    resizeObserver = new ResizeObserver(() => measure());
+    resizeObserver = new ResizeObserver(measureNextFrame);
     resizeObserver.observe(scroller);
+    if (list) {
+      resizeObserver.observe(list);
+    }
   }
 
   measure();
@@ -201,6 +258,10 @@ export function createVirtualWindow(options: VirtualWindowOptions): VirtualWindo
       scroller.removeEventListener("scroll", measure);
       resizeObserver?.disconnect();
       resizeObserver = null;
+      if (pending !== 0) {
+        cancelAnimationFrame(pending);
+        pending = 0;
+      }
     },
     measure,
     range: () => current,
@@ -341,12 +402,19 @@ export function revealListRow(list: HTMLElement | null, index: number, rowHeight
  * any row has been laid out. It used to be `styles/panels.css`'s `.layer-row` and `.file-tree-item`
  * rules; both trees are `jx-tree-item` now and the declaration travelled with them — `blockSize:
  * var(--jx-control-h)`, which is 24px and matches the constants the two hosts pass. At
- * `[data-density=compact]` that token is 20px while the constants stay 24, and that is survivable
- * for exactly the reason the next paragraph gives: the constant is only the answer until a row
- * exists, and the measurement corrects it on the first one. The MEASUREMENT is what stops that
- * constant becoming a lie the day someone changes the row's padding, a user zooms, or a locale's
- * font raises the line box: a window computed from a stale height does not fail loudly, it drifts,
- * and the list quietly ends a few rows short of its own scrollbar.
+ * `[data-density=compact]` that token is 20px while the constants stay 24, and the constant is only
+ * the answer until a row exists, so a session that STARTS compact is right from its second paint.
+ * The MEASUREMENT is what stops that constant becoming a lie the day someone changes the row's
+ * padding, a user zooms, or a locale's font raises the line box: a window computed from a stale
+ * height does not fail loudly, it drifts, and the list quietly ends a few rows short of its own
+ * scrollbar.
+ *
+ * A measurement is only as fresh as the last time something ASKED for one, and this used to be
+ * where the density switch got through: the rows shrank in place, nothing scrolled, nothing resized
+ * the scroller, and the spacers stood at the old height until the next scroll — measured in a
+ * browser as a `padbottom` of 408 (17 × 24) over rows that were 20px tall. The ask is now the
+ * list's own resize ({@link createVirtualWindow} observes it), which is the one event every cause
+ * of a row-height change has in common.
  */
 export function measuredRowHeight(
   list: HTMLElement | null,
@@ -374,6 +442,10 @@ export interface ListWindowWatch {
  * tree element survives every re-render (lit reuses it), so the steady state is "same list, same
  * scroller, nothing to do". A new element — the panel remounted, or moved dock — moves the
  * listener, and a list that no longer scrolls drops it.
+ *
+ * The list goes to the window as well as the scroller, and not only for the scroll offset: it is
+ * the element whose box moves when the ROWS change height, so it is what the window observes to
+ * learn that `rowHeight()` now answers differently ({@link createVirtualWindow}).
  *
  * Returns the handle to keep, or null when nothing scrolls this list.
  */

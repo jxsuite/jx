@@ -188,7 +188,7 @@
       "position": "relative"
     },
     "#app > .resize-handle": {
-      "$description": "The docks' handles at REST: invisible, as they have always been \u2014 the panel's own 1px border is the line a reader sees, and the element's 5px `--jx-border` bar beside it read as a second, thicker one. The id is not decoration: the element's own rule is `jx-split[data-jx]` (0,1,1), so a bare class (0,1,0) lost to it at rest and this override needs (1,1,0) to hold.",
+      "$description": "The docks' handles at REST: invisible, as they have always been \u2014 the panel's own 1px border is the line a reader sees, and the element's 5px `--jx-border` bar beside it read as a second, thicker one. The id is not decoration: the element's own rule is `[data-jx=\"…\"]` (0,1,0), the same weight as a bare class, and the runtime adopts it (`adoptedStyleSheets` cascade after every linked sheet), so a `.resize-handle` override tied it and lost on order. One id heavier, (1,1,0), is what holds.",
       "background": "transparent"
     },
     "#app > .resize-handle:hover, #app > .resize-handle[data-dragging]": {

@@ -88,6 +88,11 @@
       "attribute": "eyedropper",
       "description": "Offer the screen picker, where the engine has one. The button is drawn only when BOTH this and the EyeDropper API are there, so an engine without it shows no dead control rather than one that does nothing when pressed."
     },
+    "tabindex": {
+      "type": "string",
+      "default": "",
+      "description": "Forwarded to the swatch button as its tabindex, which is what makes a roving caret possible: a jx-toolbar moving focus writes this rather than reaching into the element's internals. It is a PROPERTY ONLY (el.tabindex = \"0\") and deliberately not an observed attribute: written as an attribute it would land on the host as well, and a host carrying tabindex is itself focusable, so the one control would become two tab stops. The swatch is THE stop, and it is named part=control for that reason, which is the kit's name for the node a roving container focuses. It is the opener, so Enter on it reaches the whole picker and a reader parked on it can choose any colour; it is the one control the element always draws; and it is first in the row, so Tab lands where the eye does. While the prop is set the text field, the screen picker and the system door step out of the tab order (tabindex -1): a container that has been told this element is one stop must find exactly one, and those three are then the pointer's. Unset, which is every form, each keeps its own stop."
+    },
     "hue": {
       "type": "number",
       "default": 0,
@@ -238,7 +243,7 @@
       "gap": "var(--jx-space-2)",
       "minInlineSize": "0"
     },
-    "& [part=\"swatch\"]": {
+    "& > [part=\"row\"] > [part=\"control\"]": {
       "appearance": "none",
       "font": "inherit",
       "display": "inline-flex",
@@ -328,12 +333,13 @@
         {
           "tagName": "button",
           "attributes": {
-            "part": "swatch",
+            "part": "control",
             "type": "button",
             "aria-label": "Pick ${state.label}",
             "aria-haspopup": "dialog",
             "aria-expanded": "${state.expanded ? 'true' : 'false'}",
             "aria-controls": "${state.pickerId || null}",
+            "tabindex": "${state.tabindex || null}",
             "disabled": {
               "$ref": "#/state/disabled"
             }
@@ -378,7 +384,8 @@
             },
             "mono": true,
             "autocomplete": "off",
-            "spellcheck": false
+            "spellcheck": false,
+            "tabindex": "${state.tabindex ? '-1' : ''}"
           }
         },
         {
@@ -400,6 +407,7 @@
                 "label": "Pick ${state.label} from the screen",
                 "hint": "Pick ${state.label} from the screen",
                 "quiet": false,
+                "tabindex": "${state.tabindex ? '-1' : ''}",
                 "disabled": {
                   "$ref": "#/state/disabled"
                 }
@@ -427,6 +435,7 @@
                 "type": "color",
                 "aria-label": "Choose ${state.label} in the system picker",
                 "value": "${state.solid}",
+                "tabindex": "${state.tabindex ? '-1' : null}",
                 "disabled": {
                   "$ref": "#/state/disabled"
                 }
