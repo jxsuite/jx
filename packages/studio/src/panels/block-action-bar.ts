@@ -1023,7 +1023,6 @@ export function showCommandOverflow(
       };
     });
   const rows = target ? withCommandTarget(target, project) : project();
-  const box = rectOf(anchor);
   _overflowHandle = openMenu({
     label: "More block actions",
     onClosed: (closed) => {
@@ -1035,7 +1034,6 @@ export function showCommandOverflow(
       }
     },
     opener: anchor,
-    origin: { x: Math.round(box.left), y: Math.round(box.bottom + 4) },
     region: "block-actions",
     rows,
   });

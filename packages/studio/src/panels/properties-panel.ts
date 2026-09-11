@@ -93,7 +93,6 @@ import {
 } from "../ui/field-input";
 import { INPUT_DEBOUNCE, LIVE_PREVIEW } from "../ui/timing";
 import { cloneValue } from "../tabs/doc-op-apply";
-import { rectOf } from "../utils/geometry";
 import { openMenu } from "../surfaces/menu";
 import type { MenuHandle } from "../surfaces/menu";
 import {
@@ -888,7 +887,6 @@ function openSourceMenu(key: string, anchor: HTMLElement): void {
     return;
   }
   const { fieldKey, mode, offered } = ladder;
-  const box = rectOf(anchor);
   sourceMenu?.close();
   sourceMenu = openMenu({
     label: "Value source",
@@ -896,7 +894,6 @@ function openSourceMenu(key: string, anchor: HTMLElement): void {
       sourceMenu = null;
     },
     opener: anchor,
-    origin: { x: box.left, y: box.bottom },
     region: "value-source",
     rows: offered.map((rung) => ({
       checked: (rung === mode ? "true" : "false") as "true" | "false",

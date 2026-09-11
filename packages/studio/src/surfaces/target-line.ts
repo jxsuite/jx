@@ -44,7 +44,6 @@
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import { openMenu } from "./menu";
-import { rectOf } from "../utils/geometry";
 import targetLineDoc from "./target-line.json";
 import type { JxDocument } from "@jxsuite/schema/types";
 import type { MenuHandle, MenuRowProjection } from "./menu";
@@ -336,7 +335,6 @@ export function openSelectorMenu(): void {
       title: "+ Add custom…",
     },
   ];
-  const box = rectOf(trigger);
   _menu = openMenu({
     label: "Edit target",
     onClosed: (closed) => {
@@ -345,7 +343,6 @@ export function openSelectorMenu(): void {
       }
     },
     opener: trigger,
-    origin: { x: Math.round(box.left), y: Math.round(box.bottom) },
     region: MENU_REGION,
     rows,
   });

@@ -29,9 +29,9 @@ This page is generated from the `> **Status: …**` markers in the specification
 | `site-architecture.md`    | 0.6.11-draft | Partial     | 2026-09-10 |
 | `spec.md`                 | 0.6.21-draft | Partial     | 2026-09-10 |
 | `standards.md`            | 0.1.17-draft | Partial     | 2026-09-02 |
-| `studio-ui-guidelines.md` | 0.8.4-draft  | Partial     | 2026-09-11 |
+| `studio-ui-guidelines.md` | 0.8.5-draft  | Partial     | 2026-09-11 |
 | `studio.md`               | 0.11.2-draft | Partial     | 2026-09-11 |
-| `ui.md`                   | 0.1.41-draft | Partial     | 2026-09-11 |
+| `ui.md`                   | 0.1.42-draft | Partial     | 2026-09-11 |
 
 ## Sections not yet implemented
 

@@ -12,10 +12,19 @@
  * of its parent panel and the platform treats the two as one popover hierarchy: opening the child
  * does not close the parent, and a click outside closes both.
  *
+ * **Placement is the platform's for a menu that hangs from something, and the clamp's for a menu at
+ * a pointer.** A menu shown from a source has that source as its implicit anchor, exactly as
+ * `jx-popover` does (see `popover.ts`), but a menu's usual source is the element a CONTEXT menu was
+ * opened over — what gets the keyboard back, not where the panel hangs — so anchoring is opted into
+ * by `placement`, and a submenu opts in on its own with `inline-end span-block-end`, which is the
+ * "beside its row, flipped to the other side when it would overflow" the clamp used to compute by
+ * hand. {@link onMenuBeforeToggle} decides it before layout; a stack whose root has a floor is
+ * never anchored, because a floor is a limit the platform's fallbacks cannot express.
+ *
  * @docs extending/ui-kit
  */
 
-import { clampIntoViewport, openAt } from "./popover.ts";
+import { anchorOf, clampIntoViewport, openAt, supportsAnchorPositioning } from "./popover.ts";
 
 export { clampIntoViewport } from "./popover.ts";
 
@@ -28,8 +37,17 @@ export interface MenuState {
   x?: number;
   y?: number;
   floor?: number;
+  /** A `position-area` value, or empty for placement by `x` and `y`. */
+  placement?: string;
+  /** The area the anchored rule reads: `placement`, else the submenu default, else empty. */
+  area?: string;
+  /** Whether the platform is placing this panel against the element it was shown from. */
+  anchored?: boolean;
   [key: string]: unknown;
 }
+
+/** Where a submenu sits when its document says nothing: beside its row, extending downward. */
+export const SUBMENU_PLACEMENT = "inline-end span-block-end";
 
 /** A row element with the property accessors its document installs. */
 type RowElement = HTMLElement & { expanded?: boolean; disabled?: boolean };
@@ -287,9 +305,34 @@ export function onMenuKeydown(_state: MenuState, event: KeyboardEvent): void {
 }
 
 /**
- * Mirror the platform's toggle into state; on show, clamp into the viewport once laid out and move
- * the caret to the first row; on hide, close whatever submenus were open and clear the parent row's
- * expanded state.
+ * The platform's `beforetoggle`: where `area` and `anchored` are decided, before the panel is laid
+ * out, so the first frame is already the anchored one and nothing jumps.
+ *
+ * `area` is `placement` when the document set one, else the submenu default for a menu inside a
+ * row, else empty; `anchored` is an opening with an area, a source the platform or `openAt` named,
+ * and no floor on the stack's root. A closing `beforetoggle` clears `anchored`, so the coordinate
+ * rule is back in force for whatever shows the panel next.
+ *
+ * @param {MenuState} state
+ * @param {Event} event The platform's ToggleEvent
+ */
+export function onMenuBeforeToggle(state: MenuState, event: Event): void {
+  const menu = menuOf(event);
+  if (!menu) {
+    return;
+  }
+  const opening = (event as { newState?: string }).newState === "open";
+  const area = String(state.placement ?? "") || (parentRowOf(menu) ? SUBMENU_PLACEMENT : "");
+  state.area = area;
+  const { source } = event as Event & { source?: unknown };
+  const from = source instanceof Element ? source : anchorOf(menu);
+  state.anchored = opening && area !== "" && from !== null && !hasFloor(menu);
+}
+
+/**
+ * Mirror the platform's toggle into state; on show, clamp into the viewport once laid out — unless
+ * the platform is placing the panel by anchor — and move the caret to the first row; on hide, close
+ * whatever submenus were open and clear the parent row's expanded state.
  *
  * @param {MenuState} state
  * @param {Event} event The platform's ToggleEvent
@@ -309,13 +352,20 @@ export function onMenuToggle(state: MenuState, event: Event): void {
     }
     return;
   }
-  clampIntoViewport(state, menu, {
-    flipAgainst: parent?.closest<HTMLElement>(MENU) ?? null,
-    floor: floorOf(menu),
-  });
+  if (!(state.anchored === true && supportsAnchorPositioning())) {
+    clampIntoViewport(state, menu, {
+      flipAgainst: parent?.closest<HTMLElement>(MENU) ?? null,
+      floor: floorOf(menu),
+    });
+  }
   if (!menu.contains(document.activeElement)) {
     focusRow(rowsOf(menu), 0);
   }
+}
+
+/** Whether the stack's root declares a floor at all. */
+function hasFloor(menu: HTMLElement): boolean {
+  return Number((rootMenuOf(menu) as MenuElement).floor ?? 0) > 0;
 }
 
 /** The lowest edge a stack may reach: the root menu's `floor`, else the viewport's bottom. */

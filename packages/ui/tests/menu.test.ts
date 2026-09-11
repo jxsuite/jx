@@ -8,11 +8,13 @@ import type { JxDocument, JxElement } from "@jxsuite/schema/types";
 import { registerUi } from "../src/index.ts";
 import {
   ensureCaret,
+  onMenuBeforeToggle,
   onMenuKeydown,
   onMenuPointerOver,
   onMenuToggle,
   rootMenuOf,
   rowsOf,
+  SUBMENU_PLACEMENT,
   submenuOf,
 } from "../src/behaviors/menu.ts";
 import type { MenuState } from "../src/behaviors/menu.ts";
@@ -23,7 +25,32 @@ const flush = () =>
     setTimeout(r, 0);
   });
 
-type MenuEl = HTMLElement & { open: boolean; x: number; y: number; floor: number };
+type MenuEl = HTMLElement & {
+  open: boolean;
+  x: number;
+  y: number;
+  floor: number;
+  placement: string;
+  anchored: boolean;
+  area: string;
+};
+
+/** Pretend the engine does, or does not, position by anchor; returns the undo. */
+function withAnchorSupport(answer: boolean): () => void {
+  /* The DOM shim exposes `CSS` through a read-only accessor, so it is replaced by redefinition. */
+  const before = Object.getOwnPropertyDescriptor(globalThis, "CSS");
+  Object.defineProperty(globalThis, "CSS", {
+    configurable: true,
+    value: { supports: () => answer },
+  });
+  return () => {
+    if (before) {
+      Object.defineProperty(globalThis, "CSS", before);
+    } else {
+      delete (globalThis as { CSS?: unknown }).CSS;
+    }
+  };
+}
 type RowEl = HTMLElement & { expanded: boolean };
 
 interface RowSpec {
@@ -399,21 +426,105 @@ describe("jx-menu", () => {
   }
 
   test("a submenu that would leave the viewport on the right flips to its parent's left", async () => {
-    const { menu, rows } = await open();
-    const settings = rows[3]!;
-    const sub = submenuOf(settings) as MenuEl;
-    stubRect(menu, { height: 200, left: window.innerWidth - 220, top: 100, width: 200 });
-    stubRect(settings, { height: 24, left: window.innerWidth - 220, top: 160, width: 200 });
-    key(menu, "ArrowDown");
-    key(menu, "ArrowDown");
-    key(menu, "ArrowRight");
-    // Placed beside the row first…
-    expect(sub.x).toBe(window.innerWidth - 20 - 2);
-    stubRect(sub, { height: 80, left: sub.x, top: sub.y, width: 180 });
-    await flush();
-    await frame();
-    // …then flipped to the parent menu's left once measured to overflow.
-    expect(sub.x).toBe(window.innerWidth - 220 - 180 + 2);
+    /* The FALLBACK: on an engine without anchor positioning the clamp computes the flip. */
+    const restore = withAnchorSupport(false);
+    try {
+      const { menu, rows } = await open();
+      const settings = rows[3]!;
+      const sub = submenuOf(settings) as MenuEl;
+      stubRect(menu, { height: 200, left: window.innerWidth - 220, top: 100, width: 200 });
+      stubRect(settings, { height: 24, left: window.innerWidth - 220, top: 160, width: 200 });
+      key(menu, "ArrowDown");
+      key(menu, "ArrowDown");
+      key(menu, "ArrowRight");
+      // Placed beside the row first…
+      expect(sub.x).toBe(window.innerWidth - 20 - 2);
+      stubRect(sub, { height: 80, left: sub.x, top: sub.y, width: 180 });
+      await flush();
+      await frame();
+      // …then flipped to the parent menu's left once measured to overflow.
+      expect(sub.x).toBe(window.innerWidth - 220 - 180 + 2);
+      /* Anchored in the state all the same — the document's `@supports` block is what does not
+         apply here — with the submenu's own area. */
+      expect(sub.anchored).toBe(true);
+      expect(sub.area).toBe(SUBMENU_PLACEMENT);
+    } finally {
+      restore();
+    }
+  });
+
+  test("a submenu is anchored beside its row and left to the platform where it positions by anchor", async () => {
+    const restore = withAnchorSupport(true);
+    try {
+      const { menu, rows } = await open();
+      const settings = rows[3]!;
+      const sub = submenuOf(settings) as MenuEl;
+      stubRect(menu, { height: 200, left: window.innerWidth - 220, top: 100, width: 200 });
+      stubRect(settings, { height: 24, left: window.innerWidth - 220, top: 160, width: 200 });
+      key(menu, "ArrowDown");
+      key(menu, "ArrowDown");
+      key(menu, "ArrowRight");
+      const placed = sub.x;
+      stubRect(sub, { height: 80, left: sub.x, top: sub.y, width: 180 });
+      await flush();
+      await frame();
+      /* No clamp ran: the coordinate is exactly what the opener wrote, and the box that "overflowed"
+         is the platform's to flip with `position-try-fallbacks`. */
+      expect(sub.x).toBe(placed);
+      expect(sub.anchored).toBe(true);
+      expect(sub.dataset["anchored"]).toBe("");
+      expect(sub.area).toBe(SUBMENU_PLACEMENT);
+      const sheet = documentStyleText();
+      expect(sheet).toContain("@supports (position-area: block-end)");
+      expect(sheet).toContain(
+        "position-try-fallbacks: flip-block, flip-inline, flip-block flip-inline",
+      );
+      /* The root was shown from nothing with no placement: at its coordinates, not anchored. */
+      expect(menu.anchored).toBe(false);
+      expect(menu.area).toBe("");
+    } finally {
+      restore();
+    }
+  });
+
+  test("a root menu is anchored only when it has a placement, a source, and no floor", async () => {
+    const restore = withAnchorSupport(true);
+    try {
+      const { menu } = await open();
+      const button = document.createElement("button");
+      document.body.append(button);
+      /* No placement: a context menu at a pointer keeps its coordinates even with a source. */
+      menu.hidePopover();
+      await flush();
+      menu.showPopover({ source: button });
+      await flush();
+      expect(menu.anchored).toBe(false);
+      /* A placement makes the source its anchor. */
+      menu.hidePopover();
+      await flush();
+      menu.placement = "block-end span-inline-end";
+      menu.showPopover({ source: button });
+      await flush();
+      expect(menu.anchored).toBe(true);
+      expect(menu.area).toBe("block-end span-inline-end");
+      /* A floor takes it back to the clamp, whatever the placement says. */
+      menu.hidePopover();
+      await flush();
+      expect(menu.anchored).toBe(false);
+      menu.floor = 500;
+      menu.showPopover({ source: button });
+      await flush();
+      expect(menu.anchored).toBe(false);
+    } finally {
+      restore();
+    }
+  });
+
+  test("onMenuBeforeToggle reached from outside a menu does nothing", () => {
+    const state: MenuState = {};
+    onMenuBeforeToggle(state, new Event("beforetoggle"));
+    expect(state.anchored).toBeUndefined();
+    expect(state.area).toBeUndefined();
   });
 
   test("a root menu that overflows the right edge slides in; one below the floor moves up", async () => {

@@ -42,7 +42,6 @@ import {
 import { isJsonObject } from "@jxsuite/schema/guards";
 import { mountExpressionEditor, mountOperandEditor } from "../ui/expression-editor";
 import { openMenu } from "../surfaces/menu";
-import { rectOf } from "../utils/geometry";
 import { disposeDetachedStatementEditors, renderStatementsSurface } from "../surfaces/statements";
 
 import type {
@@ -801,11 +800,9 @@ export function mountStatementEditor(
         if (!plan) {
           return;
         }
-        const box = rectOf(anchor);
         openMenu({
           label: "Add statement",
           opener: anchor,
-          origin: { x: box.left, y: box.bottom },
           region: "statement-add",
           rows: STATEMENT_CHOICES.map((choice) => ({
             destructive: false,

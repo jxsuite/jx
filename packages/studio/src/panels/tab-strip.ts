@@ -677,8 +677,10 @@ function openOverflowMenu(pane: Pane, labels: Map<string, string>, anchorEl: HTM
     },
     opener: anchorEl,
     /* Right-aligned under the chevron, which is a function of the panel's own WIDTH — so it is a
-       `place` callback rather than an `origin`, run once the popover has been laid out. */
+       `place` callback rather than an `origin`, run once the popover has been laid out. That is
+       the fallback; where the platform positions by anchor, `placement` says the same thing. */
     place: (box) => ({ x: Math.max(4, anchor.right - box.width), y: anchor.bottom }),
+    placement: "block-end span-inline-start",
     region: "tab-overflow",
     rows: ids.map((id) => ({
       checked: (id === pane.activeTabId ? "true" : "false") as "true" | "false",

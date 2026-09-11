@@ -114,7 +114,6 @@ import { toTokenRef, tokenRefName } from "../style/token-ref";
 import { mountStylePanelSurface } from "../surfaces/style-panel";
 import { openMenu } from "../surfaces/menu";
 import type { MenuHandle } from "../surfaces/menu";
-import { rectOf } from "../utils/geometry";
 import { cloneValue } from "../tabs/doc-op-apply";
 import { effectiveSlotMode, slotModeSeed, switchSlotMode } from "../ui/dynamic-slot";
 import { slotCaps, VALUE_SOURCE_HINTS, VALUE_SOURCE_LABELS } from "../ui/value-source";
@@ -1929,7 +1928,6 @@ function openRowMenu(
   if (!trigger || choices.length === 0) {
     return;
   }
-  const box = rectOf(trigger);
   _menu = openMenu({
     label,
     onClosed: (closed) => {
@@ -1938,7 +1936,6 @@ function openRowMenu(
       }
     },
     opener: trigger,
-    origin: { x: Math.round(box.left), y: Math.round(box.bottom) },
     region: MENU_REGION,
     rows: choices.map((choice) => ({
       ...(choice.checked === undefined

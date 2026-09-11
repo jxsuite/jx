@@ -492,6 +492,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `studio-ui-guidelines.md`
 
+- **0.8.5-draft** (2026-09-11) — §8.4: a menu opened from a named opener with no coordinates is hung below it by anchor positioning; origin, place and floor keep their coordinates.
 - **0.8.4-draft** (2026-09-11) — §9.3: a saved kit component reaches every live canvas frame at the file's URL under the project and renders every pane; measured in Chrome.
 - **0.8.3-draft** (2026-09-11) — §9.3 records the live chrome lane: a saved surface or kit component re-mounts the roots it draws in the shell, keyed on the path under packages/studio or packages/ui, and names the canvas half that waits on the frame seeding the kit's modules.
 - **0.8.2-draft** (2026-09-10) — Both Studio trees are jx-tree: the role, the counts, the roving tab stop and the arrow keys are the element's, and the two hand-written copies of that contract are gone; §8.2's drop highlight is named as the element's data-drop.
@@ -688,6 +689,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `ui.md`
 
+- **0.1.42-draft** (2026-09-11) — jx-menu is anchor-positioned under placement, and a submenu anchors beside its row on its own; jx-tooltip is what is left (§5.1, §5.2, §6, §11).
 - **0.1.41-draft** (2026-09-11) — jx-popover is placed by CSS anchor positioning against the platform's implicit anchor whenever it was shown from a source (placement prop, flips, anchor-size), with the measured coordinate as the fallback; §6's marker catches up with the dialog, invoker and discrete-transition halves that were built; §11 moves CSS Anchor Positioning and CSS Transitions 2 to Subset (§5.2, §6, §11).
 - **0.1.40-draft** (2026-09-11) — §10 records the canvas as the kit's second realm: elements from the project's files, behaviours from @jxsuite/ui/loaders on first use, measured on the combobox stylebook page, and a saved component reaching both realms.
 - **0.1.39-draft** (2026-09-11) — The Style tab's keyword rows are jx-combobox with allows-custom-value (the unit and font rows stay the menu composite, because their rows are verbs); the commit judges the control's text and closes the list, as does Enter with nothing highlighted; §2 gains a light-DOM check and a sidecar scan as its evidence and is Partial, §8 is Implemented, §10 is Partial, and §2's cascade claim is corrected: element rules are unlayered (0,1,0) and adopted last; §11 retires gap:ui-accname (every control forwards its name) and gap:ui-parts (a decision, not a gap) and binds both rows to the sections the elements live in; §10 names the canvas realm's unresolved `jx-ui:` behaviours as the one gap outside the kit (§2, §5.3, §5.5, §8, §10, §11).

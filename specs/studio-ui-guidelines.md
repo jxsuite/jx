@@ -1,6 +1,6 @@
 # Jx Studio UI/UX Interface Guidelines
 
-**Version:** 0.8.4-draft\
+**Version:** 0.8.5-draft\
 **Status:** Partial\
 **Updated:** 2026-09-11\
 **Applies to:** `packages/studio/`
@@ -458,8 +458,8 @@ The canvas render container is a single `contenteditable`; individual blocks are
 
 Rendered as a `jx-menu` in a popover layer slot, opened through `openMenu()` (§8.7). There are two triggers, and they are different contracts:
 
-- **Right-click**, in the canvas or on a row. The menu appears at the pointer and is clamped into the viewport.
-- **A menu button** — a control that opens a menu instead of running a command. It carries `aria-haspopup="menu"` and a live `aria-expanded`, and it prints no chord of its own, because the chords belong to the rows. The rail foot's ⚙ **Settings** is the worked example.
+- **Right-click**, in the canvas or on a row. The menu appears at the pointer (`origin`) and is clamped into the viewport.
+- **A menu button** — a control that opens a menu instead of running a command. It carries `aria-haspopup="menu"` and a live `aria-expanded`, and it prints no chord of its own, because the chords belong to the rows. The rail foot's ⚙ **Settings** is the worked example. A caller that names the `opener` and no coordinates gets the menu hung below it by the platform's anchor positioning (ui.md §5.1), with the opener's box as the fallback coordinates; a caller that names an `origin` or a `place` meant that position, and a `floor` keeps the stack on its coordinates.
 
 **A menu's rows come from a placement** (§12.1), never from an array beside the trigger (§12.5). Dividers fall where the record's `group` changes — or, where a placement admits two levels, where the **level** changes, which is the same boundary the Navigator rail draws between its own groups.
 
@@ -876,6 +876,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.8.5-draft** (2026-09-11) — §8.4: a menu opened from a named opener with no coordinates is hung below it by anchor positioning; origin, place and floor keep their coordinates.
 - **0.8.4-draft** (2026-09-11) — §9.3: a saved kit component reaches every live canvas frame at the file's URL under the project and renders every pane; measured in Chrome.
 - **0.8.3-draft** (2026-09-11) — §9.3 records the live chrome lane: a saved surface or kit component re-mounts the roots it draws in the shell, keyed on the path under packages/studio or packages/ui, and names the canvas half that waits on the frame seeding the kit's modules.
 - **0.8.2-draft** (2026-09-10) — Both Studio trees are jx-tree: the role, the counts, the roving tab stop and the arrow keys are the element's, and the two hand-written copies of that contract are gone; §8.2's drop highlight is named as the element's data-drop.
