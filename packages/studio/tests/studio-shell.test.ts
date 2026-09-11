@@ -236,6 +236,7 @@ void mock.module("../src/canvas/canvas-render.ts", () => ({
   initCanvasRender: (ctx: unknown) => {
     canvasRenderCtx = ctx;
   },
+  redefineElementOnCanvases: mock(() => 0),
   registerSelectionSetCommand: mock(() => {}),
   renderCanvas: renderCanvasMock,
   renderOverlays: mock(() => {}),

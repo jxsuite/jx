@@ -2,9 +2,9 @@
 
 ## Mounting Documents in an Imperative Host
 
-**Version:** 0.1.3\
+**Version:** 0.1.4\
 **Status:** Implemented\
-**Updated:** 2026-09-10\
+**Updated:** 2026-09-11\
 **License:** MIT
 
 Companion to [spec.md](./spec.md) §4, §13 and §16. Defines how an application written in ordinary TypeScript hosts Jx documents: how it mounts one into a node it owns, how its own state and functions reach the document, how the document reaches back, and what a mount may configure for itself rather than for the page. Jx Studio's chrome is the first such host; a site that embeds a Jx component beside a foreign framework is the second.
@@ -148,7 +148,7 @@ Three things are per realm by nature and are not in a context: the custom-elemen
 A host that ships its documents inside its own bundle imports them as JSON. Two seams let such documents keep naming their dependencies by URL and by `$src` without a network:
 
 - **`preloadDocument(url, doc)`** seeds the resolve cache under `url` and, when it parses as one, under its absolute form, so a `$elements` entry or a `$switch` case pointing at that URL resolves to the object the host already holds, and `defineElement("<url>")` dedupes on the same key it would have fetched. A custom scheme (`jx-ui:/components/jx-button.json`) is a valid base for relative references.
-- **`preloadModule(specifier, namespace)`** seeds the `$src` module cache under the specifier as the document spells it. The host imports the sidecar itself — which is what lets a bundler see it — and registers the namespace; the document's `$src` then resolves exactly as it would have from the network.
+- **`preloadModule(specifier, namespace)`** seeds the `$src` module cache under the specifier as the document spells it. The host imports the sidecar itself — which is what lets a bundler see it — and registers the namespace; the document's `$src` then resolves exactly as it would have from the network. **Given a function instead of a namespace, the registration is lazy:** `preloadModule(specifier, () => import("./sidecar.ts"))` imports nothing until a document names the specifier, runs the loader once — two entries resolving the same sidecar in one tick share the one load — and caches the namespace; a load that rejects puts the loader back, so the next document to name it tries again rather than inheriting the failure. A namespace registered after a loader replaces it and the loader never runs. That is the shape for a host that can bundle a sidecar as its own chunk but should not pay for it on the chance: Studio's canvas frame registers every kit behaviour this way, so a page that draws no kit element loads none of them and a page that draws one loads only its own (ui.md §10).
 
 Both are process-wide, like the caches they seed. A host that must serve one URL differently per mount uses `resolver` (§5) instead.
 
@@ -178,6 +178,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.1.4** (2026-09-11) — preloadModule accepts a loader: a lazy registration that imports on first use, once, shared by concurrent resolvers, and retried after a failed load (§6).
 - **0.1.3** (2026-09-10) — §2.4 the node hooks: onNodeCreated fires before a node's bindings are applied, and there is no detach counterpart.
 - **0.1.2** (2026-09-02) — A second realm forwards redefineElement across its bridge and re-renders (§7).
 - **0.1.1** (2026-09-02) — redefineElement and elementDefinition: a definition is read through the registry at connection, so a host may replace it live (§7); every section is now implemented.
@@ -185,4 +186,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx Embedding Specification v0.1.3_
+_Jx Embedding Specification v0.1.4_

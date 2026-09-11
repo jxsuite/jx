@@ -1074,17 +1074,86 @@ interface ExternalClassInstance {
 /** Module cache for $src imports (shared with external class resolution). */
 const _moduleCache = new Map<string, ImportedModule>();
 
+/** A module the host will import on first use, keyed as the document spells its `$src`. */
+type ModuleLoader = () => Promise<Record<string, unknown>>;
+
+/**
+ * Lazy registrations: a loader until it runs, then the in-flight load, so two entries resolving the
+ * same sidecar in one tick share one import rather than racing two.
+ */
+const _moduleLoaders = new Map<string, ModuleLoader | Promise<ImportedModule>>();
+
 /**
  * Seed the `$src` module cache with a module the host already imported, under the specifier the
  * document spells. A bundled document cannot have its sidecar fetched by URL — the bundler saw
  * neither the string nor the file — so the host imports the sidecar itself and registers it here,
  * and `$src` then resolves exactly as it would have from the network.
  *
+ * Given a FUNCTION instead of a namespace, the registration is lazy: nothing is imported until a
+ * document names the specifier, and the loader runs once. That is the shape for a host that can
+ * bundle a sidecar as its own chunk but should not pay for it until something renders — Studio's
+ * canvas frame registers every kit behaviour this way, so a page that uses no kit element loads
+ * none of them (embedding.md §6).
+ *
  * @param {string} specifier - The `$src` value as written in the document
- * @param {Record<string, unknown>} mod - The imported module namespace
+ * @param {Record<string, unknown> | (() => Promise<Record<string, unknown>>)} mod - The imported
+ *   module namespace, or a loader that imports it on first use
  */
-export function preloadModule(specifier: string, mod: Record<string, unknown>): void {
+export function preloadModule(
+  specifier: string,
+  mod: Record<string, unknown> | ModuleLoader,
+): void {
+  if (typeof mod === "function") {
+    _moduleCache.delete(specifier);
+    _moduleLoaders.set(specifier, mod);
+    return;
+  }
+  _moduleLoaders.delete(specifier);
   _moduleCache.set(specifier, mod as ImportedModule);
+}
+
+/**
+ * The module a specifier was seeded with — imported, or lazily registered — or undefined when the
+ * host said nothing about it and the network is the answer.
+ *
+ * SYNCHRONOUS for a namespace the host imported, and that is load-bearing rather than tidy: a cache
+ * hit used to be a `Map#has` on the way through `resolveFunction`, and an `await` there — even of a
+ * value that is not a promise — defers one microtask, which reorders every element's scope
+ * construction against its siblings'. The kit's field naming its slotted control is one thing that
+ * order decides. Only a loader is a promise, because only a loader has to be.
+ *
+ * @param {string} src
+ * @returns {ImportedModule | Promise<ImportedModule> | undefined}
+ */
+function seededModule(src: string): ImportedModule | Promise<ImportedModule> | undefined {
+  const cached = _moduleCache.get(src);
+  if (cached) {
+    return cached;
+  }
+  const pending = _moduleLoaders.get(src);
+  if (!pending) {
+    return undefined;
+  }
+  if (typeof pending !== "function") {
+    return pending;
+  }
+  /* `Promise.resolve` so a thenable from a host's loader is still a Promise the call sites can
+     tell from a namespace. */
+  const load = Promise.resolve(pending()).then(
+    (mod) => {
+      _moduleCache.set(src, mod as ImportedModule);
+      _moduleLoaders.delete(src);
+      return mod as ImportedModule;
+    },
+    (error: unknown) => {
+      /* A failed load — a chunk the network dropped — puts the loader back, so the next document to
+         name the specifier tries again rather than inheriting this rejection for good. */
+      _moduleLoaders.set(src, pending);
+      throw error;
+    },
+  );
+  _moduleLoaders.set(src, load);
+  return load;
 }
 
 /**
@@ -1130,8 +1199,11 @@ async function resolveFunction(def: JxFunctionDef, state: JxScope, key: string, 
     }
     const exportName = def.$export ?? key;
     let mod: ImportedModule;
-    if (_moduleCache.has(src)) {
-      mod = _moduleCache.get(src)!;
+    const seeded = seededModule(src);
+    if (seeded instanceof Promise) {
+      mod = await seeded;
+    } else if (seeded) {
+      mod = seeded;
     } else {
       if (base) {
         const resolvedSrc = new URL(src, base).href;
@@ -2985,8 +3057,11 @@ async function resolveExternalPrototype(
  */
 async function importAndInstantiate(def: JxScope, src: string, exportName: string, base?: string) {
   let mod: ImportedModule;
-  if (_moduleCache.has(src)) {
-    mod = _moduleCache.get(src)!;
+  const seeded = seededModule(src);
+  if (seeded instanceof Promise) {
+    mod = await seeded;
+  } else if (seeded) {
+    mod = seeded;
   } else {
     try {
       mod = (await import(src)) as ImportedModule;
@@ -3298,8 +3373,11 @@ async function resolveServerFunction(
   const exportName = def.$export;
 
   let mod: ImportedModule;
-  if (_moduleCache.has(src)) {
-    mod = _moduleCache.get(src)!;
+  const seeded = seededModule(src);
+  if (seeded instanceof Promise) {
+    mod = await seeded;
+  } else if (seeded) {
+    mod = seeded;
   } else {
     try {
       mod = (await import(src)) as ImportedModule;

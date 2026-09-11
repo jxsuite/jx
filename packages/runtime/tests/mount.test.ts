@@ -449,6 +449,78 @@ describe("preloadDocument / preloadModule", () => {
   });
 });
 
+describe("preloadModule with a loader", () => {
+  const sidecar = {
+    greet(state: Record<string, unknown>, event: Event) {
+      state.greeted = event.type;
+    },
+  };
+  const doc = (src: string): JxDocument => ({
+    tagName: "button",
+    state: {
+      greeted: "",
+      greet: { $prototype: "Function", $src: src, $export: "greet" },
+    },
+    onclick: { $ref: "#/state/greet" },
+  });
+
+  test("imports on first use, once, and concurrent resolvers share the one load", async () => {
+    let loads = 0;
+    preloadModule("jx-test:/lazy.ts", async () => {
+      loads += 1;
+      await tick();
+      return sidecar;
+    });
+    expect(loads).toBe(0);
+    const second = document.createElement("div");
+    document.body.append(second);
+    const [a, b] = await Promise.all([
+      mount(doc("jx-test:/lazy.ts"), host),
+      mount(doc("jx-test:/lazy.ts"), second),
+    ]);
+    expect(loads).toBe(1);
+    (host.firstElementChild as HTMLButtonElement).click();
+    (second.firstElementChild as HTMLButtonElement).click();
+    expect(a.scope.greeted).toBe("click");
+    expect(b.scope.greeted).toBe("click");
+    await mount(doc("jx-test:/lazy.ts"), second);
+    expect(loads).toBe(1);
+    second.remove();
+  });
+
+  test("a load that fails is retried by the next document, and a namespace replaces a loader", async () => {
+    let attempts = 0;
+    preloadModule("jx-test:/flaky.ts", async () => {
+      attempts += 1;
+      if (attempts === 1) {
+        throw new Error("chunk dropped");
+      }
+      return sidecar;
+    });
+    let refusal: unknown = null;
+    try {
+      await mount(doc("jx-test:/flaky.ts"), host);
+    } catch (error) {
+      refusal = error;
+    }
+    expect(String(refusal)).toContain("chunk dropped");
+    const m = await mount(doc("jx-test:/flaky.ts"), host);
+    expect(attempts).toBe(2);
+    (host.firstElementChild as HTMLButtonElement).click();
+    expect(m.scope.greeted).toBe("click");
+
+    /* The eager form wins over a loader registered before it, and never runs it. */
+    let ran = false;
+    preloadModule("jx-test:/both.ts", async () => {
+      ran = true;
+      return sidecar;
+    });
+    preloadModule("jx-test:/both.ts", sidecar);
+    await mount(doc("jx-test:/both.ts"), host);
+    expect(ran).toBe(false);
+  });
+});
+
 describe("bindings skip an equal write", () => {
   test("a re-run that resolves to the value the node already holds does not set it", async () => {
     const m = await mount(

@@ -119,6 +119,7 @@ const {
   postApplyFormat,
   postColorSchemeToLiveHosts,
   postLocaleToLiveHosts,
+  postRedefineElementToLiveHosts,
   postDragMessage,
   postSiteStyleToLiveHosts,
   postPatchToHosts,
@@ -542,6 +543,32 @@ describe("mountIframeCanvas", () => {
     const before = channels[0]!.posts.length;
     postLocaleToLiveHosts("fr", elsewhere);
     expect(channels[0]!.posts).toHaveLength(before);
+  });
+
+  /*
+   * A definition is a fact about the realm, so the post is unscoped; and it crosses postMessage,
+   * so a reactive record is cloned to plain data first.
+   */
+  test("postRedefineElementToLiveHosts tells every ready host, as plain data, and counts them", async () => {
+    const canvasEl = document.createElement("div");
+    document.body.append(canvasEl);
+    await mountIframeCanvas(1, { tagName: "div" } as never, canvasEl);
+    const doc = reactive({ tagName: "jx-probe", children: [{ tagName: "b" }] });
+
+    expect(postRedefineElementToLiveHosts(doc as never, "http://x/components/jx-probe.json")).toBe(
+      0,
+    );
+    expect(channels[0]!.posts).toHaveLength(0);
+
+    channels[0]!.deliver({ kind: "ready" });
+    expect(postRedefineElementToLiveHosts(doc as never, "http://x/components/jx-probe.json")).toBe(
+      1,
+    );
+    const last = channels[0]!.posts.at(-1) as { kind: string; base: string; doc: unknown };
+    expect(last.kind).toBe("redefineElement");
+    expect(last.base).toBe("http://x/components/jx-probe.json");
+    expect(last.doc).toEqual({ children: [{ tagName: "b" }], tagName: "jx-probe" });
+    expect(last.doc).not.toBe(doc);
   });
 
   test("uses the platform's canvasUrl when set, default otherwise", async () => {

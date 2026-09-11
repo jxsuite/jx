@@ -293,6 +293,7 @@ void mock.module("../src/canvas/iframe-host.js", () => ({
   canvasIdleBlockers: () => [],
   canvasPointAt: () => Promise.resolve(null),
   revealCanvasPath: () => Promise.resolve(null),
+  postRedefineElementToLiveHosts: () => 0,
   postStyleUpdateToStylebookHosts: (style: Record<string, unknown>) => styleUpdateImpl(style),
   getEditBarAnchorRect: () => null,
   getEditSnapshot: () => ({ editing: false, snapshot: null }),
@@ -372,8 +373,13 @@ void mock.module("../src/files/serialize-document.js", () => ({
   serializeDocument: serializeDocumentMock,
 }));
 
-const { initCanvasRender, renderCanvas, renderOverlays, scheduleCanvasRender } =
-  await import("../src/canvas/canvas-render");
+const {
+  initCanvasRender,
+  redefineElementOnCanvases,
+  renderCanvas,
+  renderOverlays,
+  scheduleCanvasRender,
+} = await import("../src/canvas/canvas-render");
 const { mount: mountDocHeader, unmount: unmountDocHeader } =
   await import("../src/panels/frontmatter-panel");
 
@@ -574,6 +580,20 @@ describe("renderCanvas without a tab", () => {
     setProjectState(null);
     renderCanvas();
     expect(renderWelcome).toHaveBeenCalledWith(stageEl());
+  });
+
+  /*
+   * The canvas half of a kit save (embedding.md §7): the post reaches only live frames, and every
+   * pane renders again, because a frame's instances keep the definition they rendered.
+   */
+  test("redefineElementOnCanvases tells the live frames and renders every pane again", () => {
+    resetStudioState({ isSiteProject: true });
+    stageEl().textContent = "leftover";
+    /* The mocked host has no frame to tell, so nothing is — and the render still runs. */
+    expect(
+      redefineElementOnCanvases({ tagName: "jx-probe" } as never, "http://x/jx-probe.json"),
+    ).toBe(0);
+    expect(stageEl().textContent).toBe("");
   });
 
   test("clears the canvas when a project is loaded but no tab is open", () => {

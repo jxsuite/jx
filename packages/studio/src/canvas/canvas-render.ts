@@ -94,6 +94,7 @@ import {
   mountIframeCanvas,
   postApplyFormat,
   postOpenSlash,
+  postRedefineElementToLiveHosts,
   postStyleUpdateToStylebookHosts,
   releaseCanvasHosts,
 } from "./iframe-host";
@@ -870,6 +871,25 @@ export function renderCanvas(paneId: string = workspace.activePaneId) {
   timeSpan(SPAN_FULL_RENDER, () => {
     renderCanvasImpl(surface);
   });
+}
+
+/**
+ * A kit component was saved: redefine it in every live frame, then render every pane, because a
+ * frame's instances keep the definition they rendered until something renders them again
+ * (embedding.md §7). The render is what makes the redefinition visible; the message alone would
+ * leave every open canvas drawing the old element beside a shell drawing the new one.
+ *
+ * @param {JxMutableNode} doc The component document, as saved.
+ * @param {string} base The URL the frame resolves the document's own references against — the
+ *   file's URL under the project, so `$elements` siblings resolve to the project's copies.
+ * @returns {number} How many frames were told.
+ */
+export function redefineElementOnCanvases(doc: JxMutableNode, base: string): number {
+  const posted = postRedefineElementToLiveHosts(doc, base);
+  for (const pane of workspace.panes) {
+    renderCanvas(pane.id);
+  }
+  return posted;
 }
 
 /**

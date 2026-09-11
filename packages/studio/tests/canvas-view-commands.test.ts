@@ -67,6 +67,7 @@ void mock.module("../src/canvas/iframe-host.js", () => ({
   postOpenSlash: () => {
     formatIntents.push({ command: "openSlash" });
   },
+  postRedefineElementToLiveHosts: () => 0,
   postStyleUpdateToStylebookHosts: () => {},
   requestCanvasEval: () => Promise.resolve(null),
   /* The non-lazy way out of `liveHosts`: `panels/pane-grid.ts` calls it as a cell is

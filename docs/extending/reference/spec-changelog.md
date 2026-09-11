@@ -137,6 +137,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `embedding.md`
 
+- **0.1.4** (2026-09-11) — preloadModule accepts a loader: a lazy registration that imports on first use, once, shared by concurrent resolvers, and retried after a failed load (§6).
 - **0.1.3** (2026-09-10) — §2.4 the node hooks: onNodeCreated fires before a node's bindings are applied, and there is no detach counterpart.
 - **0.1.2** (2026-09-02) — A second realm forwards redefineElement across its bridge and re-renders (§7).
 - **0.1.1** (2026-09-02) — redefineElement and elementDefinition: a definition is read through the registry at connection, so a host may replace it live (§7); every section is now implemented.
@@ -491,6 +492,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `studio-ui-guidelines.md`
 
+- **0.8.4-draft** (2026-09-11) — §9.3: a saved kit component reaches every live canvas frame at the file's URL under the project and renders every pane; measured in Chrome.
 - **0.8.3-draft** (2026-09-11) — §9.3 records the live chrome lane: a saved surface or kit component re-mounts the roots it draws in the shell, keyed on the path under packages/studio or packages/ui, and names the canvas half that waits on the frame seeding the kit's modules.
 - **0.8.2-draft** (2026-09-10) — Both Studio trees are jx-tree: the role, the counts, the roving tab stop and the arrow keys are the element's, and the two hand-written copies of that contract are gone; §8.2's drop highlight is named as the element's data-drop.
 - **0.8.1-draft** (2026-09-10) — The bound on surviving lit templates is a gate (LIT_TEMPLATE_AUTHORS) rather than prose (§9.3).
@@ -686,6 +688,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `ui.md`
 
+- **0.1.40-draft** (2026-09-11) — §10 records the canvas as the kit's second realm: elements from the project's files, behaviours from @jxsuite/ui/loaders on first use, measured on the combobox stylebook page, and a saved component reaching both realms.
 - **0.1.39-draft** (2026-09-11) — The Style tab's keyword rows are jx-combobox with allows-custom-value (the unit and font rows stay the menu composite, because their rows are verbs); the commit judges the control's text and closes the list, as does Enter with nothing highlighted; §2 gains a light-DOM check and a sidecar scan as its evidence and is Partial, §8 is Implemented, §10 is Partial, and §2's cascade claim is corrected: element rules are unlayered (0,1,0) and adopted last; §11 retires gap:ui-accname (every control forwards its name) and gap:ui-parts (a decision, not a gap) and binds both rows to the sections the elements live in; §10 names the canvas realm's unresolved `jx-ui:` behaviours as the one gap outside the kit (§2, §5.3, §5.5, §8, §10, §11).
 - **0.1.38-draft** (2026-09-11) — jx-split reports each step's modifiers as the detail of input and change, and the Edit column's snapping handles are jx-split beside the column; setupHandle is deleted (§5.5).
 - **0.1.37-draft** (2026-09-11) — jx-combobox lands a gesture-opened list on the row the field already holds, shows no empty list, closes on Tab either way and matches its field's width, and ai-credentials-form is one jx-combobox with allows-custom-value over the fetched catalogue rather than two controls bound to one draft (5.3).

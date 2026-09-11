@@ -58,6 +58,7 @@ import type { CanvasSurface } from "./canvas/canvas-surface";
 import {
   initCanvasRender,
   registerSelectionSetCommand,
+  redefineElementOnCanvases,
   renderCanvas,
   renderOverlays,
   scheduleCanvasRender,
@@ -1490,7 +1491,11 @@ registerCanvasViewCommands(commandRegistry, {
 /* The second listener is the live chrome lane: a saved surface document or kit component re-mounts
    the roots it draws in THIS shell (studio-ui-guidelines.md §9.3). Inert for every project but the
    two the chrome comes from, by the saved path alone. */
-const liveChrome = createLiveSurfaceSaver({ notify, workspace });
+const liveChrome = createLiveSurfaceSaver({
+  notify,
+  redefineOnCanvases: redefineElementOnCanvases,
+  workspace,
+});
 setDocumentSavedListener((path, doc) => {
   void noteFileSaved(path);
   void liveChrome(path, doc as unknown as JxDocument);

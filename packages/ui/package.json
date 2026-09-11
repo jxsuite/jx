@@ -22,6 +22,7 @@
     "./theme": "./src/theme.ts",
     "./icons": "./src/icons.ts",
     "./documents": "./src/documents.ts",
+    "./loaders": "./src/loaders.ts",
     "./color": "./src/color.ts",
     "./behaviors/color-area": "./src/behaviors/color-area.ts",
     "./behaviors/color-field": "./src/behaviors/color-field.ts",

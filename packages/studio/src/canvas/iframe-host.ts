@@ -3228,6 +3228,35 @@ export function postLocaleToLiveHosts(locale: string | null, root?: HTMLElement 
 }
 
 /**
+ * Replace an element's definition in every live frame (embedding.md §7's canvas half).
+ *
+ * Unscoped on purpose, where the locale and colour-scheme posts take a stage: a definition is a
+ * fact about the REALM, not about a pane, and a frame that kept the old one would draw a different
+ * element from the one beside it. Instances already on a canvas keep the definition they rendered
+ * until their host renders again, which is why {@link redefineElementOnCanvases} follows this with a
+ * render of every pane rather than trusting the message alone.
+ *
+ * The document crosses `postMessage`, so it is cloned to plain data first: a definition that came
+ * off a tab's reactive record is a proxy, and a proxy cannot be structured-cloned.
+ */
+export function postRedefineElementToLiveHosts(doc: JxMutableNode, base: string): number {
+  // oxlint-disable-next-line unicorn/prefer-structured-clone
+  const plain = JSON.parse(JSON.stringify(doc)) as JxMutableNode;
+  let posted = 0;
+  for (const host of liveHosts) {
+    if (!host.iframe.isConnected) {
+      liveHosts.delete(host);
+      continue;
+    }
+    if (host.ready) {
+      host.channel.post({ base, doc: plain, kind: "redefineElement" });
+      posted += 1;
+    }
+  }
+  return posted;
+}
+
+/**
  * Push the project's current site style to every ready PAGE host as an in-place sheet replace (live
  * design-token editing — stylebook hosts pre-merge site style into the specimen doc and are
  * skipped). Render-free; the next full render carries the same style via its own siteStyle.

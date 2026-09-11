@@ -13,15 +13,17 @@
  * this never looks at, and the shipped app never reads its chrome from disk: the document that
  * re-mounts is the one the tab just wrote, handed over by the save path, never read back.
  *
- * Three things are deliberately NOT here. The lane does not watch the filesystem: an edit made
+ * Two things are deliberately NOT here. The lane does not watch the filesystem: an edit made
  * outside Studio reaches the shell on the next reload, as it always did, because a watcher is a
- * second writer racing the tab. It does not diff: a saved document is re-registered whole and every
- * root re-mounted, because a surface's host scope is reused (`SurfaceMount.remount`) and only the
- * surface-local state resets, which is the contract §9.3 gives the registry. And it does not
- * forward a kit redefinition to the canvas frames yet: the canvas defines a project's elements from
- * the project's own files and resolves their `jx-ui:` behaviours over the network, which is not
- * seeded there, so a definition posted into a frame would be one that cannot mount — the
- * `redefineElement` frame message waits on the canvas seeding the kit's modules.
+ * second writer racing the tab. And it does not diff: a saved document is re-registered whole and
+ * every root re-mounted, because a surface's host scope is reused (`SurfaceMount.remount`) and only
+ * the surface-local state resets, which is the contract §9.3 gives the registry.
+ *
+ * A kit redefinition reaches the canvas frames too, with the FILE's URL under the project as its
+ * base: the frame draws a project's elements from the project's own files, so a sibling `$ref` in
+ * the definition must resolve to the project's copy, not to the bundle's. The frame answers the
+ * definition's `jx-ui:` sidecars from the loaders it registered at boot (`iframe-entry.ts`), one
+ * chunk per behaviour on first use.
  *
  * @docs extending/ui-kit
  */
@@ -30,6 +32,7 @@ import { KIT_BASE } from "@jxsuite/ui";
 import type { JxDocument } from "@jxsuite/schema/types";
 import { mountsOf, mountsUsing } from "./surface-registry";
 import { registerSurface, surfaceDocument } from "../ui/surface";
+import { documentBase } from "../canvas/canvas-origin";
 
 /** What a saved file IS to the running shell. */
 export type LiveTarget =
@@ -87,8 +90,21 @@ export interface LiveSurfaceResult {
   readonly target: LiveTarget;
   /** How many roots were re-mounted. Zero is a document nothing on screen was drawn from. */
   readonly remounted: number;
+  /** How many canvas frames were told of an element's redefinition. Absent for a surface. */
+  readonly canvases?: number;
   /** Why nothing was applied, when nothing was. */
   readonly refused?: string;
+}
+
+/**
+ * The URL a frame resolves a saved kit component against: the file's own URL under the project,
+ * which is where the frame fetched the definition it holds and where its sibling `$ref`s live.
+ *
+ * @param projectRoot The open project's root.
+ * @param path The saved path, relative to it.
+ */
+export function canvasBaseFor(projectRoot: string, path: string): string {
+  return new URL(path.replaceAll("\\", "/").replace(/^\.?\//, ""), documentBase(projectRoot)).href;
 }
 
 /**
@@ -143,12 +159,17 @@ export interface LiveSurfaceNotifier {
 
 /**
  * What the lane needs from the shell, as the records themselves rather than closures over them, so
- * the bootstrap hands over two objects it already holds and writes no function of its own.
+ * the bootstrap hands over objects it already holds and writes no function of its own.
  */
 export interface LiveSurfaceDeps {
   /** The workspace record; `projectRoot` is read at save time, never captured. */
   workspace: { readonly projectRoot: string | null };
   notify: LiveSurfaceNotifier;
+  /**
+   * Redefine an element in every live canvas frame and render them; answers how many were told.
+   * `canvas-render.ts`'s `redefineElementOnCanvases`, injected so this module imports no canvas.
+   */
+  redefineOnCanvases: (doc: JxDocument, base: string) => number;
 }
 
 /** The sentence a result is said in. Exported so the wording is tested, not only the branch. */
@@ -163,11 +184,25 @@ export function liveSaveNotice(result: LiveSurfaceResult): {
   if (result.refused) {
     return { key, level: "warn", message: `Not applied to the running shell: ${result.refused}.` };
   }
+  const canvases =
+    result.canvases === undefined || result.canvases === 0
+      ? ""
+      : result.canvases === 1
+        ? " and on the canvas"
+        : ` and on ${result.canvases} canvases`;
   if (result.remounted === 0) {
-    return { key, level: "info", message: `${what} saved; nothing on screen is drawn from it.` };
+    return {
+      key,
+      level: "info",
+      message: `${what} saved; nothing in the shell is drawn from it${canvases ? `, redefined${canvases}` : ""}.`,
+    };
   }
   const places = result.remounted === 1 ? "1 place" : `${result.remounted} places`;
-  return { key, level: "info", message: `${what} saved and re-mounted in ${places}.` };
+  return {
+    key,
+    level: "info",
+    message: `${what} saved and re-mounted in ${places}${canvases}.`,
+  };
 }
 
 /**
@@ -182,11 +217,15 @@ export function createLiveSurfaceSaver(
   deps: LiveSurfaceDeps,
 ): (path: string | null, doc: JxDocument | null) => Promise<LiveSurfaceResult | null> {
   return async (path, doc) => {
-    const target = liveSurfaceTarget(deps.workspace.projectRoot, path);
-    if (!target || !doc) {
+    const root = deps.workspace.projectRoot;
+    const target = liveSurfaceTarget(root, path);
+    if (!target || !doc || !root || !path) {
       return null;
     }
-    const result = await applyLiveSave(target, doc);
+    let result = await applyLiveSave(target, doc);
+    if (target.kind === "element" && !result.refused) {
+      result = { ...result, canvases: deps.redefineOnCanvases(doc, canvasBaseFor(root, path)) };
+    }
     const notice = liveSaveNotice(result);
     if (notice.level === "warn") {
       deps.notify.warn(notice.message, { key: notice.key, source: "Studio", tier: "problem" });

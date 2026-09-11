@@ -74,6 +74,7 @@ void mock.module("../src/canvas/iframe-host.js", () => ({
   mountIframeCanvas: () => Promise.resolve(),
   postApplyFormat: () => {},
   postOpenSlash: () => {},
+  postRedefineElementToLiveHosts: () => 0,
   postStyleUpdateToStylebookHosts: () => 0,
   releaseCanvasHosts: () => 0,
   requestCanvasEval: () => Promise.resolve(null),
