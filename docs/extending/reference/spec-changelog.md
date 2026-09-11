@@ -689,6 +689,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `ui.md`
 
+- **0.1.44-draft** (2026-09-11) — §11: WCAG 2.2 is a Subset with a test per criterion, and SC 2.4.7 is a gate (every focusable control has the kit's focus ring); CSS Scoping is a Subset now that the light-DOM decision is held by the conformance test, and gap:ui-scoping is retired (§11).
 - **0.1.43-draft** (2026-09-11) — jx-tooltip is anchor-positioned against the control it was shown from, flipped through a named @position-try option so the arrow's gap moves with it; every overlay that hangs from something is the platform's to place, and §11 retires gap:ui-anchor (§5.2, §6, §11).
 - **0.1.42-draft** (2026-09-11) — jx-menu is anchor-positioned under placement, and a submenu anchors beside its row on its own; jx-tooltip is what is left (§5.1, §5.2, §6, §11).
 - **0.1.41-draft** (2026-09-11) — jx-popover is placed by CSS anchor positioning against the platform's implicit anchor whenever it was shown from a source (placement prop, flips, anchor-size), with the measured coordinate as the fallback; §6's marker catches up with the dialog, invoker and discrete-transition halves that were built; §11 moves CSS Anchor Positioning and CSS Transitions 2 to Subset (§5.2, §6, §11).
