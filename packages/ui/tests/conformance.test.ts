@@ -452,6 +452,53 @@ describe("the kit keeps its principles (ui.md §2)", () => {
   }
 });
 
+describe("the kit keeps a visible focus (WCAG 2.2 SC 2.4.7)", () => {
+  /* Every element that renders a focusable control of its own draws a focus ring on it. The ring
+     is `--jx-focus-ring` on a `:focus-visible` rule — one token, so a theme moves every ring at
+     once and no element is left drawing the platform's default, which a dark theme can lose. A
+     document that renders only kit elements (a toast over kit buttons) delegates, and one whose
+     host is focused programmatically alone (a menu at tabindex -1) is not a stop a reader tabs to. */
+  const FOCUSABLE = new Set(["a", "button", "input", "select", "summary", "textarea"]);
+
+  /** Whether a document renders, with its own markup, something a reader can tab to. */
+  function rendersFocusable(node: unknown): boolean {
+    if (Array.isArray(node)) {
+      return node.some((item) => rendersFocusable(item));
+    }
+    if (!node || typeof node !== "object") {
+      return false;
+    }
+    const el = node as {
+      tagName?: string;
+      attributes?: Record<string, unknown>;
+      children?: unknown;
+    };
+    const tabindex = String(el.attributes?.["tabindex"] ?? "");
+    if (tabindex !== "" && tabindex !== "-1") {
+      return true;
+    }
+    if (el.tagName && FOCUSABLE.has(el.tagName) && tabindex !== "-1") {
+      return true;
+    }
+    return Object.entries(el)
+      .filter(([key]) => key !== "style")
+      .some(([, value]) => rendersFocusable(value));
+  }
+
+  for (const [tag, doc] of Object.entries(documents)) {
+    if (!rendersFocusable(doc.children)) {
+      continue;
+    }
+    test(`${tag} declares a :focus-visible rule for the control it renders`, () => {
+      const rule = JSON.stringify(doc.style ?? {});
+      expect(rule, `${tag} renders a focusable control and no :focus-visible rule`).toContain(
+        ":focus-visible",
+      );
+      expect(rule, `${tag}'s focus ring is not the kit's token`).toContain("--jx-focus-ring");
+    });
+  }
+});
+
 describe("stylebook pages", () => {
   for (const [name, page] of Object.entries(stylebook)) {
     test(`${name} passes the overlay and accessibility lints`, () => {
