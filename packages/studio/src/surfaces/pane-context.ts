@@ -318,6 +318,11 @@ function attrOf(def: JxElement | string, name: string): string {
  * a trigger 40px from the window edge runs off the screen. The panel's own width is only known once
  * it has been shown, which is why this is called twice ({@link showPanel}): the same two-pass
  * `surfaces/menu.ts` uses, for the same reason.
+ *
+ * This is the FALLBACK placement. The document gives both panels `placement: "block-end
+ * span-inline-start"`, and on an engine with CSS anchor positioning the panel is placed by the
+ * platform against the trigger it was opened from (ui.md §6) and these coordinates are ignored;
+ * they stand for the engines that cannot.
  */
 function placeBelow(anchor: HTMLElement, panel: HTMLElement | null): { x: number; y: number } {
   const box = rectOf(anchor);

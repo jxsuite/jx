@@ -16,9 +16,11 @@ import {
   clampIntoViewport,
   close,
   measureAnchor,
+  onBeforeToggle,
   onToggle,
   onTransitionEnd,
   openAt,
+  supportsAnchorPositioning,
 } from "../src/behaviors/popover.ts";
 import type { PopoverElement, PopoverState } from "../src/behaviors/popover.ts";
 
@@ -38,13 +40,33 @@ type JxPopover = HTMLElement & {
   label: string;
   arrow: boolean;
   matchWidth: boolean;
+  placement: string;
   x: number;
   y: number;
   floor: number;
   open: boolean;
   settling: boolean;
   anchorWidth: number;
+  anchored: boolean;
 };
+
+/** Pretend the engine does, or does not, position by anchor; returns the undo. */
+function withAnchorSupport(answer: boolean): () => void {
+  /* The DOM shim exposes `CSS` through a read-only accessor, so the object is replaced by
+     redefinition rather than assignment. */
+  const before = Object.getOwnPropertyDescriptor(globalThis, "CSS");
+  Object.defineProperty(globalThis, "CSS", {
+    configurable: true,
+    value: { supports: () => answer },
+  });
+  return () => {
+    if (before) {
+      Object.defineProperty(globalThis, "CSS", before);
+    } else {
+      delete (globalThis as { CSS?: unknown }).CSS;
+    }
+  };
+}
 
 beforeAll(async () => {
   await registerUi();
@@ -555,17 +577,135 @@ describe("jx-popover on the page", () => {
   test("places itself by coordinate: a fixed box whose insets follow x and y", async () => {
     const el = await panel({ x: 12, y: 34 });
     const base = rules(sheetFor(el)).find((rule) => rule.selector === "&");
-    /* Placing by measured viewport coordinate IS the substitute for anchor positioning — `anchor`,
-       `placement` and `position-try-fallbacks` were dropped in favour of it — so the coordinate
-       reaching the box is the contract, not an implementation detail. A panel that computes a
-       perfect `y` and never applies it, or that is `position: static` inside a scrolled container,
-       is indistinguishable from a correct one to a test that reads only the state. */
+    /* The coordinate placement is the FALLBACK the anchored rule stands on — a panel shown from
+       nothing, one with a floor, an engine without anchor positioning — so the coordinate reaching
+       the box is a contract, not an implementation detail. A panel that computes a perfect `y` and
+       never applies it, or that is `position: static` inside a scrolled container, is
+       indistinguishable from a correct one to a test that reads only the state. */
     expect(base?.block).toContain("position: fixed");
     expect(resolved(el, "inset-inline-start")).toBe("12px");
     expect(resolved(el, "inset-block-start")).toBe("34px");
     el.y = 78;
     await tick();
     expect(resolved(el, "inset-block-start")).toBe("78px");
+  });
+
+  test("declares the anchored placement under @supports: position-area from the prop, flips, and anchor-size", async () => {
+    const el = await panel({ matchWidth: true });
+    expect(el.placement).toBe("block-end span-inline-end");
+    const rule = rules(sheetFor(el)).find(
+      (r) => r.selector === "@supports (position-area: block-end)",
+    );
+    expect(rule).toBeDefined();
+    /* Keyed on the attribute the behaviour mirrors, and releasing the insets so `x` and `y` stop
+       mattering the moment the platform is placing the panel. */
+    expect(rule!.block).toContain("[data-anchored]");
+    expect(rule!.block).toContain("inset-inline-start: auto");
+    expect(rule!.block).toContain("inset-block-start: auto");
+    expect(rule!.block).toContain(
+      "position-try-fallbacks: flip-block, flip-inline, flip-block flip-inline",
+    );
+    /* The two reactive declarations reach the box as custom properties the element sets inline. */
+    const area = /position-area: var\((--[\w-]+)\)/.exec(rule!.block)?.[1] ?? "";
+    expect(el.style.getPropertyValue(area).trim()).toBe("block-end span-inline-end");
+    const width = /min-width: var\((--[\w-]+)\)/.exec(rule!.block)?.[1] ?? "";
+    expect(el.style.getPropertyValue(width).trim()).toBe("anchor-size(width)");
+    el.placement = "block-end span-inline-start";
+    el.matchWidth = false;
+    await tick();
+    expect(el.style.getPropertyValue(area).trim()).toBe("block-end span-inline-start");
+    expect(el.style.getPropertyValue(width).trim()).toBe("180px");
+  });
+
+  test("is anchored from beforetoggle when shown from a source, and not once it closes", async () => {
+    const trigger = document.createElement("button");
+    document.body.append(trigger);
+    const el = await panel();
+    expect(el.anchored).toBe(false);
+    openAt(el, trigger);
+    /* Synchronously: `beforetoggle` fires inside `showPopover`, before the panel is laid out, so
+       the first frame is already the anchored one and nothing jumps. */
+    expect(el.anchored).toBe(true);
+    await tick();
+    expect(el.dataset["anchored"]).toBe("");
+    close(el);
+    await tick();
+    expect(el.anchored).toBe(false);
+    expect(el.dataset["anchored"]).toBeUndefined();
+  });
+
+  test("is placed by coordinate when shown from nothing, and always when it has a floor", async () => {
+    const trigger = document.createElement("button");
+    document.body.append(trigger);
+    const bare = await panel();
+    bare.showPopover();
+    await tick();
+    expect(bare.anchored).toBe(false);
+    /* A floor is a limit the platform's fallbacks cannot express, so the clamp keeps that panel. */
+    const floored = await panel({ floor: 500 });
+    openAt(floored, trigger);
+    await tick();
+    expect(floored.anchored).toBe(false);
+    expect(floored.open).toBe(true);
+  });
+
+  test("skips the clamp for an anchored panel only where the engine positions by anchor", async () => {
+    const trigger = document.createElement("button");
+    document.body.append(trigger);
+    /* An overflowing box: the clamp would move `x` and `y` if it ran. */
+    const supported = withAnchorSupport(true);
+    try {
+      expect(supportsAnchorPositioning()).toBe(true);
+      const el = await panel({ x: 10, y: 10 });
+      stubRect(el, { height: 3000, left: 10, top: 10, width: 3000 });
+      openAt(el, trigger);
+      await tick();
+      await frame();
+      await tick();
+      expect(el.anchored).toBe(true);
+      expect(el.x).toBe(10);
+      expect(el.y).toBe(10);
+    } finally {
+      supported();
+    }
+    const unsupported = withAnchorSupport(false);
+    try {
+      expect(supportsAnchorPositioning()).toBe(false);
+      const el = await panel({ x: 10, y: 10 });
+      stubRect(el, { height: 3000, left: 10, top: 10, width: 3000 });
+      openAt(el, trigger);
+      await tick();
+      await frame();
+      await tick();
+      /* Anchored in the state — the document's `@supports` block does not apply here — and clamped,
+         because this engine is placing nothing. */
+      expect(el.anchored).toBe(true);
+      expect(el.x).not.toBe(10);
+      expect(el.y).not.toBe(10);
+    } finally {
+      unsupported();
+    }
+  });
+
+  test("onBeforeToggle reads the platform's source ahead of anything recorded", () => {
+    const host = document.createElement("div");
+    host.setAttribute("popover", "auto");
+    document.body.append(host);
+    const state: PopoverState = { floor: 0 };
+    const source = document.createElement("button");
+    const opening = Object.assign(new Event("beforetoggle"), { newState: "open", source });
+    host.dispatchEvent(opening);
+    Object.defineProperty(opening, "currentTarget", { value: host });
+    onBeforeToggle(state, opening);
+    expect(state.anchored).toBe(true);
+    const closing = Object.assign(new Event("beforetoggle"), { newState: "closed", source });
+    Object.defineProperty(closing, "currentTarget", { value: host });
+    onBeforeToggle(state, closing);
+    expect(state.anchored).toBe(false);
+    /* A handler reached from outside a popover does nothing. */
+    const stray: PopoverState = {};
+    onBeforeToggle(stray, new Event("beforetoggle"));
+    expect(stray.anchored).toBeUndefined();
   });
 
   test("clamps a shown panel back up to a floor its BOX reaches, offset and all", async () => {
