@@ -198,7 +198,7 @@
       "color": "var(--jx-accent)"
     },
     "& [part=\"group\"]": {
-      "$description": "The composite the kit cannot yet draw as one element: a field the reader may type anything into, beside a button that offers the values worth offering. `jx-combobox` is the element that replaces it (ui.md §5.3, Pending); until it lands, the field and the menu are two controls that abut.",
+      "$description": "The composite the kit draws as two elements on purpose: a field the reader may type anything into, beside a button that opens the kit MENU. It is the unit row and the font row, and neither is a combobox, because their lists run VERBS rather than commit values — a unit re-attaches to the number the field holds, and a font preset is minted into a token before the property is pointed at it (ui.md §5.5, jx-dimension-field and jx-token-field). The keyword rows, whose list IS the value, are `jx-combobox` (the `keywords` case).",
       "display": "flex",
       "flex": "1",
       "alignItems": "stretch",
@@ -819,8 +819,69 @@
                                         ]
                                       }
                                     },
+                                    "keywords": {
+                                      "$description": "A keyword row: one `jx-combobox` with `allows-custom-value` over the values worth offering (ui.md §5.3). The field IS the value and the rows under it are suggestions, which is the whole of what an enum means on a style property — `text-transform: full-width` is a value whether or not the catalogue lists it, so the list never refuses. Both handlers read the ELEMENT's value, because a pick announces from the element while typing lets the control's own event bubble, and `currentTarget` is the one node both name.",
+                                      "tagName": "jx-combobox",
+                                      "attributes": {
+                                        "part": "text"
+                                      },
+                                      "$props": {
+                                        "size": "sm",
+                                        "label": {
+                                          "$ref": "$map/item/label"
+                                        },
+                                        "value": {
+                                          "$ref": "$map/item/value"
+                                        },
+                                        "placeholder": {
+                                          "$ref": "$map/item/placeholder"
+                                        },
+                                        "allowsCustomValue": true,
+                                        "options": {
+                                          "$ref": "$map/item/options"
+                                        }
+                                      },
+                                      "oninput": {
+                                        "$prototype": "Function",
+                                        "body": [
+                                          {
+                                            "operator": "call",
+                                            "target": {
+                                              "$ref": "#/state/editText"
+                                            },
+                                            "value": [
+                                              {
+                                                "$ref": "$map/item/key"
+                                              },
+                                              {
+                                                "$ref": "event#/currentTarget/value"
+                                              }
+                                            ]
+                                          }
+                                        ]
+                                      },
+                                      "onchange": {
+                                        "$prototype": "Function",
+                                        "body": [
+                                          {
+                                            "operator": "call",
+                                            "target": {
+                                              "$ref": "#/state/commitText"
+                                            },
+                                            "value": [
+                                              {
+                                                "$ref": "$map/item/key"
+                                              },
+                                              {
+                                                "$ref": "event#/currentTarget/value"
+                                              }
+                                            ]
+                                          }
+                                        ]
+                                      }
+                                    },
                                     "group": {
-                                      "$description": "The dual-mode control: a number beside its unit, or a value beside the values worth offering. One shape for both because they are one gesture — type what you mean, or take one from the list — and the list is the kit MENU rather than a second popup of this document's own (§12.5).",
+                                      "$description": "The dual-mode control: a number beside its unit, or a font beside the fonts worth offering. One shape for both because they are one gesture — type what you mean, or take one from the list — and the list is the kit MENU rather than a second popup of this document's own (§12.5), because every row of it is a verb: a unit re-attaches, a preset mints a token. A keyword row, whose list commits a value, is the `keywords` case instead.",
                                       "tagName": "div",
                                       "attributes": {
                                         "part": "group"

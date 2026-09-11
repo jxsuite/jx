@@ -30,8 +30,8 @@ This page is generated from the `> **Status: …**` markers in the specification
 | `spec.md`                 | 0.6.21-draft | Partial     | 2026-09-10 |
 | `standards.md`            | 0.1.17-draft | Partial     | 2026-09-02 |
 | `studio-ui-guidelines.md` | 0.8.2-draft  | Partial     | 2026-09-10 |
-| `studio.md`               | 0.11.1-draft | Partial     | 2026-09-10 |
-| `ui.md`                   | 0.1.38-draft | Partial     | 2026-09-11 |
+| `studio.md`               | 0.11.2-draft | Partial     | 2026-09-11 |
+| `ui.md`                   | 0.1.39-draft | Partial     | 2026-09-11 |
 
 ## Sections not yet implemented
 
@@ -58,6 +58,7 @@ This page is generated from the `> **Status: …**` markers in the specification
 - `studio.md` §20 — Internationalization Surfaces
 - `studio.md` §20.2 — Rendering Language
 - `ui.md` §1 — Overview
+- `ui.md` §2 — Principles
 - `ui.md` §3 — Authoring Model
 - `ui.md` §4 — Theme and Tokens
 - `ui.md` §5 — Element Catalogue
@@ -68,15 +69,13 @@ This page is generated from the `> **Status: …**` markers in the specification
 - `ui.md` §5.5 — Builder
 - `ui.md` §6 — Overlay Model
 - `ui.md` §7 — Keyboard and Focus
-- `ui.md` §8 — Icons
 - `ui.md` §9 — Build and Distribution
+- `ui.md` §10 — Studio Integration
 
 ### Pending
 
 - `desktop.md` §4.3 — Single File Mode
 - `site-architecture.md` §12.3 — Incremental Builds
-- `ui.md` §2 — Principles
-- `ui.md` §10 — Studio Integration
 
 ### Removed
 

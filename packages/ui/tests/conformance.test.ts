@@ -362,6 +362,96 @@ describe("the kit ships no CSS class", () => {
   });
 });
 
+describe("the kit keeps its principles (ui.md §2)", () => {
+  /* Two of the five principles are statements about the kit's OWN sources rather than about what
+     a document renders, so nothing above them holds either one: a definition could opt into a
+     shadow root, or a sidecar could reach into another element and write an attribute, and every
+     per-document check would still pass. These are what make §2 a claim with evidence. */
+
+  /**
+   * Every key path in a document, so a `$shadow` anywhere — root, child, nested definition — is
+   * found rather than only one at the top.
+   *
+   * @param node The document or subtree.
+   * @yields {string} The path of each `$shadow` key.
+   */
+  function* shadowKeys(node: unknown, path = "root"): Generator<string> {
+    if (Array.isArray(node)) {
+      for (const [i, item] of node.entries()) {
+        yield* shadowKeys(item, `${path}[${i}]`);
+      }
+      return;
+    }
+    if (!node || typeof node !== "object") {
+      return;
+    }
+    for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
+      if (key === "$shadow") {
+        yield `${path}.${key}`;
+      }
+      yield* shadowKeys(value, `${path}.${key}`);
+    }
+  }
+
+  for (const [tag, doc] of Object.entries(documents)) {
+    test(`${tag} is light DOM`, () => {
+      /* Principle 2: every relationship the kit is built on is an id reference, and none of them
+         crosses a shadow boundary. `$shadow` stays a per-element opt-in taken on evidence of a
+         leak, and there has been none. */
+      expect([...shadowKeys(doc)]).toEqual([]);
+    });
+  }
+
+  /**
+   * The DOM writes a behaviour sidecar may not make. Each is a member access or call whose presence
+   * in a sidecar means the element's markup is being decided somewhere other than its document.
+   * Declared props on another kit element (`row.tabIndex`, `swatch.checked`) are not in this list
+   * on purpose: writing a prop the element declares is the sanctioned way a container roves its
+   * members (§5.1), and it is the ATTRIBUTE spelling that would leak into the host as well.
+   */
+  const FORBIDDEN_WRITES = [
+    "setAttribute(",
+    "removeAttribute(",
+    "toggleAttribute(",
+    "classList",
+    "className",
+    "innerHTML",
+    "outerHTML",
+    "insertAdjacentHTML(",
+    "insertAdjacentElement(",
+    "appendChild(",
+    "insertBefore(",
+    "replaceChildren(",
+    "replaceWith(",
+    "createElement(",
+    ".style.",
+    ".style[",
+    "dataset.",
+  ] as const;
+
+  /** A source file with its comments and string literals blanked, so prose cannot trip the scan. */
+  function codeOnly(source: string): string {
+    return source
+      .replaceAll(/\/\*[\s\S]*?\*\//g, "")
+      .replaceAll(/(^|[^:])\/\/[^\n]*/g, "$1")
+      .replaceAll(/`(?:\\.|[^`\\])*`/g, "``")
+      .replaceAll(/"(?:\\.|[^"\\\n])*"/g, '""')
+      .replaceAll(/'(?:\\.|[^'\\\n])*'/g, "''");
+  }
+
+  const behaviorsDir = resolve(root, "src/behaviors");
+  for (const name of readdirSync(behaviorsDir).filter((file) => file.endsWith(".ts"))) {
+    test(`behaviors/${name} writes no attribute, class, style or markup`, () => {
+      /* Principle 5: a sidecar may focus, measure, and call an element's own `showPopover`,
+         `showModal`, `close`, `scrollIntoView` and `setPointerCapture`. Everything an element LOOKS
+         like is its document's. */
+      const code = codeOnly(readFileSync(resolve(behaviorsDir, name), "utf8"));
+      const found = FORBIDDEN_WRITES.filter((needle) => code.includes(needle));
+      expect(found).toEqual([]);
+    });
+  }
+});
+
 describe("stylebook pages", () => {
   for (const [name, page] of Object.entries(stylebook)) {
     test(`${name} passes the overlay and accessibility lints`, () => {

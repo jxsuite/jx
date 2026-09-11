@@ -353,13 +353,21 @@ export function onComboboxCommit(state: ComboboxState, event: Event): void {
   if (!host) {
     return;
   }
-  const text = String(state.value ?? "");
+  /* The CONTROL's text, not the scope's: they agree whenever `input` preceded this `change`, which
+     is every keystroke and every paste, but a `change` that arrives on its own — an engine or a
+     test that set the control and reported only the commit — is still the reader's text, and the
+     scope catching up here is what keeps the element's `value` from contradicting its own box. */
+  const control = event.target instanceof HTMLInputElement ? event.target : null;
+  const text = control ? control.value : String(state.value ?? "");
   const row = rowFor(rowsOf(state), text);
   if (state.allowsCustomValue === true || text === "" || row) {
     /* A listed value commits in the ROW's spelling, so a picker normalises the case the reader
-       typed; a custom value commits verbatim. */
+       typed; a custom value commits verbatim. The list closes with the commit: a value that stands
+       has nothing left to suggest, and a `change` that arrived without Enter — a blur onto
+       something light dismissal does not count as outside — would otherwise leave it open. */
     state.value = row ? String(row.value) : text;
     state.committed = String(state.value);
+    closeList(host);
     return;
   }
   event.stopPropagation();
@@ -417,6 +425,14 @@ export function onComboboxKeydown(state: ComboboxState, event: KeyboardEvent): v
     case "Enter": {
       const row = state.open === true && at >= 0 ? rows[at] : undefined;
       if (!row) {
+        /* Nothing highlighted: the platform's Enter, uncancelled, so the control's own `change`
+           follows and commits what the reader typed. The list closes here all the same — a
+           browser found it standing open over the rows below after the reader had committed with
+           Enter, because the commit is `change`'s and `change` does not fire when the text is what
+           it already was. */
+        if (state.open === true) {
+          closeList(host);
+        }
         return;
       }
       commitRow(state, host, row);

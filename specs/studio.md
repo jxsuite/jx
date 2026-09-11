@@ -2,9 +2,9 @@
 
 ## Visual Builder for Jx Documents
 
-**Version:** 0.11.1-draft\
+**Version:** 0.11.2-draft\
 **Status:** Partial\
-**Updated:** 2026-09-10\
+**Updated:** 2026-09-11\
 **License:** MIT
 
 ---
@@ -597,7 +597,7 @@ The `fontFamily` property uses the `jx-styled-combobox` component — a dual-mod
 
 **Free-text entry:** Typing a plain font family string (e.g. "serif", "Arial, sans-serif") sets the value directly — no `var()` wrapping.
 
-**Mode switching:** When the current value matches a dropdown option (e.g. a `--font-*` variable name), the row renders as a `jx-select`. Selecting "—" clears the value and returns to combobox mode.
+**A token reads as its name:** when the current value is a `--font-*` reference, the field shows the token's name rather than the `var()` around it, because the field edits WHICH token this is and the punctuation is not something the reader typed. Emptying the field clears the value.
 
 #### The dual-mode row
 
@@ -605,10 +605,9 @@ A row that must accept both a fixed option and arbitrary text is a **composition
 
 It was a custom `LitElement` — `jx-styled-combobox`, and `jx-value-selector` behind it — introduced because `sp-combobox` stripped the inline styling each option needs to preview its own typeface. Both classes are deleted. The reason is worth keeping rather than the code: a control whose two modes differ in what they COMMIT, not in what they look like, is two widgets a surface already has, and wrapping them in a third element only moved the width-matching, the overlay placement and the mode switch somewhere a test could not reach. The kit's menu places and clamps itself, so the width-matching hack that replicated `sp-picker`'s internal `containerStyles` went with the class.
 
-- **Picker mode** (`value` matches an option) — a `jx-select` of the styled options plus a "—" clear row
-- **Combobox mode** (`value` is empty or custom) — the field, with the menu on its trailing button
+The composition is for a row whose list runs a VERB: the unit row, where a choice re-attaches a unit to the number the field holds, and the font row, where a preset is minted into a token before the property is pointed at it. A row whose list commits a VALUE is not this composition but one `jx-combobox` with `allows-custom-value` (ui.md §5.3): the Style tab's keyword rows — fontWeight, fontStyle, fontVariant, textTransform, textDecoration and every other enum — are that element, the field being the value and the rows under it the values worth offering.
 
-**Used by:** the Style tab's keyword rows (fontWeight, fontStyle, fontVariant, textTransform, textDecoration), its fontFamily row, and its enum rows — each drawing the pair in `style-panel.json` rather than through a shared class.
+**Used by:** the Style tab's unit rows and its fontFamily row, each drawing the pair in `style-panel.json` rather than through a shared class.
 
 #### Conditional Display (`$show`)
 
@@ -728,7 +727,7 @@ Until then the gap is stated rather than hidden, because the alternative is a pi
 
 The project's design tokens and element defaults, edited as a **document** (§17) with the live canvas beside them: every HTML element and project component rendered under the project's root styles, so tuning a token shows the page changing rather than describing it.
 
-**The user-facing name is Project Styles; `"stylebook"` remains the wire value.** It is a member of `CANVAS_MODES` and therefore of the `ParentToIframe` union, so renaming it would require the studio bundle and `dist/iframe-entry.js` rebuilt in lockstep. The id and the name are different things, and the code says which is which. Tokens are pickable as chips from any Style field, and a colour scheme is declared as a row in Contexts (§16) rather than by a control that exists only here.
+**The user-facing name is Project Styles; `"stylebook"` remains the wire value.** It is a member of `CANVAS_MODES` and therefore of the `ParentToIframe` union, so renaming it would require the studio bundle and `dist/iframe-entry.js` rebuilt in lockstep. The id and the name are different things, and the code says which is which. A colour token is pickable from any colour field's palette, and a font token from the font row's menu; a size field takes a `var()` reference typed, because a picker for it is promised nowhere (ui.md §5.5, `jx-token-field`). A colour scheme is declared as a row in Contexts (§16) rather than by a control that exists only here.
 
 **`styles.open` is how it is reached by name** (project level, `requires: "an open project"`). Until it existed, Project Styles had no command at all: the pane's Editor control can only re-mode a tab that is already open, and the only other door was a button inside Project Settings › Overview that wrote `session.ui.canvasMode` itself. So from a closed configuration tab there was no way to ask for it — `canvas.setMode` is document level and requires an open document. It is a peer of `settings.open` over the same `project.json` tab and declares the same availability rule (§17.1), and it renders in the rail foot's Settings menu and the palette.
 
@@ -1834,6 +1833,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.11.2-draft** (2026-09-11) — §7.1 no longer claims a token picker on every Style field; the dual-mode row is the unit and font rows only, and the keyword rows are jx-combobox (§7.1, §6).
 - **0.11.1-draft** (2026-09-10) — 9.1.1 a refused file-tree drop is refused rather than delegated to the project root: the innermost target decides, one shared predicate answers the affordance and the monitor, and a directory may not be moved into its own descendant.
 - **0.11.0-draft** (2026-09-10) — Adobe Spectrum is removed: the dependency row goes, the colour picker is jx-color-field, the dual-mode row is a composition rather than a class, and check-icons keeps one of its two element rules.
 - **0.10.19-draft** (2026-09-10) — The Props widget's enum control is jx-select and the Logic tab's event name is the kit menu plus the prompt dialog; both named jx-value-selector, which no surface had rendered since its callers converted.
@@ -1964,4 +1964,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_`@jxsuite/studio` Specification v0.11.1-draft_
+_`@jxsuite/studio` Specification v0.11.2-draft_

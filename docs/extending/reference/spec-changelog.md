@@ -554,6 +554,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `studio.md`
 
+- **0.11.2-draft** (2026-09-11) — §7.1 no longer claims a token picker on every Style field; the dual-mode row is the unit and font rows only, and the keyword rows are jx-combobox (§7.1, §6).
 - **0.11.1-draft** (2026-09-10) — 9.1.1 a refused file-tree drop is refused rather than delegated to the project root: the innermost target decides, one shared predicate answers the affordance and the monitor, and a directory may not be moved into its own descendant.
 - **0.11.0-draft** (2026-09-10) — Adobe Spectrum is removed: the dependency row goes, the colour picker is jx-color-field, the dual-mode row is a composition rather than a class, and check-icons keeps one of its two element rules.
 - **0.10.19-draft** (2026-09-10) — The Props widget's enum control is jx-select and the Logic tab's event name is the kit menu plus the prompt dialog; both named jx-value-selector, which no surface had rendered since its callers converted.
@@ -684,6 +685,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `ui.md`
 
+- **0.1.39-draft** (2026-09-11) — The Style tab's keyword rows are jx-combobox with allows-custom-value (the unit and font rows stay the menu composite, because their rows are verbs); the commit judges the control's text and closes the list, as does Enter with nothing highlighted; §2 gains a light-DOM check and a sidecar scan as its evidence and is Partial, §8 is Implemented, §10 is Partial, and §2's cascade claim is corrected: element rules are unlayered (0,1,0) and adopted last; §11 retires gap:ui-accname (every control forwards its name) and gap:ui-parts (a decision, not a gap) and binds both rows to the sections the elements live in (§2, §5.3, §5.5, §8, §10, §11).
 - **0.1.38-draft** (2026-09-11) — jx-split reports each step's modifiers as the detail of input and change, and the Edit column's snapping handles are jx-split beside the column; setupHandle is deleted (§5.5).
 - **0.1.37-draft** (2026-09-11) — jx-combobox lands a gesture-opened list on the row the field already holds, shows no empty list, closes on Tab either way and matches its field's width, and ai-credentials-form is one jx-combobox with allows-custom-value over the fetched catalogue rather than two controls bound to one draft (5.3).
 - **0.1.36-draft** (2026-09-11) — jx-color-field declares the property-only tabindex, landing on the swatch (now part=control) and parking the text field, eyedropper and system well while roved, so a colour well is one stop in a jx-toolbar; §5.5 no longer names it as the gap and records the shape of the nested-composite fix.
