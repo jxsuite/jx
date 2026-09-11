@@ -6,6 +6,7 @@ import { documentStyleText, mount } from "@jxsuite/runtime";
 import type { JxDocument, JxElement } from "@jxsuite/schema/types";
 
 import { registerUi } from "../src/index.ts";
+import { withAnchorSupport } from "../src/testing/anchor-support.ts";
 import {
   ensureCaret,
   onMenuBeforeToggle,
@@ -35,22 +36,6 @@ type MenuEl = HTMLElement & {
   area: string;
 };
 
-/** Pretend the engine does, or does not, position by anchor; returns the undo. */
-function withAnchorSupport(answer: boolean): () => void {
-  /* The DOM shim exposes `CSS` through a read-only accessor, so it is replaced by redefinition. */
-  const before = Object.getOwnPropertyDescriptor(globalThis, "CSS");
-  Object.defineProperty(globalThis, "CSS", {
-    configurable: true,
-    value: { supports: () => answer },
-  });
-  return () => {
-    if (before) {
-      Object.defineProperty(globalThis, "CSS", before);
-    } else {
-      delete (globalThis as { CSS?: unknown }).CSS;
-    }
-  };
-}
 type RowEl = HTMLElement & { expanded: boolean };
 
 interface RowSpec {

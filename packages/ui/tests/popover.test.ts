@@ -11,6 +11,7 @@ import type { JxElement } from "@jxsuite/schema/types";
 
 import { documents, INVOKER_TAGS, POPOVER_TAGS } from "../src/documents.ts";
 import { registerUi } from "../src/index.ts";
+import { withAnchorSupport } from "../src/testing/anchor-support.ts";
 import {
   anchorOf,
   clampIntoViewport,
@@ -49,24 +50,6 @@ type JxPopover = HTMLElement & {
   anchorWidth: number;
   anchored: boolean;
 };
-
-/** Pretend the engine does, or does not, position by anchor; returns the undo. */
-function withAnchorSupport(answer: boolean): () => void {
-  /* The DOM shim exposes `CSS` through a read-only accessor, so the object is replaced by
-     redefinition rather than assignment. */
-  const before = Object.getOwnPropertyDescriptor(globalThis, "CSS");
-  Object.defineProperty(globalThis, "CSS", {
-    configurable: true,
-    value: { supports: () => answer },
-  });
-  return () => {
-    if (before) {
-      Object.defineProperty(globalThis, "CSS", before);
-    } else {
-      delete (globalThis as { CSS?: unknown }).CSS;
-    }
-  };
-}
 
 beforeAll(async () => {
   await registerUi();

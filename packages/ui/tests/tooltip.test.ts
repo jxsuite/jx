@@ -7,8 +7,11 @@ import type { JxElement } from "@jxsuite/schema/types";
 
 import { documents } from "../src/documents.ts";
 import { registerUi } from "../src/index.ts";
+import { withAnchorSupport } from "../src/testing/anchor-support.ts";
 import {
   bindTooltip,
+  measureAnchoredFlip,
+  onTooltipBeforeToggle,
   onTooltipToggle,
   placeTooltip,
   supportsInterestInvokers,
@@ -17,7 +20,16 @@ import {
 
 const doc = documents["jx-tooltip"]!;
 
-type TipEl = HTMLElement & { open: boolean; x: number; y: number; delay: number; arrow: boolean };
+type TipEl = HTMLElement & {
+  open: boolean;
+  x: number;
+  y: number;
+  delay: number;
+  arrow: boolean;
+  placement: string;
+  anchored: boolean;
+  flipped: boolean;
+};
 
 /** Let the runtime's `onMount` microtask and the popover shim's queued `toggle` settle. */
 const tick = () =>
@@ -548,25 +560,104 @@ describe("placement", () => {
   });
 
   test("a flipped tip stamps data-flipped on itself, and one with room below does not", async () => {
-    // Through the element rather than through a bare state object: the flip has to survive the
-    // Toggle, the reactive write and the attribute binding to reach the arrow's CSS at all.
-    const roomy = await scene({ delay: 0, for: "trigger" });
-    box(roomy.button, { bottom: 60, height: 20, left: 100, right: 140, top: 40, width: 40 });
-    box(roomy.tip, { bottom: 126, height: 60, left: 100, right: 300, top: 66, width: 200 });
-    fire(roomy.button, "focusin");
-    await frame();
-    await tick();
-    expect(roomy.tip.dataset["flipped"]).toBeUndefined();
+    /* The FALLBACK placement: an engine without anchor positioning, where the element places and
+       flips the tip itself. Through the element rather than through a bare state object: the flip
+       has to survive the toggle, the reactive write and the attribute binding to reach the arrow's
+       CSS at all. */
+    const restore = withAnchorSupport(false);
+    try {
+      const roomy = await scene({ delay: 0, for: "trigger" });
+      box(roomy.button, { bottom: 60, height: 20, left: 100, right: 140, top: 40, width: 40 });
+      box(roomy.tip, { bottom: 126, height: 60, left: 100, right: 300, top: 66, width: 200 });
+      fire(roomy.button, "focusin");
+      await frame();
+      await tick();
+      expect(roomy.tip.dataset["flipped"]).toBeUndefined();
+      /* Anchored in the state all the same: the document's `@supports` block is what does not
+         apply on this engine, and the element placed the tip because of that. */
+      expect(roomy.tip.anchored).toBe(true);
+      expect(roomy.tip.x).toBe(100);
 
-    document.body.replaceChildren();
-    const { button, tip } = await scene({ delay: 0, for: "trigger" });
-    box(button, { bottom: 720, height: 20, left: 100, right: 140, top: 700, width: 40 });
-    box(tip, { bottom: 786, height: 60, left: 100, right: 300, top: 726, width: 200 });
-    fire(button, "focusin");
-    await frame();
-    await tick();
-    expect(tip.dataset["flipped"]).toBe("");
-    fire(button, "focusout");
+      document.body.replaceChildren();
+      const { button, tip } = await scene({ delay: 0, for: "trigger" });
+      box(button, { bottom: 720, height: 20, left: 100, right: 140, top: 700, width: 40 });
+      box(tip, { bottom: 786, height: 60, left: 100, right: 300, top: 726, width: 200 });
+      fire(button, "focusin");
+      await frame();
+      await tick();
+      expect(tip.dataset["flipped"]).toBe("");
+      fire(button, "focusout");
+    } finally {
+      restore();
+    }
+  });
+
+  test("an anchored tip is the platform's to place, and the arrow follows the side it chose", async () => {
+    const restore = withAnchorSupport(true);
+    try {
+      const { button, tip } = await scene({ delay: 0, for: "trigger" });
+      expect(tip.placement).toBe("block-end span-inline-end");
+      box(button, { bottom: 720, height: 20, left: 100, right: 140, top: 700, width: 40 });
+      /* The platform put it ABOVE the control; the element reads that back rather than deciding. */
+      box(tip, { bottom: 694, height: 60, left: 100, right: 300, top: 634, width: 200 });
+      fire(button, "focusin");
+      expect(tip.anchored).toBe(true);
+      await tick();
+      expect(tip.dataset["anchored"]).toBe("");
+      /* Not placed by the element: the coordinates stayed at their defaults. */
+      expect(tip.x).toBe(0);
+      expect(tip.y).toBe(0);
+      await frame();
+      await tick();
+      expect(tip.dataset["flipped"]).toBe("");
+      fire(button, "focusout");
+      await tick();
+      expect(tip.anchored).toBe(false);
+      expect(tip.dataset["anchored"]).toBeUndefined();
+      expect(tip.dataset["flipped"]).toBeUndefined();
+
+      /* And below its control, the arrow stays on the block-start edge. */
+      box(tip, { bottom: 786, height: 60, left: 100, right: 300, top: 726, width: 200 });
+      fire(button, "focusin");
+      await frame();
+      await tick();
+      expect(tip.dataset["flipped"]).toBeUndefined();
+      fire(button, "focusout");
+    } finally {
+      restore();
+    }
+  });
+
+  test("declares the anchored rule under @supports, and the try option that keeps the gap", async () => {
+    const { tip } = await scene();
+    const sheet = documentStyleText();
+    expect(sheet).toContain(
+      "@position-try --jx-tooltip-above { position-area: block-start span-inline-end; margin-block-start: 0; margin-block-end: 6px }",
+    );
+    /* Nested under the at-rule, so the selector is not the line's head: found by content. */
+    const anchored = rules(tip).find((line) => line.includes("[data-anchored]")) ?? "";
+    expect(anchored).toContain("@supports (position-area: block-end)");
+    expect(anchored).toContain("inset-inline-start: auto");
+    expect(anchored).toContain("margin-block-start: 6px");
+    expect(anchored).toContain(
+      "position-try-fallbacks: --jx-tooltip-above, flip-inline, --jx-tooltip-above flip-inline",
+    );
+  });
+
+  test("measureAnchoredFlip and onTooltipBeforeToggle do nothing where there is nothing to read", () => {
+    const state: Record<string, unknown> = {};
+    onTooltipBeforeToggle(state, new Event("beforetoggle"));
+    expect(state.anchored).toBeUndefined();
+    const tip = document.createElement("jx-tooltip") as TipEl;
+    document.body.append(tip);
+    measureAnchoredFlip(state, tip);
+    expect(state.flipped).toBeUndefined();
+    /* A closing clears the flip, so the next open starts from the block-start edge. */
+    Object.defineProperty(
+      Object.assign(new Event("beforetoggle"), { newState: "closed" }),
+      "currentTarget",
+      { value: tip },
+    );
   });
 
   test("slides in from the inline edge when the tip would run off it", async () => {

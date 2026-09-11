@@ -2,7 +2,7 @@
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "JxTooltip",
   "tagName": "jx-tooltip",
-  "observedAttributes": ["delay", "for", "x", "y", "arrow"],
+  "observedAttributes": ["delay", "for", "placement", "x", "y", "arrow"],
   "state": {
     "delay": {
       "type": "number",
@@ -16,11 +16,17 @@
       "attribute": "for",
       "description": "The id of the control this tip describes, in the same root. The declarative wiring is the other way round and is preferred — interestfor on the control, naming this tip's id, and this prop left unset — and it works on every engine: where interest invokers are missing the tip binds an interestfor control's pointer and focus events itself, exactly as it does for a control this prop names. Either way the listeners come off again when the tip leaves the document. It is read once, at mount; a host that wires a tip up later calls bindTooltip from jx-ui:/behaviors/tooltip.ts itself."
     },
+    "placement": {
+      "type": "string",
+      "default": "block-end span-inline-end",
+      "attribute": "placement",
+      "description": "Where the tip sits relative to its control, as a CSS position-area value: below it with leading edges aligned by default, which is where the arrow points from. It applies while the tip is anchored — shown from a control the platform knows, by interestfor or by the element's own binding — on an engine with CSS anchor positioning; the platform then follows the control through scroll and resize and flips the tip above it when it would overflow (the --jx-tooltip-above try option, which keeps the gap on the right side). Elsewhere the tip stands at x and y, placed and flipped by the element itself."
+    },
     "x": {
       "type": "number",
       "default": 0,
       "attribute": "x",
-      "description": "Where the tip's inline-start edge sits, in viewport pixels. Written by the element when it opens, from the box of the control it describes; a host that places the tip itself sets it and names no control."
+      "description": "Where the tip's inline-start edge sits, in viewport pixels, whenever the tip is NOT anchored: on an engine without CSS anchor positioning, or shown from nothing. Written by the element when it opens, from the box of the control it describes; a host that places the tip itself sets it and names no control."
     },
     "y": {
       "type": "number",
@@ -37,7 +43,12 @@
     "flipped": {
       "type": "boolean",
       "default": false,
-      "description": "Whether the tip landed ABOVE its control because there was no room below. Written by the element when it opens, and read by nothing but the arrow: a pointer pinned to the block-start edge of a tip that flipped points away from the control it belongs to. A host that places the tip itself sets x and y, and sets this to say which way its arrow faces."
+      "description": "Whether the tip landed ABOVE its control because there was no room below. Written by the element when it opens, and read by nothing but the arrow: a pointer pinned to the block-start edge of a tip that flipped points away from the control it belongs to. A host that places the tip itself sets x and y, and sets this to say which way its arrow faces. Anchored, the flip is the platform's and this is MEASURED after the first frame — the tip's box above its control's — so the arrow follows a flip the element did not make."
+    },
+    "anchored": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether the platform is placing the tip against the control it was shown from. Written by the behaviour on beforetoggle, before layout, so the first frame is already in place; cleared on close; mirrored as data-anchored for the anchored rule. Not an attribute, because it is the platform's fact."
     },
     "open": {
       "type": "boolean",
@@ -52,11 +63,17 @@
         }
       }
     },
+    "onBeforeToggle": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/tooltip.ts",
+      "$export": "onTooltipBeforeToggle",
+      "description": "Decides anchored before the tip is laid out: an opening shown from a control the platform or the binding names is anchored; a closing clears it. Before layout, so a tip that learned it was anchored a frame late would not paint once at its coordinates and jump."
+    },
     "onToggle": {
       "$prototype": "Function",
       "$src": "jx-ui:/behaviors/tooltip.ts",
       "$export": "onTooltipToggle",
-      "description": "Mirrors the platform's toggle into open, and places a freshly shown tip under the control it describes. Placing here rather than on the gesture is what lets the declarative path work: an interestfor control shows the tip without telling the element anything, and the toggle is the first the element hears of it."
+      "description": "Mirrors the platform's toggle into open, and places a freshly shown tip under the control it describes — or, when the platform is placing it by anchor, only measures a frame later which side of the control it landed on, so the arrow can follow. Placing here rather than on the gesture is what lets the declarative path work: an interestfor control shows the tip without telling the element anything, and the toggle is the first the element hears of it."
     },
     "onReady": {
       "$prototype": "Function",
@@ -81,6 +98,9 @@
       "description": "Announces that the element has rendered and carries its popover attribute, so a host may show it — and gives the element its own first sight of itself, which is how onReady reaches the control that for names."
     }
   },
+  "onbeforetoggle": {
+    "$ref": "#/state/onBeforeToggle"
+  },
   "ontoggle": {
     "$ref": "#/state/onToggle"
   },
@@ -91,7 +111,8 @@
     "role": "tooltip",
     "popover": "hint",
     "data-open": "${state.open ? '' : null}",
-    "data-flipped": "${state.flipped ? '' : null}"
+    "data-flipped": "${state.flipped ? '' : null}",
+    "data-anchored": "${state.anchored ? '' : null}"
   },
   "style": {
     "display": "revert-layer",
@@ -124,6 +145,21 @@
     },
     "&[hidden]:popover-open": {
       "display": "none"
+    },
+    "@position-try --jx-tooltip-above": {
+      "positionArea": "block-start span-inline-end",
+      "marginBlockStart": "0",
+      "marginBlockEnd": "6px"
+    },
+    "@supports (position-area: block-end)": {
+      "$description": "The anchored placement: the platform puts the tip against its IMPLICIT anchor — the control it was shown from, by interestfor or by the binding's showPopover({ source }) — follows that control through scroll and resize, and flips the tip above it when it would overflow, through the --jx-tooltip-above try option rather than a bare flip-block so the 6px gap the arrow fills moves to the other side with it. No anchor-name is involved (ui.md 5.2, 6). The insets are released so x and y stop mattering. Outside this block the coordinate placement above is the answer, unchanged.",
+      "&[data-anchored]": {
+        "insetInlineStart": "auto",
+        "insetBlockStart": "auto",
+        "marginBlockStart": "6px",
+        "positionArea": "${state.placement}",
+        "positionTryFallbacks": "--jx-tooltip-above, flip-inline, --jx-tooltip-above flip-inline"
+      }
     },
     "@starting-style": {
       "&:popover-open": {
