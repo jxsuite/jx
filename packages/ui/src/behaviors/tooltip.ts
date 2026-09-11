@@ -32,7 +32,7 @@
  * @docs extending/ui-kit
  */
 
-import { close, openAt } from "./popover.ts";
+import { close, openAt, supportsAnchorPositioning } from "./popover.ts";
 import type { PopoverElement } from "./popover.ts";
 
 /** The reactive scope a `jx-tooltip` document hands its handlers. */
@@ -43,6 +43,10 @@ export interface TooltipState {
   delay?: number;
   arrow?: boolean;
   flipped?: boolean;
+  /** A `position-area` value the anchored rule reads. */
+  placement?: string;
+  /** Whether the platform is placing the tip against the control it was shown from. */
+  anchored?: boolean;
   [key: string]: unknown;
 }
 
@@ -313,11 +317,64 @@ export function placeTooltip(state: TooltipState, tip: HTMLElement): void {
 }
 
 /**
+ * Which side of its control an ANCHORED tip landed on, measured a frame after the platform placed
+ * it, so the arrow can follow a flip the element did not make. `flipped` is the platform's answer
+ * read back — a tip whose box sits above its control's — and nothing here moves the tip.
+ *
+ * @param state The tip's reactive state, whose `flipped` this writes.
+ * @param tip The `jx-tooltip` element.
+ */
+export function measureAnchoredFlip(state: TooltipState, tip: HTMLElement): void {
+  const anchor = anchorOf(state, tip);
+  const measure = (): void => {
+    if (!anchor || state.anchored !== true) {
+      return;
+    }
+    const own = tip.getBoundingClientRect();
+    const box = anchor.getBoundingClientRect();
+    if (own.width === 0 && own.height === 0) {
+      return;
+    }
+    state.flipped = own.bottom <= box.top;
+  };
+  if (typeof requestAnimationFrame === "function") {
+    requestAnimationFrame(measure);
+  } else {
+    measure();
+  }
+}
+
+/**
+ * The platform's `beforetoggle`: where `anchored` is decided, before the tip is laid out.
+ *
+ * An opening from a control the platform names (`source` on the event, which an `interestfor`
+ * trigger and `showPopover({ source })` both set) or that the binding knows is anchored; a closing
+ * clears it. A tip shown from nothing — a host that placed it itself — keeps its coordinates.
+ *
+ * @param state The tip's reactive state.
+ * @param event The platform's ToggleEvent.
+ */
+export function onTooltipBeforeToggle(state: TooltipState, event: Event): void {
+  const tip = event.currentTarget;
+  if (!(tip instanceof HTMLElement)) {
+    return;
+  }
+  const opening = (event as { newState?: string }).newState === "open";
+  const { source } = event as Event & { source?: unknown };
+  const from = source instanceof Element ? source : anchorOf(state, tip);
+  state.anchored = opening && from !== null;
+  if (!opening) {
+    state.flipped = false;
+  }
+}
+
+/**
  * The platform's toggle: the one source of truth for `open`, and where a shown tip is placed.
  *
  * Placing on toggle rather than on the gesture is what makes the declarative path work at all — an
  * `interestfor` trigger shows the tip without telling the element anything, and this is the first
- * moment the element hears about it.
+ * moment the element hears about it. An anchored tip on an engine that positions by anchor is not
+ * placed here at all: the platform has it, and the element only reads back which side it chose.
  *
  * @param state The tip's reactive state.
  * @param event The platform's ToggleEvent.
@@ -329,7 +386,12 @@ export function onTooltipToggle(state: TooltipState, event: Event): void {
   }
   const opening = (event as { newState?: string }).newState === "open";
   state.open = opening;
-  if (opening) {
+  if (!opening) {
+    return;
+  }
+  if (state.anchored === true && supportsAnchorPositioning()) {
+    measureAnchoredFlip(state, tip);
+  } else {
     placeTooltip(state, tip);
   }
 }

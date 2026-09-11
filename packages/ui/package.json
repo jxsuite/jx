@@ -44,6 +44,7 @@
     "./behaviors/number-field": "./src/behaviors/number-field.ts",
     "./behaviors/toast": "./src/behaviors/toast.ts",
     "./behaviors/toast-host": "./src/behaviors/toast-host.ts",
+    "./testing/anchor-support": "./src/testing/anchor-support.ts",
     "./testing/popover-shim": "./src/testing/popover-shim.ts",
     "./icons/manifest.json": "./icons/manifest.json"
   },
