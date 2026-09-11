@@ -20,6 +20,7 @@ import { documents } from "../src/documents.ts";
 import { registerUi } from "../src/index.ts";
 import {
   closeList,
+  landingIndex,
   nextIndex,
   onComboboxCommit,
   onComboboxInput,
@@ -215,6 +216,18 @@ describe("jx-combobox", () => {
     const key = press(plain, "Tab");
     expect(key.defaultPrevented).toBe(false);
     expect(plain.value).toBe("");
+    /* ...except that the list it leaves behind is closed. Typing opened it with nothing
+       highlighted; a Tab out of the field must not leave it standing over the fields below, which
+       light dismissal — a press OUTSIDE — would never have caught. */
+    const typed = await combobox({ allowsCustomValue: true });
+    type(typed, "gpt");
+    await tick();
+    expect(typed.open).toBe(true);
+    const leave = press(typed, "Tab");
+    await tick();
+    expect(leave.defaultPrevented).toBe(false);
+    expect(typed.open).toBe(false);
+    expect(typed.value).toBe("gpt");
   });
 
   test("Escape closes the list and stops there", async () => {
@@ -290,6 +303,74 @@ describe("jx-combobox", () => {
     toggle.click();
     await tick();
     expect(el.open).toBe(false);
+  });
+
+  test("a list opened by a gesture lands on the row the field already holds", async () => {
+    /* The catalogue case: the reader typed `claude`, the rows arrived after, and the chevron shows
+       it as THEIR row rather than a list with nothing chosen. */
+    const el = await combobox({ value: "claude" });
+    el.querySelector<HTMLButtonElement>('[part="toggle"]')!.click();
+    await tick();
+    expect(el.open).toBe(true);
+    expect(el.activeIndex).toBe(2);
+    const claude = rowsOf(el)[2]!;
+    expect(inputOf(el).getAttribute("aria-activedescendant")).toBe(claude.id);
+    expect(claude.getAttribute("aria-selected")).toBe("true");
+    /* Alt+ArrowDown is the chevron's keyboard, and the match is the row's own case-blind one. */
+    const typed = await combobox({ value: "GPT-4O" });
+    press(typed, "ArrowDown", { altKey: true });
+    await tick();
+    expect(typed.activeIndex).toBe(0);
+    /* A value no row holds, and a row that could not be arrowed onto, are both nowhere. */
+    const custom = await combobox({ allowsCustomValue: true, value: "made-up" });
+    custom.querySelector<HTMLButtonElement>('[part="toggle"]')!.click();
+    await tick();
+    expect(custom.open).toBe(true);
+    expect(custom.activeIndex).toBe(-1);
+    const retired = await combobox({ value: "davinci" });
+    retired.querySelector<HTMLButtonElement>('[part="toggle"]')!.click();
+    await tick();
+    expect(retired.activeIndex).toBe(-1);
+    /* And a plain arrow still enters at an end, whatever the field holds (decision 2's cousin: the
+       arrow is a MOVE, and the first move from a closed list is to the first row). */
+    const arrowed = await combobox({ value: "claude" });
+    press(arrowed, "ArrowDown");
+    await tick();
+    expect(arrowed.activeIndex).toBe(0);
+  });
+
+  test("an empty list is not shown, and the field is a text field until rows arrive", async () => {
+    const el = await combobox({ allowsCustomValue: true, options: [] });
+    expect(el.matches("[data-empty]")).toBe(true);
+    /* Typing opens nothing, the arrows are the platform's own, and Escape reaches whatever is
+       around the field — a dialog, say — rather than closing a panel nobody could see. */
+    type(el, "my-model");
+    await tick();
+    expect(el.open).toBe(false);
+    expect(inputOf(el).getAttribute("aria-expanded")).toBe("false");
+    const down = press(el, "ArrowDown");
+    const up = press(el, "ArrowUp");
+    const escape = press(el, "Escape");
+    await tick();
+    expect(el.open).toBe(false);
+    expect([down, up, escape].map((event) => event.defaultPrevented)).toEqual([
+      false,
+      false,
+      false,
+    ]);
+    el.querySelector<HTMLButtonElement>('[part="toggle"]')!.click();
+    await tick();
+    expect(el.open).toBe(false);
+    expect(el.value).toBe("my-model");
+    /* Rows arriving change nothing about the value, and everything about the chevron. */
+    el.options = MODELS;
+    await tick();
+    expect(el.matches("[data-empty]")).toBe(false);
+    expect(el.value).toBe("my-model");
+    expect(inputOf(el).value).toBe("my-model");
+    type(el, "gpt");
+    await tick();
+    expect(el.open).toBe(true);
   });
 
   test("a closed list refuses a value no row holds, with ONE change and no revert loop", async () => {
@@ -395,6 +476,14 @@ describe("jx-combobox", () => {
     /* `autocomplete` is off rather than absent: the UA's own dropdown over a listbox the element is
        already drawing is two panels answering one question. */
     expect(documents["jx-combobox"]?.state?.["autocomplete"]).toMatchObject({ default: "off" });
+    /* The panel matches the FIELD's width, which is why the sidecar names the host as the source.
+       A browser found the list at the popover's 180px floor under a 320px field: the attribute
+       had never been asked for. happy-dom lays nothing out, so the definition is what is held. */
+    const children = (documents["jx-combobox"]?.children ?? []) as {
+      attributes?: Record<string, string>;
+    }[];
+    const popup = children.find((child) => child.attributes?.["part"] === "popup");
+    expect(popup?.attributes?.["match-width"]).toBe("");
   });
 });
 
@@ -405,6 +494,19 @@ describe("the two pure helpers", () => {
     expect(nextIndex([{ disabled: true, value: "a" }, { value: "b" }], -1, 1)).toBe(1);
     expect(nextIndex([{ value: "a" }, { value: "b" }], 1, 1)).toBe(0);
     expect(nextIndex([{ value: "a" }, { value: "b" }], 0, -1)).toBe(1);
+  });
+
+  test("landingIndex is the row the value names, and never a disabled one", () => {
+    const rows: ComboboxRow[] = [
+      { label: "Sonnet", value: "claude-sonnet" },
+      { disabled: true, value: "davinci" },
+    ];
+    /* A label is what a row draws, so it is no more a landing than it is a commit. */
+    expect(landingIndex({ options: rows, value: "Sonnet" })).toBe(-1);
+    expect(landingIndex({ options: rows, value: "CLAUDE-SONNET" })).toBe(0);
+    expect(landingIndex({ options: rows, value: "davinci" })).toBe(-1);
+    expect(landingIndex({ options: rows, value: "" })).toBe(-1);
+    expect(landingIndex({ value: "claude-sonnet" })).toBe(-1);
   });
 
   test("rowFor compares the VALUE and only the value", () => {

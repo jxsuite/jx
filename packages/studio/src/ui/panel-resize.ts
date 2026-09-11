@@ -1,6 +1,7 @@
 /// <reference lib="dom" />
 /**
- * Panel-resize — the three dock splitters, driven as `jx-split` elements.
+ * Panel-resize — the three dock splitters, driven as `jx-split` elements, and the adapter that
+ * drives any other pixel-sized thing from one.
  *
  * Self-initializing module. Import it and the frame's three `jx-split`s become the docks' handles.
  *
@@ -8,21 +9,29 @@
  * grid's CSS custom properties all belong to the reactive `shell` record (`../shell`). A gesture
  * writes `setDockSize()` and the shell's own effect moves the track; a commit persists once.
  *
- * **What this module does now is TRANSLATE, in one place.** A dock is sized in PIXELS — a 240px
+ * **What this module does is TRANSLATE, in one place.** A dock is sized in PIXELS — a 240px
  * Navigator stays 240px when the window grows, which is what every dock a reader has met does — and
  * `jx-split` speaks in the leading side's SHARE of the box it divides, because a pane split is a
  * proportion that should survive a resize as one. Both models are right for their case, so the
  * element keeps its contract and this adapter carries the arithmetic: the share the element shows
- * is derived from the dock's pixels and the app box, an `input` is converted back, and a window
- * resize re-derives every number so the element never drags against a stale track. That listener is
- * the one thing `jx-split`'s own `gap` was designed to spare a host, and it is owed here for a
- * different reason — the dock's bounds are a pixel floor and a viewport ceiling, and neither is a
- * constant share.
+ * is derived from the target's pixels and the track, an `input` is converted back, and the numbers
+ * are re-derived at the START of every gesture and on every window resize, so the element never
+ * drags against a stale track. Those listeners are the one thing `jx-split`'s own `gap` was
+ * designed to spare a host, and they are owed here for a different reason — a dock's bounds are a
+ * pixel floor and a viewport ceiling, and neither is a constant share.
  *
  * The docks also sit behind FIXED tracks the shell does not size — the rail's 56px column, the
  * command bar's 36px row, the status bar's 24px — so a handle's "leading side" is the dock PLUS an
  * offset. {@link ResizeTarget.lead} is that offset, and it is why `value` is not simply `size /
  * track`.
+ *
+ * **The Edit column's two handles are the fourth and fifth thing this drives**, through the same
+ * {@link bindSplit} (`canvas/edit-width-drag.ts`), and they are why a snap is here at all: that
+ * column pulls its width onto the document's breakpoints with Alt as the way through, and the
+ * element reports the modifiers each `input` was made with precisely so a host's own snap can
+ * decide. The last handle that was driven by pointer events alone — `setupHandle`, kept for that
+ * one caller while the element had no such hook — is gone with the gap it survived for, and with it
+ * the SC 2.1.1 debt `specs/ui.md` §5.5 recorded.
  */
 
 import {
@@ -35,39 +44,50 @@ import {
 import type { DockId } from "../shell";
 import { effect } from "../reactivity";
 import { rectOf } from "../utils/geometry";
+import { splitModifiersOf } from "@jxsuite/ui/behaviors/split";
+import type { SplitModifiers } from "@jxsuite/ui/behaviors/split";
 
 /**
- * What a handle drags.
+ * What a handle drives: a pixel-sized thing, described so {@link bindSplit} can speak to a
+ * `jx-split` about it in shares.
  *
- * Generalised out of the three dock rows so the Edit column's own handle can be the fourth. Each is
- * sized in px against a different reference, which is the whole of the difference: `scale` converts
- * a pointer delta in px into the target's own units, and everything else — capture, the dragging
- * class, the text-selection suppression, the double-click reset, the one persist on release — is
- * identical and was worth having once.
+ * Generalised out of the three dock rows so the Edit column's own handles can be the fourth and
+ * fifth. Each is sized in px against a different reference, which is the whole of the difference:
+ * `scale` says how many of the target's units one pixel of the HANDLE's travel is worth, and which
+ * way — and everything else, the element owns: capture, the drag state, the keyboard, the collapse
+ * toggle, and the `input`/`change` pair this adapter turns into `write` and `settle`.
  *
- * **The pane splitter was the fifth and is not any more**, and the reason is worth recording rather
- * than quietly dropping: this module binds pointer events and nothing else, so anything it drives
- * is unreachable from a keyboard. That is survivable for a dock, which has a command and a chord of
- * its own, and it was not for the pane split, which had neither — so the splitter is `jx-split`
- * (ui.md §5.5), an element with `role="separator"`, a tab stop, `aria-valuenow` and its own arrows.
- * Every remaining caller here still owes that door to somebody; see this module's own backlog note
- * in `specs/ui.md` §5.5.
+ * **There is no pointer path left in this module**, and it is worth recording why rather than
+ * quietly dropping it: a handle driven by pointer events alone is unreachable from a keyboard,
+ * which is an SC 2.1.1 failure however it is drawn. The pane split moved to `jx-split` first (ui.md
+ * §5.5), the three docks followed, and the Edit column was last because its handle SNAPS — and the
+ * element had no way to tell a host which modifiers a step carried. It has now: every `input`
+ * carries them, so a snap lives in {@link bindSplit} rather than in a pointer handler of this
+ * module's own.
  */
 export interface ResizeTarget {
   /** Which coordinate the drag reads. */
   axis: "x" | "y";
   /** The current value. */
   read: () => number;
-  /** Set it. Called on every pointermove, so it must be cheap and idempotent. */
+  /** Set it. Called on every `input`, so it must be cheap and idempotent. */
   write: (value: number) => void;
-  /** The value a double-click restores. */
+  /** The value the collapse toggle — Enter, or a double click — goes to. */
   reset: () => number;
   /** Lower and upper bounds, read fresh because both can depend on the viewport. */
   min: () => number;
   max: () => number;
-  /** Target units per pixel of pointer movement, signed: negative grows toward the origin. */
+  /**
+   * Target units per pixel of the handle's travel, signed.
+   *
+   * The magnitude is a ratio: a dock's edge moves as far as the dock grows, so it is `1`; the Edit
+   * column is centred, so an edge that moves `dx` widens the column by `2·dx`, and it is `2`. The
+   * sign is which side of the handle the target is on: positive when the target IS the leading side
+   * and grows as the share grows, negative when it is the trailing side. One statement of both,
+   * because a pointer delta no longer reads it separately from the share arithmetic.
+   */
   scale: () => number;
-  /** Persist. Called once on release and once on reset — never during the drag. */
+  /** Persist. Called once per commit — never during the drag. */
   settle: () => void;
   /**
    * Pull the value onto a preferred one before it is written — magnetic snapping.
@@ -78,23 +98,21 @@ export interface ResizeTarget {
    * width, the readout and the rendered column would all disagree. Clamping on both sides means a
    * target outside the range simply does not take.
    *
-   * The modifier state is passed because a snap has to be escapable: the Edit canvas offers Alt as
-   * the bypass. Omitted by the three docks, which snap to nothing.
+   * The modifiers are the ones the element reported on this step — a pointer move and a keyboard
+   * step alike — because a snap has to be escapable: the Edit canvas offers Alt as the bypass.
+   * Omitted by the three docks, which snap to nothing.
    */
-  snap?: (value: number, modifiers: { altKey: boolean; shiftKey: boolean }) => number;
+  snap?: (value: number, modifiers: SplitModifiers) => number;
   /**
-   * The fixed tracks that sit on the dock's side of the handle, in px — the part of the leading
-   * side the dock does NOT own. The Navigator's handle has the 56px rail before it; the Inspector's
-   * has nothing after it; the Bottom dock's has the 24px status bar below it. Read fresh, because a
-   * collapsed rail or a hidden status bar would move it.
+   * The FIXED length of the leading side, in px — the part the target's own size does not account
+   * for. For a dock it is the tracks the shell does not size on the dock's side of the handle: the
+   * Navigator's handle has the 56px rail before it, the Inspector's has nothing after it, the
+   * Bottom dock's has the 24px status bar below it. For the centred Edit column it is the centre
+   * line itself, since each edge sits half the width away from it. Read fresh, and given the track
+   * because a centre is a fact about the track: a collapsed rail, a hidden status bar or a
+   * scrollbar would move any of these.
    */
-  lead?: () => number;
-  /**
-   * Which side of the handle the dock is on: `1` when the dock IS the leading side (it grows as the
-   * share grows), `-1` when it is the trailing side. The same sign {@link scale} carries for a
-   * pointer delta, stated once for the share arithmetic.
-   */
-  grow?: 1 | -1;
+  lead?: (track: number) => number;
 }
 
 /**
@@ -112,10 +130,11 @@ const MAX_RATIO = 0.5;
 /**
  * Which handle drives which dock, and which direction grows it.
  *
- * Three rows, and the third resizes on the other axis: `grow` is the sign a pointer moving in the
+ * Three rows, and the third resizes on the other axis: `grow` is the sign a handle moving in the
  * positive direction of `axis` contributes, so the Navigator grows rightward, and the Inspector and
- * the Bottom dock grow back toward the pointer's origin. The assistant is not here and never will
- * be — it is an Inspector TAB, resized by resizing the Inspector.
+ * the Bottom dock grow back toward the origin. It becomes the sign of the target's `scale`. The
+ * assistant is not here and never will be — it is an Inspector TAB, resized by resizing the
+ * Inspector.
  */
 const HANDLES: { selector: string; dock: DockId; axis: "x" | "y"; grow: 1 | -1 }[] = [
   { axis: "x", dock: "left", grow: 1, selector: "#resize-left" },
@@ -123,20 +142,8 @@ const HANDLES: { selector: string; dock: DockId; axis: "x" | "y"; grow: 1 | -1 }
   { axis: "y", dock: "bottom", grow: -1, selector: "#resize-bottom" },
 ];
 
-/**
- * Wire one handle to one dock.
- *
- * @param {HTMLElement} handle
- * @param {DockId} dock
- * @param {"x" | "y"} axis — which coordinate the drag reads
- * @param {1 | -1} grow — the sign a positive move along `axis` contributes to the dock's size
- */
 /** Bound, snap, bound again — see {@link ResizeTarget.snap} for why the second one is not spare. */
-function resolveValue(
-  target: ResizeTarget,
-  wanted: number,
-  modifiers: { altKey: boolean; shiftKey: boolean },
-): number {
+function resolveValue(target: ResizeTarget, wanted: number, modifiers: SplitModifiers): number {
   const bound = (v: number) => Math.min(target.max(), Math.max(target.min(), v));
   const bounded = bound(wanted);
   if (!target.snap) {
@@ -173,21 +180,24 @@ function trackOf(handle: HTMLElement, axis: "x" | "y"): number {
 }
 
 /**
- * A dock's pixel size as the leading side's share of the track, and back.
+ * A target's pixel size as the leading side's share of the track, and back.
  *
- * With the dock on the leading side (`grow: 1`) the share is `(lead + size) / track`; on the
- * trailing side it is `1 - (lead + size) / track`. Both directions are one function so the two
- * cannot drift: converting a share back to pixels is the same line solved for `size`.
+ * The handle sits `lead + size / |scale|` px into the leading side. With the target ON the leading
+ * side (`scale > 0`) the share is that over the track; on the trailing side it is one minus that.
+ * Both directions are one pair so the two cannot drift: converting a share back to pixels is the
+ * same line solved for `size`.
  */
 function shareOf(target: ResizeTarget, size: number, track: number): number {
-  const lead = target.lead?.() ?? 0;
-  const leading = (lead + size) / track;
-  return (target.grow ?? 1) === 1 ? leading : 1 - leading;
+  const scale = target.scale();
+  const lead = target.lead?.(track) ?? 0;
+  const leading = (lead + size / Math.abs(scale)) / track;
+  return scale > 0 ? leading : 1 - leading;
 }
 function sizeOf(target: ResizeTarget, share: number, track: number): number {
-  const lead = target.lead?.() ?? 0;
-  const leading = (target.grow ?? 1) === 1 ? share : 1 - share;
-  return leading * track - lead;
+  const scale = target.scale();
+  const lead = target.lead?.(track) ?? 0;
+  const leading = scale > 0 ? share : 1 - share;
+  return (leading * track - lead) * Math.abs(scale);
 }
 
 /**
@@ -196,12 +206,26 @@ function sizeOf(target: ResizeTarget, share: number, track: number): number {
  * The element owns the gesture, the keyboard, the role and the announcement; this owns the units.
  * Four writes go INTO the element — `value`, `min`, `max`, `collapse`, every one a share — and two
  * events come OUT: `input` on every move, which becomes `target.write` in pixels, and `change` on a
- * commit, which becomes `target.settle`. A window resize re-derives all four writes, because a
- * share that was right at 1200px is wrong at 1600px while the pixels it stands for are unchanged.
+ * commit, which becomes `target.settle`.
  *
- * The shell's own record can also move the size without a gesture — a command toggling a dock, a
- * restored session — so `sync` is exported for the caller that knows when that happened; the docks
- * subscribe through the shell surface's lifecycle.
+ * **The four writes are re-derived at the start of every gesture**, on `pointerdown` and `keydown`
+ * in the capture phase so they land before the element records where the gesture started. A share
+ * that was right against one track is wrong against another while the pixels it stands for are
+ * unchanged, and the track moves for more reasons than a window resize: the Edit column's is the
+ * canvas, which a dock opening, a pane split or a scrollbar all change with no event this adapter
+ * could have heard. Measuring at the gesture is the same rule the element itself keeps for its
+ * track, and it is what stops the first pixel of a drag being a jump. A window resize re-derives
+ * them too, so the ANNOUNCED share is honest between gestures and not only during one.
+ *
+ * **The snap runs here**, on the pixels the element asked for and before they are written, with the
+ * modifiers the element reported for this step — see {@link ResizeTarget.snap}. The corrected
+ * pixels go BACK to the element as a share, or its announced value and the drawn track would
+ * disagree until the next step; a pointer gesture recomputes from its origin on every move, so the
+ * correction never compounds.
+ *
+ * The shell's own record can also move a dock without a gesture — a command toggling it, a restored
+ * session — so {@link syncSplits} is exported for the caller that knows when that happened; the
+ * docks subscribe through the shell surface's lifecycle.
  *
  * @returns A function that unbinds everything, for a handle taken out of the document.
  */
@@ -218,13 +242,13 @@ export function bindSplit(handle: SplitElement, target: ResizeTarget): () => voi
     handle.collapse = shareOf(target, target.reset(), track);
     handle.value = shareOf(target, target.read(), track);
   };
-  const onInput = (): void => {
+  const onInput = (event: Event): void => {
     const track = trackOf(handle, target.axis);
     if (track <= 0) {
       return;
     }
     const wanted = sizeOf(target, handle.value, track);
-    const value = resolveValue(target, wanted, { altKey: false, shiftKey: false });
+    const value = resolveValue(target, wanted, splitModifiersOf(event));
     target.write(value);
     /* A snap or a clamp moved the pixels; say so back to the element, or its announced share and
        the drawn track disagree until the next gesture. An equal write is skipped by the runtime. */
@@ -235,82 +259,19 @@ export function bindSplit(handle: SplitElement, target: ResizeTarget): () => voi
   };
   handle.addEventListener("input", onInput);
   handle.addEventListener("change", onChange);
+  handle.addEventListener("pointerdown", sync, true);
+  handle.addEventListener("keydown", sync, true);
   globalThis.addEventListener("resize", sync);
   sync();
   bound.set(handle, sync);
   return () => {
     handle.removeEventListener("input", onInput);
     handle.removeEventListener("change", onChange);
+    handle.removeEventListener("pointerdown", sync, true);
+    handle.removeEventListener("keydown", sync, true);
     globalThis.removeEventListener("resize", sync);
     bound.delete(handle);
   };
-}
-
-/**
- * Drive a bare element by POINTER EVENTS ALONE — the pre-`jx-split` machinery, kept for one caller.
- *
- * The three docks are `jx-split`s now (see {@link bindSplit}); the Edit column's two handles are
- * not, and the reason is a gap in the element rather than in this module: that column SNAPS to the
- * document's breakpoints with Alt as the bypass, and `jx-split` has no snap hook and reports no
- * modifier state on its `input`. Until it does, this stays — and so does the SC 2.1.1 debt it
- * carries, recorded in `specs/ui.md` §5.5: a handle nothing but a pointer can move.
- */
-export function setupHandle(handle: HTMLElement, target: ResizeTarget) {
-  const { axis } = target;
-  let drag: { start: number; startSize: number } | null = null;
-  const coord = (e: { clientX: number; clientY: number }) => (axis === "x" ? e.clientX : e.clientY);
-
-  handle.addEventListener("pointerdown", (e) => {
-    e.preventDefault();
-    try {
-      handle.setPointerCapture(e.pointerId);
-    } catch {
-      /* Synthetic events */
-    }
-    handle.classList.add("dragging");
-    document.body.style.userSelect = "none";
-    drag = { start: coord(e), startSize: target.read() };
-  });
-
-  handle.addEventListener("pointermove", (e) => {
-    if (!drag) {
-      return;
-    }
-    const delta = (coord(e) - drag.start) * target.scale();
-    target.write(resolveValue(target, drag.startSize + delta, e));
-  });
-
-  /*
-   * Every way a drag can END, not just the happy one.
-   *
-   * `pointerup` was the only exit, so a capture lost any other way — the OS cancelling the pointer,
-   * a touch gesture being stolen, the handle's subtree being replaced under it — left `drag`
-   * non-null, `.dragging` on the element and, worst of all, `user-select: none` on the BODY, with
-   * no further event able to clear any of it. At the shell's edge that never bit; a handle sitting
-   * inside a canvas column over a cross-origin iframe is materially more exposed.
-   */
-  const end = (e: PointerEvent) => {
-    if (!drag) {
-      return;
-    }
-    drag = null;
-    try {
-      handle.releasePointerCapture(e.pointerId);
-    } catch {
-      /* Synthetic events, and a capture that was already lost. */
-    }
-    handle.classList.remove("dragging");
-    document.body.style.userSelect = "";
-    target.settle();
-  };
-  handle.addEventListener("pointerup", end);
-  handle.addEventListener("pointercancel", end);
-  handle.addEventListener("lostpointercapture", end);
-
-  handle.addEventListener("dblclick", () => {
-    target.write(target.reset());
-    target.settle();
-  });
 }
 
 /** Each bound handle's re-derivation, so a size the SHELL moved can be pushed to the element. */
@@ -333,7 +294,6 @@ function maxDockSize(axis: "x" | "y"): number {
 function dockTarget(dock: DockId, axis: "x" | "y", grow: 1 | -1): ResizeTarget {
   return {
     axis,
-    grow,
     lead: () => DOCK_LEAD[dock],
     max: () => maxDockSize(axis),
     min: () => MIN_SIZE[axis],

@@ -49,7 +49,15 @@ beforeAll(async () => {
 
 afterEach(() => {
   document.body.replaceChildren();
+  delete (globalThis as { EyeDropper?: unknown }).EyeDropper;
 });
+
+/** Stand a screen picker in for the engine's, so a colour field draws its eyedropper button. */
+function stubDropper(): void {
+  (globalThis as { EyeDropper?: unknown }).EyeDropper = function EyeDropper() {
+    return { open: () => Promise.resolve({ sRGBHex: "#000000" }) };
+  };
+}
 
 /**
  * One control, from a compact spelling: `"tag:label"`, plus `!` disabled and `~` hidden.
@@ -57,7 +65,8 @@ afterEach(() => {
  * `button`, `action`, `field`, `area`, `select`, `number`, `plain` and `divider` are the shapes a
  * real Studio toolbar is made of, and the point of the row below is that they are NOT all the same
  * kind of node: two are kit elements wrapping a `<button>`, one wraps an `<input>`, one is a bare
- * native button, and one is focusable at all only by accident of being a `<select>`.
+ * native button, and one is focusable at all only by accident of being a `<select>`. `color` is a
+ * `jx-color-field`: one element wrapping FOUR focusable controls of its own.
  */
 function makeControl(spec: string): HTMLElement {
   const [flags] = /[!~]*$/u.exec(spec)!;
@@ -100,6 +109,12 @@ function makeControl(spec: string): HTMLElement {
     case "combo": {
       el = document.createElement("jx-combobox");
       el.setAttribute("label", label);
+      break;
+    }
+    case "color": {
+      el = document.createElement("jx-color-field");
+      el.setAttribute("label", label);
+      el.setAttribute("value", "#3b82f6");
       break;
     }
     case "select": {
@@ -408,19 +423,14 @@ describe("jx-toolbar", () => {
     expect(names(el)).toEqual(["Save", "More"]);
   });
 
-  test("every kit control a toolbar could hold declares the caret prop, and the gap is NAMED", () => {
+  test("every kit control a toolbar could hold declares the caret prop", () => {
     /* The gate that would have caught the label defect above. A kit element holding a focusable node
        it is not, which is neither a nested composite's own child nor a control that owns its arrow
        keys, has to declare `tabindex` — otherwise a toolbar can focus it and cannot park it, which
-       is the one tab stop this element exists for, silently absent. One element is knowingly short
-       of it and is written down rather than left to be discovered. */
-    const KNOWN_GAPS: readonly string[] = [
-      // A composed control: its focusable nodes are a nested `jx-swatch`'s button and the hidden
-      // System `<input type="color">`, so which node the prop lands on is the colour family's
-      // Question rather than the toolbar's. Until it declares one, a colour well in a toolbar is a
-      // Tab stop of its own.
-      "jx-color-field",
-    ];
+       is the one tab stop this element exists for, silently absent. The list of known gaps that
+       used to stand here held one name, `jx-color-field`, until the colour family decided which of
+       its four controls the prop lands on (ui.md §5.6); an element that is knowingly short of the
+       prop is written down HERE rather than left to be discovered, and today none is. */
     // Only ever legal inside their own composite, which owns their caret already.
     const OWNED_BY_A_COMPOSITE = new Set(["jx-tab", "jx-menu-item", "jx-tree-item"]);
     const OWN_ARROWS = new Set(["range", "number", "color"]);
@@ -468,7 +478,60 @@ describe("jx-toolbar", () => {
         missing.push(tag);
       }
     }
-    expect(missing).toEqual([...KNOWN_GAPS]);
+    expect(missing).toEqual([]);
+  });
+
+  test("a colour field is ONE stop, the stop is its swatch, and the three controls beside it park", async () => {
+    /* The composed control the gate above used to exempt. A `jx-color-field` is four focusable
+       controls in a row — the swatch that opens the picker, a text field, the eyedropper and the
+       system's own colour well — and before it declared the prop a toolbar could FIND it (the
+       outermost custom element is the item) and focus it, but its caret write landed on nothing,
+       so every one of the four stayed a tab stop of its own. The colour family's answer is the
+       swatch: it is the opener, so Enter from it reaches the whole picker; it is the one control the
+       element always draws; and it is first in the row. The other three step out of the tab order
+       while the field is roved, because a container told this element is one stop must find one. */
+    stubDropper();
+    const el = await bar({ label: "Tools" }, ["action:Save", "color:Fill", "action:More"]);
+    expect(names(el)).toEqual(["Save", "Fill", "More"]);
+    const field = itemsOf(el)[1]!;
+    expect(field.localName).toBe("jx-color-field");
+    // The node the toolbar focuses is the swatch, found by the kit's own name for a control.
+    const control = controlOf(field);
+    expect(control.localName).toBe("button");
+    expect(control.getAttribute("part")).toBe("control");
+    expect(control.getAttribute("aria-label")).toBe("Pick Fill");
+    expect(control.getAttribute("aria-haspopup")).toBe("dialog");
+    expect(carets(el)).toEqual(["0", "-1", "-1"]);
+    // The row has exactly one tab stop, and the three controls beside the swatch are parked.
+    const row = field.querySelector<HTMLElement>('[part="row"]')!;
+    const text = row.querySelector<HTMLElement>('jx-textfield [part="input"]')!;
+    const dropper = row.querySelector<HTMLElement>('[part="dropper"] [part="control"]')!;
+    const system = row.querySelector<HTMLElement>('[part="system"]')!;
+    expect(text.getAttribute("tabindex")).toBe("-1");
+    expect(dropper.getAttribute("tabindex")).toBe("-1");
+    expect(system.getAttribute("tabindex")).toBe("-1");
+    const stops = () =>
+      [...el.querySelectorAll<HTMLElement>("button, input")]
+        .filter((node) => !node.closest('[part="picker"]'))
+        .filter((node) => node.getAttribute("tabindex") !== "-1")
+        .map((node) => node.getAttribute("aria-label") ?? node.getAttribute("label"));
+    expect(stops()).toEqual(["Save"]);
+    // Property only: the host carries no tabindex, or it would be a second stop by itself.
+    expect(field.hasAttribute("tabindex")).toBe(false);
+    // And the arrows reach the well, and leave it again, by the same key.
+    press(el, "ArrowRight");
+    expect(focused()).toBe("Pick Fill");
+    expect(document.activeElement?.closest("jx-color-field")?.getAttribute("label")).toBe("Fill");
+    expect(carets(el)).toEqual(["-1", "0", "-1"]);
+    expect(stops()).toEqual(["Pick Fill"]);
+    press(el, "ArrowRight");
+    expect(focused()).toBe("More");
+    press(el, "ArrowLeft");
+    expect(focused()).toBe("Pick Fill");
+    press(el, "End");
+    expect(focused()).toBe("More");
+    press(el, "Home");
+    expect(focused()).toBe("Save");
   });
 
   test("a nested jx-action-group is left alone: two roving carets over one row is two writers", async () => {

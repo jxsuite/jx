@@ -11,6 +11,8 @@
  * A submenu is a child `jx-menu` slotted into a row (`slot="submenu"`), so it is a DOM descendant
  * of its parent panel and the platform treats the two as one popover hierarchy: opening the child
  * does not close the parent, and a click outside closes both.
+ *
+ * @docs extending/ui-kit
  */
 
 import { clampIntoViewport, openAt } from "./popover.ts";

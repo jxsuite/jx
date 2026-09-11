@@ -7,7 +7,7 @@
     "part": "stage"
   },
   "style": {
-    "$description": "`styles/canvas.css`'s `.panzoom-wrap`, `.canvas-panel*`, `.source-*`, `.doc-header-host`, `.content-edit-*`, `.edit-width-handle`, `.preview-stage` and `.diff-code-*` rules, keyed on `part`. Three selectors reach FOREIGN DOM and say so where they stand: `.doc-header` is the card's own root inside its host, and `.dragging` / `.is-resizing` are written by `ui/panel-resize.ts` and `canvas/edit-width-drag.ts` onto nodes this document draws — the same shape `grid-panel.json` uses for Tabulator's theme.",
+    "$description": "`styles/canvas.css`'s `.panzoom-wrap`, `.canvas-panel*`, `.source-*`, `.doc-header-host`, `.content-edit-*`, `.edit-width-handle`, `.preview-stage` and `.diff-code-*` rules, keyed on `part`. Two selectors reach FOREIGN DOM and say so where they stand: `.doc-header` is the card's own root inside its host, and `.is-resizing` is written by `canvas/edit-width-drag.ts` onto the column this document draws — the same shape `grid-panel.json` uses for Tabulator's theme. The width handles are `jx-split` elements, which paint their own hover, drag and focus states; this sheet says only where they stand and how wide they are.",
     "display": "contents",
     "& [part=\"panzoom\"]": {
       "$description": "The transformed surface. `applyTransform` writes `transform` on it imperatively, so only the origin is declared here. `--boards-inset` is the Project Styles bar's clearance: that bar floats over the stage, so the boards start below it.",
@@ -114,7 +114,7 @@
       "borderRadius": "0"
     },
     "& [part=\"edit-canvas\"]": {
-      "$description": "The side gutter is LOAD-BEARING, not breathing room: the resize handles hang outside the column's own box, and this container clips horizontally, so without it the handles would be unreachable at exactly the width where dragging inward matters most. It must stay at least as wide as `EDIT_CANVAS_GUTTER` in `canvas/edit-width.ts`, which is what the drag's own ceiling subtracts.",
+      "$description": "The side gutter is LOAD-BEARING, not breathing room: the resize handles hang outside the column's own box — flex siblings with a negative margin, so they take no width from it — and this container clips horizontally, so without it the handles would be unreachable at exactly the width where dragging inward matters most. It must stay at least as wide as `EDIT_CANVAS_GUTTER` in `canvas/edit-width.ts`, which is what the drag's own ceiling subtracts. This box is also the TRACK the two `jx-split`s measure: the first ancestor of a handle that generates a box, which is why the handles are drawn here beside the column rather than inside it — inside, the column would have been the track, and the track cannot be the thing being resized.",
       "width": "100%",
       "height": "100%",
       "overflowY": "auto",
@@ -124,7 +124,7 @@
       "padding": "32px 16px"
     },
     "& [part=\"edit-column\"]": {
-      "$description": "The containing block for the two resize handles. `max-width` is written imperatively after the render and never bound — see the note on the width in `canvas-render.ts`.",
+      "$description": "The page's column. `max-width` is written imperatively after the render and never bound — see the note on the width in `canvas-render.ts`. `position: relative` is for the live readout drawn as its `::after` while a drag is on.",
       "width": "100%",
       "minHeight": "100%",
       "position": "relative"
@@ -159,24 +159,19 @@
       "pointerEvents": "none"
     },
     "& [part=\"edit-handle\"]": {
-      "$description": "One on each side of the column, dragged symmetrically about its centre. Physical `left`/`right` rather than logical properties, and deliberately: the sign the drag applies is physical too, and Studio's own chrome is never mirrored — the artboard's `dir` is a property of the document INSIDE the iframe. The floor on the height is because a component definition hugs its content, which can be a hundred pixels tall, and the grab target must not shrink with it.",
-      "position": "absolute",
-      "top": "0",
-      "bottom": "0",
+      "$description": "The two `jx-split`s (ui.md §5.5), one on each side of the column and dragged symmetrically about its centre. They are flex SIBLINGS of the column in the canvas's row, and each pulls itself outside the column with a negative margin on its outer side so its margin box is zero wide: the column keeps the full content width and the handle's 9px strip stands in the gutter, exactly where the absolutely positioned div it replaces stood. Stretched to the row, so the grab target is the canvas's height whatever the column's — which is the same height the old `top: 0; bottom: 0` resolved to, the column being a stretched item itself. Invisible at rest as it has always been: the element's own `--jx-border` bar beside the page would be new chrome. The weight is the substance, and a browser found it: the element's rules are `[data-jx]` (0,1,0) and its hover `[data-jx]:hover` (0,2,0), which is exactly what this document's `[data-jx] [part]` rules weigh — so `background: transparent` here TIED the element's accent on hover and won on source order, and the handle lit to half opacity of nothing. The lit look is restated below one attribute heavier, the same move `styles/shell-frame.json` makes for the docks. Physical `margin-left`/`margin-right` rather than logical properties, and deliberately: the sign the drag applies is physical too, and Studio's own chrome is never mirrored — the artboard's `dir` is a property of the document INSIDE the iframe.",
       "width": "9px",
-      "minHeight": "120px",
-      "cursor": "col-resize",
-      "zIndex": "2"
+      "background": "transparent"
     },
     "& [part=\"edit-handle\"][data-side=\"start\"]": {
-      "left": "-9px"
+      "marginLeft": "-9px"
     },
     "& [part=\"edit-handle\"][data-side=\"end\"]": {
-      "right": "-9px"
+      "marginRight": "-9px"
     },
-    "& [part=\"edit-handle\"]:hover, & [part=\"edit-handle\"].dragging": {
-      "$description": "FOREIGN CLASS: `ui/panel-resize.ts` marks the handle it is dragging, so the highlight outlives the pointer leaving the 9px strip.",
-      "background": "var(--accent)",
+    "& [part=\"edit-handle\"]:hover, & [part=\"edit-handle\"][data-dragging]": {
+      "$description": "The element's own hover and drag paint, restated at (0,3,0) because the rest rule above ties its (0,2,0) and would otherwise win — see that rule. `[data-dragging]` is the element's mirror of its own gesture, so the highlight outlives the pointer leaving the 9px strip.",
+      "background": "var(--jx-accent)",
       "opacity": "0.5"
     },
     "& [part=\"preview-stage\"]": {
@@ -260,6 +255,33 @@
           },
           "children": [
             {
+              "$description": "The two width handles — `jx-split`s, ui.md §5.5 — drawn only where there is a column to size, and drawn BESIDE it rather than inside it, one slot before the inner box and one after. The placement is the track: a `jx-split` measures the first ancestor of its own that generates a box, and inside the column that would have been the column, whose width is the very thing the gesture changes. Out here the track is the canvas, a box the drag does not move, and the doubling that keeps an edge under the pointer falls out of the share arithmetic in `canvas/edit-width-drag.ts` rather than being a special case. In the Preview and pan/zoom frames both slots are empty `display: contents` wrappers and cost the row nothing. The element brings what the div it replaces could not: `role=\"separator\"`, a tab stop, `aria-valuenow`, the arrows and Home/End, and Enter or a double click to return to the breakpoint's declared width. Its share, its bounds and its collapse point are written by `mountEditWidthHandle`, which also runs the snap onto the document's breakpoints from the modifiers the element reports on every `input`, with Alt as the way through.",
+              "tagName": "div",
+              "attributes": {
+                "part": "handle-start-slot"
+              },
+              "style": {
+                "display": "contents"
+              },
+              "$switch": {
+                "$ref": "#/state/handles"
+              },
+              "cases": {
+                "shown": {
+                  "tagName": "jx-split",
+                  "attributes": {
+                    "part": "edit-handle",
+                    "data-side": "start",
+                    "title": "Drag, or use the arrow keys, to resize the page — hold Alt to skip the breakpoints"
+                  },
+                  "$props": {
+                    "orientation": "vertical",
+                    "label": "Resize the page from its left edge"
+                  }
+                }
+              }
+            },
+            {
               "tagName": "div",
               "attributes": {
                 "part": "${state.innerPart}",
@@ -274,7 +296,7 @@
               },
               "children": [
                 {
-                  "$description": "Edit draws the Document Header card INSIDE the document's column, as its first block. The handles below are `position: absolute`, so DOM order costs them nothing — but the card is the column's first child by contract, and a handle in front of it would be a layout claim nobody made.",
+                  "$description": "Edit draws the Document Header card INSIDE the document's column, as its first block — the column's first child by contract. The width handles are not in the column at all (they stand beside it, see the frame), so nothing here can get in front of it.",
                   "tagName": "div",
                   "attributes": {
                     "part": "column-header-slot"
@@ -357,53 +379,34 @@
                       }
                     ]
                   }
-                },
-                {
-                  "$description": "The two width handles, drawn only where there is a column to size. They are direct children of that column, which is what `mountEditWidthHandle` resolves the drag target against.",
-                  "tagName": "div",
-                  "attributes": {
-                    "part": "handle-start-slot"
-                  },
-                  "style": {
-                    "display": "contents"
-                  },
-                  "$switch": {
-                    "$ref": "#/state/handles"
-                  },
-                  "cases": {
-                    "shown": {
-                      "tagName": "div",
-                      "attributes": {
-                        "part": "edit-handle",
-                        "data-side": "start",
-                        "title": "Drag to resize the page — hold Alt to ignore the breakpoints"
-                      }
-                    }
-                  }
-                },
-                {
-                  "tagName": "div",
-                  "attributes": {
-                    "part": "handle-end-slot"
-                  },
-                  "style": {
-                    "display": "contents"
-                  },
-                  "$switch": {
-                    "$ref": "#/state/handles"
-                  },
-                  "cases": {
-                    "shown": {
-                      "tagName": "div",
-                      "attributes": {
-                        "part": "edit-handle",
-                        "data-side": "end",
-                        "title": "Drag to resize the page — hold Alt to ignore the breakpoints"
-                      }
-                    }
-                  }
                 }
               ]
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "handle-end-slot"
+              },
+              "style": {
+                "display": "contents"
+              },
+              "$switch": {
+                "$ref": "#/state/handles"
+              },
+              "cases": {
+                "shown": {
+                  "tagName": "jx-split",
+                  "attributes": {
+                    "part": "edit-handle",
+                    "data-side": "end",
+                    "title": "Drag, or use the arrow keys, to resize the page — hold Alt to skip the breakpoints"
+                  },
+                  "$props": {
+                    "orientation": "vertical",
+                    "label": "Resize the page from its right edge"
+                  }
+                }
+              }
             }
           ]
         },

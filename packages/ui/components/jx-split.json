@@ -100,7 +100,7 @@
       "emits": [
         {
           "name": "input",
-          "description": "The splitter is moving under the reader's hand. It comes from the ELEMENT, so e.target.value is the whole answer."
+          "description": "The splitter is moving under the reader's hand. It comes from the ELEMENT, so e.target.value is where it is — and detail is the modifiers this step was made with, { altKey, ctrlKey, metaKey, shiftKey }, for a host whose own snap needs a way through. The element gives none of them a meaning here; what a breakpoint is, and which key skips it, is the host's to say."
         }
       ]
     },
@@ -112,7 +112,7 @@
       "emits": [
         {
           "name": "change",
-          "description": "The reader let go; e.target is the element. Dispatched even when the last move changed nothing, because the commit is about the gesture ending."
+          "description": "The reader let go; e.target is the element, and detail is the modifiers the release carried. Dispatched even when the last move changed nothing, because the commit is about the gesture ending."
         }
       ]
     },
@@ -124,11 +124,11 @@
       "emits": [
         {
           "name": "input",
-          "description": "A key moved the splitter."
+          "description": "A key moved the splitter; detail is the modifiers it was pressed with. Shift is reported even though the element spent it on the large step: what a host makes of a modifier is the host's business."
         },
         {
           "name": "change",
-          "description": "The same key committed it."
+          "description": "The same key committed it, with the same detail."
         }
       ]
     },
@@ -140,11 +140,11 @@
       "emits": [
         {
           "name": "input",
-          "description": "The toggle moved the splitter."
+          "description": "The toggle moved the splitter; detail is the click's modifiers."
         },
         {
           "name": "change",
-          "description": "And committed it."
+          "description": "And committed it, with the same detail."
         }
       ]
     }

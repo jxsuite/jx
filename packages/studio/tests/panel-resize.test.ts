@@ -12,10 +12,16 @@
  *
  * Happy-dom performs no layout, so the app box is stubbed to a known size and every expected share
  * is arithmetic over that number. That is the honest scope: the numbers, not the pixels on screen.
+ *
+ * There is no pointer path left to test. `setupHandle` — the pre-`jx-split` machinery that drove a
+ * bare div by pointer events — survived one release for the Edit column's snapping handle, and went
+ * with the element's gap: every `input` now carries the modifiers its step was made with, so the
+ * snap runs in `bindSplit` and the column's handles are `jx-split`s like the docks'.
  */
 import { stubRect } from "./harness";
 import { describe, expect, test } from "bun:test";
 import type { ResizeTarget, SplitElement } from "../src/ui/panel-resize";
+import type { SplitModifiers } from "@jxsuite/ui/behaviors/split";
 
 const STORAGE_KEY = "jx-studio-panel-widths";
 const root = document.documentElement;
@@ -46,7 +52,7 @@ stubRect(document.querySelector("#app")!, { height: APP_H, width: APP_W });
 
 const { DOCK_DEFAULT_SIZES, mountShell, setDockSize, shell, unmountShell } =
   await import("../src/shell");
-const { DOCK_LEAD, bindSplit, setupHandle, syncSplits } = await import("../src/ui/panel-resize");
+const { DOCK_LEAD, bindSplit, syncSplits } = await import("../src/ui/panel-resize");
 // The grid is projected by the shell's own effect, not by the resize module.
 mountShell();
 
@@ -54,10 +60,26 @@ const left = document.querySelector("#resize-left") as SplitElement;
 const right = document.querySelector("#resize-right") as SplitElement;
 const bottom = document.querySelector("#resize-bottom") as SplitElement;
 
-/** The element reporting a gesture: `input` on every move, `change` on the commit. */
-function report(handle: SplitElement, value: number, type: "input" | "change" = "input"): void {
+/**
+ * The element reporting a gesture: `input` on every move, `change` on the commit. With modifiers,
+ * it is the `CustomEvent` `jx-split` dispatches — `detail` is what the hand was holding; without,
+ * it is a plain `Event`, which a host may dispatch itself and which reads as no modifiers.
+ */
+function report(
+  handle: SplitElement,
+  value: number,
+  type: "input" | "change" = "input",
+  modifiers?: Partial<SplitModifiers>,
+): void {
   handle.value = value;
-  handle.dispatchEvent(new Event(type, { bubbles: true }));
+  handle.dispatchEvent(
+    modifiers
+      ? new CustomEvent(type, {
+          bubbles: true,
+          detail: { altKey: false, ctrlKey: false, metaKey: false, shiftKey: false, ...modifiers },
+        })
+      : new Event(type, { bubbles: true }),
+  );
 }
 
 function widthOf(cssVar: string): string {
@@ -255,74 +277,208 @@ describe("bindSplit on its own", () => {
   });
 });
 
-describe("setupHandle — the pointer-only path the Edit column still uses", () => {
-  /* Kept for exactly one caller (`canvas/edit-width-drag.ts`), whose handle SNAPS to breakpoints
-     with Alt as the bypass — a hook `jx-split` does not have. Until it does, this is live code with
-     a real reader behind it, and it keeps the assertions it had when it drove the docks. */
-  function harness() {
-    const handle = document.createElement("div");
-    document.body.append(handle);
-    let size = 200;
+describe("the snap, and the modifiers it is given", () => {
+  /* This is what `setupHandle` survived for, and why it no longer has to: the element reports the
+     modifiers every `input` was made with, so a host's snap — and its bypass — can run in the same
+     place the clamp does. */
+  function snapping(): { el: SplitElement; seen: SplitModifiers[]; written: number[] } {
+    const box = document.createElement("div");
+    stubRect(box, { height: 400, width: 1000 });
+    const el = document.createElement("jx-split") as SplitElement;
+    box.append(el);
+    document.body.append(box);
+    const seen: SplitModifiers[] = [];
     const written: number[] = [];
-    let settled = 0;
-    const t: ResizeTarget = {
+    bindSplit(el, {
+      axis: "x",
+      max: () => 890,
+      min: () => 100,
+      read: () => 200,
+      reset: () => 250,
+      scale: () => 1,
+      settle: () => {},
+      snap: (v, modifiers) => {
+        seen.push(modifiers);
+        return modifiers.altKey ? v : Math.round(v / 50) * 50;
+      },
+      write: (v) => {
+        written.push(v);
+      },
+    });
+    return { el, seen, written };
+  }
+
+  test("the snap sees the modifiers the element reported for THIS step", () => {
+    const { el, seen, written } = snapping();
+    report(el, 0.312, "input", {});
+    report(el, 0.312, "input", { altKey: true });
+    report(el, 0.312, "input", { shiftKey: true });
+    expect(written).toEqual([300, 312, 300]);
+    expect(seen.map((m) => [m.altKey, m.shiftKey])).toEqual([
+      [false, false],
+      [true, false],
+      [false, true],
+    ]);
+  });
+
+  test("a plain input a host dispatched itself reads as no modifiers, so the snap still runs", () => {
+    const { el, seen, written } = snapping();
+    report(el, 0.312);
+    expect(written).toEqual([300]);
+    expect(seen[0]).toEqual({ altKey: false, ctrlKey: false, metaKey: false, shiftKey: false });
+  });
+
+  test("a snap that pulls past the bound is clamped back, and the element is told", () => {
+    /* A snap has no way to know the bounds: offered 880 with a ceiling of 890, this one answers
+       900. Without the second clamp that would be written, and the stored size, the announced
+       share and the drawn track would all disagree. */
+    const { el, written } = snapping();
+    report(el, 0.88, "input", {});
+    expect(written).toEqual([890]);
+    expect(el.value).toEqual(near(0.89));
+  });
+
+  test("the bypassed value is bounded too, so Alt cannot carry the pixels past the bounds", () => {
+    const { el, written } = snapping();
+    report(el, 0.95, "input", { altKey: true });
+    expect(written).toEqual([890]);
+    expect(el.value).toEqual(near(0.89));
+  });
+});
+
+describe("a gesture START re-derives the shares", () => {
+  /* The track moves for more reasons than a window resize — the Edit column's is the canvas, which
+     a dock opening or a pane split changes with no event this adapter hears. So the four writes are
+     redone on `pointerdown` and `keydown`, in the capture phase, before the element records where
+     the gesture started; otherwise the first pixel of a drag is a jump. */
+  function bound(before?: (el: SplitElement) => void): { el: SplitElement; box: HTMLElement } {
+    const box = document.createElement("div");
+    stubRect(box, { height: 400, width: 1000 });
+    const el = document.createElement("jx-split") as SplitElement;
+    box.append(el);
+    document.body.append(box);
+    before?.(el);
+    bindSplit(el, {
       axis: "x",
       max: () => 500,
       min: () => 100,
-      read: () => size,
+      read: () => 200,
       reset: () => 250,
       scale: () => 1,
-      settle: () => {
-        settled += 1;
-      },
+      settle: () => {},
+      write: () => {},
+    });
+    return { box, el };
+  }
+
+  test("a pointerdown against a track that changed silently re-derives value, bounds and collapse", () => {
+    const { box, el } = bound();
+    expect(el.value).toEqual(near(0.2));
+    stubRect(box, { height: 400, width: 2000 });
+    // No resize event, no sync: the announced share is still the old track's.
+    expect(el.value).toEqual(near(0.2));
+    el.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
+    expect(el.value).toEqual(near(0.1));
+    expect(el.min).toEqual(near(0.05));
+    expect(el.max).toEqual(near(0.25));
+    expect(el.collapse).toEqual(near(0.125));
+  });
+
+  test("a keydown does the same, so an arrow step is taken from an honest position", () => {
+    const { box, el } = bound();
+    stubRect(box, { height: 400, width: 500 });
+    el.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "ArrowRight" }));
+    expect(el.value).toEqual(near(0.4));
+  });
+
+  test("the listeners run in the CAPTURE phase, ahead of the element's own", () => {
+    /* The element records `start` from `value` in its bubble-phase handler, which the runtime
+       bound BEFORE this adapter ever saw the element; a re-derivation that ran after it would be a
+       jump deferred rather than a jump prevented. So the stand-in for the element's handler is
+       registered first, and it must still see the re-derived share. */
+    const order: string[] = [];
+    const { box, el } = bound((handle) => {
+      handle.addEventListener("pointerdown", () => {
+        order.push(`element:${handle.value.toFixed(2)}`);
+      });
+    });
+    stubRect(box, { height: 400, width: 2000 });
+    el.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
+    expect(order).toEqual(["element:0.10"]);
+  });
+});
+
+describe("a target the handle moves twice as fast as", () => {
+  /* The Edit column is centred, so an edge that travels `dx` widens it by `2·dx`: `scale` is the
+     ratio, and `lead` — given the track — is the centre line, since each edge sits half the width
+     away from it. The trailing edge is the mirror: the same distance from the track's END. */
+  function centred(scale: number, track = 1000) {
+    const box = document.createElement("div");
+    stubRect(box, { height: 400, width: track });
+    const el = document.createElement("jx-split") as SplitElement;
+    box.append(el);
+    document.body.append(box);
+    let size = 400;
+    const written: number[] = [];
+    bindSplit(el, {
+      axis: "x",
+      lead: (t) => t / 2,
+      max: () => 900,
+      min: () => 200,
+      read: () => size,
+      reset: () => 600,
+      scale: () => scale,
+      settle: () => {},
       write: (v) => {
         size = v;
         written.push(v);
       },
-    };
-    setupHandle(handle, t);
-    const at = (type: string, clientX: number) =>
-      handle.dispatchEvent(new MouseEvent(type, { bubbles: true, clientX }));
-    return {
-      at,
-      handle,
-      get settled() {
-        return settled;
-      },
-      get size() {
-        return size;
-      },
-      written,
-    };
+    });
+    return { el, written };
   }
 
-  test("pointermove without an active drag is a no-op", () => {
-    const h = harness();
-    h.at("pointermove", 300);
-    expect(h.written).toEqual([]);
+  test("the leading edge sits at the centre plus half the size, and a move is doubled back", () => {
+    const { el, written } = centred(2);
+    expect(el.value).toEqual(near(0.7));
+    expect(el.min).toEqual(near(0.6));
+    expect(el.max).toEqual(near(0.95));
+    expect(el.collapse).toEqual(near(0.8));
+    // The element reports the edge 30px further along: 30px of travel is 60px of width.
+    report(el, 0.73);
+    expect(written).toEqual([460]);
   });
 
-  test("a drag writes the delta, and release settles once and clears the drag state", () => {
-    const h = harness();
-    h.at("pointerdown", 100);
-    expect(h.handle.classList.contains("dragging")).toBe(true);
-    expect(document.body.style.userSelect).toBe("none");
-    h.at("pointermove", 160);
-    expect(h.size).toBe(260);
-    h.at("pointerup", 160);
-    expect(h.handle.classList.contains("dragging")).toBe(false);
-    expect(document.body.style.userSelect).toBe("");
-    expect(h.settled).toBe(1);
-    // A second release with no drag live is ignored rather than settling again.
-    h.at("pointerup", 160);
-    expect(h.settled).toBe(1);
+  test("the trailing edge is the mirror image, and grows as the share falls", () => {
+    const { el, written } = centred(-2);
+    expect(el.value).toEqual(near(0.3));
+    expect(el.min).toEqual(near(0.05));
+    expect(el.max).toEqual(near(0.4));
+    report(el, 0.27);
+    expect(written).toEqual([460]);
   });
 
-  test("double-click writes the reset value and settles", () => {
-    const h = harness();
-    h.at("dblclick", 0);
-    expect(h.size).toBe(250);
-    expect(h.settled).toBe(1);
+  test("lead is given the track, so a centre that is a fact about the track can be one", () => {
+    const leads: number[] = [];
+    const box = document.createElement("div");
+    stubRect(box, { height: 400, width: 800 });
+    const el = document.createElement("jx-split") as SplitElement;
+    box.append(el);
+    document.body.append(box);
+    bindSplit(el, {
+      axis: "x",
+      lead: (t) => {
+        leads.push(t);
+        return 0;
+      },
+      max: () => 500,
+      min: () => 100,
+      read: () => 200,
+      reset: () => 250,
+      scale: () => 1,
+      settle: () => {},
+      write: () => {},
+    });
+    expect(new Set(leads)).toEqual(new Set([800]));
   });
 });
 

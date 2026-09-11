@@ -433,7 +433,8 @@ describe("a live frame survives the grid", () => {
     grid.reconcile();
     // 2 · A multi-step splitter drag — five `shell.paneSplit` writes, five passes through the
     // Effect. This is the gesture that used to remove and re-insert the handle on every move.
-    const splitter = gridEl.querySelector("jx-split") as HTMLElement;
+    // The PANE splitter, by its part: the Edit column's two width handles are `jx-split`s too.
+    const splitter = gridEl.querySelector('jx-split[part="splitter"]') as HTMLElement;
     splitter.dispatchEvent(new PointerEvent("pointerdown", { clientX: 500, clientY: 0 }));
     for (const clientX of [520, 560, 600, 620, 640]) {
       splitter.dispatchEvent(new PointerEvent("pointermove", { clientX, clientY: 0 }));

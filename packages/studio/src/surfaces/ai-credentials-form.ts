@@ -12,8 +12,11 @@
  * own. So the surface carries its own: one `<div>` per controller, mounted once and handed to lit
  * as a child value. lit inserts a Node it is given rather than cloning it, and re-inserting the
  * same node is a no-op, so the document survives every repaint of the gate around it — which
- * matters more here than anywhere else in the batch, because this surface is three text fields a
- * reader is typing into and a repaint that rebuilt them would take the caret with it.
+ * matters more here than anywhere else in the batch, because this surface is three fields a reader
+ * is typing into and a repaint that rebuilt them would take the caret with it. The model field is
+ * the one that makes this concrete: it is a `jx-combobox` whose catalogue arrives from a fetch
+ * AFTER the field is drawn, and a rebuild on that arrival would have lost whatever id the reader
+ * had typed while they waited.
  *
  * The host is `display: contents` for the same reason `surfaces/ai-managed-connect.ts` gives: the
  * gates lay their children out in a flex column (`.prefs-assistant` centres them,
@@ -31,7 +34,7 @@ import type { JxDocument } from "@jxsuite/schema/types";
 
 registerSurface("ai-credentials-form", credentialsDoc as unknown as JxDocument);
 
-/** One row of the listed catalogue, as the document draws it. */
+/** One row of the listed catalogue, as the combobox draws it. */
 export interface CredentialsModelRow {
   /** The model id — the row's key, and what a pick writes into the model draft. */
   value: string;
@@ -47,7 +50,7 @@ export interface AiCredentialsView {
   keyDraft: string;
   modelDraft: string;
   baseUrlDraft: string;
-  /** The catalogue the last successful listing returned; empty draws no list control. */
+  /** The catalogue the last successful listing returned; empty draws no chevron on the field. */
   models: CredentialsModelRow[];
   /** A listing is in flight: the button says so and refuses a second one. */
   modelsLoading: boolean;
@@ -78,11 +81,9 @@ export interface AiCredentialsSurface {
 
 /** What the document discriminates on, derived here so the flow never has to spell it. */
 interface AiCredentialsFlags {
-  /** Whether a catalogue has landed, and so whether the list control is drawn. */
-  hasModels: boolean;
   /** Whether there is a refusal to draw beside the fetch button. */
   hasError: boolean;
-  /** The catalogue as the kit's select reads it. */
+  /** The catalogue as the kit's combobox draws it — the list, never a corpus it matches against. */
   modelOptions: CredentialsModelRow[];
 }
 
@@ -94,7 +95,6 @@ function derive(view: AiCredentialsView): AiCredentialsView & AiCredentialsFlags
   return {
     ...view,
     hasError: view.modelsError !== "",
-    hasModels: view.models.length > 0,
     modelOptions: view.models,
   };
 }

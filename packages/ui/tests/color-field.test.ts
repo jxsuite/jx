@@ -22,6 +22,7 @@ type JxColorField = HTMLElement & {
   ink: string;
   solid: string;
   disabled: boolean;
+  tabindex: string;
 };
 
 interface Dropper {
@@ -51,6 +52,9 @@ async function field(attrs: Record<string, string> = {}): Promise<JxColorField> 
 }
 
 const part = (el: Element, name: string) => el.querySelector<HTMLElement>(`[part="${name}"]`)!;
+/** The swatch button: the field's OWN `part="control"`, which the eyedropper's button also wears. */
+const swatch = (el: Element) =>
+  el.querySelector<HTMLButtonElement>(':scope > [part="row"] > [part="control"]')!;
 const textInput = (el: Element) =>
   el.querySelector<HTMLInputElement>('jx-textfield input[part="input"]')!;
 const above = (el: Element) => el.parentElement!;
@@ -94,13 +98,12 @@ describe("jx-color-field", () => {
   test("is a swatch, a text field and the two doors, each with a name of its own", async () => {
     stubDropper(() => Promise.resolve({ sRGBHex: "#000000" }));
     const el = await field({ value: "#3b82f6" });
-    const swatch = part(el, "swatch");
-    expect(swatch.getAttribute("aria-label")).toBe("Pick Background");
-    expect(swatch.getAttribute("aria-haspopup")).toBe("dialog");
-    expect(swatch.getAttribute("aria-expanded")).toBe("false");
+    expect(swatch(el).getAttribute("aria-label")).toBe("Pick Background");
+    expect(swatch(el).getAttribute("aria-haspopup")).toBe("dialog");
+    expect(swatch(el).getAttribute("aria-expanded")).toBe("false");
     /* The panel's id is minted, so nothing a consumer writes has to be unique — and the button
        names the one it minted. */
-    expect(swatch.getAttribute("aria-controls")).toBe(part(el, "picker").id);
+    expect(swatch(el).getAttribute("aria-controls")).toBe(part(el, "picker").id);
     expect(part(el, "picker").id).toStartWith("jx-color-field-");
     expect(textInput(el).getAttribute("aria-label")).toBe("Background");
     expect(part(el, "system").getAttribute("aria-label")).toBe(
@@ -349,27 +352,27 @@ describe("jx-color-field", () => {
         x: 12,
         y: 16,
       }) as DOMRect;
-    part(el, "swatch").click();
+    swatch(el).click();
     await tick();
     /* The coordinates are written BEFORE the panel is shown, which is what jx-popover asks of
        whoever opens it: its own toggle handler clamps a real position rather than the origin. */
     expect(panel.x).toBe(12);
     expect(panel.y).toBe(40);
     expect(el.expanded).toBe(true);
-    expect(part(el, "swatch").getAttribute("aria-expanded")).toBe("true");
+    expect(swatch(el).getAttribute("aria-expanded")).toBe("true");
     expect(el.dataset["expanded"]).toBe("");
 
-    part(el, "swatch").click();
+    swatch(el).click();
     await tick();
     expect(el.expanded).toBe(false);
-    expect(part(el, "swatch").getAttribute("aria-expanded")).toBe("false");
+    expect(swatch(el).getAttribute("aria-expanded")).toBe("false");
   });
 
   test("disabled refuses every door", async () => {
     stubDropper(() => Promise.resolve({ sRGBHex: "#22c55e" }));
     const el = await field({ disabled: "", value: "#3b82f6" });
     /* The platform's own refusal first: a disabled button dispatches no click at all. */
-    expect((part(el, "swatch") as HTMLButtonElement).disabled).toBe(true);
+    expect((swatch(el) as HTMLButtonElement).disabled).toBe(true);
     expect((part(el, "system") as HTMLInputElement).disabled).toBe(true);
     expect(part(el, "dropper").querySelector<HTMLButtonElement>('[part="control"]')!.disabled).toBe(
       true,
@@ -377,12 +380,41 @@ describe("jx-color-field", () => {
     /* And the handlers refuse a click delivered anyway, because a pointer on a disabled control
        is not the only way one arrives: a host may dispatch one, and a picker opened from a field
        that cannot be edited is a picker whose every move is thrown away. */
-    part(el, "swatch").dispatchEvent(new Event("click", { bubbles: true }));
+    swatch(el).dispatchEvent(new Event("click", { bubbles: true }));
     await tick();
     expect(el.expanded).toBe(false);
     part(el, "dropper").dispatchEvent(new Event("click", { bubbles: true }));
     await tick();
     expect(el.value).toBe("#3b82f6");
+  });
+
+  test("tabindex lands on the swatch, parks the three controls beside it, and never reaches the host", async () => {
+    /* The property a roving container writes (ui.md §5.1), and the colour family's answer to which
+       of this element's four controls it lands on: the swatch, because it is the opener, so Enter
+       from it reaches the whole picker; because it is the one control the element always draws;
+       and because it is first in the row. In a FORM the prop is unset and every control keeps its
+       own tab stop, each with a name of its own. Written, the text field, the eyedropper and the
+       system door step out of the tab order — a container told this element is one stop must find
+       exactly one — and clearing the prop hands each its own stop back. */
+    stubDropper(() => Promise.resolve({ sRGBHex: "#000000" }));
+    const el = await field({ value: "#3b82f6" });
+    const dropper = () => part(el, "dropper").querySelector<HTMLElement>('[part="control"]')!;
+    const parked = () =>
+      [swatch(el), textInput(el), dropper(), part(el, "system")].map((node) =>
+        node.getAttribute("tabindex"),
+      );
+    expect(parked()).toEqual([null, null, null, null]);
+    el.tabindex = "-1";
+    await tick();
+    expect(parked()).toEqual(["-1", "-1", "-1", "-1"]);
+    el.tabindex = "0";
+    await tick();
+    expect(parked()).toEqual(["0", "-1", "-1", "-1"]);
+    /* A host carrying tabindex is itself focusable, so one control would become two tab stops. */
+    expect(el.hasAttribute("tabindex")).toBe(false);
+    el.tabindex = "";
+    await tick();
+    expect(parked()).toEqual([null, null, null, null]);
   });
 
   test("an unset field is the no-colour chip rather than black", async () => {

@@ -6,7 +6,7 @@
  * else in this file is the degenerate cases that would otherwise render an empty Library and look
  * like a broken one.
  */
-import { stubRect } from "./harness";
+import { installResizeObserver, stubRect } from "./harness";
 import { describe, expect, test } from "bun:test";
 import {
   DEFAULT_OVERSCAN_ROWS,
@@ -120,16 +120,36 @@ describe("computeWindow", () => {
 describe("sameWindow", () => {
   const base = { end: 10, padBottom: 4, padTop: 2, start: 0, totalRows: 30 };
 
-  test("ignores padding, which changes with every pixel of scroll", () => {
-    expect(sameWindow(base, { ...base, padBottom: 900, padTop: 900 })).toBe(true);
-  });
-
   test("sees a changed slice", () => {
     expect(sameWindow(base, { ...base, start: 1 })).toBe(false);
     expect(sameWindow(base, { ...base, end: 11 })).toBe(false);
     expect(sameWindow(base, { ...base, totalRows: 31 })).toBe(false);
   });
+
+  test("the same slice at a different row height is a different window", () => {
+    // The spacers are `rows × rowHeight`, so this is the one way they move while the slice does
+    // Not: the rows changed height under the window. Calling it "the same" is how the tree's
+    // Declared height came to disagree with its rows after a density switch.
+    expect(sameWindow(base, { ...base, padBottom: 900 })).toBe(false);
+    expect(sameWindow(base, { ...base, padTop: 900 })).toBe(false);
+  });
+
+  test("a scroll inside one row moves nothing it compares", () => {
+    // The spacers are quantised to the slice, not to the pixel — the guard is exactly as quiet
+    // Under a wheel as it was when it compared the slice alone.
+    const spec = { count: 1000, rowHeight: 24, viewportHeight: 240 };
+    const at = (scrollTop: number) => computeWindow({ ...spec, scrollTop });
+    expect(sameWindow(at(100), at(119))).toBe(true);
+    expect(sameWindow(at(100), at(120))).toBe(false);
+  });
 });
+
+/** One animation frame, which is what an observer-originated measure is deferred by. */
+function nextFrame(): Promise<void> {
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => resolve());
+  });
+}
 
 describe("createVirtualWindow", () => {
   function scroller(height: number) {
@@ -244,6 +264,96 @@ describe("createVirtualWindow", () => {
       expect(disconnected).toBe(true);
     } finally {
       globalThis.ResizeObserver = original;
+    }
+  });
+
+  // ─── A row-height change with no scroll ──────────────────────────────────
+  //
+  // The density switch: `--jx-control-h` goes from 24px to 20px, every drawn row shrinks in place,
+  // The scroller's box is exactly what it was and no scroll event arrives. The window's only way
+  // Of learning that `rowHeight()` now answers differently is the LIST's box moving by drawn × Δ.
+
+  test("a row-height change with no scroll re-measures through the LIST's resize", async () => {
+    const ro = installResizeObserver();
+    try {
+      const el = scroller(240);
+      const list = document.createElement("div");
+      el.append(list);
+      stubRect(el, { height: 240, top: 0 });
+      stubRect(list, { height: 61 * 24, top: 0 });
+      let rowHeight = 24;
+      const seen: number[] = [];
+      const handle = createVirtualWindow({
+        count: () => 61,
+        list,
+        onChange: (range) => seen.push(range.padBottom),
+        rowHeight: () => rowHeight,
+        scroller: el,
+      });
+      // The measured case: 61 rows at 24px, 14 drawn, 47 reserved below.
+      expect(seen).toEqual([47 * 24]);
+      expect(ro.observes(el)).toBe(true);
+      expect(ro.observes(list)).toBe(true);
+
+      // The rows shrink to 20px. The scroller did not move and did not resize; the list did.
+      rowHeight = 20;
+      ro.resize(list);
+      /* Nothing yet: a resize is measured ONE FRAME LATER, because measuring inside the observer's
+         own delivery repaints the spacers, which changes the list's box during that delivery, and
+         the browser reports a ResizeObserver loop instead of delivering it. Measured: one window
+         error per density toggle before the hop, zero after. */
+      expect(seen).toHaveLength(1);
+      await nextFrame();
+      const after = handle.range();
+      expect(after.padTop + (after.end - after.start) * 20 + after.padBottom).toBe(61 * 20);
+      expect(seen).toEqual([47 * 24, after.padBottom]);
+      // One report, not a storm: the repaint it asks for changes the list's box again, and that
+      // Second resize measures the same window. Two deliveries in one frame are one measure.
+      ro.resize(list);
+      ro.resize(list);
+      await nextFrame();
+      expect(seen).toHaveLength(2);
+      handle.destroy();
+      expect(ro.observes(list)).toBe(false);
+    } finally {
+      ro.restore();
+    }
+  });
+
+  test("reports a row-height change even when it leaves the SLICE where it was", async () => {
+    // Eight rows, a viewport that shows them all, scrolled 100px in: at 100px a row and at 80px a
+    // Row the slice is rows 1–8 either way, and only the spacer above differs. A guard that
+    // Compared the slice alone would swallow this — the tree's declared height would then be 20px
+    // Out from its rows, and nothing would ever correct it.
+    const ro = installResizeObserver();
+    try {
+      const el = scroller(1000);
+      const list = document.createElement("div");
+      el.append(list);
+      el.scrollTop = 100;
+      stubRect(el, { height: 1000, top: 0 });
+      stubRect(list, { height: 800, top: -100 });
+      let rowHeight = 100;
+      const seen: [number, number, number][] = [];
+      const handle = createVirtualWindow({
+        count: () => 8,
+        list,
+        onChange: (range) => seen.push([range.start, range.end, range.padTop]),
+        overscanRows: 0,
+        rowHeight: () => rowHeight,
+        scroller: el,
+      });
+      expect(seen).toEqual([[1, 8, 100]]);
+      rowHeight = 80;
+      ro.resize(list);
+      await nextFrame();
+      expect(seen).toEqual([
+        [1, 8, 100],
+        [1, 8, 80],
+      ]);
+      handle.destroy();
+    } finally {
+      ro.restore();
     }
   });
 });

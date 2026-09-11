@@ -11,7 +11,7 @@
  */
 
 import { applyEditZoom } from "./canvas-utils";
-import { setupHandle } from "../ui/panel-resize";
+import { bindSplit } from "../ui/panel-resize";
 import {
   EDIT_CANVAS_GUTTER,
   EDIT_WIDTH_MIN,
@@ -24,13 +24,13 @@ import { snapEditWidth } from "../utils/canvas-media";
 import { rectOf } from "../utils/geometry";
 import { tabOfPane } from "./canvas-surface";
 import type { CanvasSurface } from "./canvas-surface";
-import type { ResizeTarget } from "../ui/panel-resize";
+import type { ResizeTarget, SplitElement } from "../ui/panel-resize";
 
 /**
  * Apply a width to a live Edit column — the drag's only DOM writer.
  *
- * **Bare style writes, and never `renderPane`.** A full canvas render per pointermove would rebuild
- * the iframe DOM, break the handle's own pointer capture along with it, and be far too slow to drag
+ * **Bare style writes, and never `renderPane`.** A full canvas render per `input` would rebuild the
+ * iframe DOM, break the `jx-split`'s own pointer capture along with it, and be far too slow to drag
  * against — which is why this writes `session.ui.activeMedia` directly rather than going through
  * `canvas.setBreakpoint`, whose `run` ends in a `repaint`. (It is NOT because a re-render would
  * destroy an inline-edit session: pressing the handle already ended that, through the capture-phase
@@ -70,13 +70,21 @@ export function applyEditWidth(surface: CanvasSurface, column: HTMLElement, widt
 /**
  * The Edit column, as a {@link ResizeTarget}.
  *
- * `grow` is the sign a rightward pointer movement contributes: `+1` for the handle on the right of
- * the column, `-1` for the one on the left. **`scale` doubles it, and that is what makes the two
- * handles symmetric** — the column is centred by `justify-content: center`, so an edge that moves
- * `dx` only stays under the pointer if the total width changes by `2·dx`, the opposite edge
+ * `grow` is the sign a rightward movement of the handle contributes: `+1` for the handle on the
+ * right of the column, `-1` for the one on the left. **`scale` doubles it, and that is what makes
+ * the two handles symmetric** — the column is centred by `justify-content: center`, so an edge that
+ * moves `dx` only stays under the pointer if the total width changes by `2·dx`, the opposite edge
  * mirroring it. Both the placement and this sign are physical (`left`/`right`), because Studio's
  * own chrome is left-to-right; the artboard's `dir` is a property of the document inside the
  * iframe.
+ *
+ * **`lead` is the centre line.** The track a `jx-split` measures is the first boxed ancestor — the
+ * canvas, since each handle stands beside the column rather than inside it — and the column is
+ * centred in that canvas's CONTENT box, which is what `clientWidth` spans and a vertical scrollbar
+ * does not. So the right handle sits `clientWidth / 2 + width / 2` from the track's start, and the
+ * left one the same distance from its END, which for the trailing side is `track − clientWidth / 2`
+ * plus the half-width. Being exact about the scrollbar costs one subtraction and is what keeps
+ * `aria-valuenow` the handle's real position rather than one a few pixels off it.
  */
 export function editWidthTarget(
   surface: CanvasSurface,
@@ -84,8 +92,10 @@ export function editWidthTarget(
   grow: 1 | -1,
 ): ResizeTarget {
   const tabOf = () => tabOfPane(surface.paneId);
+  const centre = () => (column.parentElement?.clientWidth ?? 0) / 2;
   return {
     axis: "x",
+    lead: (track) => (grow === 1 ? centre() : track - centre()),
     /*
      * The widest the pane can actually show. Read fresh, per the ResizeTarget contract, because a
      * dock drag or a window resize moves it under a drag that is already in flight. Before layout
@@ -128,26 +138,40 @@ export function editWidthTarget(
 }
 
 /**
- * Handles already wired, so a re-render cannot stack a second gesture on one element.
+ * Handles already wired, each with the unbind {@link bindSplit} handed back, so a re-render cannot
+ * stack a second gesture on one element and a handle the stage has dropped does not keep
+ * listening.
  *
- * `canvas-render.ts` builds the Edit template afresh on every pass and lit's `ref` re-invokes an
- * inline callback each time, even where it reuses the DOM — the defect `panels/pane-grid.ts` names
- * at its own splitter, whose fix was a callback that never changes identity. A handle cannot use
- * that fix (its target closes over the pane), so idempotence is kept here instead: the element,
- * once wired, is remembered, and a repeat mount is a no-op rather than a duplicate listener.
+ * `canvas-render.ts` mounts the handles after every Edit pass, and the stage document reuses the
+ * nodes where it can — so a repeat mount of the same element must be a no-op. A mode round trip is
+ * the other case: the handles are drawn only while there is a column, so leaving Edit removes them
+ * and coming back draws two NEW ones. The old pair would otherwise stay bound — a window-resize
+ * listener each, and a row in the adapter's own registry that `syncSplits` walks on every dock move
+ * — so each mount first releases every handle no longer in the document. A `Map` rather than the
+ * `WeakSet` this used to be, because an unbind is a thing to hold, and the sweep is what bounds
+ * what it holds.
  */
-const _wired = new WeakSet<HTMLElement>();
+const _wired = new Map<HTMLElement, () => void>();
+
+/** Release every wired handle the document no longer contains. */
+function sweepWired(): void {
+  for (const [wired, unbind] of _wired) {
+    if (!wired.isConnected) {
+      unbind();
+      _wired.delete(wired);
+    }
+  }
+}
 
 /**
- * Attach the drag to one handle. Idempotent per element.
+ * Drive one handle — a `jx-split` — from the column's width. Idempotent per element.
  *
  * **The column is passed rather than inferred**, and the two are still created and replaced
- * together — a handle that outlived its column would be a handle with nothing to size. It used to
- * be read off `handle.parentElement`, which was true of the lit template and is not true of the
- * stage document: `surfaces/canvas-stage.json` draws each handle inside the conditional slot that
- * decides whether there is a column to size at all, so the handle's parent is that slot. Naming
- * both nodes is the honest fix — the caller already holds them — rather than flattening a document
- * to keep a DOM assumption alive.
+ * together — a handle that outlived its column would be a handle with nothing to size. The handle
+ * is not inside the column at all: `surfaces/canvas-stage.json` draws each one in a `display:
+ * contents` slot BESIDE the column, in the canvas's own flex row, which is what makes the canvas
+ * the track the element measures. Naming both nodes is the honest shape — the caller already holds
+ * them — rather than walking from one to the other.
  */
 export function mountEditWidthHandle(
   surface: CanvasSurface,
@@ -155,9 +179,9 @@ export function mountEditWidthHandle(
   column: HTMLElement | undefined,
   grow: 1 | -1,
 ): void {
+  sweepWired();
   if (!handle || !column || _wired.has(handle)) {
     return;
   }
-  _wired.add(handle);
-  setupHandle(handle, editWidthTarget(surface, column, grow));
+  _wired.set(handle, bindSplit(handle as SplitElement, editWidthTarget(surface, column, grow)));
 }

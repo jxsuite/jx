@@ -30,6 +30,21 @@
  *    the refusal stops the inner event at the input and dispatches one `change` from the HOST, and
  *    a host reading `e.target.value` reads the value that stands either way.
  *
+ * Two more are about a list that arrives LATE, which is what a fetched catalogue is:
+ *
+ * 5. **A list opened by a gesture lands on the row the field already holds.** The chevron and
+ *    Alt+ArrowDown put the caret on the row whose value the field holds, so a catalogue that
+ *    arrived after the reader typed `gpt-4o` shows it as THEIR row when they open the list, rather
+ *    than a list with nothing chosen. A plain arrow still enters at an end, and a keystroke still
+ *    lands on nothing (decision 2).
+ * 6. **An empty list is not shown.** With no rows there is nothing to open: the chevron is not drawn
+ *    (`data-empty`), and neither typing nor an arrow shows the panel, so a field whose catalogue
+ *    has not arrived is a text field until it does — and Escape reaches the dialog around it
+ *    instead of closing a panel nobody could see. The cost is stated: a host that re-answers
+ *    `options` on `input` and whose PREVIOUS answer was empty sees the list on the keystroke after
+ *    the one that produced rows, because the sidecar's own `input` handler runs before the host's;
+ *    a host that wants it sooner calls {@link openList} itself once it has answered.
+ *
  * @docs extending/ui-kit
  */
 
@@ -141,6 +156,40 @@ export function closeList(host: HTMLElement): void {
 }
 
 /**
+ * Show the list, if there is anything to list.
+ *
+ * Every opener the element owns goes through here rather than {@link openList}: a list with no rows
+ * is a bordered box with nothing in it, and an `aria-expanded` field over an empty listbox is a
+ * panel a reader would have to Escape out of without ever seeing it.
+ *
+ * @param state The element's reactive scope.
+ * @param host The `jx-combobox` element.
+ * @returns Whether the list was shown.
+ */
+function showList(state: ComboboxState, host: HTMLElement): boolean {
+  if (!operable(state) || rowsOf(state).length === 0) {
+    return false;
+  }
+  openList(host);
+  return true;
+}
+
+/**
+ * The row a list opened by a GESTURE lands on: the one the field's value already names, or none.
+ *
+ * Compared through {@link rowFor}, so the row is found in whatever case the reader typed it, and a
+ * disabled row is not a landing — the caret could not have arrowed onto it either.
+ *
+ * @param state The element's reactive scope.
+ * @returns The index of that row, or -1.
+ */
+export function landingIndex(state: ComboboxState): number {
+  const rows = rowsOf(state);
+  const row = rowFor(rows, String(state.value ?? ""));
+  return row && row.disabled !== true ? rows.indexOf(row) : -1;
+}
+
+/**
  * The next row a caret may land on, stepping over disabled rows and wrapping at both ends.
  *
  * `-1` in means "nothing is highlighted", and the first step from there lands on an end rather than
@@ -228,9 +277,7 @@ export function onComboboxInput(state: ComboboxState, event: Event): void {
   }
   state.value = control.value;
   state.activeIndex = -1;
-  if (operable(state)) {
-    openList(host);
-  }
+  showList(state, host);
 }
 
 /**
@@ -251,7 +298,8 @@ export function onComboboxToggle(state: ComboboxState, event: Event): void {
 }
 
 /**
- * The chevron: open the list, or close it when it is already open.
+ * The chevron: open the list on the row the field already holds, or close it when it is already
+ * open.
  *
  * @param state The element's reactive scope.
  * @param event The click.
@@ -265,7 +313,9 @@ export function onComboboxButton(state: ComboboxState, event: Event): void {
     closeList(host);
     return;
   }
-  openList(host);
+  if (showList(state, host)) {
+    state.activeIndex = landingIndex(state);
+  }
   inputOf(host)?.focus();
 }
 
@@ -336,8 +386,11 @@ export function onComboboxKeydown(state: ComboboxState, event: KeyboardEvent): v
         return;
       }
       if (state.open !== true) {
-        openList(host);
-        state.activeIndex = event.altKey ? -1 : nextIndex(rows, -1, 1);
+        /* Nothing to list is the platform's own key, not a cancelled one. */
+        if (!showList(state, host)) {
+          return;
+        }
+        state.activeIndex = event.altKey ? landingIndex(state) : nextIndex(rows, -1, 1);
       } else if (!event.altKey) {
         state.activeIndex = nextIndex(rows, at, 1);
       }
@@ -352,7 +405,9 @@ export function onComboboxKeydown(state: ComboboxState, event: KeyboardEvent): v
         break;
       }
       if (state.open !== true) {
-        openList(host);
+        if (!showList(state, host)) {
+          return;
+        }
         state.activeIndex = nextIndex(rows, -1, -1);
       } else {
         state.activeIndex = nextIndex(rows, at, -1);
@@ -369,10 +424,14 @@ export function onComboboxKeydown(state: ComboboxState, event: KeyboardEvent): v
     }
     case "Tab": {
       /* The one key that commits WITHOUT being cancelled: the reader is leaving, and taking the row
-         they had highlighted with them is the APG's answer for a list-autocomplete combobox. */
+         they had highlighted with them is the APG's answer for a list-autocomplete combobox. The
+         list closes either way — a browser found it still standing over the fields below once
+         focus had moved on, because light dismissal answers a press outside and not a Tab. */
       const row = state.open === true && at >= 0 ? rows[at] : undefined;
       if (row) {
         commitRow(state, host, row);
+      } else {
+        closeList(host);
       }
       return;
     }

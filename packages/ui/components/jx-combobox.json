@@ -43,7 +43,7 @@
     "options": {
       "type": "array",
       "default": [],
-      "description": "The rows to draw, as { value, label?, description?, disabled?, face?, swatch?, line? }. THE ELEMENT FILTERS NOTHING: this is the list that will be shown, not a corpus to match against. Every consumer already owns its own matching — a fuzzy ranker that knows about modes and recents, a catalogue fetched from a provider — so a second opinion here would be one more thing for each of them to defeat. A host re-answers it on input. It carries no attribute key, because a list cannot be one."
+      "description": "The rows to draw, as { value, label?, description?, disabled?, face?, swatch?, line? }. THE ELEMENT FILTERS NOTHING: this is the list that will be shown, not a corpus to match against. Every consumer already owns its own matching — a fuzzy ranker that knows about modes and recents, a catalogue fetched from a provider — so a second opinion here would be one more thing for each of them to defeat. A host re-answers it on input. It carries no attribute key, because a list cannot be one. Empty, there is nothing to open: the chevron is not drawn (data-empty) and neither typing nor an arrow shows the panel, so a field whose catalogue has not arrived is a text field until it does."
     },
     "allowsCustomValue": {
       "type": "boolean",
@@ -137,7 +137,7 @@
     "activeIndex": {
       "type": "number",
       "default": -1,
-      "description": "Which row the caret is on, or -1 for none — and -1 is where a keystroke leaves it, so Enter commits what the READER typed until they arrow onto a row. It is kept apart from the rows on purpose: a key moves the highlight without the row list reconciling, and the id it computes is the one string the field and the listbox are both told."
+      "description": "Which row the caret is on, or -1 for none — and -1 is where a keystroke leaves it, so Enter commits what the READER typed until they arrow onto a row. A list opened by a GESTURE lands on the row the field's value already names: the chevron and Alt+ArrowDown put the caret there, so a catalogue that arrived after the reader typed an id shows it as theirs rather than as a list with nothing chosen. It is kept apart from the rows on purpose: a key moves the highlight without the row list reconciling, and the id it computes is the one string the field and the listbox are both told."
     },
     "committed": {
       "type": "string",
@@ -180,7 +180,7 @@
       "$prototype": "Function",
       "$src": "jx-ui:/behaviors/combobox.ts",
       "$export": "onComboboxInput",
-      "description": "Mirrors what the reader types into value, clears the highlight and opens the list. The control's own input event goes on to bubble out of the element unchanged, which is how a host knows to re-answer options."
+      "description": "Mirrors what the reader types into value, clears the highlight and opens the list — if there is anything to list. The control's own input event goes on to bubble out of the element unchanged, which is how a host knows to re-answer options."
     },
     "onKeydown": {
       "$prototype": "Function",
@@ -226,7 +226,7 @@
       "$prototype": "Function",
       "$src": "jx-ui:/behaviors/combobox.ts",
       "$export": "onComboboxButton",
-      "description": "The chevron: shows the list under the field and puts the caret in the control, or hides a list that is already showing."
+      "description": "The chevron: shows the list under the field with the caret on the row the field already holds, and puts the text caret in the control — or hides a list that is already showing. Not drawn while there are no rows."
     },
     "onRowsPointerDown": {
       "$prototype": "Function",
@@ -244,6 +244,7 @@
   "attributes": {
     "data-size": "${state.size}",
     "data-open": "${state.open ? '' : null}",
+    "data-empty": "${Array.isArray(state.options) && state.options.length > 0 ? null : ''}",
     "data-invalid": "${state.invalid ? '' : null}",
     "data-disabled": "${state.disabled ? '' : null}"
   },
@@ -348,6 +349,12 @@
     "&[data-open] [part=\"toggle\"]": {
       "rotate": "180deg"
     },
+    "&[data-empty] [part=\"toggle\"]": {
+      "display": "none"
+    },
+    "&[data-empty] [part=\"input\"]": {
+      "paddingInlineEnd": "var(--jx-combobox-pad)"
+    },
     "& [part=\"list\"]": {
       "--jx-listbox-max-block-size": "min(320px, 50vh)",
       "minWidth": "0"
@@ -443,9 +450,11 @@
       ]
     },
     {
+      "$description": "match-width, because a list narrower than its field reads as belonging to something else: the panel measures the HOST the sidecar names as its source, so the rows are as wide as the text box plus the chevron beside it.",
       "tagName": "jx-popover",
       "attributes": {
         "part": "popup",
+        "match-width": "",
         "id": "${state.panelId || null}"
       },
       "ontoggle": {

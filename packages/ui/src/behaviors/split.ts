@@ -34,6 +34,18 @@
  * `min` by default, because that is what collapsing means for most splitters, and any position a
  * host names for one whose two sides are both real panes.
  *
+ * **Every `input` and `change` carries the modifier keys the gesture step was made with, and the
+ * element gives none of them a meaning of its own beyond `Shift`.** A host that snaps — Studio's
+ * Edit column pulls its width onto the document's breakpoints, with Alt as the way through — needs
+ * to know what the hand was holding on THIS step, and the element is the only thing that saw the
+ * event. It does not learn what a breakpoint is: it reports `{ altKey, ctrlKey, metaKey, shiftKey
+ * }` as the event's `detail`, a fact about one step rather than about the element, which is why it
+ * is on the event and not in the state — state is what is true between events, and a modifier the
+ * hand released is not. `Shift` is reported even though the keyboard already spent it on the large
+ * step, because what a host makes of a modifier is the host's business. {@link splitModifiersOf}
+ * reads the detail back off any `Event`, so a plain `input` a host dispatches itself means "no
+ * modifiers" rather than a type error.
+ *
  * @docs extending/ui-kit
  */
 
@@ -70,6 +82,51 @@ export interface SplitState {
   [key: string]: unknown;
 }
 
+/**
+ * The modifier keys one gesture step carried, as the platform names them on a pointer event and a
+ * key event alike. The `detail` of every `input` and `change` this element dispatches.
+ */
+export interface SplitModifiers {
+  altKey: boolean;
+  ctrlKey: boolean;
+  metaKey: boolean;
+  shiftKey: boolean;
+}
+
+/** The modifiers of a step that had none — also what a plain `Event` reads as. */
+const NO_MODIFIERS: Readonly<SplitModifiers> = Object.freeze({
+  altKey: false,
+  ctrlKey: false,
+  metaKey: false,
+  shiftKey: false,
+});
+
+/** The four modifier flags off an event, each `true` only when it is exactly `true`. */
+function modifiersOf(event: object): SplitModifiers {
+  const flags = event as Partial<Record<keyof SplitModifiers, unknown>>;
+  return {
+    altKey: flags.altKey === true,
+    ctrlKey: flags.ctrlKey === true,
+    metaKey: flags.metaKey === true,
+    shiftKey: flags.shiftKey === true,
+  };
+}
+
+/**
+ * The modifiers an `input` or `change` from a `jx-split` carried.
+ *
+ * The one reader a host needs: the detail is on a `CustomEvent`, and a listener typed against the
+ * platform's own `input` sees an `Event`. Anything that is not this element's detail — a plain
+ * `Event` a host dispatched itself, a `UIEvent` whose `detail` is a click count — reads as no
+ * modifiers, so a host's snap runs and its bypass does not.
+ *
+ * @param event The `input` or `change`.
+ */
+export function splitModifiersOf(event: Event): SplitModifiers {
+  const { detail } = event as { detail?: unknown };
+  return detail !== null && typeof detail === "object" ? modifiersOf(detail) : { ...NO_MODIFIERS };
+}
+
 /** One live gesture: where it started, and the bounds it was measured against. */
 interface Drag {
   /** The pointer coordinate at `pointerdown`, along the dragged axis. */
@@ -97,10 +154,15 @@ function hostOf(event: Event): HTMLElement | null {
   return target instanceof HTMLElement && target.localName === HOST ? target : null;
 }
 
-/** Say the value moved, from the HOST, in the platform's own names. */
-function announce(host: HTMLElement, ...names: string[]): void {
+/**
+ * Say the value moved, from the HOST, in the platform's own names, carrying the step's modifiers.
+ *
+ * A `CustomEvent` rather than an `Event`, and only for the `detail`: it is still an `Event` to
+ * every listener that only wanted `e.target.value`.
+ */
+function announce(host: HTMLElement, modifiers: SplitModifiers, ...names: string[]): void {
   for (const name of names) {
-    host.dispatchEvent(new Event(name, { bubbles: true, composed: true }));
+    host.dispatchEvent(new CustomEvent(name, { bubbles: true, composed: true, detail: modifiers }));
   }
 }
 
@@ -319,7 +381,7 @@ export function onSplitPointerMove(state: SplitState, event: PointerEvent): void
   }
   const moved = coordOf(isVertical(state), event) - drag.origin;
   if (writeValue(state, drag.start + moved / drag.length, drag.lo, drag.hi)) {
-    announce(host, "input");
+    announce(host, modifiersOf(event), "input");
   }
 }
 
@@ -352,7 +414,7 @@ export function onSplitPointerUp(state: SplitState, event: PointerEvent): void {
   ) {
     host.releasePointerCapture(event.pointerId);
   }
-  announce(host, "change");
+  announce(host, modifiersOf(event), "change");
 }
 
 /**
@@ -391,7 +453,7 @@ export function onSplitKeydown(state: SplitState, event: KeyboardEvent): void {
   }
   event.preventDefault();
   if (writeValue(state, next, lo, hi)) {
-    announce(host, "input", "change");
+    announce(host, modifiersOf(event), "input", "change");
   }
 }
 
@@ -411,6 +473,6 @@ export function onSplitDoubleClick(state: SplitState, event: MouseEvent): void {
   }
   const { hi, lo } = boundsOf(state, host);
   if (writeValue(state, toggleTarget(state, lo, hi), lo, hi)) {
-    announce(host, "input", "change");
+    announce(host, modifiersOf(event), "input", "change");
   }
 }

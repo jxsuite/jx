@@ -1618,9 +1618,9 @@ function renderCanvasImpl(surface: CanvasSurface) {
       surface,
       {
         /* The card is the column's FIRST child by contract (`tests/canvas-render.test.ts`, "Edit
-           puts it INSIDE the document column"). The two handles come LAST: they are
-           `position: absolute`, so DOM order costs them nothing, and a handle in front of the card
-           would be a layout claim nobody made. */
+           puts it INSIDE the document column"). The two handles are not in the column at all: they
+           are `jx-split`s standing beside it in the canvas's row, because the canvas is the track
+           a splitter has to measure and the column is the thing being resized. */
         columnHeader: wantsDocHeader ? "shown" : "hidden",
         frame: "boards",
         framePart: "edit-canvas",

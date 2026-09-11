@@ -129,7 +129,7 @@ export function createAiCredentialsForm(opts: AiCredentialsFormOptions): AiCrede
     loadDrafts();
     modelsError = "";
     /* The fetched list stays: it was listed under exactly these credentials, and dropping it
-       collapsed the model list control back to a bare text field on every save. The module cache is
+       collapsed the model combobox back to a bare text field on every save. The module cache is
        dropped by ai-models' own settings subscription, so this form does not have to remember to. */
     opts.onSaved?.();
     opts.requestRender();
@@ -173,7 +173,10 @@ export function createAiCredentialsForm(opts: AiCredentialsFormOptions): AiCrede
     }
   }
 
-  /** The catalogue as rows. A model with no name of its own is called by its id. */
+  /**
+   * The catalogue as rows — the list the combobox will draw, never a corpus it matches against. A
+   * model with no name of its own is called by its id.
+   */
   function rows(): CredentialsModelRow[] {
     return availableModels.map((model) => ({ label: model.name, value: model.id }));
   }
@@ -209,6 +212,10 @@ export function createAiCredentialsForm(opts: AiCredentialsFormOptions): AiCrede
     surface?.update(view());
   }
 
+  /**
+   * Typed, picked from the catalogue, or committed — the combobox says all three through one value,
+   * and the draft is the one place it lands.
+   */
   function setModel(value: string) {
     modelDraft = value;
     surface?.update(view());

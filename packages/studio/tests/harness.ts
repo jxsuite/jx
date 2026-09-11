@@ -681,6 +681,56 @@ export function stubRect(el: Element, rect: Partial<DOMRect>): void {
   (el as { getBoundingClientRect: () => DOMRect }).getBoundingClientRect = () => full;
 }
 
+/** A `ResizeObserver` a test delivers by hand — see {@link installResizeObserver}. */
+export interface FakeResizeObservers {
+  /** Whether any live observer currently holds `target`. */
+  observes: (target: Element) => boolean;
+  /** Deliver a resize of `target`. Nothing happens for an element nobody observed. */
+  resize: (target: Element) => void;
+  /** Put the environment's own `ResizeObserver` back. Call from a `finally`. */
+  restore: () => void;
+}
+
+/**
+ * Happy-dom's `ResizeObserver` exists and never fires, because nothing there has a box to change.
+ * Replace it with one a test can fire for a named element, so code that re-measures on a resize can
+ * be shown to do so — and shown NOT to for an element it never observed, which is the half a real
+ * observer enforces and a stub that fires everything would wave through.
+ */
+export function installResizeObserver(): FakeResizeObservers {
+  const original = globalThis.ResizeObserver;
+  const observers: { cb: () => void; targets: Element[] }[] = [];
+  function FakeResizeObserver(this: Record<string, unknown>, cb: () => void) {
+    const record = { cb, targets: [] as Element[] };
+    observers.push(record);
+    this.observe = (target: Element) => {
+      if (!record.targets.includes(target)) {
+        record.targets.push(target);
+      }
+    };
+    this.unobserve = (target: Element) => {
+      record.targets = record.targets.filter((el) => el !== target);
+    };
+    this.disconnect = () => {
+      record.targets = [];
+    };
+  }
+  globalThis.ResizeObserver = FakeResizeObserver as unknown as typeof ResizeObserver;
+  return {
+    observes: (target) => observers.some((o) => o.targets.includes(target)),
+    resize(target) {
+      for (const o of observers) {
+        if (o.targets.includes(target)) {
+          o.cb();
+        }
+      }
+    },
+    restore: () => {
+      globalThis.ResizeObserver = original;
+    },
+  };
+}
+
 /**
  * Render the shell's four overlay layers into `host`.
  *

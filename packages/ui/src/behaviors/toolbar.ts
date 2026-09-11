@@ -108,12 +108,15 @@ function itemFor(bar: HTMLElement, node: HTMLElement): ItemElement {
  * The node inside an item that actually takes focus.
  *
  * `[part="control"]` and `[part="input"]` are the kit's own two names for "this element's own
- * control" (`jx-button`, `jx-action-button` and `jx-swatch` use the first, `jx-textfield` and
- * `jx-number-field` the second), so they are asked for first — but only if the node wearing the
- * name is FOCUSABLE. On `jx-checkbox` and `jx-switch` `[part="control"]` is the `<label>` that
- * wraps the input, so taking the named node on trust focused a label, which focuses nothing, and
- * left the real control where it was. A plain native control is its own answer, and anything else
- * falls back to the first focusable node the item holds.
+ * control" (`jx-button`, `jx-action-button`, `jx-swatch` and `jx-color-field` use the first,
+ * `jx-textfield` and `jx-number-field` the second), so they are asked for first — but only if the
+ * node wearing the name is FOCUSABLE. A composed control names the one node it wants roved: the
+ * colour field is a swatch, a text field and two doors, and the swatch wears the name because it is
+ * the opener, so the query finds it ahead of the text field's `[part="input"]`. On `jx-checkbox`
+ * and `jx-switch` `[part="control"]` is the `<label>` that wraps the input, so taking the named
+ * node on trust focused a label, which focuses nothing, and left the real control where it was. A
+ * plain native control is its own answer, and anything else falls back to the first focusable node
+ * the item holds.
  *
  * @param item A toolbar item.
  * @returns The node to focus and to ask about a key.

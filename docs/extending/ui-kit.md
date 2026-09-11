@@ -3,6 +3,7 @@ title: "The Jx UI kit"
 description: "Register the interface elements Jx Studio is built from, use its theme tokens and Phosphor icons in a site, and open the kit as a project."
 spec:
   - ui.md#1 # what the kit is
+  - ui.md#3.1 # element, part, surface
   - ui.md#4 # theme and tokens
   - ui.md#5 # the element catalogue
   - ui.md#5.2 # overlays
@@ -24,6 +25,7 @@ code:
   - packages/ui/src/behaviors/listbox.ts
   - packages/ui/src/behaviors/combobox.ts
   - packages/ui/src/behaviors/popover.ts
+  - packages/ui/src/behaviors/dialog.ts
   - packages/ui/src/behaviors/tooltip.ts
   - packages/ui/src/behaviors/toast.ts
   - packages/ui/src/behaviors/toast-host.ts
@@ -72,15 +74,53 @@ Every colour token is a `light-dark()` pair, so the theme follows the operating 
 
 The tokens live in the kit's own `project.json`. Open that file in Studio to edit them on the canvas.
 
+## Style a part
+
+The kit ships no CSS class. Every node inside an element carries a `part`, and the element's own `style` object is where its drawing lives. Because the elements are light DOM, a part is an ordinary descendant you can address from where you use the element:
+
+```json
+{
+  "tagName": "jx-button",
+  "style": {
+    "& > [part=\"control\"]": { "minWidth": "8rem" }
+  },
+  "children": [{ "tagName": "span", "textContent": "Publish" }]
+}
+```
+
+A `style` object written where the element is used merges with the element's own and wins, so one instance can be drawn differently without a rule reaching into the kit. A rule on an ancestor works the same way: `"& jx-button > [part=\"control\"]"`. Each section below names an element's parts. A part whose name ends in `-slot` is the box around something that may not be there: a named slot, or a branch the element draws only in some states. It is what the element asks `:empty` of, since a slot itself leaves no node.
+
 ## Draw an icon
 
 ```json
 { "tagName": "jx-icon", "attributes": { "name": "plus", "label": "Add" } }
 ```
 
-`name` is a Phosphor glyph the kit ships. `weight` is `regular`, `bold` or `fill`. `label` gives the icon an accessible name; leave it out when visible text already names the control, and the icon stays hidden from assistive technology. `mirror` flips the drawing for a right-to-left layout.
+`jx-icon` draws one glyph. `name` is a Phosphor glyph the kit ships. `weight` is `regular`, `bold` or `fill`. `label` gives the icon an accessible name; leave it out when visible text already names the control, and the icon stays hidden from assistive technology. `mirror` flips the drawing for a right-to-left layout.
 
-The list of shipped glyphs is `icons/list.json` in the package. Add a name there and run `bun run build:icons` to extend it.
+The list of shipped glyphs is `icons/list.json` in the package. Add a name there and run `bun run build:icons` to extend it. A weight the manifest lacks falls back to `regular`. The parts are `svg` and `path`.
+
+## Dividers, key caps and dots
+
+Three elements own a box and nothing else. They are elements because two or more definitions draw the same box, and a definition's `style` object is the only place a declaration may live.
+
+`jx-divider` is a hairline: one `<hr part="rule">` the platform already announces as a separator. `orientation` is `horizontal`, the default, or `vertical`. The vertical branch makes the host a flex box exactly as wide as the rule it holds, so it stretches to a toolbar's height and takes no width beyond the hairline. The host still has a box, one client rect coincident with the rule, which is what the canvas selects and drops onto. `hidden` removes the hairline and its advance in either orientation.
+
+```json
+{ "tagName": "jx-divider", "$props": { "orientation": "vertical" } }
+```
+
+`jx-kbd` is a key cap in running text. Its content is the key. It is an atomic inline box, so it sits on the text baseline and a line break falls between caps rather than through one.
+
+```json
+{ "tagName": "jx-kbd", "textContent": "Ctrl" }
+```
+
+`jx-dot` is a six-pixel status disc. `tone` is `danger`, `success` or `warning`; anything else, the empty default included, is the neutral disc. It recolours the disc and nothing else: the dot carries no name of its own, so a row that means something by it says so in its own text or names the dot where it is used.
+
+```json
+{ "tagName": "jx-dot", "$props": { "tone": "success" } }
+```
 
 ## Buttons
 
@@ -97,15 +137,19 @@ The list of shipped glyphs is `icons/list.json` in the package. Add a name there
 }
 ```
 
-`variant` is `accent`, `primary`, `secondary` (the default) or `negative`. `size` is `sm`, `md` or `lg`. `quiet` drops the fill and border until hovered. `disabled` disables the control. `loading` keeps the button's width, shows a spinner, says `aria-busy` and swallows the next activation. When the visible text is not the name, or there is none, give it a `label`; `labelledby` and `describedby` forward to the control too. `autofocus` forwards as well, so a button inside a dialog can claim the focus its `showModal()` would otherwise give to whichever control comes first.
+`variant` is `accent`, `primary`, `secondary` (the default) or `negative`. `size` is `sm`, `md` or `lg`. `quiet` drops the fill and border until hovered. `disabled` disables the control. `loading` keeps the button's width, shows a spinner, says `aria-busy` and swallows the next activation. `type` is `button`, the default, `submit` or `reset`. When the visible text is not the name, or there is none, give it a `label`; `labelledby` and `describedby` forward to the control too. `autofocus` forwards as well, so a button inside a dialog can claim the focus its `showModal()` would otherwise give to whichever control comes first. The `icon` slot draws a glyph before the text. The parts are `control`, `icon`, `label` and `spinner`.
 
-`jx-action-button` is the icon-first tool button a toolbar is made of. `label` is required, because its name is not on screen. It is the accessible name only: set `hint` as well if you want a tooltip, which an icon-only button usually should. They were one prop, and a button whose text is already readable does not need its own label repeated on hover. `icon` names a glyph. `toggles` makes it a two-state button that carries `aria-pressed`, flips `selected` when activated and dispatches `change` with the new state. A host that owns the state sets `selected` itself, and the property wins.
+A click reaches you on the element, and a `loading` button stops it at the control inside, so your own listener never runs for an activation the button refused. That is why the swallow is on the inner control rather than the host: `stopPropagation` halts an event at the node it is called on and every node after it, never the other listeners on that same node.
+
+`tabindex` is a property, not an attribute, on every kit control that wraps a native one: `jx-button`, `jx-action-button`, `jx-textfield`, `jx-checkbox`, `jx-switch`, `jx-swatch` and `jx-color-field`. Write `el.tabindex = "0"` and it reaches the control inside, which is the node that takes focus. Write it as an attribute and it lands on the host as well, and a host carrying `tabindex` is itself focusable, so one control becomes two tab stops. A container that roves a caret, such as `jx-toolbar`, writes the property.
+
+`jx-action-button` is the icon-first tool button a toolbar is made of. `label` is required, because its name is not on screen. It is the accessible name only: set `hint` as well if you want a tooltip, which an icon-only button usually should. They were one prop, and a button whose text is already readable does not need its own label repeated on hover. `icon` names a glyph, `weight` is its weight, and `mirror` flips it so one shipped glyph serves both sides of a pair. `toggles` makes it a two-state button that carries `aria-pressed`, flips `selected` when activated and dispatches `change` with the new state. A host that owns the state sets `selected` itself, and the property wins.
 
 ```json
 { "tagName": "jx-action-button", "$props": { "label": "Bold", "icon": "text-b", "toggles": true } }
 ```
 
-It is `quiet` by default. `emphasized` draws the selected state in the accent. `stacked` puts the icon above a visible label, the shape of a rail button. A button that opens a menu rather than running a command sets `haspopup` and `expanded`, which reach the control as `aria-haspopup` and `aria-expanded`. `badge` draws a count over the button's corner, and nothing when empty.
+It is `quiet` by default. `emphasized` draws the selected state in the accent. `stacked` puts the icon above a visible label, the shape of a rail button. A button that opens a menu rather than running a command sets `haspopup` and `expanded`, which reach the control as `aria-haspopup` and `aria-expanded`. `badge` draws a count over the button's corner, and nothing when empty. `size`, `disabled`, `loading`, `label`, `labelledby`, `describedby` and the invoker attributes work as they do on `jx-button`; `loading` here puts the spinner where the glyph was, since an action button has no icon slot to put one in. `checked`, `"true"` or `"false"`, makes the button one segment of a radio group instead of a toggle, and the two are alternatives rather than companions: a button that is one of several choices is a radio, a button that is independently on or off is a toggle, and where both are set `checked` wins and the button neither says `aria-pressed` nor flips itself. The parts are `control`, `icon`, `icon-glyph`, `spinner`, `label`, `badge-slot` and `badge`.
 
 ## Text fields
 
@@ -128,6 +172,8 @@ The native `input` and `change` events bubble from the field as they always do. 
 
 `grows` hands a multiline field's height to the content in it. Give `rows` as well to set a floor. On a browser without `field-sizing`, the field falls back to the height its `rows` asks for, or to the same three-row box a fixed field gets, so turning growth on never makes a field shorter.
 
+The parts are `input`, `clear` and `clear-icon`, `error` and `help`, and the boxes `control-slot`, `clear-slot` and `help-slot` around them.
+
 ## Checkboxes and switches
 
 `jx-checkbox` and `jx-switch` each wrap one native checkbox inside the `<label>` that names it, so a click anywhere on the label toggles it and Space works with no code. Use a checkbox for "this item is included" and a switch for "this setting is on". The switch carries `role="switch"`, which is what makes a screen reader say on and off instead of checked and unchecked.
@@ -143,7 +189,7 @@ Put the visible text inside the element instead of in `label` when it carries ma
 
 `indeterminate` is the checkbox's third state, for a box that stands for a set where some members are on. It is the reason this is an element at all: HTML has no `indeterminate` attribute, so a mixed box cannot be expressed in markup. Clicking a mixed box clears it and turns the box on, the way the platform does.
 
-`jx-switch` takes a `hint`, which becomes the title on the control. Both take `label`, `labelledby`, `describedby`, `name`, `disabled` and `size`.
+`jx-switch` takes a `hint`, which becomes the title on the control. Both take `label`, `labelledby`, `describedby`, `name`, `disabled` and `size`. The native `change` and `input` bubble from the control, so `event.target.checked` reads as it would from a bare input. Both have the parts `control`, `input` and `label`, and on these two `control` is the `<label>` wrapping the input rather than the input itself.
 
 :::doc-note
 Resetting a form these controls sit in leaves them where the reader left them, rather than snapping back. They are not form-associated yet, so a reset never reaches them; the control's default is kept in step with its live value so the two can never say different things. Putting a value back is a write from the host.
@@ -160,9 +206,11 @@ Resetting a form these controls sit in leaves them where the reader left them, r
 }
 ```
 
-`value`, `min`, `max` and `step` are strings, not numbers. That is deliberate: an empty string is a value a number cannot express, and a numeric prop would turn a cleared field into a zero. Read the number back with `event.target.valueAsNumber`, which is `NaN` when the field is empty.
+`value`, `min`, `max` and `step` are strings, not numbers. That is deliberate: an empty string is a value a number cannot express, and a numeric prop would turn a cleared field into a zero. Read the number back with `event.target.valueAsNumber`, which is `NaN` when the field is empty. `label`, `labelledby`, `describedby`, `placeholder`, `name`, `disabled` and `size` work as they do on a text field. The two stepping buttons are named `Increase` and `Decrease`; `step-up-label` and `step-down-label` rename them for another language.
 
 Stepping goes through the control's own `stepUp` and `stepDown`, so a value sits on the step grid measured from `min`. Adding the step yourself does not: with `min` 0 and `step` 0.3, stepping up from 0.5 gives 0.6, and 0.5 plus 0.3 gives 0.8.
+
+The events are the platform's two names and nothing else. When the reader types, the native `input` and `change` bubble from the control untouched, so `event.target` is the live input with its `validity` and `form`; when the element writes the value itself, from a stepping button or a Shift-arrow, the same two names come from the element. The parts are `field`, `input`, `stepper`, `step-up`, `step-up-icon`, `step-down`, `step-down-icon` and the `stepper-slot` box around the buttons.
 
 :::doc-warning
 A number input throws away what it cannot parse, so a half-typed `1e` and a cleared field both read as an empty string. Before deleting a value because the field is empty, check `badInput` on the element, or its `data-bad-input` attribute. It is true while the reader is mid-way through typing something the control cannot represent yet.
@@ -198,9 +246,11 @@ A row is a `value` and a `label`, plus any of `description`, `disabled`, `face`,
 
 `value` is a string, and the empty string is one of its values rather than the absence of one, so a blank row can mean "inherit". Set `value` to something no row holds and the element adds a row for it instead of quietly selecting the first one.
 
-Read the answer from `change`, the way you would from any select. The event comes from the inner control, so `event.target.value` is the row the reader picked.
+Read the answer from `change`, the way you would from any select. The event comes from the inner control, so `event.target.value` is the row the reader picked. `label`, `labelledby`, `describedby`, `name`, `disabled`, `required` and `size` forward to the control as they do on a text field, and `invalid`, `error` and `help` draw and announce the same way. Give a `name`: it is also what satisfies the one HTML validity rule a page carrying this element otherwise trips, that a form field should have an id or a name.
 
 You can also write rows yourself, as children: native `option` and `optgroup` elements, and an `<hr>` between them for a separator. Children are placed once, when the element is set up, so use them for rows that never change and `options` or `groups` for rows that do.
+
+The parts are `control`, the `<select>` itself; `trigger` and `preview`, the closed face; `option`, `swatch`, `line`, `text` and `description` on each row; `group` and `group-heading`; `unlisted`, the stand-in row; and `error`, `help` and `help-slot`.
 
 :::doc-note
 The drawing needs a browser with customizable select: Chrome or Edge 135 and later. In an older engine the control still works, still submits and still reads correctly, but the browser draws the list and the faces, swatches and group headings do not show.
@@ -229,9 +279,15 @@ A row is a `value` plus any of `label`, `description`, `disabled`, `face`, `swat
 
 **The element does not filter.** `options` is the list it will draw, not a corpus it searches. You already know how to rank your own rows, so re-answer `options` when you hear the `input` event and the list redraws.
 
+A list opened by a gesture, the chevron or `Alt` with the down arrow, lands on the row whose value the field already holds, so a catalogue that arrived after the reader typed an id shows it as their row rather than as a list with nothing chosen. A plain arrow still enters at an end.
+
 **Typing highlights nothing.** After a keystroke nothing is selected, so Enter commits what the reader typed. Arrow onto a row first and Enter takes the row. That is what makes `allows-custom-value` mean something: with it set, anything the reader types stands, and the rows are suggestions. Without it the list is closed, and a value no row holds is put back to the last accepted one when the reader leaves the field. Either way the element says `change` exactly once per edit, and `event.target.value` is the value that stands.
 
-The arrows open the list and move through it, wrapping and stepping over disabled rows. `Alt` with the down arrow opens without choosing, and with the up arrow closes. Tab takes whatever row is highlighted on the way out. Escape closes the list and stops there, so a combobox inside a dialog does not close the dialog with it. Home and End stay with the text cursor, where the reader is typing.
+The arrows open the list and move through it, wrapping and stepping over disabled rows. The chevron, and `Alt` with the down arrow, open the list on the row the field already holds, or on nothing when no row holds its value; `Alt` with the up arrow closes. Tab takes whatever row is highlighted on the way out, and closes the list either way. Escape closes the list and stops there, so a combobox inside a dialog does not close the dialog with it. Home and End stay with the text cursor, where the reader is typing.
+
+**An empty list is not shown.** With no rows the chevron is not drawn and neither typing nor an arrow opens anything, so a field whose suggestions have not arrived yet is a text field until they do, and Escape reaches the dialog around it rather than a panel nobody could see. That is the shape of a catalogue you fetch: draw the field at once, hand it `options` when the listing lands, and whatever the reader typed while waiting stands. Studio's provider form is that field, with `allowsCustomValue` because a self-hosted model id is the normal case. Because the element's own `input` handler runs before yours, a host whose previous answer was empty sees the list on the keystroke after the one that produced rows; call `openList(host)` from `@jxsuite/ui/behaviors/combobox` once you have answered if you want it sooner.
+
+`label`, `labelledby`, `describedby`, `placeholder`, `name`, `required`, `disabled` and `size` work as they do on a text field, and so do `invalid`, `error` and `help`. `readonly` can be focused and selected but never opens the list, because every row is an edit. `autocomplete` defaults to `off` rather than to nothing, since the browser's own dropdown over a list the element is already drawing is two panels answering one question. `open` reports whether the list is showing and is not a way to show it. The parts are `field`, `input`, `toggle` and `toggle-icon`, `popup`, `list`, `option`, `error`, `help` and `help-slot`.
 
 ### A list of your own
 
@@ -259,7 +315,7 @@ The arrows open the list and move through it, wrapping and stepping over disable
 
 That one id is the whole contract. Write it into the listbox's `active` and into your field's `aria-activedescendant`, and the listbox marks the row, clears the one before it, and scrolls the new one back into view. It keeps doing so when the rows themselves change, so a filter that rebuilds the list does not lose the highlight.
 
-A row's words are its `label`, and `description` is a muted note at the end of it. `slot="icon"` takes a glyph and `slot="end"` takes one mark or chord. Each channel you leave out draws nothing. `jx-option` sends a bubbling `select` event whose detail is its `value`, so one listener on the panel hears every row.
+A row's words are its `label`, and `description` is a muted note at the end of it. `slot="icon"` takes a glyph and `slot="end"` takes one mark or chord. Each channel you leave out draws nothing. `jx-option` sends a bubbling `select` event whose detail is its `value`, so one listener on the panel hears every row. There is no default slot, on purpose: an option names itself from its contents, so a badge beside the words would join the row's name, and `label` is the only thing that does. The empty string is a legal `value`, a row meaning inherit or none, and never absence. A `disabled` row stays in the list and announced and dispatches nothing when clicked. `face`, `swatch` and `line` draw the row as its own preview, as on a `jx-select` row. A press on a row keeps the caret where it was, so a click never blurs the field that owns the keyboard. Its parts are `swatch`, `line`, `icon`, `label`, `description` and `end`; `jx-listbox` has none, because it is only the box the rows stand in.
 
 Two parts are yours to write and the listbox draws them: a node carrying `part="group-heading"` above a run of rows, and a node carrying `part="empty"` for the sentence you show when nothing matched. What that sentence says is yours, because only you know what the reader was looking for.
 
@@ -281,7 +337,11 @@ A `jx-option` belongs in a `jx-listbox` and nowhere else. Put one inside a `<sel
 
 Nothing here writes an id, and nothing writes `labelledby`. The field mints one and hands it to whatever you put inside it, which is the reason it is an element rather than three things you assemble each time.
 
-`required` draws a mark beside the label, drawn rather than added to the text so it stays out of the control's name. `invalid` turns the help line red, and `warning` colours it amber. `span` gives the control the whole width instead of the two-column row.
+`required` draws a mark beside the label, drawn rather than added to the text so it stays out of the control's name. Marking the row does not make the control required: say so on the control as well, which is the element that validates. `invalid` turns the label and the help line red, and `warning` colours the label amber and leaves the sentence alone. Neither says anything to assistive technology; `aria-invalid` belongs on the control that holds the value. `span` gives the control the whole width instead of the two-column row, with the label above it.
+
+`description` is the sentence under the row, and the `help` slot is the richer version of it: anything slotted into `help` replaces the description rather than stacking with it. The control is pointed at the sentence only when there is one at mount, so a sentence that starts empty and fills later should be slotted rather than passed as `description`. The parts are `label`, `control` and `help`.
+
+The naming happens once, over whatever is slotted when the row mounts. A control appended to the row afterwards lands outside the control part, unplaced and unnamed, so keep the control in the document and switch its state rather than adding it later.
 
 A control the kit does not ship cannot be named this way, because the field hands the label's id to a property and a plain `<input>` has none. Name it yourself in that case, with `aria-labelledby` pointing at the field's label.
 
@@ -301,6 +361,8 @@ A control the kit does not ship cannot be named this way, because the field hand
 Open it from a button with no script: `{ "tagName": "jx-button", "$props": { "command": "--show", "commandfor": "delete-page" } }`. A `--close` command closes it. From code, call `showModal(host)` and `close(host)` from `@jxsuite/ui/behaviors/dialog`. The dialog dispatches `confirm`, `secondary` and `cancel` for its buttons and `close` when it has closed for any reason; after `confirm` it stays open until the host closes it, so a value the host refuses can keep the dialog up with its message. `destructive` draws the primary button in the negative variant. `dismissible` lets a click outside the dialog close it; Escape always does. `size` is `sm`, `md` or `lg`.
 
 **The dialog opens with its confirm button focused**, so a reader who answers the way people answer dialogs, with Enter, gets the primary action. A `destructive` dialog hands that focus to **cancel** instead, because the primary action there destroys something. Without this the browser focuses whichever button comes first in the markup, which for a Save, Discard and Cancel footer is Discard.
+
+`open` reports what the platform did, mirrored from the dialog's own `toggle`, and is not a way to open one. The parts are `dialog`, `header`, `headline`, `body` and `footer`; `confirm`, `secondary` and `cancel`, each with a `-label` part inside it and a `-slot` box around it; and `overlay-slot`, the box a popover opened from a control inside the dialog renders into, since a modal makes everything outside itself inert.
 
 ## Show a menu
 
@@ -335,9 +397,11 @@ import { openAt } from "@jxsuite/ui/behaviors/popover";
 openAt(document.getElementById("actions"), triggerButton);
 ```
 
-Each row dispatches a bubbling `select` event whose `detail` is its `value`. Listen for it on the menu. A disabled row stays in the list and shows its `requires` text as a tooltip. Set `destructive` on a row that deletes, and `checked` to `"true"` or `"false"` on one that toggles. A row with `haspopup` takes a child menu in its `submenu` slot, which opens on hover, on ArrowRight and on the chevron; the row itself still runs its own command.
+Each row is a `jx-menu-item`, and it dispatches a bubbling `select` event whose `detail` is its `value`. Listen for it on the menu. A disabled row stays in the list and shows its `requires` text as a tooltip. Set `destructive` on a row that deletes, and `checked` to `"true"` or `"false"` on one that toggles. A row with `haspopup` takes a child menu in its `submenu` slot, which opens on hover, on ArrowRight and on the chevron; the row itself still runs its own command. A row's other slots are `icon` before the words, `description` for one secondary line and `value` for a chord at the end; its parts are `icon`, `text`, `label`, `description`, `value`, `chevron` and `chevron-icon`. The click stops at the row, because a row inside a submenu is a descendant of the row that owns it and would otherwise activate both.
 
 Arrow keys, Home, End and typing a letter move between rows. Enter and Space activate. Escape closes one level, and a click outside closes the whole stack.
+
+`x` and `y` place the panel in viewport pixels, and `floor` is the lowest edge it and its submenus may reach, `0` meaning the viewport: a menu opened from a rail that abuts a status bar sets it to the rail's bottom, so a tall submenu never runs down over the bar. A submenu that would leave the viewport on the right flips to its parent's left. `open` follows the platform and is not a way to show the menu. The menu has no parts: it is the panel, and its rows are its children.
 
 Focus goes back to the button that opened the menu, but only if you say which button that was. The browser restores focus relative to a popover's invoker, and it learns the invoker from a `popovertarget` attribute or from the argument `openAt` passes for you. A bare `showPopover()` names none, so the reader who closes the menu starts again from the top of the page.
 
@@ -368,7 +432,9 @@ The platform does the work: Escape closes it, a click outside closes it, Tab wal
 
 To open one from code, call `openAt(panel, trigger)` from `@jxsuite/ui/behaviors/popover` rather than `showPopover()`. Passing the trigger is what tells the browser where to send focus when the panel closes; without it a reader lands back at the top of the page. `close(panel)` closes it. The `open` prop reports what the platform did and is not a way to open one: writing it shows nothing.
 
-Place it with `x` and `y` in viewport coordinates, and `floor` for the lowest edge it may reach. There is no `anchor` prop. Anchor positioning needs the anchor element to declare `anchor-name`, and the kit will not write a style on an element it does not own, so a panel over your own button could never establish it.
+Place it with `x` and `y` in viewport coordinates, and `floor` for the lowest edge it may reach. There is no `anchor` prop. Anchor positioning needs the anchor element to declare `anchor-name`, and the kit will not write a style on an element it does not own, so a panel over your own button could never establish it. The gap between the panel and its trigger is the `--jx-popover-offset` token rather than a prop.
+
+`match-width` makes the panel at least as wide as whatever opened it, the way a select's list matches its trigger, measured once per toggle from the trigger the platform or `openAt` names. `arrow` draws a pointer at the panel's top edge; it is off by default because a panel placed by measured coordinates cannot promise the arrow lands on its anchor. The parts are `content` and `arrow`, and `content` is the scroll box: the panel itself never scrolls, because a scroll container clips whatever hangs outside its padding box and the arrow hangs above it. While an open or close transition is still running the host carries `data-jx-settling`, so measure a panel after that attribute goes rather than on the toggle.
 
 `jx-tooltip` is a tip for a control whose meaning is not written on it. It uses the `hint` mode, which is the only one that does not close an open menu, so a tip can explain a row of one:
 
@@ -382,6 +448,8 @@ Place it with `x` and `y` in viewport coordinates, and `floor` for the lowest ed
 
 Name it onto its control from the control's side, with `interestfor` where the browser supports it and `aria-describedby` either way. It is never focusable, it stays up while you hover it or hold focus, and Escape dismisses it. Those three together are what WCAG 1.4.13 asks of anything that appears on hover.
 
+Both wirings work on every engine. Where the browser has no interest invokers the tip binds the pointer and focus of the control that declares `interestfor` at it itself, and `for`, the id of a control, is the other way round: the tip names its control. Either is read once, at mount; a tip wired up later is bound with `bindTooltip` from `@jxsuite/ui/behaviors/tooltip`. `delay` is how long the pointer must rest before the tip appears, in milliseconds, and keyboard focus never waits; on an engine with interest invokers the wait is the platform's own `interest-delay-start`, and this number is not consulted. The tip places itself under its control, or above it when there is no room below, and never over it; `x`, `y` and `flipped` are what it writes when it does, and what a host that places a tip itself sets instead. `arrow` draws a pointer on the edge facing the control, and `arrow` is its one part.
+
 `jx-spinner` says work is happening. Leave `value` empty for the usual case, where nothing knows how far along it is; give it a percentage to draw a ring instead. It is a string, not a number, because an empty string is a value a number cannot express and a numeric prop would read "unset" as zero:
 
 ```json
@@ -390,7 +458,7 @@ Name it onto its control from the control's side, with `interestfor` where the b
 
 Give it a `label` when it stands alone, and leave the label off when it sits inside a button that is already named: without one the spinner hides itself from screen readers, so the button is not announced twice. A reader who asks for reduced motion gets a slower spin rather than a stopped one, because a stopped spinner reads as a hang.
 
-It draws in the colour of the text around it, so a spinner inside a button is visible on every variant without being told. Override `--jx-spin-color` and `--jx-spin-track-color` on the element or an ancestor to change that.
+It draws in the colour of the text around it, so a spinner inside a button is visible on every variant without being told. Override `--jx-spin-color` and `--jx-spin-track-color` on the element or an ancestor to change that. `size` is `sm`, `md` or `lg`, and `md` matches the kit's icon size so a spinner swapped in for a glyph does not move the row. The parts are `glyph` and `glyph-icon`.
 
 ## Toasts
 
@@ -427,7 +495,9 @@ Anything in the `action` slot is the one thing a reader may do about the message
 
 **Press `F8` to put the keyboard in the stack.** The stack sits at the end of the document, where Tab reaches it last, so the host offers a key instead. Focus goes to the first control in the first open toast, and Escape gives it back to wherever it came from. Dismissing the toast you are standing in gives it back the same way. Set `hotkey` to another key, or to the empty string if your application has a command of its own for this.
 
-`jx-toast-host` is the live region: the toasts inside it carry no role of their own, so a message is announced once. `live` is `polite` by default, `assertive` for the rare message that cannot wait, and `off` for an application that already announces outcomes somewhere else. `label` names the region, and `placement` pins the stack to `bottom-end`, `bottom-start`, `top-end` or `top-start`. The order is the order you write, in every corner, so what a reader hears, what they tab through and what they see agree.
+`jx-toast-host` is the live region: the toasts inside it carry no role of their own, so a message is announced once. `live` is `polite` by default, `assertive` for the rare message that cannot wait, and `off` for an application that already announces outcomes somewhere else. Role and attribute move together: `polite` writes `role="status"`, `assertive` writes `role="alert"`, and `off` writes neither. `label` names the region, and `placement` pins the stack to `bottom-end`, `bottom-start`, `top-end` or `top-start`. The order is the order you write, in every corner, so what a reader hears, what they tab through and what they see agree. Off a host, a toast is an ordinary box in the flow, drawn and not announced.
+
+A toast's parts are `icon` and `glyph`, `message`, `dismiss`, and the `action-slot` box around the control. The host has none.
 
 ## Tabs
 
@@ -449,9 +519,9 @@ Anything in the `action` slot is the one thing a reader may do about the message
 
 Give it a `label`. A tab strip with no name is announced as a bare group, and nothing will tell you: the naming rules stand down for an element that carries its role from a binding, so no checker sees the omission.
 
-Each tab names its panel with `panel`, and each `jx-tab-panel` points back with `labelledby`. Arrow keys move along the strip and wrap, Home and End jump to the ends, and Tab enters and leaves in one press. `activation` decides whether moving the caret selects as it goes, which is the usual behaviour, or waits for Enter or Space, which is right when selecting a tab is expensive. The strip fires `change` with the new value, and `selected` is already written when it does.
+Each `jx-tab` names its panel with `panel`, and each `jx-tab-panel` points back with `labelledby`. Nothing checks that pairing, so mint both ids from one key. A panel takes `active` to say it is the showing one; the others are hidden rather than removed, so the ids their tabs name stay resolvable. A showing panel takes one tab stop, the price of a panel whose whole content may be static text. Arrow keys move along the strip and wrap, Home and End jump to the ends, and Tab enters and leaves in one press. `activation` decides whether moving the caret selects as it goes, which is the usual behaviour, or waits for Enter or Space, which is right when selecting a tab is expensive. `orientation` is `horizontal` or `vertical`; it chooses which arrow pair moves the caret and which edge carries the strip's rule and the selected mark. The strip fires `change` with the new value, and `selected` is already written when it does. The strip is the one writer of every tab's `selected`, so move the selection by writing the strip's, never a tab's.
 
-`closable` adds a close button and Delete closes the focused tab. Enter and Space on the close button close it too, rather than selecting the tab it sits in. `dirty` draws the unsaved dot.
+`closable` adds a close button and Delete closes the focused tab; both dispatch `close` with the tab's value. Enter and Space on the close button close it too, rather than selecting the tab it sits in. `dirty` draws the unsaved dot, which is hidden from assistive technology: a reader is told about unsaved work by the page. Write a tab's `label` as an attribute: a property write does not reflect, and a strip's selectors read the attribute.
 
 A tab takes three named slots, so you can decorate one without rebuilding the strip. `icon` draws before the label; `status` and `actions` draw after it and before the tab's own dirty dot and close button.
 
@@ -476,6 +546,8 @@ Always give a tab a `label` once you slot anything into it. The label is the tab
 
 Two things stay yours. A control in `actions` should be in the tab order only while its tab is the current one, the way the close button is: bind its `tabindex` to the selection, which is what `jx-action-button` takes a `tabindex` property for. And a mark that says nothing useful to a screen reader is yours to hide with `aria-hidden`, because only you know whether it is decoration.
 
+A tab's parts are `icon`, `label`, `status`, `actions`, `dirty` and `close` with `close-icon`, plus the `dirty-slot` and `close-slot` boxes. The strip and the panel have none.
+
 ## Sections
 
 `jx-accordion-item` is a native `<details>` with a heading you can style:
@@ -490,9 +562,13 @@ Two things stay yours. A control in `actions` should be in the tab order only wh
 
 Give several of them the same `name` to make the group exclusive, so opening one closes the rest. That is the platform's own behaviour and needs no script.
 
-Put them in a `jx-accordion` to draw them as one stack, with a hairline between sections and none above the first.
+`label` is required. It is written as the summary's accessible name rather than left to name-from-content, because the actions row sits inside the summary and would otherwise be read as part of the section's name. Two slots decorate the summary: `heading` for a mark beside the label, and `actions` for a control that stays visible while the section is shut. A click on a control in `actions` runs the control and does not toggle the section; a click on the row's own empty space toggles nothing either. An inert mark belongs in `heading`, because a non-interactive element slotted into `actions` still toggles the section. `level`, a number, opts the label into heading semantics so a long panel can be skimmed by heading navigation. The cost is that the label is announced twice when reading linearly, once as the heading and once as the disclosure, which is why it is opt-in.
 
-The element fires `toggle` when a section opens or closes, and that event stops at the element. A native `toggle` does not travel up the page, so a section inside a menu or a panel cannot close the thing around it by opening.
+`open` is two-way: the platform writes it when the reader opens the section and you may write it to open or close one. Written as a property it does not reflect onto the host's attribute, so read it as a property or from `toggle` rather than with `getAttribute`.
+
+Put them in a `jx-accordion` to draw them as one stack, with a hairline between sections and none above the first visible one. Its `multiple` prop, `true` by default, is advisory: it writes down whether more than one section may stand open, and the platform's own switch for exclusivity is `name` on each section, which only the section may carry. Set `multiple` to `false` and make it true by giving every item the same `name`.
+
+The element fires `toggle` when a section opens or closes, and that event stops at the element. A native `toggle` does not travel up the page, so a section inside a menu or a panel cannot close the thing around it by opening. The parts are `details`, `summary`, `marker` and `marker-icon`, `label`, `heading`, `actions` and `body`; the stack has none.
 
 ## Button groups
 
@@ -515,7 +591,9 @@ The element fires `toggle` when a section opens or closes, and that event stops 
 }
 ```
 
-`selects` decides what the row is: `"none"` is a toolbar of separate actions, `"single"` is a set of choices where one wins, and `"multiple"` is a set of independent switches. Arrow keys move within the row and Tab leaves it, so a toolbar of ten buttons costs one tab stop rather than ten. `compact` joins the buttons into one segmented control.
+`selects` decides what the row is: `"none"` is a toolbar of separate actions, `"single"` is a set of choices where one wins, and `"multiple"` is a set of independent switches. Arrow keys move within the row and Tab leaves it, so a toolbar of ten buttons costs one tab stop rather than ten. `compact` joins the buttons into one segmented control, and it reaches only the buttons that are the group's own children, so a nested group keeps its own seam. `label` names the group, and a reader entering it hears the name; `orientation` is `horizontal` or `vertical`, and it picks the arrow pair and turns the row. The group has no parts.
+
+The group chooses the pattern and the keyboard and does not own the selection. In `"single"` it clicks the button the caret lands on and lets you decide what that means, so the value stays in your state.
 
 For a single-choice row, set `checked` to `"true"` or `"false"` on each button rather than `selected`, and do not set `toggles`. A button that both announces a chosen state and flips itself would fight the host that owns the value, so the element refuses the combination.
 
@@ -541,6 +619,8 @@ For a single-choice row, set `checked` to `"true"` or `"false"` on each button r
 Arrow keys move along the row and wrap at both ends, :kbd[Home] and :kbd[End] reach the ends, and :kbd[Tab] leaves the whole toolbar. A row of any length costs one tab stop.
 
 A text field in the row keeps the arrow keys while its caret still has text to move through. Press the same arrow again at the end of the text and the caret leaves the field for the next control, so you arrow in, type, and arrow out with one key. :kbd[Home] and :kbd[End] inside a text field always belong to the field.
+
+A `jx-color-field` in the row is one stop, and the stop is its swatch. Arrow onto it and :kbd[Enter] opens the picker, which holds everything a colour needs. The text box, the eyedropper and the system colour well beside it leave the tab order while the field sits in a toolbar, so there they are reached with a pointer; in a form each has its own stop again.
 
 Two kinds of control are not moved between by the toolbar's arrows, and each keeps a tab stop of its own instead. Anything that runs its own arrow keys is left alone, such as a `jx-action-group` or a `jx-tabs`: two roving carets over one row would disagree about which control is current. So is anything whose arrow keys are already spoken for, such as a `jx-select`, a range, a spin button or a `jx-combobox`, because walking the caret past one would rewrite what somebody had chosen or open a list they had not asked for.
 
@@ -588,6 +668,10 @@ The arrows walk the rows and deliberately do not wrap, which is where a tree dif
 
 The tree reports what the reader meant and never resolves it. `select` carries `{ value, mode, anchor }`, where `mode` is `replace`, `toggle` or `range`, and the selection set is yours to hold: a range names every row between two of them, and under windowing those are the rows the page does not have. `expand` carries `{ value, expanded }` and says the state a row should be PUT INTO, so the twisty and the arrow keys arrive by one route. `activate` is :kbd[Enter] or a double click.
 
+`multiple` on the tree says more than one row may be selected, as `aria-multiselectable`, and it gates the modifiers: with it off every `select` is `replace` however many keys the reader holds, so a host that never asked for multi-select is never handed a `toggle`. `anchor` is the row a :kbd[Shift] range extends from; the tree writes it on every `replace` and `toggle`, and you may seed it to restore a session. Write `selected` on each row yourself, since a selection is a set and a windowed tree draws part of it. A row writes `aria-selected` only when it is selected, because a `false` on every row is what tells assistive technology a tree is multi-select, and that answer belongs on the tree.
+
+A row is all a `jx-tree-item` is: it draws itself and knows nothing about its neighbours. `disabled` keeps the row drawn and counted, so its siblings do not renumber, but the caret steps over it and a click on it does nothing. `cut` draws a row already lifted to the clipboard, faded and invisible to assistive technology, because cut and paste is the keyboard alternative to dragging and the page announces the move. `grip` draws the drag handle, a plain hidden span rather than a control: it is the grab affordance for a pointer drag and never a second way to move the row. A row's three slots are the tab's: `icon` before the name, `status` for a mark, and `actions` for a control whose click stops there. Give every row a `label` once anything is slotted, for the reason a tab needs one. The tree's parts are `pad-top` and `pad-bottom`, the two spacers; a row's are `twisty` and `twisty-icon`, `icon`, `label`, `status`, `grip` with its `grip-slot` box, and `actions`. Each row also carries `data-value`, which is what a drag-and-drop library attaches to.
+
 ### A tree that draws a window
 
 Set `padtop` and `padbottom` to the pixels of scroll you are reserving above and below the drawn rows, and the tree knows it is showing part of a model. Two things then change, and both become messages to you.
@@ -633,9 +717,13 @@ With both pads at zero the drawn rows ARE the model. The ends of the slice are t
 
 `gap` is the one number you give in pixels: the smallest either side may become. The element measures the box it divides at the start of every gesture and converts the gap against that measurement, so nothing on your side has to watch for a resize. `min` and `max` are ratios, and both are honoured: the tighter of the two wins at each end.
 
-Arrow keys move the splitter one `step` at a time along its own axis, :kbd[Shift] with an arrow takes a `largeStep`, and :kbd[Home] and :kbd[End] go as far as the gap allows. :kbd[Enter] collapses the split and a second press restores it to where it was. A double click does the same thing with the pointer, which is what gives a reader who cannot drag a way to reach both positions.
+Arrow keys move the splitter one `step` at a time along its own axis, :kbd[Shift] with an arrow takes a `largeStep`, and :kbd[Home] and :kbd[End] go as far as the gap allows. :kbd[Enter] collapses the split and a second press restores it to where it was. A double click does the same thing with the pointer, which is what gives a reader who cannot drag a way to reach both positions. `collapse` is the value both go to; its default sits below every legal share and clamps to `min`, so collapsing means going to the floor unless you say otherwise. A keystroke is a move and a commit, so `input` and `change` both fire for it.
+
+Every `input` and `change` carries the modifier keys that step was made with as its `detail`: `{ altKey, ctrlKey, metaKey, shiftKey }`. The element gives none of them a meaning beyond :kbd[Shift]'s larger step; a host that snaps the value onto positions of its own reads them with `splitModifiersOf(event)` from `@jxsuite/ui/behaviors/split` and decides which key is the way past the snap. A plain `input` you dispatch yourself reads as no modifiers.
 
 `orientation` names the splitter rather than the direction it travels, which is what ARIA means by it: the default `vertical` is the upright line between two side by side panes, dragged left and right, and `horizontal` is the flat line between two stacked boxes, dragged up and down.
+
+`label` is its accessible name, and every splitter needs one: a separator is named by nothing else, no checker asks, and a reader arriving on an unnamed one is told they have landed on a separator and nothing more. Name it after the two things it divides. `disabled` keeps the box and the announcement and drops the tab stop, because a layout a reader cannot explain is worse than one they cannot change. While a drag is live the host carries `data-dragging`, so the splitter stays lit for a pointer that has left it. It has no parts: the element is the whole handle.
 
 ## Colours
 
@@ -657,6 +745,8 @@ A value the field cannot take apart is kept rather than refused. Hand it `var(--
 `alpha` adds the opacity track to the picker and the alpha channel to the value. Leave it off and every value the field writes is opaque, so a field feeding a property with no alpha cannot be handed one by accident.
 
 `system` and `eyedropper` control the two doors. `system` is a native `<input type="color">`, which opens whatever picker the operating system has. `eyedropper` is the screen picker, and its button appears only on engines that have the API, so you never get a control that does nothing when you press it. Turn both off where the colours must come from the project's own palette.
+
+`labelledby` names the text field from a visible label you own; the other controls keep their composed names, because a label naming the row does not name the button inside it. `size` and `disabled` forward to every control inside. The empty string means no colour has been chosen and draws the slashed chip rather than black. The parts are `row`; `control`, the swatch button, with `preview` inside it; `text`, the field; `dropper` and `system` with their `-slot` boxes; `picker`, the `jx-popover` itself; and inside it `panel`, `area`, `hue`, `opacity` with `opacity-slot`, and `tokens`. The swatch button is `control` because it is the one stop a roving container focuses: it is the opener, so Enter on it reaches the whole picker, and it is the control the element always draws. `tabindex` is a property on this element as on the buttons, and while it is set the text field and the two doors step out of the tab order, so a toolbar that was told this element is one stop finds exactly one.
 
 Listen for `input` and `change` on the element. They come from the element itself whichever of the five controls the reader touched, so `e.target.value` is always the colour:
 
@@ -697,9 +787,11 @@ Anything slotted into `tokens` is drawn under the sliders, and choosing from it 
 
 `jx-swatch` is a colour chip that is a real button. Give every one a `label`: that is its accessible name, and without it a reader hears the hex code one character at a time. Set `value` when the swatch stands for a token rather than for the literal colour, and the `select` event carries that instead.
 
-`jx-swatch-group` makes a set of them a radio group with one tab stop. Either arrow pair moves between swatches and chooses the one it lands on, Home and End go to the ends, and disabled swatches are stepped over. The group owns the selection: write its `value` and it moves the swatches, and listen for `change` on the group rather than for `select` on a swatch.
+`color` is any CSS colour the page can resolve, and the empty string is the no-colour chip, a slashed square, because a blank square in a palette reads as white. `checked` and `selected` are different things: `checked`, `"true"` or `"false"`, makes the swatch one radio of a group and is what a reader is told, and `jx-swatch-group` is its single writer; `selected` draws the chosen ring and the tick without announcing anything, for a swatch a host has chosen outside a group. Setting one never sets the other. `size` is `sm`, `md` or `lg`, and the chip grows while the button's target never shrinks below the kit's control height. `disabled` cannot be chosen or focused. Slotted text sits beside the chip as a caption, and the label still names the swatch, so the two must agree. The parts are `control`, `chip`, `mark` with its `mark-slot` box, and `label`.
 
-`columns` lays the swatches out on a fixed grid. Leave it at 0 and they wrap on their own.
+`jx-swatch-group` makes a set of them a radio group with one tab stop. Either arrow pair moves between swatches and chooses the one it lands on, Home and End go to the ends, and disabled swatches are stepped over. The group owns the selection: write its `value` and it moves the swatches, and listen for `change` on the group rather than for `select` on a swatch. `label` names the group, and every group needs one, since a radio group takes no name from its members: "Theme palette" and "Recent colours" are two different questions and a reader hears only this.
+
+`columns` lays the swatches out on a fixed grid. Leave it at 0 and they wrap on their own. The group has no parts.
 
 ### The picker's own parts
 
@@ -716,6 +808,8 @@ The square holds two hidden range inputs, one for each axis, so it is fully oper
 
 The square never writes the hue. Give it one from a `jx-color-slider` beside it, and dragging into the grey corner leaves the hue where the reader put it.
 
+`label` names the square, and it is required: the square is a group holding two sliders, a group is named by nothing it contains, and no checker asks. `x-label` and `y-label` name the two axes, `Saturation` and `Brightness` unless another language needs other words. `brightness` is measured upward from the bottom edge, so 100 is the top. `step` is the grid both axes move on, for the arrow keys and for the snap a pointer drag is put through, so the thumb and the announced value cannot disagree mid-drag. `disabled` forwards to both ranges. The parts are `track`, `x` and `y`, the two ranges, and `thumb`.
+
 ```json
 {
   "tagName": "jx-color-slider",
@@ -723,7 +817,7 @@ The square never writes the hue. Give it one from a `jx-color-slider` beside it,
 }
 ```
 
-`channel` is `"hue"` or `"alpha"`. It chooses the gradient, the units the value is announced in, and the top of the range, so a hue track runs to 360 and an alpha track to 100 without your writing `max`. An alpha track fades from whatever you pass as `color`.
+`channel` is `"hue"` or `"alpha"`. It chooses the gradient, the units the value is announced in, and the top of the range, so a hue track runs to 360 and an alpha track to 100 without your writing `max`. An alpha track fades from whatever you pass as `color`, and from `currentColor` when you pass nothing. `min` and `max` cut the track down to a band, and `max` at `0` means unset rather than a top of zero, since a track that ends at zero has nowhere to move. `step` is the grid the value moves on, for the platform's own arrows and for the ten-step :kbd[Shift] arrow the element adds; a plain arrow, Home, End and the Page keys are the platform's. `label` or `labelledby` is required, because a slider takes no name from its contents. `disabled` forwards to the range. The parts are `track` and `input`.
 
 Both elements say `input` and `change` from themselves rather than from the range inside, so read `e.target.saturation` and `e.target.brightness` from a square and `e.target.value` from a track.
 

@@ -39,9 +39,10 @@ import { cellForPane, mount, paneGridReady, reconcile, unmount } from "../src/pa
  * membership of neither cell.
  */
 
-/* The kit element, not the part it is addressed by. Both match the same node today, and only one
-   of them goes red if the document ever writes its own separator again. */
-const SPLITTER_SELECTOR = "jx-split";
+/* The kit element AND the part it is addressed by, because the grid holds more than one `jx-split`
+   now: the Edit column's two width handles stand in a pane's stage. The tag is what goes red if
+   the document ever writes its own separator again; the part is what keeps the handles out. */
+const SPLITTER_SELECTOR = 'jx-split[part="splitter"]';
 
 function grid(): HTMLElement {
   return document.querySelector("#pane-grid") as HTMLElement;
