@@ -154,6 +154,28 @@ describe("the Tag row commits what the rung change produced", () => {
     expect(selectedNode().tagName).toBe("section");
   });
 
+  test("the Formula rung offers the tag grammar and nothing else", async () => {
+    openWithChildTag("section");
+    const c = await renderPanel();
+    await chooseValueSource(c, "expression");
+    await renderPanel();
+
+    const select = tagRow(c).querySelector('[part="operator"]') as HTMLElement & {
+      groups?: { rows: { value: string }[] }[];
+    };
+    const offered = (select.groups ?? []).flatMap((group) => group.rows.map((row) => row.value));
+
+    /* `TagExpression` is `?:` and `switch`, both branches resolving to a literal tag — and this row
+       used to offer the whole operator table. Reoperating the seed to `capitalize` wrote a document
+       `jx validate` rejects and `tagNameCandidates` cannot enumerate, and the Command Bar, the jump
+       bar, the Inspector and the canvas each threw reading it. */
+    expect(offered).toEqual(["?:", "switch"]);
+    expect(offered).not.toContain("toUpperCase");
+    expect(offered).not.toContain("call");
+    // The catalog half of the same restriction is asserted on the projection, in
+    // `tests/expression-editor.test.ts` — the button's absence here is not a witness on its own.
+  });
+
   test("a formula the user never seeded here clears the tag rather than seeding one", async () => {
     /* The seed is expression-only: de-escalating asks for a literal, gets `undefined`, and the
        property is removed — the row falls back to the default tag for the user to type over. A seed

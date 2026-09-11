@@ -9,9 +9,10 @@
  *
  * Two things every caller has to know, and they are properties of the runtime rather than of this
  * fixture. A scope write is applied on a JOB, not synchronously, so an assertion about what a
- * gesture drew has to `await flush()` first. And a focus move is queued a microtask behind the
- * projection that drew the row it lands on, for the reason `focusModelRow` states — so a keyboard
- * assertion needs the same wait.
+ * gesture drew has to `await flush()` first. And a keyboard assertion needs the same wait for a
+ * second reason: the panel answers a caret move the tree could not perform by scrolling, selecting
+ * and repainting, and `jx-tree` takes the keyboard to the revealed row from its own sync once that
+ * row is focusable — a step behind the projection that drew it.
  */
 import { flush } from "./harness";
 import { detachOutline, mountOutlinePanel } from "../src/panels/layers-panel";

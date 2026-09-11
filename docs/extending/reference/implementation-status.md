@@ -30,8 +30,8 @@ This page is generated from the `> **Status: …**` markers in the specification
 | `spec.md`                 | 0.6.21-draft | Partial     | 2026-09-10 |
 | `standards.md`            | 0.1.17-draft | Partial     | 2026-09-02 |
 | `studio-ui-guidelines.md` | 0.8.2-draft  | Partial     | 2026-09-10 |
-| `studio.md`               | 0.11.0-draft | Partial     | 2026-09-10 |
-| `ui.md`                   | 0.1.31-draft | Partial     | 2026-09-10 |
+| `studio.md`               | 0.11.1-draft | Partial     | 2026-09-10 |
+| `ui.md`                   | 0.1.32-draft | Partial     | 2026-09-10 |
 
 ## Sections not yet implemented
 

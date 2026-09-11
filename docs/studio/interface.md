@@ -100,6 +100,12 @@ Drag the dock's inner edge to resize it (up to half the window), and double-clic
 
 Both trees in the dock, **Files** and **[Outline](/docs/studio/design/layers)**, answer the same keys. :kbd[Tab] enters the tree at the row you were last on, :kbd[↑] and :kbd[↓] walk the rows, :kbd[→] opens a folder or steps into it, :kbd[←] closes it or steps out to the one it sits in, and :kbd[Home] / :kbd[End] jump to the ends of the whole tree rather than to the ends of what is on screen. Typing a letter jumps to the next row whose name starts with it. Everything the tree does not use reaches your commands untouched, so cut, paste and delete still work on the row you are standing on.
 
+## Moving a file
+
+Drag a row onto a folder and the file moves into it, taking its open tab with it and repairing every reference to it across the project (see [Renaming and moving](/docs/studio/projects/pages-layouts-components)). The folder highlights as you hover it, and that highlight is the whole promise: if nothing lights up, nothing will happen when you let go.
+
+Some drops are refused, and refusing them looks like refusing them. A file dropped on the folder it is already in stays where it is. A folder cannot be dropped inside itself or into anything it contains. Dropping on a file does nothing, because a file has no inside. To move something to the top level of your project, drop it on the empty space below the tree, which highlights as a whole while nothing else does.
+
 ## Creating a file
 
 There is one creation flow, and every surface that makes a file uses it: **New File…** in the Files tree, **New** in the [Library](/docs/studio/projects/browse), and **New Entry** for a content collection. Wherever you start from, the dialog behaves the same way:

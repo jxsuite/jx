@@ -52,8 +52,28 @@ describe("selectorsForNode", () => {
 
   test("the tag is read case-insensitively, and through a tag expression", () => {
     expect(extras({ tagName: "DETAILS" })).toEqual(["[open]"]);
-    const chosen = { tagName: { $expression: { cases: { a: "a" }, default: "a" } } };
+    /* A WHOLE `TagExpression` — `operator`, `target`, `cases` and the `default` an element with no
+       tag cannot do without. The shorthand this used to pass was accepted only because the guard
+       looked no further than "is `$expression` an object", which is the same unsoundness that let a
+       formula reach tag position and threw `Cannot convert undefined or null to object` out of four
+       projections at once. */
+    const chosen = {
+      tagName: {
+        $expression: {
+          cases: { a: "a" },
+          default: "a",
+          operator: "switch",
+          target: { $ref: "#/state/kind" },
+        },
+      },
+    };
     expect(extras(chosen)).toEqual([":visited", ":target"]);
+    // An expression that is not a tag choice names no tag, so it earns no tag-specific selector.
+    expect(
+      extras({
+        tagName: { $expression: { operator: "toUpperCase", target: { $ref: "#/state/t" } } },
+      }),
+    ).toEqual([]);
   });
 
   test("no node at all still answers the common set", () => {

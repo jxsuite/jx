@@ -544,8 +544,6 @@ const _fileRowEls = new Map<string, HTMLElement>();
 let _fileWatch: ListWindowWatch | null = null;
 /** The Navigator repaint, captured per render so the scroll watch never holds a stale one. */
 let _filesRerender: (() => void) | null = null;
-/** A keyboard jump that had to scroll first, spent by the repaint it provoked. */
-let _pendingFocusPath: string | null = null;
 
 /**
  * The height one row actually has; the declared constant until a row has been laid out.
@@ -711,8 +709,7 @@ function fileWindowChanged(): void {
 }
 
 /**
- * Adopt the tree: keep it watching whatever scrolls it, and hand the keyboard the row a jump asked
- * for once that row exists.
+ * Adopt the tree: keep it watching whatever scrolls it.
  *
  * Called after every projection rather than once at mount, and that is not belt-and-braces. The
  * tree element is created ONE time — the document re-uses it for the life of the panel — and at
@@ -732,27 +729,6 @@ function adoptFileTree(): void {
     onChange: fileWindowChanged,
     rowHeight: fileRowHeight,
   });
-  takePendingFocus();
-}
-
-/**
- * Move the keyboard to the row a jump asked for, once that row is on screen.
- *
- * One shot, whichever of the two callers gets there first: a row that was already drawn is focused
- * when the projection settles, and a row the scroller had to reveal is focused the moment its
- * element announces itself. A focus request that outlived its own repaint is stale, and moving the
- * keyboard later is worse than never having moved it.
- */
-function takePendingFocus(): void {
-  const wanted = _pendingFocusPath;
-  if (wanted === null) {
-    return;
-  }
-  const el = fileRowElement(wanted);
-  if (el) {
-    _pendingFocusPath = null;
-    el.focus();
-  }
 }
 
 // ─── What the document draws ─────────────────────────────────────────────────
@@ -1050,16 +1026,20 @@ function typeaheadFileCaret(from: string, char: string): void {
 }
 
 /**
- * Move the keyboard to the model row at `index`, bringing it into the window if it is outside.
+ * Reveal the model row at `index` and put the caret on it.
  *
  * The SELECTION moves with it, and that is not a flourish: `jx-tree` raises `select` alongside
  * `change` on every arrow it can perform itself, so a step the window could not satisfy must not be
- * the one step that silently does not. It is also what puts the tab stop on the revealed row —
- * without it the element's caret is still on a row the new window does not draw, and the reader
- * ends up FOCUSED on one row while Tab would come back to another.
+ * the one step that silently does not. It is also what moves the CARET, because the projection
+ * seeds `currentPath` from the selection — and that write is the whole of this panel's side of the
+ * handoff.
  *
- * The focus itself waits for the row to exist: {@link takePendingFocus} spends the request as the
- * element announces itself.
+ * **The keyboard is deliberately not touched here.** This is the answer to a `move` or a
+ * `typeahead` the tree could not perform, and `jx-tree` keeps the keyboard across both: it focuses
+ * the caret row once its own sync has written the roving `tabindex` onto the revealed element,
+ * which is the only moment focusing it does anything. What this function used to do instead was
+ * pend the path and spend the request from `onNodeCreated` — one reconcile step before the row had
+ * a `tabindex` at all — so the `focus()` was a silent no-op and the caret jump never landed.
  */
 function focusFileRow(index: number): void {
   const row = _fileRows[index];
@@ -1067,12 +1047,9 @@ function focusFileRow(index: number): void {
     return;
   }
   selectFileRow(row.path);
-  const el = fileRowElement(row.path);
-  if (el) {
-    el.focus();
+  if (fileRowElement(row.path)) {
     return;
   }
-  _pendingFocusPath = row.path;
   revealListRow(_fileList, index, fileRowHeight());
   repaintFiles();
 }
@@ -1104,7 +1081,17 @@ const _rowDnd = new Map<HTMLElement, () => void>();
 let _treeDnd: { element: HTMLElement; cleanup: () => void } | null = null;
 /** The row being dragged, the row a drag is over, and whether the background is. */
 let _dragPath = "";
+/**
+ * The row the pointer is over, whether or not it will take the drop.
+ *
+ * Two facts, not one, because the tree background is a drop target that CONTAINS every row: a
+ * refused row still has to occlude it, or a drop the row said no to lands in the project root.
+ * {@link _dropPath} is the row that will take the drop; this is the row that is in the way.
+ */
+let _overRow = "";
 let _dropPath = "";
+/** Whether the tree background is under the drag; {@link _rootDrop} is what that projects to. */
+let _overRoot = false;
 let _rootDrop = "";
 
 /** Whether a drag carries OS files (as opposed to a pragmatic in-app drag). */
@@ -1159,22 +1146,69 @@ function registerFileDropTarget(
   };
 }
 
-/** Say which row a drag is over — or that it is over none — and let the document redraw one row. */
-function setDropPath(path: string): void {
-  if (_dropPath === path) {
+/**
+ * Whether the tree will move `srcPath` into `targetDir` — the ONE predicate behind every answer the
+ * drag gives: which rows light up, which drops the monitor performs, and whether the background
+ * offers the project root.
+ *
+ * Four refusals, and the third is the one nothing used to say. A directory is not a place inside
+ * itself; an entry already in a directory (at any depth) has nowhere to go by being dropped on it;
+ * a directory may not be moved into its own descendant, which is a rename onto a path underneath
+ * the thing being renamed and which the tree happily offered until the server answered 500; and an
+ * entry already directly in the target is a no-op — the case that spelled `.` for the root.
+ *
+ * Both sides are normalised first: `assets\logo.png` and `assets/logo.png` name one entry, and a
+ * predicate that agreed with itself only on one of the two spellings is a predicate with a hole.
+ */
+export function canMoveInto(srcPath: string, targetDir: string): boolean {
+  const src = srcPath.replaceAll("\\", "/");
+  const dir = targetDir.replaceAll("\\", "/");
+  if (!src || src === dir) {
+    return false;
+  }
+  if (src.startsWith(`${dir}/`) || dir.startsWith(`${src}/`)) {
+    return false;
+  }
+  return parentDir(src) !== dir;
+}
+
+/** {@link canMoveInto} for a ROW: only a directory has an inside to move something into. */
+function acceptsDrop(srcPath: unknown, targetPath: string, targetType: string): boolean {
+  return (
+    targetType === "directory" && typeof srcPath === "string" && canMoveInto(srcPath, targetPath)
+  );
+}
+
+/**
+ * Say which row the drag is over and whether that row will take it, and let the document redraw.
+ *
+ * The root affordance is DERIVED here rather than set alongside: a drag over a row is never also a
+ * drag over the background, and the two flags used to be written independently — so a row that
+ * refused the drop left the tree lit up saying the project root would take it, which after the
+ * refusal became final is no longer true either.
+ */
+function setRowUnderDrag(row: string, accepted: boolean): void {
+  const dropPath = accepted ? row : "";
+  if (_overRow === row && _dropPath === dropPath) {
     return;
   }
-  _dropPath = path;
-  syncFilesDragState();
+  _overRow = row;
+  _dropPath = dropPath;
+  syncRootDrop();
 }
 
 /** Say whether a drag is over the tree background, which is the project root. */
-function setRootDrop(active: boolean): void {
-  const next = active ? "true" : "";
-  if (_rootDrop === next) {
+function setRootUnderDrag(active: boolean): void {
+  if (_overRoot === active) {
     return;
   }
-  _rootDrop = next;
+  _overRoot = active;
+  syncRootDrop();
+}
+
+/** Recompute the background's affordance from the two facts, and project both. */
+function syncRootDrop(): void {
+  _rootDrop = _overRoot && _overRow === "" ? "true" : "";
   syncFilesDragState();
 }
 
@@ -1218,9 +1252,12 @@ export function pickAndUploadTo(dir: string, renderLeftPanel: () => void): void 
  * Adopt one row element the document has just created: remember it, make it a drag source, and give
  * it the two drop behaviours its KIND earns.
  *
- * Every row is a source and an external-file target; only a directory is an in-app target, because
- * a file has no inside to move something into. The registration happens as the node is created,
- * which is the one moment at which "this element is that path" is certainly true.
+ * Every row is a source, an external-file target and an in-app target. Only a DIRECTORY accepts an
+ * in-app drop, because a file has no inside to move something into — but a file row registers the
+ * target anyway and refuses in its data, because a row that is not a target at all is a row the
+ * drop falls straight through, onto the tree, which is the project root. The registration happens
+ * as the node is created, which is the one moment at which "this element is that path" is certainly
+ * true.
  */
 function adoptFileRow(element: HTMLElement, path: string, type: string): void {
   releaseRowDnD(element);
@@ -1238,59 +1275,51 @@ function adoptFileRow(element: HTMLElement, path: string, type: string): void {
       },
       onDrop() {
         _dragPath = "";
-        setDropPath("");
+        setRowUnderDrag("", false);
         syncFilesDragState();
       },
     }),
     // Files dropped from the OS land in the row's own directory; a file row targets its parent so
     // Dropping next to a sibling puts the upload beside it.
     registerFileDropTarget(element, type === "directory" ? path : parentDir(path), (active) => {
-      setDropPath(active ? path : "");
+      setRowUnderDrag(active ? path : "", active);
+    }),
+    /**
+     * The in-app target — on EVERY row, accepting or not.
+     *
+     * A row that answered `canDrop: false` was not a drop target at all, and pragmatic-dnd
+     * documents what happens next: "blocking dropping on a drop target will not block dropping on
+     * child or parent drop targets". The next target up is the tree element, whose target IS the
+     * project root — so a refused drop became a move to the root, silently, with no affordance
+     * anywhere on screen to warn the reader it would. Answering `true` and carrying the verdict in
+     * the DATA keeps the innermost target innermost, which is what makes a refusal final.
+     */
+    dropTargetForElements({
+      canDrop({ source }) {
+        return source.data.type === "file-tree";
+      },
+      element,
+      getData({ source }) {
+        return acceptsDrop(source.data.path, path, type)
+          ? { targetDir: path, type: "file-tree-target" }
+          : { type: "file-tree-refused" };
+      },
+      onDrag({ source }) {
+        setRowUnderDrag(path, acceptsDrop(source.data.path, path, type));
+      },
+      onDragEnter({ source }) {
+        setRowUnderDrag(path, acceptsDrop(source.data.path, path, type));
+      },
+      onDragLeave() {
+        setRowUnderDrag("", false);
+      },
+      onDrop() {
+        setRowUnderDrag("", false);
+      },
     }),
   ];
 
-  if (type === "directory") {
-    cleanups.push(
-      dropTargetForElements({
-        canDrop({ source }) {
-          if (source.data.type !== "file-tree") {
-            return false;
-          }
-          const srcPath = source.data.path as string;
-          if (srcPath === path) {
-            return false;
-          }
-          if (srcPath.startsWith(`${path}/`)) {
-            return false;
-          }
-          const srcParent = parentDir(srcPath);
-          if (srcParent === path) {
-            return false;
-          }
-          return true;
-        },
-        element,
-        getData() {
-          return { targetDir: path, type: "file-tree-target" };
-        },
-        onDrag() {
-          setDropPath(path);
-        },
-        onDragEnter() {
-          setDropPath(path);
-        },
-        onDragLeave() {
-          setDropPath("");
-        },
-        onDrop() {
-          setDropPath("");
-        },
-      }),
-    );
-  }
-
   _rowDnd.set(element, combine(...cleanups));
-  takePendingFocus();
 }
 
 /** Take back everything registered against one row element. */
@@ -1317,26 +1346,25 @@ function adoptFileTreeElement(element: HTMLElement): void {
   releaseFileTreeDnD();
   _fileList = element;
 
+  /* The background keeps an honest `canDrop`: it is the OUTERMOST target, so there is nothing
+     inside it for a refusal here to leak to. Its affordance is suppressed while a row is under the
+     pointer — {@link syncRootDrop} — because the row is what the drop will reach. */
   const rootCleanup = dropTargetForElements({
     canDrop({ source }) {
-      if (source.data.type !== "file-tree") {
-        return false;
-      }
-      const srcPath = source.data.path as string;
-      return parentDir(srcPath) !== ".";
+      return source.data.type === "file-tree" && canMoveInto(source.data.path as string, ".");
     },
     element,
     getData() {
       return { targetDir: ".", type: "file-tree-target" };
     },
     onDragEnter() {
-      setRootDrop(true);
+      setRootUnderDrag(true);
     },
     onDragLeave() {
-      setRootDrop(false);
+      setRootUnderDrag(false);
     },
     onDrop() {
-      setRootDrop(false);
+      setRootUnderDrag(false);
     },
   });
 
@@ -1349,18 +1377,19 @@ function adoptFileTreeElement(element: HTMLElement): void {
       if (source.data.type !== "file-tree") {
         return;
       }
+      /* The INNERMOST target and no other. `dropTargets` is bubble-ordered, so reading [0] and
+         then refusing what it says is what keeps a row's "no" from becoming the tree's "yes". */
       if (target.data.type !== "file-tree-target") {
         return;
       }
 
       const srcPath = source.data.path as string;
       const targetDirPath = target.data.targetDir as string;
-      const fileName = srcPath.split("/").pop();
-      const newPath = targetDirPath === "." ? fileName : `${targetDirPath}/${fileName}`;
-
-      if (newPath === srcPath) {
+      if (!canMoveInto(srcPath, targetDirPath)) {
         return;
       }
+      const fileName = srcPath.split("/").pop();
+      const newPath = targetDirPath === "." ? fileName : `${targetDirPath}/${fileName}`;
 
       void moveFileEntry(srcPath, newPath!, repaintFiles);
     },
@@ -1372,7 +1401,7 @@ function adoptFileTreeElement(element: HTMLElement): void {
       monitorCleanup,
       // The tree background is the project root's drop target for OS files. Row handlers
       // StopPropagation, so a drop on a row never also fires here.
-      registerFileDropTarget(element, ".", setRootDrop),
+      registerFileDropTarget(element, ".", setRootUnderDrag),
     ),
     element,
   };
@@ -1391,7 +1420,9 @@ function releaseFileTreeDnD(): void {
   _fileWatch = null;
   _fileList = null;
   _dragPath = "";
+  _overRow = "";
   _dropPath = "";
+  _overRoot = false;
   _rootDrop = "";
 }
 
@@ -2542,5 +2573,4 @@ export function unmountFilesPanel(): void {
   releaseFileTreeDnD();
   _fileRowEls.clear();
   _fileRows = [];
-  _pendingFocusPath = null;
 }

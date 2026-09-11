@@ -554,6 +554,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `studio.md`
 
+- **0.11.1-draft** (2026-09-10) — 9.1.1 a refused file-tree drop is refused rather than delegated to the project root: the innermost target decides, one shared predicate answers the affordance and the monitor, and a directory may not be moved into its own descendant.
 - **0.11.0-draft** (2026-09-10) — Adobe Spectrum is removed: the dependency row goes, the colour picker is jx-color-field, the dual-mode row is a composition rather than a class, and check-icons keeps one of its two element rules.
 - **0.10.19-draft** (2026-09-10) — The Props widget's enum control is jx-select and the Logic tab's event name is the kit menu plus the prompt dialog; both named jx-value-selector, which no surface had rendered since its callers converted.
 - **0.10.18-draft** (2026-09-10) — The pane tab strip is a real tablist: one stop in the tab order, arrows with wrap, Home and End, Delete closing a document, and its three marks as slots on jx-tab (§14.4).
@@ -683,6 +684,7 @@ Versions are `MAJOR.MINOR.PATCH` — **major** for a breaking change to a docume
 
 ## `ui.md`
 
+- **0.1.32-draft** (2026-09-10) — jx-tree keeps the keyboard across a handed-off caret move: it focuses the revealed row once the roving tabindex is on it, and abandons the request if the reader has moved on.
 - **0.1.31-draft** (2026-09-10) — jx-split: a window splitter with role=separator, a tab stop, aria-valuenow, the arrows of its own axis and a collapse toggle on Enter or a double click; Studio's pane grid and rail no longer hand-roll a separator.
 - **0.1.30-draft** (2026-09-10) — jx-toolbar ships: one tab stop over a row of mixed controls, a text field that keeps the arrows until its caret runs out, and overflow left with the host that already answers it (5.1, 5.5, 7).
 - **0.1.29-draft** (2026-09-10) — jx-tree dispatches typeahead for a host to resolve against the model while it is windowed, and the APG's * key is recorded as a named deviation.

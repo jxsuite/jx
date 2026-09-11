@@ -76,7 +76,12 @@ import {
   stashSlotValue,
   switchSlotMode,
 } from "../ui/dynamic-slot";
-import { VALUE_SOURCE_LABELS, slotCaps, slotMode } from "../ui/value-source";
+import {
+  TAG_EXPRESSION_OPERATORS,
+  VALUE_SOURCE_LABELS,
+  slotCaps,
+  slotMode,
+} from "../ui/value-source";
 import type { SlotCapsSource, SlotMode } from "../ui/value-source";
 import {
   clearDraft,
@@ -980,6 +985,8 @@ interface LadderOpts {
   extraSignals?: SignalOption[] | null;
   literalDefault?: JsonValue | undefined;
   seedFor?: ((mode: SlotMode) => JsonValue | undefined) | undefined;
+  /** The operators this position's grammar admits, when it admits fewer than all of them. */
+  operators?: readonly string[] | undefined;
 }
 
 /**
@@ -1059,6 +1066,7 @@ function applyLadder(row: ContentRowView, plan: RowPlan, opts: LadderOpts): void
         (next) => opts.onChange({ $expression: next } as JsonValue),
         {
           allowEventRef: false,
+          ...(opts.operators ? { operators: opts.operators } : {}),
           preview: null,
           stateDefs: opts.stateDefs,
           stateEntries: null,
@@ -1351,7 +1359,11 @@ function elementRows(
      precisely what that pattern exists to reject.
 
      The seed is ours because the generic one is `{ operator: "??" }`, which a `TagExpression` does
-     not admit — clicking the chip would otherwise write a document that fails its own validator. */
+     not admit — clicking the chip would otherwise write a document that fails its own validator.
+     And the GRAMMAR is ours for exactly the same reason: seeding `?:` and then handing the node to
+     an unrestricted editor left the very next click free to reoperate it to `capitalize`, or to
+     pick `toUpperCase` out of the formula catalog. `TAG_EXPRESSION_OPERATORS` is read off the def,
+     so the two branches the editor offers are the two branches the validator accepts. */
   const tag = textRow({
     commit: writeProperty("tagName"),
     draft: draftKey(path, "tagName"),
@@ -1363,6 +1375,7 @@ function elementRows(
   applyLadder(tag.row, tag.plan, {
     caps: "elementTag",
     fieldKey: `${path.join(".")}:tagName`,
+    operators: TAG_EXPRESSION_OPERATORS,
     onChange: (next) => {
       transactDoc(activeTab.value, (t) =>
         mutateUpdateProperty(t, path, "tagName", next ?? undefined),

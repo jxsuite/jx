@@ -1182,3 +1182,67 @@ describe("the surface is styled through part, never through a class", () => {
     expect(styled.map((e) => e.getAttribute("part"))).toEqual([]);
   });
 });
+
+// ─── A position whose grammar is narrower than the operator table ─────────────
+
+/**
+ * `ExpressionEditorOpts.operators`, which exists because one document position has a grammar of its
+ * own: an element's `tagName` admits `?:` and `switch` and nothing else, every branch resolving to
+ * a literal tag the pipeline can enumerate without evaluating.
+ *
+ * The Inspector already seeded that shape correctly and then handed it to this editor unrestricted,
+ * so the next gesture could reoperate it to `capitalize` or pick `toUpperCase` out of the formula
+ * catalog. What landed was a document `jx validate` rejects and `tagNameCandidates` cannot read —
+ * `Cannot convert undefined or null to object`, thrown by the Command Bar, the jump bar, the
+ * Inspector and the canvas renderer as each re-read the selection.
+ */
+describe("the editor offers only the operators the position admits", () => {
+  const TAG_GRAMMAR = { operators: ["?:", "switch"] };
+  const operatorRows = (p: { rows: ExprRowView[] }) => p.rows.filter((r) => r.kind === "operator");
+  const valuesOf = (r: ExprRowView) => r.groups.flatMap((g) => g.rows.map((o) => o.value));
+
+  test("the select is narrowed to the grammar, and empty groups do not survive it", () => {
+    const p = project({ initial: "div", operator: "?:", target: null, value: "a" }, TAG_GRAMMAR);
+    const [operator] = operatorRows(p);
+
+    expect(valuesOf(operator!)).toEqual(["?:", "switch"]);
+    // One group left standing, not nine of which eight are empty legends.
+    expect(operator!.groups).toHaveLength(1);
+    expect(operator!.groups[0]!.label).toBe("Conditional");
+  });
+
+  test("and offers no catalog, because every entry in it inserts a node of its own operator", () => {
+    const restricted = project(
+      { initial: "div", operator: "?:", target: null, value: "a" },
+      TAG_GRAMMAR,
+    );
+    const open = project({ initial: "div", operator: "?:", target: null, value: "a" });
+
+    expect(operatorRows(restricted)[0]!.catalog).toBe(false);
+    expect(restricted.plans.get("::operator")?.browse).toBeUndefined();
+    // The same node with no grammar named keeps both — a palette would otherwise be a second door
+    // Onto the operators the select has just stopped offering.
+    expect(operatorRows(open)[0]!.catalog).toBe(true);
+    expect(open.plans.get("::operator")?.browse).toBeDefined();
+  });
+
+  test("a nested operand keeps the whole table — the restriction is the POSITION's", () => {
+    /* A tag choice's discriminant is an ordinary `ExpressionOperand`: it may be any expression at
+       all. Restricting the nested walk too would have taken that away. */
+    const p = project(
+      {
+        initial: "div",
+        operator: "?:",
+        target: { operator: "===", target: { $ref: "#/state/count" }, value: 1 },
+        value: "a",
+      },
+      TAG_GRAMMAR,
+    );
+    const rows = operatorRows(p);
+
+    expect(valuesOf(rows[0]!)).toEqual(["?:", "switch"]);
+    expect(valuesOf(rows[1]!)).toContain("toUpperCase");
+    expect(rows[1]!.catalog).toBe(true);
+    expect(p.plans.get("target::operator")?.browse).toBeDefined();
+  });
+});

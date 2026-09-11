@@ -478,25 +478,21 @@ function rowElementFor(key: string): HTMLElement | null {
 }
 
 /**
- * Move the keyboard to the model row at `index`, bringing it into the window if it is outside one.
+ * Bring the model row at `index` into the window, when the window does not already hold it.
  *
- * On a microtask, because the DOCUMENT is what draws the row: the projection written on this tick
- * is a binding that runs on the next, so a query made here and now would find the row the PREVIOUS
- * projection put at that key — or, for a row the window did not hold, no row at all. A row that has
- * still not arrived is one the scroll watch has yet to draw, and stealing the keyboard later is
- * worse than not having moved it.
+ * **The keyboard is deliberately not touched here.** `jx-tree` keeps it across a handed-off caret
+ * move: it focuses the caret row once its own sync has written the roving `tabindex` onto the
+ * revealed element, which is the only moment focusing it does anything at all. What this used to do
+ * instead was queue a microtask and focus whatever answered to the key then — and the microtask was
+ * queued BEFORE {@link redrawOutline}, so it ran while the previous projection was still drawn and
+ * found either the row that used to stand at that key or, for a row the window did not hold,
+ * nothing. One shot, spent early, every time.
  */
-function focusModelRow(index: number): void {
+function revealModelRow(index: number): void {
   const row = _outlineRows[index];
-  if (!row) {
-    return;
-  }
-  if (!rowElementFor(row.key)) {
+  if (row && !rowElementFor(row.key)) {
     revealOutlineRow(index);
   }
-  queueMicrotask(() => {
-    rowElementFor(row.key)?.focus();
-  });
 }
 
 /** Select the model row at `index`, so the canvas and the inspector follow the keyboard. */
@@ -640,7 +636,10 @@ function moveOutlineCaret(from: string, keyName: string): void {
  *
  * Shared by the two events the element cannot answer for itself, because they end the same way and
  * that is not a coincidence: both are a row named over the MODEL, and reaching it means selecting
- * it, focusing it and repainting the window around it in that order.
+ * it, revealing it and repainting the window around it in that order. The selection is also what
+ * moves the CARET — the projection seeds `current` from the primary selection — and that write is
+ * the whole of this panel's side of the handoff: `jx-tree` takes the keyboard to the revealed row
+ * itself, once its own sync has made that row focusable.
  *
  * @param {number} target
  */
@@ -649,7 +648,7 @@ function landOutlineCaret(target: number): void {
     return;
   }
   selectModelRow(target);
-  focusModelRow(target);
+  revealModelRow(target);
   redrawOutline();
 }
 
@@ -1131,17 +1130,49 @@ function redrawOutline(): void {
   standing?.handle.update(outlineValues());
 }
 
-/** Take down every drag registration the last pass made, then make them again. */
-function reregisterDnD(): void {
-  for (const fn of view.dndCleanups) {
-    fn();
-  }
-  view.dndCleanups = [];
-  _registerDnD?.();
+/**
+ * The selection the last reveal followed, or null before there has been one.
+ *
+ * `<tab id>|<path>`, because a tab switch moves the selection as surely as a click does and two
+ * documents can hold the same path. Reset by {@link detachOutline}, so coming back to the tree from
+ * Project Styles shows the reader where they are rather than wherever the scroller was left.
+ */
+let _revealedSelection: string | null = null;
+
+/** What the Outline is being asked to keep on screen — the identity a reveal follows. */
+function selectionRevealKey(): string {
+  const tab = activeTab.value;
+  const path = primarySelection(tab?.session.selection);
+  return `${tab?.id ?? ""}|${path === null ? "" : JSON.stringify(path)}`;
 }
 
 /**
- * Keep the selected row on screen after a repaint.
+ * Reveal the selected row when the SELECTION is what moved, and never merely because a repaint did.
+ *
+ * The Outline was unbrowsable past its own selection, and the loop is short enough to state: a
+ * scroll changes the window, the window asks for a repaint, the repaint re-runs the panel's
+ * `afterRender`, and the mount ended by scrolling the selected row back into view. Measured on
+ * `sites/jxsuite.com/pages/compare.json` with the selected row 840px down a 890px viewport: asked
+ * 400 → got 400, asked 800 → got 800, asked 1500 → got 555, asked 2400 → got 555. Everything past
+ * the selection was unreachable, which for a document outline is most of the document.
+ *
+ * So the reveal is bound to the thing it is FOR. The selection moving is the event — the canvas
+ * selecting a node three thousand rows down, a jump from Problems, a keyboard walk, a collaborator
+ * — and a repaint that leaves the selection where it was is not that event. The in-tree gestures
+ * pass this gate as well as the external ones, which is right: they change the selection too, and
+ * `scrollIntoView({ block: "nearest" })` on a row already in view does nothing.
+ */
+function revealChangedSelection(): void {
+  const key = selectionRevealKey();
+  if (key === _revealedSelection) {
+    return;
+  }
+  _revealedSelection = key;
+  revealSelectedRow();
+}
+
+/**
+ * Keep the selected row on screen.
  *
  * Two cases, where there used to be one. If the row is drawn, it scrolls itself into view. If it is
  * NOT — the canvas selected a node three thousand rows down, a jump from Problems, a collaborator's
@@ -1149,6 +1180,8 @@ function reregisterDnD(): void {
  * `scrollIntoView` on, and the reveal has to be arithmetic: scroll to where the model says the row
  * is, and let the scroll watch draw it. Silently doing nothing would be the windowing bug that
  * looks like a selection bug.
+ *
+ * WHEN this runs is {@link revealChangedSelection}'s decision, not this function's.
  */
 function revealSelectedRow(): void {
   const drawn = _outlineList?.querySelector(`${ROW_SELECTOR}[aria-selected="true"]`);
@@ -1283,8 +1316,12 @@ export function mountOutlinePanel(
      otherwise find an empty container and register nothing at all. */
   void standing.handle.ready.then(() => {
     watchOutlineTree();
-    reregisterDnD();
-    revealSelectedRow();
+    /* `panels/dnd.ts` releases what it previously took, so this is a re-registration and not a
+       second one. Taking the list down HERE, before the call, is what put 369 duplicate-registration
+       warnings in one session's console: the registration is deferred a frame, so a second repaint
+       arriving inside that frame released an empty list and queued a second pass over the same rows. */
+    _registerDnD?.();
+    revealChangedSelection();
   });
 }
 
@@ -1303,6 +1340,10 @@ export function detachOutline(): void {
   _outlineWatch = null;
   _hoveredKey = null;
   _editing = null;
+  /* The tree the next mount draws is a fresh scroller at the top, so whatever the last reveal
+     followed says nothing about it: forgetting is what makes the first paint after a return show
+     the reader where the selection is. */
+  _revealedSelection = null;
 }
 
 /**

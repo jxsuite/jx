@@ -270,12 +270,28 @@ describe("the keyboard reaches rows the window does not hold", () => {
     expect(selection()).toEqual([[]]);
   });
 
-  test("Home comes back to the root", async () => {
+  test("Home comes back to the root, and the keyboard comes with it", async () => {
     await scrollTo(OUTLINE_ROW_HEIGHT * 150);
+    /* A key arrives at a FOCUSED row — that is what a keypress is — and the handoff is gated on
+       it: `jx-tree` takes the keyboard to the revealed row only if the keyboard was the tree's to
+       begin with, so a tree the reader never entered cannot yank focus out of wherever they are.
+       A bare `dispatchEvent` on an unfocused row is the one case the element must decline. */
+    rowFor(150)!.focus();
     press(rowFor(150)!, "Home");
     await flush();
     expect(selection()).toEqual([[]]);
     expect(scroller.scrollTop).toBe(0);
+    /* And the keyboard is ON the root, not merely near it. The root's `pathKey([])` is the EMPTY
+       STRING and that is a row value like any other: a tree reading `current: ""` as "there is no
+       caret" would answer Home by scrolling the panel and leaving the reader focused a hundred and
+       fifty rows down, with the tab stop and the selection somewhere they are not. */
+    expect(row(host, "")).not.toBeNull();
+    /* Compared by VALUE, not by node. A `toBe` on a live element that fails makes Bun's failure
+       printer walk the happy-dom object graph, and the run goes out of memory instead of red. */
+    const active = document.activeElement as HTMLElement | null;
+    expect(
+      `${active?.localName ?? "none"}[value=${JSON.stringify(active?.getAttribute("value"))}]`,
+    ).toBe('jx-tree-item[value=""]');
   });
 
   test("↓ walks past the last DRAWN row instead of stopping at it", async () => {
@@ -320,6 +336,41 @@ describe("the reveal that follows a selection made elsewhere", () => {
     scroller.dispatchEvent(new Event("scroll"));
     await flush(3);
     expect(rowFor(180)).not.toBeNull();
+  });
+
+  /*
+   * The reveal follows the SELECTION, and a repaint is not a selection.
+   *
+   * A scroll changes the window, the window asks for a repaint, and the repaint re-runs this
+   * panel's `afterRender` — so a reveal on every mount made the Outline unbrowsable past its own
+   * selection. Measured in a browser on `sites/jxsuite.com/pages/compare.json`, selected row 840px
+   * down an 890px viewport: asked 400 → got 400, asked 800 → got 800, asked 1500 → got 555, asked
+   * 2400 → got 555. Everything past the selection was unreachable.
+   *
+   * This is the half a suite can hold: the DECISION not to reveal, which is arithmetic over the
+   * model. That the reader's scroll survives a real wheel gesture in a real layout is the half only
+   * a browser can answer, and it was driven there.
+   */
+  test("a scroll past the selection is not undone by the repaint it causes", async () => {
+    activeTab.value!.session.selection = [childPath(10)];
+    await draw();
+    // The selection moved, so it was revealed: the window holds row 10 and the scroller is near it.
+    expect(scroller.scrollTop).toBeLessThan(OUTLINE_ROW_HEIGHT * 20);
+
+    await scrollTo(OUTLINE_ROW_HEIGHT * 150);
+
+    expect(scroller.scrollTop).toBe(OUTLINE_ROW_HEIGHT * 150);
+    expect(rowFor(150)).not.toBeNull();
+  });
+
+  test("a selection made elsewhere is still revealed once the reader has scrolled away", async () => {
+    await scrollTo(OUTLINE_ROW_HEIGHT * 150);
+    expect(rowFor(3)).toBeNull();
+
+    activeTab.value!.session.selection = [childPath(3)];
+    await draw();
+
+    expect(scroller.scrollTop).toBeLessThan(OUTLINE_ROW_HEIGHT * 20);
   });
 });
 

@@ -343,6 +343,21 @@ describe("the Command Center pill", () => {
     expect(toolbar.selectionSegmentLabel(tab)).toBe("p — Hi");
   });
 
+  test("a tag the projection cannot enumerate is named, not thrown over", () => {
+    /* The Inspector's Tag row offers a Formula rung, and the formula catalog would insert ANY
+       operator into it. `tagNameCandidates` then read `Object.values(expression.cases)` off a node
+       with no `cases`, and this projection was the first of four to throw — the Command Bar caught
+       it and logged, the jump bar and the Inspector did not. */
+    const tab = openTestTab();
+    (tab.doc.document.children as { tagName: unknown }[])[0]!.tagName = {
+      $expression: { operator: "toUpperCase", target: { $ref: "#/state/title" } },
+    };
+    tab.session.selection = [["children", 0]];
+
+    expect(() => toolbar.selectionSegmentLabel(tab)).not.toThrow();
+    expect(toolbar.selectionSegmentLabel(tab)).toBe("div — Hi");
+  });
+
   test("a batch is not a place, so the address bar names its size (§6.5)", () => {
     const tab = openTestTab();
     tab.session.selection = [["children", 0], []];

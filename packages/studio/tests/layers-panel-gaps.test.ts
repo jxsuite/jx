@@ -386,14 +386,19 @@ describe("the move verbs", () => {
     expect(overflowItems()).toHaveLength(0);
   });
 
-  test("every draw takes down the drag registrations the last one made", async () => {
-    const cleanup = mock(() => {});
+  /*
+   * The panel ASKS; `panels/dnd.ts` decides. The release used to happen here, on the caller's side
+   * of a `requestAnimationFrame`, which is why two repaints in one frame each released an empty
+   * list and registered over the top of the other — 369 duplicate-registration warnings in one
+   * session. `registerLayersDnD` owns `view.dndCleanups` now, and `dnd-gaps.test.ts` is where that
+   * ownership is asserted; what is still this panel's to prove is that every draw asks at all.
+   */
+  test("every draw asks for the drag registrations to be made again", async () => {
     await draw();
-    view.dndCleanups = [cleanup];
+    const first = log.dnd;
+    expect(first).toBeGreaterThan(0);
     await draw();
-    expect(cleanup).toHaveBeenCalledTimes(1);
-    expect(view.dndCleanups).toEqual([]);
-    expect(log.dnd).toBeGreaterThan(0);
+    expect(log.dnd).toBeGreaterThan(first);
   });
 });
 
