@@ -9,7 +9,7 @@ spec:
   - ui.md#5.1 # primitives
   - ui.md#5.3 # forms
   - ui.md#5.4 # containers
-  - ui.md#5.5 # builder
+  - ui.md#5.5 # builder: trees, toolbars, splitters
   - ui.md#5.6 # colour
   - ui.md#8 # icons
   - ui.md#9 # build and distribution
@@ -31,6 +31,7 @@ code:
   - packages/ui/src/behaviors/action-group.ts
   - packages/ui/src/behaviors/toolbar.ts
   - packages/ui/src/behaviors/split.ts
+  - packages/ui/src/behaviors/tree.ts
   - packages/ui/src/behaviors/color-area.ts
   - packages/ui/src/behaviors/color-slider.ts
   - packages/ui/src/behaviors/swatch-group.ts
@@ -546,6 +547,60 @@ Two kinds of control are not moved between by the toolbar's arrows, and each kee
 There is no overflow menu, by decision. A row that will not fit is a row to shorten. Where a list of what is out of view is genuinely needed, the host measures it and opens a `jx-menu` of its own commands, which is what the editor's tab strips do.
 
 Which of the two to use: `jx-action-group` for a row of `jx-action-button`s that share one look, and `jx-toolbar` for a row of mixed controls. A group may stand beside a toolbar, never inside one.
+
+## Trees
+
+`jx-tree` is a `role="tree"` over a FLAT list of `jx-tree-item` children. Each row carries its own `level`, `posinset` and `setsize` rather than sitting inside a nested structure, because a long tree draws a window onto its model and a windowed row has no ancestors in the page to count.
+
+```json
+{
+  "tagName": "jx-tree",
+  "$props": { "label": "Project files", "current": "src/index.json" },
+  "children": [
+    {
+      "tagName": "jx-tree-item",
+      "$props": {
+        "value": "src",
+        "label": "src",
+        "level": 1,
+        "posinset": 1,
+        "setsize": 2,
+        "expanded": "true"
+      }
+    },
+    {
+      "tagName": "jx-tree-item",
+      "$props": {
+        "value": "src/index.json",
+        "label": "index.json",
+        "level": 2,
+        "posinset": 1,
+        "setsize": 1
+      }
+    }
+  ]
+}
+```
+
+`current` is the caret: the one row that holds the tree's tab stop, so :kbd[Tab] enters and leaves the whole tree in one press. Write the tree's `current` to move it; never a row's own caret. `expanded` is `"true"` or `"false"` for a row with children and `""` for a leaf, which is how the keyboard tells "closed" from "cannot open". `posinset` and `setsize` describe the FULL set, not the drawn one, and zero writes neither, which asks a reader's software to count the page instead.
+
+The arrows walk the rows and deliberately do not wrap, which is where a tree differs from a menu or a tab strip: losing your place in an outline is worse than one extra key. :kbd[Home] and :kbd[End] reach the ends, :kbd[ArrowRight] opens a closed row and steps into an open one, :kbd[ArrowLeft] closes an open one and otherwise steps out to its parent, :kbd[Enter] activates and a printable character moves to the next row starting with it. Every other key reaches you untouched, which is what keeps cut, paste, rename and delete reachable from a focused row.
+
+The tree reports what the reader meant and never resolves it. `select` carries `{ value, mode, anchor }`, where `mode` is `replace`, `toggle` or `range`, and the selection set is yours to hold: a range names every row between two of them, and under windowing those are the rows the page does not have. `expand` carries `{ value, expanded }` and says the state a row should be PUT INTO, so the twisty and the arrow keys arrive by one route. `activate` is :kbd[Enter] or a double click.
+
+### A tree that draws a window
+
+Set `padtop` and `padbottom` to the pixels of scroll you are reserving above and below the drawn rows, and the tree knows it is showing part of a model. Two things then change, and both become messages to you.
+
+A caret move that runs off either end has no row to land on, so the tree raises `move` with `{ from, key }` and performs nothing. A letter raises `typeahead` with `{ from, char }` for every printable character, not only for the ones no drawn row answers: a search over a slice always finds something, and what it finds is whichever of the dozen painted rows happened to start with that letter. Answer both against your own model, then scroll, repaint, and write the tree's `current`.
+
+:::doc-note
+Answering means moving the caret, and it does not mean moving the keyboard. The tree keeps that half. It focuses the revealed row once the roving `tabindex` has reached it, which is a moment only the tree can see: the row you draw is in the page, answering to its `value`, before its own `tabindex` is written, and focusing it any earlier does nothing at all and says nothing about it.
+:::
+
+Write `current` for your own reasons and the caret moves alone, which is what a canvas selection or a jump from a search result should do. A reader who clicks or types somewhere else while you are scrolling keeps the keyboard too: the tree gives up the move rather than pulling focus back out of wherever they went.
+
+With both pads at zero the drawn rows ARE the model. The ends of the slice are the ends of the tree, the arrows clamp there, letters are resolved in the tree itself, and neither event is raised.
 
 ## Splitters
 

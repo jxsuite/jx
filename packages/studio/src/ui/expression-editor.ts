@@ -170,6 +170,21 @@ const OPERATOR_SELECT_GROUPS: ExprSelectGroup[] = OPERATOR_GROUPS.map((group) =>
   rows: group.ops.map((op) => ({ label: op, value: op })),
 }));
 
+/**
+ * The same rows, narrowed to the operators a position's grammar admits, with empty groups dropped.
+ *
+ * The full table is what it filters, rather than a second list written out per position: an
+ * operator that gains a group, or moves between two, keeps its label and its neighbours here
+ * without anybody remembering to say so twice.
+ */
+function restrictGroups(operators: readonly string[]): ExprSelectGroup[] {
+  const allowed = new Set(operators);
+  return OPERATOR_SELECT_GROUPS.map((group) => ({
+    ...group,
+    rows: group.rows.filter((row) => allowed.has(row.value)),
+  })).filter((group) => group.rows.length > 0);
+}
+
 /** The three rungs of the value ladder, spelled the way `ui/value-source.ts` spells them (§6.3). */
 const SOURCE_OPTIONS: ExprOption[] = [
   { label: VALUE_SOURCE_LABELS.literal, value: "literal" },
@@ -427,6 +442,22 @@ export interface ExpressionEditorOpts {
   onChipSelect?: (path: (string | number)[]) => void;
   /** Vendors a packaged formula's state entry into the document on catalog pick. */
   onInsertDef?: (name: string, def: JxStateDefinition) => void;
+  /**
+   * The operators the POSITION's own grammar admits, when it admits fewer than all of them.
+   *
+   * Most positions take an `ExpressionEntry`, whose grammar is the whole operator table, and leave
+   * this absent. An element's `tagName` does not: `defs/tag-expression.schema.ts` admits `?:` and
+   * `switch` and nothing else, because every branch there must resolve to a literal tag the
+   * pipeline can enumerate without evaluating. The panel used to seed that shape correctly and then
+   * hand it to this editor unrestricted — so the next click could reoperate it to `capitalize`, or
+   * pick `toUpperCase` out of the formula catalog, and write a document its own validator rejects.
+   * A whole-document projection then read `cases` off a node that had none.
+   *
+   * **Depth 0 only.** The restriction is the position's, and a tag choice's `target` is an ordinary
+   * `ExpressionOperand` — the discriminant may be any expression at all. Restricting the nested
+   * walk too would have taken that away.
+   */
+  operators?: readonly string[];
 }
 
 /** Everything one gesture on one row may ask for. Each row registers only what it offers. */
@@ -878,25 +909,33 @@ function walkExpression(
       ? badgeAt(walk, pathKey)
       : { badge: "", hasBadge: false };
 
+  /* The position's own grammar, and only at its own root — see `ExpressionEditorOpts.operators`.
+     The catalog goes with it: every entry in it inserts a whole node, so a palette offered here
+     would be a second door onto the operators the select has just stopped offering. */
+  const grammar = depth === 0 ? opts.operators : undefined;
   const operatorKey = `${pathKey}::operator`;
   walk.plans.set(operatorKey, {
-    browse: (anchor) =>
-      openFormulaPalette({
-        anchor,
-        entries: formulaCatalog(opts.stateEntries),
-        onPick: (entry) =>
-          applyCatalogPick(entry, onChange, {
-            onInsertDef: opts.onInsertDef,
-            stateEntries: opts.stateEntries,
-          }),
-      }),
+    ...(grammar
+      ? {}
+      : {
+          browse: (anchor: HTMLElement) =>
+            openFormulaPalette({
+              anchor,
+              entries: formulaCatalog(opts.stateEntries),
+              onPick: (entry) =>
+                applyCatalogPick(entry, onChange, {
+                  onInsertDef: opts.onInsertDef,
+                  stateEntries: opts.stateEntries,
+                }),
+            }),
+        }),
     setOperator: (newOp) => onChange(reoperate(safeNode, newOp)),
   });
   walk.rows.push(
     blankRow({
       ...rootBadge,
-      catalog: true,
-      groups: OPERATOR_SELECT_GROUPS,
+      catalog: grammar === undefined,
+      groups: grammar ? restrictGroups(grammar) : OPERATOR_SELECT_GROUPS,
       indent: indentAt(depth),
       key: operatorKey,
       kind: "operator",

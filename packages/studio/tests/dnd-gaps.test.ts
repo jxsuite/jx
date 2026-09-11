@@ -16,18 +16,30 @@ const draggables: AnyRec[] = [];
 const dropTargets: AnyRec[] = [];
 const monitors: AnyRec[] = [];
 
+/*
+ * Each registration's cleanup STAMPS the config it belongs to, so "was this particular registration
+ * released?" is a question the suite can ask. The real adapter warns on a second registration
+ * against an element it already holds and otherwise carries on, so a test that only counted
+ * registrations could not tell a re-registration from a duplicate one.
+ */
 void mock.module("@atlaskit/pragmatic-drag-and-drop/element/adapter", () => ({
   draggable: (cfg: AnyRec) => {
     draggables.push(cfg);
-    return () => {};
+    return () => {
+      cfg.__released = (cfg.__released ?? 0) + 1;
+    };
   },
   dropTargetForElements: (cfg: AnyRec) => {
     dropTargets.push(cfg);
-    return () => {};
+    return () => {
+      cfg.__released = (cfg.__released ?? 0) + 1;
+    };
   },
   monitorForElements: (cfg: AnyRec) => {
     monitors.push(cfg);
-    return () => {};
+    return () => {
+      cfg.__released = (cfg.__released ?? 0) + 1;
+    };
   },
 }));
 
@@ -178,6 +190,53 @@ describe("registerLayersDnD — registration", () => {
       path: ["children", 0, "children", 0],
       type: "tree-node",
     });
+  });
+
+  /*
+   * The two halves of the 369-warning defect, and both of them are about WHO owns
+   * `view.dndCleanups`.
+   *
+   * The Outline's mount used to release the list itself and then call this function, which is only
+   * correct if the registrations exist by the time the next caller looks at the list — and they do
+   * not, because the registration is deferred a frame. Two repaints inside one frame therefore each
+   * released an EMPTY list and each queued a pass, and the two passes ran back to back over the
+   * same surviving row elements: "You have already registered a `draggable` on the same element",
+   * twice per row, for the life of the session.
+   */
+  test("a second call releases exactly what the first one registered", async () => {
+    const { rows } = await setupLayers();
+    const firstDrags = [...draggables];
+    const firstDrops = [...dropTargets];
+    const firstMonitor = monitors[0]!;
+
+    dnd.registerLayersDnD();
+    await raf();
+    await flush();
+
+    for (const cfg of [...firstDrags, ...firstDrops, firstMonitor]) {
+      expect(cfg.__released).toBe(1);
+    }
+    // And the rows are registered again, so the release is a re-registration and not a teardown.
+    expect(draggables).toHaveLength(rows.length * 2);
+    expect(view.dndCleanups).toHaveLength(rows.length + 1);
+  });
+
+  test("two calls inside one frame register the rows once, not twice", async () => {
+    await setupLayers();
+    const drags = draggables.length;
+    const drops = dropTargets.length;
+    const mons = monitors.length;
+
+    dnd.registerLayersDnD();
+    dnd.registerLayersDnD();
+    await raf();
+    await raf();
+    await flush();
+
+    expect(draggables).toHaveLength(drags * 2);
+    expect(dropTargets).toHaveLength(drops * 2);
+    expect(monitors).toHaveLength(mons * 2);
+    expect(view.dndCleanups).toHaveLength(drags + 1);
   });
 
   test("canDrag rejects drags starting on the row's verb cluster", async () => {

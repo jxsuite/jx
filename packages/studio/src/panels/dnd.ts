@@ -83,9 +83,45 @@ const OUTLINE_ROOT = '[part="outline"]';
 const OUTLINE_ROWS = '[part="row"]';
 const OUTLINE_ACTIONS = '[part="verbs"]';
 
-/** Register DnD on layer rows — called from left-panel.js after render */
+/**
+ * The frame a queued Outline registration is waiting on, so a second call REPLACES it.
+ *
+ * Null whenever nothing is queued — including from inside the callback, which clears it before it
+ * registers anything, so a completed frame leaves nothing to cancel.
+ */
+let _layersFrame: number | null = null;
+
+/**
+ * Register DnD on the Outline's rows — called from the panel's mount, after every repaint.
+ *
+ * **This function owns `view.dndCleanups`, and that ownership is the fix for 369 warnings a
+ * session.** The caller used to release the list and then call this, which is correct only if the
+ * registrations are made by the time the next caller looks — and they are not: the `rAF` below
+ * defers them past the point the caller believes they happened. Two repaints inside one frame
+ * therefore both found an EMPTY list, released nothing, and queued two registration passes that ran
+ * back to back over the same surviving row elements. Pragmatic-dnd said so, twice per row, forever:
+ * "You have already registered a `draggable` on the same element".
+ *
+ * So the release happens HERE, where the list's contents are known, and it happens at CALL time
+ * rather than in the frame: `view.dndCleanups` then always holds exactly what is registered right
+ * now, and no observer can read a list that has been superseded. The pending frame is cancelled
+ * with it, because a registration nobody has made yet is not one worth making twice.
+ *
+ * The `rAF` itself stays. The Outline's rows arrive when the runtime's reactive scope commits,
+ * which is a microtask the mount cannot await — the surface handle's `ready` promise resolves once,
+ * at the FIRST mount, and every repaint after that settles before the rows it projected exist.
+ * Registering synchronously would walk the previous window's rows.
+ */
 export function registerLayersDnD() {
-  requestAnimationFrame(() => {
+  if (_layersFrame !== null) {
+    cancelAnimationFrame(_layersFrame);
+  }
+  for (const cleanup of view.dndCleanups) {
+    cleanup();
+  }
+  view.dndCleanups = [];
+  _layersFrame = requestAnimationFrame(() => {
+    _layersFrame = null;
     const container = leftPanel?.querySelector(OUTLINE_ROOT) as HTMLElement | null;
     if (!container) {
       return;

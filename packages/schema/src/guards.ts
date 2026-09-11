@@ -251,9 +251,39 @@ export function paramNames(parameters: JxFunctionDef["parameters"]): string[] {
   return parameters.map((p) => (typeof p === "string" ? p : p.name));
 }
 
-/** Whether an element's `tagName` is a choice rather than a name. */
+/**
+ * Whether an element's `tagName` is a choice rather than a name.
+ *
+ * **It reads the WHOLE shape, because it promises the whole shape.**
+ * `defs/tag-expression.schema.ts` admits exactly two forms — `?:` with a `TagName` in `value` and
+ * `initial`, and `switch` with a `TagName` per case and a required `default` — and this predicate
+ * is the only thing standing between that promise and the four readers who trust it
+ * ({@link tagNameCandidates}, the runtime's `resolveTagName`, the compiler's `resolveStaticTagName`
+ * and its two target emitters). Answering `true` for any `{ $expression: … }` at all was the
+ * unsound half: a general formula in tag position — which the Inspector's Tag row let a user pick
+ * out of the formula catalog — then reached `Object.values(expression.cases)` with no `cases` to
+ * read, and `Cannot convert undefined or null to object` came out of the Command Bar, the jump bar,
+ * the Inspector and the canvas renderer at once.
+ *
+ * A `$expression` this refuses is not a tag choice, so it has no candidates and no static tag; the
+ * readers fall back to their own "nothing declared" answer (`[]`, `"div"`) instead of throwing.
+ */
 export function isTagExpression(tagName: unknown): tagName is { $expression: JxTagExpression } {
-  return isJsonObject(tagName) && isJsonObject(tagName.$expression);
+  if (!isJsonObject(tagName) || !isJsonObject(tagName.$expression)) {
+    return false;
+  }
+  const expression = tagName.$expression;
+  if (expression.operator === "?:") {
+    return typeof expression.value === "string" && typeof expression.initial === "string";
+  }
+  if (expression.operator === "switch") {
+    return (
+      isJsonObject(expression.cases) &&
+      Object.values(expression.cases).every((tag) => typeof tag === "string") &&
+      typeof expression.default === "string"
+    );
+  }
+  return false;
 }
 
 /**

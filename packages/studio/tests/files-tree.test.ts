@@ -1558,10 +1558,24 @@ describe("the drag island", () => {
     return { handle };
   }
 
-  function dirTarget(targetDir: string) {
-    const target = dnd.dropTargets.find((t) => t.getData?.().targetDir === targetDir);
+  /** The in-app drop target registered against one row — by ELEMENT, since its data now varies. */
+  function rowTarget(path: string) {
+    const el = rowFor(path);
+    const target = dnd.dropTargets.find((t) => t.element === el);
     expect(target).toBeDefined();
     return target;
+  }
+
+  /** The tree background's target — the project root. */
+  function rootTarget() {
+    const target = dnd.dropTargets.find((t) => t.element === treeEl());
+    expect(target).toBeDefined();
+    return target;
+  }
+
+  /** A pragmatic-dnd feedback payload for a tree drag of `path`. */
+  function from(path: string, type = "file-tree") {
+    return { source: { data: { path, type } } };
   }
 
   test("adopts every drawn row, the two directories and the root, and one monitor", async () => {
@@ -1569,7 +1583,9 @@ describe("the drag island", () => {
 
     // 10 visible rows (2 dirs, 7 root files, 1 nested file)
     expect(dnd.draggables).toHaveLength(10);
-    expect(dnd.dropTargets).toHaveLength(3); // Pages, assets, root tree
+    // Every row plus the tree: a file row that registered NOTHING was a row whose drop fell
+    // Through to the tree, which is the project root.
+    expect(dnd.dropTargets).toHaveLength(11);
     expect(dnd.monitors).toHaveLength(1);
     expect(handle.state.calls.filter(([name]) => name === "renameFile")).toHaveLength(0);
   });
@@ -1648,36 +1664,55 @@ describe("the drag island", () => {
 
   test("directory drop target accept/reject logic", async () => {
     await seededTree();
-    const target = dirTarget("assets");
+    const target = rowTarget("assets");
 
-    expect(target.canDrop({ source: { data: { path: "x", type: "canvas" } } })).toBe(false);
-    expect(target.canDrop({ source: { data: { path: "assets", type: "file-tree" } } })).toBe(false);
-    expect(
-      target.canDrop({ source: { data: { path: "assets/logo.png", type: "file-tree" } } }),
-    ).toBe(false);
-    expect(
-      target.canDrop({
-        source: { data: { path: String.raw`assets\logo.png`, type: "file-tree" } },
-      }),
-    ).toBe(false);
-    expect(target.canDrop({ source: { data: { path: "beta.md", type: "file-tree" } } })).toBe(true);
-    expect(
-      target.canDrop({ source: { data: { path: "pages/index.json", type: "file-tree" } } }),
-    ).toBe(true);
+    // `canDrop` is now about PARTICIPATION — every tree drag, so the row occludes the tree — and
+    // The verdict rides in the data. A refusal that answered `false` here was a refusal the drop
+    // Fell straight through.
+    expect(target.canDrop(from("x", "canvas"))).toBe(false);
+    expect(target.canDrop(from("assets"))).toBe(true);
+
+    const refused = { type: "file-tree-refused" };
+    expect(target.getData(from("assets"))).toEqual(refused);
+    expect(target.getData(from("assets/logo.png"))).toEqual(refused);
+    expect(target.getData(from(String.raw`assets\logo.png`))).toEqual(refused);
+    expect(target.getData(from("beta.md"))).toEqual({
+      targetDir: "assets",
+      type: "file-tree-target",
+    });
+    expect(target.getData(from("pages/index.json"))).toEqual({
+      targetDir: "assets",
+      type: "file-tree-target",
+    });
+  });
+
+  test("a file row is a target that refuses, because the alternative is the project root", async () => {
+    await seededTree();
+    const target = rowTarget("beta.md");
+
+    // A file has no inside to move something into — but it must SAY so from where it stands, or
+    // Pragmatic-dnd hands the drop to the next target up, which is the tree.
+    expect(target.canDrop(from("pages/index.json"))).toBe(true);
+    expect(target.getData(from("pages/index.json"))).toEqual({ type: "file-tree-refused" });
+
+    target.onDragEnter(from("pages/index.json"));
+    await flush();
+    expect(rowFor("beta.md").dataset.drop).toBeUndefined();
   });
 
   test("a directory under a drag says so, and stops when the drag leaves", async () => {
     await seededTree();
-    const target = dirTarget("assets");
+    const target = rowTarget("assets");
+    const drag = from("beta.md");
 
-    target.onDragEnter();
+    target.onDragEnter(drag);
     await flush();
     expect(rowFor("assets").dataset.drop).toBe("");
     target.onDragLeave();
     await flush();
     expect(rowFor("assets").dataset.drop).toBeUndefined();
-    target.onDrag();
-    target.onDrag(); // Idempotent — the second is a no-op, not a second projection
+    target.onDrag(drag);
+    target.onDrag(drag); // Idempotent — the second is a no-op, not a second projection
     await flush();
     expect(rowFor("assets").dataset.drop).toBe("");
     target.onDrop();
@@ -1685,15 +1720,24 @@ describe("the drag island", () => {
     expect(rowFor("assets").dataset.drop).toBeUndefined();
   });
 
+  test("a directory that refuses the drag shows no affordance for it", async () => {
+    await seededTree();
+    const target = rowTarget("assets");
+
+    target.onDragEnter(from("assets/logo.png"));
+    await flush();
+    // Nothing is going to happen, so nothing says it will.
+    expect(rowFor("assets").dataset.drop).toBeUndefined();
+  });
+
   test("root drop target accepts only entries not already at the root", async () => {
     await seededTree();
-    const root = dirTarget(".");
+    const root = rootTarget();
 
-    expect(root.canDrop({ source: { data: { path: "beta.md", type: "file-tree" } } })).toBe(false);
-    expect(
-      root.canDrop({ source: { data: { path: "pages/index.json", type: "file-tree" } } }),
-    ).toBe(true);
-    expect(root.canDrop({ source: { data: { path: "x", type: "canvas" } } })).toBe(false);
+    expect(root.canDrop(from("beta.md"))).toBe(false);
+    expect(root.canDrop(from("pages/index.json"))).toBe(true);
+    expect(root.canDrop(from("x", "canvas"))).toBe(false);
+    expect(root.getData()).toEqual({ targetDir: ".", type: "file-tree-target" });
 
     root.onDragEnter();
     await flush();
@@ -1702,6 +1746,27 @@ describe("the drag island", () => {
     await flush();
     expect(treeEl().dataset.drop).toBeUndefined();
     root.onDrop();
+  });
+
+  test("the background stops claiming the drop while a row is under the pointer", async () => {
+    await seededTree();
+    const root = rootTarget();
+    const refusing = rowTarget("assets");
+
+    // The tree contains every row, so it is still under the drag while a row is — and it used to
+    // Go on saying the project root would take it, which is exactly the move a refused row made.
+    root.onDragEnter();
+    await flush();
+    expect(treeEl().dataset.drop).toBe("true");
+
+    refusing.onDragEnter(from("assets/logo.png"));
+    await flush();
+    expect(treeEl().dataset.drop).toBeUndefined();
+    expect(rowFor("assets").dataset.drop).toBeUndefined();
+
+    refusing.onDragLeave();
+    await flush();
+    expect(treeEl().dataset.drop).toBe("true");
   });
 
   test("a window that slid mid-drag would drop the sources, so it does not slide", async () => {
@@ -1744,6 +1809,62 @@ describe("the drag island", () => {
         current: { dropTargets: [{ data: { targetDir: ".", type: "file-tree-target" } }] },
       },
       source: { data: { path: "beta.md", type: "file-tree" } },
+    });
+    await flush();
+
+    expect(handle.state.calls.filter(([name]) => name === "renameFile")).toHaveLength(0);
+  });
+
+  test("a refused innermost target ends the drop; it is not handed to the root behind it", async () => {
+    const { handle } = await seededTree({ "assets/logo.png": "x" });
+    const [monitor] = dnd.monitors;
+
+    // What pragmatic-dnd actually hands over: a bubble-ordered stack whose innermost entry is the
+    // Row that said no, with the tree's own root target still standing behind it. Reading past the
+    // First entry is how dropping `assets/logo.png` on `assets` moved it to the project root.
+    monitor.onDrop({
+      location: {
+        current: {
+          dropTargets: [
+            { data: { type: "file-tree-refused" } },
+            { data: { targetDir: ".", type: "file-tree-target" } },
+          ],
+        },
+      },
+      source: { data: { path: "assets/logo.png", type: "file-tree" } },
+    });
+    // And the same stack with the refusal spelled as a directory that will not take it.
+    monitor.onDrop({
+      location: {
+        current: {
+          dropTargets: [
+            { data: { targetDir: "assets", type: "file-tree-target" } },
+            { data: { targetDir: ".", type: "file-tree-target" } },
+          ],
+        },
+      },
+      source: { data: { path: "assets/logo.png", type: "file-tree" } },
+    });
+    await flush();
+
+    expect(handle.state.calls.filter(([name]) => name === "renameFile")).toHaveLength(0);
+    expect(handle.state.files.has("assets/logo.png")).toBe(true);
+    expect(handle.state.files.has("logo.png")).toBe(false);
+  });
+
+  test("a directory is never moved inside its own descendant", async () => {
+    const { handle } = await seededTree({ "assets/nested/logo.png": "x" });
+    const [monitor] = dnd.monitors;
+
+    // A rename onto a path underneath the thing being renamed. The tree offered it and the server
+    // Answered 500; the predicate is where it stops being offered.
+    monitor.onDrop({
+      location: {
+        current: {
+          dropTargets: [{ data: { targetDir: "assets/nested", type: "file-tree-target" } }],
+        },
+      },
+      source: { data: { entryType: "directory", path: "assets", type: "file-tree" } },
     });
     await flush();
 

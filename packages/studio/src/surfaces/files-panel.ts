@@ -147,7 +147,7 @@ export interface FilesPanelActions {
    * — and hangs the project root's drop target off it.
    */
   treeHost: (element: HTMLElement) => void;
-  /** One row element exists: a drag source, an external-file drop target, and a focus target. */
+  /** One row element exists: a drag source, and an external-file drop target. */
   rowHost: (element: HTMLElement, path: string, type: string) => void;
 }
 

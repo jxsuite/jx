@@ -2,7 +2,7 @@
 
 ## Visual Builder for Jx Documents
 
-**Version:** 0.11.0-draft\
+**Version:** 0.11.1-draft\
 **Status:** Partial\
 **Updated:** 2026-09-10\
 **License:** MIT
@@ -975,6 +975,17 @@ The same query backs the inspector's **Used on N pages** line for a selected com
 
 **A promise made must be a promise reported on.** The rename sentence commits the refactor pass to rewriting the references it counted, and the pass can fail to keep that for a nameable reason — a document that does not parse, or a tag rename inside a format with no serializer. A format that is read but never round-tripped is NOT such a reason: a CSV collection declares the narrower `rewrite` capability (`extensions.md` §8), so a reference inside one is repaired cell by cell. Where the pass genuinely cannot write, the engine names those files rather than dropping them (`site-architecture.md` §9.3), and Studio MUST surface the naming: a move whose report carries them reports a **warning** identifying them, not the plain success. This binds the drag-move most of all, since it shows no dialog and therefore makes its promise only in retrospect.
 
+##### A refused drop is refused, not delegated outward
+
+> **Status: Implemented.** The drag-move has three drop targets stacked on top of one another — the row under the pointer, and the tree element, which is the project root and which CONTAINS every row. Which of them the drop reaches is not a detail; it is the difference between "nothing happened" and a file moved somewhere the author never pointed at.
+
+Two rules, and both are about the stack rather than about any one target.
+
+1.  **The innermost target decides, and its refusal ends the gesture.** Pragmatic Drag and Drop documents that blocking a drop target does not block its ancestors, so a row that answers `canDrop: false` is not a refusal — it is an absence, and the drop lands on whatever is behind it. A row therefore participates in every tree drag and carries its verdict in its DATA; a file row, which has no inside to move something into, participates in order to say so. Dropping an entry on the folder it is already in must do nothing, and it did the most surprising thing available instead: it moved the entry to the project root, silently, with the tree's own background lit for a target the author never aimed at.
+2.  **A move that cannot be made is not offered.** The predicate is one function, shared by the affordance, the monitor and the background's own `canDrop`, and it refuses four things: a directory onto itself, an entry already inside the target at any depth, a directory into its own descendant (a rename onto a path underneath the thing being renamed, which the tree offered until the server answered 500), and an entry already directly in the target. Path spellings are normalised before any of that, because `assets\logo.png` and `assets/logo.png` name one entry and a predicate that agreed with itself on only one of them is a predicate with a hole.
+
+**The affordance is derived from the same answer, and only one thing may claim the drop.** A row highlights only when it will take the entry, and the tree background offers the project root only while no row is under the pointer — the two used to be written independently, so a refused row left the background saying the root would take it, which was the untruth and then also the outcome.
+
 ### 9.1.2 The Library
 
 Every page, layout, component, content entry and asset in one browsable tab, with live previews. Reached by `⌘⇧E`, by name from the palette, from the Command Bar's overflow, and from the Files tree's context menu — four doors, because it is the content surface for a site with a collection and a palette search is not a door a reader finds.
@@ -1823,6 +1834,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.11.1-draft** (2026-09-10) — 9.1.1 a refused file-tree drop is refused rather than delegated to the project root: the innermost target decides, one shared predicate answers the affordance and the monitor, and a directory may not be moved into its own descendant.
 - **0.11.0-draft** (2026-09-10) — Adobe Spectrum is removed: the dependency row goes, the colour picker is jx-color-field, the dual-mode row is a composition rather than a class, and check-icons keeps one of its two element rules.
 - **0.10.19-draft** (2026-09-10) — The Props widget's enum control is jx-select and the Logic tab's event name is the kit menu plus the prompt dialog; both named jx-value-selector, which no surface had rendered since its callers converted.
 - **0.10.18-draft** (2026-09-10) — The pane tab strip is a real tablist: one stop in the tab order, arrows with wrap, Home and End, Delete closing a document, and its three marks as slots on jx-tab (§14.4).
@@ -1952,4 +1964,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_`@jxsuite/studio` Specification v0.11.0-draft_
+_`@jxsuite/studio` Specification v0.11.1-draft_

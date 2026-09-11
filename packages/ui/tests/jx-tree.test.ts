@@ -705,6 +705,208 @@ describe("jx-tree", () => {
   });
 });
 
+/**
+ * The handoff: what happens to the KEYBOARD after `move` or `typeahead` is answered.
+ *
+ * Half of this is reachable from here and half of it is not, and the split is worth stating because
+ * it is why the defect survived a green suite. Reachable: that the element arms on the two
+ * dispatches a key provokes and on nothing else, that it lands only once the row `current` names is
+ * actually drawn, and that a reader who moved on keeps the keyboard. NOT reachable: that a row the
+ * host has only just drawn cannot take focus until its own `tabindex` is written — happy-dom
+ * focuses ANY element, tabindex or no tabindex, so the mechanism that broke both trees in a browser
+ * reports success here. {@link refuseFocus} is how that row is modelled: a row that declines focus
+ * the way a real un-attributed one does, so the "keep asking until the keyboard moved" rule can be
+ * asserted rather than assumed.
+ */
+describe("jx-tree, handing a caret move to its host", () => {
+  /**
+   * Where the keyboard is, as a STRING.
+   *
+   * Element identity would be the sharper assertion and is unusable here: a failed `toBe` on two
+   * DOM nodes serialises both of them, and a happy-dom element prints its whole prototype — fifteen
+   * seconds and a screenful per failure, which is long enough to read as a hung suite.
+   */
+  const at = (): string => {
+    const active = document.activeElement;
+    return active === null || active === document.body
+      ? "nowhere"
+      : (active.getAttribute("value") ?? active.localName);
+  };
+
+  /** The host's answer: draw the row it decided on, and write `current` — in that order or not. */
+  function reveal(tree: TreeEl, value: string, label = value): ItemEl {
+    const item = document.createElement("jx-tree-item") as ItemEl;
+    item.setAttribute("value", value);
+    item.setAttribute("label", label);
+    item.setAttribute("level", "1");
+    tree.append(item);
+    return item;
+  }
+
+  /** A row that is in the page and cannot take focus — what a just-drawn row IS, in a browser. */
+  function refuseFocus(item: ItemEl): () => void {
+    const own = item.focus.bind(item);
+    Object.defineProperty(item, "focus", { configurable: true, value: () => {} });
+    return () => {
+      Object.defineProperty(item, "focus", { configurable: true, value: own });
+    };
+  }
+
+  test("a move the host answers takes the keyboard with it", async () => {
+    const { tree, rows, moves } = await render(
+      treeDoc({ current: "footer", padbottom: 18_480, padtop: 960 }),
+    );
+    enter(rows);
+    key(tree, "End");
+    expect(moves).toEqual([{ from: "footer", key: "End" }]);
+    // The element performed nothing, so the keyboard is still on the row the reader left.
+    expect(at()).toBe("footer");
+
+    const revealed = reveal(tree, "last-of-the-model");
+    tree.current = "last-of-the-model";
+    await flush();
+
+    expect(at()).toBe("last-of-the-model");
+    expect(revealed.getAttribute("tabindex")).toBe("0");
+  });
+
+  test("the keyboard waits for the ROW, not for the answer", async () => {
+    /* The host writes `current` while the row it names still has no element — that is the whole
+       shape of a windowed answer. The sync that write provokes puts the tab stop on the first drawn
+       row instead, and a tree that took the keyboard there would land the reader somewhere they did
+       not ask for and call the jump done. */
+    const { tree, rows } = await render(
+      treeDoc({ current: "footer", padbottom: 18_480, padtop: 960 }),
+    );
+    enter(rows);
+    key(tree, "End");
+
+    tree.current = "not-drawn-yet";
+    await flush();
+    expect(carets(rows)).toEqual(["0", "-1", "-1", "-1", "-1", "-1"]);
+    expect(at()).toBe("footer");
+
+    reveal(tree, "not-drawn-yet");
+    await flush();
+    expect(at()).toBe("not-drawn-yet");
+  });
+
+  test("the request stands until the keyboard has actually moved", async () => {
+    /* A row reaches the page before its own document writes its attributes, so it answers to its
+       `value` and still cannot be focused. Spending the request on having ASKED is exactly what
+       both hosts did, one layer up. */
+    const { tree, rows } = await render(
+      treeDoc({ current: "footer", padbottom: 18_480, padtop: 960 }),
+    );
+    enter(rows);
+    key(tree, "End");
+
+    const revealed = reveal(tree, "revealed");
+    const restore = refuseFocus(revealed);
+    tree.current = "revealed";
+    await flush();
+    expect(at()).toBe("footer");
+
+    // The row becomes focusable, and the next sync finishes the jump the reader asked for.
+    restore();
+    reveal(tree, "a-later-row");
+    await flush();
+    expect(at()).toBe("revealed");
+  });
+
+  test("the row's own `tabindex` write is the signal the tree waits for", async () => {
+    /* And it is the one that matters in a browser. A row the repaint has just created is in the
+       page, answering to its `value`, with no `tabindex` on it — so the sync its own arrival
+       provokes is too early by construction, and only the attribute write says otherwise. Nothing
+       else in the row set changes at that moment, so watching children alone would leave the
+       reader's caret jump half-done with no second chance. */
+    const { tree, rows } = await render(
+      treeDoc({ current: "footer", padbottom: 18_480, padtop: 960 }),
+    );
+    enter(rows);
+    key(tree, "End");
+
+    const revealed = reveal(tree, "revealed");
+    const restore = refuseFocus(revealed);
+    revealed.removeAttribute("tabindex");
+    tree.current = "revealed";
+    await flush();
+    expect(at()).toBe("footer");
+
+    restore();
+    revealed.setAttribute("tabindex", "0");
+    await flush();
+    expect(at()).toBe("revealed");
+  });
+
+  test("a letter answered off the slice lands the same way a move does", async () => {
+    const { tree, rows, seeks } = await render(
+      treeDoc({ current: "footer", padbottom: 18_480, padtop: 960 }),
+    );
+    enter(rows);
+    key(tree, "h");
+    expect(seeks).toEqual([{ char: "h", from: "footer" }]);
+
+    reveal(tree, "header-far-above", "header");
+    tree.current = "header-far-above";
+    await flush();
+    expect(at()).toBe("header-far-above");
+  });
+
+  test('`""` is a row value, not a missing one', async () => {
+    /* The Outline's first row is the document root and its `pathKey([])` is the empty string, so a
+       tree that read `current: ""` as "no caret" would answer Home in that panel by moving the
+       caret and abandoning the keyboard. */
+    const { tree, rows, moves } = await render(
+      treeDoc({ current: "footer", padbottom: 18_480, padtop: 960 }),
+    );
+    enter(rows);
+    key(tree, "Home");
+    expect(moves).toEqual([{ from: "footer", key: "Home" }]);
+
+    reveal(tree, "", "the document");
+    tree.current = "";
+    await flush();
+    expect(at()).toBe("");
+  });
+
+  test("a reader who moved on keeps the keyboard", async () => {
+    /* The host scrolls and repaints, and a reader is not obliged to wait for it. Taking the
+       keyboard back then would pull it out of whatever they moved to. */
+    const { tree, rows } = await render(
+      treeDoc({ current: "footer", padbottom: 18_480, padtop: 960 }),
+    );
+    enter(rows);
+    key(tree, "End");
+
+    const elsewhere = document.createElement("button");
+    document.body.append(elsewhere);
+    elsewhere.focus();
+
+    const revealed = reveal(tree, "last-of-the-model");
+    tree.current = "last-of-the-model";
+    await flush();
+    expect(at()).toBe("button");
+    expect(revealed.getAttribute("tabindex")).toBe("0");
+    elsewhere.remove();
+  });
+
+  test("a host writing `current` for its own reasons moves the caret and nothing else", async () => {
+    /* The canvas selecting a node moves the Outline's caret, and it must not move the keyboard: the
+       reader is in the canvas. Nothing is armed here because no KEY asked for anything. */
+    const { tree } = await render(treeDoc({ current: "body", padbottom: 18_480 }));
+    const elsewhere = document.createElement("button");
+    document.body.append(elsewhere);
+    elsewhere.focus();
+
+    tree.current = "prose";
+    await flush();
+    expect(at()).toBe("button");
+    expect(mirror(tree)).toBe("prose");
+    elsewhere.remove();
+  });
+});
+
 describe("jx-tree, where there is nothing to do", () => {
   test("an empty tree has no caret, and answers a key with nothing at all", async () => {
     const { tree } = await render(treeDoc({ rows: [] }));

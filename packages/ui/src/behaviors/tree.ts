@@ -20,6 +20,14 @@
  * ends of the slice are the ends of the model, and the same code clamps there instead — which is
  * the APG's answer for a tree, where the arrows deliberately do NOT wrap.
  *
+ * **What it hands over is the ROW, and never the KEYBOARD.** A caret move is one act, and it does
+ * not change owner just because the row is off-slice: `jx-tree` focuses the row the caret lands on
+ * whether it walked there itself ({@link moveTo}) or asked a host to reveal it ({@link land}). The
+ * host cannot do that half. It writes `current` while the row it names still has no element, and
+ * the element the repaint then draws is not focusable until the roving `tabindex` has reached it —
+ * a moment only {@link syncTree} is in a position to know, because the write it answers is this
+ * module's own. Both Studio trees tried anyway and both missed it, in opposite directions.
+ *
  * **Typeahead is the second of those, and it does not look like the first.** A move announces its
  * own failure; a letter never does, because the search over a slice always answers and the answer
  * is simply the wrong row. A windowed tree therefore dispatches `typeahead` for EVERY printable
@@ -126,6 +134,22 @@ const hosts = new WeakMap<object, HTMLElement>();
 /** The trees already watching their own row set, so a second mount never observes twice. */
 const watched = new WeakMap<HTMLElement, MutationObserver>();
 
+/**
+ * A caret move the element could not perform and handed to its host, waiting to be finished.
+ *
+ * The element gives up the ROW and keeps the KEYBOARD, because those are two different questions
+ * and only the first one is the host's. See {@link land}.
+ */
+interface Handoff {
+  /** `current` when the element gave up — what the host's answer has to differ from. */
+  from: string;
+  /** The row that held the keyboard at that moment, so a repaint that takes it away is legible. */
+  held: Element | null;
+}
+
+/** The move each tree is waiting to see drawn. At most one: a second key supersedes the first. */
+const handoffs = new WeakMap<HTMLElement, Handoff>();
+
 /** The tree an event's `currentTarget` is. */
 function hostOf(event: Event): TreeElement | null {
   const target = event.currentTarget;
@@ -226,6 +250,9 @@ export function itemsOf(
  * The fallback moves the tab STOP and never `current` itself, so the host's model is untouched and
  * a reader who tabs in lands on a row they can see.
  *
+ * It is also the one moment at which a handed-off caret move can be FINISHED, which is why
+ * {@link land} is called from here and from nowhere else — see its own note.
+ *
  * @param tree The `jx-tree` element.
  */
 export function syncTree(tree: HTMLElement): void {
@@ -239,19 +266,114 @@ export function syncTree(tree: HTMLElement): void {
   for (const item of items) {
     item.caret = item === caret;
   }
+  land(tree, current, caret);
 }
 
-/** Keep the one-tab-stop invariant as the drawn slice comes and goes. */
+/**
+ * Whether the keyboard is still this tree's to move.
+ *
+ * Two states qualify and the second is the one a windowed tree actually lands in. Focus is still
+ * somewhere inside the tree — the row the reader left is often still drawn, one screen up. Or focus
+ * is nowhere at all, because the repaint that answered the move took the focused row out of the
+ * document and the browser dropped focus to `<body>`; the row this tree remembers is the evidence,
+ * and asking whether it is still connected is a fact about a node this module was handed rather
+ * than a measurement.
+ *
+ * Anything else means the reader went somewhere while the host was scrolling, and a tree that took
+ * the keyboard back then would be yanking it out of whatever they moved to.
+ */
+function keptFocus(tree: HTMLElement, pending: Handoff): boolean {
+  const owner = tree.ownerDocument;
+  const active = owner.activeElement;
+  if (active instanceof Node && tree.contains(active)) {
+    return true;
+  }
+  const adrift = active === null || active === owner.body;
+  return adrift && pending.held !== null && !pending.held.isConnected;
+}
+
+/**
+ * Finish a handed-off caret move: take the keyboard to the row the host revealed.
+ *
+ * **The element gives up the ROW and keeps the KEYBOARD.** A host answering `move` or `typeahead`
+ * scrolls, repaints and writes `current`, and none of those is a moment it can focus at: the row it
+ * names has no element until the repaint draws one, and the element it does draw is not focusable
+ * until the roving `tabindex` has reached it. Only {@link syncTree} knows when that has happened,
+ * so the handoff is finished HERE rather than through a "now" the two hosts would each have to hook
+ * correctly — which is what they were doing, by two different mechanisms, and neither of them
+ * worked: the Files tree spent its one focus attempt on a row announced through `onNodeCreated`,
+ * one reconcile step before any attribute including `tabindex` was on it, and the Outline queued a
+ * microtask that ran before the projection it was waiting for had been drawn.
+ *
+ * Three conditions, each closing a different way to focus the wrong thing. `current` must have
+ * MOVED, so a host that decided to answer with the row the caret was already on is not overridden.
+ * The caret must be the row `current` names rather than {@link syncTree}'s first-drawn fallback,
+ * which is what makes an early sync — the one that runs when `current` changes but before the rows
+ * do — a no-op that leaves the handoff standing for the sync that follows the repaint. And the
+ * keyboard must still be this tree's to move ({@link keptFocus}).
+ *
+ * `""` is deliberately NOT one of them, tempting as "no caret" reads. It is a row value like any
+ * other and the Outline's is the document root, whose `pathKey([])` is the empty string — a tree
+ * that refused to land on it would answer Home in that panel by moving the caret and abandoning the
+ * keyboard, which is the defect rather than a guard against it. The `current !== from` test already
+ * says a host answered, and `valueOf(caret) === current` already says the row it answered with is
+ * the one drawn.
+ *
+ * **The handoff is spent by the keyboard MOVING, never by having asked.** Writing `caret` puts the
+ * roving tab stop on the row in this module's own terms; the `tabindex` that makes the row
+ * focusable is written by the row's document, and a row the repaint has only just created is in the
+ * page, answering to its `value`, with no `tabindex` on it yet — `focus()` there does nothing at
+ * all and reports nothing. That is the exact shape of the defect this replaced, one layer down, so
+ * the answer cannot be a better-chosen moment: the request stands until the keyboard actually
+ * moved, and {@link watchTree} is what guarantees another sync once the row is focusable.
+ */
+function land(tree: HTMLElement, current: string, caret: ItemElement | null): void {
+  const pending = handoffs.get(tree);
+  if (!pending) {
+    return;
+  }
+  if (!keptFocus(tree, pending)) {
+    handoffs.delete(tree);
+    return;
+  }
+  if (current === pending.from || caret === null || valueOf(caret) !== current) {
+    return;
+  }
+  caret.focus();
+  if (tree.ownerDocument.activeElement === caret) {
+    handoffs.delete(tree);
+  }
+}
+
+/**
+ * Keep the one-tab-stop invariant as the drawn slice comes and goes.
+ *
+ * The ROW SET is the obvious half: a scroll repaints the whole slice, and a tree whose caret-holder
+ * was scrolled away has no `tabindex="0"` left at all.
+ *
+ * `tabindex` itself is the other half, and it is what makes a handed-off caret move land. A row the
+ * repaint has just created reaches the page before its own document has written its attributes, so
+ * the sync that the new children provoke sees a row that answers to the right `value` and cannot
+ * take focus. Watching the attribute is not a poll and not a guess about timing: it is the row
+ * saying, in the only terms it has, that the tab stop this module asked for is now on it — and
+ * {@link land} is waiting for exactly that.
+ */
 function watchTree(tree: HTMLElement): void {
   if (watched.has(tree)) {
     return;
   }
-  /* `syncTree` writes only properties, never children, so nothing it does can feed this observer
-     back into itself. */
+  /* This DOES feed back — writing `caret` is what makes a row write `tabindex` — and it converges in
+     one round rather than looping, because everything `syncTree` writes is derived from `current`
+     and an equal write into a reactive proxy changes no attribute and so produces no record. */
   const observer = new MutationObserver(() => {
     syncTree(tree);
   });
-  observer.observe(tree, { childList: true, subtree: true });
+  observer.observe(tree, {
+    attributeFilter: ["tabindex"],
+    attributes: true,
+    childList: true,
+    subtree: true,
+  });
   watched.set(tree, observer);
 }
 
@@ -336,6 +458,23 @@ function hasBelow(scope: TreeState): boolean {
 }
 
 /**
+ * Remember that a caret move is in the host's hands, so {@link land} can finish it.
+ *
+ * Armed BEFORE the event is dispatched, because a host answers one synchronously: it writes
+ * `current` inside the dispatch, and the sync that write provokes is already a chance to land.
+ *
+ * It is armed only from the two dispatches a KEY provokes, never from a host writing `current` for
+ * its own reasons — a canvas selection moving the Outline's caret must not pull the keyboard out of
+ * the canvas.
+ */
+function handOff(host: HTMLElement, scope: TreeState): void {
+  handoffs.set(host, {
+    from: String(scope.current ?? ""),
+    held: host.ownerDocument.activeElement,
+  });
+}
+
+/**
  * Ask the host for a row this tree cannot reach.
  *
  * The one thing a windowed composite cannot do for itself, and the reason it is an event rather
@@ -344,6 +483,7 @@ function hasBelow(scope: TreeState): boolean {
  * something first.
  */
 function beyond(host: HTMLElement, scope: TreeState, key: string): void {
+  handOff(host, scope);
   announce(host, "move", { from: String(scope.current ?? ""), key } satisfies TreeMoveDetail);
 }
 
@@ -371,6 +511,7 @@ function windowed(scope: TreeState): boolean {
  * "found the wrong row" are the same state from in here.
  */
 function seek(host: HTMLElement, scope: TreeState, char: string): void {
+  handOff(host, scope);
   announce(host, "typeahead", {
     char,
     from: String(scope.current ?? ""),
