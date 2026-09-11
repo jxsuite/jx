@@ -7,7 +7,7 @@ import "./with-dom";
 
 import { afterEach, describe, expect, test } from "bun:test";
 
-import { flush } from "./harness";
+import { flush, stubRect } from "./harness";
 import { initLayers } from "../src/ui/layers";
 
 for (const id of ["layer-popover", "layer-modal", "layer-dialog"]) {
@@ -17,7 +17,7 @@ for (const id of ["layer-popover", "layer-modal", "layer-dialog"]) {
 }
 initLayers();
 
-const { openMenu } = await import("../src/surfaces/menu");
+const { openMenu, placementOf } = await import("../src/surfaces/menu");
 
 type MenuEl = HTMLElement & { open: boolean; x: number; y: number };
 
@@ -150,6 +150,48 @@ describe("openMenu", () => {
     await flush();
     expect(menuIn(open.host)).toBeNull();
     expect(document.activeElement).toBe(opener);
+    opener.remove();
+  });
+
+  /*
+   * Where a menu hangs (ui.md §5.1): a menu with an opener hangs below it by the platform's anchor
+   * positioning, and every other menu — at a pointer, right-aligned by `place`, on a floor — keeps
+   * the coordinates its caller computed. Derived, so the twenty callers that already open below
+   * their button need no edit, and overridable, so one that wants the trailing edge can say so.
+   */
+  test("placement is derived from the opener and passed to the menu", async () => {
+    const opener = document.createElement("button");
+    document.body.append(opener);
+    expect(placementOf({ opener })).toBe("block-end span-inline-end");
+    expect(placementOf({})).toBe("");
+    /* A caller that computed a position meant it: the pointer of a context menu, or a `place`. */
+    expect(placementOf({ opener, origin: { x: 10, y: 10 } })).toBe("");
+    expect(placementOf({ opener, place: () => ({ x: 0, y: 0 }) })).toBe("");
+    expect(placementOf({ floor: () => 500, opener })).toBe("");
+    expect(placementOf({ opener, placement: "" })).toBe("");
+    expect(placementOf({ placement: "block-end span-inline-start" })).toBe(
+      "block-end span-inline-start",
+    );
+    stubRect(opener, { height: 24, left: 100, top: 40, width: 80 });
+    open = openMenu({
+      label: "Things",
+      opener,
+      region: "test",
+      rows: ROWS,
+      run: () => {},
+    });
+    await open.ready;
+    await flush();
+    const menu = menuIn(open.host) as (MenuEl & { placement: string; anchored: boolean }) | null;
+    expect(menu?.placement).toBe("block-end span-inline-end");
+    /* The fallback coordinates are the opener's box, the corner the placement names. */
+    expect(menu?.x).toBe(100);
+    expect(menu?.y).toBe(64);
+    /* Shown from the opener with a placement and no floor: anchored, and the attribute the
+       document's rule keys on is there. */
+    expect(menu?.anchored).toBe(true);
+    expect(menu?.dataset["anchored"]).toBe("");
+    open.close();
     opener.remove();
   });
 });

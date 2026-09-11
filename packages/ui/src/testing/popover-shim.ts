@@ -25,9 +25,19 @@ declare global {
   }
 }
 
-function toggleEvent(type: "beforetoggle" | "toggle", oldState: string, newState: string): Event {
+/**
+ * A ToggleEvent, as the platform dispatches one: `oldState`, `newState`, and — for an opening shown
+ * from a source — `source`, which Chrome 152 carries on both `beforetoggle` and `toggle` and which
+ * the kit reads to know what a panel is anchored to.
+ */
+function toggleEvent(
+  type: "beforetoggle" | "toggle",
+  oldState: string,
+  newState: string,
+  source?: Element | null,
+): Event {
   const event = new Event(type, { bubbles: false, cancelable: type === "beforetoggle" });
-  Object.assign(event, { newState, oldState });
+  Object.assign(event, { newState, oldState, ...(source ? { source } : {}) });
   return event;
 }
 
@@ -109,10 +119,11 @@ export function installPopoverShim(): void {
         }
       }
     }
-    this.dispatchEvent(toggleEvent("beforetoggle", "closed", "open"));
+    const source = options?.source ?? null;
+    this.dispatchEvent(toggleEvent("beforetoggle", "closed", "open", source));
     state.open.add(this);
     this.dataset.popoverOpen = "";
-    queueMicrotask(() => this.dispatchEvent(toggleEvent("toggle", "closed", "open")));
+    queueMicrotask(() => this.dispatchEvent(toggleEvent("toggle", "closed", "open", source)));
   };
   proto.hidePopover = function hidePopover(this: HTMLElement): void {
     if (!this.hasAttribute("popover")) {

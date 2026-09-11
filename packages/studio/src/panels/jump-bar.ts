@@ -61,7 +61,6 @@ import { activeRegistry } from "../commands/active-registry";
 import { openMenu } from "../surfaces/menu";
 import { mountJumpBarSurface } from "../surfaces/jump-bar";
 import { PANE_SELECTOR } from "../surfaces/pane-grid";
-import { rectOf } from "../utils/geometry";
 import type { CommandArgs, CommandRegistry } from "../commands/registry";
 import type { FormulaEditDef, FunctionEditDef } from "../types";
 import type { JxPath } from "../state";
@@ -419,7 +418,6 @@ function openChoices(segment: JumpSegment, anchor: HTMLElement | null): void {
     return;
   }
   dismissJumpMenu();
-  const box = anchor ? rectOf(anchor) : null;
   const rows: MenuRowProjection[] = segment.choices.map((choice, i) => ({
     // The choice you are already on is MARKED rather than removed: a menu that omits your place
     // Loses it. `checked` is the element's own spelling of that, so the row announces itself.
@@ -441,9 +439,6 @@ function openChoices(segment: JumpSegment, anchor: HTMLElement | null): void {
       }
     },
     opener: anchor,
-    origin: box
-      ? { x: Math.round(Math.min(box.left, window.innerWidth - 4)), y: Math.round(box.bottom) }
-      : { x: 0, y: 0 },
     region: "jump-bar",
     rows,
   });

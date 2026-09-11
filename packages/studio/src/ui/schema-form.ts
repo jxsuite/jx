@@ -57,7 +57,6 @@ import {
   configFieldSchema,
   slotCaps,
 } from "./value-source";
-import { rectOf } from "../utils/geometry";
 import type { SlotMode } from "./value-source";
 import type { SignalOption } from "./dynamic-slot";
 import type { JsonValue } from "../types";
@@ -678,7 +677,6 @@ function createController(): FormController {
       return;
     }
     const { fieldKey, mode, offered, sources } = plan.ladder;
-    const box = rectOf(anchor);
     sourceMenu?.close();
     sourceMenu = openMenu({
       label: "Value source",
@@ -686,7 +684,6 @@ function createController(): FormController {
         sourceMenu = null;
       },
       opener: anchor,
-      origin: { x: box.left, y: box.bottom },
       region: "value-source",
       rows: offered.map((rung) => ({
         checked: (rung === mode ? "true" : "false") as "true" | "false",

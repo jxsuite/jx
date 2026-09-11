@@ -15,6 +15,9 @@
     },
     "floor": {
       "$ref": "#/state/floor"
+    },
+    "placement": {
+      "$ref": "#/state/placement"
     }
   },
   "onselect": {

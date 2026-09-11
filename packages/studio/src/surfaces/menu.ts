@@ -74,6 +74,15 @@ export interface OpenMenuOptions {
   /** The lowest edge the menu and its submenus may reach; the viewport by default. */
   floor?: () => number;
   /**
+   * Where the menu hangs relative to `opener`, as a CSS `position-area` value, on an engine with
+   * anchor positioning (ui.md §5.1). Derived when omitted: a menu with an `opener` and neither a
+   * `place` nor a `floor` hangs `block-end span-inline-end` — below it, leading edges aligned,
+   * which is what every such caller's `origin` computes — and every other menu is placed by its
+   * coordinates: a context menu at the pointer, a menu whose `place` right-aligns it, a menu that
+   * sits on a floor. Pass the empty string to keep a menu with an opener on its coordinates.
+   */
+  placement?: string;
+  /**
    * The popover slot id; the region becomes `overlay.menu:<id>`, so the context menu passes
    * `context`.
    */
@@ -137,7 +146,33 @@ interface MenuScope extends Record<string, unknown> {
   x: number;
   y: number;
   floor: number;
+  placement: string;
   select: (scope: JxScope, event: Event) => void;
+}
+
+/** The default hang of a menu from its opener, which every `origin` of such a caller computes. */
+const BELOW_OPENER = "block-end span-inline-end";
+
+/** What {@link OpenMenuOptions.placement} means once the derivation has been applied. */
+export function placementOf(
+  options: Pick<OpenMenuOptions, "floor" | "opener" | "origin" | "place" | "placement">,
+): string {
+  if (options.placement !== undefined) {
+    return options.placement;
+  }
+  return options.opener && !options.origin && !options.place && !options.floor ? BELOW_OPENER : "";
+}
+
+/**
+ * Where a menu with no coordinates of its own opens on an engine that cannot anchor it: below its
+ * opener, leading edges aligned — the same corner the placement names.
+ */
+function belowOpener(opener: HTMLElement | null | undefined): { x: number; y: number } {
+  if (!opener) {
+    return { x: 0, y: 0 };
+  }
+  const box = rectOf(opener);
+  return { x: Math.round(box.left), y: Math.round(box.bottom) };
 }
 
 function project(row: MenuRowProjection, depth = 0): ProjectedRow {
@@ -207,10 +242,13 @@ export function openMenu(options: OpenMenuOptions): MenuHandle {
     options.onClosed?.(handle);
   };
 
-  const initial = options.place ? options.place(ZERO_BOX) : (options.origin ?? { x: 0, y: 0 });
+  const initial = options.place
+    ? options.place(ZERO_BOX)
+    : (options.origin ?? belowOpener(options.opener));
   const scope: MenuScope = reactive({
     floor: options.floor?.() ?? 0,
     label: options.label,
+    placement: placementOf(options),
     rows: options.rows.map((row) => project(row)),
     select: (_scope: JxScope, event: Event) => {
       const id = String((event as CustomEvent).detail);

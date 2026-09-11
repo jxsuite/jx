@@ -68,7 +68,6 @@ import { VALUE_SOURCE_LABELS, capsForPosition, slotCaps, slotMode } from "../ui/
 import { cloneValue } from "../tabs/doc-op-apply";
 import { openMenu } from "../surfaces/menu";
 import { showPromptDialog } from "../ui/layers";
-import { rectOf } from "../utils/geometry";
 import { effect, effectScope } from "../reactivity";
 import {
   bindableSignalNames,
@@ -924,11 +923,9 @@ function openSourceMenu(key: string, anchor: HTMLElement): void {
   if (!plan || !canMove(plan.mode, plan.offered)) {
     return;
   }
-  const box = rectOf(anchor);
   openMenu({
     label: "Value source",
     opener: anchor,
-    origin: { x: box.left, y: box.bottom },
     region: "value-source",
     rows: plan.offered.map((rung) => ({
       checked: (rung === plan.mode ? "true" : "false") as "true" | "false",
@@ -975,11 +972,9 @@ function openHandlerMenu(key: string, anchor: HTMLElement): void {
   if (!plan) {
     return;
   }
-  const box = rectOf(anchor);
   openMenu({
     label: "Value source",
     opener: anchor,
-    origin: { x: box.left, y: box.bottom },
     region: "value-source",
     rows: HANDLER_MODES.map((rung) => ({
       checked: (rung === plan.mode ? "true" : "false") as "true" | "false",
@@ -1019,11 +1014,9 @@ function openHandlerMenu(key: string, anchor: HTMLElement): void {
 function openEventNameMenu(key: string, anchor: HTMLElement): void {
   const bound = [...plans.bindings.keys()];
   const suggestions = [...new Set([...bound, ...EVENT_NAMES])];
-  const box = rectOf(anchor);
   openMenu({
     label: "Event name",
     opener: anchor,
-    origin: { x: box.left, y: box.bottom },
     region: "event-name",
     rows: [
       ...suggestions.map((name) => ({
