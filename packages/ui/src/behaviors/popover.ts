@@ -30,6 +30,18 @@
  *    host is running no animations, and without that second path `data-jx-settling` sticks
  *    forever.
  *
+ * **Placement is the platform's whenever it can be, and the clamp is the fallback.** A popover
+ * shown from a source — `showPopover({ source })`, or a `popovertarget` invoker — has that source
+ * as its IMPLICIT anchor, by the platform's own rule and with no `anchor-name` on anybody's
+ * element, so the document's `position-area` rule places it, follows the source through scroll and
+ * resize, and flips it when the first placement would overflow. This module's part is one decision,
+ * made in {@link onBeforeToggle} before the panel is laid out: `anchored` is true for an opening
+ * toggle with a source on a panel with no floor, and the clamp is skipped for an anchored panel on
+ * an engine that positions by anchor. Everything else — a panel shown from nothing, a panel with a
+ * floor, an engine without anchor positioning — is placed at `x` and `y` and clamped, exactly as
+ * before. The measurement stays the fallback rather than going, because the kit publishes to site
+ * authors and their readers' engines are not all one engine.
+ *
  * @docs extending/ui-kit
  */
 
@@ -39,10 +51,24 @@ export interface PopoverState {
   settling?: boolean;
   matchWidth?: boolean;
   anchorWidth?: number;
+  /** Whether the panel is showing from a source and therefore placed by the platform. */
+  anchored?: boolean;
   x?: number;
   y?: number;
   floor?: number;
   [key: string]: unknown;
+}
+
+/**
+ * Whether this engine positions by anchor at all — the same question the document's `@supports`
+ * block asks, so the clamp is skipped exactly where the anchored rule applies and nowhere else. A
+ * platform query, not a DOM write, and answered fresh each time because it is cheap and a test may
+ * stub it either way.
+ */
+export function supportsAnchorPositioning(): boolean {
+  const css = (globalThis as { CSS?: { supports?: (property: string, value: string) => boolean } })
+    .CSS;
+  return typeof css?.supports === "function" && css.supports("position-area", "block-end");
 }
 
 /**
@@ -109,24 +135,39 @@ export function openAt(host: PopoverElement, anchor?: Element | null): void {
     api.showPopover();
     return;
   }
+  /* BEFORE the call, because `beforetoggle` fires inside it and {@link onBeforeToggle} reads the
+     map on an engine whose event carries no `source`. A refused open is taken back below, so the
+     map still answers "what is this panel showing from" with nothing for a panel that did not
+     open. */
+  anchors.set(host, anchor);
+  try {
+    show(api, anchor);
+  } catch (error) {
+    anchors.delete(host);
+    throw error;
+  }
+}
+
+/**
+ * The call itself, with the one retry it is allowed.
+ *
+ * ONLY a `TypeError` means "this engine has no options bag" — that is what a WebIDL overload or
+ * dictionary conversion raises. Everything else is the call itself refusing: `showPopover` throws a
+ * `DOMException` (`NotSupportedError`) for an element that is not a popover at all, and retrying
+ * that one bare throws the same error a second time, out of `openAt` and into whatever bound the
+ * handler. So it is re-raised from the FIRST call, unswallowed.
+ */
+function show(api: PopoverApi, anchor: Element): void {
   try {
     /* `ShowPopoverOptions.source` is typed `HTMLElement`, but any element can be a
        trigger and the platform only reads it as a focus origin. */
-    api.showPopover({ source: anchor as HTMLElement });
+    api.showPopover?.({ source: anchor as HTMLElement });
   } catch (error) {
-    /* ONLY a `TypeError` means "this engine has no options bag" — that is what a WebIDL overload
-       or dictionary conversion raises. Everything else is the call itself refusing: `showPopover`
-       throws a `DOMException` (`NotSupportedError`) for an element that is not a popover at all,
-       and retrying that one bare throws the same error a second time, out of `openAt` and into
-       whatever bound the handler. So it is re-raised from the FIRST call, unswallowed. */
     if (!(error instanceof TypeError)) {
       throw error;
     }
-    api.showPopover();
+    api.showPopover?.();
   }
-  /* After the call, so a refused open records nothing: the map answers "what is this panel
-     showing from", and a panel that did not open is showing from nothing. */
-  anchors.set(host, anchor);
 }
 
 /**
@@ -222,10 +263,31 @@ function clearWhenStill(state: PopoverState, host: HTMLElement): void {
 }
 
 /**
+ * The platform's `beforetoggle`: where `anchored` is decided, and the only thing decided there.
+ *
+ * Before the show rather than on the toggle after it, because `toggle` is queued once the panel is
+ * already in the top layer: a panel that learned it was anchored a frame late would paint once at
+ * its coordinates and then jump to its anchor. A closing `beforetoggle` clears it, so the
+ * coordinate rule is back in force for whatever shows the panel next.
+ *
+ * @param state The panel's reactive state.
+ * @param event The platform's ToggleEvent.
+ */
+export function onBeforeToggle(state: PopoverState, event: Event): void {
+  const host = hostOf(event);
+  if (!host) {
+    return;
+  }
+  const opening = (event as { newState?: string }).newState === "open";
+  const floor = Number(state.floor ?? 0);
+  state.anchored = opening && floor <= 0 && toggleSourceOf(host, event) !== null;
+}
+
+/**
  * The platform's toggle: the one source of truth for `open`.
  *
- * An opening toggle measures the element the toggle names as its source and clamps the panel into
- * its area; a closing one drops the recorded anchor.
+ * An opening toggle measures the element the toggle names as its source and, unless the platform is
+ * placing the panel by anchor, clamps it into its area; a closing one drops the recorded anchor.
  *
  * @param state The panel's reactive state.
  * @param event The platform's ToggleEvent.
@@ -240,7 +302,9 @@ export function onToggle(state: PopoverState, event: Event): void {
   state.settling = true;
   if (opening) {
     measureAnchor(state, host, toggleSourceOf(host, event));
-    clampIntoViewport(state, host, { floor: Number(state.floor ?? 0) });
+    if (!(state.anchored === true && supportsAnchorPositioning())) {
+      clampIntoViewport(state, host, { floor: Number(state.floor ?? 0) });
+    }
   } else {
     /* The panel is showing from nothing now, so the map stops holding the trigger alive. Here
        rather than in `close`, because light dismissal and Escape close a panel without it. */

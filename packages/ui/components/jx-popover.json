@@ -2,7 +2,7 @@
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "JxPopover",
   "tagName": "jx-popover",
-  "observedAttributes": ["label", "arrow", "match-width", "x", "y", "floor"],
+  "observedAttributes": ["label", "arrow", "match-width", "placement", "x", "y", "floor"],
   "state": {
     "label": {
       "type": "string",
@@ -22,17 +22,23 @@
       "attribute": "match-width",
       "description": "Make the panel at least as wide as the element it was opened from, the way a select's list matches its trigger. The width is re-measured on each toggle and never continuously, from whatever the toggle names as its source: a raw <button popovertarget>, a kit button forwarding popovertarget, and openAt(panel, trigger) all measure the trigger."
     },
+    "placement": {
+      "type": "string",
+      "default": "block-end span-inline-end",
+      "attribute": "placement",
+      "description": "Where the panel sits relative to the element it was opened from, as a CSS position-area value: block-end span-inline-end (below, its inline-start edge on the trigger's) by default; block-end span-inline-start for a panel that hangs from a trigger's trailing edge; block-start for one that opens above. It applies only while the panel is ANCHORED, which is whenever it was shown from a source, and only on an engine with CSS anchor positioning: the trigger becomes the popover's implicit anchor the moment it is passed to showPopover({ source }) or names the panel with popovertarget, so no anchor-name is ever written on a consumer's element (specs/ui.md 2, 6). Everywhere else the panel stands at x and y. The value is passed to the property as written and is not validated here, because the platform's own grammar is the contract and a value it refuses computes to none, which is the coordinate placement again."
+    },
     "x": {
       "type": "number",
       "default": 0,
       "attribute": "x",
-      "description": "Where the panel's inline-start edge sits, in viewport pixels. Placement is by measured coordinate rather than by CSS anchor positioning: anchor positioning needs the ANCHOR to declare anchor-name, and an element may not write a style on a consumer's trigger (specs/ui.md 2)."
+      "description": "Where the panel's inline-start edge sits, in viewport pixels, whenever the panel is NOT anchored: shown with no source, given a floor, or on an engine without CSS anchor positioning. A panel shown from a source is placed by the platform against that source (see placement) and ignores x and y, though an opener may still write them, because they are exactly the fallback the anchored rule stands on."
     },
     "y": {
       "type": "number",
       "default": 0,
       "attribute": "y",
-      "description": "Where the panel's block-start edge sits, in viewport pixels. The gap between that edge and the anchor is the --jx-popover-offset token, not a prop: a numeric prop with a non-zero default cannot express \"unset\", because removing its attribute coerces through the current value's type and writes 0."
+      "description": "Where the panel's block-start edge sits, in viewport pixels, under the same condition as x. The gap between that edge and the anchor is the --jx-popover-offset token, not a prop: a numeric prop with a non-zero default cannot express \"unset\", because removing its attribute coerces through the current value's type and writes 0. Anchored, the same margin is the gap below the trigger."
     },
     "floor": {
       "type": "number",
@@ -55,6 +61,11 @@
       "default": 0,
       "description": "The measured border-box width of the element the panel was opened from, in pixels. Written by the behaviour under matchWidth and read by the panel's own min-width; 0 when nothing has been measured."
     },
+    "anchored": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether the panel is showing from a source the platform knows, and therefore positioned by anchor rather than by x and y. Written by the behaviour on beforetoggle, before the panel is laid out, so the first frame is already in the right place; cleared when it closes. Mirrored as data-anchored, which the anchored rule keys on. Not an attribute, because it is the platform's fact and never a consumer's to set. A panel given a floor is never anchored: a floor is a limit the platform's fallbacks cannot express, so it keeps the coordinate placement the clamp honours."
+    },
     "panelWidth": "${state.matchWidth && state.anchorWidth > 0 ? state.anchorWidth + 'px' : '180px'}",
     "noArrow": {
       "$expression": {
@@ -65,11 +76,17 @@
         "value": false
       }
     },
+    "onBeforeToggle": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/popover.ts",
+      "$export": "onBeforeToggle",
+      "description": "Decides anchored before the panel is laid out: an opening toggle whose source the platform names, on a panel with no floor, is anchored; everything else is not. On beforetoggle rather than toggle because toggle is queued after the show and a panel that learned it was anchored one frame late would paint once at its coordinates and then jump."
+    },
     "onToggle": {
       "$prototype": "Function",
       "$src": "jx-ui:/behaviors/popover.ts",
       "$export": "onToggle",
-      "description": "Mirrors the platform's toggle event into open, raises settling for the transition, measures the anchor under matchWidth, and clamps a freshly shown panel into the viewport."
+      "description": "Mirrors the platform's toggle event into open, raises settling for the transition, measures the anchor under matchWidth, and clamps a freshly shown panel into the viewport when it is not anchored; an anchored panel is placed and flipped by the platform and is left alone."
     },
     "onTransitionEnd": {
       "$prototype": "Function",
@@ -88,6 +105,9 @@
       "description": "Announces that the element has rendered and carries its popover attribute, so a host may show it. A panel is always an auto popover: light dismiss, Escape and focus restoration are the platform's."
     }
   },
+  "onbeforetoggle": {
+    "$ref": "#/state/onBeforeToggle"
+  },
   "ontoggle": {
     "$ref": "#/state/onToggle"
   },
@@ -99,7 +119,8 @@
     "role": "${state.label ? 'group' : null}",
     "aria-label": "${state.label || null}",
     "data-open": "${state.open ? '' : null}",
-    "data-jx-settling": "${state.settling ? '' : null}"
+    "data-jx-settling": "${state.settling ? '' : null}",
+    "data-anchored": "${state.anchored ? '' : null}"
   },
   "style": {
     "display": "revert-layer",
@@ -141,6 +162,16 @@
     },
     "&:focus-visible": {
       "outline": "var(--jx-focus-ring)"
+    },
+    "@supports (position-area: block-end)": {
+      "$description": "The anchored placement, and the whole of what CSS anchor positioning gives a panel: the platform puts it against its IMPLICIT anchor — the element it was shown from — follows that element through scroll and resize, and flips it to the other side when the first placement would overflow, none of which a measured coordinate can do without a listener per cause. No anchor-name is involved: a popover's invoker is its implicit anchor by the platform's own rule, which is what makes this reachable under ui.md 2 (an element writes no style on a consumer's trigger). The insets are released so x and y stop mattering, and matchWidth becomes anchor-size, which follows the trigger as it resizes where the measured width could not. Outside this block, and on a panel shown from nothing or with a floor, the coordinate placement above is the answer, unchanged.",
+      "&[data-anchored]": {
+        "insetInlineStart": "auto",
+        "insetBlockStart": "auto",
+        "positionArea": "${state.placement}",
+        "positionTryFallbacks": "flip-block, flip-inline, flip-block flip-inline",
+        "minWidth": "${state.matchWidth ? 'anchor-size(width)' : '180px'}"
+      }
     },
     "@starting-style": {
       "&:popover-open": {
