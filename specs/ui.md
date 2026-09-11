@@ -2,9 +2,9 @@
 
 ## Interface Elements Authored as Jx Documents
 
-**Version:** 0.1.32-draft\
+**Version:** 0.1.33-draft\
 **Status:** Partial\
-**Updated:** 2026-09-10\
+**Updated:** 2026-09-11\
 **License:** MIT\
 **Applies to:** `packages/ui/`, `packages/studio/src/surfaces/`
 
@@ -297,7 +297,7 @@ Each of the three wraps ONE native control and writes none of the ARIA the platf
 
 **A splitter that can only be dragged fails two success criteria, and it takes two different answers to clear them.** The arrows answer SC 2.1.1: the pair of the splitter's own axis, `Shift` for the larger step, Home and End for the ends of the legal range — and they are NOT refused when the track cannot be measured, because a step is arithmetic on a number the element already has, and a layout-timing accident must not be allowed to take the keyboard away. SC 2.5.7 is a different question and the arrows do not answer it: it asks for a single-POINTER alternative that is not a dragging motion. That is the double click, and Enter is the same gesture through the other door — deliberately the same function, so the two cannot drift. `collapse` says where collapsed is, defaulting to `min` because that is what collapsing means for most splitters; a splitter whose two sides are both real panes points it at the position its double click already restored, and gets the return trip it never had. A splitter born at its collapse position still opens, to the middle of its range, because a control that visibly does nothing on its first press is one a reader cannot tell from a broken one.
 
-**Every remaining drag-only handle in Studio is on the backlog rather than in the kit.** `ui/panel-resize.ts` still drives the three dock edges and the Edit column's own handle by pointer events alone: no tab stop, no role, no arrows. Each of the three docks has a command and a chord that opens and closes it, so the SIZE is the only thing a keyboard cannot reach — a smaller gap than the pane split's, which had neither, and the reason they were not swept up here. The element they would collapse onto now exists.
+**The three dock edges are `jx-split` now, and one drag-only handle remains.** `ui/panel-resize.ts` drives the Navigator, Inspector and Bottom-dock handles as `jx-split` elements in the frame — a tab stop, `role="separator"`, arrows and Home/End, Enter and a double click to reset — and keeps for itself only the TRANSLATION: a dock is stored in pixels with a pixel floor and a viewport ceiling, the element speaks in the leading side's share of the app box, and a dock sits behind fixed tracks (the rail's 56px, the status bar's 24px) that the share has to include. One adapter carries that arithmetic for all three and re-derives it on a window resize, which is the listener `gap` was designed to spare a host whose bounds are shares. What is still pointer-only is the Edit column's handle, and the gap is the element's rather than Studio's: that column SNAPS to the document's breakpoints with Alt as the bypass, and `jx-split` has no snap hook and reports no modifier state on its `input`. Until it does, `setupHandle` survives for that one caller with the SC 2.1.1 debt it carries.
 
 | Element              | Owns                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -407,6 +407,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.1.33-draft** (2026-09-11) — The three dock edges are jx-split; only the Edit column's snapping handle remains pointer-only (§5.5).
 - **0.1.32-draft** (2026-09-10) — jx-tree keeps the keyboard across a handed-off caret move: it focuses the revealed row once the roving tabindex is on it, and abandons the request if the reader has moved on.
 - **0.1.31-draft** (2026-09-10) — jx-split: a window splitter with role=separator, a tab stop, aria-valuenow, the arrows of its own axis and a collapse toggle on Enter or a double click; Studio's pane grid and rail no longer hand-roll a separator.
 - **0.1.30-draft** (2026-09-10) — jx-toolbar ships: one tab stop over a row of mixed controls, a text field that keeps the arrows until its caret runs out, and overflow left with the host that already answers it (5.1, 5.5, 7).
@@ -443,4 +444,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx UI Kit Specification v0.1.32-draft_
+_Jx UI Kit Specification v0.1.33-draft_

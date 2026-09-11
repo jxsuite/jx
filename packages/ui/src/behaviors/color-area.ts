@@ -247,7 +247,11 @@ export function onAreaPointerDown(state: ColorAreaState, event: PointerEvent): v
   if (track && typeof track.setPointerCapture === "function") {
     /* Capture on the TRACK, so a drag that leaves the square keeps arriving here rather than
        stopping wherever the pointer crossed the edge. */
-    track.setPointerCapture(event.pointerId);
+    try {
+      track.setPointerCapture(event.pointerId);
+    } catch {
+      /* A synthetic pointer has nothing to capture and Chrome throws; see split.ts. */
+    }
   }
   host.querySelector<HTMLElement>('[part="x"]')?.focus();
   if (fromPointer(state, host, event)) {
